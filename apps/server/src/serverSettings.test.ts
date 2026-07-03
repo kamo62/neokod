@@ -429,8 +429,10 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         customModels: [],
         launchArgs: "",
       });
+      // OpenCode ships disabled by default in this fork; the patch above
+      // doesn't touch `enabled`, so the default (false) carries through.
       assert.deepEqual(next.providers.opencode, {
-        enabled: true,
+        enabled: false,
         binaryPath: "/opt/homebrew/bin/opencode",
         serverUrl: "http://127.0.0.1:4096",
         serverPassword: "secret-password",

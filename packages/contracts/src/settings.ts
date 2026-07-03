@@ -283,8 +283,10 @@ export type CursorSettings = typeof CursorSettings.Type;
 
 export const GrokSettings = makeProviderSettingsSchema(
   {
+    // Disabled by default: Claude and GitHub Copilot ship as the
+    // out-of-the-box agents in this fork; Grok stays in code but opt-in.
     enabled: Schema.Boolean.pipe(
-      Schema.withDecodingDefault(Effect.succeed(true)),
+      Schema.withDecodingDefault(Effect.succeed(false)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
     binaryPath: makeBinaryPathSetting("grok").pipe(
@@ -305,10 +307,46 @@ export const GrokSettings = makeProviderSettingsSchema(
 );
 export type GrokSettings = typeof GrokSettings.Type;
 
-export const OpenCodeSettings = makeProviderSettingsSchema(
+export const CopilotSettings = makeProviderSettingsSchema(
   {
     enabled: Schema.Boolean.pipe(
       Schema.withDecodingDefault(Effect.succeed(true)),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    binaryPath: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Runtime path",
+        description:
+          "Path to a custom Copilot CLI runtime binary. Leave blank to use the bundled runtime.",
+        providerSettingsForm: { placeholder: "Bundled runtime", clearWhenEmpty: "omit" },
+      }),
+    ),
+    baseDirectory: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "COPILOT_HOME path",
+        description: "Custom base directory for Copilot session state and config.",
+        providerSettingsForm: { placeholder: "~/.copilot", clearWhenEmpty: "omit" },
+      }),
+    ),
+    customModels: Schema.Array(Schema.String).pipe(
+      Schema.withDecodingDefault(Effect.succeed([])),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+  },
+  {
+    order: ["binaryPath", "baseDirectory"],
+  },
+);
+export type CopilotSettings = typeof CopilotSettings.Type;
+
+export const OpenCodeSettings = makeProviderSettingsSchema(
+  {
+    // Disabled by default: Claude and GitHub Copilot ship as the
+    // out-of-the-box agents in this fork; OpenCode stays in code but opt-in.
+    enabled: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
     binaryPath: makeBinaryPathSetting("opencode").pipe(
@@ -396,6 +434,7 @@ export const ServerSettings = Schema.Struct({
   providers: Schema.Struct({
     codex: CodexSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     claudeAgent: ClaudeSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+    githubCopilot: CopilotSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     cursor: CursorSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     grok: GrokSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     opencode: OpenCodeSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
@@ -480,6 +519,13 @@ const ClaudeSettingsPatch = Schema.Struct({
   launchArgs: Schema.optionalKey(TrimmedString),
 });
 
+const CopilotSettingsPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  binaryPath: Schema.optionalKey(TrimmedString),
+  baseDirectory: Schema.optionalKey(TrimmedString),
+  customModels: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+
 const CursorSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   binaryPath: Schema.optionalKey(TrimmedString),
@@ -520,6 +566,7 @@ export const ServerSettingsPatch = Schema.Struct({
     Schema.Struct({
       codex: Schema.optionalKey(CodexSettingsPatch),
       claudeAgent: Schema.optionalKey(ClaudeSettingsPatch),
+      githubCopilot: Schema.optionalKey(CopilotSettingsPatch),
       cursor: Schema.optionalKey(CursorSettingsPatch),
       grok: Schema.optionalKey(GrokSettingsPatch),
       opencode: Schema.optionalKey(OpenCodeSettingsPatch),

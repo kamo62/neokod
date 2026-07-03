@@ -23,9 +23,26 @@ describe("buildInitialGrokProviderSnapshot", () => {
     }),
   );
 
-  it.effect("returns a pending snapshot by default", () =>
+  // Grok ships disabled by default in this fork (Claude and GitHub Copilot
+  // are the out-of-the-box agents); decoding `{}` therefore takes the
+  // disabled branch, not the "pending" one.
+  it.effect("is disabled by default", () =>
     Effect.gen(function* () {
       const snapshot = yield* buildInitialGrokProviderSnapshot(decodeGrokSettings({}));
+      expect(snapshot.enabled).toBe(false);
+      expect(snapshot.installed).toBe(false);
+      expect(snapshot.status).toBe("disabled");
+      expect(snapshot.version).toBeNull();
+      expect(snapshot.message).toContain("disabled");
+      expect(snapshot.requiresNewThreadForModelChange).toBe(true);
+    }),
+  );
+
+  it.effect("returns a pending snapshot when explicitly enabled", () =>
+    Effect.gen(function* () {
+      const snapshot = yield* buildInitialGrokProviderSnapshot(
+        decodeGrokSettings({ enabled: true }),
+      );
       expect(snapshot.enabled).toBe(true);
       expect(snapshot.installed).toBe(true);
       expect(snapshot.status).toBe("warning");
