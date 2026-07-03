@@ -569,3 +569,17 @@ export class ServerProviderUpdateError extends Schema.TaggedErrorClass<ServerPro
     return `Provider update failed for ${this.provider}: ${this.reason}`;
   }
 }
+
+/**
+ * Result of a one-shot Copilot managed-client-evidence governance
+ * connectivity check (`server.testManagedClientEvidenceConnection`).
+ * `ok`/`status`/`message` describe the AI-Orch endpoint's response; the
+ * credential under test is never included.
+ */
+export const CopilotManagedClientEvidenceTestConnectionResult = Schema.Struct({
+  ok: Schema.Boolean,
+  status: Schema.NullOr(Schema.Number),
+  message: TrimmedNonEmptyString,
+});
+export type CopilotManagedClientEvidenceTestConnectionResult =
+  typeof CopilotManagedClientEvidenceTestConnectionResult.Type;

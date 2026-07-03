@@ -190,5 +190,13 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:signal-process",
       tag: WS_METHODS.serverSignalProcess,
     }),
+    testManagedClientEvidenceConnection: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:test-managed-client-evidence-connection",
+      tag: WS_METHODS.serverTestManagedClientEvidenceConnection,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId }) => environmentId,
+      },
+    }),
   };
 }

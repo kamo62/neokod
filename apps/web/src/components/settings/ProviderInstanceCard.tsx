@@ -16,6 +16,7 @@ import * as Result from "effect/Result";
 import { useState, type ReactNode } from "react";
 import {
   isProviderDriverKind,
+  type CopilotManagedClientEvidenceSettings,
   type ProviderInstanceConfig,
   type ProviderInstanceEnvironmentVariable,
   type ProviderInstanceId,
@@ -321,6 +322,121 @@ function ProviderEnvironmentSection(props: {
   );
 }
 
+/**
+ * Seam for the future AI-Orch browser SSO enrolment flow. Ai-orch's
+ * server-side OIDC work will provide a real enrolment URL here; until then
+ * this stays `null` and the credential field below is manual-paste only.
+ * Flipping this to a string plus wiring an "Enrol via SSO" click handler is
+ * the whole v2 change - no other governance-section code should need to move.
+ */
+const GOVERNANCE_SSO_ENROLMENT_URL: string | null = null;
+
+/** Pure so it can be unit tested without a render harness (see ProviderInstanceCard.test.ts). */
+export function describeManagedClientEvidenceReadiness(
+  settings: CopilotManagedClientEvidenceSettings,
+): string {
+  if (settings.governanceUrl.trim().length === 0 || settings.credential.trim().length === 0) {
+    return "Evidence forwarding stays off until a governance URL and credential are set.";
+  }
+  return settings.enabled
+    ? "Evidence forwarding is on."
+    : "Fields are set. Turn on evidence forwarding above when you're ready.";
+}
+
+function CopilotGovernanceSection(props: {
+  readonly settings: CopilotManagedClientEvidenceSettings;
+  readonly onChange: (patch: Partial<CopilotManagedClientEvidenceSettings>) => void;
+  readonly onTestConnection?:
+    | (() => Promise<{ readonly ok: boolean; readonly message: string }>)
+    | undefined;
+}) {
+  const [testState, setTestState] = useState<
+    | { readonly status: "idle" }
+    | { readonly status: "pending" }
+    | { readonly status: "done"; readonly ok: boolean; readonly message: string }
+  >({ status: "idle" });
+
+  const runTestConnection = () => {
+    const { onTestConnection } = props;
+    if (!onTestConnection || testState.status === "pending") return;
+    setTestState({ status: "pending" });
+    void onTestConnection().then((result) => {
+      setTestState({ status: "done", ok: result.ok, message: result.message });
+    });
+  };
+
+  return (
+    <div className="grid gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 space-y-0.5">
+          <p className="text-xs font-medium text-foreground">Governance (AI-Orch)</p>
+          <p className="text-xs text-muted-foreground">
+            {describeManagedClientEvidenceReadiness(props.settings)}
+          </p>
+        </div>
+        <Switch
+          checked={props.settings.enabled}
+          onCheckedChange={(checked) => props.onChange({ enabled: Boolean(checked) })}
+          aria-label="Enable AI-Orch evidence forwarding"
+        />
+      </div>
+      <label className="block">
+        <span className="text-xs font-medium text-foreground">Governance URL</span>
+        <DraftInput
+          className="mt-1.5"
+          value={props.settings.governanceUrl}
+          onCommit={(value) => props.onChange({ governanceUrl: value.trim() })}
+          placeholder="https://ai-orch.example.com"
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </label>
+      {GOVERNANCE_SSO_ENROLMENT_URL ? (
+        <Button type="button" size="xs" variant="outline" className="w-fit">
+          Enrol via SSO
+        </Button>
+      ) : (
+        <label className="block">
+          <span className="text-xs font-medium text-foreground">Credential</span>
+          <DraftInput
+            className="mt-1.5"
+            value={props.settings.credential}
+            onCommit={(value) => props.onChange({ credential: value.trim() })}
+            type="password"
+            autoComplete="off"
+            placeholder="air_..."
+            spellCheck={false}
+          />
+        </label>
+      )}
+      {props.onTestConnection ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            className="w-fit shrink-0"
+            disabled={testState.status === "pending"}
+            onClick={runTestConnection}
+          >
+            {testState.status === "pending" ? (
+              <LoaderIcon className="animate-spin" />
+            ) : (
+              <RefreshCwIcon />
+            )}
+            Test connection
+          </Button>
+          {testState.status === "done" ? (
+            <span className={cn("text-xs", testState.ok ? "text-success" : "text-destructive")}>
+              {testState.message}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 interface ProviderInstanceCardProps {
   readonly instanceId: ProviderInstanceId;
   readonly instance: ProviderInstanceConfig;
@@ -354,6 +470,19 @@ interface ProviderInstanceCardProps {
   readonly isUpdating?: boolean | undefined;
   readonly onVerify?: (() => void) | undefined;
   readonly isVerifying?: boolean | undefined;
+  /**
+   * Hidden `CopilotSettings.managedClientEvidence` governance settings
+   * (`providers.githubCopilot.managedClientEvidence`, not per-instance
+   * config). Rendered only when this and `onManagedClientEvidenceChange`
+   * are both supplied and the row is the `githubCopilot` driver.
+   */
+  readonly managedClientEvidence?: CopilotManagedClientEvidenceSettings | undefined;
+  readonly onManagedClientEvidenceChange?:
+    | ((patch: Partial<CopilotManagedClientEvidenceSettings>) => void)
+    | undefined;
+  readonly onTestManagedClientEvidenceConnection?:
+    | (() => Promise<{ readonly ok: boolean; readonly message: string }>)
+    | undefined;
 }
 
 /**
@@ -400,6 +529,9 @@ export function ProviderInstanceCard({
   isUpdating = false,
   onVerify,
   isVerifying = false,
+  managedClientEvidence,
+  onManagedClientEvidenceChange,
+  onTestManagedClientEvidenceConnection,
 }: ProviderInstanceCardProps) {
   const enabled = instance.enabled ?? true;
   // The server-reported status wins when present; otherwise fall back to
@@ -797,6 +929,16 @@ export function ProviderInstanceCard({
                     </Button>
                   ) : null}
                 </div>
+              </div>
+            ) : null}
+
+            {isCopilot && managedClientEvidence && onManagedClientEvidenceChange ? (
+              <div className="border-t border-border/60 px-4 py-3 sm:px-5">
+                <CopilotGovernanceSection
+                  settings={managedClientEvidence}
+                  onChange={onManagedClientEvidenceChange}
+                  onTestConnection={onTestManagedClientEvidenceConnection}
+                />
               </div>
             ) : null}
 

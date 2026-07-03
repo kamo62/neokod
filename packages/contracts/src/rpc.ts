@@ -130,6 +130,7 @@ import {
   ServerSignalProcessResult,
   ServerUpsertKeybindingInput,
   ServerUpsertKeybindingResult,
+  CopilotManagedClientEvidenceTestConnectionResult,
 } from "./server.ts";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
 import {
@@ -213,6 +214,7 @@ export const WS_METHODS = {
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
   serverGetProcessResourceHistory: "server.getProcessResourceHistory",
   serverSignalProcess: "server.signalProcess",
+  serverTestManagedClientEvidenceConnection: "server.testManagedClientEvidenceConnection",
 
   // Cloud environment methods
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
@@ -316,6 +318,22 @@ export const WsServerSignalProcessRpc = Rpc.make(WS_METHODS.serverSignalProcess,
   success: ServerSignalProcessResult,
   error: EnvironmentAuthorizationError,
 });
+
+/**
+ * One-shot connectivity check for the Copilot managed-client-evidence
+ * governance settings. Always operates on the currently saved settings
+ * (`providers.githubCopilot.managedClientEvidence`) rather than accepting
+ * url/credential arguments, so the credential never needs a second trip
+ * over the wire beyond the normal settings patch that saved it.
+ */
+export const WsServerTestManagedClientEvidenceConnectionRpc = Rpc.make(
+  WS_METHODS.serverTestManagedClientEvidenceConnection,
+  {
+    payload: Schema.Struct({}),
+    success: CopilotManagedClientEvidenceTestConnectionResult,
+    error: Schema.Union([ServerSettingsError, EnvironmentAuthorizationError]),
+  },
+);
 
 export const WsCloudGetRelayClientStatusRpc = Rpc.make(WS_METHODS.cloudGetRelayClientStatus, {
   payload: Schema.Struct({}),
@@ -694,6 +712,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetProcessDiagnosticsRpc,
   WsServerGetProcessResourceHistoryRpc,
   WsServerSignalProcessRpc,
+  WsServerTestManagedClientEvidenceConnectionRpc,
   WsCloudGetRelayClientStatusRpc,
   WsCloudInstallRelayClientRpc,
   WsSourceControlLookupRepositoryRpc,

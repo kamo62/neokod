@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useAtomValue } from "@effect/atom-react";
 import {
   defaultInstanceIdForDriver,
+  type CopilotManagedClientEvidenceSettings,
   type DesktopUpdateChannel,
   PROVIDER_DISPLAY_NAMES,
   ProviderDriverKind,
@@ -996,6 +997,10 @@ export function ProviderSettingsPanel() {
   const updateProvider = useAtomCommand(serverEnvironment.updateProvider, {
     reportFailure: false,
   });
+  const testManagedClientEvidenceConnection = useAtomCommand(
+    serverEnvironment.testManagedClientEvidenceConnection,
+    { reportFailure: false },
+  );
   const [isRefreshingProviders, setIsRefreshingProviders] = useState(false);
   const [isAddInstanceDialogOpen, setIsAddInstanceDialogOpen] = useState(false);
   const [updatingProviderDrivers, setUpdatingProviderDrivers] = useState<
@@ -1204,6 +1209,51 @@ export function ProviderSettingsPanel() {
         textGenerationModelSelection: options?.textGenerationModelSelection,
       }),
     );
+  };
+
+  // `managedClientEvidence` is hidden `providers.githubCopilot` settings
+  // (legacy single-instance-per-driver home, not per-instance config), so it
+  // patches through `settings.providers` the same way `resetDefaultInstance`
+  // below does rather than through `updateProviderInstance`.
+  const updateManagedClientEvidenceSettings = (
+    patch: Partial<CopilotManagedClientEvidenceSettings>,
+  ) => {
+    updateSettings({
+      providers: {
+        ...settings.providers,
+        githubCopilot: {
+          ...settings.providers.githubCopilot,
+          managedClientEvidence: {
+            ...settings.providers.githubCopilot.managedClientEvidence,
+            ...patch,
+          },
+        },
+      } as typeof settings.providers,
+    });
+  };
+
+  const runManagedClientEvidenceTestConnection = async (): Promise<{
+    readonly ok: boolean;
+    readonly message: string;
+  }> => {
+    if (!primaryEnvironment) {
+      return { ok: false, message: "No active environment." };
+    }
+    const result = await testManagedClientEvidenceConnection({
+      environmentId: primaryEnvironment.environmentId,
+      input: {},
+    });
+    if (result._tag === "Success") {
+      return { ok: result.value.ok, message: result.value.message };
+    }
+    if (isAtomCommandInterrupted(result)) {
+      return { ok: false, message: "Test connection was interrupted." };
+    }
+    const error = squashAtomCommandFailure(result);
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Could not test the connection.",
+    };
   };
 
   const deleteProviderInstance = (id: ProviderInstanceId) => {
@@ -1425,6 +1475,9 @@ export function ProviderSettingsPanel() {
               isUpdating={showInlineUpdateButton ? isDriverUpdateRunning : undefined}
               onVerify={refreshProviders}
               isVerifying={isRefreshingProviders}
+              managedClientEvidence={settings.providers.githubCopilot.managedClientEvidence}
+              onManagedClientEvidenceChange={updateManagedClientEvidenceSettings}
+              onTestManagedClientEvidenceConnection={runManagedClientEvidenceTestConnection}
             />
           );
         })}
