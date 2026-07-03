@@ -3,6 +3,7 @@ import * as Schema from "effect/Schema";
 
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
+  CopilotSettings,
   ClientSettingsSchema,
   DEFAULT_SERVER_SETTINGS,
   ServerSettings,
@@ -10,6 +11,7 @@ import {
 } from "./settings.ts";
 
 const decodeClientSettings = Schema.decodeUnknownSync(ClientSettingsSchema);
+const decodeCopilotSettings = Schema.decodeUnknownSync(CopilotSettings);
 const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
 const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
@@ -68,7 +70,9 @@ describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
     const ollamaId = ProviderInstanceId.make("ollama_local");
 
     expect(decoded.providerInstances[personalId]?.driver).toBe("codex");
-    expect(decoded.providerInstances[workId]?.config).toEqual({ homePath: "~/.codex_work" });
+    expect(decoded.providerInstances[workId]?.config).toEqual({
+      homePath: "~/.codex_work",
+    });
     // Critical: a config naming a driver this build does not know about
     // (`ollama` is not in `ProviderDriverKind`) must round-trip without loss.
     // The runtime handles "driver not installed" — the schema must not.
@@ -184,5 +188,141 @@ describe("ServerSettingsPatch string normalization", () => {
 
     expect(encoded.addProjectBaseDirectory).toBe("~/Development");
     expect(encoded.providers?.codex?.binaryPath).toBe("/opt/homebrew/bin/codex");
+  });
+});
+
+describe("CopilotSettings.mcpServers", () => {
+  it("defaults mcpServers to an empty record", () => {
+    expect(decodeCopilotSettings({}).mcpServers).toEqual({});
+    expect(decodeCopilotSettings({}).customAgents).toEqual([]);
+    expect(decodeCopilotSettings({}).activeAgent).toBe("");
+    expect(decodeCopilotSettings({}).fleetMode).toBe(false);
+    expect(decodeCopilotSettings({}).managedClientEvidence).toEqual({
+      enabled: false,
+      governanceUrl: "",
+      credential: "",
+    });
+  });
+
+  it("decodes stdio and remote MCP servers", () => {
+    const decoded = decodeCopilotSettings({
+      mcpServers: {
+        local_gateway: {
+          command: "copilot-mcp",
+          args: ["serve"],
+          env: { COPILOT_HOME: "/tmp/copilot" },
+          tools: ["*"],
+          timeout: 2500,
+          workingDirectory: "/tmp",
+        },
+        orch_gateway: {
+          type: "http",
+          url: "https://gateway.example.com/mcp",
+          headers: { Authorization: "Bearer token" },
+          tools: ["policy"],
+        },
+      },
+    });
+
+    const localGateway = decoded.mcpServers.local_gateway;
+    const orchGateway = decoded.mcpServers.orch_gateway;
+    expect(localGateway && "command" in localGateway ? localGateway.command : undefined).toBe(
+      "copilot-mcp",
+    );
+    expect(orchGateway?.type).toBe("http");
+    expect(
+      orchGateway && "headers" in orchGateway ? orchGateway.headers?.Authorization : undefined,
+    ).toBe("Bearer token");
+  });
+
+  it("decodes Copilot settings patches with mcp servers", () => {
+    const patch = decodeServerSettingsPatch({
+      providers: {
+        githubCopilot: {
+          mcpServers: {
+            local_gateway: {
+              command: "copilot-mcp",
+            },
+          },
+        },
+      },
+    });
+
+    const localGateway = patch.providers?.githubCopilot?.mcpServers?.local_gateway;
+    expect(localGateway && "command" in localGateway ? localGateway.command : undefined).toBe(
+      "copilot-mcp",
+    );
+  });
+
+  it("decodes custom agents and fleet settings", () => {
+    const decoded = decodeCopilotSettings({
+      customAgents: [
+        {
+          name: "reviewer",
+          displayName: "Reviewer",
+          description: "Review changes",
+          tools: ["read_file"],
+          prompt: "Review the current diff.",
+          infer: false,
+          model: "gpt-5.4-mini",
+          mcpServers: {
+            docs: { type: "http", url: "https://docs.example/mcp" },
+          },
+        },
+      ],
+      defaultAgent: { excludedTools: ["dangerous_tool"] },
+      activeAgent: "reviewer",
+      fleetMode: true,
+    });
+
+    expect(decoded.customAgents[0]?.name).toBe("reviewer");
+    expect(decoded.customAgents[0]?.mcpServers?.docs?.type).toBe("http");
+    expect(decoded.defaultAgent?.excludedTools).toEqual(["dangerous_tool"]);
+    expect(decoded.activeAgent).toBe("reviewer");
+    expect(decoded.fleetMode).toBe(true);
+  });
+
+  it("decodes managed client evidence settings and patches", () => {
+    const decoded = decodeCopilotSettings({
+      managedClientEvidence: {
+        enabled: true,
+        governanceUrl: " https://governance.example ",
+        credential: " air_test ",
+      },
+    });
+    const patch = decodeServerSettingsPatch({
+      providers: {
+        githubCopilot: {
+          managedClientEvidence: {
+            enabled: true,
+            governanceUrl: "https://governance.example",
+            credential: "air_test",
+          },
+        },
+      },
+    });
+
+    expect(decoded.managedClientEvidence).toEqual({
+      enabled: true,
+      governanceUrl: "https://governance.example",
+      credential: "air_test",
+    });
+    expect(patch.providers?.githubCopilot?.managedClientEvidence?.credential).toBe("air_test");
+  });
+
+  it("decodes partial managed client evidence patches without defaulting missing fields", () => {
+    const patch = decodeServerSettingsPatch({
+      providers: {
+        githubCopilot: {
+          managedClientEvidence: {
+            enabled: true,
+          },
+        },
+      },
+    });
+
+    expect(patch.providers?.githubCopilot?.managedClientEvidence).toEqual({
+      enabled: true,
+    });
   });
 });

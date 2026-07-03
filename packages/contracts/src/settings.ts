@@ -307,6 +307,65 @@ export const GrokSettings = makeProviderSettingsSchema(
 );
 export type GrokSettings = typeof GrokSettings.Type;
 
+const CopilotMcpServerBase = {
+  tools: Schema.optional(Schema.Array(Schema.String)),
+  timeout: Schema.optional(Schema.Number),
+};
+
+const CopilotMcpStdioServer = Schema.Struct({
+  ...CopilotMcpServerBase,
+  type: Schema.optional(Schema.Literals(["local", "stdio"])),
+  command: Schema.String,
+  args: Schema.optional(Schema.Array(Schema.String)),
+  env: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  workingDirectory: Schema.optional(Schema.String),
+});
+
+const CopilotMcpRemoteServer = Schema.Struct({
+  ...CopilotMcpServerBase,
+  type: Schema.Literals(["http", "sse"]),
+  url: Schema.String,
+  headers: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+});
+
+export const CopilotMcpServers = Schema.Record(
+  Schema.String,
+  Schema.Union([CopilotMcpStdioServer, CopilotMcpRemoteServer]),
+);
+export type CopilotMcpServers = typeof CopilotMcpServers.Type;
+
+const CopilotCustomAgent = Schema.Struct({
+  name: Schema.String,
+  displayName: Schema.optional(Schema.String),
+  description: Schema.optional(Schema.String),
+  tools: Schema.optional(Schema.NullOr(Schema.Array(Schema.String))),
+  prompt: Schema.String,
+  mcpServers: Schema.optional(CopilotMcpServers),
+  infer: Schema.optional(Schema.Boolean),
+  model: Schema.optional(Schema.String),
+});
+
+export const CopilotCustomAgents = Schema.Array(CopilotCustomAgent);
+export type CopilotCustomAgents = typeof CopilotCustomAgents.Type;
+
+export const CopilotDefaultAgent = Schema.Struct({
+  excludedTools: Schema.optional(Schema.Array(Schema.String)),
+});
+export type CopilotDefaultAgent = typeof CopilotDefaultAgent.Type;
+
+export const CopilotManagedClientEvidenceSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  governanceUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  credential: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+});
+export type CopilotManagedClientEvidenceSettings = typeof CopilotManagedClientEvidenceSettings.Type;
+
+const CopilotManagedClientEvidenceSettingsPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  governanceUrl: Schema.optionalKey(TrimmedString),
+  credential: Schema.optionalKey(TrimmedString),
+});
+
 export const CopilotSettings = makeProviderSettingsSchema(
   {
     enabled: Schema.Boolean.pipe(
@@ -319,7 +378,10 @@ export const CopilotSettings = makeProviderSettingsSchema(
         title: "Runtime path",
         description:
           "Path to a custom Copilot CLI runtime binary. Leave blank to use the bundled runtime.",
-        providerSettingsForm: { placeholder: "Bundled runtime", clearWhenEmpty: "omit" },
+        providerSettingsForm: {
+          placeholder: "Bundled runtime",
+          clearWhenEmpty: "omit",
+        },
       }),
     ),
     baseDirectory: TrimmedString.pipe(
@@ -327,11 +389,39 @@ export const CopilotSettings = makeProviderSettingsSchema(
       Schema.annotateKey({
         title: "COPILOT_HOME path",
         description: "Custom base directory for Copilot session state and config.",
-        providerSettingsForm: { placeholder: "~/.copilot", clearWhenEmpty: "omit" },
+        providerSettingsForm: {
+          placeholder: "~/.copilot",
+          clearWhenEmpty: "omit",
+        },
       }),
     ),
     customModels: Schema.Array(Schema.String).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    mcpServers: CopilotMcpServers.pipe(
+      Schema.withDecodingDefault(Effect.succeed({})),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    customAgents: CopilotCustomAgents.pipe(
+      Schema.withDecodingDefault(Effect.succeed([])),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    defaultAgent: Schema.optional(CopilotDefaultAgent).pipe(
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    activeAgent: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    fleetMode: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    managedClientEvidence: CopilotManagedClientEvidenceSettings.pipe(
+      Schema.withDecodingDefault(
+        Effect.succeed({ enabled: false, governanceUrl: "", credential: "" }),
+      ),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
   },
@@ -524,6 +614,12 @@ const CopilotSettingsPatch = Schema.Struct({
   binaryPath: Schema.optionalKey(TrimmedString),
   baseDirectory: Schema.optionalKey(TrimmedString),
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
+  mcpServers: Schema.optionalKey(CopilotMcpServers),
+  customAgents: Schema.optionalKey(CopilotCustomAgents),
+  defaultAgent: Schema.optionalKey(CopilotDefaultAgent),
+  activeAgent: Schema.optionalKey(TrimmedString),
+  fleetMode: Schema.optionalKey(Schema.Boolean),
+  managedClientEvidence: Schema.optionalKey(CopilotManagedClientEvidenceSettingsPatch),
 });
 
 const CursorSettingsPatch = Schema.Struct({
