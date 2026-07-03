@@ -405,15 +405,19 @@ lean on the gateway.
   developer-scoped; per-developer revocation. Don't advertise governance as active in the
   UI before the ai-orch path is proven.
 
-### Skills / Plugins (APM) — under discussion, not yet designed
+### APM (skills distribution layer) — parked
 
+- This is the **deferred distribution/auto-update layer** that sits _on top of_ the Skills
+  tab (see "Skills — top-level Skills tab" below); it is not a competing skills design.
+  The user-facing surface is settled there; this entry is only about org-wide package
+  management once the tab exists.
 - Exploring [Microsoft APM](https://microsoft.github.io/apm/) (agent package manager for
   skills/prompts/MCP) for **auto-updating org skills with team-level customization**. Wanted
   model: layered precedence (org base → team override → user override), rolling vs. pinned
   channels, notify-on-update (don't silently break workflows). Reuse the existing provider
   skill infra (`searchProviderSkills`, `$skill` mentions, Codex `skills/list`) rather than a
   parallel system; deliver the org registry via the Foundry/AI-Orch gateway like the MCP
-  catalog. See discussion notes; no spec yet.
+  catalog. No spec yet. Rule: surface now, manage files next, distribute later.
 
 ### Governance mode: recorder vs. gateway — ✅ IMPLEMENTED (decoupled)
 
