@@ -248,7 +248,11 @@ describe("CopilotDriver — lifecycle", () => {
       NodeAssert.ok(isProviderDriverError(error));
       NodeAssert.equal(error.driver, "githubCopilot");
       NodeAssert.equal(error.instanceId, instanceId);
-      NodeAssert.ok(error.detail.length > 0, "expected a non-empty failure detail");
+      NodeAssert.equal(
+        error.detail,
+        "simulated Copilot runtime start failure",
+        "expected the real SDK rejection message, not Effect's generic tryPromise message",
+      );
     }).pipe(
       Effect.ensuring(
         Effect.sync(() => {

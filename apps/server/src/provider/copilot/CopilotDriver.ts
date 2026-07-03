@@ -142,20 +142,19 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
       // change, so flipping this back to enabled runs `create()` again and
       // starts the client normally.
       if (effectiveConfig.enabled) {
-        yield* Effect.tryPromise(() => client.start()).pipe(
-          Effect.mapError(
-            (cause) =>
-              new ProviderDriverError({
-                driver: DRIVER_KIND,
-                instanceId,
-                detail:
-                  cause instanceof Error
-                    ? cause.message
-                    : "Failed to start the GitHub Copilot runtime.",
-                cause,
-              }),
-          ),
-        );
+        yield* Effect.tryPromise({
+          try: () => client.start(),
+          catch: (cause) =>
+            new ProviderDriverError({
+              driver: DRIVER_KIND,
+              instanceId,
+              detail:
+                cause instanceof Error
+                  ? cause.message
+                  : "Failed to start the GitHub Copilot runtime.",
+              cause,
+            }),
+        });
         yield* Effect.addFinalizer(() =>
           Effect.tryPromise(() => client.stop()).pipe(
             Effect.catch((cause) =>
