@@ -114,6 +114,10 @@ export function applyThreadDetailEvent(
           ...(event.payload.worktreePath !== undefined
             ? { worktreePath: event.payload.worktreePath }
             : {}),
+          ...(event.payload.goal !== undefined ? { goal: event.payload.goal } : {}),
+          ...(event.payload.goalStatus !== undefined
+            ? { goalStatus: event.payload.goalStatus }
+            : {}),
           updatedAt: event.payload.updatedAt,
         },
       };

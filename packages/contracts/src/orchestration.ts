@@ -352,6 +352,8 @@ export const OrchestrationThread = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  goal: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  goalStatus: Schema.optional(Schema.Literals(["active", "done"])),
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -398,6 +400,8 @@ export const OrchestrationThreadShell = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  goal: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  goalStatus: Schema.optional(Schema.Literals(["active", "done"])),
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -554,6 +558,8 @@ const ThreadMetaUpdateCommand = Schema.Struct({
   branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   expectedBranch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  goal: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  goalStatus: Schema.optional(Schema.Literals(["active", "done"])),
 });
 
 const ThreadRuntimeModeSetCommand = Schema.Struct({
@@ -895,6 +901,8 @@ export const ThreadMetaUpdatedPayload = Schema.Struct({
   modelSelection: Schema.optional(ModelSelection),
   branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  goal: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  goalStatus: Schema.optional(Schema.Literals(["active", "done"])),
   updatedAt: IsoDateTime,
 });
 
