@@ -225,6 +225,64 @@ describe("buildThreadFeed", () => {
     expect(group.activities[0]?.fullDetail).toContain("repository.search");
   });
 
+  it("shows subagent task lifecycle entries in the feed", () => {
+    const turnId = TurnId.make("turn-subagent");
+    const thread = makeThread({
+      id: ThreadId.make("thread-subagent"),
+      projectId: ProjectId.make("project-1"),
+      title: "Subagent work",
+      latestTurn: {
+        turnId,
+        state: "running",
+        requestedAt: "2026-04-01T00:00:00.000Z",
+        startedAt: "2026-04-01T00:00:01.000Z",
+        completedAt: null,
+        assistantMessageId: null,
+      },
+      activities: [
+        makeActivity({
+          id: EventId.make("subagent-started"),
+          kind: "task.started",
+          tone: "info",
+          summary: "Reviewer started",
+          createdAt: "2026-04-01T00:00:02.000Z",
+          turnId,
+          payload: { summary: "Reviewer" },
+        }),
+        makeActivity({
+          id: EventId.make("subagent-progress"),
+          kind: "task.progress",
+          tone: "info",
+          summary: "Reviewer reading files",
+          createdAt: "2026-04-01T00:00:03.000Z",
+          turnId,
+        }),
+        makeActivity({
+          id: EventId.make("subagent-completed"),
+          kind: "task.completed",
+          tone: "info",
+          summary: "Reviewer done",
+          createdAt: "2026-04-01T00:00:04.000Z",
+          turnId,
+        }),
+      ],
+    });
+
+    const group = buildThreadFeed(thread)[0];
+    expect(group).toMatchObject({ type: "activity-group" });
+    if (!group || group.type !== "activity-group") {
+      return;
+    }
+    expect(group.activities.map((activity) => activity.id)).toEqual([
+      "subagent-started",
+      "subagent-progress",
+      "subagent-completed",
+    ]);
+    expect(group.activities[0]?.summary).toBe("Reviewer");
+    expect(group.activities[0]?.icon).toBe("agent");
+    expect(group.activities[0]?.status).toBe("neutral");
+  });
+
   it("folds settled turn work while leaving the terminal answer visible", () => {
     const turnId = TurnId.make("turn-1");
     const thread = makeThread({

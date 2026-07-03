@@ -68,4 +68,28 @@ describe("searchSlashCommandItems", () => {
       "provider-slash-command:claudeAgent:gh-fix-ci",
     ]);
   });
+
+  it("supports the terminal and diff built-in commands", () => {
+    const items = [
+      {
+        id: "slash:terminal",
+        type: "slash-command",
+        command: "terminal",
+        label: "/terminal",
+        description: "Open this thread's terminal",
+      },
+      {
+        id: "slash:diff",
+        type: "slash-command",
+        command: "diff",
+        label: "/diff",
+        description: "Open this thread's diff",
+      },
+    ] satisfies Array<Extract<ComposerCommandItem, { type: "slash-command" }>>;
+
+    expect(searchSlashCommandItems(items, "term").map((item) => item.id)).toEqual([
+      "slash:terminal",
+    ]);
+    expect(searchSlashCommandItems(items, "df").map((item) => item.id)).toEqual(["slash:diff"]);
+  });
 });

@@ -122,7 +122,10 @@ function withoutProviderInstanceKey<V>(
 }
 
 function withoutProviderInstanceFavorites(
-  favorites: ReadonlyArray<{ readonly provider: ProviderInstanceId; readonly model: string }>,
+  favorites: ReadonlyArray<{
+    readonly provider: ProviderInstanceId;
+    readonly model: string;
+  }>,
   instanceId: ProviderInstanceId,
 ) {
   return favorites.filter((favorite) => favorite.provider !== instanceId);
@@ -272,7 +275,10 @@ function AboutVersionSection() {
       ? !canCheckForUpdate(updateState)
       : isDesktopUpdateButtonDisabled(updateState);
 
-  const actionLabel: Record<string, string> = { download: "Download", install: "Install" };
+  const actionLabel: Record<string, string> = {
+    download: "Download",
+    install: "Install",
+  };
   const statusLabel: Record<string, string> = {
     checking: "Checking…",
     downloading: "Downloading…",
@@ -349,7 +355,9 @@ function AboutVersionSection() {
               onValueChange={(value) => {
                 if (value === selectedHostedAppChannel) return;
                 window.location.assign(
-                  buildHostedChannelSelectionUrl({ channel: value as HostedAppChannel }),
+                  buildHostedChannelSelectionUrl({
+                    channel: value as HostedAppChannel,
+                  }),
                 );
               }}
             >
@@ -789,7 +797,9 @@ export function GeneralSettingsPanel() {
               <Switch
                 checked={settings.newWorktreesStartFromOrigin}
                 onCheckedChange={(checked) =>
-                  updateSettings({ newWorktreesStartFromOrigin: Boolean(checked) })
+                  updateSettings({
+                    newWorktreesStartFromOrigin: Boolean(checked),
+                  })
                 }
                 aria-label="Start new worktrees from origin by default"
               />
@@ -1155,7 +1165,12 @@ export function ProviderSettingsPanel() {
     });
     for (const [id, instance] of instancesByDriver.get(providerSettings.provider) ?? []) {
       if (id === defaultInstanceId) continue;
-      rows.push({ instanceId: id, instance, driver: instance.driver, isDefault: false });
+      rows.push({
+        instanceId: id,
+        instance,
+        driver: instance.driver,
+        isDefault: false,
+      });
     }
   }
   for (const [driver, list] of instancesByDriver) {
@@ -1408,6 +1423,8 @@ export function ProviderSettingsPanel() {
                   : undefined
               }
               isUpdating={showInlineUpdateButton ? isDriverUpdateRunning : undefined}
+              onVerify={refreshProviders}
+              isVerifying={isRefreshingProviders}
             />
           );
         })}

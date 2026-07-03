@@ -25,12 +25,14 @@ import {
   ArrowLeftIcon,
   ArrowUpIcon,
   CornerLeftUpIcon,
+  FileDiff,
   FolderIcon,
   FolderPlusIcon,
   LinkIcon,
   MessageSquareIcon,
   SettingsIcon,
   SquarePenIcon,
+  TerminalSquare,
 } from "lucide-react";
 import {
   useCallback,
@@ -113,6 +115,7 @@ import { ProjectFavicon } from "./ProjectFavicon";
 import { ThreadRowLeadingStatus, ThreadRowTrailingStatus } from "./ThreadStatusIndicators";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { resolveShortcutCommand } from "../keybindings";
+import { useRightPanelStore } from "../rightPanelStore";
 import {
   Command,
   CommandDialog,
@@ -473,6 +476,13 @@ function OpenCommandPaletteDialog(props: {
   const primaryEnvironment = usePrimaryEnvironment();
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
+  const routeTarget = useParams({
+    strict: false,
+    select: (params) => resolveThreadRouteTarget(params),
+  });
+  const routeThreadRef = routeTarget?.kind === "server" ? routeTarget.threadRef : null;
+  const openRightPanel = useRightPanelStore((state) => state.open);
+  const setTerminalOpen = useTerminalUiStateStore((state) => state.setTerminalOpen);
   const projects = useProjects();
   const threads = useThreadShells();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -624,7 +634,12 @@ function OpenCommandPaletteDialog(props: {
   const isBrowsePending = browseQuery.isPending;
   const browseEntries = browseResult?.entries ?? EMPTY_BROWSE_ENTRIES;
   const { filteredEntries: filteredBrowseEntries, exactEntry: exactBrowseEntry } = useMemo(
-    () => filterBrowseEntries({ browseEntries, browseFilterQuery, highlightedItemValue }),
+    () =>
+      filterBrowseEntries({
+        browseEntries,
+        browseFilterQuery,
+        highlightedItemValue,
+      }),
     [browseEntries, browseFilterQuery, highlightedItemValue],
   );
 
@@ -875,7 +890,13 @@ function OpenCommandPaletteDialog(props: {
         });
       }
 
-      return [{ value: `sources:${environmentId}`, label: "Sources", items: sourceItems }];
+      return [
+        {
+          value: `sources:${environmentId}`,
+          label: "Sources",
+          items: sourceItems,
+        },
+      ];
     },
     [openSourceControlSettings, startAddProjectBrowse, startAddProjectClone],
   );
@@ -1043,6 +1064,31 @@ function OpenCommandPaletteDialog(props: {
         startAddProjectBrowse(wslAddProjectEnvironmentOption.environmentId);
       },
     });
+  }
+
+  if (routeThreadRef) {
+    actionItems.push(
+      {
+        kind: "action",
+        value: "action:open-terminal",
+        searchTerms: ["terminal", "shell", "command line", "console"],
+        title: "Open terminal",
+        icon: <TerminalSquare className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          setTerminalOpen(routeThreadRef, true);
+        },
+      },
+      {
+        kind: "action",
+        value: "action:open-diff",
+        searchTerms: ["diff", "changes", "git", "review"],
+        title: "Open diff",
+        icon: <FileDiff className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openRightPanel(routeThreadRef, "diff");
+        },
+      },
+    );
   }
 
   actionItems.push({
@@ -1614,7 +1660,13 @@ function OpenCommandPaletteDialog(props: {
               (candidate) => candidate.httpBaseUrl === environment.displayUrl,
             );
             const runningDistro = bootstrap?.runningDistro ?? null;
-            return [{ environmentId: environment.environmentId, backendId, runningDistro }];
+            return [
+              {
+                environmentId: environment.environmentId,
+                backendId,
+                runningDistro,
+              },
+            ];
           }),
           primaryEnvironmentId,
           desktopWslState ?? null,
@@ -1822,9 +1874,13 @@ function OpenCommandPaletteDialog(props: {
                       : "Enter a repository path and press Enter to look it up.",
                 }
               : addProjectCloneFlow?.step === "confirm"
-                ? { emptyStateMessage: "Choose a destination path and press Enter to clone." }
+                ? {
+                    emptyStateMessage: "Choose a destination path and press Enter to clone.",
+                  }
                 : relativePathNeedsActiveProject
-                  ? { emptyStateMessage: "Relative paths require an active project." }
+                  ? {
+                      emptyStateMessage: "Relative paths require an active project.",
+                    }
                   : willCreateProjectPath
                     ? {
                         emptyStateMessage:

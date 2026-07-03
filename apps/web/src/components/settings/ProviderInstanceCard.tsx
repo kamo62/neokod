@@ -7,6 +7,7 @@ import {
   DownloadIcon,
   LoaderIcon,
   PlusIcon,
+  RefreshCwIcon,
   Trash2Icon,
   XIcon,
 } from "lucide-react";
@@ -284,7 +285,9 @@ function ProviderEnvironmentSection(props: {
                             sensitive,
                             ...(sensitive && variable.valueRedacted === undefined
                               ? {}
-                              : { valueRedacted: sensitive ? variable.valueRedacted : false }),
+                              : {
+                                  valueRedacted: sensitive ? variable.valueRedacted : false,
+                                }),
                           });
                         }}
                         aria-label={`Mark environment variable ${variable.name || index + 1} as sensitive`}
@@ -349,6 +352,8 @@ interface ProviderInstanceCardProps {
   readonly onModelOrderChange: (next: ReadonlyArray<string>) => void;
   readonly onRunUpdate?: (() => void) | undefined;
   readonly isUpdating?: boolean | undefined;
+  readonly onVerify?: (() => void) | undefined;
+  readonly isVerifying?: boolean | undefined;
 }
 
 /**
@@ -393,6 +398,8 @@ export function ProviderInstanceCard({
   onModelOrderChange,
   onRunUpdate,
   isUpdating = false,
+  onVerify,
+  isVerifying = false,
 }: ProviderInstanceCardProps) {
   const enabled = instance.enabled ?? true;
   // The server-reported status wins when present; otherwise fall back to
@@ -412,6 +419,7 @@ export function ProviderInstanceCard({
   const versionLabel = getProviderVersionLabel(liveProvider?.version);
   const versionAdvisory = getProviderVersionAdvisoryPresentation(liveProvider?.versionAdvisory);
   const updateCommand = versionAdvisory?.updateCommand ?? null;
+  const isCopilot = String(instance.driver) === "githubCopilot";
   const FallbackIconComponent = driverOption?.icon;
   const displayName =
     instance.displayName?.trim() || driverOption?.label || String(instance.driver);
@@ -763,6 +771,34 @@ export function ProviderInstanceCard({
                 onChange={updateEnvironment}
               />
             </div>
+
+            {isCopilot ? (
+              <div className="border-t border-border/60 px-4 py-3 sm:px-5">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0 space-y-1">
+                    <p className="text-xs font-medium text-foreground">GitHub Copilot setup</p>
+                    <p className="text-xs text-muted-foreground">
+                      {liveProvider?.auth.status === "authenticated"
+                        ? "Copilot is authenticated. Refresh to verify entitlement and available models."
+                        : "Run `copilot login` or set COPILOT_GITHUB_TOKEN, then refresh provider status."}
+                    </p>
+                  </div>
+                  {onVerify ? (
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      className="w-fit shrink-0"
+                      disabled={isVerifying}
+                      onClick={onVerify}
+                    >
+                      {isVerifying ? <LoaderIcon className="animate-spin" /> : <RefreshCwIcon />}
+                      Verify
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
 
             {driverOption ? (
               <ProviderSettingsForm

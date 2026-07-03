@@ -711,7 +711,7 @@ describe("deriveWorkLogEntries", () => {
     expect(entries.map((entry) => entry.id)).toEqual(["tool-complete"]);
   });
 
-  it("omits task.started but shows task.progress and task.completed", () => {
+  it("shows task.started, task.progress, and task.completed", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({
         id: "task-start",
@@ -737,7 +737,12 @@ describe("deriveWorkLogEntries", () => {
     ];
 
     const entries = deriveWorkLogEntries(activities);
-    expect(entries.map((entry) => entry.id)).toEqual(["task-progress", "task-complete"]);
+    expect(entries.map((entry) => entry.id)).toEqual([
+      "task-start",
+      "task-progress",
+      "task-complete",
+    ]);
+    expect(entries[0]?.tone).toBe("thinking");
   });
 
   it("uses payload summary as label for task entries when available", () => {
