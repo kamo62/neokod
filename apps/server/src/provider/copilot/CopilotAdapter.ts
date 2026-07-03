@@ -16,6 +16,7 @@
  */
 import type {
   CopilotSession,
+  CustomAgentConfig,
   MessageOptions,
   PermissionRequest,
   PermissionRequestResult,
@@ -34,8 +35,10 @@ import {
   type ProviderSendTurnInput,
   type ProviderSession,
   type ProviderUserInputAnswers,
+  type RuntimeErrorClass,
   RuntimeItemId,
   RuntimeRequestId,
+  RuntimeTaskId,
   ThreadId,
   TurnId,
   type UserInputQuestion,
@@ -60,6 +63,7 @@ import {
 } from "../Errors.ts";
 import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "../Layers/EventNdjsonLogger.ts";
+import { copyCopilotMcpServerConfigs, resolveCopilotMcpServers } from "./CopilotMcpServers.ts";
 
 const PROVIDER = ProviderDriverKind.make("githubCopilot");
 const COPILOT_RESUME_VERSION = 1 as const;
@@ -71,12 +75,8 @@ type CopilotReasoningEffort = "low" | "medium" | "high" | "xhigh";
 type CopilotUserInputHandler = NonNullable<SessionConfigBase["onUserInputRequest"]>;
 type CopilotUserInputRequest = Parameters<CopilotUserInputHandler>[0];
 type CopilotUserInputResponse = Awaited<ReturnType<CopilotUserInputHandler>>;
-const COPILOT_REASONING_EFFORTS: ReadonlySet<string> = new Set([
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-]);
+type CopilotRpcFleetStart = (params: { prompt?: string }) => Promise<{ started: boolean }>;
+const COPILOT_REASONING_EFFORTS: ReadonlySet<string> = new Set(["low", "medium", "high", "xhigh"]);
 
 /** Adapter contract for this driver — naming anchor only, see `ClaudeAdapterShape`. */
 export interface CopilotAdapterShape extends ProviderAdapterShape<ProviderAdapterError> {}
@@ -95,13 +95,43 @@ interface PendingUserInput {
   readonly answers: Deferred.Deferred<ProviderUserInputAnswers>;
 }
 
+interface CopilotToolCallRecord {
+  readonly toolName: string;
+  readonly mcpServerName?: string;
+  readonly mcpToolName?: string;
+  readonly arguments?: Record<string, unknown>;
+  readonly itemType: CanonicalItemType;
+}
+
+interface CopilotUsageAccumulator {
+  usedTokens: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  reasoningOutputTokens: number;
+  durationMs: number;
+}
+
+interface CopilotPermissionRequestRecord {
+  readonly data: {
+    readonly requestId: string;
+    readonly permissionRequest: PermissionRequest;
+    readonly resolvedByHook?: boolean;
+  };
+}
+
 interface CopilotSessionContext {
   session: ProviderSession;
   readonly copilotSession: CopilotSession;
   readonly pendingApprovals: Map<ApprovalRequestId, PendingApproval>;
   readonly pendingUserInputs: Map<ApprovalRequestId, PendingUserInput>;
+  readonly toolCalls: Map<string, CopilotToolCallRecord>;
+  readonly permissionRequests: Map<string, CopilotPermissionRequestRecord>;
+  readonly usage: CopilotUsageAccumulator;
   readonly turns: Array<{ id: TurnId; items: Array<unknown> }>;
   activeTurnId: TurnId | undefined;
+  sdkTurnId: string | undefined;
+  pendingCallbackCount: number;
   stopped: boolean;
 }
 
@@ -118,8 +148,12 @@ function parseCopilotResume(raw: unknown): { copilotSessionId: string } | undefi
     : undefined;
 }
 
-function asCopilotReasoningEffort(value: string | null | undefined): CopilotReasoningEffort | undefined {
-  return value && COPILOT_REASONING_EFFORTS.has(value) ? (value as CopilotReasoningEffort) : undefined;
+function asCopilotReasoningEffort(
+  value: string | null | undefined,
+): CopilotReasoningEffort | undefined {
+  return value && COPILOT_REASONING_EFFORTS.has(value)
+    ? (value as CopilotReasoningEffort)
+    : undefined;
 }
 
 /**
@@ -198,6 +232,53 @@ function classifyCopilotToolItemType(toolName: string): CanonicalItemType {
   return "dynamic_tool_call";
 }
 
+function classifyCopilotToolCall(data: {
+  toolName: string;
+  mcpServerName?: string;
+}): CanonicalItemType {
+  return data.mcpServerName ? "mcp_tool_call" : classifyCopilotToolItemType(data.toolName);
+}
+
+/**
+ * Map the SDK's `ErrorData.errorType` vocabulary ("authentication",
+ * "authorization", "quota", "rate_limit", "context_limit", "query", …) onto
+ * the canonical `RuntimeErrorClass`. Unrecognized types omit the class
+ * rather than guessing; the full SDK payload rides along in `detail`/`raw`.
+ */
+function classifyCopilotRuntimeError(errorType: string | undefined): RuntimeErrorClass | undefined {
+  switch (errorType) {
+    case "authentication":
+    case "authorization":
+      return "permission_error";
+    case "quota":
+    case "rate_limit":
+    case "context_limit":
+      return "provider_error";
+    case "query":
+      return "validation_error";
+    default:
+      return undefined;
+  }
+}
+
+function copyCopilotCustomAgent(agent: CopilotSettings["customAgents"][number]): CustomAgentConfig {
+  return {
+    name: agent.name,
+    prompt: agent.prompt,
+    ...(agent.displayName ? { displayName: agent.displayName } : {}),
+    ...(agent.description ? { description: agent.description } : {}),
+    ...(agent.tools !== undefined ? { tools: agent.tools === null ? null : [...agent.tools] } : {}),
+    ...(agent.mcpServers ? { mcpServers: copyCopilotMcpServerConfigs(agent.mcpServers) } : {}),
+    ...(agent.infer !== undefined ? { infer: agent.infer } : {}),
+    ...(agent.model ? { model: agent.model } : {}),
+  };
+}
+
+function getCopilotFleetStart(session: CopilotSession): CopilotRpcFleetStart | undefined {
+  const rpc = (session as { rpc?: { fleet?: { start?: CopilotRpcFleetStart } } }).rpc;
+  return rpc?.fleet?.start;
+}
+
 function titleForCopilotTool(itemType: CanonicalItemType, toolName: string): string {
   switch (itemType) {
     case "command_execution":
@@ -241,7 +322,12 @@ function toRequestError(threadId: ThreadId, method: string, cause: unknown): Pro
   if (message.includes("unknown session") || message.includes("not found")) {
     return new ProviderAdapterSessionNotFoundError({ provider: PROVIDER, threadId, cause });
   }
-  return new ProviderAdapterRequestError({ provider: PROVIDER, method, detail: `${method} failed`, cause });
+  return new ProviderAdapterRequestError({
+    provider: PROVIDER,
+    method,
+    detail: `${method} failed`,
+    cause,
+  });
 }
 
 function settlePendingApprovalsAsCancelled(
@@ -327,6 +413,17 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       );
     });
 
+  const rawSessionEvent = (method: string, payload: unknown) => ({
+    raw: {
+      source: "copilot.sdk.session-event" as const,
+      method,
+      payload,
+    },
+  });
+
+  const providerRefs = (ctx: CopilotSessionContext) =>
+    ctx.sdkTurnId ? { providerRefs: { providerTurnId: ctx.sdkTurnId } } : {};
+
   const requireSession = (
     threadId: ThreadId,
   ): Effect.Effect<CopilotSessionContext, ProviderAdapterSessionNotFoundError> => {
@@ -341,6 +438,8 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
     Effect.gen(function* () {
       if (ctx.stopped) return;
       ctx.stopped = true;
+      ctx.toolCalls.clear();
+      ctx.permissionRequests.clear();
       yield* settlePendingApprovalsAsCancelled(ctx.pendingApprovals);
       yield* settlePendingUserInputsAsEmptyAnswers(ctx.pendingUserInputs);
       yield* Effect.tryPromise(() => ctx.copilotSession.disconnect()).pipe(Effect.ignore);
@@ -394,6 +493,8 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
 
       const pendingApprovals = new Map<ApprovalRequestId, PendingApproval>();
       const pendingUserInputs = new Map<ApprovalRequestId, PendingUserInput>();
+      const toolCalls = new Map<string, CopilotToolCallRecord>();
+      const permissionRequests = new Map<string, CopilotPermissionRequestRecord>();
       // Populated once the session record below is assigned; the SDK never
       // invokes onPermissionRequest/onUserInputRequest before createSession
       // resolves, but the closures are handed to the SDK before `ctx`
@@ -407,6 +508,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
           return { kind: "approve-once" };
         }
 
+        if (ctx) ctx.pendingCallbackCount++;
         const program = Effect.gen(function* () {
           yield* logNative(input.threadId, "permission.requested", request);
           const requestId = ApprovalRequestId.make(yield* randomUUIDv4);
@@ -449,7 +551,11 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
               return { kind: "reject", feedback: "Request cancelled by user." } as const;
           }
         });
-        return runPromise(program);
+        try {
+          return await runPromise(program);
+        } finally {
+          if (ctx) ctx.pendingCallbackCount = Math.max(0, ctx.pendingCallbackCount - 1);
+        }
       };
 
       const onUserInputRequest = async (
@@ -500,9 +606,22 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       };
 
       const resumeCopilotSessionId = parseCopilotResume(input.resumeCursor)?.copilotSessionId;
+      const mcpServers = resolveCopilotMcpServers(copilotSettings);
+      const customAgents = copilotSettings.customAgents.map(copyCopilotCustomAgent);
+      const activeAgent = copilotSettings.activeAgent.trim();
       const sessionConfig: SessionConfigBase = {
         ...(model ? { model } : {}),
         ...(reasoningEffort ? { reasoningEffort } : {}),
+        ...(mcpServers ? { mcpServers } : {}),
+        ...(customAgents.length > 0 ? { customAgents, includeSubAgentStreamingEvents: true } : {}),
+        ...(copilotSettings.defaultAgent
+          ? {
+              defaultAgent: copilotSettings.defaultAgent.excludedTools
+                ? { excludedTools: [...copilotSettings.defaultAgent.excludedTools] }
+                : {},
+            }
+          : {}),
+        ...(activeAgent ? { agent: activeAgent } : {}),
         workingDirectory: cwd,
         streaming: true,
         onPermissionRequest,
@@ -547,12 +666,319 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         copilotSession,
         pendingApprovals,
         pendingUserInputs,
+        toolCalls,
+        permissionRequests,
+        usage: {
+          usedTokens: 0,
+          inputTokens: 0,
+          cachedInputTokens: 0,
+          outputTokens: 0,
+          reasoningOutputTokens: 0,
+          durationMs: 0,
+        },
         turns: [],
         activeTurnId: undefined,
+        sdkTurnId: undefined,
+        pendingCallbackCount: 0,
         stopped: false,
       };
       const sessionCtx = ctx;
       sessions.set(input.threadId, sessionCtx);
+
+      const emitPermissionOpened = (requestData: CopilotPermissionRequestRecord["data"]) =>
+        Effect.gen(function* () {
+          const requestType = classifyPermissionRequestType(requestData.permissionRequest.kind);
+          yield* offerRuntimeEvent({
+            type: "request.opened",
+            ...(yield* makeEventStamp()),
+            provider: PROVIDER,
+            threadId: input.threadId,
+            turnId: sessionCtx.activeTurnId,
+            requestId: RuntimeRequestId.make(requestData.requestId),
+            payload: {
+              requestType,
+              detail: describeCopilotPermissionRequest(requestData.permissionRequest),
+              args: requestData.permissionRequest,
+            },
+            ...rawSessionEvent("permission.requested", requestData),
+          });
+        });
+
+      const emitPermissionResolved = (
+        completedData: { requestId: string; result: unknown },
+        requestData: CopilotPermissionRequestRecord["data"] | undefined,
+      ) =>
+        Effect.gen(function* () {
+          const requestType = requestData
+            ? classifyPermissionRequestType(requestData.permissionRequest.kind)
+            : "unknown";
+          yield* offerRuntimeEvent({
+            type: "request.resolved",
+            ...(yield* makeEventStamp()),
+            provider: PROVIDER,
+            threadId: input.threadId,
+            turnId: sessionCtx.activeTurnId,
+            requestId: RuntimeRequestId.make(completedData.requestId),
+            payload: {
+              requestType,
+              resolution: completedData.result,
+            },
+            ...rawSessionEvent("permission.completed", completedData),
+          });
+        });
+
+      copilotSession.on("assistant.turn_start", (event) => {
+        runFork(
+          Effect.gen(function* () {
+            yield* logNative(input.threadId, "assistant.turn_start", event);
+            sessionCtx.sdkTurnId = event.data.turnId;
+          }),
+        );
+      });
+
+      copilotSession.on("assistant.turn_end", (event) => {
+        runFork(
+          Effect.gen(function* () {
+            yield* logNative(input.threadId, "assistant.turn_end", event);
+            if (sessionCtx.sdkTurnId === event.data.turnId) {
+              sessionCtx.sdkTurnId = undefined;
+            }
+          }),
+        );
+      });
+
+      copilotSession.on("assistant.usage", (event) => {
+        runFork(
+          Effect.gen(function* () {
+            yield* logNative(input.threadId, "assistant.usage", event);
+            const inputTokens = event.data.inputTokens ?? 0;
+            const outputTokens = event.data.outputTokens ?? 0;
+            const cachedInputTokens = event.data.cacheReadTokens ?? 0;
+            const reasoningOutputTokens = event.data.reasoningTokens ?? 0;
+            const usedTokens = inputTokens + outputTokens;
+            sessionCtx.usage.usedTokens += usedTokens;
+            sessionCtx.usage.inputTokens += inputTokens;
+            sessionCtx.usage.cachedInputTokens += cachedInputTokens;
+            sessionCtx.usage.outputTokens += outputTokens;
+            sessionCtx.usage.reasoningOutputTokens += reasoningOutputTokens;
+            sessionCtx.usage.durationMs += event.data.duration ?? 0;
+            yield* offerRuntimeEvent({
+              type: "thread.token-usage.updated",
+              ...(yield* makeEventStamp()),
+              provider: PROVIDER,
+              threadId: input.threadId,
+              turnId: sessionCtx.activeTurnId,
+              ...providerRefs(sessionCtx),
+              payload: {
+                usage: {
+                  usedTokens: sessionCtx.usage.usedTokens,
+                  inputTokens: sessionCtx.usage.inputTokens,
+                  cachedInputTokens: sessionCtx.usage.cachedInputTokens,
+                  outputTokens: sessionCtx.usage.outputTokens,
+                  reasoningOutputTokens: sessionCtx.usage.reasoningOutputTokens,
+                  lastUsedTokens: usedTokens,
+                  lastInputTokens: inputTokens,
+                  lastCachedInputTokens: cachedInputTokens,
+                  lastOutputTokens: outputTokens,
+                  lastReasoningOutputTokens: reasoningOutputTokens,
+                  durationMs: sessionCtx.usage.durationMs,
+                },
+              },
+              ...rawSessionEvent("assistant.usage", event.data),
+            });
+          }),
+        );
+      });
+
+      copilotSession.on("session.usage_checkpoint", (event) => {
+        runFork(
+          Effect.gen(function* () {
+            yield* logNative(input.threadId, "session.usage_checkpoint", event);
+            yield* offerRuntimeEvent({
+              type: "thread.metadata.updated",
+              ...(yield* makeEventStamp()),
+              provider: PROVIDER,
+              threadId: input.threadId,
+              payload: { metadata: { copilotUsageCheckpoint: event.data } },
+              ...rawSessionEvent("session.usage_checkpoint", event.data),
+            });
+          }),
+        );
+      });
+
+      copilotSession.on("session.shutdown", (event) => {
+        runFork(
+          Effect.gen(function* () {
+            yield* logNative(input.threadId, "session.shutdown", event);
+            yield* offerRuntimeEvent({
+              type: "thread.metadata.updated",
+              ...(yield* makeEventStamp()),
+              provider: PROVIDER,
+              threadId: input.threadId,
+              payload: {
+                metadata: {
+                  copilotShutdown: {
+                    shutdownType: event.data.shutdownType,
+                    codeChanges: event.data.codeChanges,
+                    modelMetrics: event.data.modelMetrics,
+                    ...(event.data.currentModel ? { currentModel: event.data.currentModel } : {}),
+                    ...(event.data.errorReason ? { errorReason: event.data.errorReason } : {}),
+                  },
+                },
+              },
+              ...rawSessionEvent("session.shutdown", event.data),
+            });
+          }),
+        );
+      });
+
+      copilotSession.on("session.context_changed", (event) => {
+        runFork(
+          Effect.gen(function* () {
+            yield* logNative(input.threadId, "session.context_changed", event);
+            yield* offerRuntimeEvent({
+              type: "thread.metadata.updated",
+              ...(yield* makeEventStamp()),
+              provider: PROVIDER,
+              threadId: input.threadId,
+              payload: { metadata: { copilotContext: event.data } },
+              ...rawSessionEvent("session.context_changed", event.data),
+            });
+          }),
+        );
+      });
+
+      copilotSession.on("session.error", (event) => {
+        runFork(
+          Effect.gen(function* () {
+            yield* logNative(input.threadId, "session.error", event);
+            yield* offerRuntimeEvent({
+              type: "runtime.error",
+              ...(yield* makeEventStamp()),
+              provider: PROVIDER,
+              threadId: input.threadId,
+              payload: {
+                message: event.data.message,
+                ...(classifyCopilotRuntimeError(event.data.errorType)
+                  ? { class: classifyCopilotRuntimeError(event.data.errorType) }
+                  : {}),
+                detail: event.data,
+              },
+              ...rawSessionEvent("session.error", event.data),
+            });
+          }),
+        );
+      });
+
+      copilotSession.on("subagent.started", (event) => {
+        runFork(
+          Effect.gen(function* () {
+            yield* logNative(input.threadId, "subagent.started", event);
+            yield* offerRuntimeEvent({
+              type: "task.started",
+              ...(yield* makeEventStamp()),
+              provider: PROVIDER,
+              threadId: input.threadId,
+              turnId: sessionCtx.activeTurnId,
+              payload: {
+                taskId: RuntimeTaskId.make(event.data.toolCallId),
+                description: event.data.agentDisplayName,
+                taskType: event.data.agentName,
+              },
+              ...rawSessionEvent("subagent.started", event.data),
+            });
+          }),
+        );
+      });
+
+      copilotSession.on("subagent.completed", (event) => {
+        runFork(
+          Effect.gen(function* () {
+            yield* logNative(input.threadId, "subagent.completed", event);
+            yield* offerRuntimeEvent({
+              type: "task.completed",
+              ...(yield* makeEventStamp()),
+              provider: PROVIDER,
+              threadId: input.threadId,
+              turnId: sessionCtx.activeTurnId,
+              payload: {
+                taskId: RuntimeTaskId.make(event.data.toolCallId),
+                status: "completed",
+                summary: event.data.agentDisplayName,
+                usage: event.data,
+              },
+              ...rawSessionEvent("subagent.completed", event.data),
+            });
+          }),
+        );
+      });
+
+      copilotSession.on("subagent.failed", (event) => {
+        runFork(
+          Effect.gen(function* () {
+            yield* logNative(input.threadId, "subagent.failed", event);
+            yield* offerRuntimeEvent({
+              type: "task.completed",
+              ...(yield* makeEventStamp()),
+              provider: PROVIDER,
+              threadId: input.threadId,
+              turnId: sessionCtx.activeTurnId,
+              payload: {
+                taskId: RuntimeTaskId.make(event.data.toolCallId),
+                status: "failed",
+                summary: event.data.error,
+                usage: event.data,
+              },
+              ...rawSessionEvent("subagent.failed", event.data),
+            });
+          }),
+        );
+      });
+
+      copilotSession.on("subagent.selected", (event) => {
+        runFork(logNative(input.threadId, "subagent.selected", event));
+      });
+
+      copilotSession.on("subagent.deselected", (event) => {
+        runFork(logNative(input.threadId, "subagent.deselected", event));
+      });
+
+      copilotSession.on("permission.requested", (event) => {
+        runFork(
+          Effect.gen(function* () {
+            yield* logNative(input.threadId, "permission.requested", event);
+            const requestData = {
+              requestId: event.data.requestId,
+              permissionRequest: event.data.permissionRequest,
+              ...(event.data.resolvedByHook ? { resolvedByHook: event.data.resolvedByHook } : {}),
+            };
+            sessionCtx.permissionRequests.set(event.data.requestId, { data: requestData });
+            if (input.runtimeMode === "full-access") {
+              yield* emitPermissionOpened(requestData);
+            }
+          }),
+        );
+      });
+
+      copilotSession.on("permission.completed", (event) => {
+        runFork(
+          Effect.gen(function* () {
+            yield* logNative(input.threadId, "permission.completed", event);
+            const requestRecord = sessionCtx.permissionRequests.get(event.data.requestId);
+            sessionCtx.permissionRequests.delete(event.data.requestId);
+            if (input.runtimeMode === "full-access") {
+              yield* emitPermissionResolved(event.data, requestRecord?.data);
+              return;
+            }
+            if (requestRecord?.data.resolvedByHook || sessionCtx.pendingCallbackCount === 0) {
+              if (requestRecord) {
+                yield* emitPermissionOpened(requestRecord.data);
+              }
+              yield* emitPermissionResolved(event.data, requestRecord?.data);
+            }
+          }),
+        );
+      });
 
       copilotSession.on("assistant.message_delta", (event) => {
         runFork(
@@ -564,6 +990,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
               provider: PROVIDER,
               threadId: input.threadId,
               turnId: sessionCtx.activeTurnId,
+              ...providerRefs(sessionCtx),
               itemId: RuntimeItemId.make(event.data.messageId),
               payload: { streamKind: "assistant_text", delta: event.data.deltaContent },
             });
@@ -581,6 +1008,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
               provider: PROVIDER,
               threadId: input.threadId,
               turnId: sessionCtx.activeTurnId,
+              ...providerRefs(sessionCtx),
               itemId: RuntimeItemId.make(event.data.reasoningId),
               payload: { streamKind: "reasoning_text", delta: event.data.deltaContent },
             });
@@ -598,6 +1026,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
               provider: PROVIDER,
               threadId: input.threadId,
               turnId: sessionCtx.activeTurnId,
+              ...providerRefs(sessionCtx),
               itemId: RuntimeItemId.make(event.data.messageId),
               payload: {
                 itemType: "assistant_message",
@@ -620,6 +1049,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
               provider: PROVIDER,
               threadId: input.threadId,
               turnId: sessionCtx.activeTurnId,
+              ...providerRefs(sessionCtx),
               itemId: RuntimeItemId.make(event.data.reasoningId),
               payload: {
                 itemType: "reasoning",
@@ -636,19 +1066,32 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         runFork(
           Effect.gen(function* () {
             yield* logNative(input.threadId, "tool.execution_start", event);
-            const itemType = classifyCopilotToolItemType(event.data.toolName);
+            const itemType = classifyCopilotToolCall(event.data);
+            sessionCtx.toolCalls.set(event.data.toolCallId, {
+              toolName: event.data.toolName,
+              ...(event.data.mcpServerName ? { mcpServerName: event.data.mcpServerName } : {}),
+              ...(event.data.mcpToolName ? { mcpToolName: event.data.mcpToolName } : {}),
+              ...(event.data.arguments ? { arguments: event.data.arguments } : {}),
+              itemType,
+            });
             yield* offerRuntimeEvent({
               type: "item.started",
               ...(yield* makeEventStamp()),
               provider: PROVIDER,
               threadId: input.threadId,
               turnId: sessionCtx.activeTurnId,
+              ...providerRefs(sessionCtx),
               itemId: RuntimeItemId.make(event.data.toolCallId),
               payload: {
                 itemType,
                 status: "inProgress",
                 title: titleForCopilotTool(itemType, event.data.toolName),
                 detail: summarizeCopilotToolArguments(event.data.toolName, event.data.arguments),
+                data: {
+                  toolName: event.data.toolName,
+                  ...(event.data.mcpServerName ? { mcpServerName: event.data.mcpServerName } : {}),
+                  ...(event.data.mcpToolName ? { mcpToolName: event.data.mcpToolName } : {}),
+                },
               },
             });
           }),
@@ -659,9 +1102,10 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         runFork(
           Effect.gen(function* () {
             yield* logNative(input.threadId, "tool.execution_complete", event);
-            const itemType = classifyCopilotToolItemType(
-              event.data.toolDescription?.name ?? "tool",
-            );
+            const started = sessionCtx.toolCalls.get(event.data.toolCallId);
+            sessionCtx.toolCalls.delete(event.data.toolCallId);
+            const toolName = started?.toolName ?? event.data.toolDescription?.name ?? "tool";
+            const itemType = started?.itemType ?? classifyCopilotToolItemType(toolName);
             const detail = event.data.result?.detailedContent ?? event.data.result?.content;
             yield* offerRuntimeEvent({
               type: "item.completed",
@@ -669,11 +1113,21 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
               provider: PROVIDER,
               threadId: input.threadId,
               turnId: sessionCtx.activeTurnId,
+              ...providerRefs(sessionCtx),
               itemId: RuntimeItemId.make(event.data.toolCallId),
               payload: {
                 itemType,
                 status: event.data.success ? "completed" : "failed",
-                ...(detail ? { detail } : event.data.error?.message ? { detail: event.data.error.message } : {}),
+                ...(detail
+                  ? { detail }
+                  : event.data.error?.message
+                    ? { detail: event.data.error.message }
+                    : {}),
+                data: {
+                  toolName,
+                  ...(started?.mcpServerName ? { mcpServerName: started.mcpServerName } : {}),
+                  ...(started?.mcpToolName ? { mcpToolName: started.mcpToolName } : {}),
+                },
               },
             });
           }),
@@ -683,6 +1137,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       copilotSession.on("session.idle", (event) => {
         runFork(
           Effect.gen(function* () {
+            sessionCtx.toolCalls.clear();
             const turnId = sessionCtx.activeTurnId;
             if (!turnId) return;
             sessionCtx.activeTurnId = undefined;
@@ -755,7 +1210,9 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
             detail: `Invalid attachment id '${attachment.id}'.`,
           });
         }
-        const exists = yield* fileSystem.exists(attachmentPath).pipe(Effect.orElseSucceed(() => false));
+        const exists = yield* fileSystem
+          .exists(attachmentPath)
+          .pipe(Effect.orElseSucceed(() => false));
         if (!exists) {
           return yield* new ProviderAdapterRequestError({
             provider: PROVIDER,
@@ -787,20 +1244,46 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
           provider: PROVIDER,
           threadId: input.threadId,
           turnId,
-          payload: { ...(ctx.session.model ? { model: ctx.session.model } : {}) },
+          payload: ctx.session.model ? { model: ctx.session.model } : {},
         });
       }
 
       const messageOptions: MessageOptions = {
         prompt,
         ...(attachments.length > 0 ? { attachments } : {}),
-        mode: "enqueue",
+        mode: isSteering ? "immediate" : "enqueue",
         ...(input.interactionMode === "plan" ? { agentMode: "plan" as const } : {}),
       };
 
-      const messageId = yield* Effect.tryPromise(() => ctx.copilotSession.send(messageOptions)).pipe(
-        Effect.mapError((cause) => toRequestError(input.threadId, "session/send", cause)),
-      );
+      const messageId =
+        copilotSettings.fleetMode && attachments.length === 0
+          ? yield* Effect.gen(function* () {
+              const fleetStart = getCopilotFleetStart(ctx.copilotSession);
+              if (!fleetStart) {
+                return yield* new ProviderAdapterRequestError({
+                  provider: PROVIDER,
+                  method: "session/fleet.start",
+                  detail:
+                    "Copilot fleet mode is enabled, but this SDK session does not expose fleet.start.",
+                });
+              }
+              const result = yield* Effect.tryPromise(() => fleetStart({ prompt })).pipe(
+                Effect.mapError((cause) =>
+                  toRequestError(input.threadId, "session/fleet.start", cause),
+                ),
+              );
+              if (!result.started) {
+                return yield* new ProviderAdapterRequestError({
+                  provider: PROVIDER,
+                  method: "session/fleet.start",
+                  detail: "Copilot fleet mode did not start.",
+                });
+              }
+              return `fleet:${turnId}`;
+            })
+          : yield* Effect.tryPromise(() => ctx.copilotSession.send(messageOptions)).pipe(
+              Effect.mapError((cause) => toRequestError(input.threadId, "session/send", cause)),
+            );
 
       const turnRecord = ctx.turns.find((turn) => turn.id === turnId);
       if (turnRecord) {
@@ -820,7 +1303,11 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       yield* Effect.tryPromise(() => ctx.copilotSession.abort()).pipe(Effect.ignore);
     });
 
-  const respondToRequest: CopilotAdapterShape["respondToRequest"] = (threadId, requestId, decision) =>
+  const respondToRequest: CopilotAdapterShape["respondToRequest"] = (
+    threadId,
+    requestId,
+    decision,
+  ) =>
     Effect.gen(function* () {
       const ctx = yield* requireSession(threadId);
       const pending = ctx.pendingApprovals.get(requestId);
@@ -855,7 +1342,10 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
   const readThread: CopilotAdapterShape["readThread"] = (threadId) =>
     Effect.gen(function* () {
       const ctx = yield* requireSession(threadId);
-      return { threadId, turns: ctx.turns.map((turn) => ({ id: turn.id, items: [...turn.items] })) };
+      return {
+        threadId,
+        turns: ctx.turns.map((turn) => ({ id: turn.id, items: [...turn.items] })),
+      };
     });
 
   const rollbackThread: CopilotAdapterShape["rollbackThread"] = (threadId, numTurns) =>
@@ -869,7 +1359,10 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         });
       }
       ctx.turns.splice(Math.max(0, ctx.turns.length - numTurns));
-      return { threadId, turns: ctx.turns.map((turn) => ({ id: turn.id, items: [...turn.items] })) };
+      return {
+        threadId,
+        turns: ctx.turns.map((turn) => ({ id: turn.id, items: [...turn.items] })),
+      };
     });
 
   const stopSession: CopilotAdapterShape["stopSession"] = (threadId) =>

@@ -101,22 +101,24 @@ describe("CopilotTextGeneration", () => {
     }),
   );
 
-  it.effect("fails with a TextGenerationError when the reply is not valid JSON for the schema", () =>
-    Effect.gen(function* () {
-      const { client } = makeFakeClient({ reply: "not json at all" });
-      const textGeneration = yield* makeCopilotTextGeneration(client);
+  it.effect(
+    "fails with a TextGenerationError when the reply is not valid JSON for the schema",
+    () =>
+      Effect.gen(function* () {
+        const { client } = makeFakeClient({ reply: "not json at all" });
+        const textGeneration = yield* makeCopilotTextGeneration(client);
 
-      const error = yield* textGeneration
-        .generateBranchName({
-          cwd: "/tmp/project",
-          message: "hello",
-          modelSelection,
-        })
-        .pipe(Effect.flip);
+        const error = yield* textGeneration
+          .generateBranchName({
+            cwd: "/tmp/project",
+            message: "hello",
+            modelSelection,
+          })
+          .pipe(Effect.flip);
 
-      NodeAssert.equal(error._tag, "TextGenerationError");
-      NodeAssert.equal(error.detail, "GitHub Copilot returned invalid structured output.");
-    }),
+        NodeAssert.equal(error._tag, "TextGenerationError");
+        NodeAssert.equal(error.detail, "GitHub Copilot returned invalid structured output.");
+      }),
   );
 
   it.effect("passes the requested model and working directory to createSession", () =>

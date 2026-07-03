@@ -8,7 +8,7 @@
  *
  * @module provider/copilot/CopilotProvider
  */
-import type { CopilotClient } from "@github/copilot-sdk";
+import type { CopilotClient, ModelInfo } from "@github/copilot-sdk";
 import {
   type CopilotSettings,
   type ModelCapabilities,
@@ -35,16 +35,37 @@ const COPILOT_PRESENTATION = {
 } as const;
 const STATUS_PROBE_TIMEOUT_MS = 8_000;
 
-const REASONING_EFFORT_OPTION = buildSelectOptionDescriptor({
-  id: "reasoningEffort",
-  label: "Reasoning",
-  options: [
-    { value: "low", label: "Low" },
-    { value: "medium", label: "Medium", isDefault: true },
-    { value: "high", label: "High" },
-    { value: "xhigh", label: "Extra High" },
-  ],
-});
+// `ReasoningEffort` lives in the SDK's `types.ts` but is not re-exported
+// from the package root in 1.0.5 — derive it structurally from `ModelInfo`
+// the same way the adapter derives its user-input request/response types.
+type CopilotSdkReasoningEffort = NonNullable<ModelInfo["defaultReasoningEffort"]>;
+
+const REASONING_EFFORT_LABELS: Readonly<Record<string, string>> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra High",
+};
+
+function buildReasoningEffortOption(
+  supportedReasoningEfforts: ReadonlyArray<CopilotSdkReasoningEffort>,
+  defaultReasoningEffort: CopilotSdkReasoningEffort | undefined,
+) {
+  return buildSelectOptionDescriptor({
+    id: "reasoningEffort",
+    label: "Reasoning",
+    options: supportedReasoningEfforts.map((value) => ({
+      value,
+      label: REASONING_EFFORT_LABELS[value] ?? value,
+      ...(value === defaultReasoningEffort ? { isDefault: true } : {}),
+    })),
+  });
+}
+
+const REASONING_EFFORT_OPTION = buildReasoningEffortOption(
+  ["low", "medium", "high", "xhigh"],
+  "medium",
+);
 
 const DEFAULT_COPILOT_MODEL_CAPABILITIES: ModelCapabilities = createModelCapabilities({
   optionDescriptors: [],
@@ -100,13 +121,38 @@ export function getCopilotModelCapabilities(model: string | null | undefined): M
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
-function copilotModels(copilotSettings: CopilotSettings): ReadonlyArray<ServerProviderModel> {
+function copilotModels(
+  copilotSettings: CopilotSettings,
+  builtInModels: ReadonlyArray<ServerProviderModel> = BUILT_IN_MODELS,
+): ReadonlyArray<ServerProviderModel> {
   return providerModelsFromSettings(
-    BUILT_IN_MODELS,
+    builtInModels,
     COPILOT_DRIVER_KIND,
     copilotSettings.customModels,
     DEFAULT_COPILOT_MODEL_CAPABILITIES,
   );
+}
+
+function capabilitiesForModelInfo(model: ModelInfo): ModelCapabilities {
+  const efforts =
+    model.supportedReasoningEfforts ??
+    (model.defaultReasoningEffort ? [model.defaultReasoningEffort] : []);
+  return efforts.length > 0
+    ? createModelCapabilities({
+        optionDescriptors: [buildReasoningEffortOption(efforts, model.defaultReasoningEffort)],
+      })
+    : DEFAULT_COPILOT_MODEL_CAPABILITIES;
+}
+
+function modelsFromModelInfo(models: ReadonlyArray<ModelInfo>): ReadonlyArray<ServerProviderModel> {
+  return models
+    .filter((model) => model.policy?.state !== "disabled")
+    .map((model) => ({
+      slug: model.id,
+      name: model.name,
+      isCustom: false,
+      capabilities: capabilitiesForModelInfo(model),
+    }));
 }
 
 /**
@@ -160,7 +206,7 @@ export const makePendingCopilotProvider = (
  */
 export const checkCopilotProviderStatus = Effect.fn("checkCopilotProviderStatus")(function* (
   copilotSettings: CopilotSettings,
-  client: Pick<CopilotClient, "getStatus" | "getAuthStatus">,
+  client: Pick<CopilotClient, "getStatus" | "getAuthStatus" | "listModels">,
 ): Effect.fn.Return<ServerProviderDraft> {
   const checkedAt = yield* nowIso;
   const models = copilotModels(copilotSettings);
@@ -243,11 +289,21 @@ export const checkCopilotProviderStatus = Effect.fn("checkCopilotProviderStatus"
     });
   }
 
+  const modelListResult = yield* Effect.tryPromise(() => client.listModels()).pipe(
+    Effect.timeoutOption(STATUS_PROBE_TIMEOUT_MS),
+    Effect.result,
+  );
+  const liveModels =
+    Result.isSuccess(modelListResult) && Option.isSome(modelListResult.success)
+      ? modelsFromModelInfo(modelListResult.success.value)
+      : [];
+  const readyModels = liveModels.length > 0 ? copilotModels(copilotSettings, liveModels) : models;
+
   return buildServerProvider({
     presentation: COPILOT_PRESENTATION,
     enabled: true,
     checkedAt,
-    models,
+    models: readyModels,
     probe: {
       installed: true,
       version: status.version,

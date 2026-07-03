@@ -5,7 +5,10 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Path from "effect/Path";
 
-import { makeCopilotContinuationGroupKey, resolveCopilotBaseDirectory } from "./CopilotEnvironment.ts";
+import {
+  makeCopilotContinuationGroupKey,
+  resolveCopilotBaseDirectory,
+} from "./CopilotEnvironment.ts";
 
 it.layer(NodeServices.layer)("CopilotEnvironment", (it) => {
   describe("Copilot base-directory resolution", () => {

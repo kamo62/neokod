@@ -49,6 +49,8 @@ type CopilotTextGenerationOperation =
 export const makeCopilotTextGeneration = Effect.fn("makeCopilotTextGeneration")(function* (
   client: Pick<CopilotClient, "createSession">,
 ) {
+  yield* Effect.void;
+
   const runCopilotJson = <S extends Schema.Top>(input: {
     readonly operation: CopilotTextGenerationOperation;
     readonly cwd: string;
@@ -74,7 +76,8 @@ export const makeCopilotTextGeneration = Effect.fn("makeCopilotTextGeneration")(
       });
 
       const result = yield* Effect.tryPromise({
-        try: () => session.sendAndWait({ prompt: input.prompt }, COPILOT_TEXT_GENERATION_TIMEOUT_MS),
+        try: () =>
+          session.sendAndWait({ prompt: input.prompt }, COPILOT_TEXT_GENERATION_TIMEOUT_MS),
         catch: (cause) =>
           new TextGenerationError({
             operation: input.operation,

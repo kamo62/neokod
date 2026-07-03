@@ -45,8 +45,14 @@ interface FakeCopilotSession {
   readonly disconnect: () => Promise<void>;
   readonly abort: () => Promise<void>;
   readonly setModel: (model: string, options?: unknown) => Promise<void>;
+  readonly rpc: {
+    readonly fleet: {
+      readonly start: (params: { prompt?: string }) => Promise<{ started: boolean }>;
+    };
+  };
   readonly emit: (eventType: string, event: unknown) => void;
   readonly sentMessages: Array<unknown>;
+  readonly fleetStarts: Array<{ prompt?: string }>;
   readonly disconnectCalls: Array<string>;
   readonly abortCalls: number;
   readonly setModelCalls: Array<{ model: string; options: unknown }>;
@@ -55,6 +61,7 @@ interface FakeCopilotSession {
 function makeFakeCopilotSession(sessionId: string): FakeCopilotSession {
   const handlers = new Map<string, Set<FakeEventHandler>>();
   const sentMessages: Array<unknown> = [];
+  const fleetStarts: Array<{ prompt?: string }> = [];
   const disconnectCalls: Array<string> = [];
   const setModelCalls: Array<{ model: string; options: unknown }> = [];
   let abortCalls = 0;
@@ -88,12 +95,21 @@ function makeFakeCopilotSession(sessionId: string): FakeCopilotSession {
     setModel: async (model, options) => {
       setModelCalls.push({ model, options });
     },
+    rpc: {
+      fleet: {
+        start: async (params) => {
+          fleetStarts.push(params);
+          return { started: true };
+        },
+      },
+    },
     emit: (eventType, event) => {
       for (const handler of handlers.get(eventType) ?? []) {
         handler(event);
       }
     },
     sentMessages,
+    fleetStarts,
     disconnectCalls,
     get abortCalls() {
       return abortCalls;
@@ -135,6 +151,7 @@ function makeCopilotClientTestDouble(): CopilotClientTestDouble {
   return testDouble;
 }
 
+const decodeCopilotSettings = Schema.decodeEffect(CopilotSettings);
 const testCopilotSettings = Schema.decodeSync(CopilotSettings)({});
 
 let client: CopilotClientTestDouble;
@@ -267,6 +284,360 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
       if (events[1]?.type === "item.completed") {
         NodeAssert.equal(events[1].payload.status, "completed");
       }
+    }),
+  );
+
+  it.effect("keeps started tool identity and MCP attribution for completion events", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CopilotAdapterTag;
+      const threadId = asThreadId("thread-mcp-tool");
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter(
+          (event) =>
+            event.threadId === threadId &&
+            (event.type === "item.started" || event.type === "item.completed"),
+        ),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+      const fakeSession = latestSession();
+      fakeSession.emit("tool.execution_start", {
+        data: {
+          toolCallId: "call-mcp",
+          toolName: "server__search",
+          mcpServerName: "ai-orch",
+          mcpToolName: "search",
+          arguments: { query: "status" },
+        },
+      });
+      fakeSession.emit("tool.execution_complete", {
+        data: {
+          toolCallId: "call-mcp",
+          success: true,
+          toolDescription: { name: "tool" },
+          result: { content: "ok" },
+        },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      for (const event of events) {
+        if (event.type === "item.started" || event.type === "item.completed") {
+          NodeAssert.equal(event.payload.itemType, "mcp_tool_call");
+          NodeAssert.deepEqual(event.payload.data, {
+            toolName: "server__search",
+            mcpServerName: "ai-orch",
+            mcpToolName: "search",
+          });
+        }
+      }
+    }),
+  );
+
+  it.effect("falls back when a tool completion arrives without a start event", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CopilotAdapterTag;
+      const threadId = asThreadId("thread-tool-fallback");
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId && event.type === "item.completed"),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+      latestSession().emit("tool.execution_complete", {
+        data: {
+          toolCallId: "call-fallback",
+          success: true,
+          toolDescription: { name: "bash" },
+          result: { content: "ok" },
+        },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const event = events[0]!;
+      if (event.type === "item.completed") {
+        NodeAssert.equal(event.payload.itemType, "command_execution");
+        NodeAssert.deepEqual(event.payload.data, { toolName: "bash" });
+      }
+    }),
+  );
+
+  it.effect("clears tool identity after session.idle", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CopilotAdapterTag;
+      const threadId = asThreadId("thread-tool-idle-clear");
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId && event.type === "item.completed"),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+      const fakeSession = latestSession();
+      fakeSession.emit("tool.execution_start", {
+        data: {
+          toolCallId: "call-idle-clear",
+          toolName: "server__search",
+          mcpServerName: "ai-orch",
+          mcpToolName: "search",
+        },
+      });
+      fakeSession.emit("session.idle", { data: { aborted: false } });
+      fakeSession.emit("tool.execution_complete", {
+        data: {
+          toolCallId: "call-idle-clear",
+          success: true,
+          toolDescription: { name: "bash" },
+          result: { content: "ok" },
+        },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const event = events[0]!;
+      if (event.type === "item.completed") {
+        NodeAssert.equal(event.payload.itemType, "command_execution");
+        NodeAssert.deepEqual(event.payload.data, { toolName: "bash" });
+      }
+    }),
+  );
+
+  it.effect("clears tool identity after stopSession", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CopilotAdapterTag;
+      const threadId = asThreadId("thread-tool-stop-clear");
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId && event.type === "item.completed"),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+      const fakeSession = latestSession();
+      fakeSession.emit("tool.execution_start", {
+        data: {
+          toolCallId: "call-stop-clear",
+          toolName: "server__search",
+          mcpServerName: "ai-orch",
+          mcpToolName: "search",
+        },
+      });
+      yield* adapter.stopSession(threadId);
+      fakeSession.emit("tool.execution_complete", {
+        data: {
+          toolCallId: "call-stop-clear",
+          success: true,
+          toolDescription: { name: "bash" },
+          result: { content: "ok" },
+        },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const event = events[0]!;
+      if (event.type === "item.completed") {
+        NodeAssert.equal(event.payload.itemType, "command_execution");
+        NodeAssert.deepEqual(event.payload.data, { toolName: "bash" });
+      }
+    }),
+  );
+
+  it.effect("passes configured MCP servers to created sessions", () =>
+    Effect.gen(function* () {
+      const scopedClient = makeCopilotClientTestDouble();
+      const settings = yield* decodeCopilotSettings({
+        mcpServers: {
+          "ai-orch": {
+            type: "http",
+            url: "https://governance.example/mcp",
+            headers: { Authorization: "Bearer test" },
+            tools: ["*"],
+          },
+        },
+      });
+      const adapterLayer = Layer.effect(
+        CopilotAdapterTag,
+        makeCopilotAdapter(scopedClient, settings, { instanceId: INSTANCE_ID }),
+      ).pipe(
+        Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
+        Layer.provideMerge(NodeServices.layer),
+      );
+      const context = yield* Layer.build(adapterLayer);
+      const adapter = yield* Effect.service(CopilotAdapterTag).pipe(Effect.provide(context));
+
+      yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId: asThreadId("thread-mcp-config"),
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+
+      NodeAssert.deepEqual(scopedClient.capturedConfigs[0]?.mcpServers, settings.mcpServers);
+
+      const resumed = yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId: asThreadId("thread-mcp-config"),
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+        resumeCursor: { schemaVersion: 1, copilotSessionId: "fake-session-1" },
+      });
+
+      NodeAssert.deepEqual(resumed.resumeCursor, {
+        schemaVersion: 1,
+        copilotSessionId: "fake-session-1",
+      });
+      NodeAssert.deepEqual(scopedClient.capturedConfigs[1]?.mcpServers, settings.mcpServers);
+    }),
+  );
+
+  it.effect("passes configured custom agents to created and resumed sessions", () =>
+    Effect.gen(function* () {
+      const scopedClient = makeCopilotClientTestDouble();
+      const settings = yield* decodeCopilotSettings({
+        customAgents: [
+          {
+            name: "reviewer",
+            displayName: "Reviewer",
+            prompt: "Review the current diff.",
+            tools: ["read_file"],
+            mcpServers: {
+              reviewer_tools: {
+                command: "reviewer-mcp",
+                args: ["serve"],
+                type: "stdio",
+              },
+            },
+            infer: false,
+          },
+        ],
+        defaultAgent: { excludedTools: ["write_file"] },
+        activeAgent: "reviewer",
+      });
+      const adapterLayer = Layer.effect(
+        CopilotAdapterTag,
+        makeCopilotAdapter(scopedClient, settings, { instanceId: INSTANCE_ID }),
+      ).pipe(
+        Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
+        Layer.provideMerge(NodeServices.layer),
+      );
+      const context = yield* Layer.build(adapterLayer);
+      const adapter = yield* Effect.service(CopilotAdapterTag).pipe(Effect.provide(context));
+
+      yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId: asThreadId("thread-custom-agents"),
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+
+      NodeAssert.deepEqual(scopedClient.capturedConfigs[0]?.customAgents, [
+        {
+          name: "reviewer",
+          displayName: "Reviewer",
+          prompt: "Review the current diff.",
+          tools: ["read_file"],
+          mcpServers: {
+            reviewer_tools: {
+              command: "reviewer-mcp",
+              args: ["serve"],
+              type: "stdio",
+            },
+          },
+          infer: false,
+        },
+      ]);
+      NodeAssert.deepEqual(scopedClient.capturedConfigs[0]?.defaultAgent, {
+        excludedTools: ["write_file"],
+      });
+      NodeAssert.equal(scopedClient.capturedConfigs[0]?.agent, "reviewer");
+      NodeAssert.equal(scopedClient.capturedConfigs[0]?.includeSubAgentStreamingEvents, true);
+
+      yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId: asThreadId("thread-custom-agents"),
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+        resumeCursor: { schemaVersion: 1, copilotSessionId: "fake-session-1" },
+      });
+
+      NodeAssert.deepEqual(
+        scopedClient.capturedConfigs[1]?.customAgents,
+        scopedClient.capturedConfigs[0]?.customAgents,
+      );
+      NodeAssert.equal(scopedClient.capturedConfigs[1]?.agent, "reviewer");
+    }),
+  );
+
+  it.effect("steers active Copilot turns with immediate delivery", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CopilotAdapterTag;
+      const threadId = asThreadId("thread-steering-mode");
+      yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+
+      const fakeSession = latestSession();
+      yield* adapter.sendTurn({ threadId, input: "first" });
+      yield* adapter.sendTurn({ threadId, input: "steer" });
+
+      NodeAssert.equal((fakeSession.sentMessages[0] as { mode?: string }).mode, "enqueue");
+      NodeAssert.equal((fakeSession.sentMessages[1] as { mode?: string }).mode, "immediate");
+    }),
+  );
+
+  it.effect("starts fleet mode when enabled", () =>
+    Effect.gen(function* () {
+      const scopedClient = makeCopilotClientTestDouble();
+      const settings = yield* decodeCopilotSettings({ fleetMode: true });
+      const adapterLayer = Layer.effect(
+        CopilotAdapterTag,
+        makeCopilotAdapter(scopedClient, settings, { instanceId: INSTANCE_ID }),
+      ).pipe(
+        Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
+        Layer.provideMerge(NodeServices.layer),
+      );
+      const context = yield* Layer.build(adapterLayer);
+      const adapter = yield* Effect.service(CopilotAdapterTag).pipe(Effect.provide(context));
+      const threadId = asThreadId("thread-fleet");
+
+      yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId, input: "split this up" });
+
+      const session = Array.from(scopedClient.sessionsById.values())[0]!;
+      NodeAssert.deepEqual(session.fleetStarts, [{ prompt: "split this up" }]);
+      NodeAssert.equal(session.sentMessages.length, 0);
     }),
   );
 
@@ -427,6 +798,176 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
         ),
       );
       NodeAssert.deepEqual(decision, { kind: "approve-once" } satisfies PermissionRequestResult);
+    }),
+  );
+
+  it.effect("maps SDK usage events with provider turn refs", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CopilotAdapterTag;
+      const threadId = asThreadId("thread-usage");
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter(
+          (event) => event.threadId === threadId && event.type === "thread.token-usage.updated",
+        ),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+      const fakeSession = latestSession();
+      fakeSession.emit("assistant.turn_start", { data: { turnId: "sdk-turn-1" } });
+      fakeSession.emit("assistant.usage", {
+        data: { model: "gpt-5", inputTokens: 10, outputTokens: 5, cacheReadTokens: 3 },
+      });
+      fakeSession.emit("assistant.usage", {
+        data: { model: "gpt-5", outputTokens: 7, reasoningTokens: 2 },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const last = events[1]!;
+      NodeAssert.equal(last.providerRefs?.providerTurnId, "sdk-turn-1");
+      NodeAssert.equal(last.raw?.source, "copilot.sdk.session-event");
+      if (last.type === "thread.token-usage.updated") {
+        NodeAssert.equal(last.payload.usage.usedTokens, 22);
+        NodeAssert.equal(last.payload.usage.inputTokens, 10);
+        NodeAssert.equal(last.payload.usage.outputTokens, 12);
+        NodeAssert.equal(last.payload.usage.reasoningOutputTokens, 2);
+        NodeAssert.equal(last.payload.usage.lastUsedTokens, 7);
+      }
+    }),
+  );
+
+  it.effect("maps SDK metadata, error, and subagent events", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CopilotAdapterTag;
+      const threadId = asThreadId("thread-governance-events");
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter(
+          (event) =>
+            event.threadId === threadId &&
+            (event.type === "thread.metadata.updated" ||
+              event.type === "runtime.error" ||
+              event.type === "task.started" ||
+              event.type === "task.completed"),
+        ),
+        Stream.take(6),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+      const fakeSession = latestSession();
+      fakeSession.emit("session.usage_checkpoint", { data: { totalNanoAiu: 123 } });
+      fakeSession.emit("session.context_changed", {
+        data: { cwd: "/tmp/project", branch: "main" },
+      });
+      fakeSession.emit("session.shutdown", {
+        data: {
+          shutdownType: "normal",
+          codeChanges: { filesModified: ["a.ts"], linesAdded: 1, linesRemoved: 0 },
+          modelMetrics: {},
+          sessionStartTime: 1,
+          totalApiDurationMs: 2,
+        },
+      });
+      fakeSession.emit("session.error", {
+        data: { errorType: "provider_error", message: "boom", statusCode: 500 },
+      });
+      fakeSession.emit("subagent.started", {
+        data: {
+          toolCallId: "task-1",
+          agentName: "reviewer",
+          agentDisplayName: "Reviewer",
+          agentDescription: "Review code",
+        },
+      });
+      fakeSession.emit("subagent.failed", {
+        data: {
+          toolCallId: "task-1",
+          agentName: "reviewer",
+          agentDisplayName: "Reviewer",
+          error: "nope",
+        },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      NodeAssert.equal(
+        events.every((event) => event.raw?.source === "copilot.sdk.session-event"),
+        true,
+      );
+      NodeAssert.equal(
+        events.filter((event) => event.type === "thread.metadata.updated").length,
+        3,
+      );
+      NodeAssert.equal(
+        events.some((event) => event.type === "runtime.error"),
+        true,
+      );
+      NodeAssert.equal(
+        events.some((event) => event.type === "task.started"),
+        true,
+      );
+      NodeAssert.equal(
+        events.some((event) => event.type === "task.completed"),
+        true,
+      );
+    }),
+  );
+
+  it.effect("maps SDK permission events in full-access mode", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CopilotAdapterTag;
+      const threadId = asThreadId("thread-sdk-permission-full-access");
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter(
+          (event) =>
+            event.threadId === threadId &&
+            (event.type === "request.opened" || event.type === "request.resolved"),
+        ),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+      const fakeSession = latestSession();
+      fakeSession.emit("permission.requested", {
+        data: {
+          requestId: "sdk-request-1",
+          permissionRequest: {
+            kind: "shell",
+            fullCommandText: "ls",
+            canOfferSessionApproval: true,
+          },
+        },
+      });
+      fakeSession.emit("permission.completed", {
+        data: { requestId: "sdk-request-1", result: { kind: "approved" } },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      NodeAssert.deepEqual(
+        events.map((event) => event.type),
+        ["request.opened", "request.resolved"],
+      );
+      NodeAssert.equal(events[0]?.requestId, "sdk-request-1");
+      NodeAssert.equal(events[1]?.raw?.method, "permission.completed");
     }),
   );
 

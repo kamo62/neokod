@@ -53,7 +53,10 @@ import {
   type ProviderSnapshotSettings,
 } from "../providerUpdateSettings.ts";
 import { makeCopilotAdapter } from "./CopilotAdapter.ts";
-import { makeCopilotContinuationGroupKey, resolveCopilotBaseDirectory } from "./CopilotEnvironment.ts";
+import {
+  makeCopilotContinuationGroupKey,
+  resolveCopilotBaseDirectory,
+} from "./CopilotEnvironment.ts";
 import { checkCopilotProviderStatus, makePendingCopilotProvider } from "./CopilotProvider.ts";
 import { makeCopilotTextGeneration } from "./CopilotTextGeneration.ts";
 

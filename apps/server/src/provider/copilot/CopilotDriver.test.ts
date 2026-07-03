@@ -159,7 +159,10 @@ describe("CopilotDriver — lifecycle", () => {
       const before = copilotSdkState.clients.length;
 
       const instance = yield* CopilotDriver.create(
-        makeCreateInput({ instanceId: ProviderInstanceId.make("githubCopilot_start_once"), enabled: true }),
+        makeCreateInput({
+          instanceId: ProviderInstanceId.make("githubCopilot_start_once"),
+          enabled: true,
+        }),
       ).pipe(Effect.provide(testLayer), Effect.scoped);
 
       NodeAssert.equal(instance.enabled, true);
@@ -174,7 +177,10 @@ describe("CopilotDriver — lifecycle", () => {
       const before = copilotSdkState.clients.length;
 
       const instance = yield* CopilotDriver.create(
-        makeCreateInput({ instanceId: ProviderInstanceId.make("githubCopilot_disabled"), enabled: false }),
+        makeCreateInput({
+          instanceId: ProviderInstanceId.make("githubCopilot_disabled"),
+          enabled: false,
+        }),
       ).pipe(Effect.provide(testLayer), Effect.scoped);
 
       NodeAssert.equal(instance.enabled, false);
@@ -239,11 +245,9 @@ describe("CopilotDriver — lifecycle", () => {
       copilotSdkState.startShouldFail = true;
       const instanceId = ProviderInstanceId.make("githubCopilot_start_failure");
 
-      const error = yield* CopilotDriver.create(makeCreateInput({ instanceId, enabled: true })).pipe(
-        Effect.provide(testLayer),
-        Effect.scoped,
-        Effect.flip,
-      );
+      const error = yield* CopilotDriver.create(
+        makeCreateInput({ instanceId, enabled: true }),
+      ).pipe(Effect.provide(testLayer), Effect.scoped, Effect.flip);
 
       NodeAssert.ok(isProviderDriverError(error));
       NodeAssert.equal(error.driver, "githubCopilot");
