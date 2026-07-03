@@ -13,9 +13,11 @@ import {
 } from "lucide-react";
 import * as Arr from "effect/Array";
 import * as Result from "effect/Result";
-import { useState, type ReactNode } from "react";
+import * as Schema from "effect/Schema";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   isProviderDriverKind,
+  CopilotMcpServers,
   type CopilotManagedClientEvidenceSettings,
   type ProviderInstanceConfig,
   type ProviderInstanceEnvironmentVariable,
@@ -37,6 +39,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { ScrollArea } from "../ui/scroll-area";
 import { Switch } from "../ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
+import { Textarea } from "../ui/textarea";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { DriverOption } from "./providerDriverMeta";
@@ -343,6 +346,119 @@ export function describeManagedClientEvidenceReadiness(
     : "Fields are set. Turn on evidence forwarding above when you're ready.";
 }
 
+export function formatCopilotMcpServersForEditor(servers: CopilotMcpServers): string {
+  return Object.keys(servers).length === 0 ? "" : JSON.stringify(servers, null, 2);
+}
+
+const decodeCopilotMcpServers = Schema.decodeUnknownSync(CopilotMcpServers);
+
+/**
+ * Pure parse+validate for the MCP-servers JSON editor so the section stays a
+ * thin render (see ProviderInstanceCard.test.ts). Empty input clears all
+ * servers; otherwise the JSON must decode against the `CopilotMcpServers`
+ * schema (stdio `command` servers or remote `http`/`sse` `url` servers).
+ */
+export function parseCopilotMcpServersDraft(
+  text: string,
+):
+  | { readonly ok: true; readonly value: CopilotMcpServers }
+  | { readonly ok: false; readonly error: string } {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) {
+    return { ok: true, value: {} };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? `Invalid JSON: ${error.message}` : "Invalid JSON.",
+    };
+  }
+  try {
+    return { ok: true, value: decodeCopilotMcpServers(parsed) };
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error ? error.message : "Configuration does not match the MCP schema.",
+    };
+  }
+}
+
+function CopilotMcpServersSection(props: {
+  readonly servers: CopilotMcpServers;
+  readonly onChange: (servers: CopilotMcpServers) => void;
+}) {
+  const [draft, setDraft] = useState(() => formatCopilotMcpServersForEditor(props.servers));
+  const [dirty, setDirty] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Re-sync from saved settings only when there are no in-progress edits, so a
+  // background settings refresh never clobbers what the user is typing.
+  // ponytail: raw JSON is the v1 ceiling; upgrade path is a structured
+  // per-server form (type toggle + command/url/env/headers/tools rows).
+  useEffect(() => {
+    if (!dirty) {
+      setDraft(formatCopilotMcpServersForEditor(props.servers));
+    }
+  }, [props.servers, dirty]);
+
+  const serverCount = Object.keys(props.servers).length;
+
+  const handleSave = () => {
+    const result = parseCopilotMcpServersDraft(draft);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setError(null);
+    setDirty(false);
+    props.onChange(result.value);
+  };
+
+  return (
+    <div className="grid gap-2">
+      <div className="min-w-0 space-y-0.5">
+        <p className="text-xs font-medium text-foreground">MCP servers</p>
+        <p className="text-xs text-muted-foreground">
+          {serverCount === 0
+            ? "None configured. Add a JSON object keyed by server name — stdio servers use `command`, remote servers use `type: http`/`sse` with `url`."
+            : `${serverCount} configured. The AI-Orch gateway is added automatically when governance is enabled.`}
+        </p>
+      </div>
+      <Textarea
+        value={draft}
+        spellCheck={false}
+        rows={8}
+        className="font-mono text-xs"
+        placeholder={'{\n  "my-server": { "type": "http", "url": "https://..." }\n}'}
+        aria-label="Copilot MCP servers JSON"
+        onChange={(event) => {
+          setDraft(event.target.value);
+          setDirty(true);
+          setError(null);
+        }}
+      />
+      {error ? <p className="whitespace-pre-wrap text-xs text-destructive">{error}</p> : null}
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
+          className="w-fit shrink-0"
+          disabled={!dirty}
+          onClick={handleSave}
+        >
+          Save MCP servers
+        </Button>
+        {dirty ? <span className="text-xs text-muted-foreground">Unsaved changes</span> : null}
+      </div>
+    </div>
+  );
+}
+
 function CopilotGovernanceSection(props: {
   readonly settings: CopilotManagedClientEvidenceSettings;
   readonly onChange: (patch: Partial<CopilotManagedClientEvidenceSettings>) => void;
@@ -409,6 +525,21 @@ function CopilotGovernanceSection(props: {
           />
         </label>
       )}
+      <label className="flex items-center justify-between gap-3">
+        <span className="min-w-0 space-y-0.5">
+          <span className="block text-xs font-medium text-foreground">
+            Route MCP through gateway
+          </span>
+          <span className="block text-xs text-muted-foreground">
+            Active path — sends MCP calls through AI-Orch. Independent of recording; default off.
+          </span>
+        </span>
+        <Switch
+          checked={props.settings.gatewayEnabled}
+          onCheckedChange={(checked) => props.onChange({ gatewayEnabled: Boolean(checked) })}
+          aria-label="Route MCP through the AI-Orch gateway"
+        />
+      </label>
       {props.onTestConnection ? (
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -483,6 +614,13 @@ interface ProviderInstanceCardProps {
   readonly onTestManagedClientEvidenceConnection?:
     | (() => Promise<{ readonly ok: boolean; readonly message: string }>)
     | undefined;
+  /**
+   * Hidden `CopilotSettings.mcpServers` (`providers.githubCopilot.mcpServers`).
+   * Rendered as a validated JSON editor only for the `githubCopilot` driver
+   * when both this and `onMcpServersChange` are supplied.
+   */
+  readonly mcpServers?: CopilotMcpServers | undefined;
+  readonly onMcpServersChange?: ((servers: CopilotMcpServers) => void) | undefined;
 }
 
 /**
@@ -532,6 +670,8 @@ export function ProviderInstanceCard({
   managedClientEvidence,
   onManagedClientEvidenceChange,
   onTestManagedClientEvidenceConnection,
+  mcpServers,
+  onMcpServersChange,
 }: ProviderInstanceCardProps) {
   const enabled = instance.enabled ?? true;
   // The server-reported status wins when present; otherwise fall back to
@@ -929,6 +1069,12 @@ export function ProviderInstanceCard({
                     </Button>
                   ) : null}
                 </div>
+              </div>
+            ) : null}
+
+            {isCopilot && mcpServers !== undefined && onMcpServersChange ? (
+              <div className="border-t border-border/60 px-4 py-3 sm:px-5">
+                <CopilotMcpServersSection servers={mcpServers} onChange={onMcpServersChange} />
               </div>
             ) : null}
 

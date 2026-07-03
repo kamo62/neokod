@@ -460,7 +460,7 @@ it("reacts to managed-client evidence settings changes at runtime", () =>
     const posts = yield* Queue.unbounded<CapturedPost>();
     let subscribeCount = 0;
     const settings = makeReactiveSettingsLayer(
-      { enabled: false, governanceUrl: "", credential: "" },
+      { enabled: false, gatewayEnabled: false, governanceUrl: "", credential: "" },
       settingsChanges,
     );
 
@@ -486,6 +486,7 @@ it("reacts to managed-client evidence settings changes at runtime", () =>
 
     yield* settings.publishCurrent({
       enabled: true,
+      gatewayEnabled: false,
       governanceUrl: "https://orch.example",
       credential: "air_test",
     });
@@ -497,6 +498,7 @@ it("reacts to managed-client evidence settings changes at runtime", () =>
 
     yield* settings.publishCurrent({
       enabled: false,
+      gatewayEnabled: false,
       governanceUrl: "https://orch.example",
       credential: "air_test",
     });

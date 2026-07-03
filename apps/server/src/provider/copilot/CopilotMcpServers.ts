@@ -15,7 +15,10 @@ const AI_ORCH_MCP_SERVER_NAME = "ai-orch";
 
 function aiOrchMcpServerFromSettings(settings: CopilotSettings): MCPServerConfig | undefined {
   const evidence = settings.managedClientEvidence;
-  if (!evidence.enabled || !evidence.governanceUrl || !evidence.credential) {
+  // Gated on `gatewayEnabled` (the active routing role), NOT `enabled` (passive
+  // recording). This is the recorder/gateway decoupling: turning on evidence
+  // recording no longer pulls the AI-Orch MCP gateway into the request path.
+  if (!evidence.gatewayEnabled || !evidence.governanceUrl || !evidence.credential) {
     return undefined;
   }
 
@@ -63,6 +66,11 @@ export function copyCopilotMcpServerConfigs(
   return copied;
 }
 
+/** A server is active unless it has been explicitly disabled (`enabled: false`). */
+export function isCopilotMcpServerEnabled(config: CopilotMcpServerSetting): boolean {
+  return (config as { enabled?: boolean }).enabled !== false;
+}
+
 export function resolveCopilotMcpServers(
   settings: CopilotSettings,
   orgPresets: Readonly<Record<string, MCPServerConfig>> = COPILOT_ORG_MCP_PRESETS,
@@ -74,7 +82,12 @@ export function resolveCopilotMcpServers(
   if (aiOrchMcpServer) {
     merged[AI_ORCH_MCP_SERVER_NAME] = aiOrchMcpServer;
   }
-  Object.assign(merged, copyCopilotMcpServerConfigs(settings.mcpServers));
+  // Disabled servers are dropped here so a `/mcp` toggle takes effect on the
+  // next session without deleting the user's saved config.
+  const enabledUserServers = Object.fromEntries(
+    Object.entries(settings.mcpServers).filter(([, config]) => isCopilotMcpServerEnabled(config)),
+  );
+  Object.assign(merged, copyCopilotMcpServerConfigs(enabledUserServers));
 
   return Object.keys(merged).length > 0 ? merged : undefined;
 }

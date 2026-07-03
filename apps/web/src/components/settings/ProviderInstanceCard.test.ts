@@ -4,7 +4,60 @@ import type { CopilotManagedClientEvidenceSettings, ServerProviderModel } from "
 import {
   deriveProviderModelsForDisplay,
   describeManagedClientEvidenceReadiness,
+  formatCopilotMcpServersForEditor,
+  parseCopilotMcpServersDraft,
 } from "./ProviderInstanceCard";
+
+describe("parseCopilotMcpServersDraft", () => {
+  it("treats blank input as clearing all servers", () => {
+    expect(parseCopilotMcpServersDraft("   \n  ")).toEqual({ ok: true, value: {} });
+  });
+
+  it("accepts a valid remote server config", () => {
+    const result = parseCopilotMcpServersDraft(
+      JSON.stringify({ gateway: { type: "http", url: "https://mcp.example.com" } }),
+    );
+    expect(result).toEqual({
+      ok: true,
+      value: { gateway: { type: "http", url: "https://mcp.example.com" } },
+    });
+  });
+
+  it("accepts a valid stdio server config", () => {
+    const result = parseCopilotMcpServersDraft(
+      JSON.stringify({ local: { command: "my-mcp", args: ["--stdio"] } }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects malformed JSON with a clear message", () => {
+    const result = parseCopilotMcpServersDraft("{ not json ");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("Invalid JSON");
+    }
+  });
+
+  it("rejects JSON that does not match the MCP schema", () => {
+    // Remote server missing the required `url`.
+    const result = parseCopilotMcpServersDraft(JSON.stringify({ bad: { type: "http" } }));
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe("formatCopilotMcpServersForEditor", () => {
+  it("renders an empty object as an empty string", () => {
+    expect(formatCopilotMcpServersForEditor({})).toBe("");
+  });
+
+  it("pretty-prints configured servers", () => {
+    const text = formatCopilotMcpServersForEditor({
+      gateway: { type: "http", url: "https://mcp.example.com" },
+    });
+    expect(text).toContain("gateway");
+    expect(text).toContain("\n");
+  });
+});
 
 describe("deriveProviderModelsForDisplay", () => {
   it("uses current config custom models instead of stale live custom rows", () => {
@@ -43,6 +96,7 @@ describe("describeManagedClientEvidenceReadiness", () => {
     overrides: Partial<CopilotManagedClientEvidenceSettings> = {},
   ): CopilotManagedClientEvidenceSettings => ({
     enabled: false,
+    gatewayEnabled: false,
     governanceUrl: "",
     credential: "",
     ...overrides,

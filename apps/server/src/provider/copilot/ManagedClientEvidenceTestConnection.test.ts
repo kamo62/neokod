@@ -26,6 +26,7 @@ const makeSettings = (
   overrides: Partial<CopilotManagedClientEvidenceSettings> = {},
 ): CopilotManagedClientEvidenceSettings => ({
   enabled: true,
+  gatewayEnabled: false,
   governanceUrl: "https://orch.example",
   credential: "air_test",
   ...overrides,

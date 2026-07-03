@@ -199,6 +199,7 @@ describe("CopilotSettings.mcpServers", () => {
     expect(decodeCopilotSettings({}).fleetMode).toBe(false);
     expect(decodeCopilotSettings({}).managedClientEvidence).toEqual({
       enabled: false,
+      gatewayEnabled: false,
       governanceUrl: "",
       credential: "",
     });
@@ -304,6 +305,7 @@ describe("CopilotSettings.mcpServers", () => {
 
     expect(decoded.managedClientEvidence).toEqual({
       enabled: true,
+      gatewayEnabled: false,
       governanceUrl: "https://governance.example",
       credential: "air_test",
     });

@@ -310,6 +310,10 @@ export type GrokSettings = typeof GrokSettings.Type;
 const CopilotMcpServerBase = {
   tools: Schema.optional(Schema.Array(Schema.String)),
   timeout: Schema.optional(Schema.Number),
+  // Fork-owned: lets the `/mcp` UI disable a server without deleting its
+  // config. Absent = enabled. Never forwarded to the SDK (the resolver filters
+  // disabled servers out before building the SDK `mcpServers` config).
+  enabled: Schema.optional(Schema.Boolean),
 };
 
 const CopilotMcpStdioServer = Schema.Struct({
@@ -354,7 +358,13 @@ export const CopilotDefaultAgent = Schema.Struct({
 export type CopilotDefaultAgent = typeof CopilotDefaultAgent.Type;
 
 export const CopilotManagedClientEvidenceSettings = Schema.Struct({
+  // Recording: passive evidence forwarding to AI-Orch. Fail-open, never blocks
+  // the provider stream. This is the v1 governance role.
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // Gateway: route MCP (and, later, model) calls THROUGH the AI-Orch gateway —
+  // an active, in-request-path role. Decoupled from `enabled` so recording does
+  // not silently pull the gateway into the request path. Default off.
+  gatewayEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   governanceUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   credential: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
 });
@@ -362,6 +372,7 @@ export type CopilotManagedClientEvidenceSettings = typeof CopilotManagedClientEv
 
 const CopilotManagedClientEvidenceSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
+  gatewayEnabled: Schema.optionalKey(Schema.Boolean),
   governanceUrl: Schema.optionalKey(TrimmedString),
   credential: Schema.optionalKey(TrimmedString),
 });
@@ -420,7 +431,12 @@ export const CopilotSettings = makeProviderSettingsSchema(
     ),
     managedClientEvidence: CopilotManagedClientEvidenceSettings.pipe(
       Schema.withDecodingDefault(
-        Effect.succeed({ enabled: false, governanceUrl: "", credential: "" }),
+        Effect.succeed({
+          enabled: false,
+          gatewayEnabled: false,
+          governanceUrl: "",
+          credential: "",
+        }),
       ),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
