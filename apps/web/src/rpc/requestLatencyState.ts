@@ -4,7 +4,12 @@ import { Atom } from "effect/unstable/reactivity";
 
 import { appAtomRegistry } from "./atomRegistry";
 
-export const SLOW_RPC_ACK_THRESHOLD_MS = 15_000;
+// How long an unary RPC may go unacknowledged by the server before the client
+// surfaces a "some requests are slow" warning. This is a UX warning only — it
+// never aborts the request. Heavier operations like a full `vcs.refreshStatus`
+// (which fans out to several git commands, including a remote refresh) can
+// legitimately exceed the lower bound on large repos, so keep this generous.
+export const SLOW_RPC_ACK_THRESHOLD_MS = 30_000;
 export const MAX_TRACKED_RPC_ACK_REQUESTS = 256;
 let slowRpcAckThresholdMs = SLOW_RPC_ACK_THRESHOLD_MS;
 
