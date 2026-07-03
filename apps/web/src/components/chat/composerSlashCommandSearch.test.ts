@@ -85,11 +85,53 @@ describe("searchSlashCommandItems", () => {
         label: "/diff",
         description: "Open this thread's diff",
       },
+      {
+        id: "slash:files",
+        type: "slash-command",
+        command: "files",
+        label: "/files",
+        description: "Open this thread's files",
+      },
+      {
+        id: "slash:subagents",
+        type: "slash-command",
+        command: "subagents",
+        label: "/subagents",
+        description: "Open this thread's subagent activity",
+      },
+      {
+        id: "slash:goal",
+        type: "slash-command",
+        command: "goal",
+        label: "/goal",
+        description: "Set or edit this thread's goal",
+      },
+      {
+        id: "slash:fleet",
+        type: "slash-command",
+        command: "fleet",
+        label: "/fleet",
+        description: "Open Copilot fleet & agent controls",
+      },
+      {
+        id: "slash:mcp",
+        type: "slash-command",
+        command: "mcp",
+        label: "/mcp",
+        description: "View and enable/disable Copilot MCP servers",
+      },
     ] satisfies Array<Extract<ComposerCommandItem, { type: "slash-command" }>>;
 
     expect(searchSlashCommandItems(items, "term").map((item) => item.id)).toEqual([
       "slash:terminal",
     ]);
     expect(searchSlashCommandItems(items, "df").map((item) => item.id)).toEqual(["slash:diff"]);
+    expect(searchSlashCommandItems(items, "files").map((item) => item.id)).toEqual(["slash:files"]);
+    expect(searchSlashCommandItems(items, "subagent").map((item) => item.id)).toEqual([
+      "slash:subagents",
+    ]);
+    expect(searchSlashCommandItems(items, "goal").map((item) => item.id)).toEqual(["slash:goal"]);
+    expect(searchSlashCommandItems(items, "fleet").map((item) => item.id)).toEqual(["slash:fleet"]);
+    expect(searchSlashCommandItems(items, "mcp").map((item) => item.id)).toEqual(["slash:mcp"]);
   });
 });

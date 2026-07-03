@@ -8,6 +8,7 @@ import {
   isCollapsedCursorAdjacentToInlineToken,
   parseStandaloneComposerSlashCommand,
   replaceTextRange,
+  resolveSlashCommandAction,
 } from "./composer-logic";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
@@ -346,5 +347,68 @@ describe("parseStandaloneComposerSlashCommand", () => {
 
   it("ignores slash commands with extra message text", () => {
     expect(parseStandaloneComposerSlashCommand("/plan explain this")).toBeNull();
+  });
+});
+
+describe("resolveSlashCommandAction", () => {
+  it("opens the model picker for /model", () => {
+    expect(resolveSlashCommandAction("model")).toEqual({ kind: "open-model-picker" });
+  });
+
+  it("opens the terminal for /terminal", () => {
+    expect(resolveSlashCommandAction("terminal")).toEqual({ kind: "open-terminal" });
+  });
+
+  it("opens the diff right panel for /diff", () => {
+    expect(resolveSlashCommandAction("diff")).toEqual({
+      kind: "open-right-panel",
+      panel: "diff",
+    });
+  });
+
+  it("opens the files right panel for /files", () => {
+    expect(resolveSlashCommandAction("files")).toEqual({
+      kind: "open-right-panel",
+      panel: "files",
+    });
+  });
+
+  it("opens the subagents right panel for /subagents", () => {
+    expect(resolveSlashCommandAction("subagents")).toEqual({
+      kind: "open-right-panel",
+      panel: "subagents",
+    });
+  });
+
+  it("opens the goal rail popover for /goal", () => {
+    expect(resolveSlashCommandAction("goal")).toEqual({
+      kind: "open-rail-popover",
+      popover: "goal",
+    });
+  });
+
+  it("opens the fleet rail popover for /fleet", () => {
+    expect(resolveSlashCommandAction("fleet")).toEqual({
+      kind: "open-rail-popover",
+      popover: "fleet",
+    });
+  });
+
+  it("opens the mcp rail popover for /mcp", () => {
+    expect(resolveSlashCommandAction("mcp")).toEqual({
+      kind: "open-rail-popover",
+      popover: "mcp",
+    });
+  });
+
+  it("switches interaction mode for /plan and /default", () => {
+    expect(resolveSlashCommandAction("plan")).toEqual({
+      kind: "interaction-mode",
+      mode: "plan",
+    });
+    expect(resolveSlashCommandAction("default")).toEqual({
+      kind: "interaction-mode",
+      mode: "default",
+    });
   });
 });

@@ -1,0 +1,127 @@
+import { EventId, TurnId, type OrchestrationThreadActivity } from "@t3tools/contracts";
+import { describe, expect, it } from "vite-plus/test";
+
+import { deriveSubagentCards, formatElapsed } from "./session-logic";
+
+let nextActivityId = 0;
+
+function makeActivity(overrides: {
+  createdAt?: string;
+  kind?: string;
+  summary?: string;
+  tone?: OrchestrationThreadActivity["tone"];
+  payload?: Record<string, unknown>;
+  sequence?: number;
+}): OrchestrationThreadActivity {
+  return {
+    id: EventId.make(`sub-activity-${nextActivityId++}`),
+    createdAt: overrides.createdAt ?? "2026-02-23T00:00:00.000Z",
+    kind: overrides.kind ?? "task.started",
+    summary: overrides.summary ?? "Task",
+    tone: overrides.tone ?? "info",
+    payload: overrides.payload ?? {},
+    turnId: TurnId.make("turn-1"),
+    ...(overrides.sequence !== undefined ? { sequence: overrides.sequence } : {}),
+  };
+}
+
+describe("deriveSubagentCards", () => {
+  it("creates one card per started task", () => {
+    const cards = deriveSubagentCards([
+      makeActivity({
+        kind: "task.started",
+        sequence: 0,
+        payload: { taskId: "task-a", description: "Explorer", taskType: "claude" },
+      }),
+      makeActivity({
+        kind: "task.started",
+        sequence: 1,
+        payload: { taskId: "task-b", description: "Builder", taskType: "codex" },
+      }),
+    ]);
+    expect(cards.length).toBe(2);
+    expect(cards[0]?.taskId).toBe("task-a");
+    expect(cards[0]?.name).toBe("Explorer");
+    expect(cards[0]?.model).toBe("claude");
+    expect(cards[0]?.status).toBe("inProgress");
+    expect(cards[1]?.taskId).toBe("task-b");
+  });
+
+  it("falls back to defaults when optional fields are absent", () => {
+    const [card] = deriveSubagentCards([
+      makeActivity({ kind: "task.started", payload: { taskId: "task-x" } }),
+    ]);
+    expect(card?.name).toBe("Subagent");
+    expect(card?.model).toBe(null);
+  });
+
+  it("marks a completed task with status/summary and computes elapsed", () => {
+    const [card] = deriveSubagentCards([
+      makeActivity({
+        kind: "task.started",
+        createdAt: "2026-02-23T00:00:00.000Z",
+        sequence: 0,
+        payload: { taskId: "task-a", description: "Explorer" },
+      }),
+      makeActivity({
+        kind: "task.completed",
+        createdAt: "2026-02-23T00:00:05.000Z",
+        sequence: 1,
+        payload: { taskId: "task-a", status: "completed", summary: "Done exploring" },
+      }),
+    ]);
+    expect(card?.status).toBe("completed");
+    expect(card?.summary).toBe("Done exploring");
+    expect(card?.completedAt).toBe("2026-02-23T00:00:05.000Z");
+    expect(formatElapsed(card!.startedAt, card!.completedAt ?? undefined)).toBe("5.0s");
+  });
+
+  it("propagates a failed status", () => {
+    const [card] = deriveSubagentCards([
+      makeActivity({ kind: "task.started", sequence: 0, payload: { taskId: "task-a" } }),
+      makeActivity({
+        kind: "task.completed",
+        sequence: 1,
+        payload: { taskId: "task-a", status: "failed", summary: "Boom" },
+      }),
+    ]);
+    expect(card?.status).toBe("failed");
+    expect(card?.summary).toBe("Boom");
+  });
+
+  it("accumulates progress entries in order", () => {
+    const [card] = deriveSubagentCards([
+      makeActivity({ kind: "task.started", sequence: 0, payload: { taskId: "task-a" } }),
+      makeActivity({
+        kind: "task.progress",
+        sequence: 1,
+        payload: { taskId: "task-a", description: "Step 1", lastToolName: "grep" },
+      }),
+      makeActivity({
+        kind: "task.progress",
+        sequence: 2,
+        payload: { taskId: "task-a", description: "Step 2", summary: "halfway" },
+      }),
+    ]);
+    expect(card?.progress.length).toBe(2);
+    expect(card?.progress[0]?.description).toBe("Step 1");
+    expect(card?.progress[0]?.lastToolName).toBe("grep");
+    expect(card?.progress[1]?.summary).toBe("halfway");
+  });
+
+  it("ignores progress/completed events without a matching started event", () => {
+    const cards = deriveSubagentCards([
+      makeActivity({
+        kind: "task.progress",
+        sequence: 0,
+        payload: { taskId: "orphan", description: "no card" },
+      }),
+      makeActivity({
+        kind: "task.completed",
+        sequence: 1,
+        payload: { taskId: "orphan", status: "completed" },
+      }),
+    ]);
+    expect(cards.length).toBe(0);
+  });
+});

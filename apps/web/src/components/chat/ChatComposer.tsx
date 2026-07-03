@@ -41,6 +41,7 @@ import {
   detectComposerTrigger,
   expandCollapsedComposerCursor,
   replaceTextRange,
+  resolveSlashCommandAction,
 } from "../../composer-logic";
 import { deriveComposerSendState, readFileAsDataUrl } from "../ChatView.logic";
 import {
@@ -125,6 +126,7 @@ import { formatProviderSkillDisplayName } from "../../providerSkillPresentation"
 import { searchProviderSkills } from "../../providerSkillSearch";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { useTerminalUiStateStore } from "../../terminalUiStateStore";
+import { useWorkspaceRailUiStore } from "../../workspaceRailUiStore";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
 
@@ -622,6 +624,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerPreviewAnnotations = composerDraft.previewAnnotations;
   const openRightPanel = useRightPanelStore((state) => state.open);
   const setTerminalOpen = useTerminalUiStateStore((state) => state.setTerminalOpen);
+  const requestRailPopover = useWorkspaceRailUiStore((state) => state.requestOpen);
   const composerReviewComments = composerDraft.reviewComments;
   const nonPersistedComposerImageIds = composerDraft.nonPersistedImageIds;
 
@@ -988,6 +991,45 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           command: "diff",
           label: "/diff",
           description: "Open this thread's diff",
+        },
+        {
+          id: "slash:files",
+          type: "slash-command",
+          command: "files",
+          label: "/files",
+          description: "Open this thread's files",
+        },
+        {
+          id: "slash:subagents",
+          type: "slash-command",
+          command: "subagents",
+          label: "/subagents",
+          description: "Open this thread's subagent activity",
+        },
+        {
+          id: "slash:goal",
+          type: "slash-command",
+          command: "goal",
+          label: "/goal",
+          description: "Set or edit this thread's goal",
+        },
+        // ponytail: /fleet is a no-op when Copilot is disabled (the controls
+        // unmount, so nothing opens). Copilot ships enabled in this fork, so we
+        // keep the menu item static rather than threading provider settings
+        // into this memo; gate it here if a disabled-Copilot no-op ever matters.
+        {
+          id: "slash:fleet",
+          type: "slash-command",
+          command: "fleet",
+          label: "/fleet",
+          description: "Open Copilot fleet & agent controls",
+        },
+        {
+          id: "slash:mcp",
+          type: "slash-command",
+          command: "mcp",
+          label: "/mcp",
+          description: "View and enable/disable Copilot MCP servers",
         },
       ] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: "slash-command" }>>;
       const providerSlashCommandItems = (selectedProviderStatus?.slashCommands ?? []).map(
@@ -1593,7 +1635,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return;
       }
       if (item.type === "slash-command") {
-        if (item.command === "model") {
+        const action = resolveSlashCommandAction(item.command);
+        if (action.kind === "open-model-picker") {
           const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
             expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
             focusEditorAfterReplace: false,
@@ -1604,27 +1647,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           }
           return;
         }
-        if (item.command === "terminal") {
+        if (action.kind === "open-terminal") {
           setTerminalOpen(routeThreadRef, true);
-          const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
-            expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
-          });
-          if (applied) {
-            setComposerHighlightedItemId(null);
-          }
-          return;
+        } else if (action.kind === "open-right-panel") {
+          openRightPanel(routeThreadRef, action.panel);
+        } else if (action.kind === "open-rail-popover") {
+          requestRailPopover(routeThreadRef, action.popover);
+        } else {
+          void handleInteractionModeChange(action.mode);
         }
-        if (item.command === "diff") {
-          openRightPanel(routeThreadRef, "diff");
-          const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
-            expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
-          });
-          if (applied) {
-            setComposerHighlightedItemId(null);
-          }
-          return;
-        }
-        void handleInteractionModeChange(item.command === "plan" ? "plan" : "default");
         const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
           expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
         });
@@ -1678,6 +1709,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       applyPromptReplacement,
       handleInteractionModeChange,
       openRightPanel,
+      requestRailPopover,
       resolveActiveComposerTrigger,
       routeThreadRef,
       setTerminalOpen,

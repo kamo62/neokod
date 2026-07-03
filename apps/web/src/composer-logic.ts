@@ -2,7 +2,53 @@ import { splitPromptIntoComposerSegments } from "./composer-editor-mentions";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
 export type ComposerTriggerKind = "path" | "slash-command" | "skill";
-export type ComposerSlashCommand = "model" | "plan" | "default" | "terminal" | "diff";
+export type ComposerSlashCommand =
+  | "model"
+  | "plan"
+  | "default"
+  | "terminal"
+  | "diff"
+  | "files"
+  | "subagents"
+  | "goal"
+  | "fleet"
+  | "mcp";
+
+export type SlashCommandAction =
+  | { kind: "open-model-picker" }
+  | { kind: "open-terminal" }
+  | { kind: "open-right-panel"; panel: "diff" | "files" | "subagents" }
+  | { kind: "open-rail-popover"; popover: "goal" | "fleet" | "mcp" }
+  | { kind: "interaction-mode"; mode: "plan" | "default" };
+
+/**
+ * Pure mapping from a built-in composer slash command to the workbench action it triggers.
+ * Keeps the ChatComposer selection handler a thin dispatcher over the existing stores.
+ */
+export function resolveSlashCommandAction(command: ComposerSlashCommand): SlashCommandAction {
+  switch (command) {
+    case "model":
+      return { kind: "open-model-picker" };
+    case "terminal":
+      return { kind: "open-terminal" };
+    case "diff":
+      return { kind: "open-right-panel", panel: "diff" };
+    case "files":
+      return { kind: "open-right-panel", panel: "files" };
+    case "subagents":
+      return { kind: "open-right-panel", panel: "subagents" };
+    case "goal":
+      return { kind: "open-rail-popover", popover: "goal" };
+    case "fleet":
+      return { kind: "open-rail-popover", popover: "fleet" };
+    case "mcp":
+      return { kind: "open-rail-popover", popover: "mcp" };
+    case "plan":
+      return { kind: "interaction-mode", mode: "plan" };
+    case "default":
+      return { kind: "interaction-mode", mode: "default" };
+  }
+}
 
 export interface ComposerTrigger {
   kind: ComposerTriggerKind;

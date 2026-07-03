@@ -15,6 +15,8 @@ import ProjectScriptsControl, {
   type ProjectScriptActionResult,
 } from "../ProjectScriptsControl";
 import { OpenInPicker } from "./OpenInPicker";
+import { GoalChip } from "./GoalChip";
+import { ThreadWorkspaceRail } from "./ThreadWorkspaceRail";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { cn } from "~/lib/utils";
 
@@ -92,6 +94,7 @@ export const ChatHeader = memo(function ChatHeader({
           />
           <TooltipPopup side="top">{activeThreadTitle}</TooltipPopup>
         </Tooltip>
+        <GoalChip environmentId={activeThreadEnvironmentId} threadId={activeThreadId} />
       </div>
       <div
         data-chat-header-actions
@@ -100,6 +103,11 @@ export const ChatHeader = memo(function ChatHeader({
           rightPanelOpen ? "pr-0" : "pr-16",
         )}
       >
+        <ThreadWorkspaceRail
+          environmentId={activeThreadEnvironmentId}
+          threadId={activeThreadId}
+          activeProjectName={activeProjectName}
+        />
         {activeProjectScripts && (
           <ProjectScriptsControl
             scripts={activeProjectScripts}

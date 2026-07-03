@@ -24,11 +24,16 @@ import {
   ArrowDownIcon,
   ArrowLeftIcon,
   ArrowUpIcon,
+  Bot,
+  Boxes,
   CornerLeftUpIcon,
+  Cpu,
   FileDiff,
+  Files,
   FolderIcon,
   FolderPlusIcon,
   LinkIcon,
+  ListTodo,
   MessageSquareIcon,
   SettingsIcon,
   SquarePenIcon,
@@ -116,6 +121,7 @@ import { ThreadRowLeadingStatus, ThreadRowTrailingStatus } from "./ThreadStatusI
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { resolveShortcutCommand } from "../keybindings";
 import { useRightPanelStore } from "../rightPanelStore";
+import { useWorkspaceRailUiStore } from "../workspaceRailUiStore";
 import {
   Command,
   CommandDialog,
@@ -483,6 +489,7 @@ function OpenCommandPaletteDialog(props: {
   const routeThreadRef = routeTarget?.kind === "server" ? routeTarget.threadRef : null;
   const openRightPanel = useRightPanelStore((state) => state.open);
   const setTerminalOpen = useTerminalUiStateStore((state) => state.setTerminalOpen);
+  const requestRailPopover = useWorkspaceRailUiStore((state) => state.requestOpen);
   const projects = useProjects();
   const threads = useThreadShells();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -1086,6 +1093,58 @@ function OpenCommandPaletteDialog(props: {
         icon: <FileDiff className={ITEM_ICON_CLASS} />,
         run: async () => {
           openRightPanel(routeThreadRef, "diff");
+        },
+      },
+      {
+        kind: "action",
+        value: "action:open-files",
+        searchTerms: ["files", "file tree", "explorer"],
+        title: "Open files",
+        icon: <Files className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openRightPanel(routeThreadRef, "files");
+        },
+      },
+      {
+        kind: "action",
+        value: "action:open-plan",
+        searchTerms: ["plan", "todo", "steps"],
+        title: "Open plan",
+        icon: <ListTodo className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openRightPanel(routeThreadRef, "plan");
+        },
+      },
+      {
+        kind: "action",
+        value: "action:open-subagents",
+        searchTerms: ["subagents", "agents", "workers", "tasks", "fleet"],
+        title: "Open subagents",
+        icon: <Bot className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openRightPanel(routeThreadRef, "subagents");
+        },
+      },
+      {
+        kind: "action",
+        value: "action:open-mcp",
+        searchTerms: ["mcp", "servers", "tools", "model context protocol"],
+        title: "Open MCP servers",
+        icon: <Boxes className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          requestRailPopover(routeThreadRef, "mcp");
+        },
+      },
+      {
+        kind: "action",
+        value: "action:switch-model",
+        searchTerms: ["model", "provider", "switch model"],
+        title: "Switch model",
+        icon: <Cpu className={ITEM_ICON_CLASS} />,
+        keepOpen: false,
+        run: async () => {
+          // ponytail: handle ref is null until a composer mounts; no-op is the safe fallback.
+          composerHandleRef?.current?.openModelPicker();
         },
       },
     );

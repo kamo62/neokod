@@ -86,6 +86,24 @@ interface DerivedWorkLogEntry extends WorkLogEntry {
   toolCallId?: string;
 }
 
+export interface SubagentProgressEntry {
+  description: string | null;
+  summary: string | null;
+  lastToolName: string | null;
+  at: string;
+}
+
+export interface SubagentCard {
+  taskId: string;
+  name: string;
+  model: string | null;
+  status: "inProgress" | "completed" | "failed" | "stopped";
+  startedAt: string;
+  completedAt: string | null;
+  summary: string | null;
+  progress: SubagentProgressEntry[];
+}
+
 export interface PendingApproval {
   requestId: ApprovalRequestId;
   requestKind: "command" | "file-read" | "file-change";
@@ -640,6 +658,75 @@ export function deriveWorkLogEntries(
     const { activityKind, collapseKey: _collapseKey, ...rest } = entry;
     return Object.assign(rest, { sourceActivityKind: activityKind });
   });
+}
+
+const optionalString = (value: unknown): string | null =>
+  typeof value === "string" && value.length > 0 ? value : null;
+
+/**
+ * Group sub-agent/task-worker lifecycle activities into per-task cards.
+ *
+ * Folds `task.started` / `task.progress` / `task.completed` activities (in
+ * canonical order) by their stable `payload.taskId`. Reads directly from raw
+ * activities because the WorkLog derivation nulls out the task id. Cards are
+ * returned in start order.
+ */
+export function deriveSubagentCards(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): SubagentCard[] {
+  const ordered = [...activities].toSorted(compareActivitiesByOrder);
+  const byTaskId = new Map<string, SubagentCard>();
+  for (const activity of ordered) {
+    if (
+      activity.kind !== "task.started" &&
+      activity.kind !== "task.progress" &&
+      activity.kind !== "task.completed"
+    ) {
+      continue;
+    }
+    const payload =
+      activity.payload && typeof activity.payload === "object"
+        ? (activity.payload as Record<string, unknown>)
+        : null;
+    const taskId = optionalString(payload?.taskId);
+    if (!taskId) continue;
+
+    if (activity.kind === "task.started") {
+      if (byTaskId.has(taskId)) continue;
+      byTaskId.set(taskId, {
+        taskId,
+        name: optionalString(payload?.description) ?? "Subagent",
+        model: optionalString(payload?.taskType),
+        status: "inProgress",
+        startedAt: activity.createdAt,
+        completedAt: null,
+        summary: null,
+        progress: [],
+      });
+      continue;
+    }
+
+    const card = byTaskId.get(taskId);
+    if (!card) continue;
+
+    if (activity.kind === "task.progress") {
+      card.progress.push({
+        description: optionalString(payload?.description),
+        summary: optionalString(payload?.summary),
+        lastToolName: optionalString(payload?.lastToolName),
+        at: activity.createdAt,
+      });
+      continue;
+    }
+
+    // task.completed
+    const status = payload?.status;
+    card.status =
+      status === "completed" || status === "failed" || status === "stopped" ? status : "completed";
+    card.summary = optionalString(payload?.summary);
+    card.completedAt = activity.createdAt;
+  }
+  return [...byTaskId.values()];
 }
 
 function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): boolean {

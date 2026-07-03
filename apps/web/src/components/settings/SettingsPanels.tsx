@@ -5,6 +5,7 @@ import { useAtomValue } from "@effect/atom-react";
 import {
   defaultInstanceIdForDriver,
   type CopilotManagedClientEvidenceSettings,
+  type CopilotMcpServers,
   type DesktopUpdateChannel,
   PROVIDER_DISPLAY_NAMES,
   ProviderDriverKind,
@@ -1232,6 +1233,18 @@ export function ProviderSettingsPanel() {
     });
   };
 
+  const updateCopilotMcpServers = (mcpServers: CopilotMcpServers) => {
+    updateSettings({
+      providers: {
+        ...settings.providers,
+        githubCopilot: {
+          ...settings.providers.githubCopilot,
+          mcpServers,
+        },
+      } as typeof settings.providers,
+    });
+  };
+
   const runManagedClientEvidenceTestConnection = async (): Promise<{
     readonly ok: boolean;
     readonly message: string;
@@ -1478,6 +1491,8 @@ export function ProviderSettingsPanel() {
               managedClientEvidence={settings.providers.githubCopilot.managedClientEvidence}
               onManagedClientEvidenceChange={updateManagedClientEvidenceSettings}
               onTestManagedClientEvidenceConnection={runManagedClientEvidenceTestConnection}
+              mcpServers={settings.providers.githubCopilot.mcpServers}
+              onMcpServersChange={updateCopilotMcpServers}
             />
           );
         })}

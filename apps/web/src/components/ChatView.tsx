@@ -136,6 +136,7 @@ import { DiffWorkerPoolProvider } from "./DiffWorkerPoolProvider";
 import { BranchToolbar } from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import PlanSidebar from "./PlanSidebar";
+import SubagentsPanel from "./SubagentsPanel";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import { ChevronDownIcon, TriangleAlertIcon, WifiOffIcon } from "lucide-react";
 import { cn, randomHex } from "~/lib/utils";
@@ -4979,6 +4980,12 @@ function ChatViewContent(props: ChatViewProps) {
         threadRef={activeThreadRef}
         markdownCwd={gitCwd ?? undefined}
         workspaceRoot={activeWorkspaceRoot}
+        timestampFormat={timestampFormat}
+        mode="embedded"
+      />
+    ) : activeRightPanelSurface?.kind === "subagents" ? (
+      <SubagentsPanel
+        activities={threadActivities}
         timestampFormat={timestampFormat}
         mode="embedded"
       />
