@@ -210,6 +210,7 @@ that makes the user discover features by accident.
 - The Codex screenshot target is a split companion-thread workspace, not only a timeline row: the main thread remains on the left while a sub-agent/companion thread runs beside it with its own header, progress stream, composer, model picker, stop control, and worker identity tabs such as `Sartre`, `Erdos`, and `Linnaeus`.
 - T3's current fork behavior only makes Copilot `subagent.*` events visible through generic task/work-log rows. That is the correct fallback, but it does not yet match the Codex experience where sub-agent work is navigable, steerable, and visually parallel to the parent thread.
 - The first UI pass should reuse right-panel/surface plumbing for a `Subagents` surface that groups worker events by stable `agentId`/`toolCallId`. A later pass can promote a worker into a side-by-side companion thread once direct steering/composer support exists.
+- 2026-07-04 update: the per-provider event surface was verified and a full implementation plan was written and Codex-reviewed; see "Sub-agent panel + in-app GitHub device login: implementation plan" below for the capability matrix and slices.
 
 ### Terminal target
 
@@ -308,12 +309,19 @@ that makes the user discover features by accident.
    runtime path is wired.
 8. **Side-by-side companion-thread mode.** Implement the Codex screenshot-level
    split only after the `Subagents` surface proves useful and the backend can
-   support worker steering/composer behavior honestly.
+   support worker steering/composer behavior honestly. A detailed,
+   Codex-reviewed plan for the whole path (worker identity on `task.*`,
+   per-provider attribution, worker-tabbed panel, steering last) now exists:
+   see "Sub-agent panel + in-app GitHub device login: implementation plan"
+   below. The panel slices (A1-A5 there) are the current top product priority
+   and supersede this item's ordering; only the steering/companion slice (A6)
+   remains gated.
 
 Recommended first slice: items 1 and 2 together. ✅ Done. Items 3–5 also landed
 (subagents surface, fleet/agent controls, goal state). Items 6–8 remain, plus the
 new "Platform & integration backlog" section below (MCP registry, provider-neutral
-MCP injection, shared secret storage, Jira/Rovo, Codex SDK, AI-Orch SSO, APM skills).
+MCP injection, shared secret storage, Jira/Rovo, Codex SDK, AI-Orch SSO, APM skills),
+plus the "Sub-agent panel + in-app GitHub device login" implementation plan section.
 
 ## Platform & integration backlog (designed this session, NOT built)
 
@@ -457,6 +465,235 @@ lean on the gateway.
   surfaced/triggered, not rebuilt.
 - **Deferred:** cross-harness distribution + auto-update (the APM layer) is parked. Rule:
   **surface now, manage files next, distribute later.**
+
+## Sub-agent panel + in-app GitHub device login: implementation plan (Codex-reviewed 2026-07-04, NOT built)
+
+Two workstreams, planned in detail and peer-reviewed by Codex on 2026-07-04.
+Nothing in this section is implemented yet. The sub-agent panel is the user's
+top product priority: the target is the Codex-desktop companion-pane
+experience (named worker tabs such as `Sartre`/`Erdos`/`Linnaeus`, each with
+its own narrative progress stream, model label, status/elapsed, and, where the
+backend honestly supports it, a stop control and composer), instead of today's
+flat tool rows in the chat timeline.
+
+### Verified per-provider capability matrix (2026-07-04, evidence in-tree)
+
+| Provider | Worker identity                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Per-worker progress stream                                                                                                                                                                                                                                                              | Worker model                                                                | Steering                                                                                                                                       |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Copilot  | SDK emits it; adapter drops it. Every SDK session event carries an optional `agentId` ("Sub-agent instance identifier", ~50 event types, `@github/copilot-sdk` `dist/generated/session-events.d.ts:4611-4615`); `SubagentStartedData` (`:4641-4662`) carries `agentDescription`/`agentDisplayName`/`agentName`/`model?`/`toolCallId`. `CopilotAdapter.ts` maps `subagent.started/completed/failed` to `task.started/completed` keyed on `toolCallId` (`:873-936`) and never reads `agentId`.                                                                                                                                                                                                                    | SDK emits it; adapter flattens it. The adapter already sets `includeSubAgentStreamingEvents: true` (`CopilotAdapter.ts:616`), so `agentId`-tagged assistant/reasoning/tool deltas are arriving today and being merged into the main thread unattributed. No `task.progress` is emitted. | SDK yes (`model?` on started/completed, `:4657`/`:4712`); adapter drops it. | None per worker. `session.send`/`sendAndWait` are whole-session (`dist/session.d.ts:96-128`); fleet is `fleet.start({prompt})`, session-level. |
+| Claude   | Partial. CLI system messages `task_started/task_progress/task_notification` map to `task.started/progress/completed` with `taskId`/`description`/`task_type` (`apps/server/src/provider/Layers/ClaudeAdapter.ts:2668-2718`). Nested subagent content is unattributed: `parent_tool_use_id` is treated as a noise key (`:1274`) and nested deltas are consumed for token usage only (`:2080-2082`).                                                                                                                                                                                                                                                                                                              | Partial today (progress summaries + `lastToolName` already flow); nested assistant/tool content flattened.                                                                                                                                                                              | No. Only the subagent `task_type` is known.                                 | None. The CLI exposes no channel to a running subagent.                                                                                        |
+| Codex    | Protocol yes; fork hides it. Collab/review workers surface as opaque `item.*` rows (`CodexAdapter.ts` `mapItemLifecycle :451-487`, canonical types `collab_agent_tool_call`/`review_entered`/`review_exited`); no `task.*` at all. The app-server schema's `CollabAgentToolCallThreadItem` (`packages/effect-codex-app-server/src/_generated/schema.gen.ts:18820-18865`) carries `id`, `model?`, `prompt?`, `receiverThreadIds` (the spawned worker thread), `senderThreadId`, `status`, `tool` (`spawnAgent`/`sendInput`/`resumeAgent`/`wait`/`closeAgent`), and an `agentsStates` map. `CodexSessionRuntime.ts` deliberately flattens child threads into the parent turn (`collabReceiverTurns`, `:588-608`). | Protocol yes (each worker is its own thread); currently merged into the parent turn, raw item kept only in `payload.data` (`CodexAdapter.ts:484`).                                                                                                                                      | Protocol yes (`model?` `:18824`); not extracted.                            | Protocol yes (`sendInput`/`resumeAgent` to `receiverThreadIds`); not wired in t3code.                                                          |
+
+Canonical gap underneath all three: `TaskStartedPayload`/`TaskProgressPayload`/
+`TaskCompletedPayload` (`packages/contracts/src/providerRuntime.ts:463-485`)
+carry no `agentId`/`model`/`parentToolCallId`, and `deriveSubagentCards`
+(`apps/web/src/session-logic.ts`) stuffs `taskType` into its `model` slot
+because nothing better exists.
+
+### Workstream A: sub-agent panel
+
+**Slice A1: contracts + ingestion carry worker identity.**
+
+- `packages/contracts/src/providerRuntime.ts`: add `Schema.optional` fields to
+  the three task payloads. `TaskStartedPayload` gains `agentId`
+  (provider-stable worker instance id), `model` (worker model slug when the
+  provider knows it), and `parentToolCallId` (the tool call that spawned the
+  worker). `TaskProgressPayload` and `TaskCompletedPayload` gain `agentId`.
+  All optional and absent-able, exactly like the `goal`/`goalStatus`
+  precedent, so no existing fixture changes.
+- Codex review catch, MUST land in the same slice: the server-side
+  provider-runtime ingestion copies task payload fields through an explicit
+  whitelist (currently `taskId`/`taskType`/`description`/`summary`/
+  `lastToolName`/`usage`); grep `ProviderRuntimeIngestion` and extend that
+  copy with the three new fields, otherwise they are silently dropped before
+  they ever reach a stored activity and the panel sees nothing.
+- Tests: contracts decode round-trip for the new optional fields; an ingestion
+  test proving `agentId`/`model`/`parentToolCallId` survive into the stored
+  activity payload.
+- FORK.md rows to add on landing: extend the existing `providerRuntime.ts`
+  row; add a row for the ingestion file touched.
+
+**Slice A2: Copilot adapter per-worker attribution (biggest visible win).**
+
+- In `CopilotAdapter.ts`, build an `agentId -> toolCallId` correlation map,
+  populated at `subagent.started` (the one event carrying both), cleaned up at
+  `subagent.completed`/`failed`. This join is mandatory: in-flight SDK events
+  are tagged with `agentId` only, while the fork keys `taskId` on
+  `toolCallId`; without the map, progress events cannot join their card.
+- `subagent.started` -> `task.started` gains `agentId`, `model` (stop dropping
+  it), `parentToolCallId: toolCallId`. `description` stays
+  `agentDisplayName`, `taskType` stays `agentName`.
+- `agentId`-tagged events -> `task.progress` for the mapped `taskId`, coalesced
+  STRICTLY at message-completion and tool boundaries: a completed
+  `assistant.message` produces one progress entry (summary truncated to a
+  short line), `tool.execution_start`/`complete` update `lastToolName` and may
+  produce one entry, streaming deltas produce NOTHING. Cadence is a
+  correctness constraint, not a polish item: every `task.progress` becomes a
+  durable projection row, so per-token emission would be a storage bug.
+- `subagent.completed`/`failed` -> `task.completed` gains `agentId` (the
+  `durationMs`/`totalTokens`/`totalToolCalls` usage mapping already exists).
+- Events tagged with an unknown `agentId` (no `subagent.started` seen, e.g.
+  after a resume) are ignored for task purposes, never crash the mapping.
+- Tests: fixtures with `agentId`-tagged assistant/tool events proving
+  correlation, cadence (deltas emit no progress), model passthrough, and
+  unknown-agentId tolerance.
+
+**Slice A3: panel upgrade to worker tabs.**
+
+- `apps/web/src/session-logic.ts` `deriveSubagentCards`: read the real
+  `payload.model` into the card's `model`, move `taskType` to a new `kind`
+  field (UI falls back to showing `kind` when `model` is absent, which is the
+  Claude case), and carry `agentId`.
+- `SubagentsPanel.tsx`: add a worker tab strip inside the existing singleton
+  surface (Codex-desktop look). Selected worker view: header with name, model
+  (or kind), status icon, elapsed time; below it a scrolling, auto-following
+  stream of that worker's progress entries. No selection shows the existing
+  card list. Pure helpers (tab derivation, selection state) exported and
+  unit-tested.
+- Explicitly NO `rightPanelStore` changes in this slice. Codex review
+  concurred: parameterized per-worker surfaces only pay off once steering and
+  per-worker composer state exist (slice A6); until then the tab strip inside
+  the singleton is strictly simpler.
+- Mobile: unchanged (event-feed parity only, per the existing rule).
+
+After A3 the Copilot experience matches the Codex-desktop screenshot minus the
+composer. Ship and evaluate before continuing.
+
+**Slice A4: Codex adapter emits task.\* from collab items.**
+
+- Map `collab_agent_tool_call` item lifecycle into `task.*`: a `spawnAgent`
+  item produces `task.started` per receiver (worker identity =
+  `receiverThreadId`, with the collab item `id` kept in the payload as a
+  fallback reference; Codex review could not confirm receiver ids survive a
+  resume, so the fallback is documented, not optional), `model` from the item,
+  `description` from prompt/tool. `agentsStates` transitions produce
+  `task.progress`; terminal item status / `closeAgent` / `review_exited`
+  produce `task.completed`. Review workers (`review_entered`/`review_exited`,
+  `subAgentReview` thread source) get the same treatment.
+- The existing `item.*` emission stays untouched (chat timeline fallback
+  unchanged); this slice only ADDS `task.*`.
+- Tests from recorded collab/review item fixtures.
+
+**Slice A5: Claude adapter attribution via parent_tool_use_id.**
+
+- Step zero is a correlation check with a live fixture: establish whether the
+  CLI's `task_started.task_id` equals the spawning `Task` `tool_use` id. If
+  yes, the join is direct; if not, correlate through the first nested event's
+  `parent_tool_use_id` after a spawn.
+- Stop treating `parent_tool_use_id` as a noise key; nested assistant/tool
+  events carrying it produce `task.progress` for the correlated task, with
+  the same message-completion/tool-boundary coalescing rule as A2.
+- No per-worker model exists for Claude; the panel shows `kind`
+  (the subagent `task_type`) instead. No steering.
+- Tests from recorded stream-json fixtures.
+
+**Slice A6 (deferred until A1-A5 are proven): steering.**
+
+- A provider capability flag (adapter-declared, e.g.
+  `supportsWorkerSteering`) gates the per-worker composer and stop control;
+  the UI never renders steering affordances a backend cannot honor.
+- Codex first: `sendInput`/`resumeAgent` to `receiverThreadIds` through a new
+  fork-owned RPC; design the RPC when this slice starts. Copilot remains
+  session-level (steer via the main composer). Claude has no channel.
+- This is the old backlog item 8 (side-by-side companion mode) and stays last.
+
+### Workstream B: in-app GitHub device login (no CLI ritual, no VS Code requirement)
+
+Verified constraints (see HANDOFF "GitHub device-code login" for the full SDK
+evidence): the SDK bundles the whole runtime, so there is no install step to
+remove, only the missing token; the client has no login RPC; the two sanctioned
+auth inputs are `CopilotClientOptions.gitHubToken` (env passthrough, priority)
+and `useLoggedInUser` (default true; reads a prior `copilot login` store or gh
+CLI auth). VS Code's own GitHub session is not readable and the bundled CLI
+does not read the legacy `hosts.json`/`apps.json`, so VS Code reuse is
+indirect only (devs with gh CLI auth work with zero setup).
+
+**Slice B1: entitlement spike (hard gate for B2/B3).**
+
+- Choose the OAuth client id: the public Copilot device-flow client id that
+  editor integrations use, or an org-registered GitHub App. The bundled CLI's
+  own id is compiled into its native binary and was not extractable.
+- Prove the id end to end manually: `POST https://github.com/login/device/code`
+  -> user completes at github.com/login/device -> poll
+  `POST https://github.com/login/oauth/access_token`
+  (`grant_type=urn:ietf:params:oauth:grant-type:device_code`) -> construct
+  `new CopilotClient({ gitHubToken })` and require `getAuthStatus()` to report
+  authenticated. Codex review emphasis: flow completion alone proves nothing;
+  a token can pass GitHub auth and still fail Copilot entitlement or org SSO
+  checks, so `getAuthStatus()` is the acceptance test.
+- Output: the chosen client id and a written entitlement proof. B2/B3 do not
+  start until this passes.
+
+**Slice B2: server module, RPCs, driver injection.**
+
+- New fork-owned `apps/server/src/provider/copilot/GithubDeviceLogin.ts`:
+  - `start`: requests the device code, returns
+    `{ flowId, userCode, verificationUri, expiresInSeconds, intervalSeconds }`.
+  - A background Effect poll fiber per flow honoring `authorization_pending`
+    (keep polling at `interval`), `slow_down` (increase the interval per RFC
+    8628), `expired_token` (terminal: expired), `access_denied` (terminal:
+    denied); supports cancellation; one active flow per environment.
+  - On success, persists the token via the existing
+    `apps/server/src/auth/ServerSecretStore.ts` (confirmed present; already
+    holds relay/cloud creds and the env signing keypair) under a per-environment
+    key such as `copilot.githubToken`. NO settings.json fallback (Codex review:
+    do not add one unless the store demonstrably fails on a target runtime).
+  - Status is exposed by `flowId`: `pending | success | expired | denied |
+error`, never the token.
+- RPC registration, exactly the `testManagedClientEvidenceConnection` pattern:
+  `packages/contracts/src/rpc.ts` (WS_METHODS entries, `Rpc.make` blocks,
+  `WsRpcGroup` registration) for `copilotDeviceLoginStart` and
+  `copilotDeviceLoginStatus` (plus `copilotSignOut` deleting the secret);
+  `packages/contracts/src/server.ts` result schemas (code/URI/status only,
+  never the token); `apps/server/src/ws.ts` operate-scope handlers delegating
+  to the fork-owned module; `packages/client-runtime/src/state/server.ts`
+  command atoms.
+- `CopilotDriver.ts`: at client construction, read the stored token; when
+  present pass `gitHubToken`; when absent change nothing (the
+  `useLoggedInUser` default keeps gh CLI auth and prior `copilot login`
+  working with zero setup). After a successful login or sign-out, restart the
+  provider client through the existing provider refresh path so the change
+  takes effect.
+- Tests: mocked-fetch state machine (pending -> slow_down -> success; expiry;
+  denied), secret-store round trip, RPC handlers, and an assertion that no
+  status payload ever contains the token.
+
+**Slice B3: the sign-in modal.**
+
+- The static Copilot setup row in `ProviderInstanceCard.tsx` (~line 907)
+  gains a "Sign in with GitHub" button opening a dialog: the user code large
+  and copyable, an "Open github.com/login/device" button, live status from
+  polling the status RPC at `intervalSeconds`, an expiry countdown with a
+  retry action, and distinct denied/error states. Success triggers the
+  existing provider refresh so `getAuthStatus()` confirms (shows `login` and
+  auth type). A sign-out affordance calls `copilotSignOut` and refreshes.
+  The token is never rendered anywhere.
+- Pure status-mapping helpers exported and unit-tested, matching the
+  fork's pure-helper convention for every new component.
+
+### Order, delegation, verification
+
+- Commit sequence: A1 -> A2 -> A3 (Copilot end to end, evaluate), then A4,
+  A5, then B2 -> B3 (B1 is a manual spike and can run in parallel with the
+  A slices), A6 last and only after A1-A5 prove out.
+- Every slice is one logical commit; FORK.md rows land in the same commit as
+  the shared-file edits they describe; typecheck + targeted suites per slice;
+  full `vp test` before each workstream's final commit.
+- Execution per the orchestration workflow: adapter/server shaping first-hand,
+  mechanical test scaffolding and fixtures delegated (Codex, fast-worker).
+
+### Codex review notes incorporated (2026-07-04)
+
+- A1 was underspecified without the ingestion whitelist extension; fixed above.
+- The `agentId -> toolCallId` join in A2 is mandatory, not an optimization.
+- `task.progress` cadence is a storage-correctness constraint (durable
+  projection rows), fine at message/tool boundaries, a bug per token.
+- Tab strip inside the existing singleton beats parameterized per-worker
+  surfaces until steering state exists.
+- Codex `receiverThreadId` stability across resume is unverified; keep the
+  collab item id as fallback identity.
+- B1 must prove entitlement via `getAuthStatus()`, not flow completion.
+- Use `ServerSecretStore` outright; no hidden-settings token fallback.
 
 ## Rebase-resilience notes
 
