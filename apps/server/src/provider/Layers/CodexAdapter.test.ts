@@ -546,7 +546,7 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
       }),
   );
 
-  it.effect("adds task.started + task.completed from a completed spawnAgent collab item (A4)", () =>
+  it.effect("adds task.started + task.completed across a spawnAgent collab lifecycle (A4)", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();
       const eventsFiber = yield* Stream.runCollect(
@@ -559,33 +559,55 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
         ),
       ).pipe(Effect.forkChild);
 
+      const collabItem = (status: "inProgress" | "completed") => ({
+        type: "collabAgentToolCall",
+        id: "collab_1",
+        tool: "spawnAgent",
+        status,
+        model: "gpt-5-codex",
+        senderThreadId: "thread-1",
+        receiverThreadIds: ["worker-thread-1"],
+        agentsStates: {},
+      });
+
       yield* runtime.emit({
-        id: asEventId("evt-collab-spawn-completed"),
+        id: asEventId("evt-collab-spawn-started-2"),
         kind: "notification",
         provider: ProviderDriverKind.make("codex"),
         createdAt: "2026-01-01T00:00:00.000Z",
+        method: "item/started",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("collab_1"),
+        payload: {
+          startedAtMs: 1_778_000_000_000,
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: collabItem("inProgress"),
+        },
+      });
+      yield* runtime.emit({
+        id: asEventId("evt-collab-spawn-completed-2"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:01.000Z",
         method: "item/completed",
         threadId: asThreadId("thread-1"),
         turnId: asTurnId("turn-1"),
         itemId: asItemId("collab_1"),
         payload: {
-          completedAtMs: 1_778_000_000_000,
+          completedAtMs: 1_778_000_001_000,
           threadId: "thread-1",
           turnId: "turn-1",
-          item: {
-            type: "collabAgentToolCall",
-            id: "collab_1",
-            tool: "spawnAgent",
-            status: "completed",
-            model: "gpt-5-codex",
-            senderThreadId: "thread-1",
-            receiverThreadIds: ["worker-thread-1"],
-            agentsStates: {},
-          },
+          item: collabItem("completed"),
         },
       });
 
       const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      // Exactly one task.started (no duplicate across started+completed) and one
+      // task.completed.
+      NodeAssert.equal(events.filter((event) => event.type === "task.started").length, 1);
+      NodeAssert.equal(events.filter((event) => event.type === "task.completed").length, 1);
       const started = events.find((event) => event.type === "task.started");
       const completed = events.find((event) => event.type === "task.completed");
       NodeAssert.ok(started && started.type === "task.started");

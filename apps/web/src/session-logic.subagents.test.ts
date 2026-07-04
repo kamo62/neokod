@@ -122,6 +122,34 @@ describe("deriveSubagentCards", () => {
     expect(card?.progress[1]?.summary).toBe("halfway");
   });
 
+  it("reads the stored ingestion shape (detail, not description)", () => {
+    // Mirrors what ProviderRuntimeIngestion actually writes: task text lands
+    // under `detail`, not `description`.
+    const [card] = deriveSubagentCards([
+      makeActivity({
+        kind: "task.started",
+        sequence: 0,
+        payload: { taskId: "task-a", detail: "Explorer", taskType: "reviewer", model: "gpt-5" },
+      }),
+      makeActivity({
+        kind: "task.progress",
+        sequence: 1,
+        payload: { taskId: "task-a", detail: "Inspecting the diff", lastToolName: "grep" },
+      }),
+      makeActivity({
+        kind: "task.completed",
+        sequence: 2,
+        payload: { taskId: "task-a", status: "completed", detail: "Done" },
+      }),
+    ]);
+    expect(card?.name).toBe("Explorer");
+    expect(card?.model).toBe("gpt-5");
+    expect(card?.kind).toBe("reviewer");
+    expect(card?.progress[0]?.description).toBe("Inspecting the diff");
+    expect(card?.progress[0]?.lastToolName).toBe("grep");
+    expect(card?.summary).toBe("Done");
+  });
+
   it("ignores progress/completed events without a matching started event", () => {
     const cards = deriveSubagentCards([
       makeActivity({

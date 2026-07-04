@@ -41,15 +41,24 @@ describe("subagentSecondaryLabel", () => {
 });
 
 describe("deriveSubagentTabs", () => {
-  it("emits one tab per card in order, carrying label and status", () => {
+  it("emits one tab per card in order, carrying label, hint, and status", () => {
     const tabs = deriveSubagentTabs([
-      makeCard({ taskId: "a", name: "Explorer", status: "inProgress" }),
-      makeCard({ taskId: "b", name: "Builder", status: "completed" }),
+      makeCard({ taskId: "a", name: "Explorer", model: "gpt-5", status: "inProgress" }),
+      makeCard({ taskId: "b", name: "Builder", kind: "codex", status: "completed" }),
     ]);
     expect(tabs).toEqual([
-      { taskId: "a", label: "Explorer", status: "inProgress" },
-      { taskId: "b", label: "Builder", status: "completed" },
+      { taskId: "a", label: "Explorer", hint: "gpt-5", status: "inProgress" },
+      { taskId: "b", label: "Builder", hint: "codex", status: "completed" },
     ]);
+  });
+
+  it("disambiguates duplicate worker names with a #n suffix", () => {
+    const tabs = deriveSubagentTabs([
+      makeCard({ taskId: "a", name: "Subagent" }),
+      makeCard({ taskId: "b", name: "Subagent" }),
+      makeCard({ taskId: "c", name: "Unique" }),
+    ]);
+    expect(tabs.map((tab) => tab.label)).toEqual(["Subagent #1", "Subagent #2", "Unique"]);
   });
 });
 

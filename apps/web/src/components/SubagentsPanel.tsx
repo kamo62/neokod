@@ -19,13 +19,34 @@ export function subagentSecondaryLabel(card: SubagentCard): string | null {
 
 export interface SubagentTab {
   taskId: string;
+  /** Display label, disambiguated with `#n` when worker names collide. */
   label: string;
+  /** Secondary label (model or kind), shown as a tooltip/subtext. */
+  hint: string | null;
   status: SubagentCard["status"];
 }
 
-/** One tab per worker card, in start order. Pure. */
+/**
+ * One tab per worker card, in start order. Labels are disambiguated with a
+ * `#n` suffix when multiple workers share the same name, so tabs are never
+ * visually identical. Pure.
+ */
 export function deriveSubagentTabs(cards: readonly SubagentCard[]): SubagentTab[] {
-  return cards.map((card) => ({ taskId: card.taskId, label: card.name, status: card.status }));
+  const nameCounts = new Map<string, number>();
+  for (const card of cards) {
+    nameCounts.set(card.name, (nameCounts.get(card.name) ?? 0) + 1);
+  }
+  const seen = new Map<string, number>();
+  return cards.map((card) => {
+    const hint = subagentSecondaryLabel(card);
+    let label = card.name;
+    if ((nameCounts.get(card.name) ?? 0) > 1) {
+      const n = (seen.get(card.name) ?? 0) + 1;
+      seen.set(card.name, n);
+      label = `${card.name} #${n}`;
+    }
+    return { taskId: card.taskId, label, hint, status: card.status };
+  });
 }
 
 /**
@@ -130,25 +151,36 @@ const SubagentsPanel = memo(function SubagentsPanel({
 
       {/* Worker tab strip */}
       {tabs.length > 0 ? (
-        <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border/60 px-2 py-1.5">
-          {tabs.map((tab) => (
-            <button
-              key={tab.taskId}
-              type="button"
-              onClick={() =>
-                setSelectedTaskId((current) => (current === tab.taskId ? null : tab.taskId))
-              }
-              className={cn(
-                "flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                tab.taskId === selectedTaskId
-                  ? "border-primary/50 bg-primary/10 text-foreground"
-                  : "border-border/50 text-muted-foreground/80 hover:bg-muted/40 hover:text-foreground",
-              )}
-            >
-              {subagentStatusIcon(tab.status)}
-              <span className="max-w-[120px] truncate">{tab.label}</span>
-            </button>
-          ))}
+        <div
+          role="tablist"
+          aria-label="Sub-agent workers"
+          className="flex shrink-0 gap-1 overflow-x-auto border-b border-border/60 px-2 py-1.5"
+        >
+          {tabs.map((tab) => {
+            const isSelected = tab.taskId === selectedTaskId;
+            return (
+              <button
+                key={tab.taskId}
+                type="button"
+                role="tab"
+                aria-selected={isSelected}
+                aria-label={tab.hint ? `${tab.label} (${tab.hint})` : tab.label}
+                title={tab.hint ? `${tab.label} · ${tab.hint}` : tab.label}
+                onClick={() =>
+                  setSelectedTaskId((current) => (current === tab.taskId ? null : tab.taskId))
+                }
+                className={cn(
+                  "flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                  isSelected
+                    ? "border-primary/50 bg-primary/10 text-foreground"
+                    : "border-border/50 text-muted-foreground/80 hover:bg-muted/40 hover:text-foreground",
+                )}
+              >
+                {subagentStatusIcon(tab.status)}
+                <span className="max-w-[120px] truncate">{tab.label}</span>
+              </button>
+            );
+          })}
         </div>
       ) : null}
 

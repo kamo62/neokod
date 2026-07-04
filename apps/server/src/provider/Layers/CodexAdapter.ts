@@ -543,10 +543,10 @@ function collabTaskEvents(
 
   for (const workerId of workerIds) {
     const taskId = RuntimeTaskId.make(workerId);
-    // A spawn declares a new worker: emit task.started (deduped downstream by
-    // taskId). Emitting it on both lifecycles ensures the card exists even if
-    // only the completion is observed.
-    if (tool === "spawnAgent") {
+    // A spawn declares a new worker: emit task.started once, at the started
+    // lifecycle only, so a normal started+completed pair does not emit two
+    // task.started rows.
+    if (tool === "spawnAgent" && lifecycle === "item.started") {
       results.push({
         ...stamp(`task-started:${workerId}`),
         type: "task.started",

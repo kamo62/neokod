@@ -702,7 +702,10 @@ export function deriveSubagentCards(
       if (byTaskId.has(taskId)) continue;
       byTaskId.set(taskId, {
         taskId,
-        name: optionalString(payload?.description) ?? "Subagent",
+        // Ingestion stores the task text under `detail` (see
+        // ProviderRuntimeIngestion); fall back to `description` for the raw
+        // runtime-event shape.
+        name: optionalString(payload?.detail) ?? optionalString(payload?.description) ?? "Subagent",
         model: optionalString(payload?.model),
         kind: optionalString(payload?.taskType),
         agentId: optionalString(payload?.agentId),
@@ -720,7 +723,7 @@ export function deriveSubagentCards(
 
     if (activity.kind === "task.progress") {
       card.progress.push({
-        description: optionalString(payload?.description),
+        description: optionalString(payload?.detail) ?? optionalString(payload?.description),
         summary: optionalString(payload?.summary),
         lastToolName: optionalString(payload?.lastToolName),
         at: activity.createdAt,
@@ -732,7 +735,7 @@ export function deriveSubagentCards(
     const status = payload?.status;
     card.status =
       status === "completed" || status === "failed" || status === "stopped" ? status : "completed";
-    card.summary = optionalString(payload?.summary);
+    card.summary = optionalString(payload?.detail) ?? optionalString(payload?.summary);
     card.completedAt = activity.createdAt;
   }
   return [...byTaskId.values()];

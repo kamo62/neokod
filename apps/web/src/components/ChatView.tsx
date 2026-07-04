@@ -1728,6 +1728,23 @@ function ChatViewContent(props: ChatViewProps) {
   const phase = derivePhase(activeThread?.session ?? null);
   const threadActivities = activeThread?.activities ?? EMPTY_ACTIVITIES;
   const workLogEntries = useMemo(() => deriveWorkLogEntries(threadActivities), [threadActivities]);
+  const hasSubagentActivity = useMemo(
+    () => threadActivities.some((activity) => activity.kind === "task.started"),
+    [threadActivities],
+  );
+  // Surface the sub-agent companion pane the first time a thread spawns a
+  // worker, but only when the right panel is currently closed for that thread
+  // (never steal an open surface) and only once per thread (never nag after the
+  // user closes it). Mirrors the plan-sidebar auto-open precedent below.
+  const autoOpenedSubagentsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!activeThreadRef || activeThreadId === null) return;
+    if (!hasSubagentActivity) return;
+    if (autoOpenedSubagentsRef.current.has(activeThreadId)) return;
+    autoOpenedSubagentsRef.current.add(activeThreadId);
+    if (rightPanelState.isOpen) return;
+    useRightPanelStore.getState().open(activeThreadRef, "subagents");
+  }, [activeThreadRef, activeThreadId, hasSubagentActivity, rightPanelState.isOpen]);
   const pendingApprovals = useMemo(
     () => derivePendingApprovals(threadActivities),
     [threadActivities],
@@ -4985,6 +5002,7 @@ function ChatViewContent(props: ChatViewProps) {
       />
     ) : activeRightPanelSurface?.kind === "subagents" ? (
       <SubagentsPanel
+        key={activeThreadId ?? "no-thread"}
         activities={threadActivities}
         timestampFormat={timestampFormat}
         mode="embedded"
