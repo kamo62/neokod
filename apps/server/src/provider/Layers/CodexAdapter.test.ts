@@ -491,6 +491,112 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
     }),
   );
 
+  it.effect(
+    "adds task.started from a spawnAgent collab item without dropping item.started (A4)",
+    () =>
+      Effect.gen(function* () {
+        const { adapter, runtime } = yield* startLifecycleRuntime();
+        const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 2)).pipe(
+          Effect.forkChild,
+        );
+
+        yield* runtime.emit({
+          id: asEventId("evt-collab-spawn-started"),
+          kind: "notification",
+          provider: ProviderDriverKind.make("codex"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          method: "item/started",
+          threadId: asThreadId("thread-1"),
+          turnId: asTurnId("turn-1"),
+          itemId: asItemId("collab_1"),
+          payload: {
+            startedAtMs: 1_778_000_000_000,
+            threadId: "thread-1",
+            turnId: "turn-1",
+            item: {
+              type: "collabAgentToolCall",
+              id: "collab_1",
+              tool: "spawnAgent",
+              status: "inProgress",
+              model: "gpt-5-codex",
+              prompt: "Review the diff",
+              senderThreadId: "thread-1",
+              receiverThreadIds: ["worker-thread-1"],
+              agentsStates: {},
+            },
+          },
+        });
+
+        const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+        // item.* timeline emission is preserved.
+        NodeAssert.equal(
+          events.some(
+            (event) =>
+              event.type === "item.started" && event.payload.itemType === "collab_agent_tool_call",
+          ),
+          true,
+        );
+        const started = events.find((event) => event.type === "task.started");
+        NodeAssert.ok(started && started.type === "task.started");
+        NodeAssert.equal(started.payload.taskId, "worker-thread-1");
+        NodeAssert.equal(started.payload.agentId, "worker-thread-1");
+        NodeAssert.equal(started.payload.model, "gpt-5-codex");
+        NodeAssert.equal(started.payload.parentToolCallId, "collab_1");
+        NodeAssert.equal(started.payload.description, "Review the diff");
+      }),
+  );
+
+  it.effect("adds task.started + task.completed from a completed spawnAgent collab item (A4)", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const eventsFiber = yield* Stream.runCollect(
+        Stream.take(
+          Stream.filter(
+            adapter.streamEvents,
+            (event) => event.type === "task.started" || event.type === "task.completed",
+          ),
+          2,
+        ),
+      ).pipe(Effect.forkChild);
+
+      yield* runtime.emit({
+        id: asEventId("evt-collab-spawn-completed"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "item/completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("collab_1"),
+        payload: {
+          completedAtMs: 1_778_000_000_000,
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            type: "collabAgentToolCall",
+            id: "collab_1",
+            tool: "spawnAgent",
+            status: "completed",
+            model: "gpt-5-codex",
+            senderThreadId: "thread-1",
+            receiverThreadIds: ["worker-thread-1"],
+            agentsStates: {},
+          },
+        },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const started = events.find((event) => event.type === "task.started");
+      const completed = events.find((event) => event.type === "task.completed");
+      NodeAssert.ok(started && started.type === "task.started");
+      NodeAssert.equal(started.payload.taskId, "worker-thread-1");
+      NodeAssert.ok(completed && completed.type === "task.completed");
+      NodeAssert.equal(completed.payload.taskId, "worker-thread-1");
+      NodeAssert.equal(completed.payload.agentId, "worker-thread-1");
+      NodeAssert.equal(completed.payload.status, "completed");
+    }),
+  );
+
   it.effect("labels MCP lifecycle entries with server and tool names", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();

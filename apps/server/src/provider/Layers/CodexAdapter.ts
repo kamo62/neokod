@@ -11,6 +11,7 @@ import {
   type CanonicalItemType,
   type CanonicalRequestType,
   type CodexSettings,
+  EventId,
   ProviderDriverKind,
   type ProviderEvent,
   ProviderInstanceId,
@@ -20,6 +21,7 @@ import {
   type ProviderUserInputAnswers,
   RuntimeItemId,
   RuntimeRequestId,
+  RuntimeTaskId,
   ProviderApprovalDecision,
   ThreadId,
   ProviderSendTurnInput,
@@ -486,6 +488,100 @@ function mapItemLifecycle(
   };
 }
 
+const COLLAB_TOOL_ACTION_LABEL: Record<string, string> = {
+  spawnAgent: "Spawned sub-agent",
+  sendInput: "Sent input to sub-agent",
+  resumeAgent: "Resumed sub-agent",
+  wait: "Waiting on sub-agent",
+  closeAgent: "Closed sub-agent",
+};
+
+/** Defensively read the `.item` off an item notification payload. */
+function rawItemFromPayload(payload: unknown): Record<string, unknown> | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const item = (payload as { item?: unknown }).item;
+  return item && typeof item === "object" ? (item as Record<string, unknown>) : undefined;
+}
+
+/**
+ * Map a Codex `collabAgentToolCall` thread item into canonical `task.*` worker
+ * events, keyed on the receiver thread id (falling back to the collab item id
+ * — Codex review could not confirm receiver ids survive a resume, so the
+ * fallback is documented, not optional). This ADDS to the existing `item.*`
+ * timeline emission; it never replaces it.
+ *
+ * ponytail: agentsStates -> task.progress deltas are not synthesized here. The
+ * app-server delivers collab items only at item/started and item/completed
+ * (there is no per-transition item/updated for them in this schema version),
+ * so a finer progress stream needs a recorded fixture proving the cadence
+ * before it can be emitted without guessing.
+ */
+function collabTaskEvents(
+  event: ProviderEvent,
+  canonicalThreadId: ThreadId,
+  item: Record<string, unknown>,
+  lifecycle: "item.started" | "item.completed",
+): ProviderRuntimeEvent[] {
+  if (item.type !== "collabAgentToolCall") return [];
+  const tool = typeof item.tool === "string" ? item.tool : undefined;
+  const status = typeof item.status === "string" ? item.status : undefined;
+  const collabId = typeof item.id === "string" && item.id.length > 0 ? item.id : undefined;
+  const model = typeof item.model === "string" && item.model.length > 0 ? item.model : undefined;
+  const prompt =
+    typeof item.prompt === "string" && item.prompt.length > 0 ? item.prompt : undefined;
+  const receivers = Array.isArray(item.receiverThreadIds)
+    ? item.receiverThreadIds.filter((id): id is string => typeof id === "string" && id.length > 0)
+    : [];
+  const workerIds = receivers.length > 0 ? receivers : collabId ? [collabId] : [];
+  if (workerIds.length === 0) return [];
+
+  const base = runtimeEventBase(event, canonicalThreadId);
+  const stamp = (suffix: string) => ({ ...base, eventId: EventId.make(`${event.id}:${suffix}`) });
+  const description = prompt ?? (tool ? COLLAB_TOOL_ACTION_LABEL[tool] : undefined);
+  const isTerminal = status === "completed" || status === "failed";
+  const results: ProviderRuntimeEvent[] = [];
+
+  for (const workerId of workerIds) {
+    const taskId = RuntimeTaskId.make(workerId);
+    // A spawn declares a new worker: emit task.started (deduped downstream by
+    // taskId). Emitting it on both lifecycles ensures the card exists even if
+    // only the completion is observed.
+    if (tool === "spawnAgent") {
+      results.push({
+        ...stamp(`task-started:${workerId}`),
+        type: "task.started",
+        payload: {
+          taskId,
+          agentId: workerId,
+          ...(model ? { model } : {}),
+          ...(collabId ? { parentToolCallId: collabId } : {}),
+          ...(description ? { description } : {}),
+          ...(tool ? { taskType: tool } : {}),
+        },
+      });
+    }
+    if (lifecycle === "item.completed" || isTerminal || tool === "closeAgent") {
+      results.push({
+        ...stamp(`task-completed:${workerId}`),
+        type: "task.completed",
+        payload: {
+          taskId,
+          agentId: workerId,
+          status: status === "failed" ? "failed" : "completed",
+        },
+      });
+    } else if (tool !== "spawnAgent" && description) {
+      // Non-terminal steering action (sendInput/resumeAgent/wait): one row.
+      results.push({
+        ...stamp(`task-progress:${workerId}`),
+        type: "task.progress",
+        payload: { taskId, agentId: workerId, description },
+      });
+    }
+  }
+  return results;
+}
+
 function mapToRuntimeEvents(
   event: ProviderEvent,
   canonicalThreadId: ThreadId,
@@ -828,7 +924,9 @@ function mapToRuntimeEvents(
 
   if (event.method === "item/started") {
     const started = mapItemLifecycle(event, canonicalThreadId, "item.started");
-    return started ? [started] : [];
+    const item = rawItemFromPayload(event.payload);
+    const collab = item ? collabTaskEvents(event, canonicalThreadId, item, "item.started") : [];
+    return [...(started ? [started] : []), ...collab];
   }
 
   if (event.method === "item/completed") {
@@ -854,7 +952,11 @@ function mapToRuntimeEvents(
       ];
     }
     const completed = mapItemLifecycle(event, canonicalThreadId, "item.completed");
-    return completed ? [completed] : [];
+    const rawItem = rawItemFromPayload(event.payload);
+    const collab = rawItem
+      ? collabTaskEvents(event, canonicalThreadId, rawItem, "item.completed")
+      : [];
+    return [...(completed ? [completed] : []), ...collab];
   }
 
   if (
