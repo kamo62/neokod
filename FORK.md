@@ -604,7 +604,21 @@ comment naming the recorded fixture that would unblock it.
   unchanged); this slice only ADDS `task.*`.
 - Tests from recorded collab/review item fixtures.
 
-**Slice A5: Claude adapter attribution via parent_tool_use_id.**
+**Slice A5: Claude adapter attribution via parent_tool_use_id.** ⏸ DEFERRED (fixture-gated).
+
+The determinable Claude win already shipped in A3: Claude `task_started/
+task_progress/task_notification` already map to `task.*` (keyed on `task_id`,
+with `description`/`task_type`/summaries/`lastToolName`), and A3's move of
+`taskType` → the card `kind` field means Claude workers now render correctly
+(kind label, no bogus model). What remains — attributing nested
+assistant/tool content (currently flattened; `parent_tool_use_id` treated as a
+noise key at `ClaudeAdapter.ts:1268-1276`) into per-task `task.progress` — is
+blocked on this slice's own "step zero": a live stream-json fixture proving
+whether `task_started.task_id` equals the spawning `Task` `tool_use` id (direct
+join) or must be correlated through the first nested `parent_tool_use_id`.
+Implementing the join against a guessed correlation, and testing it with a
+fixture written to match that guess, would be circular and risks silently
+mis-routing main-thread content. Deferred until a recorded fixture exists.
 
 - Step zero is a correlation check with a live fixture: establish whether the
   CLI's `task_started.task_id` equals the spawning `Task` `tool_use` id. If

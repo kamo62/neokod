@@ -186,7 +186,10 @@ const SubagentsPanel = memo(function SubagentsPanel({
             <div className="mt-3 space-y-1.5 border-l border-border/50 pl-2.5">
               {selected.progress.length > 0 ? (
                 selected.progress.map((entry, index) => (
-                  <div key={`${selected.taskId}:${index}`} className="text-[11px]">
+                  <div
+                    key={`${selected.taskId}:${entry.at}:${entry.lastToolName ?? entry.summary ?? entry.description ?? index}`}
+                    className="text-[11px]"
+                  >
                     <p className="leading-snug text-muted-foreground/80">
                       {entry.summary ?? entry.description ?? "Working…"}
                     </p>
@@ -240,7 +243,10 @@ const SubagentsPanel = memo(function SubagentsPanel({
                       {card.progress.length > 0 ? (
                         <div className="mt-2 space-y-1 border-l border-border/50 pl-2.5">
                           {card.progress.map((entry, index) => (
-                            <div key={`${card.taskId}:${index}`} className="text-[11px]">
+                            <div
+                              key={`${card.taskId}:${entry.at}:${entry.lastToolName ?? entry.summary ?? entry.description ?? index}`}
+                              className="text-[11px]"
+                            >
                               <p className="leading-snug text-muted-foreground/70">
                                 {entry.summary ?? entry.description ?? "Working…"}
                               </p>
