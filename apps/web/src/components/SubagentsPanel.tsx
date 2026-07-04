@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
-import { CheckIcon, LoaderIcon, TriangleAlertIcon } from "lucide-react";
+import { CheckIcon, LoaderIcon, TriangleAlertIcon, XIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Badge } from "./ui/badge";
 import { ScrollArea } from "./ui/scroll-area";
@@ -61,6 +61,27 @@ export function resolveSelectedSubagent(
   return cards.find((card) => card.taskId === selectedTaskId) ?? null;
 }
 
+/**
+ * A finished worker that produced nothing worth showing (no progress rows and
+ * no summary) is pure noise; it should auto-disappear from the panel. Pure.
+ */
+export function isDismissableEmptyWorker(card: SubagentCard): boolean {
+  const terminal =
+    card.status === "completed" || card.status === "failed" || card.status === "stopped";
+  return terminal && card.progress.length === 0 && !card.summary;
+}
+
+/**
+ * The workers a user should see: not manually dismissed and not a finished
+ * empty worker. Pure.
+ */
+export function visibleSubagentCards(
+  cards: readonly SubagentCard[],
+  dismissed: ReadonlySet<string>,
+): SubagentCard[] {
+  return cards.filter((card) => !dismissed.has(card.taskId) && !isDismissableEmptyWorker(card));
+}
+
 function subagentStatusIcon(status: SubagentCard["status"]): React.ReactNode {
   if (status === "completed") {
     return (
@@ -102,9 +123,20 @@ const SubagentsPanel = memo(function SubagentsPanel({
   mode = "sidebar",
 }: SubagentsPanelProps) {
   const cards = useMemo(() => deriveSubagentCards(activities), [activities]);
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const selected = resolveSelectedSubagent(cards, selectedTaskId);
-  const tabs = useMemo(() => deriveSubagentTabs(cards), [cards]);
+  const visibleCards = useMemo(() => visibleSubagentCards(cards, dismissed), [cards, dismissed]);
+  const selected = resolveSelectedSubagent(visibleCards, selectedTaskId);
+  const tabs = useMemo(() => deriveSubagentTabs(visibleCards), [visibleCards]);
+
+  const dismissWorker = (taskId: string) => {
+    setDismissed((prev) => {
+      const next = new Set(prev);
+      next.add(taskId);
+      return next;
+    });
+    setSelectedTaskId((current) => (current === taskId ? null : current));
+  };
 
   // Auto-follow the selected worker's progress stream.
   const streamEndRef = useRef<HTMLDivElement | null>(null);
@@ -132,20 +164,29 @@ const SubagentsPanel = memo(function SubagentsPanel({
           >
             Subagents
           </Badge>
-          {cards.length > 0 ? (
+          {visibleCards.length > 0 ? (
             <span className="text-[11px] text-muted-foreground/60 tabular-nums">
-              {cards.length}
+              {visibleCards.length}
             </span>
           ) : null}
         </div>
         {selected ? (
-          <button
-            type="button"
-            onClick={() => setSelectedTaskId(null)}
-            className="rounded px-1.5 py-0.5 text-[11px] text-muted-foreground/70 hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-          >
-            All workers
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => dismissWorker(selected.taskId)}
+              className="rounded px-1.5 py-0.5 text-[11px] text-muted-foreground/70 hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            >
+              Dismiss
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedTaskId(null)}
+              className="rounded px-1.5 py-0.5 text-[11px] text-muted-foreground/70 hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            >
+              All workers
+            </button>
+          </div>
         ) : null}
       </div>
 
@@ -159,26 +200,36 @@ const SubagentsPanel = memo(function SubagentsPanel({
           {tabs.map((tab) => {
             const isSelected = tab.taskId === selectedTaskId;
             return (
-              <button
-                key={tab.taskId}
-                type="button"
-                role="tab"
-                aria-selected={isSelected}
-                aria-label={tab.hint ? `${tab.label} (${tab.hint})` : tab.label}
-                title={tab.hint ? `${tab.label} · ${tab.hint}` : tab.label}
-                onClick={() =>
-                  setSelectedTaskId((current) => (current === tab.taskId ? null : tab.taskId))
-                }
-                className={cn(
-                  "flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                  isSelected
-                    ? "border-primary/50 bg-primary/10 text-foreground"
-                    : "border-border/50 text-muted-foreground/80 hover:bg-muted/40 hover:text-foreground",
-                )}
-              >
-                {subagentStatusIcon(tab.status)}
-                <span className="max-w-[120px] truncate">{tab.label}</span>
-              </button>
+              <div key={tab.taskId} className="group relative flex shrink-0 items-center">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={isSelected}
+                  aria-label={tab.hint ? `${tab.label} (${tab.hint})` : tab.label}
+                  title={tab.hint ? `${tab.label} · ${tab.hint}` : tab.label}
+                  onClick={() =>
+                    setSelectedTaskId((current) => (current === tab.taskId ? null : tab.taskId))
+                  }
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md border py-1 pr-6 pl-2 text-[11px] transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                    isSelected
+                      ? "border-primary/50 bg-primary/10 text-foreground"
+                      : "border-border/50 text-muted-foreground/80 hover:bg-muted/40 hover:text-foreground",
+                  )}
+                >
+                  {subagentStatusIcon(tab.status)}
+                  <span className="max-w-[120px] truncate">{tab.label}</span>
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Dismiss ${tab.label}`}
+                  title="Dismiss worker"
+                  onClick={() => dismissWorker(tab.taskId)}
+                  className="absolute top-1/2 right-1 flex size-4 -translate-y-1/2 items-center justify-center rounded text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                  <XIcon className="size-3" />
+                </button>
+              </div>
             );
           })}
         </div>
@@ -238,67 +289,79 @@ const SubagentsPanel = memo(function SubagentsPanel({
           </div>
         ) : (
           <div className="space-y-2 p-3">
-            {cards.map((card) => {
+            {visibleCards.map((card) => {
               const elapsed = formatElapsed(card.startedAt, card.completedAt ?? undefined);
               const secondary = subagentSecondaryLabel(card);
               return (
-                <button
-                  type="button"
-                  key={card.taskId}
-                  onClick={() => setSelectedTaskId(card.taskId)}
-                  className={cn(
-                    "w-full rounded-lg border border-border/50 bg-background/50 p-3 text-left transition-colors duration-200 hover:border-border focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                    card.status === "inProgress" && "bg-blue-500/5",
-                    card.status === "completed" && "bg-emerald-500/5",
-                    card.status === "failed" && "bg-destructive/5",
-                  )}
-                >
-                  <div className="flex items-start gap-2.5">
-                    {subagentStatusIcon(card.status)}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <p className="truncate text-[13px] font-medium text-foreground/90">
-                          {card.name}
-                        </p>
-                        <span className="shrink-0 text-[11px] text-muted-foreground/50 tabular-nums">
-                          {elapsed ?? formatTimestamp(card.startedAt, timestampFormat)}
-                        </span>
-                      </div>
-                      {secondary ? (
-                        <p className="truncate text-[11px] text-muted-foreground/60">{secondary}</p>
-                      ) : null}
-                      {card.summary ? (
-                        <p className="mt-1.5 text-[12px] leading-snug text-muted-foreground/80">
-                          {card.summary}
-                        </p>
-                      ) : null}
-                      {card.progress.length > 0 ? (
-                        <div className="mt-2 space-y-1 border-l border-border/50 pl-2.5">
-                          {card.progress.map((entry, index) => (
-                            <div
-                              key={`${card.taskId}:${entry.at}:${entry.lastToolName ?? entry.summary ?? entry.description ?? index}`}
-                              className="text-[11px]"
-                            >
-                              <p className="leading-snug text-muted-foreground/70">
-                                {entry.summary ?? entry.description ?? "Working…"}
-                              </p>
-                              {entry.lastToolName ? (
-                                <p className="text-[10px] text-muted-foreground/40">
-                                  {entry.lastToolName}
-                                </p>
-                              ) : null}
-                            </div>
-                          ))}
+                <div key={card.taskId} className="group relative">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTaskId(card.taskId)}
+                    className={cn(
+                      "w-full rounded-lg border border-border/50 bg-background/50 p-3 text-left transition-colors duration-200 hover:border-border focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                      card.status === "inProgress" && "bg-blue-500/5",
+                      card.status === "completed" && "bg-emerald-500/5",
+                      card.status === "failed" && "bg-destructive/5",
+                    )}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      {subagentStatusIcon(card.status)}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className="truncate text-[13px] font-medium text-foreground/90">
+                            {card.name}
+                          </p>
+                          <span className="shrink-0 pr-5 text-[11px] text-muted-foreground/50 tabular-nums">
+                            {elapsed ?? formatTimestamp(card.startedAt, timestampFormat)}
+                          </span>
                         </div>
-                      ) : null}
+                        {secondary ? (
+                          <p className="truncate text-[11px] text-muted-foreground/60">
+                            {secondary}
+                          </p>
+                        ) : null}
+                        {card.summary ? (
+                          <p className="mt-1.5 text-[12px] leading-snug text-muted-foreground/80">
+                            {card.summary}
+                          </p>
+                        ) : null}
+                        {card.progress.length > 0 ? (
+                          <div className="mt-2 space-y-1 border-l border-border/50 pl-2.5">
+                            {card.progress.map((entry, index) => (
+                              <div
+                                key={`${card.taskId}:${entry.at}:${entry.lastToolName ?? entry.summary ?? entry.description ?? index}`}
+                                className="text-[11px]"
+                              >
+                                <p className="leading-snug text-muted-foreground/70">
+                                  {entry.summary ?? entry.description ?? "Working…"}
+                                </p>
+                                {entry.lastToolName ? (
+                                  <p className="text-[10px] text-muted-foreground/40">
+                                    {entry.lastToolName}
+                                  </p>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                </button>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Dismiss ${card.name}`}
+                    title="Dismiss worker"
+                    onClick={() => dismissWorker(card.taskId)}
+                    className="absolute top-2 right-2 flex size-5 items-center justify-center rounded text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  >
+                    <XIcon className="size-3.5" />
+                  </button>
+                </div>
               );
             })}
 
             {/* Empty state */}
-            {cards.length === 0 ? (
+            {visibleCards.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <p className="text-[13px] text-muted-foreground/40">No subagents yet.</p>
                 <p className="mt-1 text-[11px] text-muted-foreground/30">

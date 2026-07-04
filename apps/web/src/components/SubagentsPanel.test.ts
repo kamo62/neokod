@@ -3,8 +3,10 @@ import { describe, expect, it } from "vite-plus/test";
 import type { SubagentCard } from "../session-logic";
 import {
   deriveSubagentTabs,
+  isDismissableEmptyWorker,
   resolveSelectedSubagent,
   subagentSecondaryLabel,
+  visibleSubagentCards,
 } from "./SubagentsPanel";
 
 function makeCard(overrides: Partial<SubagentCard> & { taskId: string }): SubagentCard {
@@ -75,5 +77,44 @@ describe("resolveSelectedSubagent", () => {
 
   it("returns null when the selection is unknown", () => {
     expect(resolveSelectedSubagent(cards, "ghost")).toBe(null);
+  });
+});
+
+describe("isDismissableEmptyWorker", () => {
+  it("is true for a finished worker with no progress and no summary", () => {
+    expect(isDismissableEmptyWorker(makeCard({ taskId: "a", status: "completed" }))).toBe(true);
+    expect(isDismissableEmptyWorker(makeCard({ taskId: "a", status: "failed" }))).toBe(true);
+  });
+
+  it("is false while the worker is in progress", () => {
+    expect(isDismissableEmptyWorker(makeCard({ taskId: "a", status: "inProgress" }))).toBe(false);
+  });
+
+  it("is false for a finished worker that has content", () => {
+    expect(
+      isDismissableEmptyWorker(makeCard({ taskId: "a", status: "completed", summary: "did it" })),
+    ).toBe(false);
+    expect(
+      isDismissableEmptyWorker(
+        makeCard({
+          taskId: "a",
+          status: "completed",
+          progress: [{ description: "step", summary: null, lastToolName: null, at: "t" }],
+        }),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("visibleSubagentCards", () => {
+  it("hides dismissed workers and finished-empty workers", () => {
+    const cards = [
+      makeCard({ taskId: "running", status: "inProgress" }),
+      makeCard({ taskId: "done-empty", status: "completed" }),
+      makeCard({ taskId: "done-content", status: "completed", summary: "ok" }),
+      makeCard({ taskId: "dismissed", status: "inProgress" }),
+    ];
+    const visible = visibleSubagentCards(cards, new Set(["dismissed"]));
+    expect(visible.map((card) => card.taskId)).toEqual(["running", "done-content"]);
   });
 });

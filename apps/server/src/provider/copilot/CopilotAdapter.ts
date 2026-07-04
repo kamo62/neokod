@@ -131,6 +131,11 @@ interface CopilotSessionContext {
   // in-flight assistant/tool events) to the task id keyed on the spawning
   // `toolCallId`. Populated at subagent.started, cleared at completed/failed.
   readonly subagentTaskByAgentId: Map<string, RuntimeTaskId>;
+  // Copilot plan/tasklist refresh coalescing: `session.todos_changed` is a
+  // signal-only event, so we re-read the SQL todo table on each signal but
+  // guard against overlapping reads (dirty flag re-runs once more).
+  todosRefreshing: boolean;
+  todosDirty: boolean;
   readonly usage: CopilotUsageAccumulator;
   readonly turns: Array<{ id: TurnId; items: Array<unknown> }>;
   activeTurnId: TurnId | undefined;
@@ -281,6 +286,70 @@ function copyCopilotCustomAgent(agent: CopilotSettings["customAgents"][number]):
 function getCopilotFleetStart(session: CopilotSession): CopilotRpcFleetStart | undefined {
   const rpc = (session as { rpc?: { fleet?: { start?: CopilotRpcFleetStart } } }).rpc;
   return rpc?.fleet?.start;
+}
+
+interface CopilotTodoRow {
+  readonly id?: string;
+  readonly title?: string;
+  readonly description?: string;
+  readonly status?: string;
+}
+type CopilotReadSqlTodos = () => Promise<{ readonly rows?: ReadonlyArray<CopilotTodoRow> }>;
+
+/**
+ * The SDK's structured-plan reader, when the running CLI build exposes it.
+ * Accessed defensively (like `fleet.start`) so an older SDK simply yields no
+ * plan instead of throwing.
+ */
+function getCopilotPlanTodosReader(session: CopilotSession): CopilotReadSqlTodos | undefined {
+  const rpc = (
+    session as {
+      rpc?: { plan?: { readSqlTodosWithDependencies?: CopilotReadSqlTodos } };
+    }
+  ).rpc;
+  return rpc?.plan?.readSqlTodosWithDependencies;
+}
+
+type RuntimePlanStepStatus = "pending" | "inProgress" | "completed";
+
+/** Normalize the SDK's free-string todo status into the canonical plan status. */
+export function normalizeCopilotTodoStatus(status: string | undefined): RuntimePlanStepStatus {
+  const normalized = (status ?? "").toLowerCase().replace(/[\s-]+/g, "_");
+  if (normalized === "completed" || normalized === "complete" || normalized === "done") {
+    return "completed";
+  }
+  if (
+    normalized === "in_progress" ||
+    normalized === "inprogress" ||
+    normalized === "running" ||
+    normalized === "active" ||
+    normalized === "started"
+  ) {
+    return "inProgress";
+  }
+  return "pending";
+}
+
+/**
+ * Map the SDK's SQL todo rows into canonical plan steps for `turn.plan.updated`
+ * (the same surface Codex/Claude/Cursor/Grok feed). Rows with no text are
+ * dropped; the dependency graph is not represented in the flat plan model.
+ * Pure.
+ *
+ * ponytail: the flat plan drops the `todo_deps` DAG. Rendering dependencies
+ * would need an optional edge list on RuntimePlanStep and PlanSidebar support;
+ * the ceiling is a flat ordered list until that UI exists.
+ */
+export function mapCopilotTodosToPlanSteps(
+  rows: ReadonlyArray<CopilotTodoRow>,
+): Array<{ step: string; status: RuntimePlanStepStatus }> {
+  const steps: Array<{ step: string; status: RuntimePlanStepStatus }> = [];
+  for (const row of rows) {
+    const step = (row.title ?? row.description ?? "").trim();
+    if (step.length === 0) continue;
+    steps.push({ step, status: normalizeCopilotTodoStatus(row.status) });
+  }
+  return steps;
 }
 
 function titleForCopilotTool(itemType: CanonicalItemType, toolName: string): string {
@@ -702,9 +771,50 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         sdkTurnId: undefined,
         pendingCallbackCount: 0,
         stopped: false,
+        todosRefreshing: false,
+        todosDirty: false,
       };
       const sessionCtx = ctx;
       sessions.set(input.threadId, sessionCtx);
+
+      // Copilot plan/tasklist: re-read the SQL todo table on each
+      // `session.todos_changed` signal and map it into the canonical
+      // `turn.plan.updated` event (the same plan surface Codex/Claude/Cursor/
+      // Grok feed). Reads are coalesced so a burst of signals never fans out.
+      const planTodosReader = getCopilotPlanTodosReader(copilotSession);
+      const runTodoRefresh = Effect.gen(function* () {
+        let again = true;
+        while (again) {
+          sessionCtx.todosDirty = false;
+          const result = yield* Effect.tryPromise(() => planTodosReader!()).pipe(
+            Effect.orElseSucceed(() => undefined),
+          );
+          if (result) {
+            const plan = mapCopilotTodosToPlanSteps(result.rows ?? []);
+            if (plan.length > 0) {
+              yield* offerRuntimeEvent({
+                type: "turn.plan.updated",
+                ...(yield* makeEventStamp()),
+                provider: PROVIDER,
+                threadId: input.threadId,
+                turnId: sessionCtx.activeTurnId,
+                payload: { plan },
+              });
+            }
+          }
+          again = sessionCtx.todosDirty;
+        }
+        sessionCtx.todosRefreshing = false;
+      });
+      const requestTodoRefresh = () => {
+        if (!planTodosReader || sessionCtx.stopped) return;
+        if (sessionCtx.todosRefreshing) {
+          sessionCtx.todosDirty = true;
+          return;
+        }
+        sessionCtx.todosRefreshing = true;
+        runFork(runTodoRefresh);
+      };
 
       const emitPermissionOpened = (requestData: CopilotPermissionRequestRecord["data"]) =>
         Effect.gen(function* () {
@@ -978,6 +1088,12 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
 
       copilotSession.on("subagent.deselected", (event) => {
         runFork(logNative(input.threadId, "subagent.deselected", event));
+      });
+
+      // Copilot tasklist signal: refresh the plan from the SQL todo table.
+      copilotSession.on("session.todos_changed", (event) => {
+        runFork(logNative(input.threadId, "session.todos_changed", event));
+        requestTodoRefresh();
       });
 
       copilotSession.on("permission.requested", (event) => {
@@ -1284,6 +1400,10 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         threadId: input.threadId,
         payload: { providerThreadId: copilotSession.sessionId },
       });
+
+      // Resume/startup: the SDK may already hold a plan from a prior run and
+      // won't necessarily re-emit todos_changed, so read it once now.
+      requestTodoRefresh();
 
       return session;
     });

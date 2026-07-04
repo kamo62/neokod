@@ -26,6 +26,7 @@ import { beforeEach } from "vite-plus/test";
 import { ServerConfig } from "../../config.ts";
 import type { CopilotAdapterShape } from "./CopilotAdapter.ts";
 import { makeCopilotAdapter } from "./CopilotAdapter.ts";
+import { mapCopilotTodosToPlanSteps, normalizeCopilotTodoStatus } from "./CopilotAdapter.ts";
 
 class CopilotAdapterTag extends Context.Service<CopilotAdapterTag, CopilotAdapterShape>()(
   "t3/provider/copilot/CopilotAdapter.test/CopilotAdapterTag",
@@ -49,10 +50,19 @@ interface FakeCopilotSession {
     readonly fleet: {
       readonly start: (params: { prompt?: string }) => Promise<{ started: boolean }>;
     };
+    readonly plan: {
+      readonly readSqlTodosWithDependencies: () => Promise<{
+        rows: Array<{ id?: string; title?: string; description?: string; status?: string }>;
+        dependencies: Array<{ todoId: string; dependsOn: string }>;
+      }>;
+    };
   };
   readonly emit: (eventType: string, event: unknown) => void;
   readonly sentMessages: Array<unknown>;
   readonly fleetStarts: Array<{ prompt?: string }>;
+  readonly setTodoRows: (
+    rows: Array<{ id?: string; title?: string; description?: string; status?: string }>,
+  ) => void;
   readonly disconnectCalls: Array<string>;
   readonly abortCalls: number;
   readonly setModelCalls: Array<{ model: string; options: unknown }>;
@@ -64,6 +74,7 @@ function makeFakeCopilotSession(sessionId: string): FakeCopilotSession {
   const fleetStarts: Array<{ prompt?: string }> = [];
   const disconnectCalls: Array<string> = [];
   const setModelCalls: Array<{ model: string; options: unknown }> = [];
+  let todoRows: Array<{ id?: string; title?: string; description?: string; status?: string }> = [];
   let abortCalls = 0;
   let messageCounter = 0;
 
@@ -102,6 +113,9 @@ function makeFakeCopilotSession(sessionId: string): FakeCopilotSession {
           return { started: true };
         },
       },
+      plan: {
+        readSqlTodosWithDependencies: async () => ({ rows: todoRows, dependencies: [] }),
+      },
     },
     emit: (eventType, event) => {
       for (const handler of handlers.get(eventType) ?? []) {
@@ -110,6 +124,9 @@ function makeFakeCopilotSession(sessionId: string): FakeCopilotSession {
     },
     sentMessages,
     fleetStarts,
+    setTodoRows: (rows) => {
+      todoRows = rows;
+    },
     disconnectCalls,
     get abortCalls() {
       return abortCalls;
@@ -1058,6 +1075,66 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
         events.some((event) => event.type === "task.progress"),
         false,
       );
+    }),
+  );
+
+  it.effect("normalizes todo status and maps rows into plan steps", () =>
+    Effect.sync(() => {
+      NodeAssert.equal(normalizeCopilotTodoStatus("completed"), "completed");
+      NodeAssert.equal(normalizeCopilotTodoStatus("done"), "completed");
+      NodeAssert.equal(normalizeCopilotTodoStatus("in_progress"), "inProgress");
+      NodeAssert.equal(normalizeCopilotTodoStatus("in progress"), "inProgress");
+      NodeAssert.equal(normalizeCopilotTodoStatus("running"), "inProgress");
+      NodeAssert.equal(normalizeCopilotTodoStatus("pending"), "pending");
+      NodeAssert.equal(normalizeCopilotTodoStatus(undefined), "pending");
+
+      const steps = mapCopilotTodosToPlanSteps([
+        { id: "1", title: "Read code", status: "completed" },
+        { id: "2", description: "Write fix", status: "in_progress" },
+        { id: "3", status: "pending" }, // no text -> dropped
+        { id: "4", title: "  ", status: "pending" }, // blank -> dropped
+        { id: "5", title: "Verify", status: "queued" },
+      ]);
+      NodeAssert.deepEqual(steps, [
+        { step: "Read code", status: "completed" },
+        { step: "Write fix", status: "inProgress" },
+        { step: "Verify", status: "pending" },
+      ]);
+    }),
+  );
+
+  it.effect("emits turn.plan.updated from Copilot todos on session.todos_changed", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CopilotAdapterTag;
+      const threadId = asThreadId("thread-copilot-tasklist");
+      const planFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId && event.type === "turn.plan.updated"),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+      const fakeSession = latestSession();
+      fakeSession.setTodoRows([
+        { id: "1", title: "Investigate", status: "in_progress" },
+        { id: "2", title: "Fix", status: "pending" },
+      ]);
+      fakeSession.emit("session.todos_changed", { data: {} });
+
+      const events = Array.from(yield* Fiber.join(planFiber).pipe(Effect.timeout("1 second")));
+      NodeAssert.equal(events.length, 1);
+      const planEvent = events[0];
+      NodeAssert.ok(planEvent && planEvent.type === "turn.plan.updated");
+      NodeAssert.deepEqual(planEvent.payload.plan, [
+        { step: "Investigate", status: "inProgress" },
+        { step: "Fix", status: "pending" },
+      ]);
     }),
   );
 
