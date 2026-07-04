@@ -27,7 +27,7 @@ import { defaultInstanceIdForDriver, ProviderDriverKind } from "@t3tools/contrac
 import { Boxes } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
-import { useThread } from "../../state/entities";
+import { useThreadShell } from "../../state/entities";
 import { selectRailPopoverOpenNonce, useWorkspaceRailUiStore } from "../../workspaceRailUiStore";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
@@ -94,7 +94,9 @@ export const CopilotMcpControls = memo(function CopilotMcpControls({
   );
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
   const copilot = providers.githubCopilot;
-  const modelSelection = useThread(threadRef)?.modelSelection;
+  // Shell-only subscription: modelSelection lives on the thread shell, and the
+  // detail atom churns on every streaming delta this popover does not care about.
+  const modelSelection = useThreadShell(threadRef)?.modelSelection;
   const usesCopilot = threadUsesCopilot(modelSelection?.instanceId, providerInstances);
 
   const [open, setOpen] = useState(false);

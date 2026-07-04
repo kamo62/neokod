@@ -6,7 +6,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { useThread } from "../../state/entities";
+import { useThreadShell } from "../../state/entities";
 import { selectRailPopoverOpenNonce, useWorkspaceRailUiStore } from "../../workspaceRailUiStore";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -44,7 +44,9 @@ export function GoalChip({ environmentId, threadId }: GoalChipProps) {
     () => scopeThreadRef(environmentId, threadId),
     [environmentId, threadId],
   );
-  const thread = useThread(threadRef);
+  // Shell-only subscription: goal/goalStatus live on the thread shell, and the
+  // detail atom churns on every streaming delta this chip does not care about.
+  const thread = useThreadShell(threadRef);
   const goal = thread?.goal ?? null;
   const goalStatus: GoalStatus = thread?.goalStatus ?? "active";
 
@@ -120,6 +122,7 @@ export function GoalChip({ environmentId, threadId }: GoalChipProps) {
                   aria-label={isDone ? "Mark goal active" : "Mark goal done"}
                   className={cn(
                     "flex size-4 shrink-0 items-center justify-center rounded-full border",
+                    "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
                     isDone
                       ? "border-emerald-500 bg-emerald-500/15 text-emerald-500"
                       : "border-muted-foreground/40 text-muted-foreground",

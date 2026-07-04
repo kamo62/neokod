@@ -13,7 +13,7 @@ import { memo, useMemo } from "react";
 import { useComposerHandleContext } from "../../composerHandleContext";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { useRightPanelStore } from "../../rightPanelStore";
-import { useThread } from "../../state/entities";
+import { useThreadShell } from "../../state/entities";
 import { useThreadRunningTerminalIds } from "../../state/terminalSessions";
 import { useTerminalUiStateStore } from "../../terminalUiStateStore";
 import {
@@ -67,7 +67,9 @@ export const ThreadWorkspaceRail = memo(function ThreadWorkspaceRail({
     () => scopeThreadRef(environmentId, threadId),
     [environmentId, threadId],
   );
-  const modelSelection = useThread(threadRef)?.modelSelection;
+  // Shell-only subscription: modelSelection lives on the thread shell, and the
+  // detail atom churns on every streaming delta this rail does not care about.
+  const modelSelection = useThreadShell(threadRef)?.modelSelection;
   const runningTerminalIds = useThreadRunningTerminalIds({ environmentId, threadId });
   const fleetMode = useEnvironmentSettings(
     environmentId,
