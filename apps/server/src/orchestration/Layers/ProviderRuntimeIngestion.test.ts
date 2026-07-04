@@ -2947,6 +2947,79 @@ describe("ProviderRuntimeIngestion", () => {
     ).toBe("# Plan title");
   });
 
+  it("carries sub-agent worker identity through task lifecycle activities", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    harness.emit({
+      type: "task.started",
+      eventId: asEventId("evt-worker-started"),
+      provider: ProviderDriverKind.make("githubCopilot"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-worker-1"),
+      payload: {
+        taskId: "worker-task-1",
+        taskType: "code-reviewer",
+        description: "Reviewer",
+        agentId: "agent-abc",
+        model: "gpt-5-codex",
+        parentToolCallId: "toolcall-xyz",
+      },
+    });
+
+    harness.emit({
+      type: "task.progress",
+      eventId: asEventId("evt-worker-progress"),
+      provider: ProviderDriverKind.make("githubCopilot"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-worker-1"),
+      payload: {
+        taskId: "worker-task-1",
+        description: "Inspecting the diff.",
+        agentId: "agent-abc",
+      },
+    });
+
+    harness.emit({
+      type: "task.completed",
+      eventId: asEventId("evt-worker-completed"),
+      provider: ProviderDriverKind.make("githubCopilot"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-worker-1"),
+      payload: {
+        taskId: "worker-task-1",
+        status: "completed",
+        agentId: "agent-abc",
+      },
+    });
+
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) => activity.id === "evt-worker-completed",
+      ),
+    );
+
+    const payloadOf = (id: string): Record<string, unknown> | undefined => {
+      const activity = thread.activities.find(
+        (candidate: ProviderRuntimeTestActivity) => candidate.id === id,
+      );
+      return activity?.payload && typeof activity.payload === "object"
+        ? (activity.payload as Record<string, unknown>)
+        : undefined;
+    };
+
+    const started = payloadOf("evt-worker-started");
+    expect(started?.agentId).toBe("agent-abc");
+    expect(started?.model).toBe("gpt-5-codex");
+    expect(started?.parentToolCallId).toBe("toolcall-xyz");
+
+    expect(payloadOf("evt-worker-progress")?.agentId).toBe("agent-abc");
+    expect(payloadOf("evt-worker-completed")?.agentId).toBe("agent-abc");
+  });
+
   it("projects structured user input request and resolution as thread activities", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";

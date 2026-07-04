@@ -45,6 +45,55 @@ describe("ProviderRuntimeEvent", () => {
     expect(parsed.raw?.source).toBe("copilot.sdk.session-event");
   });
 
+  it("decodes task.started with optional sub-agent worker identity", () => {
+    const parsed = decodeRuntimeEvent({
+      type: "task.started",
+      eventId: "event-worker-1",
+      provider: "githubCopilot",
+      sessionId: "runtime-session-1",
+      createdAt: "2026-07-04T00:00:00.000Z",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      payload: {
+        taskId: "worker-task-1",
+        taskType: "code-reviewer",
+        description: "Reviewer",
+        agentId: "agent-abc",
+        model: "gpt-5-codex",
+        parentToolCallId: "toolcall-xyz",
+      },
+    });
+
+    expect(parsed.type).toBe("task.started");
+    if (parsed.type !== "task.started") {
+      throw new Error("expected task.started");
+    }
+    expect(parsed.payload.agentId).toBe("agent-abc");
+    expect(parsed.payload.model).toBe("gpt-5-codex");
+    expect(parsed.payload.parentToolCallId).toBe("toolcall-xyz");
+  });
+
+  it("decodes task.started without worker identity (fields absent)", () => {
+    const parsed = decodeRuntimeEvent({
+      type: "task.started",
+      eventId: "event-worker-2",
+      provider: "codex",
+      sessionId: "runtime-session-1",
+      createdAt: "2026-07-04T00:00:00.000Z",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      payload: { taskId: "task-1", taskType: "plan" },
+    });
+
+    expect(parsed.type).toBe("task.started");
+    if (parsed.type !== "task.started") {
+      throw new Error("expected task.started");
+    }
+    expect(parsed.payload.agentId).toBeUndefined();
+    expect(parsed.payload.model).toBeUndefined();
+    expect(parsed.payload.parentToolCallId).toBeUndefined();
+  });
+
   it("decodes turn.plan.updated for plan rendering", () => {
     const parsed = decodeRuntimeEvent({
       type: "turn.plan.updated",
