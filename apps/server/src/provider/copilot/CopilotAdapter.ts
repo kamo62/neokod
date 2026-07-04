@@ -127,6 +127,10 @@ interface CopilotSessionContext {
   readonly pendingUserInputs: Map<ApprovalRequestId, PendingUserInput>;
   readonly toolCalls: Map<string, CopilotToolCallRecord>;
   readonly permissionRequests: Map<string, CopilotPermissionRequestRecord>;
+  // A2: sub-agent worker attribution. Maps a worker's `agentId` (which tags
+  // in-flight assistant/tool events) to the task id keyed on the spawning
+  // `toolCallId`. Populated at subagent.started, cleared at completed/failed.
+  readonly subagentTaskByAgentId: Map<string, RuntimeTaskId>;
   readonly usage: CopilotUsageAccumulator;
   readonly turns: Array<{ id: TurnId; items: Array<unknown> }>;
   activeTurnId: TurnId | undefined;
@@ -317,6 +321,20 @@ function summarizeCopilotToolArguments(
   }
 }
 
+/**
+ * Collapse worker output into a single short progress line. Every
+ * `task.progress` becomes a durable projection row, so worker content is
+ * truncated to the first non-empty line (capped) rather than streamed.
+ */
+function summarizeWorkerProgressLine(text: string): string | undefined {
+  const line = text
+    .split("\n")
+    .map((part) => part.trim())
+    .find((part) => part.length > 0);
+  if (!line) return undefined;
+  return line.length <= 200 ? line : `${line.slice(0, 197)}...`;
+}
+
 function toRequestError(threadId: ThreadId, method: string, cause: unknown): ProviderAdapterError {
   const message = cause instanceof Error ? cause.message.toLowerCase() : "";
   if (message.includes("unknown session") || message.includes("not found")) {
@@ -439,6 +457,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       if (ctx.stopped) return;
       ctx.stopped = true;
       ctx.toolCalls.clear();
+      ctx.subagentTaskByAgentId.clear();
       ctx.permissionRequests.clear();
       yield* settlePendingApprovalsAsCancelled(ctx.pendingApprovals);
       yield* settlePendingUserInputsAsEmptyAnswers(ctx.pendingUserInputs);
@@ -495,6 +514,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       const pendingUserInputs = new Map<ApprovalRequestId, PendingUserInput>();
       const toolCalls = new Map<string, CopilotToolCallRecord>();
       const permissionRequests = new Map<string, CopilotPermissionRequestRecord>();
+      const subagentTaskByAgentId = new Map<string, RuntimeTaskId>();
       // Populated once the session record below is assigned; the SDK never
       // invokes onPermissionRequest/onUserInputRequest before createSession
       // resolves, but the closures are handed to the SDK before `ctx`
@@ -668,6 +688,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         pendingUserInputs,
         toolCalls,
         permissionRequests,
+        subagentTaskByAgentId,
         usage: {
           usedTokens: 0,
           inputTokens: 0,
@@ -874,6 +895,12 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         runFork(
           Effect.gen(function* () {
             yield* logNative(input.threadId, "subagent.started", event);
+            if (event.agentId) {
+              sessionCtx.subagentTaskByAgentId.set(
+                event.agentId,
+                RuntimeTaskId.make(event.data.toolCallId),
+              );
+            }
             yield* offerRuntimeEvent({
               type: "task.started",
               ...(yield* makeEventStamp()),
@@ -884,6 +911,9 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
                 taskId: RuntimeTaskId.make(event.data.toolCallId),
                 description: event.data.agentDisplayName,
                 taskType: event.data.agentName,
+                parentToolCallId: event.data.toolCallId,
+                ...(event.agentId ? { agentId: event.agentId } : {}),
+                ...(event.data.model ? { model: event.data.model } : {}),
               },
               ...rawSessionEvent("subagent.started", event.data),
             });
@@ -895,6 +925,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         runFork(
           Effect.gen(function* () {
             yield* logNative(input.threadId, "subagent.completed", event);
+            if (event.agentId) sessionCtx.subagentTaskByAgentId.delete(event.agentId);
             yield* offerRuntimeEvent({
               type: "task.completed",
               ...(yield* makeEventStamp()),
@@ -906,6 +937,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
                 status: "completed",
                 summary: event.data.agentDisplayName,
                 usage: event.data,
+                ...(event.agentId ? { agentId: event.agentId } : {}),
               },
               ...rawSessionEvent("subagent.completed", event.data),
             });
@@ -917,6 +949,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         runFork(
           Effect.gen(function* () {
             yield* logNative(input.threadId, "subagent.failed", event);
+            if (event.agentId) sessionCtx.subagentTaskByAgentId.delete(event.agentId);
             yield* offerRuntimeEvent({
               type: "task.completed",
               ...(yield* makeEventStamp()),
@@ -928,6 +961,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
                 status: "failed",
                 summary: event.data.error,
                 usage: event.data,
+                ...(event.agentId ? { agentId: event.agentId } : {}),
               },
               ...rawSessionEvent("subagent.failed", event.data),
             });
@@ -983,6 +1017,10 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       copilotSession.on("assistant.message_delta", (event) => {
         runFork(
           Effect.gen(function* () {
+            // A2: a mapped worker's streaming deltas produce no main-thread
+            // content and no task.progress (progress coalesces at message/tool
+            // boundaries only).
+            if (event.agentId && sessionCtx.subagentTaskByAgentId.has(event.agentId)) return;
             if (event.data.deltaContent.length === 0) return;
             yield* offerRuntimeEvent({
               type: "content.delta",
@@ -1001,6 +1039,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       copilotSession.on("assistant.reasoning_delta", (event) => {
         runFork(
           Effect.gen(function* () {
+            if (event.agentId && sessionCtx.subagentTaskByAgentId.has(event.agentId)) return;
             if (event.data.deltaContent.length === 0) return;
             yield* offerRuntimeEvent({
               type: "content.delta",
@@ -1020,6 +1059,29 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         runFork(
           Effect.gen(function* () {
             yield* logNative(input.threadId, "assistant.message", event);
+            // A2: attribute a mapped worker's completed message to its task as
+            // one coalesced progress row, and keep it off the main thread.
+            const workerTaskId = event.agentId
+              ? sessionCtx.subagentTaskByAgentId.get(event.agentId)
+              : undefined;
+            if (workerTaskId) {
+              const detail = summarizeWorkerProgressLine(event.data.content);
+              if (detail) {
+                yield* offerRuntimeEvent({
+                  type: "task.progress",
+                  ...(yield* makeEventStamp()),
+                  provider: PROVIDER,
+                  threadId: input.threadId,
+                  turnId: sessionCtx.activeTurnId,
+                  payload: {
+                    taskId: workerTaskId,
+                    description: detail,
+                    ...(event.agentId ? { agentId: event.agentId } : {}),
+                  },
+                });
+              }
+              return;
+            }
             yield* offerRuntimeEvent({
               type: "item.completed",
               ...(yield* makeEventStamp()),
@@ -1043,6 +1105,9 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         runFork(
           Effect.gen(function* () {
             yield* logNative(input.threadId, "assistant.reasoning", event);
+            // A2: a mapped worker's reasoning stays off the main thread; the
+            // progress stream focuses on messages and tool boundaries.
+            if (event.agentId && sessionCtx.subagentTaskByAgentId.has(event.agentId)) return;
             yield* offerRuntimeEvent({
               type: "item.completed",
               ...(yield* makeEventStamp()),
@@ -1066,6 +1131,31 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         runFork(
           Effect.gen(function* () {
             yield* logNative(input.threadId, "tool.execution_start", event);
+            // A2: a mapped worker's tool call becomes one progress row keyed on
+            // the tool name, and is kept off the main thread (start and
+            // complete both diverted, so no toolCalls bookkeeping is needed).
+            const workerTaskId = event.agentId
+              ? sessionCtx.subagentTaskByAgentId.get(event.agentId)
+              : undefined;
+            if (workerTaskId) {
+              yield* offerRuntimeEvent({
+                type: "task.progress",
+                ...(yield* makeEventStamp()),
+                provider: PROVIDER,
+                threadId: input.threadId,
+                turnId: sessionCtx.activeTurnId,
+                payload: {
+                  taskId: workerTaskId,
+                  description: titleForCopilotTool(
+                    classifyCopilotToolCall(event.data),
+                    event.data.toolName,
+                  ),
+                  lastToolName: event.data.toolName,
+                  ...(event.agentId ? { agentId: event.agentId } : {}),
+                },
+              });
+              return;
+            }
             const itemType = classifyCopilotToolCall(event.data);
             sessionCtx.toolCalls.set(event.data.toolCallId, {
               toolName: event.data.toolName,
@@ -1102,6 +1192,9 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         runFork(
           Effect.gen(function* () {
             yield* logNative(input.threadId, "tool.execution_complete", event);
+            // A2: mapped-worker tool completions are already represented by the
+            // start-time progress row; keep them off the main thread.
+            if (event.agentId && sessionCtx.subagentTaskByAgentId.has(event.agentId)) return;
             const started = sessionCtx.toolCalls.get(event.data.toolCallId);
             sessionCtx.toolCalls.delete(event.data.toolCallId);
             const toolName = started?.toolName ?? event.data.toolDescription?.name ?? "tool";
@@ -1138,6 +1231,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         runFork(
           Effect.gen(function* () {
             sessionCtx.toolCalls.clear();
+            sessionCtx.subagentTaskByAgentId.clear();
             const turnId = sessionCtx.activeTurnId;
             if (!turnId) return;
             sessionCtx.activeTurnId = undefined;

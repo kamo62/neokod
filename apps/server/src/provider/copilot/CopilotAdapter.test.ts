@@ -925,6 +925,142 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
     }),
   );
 
+  it.effect("attributes sub-agent worker output to task.progress (A2)", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CopilotAdapterTag;
+      const threadId = asThreadId("thread-worker-attribution");
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter(
+          (event) =>
+            event.threadId === threadId &&
+            (event.type === "task.started" ||
+              event.type === "task.progress" ||
+              event.type === "task.completed" ||
+              event.type === "content.delta" ||
+              event.type === "item.completed"),
+        ),
+        Stream.take(4),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+      const fakeSession = latestSession();
+      fakeSession.emit("subagent.started", {
+        agentId: "agent-1",
+        data: {
+          toolCallId: "tc-1",
+          agentName: "reviewer",
+          agentDisplayName: "Reviewer",
+          agentDescription: "Review code",
+          model: "gpt-5-codex",
+        },
+      });
+      // A mapped worker's streaming delta must produce nothing.
+      fakeSession.emit("assistant.message_delta", {
+        agentId: "agent-1",
+        data: { deltaContent: "partial", messageId: "wmsg-1" },
+      });
+      // A completed worker message becomes one coalesced progress row.
+      fakeSession.emit("assistant.message", {
+        agentId: "agent-1",
+        data: { content: "Reviewed the diff.\nLooks good.", messageId: "wmsg-1" },
+      });
+      // A worker tool call becomes one progress row keyed on the tool name.
+      fakeSession.emit("tool.execution_start", {
+        agentId: "agent-1",
+        data: { toolCallId: "wtc-1", toolName: "bash", arguments: { command: "ls" } },
+      });
+      fakeSession.emit("subagent.completed", {
+        agentId: "agent-1",
+        data: { toolCallId: "tc-1", agentName: "reviewer", agentDisplayName: "Reviewer" },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+
+      // No worker content leaks onto the main thread.
+      NodeAssert.equal(
+        events.some((event) => event.type === "content.delta" || event.type === "item.completed"),
+        false,
+      );
+
+      const started = events.find((event) => event.type === "task.started");
+      NodeAssert.ok(started && started.type === "task.started");
+      NodeAssert.equal(started.payload.agentId, "agent-1");
+      NodeAssert.equal(started.payload.model, "gpt-5-codex");
+      NodeAssert.equal(started.payload.parentToolCallId, "tc-1");
+
+      const progress = events.filter((event) => event.type === "task.progress");
+      NodeAssert.equal(progress.length, 2);
+      NodeAssert.equal(
+        progress.every(
+          (event) => event.type === "task.progress" && event.payload.agentId === "agent-1",
+        ),
+        true,
+      );
+      NodeAssert.equal(
+        progress.some(
+          (event) =>
+            event.type === "task.progress" && event.payload.description === "Reviewed the diff.",
+        ),
+        true,
+      );
+      NodeAssert.equal(
+        progress.some(
+          (event) => event.type === "task.progress" && event.payload.lastToolName === "bash",
+        ),
+        true,
+      );
+
+      const completed = events.find((event) => event.type === "task.completed");
+      NodeAssert.ok(completed && completed.type === "task.completed");
+      NodeAssert.equal(completed.payload.agentId, "agent-1");
+    }),
+  );
+
+  it.effect("ignores events tagged with an unknown agentId for task purposes (A2)", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CopilotAdapterTag;
+      const threadId = asThreadId("thread-worker-unknown-agent");
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter(
+          (event) =>
+            event.threadId === threadId &&
+            (event.type === "task.progress" || event.type === "item.completed"),
+        ),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+      // No subagent.started was seen for "ghost" (e.g. after a resume); the
+      // event must not crash the mapping and must fall back to the main thread.
+      latestSession().emit("assistant.message", {
+        agentId: "ghost",
+        data: { content: "Orphan worker output.", messageId: "ghost-msg-1" },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      NodeAssert.equal(events.length, 1);
+      NodeAssert.equal(events[0]?.type, "item.completed");
+      NodeAssert.equal(
+        events.some((event) => event.type === "task.progress"),
+        false,
+      );
+    }),
+  );
+
   it.effect("maps SDK permission events in full-access mode", () =>
     Effect.gen(function* () {
       const adapter = yield* CopilotAdapterTag;

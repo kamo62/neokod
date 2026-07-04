@@ -493,7 +493,7 @@ because nothing better exists.
 
 ### Workstream A: sub-agent panel
 
-**Slice A1: contracts + ingestion carry worker identity.**
+**Slice A1: contracts + ingestion carry worker identity.** ✅ LANDED.
 
 - `packages/contracts/src/providerRuntime.ts`: add `Schema.optional` fields to
   the three task payloads. `TaskStartedPayload` gains `agentId`
@@ -514,7 +514,15 @@ because nothing better exists.
 - FORK.md rows to add on landing: extend the existing `providerRuntime.ts`
   row; add a row for the ingestion file touched.
 
-**Slice A2: Copilot adapter per-worker attribution (biggest visible win).**
+**Slice A2: Copilot adapter per-worker attribution (biggest visible win).** ✅ LANDED.
+
+Implemented in `CopilotAdapter.ts`: a per-session `subagentTaskByAgentId`
+map (`agentId -> RuntimeTaskId`) populated at `subagent.started`, cleared at
+`subagent.completed`/`failed` and on idle/stop. `subagent.started` now carries
+`agentId`/`model`/`parentToolCallId`; mapped-worker `assistant.message` and
+`tool.execution_start` become coalesced `task.progress` rows (streaming
+deltas and reasoning produce nothing, and worker content is kept off the main
+thread); unknown `agentId`s fall back to the main thread without crashing.
 
 - In `CopilotAdapter.ts`, build an `agentId -> toolCallId` correlation map,
   populated at `subagent.started` (the one event carrying both), cleaned up at
