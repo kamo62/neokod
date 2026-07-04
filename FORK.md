@@ -547,7 +547,15 @@ thread); unknown `agentId`s fall back to the main thread without crashing.
   correlation, cadence (deltas emit no progress), model passthrough, and
   unknown-agentId tolerance.
 
-**Slice A3: panel upgrade to worker tabs.**
+**Slice A3: panel upgrade to worker tabs.** ✅ LANDED.
+
+`deriveSubagentCards` now reads the real `payload.model`, moves `taskType` to
+a new `kind` field, and carries `agentId`. `SubagentsPanel.tsx` gained a worker
+tab strip inside the singleton surface: selecting a worker shows its header
+(name, model-or-kind, status, elapsed) and an auto-following progress stream;
+no selection shows the existing card list. Pure helpers
+`subagentSecondaryLabel`/`deriveSubagentTabs`/`resolveSelectedSubagent` are
+exported and unit-tested. No `rightPanelStore` changes.
 
 - `apps/web/src/session-logic.ts` `deriveSubagentCards`: read the real
   `payload.model` into the card's `model`, move `taskType` to a new `kind`

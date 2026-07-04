@@ -31,7 +31,13 @@ describe("deriveSubagentCards", () => {
       makeActivity({
         kind: "task.started",
         sequence: 0,
-        payload: { taskId: "task-a", description: "Explorer", taskType: "claude" },
+        payload: {
+          taskId: "task-a",
+          description: "Explorer",
+          taskType: "reviewer",
+          model: "gpt-5-codex",
+          agentId: "agent-a",
+        },
       }),
       makeActivity({
         kind: "task.started",
@@ -42,9 +48,14 @@ describe("deriveSubagentCards", () => {
     expect(cards.length).toBe(2);
     expect(cards[0]?.taskId).toBe("task-a");
     expect(cards[0]?.name).toBe("Explorer");
-    expect(cards[0]?.model).toBe("claude");
+    expect(cards[0]?.model).toBe("gpt-5-codex");
+    expect(cards[0]?.kind).toBe("reviewer");
+    expect(cards[0]?.agentId).toBe("agent-a");
     expect(cards[0]?.status).toBe("inProgress");
     expect(cards[1]?.taskId).toBe("task-b");
+    // No model on task-b: kind is the fallback label, model stays null.
+    expect(cards[1]?.model).toBe(null);
+    expect(cards[1]?.kind).toBe("codex");
   });
 
   it("falls back to defaults when optional fields are absent", () => {
@@ -53,6 +64,8 @@ describe("deriveSubagentCards", () => {
     ]);
     expect(card?.name).toBe("Subagent");
     expect(card?.model).toBe(null);
+    expect(card?.kind).toBe(null);
+    expect(card?.agentId).toBe(null);
   });
 
   it("marks a completed task with status/summary and computes elapsed", () => {

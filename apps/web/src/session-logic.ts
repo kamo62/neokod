@@ -97,6 +97,13 @@ export interface SubagentCard {
   taskId: string;
   name: string;
   model: string | null;
+  // The worker kind (provider "task type": e.g. the Copilot agentName or the
+  // Claude subagent task_type). Shown as a fallback label when `model` is
+  // absent (the Claude case).
+  kind: string | null;
+  // Provider-stable worker instance id, when known (Copilot). Absent for
+  // providers that only expose a task id.
+  agentId: string | null;
   status: "inProgress" | "completed" | "failed" | "stopped";
   startedAt: string;
   completedAt: string | null;
@@ -696,7 +703,9 @@ export function deriveSubagentCards(
       byTaskId.set(taskId, {
         taskId,
         name: optionalString(payload?.description) ?? "Subagent",
-        model: optionalString(payload?.taskType),
+        model: optionalString(payload?.model),
+        kind: optionalString(payload?.taskType),
+        agentId: optionalString(payload?.agentId),
         status: "inProgress",
         startedAt: activity.createdAt,
         completedAt: null,
