@@ -491,62 +491,187 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
     }),
   );
 
-  it.effect(
-    "adds task.started from a spawnAgent collab item without dropping item.started (A4)",
-    () =>
-      Effect.gen(function* () {
-        const { adapter, runtime } = yield* startLifecycleRuntime();
-        const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 2)).pipe(
-          Effect.forkChild,
-        );
-
-        yield* runtime.emit({
-          id: asEventId("evt-collab-spawn-started"),
-          kind: "notification",
-          provider: ProviderDriverKind.make("codex"),
-          createdAt: "2026-01-01T00:00:00.000Z",
-          method: "item/started",
-          threadId: asThreadId("thread-1"),
-          turnId: asTurnId("turn-1"),
-          itemId: asItemId("collab_1"),
-          payload: {
-            startedAtMs: 1_778_000_000_000,
-            threadId: "thread-1",
-            turnId: "turn-1",
-            item: {
-              type: "collabAgentToolCall",
-              id: "collab_1",
-              tool: "spawnAgent",
-              status: "inProgress",
-              model: "gpt-5-codex",
-              prompt: "Review the diff",
-              senderThreadId: "thread-1",
-              receiverThreadIds: ["worker-thread-1"],
-              agentsStates: {},
-            },
-          },
-        });
-
-        const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
-        // item.* timeline emission is preserved.
-        NodeAssert.equal(
-          events.some(
-            (event) =>
-              event.type === "item.started" && event.payload.itemType === "collab_agent_tool_call",
+  it.effect("emits a receiver-keyed task.started from a spawnAgent collab item (A4)", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const eventsFiber = yield* Stream.runCollect(
+        Stream.take(
+          Stream.filter(
+            adapter.streamEvents,
+            (event) => event.type === "task.started" || event.type === "item.started",
           ),
-          true,
-        );
-        const started = events.find((event) => event.type === "task.started");
-        NodeAssert.ok(started && started.type === "task.started");
-        NodeAssert.equal(started.payload.taskId, "worker-thread-1");
-        NodeAssert.equal(started.payload.agentId, "worker-thread-1");
-        NodeAssert.equal(started.payload.model, "gpt-5-codex");
-        NodeAssert.equal(started.payload.parentToolCallId, "collab_1");
-        NodeAssert.equal(started.payload.description, "Review the diff");
-      }),
+          1,
+        ),
+      ).pipe(Effect.forkChild);
+
+      yield* runtime.emit({
+        id: asEventId("evt-collab-spawn-started"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "item/started",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("collab_1"),
+        payload: {
+          startedAtMs: 1_778_000_000_000,
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            type: "collabAgentToolCall",
+            id: "collab_1",
+            tool: "spawnAgent",
+            status: "inProgress",
+            model: "gpt-5-codex",
+            prompt: "Review the diff",
+            senderThreadId: "thread-1",
+            receiverThreadIds: ["worker-thread-1"],
+            agentsStates: {},
+          },
+        },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      // Collab items never hit the main timeline; the pane card is the only output.
+      NodeAssert.equal(
+        events.some((event) => event.type === "item.started"),
+        false,
+      );
+      const started = events.find((event) => event.type === "task.started");
+      NodeAssert.ok(started && started.type === "task.started");
+      // Keyed on the receiver (child) thread id, matching child progress events.
+      NodeAssert.equal(started.payload.taskId, "worker-thread-1");
+      NodeAssert.equal(started.payload.agentId, "worker-thread-1");
+      NodeAssert.equal(started.payload.model, "gpt-5-codex");
+      NodeAssert.equal(started.payload.parentToolCallId, "collab_1");
+      NodeAssert.equal(started.payload.description, "Review the diff");
+    }),
   );
 
-  it.effect("adds task.started + task.completed across a spawnAgent collab lifecycle (A4)", () =>
+  it.effect("maps completed Codex child-thread items to subagent progress", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const eventsFiber = yield* Stream.runCollect(
+        Stream.take(
+          Stream.filter(
+            adapter.streamEvents,
+            (event) => event.type === "item.completed" || event.type === "task.progress",
+          ),
+          1,
+        ),
+      ).pipe(Effect.forkChild);
+
+      yield* runtime.emit({
+        id: asEventId("evt-child-msg-complete"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "item/completed",
+        threadId: asThreadId("thread-1"),
+        childThreadId: "worker-thread-1",
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("msg_child_1"),
+        payload: {
+          completedAtMs: 1_778_000_000_000,
+          threadId: "worker-thread-1",
+          turnId: "worker-turn-1",
+          item: {
+            type: "agentMessage",
+            id: "msg_child_1",
+            text: "I found the auth path.",
+          },
+        },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      // Child content is diverted to the pane only — never a main-thread item.completed.
+      NodeAssert.equal(
+        events.some((event) => event.type === "item.completed"),
+        false,
+      );
+      const progress = events.find((event) => event.type === "task.progress");
+      NodeAssert.ok(progress && progress.type === "task.progress");
+      NodeAssert.equal(progress.payload.taskId, "worker-thread-1");
+      NodeAssert.equal(progress.payload.agentId, "worker-thread-1");
+      NodeAssert.equal(progress.payload.description, "I found the auth path.");
+      NodeAssert.equal(progress.payload.lastToolName, "Assistant message");
+    }),
+  );
+
+  it.effect("maps Codex child-thread plan updates to subagent progress", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+
+      yield* runtime.emit({
+        id: asEventId("evt-child-plan"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "turn/plan/updated",
+        threadId: asThreadId("thread-1"),
+        childThreadId: "worker-thread-1",
+        turnId: asTurnId("turn-1"),
+        payload: {
+          threadId: "worker-thread-1",
+          turnId: "worker-turn-1",
+          explanation: "Worker tasks",
+          plan: [
+            { step: "Read the adapter", status: "completed" },
+            { step: "Trace child events", status: "inProgress" },
+          ],
+        },
+      });
+
+      const firstEvent = yield* Fiber.join(firstEventFiber);
+      NodeAssert.equal(firstEvent._tag, "Some");
+      if (firstEvent._tag !== "Some") {
+        return;
+      }
+      NodeAssert.equal(firstEvent.value.type, "task.progress");
+      if (firstEvent.value.type !== "task.progress") {
+        return;
+      }
+      NodeAssert.equal(firstEvent.value.payload.taskId, "worker-thread-1");
+      NodeAssert.equal(firstEvent.value.payload.description, "Trace child events");
+      NodeAssert.equal(firstEvent.value.payload.lastToolName, "Task list");
+    }),
+  );
+
+  it.effect("completes a collab worker when its child thread turn completes", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const completedFiber = yield* Stream.runHead(
+        Stream.filter(adapter.streamEvents, (event) => event.type === "task.completed"),
+      ).pipe(Effect.forkChild);
+
+      yield* runtime.emit({
+        id: asEventId("evt-child-turn-completed"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "turn/completed",
+        threadId: asThreadId("thread-1"),
+        childThreadId: "worker-thread-1",
+        turnId: asTurnId("turn-1"),
+        payload: {
+          threadId: "worker-thread-1",
+          turn: { id: "worker-turn-1", items: [], status: "completed" },
+        },
+      });
+
+      const completed = yield* Fiber.join(completedFiber).pipe(Effect.timeout("1 second"));
+      NodeAssert.equal(completed._tag, "Some");
+      if (completed._tag !== "Some" || completed.value.type !== "task.completed") {
+        return;
+      }
+      NodeAssert.equal(completed.value.payload.taskId, "worker-thread-1");
+      NodeAssert.equal(completed.value.payload.agentId, "worker-thread-1");
+      NodeAssert.equal(completed.value.payload.status, "completed");
+    }),
+  );
+
+  it.effect("completes a collab worker card on closeAgent, not on spawn completion (A4)", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();
       const eventsFiber = yield* Stream.runCollect(
@@ -559,10 +684,10 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
         ),
       ).pipe(Effect.forkChild);
 
-      const collabItem = (status: "inProgress" | "completed") => ({
+      const collab = (tool: "spawnAgent" | "closeAgent", status: "inProgress" | "completed") => ({
         type: "collabAgentToolCall",
         id: "collab_1",
-        tool: "spawnAgent",
+        tool,
         status,
         model: "gpt-5-codex",
         senderThreadId: "thread-1",
@@ -570,51 +695,48 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
         agentsStates: {},
       });
 
+      // Spawn completes (child created) — must NOT complete the worker.
       yield* runtime.emit({
-        id: asEventId("evt-collab-spawn-started-2"),
+        id: asEventId("evt-collab-spawn-done"),
         kind: "notification",
         provider: ProviderDriverKind.make("codex"),
         createdAt: "2026-01-01T00:00:00.000Z",
-        method: "item/started",
-        threadId: asThreadId("thread-1"),
-        turnId: asTurnId("turn-1"),
-        itemId: asItemId("collab_1"),
-        payload: {
-          startedAtMs: 1_778_000_000_000,
-          threadId: "thread-1",
-          turnId: "turn-1",
-          item: collabItem("inProgress"),
-        },
-      });
-      yield* runtime.emit({
-        id: asEventId("evt-collab-spawn-completed-2"),
-        kind: "notification",
-        provider: ProviderDriverKind.make("codex"),
-        createdAt: "2026-01-01T00:00:01.000Z",
         method: "item/completed",
         threadId: asThreadId("thread-1"),
         turnId: asTurnId("turn-1"),
         itemId: asItemId("collab_1"),
         payload: {
-          completedAtMs: 1_778_000_001_000,
+          completedAtMs: 1_778_000_000_000,
           threadId: "thread-1",
           turnId: "turn-1",
-          item: collabItem("completed"),
+          item: collab("spawnAgent", "completed"),
+        },
+      });
+      // The parent closes the worker → completes the card.
+      yield* runtime.emit({
+        id: asEventId("evt-collab-close"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:02.000Z",
+        method: "item/completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("collab_2"),
+        payload: {
+          completedAtMs: 1_778_000_002_000,
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: { ...collab("closeAgent", "completed"), id: "collab_2" },
         },
       });
 
       const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
-      // Exactly one task.started (no duplicate across started+completed) and one
-      // task.completed.
-      NodeAssert.equal(events.filter((event) => event.type === "task.started").length, 1);
-      NodeAssert.equal(events.filter((event) => event.type === "task.completed").length, 1);
       const started = events.find((event) => event.type === "task.started");
       const completed = events.find((event) => event.type === "task.completed");
       NodeAssert.ok(started && started.type === "task.started");
       NodeAssert.equal(started.payload.taskId, "worker-thread-1");
       NodeAssert.ok(completed && completed.type === "task.completed");
       NodeAssert.equal(completed.payload.taskId, "worker-thread-1");
-      NodeAssert.equal(completed.payload.agentId, "worker-thread-1");
       NodeAssert.equal(completed.payload.status, "completed");
     }),
   );

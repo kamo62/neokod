@@ -1,12 +1,15 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import type { OrchestrationThreadActivity } from "@t3tools/contracts";
+import type { OrchestrationThreadActivity, ScopedThreadRef } from "@t3tools/contracts";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { CheckIcon, LoaderIcon, TriangleAlertIcon, XIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Badge } from "./ui/badge";
+import ChatMarkdown from "./ChatMarkdown";
 import { ScrollArea } from "./ui/scroll-area";
 import { deriveSubagentCards, formatElapsed, type SubagentCard } from "../session-logic";
 import { formatTimestamp } from "../timestampFormat";
+
+const EMPTY_DISMISSED: ReadonlySet<string> = new Set();
 
 /**
  * Secondary label under a worker's name: the model when the provider knows it
@@ -62,24 +65,38 @@ export function resolveSelectedSubagent(
 }
 
 /**
- * A finished worker that produced nothing worth showing (no progress rows and
- * no summary) is pure noise; it should auto-disappear from the panel. Pure.
+ * A finished worker (completed/failed/stopped) auto-disappears from the pane —
+ * the Subagents pane tracks live work, and finished workers would otherwise
+ * pile up. Pure.
  */
-export function isDismissableEmptyWorker(card: SubagentCard): boolean {
-  const terminal =
-    card.status === "completed" || card.status === "failed" || card.status === "stopped";
-  return terminal && card.progress.length === 0 && !card.summary;
+export function isFinishedWorker(card: SubagentCard): boolean {
+  return card.status === "completed" || card.status === "failed" || card.status === "stopped";
 }
 
 /**
- * The workers a user should see: not manually dismissed and not a finished
- * empty worker. Pure.
+ * A worker still marked `inProgress` after the parent turn has settled never
+ * received its `task.completed` — it's orphaned (e.g. a provider that dropped
+ * a terminal event). Once the turn is idle no worker can legitimately still be
+ * running, so treat it as stale and hide it. Pure.
+ */
+export function isStaleWorker(card: SubagentCard, turnSettled: boolean): boolean {
+  return turnSettled && card.status === "inProgress";
+}
+
+/**
+ * The workers a user should see: in-progress and not manually dismissed.
+ * Finished workers are hidden automatically, as are orphaned in-progress
+ * workers once the parent turn settles. Pure.
  */
 export function visibleSubagentCards(
   cards: readonly SubagentCard[],
   dismissed: ReadonlySet<string>,
+  turnSettled = false,
 ): SubagentCard[] {
-  return cards.filter((card) => !dismissed.has(card.taskId) && !isDismissableEmptyWorker(card));
+  return cards.filter(
+    (card) =>
+      !dismissed.has(card.taskId) && !isFinishedWorker(card) && !isStaleWorker(card, turnSettled),
+  );
 }
 
 function subagentStatusIcon(status: SubagentCard["status"]): React.ReactNode {
@@ -114,27 +131,37 @@ function subagentStatusIcon(status: SubagentCard["status"]): React.ReactNode {
 interface SubagentsPanelProps {
   activities: readonly OrchestrationThreadActivity[];
   timestampFormat: TimestampFormat;
+  threadRef?: ScopedThreadRef | undefined;
+  markdownCwd?: string | undefined;
+  /** Parent turn is idle — used to auto-hide orphaned in-progress workers. */
+  turnSettled?: boolean;
+  /** Dismissed worker task ids, owned by the parent so it survives remounts. */
+  dismissed?: ReadonlySet<string>;
+  onDismiss?: (taskId: string) => void;
   mode?: "sheet" | "sidebar" | "embedded";
 }
 
 const SubagentsPanel = memo(function SubagentsPanel({
   activities,
   timestampFormat,
+  threadRef,
+  markdownCwd,
+  turnSettled = false,
+  dismissed = EMPTY_DISMISSED,
+  onDismiss,
   mode = "sidebar",
 }: SubagentsPanelProps) {
   const cards = useMemo(() => deriveSubagentCards(activities), [activities]);
-  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const visibleCards = useMemo(() => visibleSubagentCards(cards, dismissed), [cards, dismissed]);
+  const visibleCards = useMemo(
+    () => visibleSubagentCards(cards, dismissed, turnSettled),
+    [cards, dismissed, turnSettled],
+  );
   const selected = resolveSelectedSubagent(visibleCards, selectedTaskId);
   const tabs = useMemo(() => deriveSubagentTabs(visibleCards), [visibleCards]);
 
   const dismissWorker = (taskId: string) => {
-    setDismissed((prev) => {
-      const next = new Set(prev);
-      next.add(taskId);
-      return next;
-    });
+    onDismiss?.(taskId);
     setSelectedTaskId((current) => (current === taskId ? null : current));
   };
 
@@ -258,29 +285,42 @@ const SubagentsPanel = memo(function SubagentsPanel({
                   </p>
                 ) : null}
                 {selected.summary ? (
-                  <p className="mt-1.5 text-[12px] leading-snug text-muted-foreground/80">
-                    {selected.summary}
-                  </p>
+                  <div className="mt-1.5 text-[12px] leading-snug text-muted-foreground/80">
+                    <ChatMarkdown
+                      text={selected.summary}
+                      cwd={markdownCwd}
+                      threadRef={threadRef}
+                      isStreaming={false}
+                    />
+                  </div>
                 ) : null}
               </div>
             </div>
 
             {/* Auto-following progress stream */}
-            <div className="mt-3 space-y-1.5 border-l border-border/50 pl-2.5">
+            <div className="mt-3 space-y-2 border-l border-border/50 pl-2.5">
               {selected.progress.length > 0 ? (
-                selected.progress.map((entry, index) => (
-                  <div
-                    key={`${selected.taskId}:${entry.at}:${entry.lastToolName ?? entry.summary ?? entry.description ?? index}`}
-                    className="text-[11px]"
-                  >
-                    <p className="leading-snug text-muted-foreground/80">
-                      {entry.summary ?? entry.description ?? "Working…"}
-                    </p>
-                    {entry.lastToolName ? (
-                      <p className="text-[10px] text-muted-foreground/40">{entry.lastToolName}</p>
-                    ) : null}
-                  </div>
-                ))
+                selected.progress.map((entry, index) => {
+                  const text = entry.summary ?? entry.description ?? "Working…";
+                  return (
+                    <div
+                      key={`${selected.taskId}:${entry.at}:${entry.lastToolName ?? entry.summary ?? entry.description ?? index}`}
+                      className="text-[12px] leading-snug text-muted-foreground/80"
+                    >
+                      <ChatMarkdown
+                        text={text}
+                        cwd={markdownCwd}
+                        threadRef={threadRef}
+                        isStreaming={false}
+                      />
+                      {entry.lastToolName ? (
+                        <p className="mt-0.5 text-[10px] text-muted-foreground/40">
+                          {entry.lastToolName}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })
               ) : (
                 <p className="text-[11px] text-muted-foreground/40">No progress yet.</p>
               )}

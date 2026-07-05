@@ -621,7 +621,6 @@ function shouldSuppressChildConversationNotification(
     method === "thread/tokenUsage/updated" ||
     method === "turn/started" ||
     method === "turn/completed" ||
-    method === "turn/plan/updated" ||
     method === "item/plan/delta"
   );
 }
@@ -877,6 +876,9 @@ export const makeCodexSessionRuntime = (
           ...(itemId ? { itemId } : {}),
           ...(requestId ? { requestId } : {}),
           ...(requestKind ? { requestKind } : {}),
+          ...(childParentTurnId && readNotificationThreadId(notification)
+            ? { childThreadId: readNotificationThreadId(notification) }
+            : {}),
           ...(notification.method === "item/agentMessage/delta"
             ? { textDelta: notification.params.delta }
             : {}),

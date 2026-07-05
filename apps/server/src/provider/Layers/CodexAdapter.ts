@@ -424,6 +424,7 @@ function providerRefsFromEvent(
   if (event.turnId) refs.providerTurnId = event.turnId;
   if (event.itemId) refs.providerItemId = event.itemId;
   if (event.requestId) refs.providerRequestId = event.requestId;
+  if (event.childThreadId) refs.providerChildThreadId = event.childThreadId;
 
   return Object.keys(refs).length > 0 ? (refs as ProviderRuntimeEvent["providerRefs"]) : undefined;
 }
@@ -520,7 +521,6 @@ function collabTaskEvents(
   event: ProviderEvent,
   canonicalThreadId: ThreadId,
   item: Record<string, unknown>,
-  lifecycle: "item.started" | "item.completed",
 ): ProviderRuntimeEvent[] {
   if (item.type !== "collabAgentToolCall") return [];
   const tool = typeof item.tool === "string" ? item.tool : undefined;
@@ -532,8 +532,12 @@ function collabTaskEvents(
   const receivers = Array.isArray(item.receiverThreadIds)
     ? item.receiverThreadIds.filter((id): id is string => typeof id === "string" && id.length > 0)
     : [];
-  const workerIds = receivers.length > 0 ? receivers : collabId ? [collabId] : [];
-  if (workerIds.length === 0) return [];
+  // The receiver (child) thread id is the stable worker identity — it is what
+  // child-thread progress events key on. Until the spawn resolves a receiver
+  // (`receiverThreadIds` is `[]` at spawn start), we have no matching key, so
+  // emit nothing rather than an orphan card keyed on the collab call id that
+  // progress can never join.
+  if (receivers.length === 0) return [];
 
   const base = runtimeEventBase(event, canonicalThreadId);
   const stamp = (suffix: string) => ({ ...base, eventId: EventId.make(`${event.id}:${suffix}`) });
@@ -541,12 +545,12 @@ function collabTaskEvents(
   const isTerminal = status === "completed" || status === "failed";
   const results: ProviderRuntimeEvent[] = [];
 
-  for (const workerId of workerIds) {
+  for (const workerId of receivers) {
     const taskId = RuntimeTaskId.make(workerId);
-    // A spawn declares a new worker: emit task.started once, at the started
-    // lifecycle only, so a normal started+completed pair does not emit two
-    // task.started rows.
-    if (tool === "spawnAgent" && lifecycle === "item.started") {
+    // A spawn declares the worker: create the card keyed on the child thread
+    // id (deduped downstream by taskId). Spawn completion means the child is
+    // now running — it is NOT the worker finishing.
+    if (tool === "spawnAgent") {
       results.push({
         ...stamp(`task-started:${workerId}`),
         type: "task.started",
@@ -560,7 +564,10 @@ function collabTaskEvents(
         },
       });
     }
-    if (lifecycle === "item.completed" || isTerminal || tool === "closeAgent") {
+    // The worker finishes when the parent closes it, or a non-spawn collab op
+    // resolves terminally. A spawnAgent reaching "completed" only means the
+    // child was successfully created, so it never completes the worker.
+    if (tool === "closeAgent" || (isTerminal && tool !== "spawnAgent")) {
       results.push({
         ...stamp(`task-completed:${workerId}`),
         type: "task.completed",
@@ -580,6 +587,58 @@ function collabTaskEvents(
     }
   }
   return results;
+}
+
+function childTaskProgressEvent(
+  event: ProviderEvent,
+  canonicalThreadId: ThreadId,
+  item: CodexLifecycleItem,
+): ProviderRuntimeEvent | undefined {
+  if (!event.childThreadId) return undefined;
+  const itemType = toCanonicalItemType(item.type);
+  const detail = itemDetail(item);
+  const title = itemTitle(itemType, item);
+  const description = detail ?? title;
+  if (!description) return undefined;
+  return {
+    ...runtimeEventBase(event, canonicalThreadId),
+    eventId: EventId.make(`${event.id}:child-task-progress`),
+    type: "task.progress",
+    payload: {
+      taskId: RuntimeTaskId.make(event.childThreadId),
+      agentId: event.childThreadId,
+      description,
+      ...(title ? { lastToolName: title } : {}),
+    },
+  };
+}
+
+function childTaskPlanProgressEvent(
+  event: ProviderEvent,
+  canonicalThreadId: ThreadId,
+  payload: EffectCodexSchema.V2TurnPlanUpdatedNotification,
+): ProviderRuntimeEvent | undefined {
+  if (!event.childThreadId || payload.plan.length === 0) return undefined;
+  const activeStep =
+    payload.plan.find((step) => step.status === "inProgress") ??
+    payload.plan.find((step) => step.status !== "completed");
+  const completed = payload.plan.filter((step) => step.status === "completed").length;
+  const fallback =
+    completed === payload.plan.length
+      ? `${completed}/${payload.plan.length} tasks completed`
+      : `${completed}/${payload.plan.length} tasks completed`;
+  const description = trimText(activeStep?.step) ?? fallback;
+  return {
+    ...runtimeEventBase(event, canonicalThreadId),
+    eventId: EventId.make(`${event.id}:child-task-plan`),
+    type: "task.progress",
+    payload: {
+      taskId: RuntimeTaskId.make(event.childThreadId),
+      agentId: event.childThreadId,
+      description,
+      lastToolName: "Task list",
+    },
+  };
 }
 
 function mapToRuntimeEvents(
@@ -676,6 +735,63 @@ function mapToRuntimeEvents(
         },
       },
     ];
+  }
+
+  // Sub-agent (collab/review child thread) content is surfaced only in the
+  // Subagents pane as coalesced task.progress — never folded into the parent
+  // (main) timeline. Codex delivers child-thread notifications tagged with a
+  // childThreadId; everything from a child thread other than item/plan updates
+  // is suppressed here so the worker's conversation does not leak into the
+  // main chat.
+  if (event.childThreadId) {
+    if (event.method === "turn/plan/updated") {
+      const payload = readPayload(EffectCodexSchema.V2TurnPlanUpdatedNotification, event.payload);
+      const childProgress = payload
+        ? childTaskPlanProgressEvent(event, canonicalThreadId, payload)
+        : undefined;
+      return childProgress ? [childProgress] : [];
+    }
+    if (event.method === "item/started" || event.method === "item/completed") {
+      const item =
+        readPayload(EffectCodexSchema.V2ItemStartedNotification, event.payload)?.item ??
+        readPayload(EffectCodexSchema.V2ItemCompletedNotification, event.payload)?.item;
+      const childProgress = item
+        ? childTaskProgressEvent(event, canonicalThreadId, item)
+        : undefined;
+      return childProgress ? [childProgress] : [];
+    }
+    // A child thread finishing its turn is the worker completing — Codex does
+    // not always emit an explicit parent-side `closeAgent`, so without this the
+    // worker card would linger `inProgress` forever and pile up in the pane.
+    if (event.method === "turn/completed" || event.method === "turn/aborted") {
+      const turnStatus =
+        event.method === "turn/aborted"
+          ? "stopped"
+          : (() => {
+              const payload = readPayload(
+                EffectCodexSchema.V2TurnCompletedNotification,
+                event.payload,
+              );
+              const status = payload ? toTurnStatus(payload.turn.status) : "completed";
+              return status === "failed"
+                ? "failed"
+                : status === "completed"
+                  ? "completed"
+                  : "stopped";
+            })();
+      return [
+        {
+          ...runtimeEventBase(event, canonicalThreadId),
+          type: "task.completed",
+          payload: {
+            taskId: RuntimeTaskId.make(event.childThreadId),
+            agentId: event.childThreadId,
+            status: turnStatus,
+          },
+        },
+      ];
+    }
+    return [];
   }
 
   if (event.method === "item/requestApproval/decision" && event.requestId) {
@@ -923,10 +1039,13 @@ function mapToRuntimeEvents(
   }
 
   if (event.method === "item/started") {
-    const started = mapItemLifecycle(event, canonicalThreadId, "item.started");
     const item = rawItemFromPayload(event.payload);
-    const collab = item ? collabTaskEvents(event, canonicalThreadId, item, "item.started") : [];
-    return [...(started ? [started] : []), ...collab];
+    // Collab sub-agent lifecycle → pane card only (never the main timeline).
+    if (item?.type === "collabAgentToolCall") {
+      return collabTaskEvents(event, canonicalThreadId, item);
+    }
+    const started = mapItemLifecycle(event, canonicalThreadId, "item.started");
+    return started ? [started] : [];
   }
 
   if (event.method === "item/completed") {
@@ -951,12 +1070,13 @@ function mapToRuntimeEvents(
         },
       ];
     }
-    const completed = mapItemLifecycle(event, canonicalThreadId, "item.completed");
     const rawItem = rawItemFromPayload(event.payload);
-    const collab = rawItem
-      ? collabTaskEvents(event, canonicalThreadId, rawItem, "item.completed")
-      : [];
-    return [...(completed ? [completed] : []), ...collab];
+    // Collab sub-agent lifecycle → pane card only (never the main timeline).
+    if (rawItem?.type === "collabAgentToolCall") {
+      return collabTaskEvents(event, canonicalThreadId, rawItem);
+    }
+    const completed = mapItemLifecycle(event, canonicalThreadId, "item.completed");
+    return completed ? [completed] : [];
   }
 
   if (

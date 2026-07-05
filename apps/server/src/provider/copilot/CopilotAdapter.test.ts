@@ -1138,6 +1138,59 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
     }),
   );
 
+  it.effect("keeps sub-agent work in the pane and the main agent's result in the main thread", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CopilotAdapterTag;
+      const threadId = asThreadId("thread-worker-result-to-main");
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter(
+          (event) =>
+            event.threadId === threadId &&
+            (event.type === "task.progress" || event.type === "item.completed"),
+        ),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+      const fakeSession = latestSession();
+      fakeSession.emit("subagent.started", {
+        agentId: "agent-1",
+        data: {
+          toolCallId: "tc-1",
+          agentName: "reviewer",
+          agentDisplayName: "Reviewer",
+          agentDescription: "Review code",
+        },
+      });
+      // Sub-agent work → pane.
+      fakeSession.emit("assistant.message", {
+        agentId: "agent-1",
+        data: { content: "Checked the diff.", messageId: "wmsg-1" },
+      });
+      // Main agent's synthesis (no agentId) → main thread (the final result).
+      fakeSession.emit("assistant.message", {
+        data: { content: "The reviewer found no issues.", messageId: "main-1" },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const workerProgress = events.find((event) => event.type === "task.progress");
+      NodeAssert.ok(workerProgress && workerProgress.type === "task.progress");
+      NodeAssert.equal(workerProgress.payload.agentId, "agent-1");
+
+      const mainResult = events.find((event) => event.type === "item.completed");
+      NodeAssert.ok(mainResult && mainResult.type === "item.completed");
+      NodeAssert.equal(mainResult.payload.itemType, "assistant_message");
+      NodeAssert.equal(mainResult.payload.detail, "The reviewer found no issues.");
+    }),
+  );
+
   it.effect("maps SDK permission events in full-access mode", () =>
     Effect.gen(function* () {
       const adapter = yield* CopilotAdapterTag;

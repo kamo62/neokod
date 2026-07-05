@@ -3,7 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 import type { SubagentCard } from "../session-logic";
 import {
   deriveSubagentTabs,
-  isDismissableEmptyWorker,
+  isFinishedWorker,
+  isStaleWorker,
   resolveSelectedSubagent,
   subagentSecondaryLabel,
   visibleSubagentCards,
@@ -80,41 +81,41 @@ describe("resolveSelectedSubagent", () => {
   });
 });
 
-describe("isDismissableEmptyWorker", () => {
-  it("is true for a finished worker with no progress and no summary", () => {
-    expect(isDismissableEmptyWorker(makeCard({ taskId: "a", status: "completed" }))).toBe(true);
-    expect(isDismissableEmptyWorker(makeCard({ taskId: "a", status: "failed" }))).toBe(true);
+describe("isFinishedWorker", () => {
+  it("is true for completed/failed/stopped workers", () => {
+    expect(isFinishedWorker(makeCard({ taskId: "a", status: "completed" }))).toBe(true);
+    expect(isFinishedWorker(makeCard({ taskId: "a", status: "failed" }))).toBe(true);
+    expect(isFinishedWorker(makeCard({ taskId: "a", status: "stopped" }))).toBe(true);
   });
 
-  it("is false while the worker is in progress", () => {
-    expect(isDismissableEmptyWorker(makeCard({ taskId: "a", status: "inProgress" }))).toBe(false);
-  });
-
-  it("is false for a finished worker that has content", () => {
-    expect(
-      isDismissableEmptyWorker(makeCard({ taskId: "a", status: "completed", summary: "did it" })),
-    ).toBe(false);
-    expect(
-      isDismissableEmptyWorker(
-        makeCard({
-          taskId: "a",
-          status: "completed",
-          progress: [{ description: "step", summary: null, lastToolName: null, at: "t" }],
-        }),
-      ),
-    ).toBe(false);
+  it("is false while in progress", () => {
+    expect(isFinishedWorker(makeCard({ taskId: "a", status: "inProgress" }))).toBe(false);
   });
 });
 
 describe("visibleSubagentCards", () => {
-  it("hides dismissed workers and finished-empty workers", () => {
+  it("hides dismissed workers and any finished worker (auto-delete on finish)", () => {
     const cards = [
       makeCard({ taskId: "running", status: "inProgress" }),
-      makeCard({ taskId: "done-empty", status: "completed" }),
-      makeCard({ taskId: "done-content", status: "completed", summary: "ok" }),
+      makeCard({ taskId: "done", status: "completed", summary: "ok" }),
+      makeCard({ taskId: "failed", status: "failed" }),
       makeCard({ taskId: "dismissed", status: "inProgress" }),
     ];
     const visible = visibleSubagentCards(cards, new Set(["dismissed"]));
-    expect(visible.map((card) => card.taskId)).toEqual(["running", "done-content"]);
+    expect(visible.map((card) => card.taskId)).toEqual(["running"]);
+  });
+
+  it("hides orphaned in-progress workers once the parent turn has settled", () => {
+    const cards = [makeCard({ taskId: "orphan", status: "inProgress" })];
+    expect(visibleSubagentCards(cards, new Set(), false).map((c) => c.taskId)).toEqual(["orphan"]);
+    expect(visibleSubagentCards(cards, new Set(), true)).toEqual([]);
+  });
+});
+
+describe("isStaleWorker", () => {
+  it("is true only for in-progress workers after the turn settles", () => {
+    expect(isStaleWorker(makeCard({ taskId: "a", status: "inProgress" }), true)).toBe(true);
+    expect(isStaleWorker(makeCard({ taskId: "a", status: "inProgress" }), false)).toBe(false);
+    expect(isStaleWorker(makeCard({ taskId: "a", status: "completed" }), true)).toBe(false);
   });
 });

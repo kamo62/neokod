@@ -78,6 +78,7 @@ import {
   deriveTimelineEntries,
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
+  deriveSubagentCards,
   findSidebarProposedPlan,
   findLatestProposedPlan,
   deriveWorkLogEntries,
@@ -254,6 +255,7 @@ import { useAssetUrls } from "../assets/assetUrls";
 const IMAGE_ONLY_BOOTSTRAP_PROMPT =
   "[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]";
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
+const EMPTY_DISMISSED_SUBAGENTS: ReadonlySet<string> = new Set();
 const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
@@ -1728,23 +1730,49 @@ function ChatViewContent(props: ChatViewProps) {
   const phase = derivePhase(activeThread?.session ?? null);
   const threadActivities = activeThread?.activities ?? EMPTY_ACTIVITIES;
   const workLogEntries = useMemo(() => deriveWorkLogEntries(threadActivities), [threadActivities]);
-  const hasSubagentActivity = useMemo(
-    () => threadActivities.some((activity) => activity.kind === "task.started"),
+  const runningSubagents = useMemo(
+    () => deriveSubagentCards(threadActivities).some((card) => card.status === "inProgress"),
     [threadActivities],
   );
-  // Surface the sub-agent companion pane the first time a thread spawns a
-  // worker, but only when the right panel is currently closed for that thread
-  // (never steal an open surface) and only once per thread (never nag after the
-  // user closes it). Mirrors the plan-sidebar auto-open precedent below.
-  const autoOpenedSubagentsRef = useRef<Set<string>>(new Set());
+  // Surface the sub-agent companion pane whenever a fresh batch of workers is
+  // running, but never steal an already-open panel. "Shown" is tracked per
+  // batch and re-armed once no workers are running, so each new sub-agent run
+  // re-opens the pane, while closing it mid-run does not immediately reopen.
+  const subagentPaneShownRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!activeThreadRef || activeThreadId === null) return;
-    if (!hasSubagentActivity) return;
-    if (autoOpenedSubagentsRef.current.has(activeThreadId)) return;
-    autoOpenedSubagentsRef.current.add(activeThreadId);
+    if (!runningSubagents) {
+      subagentPaneShownRef.current.delete(activeThreadId);
+      return;
+    }
+    if (subagentPaneShownRef.current.has(activeThreadId)) return;
+    // Don't steal an open panel; retry if it closes while workers still run.
     if (rightPanelState.isOpen) return;
+    subagentPaneShownRef.current.add(activeThreadId);
     useRightPanelStore.getState().open(activeThreadRef, "subagents");
-  }, [activeThreadRef, activeThreadId, hasSubagentActivity, rightPanelState.isOpen]);
+  }, [activeThreadRef, activeThreadId, runningSubagents, rightPanelState.isOpen]);
+  // Dismissed sub-agent workers live here (per-thread), not inside the panel,
+  // so a manual dismiss survives the pane unmounting and reopening.
+  const [dismissedSubagentsByThreadId, setDismissedSubagentsByThreadId] = useState<
+    Record<string, ReadonlySet<string>>
+  >({});
+  const dismissedSubagents =
+    activeThreadId !== null
+      ? (dismissedSubagentsByThreadId[activeThreadId] ?? EMPTY_DISMISSED_SUBAGENTS)
+      : EMPTY_DISMISSED_SUBAGENTS;
+  const dismissSubagent = useCallback(
+    (taskId: string) => {
+      if (activeThreadId === null) return;
+      setDismissedSubagentsByThreadId((prev) => {
+        const current = prev[activeThreadId] ?? EMPTY_DISMISSED_SUBAGENTS;
+        if (current.has(taskId)) return prev;
+        const next = new Set(current);
+        next.add(taskId);
+        return { ...prev, [activeThreadId]: next };
+      });
+    },
+    [activeThreadId],
+  );
   const pendingApprovals = useMemo(
     () => derivePendingApprovals(threadActivities),
     [threadActivities],
@@ -3507,6 +3535,7 @@ function ChatViewContent(props: ChatViewProps) {
     if (!autoOpenPlanSidebar) return;
     if (!activePlan) return;
     if (planSidebarOpen) return;
+    if (rightPanelOpen) return;
     const latestTurnId = activeLatestTurn?.turnId ?? null;
     if (latestTurnId && activePlan.turnId !== latestTurnId) return;
     const turnKey = activePlan.turnId ?? sidebarProposedPlan?.turnId ?? "__dismissed__";
@@ -3520,6 +3549,7 @@ function ChatViewContent(props: ChatViewProps) {
     activeThreadRef,
     autoOpenPlanSidebar,
     planSidebarOpen,
+    rightPanelOpen,
     sidebarProposedPlan?.turnId,
   ]);
 
@@ -5005,6 +5035,11 @@ function ChatViewContent(props: ChatViewProps) {
         key={activeThreadId ?? "no-thread"}
         activities={threadActivities}
         timestampFormat={timestampFormat}
+        threadRef={activeThreadRef ?? undefined}
+        markdownCwd={gitCwd ?? undefined}
+        turnSettled={latestTurnSettled}
+        dismissed={dismissedSubagents}
+        onDismiss={dismissSubagent}
         mode="embedded"
       />
     ) : (activeRightPanelSurface?.kind === "files" || activeRightPanelSurface?.kind === "file") &&

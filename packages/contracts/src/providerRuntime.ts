@@ -47,6 +47,7 @@ const ProviderRefs = Schema.Struct({
   providerTurnId: Schema.optional(TrimmedNonEmptyStringSchema),
   providerItemId: Schema.optional(ProviderItemId),
   providerRequestId: Schema.optional(ProviderRequestId),
+  providerChildThreadId: Schema.optional(TrimmedNonEmptyStringSchema),
 });
 export type ProviderRefs = typeof ProviderRefs.Type;
 
