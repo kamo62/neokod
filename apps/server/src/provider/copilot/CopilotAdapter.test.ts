@@ -1245,6 +1245,52 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
     }),
   );
 
+  it.effect("ignores the SDK's repeated permission.completed re-fires (one resolution)", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CopilotAdapterTag;
+      const threadId = asThreadId("thread-dup-permission");
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId && event.type === "request.resolved"),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+      const fakeSession = latestSession();
+      const shell = { kind: "shell", fullCommandText: "ls", canOfferSessionApproval: true };
+      fakeSession.emit("permission.requested", {
+        data: { requestId: "dup-1", permissionRequest: shell },
+      });
+      fakeSession.emit("permission.completed", {
+        data: { requestId: "dup-1", result: { kind: "approved" } },
+      });
+      // The SDK re-fires the same completion; this must NOT emit a second resolution.
+      fakeSession.emit("permission.completed", {
+        data: { requestId: "dup-1", result: { kind: "approved" } },
+      });
+      // A distinct request confirms the stream advances to the next id, proving
+      // the duplicate above produced nothing between them.
+      fakeSession.emit("permission.requested", {
+        data: { requestId: "dup-2", permissionRequest: shell },
+      });
+      fakeSession.emit("permission.completed", {
+        data: { requestId: "dup-2", result: { kind: "approved" } },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      NodeAssert.deepEqual(
+        events.map((event) => event.requestId),
+        ["dup-1", "dup-2"],
+      );
+    }),
+  );
+
   it.effect("stopSession disconnects the underlying Copilot session", () =>
     Effect.gen(function* () {
       const adapter = yield* CopilotAdapterTag;

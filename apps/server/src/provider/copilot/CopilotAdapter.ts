@@ -1121,6 +1121,12 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
           Effect.gen(function* () {
             yield* logNative(input.threadId, "permission.completed", event);
             const requestRecord = sessionCtx.permissionRequests.get(event.data.requestId);
+            // The SDK re-fires permission.completed 2-3x per request. The stored
+            // record is the dedup token: it's set on permission.requested and
+            // consumed here, so a repeat completion finds nothing and is ignored.
+            // Without this guard each repeat emitted another request.resolved
+            // (with a degraded "unknown" type), flooding the evidence trail.
+            if (!requestRecord) return;
             sessionCtx.permissionRequests.delete(event.data.requestId);
             // Auto-resolved permissions (full-access, or hook-/rule-resolved in
             // restricted mode) never waited on the interactive onPermissionRequest
@@ -1132,10 +1138,10 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
             // request.opened from onPermissionRequest and are untouched here.
             if (
               input.runtimeMode === "full-access" ||
-              requestRecord?.data.resolvedByHook ||
+              requestRecord.data.resolvedByHook ||
               sessionCtx.pendingCallbackCount === 0
             ) {
-              yield* emitPermissionResolved(event.data, requestRecord?.data);
+              yield* emitPermissionResolved(event.data, requestRecord.data);
             }
           }),
         );
