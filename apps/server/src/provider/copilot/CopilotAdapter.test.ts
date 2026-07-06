@@ -1029,7 +1029,13 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
       );
       NodeAssert.equal(
         progress.some(
-          (event) => event.type === "task.progress" && event.payload.lastToolName === "bash",
+          (event) => event.type === "task.progress" && event.payload.description === "`ls`",
+        ),
+        true,
+      );
+      NodeAssert.equal(
+        progress.some(
+          (event) => event.type === "task.progress" && event.payload.lastToolName === "Command run",
         ),
         true,
       );
@@ -1191,7 +1197,7 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
     }),
   );
 
-  it.effect("maps SDK permission events in full-access mode", () =>
+  it.effect("maps auto-resolved SDK permissions to a resolution only (no phantom prompt)", () =>
     Effect.gen(function* () {
       const adapter = yield* CopilotAdapterTag;
       const threadId = asThreadId("thread-sdk-permission-full-access");
@@ -1201,7 +1207,7 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
             event.threadId === threadId &&
             (event.type === "request.opened" || event.type === "request.resolved"),
         ),
-        Stream.take(2),
+        Stream.take(1),
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -1228,12 +1234,14 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
       });
 
       const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      // Only a resolution — never a request.opened that would flash a pending
+      // approval for a permission the user never had to act on.
       NodeAssert.deepEqual(
         events.map((event) => event.type),
-        ["request.opened", "request.resolved"],
+        ["request.resolved"],
       );
       NodeAssert.equal(events[0]?.requestId, "sdk-request-1");
-      NodeAssert.equal(events[1]?.raw?.method, "permission.completed");
+      NodeAssert.equal(events[0]?.raw?.method, "permission.completed");
     }),
   );
 

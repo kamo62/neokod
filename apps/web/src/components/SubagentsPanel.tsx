@@ -12,6 +12,16 @@ import { formatTimestamp } from "../timestampFormat";
 const EMPTY_DISMISSED: ReadonlySet<string> = new Set();
 
 /**
+ * Plain-text preview of a progress/summary line for the compact card list,
+ * where the clickable card can't host rich markdown (code fences, links). The
+ * selected-worker view renders the same text through ChatMarkdown instead, so
+ * inline-code commands there show in monospace; here we just drop the backticks.
+ */
+function toPlainPreview(text: string): string {
+  return text.replace(/`+/g, "").trim();
+}
+
+/**
  * Secondary label under a worker's name: the model when the provider knows it
  * (Copilot/Codex), otherwise the worker kind (the Claude case), otherwise
  * nothing.
@@ -362,7 +372,7 @@ const SubagentsPanel = memo(function SubagentsPanel({
                         ) : null}
                         {card.summary ? (
                           <p className="mt-1.5 text-[12px] leading-snug text-muted-foreground/80">
-                            {card.summary}
+                            {toPlainPreview(card.summary)}
                           </p>
                         ) : null}
                         {card.progress.length > 0 ? (
@@ -373,7 +383,7 @@ const SubagentsPanel = memo(function SubagentsPanel({
                                 className="text-[11px]"
                               >
                                 <p className="leading-snug text-muted-foreground/70">
-                                  {entry.summary ?? entry.description ?? "Working…"}
+                                  {toPlainPreview(entry.summary ?? entry.description ?? "Working…")}
                                 </p>
                                 {entry.lastToolName ? (
                                   <p className="text-[10px] text-muted-foreground/40">

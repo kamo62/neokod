@@ -352,6 +352,31 @@ export function mapCopilotTodosToPlanSteps(
   return steps;
 }
 
+/**
+ * Build a crisp progress line for a sub-agent's tool call. Commands and file
+ * paths are wrapped in inline code so the Subagents pane renders them in
+ * monospace (the same visual weight the main thread gives tool rows) via
+ * ChatMarkdown, instead of dumping raw JSON args as prose. Anything without a
+ * recognizable command/path degrades to the tool name — never a JSON blob.
+ */
+function describeWorkerToolProgress(data: {
+  toolName: string;
+  arguments?: Record<string, unknown> | undefined;
+}): string {
+  const args = data.arguments;
+  const pick = (key: string): string | undefined => {
+    const value = args?.[key];
+    return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+  };
+  const command = pick("command");
+  if (command) return `\`${command.slice(0, 400)}\``;
+  const path = pick("path") ?? pick("filePath") ?? pick("file_path");
+  if (path) return `\`${path}\``;
+  const query = pick("query") ?? pick("pattern");
+  if (query) return `\`${query.slice(0, 400)}\``;
+  return data.toolName;
+}
+
 function titleForCopilotTool(itemType: CanonicalItemType, toolName: string): string {
   switch (itemType) {
     case "command_execution":
@@ -816,25 +841,6 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         runFork(runTodoRefresh);
       };
 
-      const emitPermissionOpened = (requestData: CopilotPermissionRequestRecord["data"]) =>
-        Effect.gen(function* () {
-          const requestType = classifyPermissionRequestType(requestData.permissionRequest.kind);
-          yield* offerRuntimeEvent({
-            type: "request.opened",
-            ...(yield* makeEventStamp()),
-            provider: PROVIDER,
-            threadId: input.threadId,
-            turnId: sessionCtx.activeTurnId,
-            requestId: RuntimeRequestId.make(requestData.requestId),
-            payload: {
-              requestType,
-              detail: describeCopilotPermissionRequest(requestData.permissionRequest),
-              args: requestData.permissionRequest,
-            },
-            ...rawSessionEvent("permission.requested", requestData),
-          });
-        });
-
       const emitPermissionResolved = (
         completedData: { requestId: string; result: unknown },
         requestData: CopilotPermissionRequestRecord["data"] | undefined,
@@ -1106,9 +1112,6 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
               ...(event.data.resolvedByHook ? { resolvedByHook: event.data.resolvedByHook } : {}),
             };
             sessionCtx.permissionRequests.set(event.data.requestId, { data: requestData });
-            if (input.runtimeMode === "full-access") {
-              yield* emitPermissionOpened(requestData);
-            }
           }),
         );
       });
@@ -1119,14 +1122,19 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
             yield* logNative(input.threadId, "permission.completed", event);
             const requestRecord = sessionCtx.permissionRequests.get(event.data.requestId);
             sessionCtx.permissionRequests.delete(event.data.requestId);
-            if (input.runtimeMode === "full-access") {
-              yield* emitPermissionResolved(event.data, requestRecord?.data);
-              return;
-            }
-            if (requestRecord?.data.resolvedByHook || sessionCtx.pendingCallbackCount === 0) {
-              if (requestRecord) {
-                yield* emitPermissionOpened(requestRecord.data);
-              }
+            // Auto-resolved permissions (full-access, or hook-/rule-resolved in
+            // restricted mode) never waited on the interactive onPermissionRequest
+            // callback, so a request.opened for them would flash a pending
+            // approval that instantly clears — especially noisy for sub-agent
+            // read/shell tools, which fire hundreds of these. Emit only the
+            // resolution so the evidence/audit trail is preserved without the
+            // phantom prompt. Genuine interactive approvals emit their own
+            // request.opened from onPermissionRequest and are untouched here.
+            if (
+              input.runtimeMode === "full-access" ||
+              requestRecord?.data.resolvedByHook ||
+              sessionCtx.pendingCallbackCount === 0
+            ) {
               yield* emitPermissionResolved(event.data, requestRecord?.data);
             }
           }),
@@ -1267,6 +1275,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
             // tool name, and is kept off the main thread (start and complete
             // both diverted, so no toolCalls bookkeeping is needed).
             if (workerTaskId) {
+              const workerItemType = classifyCopilotToolCall(event.data);
               yield* offerRuntimeEvent({
                 type: "task.progress",
                 ...(yield* makeEventStamp()),
@@ -1275,11 +1284,11 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
                 turnId: sessionCtx.activeTurnId,
                 payload: {
                   taskId: workerTaskId,
-                  description: titleForCopilotTool(
-                    classifyCopilotToolCall(event.data),
-                    event.data.toolName,
-                  ),
-                  lastToolName: event.data.toolName,
+                  // Mirror the main thread's tool row: render the command/path
+                  // as inline code (monospace in the pane), with the human
+                  // action label beneath — never a raw JSON args blob.
+                  description: describeWorkerToolProgress(event.data),
+                  lastToolName: titleForCopilotTool(workerItemType, event.data.toolName),
                   ...(event.agentId ? { agentId: event.agentId } : {}),
                 },
               });
