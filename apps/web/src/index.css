@@ -39,8 +39,11 @@
   --font-sans:
     "DM Sans Variable", "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
     sans-serif;
+  /* Lead with the bundled JetBrains Mono (imported in main.tsx) so packaged
+     macOS and Windows builds render identically instead of depending on the
+     OS-only SF Mono. System fonts remain as fallbacks. */
   --font-mono:
-    "SF Mono", "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    "JetBrains Mono", "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   --color-warning-foreground: var(--warning-foreground);
   --color-warning: var(--warning);
   --color-success-foreground: var(--success-foreground);
@@ -227,25 +230,31 @@
 :root {
   color-scheme: light;
   --radius: 0.625rem;
+  /* OMApp default theme (Codex "Light"): #FFFFFF background, #1A1C1F
+     foreground, #339CFF accent. See FORK.md. */
   --background: var(--color-white);
   --app-chrome-background: var(--background);
-  --foreground: var(--color-neutral-800);
+  --foreground: #1a1c1f;
   --card: var(--color-white);
-  --card-foreground: var(--color-neutral-800);
+  --card-foreground: #1a1c1f;
   --popover: var(--color-white);
-  --popover-foreground: var(--color-neutral-800);
-  --primary: oklch(0.488 0.217 264);
+  --popover-foreground: #1a1c1f;
+  /* ponytail: #339CFF is the Codex-provided accent. White-on-accent
+     (--primary-foreground) is Codex's own choice and lands near ~2.8:1, below
+     the WCAG 3:1 UI-contrast floor; if that matters, darken this accent or set
+     --primary-foreground to a dark tone rather than white. */
+  --primary: #339cff;
   --primary-foreground: var(--color-white);
   --secondary: --alpha(var(--color-black) / 4%);
   --secondary-foreground: var(--color-neutral-800);
   --muted: --alpha(var(--color-black) / 4%);
   --muted-foreground: color-mix(in srgb, var(--color-neutral-500) 90%, var(--color-black));
   --accent: --alpha(var(--color-black) / 4%);
-  --accent-foreground: var(--color-neutral-800);
+  --accent-foreground: #1a1c1f;
   --destructive: var(--color-red-500);
   --border: --alpha(var(--color-black) / 8%);
   --input: --alpha(var(--color-black) / 10%);
-  --ring: oklch(0.488 0.217 264);
+  --ring: #339cff;
   --destructive-foreground: var(--color-red-700);
   --info: var(--color-blue-500);
   --info-foreground: var(--color-blue-700);
@@ -256,25 +265,28 @@
 
   @variant dark {
     color-scheme: dark;
-    --background: color-mix(in srgb, var(--color-neutral-950) 95%, var(--color-white));
+    /* OMApp default theme (Codex "Dark"): #181818 background, #FFFFFF
+       foreground, #339CFF accent. Card/popover keep the subtle lift off the
+       background via color-mix. See FORK.md. */
+    --background: #181818;
     --app-chrome-background: var(--background);
-    --foreground: var(--color-neutral-100);
+    --foreground: var(--color-white);
     --card: color-mix(in srgb, var(--background) 98%, var(--color-white));
-    --card-foreground: var(--color-neutral-100);
+    --card-foreground: var(--color-white);
     --popover: color-mix(in srgb, var(--background) 98%, var(--color-white));
-    --popover-foreground: var(--color-neutral-100);
-    --primary: oklch(0.588 0.217 264);
+    --popover-foreground: var(--color-white);
+    --primary: #339cff;
     --primary-foreground: var(--color-white);
     --secondary: --alpha(var(--color-white) / 4%);
     --secondary-foreground: var(--color-neutral-100);
     --muted: --alpha(var(--color-white) / 4%);
     --muted-foreground: color-mix(in srgb, var(--color-neutral-500) 90%, var(--color-white));
     --accent: --alpha(var(--color-white) / 4%);
-    --accent-foreground: var(--color-neutral-100);
+    --accent-foreground: var(--color-white);
     --destructive: color-mix(in srgb, var(--color-red-500) 90%, var(--color-white));
     --border: --alpha(var(--color-white) / 6%);
     --input: --alpha(var(--color-white) / 8%);
-    --ring: oklch(0.588 0.217 264);
+    --ring: #339cff;
     --destructive-foreground: var(--color-red-400);
     --info: var(--color-blue-500);
     --info-foreground: var(--color-blue-400);
@@ -334,7 +346,7 @@ body::after {
 pre,
 code {
   font-family:
-    "SF Mono", "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    "JetBrains Mono", "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
 /* Window drag region (frameless titlebar) */

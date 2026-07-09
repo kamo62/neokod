@@ -37,7 +37,12 @@ import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderAdapterProcessError, ProviderAdapterValidationError } from "../Errors.ts";
 import type { ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
-import { makeClaudeAdapter, type ClaudeAdapterLiveOptions } from "./ClaudeAdapter.ts";
+import {
+  applyClaudeTaskToolResult,
+  makeClaudeAdapter,
+  planStepsFromClaudeTasks,
+  type ClaudeAdapterLiveOptions,
+} from "./ClaudeAdapter.ts";
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
 
 // Test-local service tag so the rest of the file can keep using `yield* ClaudeAdapter`.
@@ -1258,6 +1263,137 @@ describe("ClaudeAdapterLive", () => {
           { step: "Task", status: "inProgress" },
           { step: "Ship it", status: "completed" },
         ]);
+      }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("emits an empty Claude Task plan after deleting the final task", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+
+      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 14).pipe(
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+
+      const turn = yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "track this",
+        attachments: [],
+      });
+
+      harness.query.emit({
+        type: "stream_event",
+        session_id: "sdk-session-task-plan-delete",
+        uuid: "stream-task-create-start",
+        parent_tool_use_id: null,
+        event: {
+          type: "content_block_start",
+          index: 1,
+          content_block: {
+            type: "tool_use",
+            id: "tool-task-create-1",
+            name: "TaskCreate",
+            input: {
+              subject: "Investigate",
+            },
+          },
+        },
+      } as unknown as SDKMessage);
+
+      harness.query.emit({
+        type: "user",
+        session_id: "sdk-session-task-plan-delete",
+        uuid: "user-task-create-result",
+        parent_tool_use_id: null,
+        tool_use_result: {
+          task: {
+            id: "task-1",
+            subject: "Investigate",
+          },
+        },
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-task-create-1",
+              content: "created",
+            },
+          ],
+        },
+      } as unknown as SDKMessage);
+
+      harness.query.emit({
+        type: "stream_event",
+        session_id: "sdk-session-task-plan-delete",
+        uuid: "stream-task-update-start",
+        parent_tool_use_id: null,
+        event: {
+          type: "content_block_start",
+          index: 2,
+          content_block: {
+            type: "tool_use",
+            id: "tool-task-update-1",
+            name: "TaskUpdate",
+            input: {
+              taskId: "task-1",
+              status: "deleted",
+            },
+          },
+        },
+      } as unknown as SDKMessage);
+
+      harness.query.emit({
+        type: "user",
+        session_id: "sdk-session-task-plan-delete",
+        uuid: "user-task-update-result",
+        parent_tool_use_id: null,
+        tool_use_result: {
+          success: true,
+          taskId: "task-1",
+        },
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-task-update-1",
+              content: "deleted",
+            },
+          ],
+        },
+      } as unknown as SDKMessage);
+
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        session_id: "sdk-session-task-plan-delete",
+        uuid: "result-task-plan-delete",
+      } as unknown as SDKMessage);
+
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      const planUpdated = runtimeEvents.filter((event) => event.type === "turn.plan.updated");
+
+      assert.equal(planUpdated.length, 2);
+      assert.equal(String(planUpdated[0]?.turnId), String(turn.turnId));
+      if (planUpdated[0]?.type === "turn.plan.updated") {
+        assert.deepEqual(planUpdated[0].payload.plan, [{ step: "Investigate", status: "pending" }]);
+      }
+      if (planUpdated[1]?.type === "turn.plan.updated") {
+        assert.deepEqual(planUpdated[1].payload.plan, []);
       }
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
@@ -3785,5 +3921,49 @@ describe("ClaudeAdapterLive", () => {
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
     );
+  });
+});
+
+describe("Claude Task tool plan handling", () => {
+  type TaskTool = Parameters<typeof applyClaudeTaskToolResult>[1];
+  const taskTool = (toolName: string, input: Record<string, unknown>): TaskTool =>
+    ({
+      itemId: "i",
+      itemType: "tool",
+      toolName,
+      title: toolName,
+      input,
+      partialInputJson: "",
+    }) as unknown as TaskTool;
+
+  // Regression guard for the Agent SDK Task-tools migration (SDK >= 0.3.142):
+  // TaskCreate's id is only in the tool RESULT, TaskUpdate may arrive with a
+  // raw `id`/`task_id` key (Claude Code's repair to `taskId` is not reflected
+  // in the stream), and `status: "deleted"` must remove the task.
+  it("captures the create id from the result, applies a non-canonical id update, and deletes", () => {
+    const tasks: Parameters<typeof applyClaudeTaskToolResult>[0] = new Map();
+
+    applyClaudeTaskToolResult(tasks, taskTool("TaskCreate", { subject: "Investigate" }), {
+      task: { id: "t1", subject: "Investigate" },
+    });
+    assert.deepEqual(planStepsFromClaudeTasks(tasks), [{ step: "Investigate", status: "pending" }]);
+
+    const applied = applyClaudeTaskToolResult(
+      tasks,
+      taskTool("TaskUpdate", { id: "t1", status: "in_progress" }),
+      undefined,
+    );
+    assert.isTrue(applied);
+    assert.deepEqual(planStepsFromClaudeTasks(tasks), [
+      { step: "Investigate", status: "inProgress" },
+    ]);
+
+    const deleted = applyClaudeTaskToolResult(
+      tasks,
+      taskTool("TaskUpdate", { taskId: "t1", status: "deleted" }),
+      undefined,
+    );
+    assert.isTrue(deleted);
+    assert.equal(tasks.size, 0);
   });
 });

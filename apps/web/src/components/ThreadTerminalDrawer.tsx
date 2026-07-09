@@ -391,7 +391,7 @@ export function TerminalViewport({
       fontSize: 12,
       scrollback: 5_000,
       fontFamily:
-        '"SF Mono", "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace',
+        '"JetBrains Mono", "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
       theme: terminalThemeFromApp(mount),
     });
     terminal.loadAddon(fitAddon);
@@ -704,7 +704,6 @@ export function TerminalViewport({
     };
     // autoFocus is intentionally omitted;
     // it is only read at mount time and must not trigger terminal teardown/recreation.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cwd, environmentId, runtimeEnvKey, terminalId, threadId, worktreePath]);
 
   useEffect(() => {

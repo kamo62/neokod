@@ -74,6 +74,20 @@ export function hasCloudPublicConfig(): boolean {
   return Boolean(config.clerkPublishableKey && config.clerkJwtTemplate && config.relayUrl);
 }
 
+// Fork (OMApp): cloud / T3 Connect surfaces are gated OFF by default. They
+// only render when VITE_OMAPP_CLOUD is explicitly set to "true". This keeps
+// the relay/cloud backend code compiling while hiding every user-facing
+// cloud surface in the default OMApp build. See FORK.md.
+export function isCloudFlagEnabled(): boolean {
+  return (import.meta.env.VITE_OMAPP_CLOUD as string | undefined)?.trim() === "true";
+}
+
+// Single gate every cloud / T3 Connect surface should check before rendering:
+// the fork flag must be on AND the cloud public config must be present.
+export function isCloudEnabled(): boolean {
+  return isCloudFlagEnabled() && hasCloudPublicConfig();
+}
+
 export function resolveRelayClerkTokenOptions() {
   const { clerkJwtTemplate } = resolveCloudPublicConfig();
   if (!clerkJwtTemplate) {

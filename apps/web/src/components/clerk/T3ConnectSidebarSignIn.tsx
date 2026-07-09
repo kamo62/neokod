@@ -1,19 +1,19 @@
 import { UserButton, useAuth } from "@clerk/react";
 import { LogInIcon, SmartphoneIcon } from "lucide-react";
 
-import { hasCloudPublicConfig } from "../../cloud/publicConfig";
+import { isCloudEnabled } from "../../cloud/publicConfig";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "../ui/sidebar";
 import { MobileClientsUserProfilePage } from "./MobileClientsUserProfilePage";
 import { useT3ConnectAuthPrompt } from "./useT3ConnectAuthPrompt";
 
 export function T3ConnectSidebarSignIn() {
-  if (!hasCloudPublicConfig()) return null;
+  if (!isCloudEnabled()) return null;
 
   return <ConfiguredT3ConnectSidebarSignIn />;
 }
 
 export function T3ConnectSidebarAvatar() {
-  if (!hasCloudPublicConfig()) return null;
+  if (!isCloudEnabled()) return null;
 
   return <ConfiguredT3ConnectSidebarAvatar />;
 }

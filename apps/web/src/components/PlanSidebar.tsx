@@ -55,6 +55,16 @@ function stepStatusIcon(status: string): React.ReactNode {
   );
 }
 
+function planStepRenderKey(
+  step: ActivePlanState["steps"][number],
+  occurrences: Map<string, number>,
+): string {
+  const baseKey = `${step.status}:${step.step}`;
+  const occurrence = occurrences.get(baseKey) ?? 0;
+  occurrences.set(baseKey, occurrence + 1);
+  return occurrence === 0 ? baseKey : `${baseKey}:${occurrence + 1}`;
+}
+
 interface PlanSidebarProps {
   activePlan: ActivePlanState | null;
   activeProposedPlan: LatestProposedPlanState | null;
@@ -135,6 +145,8 @@ const PlanSidebar = memo(function PlanSidebar({
     })();
   }, [environmentId, planMarkdown, workspaceRoot, writeProjectFile]);
 
+  const planStepKeyOccurrences = new Map<string, number>();
+
   return (
     <div
       className={cn(
@@ -210,7 +222,7 @@ const PlanSidebar = memo(function PlanSidebar({
               </p>
               {activePlan.steps.map((step) => (
                 <div
-                  key={`${step.status}:${step.step}`}
+                  key={planStepRenderKey(step, planStepKeyOccurrences)}
                   className={cn(
                     "flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors duration-200",
                     step.status === "inProgress" && "bg-blue-500/5",

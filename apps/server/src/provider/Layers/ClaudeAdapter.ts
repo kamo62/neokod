@@ -733,7 +733,7 @@ function readClaudeTaskFromResult(
     : undefined;
 }
 
-function applyClaudeTaskToolResult(
+export function applyClaudeTaskToolResult(
   tasks: Map<string, ClaudeTaskState>,
   tool: ToolInFlight,
   result: Record<string, unknown> | undefined,
@@ -785,9 +785,28 @@ function applyClaudeTaskToolResult(
     return true;
   }
 
-  const taskId = readString(tool.input.taskId) ?? readString(result?.taskId);
+  // TaskUpdate. Per the Agent SDK todo-tracking docs the streamed `tool_use`
+  // input is the raw shape the model emitted: Claude Code repairs `id`/
+  // `task_id` -> `taskId` (and `active_form` -> `activeForm`) before execution,
+  // but that repair is NOT reflected in the stream. Read the id defensively or
+  // status updates silently drop and the plan never reflects progress.
+  const taskId =
+    readString(tool.input.taskId) ??
+    readString(tool.input.id) ??
+    readString(tool.input.task_id) ??
+    readString(result?.taskId);
   if (!taskId) {
     return false;
+  }
+  // `status: "deleted"` is the documented delete path. Remove the task rather
+  // than letting normalizeClaudeTaskStatus collapse "deleted" to "pending",
+  // which would leave the item lingering in the plan forever.
+  if (
+    readString(tool.input.status)
+      ?.toLowerCase()
+      .replace(/[\s-]+/g, "_") === "deleted"
+  ) {
+    return tasks.delete(taskId);
   }
   const task = tasks.get(taskId);
   if (!task) {
@@ -819,7 +838,7 @@ function applyClaudeTaskToolResult(
   return changed;
 }
 
-function planStepsFromClaudeTasks(tasks: Map<string, ClaudeTaskState>): PlanStep[] {
+export function planStepsFromClaudeTasks(tasks: Map<string, ClaudeTaskState>): PlanStep[] {
   return Array.from(tasks.values()).map((task) => {
     const blockedBy = Array.from(task.blockedBy);
     const blockedSuffix = blockedBy.length > 0 ? ` (blocked by #${blockedBy.join(", #")})` : "";
@@ -1849,10 +1868,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     },
   ) {
     const plan = planStepsFromClaudeTasks(context.claudeTasks);
-    if (plan.length === 0) {
-      return;
-    }
-
     const stamp = yield* makeEventStamp();
     yield* offerRuntimeEvent({
       type: "turn.plan.updated",

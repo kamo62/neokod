@@ -12,6 +12,9 @@ interface ImportMetaEnv {
   readonly VITE_RELAY_OTLP_TRACES_URL: string;
   readonly VITE_RELAY_OTLP_TRACES_DATASET: string;
   readonly VITE_RELAY_OTLP_TRACES_TOKEN: string;
+  // Fork (OMApp): "true" opts the cloud / T3 Connect surfaces back in. Unset
+  // or any other value keeps them hidden (the default OMApp build).
+  readonly VITE_OMAPP_CLOUD: string;
   readonly APP_VERSION: string;
 }
 
