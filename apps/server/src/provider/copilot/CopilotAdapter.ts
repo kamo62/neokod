@@ -727,7 +727,10 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         ...(model ? { model } : {}),
         ...(reasoningEffort ? { reasoningEffort } : {}),
         ...(mcpServers ? { mcpServers } : {}),
-        ...(customAgents.length > 0 ? { customAgents, includeSubAgentStreamingEvents: true } : {}),
+        ...(customAgents.length > 0 ? { customAgents } : {}),
+        ...(customAgents.length > 0 || copilotSettings.fleetMode
+          ? { includeSubAgentStreamingEvents: true }
+          : {}),
         ...(copilotSettings.defaultAgent
           ? {
               defaultAgent: copilotSettings.defaultAgent.excludedTools
@@ -1509,7 +1512,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
                   provider: PROVIDER,
                   method: "session/fleet.start",
                   detail:
-                    "Copilot fleet mode is enabled, but this SDK session does not expose fleet.start.",
+                    "Copilot fleet mode is enabled, but this SDK session does not expose fleet.start. Disable fleet mode in Copilot settings or update the Copilot SDK.",
                 });
               }
               const result = yield* Effect.tryPromise(() => fleetStart({ prompt })).pipe(

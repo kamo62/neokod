@@ -47,7 +47,7 @@ interface FakeCopilotSession {
   readonly abort: () => Promise<void>;
   readonly setModel: (model: string, options?: unknown) => Promise<void>;
   readonly rpc: {
-    readonly fleet: {
+    fleet?: {
       readonly start: (params: { prompt?: string }) => Promise<{ started: boolean }>;
     };
     readonly plan: {
@@ -66,6 +66,7 @@ interface FakeCopilotSession {
   readonly disconnectCalls: Array<string>;
   readonly abortCalls: number;
   readonly setModelCalls: Array<{ model: string; options: unknown }>;
+  readonly removeFleetStart: () => void;
 }
 
 function makeFakeCopilotSession(sessionId: string): FakeCopilotSession {
@@ -126,6 +127,9 @@ function makeFakeCopilotSession(sessionId: string): FakeCopilotSession {
     fleetStarts,
     setTodoRows: (rows) => {
       todoRows = rows;
+    },
+    removeFleetStart: () => {
+      delete fake.rpc.fleet;
     },
     disconnectCalls,
     get abortCalls() {
@@ -650,11 +654,46 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
         cwd: "/tmp/project",
         runtimeMode: "full-access",
       });
+      NodeAssert.equal(scopedClient.capturedConfigs[0]?.includeSubAgentStreamingEvents, true);
       yield* adapter.sendTurn({ threadId, input: "split this up" });
 
       const session = Array.from(scopedClient.sessionsById.values())[0]!;
       NodeAssert.deepEqual(session.fleetStarts, [{ prompt: "split this up" }]);
       NodeAssert.equal(session.sentMessages.length, 0);
+    }),
+  );
+
+  it.effect("explains how to recover when fleet mode is unavailable in the SDK", () =>
+    Effect.gen(function* () {
+      const scopedClient = makeCopilotClientTestDouble();
+      const settings = yield* decodeCopilotSettings({ fleetMode: true });
+      const adapterLayer = Layer.effect(
+        CopilotAdapterTag,
+        makeCopilotAdapter(scopedClient, settings, { instanceId: INSTANCE_ID }),
+      ).pipe(
+        Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
+        Layer.provideMerge(NodeServices.layer),
+      );
+      const context = yield* Layer.build(adapterLayer);
+      const adapter = yield* Effect.service(CopilotAdapterTag).pipe(Effect.provide(context));
+      const threadId = asThreadId("thread-fleet-unavailable");
+
+      yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+      Array.from(scopedClient.sessionsById.values())[0]!.removeFleetStart();
+
+      const exit = yield* Effect.exit(adapter.sendTurn({ threadId, input: "split this up" }));
+      NodeAssert.equal(Exit.isFailure(exit), true);
+      if (Exit.isFailure(exit)) {
+        NodeAssert.match(
+          String(exit.cause),
+          /Copilot fleet mode is enabled.*Disable fleet mode in Copilot settings/i,
+        );
+      }
     }),
   );
 

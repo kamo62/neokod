@@ -74,39 +74,46 @@ export function resolveSelectedSubagent(
   return cards.find((card) => card.taskId === selectedTaskId) ?? null;
 }
 
-/**
- * A finished worker (completed/failed/stopped) auto-disappears from the pane —
- * the Subagents pane tracks live work, and finished workers would otherwise
- * pile up. Pure.
- */
+/** A worker whose provider lifecycle has reached a terminal status. Pure. */
 export function isFinishedWorker(card: SubagentCard): boolean {
   return card.status === "completed" || card.status === "failed" || card.status === "stopped";
 }
 
 /**
- * A worker still marked `inProgress` after the parent turn has settled never
- * received its `task.completed` — it's orphaned (e.g. a provider that dropped
- * a terminal event). Once the turn is idle no worker can legitimately still be
- * running, so treat it as stale and hide it. Pure.
+ * An empty terminal worker can be auto-hidden because it gives the user
+ * nothing to review. Workers with either streamed progress or a final summary
+ * remain visible until the user hides them. Pure.
  */
-export function isStaleWorker(card: SubagentCard, turnSettled: boolean): boolean {
-  return turnSettled && card.status === "inProgress";
+export function isDismissableEmptyWorker(card: SubagentCard): boolean {
+  return isFinishedWorker(card) && card.progress.length === 0 && card.summary === null;
 }
 
 /**
- * The workers a user should see: in-progress and not manually dismissed.
- * Finished workers are hidden automatically, as are orphaned in-progress
- * workers once the parent turn settles. Pure.
+ * The workers a user should see: workers persist until manually hidden, except
+ * finished workers with no progress or summary. Pure.
  */
 export function visibleSubagentCards(
   cards: readonly SubagentCard[],
   dismissed: ReadonlySet<string>,
-  turnSettled = false,
 ): SubagentCard[] {
-  return cards.filter(
-    (card) =>
-      !dismissed.has(card.taskId) && !isFinishedWorker(card) && !isStaleWorker(card, turnSettled),
-  );
+  return cards.filter((card) => !dismissed.has(card.taskId) && !isDismissableEmptyWorker(card));
+}
+
+function subagentStatusLabel(status: SubagentCard["status"]): string {
+  if (status === "inProgress") return "In progress";
+  if (status === "completed") return "Completed";
+  if (status === "failed") return "Failed";
+  return "Stopped";
+}
+
+export function displayStatus(
+  card: SubagentCard,
+  turnSettled: boolean,
+): { label: string; iconStatus: SubagentCard["status"] } {
+  if (card.status === "inProgress" && turnSettled) {
+    return { label: "Ended", iconStatus: "stopped" };
+  }
+  return { label: subagentStatusLabel(card.status), iconStatus: card.status };
 }
 
 function subagentStatusIcon(status: SubagentCard["status"]): React.ReactNode {
@@ -143,11 +150,10 @@ interface SubagentsPanelProps {
   timestampFormat: TimestampFormat;
   threadRef?: ScopedThreadRef | undefined;
   markdownCwd?: string | undefined;
-  /** Parent turn is idle — used to auto-hide orphaned in-progress workers. */
-  turnSettled?: boolean;
-  /** Dismissed worker task ids, owned by the parent so it survives remounts. */
+  /** Hidden worker task ids, owned by the parent so they survive remounts. */
   dismissed?: ReadonlySet<string>;
   onDismiss?: (taskId: string) => void;
+  turnSettled?: boolean;
   mode?: "sheet" | "sidebar" | "embedded";
 }
 
@@ -156,17 +162,14 @@ const SubagentsPanel = memo(function SubagentsPanel({
   timestampFormat,
   threadRef,
   markdownCwd,
-  turnSettled = false,
   dismissed = EMPTY_DISMISSED,
   onDismiss,
+  turnSettled = false,
   mode = "sidebar",
 }: SubagentsPanelProps) {
   const cards = useMemo(() => deriveSubagentCards(activities), [activities]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const visibleCards = useMemo(
-    () => visibleSubagentCards(cards, dismissed, turnSettled),
-    [cards, dismissed, turnSettled],
-  );
+  const visibleCards = useMemo(() => visibleSubagentCards(cards, dismissed), [cards, dismissed]);
   const selected = resolveSelectedSubagent(visibleCards, selectedTaskId);
   const tabs = useMemo(() => deriveSubagentTabs(visibleCards), [visibleCards]);
 
@@ -214,7 +217,7 @@ const SubagentsPanel = memo(function SubagentsPanel({
               onClick={() => dismissWorker(selected.taskId)}
               className="rounded px-1.5 py-0.5 text-[11px] text-muted-foreground/70 hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >
-              Dismiss
+              Hide
             </button>
             <button
               type="button"
@@ -236,6 +239,10 @@ const SubagentsPanel = memo(function SubagentsPanel({
         >
           {tabs.map((tab) => {
             const isSelected = tab.taskId === selectedTaskId;
+            const status = displayStatus(
+              visibleCards.find((card) => card.taskId === tab.taskId)!,
+              turnSettled,
+            );
             return (
               <div key={tab.taskId} className="group relative flex shrink-0 items-center">
                 <button
@@ -254,13 +261,13 @@ const SubagentsPanel = memo(function SubagentsPanel({
                       : "border-border/50 text-muted-foreground/80 hover:bg-muted/40 hover:text-foreground",
                   )}
                 >
-                  {subagentStatusIcon(tab.status)}
+                  {subagentStatusIcon(status.iconStatus)}
                   <span className="max-w-[120px] truncate">{tab.label}</span>
                 </button>
                 <button
                   type="button"
-                  aria-label={`Dismiss ${tab.label}`}
-                  title="Dismiss worker"
+                  aria-label={`Hide ${tab.label}`}
+                  title="Hide worker"
                   onClick={() => dismissWorker(tab.taskId)}
                   className="absolute top-1/2 right-1 flex size-4 -translate-y-1/2 items-center justify-center rounded text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                 >
@@ -278,13 +285,14 @@ const SubagentsPanel = memo(function SubagentsPanel({
           <div className="flex flex-col p-3">
             {/* Selected worker header */}
             <div className="flex items-start gap-2.5">
-              {subagentStatusIcon(selected.status)}
+              {subagentStatusIcon(displayStatus(selected, turnSettled).iconStatus)}
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline justify-between gap-2">
                   <p className="truncate text-[13px] font-medium text-foreground/90">
                     {selected.name}
                   </p>
                   <span className="shrink-0 text-[11px] text-muted-foreground/50 tabular-nums">
+                    {displayStatus(selected, turnSettled).label} ·{" "}
                     {formatElapsed(selected.startedAt, selected.completedAt ?? undefined) ??
                       formatTimestamp(selected.startedAt, timestampFormat)}
                   </span>
@@ -342,6 +350,7 @@ const SubagentsPanel = memo(function SubagentsPanel({
             {visibleCards.map((card) => {
               const elapsed = formatElapsed(card.startedAt, card.completedAt ?? undefined);
               const secondary = subagentSecondaryLabel(card);
+              const status = displayStatus(card, turnSettled);
               return (
                 <div key={card.taskId} className="group relative">
                   <button
@@ -349,19 +358,20 @@ const SubagentsPanel = memo(function SubagentsPanel({
                     onClick={() => setSelectedTaskId(card.taskId)}
                     className={cn(
                       "w-full rounded-lg border border-border/50 bg-background/50 p-3 text-left transition-colors duration-200 hover:border-border focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                      card.status === "inProgress" && "bg-blue-500/5",
-                      card.status === "completed" && "bg-emerald-500/5",
-                      card.status === "failed" && "bg-destructive/5",
+                      status.iconStatus === "inProgress" && "bg-blue-500/5",
+                      status.iconStatus === "completed" && "bg-emerald-500/5",
+                      status.iconStatus === "failed" && "bg-destructive/5",
                     )}
                   >
                     <div className="flex items-start gap-2.5">
-                      {subagentStatusIcon(card.status)}
+                      {subagentStatusIcon(status.iconStatus)}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline justify-between gap-2">
                           <p className="truncate text-[13px] font-medium text-foreground/90">
                             {card.name}
                           </p>
                           <span className="shrink-0 pr-5 text-[11px] text-muted-foreground/50 tabular-nums">
+                            {status.label} ·{" "}
                             {elapsed ?? formatTimestamp(card.startedAt, timestampFormat)}
                           </span>
                         </div>
@@ -399,8 +409,8 @@ const SubagentsPanel = memo(function SubagentsPanel({
                   </button>
                   <button
                     type="button"
-                    aria-label={`Dismiss ${card.name}`}
-                    title="Dismiss worker"
+                    aria-label={`Hide ${card.name}`}
+                    title="Hide worker"
                     onClick={() => dismissWorker(card.taskId)}
                     className="absolute top-2 right-2 flex size-5 items-center justify-center rounded text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                   >

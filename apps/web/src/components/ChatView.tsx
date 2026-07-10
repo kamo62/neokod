@@ -67,6 +67,7 @@ import { AsyncResult } from "effect/unstable/reactivity";
 import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";
 import { useDiffPanelStore } from "../diffPanelStore";
+import { selectHiddenSubagentTaskIds, useSubagentUiStore } from "../subagentUiStore";
 import {
   collapseExpandedComposerCursor,
   parseStandaloneComposerSlashCommand,
@@ -1751,27 +1752,23 @@ function ChatViewContent(props: ChatViewProps) {
     subagentPaneShownRef.current.add(activeThreadId);
     useRightPanelStore.getState().open(activeThreadRef, "subagents");
   }, [activeThreadRef, activeThreadId, runningSubagents, rightPanelState.isOpen]);
-  // Dismissed sub-agent workers live here (per-thread), not inside the panel,
-  // so a manual dismiss survives the pane unmounting and reopening.
-  const [dismissedSubagentsByThreadId, setDismissedSubagentsByThreadId] = useState<
-    Record<string, ReadonlySet<string>>
-  >({});
-  const dismissedSubagents =
-    activeThreadId !== null
-      ? (dismissedSubagentsByThreadId[activeThreadId] ?? EMPTY_DISMISSED_SUBAGENTS)
-      : EMPTY_DISMISSED_SUBAGENTS;
+  // Hidden workers are durable local UI state, scoped to the environment and
+  // thread so identical provider thread ids cannot leak across environments.
+  const hiddenSubagentTaskIds = useSubagentUiStore((state) =>
+    selectHiddenSubagentTaskIds(state.hiddenTaskIdsByThreadKey, activeThreadRef),
+  );
+  const dismissedSubagents = useMemo(
+    () =>
+      hiddenSubagentTaskIds.length > 0 ? new Set(hiddenSubagentTaskIds) : EMPTY_DISMISSED_SUBAGENTS,
+    [hiddenSubagentTaskIds],
+  );
+  const hideSubagent = useSubagentUiStore((state) => state.hideSubagent);
   const dismissSubagent = useCallback(
     (taskId: string) => {
-      if (activeThreadId === null) return;
-      setDismissedSubagentsByThreadId((prev) => {
-        const current = prev[activeThreadId] ?? EMPTY_DISMISSED_SUBAGENTS;
-        if (current.has(taskId)) return prev;
-        const next = new Set(current);
-        next.add(taskId);
-        return { ...prev, [activeThreadId]: next };
-      });
+      if (!activeThreadRef) return;
+      hideSubagent(activeThreadRef, taskId);
     },
-    [activeThreadId],
+    [activeThreadRef, hideSubagent],
   );
   const pendingApprovals = useMemo(
     () => derivePendingApprovals(threadActivities),
@@ -5037,33 +5034,37 @@ function ChatViewContent(props: ChatViewProps) {
         timestampFormat={timestampFormat}
         threadRef={activeThreadRef ?? undefined}
         markdownCwd={gitCwd ?? undefined}
-        turnSettled={latestTurnSettled}
         dismissed={dismissedSubagents}
         onDismiss={dismissSubagent}
+        turnSettled={latestTurnSettled}
         mode="embedded"
       />
-    ) : (activeRightPanelSurface?.kind === "files" || activeRightPanelSurface?.kind === "file") &&
-      activeProject &&
-      activeWorkspaceRoot ? (
-      <Suspense fallback={null}>
-        <FilePreviewPanel
-          key={`${activeProject.environmentId}:${activeWorkspaceRoot}`}
-          environmentId={activeProject.environmentId}
-          cwd={activeWorkspaceRoot}
-          projectName={activeProject.title}
-          threadRef={activeThreadRef}
-          composerDraftTarget={composerDraftTarget}
-          keybindings={keybindings}
-          availableEditors={availableEditors}
-          relativePath={
-            activeRightPanelSurface.kind === "file" ? activeRightPanelSurface.relativePath : null
-          }
-          revealLine={activeFileSurface?.revealLine ?? null}
-          revealRequestId={activeFileSurface?.revealRequestId ?? 0}
-          onOpenFile={openFileSurface}
-          onPendingChange={handleFilePendingChange}
-        />
-      </Suspense>
+    ) : activeRightPanelSurface?.kind === "files" || activeRightPanelSurface?.kind === "file" ? (
+      activeProject && activeWorkspaceRoot ? (
+        <Suspense fallback={null}>
+          <FilePreviewPanel
+            key={`${activeProject.environmentId}:${activeWorkspaceRoot}`}
+            environmentId={activeProject.environmentId}
+            cwd={activeWorkspaceRoot}
+            projectName={activeProject.title}
+            threadRef={activeThreadRef}
+            composerDraftTarget={composerDraftTarget}
+            keybindings={keybindings}
+            availableEditors={availableEditors}
+            relativePath={
+              activeRightPanelSurface.kind === "file" ? activeRightPanelSurface.relativePath : null
+            }
+            revealLine={activeFileSurface?.revealLine ?? null}
+            revealRequestId={activeFileSurface?.revealRequestId ?? 0}
+            onOpenFile={openFileSurface}
+            onPendingChange={handleFilePendingChange}
+          />
+        </Suspense>
+      ) : (
+        <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
+          Select a workspace to browse files.
+        </div>
+      )
     ) : null
   ) : null;
 
