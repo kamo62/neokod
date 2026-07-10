@@ -8,7 +8,7 @@
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, ModelSelection, ThreadId } from "@t3tools/contracts";
-import { FileDiff, TerminalSquare } from "lucide-react";
+import { FileDiff, ShieldCheck, TerminalSquare } from "lucide-react";
 import { memo, useMemo } from "react";
 import { useComposerHandleContext } from "../../composerHandleContext";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
@@ -23,7 +23,7 @@ import {
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { CopilotThreadControls } from "./CopilotThreadControls";
-import { CopilotMcpControls } from "./CopilotMcpControls";
+import { CopilotMcpControls, threadUsesCopilot } from "./CopilotMcpControls";
 
 export interface ThreadWorkspaceRailView {
   /** Active model slug, or null when the thread has no resolved selection yet. */
@@ -34,6 +34,12 @@ export interface ThreadWorkspaceRailView {
   showDiff: boolean;
   /** Fleet chip is Copilot-only and never shown unless fleet mode is enabled. */
   showFleet: boolean;
+  /** Read-only Copilot governance configuration, when it applies to this thread. */
+  governance: {
+    label: "Evidence recording" | "Evidence + MCP gateway";
+    tooltip: "AI-Orch evidence recording configured" | "Evidence recording + MCP gateway routing configured";
+    variant: "recording" | "gateway";
+  } | null;
 }
 
 /**
@@ -45,12 +51,30 @@ export function resolveThreadWorkspaceRailView(input: {
   runningTerminalIds: ReadonlyArray<string>;
   hasWorkspace: boolean;
   fleetMode: boolean;
+  usesCopilot: boolean;
+  managedClientEvidence: { enabled: boolean; gatewayEnabled: boolean };
 }): ThreadWorkspaceRailView {
+  const governance =
+    input.usesCopilot && input.managedClientEvidence.enabled
+      ? input.managedClientEvidence.gatewayEnabled
+        ? {
+            label: "Evidence + MCP gateway" as const,
+            tooltip: "Evidence recording + MCP gateway routing configured" as const,
+            variant: "gateway" as const,
+          }
+        : {
+            label: "Evidence recording" as const,
+            tooltip: "AI-Orch evidence recording configured" as const,
+            variant: "recording" as const,
+          }
+      : null;
+
   return {
     modelLabel: input.modelSelection?.model ?? null,
     terminal: terminalStatusFromRunningIds(input.runningTerminalIds),
     showDiff: input.hasWorkspace,
     showFleet: input.fleetMode === true,
+    governance,
   };
 }
 
@@ -71,10 +95,13 @@ export const ThreadWorkspaceRail = memo(function ThreadWorkspaceRail({
   // detail atom churns on every streaming delta this rail does not care about.
   const modelSelection = useThreadShell(threadRef)?.modelSelection;
   const runningTerminalIds = useThreadRunningTerminalIds({ environmentId, threadId });
-  const fleetMode = useEnvironmentSettings(
+  const providers = useEnvironmentSettings(environmentId, (settings) => settings.providers);
+  const providerInstances = useEnvironmentSettings(
     environmentId,
-    (settings) => settings.providers.githubCopilot.fleetMode,
+    (settings) => settings.providerInstances,
   );
+  const copilot = providers.githubCopilot;
+  const usesCopilot = threadUsesCopilot(modelSelection?.instanceId, providerInstances);
   const setTerminalOpen = useTerminalUiStateStore((s) => s.setTerminalOpen);
   const openRightPanel = useRightPanelStore((s) => s.open);
   const composerHandle = useComposerHandleContext();
@@ -85,9 +112,11 @@ export const ThreadWorkspaceRail = memo(function ThreadWorkspaceRail({
         modelSelection,
         runningTerminalIds,
         hasWorkspace: Boolean(activeProjectName),
-        fleetMode,
+        fleetMode: copilot.fleetMode,
+        usesCopilot,
+        managedClientEvidence: copilot.managedClientEvidence,
       }),
-    [modelSelection, runningTerminalIds, activeProjectName, fleetMode],
+    [modelSelection, runningTerminalIds, activeProjectName, copilot, usesCopilot],
   );
 
   return (
@@ -175,6 +204,26 @@ export const ThreadWorkspaceRail = memo(function ThreadWorkspaceRail({
             Fleet
           </TooltipTrigger>
           <TooltipPopup side="top">Copilot fleet mode enabled</TooltipPopup>
+        </Tooltip>
+      )}
+
+      {view.governance && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span
+                className={`inline-flex h-6 items-center gap-1 rounded-md border px-1.5 text-[10px] font-medium ${
+                  view.governance.variant === "gateway"
+                    ? "border-primary/40 text-primary"
+                    : "border-input text-muted-foreground"
+                }`}
+              />
+            }
+          >
+            <ShieldCheck aria-hidden="true" className="size-3" />
+            {view.governance.label}
+          </TooltipTrigger>
+          <TooltipPopup side="top">{view.governance.tooltip}</TooltipPopup>
         </Tooltip>
       )}
 

@@ -27,6 +27,54 @@ describe("resolveThreadWorkspaceRailView", () => {
     expect(resolveThreadWorkspaceRailView({ ...base(), fleetMode: false }).showFleet).toBe(false);
     expect(resolveThreadWorkspaceRailView({ ...base(), fleetMode: true }).showFleet).toBe(true);
   });
+
+  it("hides governance when the thread is not using Copilot", () => {
+    expect(
+      resolveThreadWorkspaceRailView({
+        ...base(),
+        usesCopilot: false,
+        managedClientEvidence: { enabled: true, gatewayEnabled: true },
+      }).governance,
+    ).toBeNull();
+  });
+
+  it("hides governance when evidence recording is disabled", () => {
+    expect(
+      resolveThreadWorkspaceRailView({
+        ...base(),
+        usesCopilot: true,
+        managedClientEvidence: { enabled: false, gatewayEnabled: true },
+      }).governance,
+    ).toBeNull();
+  });
+
+  it("shows the configured evidence-recording state", () => {
+    expect(
+      resolveThreadWorkspaceRailView({
+        ...base(),
+        usesCopilot: true,
+        managedClientEvidence: { enabled: true, gatewayEnabled: false },
+      }).governance,
+    ).toEqual({
+      label: "Evidence recording",
+      tooltip: "AI-Orch evidence recording configured",
+      variant: "recording",
+    });
+  });
+
+  it("shows the configured evidence and MCP gateway state", () => {
+    expect(
+      resolveThreadWorkspaceRailView({
+        ...base(),
+        usesCopilot: true,
+        managedClientEvidence: { enabled: true, gatewayEnabled: true },
+      }).governance,
+    ).toEqual({
+      label: "Evidence + MCP gateway",
+      tooltip: "Evidence recording + MCP gateway routing configured",
+      variant: "gateway",
+    });
+  });
 });
 
 function base() {
@@ -35,5 +83,7 @@ function base() {
     runningTerminalIds: [] as ReadonlyArray<string>,
     hasWorkspace: false,
     fleetMode: false,
+    usesCopilot: false,
+    managedClientEvidence: { enabled: false, gatewayEnabled: false },
   };
 }
