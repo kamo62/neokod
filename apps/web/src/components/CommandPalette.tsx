@@ -122,6 +122,7 @@ import { primaryServerKeybindingsAtom } from "../state/server";
 import { resolveShortcutCommand } from "../keybindings";
 import { useRightPanelStore } from "../rightPanelStore";
 import { useWorkspaceRailUiStore } from "../workspaceRailUiStore";
+import { useMissionControlUiStore } from "../missionControlUiStore";
 import {
   Command,
   CommandDialog,
@@ -490,6 +491,7 @@ function OpenCommandPaletteDialog(props: {
   const openRightPanel = useRightPanelStore((state) => state.open);
   const setTerminalOpen = useTerminalUiStateStore((state) => state.setTerminalOpen);
   const requestRailPopover = useWorkspaceRailUiStore((state) => state.requestOpen);
+  const openMissionControl = useMissionControlUiStore((state) => state.setOpen);
   const projects = useProjects();
   const threads = useThreadShells();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -1072,6 +1074,17 @@ function OpenCommandPaletteDialog(props: {
       },
     });
   }
+
+  actionItems.push({
+    kind: "action",
+    value: "action:open-mission-control",
+    searchTerms: ["mission", "agent", "activity", "projects", "workers"],
+    title: "Open Mission Control",
+    icon: <Bot className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      openMissionControl(true);
+    },
+  });
 
   if (routeThreadRef) {
     actionItems.push(

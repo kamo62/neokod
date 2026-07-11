@@ -10,6 +10,7 @@ export type ComposerSlashCommand =
   | "diff"
   | "files"
   | "subagents"
+  | "mission"
   | "goal"
   | "fleet"
   | "mcp";
@@ -18,6 +19,7 @@ export type SlashCommandAction =
   | { kind: "open-model-picker" }
   | { kind: "open-terminal" }
   | { kind: "open-right-panel"; panel: "diff" | "files" | "subagents" }
+  | { kind: "open-mission-control" }
   | { kind: "open-rail-popover"; popover: "goal" | "fleet" | "mcp" }
   | { kind: "interaction-mode"; mode: "plan" | "default" };
 
@@ -37,6 +39,8 @@ export function resolveSlashCommandAction(command: ComposerSlashCommand): SlashC
       return { kind: "open-right-panel", panel: "files" };
     case "subagents":
       return { kind: "open-right-panel", panel: "subagents" };
+    case "mission":
+      return { kind: "open-mission-control" };
     case "goal":
       return { kind: "open-rail-popover", popover: "goal" };
     case "fleet":

@@ -100,6 +100,13 @@ describe("searchSlashCommandItems", () => {
         description: "Open this thread's subagent activity",
       },
       {
+        id: "slash:mission",
+        type: "slash-command",
+        command: "mission",
+        label: "/mission",
+        description: "Open cross-project agent activity",
+      },
+      {
         id: "slash:goal",
         type: "slash-command",
         command: "goal",
@@ -129,6 +136,9 @@ describe("searchSlashCommandItems", () => {
     expect(searchSlashCommandItems(items, "files").map((item) => item.id)).toEqual(["slash:files"]);
     expect(searchSlashCommandItems(items, "subagent").map((item) => item.id)).toEqual([
       "slash:subagents",
+    ]);
+    expect(searchSlashCommandItems(items, "mission").map((item) => item.id)).toEqual([
+      "slash:mission",
     ]);
     expect(searchSlashCommandItems(items, "goal").map((item) => item.id)).toEqual(["slash:goal"]);
     expect(searchSlashCommandItems(items, "fleet").map((item) => item.id)).toEqual(["slash:fleet"]);
