@@ -1009,6 +1009,7 @@ export function ProviderSettingsPanel() {
   >(() => new Set());
   const [openInstanceDetails, setOpenInstanceDetails] = useState<Record<string, boolean>>({});
   const refreshingRef = useRef(false);
+  const refreshingPromiseRef = useRef<Promise<void> | null>(null);
 
   const providerUpdateCandidates = useMemo(
     () => collectProviderUpdateCandidates(serverProviders),
@@ -1036,30 +1037,33 @@ export function ProviderSettingsPanel() {
         )
       : null;
 
-  const refreshProviders = useCallback(() => {
-    if (refreshingRef.current) return;
-    refreshingRef.current = true;
-    setIsRefreshingProviders(true);
-    if (!primaryEnvironment) {
-      refreshingRef.current = false;
-      setIsRefreshingProviders(false);
-      return;
-    }
-    void (async () => {
-      const result = await refreshServerProviders({
-        environmentId: primaryEnvironment.environmentId,
-        input: {},
-      });
-      refreshingRef.current = false;
-      setIsRefreshingProviders(false);
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-        console.warn("Failed to refresh providers", {
-          operation: "refresh-providers",
+  const refreshProviders = useCallback((): Promise<void> => {
+    if (refreshingPromiseRef.current) return refreshingPromiseRef.current;
+    const refresh = async (): Promise<void> => {
+      refreshingRef.current = true;
+      setIsRefreshingProviders(true);
+      try {
+        if (!primaryEnvironment) return;
+        const result = await refreshServerProviders({
           environmentId: primaryEnvironment.environmentId,
-          ...safeErrorLogAttributes(squashAtomCommandFailure(result)),
+          input: {},
         });
+        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+          console.warn("Failed to refresh providers", {
+            operation: "refresh-providers",
+            environmentId: primaryEnvironment.environmentId,
+            ...safeErrorLogAttributes(squashAtomCommandFailure(result)),
+          });
+        }
+      } finally {
+        refreshingRef.current = false;
+        setIsRefreshingProviders(false);
+        refreshingPromiseRef.current = null;
       }
-    })();
+    };
+    const promise = refresh();
+    refreshingPromiseRef.current = promise;
+    return promise;
   }, [primaryEnvironment, refreshServerProviders]);
 
   const runProviderUpdate = useCallback(

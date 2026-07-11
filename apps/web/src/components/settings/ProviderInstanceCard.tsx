@@ -48,6 +48,7 @@ import { ProviderModelsSection } from "./ProviderModelsSection";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { ProviderAccentColorPicker } from "./ProviderAccentColorPicker";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
+import { CopilotGithubSignIn } from "./CopilotGithubSignIn";
 import {
   getProviderVersionAdvisoryPresentation,
   PROVIDER_STATUS_STYLES,
@@ -1052,22 +1053,31 @@ export function ProviderInstanceCard({
                     <p className="text-xs text-muted-foreground">
                       {liveProvider?.auth.status === "authenticated"
                         ? "Copilot is authenticated. Refresh to verify entitlement and available models."
-                        : "Run `copilot login` or set COPILOT_GITHUB_TOKEN, then refresh provider status."}
+                        : "Sign in with GitHub, or run `copilot login` or set COPILOT_GITHUB_TOKEN, then refresh provider status."}
                     </p>
                   </div>
-                  {onVerify ? (
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="outline"
-                      className="w-fit shrink-0"
-                      disabled={isVerifying}
-                      onClick={onVerify}
-                    >
-                      {isVerifying ? <LoaderIcon className="animate-spin" /> : <RefreshCwIcon />}
-                      Verify
-                    </Button>
-                  ) : null}
+                  <div className="flex shrink-0 items-center gap-2">
+                    {onVerify ? (
+                      <CopilotGithubSignIn
+                        isAuthenticated={liveProvider?.auth.status === "authenticated"}
+                        providerStatus={liveProvider?.status}
+                        onRefresh={onVerify}
+                      />
+                    ) : null}
+                    {onVerify ? (
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        className="w-fit shrink-0"
+                        disabled={isVerifying}
+                        onClick={onVerify}
+                      >
+                        {isVerifying ? <LoaderIcon className="animate-spin" /> : <RefreshCwIcon />}
+                        Verify
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             ) : null}

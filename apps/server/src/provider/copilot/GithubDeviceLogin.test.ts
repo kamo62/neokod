@@ -86,10 +86,17 @@ const withTestRuntime = <A, E>(
     E,
     ServerSecretStore.ServerSecretStore | ProviderRegistry.ProviderRegistry
   >,
-) => effect.pipe(Effect.provide(testLayer()), Effect.provide(TestClock.layer()));
+) =>
+  // Reset inside the test's own runtime: the lint rule forbids manual
+  // Effect.runPromise in hooks, and leftover pollers only matter to the
+  // next effect test, which resets before running.
+  resetGithubDeviceLoginForTests().pipe(
+    Effect.andThen(effect),
+    Effect.provide(testLayer()),
+    Effect.provide(TestClock.layer()),
+  );
 
-beforeEach(async () => {
-  await Effect.runPromise(resetGithubDeviceLoginForTests());
+beforeEach(() => {
   fetchResponses = [];
   secrets = new Map();
   refreshes = [];
@@ -107,8 +114,7 @@ beforeEach(async () => {
   );
 });
 
-afterEach(async () => {
-  await Effect.runPromise(resetGithubDeviceLoginForTests());
+afterEach(() => {
   vi.unstubAllGlobals();
 });
 
