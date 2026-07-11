@@ -581,5 +581,34 @@ export const CopilotManagedClientEvidenceTestConnectionResult = Schema.Struct({
   status: Schema.NullOr(Schema.Number),
   message: TrimmedNonEmptyString,
 });
+
+export const CopilotDeviceLoginStartResult = Schema.Struct({
+  flowId: TrimmedNonEmptyString,
+  userCode: TrimmedNonEmptyString,
+  verificationUri: TrimmedNonEmptyString,
+  expiresInSeconds: PositiveInt,
+  intervalSeconds: PositiveInt,
+});
+export type CopilotDeviceLoginStartResult = typeof CopilotDeviceLoginStartResult.Type;
+
+export const CopilotDeviceLoginStatus = Schema.Literals([
+  "pending",
+  "success",
+  "expired",
+  "denied",
+  "error",
+]);
+export const CopilotDeviceLoginStatusResult = Schema.Struct({
+  flowId: TrimmedNonEmptyString,
+  status: CopilotDeviceLoginStatus,
+});
+export type CopilotDeviceLoginStatusResult = typeof CopilotDeviceLoginStatusResult.Type;
+
+export const CopilotSignOutResult = Schema.Struct({ signedOut: Schema.Boolean });
+
+export class CopilotDeviceLoginError extends Schema.TaggedErrorClass<CopilotDeviceLoginError>()(
+  "CopilotDeviceLoginError",
+  { message: TrimmedNonEmptyString },
+) {}
 export type CopilotManagedClientEvidenceTestConnectionResult =
   typeof CopilotManagedClientEvidenceTestConnectionResult.Type;

@@ -131,6 +131,10 @@ import {
   ServerUpsertKeybindingInput,
   ServerUpsertKeybindingResult,
   CopilotManagedClientEvidenceTestConnectionResult,
+  CopilotDeviceLoginError,
+  CopilotDeviceLoginStartResult,
+  CopilotDeviceLoginStatusResult,
+  CopilotSignOutResult,
 } from "./server.ts";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
 import {
@@ -215,6 +219,9 @@ export const WS_METHODS = {
   serverGetProcessResourceHistory: "server.getProcessResourceHistory",
   serverSignalProcess: "server.signalProcess",
   serverTestManagedClientEvidenceConnection: "server.testManagedClientEvidenceConnection",
+  copilotDeviceLoginStart: "copilot.deviceLoginStart",
+  copilotDeviceLoginStatus: "copilot.deviceLoginStatus",
+  copilotSignOut: "copilot.signOut",
 
   // Cloud environment methods
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
@@ -334,6 +341,22 @@ export const WsServerTestManagedClientEvidenceConnectionRpc = Rpc.make(
     error: Schema.Union([ServerSettingsError, EnvironmentAuthorizationError]),
   },
 );
+
+export const WsCopilotDeviceLoginStartRpc = Rpc.make(WS_METHODS.copilotDeviceLoginStart, {
+  payload: Schema.Struct({}),
+  success: CopilotDeviceLoginStartResult,
+  error: Schema.Union([CopilotDeviceLoginError, EnvironmentAuthorizationError]),
+});
+export const WsCopilotDeviceLoginStatusRpc = Rpc.make(WS_METHODS.copilotDeviceLoginStatus, {
+  payload: Schema.Struct({ flowId: Schema.String }),
+  success: CopilotDeviceLoginStatusResult,
+  error: EnvironmentAuthorizationError,
+});
+export const WsCopilotSignOutRpc = Rpc.make(WS_METHODS.copilotSignOut, {
+  payload: Schema.Struct({}),
+  success: CopilotSignOutResult,
+  error: EnvironmentAuthorizationError,
+});
 
 export const WsCloudGetRelayClientStatusRpc = Rpc.make(WS_METHODS.cloudGetRelayClientStatus, {
   payload: Schema.Struct({}),
@@ -713,6 +736,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetProcessResourceHistoryRpc,
   WsServerSignalProcessRpc,
   WsServerTestManagedClientEvidenceConnectionRpc,
+  WsCopilotDeviceLoginStartRpc,
+  WsCopilotDeviceLoginStatusRpc,
+  WsCopilotSignOutRpc,
   WsCloudGetRelayClientStatusRpc,
   WsCloudInstallRelayClientRpc,
   WsSourceControlLookupRepositoryRpc,

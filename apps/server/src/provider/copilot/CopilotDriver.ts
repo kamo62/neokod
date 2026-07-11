@@ -59,6 +59,7 @@ import {
 } from "./CopilotEnvironment.ts";
 import { checkCopilotProviderStatus, makePendingCopilotProvider } from "./CopilotProvider.ts";
 import { makeCopilotTextGeneration } from "./CopilotTextGeneration.ts";
+import { getStoredGithubToken } from "./GithubDeviceLogin.ts";
 
 const decodeCopilotSettings = Schema.decodeSync(CopilotSettings);
 
@@ -114,6 +115,7 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
       const path = yield* Path.Path;
       const serverSettings = yield* ServerSettingsService;
       const eventLoggers = yield* ProviderEventLoggers;
+      const gitHubToken = yield* getStoredGithubToken();
       const processEnv = mergeProviderInstanceEnvironment(environment);
       const fallbackContinuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
@@ -134,6 +136,7 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
       const client = new CopilotClient({
         ...(binaryPath ? { connection: RuntimeConnection.forStdio({ path: binaryPath }) } : {}),
         ...(resolvedBaseDirectory ? { baseDirectory: resolvedBaseDirectory } : {}),
+        ...(gitHubToken ? { gitHubToken } : {}),
         env: processEnv,
       });
 

@@ -198,5 +198,19 @@ export function createServerEnvironmentAtoms<R, E>(
         key: ({ environmentId }) => environmentId,
       },
     }),
+    copilotDeviceLoginStart: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:copilot-device-login-start",
+      tag: WS_METHODS.copilotDeviceLoginStart,
+      concurrency: { mode: "singleFlight", key: ({ environmentId }) => environmentId },
+    }),
+    copilotDeviceLoginStatus: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:copilot-device-login-status",
+      tag: WS_METHODS.copilotDeviceLoginStatus,
+    }),
+    copilotSignOut: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:copilot-sign-out",
+      tag: WS_METHODS.copilotSignOut,
+      concurrency: { mode: "singleFlight", key: ({ environmentId }) => environmentId },
+    }),
   };
 }

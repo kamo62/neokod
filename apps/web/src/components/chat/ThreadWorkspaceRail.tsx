@@ -37,7 +37,9 @@ export interface ThreadWorkspaceRailView {
   /** Read-only Copilot governance configuration, when it applies to this thread. */
   governance: {
     label: "Evidence recording" | "Evidence + MCP gateway";
-    tooltip: "AI-Orch evidence recording configured" | "Evidence recording + MCP gateway routing configured";
+    tooltip:
+      | "AI-Orch evidence recording configured"
+      | "Evidence recording + MCP gateway routing configured";
     variant: "recording" | "gateway";
   } | null;
 }
