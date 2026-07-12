@@ -1,3 +1,9 @@
+## 1.0.2 - 2026-07-12 (Patch)
+
+Release impact: Patch because this replaces inherited T3 production artwork with Neokod branding without changing runtime contracts.
+
+- Replaced the production macOS, Windows, Linux, iOS, web favicon, and logo assets with the Neokod prism mark.
+
 ## 1.0.1 - 2026-07-12 (Patch)
 
 Release impact: Patch because this fixes the hosted release publish job without changing the app or updater contract.
