@@ -7,6 +7,7 @@ Release impact: Major because Neokod now has an independent application identity
 - Removed Blacksmith, T3 Connect relay deployment, Clerk/Cloudflare release configuration, npm publishing, Vercel deployment, Discord announcement, and inactive mobile workflow requirements.
 - Kept the release-aware upstream rebase helper usable from the new repository's `main` branch.
 - Added narrow Effect diagnostic annotations for the inherited Copilot device-flow boundary so Linux-hosted release typechecks match its tested runtime behavior.
+- Fixed the Windows release dependency so its Linux WSL helper runs after manual dispatches, and use the built-in parallel test command during release preflight.
 - Added release documentation and regression coverage for Neokod product, protocol, updater, and nightly metadata.
 
 ## 0.0.31 - 2026-07-11 (Minor)

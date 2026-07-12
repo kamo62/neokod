@@ -122,7 +122,7 @@ jobs:
 
       - run: vp check
       - run: vp run typecheck
-      - run: vp run test
+      - run: vp test
 
       - id: previous_tag
         run: |
@@ -134,7 +134,7 @@ jobs:
   build_wsl_node_pty:
     name: Build WSL node-pty
     needs: [preflight]
-    if: needs.preflight.result == 'success'
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
