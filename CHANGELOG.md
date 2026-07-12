@@ -8,6 +8,7 @@ Release impact: Major because Neokod now has an independent application identity
 - Kept the release-aware upstream rebase helper usable from the new repository's `main` branch.
 - Added narrow Effect diagnostic annotations for the inherited Copilot device-flow boundary so Linux-hosted release typechecks match its tested runtime behavior.
 - Fixed the Windows release dependency so its Linux WSL helper runs after manual dispatches.
+- Stabilized the real-process ProviderRegistry reprobe test by yielding to Node's event loop while waiting for missing-command failures on hosted Linux runners.
 - Added release documentation and regression coverage for Neokod product, protocol, updater, and nightly metadata.
 
 ## 0.0.31 - 2026-07-11 (Minor)

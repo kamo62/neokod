@@ -1,3 +1,5 @@
+import * as NodeTimersPromises from "node:timers/promises";
+
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, it, assert } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -64,6 +66,7 @@ process.env.T3CODE_CURSOR_ENABLED = "1";
 // ── Test helpers ────────────────────────────────────────────────────
 
 const encoder = new TextEncoder();
+const yieldToNodeEventLoop = Effect.promise(() => NodeTimersPromises.setImmediate());
 
 const TestHttpClientLive = Layer.succeed(
   HttpClient.HttpClient,
@@ -836,7 +839,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               attempt += 1
             ) {
               yield* TestClock.adjust("10 millis");
-              yield* Effect.yieldNow;
+              yield* yieldToNodeEventLoop;
               cachedProvider = yield* readProviderStatusCache(filePath);
             }
 
@@ -1238,7 +1241,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               attempts += 1
             ) {
               yield* TestClock.adjust("10 millis");
-              yield* Effect.yieldNow;
+              yield* yieldToNodeEventLoop;
               initialProviders = yield* registry.getProviders;
             }
             const initialCodex = initialProviders.find(
@@ -1277,7 +1280,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                   return providers;
                 }
                 yield* TestClock.adjust("50 millis");
-                yield* Effect.yieldNow;
+                yield* yieldToNodeEventLoop;
               }
               return yield* registry.getProviders;
             });
