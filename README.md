@@ -1,11 +1,11 @@
-# T3 Code
+# Neokod
 
-T3 Code is a minimal web GUI for coding agents (currently Codex, Claude, Cursor, and OpenCode, more coming soon).
+Neokod is a private fork of T3 Code: a minimal desktop GUI for coding agents including Codex, Claude, Cursor, OpenCode, and GitHub Copilot.
 
 ## Installation
 
 > [!WARNING]
-> T3 Code currently supports Codex, Claude, Cursor, and OpenCode.
+> Neokod currently supports Codex, Claude, Cursor, and OpenCode.
 > Install and authenticate at least one provider before use:
 >
 > - Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
@@ -23,25 +23,20 @@ Tip: Use `npx t3@latest --help` for the full CLI reference.
 
 ### Desktop app
 
-Install the latest version of the desktop app from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), or from your favorite package registry:
+Install the latest macOS or Windows desktop build from [Neokod releases](https://github.com/kamo62/neokod/releases).
 
-#### Windows (`winget`)
+The initial builds are unsigned, so macOS Gatekeeper and Windows SmartScreen may require manual confirmation.
 
-```bash
-winget install T3Tools.T3Code
-```
+## Upstream updates
 
-#### macOS (Homebrew)
+The fork keeps T3 Code's release-aware rebase helper. In a fresh clone, configure the public upstream once:
 
 ```bash
-brew install --cask t3-code
+git remote add upstream https://github.com/pingdotgg/t3code.git
+scripts/rebase-upstream.sh
 ```
 
-#### Arch Linux (AUR)
-
-```bash
-yay -S t3code-bin
-```
+The helper selects the latest stable upstream version by default; use `--target <ref>` when you need an exact tag or nightly ref.
 
 ## Some notes
 
@@ -63,7 +58,7 @@ There's no public docs site yet, checkout the miscellaneous markdown files in [d
 
 ### Install `vp`
 
-T3 Code uses Vite+ so you'll need to install the global `vp` command-line tool.
+Neokod uses Vite+ so you'll need to install the global `vp` command-line tool.
 
 #### macOS / Linux
 

@@ -1,3 +1,13 @@
+## 1.0.0 - 2026-07-12 (Major)
+
+Release impact: Major because Neokod now has an independent application identity, storage root, update feed, and release pipeline that are intentionally incompatible with upstream T3 Code installs.
+
+- Renamed the desktop and web product to Neokod with the `com.kamo62.neokod` application ID, `neokod` URL schemes, and isolated Neokod storage paths.
+- Replaced the upstream unified release workflow with a private GitHub-hosted macOS and Windows pipeline while retaining stable and nightly version/tag behavior.
+- Removed Blacksmith, T3 Connect relay deployment, Clerk/Cloudflare release configuration, npm publishing, Vercel deployment, Discord announcement, and inactive mobile workflow requirements.
+- Kept the release-aware upstream rebase helper usable from the new repository's `main` branch.
+- Added release documentation and regression coverage for Neokod product, protocol, updater, and nightly metadata.
+
 ## 0.0.31 - 2026-07-11 (Minor)
 
 Release impact: Minor because it adds in-app GitHub sign-in, a Mission Control overview, and a governance chip alongside demo hardening; additive contracts only.

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# rebase-upstream.sh — rebase this fork's current org/* branch onto the
+# rebase-upstream.sh — rebase this fork's current branch onto the
 # latest upstream T3 Code release, then verify the fork still builds.
 #
 # What it does, in order:
-#   1. Refuses to run against tracked working tree changes or a non-fork branch.
+#   1. Refuses to run against tracked working tree changes or detached HEAD.
 #   2. Fetches the `upstream` remote (tags + branches).
 #   3. Picks a rebase target: an explicit `--target <ref>` when provided,
 #      otherwise the highest non-nightly `vX.Y.Z` tag reachable from
@@ -73,10 +73,8 @@ if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
   fail "Tracked working tree changes are present. Commit or stash them before rebasing."
 fi
 
-CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-if [[ "$CURRENT_BRANCH" != org/* ]]; then
-  fail "Expected to be on an org/* fork branch (currently on '$CURRENT_BRANCH'). Refusing to rebase a branch that doesn't look like a fork branch."
-fi
+CURRENT_BRANCH="$(git symbolic-ref --quiet --short HEAD)" \
+  || fail "Expected to be on a branch, but HEAD is detached. Refusing to rebase."
 
 if ! git remote get-url "$UPSTREAM_REMOTE" >/dev/null 2>&1; then
   fail "No '$UPSTREAM_REMOTE' remote configured. Add it with: git remote add $UPSTREAM_REMOTE <upstream-url>"
