@@ -10,7 +10,7 @@ import rootPackageJson from "../package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
 
-import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
+import { BRAND_ASSET_PATHS, PRODUCTION_ICON_VARIANT_ASSETS } from "./lib/brand-assets.ts";
 import { getDefaultBuildArch } from "./lib/build-target-arch.ts";
 import { loadRepoEnv } from "./lib/public-config.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
@@ -1240,6 +1240,29 @@ function stageWindowsIcons(stageResourcesDir: string, sourceIco: string) {
   });
 }
 
+const stageIconVariantAssets = Effect.fn("stageIconVariantAssets")(function* (
+  stageResourcesDir: string,
+  repoRoot: string,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const targetDir = path.join(stageResourcesDir, "icon-variants");
+  yield* fs.makeDirectory(targetDir, { recursive: true });
+
+  for (const [variant, source] of Object.entries(PRODUCTION_ICON_VARIANT_ASSETS)) {
+    for (const extension of ["png", "ico"] as const) {
+      const sourcePath = path.join(repoRoot, source[extension]);
+      if (!(yield* fs.exists(sourcePath))) {
+        return yield* new DesktopIconSourceMissingError({
+          platform: "mac",
+          sourcePath,
+        });
+      }
+      yield* fs.copyFile(sourcePath, path.join(targetDir, `${variant}.${extension}`));
+    }
+  }
+});
+
 function validateBundledClientAssets(clientDir: string) {
   return Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
@@ -1685,6 +1708,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     },
     options.verbose,
   );
+  yield* stageIconVariantAssets(stageResourcesDir, repoRoot);
 
   // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
   yield* fs.copy(stageResourcesDir, path.join(stageAppDir, "apps/desktop/prod-resources"));

@@ -4,6 +4,8 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as DesktopClientSettings from "../../settings/DesktopClientSettings.ts";
+import * as DesktopAppIdentity from "../../app/DesktopAppIdentity.ts";
+import * as DesktopWindow from "../../window/DesktopWindow.ts";
 import * as IpcChannels from "../channels.ts";
 import * as DesktopIpc from "../DesktopIpc.ts";
 
@@ -24,5 +26,18 @@ export const setClientSettings = DesktopIpc.makeIpcMethod({
   handler: Effect.fn("desktop.ipc.clientSettings.set")(function* (settings) {
     const clientSettings = yield* DesktopClientSettings.DesktopClientSettings;
     yield* clientSettings.set(settings);
+
+    const appIdentity = yield* Effect.serviceOption(DesktopAppIdentity.DesktopAppIdentity);
+    if (Option.isSome(appIdentity)) {
+      yield* appIdentity.value.setIconVariant(settings.appIconVariant);
+    }
+
+    const desktopWindow = yield* Effect.serviceOption(DesktopWindow.DesktopWindow);
+    if (Option.isSome(desktopWindow)) {
+      const syncIconVariant = desktopWindow.value.syncIconVariant;
+      if (syncIconVariant) {
+        yield* syncIconVariant(settings.appIconVariant);
+      }
+    }
   }),
 });

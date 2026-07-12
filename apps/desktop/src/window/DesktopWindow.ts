@@ -6,9 +6,11 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 
 import type * as Electron from "electron";
+import { DEFAULT_APP_ICON_VARIANT, type AppIconVariant } from "@t3tools/contracts";
 
 import * as DesktopAssets from "../app/DesktopAssets.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import { makeComponentLogger } from "../app/DesktopObservability.ts";
 import * as ElectronMenu from "../electron/ElectronMenu.ts";
 import { getDesktopUrl } from "../electron/ElectronProtocol.ts";
@@ -77,6 +79,7 @@ export class DesktopWindow extends Context.Service<
     readonly handleBackendNotReady: Effect.Effect<void>;
     readonly dispatchMenuAction: (action: string) => Effect.Effect<void, DesktopWindowError>;
     readonly syncAppearance: Effect.Effect<void>;
+    readonly syncIconVariant?: (variant: AppIconVariant) => Effect.Effect<void>;
   }
 >()("@t3tools/desktop/window/DesktopWindow") {}
 
@@ -241,13 +244,42 @@ export const make = Effect.gen(function* () {
   const currentMainWindow = electronWindow.currentMainOrFirst.pipe(Effect.flatMap(withoutSplash));
   const focusedMainWindow = electronWindow.focusedMainOrFirst.pipe(Effect.flatMap(withoutSplash));
 
+  const resolveConfiguredIconVariant = Effect.gen(function* () {
+    const settingsService = yield* Effect.serviceOption(
+      DesktopClientSettings.DesktopClientSettings,
+    );
+    if (Option.isNone(settingsService)) {
+      return DEFAULT_APP_ICON_VARIANT;
+    }
+    const settings = yield* settingsService.value.get;
+    return Option.match(settings, {
+      onNone: () => DEFAULT_APP_ICON_VARIANT,
+      onSome: (value) => value.appIconVariant,
+    });
+  });
+
+  const resolveIconPaths = Effect.fn("desktop.window.resolveIconPaths")(function* (
+    variant: AppIconVariant,
+  ) {
+    const fallback = yield* assets.iconPaths;
+    const selected = yield* DesktopAssets.resolveIconVariantPaths(assets, variant).pipe(
+      Effect.orElseSucceed(() => fallback),
+    );
+    return {
+      ico: Option.isSome(selected.ico) ? selected.ico : fallback.ico,
+      icns: Option.isSome(selected.icns) ? selected.icns : fallback.icns,
+      png: Option.isSome(selected.png) ? selected.png : fallback.png,
+    } satisfies DesktopAssets.DesktopIconPaths;
+  });
+
   const createWindow = Effect.fn("desktop.window.createWindow")(function* (): Effect.fn.Return<
     Electron.BrowserWindow,
     DesktopWindowError
   > {
     yield* previewManager.getBrowserSession();
     const applicationUrl = getDesktopUrl(environment.isDevelopment);
-    const iconPaths = yield* assets.iconPaths;
+    const iconVariant = yield* resolveConfiguredIconVariant;
+    const iconPaths = yield* resolveIconPaths(iconVariant);
     const iconOption = getIconOption(iconPaths, environment.platform);
     const shouldUseDarkColors = yield* electronTheme.shouldUseDarkColors;
     const window = yield* electronWindow.create({
@@ -609,6 +641,25 @@ export const make = Effect.gen(function* () {
       }
 
       send();
+    }),
+    syncIconVariant: Effect.fn("desktop.window.syncIconVariant")(function* (variant) {
+      if (environment.platform === "darwin") {
+        return;
+      }
+
+      const iconPaths = yield* resolveIconPaths(variant);
+      const ext = environment.platform === "win32" ? "ico" : "png";
+      yield* electronWindow.syncAllAppearance((window) =>
+        Effect.sync(() => {
+          if (window.isDestroyed()) {
+            return;
+          }
+          Option.match(iconPaths[ext], {
+            onNone: () => undefined,
+            onSome: (iconPath) => window.setIcon(iconPath),
+          });
+        }),
+      );
     }),
     syncAppearance: Effect.gen(function* () {
       const shouldUseDarkColors = yield* electronTheme.shouldUseDarkColors;

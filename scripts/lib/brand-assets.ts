@@ -23,6 +23,21 @@ export const BRAND_ASSET_PATHS = {
   developmentWebAppleTouchIconPng: "assets/dev/blueprint-web-apple-touch-180.png",
 } as const;
 
+export const PRODUCTION_ICON_VARIANT_ASSETS = {
+  aurora: {
+    png: "assets/prod/icon-variants/aurora.png",
+    ico: "assets/prod/icon-variants/aurora.ico",
+  },
+  prism: {
+    png: "assets/prod/icon-variants/prism.png",
+    ico: "assets/prod/icon-variants/prism.ico",
+  },
+  signal: {
+    png: "assets/prod/icon-variants/signal.png",
+    ico: "assets/prod/icon-variants/signal.ico",
+  },
+} as const;
+
 export type WebAssetBrand = "development" | "nightly" | "production";
 
 export const WEB_ASSET_CHANNELS = ["latest", "nightly"] as const;

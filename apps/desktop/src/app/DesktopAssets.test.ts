@@ -3,6 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
 
 import * as DesktopAssets from "./DesktopAssets.ts";
@@ -22,6 +23,25 @@ const environmentLayer = DesktopEnvironment.layer({
 }).pipe(Layer.provide(Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest({}))));
 
 describe("DesktopAssets", () => {
+  it.effect("resolves the packaged PNG and ICO pair for each icon variant", () =>
+    Effect.gen(function* () {
+      const assets = {
+        iconPaths: Effect.succeed({
+          ico: Option.none<string>(),
+          icns: Option.none<string>(),
+          png: Option.none<string>(),
+        }),
+        resolveResourcePath: (fileName: string) =>
+          Effect.succeed(Option.some(`/resources/${fileName}`)),
+      } as unknown as DesktopAssets.DesktopAssets["Service"];
+
+      const paths = yield* DesktopAssets.resolveIconVariantPaths(assets, "signal");
+      assert.deepEqual(paths.ico, Option.some("/resources/icon-variants/signal.ico"));
+      assert.deepEqual(paths.png, Option.some("/resources/icon-variants/signal.png"));
+      assert.deepEqual(paths.icns, Option.none());
+    }),
+  );
+
   it.effect("preserves the failed asset candidate and filesystem cause", () =>
     Effect.gen(function* () {
       const fileName = "custom.bin";

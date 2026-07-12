@@ -1,3 +1,12 @@
+## 1.1.0 - 2026-07-12 (Minor)
+
+Release impact: Minor because this adds selectable Neokod icon variants and packages the assets without breaking existing settings or release contracts.
+
+- Added Aurora, Prism, and Signal icon variants to desktop resources and web previews.
+- Added a persisted desktop app-icon preference with Prism as the legacy/default choice.
+- Applied the selected mark to the macOS Dock and live Linux/Windows app windows.
+- Replaced the production macOS, Windows, Linux, iOS, web favicon, and logo assets with the Neokod prism mark.
+
 ## 1.0.2 - 2026-07-12 (Patch)
 
 Release impact: Patch because this replaces inherited T3 production artwork with Neokod branding without changing runtime contracts.

@@ -33,6 +33,18 @@ describe("ClientSettings word wrap", () => {
   });
 });
 
+describe("ClientSettings app icon", () => {
+  it("defaults legacy settings to the Neokod prism mark", () => {
+    expect(decodeClientSettings({}).appIconVariant).toBe("prism");
+  });
+
+  it("accepts each packaged icon variant", () => {
+    expect(decodeClientSettings({ appIconVariant: "aurora" }).appIconVariant).toBe("aurora");
+    expect(decodeClientSettings({ appIconVariant: "prism" }).appIconVariant).toBe("prism");
+    expect(decodeClientSettings({ appIconVariant: "signal" }).appIconVariant).toBe("signal");
+  });
+});
+
 describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
   it("defaults to an empty record so legacy configs without the key still decode", () => {
     expect(DEFAULT_SERVER_SETTINGS.providerInstances).toEqual({});

@@ -5,6 +5,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import type { AppIconVariant } from "@t3tools/contracts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 
 export interface DesktopIconPaths {
@@ -12,6 +13,21 @@ export interface DesktopIconPaths {
   readonly icns: Option.Option<string>;
   readonly png: Option.Option<string>;
 }
+
+export const DESKTOP_ICON_VARIANT_RESOURCE_PATHS = {
+  aurora: {
+    ico: "icon-variants/aurora.ico",
+    png: "icon-variants/aurora.png",
+  },
+  prism: {
+    ico: "icon-variants/prism.ico",
+    png: "icon-variants/prism.png",
+  },
+  signal: {
+    ico: "icon-variants/signal.ico",
+    png: "icon-variants/signal.png",
+  },
+} as const satisfies Record<AppIconVariant, { ico: string; png: string }>;
 
 export class DesktopAssetProbeError extends Schema.TaggedErrorClass<DesktopAssetProbeError>()(
   "DesktopAssetProbeError",
@@ -35,6 +51,16 @@ export class DesktopAssets extends Context.Service<
     ) => Effect.Effect<Option.Option<string>, DesktopAssetProbeError>;
   }
 >()("@t3tools/desktop/app/DesktopAssets") {}
+
+export const resolveIconVariantPaths = (
+  assets: DesktopAssets["Service"],
+  variant: AppIconVariant,
+): Effect.Effect<DesktopIconPaths, DesktopAssetProbeError> =>
+  Effect.all({
+    ico: assets.resolveResourcePath(DESKTOP_ICON_VARIANT_RESOURCE_PATHS[variant].ico),
+    icns: Effect.succeed(Option.none<string>()),
+    png: assets.resolveResourcePath(DESKTOP_ICON_VARIANT_RESOURCE_PATHS[variant].png),
+  });
 
 const resolveResourcePath = Effect.fn("desktop.assets.resolveResourcePath")(function* (
   fileName: string,

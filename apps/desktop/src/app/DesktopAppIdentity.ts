@@ -6,9 +6,11 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 
+import { DEFAULT_APP_ICON_VARIANT, type AppIconVariant } from "@t3tools/contracts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as DesktopAssets from "./DesktopAssets.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
+import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 
 const COMMIT_HASH_PATTERN = /^[0-9a-f]{7,40}$/i;
 const COMMIT_HASH_DISPLAY_LENGTH = 12;
@@ -35,6 +37,7 @@ export class DesktopAppIdentity extends Context.Service<
   {
     readonly resolveUserDataPath: Effect.Effect<string, DesktopUserDataPathResolutionError>;
     readonly configure: Effect.Effect<void>;
+    readonly setIconVariant: (variant: AppIconVariant) => Effect.Effect<void>;
   }
 >()("@t3tools/desktop/app/DesktopAppIdentity") {}
 
@@ -51,6 +54,34 @@ export const make = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const fileSystem = yield* FileSystem.FileSystem;
   const commitHashCache = yield* Ref.make<Option.Option<Option.Option<string>>>(Option.none());
+
+  const resolveConfiguredIconVariant = Effect.gen(function* () {
+    const settingsService = yield* Effect.serviceOption(
+      DesktopClientSettings.DesktopClientSettings,
+    );
+    if (Option.isNone(settingsService)) {
+      return DEFAULT_APP_ICON_VARIANT;
+    }
+    const settings = yield* settingsService.value.get;
+    return Option.match(settings, {
+      onNone: () => DEFAULT_APP_ICON_VARIANT,
+      onSome: (value) => value.appIconVariant,
+    });
+  });
+
+  const resolveIconPaths = Effect.fn("desktop.appIdentity.resolveIconPaths")(function* (
+    variant: AppIconVariant,
+  ) {
+    const fallback = yield* assets.iconPaths;
+    const selected = yield* DesktopAssets.resolveIconVariantPaths(assets, variant).pipe(
+      Effect.orElseSucceed(() => fallback),
+    );
+    return {
+      ico: Option.isSome(selected.ico) ? selected.ico : fallback.ico,
+      icns: Option.isSome(selected.icns) ? selected.icns : fallback.icns,
+      png: Option.isSome(selected.png) ? selected.png : fallback.png,
+    } satisfies DesktopAssets.DesktopIconPaths;
+  });
 
   const resolveEmbeddedCommitHash = Effect.gen(function* () {
     const packageJsonPath = environment.path.join(environment.appRoot, "package.json");
@@ -109,6 +140,20 @@ export const make = Effect.gen(function* () {
       : environment.path.join(environment.appDataDirectory, environment.userDataDirName);
   }).pipe(Effect.withSpan("desktop.appIdentity.resolveUserDataPath"));
 
+  const setIconVariant = Effect.fn("desktop.appIdentity.setIconVariant")(function* (
+    variant: AppIconVariant,
+  ) {
+    if (environment.platform !== "darwin") {
+      return;
+    }
+
+    const iconPaths = yield* resolveIconPaths(variant);
+    yield* Option.match(iconPaths.png, {
+      onNone: () => Effect.void,
+      onSome: electronApp.setDockIcon,
+    });
+  });
+
   const configure = Effect.gen(function* () {
     const commitHash = yield* resolveAboutCommitHash;
     yield* electronApp.setName(environment.displayName);
@@ -126,18 +171,14 @@ export const make = Effect.gen(function* () {
       yield* electronApp.setDesktopName(environment.linuxDesktopEntryName);
     }
 
-    if (environment.platform === "darwin") {
-      const iconPaths = yield* assets.iconPaths;
-      yield* Option.match(iconPaths.png, {
-        onNone: () => Effect.void,
-        onSome: electronApp.setDockIcon,
-      });
-    }
+    const iconVariant = yield* resolveConfiguredIconVariant;
+    yield* setIconVariant(iconVariant);
   }).pipe(Effect.withSpan("desktop.appIdentity.configure"));
 
   return DesktopAppIdentity.of({
     resolveUserDataPath,
     configure,
+    setIconVariant,
   });
 });
 

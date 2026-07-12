@@ -4,6 +4,8 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useAtomValue } from "@effect/atom-react";
 import {
   defaultInstanceIdForDriver,
+  DEFAULT_APP_ICON_VARIANT,
+  type AppIconVariant,
   type CopilotManagedClientEvidenceSettings,
   type CopilotMcpServers,
   type DesktopUpdateChannel,
@@ -111,6 +113,32 @@ const TIMESTAMP_FORMAT_LABELS = {
   "12-hour": "12-hour",
   "24-hour": "24-hour",
 } as const;
+
+const APP_ICON_VARIANT_OPTIONS = [
+  {
+    value: "aurora",
+    label: "Aurora",
+    description: "Warm sunrise gradient",
+    preview: "/icon-variants/aurora.png",
+  },
+  {
+    value: "prism",
+    label: "Prism",
+    description: "Purple geometric N",
+    preview: "/icon-variants/prism.png",
+  },
+  {
+    value: "signal",
+    label: "Signal",
+    description: "Electric blue signal",
+    preview: "/icon-variants/signal.png",
+  },
+] as const satisfies ReadonlyArray<{
+  readonly value: AppIconVariant;
+  readonly label: string;
+  readonly description: string;
+  readonly preview: string;
+}>;
 
 const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("codex");
 
@@ -395,6 +423,7 @@ export function useSettingsRestore(onRestored?: () => void) {
   const changedSettingLabels = useMemo(
     () => [
       ...(theme !== "system" ? ["Theme"] : []),
+      ...(isElectron && settings.appIconVariant !== DEFAULT_APP_ICON_VARIANT ? ["App icon"] : []),
       ...(settings.timestampFormat !== DEFAULT_UNIFIED_SETTINGS.timestampFormat
         ? ["Time format"]
         : []),
@@ -435,6 +464,7 @@ export function useSettingsRestore(onRestored?: () => void) {
     ],
     [
       isGitWritingModelDirty,
+      settings.appIconVariant,
       settings.autoOpenPlanSidebar,
       settings.confirmThreadArchive,
       settings.confirmThreadDelete,
@@ -463,6 +493,7 @@ export function useSettingsRestore(onRestored?: () => void) {
 
     setTheme("system");
     updateSettings({
+      appIconVariant: DEFAULT_UNIFIED_SETTINGS.appIconVariant,
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
       wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap,
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
@@ -522,6 +553,9 @@ export function GeneralSettingsPanel() {
     settings.textGenerationModelSelection ?? null,
     DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection ?? null,
   );
+  const selectedIconVariant =
+    APP_ICON_VARIANT_OPTIONS.find((option) => option.value === settings.appIconVariant) ??
+    APP_ICON_VARIANT_OPTIONS[1];
 
   return (
     <SettingsPageContainer>
@@ -558,6 +592,61 @@ export function GeneralSettingsPanel() {
             </Select>
           }
         />
+
+        {isElectron ? (
+          <SettingsRow
+            title="App icon"
+            description="Choose the Neokod mark used by the Dock, taskbar, and app windows."
+            resetAction={
+              settings.appIconVariant !== DEFAULT_APP_ICON_VARIANT ? (
+                <SettingResetButton
+                  label="app icon"
+                  onClick={() => updateSettings({ appIconVariant: DEFAULT_APP_ICON_VARIANT })}
+                />
+              ) : null
+            }
+            control={
+              <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
+                <img
+                  src={selectedIconVariant.preview}
+                  alt=""
+                  className="size-8 rounded-md border border-border/70 shadow-sm"
+                />
+                <Select
+                  value={settings.appIconVariant}
+                  onValueChange={(value) => {
+                    if (value === "aurora" || value === "prism" || value === "signal") {
+                      updateSettings({ appIconVariant: value });
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-full sm:w-44" aria-label="App icon">
+                    <SelectValue>{selectedIconVariant.label}</SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup align="end" alignItemWithTrigger={false}>
+                    {APP_ICON_VARIANT_OPTIONS.map((option) => (
+                      <SelectItem hideIndicator key={option.value} value={option.value}>
+                        <span className="flex items-center gap-2">
+                          <img
+                            src={option.preview}
+                            alt=""
+                            className="size-6 rounded border border-border/60"
+                          />
+                          <span className="flex flex-col">
+                            <span>{option.label}</span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {option.description}
+                            </span>
+                          </span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </Select>
+              </div>
+            }
+          />
+        ) : null}
 
         <SettingsRow
           title="Time format"
