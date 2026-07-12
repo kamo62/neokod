@@ -92,8 +92,7 @@ const withTestRuntime = <A, E>(
   // next effect test, which resets before running.
   resetGithubDeviceLoginForTests().pipe(
     Effect.andThen(effect),
-    Effect.provide(testLayer()),
-    Effect.provide(TestClock.layer()),
+    Effect.provide(Layer.mergeAll(testLayer(), TestClock.layer())),
   );
 
 beforeEach(() => {
