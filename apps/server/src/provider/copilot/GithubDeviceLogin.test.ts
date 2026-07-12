@@ -219,7 +219,9 @@ it("never exposes the raw GitHub token through device-login status", () =>
     yield* advance(2);
     const success = getGithubDeviceLoginStatus(flow.flowId);
 
+    // @effect-diagnostics-next-line preferSchemaOverJson:off - Serialization is intentional: this regression checks that the transport DTO cannot leak the raw token.
     NodeAssert.equal(JSON.stringify(pending).includes(token), false);
+    // @effect-diagnostics-next-line preferSchemaOverJson:off - Serialization is intentional: this regression checks that the transport DTO cannot leak the raw token.
     NodeAssert.equal(JSON.stringify(success).includes(token), false);
   }).pipe(withTestRuntime));
 

@@ -1,3 +1,4 @@
+// @effect-diagnostics globalFetchInEffect:off unknownInEffectCatch:off anyUnknownInErrorContext:off cryptoRandomUUIDInEffect:off - This isolated OAuth boundary is intentionally fetch-backed and tested with a stubbed global transport until the inherited device-flow client is moved behind an injectable service.
 import { CopilotDeviceLoginError, ProviderDriverKind } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
