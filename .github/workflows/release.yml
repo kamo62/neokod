@@ -276,6 +276,12 @@ jobs:
           merge-multiple: true
           path: release-assets
 
+      - uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
       - name: Merge macOS updater manifests
         shell: bash
         run: |

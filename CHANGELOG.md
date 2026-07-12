@@ -1,3 +1,9 @@
+## 1.0.1 - 2026-07-12 (Patch)
+
+Release impact: Patch because this fixes the hosted release publish job without changing the app or updater contract.
+
+- Installed workspace dependencies in the publish job before merging macOS updater manifests.
+
 ## 1.0.0 - 2026-07-12 (Major)
 
 Release impact: Major because Neokod now has an independent application identity, storage root, update feed, and release pipeline that are intentionally incompatible with upstream T3 Code installs.
