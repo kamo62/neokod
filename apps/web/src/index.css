@@ -44,6 +44,37 @@
      OS-only SF Mono. System fonts remain as fallbacks. */
   --font-mono:
     "JetBrains Mono", "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --color-surface-canvas: var(--surface-canvas);
+  --color-surface-sidebar: var(--surface-sidebar);
+  --color-surface-panel: var(--surface-panel);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-surface-control: var(--surface-control);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-selected: var(--surface-selected);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-text-inverse: var(--text-inverse);
+  --color-line-subtle: var(--line-subtle);
+  --color-line-default: var(--line-default);
+  --color-line-strong: var(--line-strong);
+  --color-focus-ring: var(--focus-ring);
+  --color-surface-divider: var(--surface-divider);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --text-ui: var(--font-size-ui);
+  --text-ui-sm: var(--font-size-ui-sm);
+  --text-meta: var(--font-size-meta);
+  --text-chat: var(--font-size-chat);
+  --text-chat--line-height: var(--line-height-chat);
   --color-warning-foreground: var(--warning-foreground);
   --color-warning: var(--warning);
   --color-success-foreground: var(--success-foreground);
@@ -133,6 +164,8 @@
     min-height: var(--workspace-topbar-height);
     flex-shrink: 0;
     align-items: center;
+    background-color: var(--surface-panel);
+    border-color: var(--surface-divider);
   }
 
   .workspace-titlebar-controls {
@@ -146,7 +179,19 @@
   }
 
   .surface-subheader {
-    @apply flex h-10 min-h-10 shrink-0 items-center border-b border-border/60 bg-background;
+    @apply flex h-10 min-h-10 shrink-0 items-center border-b;
+    background-color: var(--surface-panel);
+    border-color: var(--surface-divider);
+  }
+
+  [data-slot="sidebar"] {
+    background-color: var(--surface-sidebar);
+  }
+
+  [data-right-panel-tabbar],
+  [data-preview-panel-mode="inline"] {
+    background-color: var(--surface-panel);
+    border-color: var(--surface-divider);
   }
 
   .chat-composer-horizontal-inset {
@@ -230,31 +275,51 @@
 :root {
   color-scheme: light;
   --radius: 0.625rem;
-  /* OMApp default theme (Codex "Light"): #FFFFFF background, #1A1C1F
-     foreground, #339CFF accent. See FORK.md. */
-  --background: var(--color-white);
-  --app-chrome-background: var(--background);
-  --foreground: #1a1c1f;
-  --card: var(--color-white);
-  --card-foreground: #1a1c1f;
-  --popover: var(--color-white);
-  --popover-foreground: #1a1c1f;
-  /* ponytail: #339CFF is the Codex-provided accent. White-on-accent
-     (--primary-foreground) is Codex's own choice and lands near ~2.8:1, below
-     the WCAG 3:1 UI-contrast floor; if that matters, darken this accent or set
-     --primary-foreground to a dark tone rather than white. */
-  --primary: #339cff;
-  --primary-foreground: var(--color-white);
-  --secondary: --alpha(var(--color-black) / 4%);
-  --secondary-foreground: var(--color-neutral-800);
-  --muted: --alpha(var(--color-black) / 4%);
-  --muted-foreground: color-mix(in srgb, var(--color-neutral-500) 90%, var(--color-black));
-  --accent: --alpha(var(--color-black) / 4%);
-  --accent-foreground: #1a1c1f;
+  --surface-canvas: #f7f7f5;
+  --surface-sidebar: #f1f1ee;
+  --surface-panel: #fbfbf9;
+  --surface-elevated: #ffffff;
+  --surface-control: #eeeeeb;
+  --surface-hover: color-mix(in srgb, var(--text-primary) 5%, var(--surface-panel));
+  --surface-selected: color-mix(in srgb, var(--text-primary) 8%, var(--surface-panel));
+  --text-primary: #20201e;
+  --text-secondary: #5f5f5a;
+  --text-tertiary: #6e6e68;
+  --text-inverse: #ffffff;
+  --line-subtle: #e7e7e2;
+  --line-default: #d5d5cf;
+  --line-strong: #8a8a84;
+  --focus-ring: #2563eb;
+  --surface-divider: #deded8;
+  --brand: #1d4ed8;
+  --brand-foreground: #ffffff;
+  --font-size-ui: 12px;
+  --font-size-ui-sm: 11px;
+  --font-size-meta: 10px;
+  --font-size-chat: 13px;
+  --line-height-chat: 1.55;
+  --row-height-compact: 1.75rem;
+  --surface-header-height: 46px;
+
+  --background: var(--surface-canvas);
+  --app-chrome-background: var(--surface-canvas);
+  --foreground: var(--text-primary);
+  --card: var(--surface-panel);
+  --card-foreground: var(--text-primary);
+  --popover: var(--surface-elevated);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-foreground);
+  --secondary: var(--surface-control);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--surface-control);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--surface-hover);
+  --accent-foreground: var(--text-primary);
   --destructive: var(--color-red-500);
-  --border: --alpha(var(--color-black) / 8%);
-  --input: --alpha(var(--color-black) / 10%);
-  --ring: #339cff;
+  --border: var(--line-default);
+  --input: var(--line-strong);
+  --ring: var(--focus-ring);
   --destructive-foreground: var(--color-red-700);
   --info: var(--color-blue-500);
   --info-foreground: var(--color-blue-700);
@@ -262,31 +327,55 @@
   --success-foreground: var(--color-emerald-700);
   --warning: var(--color-amber-500);
   --warning-foreground: var(--color-amber-700);
+  --sidebar: var(--surface-sidebar);
+  --sidebar-foreground: var(--text-primary);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: var(--brand-foreground);
+  --sidebar-accent: var(--surface-hover);
+  --sidebar-accent-foreground: var(--text-primary);
+  --sidebar-border: var(--line-default);
+  --sidebar-ring: var(--focus-ring);
 
   @variant dark {
     color-scheme: dark;
-    /* OMApp default theme (Codex "Dark"): #181818 background, #FFFFFF
-       foreground, #339CFF accent. Card/popover keep the subtle lift off the
-       background via color-mix. See FORK.md. */
-    --background: #181818;
-    --app-chrome-background: var(--background);
-    --foreground: var(--color-white);
-    --card: color-mix(in srgb, var(--background) 98%, var(--color-white));
-    --card-foreground: var(--color-white);
-    --popover: color-mix(in srgb, var(--background) 98%, var(--color-white));
-    --popover-foreground: var(--color-white);
-    --primary: #339cff;
-    --primary-foreground: var(--color-white);
-    --secondary: --alpha(var(--color-white) / 4%);
-    --secondary-foreground: var(--color-neutral-100);
-    --muted: --alpha(var(--color-white) / 4%);
-    --muted-foreground: color-mix(in srgb, var(--color-neutral-500) 90%, var(--color-white));
-    --accent: --alpha(var(--color-white) / 4%);
-    --accent-foreground: var(--color-white);
+    --surface-canvas: #181817;
+    --surface-sidebar: #1d1d1b;
+    --surface-panel: #20201e;
+    --surface-elevated: #262624;
+    --surface-control: #292927;
+    --surface-hover: color-mix(in srgb, var(--text-primary) 7%, var(--surface-panel));
+    --surface-selected: color-mix(in srgb, var(--text-primary) 11%, var(--surface-panel));
+    --text-primary: #f4f4f0;
+    --text-secondary: #c5c5be;
+    --text-tertiary: #9c9c95;
+    --text-inverse: #181817;
+    --line-subtle: #30302d;
+    --line-default: #3d3d39;
+    --line-strong: #777770;
+    --focus-ring: #60a5fa;
+    --surface-divider: #363632;
+    --brand: #60a5fa;
+    --brand-foreground: #0b1f3a;
+
+    --background: var(--surface-canvas);
+    --app-chrome-background: var(--surface-canvas);
+    --foreground: var(--text-primary);
+    --card: var(--surface-panel);
+    --card-foreground: var(--text-primary);
+    --popover: var(--surface-elevated);
+    --popover-foreground: var(--text-primary);
+    --primary: var(--brand);
+    --primary-foreground: var(--brand-foreground);
+    --secondary: var(--surface-control);
+    --secondary-foreground: var(--text-primary);
+    --muted: var(--surface-control);
+    --muted-foreground: var(--text-secondary);
+    --accent: var(--surface-hover);
+    --accent-foreground: var(--text-primary);
     --destructive: color-mix(in srgb, var(--color-red-500) 90%, var(--color-white));
-    --border: --alpha(var(--color-white) / 6%);
-    --input: --alpha(var(--color-white) / 8%);
-    --ring: #339cff;
+    --border: var(--line-default);
+    --input: var(--line-strong);
+    --ring: var(--focus-ring);
     --destructive-foreground: var(--color-red-400);
     --info: var(--color-blue-500);
     --info-foreground: var(--color-blue-400);
@@ -294,6 +383,14 @@
     --success-foreground: var(--color-emerald-400);
     --warning: var(--color-amber-500);
     --warning-foreground: var(--color-amber-400);
+    --sidebar: var(--surface-sidebar);
+    --sidebar-foreground: var(--text-primary);
+    --sidebar-primary: var(--brand);
+    --sidebar-primary-foreground: var(--brand-foreground);
+    --sidebar-accent: var(--surface-hover);
+    --sidebar-accent-foreground: var(--text-primary);
+    --sidebar-border: var(--line-default);
+    --sidebar-ring: var(--focus-ring);
   }
 }
 
@@ -372,20 +469,20 @@ code {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15);
+  background: color-mix(in srgb, var(--text-primary) 15%, transparent);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.25);
+  background: color-mix(in srgb, var(--text-primary) 25%, transparent);
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.18);
+  background: color-mix(in srgb, var(--text-primary) 18%, transparent);
 }
 
 .turn-chip-strip {
@@ -784,15 +881,15 @@ label:has(> select#reasoning-effort) select {
 
 /* Diffs theme bridge (match diff surfaces to app palette) */
 .diff-panel-viewport {
-  background: color-mix(in srgb, var(--background) 94%, var(--card));
+  background: color-mix(in srgb, var(--surface-canvas) 94%, var(--surface-panel));
 }
 
 .diff-render-file,
 .diff-render-surface > diffs-container {
-  border: 1px solid var(--border);
+  border: 1px solid var(--surface-divider);
   border-radius: 0.5rem;
   overflow: clip;
-  background: color-mix(in srgb, var(--card) 92%, var(--background));
+  background: color-mix(in srgb, var(--surface-panel) 92%, var(--surface-canvas));
 }
 
 @keyframes ultrathink-rainbow {

@@ -1,3 +1,11 @@
+## 2.1.0 - 2026-07-13 (Minor)
+
+Release impact: Minor because the cumulative redesign will add backward-compatible sidebar tabs and local pinned-thread preferences.
+
+- Added a static semantic light/dark token foundation for surfaces, text, lines, focus, brand, and state aliases.
+- Bridged the semantic palette through existing Tailwind and shadcn variables, including sidebar roles, without changing theme ownership.
+- Added the fixed UI, metadata, chat, compact-row, and surface-header scale for later visual passes.
+
 ## 2.0.0 - 2026-07-13 (Major)
 
 Release impact: Major because this removes product surfaces, remote connection transports, and their package, build, and release contracts.
