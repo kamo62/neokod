@@ -2859,7 +2859,7 @@ function SidebarBrand() {
       className="sidebar-brand ml-[var(--workspace-titlebar-content-left)] h-7 w-fit min-w-0 shrink-0 items-center gap-1 overflow-hidden rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2"
       to="/"
     >
-      <T3Wordmark />
+      <NeokodWordmark />
       <span className="truncate text-sm font-medium tracking-tight text-muted-foreground">
         Code
       </span>
@@ -2880,10 +2880,10 @@ function useSidebarStageLabel() {
   });
 }
 
-function T3Wordmark() {
+function NeokodWordmark() {
   return (
     <svg
-      aria-label="T3"
+      aria-label="Neokod"
       className="h-2.5 w-auto shrink-0 text-foreground"
       viewBox="15.5309 37 94.3941 56.96"
       xmlns="http://www.w3.org/2000/svg"

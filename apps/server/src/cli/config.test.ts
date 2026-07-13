@@ -34,7 +34,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
   const openBootstrapFd = Effect.fn(function* (transport: "loopback" | "wsl-bearer") {
     const fileSystem = yield* FileSystem.FileSystem;
     const filePath = yield* fileSystem.makeTempFileScoped({
-      prefix: "t3-bootstrap-",
+      prefix: "neokod-bootstrap-",
       suffix: ".ndjson",
     });
     const bootstrap: DesktopBackendBootstrap =
@@ -64,7 +64,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
   it.effect("binds public startup to loopback", () =>
     Effect.gen(function* () {
       const path = yield* Path.Path;
-      const baseDir = path.join(NodeOS.tmpdir(), "t3-cli-loopback-env");
+      const baseDir = path.join(NodeOS.tmpdir(), "neokod-cli-loopback-env");
       const resolved = yield* resolveServerConfig(emptyFlags, Option.none()).pipe(
         Effect.provide(
           Layer.mergeAll(
@@ -89,7 +89,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
 
   it.effect("honors ordinary CLI flags without exposing a host override", () =>
     Effect.gen(function* () {
-      const baseDir = `${NodeOS.tmpdir()}/t3-cli-flags`;
+      const baseDir = `${NodeOS.tmpdir()}/neokod-cli-flags`;
       const resolved = yield* resolveServerConfig(
         {
           ...emptyFlags,
@@ -282,7 +282,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
   it.effect("creates derived runtime directories", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
-      const baseDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-cli-paths-" });
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "neokod-cli-paths-" });
       const resolved = yield* resolveServerConfig(
         { ...emptyFlags, baseDir: Option.some(baseDir), port: Option.some(4777) },
         Option.none(),
@@ -300,7 +300,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
 
   it.effect("forces noninteractive settings for headless serve", () =>
     Effect.gen(function* () {
-      const baseDir = `${NodeOS.tmpdir()}/t3-cli-headless`;
+      const baseDir = `${NodeOS.tmpdir()}/neokod-cli-headless`;
       const resolved = yield* resolveServerConfig(
         { ...emptyFlags, baseDir: Option.some(baseDir) },
         Option.none(),

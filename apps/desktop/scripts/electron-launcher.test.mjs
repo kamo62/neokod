@@ -11,7 +11,7 @@ describe("electron development launcher", () => {
       environment: {
         VITE_DEV_SERVER_URL: "http://127.0.0.1:8526",
         NEOKOD_PORT: "16566",
-        NEOKOD_HOME: "/tmp/t3",
+        NEOKOD_HOME: "/tmp/neokod",
       },
     });
 

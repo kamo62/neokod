@@ -1,6 +1,6 @@
 # Keybindings
 
-T3 Code reads keybindings from:
+Neokod reads keybindings from:
 
 - `~/.neokod/keybindings.json`
 

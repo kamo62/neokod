@@ -451,7 +451,7 @@ export const make = Effect.gen(function* () {
       } else {
         yield* Effect.logDebug("startup phase: browser open check");
         const startupBrowserTarget = yield* resolveStartupBrowserTarget;
-        yield* Effect.logInfo("Open the local T3 Code URL.").pipe(
+        yield* Effect.logInfo("Open the local Neokod URL.").pipe(
           Effect.annotateLogs({ startupUrl: startupBrowserTarget }),
         );
         yield* runStartupPhase("browser.open", maybeOpenBrowser(startupBrowserTarget));

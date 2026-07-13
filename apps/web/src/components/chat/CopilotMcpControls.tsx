@@ -7,7 +7,7 @@
  * SDK config, so a toggle takes effect on the next session.
  *
  * It also surfaces the two auto-injected servers as read-only, informational
- * rows so the list matches what the agent actually sees: the `t3-code`
+ * rows so the list matches what the agent actually sees: the `neokod`
  * automation server (always injected per session) and the AI-Orch gateway
  * (injected when governance is enabled).
  *
@@ -185,7 +185,7 @@ export const CopilotMcpControls = memo(function CopilotMcpControls({
           )}
           <div className="border-t border-border/60 pt-2 text-[11px] text-muted-foreground">
             <p>Auto-injected (read-only):</p>
-            <p className="mt-0.5">• t3-code — browser/preview automation</p>
+            <p className="mt-0.5">• neokod — browser/preview automation</p>
             {governanceOn ? <p>• ai-orch — governance gateway</p> : null}
           </div>
         </div>

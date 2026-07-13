@@ -50,7 +50,7 @@ function mockProcess(exit: number | PlatformError.PlatformError) {
 
 const devServerInput = {
   mode: "dev:server",
-  neokodHome: "/tmp/t3code-dev-runner",
+  neokodHome: "/tmp/neokod-dev-runner",
   noBrowser: undefined,
   autoBootstrapProjectFromCwd: undefined,
   logWebSocketEvents: undefined,
@@ -181,7 +181,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           baseEnv: {},
           serverOffset: 0,
           webOffset: 0,
-          neokodHome: "/tmp/custom-t3",
+          neokodHome: "/tmp/custom-neokod",
           noBrowser: true,
           autoBootstrapProjectFromCwd: false,
           logWebSocketEvents: true,
@@ -189,7 +189,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           devUrl: new URL("http://localhost:7331"),
         });
 
-        assert.equal(env.NEOKOD_HOME, path.resolve("/tmp/custom-t3"));
+        assert.equal(env.NEOKOD_HOME, path.resolve("/tmp/custom-neokod"));
         assert.equal(env.NEOKOD_PORT, "4222");
         assert.equal(env.VITE_HTTP_URL, "http://localhost:4222");
         assert.equal(env.VITE_WS_URL, "ws://localhost:4222");
@@ -251,7 +251,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           baseEnv: {},
           serverOffset: 0,
           webOffset: 0,
-          neokodHome: "/tmp/my-t3",
+          neokodHome: "/tmp/my-neokod",
           noBrowser: undefined,
           autoBootstrapProjectFromCwd: undefined,
           logWebSocketEvents: undefined,
@@ -259,7 +259,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           devUrl: undefined,
         });
 
-        assert.equal(env.NEOKOD_HOME, path.resolve("/tmp/my-t3"));
+        assert.equal(env.NEOKOD_HOME, path.resolve("/tmp/my-neokod"));
       }),
     );
 
@@ -277,7 +277,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           },
           serverOffset: 0,
           webOffset: 0,
-          neokodHome: "/tmp/my-t3",
+          neokodHome: "/tmp/my-neokod",
           noBrowser: true,
           autoBootstrapProjectFromCwd: undefined,
           logWebSocketEvents: undefined,
@@ -285,7 +285,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           devUrl: undefined,
         });
 
-        assert.equal(env.NEOKOD_HOME, path.resolve("/tmp/my-t3"));
+        assert.equal(env.NEOKOD_HOME, path.resolve("/tmp/my-neokod"));
         assert.equal(env.PORT, "5733");
         assert.equal(env.VITE_DEV_SERVER_URL, "http://127.0.0.1:5733");
         assert.equal(env.HOST, "127.0.0.1");

@@ -127,7 +127,7 @@ export const WslWebSocketTicketResult = Schema.Struct({
 export type WslWebSocketTicketResult = typeof WslWebSocketTicketResult.Type;
 
 export class EnvironmentMetadataHttpApi extends HttpApiGroup.make("metadata").add(
-  HttpApiEndpoint.get("descriptor", "/.well-known/t3/environment", {
+  HttpApiEndpoint.get("descriptor", "/.well-known/neokod/environment", {
     success: ExecutionEnvironmentDescriptor,
     error: EnvironmentWslBearerInvalidError,
   }),

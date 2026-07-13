@@ -1,6 +1,6 @@
 # Observability
 
-T3 Code has one server-side observability model:
+Neokod has one server-side observability model:
 
 - pretty logs go to stdout for humans
 - completed spans go to a local NDJSON trace file
@@ -142,7 +142,7 @@ macOS app bundle example:
 NEOKOD_OTLP_TRACES_URL=http://localhost:4318/v1/traces \
 NEOKOD_OTLP_METRICS_URL=http://localhost:4318/v1/metrics \
 NEOKOD_OTLP_SERVICE_NAME=neokod-desktop \
-"/Applications/T3 Code.app/Contents/MacOS/T3 Code"
+"/Applications/Neokod.app/Contents/MacOS/Neokod"
 ```
 
 Direct binary example:
@@ -285,20 +285,20 @@ Traces are best for one request. Metrics are best for trends.
 
 Good metric families to watch:
 
-- `t3_rpc_request_duration`
-- `t3_orchestration_command_duration`
-- `t3_orchestration_command_ack_duration`
-- `t3_provider_turn_duration`
-- `t3_git_command_duration`
-- `t3_db_query_duration`
+- `neokod_rpc_request_duration`
+- `neokod_orchestration_command_duration`
+- `neokod_orchestration_command_ack_duration`
+- `neokod_provider_turn_duration`
+- `neokod_git_command_duration`
+- `neokod_db_query_duration`
 
 Counters tell you volume and failure rate:
 
-- `t3_rpc_requests_total`
-- `t3_orchestration_commands_total`
-- `t3_provider_turns_total`
-- `t3_git_commands_total`
-- `t3_db_queries_total`
+- `neokod_rpc_requests_total`
+- `neokod_orchestration_commands_total`
+- `neokod_provider_turns_total`
+- `neokod_git_commands_total`
+- `neokod_db_queries_total`
 
 Use metrics when the question is:
 
@@ -314,7 +314,7 @@ Use traces when the question is:
 
 ### What The New Ack Metric Means
 
-`t3_orchestration_command_ack_duration` measures:
+`neokod_orchestration_command_ack_duration` measures:
 
 - start: command dispatch enters the orchestration engine
 - end: the first committed domain event for that command is published by the server
@@ -345,7 +345,7 @@ If you need those later, add client-side instrumentation or a dedicated server f
 
 ### "Did this command take too long to acknowledge?"
 
-1. Check `t3_orchestration_command_ack_duration` by `commandType`.
+1. Check `neokod_orchestration_command_ack_duration` by `commandType`.
 2. If it is high, inspect the corresponding orchestration trace.
 3. Look at child spans for projection, sqlite, provider, or git work.
 

@@ -40,7 +40,7 @@ describe("DesktopEnvironment", () => {
       const environment = yield* makeEnvironment(
         {},
         {
-          NEOKOD_HOME: " /tmp/t3 ",
+          NEOKOD_HOME: " /tmp/neokod ",
           NEOKOD_COMMIT_HASH: " 0123456789abcdef ",
           NEOKOD_PORT: "4949",
           VITE_DEV_SERVER_URL: "http://localhost:5173",
@@ -51,14 +51,14 @@ describe("DesktopEnvironment", () => {
 
       assert.equal(environment.isDevelopment, true);
       assert.equal(environment.appDataDirectory, "/Users/alice/Library/Application Support");
-      assert.equal(environment.baseDir, "/tmp/t3");
-      assert.equal(environment.stateDir, "/tmp/t3/dev");
-      assert.equal(environment.desktopSettingsPath, "/tmp/t3/dev/desktop-settings.json");
-      assert.equal(environment.clientSettingsPath, "/tmp/t3/dev/client-settings.json");
-      assert.equal(environment.savedEnvironmentRegistryPath, "/tmp/t3/dev/saved-environments.json");
-      assert.equal(environment.serverSettingsPath, "/tmp/t3/dev/settings.json");
-      assert.equal(environment.logDir, "/tmp/t3/dev/logs");
-      assert.equal(environment.browserArtifactsDir, "/tmp/t3/dev/browser-artifacts");
+      assert.equal(environment.baseDir, "/tmp/neokod");
+      assert.equal(environment.stateDir, "/tmp/neokod/dev");
+      assert.equal(environment.desktopSettingsPath, "/tmp/neokod/dev/desktop-settings.json");
+      assert.equal(environment.clientSettingsPath, "/tmp/neokod/dev/client-settings.json");
+      assert.equal(environment.savedEnvironmentRegistryPath, "/tmp/neokod/dev/saved-environments.json");
+      assert.equal(environment.serverSettingsPath, "/tmp/neokod/dev/settings.json");
+      assert.equal(environment.logDir, "/tmp/neokod/dev/logs");
+      assert.equal(environment.browserArtifactsDir, "/tmp/neokod/dev/browser-artifacts");
       assert.equal(environment.rootDir, "/repo");
       assert.equal(environment.appRoot, "/repo");
       assert.equal(environment.backendEntryPath, "/repo/apps/server/dist/bin.mjs");
@@ -81,15 +81,15 @@ describe("DesktopEnvironment", () => {
       const environment = yield* makeEnvironment(
         {},
         {
-          NEOKOD_HOME: "/tmp/t3",
+          NEOKOD_HOME: "/tmp/neokod",
         },
       );
 
       assert.equal(environment.isDevelopment, false);
-      assert.equal(environment.stateDir, "/tmp/t3/userdata");
-      assert.equal(environment.logDir, "/tmp/t3/userdata/logs");
-      assert.equal(environment.browserArtifactsDir, "/tmp/t3/userdata/browser-artifacts");
-      assert.equal(environment.serverSettingsPath, "/tmp/t3/userdata/settings.json");
+      assert.equal(environment.stateDir, "/tmp/neokod/userdata");
+      assert.equal(environment.logDir, "/tmp/neokod/userdata/logs");
+      assert.equal(environment.browserArtifactsDir, "/tmp/neokod/userdata/browser-artifacts");
+      assert.equal(environment.serverSettingsPath, "/tmp/neokod/userdata/settings.json");
     }),
   );
 

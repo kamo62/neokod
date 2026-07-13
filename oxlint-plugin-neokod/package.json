@@ -1,5 +1,5 @@
 {
-  "name": "@neokod/oxlint-plugin-t3code",
+  "name": "@neokod/oxlint-plugin-neokod",
   "private": true,
   "type": "module",
   "scripts": {

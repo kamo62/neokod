@@ -22,7 +22,7 @@ const DEFAULT_TEST_MODEL_SELECTION = createModelSelection(
 );
 
 const CodexTextGenerationTestLayer = ServerConfig.ServerConfig.layerTest(process.cwd(), {
-  prefix: "t3code-codex-text-generation-test-",
+  prefix: "neokod-codex-text-generation-test-",
 }).pipe(Layer.provideMerge(NodeServices.layer));
 
 function makeFakeCodexBinary(
@@ -173,7 +173,7 @@ function withFakeCodexEnv<A, E, R>(
 ) {
   return Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
-    const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3code-codex-text-" });
+    const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-codex-text-" });
     const codexPath = yield* makeFakeCodexBinary(tempDir, input);
     const config = decodeCodexSettings({ binaryPath: codexPath });
     const textGeneration = yield* makeCodexTextGeneration(config);

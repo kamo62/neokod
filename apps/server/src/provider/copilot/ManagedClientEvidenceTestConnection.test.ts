@@ -90,7 +90,7 @@ describe("testManagedClientEvidenceConnection", () => {
       );
       for (const event of post.events) {
         NodeAssert.equal(event.schema_version, "v0");
-        NodeAssert.equal(event.client, "t3code");
+        NodeAssert.equal(event.client, "neokod");
         NodeAssert.ok(event.client_session_id.startsWith("test-connection-"));
       }
       NodeAssert.equal(post.events[0]!.client_session_id, post.events[1]!.client_session_id);

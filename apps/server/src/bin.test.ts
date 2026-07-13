@@ -53,7 +53,7 @@ const makeCliTestServerConfig = (baseDir: string) =>
       otlpTracesUrl: undefined,
       otlpMetricsUrl: undefined,
       otlpExportIntervalMs: 10_000,
-      otlpServiceName: "t3-server",
+      otlpServiceName: "neokod-server",
       mode: "web",
       port: 0,
       transport: "loopback",
@@ -157,10 +157,10 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
   it.effect("adds, renames, and removes projects offline through the orchestration engine", () =>
     Effect.gen(function* () {
       const baseDir = NodeFS.mkdtempSync(
-        NodePath.join(NodeOS.tmpdir(), "t3-cli-projects-offline-test-"),
+        NodePath.join(NodeOS.tmpdir(), "neokod-cli-projects-offline-test-"),
       );
       const workspaceRoot = NodeFS.mkdtempSync(
-        NodePath.join(NodeOS.tmpdir(), "t3-cli-projects-workspace-"),
+        NodePath.join(NodeOS.tmpdir(), "neokod-cli-projects-workspace-"),
       );
 
       yield* runCliWithRuntime([
@@ -205,10 +205,10 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
   it.effect("routes project commands through a running server when runtime state is present", () =>
     Effect.gen(function* () {
       const baseDir = NodeFS.mkdtempSync(
-        NodePath.join(NodeOS.tmpdir(), "t3-cli-projects-live-test-"),
+        NodePath.join(NodeOS.tmpdir(), "neokod-cli-projects-live-test-"),
       );
       const workspaceRoot = NodeFS.mkdtempSync(
-        NodePath.join(NodeOS.tmpdir(), "t3-cli-projects-live-workspace-"),
+        NodePath.join(NodeOS.tmpdir(), "neokod-cli-projects-live-workspace-"),
       );
 
       yield* withLiveProjectCliServer(baseDir, () =>
@@ -237,7 +237,7 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
   it.effect("rejects dev-url on project commands", () =>
     Effect.gen(function* () {
       const workspaceRoot = NodeFS.mkdtempSync(
-        NodePath.join(NodeOS.tmpdir(), "t3-cli-projects-unknown-option-workspace-"),
+        NodePath.join(NodeOS.tmpdir(), "neokod-cli-projects-unknown-option-workspace-"),
       );
       const error = yield* runCliWithRuntime([
         "project",

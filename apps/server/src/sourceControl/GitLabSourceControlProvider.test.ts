@@ -26,7 +26,7 @@ it.effect("maps GitLab MR summaries into provider-neutral change requests", () =
           headRefName: "feature/source-control",
           state: "open",
           isCrossRepository: true,
-          headRepositoryNameWithOwner: "fork/t3code",
+          headRepositoryNameWithOwner: "fork/neokod",
           headRepositoryOwnerLogin: "fork",
         }),
     });
@@ -46,7 +46,7 @@ it.effect("maps GitLab MR summaries into provider-neutral change requests", () =
       state: "open",
       updatedAt: Option.none(),
       isCrossRepository: true,
-      headRepositoryNameWithOwner: "fork/t3code",
+      headRepositoryNameWithOwner: "fork/neokod",
       headRepositoryOwnerLogin: "fork",
     });
   }),

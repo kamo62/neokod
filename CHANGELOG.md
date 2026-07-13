@@ -5,6 +5,8 @@ Release impact: Patch because this corrects environment precedence and reserved 
 - Fixed OTLP bootstrap precedence and legacy compatibility coverage across server, desktop, build, launcher, and dev-runner boundaries.
 - Preserved identical reserved Neokod and legacy project-script environment values when scripts add custom variables.
 - Completed the internal Neokod service-key migration and removed obsolete pairing-token startup coverage.
+- Restored legacy VCS and browser-state reads while retaining Neokod as the write target.
+- Corrected T3 Code provenance and neutralized non-upstream test identities.
 
 ## 3.0.0 - 2026-07-13 (Major)
 
@@ -16,6 +18,8 @@ Release impact: Major because the home/state and environment contracts now use N
 - Moved project VCS configuration to `.neokod/vcs.json` with legacy `.t3code/vcs.json` read fallback.
 - Project setup scripts now emit both `NEOKOD_PROJECT_ROOT`/`NEOKOD_WORKTREE_PATH` and legacy names for the transition.
 - Renamed the published package and executable from `t3` to `neokod`; use `npx neokod@latest` or `neokod serve`. The `t3` package and bin have no compatibility alias.
+- Renamed active product copy, local descriptor/checkpoint/MCP identities, browser persistence keys, preview CSS variables, and lint plugin namespace to Neokod.
+- Added one-release browser storage migration from `t3code:`/`t3code.` keys; retained only the documented upstream, legacy, legal, and Grok OAuth exceptions.
 
 ## 2.1.0 - 2026-07-13 (Minor)
 
@@ -59,7 +63,7 @@ Release impact: Minor because this adds selectable Neokod icon variants and pack
 
 ## 1.0.2 - 2026-07-12 (Patch)
 
-Release impact: Patch because this replaces inherited T3 production artwork with Neokod branding without changing runtime contracts.
+Release impact: Patch because this replaces inherited upstream T3 production artwork with Neokod branding without changing runtime contracts.
 
 - Replaced the production macOS, Windows, Linux, iOS, web favicon, and logo assets with the Neokod prism mark.
 
@@ -75,7 +79,7 @@ Release impact: Major because Neokod now has an independent application identity
 
 - Renamed the desktop and web product to Neokod with the `com.kamo62.neokod` application ID, `neokod` URL schemes, and isolated Neokod storage paths.
 - Replaced the upstream unified release workflow with a private GitHub-hosted macOS and Windows pipeline while retaining stable and nightly version/tag behavior.
-- Removed Blacksmith, T3 Connect relay deployment, Clerk/Cloudflare release configuration, npm publishing, Vercel deployment, Discord announcement, and inactive mobile workflow requirements.
+- Removed Blacksmith, former upstream T3 Connect relay deployment, Clerk/Cloudflare release configuration, npm publishing, Vercel deployment, Discord announcement, and inactive mobile workflow requirements.
 - Kept the release-aware upstream rebase helper usable from the new repository's `main` branch.
 - Added narrow Effect diagnostic annotations for the inherited Copilot device-flow boundary so Linux-hosted release typechecks match its tested runtime behavior.
 - Fixed the Windows release dependency so its Linux WSL helper runs after manual dispatches.
@@ -97,7 +101,7 @@ Release impact: Minor because it adds in-app GitHub sign-in, a Mission Control o
 Release impact: Major because native mobile is removed from active product paths and cloud surfaces are hidden by default.
 
 - Removed native mobile from active workspace/build paths for the OMApp fork.
-- Hid visible T3 Cloud / T3 Connect surfaces behind a default-off OMApp cloud flag.
+- Hid visible former upstream T3 Cloud / T3 Connect surfaces behind a default-off OMApp cloud flag.
 - Renamed visible product copy, titles, menus, and release language toward OMApp while keeping internal package names and storage keys unchanged.
 - Updated the upstream rebase script to support explicit targets, repo-local `vp` checks, and no automatic pushes.
 - Fixed Claude Task plan updates so deleting the final task emits an empty plan and clears the sidebar.

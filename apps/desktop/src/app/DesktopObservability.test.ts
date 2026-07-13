@@ -67,7 +67,7 @@ describe("DesktopObservability", () => {
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-desktop-observability-test-",
+        prefix: "neokod-desktop-observability-test-",
       });
       const environmentLayer = makeEnvironmentLayer(baseDir);
       const tracePath = yield* Effect.gen(function* () {
@@ -116,7 +116,7 @@ describe("DesktopObservability", () => {
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-desktop-backend-output-log-test-",
+        prefix: "neokod-desktop-backend-output-log-test-",
       });
       const environmentLayer = makeEnvironmentLayer(baseDir);
       const logPath = yield* Effect.gen(function* () {

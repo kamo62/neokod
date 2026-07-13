@@ -11,7 +11,7 @@
     "start": "vp run --filter neokod start",
     "start:desktop": "vp run --filter @neokod/desktop start",
     "start:mock-update-server": "node scripts/mock-update-server.ts",
-    "build": "vp run --filter './apps/*' --filter './packages/*' --filter './oxlint-plugin-t3code' --filter './scripts' build",
+    "build": "vp run --filter './apps/*' --filter './packages/*' --filter './oxlint-plugin-neokod' --filter './scripts' build",
     "build:desktop": "vp run --filter @neokod/desktop --filter neokod build",
     "typecheck": "vp run -r --concurrency-limit 2 typecheck",
     "tc": "vp run -r --concurrency-limit 2 typecheck",

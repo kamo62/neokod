@@ -36,7 +36,7 @@ describe("subagentUiStore", () => {
         SAME_THREAD_OTHER_ENVIRONMENT_REF,
       ),
     ).toEqual([]);
-    expect(useSubagentUiStore.persist.getOptions().name).toBe("t3code:subagent-ui-state:v1");
+    expect(useSubagentUiStore.persist.getOptions().name).toBe("neokod:subagent-ui-state:v1");
   });
 
   it("keeps the newly hidden thread when the cap is exceeded", () => {

@@ -8,7 +8,7 @@ uses `wsl-bearer`: a desktop-generated HTTP bearer plus a short-lived,
 single-use WebSocket ticket. This is a narrow transport boundary, not a user
 session, pairing, scope, or remote-access system.
 
-This is a living glossary for T3 Code. It explains what common terms mean in this codebase.
+This is a living glossary for Neokod. It explains what common terms mean in this codebase.
 
 ## Table of contents
 

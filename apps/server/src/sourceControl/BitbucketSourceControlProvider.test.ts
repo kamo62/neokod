@@ -25,7 +25,7 @@ it.effect("maps Bitbucket PR summaries into provider-neutral change requests", (
           state: "open",
           updatedAt: Option.none(),
           isCrossRepository: true,
-          headRepositoryNameWithOwner: "fork/t3code",
+          headRepositoryNameWithOwner: "fork/neokod",
           headRepositoryOwnerLogin: "fork",
         }),
     });
@@ -45,7 +45,7 @@ it.effect("maps Bitbucket PR summaries into provider-neutral change requests", (
       state: "open",
       updatedAt: Option.none(),
       isCrossRepository: true,
-      headRepositoryNameWithOwner: "fork/t3code",
+      headRepositoryNameWithOwner: "fork/neokod",
       headRepositoryOwnerLogin: "fork",
     });
   }),

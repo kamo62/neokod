@@ -122,7 +122,7 @@ export const make = Effect.gen(function* () {
           platform: hostPlatform,
           wsl: Option.getOrUndefined(telemetryConfig.wslDistroName),
           arch: hostArchitecture,
-          t3CodeVersion: packageJson.version,
+          neokodVersion: packageJson.version,
           clientType,
         },
         timestamp: event.capturedAt,

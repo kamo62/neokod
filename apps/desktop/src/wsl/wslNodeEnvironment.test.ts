@@ -8,7 +8,7 @@ describe("buildWslNodeEnvScript", () => {
 
     assert.include(script, "ensure_wsl_node_path()");
     assert.include(script, "wsl_node_satisfies_engine()");
-    assert.include(script, "T3_NODE_ENGINE_RANGE='^22.16 || >=24.10'");
+    assert.include(script, "NEOKOD_NODE_ENGINE_RANGE='^22.16 || >=24.10'");
     assert.include(script, "function satisfiesSemverRange");
     assert.include(script, 'prepend_path_if_dir "$VOLTA_HOME/bin"');
     assert.include(script, 'prepend_path_if_dir "$HOME/.asdf/shims"');
@@ -19,6 +19,6 @@ describe("buildWslNodeEnvScript", () => {
   it("leaves the engine check optional when no range is configured", () => {
     const script = buildWslNodeEnvScript();
 
-    assert.include(script, "T3_NODE_ENGINE_RANGE=''");
+    assert.include(script, "NEOKOD_NODE_ENGINE_RANGE=''");
   });
 });

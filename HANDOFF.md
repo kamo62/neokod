@@ -105,7 +105,7 @@ frozen between boundaries; the panel shows a spinner while inProgress.
 
 ### SDK tasklist support (audited this session; NOT built)
 
-All provider SDKs expose structured tasklists, and T3 already normalizes them
+All provider SDKs expose structured tasklists, and Neokod already normalizes them
 into one canonical `turn.plan.updated` (`plan:[{step,status}]`) feeding
 `PlanSidebar` / `/plan` / the right-panel "plan" surface:
 
@@ -338,7 +338,7 @@ Full design + research is captured in `FORK.md` → "Platform & integration back
 - **Codex SDK (decision: do NOT migrate).** `@openai/codex-sdk` is a thin `codex exec` wrapper, less capable than the current app-server integration. To drop the CLI install, bundle `@openai/codex`; gateway via `--config openai_base_url`.
 - **APM (skills distribution layer) — parked.** The deferred distribution/auto-update layer on top of the Skills tab (see next bullet), not a competing skills design: auto-updating org skills with team customization (layered precedence, pinned vs rolling channels, notify-on-update); reuse existing provider-skill infra; deliver registry via the Foundry/AI-Orch gateway. No spec yet.
 - **Governance mode = recorder-first, gateway opt-in — ✅ DONE.** `CopilotManagedClientEvidenceSettings` split into `enabled` (passive recording, v1) + `gatewayEnabled` (active MCP-gateway routing, default off); `resolveCopilotMcpServers` now gates gateway injection on `gatewayEnabled`, and the governance UI has a second "Route MCP through gateway" switch. Recording no longer pulls the gateway into the request path. Verified (contracts/server/web typecheck + tests + `vp check`).
-- **Skills = top-level "Skills" tab, Kiro-style (design; NOT built).** A skill is just a scoped `.md` file. Surface = provider-neutral file management: a top-level **Skills** settings tab (sibling to Providers/Source Control/Connections) with **Workspace** (`.t3/skills/`) + **Global** (`~/.t3/skills/`) scope, list/import/enable-disable per scope — same architecture as the MCP registry surface. Injection is the mechanism, not the surface: Copilot via `skillDirectories`/`disabledSkills` on `createSession` (mirrors `mcpServers`/`customAgents` in `CopilotAdapter.ts`), Codex/Claude via their own skill mechanisms pointed at the same folders. Near-term: a `/skills` picker (same pattern as `/mcp`) surfacing provider-native skills (Codex `skills/list`, `searchProviderSkills`, `$skill`). Distribution/auto-update (APM) deferred. Rule: surface now, manage files next, distribute later.
+- **Skills = top-level "Skills" tab, Kiro-style (design; NOT built).** A skill is just a scoped `.md` file. Surface = provider-neutral file management: a top-level **Skills** settings tab (sibling to Providers/Source Control/Connections) with **Workspace** (`.neokod/skills/`) + **Global** (`~/.neokod/skills/`) scope, list/import/enable-disable per scope — same architecture as the MCP registry surface. Injection is the mechanism, not the surface: Copilot via `skillDirectories`/`disabledSkills` on `createSession` (mirrors `mcpServers`/`customAgents` in `CopilotAdapter.ts`), Codex/Claude via their own skill mechanisms pointed at the same folders. Near-term: a `/skills` picker (same pattern as `/mcp`) surfacing provider-native skills (Codex `skills/list`, `searchProviderSkills`, `$skill`). Distribution/auto-update (APM) deferred. Rule: surface now, manage files next, distribute later.
 
 ## GitHub device-code login (plan finalized + Codex-reviewed 2026-07-04, not built)
 
@@ -372,7 +372,7 @@ SDK facts (verified 2026-07-04 against `@github/copilot-sdk` 1.0.5 +
   to a Copilot-entitled token is proven; its OAuth client id is compiled into
   the native binary and was not extractable statically.
 
-Design: T3 runs the device flow itself (fork-owned server module + start/status
+Design: Neokod runs the device flow itself (fork-owned server module + start/status
 RPC pair, same registration pattern as `testManagedClientEvidenceConnection`),
 stores the token via the shared secret-storage layer (FORK.md platform
 backlog; do NOT add another plaintext settings field), and passes it to
@@ -394,15 +394,15 @@ App) and verify a device-flow token from it carries Copilot API entitlement.
 ## Rename + logo (inventory done, awaiting the name)
 
 User-visible branding is centralized: `apps/web/src/branding.ts` defines
-`APP_BASE_NAME` (default "T3 Code") with a desktop-injected
+`APP_BASE_NAME` (default "Neokod") with a desktop-injected
 `DesktopAppBranding` override (`window.desktopBridge.getAppBranding()`).
 Rename surface:
 
 - `apps/web/src/branding.ts` base name; desktop `productName` in
-  `apps/desktop/package.json` ("T3 Code (Alpha)"); `apps/web/index.html`
+  `apps/desktop/package.json` ("Neokod (Alpha)"); `apps/web/index.html`
   title/splash.
-- A few dozen literal "T3 Code" strings in web UI copy (settings, connections,
-  update dialogs; grep `"T3 Code"`) that should switch to `APP_BASE_NAME`
+- A few dozen literal "Neokod" strings in web UI copy (settings, connections,
+  update dialogs; grep `"Neokod"`) that should switch to `APP_BASE_NAME`
   interpolation as part of the rename.
 - Icons: `apps/web/public/*` favicons/apple-touch and
   `apps/desktop/resources/icon.*`.

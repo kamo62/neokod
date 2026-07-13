@@ -113,14 +113,14 @@ describe("buildWslNodeEnvPreamble", () => {
   it("passes the required Node engine range into the WSL-local resolver", () => {
     const preamble = buildWslNodeEnvPreamble("^22.16 || ^23.11 || >=24.10");
 
-    expect(preamble).toContain("T3_NODE_ENGINE_RANGE='^22.16 || ^23.11 || >=24.10'");
-    expect(preamble.indexOf("T3_NODE_ENGINE_RANGE=")).toBeLessThan(
+    expect(preamble).toContain("NEOKOD_NODE_ENGINE_RANGE='^22.16 || ^23.11 || >=24.10'");
+    expect(preamble.indexOf("NEOKOD_NODE_ENGINE_RANGE=")).toBeLessThan(
       preamble.lastIndexOf("ensure_wsl_node_path || true"),
     );
   });
 
   it("keeps the WSL-local resolver permissive when no Node engine range is provided", () => {
-    expect(buildWslNodeEnvPreamble()).toContain("T3_NODE_ENGINE_RANGE=''");
+    expect(buildWslNodeEnvPreamble()).toContain("NEOKOD_NODE_ENGINE_RANGE=''");
   });
 });
 

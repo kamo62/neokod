@@ -270,7 +270,7 @@ it("forwards enabled managed-client evidence in capped batches", () =>
       url: "https://orch.example/v1/managed-client/evidence",
       authorization: "Bearer air_test",
       schemaVersion: "v0",
-      client: "t3code",
+      client: "neokod",
     });
   }));
 
@@ -550,7 +550,7 @@ it("posts managed-client evidence using the v0 batch envelope", () =>
       {
         event_id: "evt-1",
         schema_version: "v0",
-        client: "t3code",
+        client: "neokod",
         event_type: "session_start",
       },
     );
