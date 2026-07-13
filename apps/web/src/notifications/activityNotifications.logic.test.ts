@@ -236,7 +236,9 @@ describe("activity notifications occurrence reducer", () => {
     let state = observe(createActivityObservationState(), input(ENV_A, 0)).state;
     state = observe(state, input(ENV_A, 1, { terminals: [terminal({ hasRunningSubprocess: true })] })).state;
     state = observe(state, input(ENV_A, 2, { generation: 2, terminals: [terminal({ hasRunningSubprocess: false })] })).state;
-    expect(observe(state, input(ENV_A, 3, { generation: 2, terminals: [terminal({ hasRunningSubprocess: true })] })).occurrences).toEqual([]);
+    const freshRunning = observe(state, input(ENV_A, 3, { generation: 2, terminals: [terminal({ hasRunningSubprocess: true })] }));
+    expect(freshRunning.occurrences).toEqual([]);
+    state = freshRunning.state;
     expect(observe(state, input(ENV_A, 4, { generation: 2, terminals: [terminal({ hasRunningSubprocess: false })] })).occurrences).toMatchObject([{ kind: "terminal-completed" }]);
   });
 
@@ -263,7 +265,7 @@ describe("activity notifications occurrence reducer", () => {
     })).occurrences).toEqual([]);
   });
 
-  it("waits for a new terminal metadata epoch after supervisor replacement", () => {
+  it("waits for replacement metadata, baselines it, then emits a fresh live edge", () => {
     let state = observe(createActivityObservationState(), input(ENV_A, 0, {
       terminalMetadataEpoch: 1,
       terminals: [terminal({ hasRunningSubprocess: true })],
@@ -292,7 +294,7 @@ describe("activity notifications occurrence reducer", () => {
     })).occurrences).toMatchObject([{ kind: "terminal-completed" }]);
   });
 
-  it("baselines a delayed replacement after the prior generation advances its metadata epoch", () => {
+  it("baselines a delayed replacement after the prior epoch, then emits a fresh live edge", () => {
     let state = observe(createActivityObservationState(), input(ENV_A, 0, {
       terminalMetadataEpoch: 1,
       terminals: [terminal({ hasRunningSubprocess: false })],

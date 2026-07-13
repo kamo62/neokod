@@ -169,6 +169,8 @@ export function reduceEnvironmentActivityObservation(
 
     if (pendingOutcome?.kind === "agent-failed") {
       occurrences.push(agentOccurrence(thread, input, "agent-failed", pendingOutcome.turnId));
+    } else if (pendingOutcome?.kind === "agent-completed") {
+      occurrences.push(agentOccurrence(thread, input, "agent-completed", pendingOutcome.turnId));
     } else if ((!baseline || maySettleBaseline) && rawFailure) {
       const newFailure =
         !observation.rawFailure ||
@@ -259,11 +261,9 @@ export function reduceEnvironmentActivityObservation(
       const thread = input.threads.find((candidate) => String(candidate.id) === terminal.threadId);
       occurrences.push(terminalOccurrence(input, terminal, observation.episode, thread));
     }
-    if (!observation.running && terminal.hasRunningSubprocess) {
-      observation.episode += 1;
-      observation.runningObservedLive = !baseline && !terminalBaseline;
-    }
-    if (baseline || terminalBaseline) observation.runningObservedLive = false;
+    const runningObservedLive = terminal.hasRunningSubprocess && !baseline && !terminalBaseline;
+    if (runningObservedLive && !observation.runningObservedLive) observation.episode += 1;
+    observation.runningObservedLive = runningObservedLive;
     observation.running = terminal.hasRunningSubprocess;
     next.terminals.set(key, observation);
   }
