@@ -37,6 +37,8 @@ T3 Code runs as a **Node.js WebSocket server** that wraps `codex app-server` (JS
 
 - **Runtime signals**: The server emits lightweight typed receipts when important async milestones finish, such as checkpoint capture, diff finalization, or a turn becoming fully quiescent. Tests and orchestration code wait on these signals instead of polling internal state.
 
+- **Local notifications**: Browser activity notifications project local thread state through `packages/shared/src/agentAwareness.ts`. The server no longer publishes provider activity to a hosted relay or mobile push service.
+
 ## Event Lifecycle
 
 ### Startup and client connect

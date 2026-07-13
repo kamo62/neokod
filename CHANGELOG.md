@@ -7,6 +7,8 @@ Release impact: Major because this removes product surfaces, remote connection t
 - Constrained the desktop primary, standalone server, and development web server to `127.0.0.1`.
 - Retained the authenticated desktop-managed WSL exception: its internal wildcard bind still requires the private `wsl-bearer` discriminator, desktop bootstrap credential, and bearer-session exchange.
 - Purged retired direct-remote saved-environment records during desktop catalog migration while preserving relay records for the later cloud stage.
+- Removed the hosted Cloudflare/Postgres/APNs relay infrastructure and the server's outbound mobile-activity publisher while retaining local browser notifications.
+- Removed relay-only workspace, release-smoke, Alchemy reference-sync, and `@effect/sql-pg` configuration; the transitional cloud client's relay contracts and utilities remain for the later cloud stage.
 
 ## 1.1.0 - 2026-07-12 (Minor)
 

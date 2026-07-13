@@ -1,6 +1,5 @@
 packages:
   - apps/*
-  - infra/*
   - oxlint-plugin-t3code
   - packages/*
   - scripts
@@ -34,7 +33,6 @@ catalog:
   "@effect/platform-bun": 4.0.0-beta.78
   "@effect/platform-node": 4.0.0-beta.78
   "@effect/platform-node-shared": 4.0.0-beta.78
-  "@effect/sql-pg": 4.0.0-beta.78
   "@effect/sql-sqlite-bun": 4.0.0-beta.78
   "@effect/tsgo": 0.13.2
   "@effect/vitest": 4.0.0-beta.78
@@ -74,7 +72,6 @@ overrides:
   "@effect/platform-bun": "catalog:"
   "@effect/platform-node": "catalog:"
   "@effect/platform-node-shared": "catalog:"
-  "@effect/sql-pg": "catalog:"
   "@effect/sql-sqlite-bun": "catalog:"
   "@effect/vitest": "catalog:"
   "@effect/vitest>vitest": "-"

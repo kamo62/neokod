@@ -37,22 +37,10 @@ environment.
 
 When any client-facing public value is absent, cloud UI is omitted. When the CLI public values are
 absent, the `t3 connect` CLI command group is omitted. The bundled server still accepts runtime
-overrides for self-hosted or operator-managed
-deployments.
+overrides for self-hosted or operator-managed deployments.
 
-For a hosted relay deployment, copy `infra/relay/.env.example` to `infra/relay/.env`. The relay
-deployment reads `RELAY_DOMAIN`, `RELAY_API_ZONE_NAME`, `RELAY_TUNNEL_ZONE_NAME`,
-`CLERK_PUBLISHABLE_KEY`, and `CLERK_JWT_AUDIENCE` through Effect `Config`. There are no checked-in
-deployment defaults.
-`vp run --filter t3code-relay deploy` invokes Alchemy from the relay directory, so Alchemy loads
-`infra/relay/.env`. After a successful deployment, the wrapper updates the repository-root `.env`
-with the deployed HTTPS relay URL. The relay still requires
-`CLERK_SECRET_KEY` as an Alchemy secret. Never put `CLERK_SECRET_KEY` in a client application
-environment or commit it to the repository.
-
-The `prod` Alchemy stage owns the retained PlanetScale database. Non-production stages reference
-that database and provision isolated PlanetScale branches, so deploy `prod` before creating a
-personal developer stage.
+This repository no longer includes or deploys hosted relay infrastructure. The transitional cloud
+client requires an operator-managed relay URL until the cloud surface is removed.
 
 ## Headless CLI OAuth Application
 
@@ -111,11 +99,11 @@ In **Clerk Dashboard > JWT templates**, create a template with:
 | Name    | `t3-relay`                   |
 | Claims  | `{ "aud": "t3-code-relay" }` |
 
-Set `T3CODE_CLERK_JWT_TEMPLATE=t3-relay` in the repository-root `.env`, and set
-`CLERK_JWT_AUDIENCE=t3-code-relay` in `infra/relay/.env`. Define `CLERK_JWT_TEMPLATE` and
-`CLERK_JWT_AUDIENCE` in the production relay deployment environment as well. The stable `aud` value
-is shared by production and non-production relay stages. The client-facing `T3CODE_RELAY_URL` still
-selects the concrete relay deployment, but changing that URL does not require a JWT template change.
+Set `T3CODE_CLERK_JWT_TEMPLATE=t3-relay` in the repository-root `.env`, and define
+`CLERK_JWT_TEMPLATE` and `CLERK_JWT_AUDIENCE=t3-code-relay` in the operator-managed relay
+environment. The stable `aud` value is shared by production and non-production relay stages. The
+client-facing `T3CODE_RELAY_URL` still selects the concrete relay deployment, but changing that URL
+does not require a JWT template change.
 
 ## Desktop OAuth Redirect Allowlist
 

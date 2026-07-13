@@ -28,7 +28,6 @@ squashfs-root/
 dist-electron/
 .electron-runtime/
 node_modules/
-.alchemy/
 *.log
 .env*
 !.env.example

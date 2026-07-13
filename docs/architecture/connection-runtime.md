@@ -98,6 +98,11 @@ renderer requires the `wsl-bearer` discriminator, distro, credential, and matchi
 HTTP/WebSocket origins before exchanging the credential for a bearer session.
 Configured Vite URLs and browser origins never receive this exception.
 
+Hosted relay deployment and outbound mobile activity publishing are no longer part of the server.
+The remaining relay target paths belong to the transitional cloud client and stay until that client
+is removed. Local browser notifications use the pure shared agent-awareness projection and do not
+publish activity off-device.
+
 ## Source Boundaries
 
 The public package subpaths mirror the runtime layers:
