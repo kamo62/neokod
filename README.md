@@ -1,42 +1,75 @@
 # Neokod
 
-Neokod is a private fork of T3 Code: a minimal desktop GUI for coding agents including Codex, Claude, Cursor, OpenCode, and GitHub Copilot.
+Neokod is a local-first desktop app for coding with the AI agent CLIs you already use. It brings agent chats, terminals, git worktrees, diffs, and provider sessions into one focused workspace that runs entirely on your machine.
 
-## Installation
+Neokod began as a fork of T3 Code and has been carved down to a local-first 2.0 release: no cloud service, no mobile app, no remote-access control plane. Your projects, threads, and history stay on your machine, and Neokod talks directly to the providers you choose.
 
-> [!WARNING]
-> Neokod currently supports Codex, Claude, Cursor, and OpenCode.
-> Install and authenticate at least one provider before use:
->
-> - Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
-> - Claude: install [Claude Code](https://claude.com/product/claude-code) and run `claude auth login`
-> - Cursor: install [Cursor CLI](https://cursor.com/cli) and run `cursor-agent login`
-> - OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
+## What it does
 
-### Run without installing
+- Drive coding agents from one desktop workspace: parallel threads, per-thread git worktrees, diffs, branches, commits, and PRs.
+- Keep the agent chat, an embedded terminal, and file and preview views together in the same window.
+- Get notified when an agent finishes or needs you, so you do not have to watch a thread. An in-app toast appears when you are elsewhere in the app, a native system notification when the window is hidden, and clicking either jumps straight to that thread. Notifications are opt-out and only request OS permission when you ask.
+- Stay local. There is no Neokod cloud holding your repositories, chats, or history. The provider you pick still receives the prompts, diffs, and tool output a session needs, but that traffic goes to that provider, not through a Neokod service.
+
+## Providers
+
+Neokod drives agent CLIs you have installed and authenticated yourself. Supported providers:
+
+- Claude (Claude Code)
+- Codex (Codex CLI)
+- Copilot (GitHub Copilot CLI)
+- Cursor (Cursor CLI)
+- Grok
+- OpenCode
+
+Install and authenticate at least one provider before use, for example:
+
+- Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
+- Claude: install [Claude Code](https://claude.com/product/claude-code) and run `claude auth login`
+- Cursor: install [Cursor CLI](https://cursor.com/cli) and run `cursor-agent login`
+- OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
+
+## Install and run
+
+### Desktop app
+
+Install the latest macOS or Windows build from [Neokod releases](https://github.com/kamo62/neokod/releases). The initial builds are unsigned, so macOS Gatekeeper and Windows SmartScreen may require manual confirmation.
+
+### Run the CLI without installing
 
 ```bash
 npx t3@latest
 ```
 
-Tip: Use `npx t3@latest --help` for the full CLI reference.
+The CLI/bin name is still `t3`. Use `npx t3@latest --help` for the full reference.
 
-### Desktop app
+## Local access boundary
 
-Install the latest macOS or Windows desktop build from [Neokod releases](https://github.com/kamo62/neokod/releases).
+Neokod is local-first. The native desktop backend and the standalone `t3 serve` listen on `127.0.0.1` and use direct HTTP and WebSocket connections with no application session, pairing flow, cookie, or bearer credential.
 
-The initial builds are unsigned, so macOS Gatekeeper and Windows SmartScreen may require manual confirmation.
+The only non-loopback exception is a desktop-managed WSL backend. It listens on `0.0.0.0` inside WSL and stays fail-closed behind a desktop-generated bearer for HTTP plus short-lived, single-use WebSocket tickets. The WSL credential is delivered only through the live desktop topology and is never persisted.
 
-### Local access boundary
+## Development
 
-Neokod is local-first. The native desktop backend and standalone `t3 serve`
-listen on `127.0.0.1` and use direct HTTP and WebSocket connections without an
-application session, pairing flow, cookie, or bearer credential.
+Neokod is a pnpm + Vite+ monorepo. Packages live under the `@neokod/*` scope (`@neokod/web`, `@neokod/desktop`, `@neokod/contracts`, `@neokod/shared`, `@neokod/client-runtime`).
 
-The only non-loopback exception is a desktop-managed WSL backend. It listens on
-`0.0.0.0` inside WSL and remains fail-closed behind a desktop-generated bearer
-for HTTP plus short-lived, single-use WebSocket tickets. The WSL credential is
-delivered only through the live desktop topology and is never persisted.
+Install the global `vp` tool:
+
+```bash
+# macOS / Linux
+curl -fsSL https://vite.plus | bash
+# Windows
+irm https://vite.plus/ps1 | iex
+```
+
+Then:
+
+```bash
+vp i          # install dependencies
+vp dev        # run the app
+vp run typecheck
+vp test
+```
 
 ## Upstream updates
 
@@ -47,15 +80,11 @@ git remote add upstream https://github.com/pingdotgg/t3code.git
 scripts/rebase-upstream.sh
 ```
 
-The helper selects the latest stable upstream version by default; use `--target <ref>` when you need an exact tag or nightly ref.
+The helper selects the latest stable upstream version by default; use `--target <ref>` for an exact tag or nightly ref.
 
-## Some notes
+## Notes
 
-We are very very early in this project. Expect bugs.
-
-We are not accepting contributions yet.
-
-There's no public docs site yet, checkout the miscellaneous markdown files in [docs](./docs).
+Neokod is early. Expect bugs and fast-moving internals. We are not accepting contributions yet. There is no public docs site; see the markdown under [docs](./docs).
 
 ## Documentation
 
@@ -65,32 +94,4 @@ There's no public docs site yet, checkout the miscellaneous markdown files in [d
 - [Operations](./docs/operations/ci.md)
 - [Reference](./docs/reference/encyclopedia.md)
 
-## If you REALLY want to contribute still.... read this first
-
-### Install `vp`
-
-Neokod uses Vite+ so you'll need to install the global `vp` command-line tool.
-
-#### macOS / Linux
-
-```bash
-curl -fsSL https://vite.plus | bash
-```
-
-#### Windows
-
-```bash
-irm https://vite.plus/ps1 | iex
-```
-
-Checkout their getting started guide for more information: https://viteplus.dev/guide/
-
-### Install dependencies
-
-```bash
-vp i
-```
-
-Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening an issue or PR.
-
-Need support? Join the [Discord](https://discord.gg/jn4EGJjrvv).
+Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening an issue. Need support? Join the [Discord](https://discord.gg/jn4EGJjrvv).
