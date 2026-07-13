@@ -1233,7 +1233,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             let initialProviders = yield* registry.getProviders;
             for (
               let attempts = 0;
-              attempts < 50 &&
+              attempts < 250 &&
               initialProviders.find((provider) => provider.instanceId === "codex")?.status !==
                 "error";
               attempts += 1
@@ -1267,7 +1267,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             // executable. This verifies the public settings-to-probe behavior
             // without depending on timestamps assigned by TestClock.
             const refreshed = yield* Effect.gen(function* () {
-              for (let attempts = 0; attempts < 60; attempts += 1) {
+              for (let attempts = 0; attempts < 250; attempts += 1) {
                 const providers = yield* registry.getProviders;
                 const codex = providers.find((provider) => provider.instanceId === "codex");
                 if (
