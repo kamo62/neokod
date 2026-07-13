@@ -75,7 +75,9 @@ describe("VcsProjectConfig", () => {
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const root = yield* fileSystem.makeTempDirectoryScoped({ prefix: "neokod-vcs-config-test-" });
+        const root = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "neokod-vcs-config-test-",
+        });
         for (const [directory, kind] of [
           [".neokod", "jj"],
           [".t3code", "git"],
@@ -100,7 +102,9 @@ describe("VcsProjectConfig", () => {
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const root = yield* fileSystem.makeTempDirectoryScoped({ prefix: "neokod-vcs-config-test-" });
+        const root = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "neokod-vcs-config-test-",
+        });
         const configDir = path.join(root, ".t3code");
         yield* fileSystem.makeDirectory(configDir, { recursive: true });
         yield* fileSystem.writeFileString(

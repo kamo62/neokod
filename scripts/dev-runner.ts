@@ -10,6 +10,7 @@ import { resolveNeokodHome } from "@neokod/shared/neokodHome";
 import { resolveSpawnCommand } from "@neokod/shared/shell";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Hash from "effect/Hash";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
@@ -141,10 +142,13 @@ const optionalLegacyStringConfig = (name: string, legacyName: string) =>
     Config.map(Option.getOrUndefined),
   );
 const optionalLegacyIntegerConfig = (name: string, legacyName: string) =>
-  Config.int(name).pipe(
-    Config.orElse(() => Config.int(legacyName)),
-    Config.option,
-    Config.map(Option.getOrUndefined),
+  Config.all({
+    primary: Config.option(Config.int(name)),
+    legacy: Config.option(Config.int(legacyName)),
+  }).pipe(
+    Config.map(({ primary, legacy }) =>
+      Option.getOrUndefined(Option.orElse(primary, () => legacy)),
+    ),
   );
 const OffsetConfig = Config.all({
   portOffset: optionalLegacyIntegerConfig("NEOKOD_PORT_OFFSET", "T3CODE_PORT_OFFSET"),
@@ -190,7 +194,9 @@ export function resolveOffset(config: {
   return Effect.succeed({ offset, source: `hashed NEOKOD_DEV_INSTANCE=${seed}` });
 }
 
-function resolveBaseDir(baseDir: string | undefined): Effect.Effect<string, never, Path.Path> {
+function resolveBaseDir(
+  baseDir: string | undefined,
+): Effect.Effect<string, never, FileSystem.FileSystem | Path.Path> {
   return resolveNeokodHome({
     configuredHome: baseDir,
     homeDirectory: NodeOS.homedir(),
@@ -222,7 +228,7 @@ export function createDevRunnerEnv({
   logWebSocketEvents,
   port,
   devUrl,
-}: CreateDevRunnerEnvInput): Effect.Effect<NodeJS.ProcessEnv, never, Path.Path> {
+}: CreateDevRunnerEnvInput): Effect.Effect<NodeJS.ProcessEnv, never, FileSystem.FileSystem | Path.Path> {
   return Effect.gen(function* () {
     const serverPort = port ?? BASE_SERVER_PORT + serverOffset;
     const webPort = BASE_WEB_PORT + webOffset;

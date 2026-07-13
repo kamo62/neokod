@@ -56,16 +56,11 @@ export const DesktopConfig = Config.all({
     "NEOKOD_DISABLE_AUTO_UPDATE",
     "T3CODE_DISABLE_AUTO_UPDATE",
   ),
-  mockUpdates: legacyOptionalBoolean(
-    "NEOKOD_DESKTOP_MOCK_UPDATES",
-    "T3CODE_DESKTOP_MOCK_UPDATES",
-  ),
+  mockUpdates: legacyOptionalBoolean("NEOKOD_DESKTOP_MOCK_UPDATES", "T3CODE_DESKTOP_MOCK_UPDATES"),
   mockUpdateServerPort: legacyPort(
     "NEOKOD_DESKTOP_MOCK_UPDATE_SERVER_PORT",
     "T3CODE_DESKTOP_MOCK_UPDATE_SERVER_PORT",
-  ).pipe(
-    Config.withDefault(3000),
-  ),
+  ).pipe(Config.withDefault(3000)),
 });
 
 export const layerTest = (env: Readonly<Record<string, string | undefined>>) =>

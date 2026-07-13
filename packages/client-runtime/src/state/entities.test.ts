@@ -166,7 +166,7 @@ function makeHarness() {
             httpBaseUrl: "https://example.test",
             wsBaseUrl: "wss://example.test",
           }),
-          profile: Option.none(),
+          wslBearerToken: Option.none(),
         },
       ],
     ]),

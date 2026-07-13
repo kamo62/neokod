@@ -3483,7 +3483,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(mcpSession
           ? {
               mcpServers: {
-                "neokod": {
+                neokod: {
                   type: "http",
                   url: mcpSession.endpoint,
                   headers: {

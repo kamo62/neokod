@@ -28,10 +28,10 @@ overwrite newer live state.
 
 ## Access matrix
 
-| Target                      | Discovery                                       | HTTP                                | WebSocket                                                         | Persistence                                  |
-| --------------------------- | ----------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------- | -------------------------------------------- |
+| Target                          | Discovery                                       | HTTP                                | WebSocket                                                         | Persistence                                  |
+| ------------------------------- | ----------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------- | -------------------------------------------- |
 | Native primary / `neokod serve` | Loopback URL                                    | Direct, unauthenticated             | Direct `/ws`                                                      | Cache only                                   |
-| Desktop WSL                 | Current `getLocalEnvironmentBootstraps()` entry | `Authorization: Bearer <wsl token>` | Bearer-protected ticket request, then one fresh single-use ticket | Cache only; token and target are memory-only |
+| Desktop WSL                     | Current `getLocalEnvironmentBootstraps()` entry | `Authorization: Bearer <wsl token>` | Bearer-protected ticket request, then one fresh single-use ticket | Cache only; token and target are memory-only |
 
 The desktop generates a 192-bit WSL token for each WSL backend start. The WSL
 server binds `0.0.0.0`, compares bearer values in constant time, and protects

@@ -19,7 +19,8 @@ const emitInterleavedAssistantToolCalls =
 const emitGenericToolPlaceholders = process.env.NEOKOD_ACP_EMIT_GENERIC_TOOL_PLACEHOLDERS === "1";
 const emitAskQuestion = process.env.NEOKOD_ACP_EMIT_ASK_QUESTION === "1";
 const emitXAiAskUserQuestion = process.env.NEOKOD_ACP_EMIT_XAI_ASK_USER_QUESTION === "1";
-const emitXAiPromptCompleteThenHang = process.env.NEOKOD_ACP_EMIT_XAI_PROMPT_COMPLETE_THEN_HANG === "1";
+const emitXAiPromptCompleteThenHang =
+  process.env.NEOKOD_ACP_EMIT_XAI_PROMPT_COMPLETE_THEN_HANG === "1";
 const emitForeignSessionUpdates = process.env.NEOKOD_ACP_EMIT_FOREIGN_SESSION_UPDATES === "1";
 const hangPromptForever = process.env.NEOKOD_ACP_HANG_PROMPT_FOREVER === "1";
 const hangFirstPromptForever = process.env.NEOKOD_ACP_HANG_FIRST_PROMPT_FOREVER === "1";

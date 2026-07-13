@@ -13,7 +13,7 @@ import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerRespondable from "effect/unstable/http/HttpServerRespondable";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 import * as HttpRouter from "effect/unstable/http/HttpRouter";
-import { randomBytes } from "node:crypto";
+import * as NodeCrypto from "node:crypto";
 
 import * as ServerConfig from "../config.ts";
 import { timingSafeEqualUtf8 } from "../crypto/serverCrypto.ts";
@@ -90,7 +90,7 @@ export const make = Effect.gen(function* () {
     for (const [ticket, record] of tickets) {
       if (record.expiresAt.epochMilliseconds <= now.epochMilliseconds) tickets.delete(ticket);
     }
-    const ticket = randomBytes(24).toString("base64url");
+    const ticket = NodeCrypto.randomBytes(24).toString("base64url");
     tickets.set(ticket, { expiresAt });
     return { ticket, expiresAt: DateTime.toUtc(expiresAt) } satisfies WslWebSocketTicket;
   }).pipe(Effect.withSpan("WslBearerAuth.issueWebSocketTicket"));

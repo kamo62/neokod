@@ -33,7 +33,9 @@ const isomorphicLocalStorage: Storage =
       })();
 
 const legacyKey = (key: string) =>
-  key.startsWith("neokod:") ? `t3code:${key.slice("neokod:".length)}` : key.replace(/^neokod\./, "t3code.");
+  key.startsWith("neokod:")
+    ? `t3code:${key.slice("neokod:".length)}`
+    : key.replace(/^neokod\./, "t3code.");
 
 const read = (key: string) => {
   try {

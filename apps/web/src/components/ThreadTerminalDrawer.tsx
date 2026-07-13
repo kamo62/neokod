@@ -1196,7 +1196,9 @@ export default function ThreadTerminalDrawer({
         data-terminal-owner={isPanel ? "right-panel" : "drawer"}
         className={cn(
           "thread-terminal-drawer relative flex min-w-0 flex-col overflow-hidden",
-          isPanel ? "h-full flex-1 bg-surface-panel" : "shrink-0 border-t border-border/80 bg-background",
+          isPanel
+            ? "h-full flex-1 bg-surface-panel"
+            : "shrink-0 border-t border-border/80 bg-background",
         )}
         style={isPanel ? undefined : { height: `${drawerHeight}px` }}
       >
@@ -1230,7 +1232,9 @@ export default function ThreadTerminalDrawer({
       data-terminal-owner={isPanel ? "right-panel" : "drawer"}
       className={cn(
         "thread-terminal-drawer relative flex min-w-0 flex-col overflow-hidden",
-        isPanel ? "h-full flex-1 bg-surface-panel" : "shrink-0 border-t border-border/80 bg-background",
+        isPanel
+          ? "h-full flex-1 bg-surface-panel"
+          : "shrink-0 border-t border-border/80 bg-background",
       )}
       style={isPanel ? undefined : { height: `${drawerHeight}px` }}
     >
@@ -1265,9 +1269,7 @@ export default function ThreadTerminalDrawer({
             >
               <SquareSplitHorizontal className="size-3.25" />
             </TerminalActionButton>
-            <div
-              className={cn("h-4 w-px", isPanel ? "bg-surface-divider" : "bg-border/80")}
-            />
+            <div className={cn("h-4 w-px", isPanel ? "bg-surface-divider" : "bg-border/80")} />
             <TerminalActionButton
               className={`${isPanel ? "right-panel-icon-button" : "p-1 text-foreground/90"} ${
                 hasReachedSplitLimit
@@ -1281,9 +1283,7 @@ export default function ThreadTerminalDrawer({
             >
               <SquareSplitVertical className="size-3.25" />
             </TerminalActionButton>
-            <div
-              className={cn("h-4 w-px", isPanel ? "bg-surface-divider" : "bg-border/80")}
-            />
+            <div className={cn("h-4 w-px", isPanel ? "bg-surface-divider" : "bg-border/80")} />
             <TerminalActionButton
               className={cn(
                 isPanel
@@ -1295,9 +1295,7 @@ export default function ThreadTerminalDrawer({
             >
               <Plus className="size-3.25" />
             </TerminalActionButton>
-            <div
-              className={cn("h-4 w-px", isPanel ? "bg-surface-divider" : "bg-border/80")}
-            />
+            <div className={cn("h-4 w-px", isPanel ? "bg-surface-divider" : "bg-border/80")} />
             <TerminalActionButton
               className={cn(
                 isPanel

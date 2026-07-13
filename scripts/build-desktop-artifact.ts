@@ -627,22 +627,56 @@ const buildEnv = <A>(name: string, legacyName: string, read: (key: string) => Co
   read(name).pipe(Config.orElse(() => read(legacyName)));
 
 const BuildEnvConfig = Config.all({
-  platform: buildEnv("NEOKOD_DESKTOP_PLATFORM", "T3CODE_DESKTOP_PLATFORM", (name) => Config.schema(BuildPlatform, name)).pipe(Config.option),
-  target: buildEnv("NEOKOD_DESKTOP_TARGET", "T3CODE_DESKTOP_TARGET", Config.string).pipe(Config.option),
-  arch: buildEnv("NEOKOD_DESKTOP_ARCH", "T3CODE_DESKTOP_ARCH", (name) => Config.schema(BuildArch, name)).pipe(Config.option),
-  version: buildEnv("NEOKOD_DESKTOP_VERSION", "T3CODE_DESKTOP_VERSION", Config.string).pipe(Config.option),
-  outputDir: buildEnv("NEOKOD_DESKTOP_OUTPUT_DIR", "T3CODE_DESKTOP_OUTPUT_DIR", Config.string).pipe(Config.option),
-  skipBuild: buildEnv("NEOKOD_DESKTOP_SKIP_BUILD", "T3CODE_DESKTOP_SKIP_BUILD", Config.boolean).pipe(Config.withDefault(false)),
-  keepStage: buildEnv("NEOKOD_DESKTOP_KEEP_STAGE", "T3CODE_DESKTOP_KEEP_STAGE", Config.boolean).pipe(Config.withDefault(false)),
-  signed: buildEnv("NEOKOD_DESKTOP_SIGNED", "T3CODE_DESKTOP_SIGNED", Config.boolean).pipe(Config.withDefault(false)),
-  verbose: buildEnv("NEOKOD_DESKTOP_VERBOSE", "T3CODE_DESKTOP_VERBOSE", Config.boolean).pipe(Config.withDefault(false)),
-  mockUpdates: buildEnv("NEOKOD_DESKTOP_MOCK_UPDATES", "T3CODE_DESKTOP_MOCK_UPDATES", Config.boolean).pipe(Config.withDefault(false)),
-  mockUpdateServerPort: buildEnv("NEOKOD_DESKTOP_MOCK_UPDATE_SERVER_PORT", "T3CODE_DESKTOP_MOCK_UPDATE_SERVER_PORT", Config.string).pipe(Config.option),
+  platform: buildEnv("NEOKOD_DESKTOP_PLATFORM", "T3CODE_DESKTOP_PLATFORM", (name) =>
+    Config.schema(BuildPlatform, name),
+  ).pipe(Config.option),
+  target: buildEnv("NEOKOD_DESKTOP_TARGET", "T3CODE_DESKTOP_TARGET", Config.string).pipe(
+    Config.option,
+  ),
+  arch: buildEnv("NEOKOD_DESKTOP_ARCH", "T3CODE_DESKTOP_ARCH", (name) =>
+    Config.schema(BuildArch, name),
+  ).pipe(Config.option),
+  version: buildEnv("NEOKOD_DESKTOP_VERSION", "T3CODE_DESKTOP_VERSION", Config.string).pipe(
+    Config.option,
+  ),
+  outputDir: buildEnv("NEOKOD_DESKTOP_OUTPUT_DIR", "T3CODE_DESKTOP_OUTPUT_DIR", Config.string).pipe(
+    Config.option,
+  ),
+  skipBuild: buildEnv(
+    "NEOKOD_DESKTOP_SKIP_BUILD",
+    "T3CODE_DESKTOP_SKIP_BUILD",
+    Config.boolean,
+  ).pipe(Config.withDefault(false)),
+  keepStage: buildEnv(
+    "NEOKOD_DESKTOP_KEEP_STAGE",
+    "T3CODE_DESKTOP_KEEP_STAGE",
+    Config.boolean,
+  ).pipe(Config.withDefault(false)),
+  signed: buildEnv("NEOKOD_DESKTOP_SIGNED", "T3CODE_DESKTOP_SIGNED", Config.boolean).pipe(
+    Config.withDefault(false),
+  ),
+  verbose: buildEnv("NEOKOD_DESKTOP_VERBOSE", "T3CODE_DESKTOP_VERBOSE", Config.boolean).pipe(
+    Config.withDefault(false),
+  ),
+  mockUpdates: buildEnv(
+    "NEOKOD_DESKTOP_MOCK_UPDATES",
+    "T3CODE_DESKTOP_MOCK_UPDATES",
+    Config.boolean,
+  ).pipe(Config.withDefault(false)),
+  mockUpdateServerPort: buildEnv(
+    "NEOKOD_DESKTOP_MOCK_UPDATE_SERVER_PORT",
+    "T3CODE_DESKTOP_MOCK_UPDATE_SERVER_PORT",
+    Config.string,
+  ).pipe(Config.option),
   // Path to a prebuilt Linux node-pty binary (pty.node) for the target arch,
   // produced by the Linux CI job and handed to the Windows packaging job. Placed
   // into the staged node-pty so the WSL backend ships a ready binary and never
   // compiles on the user's machine.
-  wslPrebuild: buildEnv("NEOKOD_DESKTOP_WSL_PREBUILD", "T3CODE_DESKTOP_WSL_PREBUILD", Config.string).pipe(Config.option),
+  wslPrebuild: buildEnv(
+    "NEOKOD_DESKTOP_WSL_PREBUILD",
+    "T3CODE_DESKTOP_WSL_PREBUILD",
+    Config.string,
+  ).pipe(Config.option),
 });
 
 const MockUpdateServerPortSchema = Schema.NumberFromString.check(
@@ -995,7 +1029,11 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
   updateChannel: "latest" | "nightly",
 ) {
   const env = yield* Config.all({
-    updateRepository: buildEnv("NEOKOD_DESKTOP_UPDATE_REPOSITORY", "T3CODE_DESKTOP_UPDATE_REPOSITORY", Config.string).pipe(Config.option),
+    updateRepository: buildEnv(
+      "NEOKOD_DESKTOP_UPDATE_REPOSITORY",
+      "T3CODE_DESKTOP_UPDATE_REPOSITORY",
+      Config.string,
+    ).pipe(Config.option),
     githubRepository: Config.string("GITHUB_REPOSITORY").pipe(Config.option),
   });
   const rawRepo = (

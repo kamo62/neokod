@@ -140,7 +140,9 @@ export const ThreadWorkspaceRail = memo(function ThreadWorkspaceRail({
             <TooltipPopup side="top">Model: {view.modelLabel} — click to change</TooltipPopup>
           </Tooltip>
         ) : (
-          <span className="max-w-32 truncate text-ui-sm text-muted-foreground">{view.modelLabel}</span>
+          <span className="max-w-32 truncate text-ui-sm text-muted-foreground">
+            {view.modelLabel}
+          </span>
         ))}
 
       {view.terminal && (

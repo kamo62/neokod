@@ -57,41 +57,68 @@ export const logWebSocketEventsFlag = Flag.boolean("log-websocket-events").pipe(
   Flag.withAlias("log-ws-events"),
   Flag.optional,
 );
-const envConfig = <A>(
-  name: string,
-  legacyName: string,
-  read: (key: string) => Config.Config<A>,
-) => read(name).pipe(Config.orElse(() => read(legacyName)));
+const envConfig = <A>(name: string, legacyName: string, read: (key: string) => Config.Config<A>) =>
+  read(name).pipe(Config.orElse(() => read(legacyName)));
 
 const EnvServerConfig = Config.all({
-  logLevel: envConfig("NEOKOD_LOG_LEVEL", "T3CODE_LOG_LEVEL", Config.logLevel).pipe(Config.withDefault("Info")),
-  traceMinLevel: envConfig("NEOKOD_TRACE_MIN_LEVEL", "T3CODE_TRACE_MIN_LEVEL", Config.logLevel).pipe(Config.withDefault("Info")),
-  traceTimingEnabled: envConfig("NEOKOD_TRACE_TIMING_ENABLED", "T3CODE_TRACE_TIMING_ENABLED", Config.boolean).pipe(Config.withDefault(true)),
+  logLevel: envConfig("NEOKOD_LOG_LEVEL", "T3CODE_LOG_LEVEL", Config.logLevel).pipe(
+    Config.withDefault("Info"),
+  ),
+  traceMinLevel: envConfig(
+    "NEOKOD_TRACE_MIN_LEVEL",
+    "T3CODE_TRACE_MIN_LEVEL",
+    Config.logLevel,
+  ).pipe(Config.withDefault("Info")),
+  traceTimingEnabled: envConfig(
+    "NEOKOD_TRACE_TIMING_ENABLED",
+    "T3CODE_TRACE_TIMING_ENABLED",
+    Config.boolean,
+  ).pipe(Config.withDefault(true)),
   traceFile: envConfig("NEOKOD_TRACE_FILE", "T3CODE_TRACE_FILE", Config.string).pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  traceMaxBytes: envConfig("NEOKOD_TRACE_MAX_BYTES", "T3CODE_TRACE_MAX_BYTES", Config.int).pipe(Config.withDefault(10 * 1024 * 1024)),
-  traceMaxFiles: envConfig("NEOKOD_TRACE_MAX_FILES", "T3CODE_TRACE_MAX_FILES", Config.int).pipe(Config.withDefault(10)),
-  traceBatchWindowMs: envConfig("NEOKOD_TRACE_BATCH_WINDOW_MS", "T3CODE_TRACE_BATCH_WINDOW_MS", Config.int).pipe(Config.withDefault(200)),
+  traceMaxBytes: envConfig("NEOKOD_TRACE_MAX_BYTES", "T3CODE_TRACE_MAX_BYTES", Config.int).pipe(
+    Config.withDefault(10 * 1024 * 1024),
+  ),
+  traceMaxFiles: envConfig("NEOKOD_TRACE_MAX_FILES", "T3CODE_TRACE_MAX_FILES", Config.int).pipe(
+    Config.withDefault(10),
+  ),
+  traceBatchWindowMs: envConfig(
+    "NEOKOD_TRACE_BATCH_WINDOW_MS",
+    "T3CODE_TRACE_BATCH_WINDOW_MS",
+    Config.int,
+  ).pipe(Config.withDefault(200)),
   otlpTracesUrl: envConfig("NEOKOD_OTLP_TRACES_URL", "T3CODE_OTLP_TRACES_URL", Config.string).pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  otlpMetricsUrl: envConfig("NEOKOD_OTLP_METRICS_URL", "T3CODE_OTLP_METRICS_URL", Config.string).pipe(
+  otlpMetricsUrl: envConfig(
+    "NEOKOD_OTLP_METRICS_URL",
+    "T3CODE_OTLP_METRICS_URL",
+    Config.string,
+  ).pipe(Config.option, Config.map(Option.getOrUndefined)),
+  otlpExportIntervalMs: envConfig(
+    "NEOKOD_OTLP_EXPORT_INTERVAL_MS",
+    "T3CODE_OTLP_EXPORT_INTERVAL_MS",
+    Config.int,
+  ).pipe(Config.withDefault(10_000)),
+  otlpServiceName: envConfig(
+    "NEOKOD_OTLP_SERVICE_NAME",
+    "T3CODE_OTLP_SERVICE_NAME",
+    Config.string,
+  ).pipe(Config.withDefault("neokod-server")),
+  mode: envConfig("NEOKOD_MODE", "T3CODE_MODE", (name) =>
+    Config.schema(ServerConfig.RuntimeMode, name),
+  ).pipe(Config.option, Config.map(Option.getOrUndefined)),
+  port: envConfig("NEOKOD_PORT", "T3CODE_PORT", Config.port).pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  otlpExportIntervalMs: envConfig("NEOKOD_OTLP_EXPORT_INTERVAL_MS", "T3CODE_OTLP_EXPORT_INTERVAL_MS", Config.int).pipe(
-    Config.withDefault(10_000),
-  ),
-  otlpServiceName: envConfig("NEOKOD_OTLP_SERVICE_NAME", "T3CODE_OTLP_SERVICE_NAME", Config.string).pipe(Config.withDefault("neokod-server")),
-  mode: envConfig("NEOKOD_MODE", "T3CODE_MODE", (name) => Config.schema(ServerConfig.RuntimeMode, name)).pipe(
+  neokodHome: envConfig("NEOKOD_HOME", "T3CODE_HOME", Config.string).pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  port: envConfig("NEOKOD_PORT", "T3CODE_PORT", Config.port).pipe(Config.option, Config.map(Option.getOrUndefined)),
-  neokodHome: envConfig("NEOKOD_HOME", "T3CODE_HOME", Config.string).pipe(Config.option, Config.map(Option.getOrUndefined)),
   devUrl: Config.url("VITE_DEV_SERVER_URL").pipe(Config.option, Config.map(Option.getOrUndefined)),
   noBrowser: envConfig("NEOKOD_NO_BROWSER", "T3CODE_NO_BROWSER", Config.boolean).pipe(
     Config.option,
@@ -101,14 +128,16 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  autoBootstrapProjectFromCwd: envConfig("NEOKOD_AUTO_BOOTSTRAP_PROJECT_FROM_CWD", "T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD", Config.boolean).pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
-  logWebSocketEvents: envConfig("NEOKOD_LOG_WS_EVENTS", "T3CODE_LOG_WS_EVENTS", Config.boolean).pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
+  autoBootstrapProjectFromCwd: envConfig(
+    "NEOKOD_AUTO_BOOTSTRAP_PROJECT_FROM_CWD",
+    "T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD",
+    Config.boolean,
+  ).pipe(Config.option, Config.map(Option.getOrUndefined)),
+  logWebSocketEvents: envConfig(
+    "NEOKOD_LOG_WS_EVENTS",
+    "T3CODE_LOG_WS_EVENTS",
+    Config.boolean,
+  ).pipe(Config.option, Config.map(Option.getOrUndefined)),
 });
 
 export interface CliServerFlags {

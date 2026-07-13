@@ -1,8 +1,5 @@
 import type { DiscoveredLocalServer, ScopedThreadRef } from "@neokod/contracts";
-import {
-  mapAtomCommandResult,
-  type AtomCommandResult,
-} from "@neokod/client-runtime/state/runtime";
+import { mapAtomCommandResult, type AtomCommandResult } from "@neokod/client-runtime/state/runtime";
 
 import { resolveDiscoveredServerUrl } from "~/browser/browserTargetResolver";
 import type { OpenPreviewMutation } from "~/browser/openFileInPreview";

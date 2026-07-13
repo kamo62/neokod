@@ -111,8 +111,14 @@ export function makeDevelopmentLauncherScript({
     ["NEOKOD_PORT", environment.NEOKOD_PORT ?? environment.T3CODE_PORT],
     ["NEOKOD_HOME", environment.NEOKOD_HOME ?? environment.T3CODE_HOME],
     ["NEOKOD_COMMIT_HASH", environment.NEOKOD_COMMIT_HASH ?? environment.T3CODE_COMMIT_HASH],
-    ["NEOKOD_OTLP_TRACES_URL", environment.NEOKOD_OTLP_TRACES_URL ?? environment.T3CODE_OTLP_TRACES_URL],
-    ["NEOKOD_OTLP_EXPORT_INTERVAL_MS", environment.NEOKOD_OTLP_EXPORT_INTERVAL_MS ?? environment.T3CODE_OTLP_EXPORT_INTERVAL_MS],
+    [
+      "NEOKOD_OTLP_TRACES_URL",
+      environment.NEOKOD_OTLP_TRACES_URL ?? environment.T3CODE_OTLP_TRACES_URL,
+    ],
+    [
+      "NEOKOD_OTLP_EXPORT_INTERVAL_MS",
+      environment.NEOKOD_OTLP_EXPORT_INTERVAL_MS ?? environment.T3CODE_OTLP_EXPORT_INTERVAL_MS,
+    ],
     ["NEOKOD_DESKTOP_APP_USER_MODEL_ID", APP_BUNDLE_ID],
   ].filter((entry) => typeof entry[1] === "string" && entry[1].trim().length > 0);
   return [

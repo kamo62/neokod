@@ -3035,12 +3035,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   );
 
   return (
-    <SidebarContent
-      id={panelId}
-      role="tabpanel"
-      aria-labelledby={tabId}
-      className="gap-0"
-    >
+    <SidebarContent id={panelId} role="tabpanel" aria-labelledby={tabId} className="gap-0">
       <SidebarGroup className="px-2 pt-2 pb-1">
         <SidebarMenu>
           <SidebarMenuItem>
@@ -3090,9 +3085,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
       <LocalSecondaryStatus />
       <SidebarGroup className="px-2 py-2">
         <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
-          <span className="text-ui font-medium text-[var(--text-secondary)]">
-            Projects
-          </span>
+          <span className="text-ui font-medium text-[var(--text-secondary)]">Projects</span>
           <div className="flex items-center gap-1">
             <ProjectSortMenu
               projectSortOrder={projectSortOrder}
@@ -3197,9 +3190,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
         )}
 
         {projectsLength === 0 && (
-          <div className="px-2 pt-4 text-center text-meta text-text-tertiary">
-            No projects yet
-          </div>
+          <div className="px-2 pt-4 text-center text-meta text-text-tertiary">No projects yet</div>
         )}
       </SidebarGroup>
     </SidebarContent>
@@ -3314,12 +3305,7 @@ function SidebarThreadsContent({
     threadContextLabelByKey,
   } satisfies SidebarProjectItemProps;
   return (
-    <SidebarContent
-      id={panelId}
-      role="tabpanel"
-      aria-labelledby={tabId}
-      className="gap-0"
-    >
+    <SidebarContent id={panelId} role="tabpanel" aria-labelledby={tabId} className="gap-0">
       <SidebarGroup className="px-2 pt-2 pb-1">
         <SidebarMenu>
           <SidebarMenuItem>
@@ -3339,7 +3325,9 @@ function SidebarThreadsContent({
             <SidebarMenuButton
               size="sm"
               className="gap-2 px-2 py-1.5 text-ui text-text-secondary hover:bg-accent hover:text-foreground"
-              onClick={() => void handleNewThread(scopeProjectRef(project.environmentId, project.id))}
+              onClick={() =>
+                void handleNewThread(scopeProjectRef(project.environmentId, project.id))
+              }
             >
               <SquarePenIcon className="size-3.5" />
               <span className="text-ui">New thread</span>
@@ -3349,16 +3337,12 @@ function SidebarThreadsContent({
       </SidebarGroup>
       {pinnedThreads.length > 0 ? (
         <SidebarGroup className="px-2 py-1">
-          <div className="px-2 text-ui font-medium text-[var(--text-secondary)]">
-            Pinned
-          </div>
+          <div className="px-2 text-ui font-medium text-[var(--text-secondary)]">Pinned</div>
           <SidebarProjectItem {...itemProps} flatThreads={pinnedThreads} />
         </SidebarGroup>
       ) : null}
       <SidebarGroup className="px-2 py-1">
-        <div className="px-2 text-ui font-medium text-[var(--text-secondary)]">
-          Threads
-        </div>
+        <div className="px-2 text-ui font-medium text-[var(--text-secondary)]">Threads</div>
         <SidebarProjectItem {...itemProps} flatThreads={unpinnedThreads} />
       </SidebarGroup>
     </SidebarContent>

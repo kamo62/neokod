@@ -66,7 +66,8 @@ describe("resolveNeokodHome", () => {
         const warnings: string[] = [];
         const failingFileSystem = new Proxy(fs, {
           get(target, property, receiver) {
-            if (property === "rename") return () => Effect.fail({ message: "rename failed" } as never);
+            if (property === "rename")
+              return () => Effect.fail({ message: "rename failed" } as never);
             return Reflect.get(target, property, receiver);
           },
         });

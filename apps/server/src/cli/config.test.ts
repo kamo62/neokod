@@ -40,11 +40,11 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     const bootstrap: DesktopBackendBootstrap =
       transport === "loopback"
         ? {
-          mode: "desktop",
-          noBrowser: true,
-          otlpTracesUrl: "http://bootstrap.test/v1/traces",
-          otlpMetricsUrl: "http://bootstrap.test/v1/metrics",
-          port: 4888,
+            mode: "desktop",
+            noBrowser: true,
+            otlpTracesUrl: "http://bootstrap.test/v1/traces",
+            otlpMetricsUrl: "http://bootstrap.test/v1/metrics",
+            port: 4888,
             transport: "loopback",
             host: "127.0.0.1",
           }
@@ -251,7 +251,10 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         Effect.map(
           resolveServerConfig(emptyFlags, Option.none()).pipe(
             Effect.provide(
-              Layer.mergeAll(ConfigProvider.layer(ConfigProvider.fromEnv({ env })), NetService.layer),
+              Layer.mergeAll(
+                ConfigProvider.layer(ConfigProvider.fromEnv({ env })),
+                NetService.layer,
+              ),
             ),
           ),
           (resolved) => {

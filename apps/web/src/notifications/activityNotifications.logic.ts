@@ -66,7 +66,10 @@ interface ThreadObservation {
   latestTurnCompleted: boolean;
   rawFailure: boolean;
   rawFailureTurnId: string | null;
-  pendingOutcome: { readonly kind: "agent-completed" | "agent-failed"; readonly turnId: string } | null;
+  pendingOutcome: {
+    readonly kind: "agent-completed" | "agent-failed";
+    readonly turnId: string;
+  } | null;
   approvalPending: boolean;
   inputPending: boolean;
   approvalOrdinal: number;
@@ -113,7 +116,9 @@ export function createActivityObservationState(): ActivityObservationState {
 }
 
 export function activityOccurrenceKey(occurrence: ActivityOccurrence): string {
-  const scope = scopedThreadKey(scopeThreadRef(occurrence.environmentId, occurrence.threadId as never));
+  const scope = scopedThreadKey(
+    scopeThreadRef(occurrence.environmentId, occurrence.threadId as never),
+  );
   if (occurrence.reliability === "exact") return `${scope}:${occurrence.kind}:${occurrence.turnId}`;
   if (occurrence.kind === "terminal-completed") {
     return `${scope}:terminal:${occurrence.terminalId}:${occurrence.generation}:${occurrence.ordinal}`;
@@ -124,12 +129,16 @@ export function activityOccurrenceKey(occurrence: ActivityOccurrence): string {
 export function reduceEnvironmentActivityObservation(
   state: ActivityObservationState,
   input: EnvironmentActivityInput,
-): { readonly state: ActivityObservationState; readonly occurrences: readonly ActivityOccurrence[] } {
+): {
+  readonly state: ActivityObservationState;
+  readonly occurrences: readonly ActivityOccurrence[];
+} {
   const next = cloneState(state);
   pruneTombstones(next.tombstones, input.nowMs);
   const environmentKey = String(input.environmentId);
   const ready = input.catalogReady && input.shellStatus === "live";
-  const baseline = ready && next.liveGenerationByEnvironment.get(environmentKey) !== input.generation;
+  const baseline =
+    ready && next.liveGenerationByEnvironment.get(environmentKey) !== input.generation;
 
   if (!ready) {
     next.liveGenerationByEnvironment.delete(environmentKey);
@@ -162,7 +171,8 @@ export function reduceEnvironmentActivityObservation(
     const maySettleBaseline =
       baseline &&
       (pendingOutcome !== null ||
-        (retainedActiveTurnSeenLive && retainedActiveTurnId !== null &&
+        (retainedActiveTurnSeenLive &&
+          retainedActiveTurnId !== null &&
           (latestTurnId === retainedActiveTurnId ||
             settlesRetainedActive ||
             (activeTurnId === retainedActiveTurnId && rawFailure))));
@@ -172,19 +182,26 @@ export function reduceEnvironmentActivityObservation(
     } else if (pendingOutcome?.kind === "agent-completed") {
       occurrences.push(agentOccurrence(thread, input, "agent-completed", pendingOutcome.turnId));
     } else if ((!baseline || maySettleBaseline) && rawFailure) {
-      const newFailure =
-        !observation.rawFailure ||
-        failureTurnId !== observation.rawFailureTurnId;
+      const newFailure = !observation.rawFailure || failureTurnId !== observation.rawFailureTurnId;
       if (failureTurnId && newFailure) {
         occurrences.push(agentOccurrence(thread, input, "agent-failed", failureTurnId));
       } else if (!failureTurnId && !observation.rawFailure) {
-        occurrences.push(agentOccurrence(thread, input, "agent-failed", undefined, ++observation.unidentifiedFailureOrdinal));
+        occurrences.push(
+          agentOccurrence(
+            thread,
+            input,
+            "agent-failed",
+            undefined,
+            ++observation.unidentifiedFailureOrdinal,
+          ),
+        );
       }
     } else if (
       (!baseline || maySettleBaseline) &&
       (pendingOutcome?.kind === "agent-completed" ||
-        (completedTurn && latestTurnId !== null &&
-        (latestTurnId !== observation.latestTurnId || !observation.latestTurnCompleted)) ||
+        (completedTurn &&
+          latestTurnId !== null &&
+          (latestTurnId !== observation.latestTurnId || !observation.latestTurnCompleted)) ||
         settlesRetainedActive)
     ) {
       occurrences.push(
@@ -198,10 +215,14 @@ export function reduceEnvironmentActivityObservation(
     }
 
     if (!baseline && !observation.approvalPending && thread.hasPendingApprovals) {
-      occurrences.push(attentionOccurrence(thread, input, "approval-needed", ++observation.approvalOrdinal));
+      occurrences.push(
+        attentionOccurrence(thread, input, "approval-needed", ++observation.approvalOrdinal),
+      );
     }
     if (!baseline && !observation.inputPending && thread.hasPendingUserInput) {
-      occurrences.push(attentionOccurrence(thread, input, "input-needed", ++observation.inputOrdinal));
+      occurrences.push(
+        attentionOccurrence(thread, input, "input-needed", ++observation.inputOrdinal),
+      );
     }
 
     if (activeTurnId) {
@@ -241,7 +262,8 @@ export function reduceEnvironmentActivityObservation(
     (input.terminalMetadataEpoch === undefined ||
       terminalGeneration === input.generation ||
       next.terminalMetadataEpochByEnvironment.get(environmentKey) !== input.terminalMetadataEpoch);
-  const terminalBaseline = ready && terminalMetadataReady && terminalGeneration !== input.generation;
+  const terminalBaseline =
+    ready && terminalMetadataReady && terminalGeneration !== input.generation;
   if (terminalMetadataReady && input.terminalMetadataEpoch !== undefined) {
     next.terminalMetadataEpochByEnvironment.set(environmentKey, input.terminalMetadataEpoch);
   }
@@ -256,8 +278,18 @@ export function reduceEnvironmentActivityObservation(
     const previous = next.terminals.get(key);
     const observation = previous
       ? { ...previous }
-      : { running: terminalBaseline ? terminal.hasRunningSubprocess : false, runningObservedLive: false, episode: 0 };
-    if (!baseline && !terminalBaseline && observation.running && observation.runningObservedLive && !terminal.hasRunningSubprocess) {
+      : {
+          running: terminalBaseline ? terminal.hasRunningSubprocess : false,
+          runningObservedLive: false,
+          episode: 0,
+        };
+    if (
+      !baseline &&
+      !terminalBaseline &&
+      observation.running &&
+      observation.runningObservedLive &&
+      !terminal.hasRunningSubprocess
+    ) {
       const thread = input.threads.find((candidate) => String(candidate.id) === terminal.threadId);
       occurrences.push(terminalOccurrence(input, terminal, observation.episode, thread));
     }
@@ -269,7 +301,8 @@ export function reduceEnvironmentActivityObservation(
   }
   if (terminalMetadataReady) {
     for (const [key] of [...next.terminals]) {
-      if (key.startsWith(`${environmentKey}:`) && !seenTerminals.has(key)) next.terminals.delete(key);
+      if (key.startsWith(`${environmentKey}:`) && !seenTerminals.has(key))
+        next.terminals.delete(key);
     }
   }
 
@@ -283,7 +316,11 @@ export function reduceEnvironmentActivityObservation(
       const flushed = flushNextActivityOccurrence(queued, Number.POSITIVE_INFINITY);
       queued = flushed.state;
       if (!flushed.occurrence) break;
-      queued = settleActivityOccurrence(queued, activityOccurrenceKey(flushed.occurrence), "suppressed");
+      queued = settleActivityOccurrence(
+        queued,
+        activityOccurrenceKey(flushed.occurrence),
+        "suppressed",
+      );
     }
   }
   return { state: queued, occurrences: freshOccurrences };
@@ -296,10 +333,17 @@ export function enqueueActivityOccurrences(
   const next = cloneState(state);
   for (const occurrence of occurrences) {
     const key = activityOccurrenceKey(occurrence);
-    const scope = scopedThreadKey(scopeThreadRef(occurrence.environmentId, occurrence.threadId as never));
+    const scope = scopedThreadKey(
+      scopeThreadRef(occurrence.environmentId, occurrence.threadId as never),
+    );
     const queue = next.queuedByScope.get(scope) ?? [];
-    if (next.deliveredKeys.has(key) || queue.some((queued) => activityOccurrenceKey(queued) === key)) continue;
-    if (queue.length === 0) next.queueWindowDeadlineByScope.set(scope, occurrence.observedAt + COALESCE_MS);
+    if (
+      next.deliveredKeys.has(key) ||
+      queue.some((queued) => activityOccurrenceKey(queued) === key)
+    )
+      continue;
+    if (queue.length === 0)
+      next.queueWindowDeadlineByScope.set(scope, occurrence.observedAt + COALESCE_MS);
     next.queuedByScope.set(scope, [...queue, occurrence]);
   }
   return next;
@@ -314,7 +358,9 @@ export function flushNextActivityOccurrence(
     if (
       [...state.inFlightByKey.values()].some(
         (occurrence) =>
-          scopedThreadKey(scopeThreadRef(occurrence.environmentId, occurrence.threadId as never)) === scope,
+          scopedThreadKey(
+            scopeThreadRef(occurrence.environmentId, occurrence.threadId as never),
+          ) === scope,
       )
     ) {
       continue;
@@ -322,7 +368,8 @@ export function flushNextActivityOccurrence(
     if (nowMs < (state.queueWindowDeadlineByScope.get(scope) ?? Number.POSITIVE_INFINITY)) continue;
     for (const occurrence of queue) {
       if (state.inFlightByKey.has(activityOccurrenceKey(occurrence))) continue;
-      if (!winner || compareOccurrences(occurrence, winner.occurrence) < 0) winner = { scope, occurrence };
+      if (!winner || compareOccurrences(occurrence, winner.occurrence) < 0)
+        winner = { scope, occurrence };
     }
   }
   if (!winner) return { state, occurrence: null };
@@ -344,7 +391,9 @@ export function settleActivityOccurrence(
   next.inFlightByKey.delete(occurrenceKey);
   if (outcome === "failed") return next;
 
-  const scope = scopedThreadKey(scopeThreadRef(occurrence.environmentId, occurrence.threadId as never));
+  const scope = scopedThreadKey(
+    scopeThreadRef(occurrence.environmentId, occurrence.threadId as never),
+  );
   const queue = next.queuedByScope.get(scope) ?? [];
   const remaining = queue.filter((queued) => activityOccurrenceKey(queued) !== occurrenceKey);
   if (remaining.length) next.queuedByScope.set(scope, remaining);
@@ -464,13 +513,17 @@ function observationFor(state: ReturnType<typeof cloneState>, scope: string): Th
 }
 
 function isCompletedTurn(thread: OrchestrationThreadShell): boolean {
-  return thread.latestTurn?.state === "completed" ||
-    (thread.latestTurn?.state === "interrupted" && thread.latestTurn.completedAt !== null);
+  return (
+    thread.latestTurn?.state === "completed" ||
+    (thread.latestTurn?.state === "interrupted" && thread.latestTurn.completedAt !== null)
+  );
 }
 
 function awarenessCopy(thread: OrchestrationThreadShell, input: EnvironmentActivityInput) {
   const project = input.projects?.find((candidate) => candidate.id === thread.projectId);
-  return project ? projectThreadAwareness({ environmentId: input.environmentId, project, thread }) : null;
+  return project
+    ? projectThreadAwareness({ environmentId: input.environmentId, project, thread })
+    : null;
 }
 
 function activityDetail(
@@ -486,7 +539,13 @@ function activityDetail(
 
 function compareOccurrences(left: ActivityOccurrence, right: ActivityOccurrence): number {
   const priority = (kind: ActivityNotificationKind) =>
-    ({ "agent-failed": 0, "approval-needed": 1, "input-needed": 2, "agent-completed": 3, "terminal-completed": 4 })[kind];
+    ({
+      "agent-failed": 0,
+      "approval-needed": 1,
+      "input-needed": 2,
+      "agent-completed": 3,
+      "terminal-completed": 4,
+    })[kind];
   return priority(left.kind) - priority(right.kind) || left.observedAt - right.observedAt;
 }
 
@@ -512,10 +571,14 @@ function lruSet<Value>(map: Map<string, Value>, key: string, value: Value) {
 }
 
 function pruneTombstones(tombstones: Map<string, Tombstone>, nowMs: number) {
-  for (const [key, tombstone] of tombstones) if (tombstone.expiresAt <= nowMs) tombstones.delete(key);
+  for (const [key, tombstone] of tombstones)
+    if (tombstone.expiresAt <= nowMs) tombstones.delete(key);
 }
 
-function baselineUnavailableEnvironment(state: ReturnType<typeof cloneState>, input: EnvironmentActivityInput) {
+function baselineUnavailableEnvironment(
+  state: ReturnType<typeof cloneState>,
+  input: EnvironmentActivityInput,
+) {
   for (const thread of input.threads) {
     const scope = scopedThreadKey(scopeThreadRef(input.environmentId, thread.id));
     const observation = observationFor(state, scope);
@@ -544,7 +607,7 @@ function baselineUnavailableEnvironment(state: ReturnType<typeof cloneState>, in
     observation.latestTurnCompleted = isCompletedTurn(thread);
     observation.rawFailure = rawFailure;
     observation.rawFailureTurnId = observation.rawFailure
-      ? thread.latestTurn?.turnId ?? thread.session?.activeTurnId ?? observation.activeTurnId
+      ? (thread.latestTurn?.turnId ?? thread.session?.activeTurnId ?? observation.activeTurnId)
       : null;
     observation.approvalPending = thread.hasPendingApprovals;
     observation.inputPending = thread.hasPendingUserInput;
@@ -562,8 +625,16 @@ function baselineUnavailableEnvironment(state: ReturnType<typeof cloneState>, in
   }
 }
 
-function isSettledOrQueued(state: ActivityObservationState, occurrence: ActivityOccurrence): boolean {
+function isSettledOrQueued(
+  state: ActivityObservationState,
+  occurrence: ActivityOccurrence,
+): boolean {
   const key = activityOccurrenceKey(occurrence);
-  const scope = scopedThreadKey(scopeThreadRef(occurrence.environmentId, occurrence.threadId as never));
-  return state.deliveredKeys.has(key) || (state.queuedByScope.get(scope) ?? []).some((queued) => activityOccurrenceKey(queued) === key);
+  const scope = scopedThreadKey(
+    scopeThreadRef(occurrence.environmentId, occurrence.threadId as never),
+  );
+  return (
+    state.deliveredKeys.has(key) ||
+    (state.queuedByScope.get(scope) ?? []).some((queued) => activityOccurrenceKey(queued) === key)
+  );
 }

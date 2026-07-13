@@ -106,7 +106,8 @@ function nextFlushDelay(state: ActivityObservationState, nowMs: number): number 
   for (const [scope, value] of state.queueWindowDeadlineByScope) {
     const scopeIsInFlight = [...state.inFlightByKey.values()].some(
       (occurrence) =>
-        scopedThreadKey(scopeThreadRef(occurrence.environmentId, occurrence.threadId as never)) === scope,
+        scopedThreadKey(scopeThreadRef(occurrence.environmentId, occurrence.threadId as never)) ===
+        scope,
     );
     if (!scopeIsInFlight) deadline = Math.min(deadline, value);
   }
@@ -118,7 +119,10 @@ export function ActivityNotificationCoordinator() {
   const enabled = useClientSettings((settings) => settings.webActivityNotificationsEnabled);
   const settingsHydrated = useClientSettingsHydrated();
   const navigate = useNavigate();
-  const routeTarget = useParams({ strict: false, select: (params) => resolveThreadRouteRef(params) });
+  const routeTarget = useParams({
+    strict: false,
+    select: (params) => resolveThreadRouteRef(params),
+  });
   const attention = useDocumentAttentionState();
   const stateRef = useRef(createActivityObservationState());
   const focusQueueRef = useRef(new Map<string, ActivityOccurrence>());
@@ -139,54 +143,69 @@ export function ActivityNotificationCoordinator() {
     [],
   );
 
-  const fail = useCallback((occurrence: ActivityOccurrence) => {
-    const key = activityOccurrenceKey(occurrence);
-    const attempts = (toastRetriesRef.current.get(key) ?? 0) + 1;
-    if (attempts >= MAX_TOAST_RETRIES) {
-      settle(occurrence, "suppressed");
-      return;
-    }
-    toastRetriesRef.current.set(key, attempts);
-    focusQueueRef.current.delete(key);
-    stateRef.current = retryActivityOccurrence(
-      stateRef.current,
-      occurrence,
-      Date.now() + 1_000 * 2 ** (attempts - 1),
-    );
-  }, [settle]);
-
-  const deliverActivityOccurrence = useCallback((occurrence: ActivityOccurrence): "settled" | "queued" => {
-    const visible = typeof document !== "undefined" && document.visibilityState === "visible";
-    const focused = typeof document !== "undefined" && document.hasFocus();
-    if (!enabled || !settingsHydrated || isTargetThreadVisibleAndFocused(occurrence, routeTarget)) {
-      settle(occurrence, "suppressed");
-      return "settled";
-    }
-    if (visible && focused) {
-      try {
-        addActivityToast(occurrence, navigate);
-        settle(occurrence, "delivered");
-      } catch {
-        fail(occurrence);
+  const fail = useCallback(
+    (occurrence: ActivityOccurrence) => {
+      const key = activityOccurrenceKey(occurrence);
+      const attempts = (toastRetriesRef.current.get(key) ?? 0) + 1;
+      if (attempts >= MAX_TOAST_RETRIES) {
+        settle(occurrence, "suppressed");
+        return;
       }
-      return "settled";
-    }
-    const nativeResult = showBrowserActivityNotification({
-      title: occurrence.headline,
-      ...(occurrence.detail ? { body: occurrence.detail } : {}),
-      tag: `neokod:${activityOccurrenceKey(occurrence)}`,
-      onClick: () => openActivityNotificationTarget(navigate, occurrence),
-    });
-    if (nativeResult === "shown") {
-      settle(occurrence, "delivered");
-      return "settled";
-    }
-    focusQueueRef.current.set(activityOccurrenceKey(occurrence), occurrence);
-    return "queued";
-  }, [enabled, fail, navigate, routeTarget, settingsHydrated, settle]);
+      toastRetriesRef.current.set(key, attempts);
+      focusQueueRef.current.delete(key);
+      stateRef.current = retryActivityOccurrence(
+        stateRef.current,
+        occurrence,
+        Date.now() + 1_000 * 2 ** (attempts - 1),
+      );
+    },
+    [settle],
+  );
+
+  const deliverActivityOccurrence = useCallback(
+    (occurrence: ActivityOccurrence): "settled" | "queued" => {
+      const visible = typeof document !== "undefined" && document.visibilityState === "visible";
+      const focused = typeof document !== "undefined" && document.hasFocus();
+      if (
+        !enabled ||
+        !settingsHydrated ||
+        isTargetThreadVisibleAndFocused(occurrence, routeTarget)
+      ) {
+        settle(occurrence, "suppressed");
+        return "settled";
+      }
+      if (visible && focused) {
+        try {
+          addActivityToast(occurrence, navigate);
+          settle(occurrence, "delivered");
+        } catch {
+          fail(occurrence);
+        }
+        return "settled";
+      }
+      const nativeResult = showBrowserActivityNotification({
+        title: occurrence.headline,
+        ...(occurrence.detail ? { body: occurrence.detail } : {}),
+        tag: `neokod:${activityOccurrenceKey(occurrence)}`,
+        onClick: () => openActivityNotificationTarget(navigate, occurrence),
+      });
+      if (nativeResult === "shown") {
+        settle(occurrence, "delivered");
+        return "settled";
+      }
+      focusQueueRef.current.set(activityOccurrenceKey(occurrence), occurrence);
+      return "queued";
+    },
+    [enabled, fail, navigate, routeTarget, settingsHydrated, settle],
+  );
 
   const flushFocusFallbacks = useCallback(() => {
-    if (typeof document === "undefined" || document.visibilityState !== "visible" || !document.hasFocus()) return;
+    if (
+      typeof document === "undefined" ||
+      document.visibilityState !== "visible" ||
+      !document.hasFocus()
+    )
+      return;
     let progressed = false;
     for (const occurrence of [...focusQueueRef.current.values()]) {
       const key = activityOccurrenceKey(occurrence);
@@ -194,7 +213,11 @@ export function ActivityNotificationCoordinator() {
         focusQueueRef.current.delete(key);
         continue;
       }
-      if (!enabled || !settingsHydrated || isTargetThreadVisibleAndFocused(occurrence, routeTarget)) {
+      if (
+        !enabled ||
+        !settingsHydrated ||
+        isTargetThreadVisibleAndFocused(occurrence, routeTarget)
+      ) {
         settle(occurrence, "suppressed");
         progressed = true;
         continue;
@@ -209,7 +232,16 @@ export function ActivityNotificationCoordinator() {
       }
     }
     if (progressed) setRevision((value) => value + 1);
-  }, [attention.focused, attention.visible, enabled, fail, navigate, routeTarget, settingsHydrated, settle]);
+  }, [
+    attention.focused,
+    attention.visible,
+    enabled,
+    fail,
+    navigate,
+    routeTarget,
+    settingsHydrated,
+    settle,
+  ]);
 
   const flush = useCallback(() => {
     const result = flushNextActivityOccurrence(stateRef.current, Date.now());
@@ -266,7 +298,9 @@ export function EnvironmentActivitySource({
 }) {
   const supervisor = useEnvironmentQuery(environmentCatalog.stateAtom(environmentId)).data;
   const shell = useAtomValue(environmentShell.stateValueAtom(environmentId));
-  const terminalMetadata = useEnvironmentQuery(terminalEnvironment.metadata({ environmentId, input: null }));
+  const terminalMetadata = useEnvironmentQuery(
+    terminalEnvironment.metadata({ environmentId, input: null }),
+  );
   const snapshot = Option.getOrNull(shell.snapshot);
   const terminalMetadataSnapshotRef = useRef(terminalMetadata.data);
   const terminalMetadataEpochRef = useRef(0);

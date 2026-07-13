@@ -28,8 +28,11 @@ interface BufferedAnalyticsEvent {
   readonly capturedAt: string;
 }
 
-const telemetryEnv = <A>(name: string, legacyName: string, read: (key: string) => Config.Config<A>) =>
-  read(name).pipe(Config.orElse(() => read(legacyName)));
+const telemetryEnv = <A>(
+  name: string,
+  legacyName: string,
+  read: (key: string) => Config.Config<A>,
+) => read(name).pipe(Config.orElse(() => read(legacyName)));
 
 const TelemetryEnvConfig = Config.all({
   posthogKey: telemetryEnv("NEOKOD_POSTHOG_KEY", "T3CODE_POSTHOG_KEY", Config.string).pipe(
@@ -38,11 +41,21 @@ const TelemetryEnvConfig = Config.all({
   posthogHost: telemetryEnv("NEOKOD_POSTHOG_HOST", "T3CODE_POSTHOG_HOST", Config.string).pipe(
     Config.withDefault("https://us.i.posthog.com"),
   ),
-  enabled: telemetryEnv("NEOKOD_TELEMETRY_ENABLED", "T3CODE_TELEMETRY_ENABLED", Config.boolean).pipe(Config.withDefault(true)),
-  flushBatchSize: telemetryEnv("NEOKOD_TELEMETRY_FLUSH_BATCH_SIZE", "T3CODE_TELEMETRY_FLUSH_BATCH_SIZE", Config.number).pipe(Config.withDefault(20)),
-  maxBufferedEvents: telemetryEnv("NEOKOD_TELEMETRY_MAX_BUFFERED_EVENTS", "T3CODE_TELEMETRY_MAX_BUFFERED_EVENTS", Config.number).pipe(
-    Config.withDefault(1_000),
-  ),
+  enabled: telemetryEnv(
+    "NEOKOD_TELEMETRY_ENABLED",
+    "T3CODE_TELEMETRY_ENABLED",
+    Config.boolean,
+  ).pipe(Config.withDefault(true)),
+  flushBatchSize: telemetryEnv(
+    "NEOKOD_TELEMETRY_FLUSH_BATCH_SIZE",
+    "T3CODE_TELEMETRY_FLUSH_BATCH_SIZE",
+    Config.number,
+  ).pipe(Config.withDefault(20)),
+  maxBufferedEvents: telemetryEnv(
+    "NEOKOD_TELEMETRY_MAX_BUFFERED_EVENTS",
+    "T3CODE_TELEMETRY_MAX_BUFFERED_EVENTS",
+    Config.number,
+  ).pipe(Config.withDefault(1_000)),
   wslDistroName: Config.string("WSL_DISTRO_NAME").pipe(Config.option),
 });
 

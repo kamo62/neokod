@@ -329,7 +329,9 @@ const buildAppUnderTest = (options?: {
 }) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
-    const tempBaseDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "neokod-router-test-" });
+    const tempBaseDir = yield* fileSystem.makeTempDirectoryScoped({
+      prefix: "neokod-router-test-",
+    });
     const baseDir = options?.config?.baseDir ?? tempBaseDir;
     const devUrl = options?.config?.devUrl;
     const derivedPaths = yield* ServerConfig.deriveServerPaths(baseDir, devUrl);
@@ -865,7 +867,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const staticDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "neokod-router-static-" });
+      const staticDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "neokod-router-static-",
+      });
       const indexPath = path.join(staticDir, "index.html");
       yield* fileSystem.writeFileString(indexPath, "<html>router-static-ok</html>");
 
@@ -1520,7 +1524,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const workspaceDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-ws-project-search-" });
+      const workspaceDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "neokod-ws-project-search-",
+      });
       yield* fs.writeFileString(
         path.join(workspaceDir, "needle-file.ts"),
         "export const needle = 1;",
@@ -1549,7 +1555,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const workspaceDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-ws-project-files-" });
+      const workspaceDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "neokod-ws-project-files-",
+      });
       yield* fs.makeDirectory(path.join(workspaceDir, "src"), { recursive: true });
       yield* fs.writeFileString(
         path.join(workspaceDir, "src", "index.ts"),
@@ -1786,7 +1794,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const workspaceDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-ws-project-write-" });
+      const workspaceDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "neokod-ws-project-write-",
+      });
 
       yield* buildAppUnderTest();
 
@@ -1844,7 +1854,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
   it.effect("routes websocket rpc projects.writeFile errors", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const workspaceDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-ws-project-write-" });
+      const workspaceDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "neokod-ws-project-write-",
+      });
 
       yield* buildAppUnderTest();
 

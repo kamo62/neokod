@@ -55,7 +55,10 @@ describe("DesktopEnvironment", () => {
       assert.equal(environment.stateDir, "/tmp/neokod/dev");
       assert.equal(environment.desktopSettingsPath, "/tmp/neokod/dev/desktop-settings.json");
       assert.equal(environment.clientSettingsPath, "/tmp/neokod/dev/client-settings.json");
-      assert.equal(environment.savedEnvironmentRegistryPath, "/tmp/neokod/dev/saved-environments.json");
+      assert.equal(
+        environment.savedEnvironmentRegistryPath,
+        "/tmp/neokod/dev/saved-environments.json",
+      );
       assert.equal(environment.serverSettingsPath, "/tmp/neokod/dev/settings.json");
       assert.equal(environment.logDir, "/tmp/neokod/dev/logs");
       assert.equal(environment.browserArtifactsDir, "/tmp/neokod/dev/browser-artifacts");
