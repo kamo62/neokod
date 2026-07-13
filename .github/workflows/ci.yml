@@ -60,6 +60,38 @@ jobs:
       - name: Test
         run: vp run test
 
+  browser_test:
+    name: Browser Test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: false
+
+      - name: Install dependencies
+        run: vp install --frozen-lockfile
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-ms-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install Chromium
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: vp run --filter @neokod/web test:browser:install
+
+      - name: Browser test
+        run: vp run --filter @neokod/web test:browser
+
   release_smoke:
     name: Release Smoke
     runs-on: ubuntu-24.04

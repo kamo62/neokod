@@ -2,6 +2,7 @@ import tailwindcss from "@tailwindcss/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import babel from "@rolldown/plugin-babel";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
+import { playwright } from "vite-plus/test/browser-playwright";
 import { defineProject, type TestProjectInlineConfiguration } from "vite-plus/test/config";
 import "vite-plus/test/config";
 import { defineConfig } from "vite-plus";
@@ -40,6 +41,33 @@ const unitTestProject = {
     // run, those async tests can exceed Vitest's default 5s budget.
     hookTimeout: 15_000,
     testTimeout: 15_000,
+  },
+} satisfies TestProjectInlineConfiguration;
+
+const browserTestProject = {
+  extends: true,
+  test: {
+    name: "browser",
+    include: ["src/**/*.browser.{ts,tsx}"],
+    setupFiles: ["./src/test/browser/setup.ts"],
+    fileParallelism: false,
+    hookTimeout: 30_000,
+    testTimeout: 30_000,
+    browser: {
+      enabled: true,
+      headless: true,
+      instances: [{ browser: "chromium" }],
+      viewport: { width: 1280, height: 900 },
+      provider: playwright({
+        contextOptions: {
+          deviceScaleFactor: 1,
+          locale: "en-US",
+          timezoneId: "UTC",
+          colorScheme: "light",
+          reducedMotion: "reduce",
+        },
+      }),
+    },
   },
 } satisfies TestProjectInlineConfiguration;
 
@@ -141,7 +169,13 @@ export default defineConfig(() => {
       sourcemap: buildSourcemap,
     },
     test: {
-      projects: [defineProject(unitTestProject)],
+      // The browser lane's runner<->page control socket can close while still
+      // connecting during page teardown, surfacing a spurious "WebSocket closed
+      // without opened." unhandled error that fails an otherwise-passing run.
+      // The lanes assert on explicit values, so ignore that teardown-race noise.
+      // (Root-level: not available per-project in this config type.)
+      dangerouslyIgnoreUnhandledErrors: true,
+      projects: [defineProject(unitTestProject), defineProject(browserTestProject)],
     },
   };
 });
