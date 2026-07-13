@@ -5195,13 +5195,13 @@ function ChatViewContent(props: ChatViewProps) {
             <div
               ref={setComposerOverlayElement}
               data-chat-composer-overlay="true"
-              className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
+              className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1 sm:pt-1.5"
             >
               <div
                 aria-hidden="true"
-                className="chat-composer-horizontal-inset pointer-events-none absolute inset-x-0 top-1.5 bottom-0 z-0 sm:top-2"
+                className="chat-composer-horizontal-inset pointer-events-none absolute inset-x-0 top-1 bottom-0 z-0 sm:top-1.5"
               >
-                <div className="relative mx-auto h-full w-full max-w-3xl overflow-clip rounded-t-[20px]">
+                <div className="relative mx-auto h-full w-full max-w-3xl overflow-clip rounded-t-[18px]">
                   <div className="chat-composer-shared-blur absolute -inset-8" />
                 </div>
               </div>

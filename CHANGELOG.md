@@ -1,6 +1,6 @@
 ## 2.1.0 - 2026-07-13 (Minor)
 
-Release impact: Minor because the cumulative redesign will add backward-compatible sidebar tabs and local pinned-thread preferences.
+Release impact: Minor because the cumulative redesign adds backward-compatible sidebar tabs and local pinned-thread preferences.
 
 - Added a static semantic light/dark token foundation for surfaces, text, lines, focus, brand, and state aliases.
 - Bridged the semantic palette through existing Tailwind and shadcn variables, including sidebar roles, without changing theme ownership.
@@ -9,6 +9,7 @@ Release impact: Minor because the cumulative redesign will add backward-compatib
 - Added the atom-backed flat Threads view with live-only Pinned rows, shared thread actions, and keyboard-visible ordering.
 - Restyled the persisted right-panel surfaces with one compact token-based tab, header, divider, and panel-toolbar chrome.
 - Applied the fixed shell typography and density scale to sidebar rows, workspace headers, status rails, and branch/panel controls.
+- Applied the token-based conversation type scale, compact transcript/composer spacing, neutral control surfaces, and restrained non-semantic color usage.
 
 ## 2.0.0 - 2026-07-13 (Major)
 

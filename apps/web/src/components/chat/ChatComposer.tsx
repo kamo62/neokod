@@ -227,8 +227,8 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
               className={cn(
                 "shrink-0 whitespace-nowrap px-2 sm:px-3",
                 props.interactionMode === "plan"
-                  ? "bg-blue-500/10 text-blue-400 hover:bg-blue-500/15 hover:text-blue-300"
-                  : "text-muted-foreground/70 hover:text-foreground/80",
+                  ? "bg-surface-selected text-text-primary hover:bg-surface-hover"
+                  : "text-text-secondary hover:text-text-primary",
               )}
               size="sm"
               type="button"
@@ -284,7 +284,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
                       <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
                       {option.label}
                     </span>
-                    <span className="text-muted-foreground text-xs leading-4">
+                    <span className="text-ui text-text-secondary leading-4">
                       {option.description}
                     </span>
                   </div>
@@ -309,8 +309,8 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
                   className={cn(
                     "shrink-0 whitespace-nowrap px-2 sm:px-3",
                     props.planSidebarOpen
-                      ? "bg-blue-500/10 text-blue-400 hover:bg-blue-500/15 hover:text-blue-300"
-                      : "text-muted-foreground/70 hover:text-foreground/80",
+                      ? "bg-surface-selected text-text-primary hover:bg-surface-hover"
+                      : "text-text-secondary hover:text-text-primary",
                   )}
                   size="sm"
                   type="button"
@@ -365,7 +365,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         />
       ) : null}
       {props.isPreparingWorktree ? (
-        <span className="text-muted-foreground/70 text-xs">Preparing worktree...</span>
+        <span className="text-ui text-text-secondary">Preparing worktree...</span>
       ) : null}
       <ComposerPrimaryActions
         compact={props.compact}
@@ -2142,7 +2142,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     >
       <div
         className={cn(
-          "group rounded-[22px] p-px transition-colors duration-200",
+          "group rounded-[20px] p-px transition-colors duration-200",
           composerProviderState.composerFrameClassName,
         )}
         onDragEnter={onComposerDragEnter}
@@ -2154,8 +2154,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           ref={composerSurfaceRef}
           data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
           className={cn(
-            "chat-composer-glass rounded-[20px] border transition-colors duration-200 has-focus-visible:border-ring/45",
-            isDragOverComposer ? "border-primary/70 bg-accent/45" : "border-border",
+            "chat-composer-glass rounded-[18px] border transition-colors duration-200 has-focus-visible:border-ring/45",
+            isDragOverComposer ? "border-brand bg-surface-hover" : "border-line-default",
             environmentUnavailable ? "opacity-75" : null,
             composerProviderState.composerSurfaceClassName,
           )}
@@ -2180,14 +2180,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         >
           {!isComposerCollapsedMobile &&
             (activePendingApproval ? (
-              <div className="rounded-t-[19px] border-b border-border/65 bg-muted/20">
+              <div className="rounded-t-[17px] border-b border-line-subtle bg-surface-control">
                 <ComposerPendingApprovalPanel
                   approval={activePendingApproval}
                   pendingCount={pendingApprovals.length}
                 />
               </div>
             ) : pendingUserInputs.length > 0 ? (
-              <div className="rounded-t-[19px] border-b border-border/65 bg-muted/20">
+              <div className="rounded-t-[17px] border-b border-line-subtle bg-surface-control">
                 <ComposerPendingUserInputPanel
                   pendingUserInputs={pendingUserInputs}
                   respondingRequestIds={respondingRequestIds}
@@ -2198,7 +2198,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 />
               </div>
             ) : showPlanFollowUpPrompt && activeProposedPlan ? (
-              <div className="rounded-t-[19px] border-b border-border/65 bg-muted/20">
+              <div className="rounded-t-[17px] border-b border-line-subtle bg-surface-control">
                 <ComposerPlanFollowUpBanner
                   key={activeProposedPlan.id}
                   planTitle={proposedPlanTitle(activeProposedPlan.planMarkdown) ?? null}
@@ -2208,7 +2208,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
           {isComposerCollapsedMobile && activePendingApproval ? (
             <div
-              className="rounded-t-[19px] border-b border-border/65 bg-muted/20"
+              className="rounded-t-[17px] border-b border-line-subtle bg-surface-control"
               data-chat-composer-collapsed-controls="true"
             >
               <ComposerPendingApprovalPanel
@@ -2225,7 +2225,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             </div>
           ) : isComposerCollapsedMobile && pendingUserInputs.length > 0 ? (
             <div
-              className="rounded-t-[19px] border-b border-border/65 bg-muted/20"
+              className="rounded-t-[17px] border-b border-line-subtle bg-surface-control"
               data-chat-composer-collapsed-controls="true"
             >
               <ComposerPendingUserInputPanel
@@ -2247,7 +2247,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   <button
                     type="button"
                     className={cn(
-                      "min-w-0 flex-1 truncate bg-transparent py-1.5 text-left text-sm",
+                      "min-w-0 flex-1 truncate bg-transparent py-1.5 text-left text-chat",
                       activePendingProgress?.customAnswer
                         ? "text-foreground"
                         : "text-muted-foreground/60",
@@ -2287,7 +2287,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               <button
                 type="button"
                 className={cn(
-                  "min-w-0 flex-1 truncate bg-transparent p-0 text-left text-[14px] focus:outline-none",
+                  "min-w-0 flex-1 truncate bg-transparent p-0 text-left text-chat focus:outline-none",
                   (activePendingProgress ? activePendingProgress.customAnswer : prompt.trim())
                     ? "text-foreground"
                     : "text-muted-foreground/35",
@@ -2327,8 +2327,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
           <div
             className={cn(
-              "relative px-3 pb-2 sm:px-4",
-              hasComposerHeader ? "pt-2.5 sm:pt-3" : "pt-3.5 sm:pt-4",
+              "relative px-2.5 pb-2 sm:px-3",
+              hasComposerHeader ? "pt-2" : "pt-3",
               isComposerCollapsedMobile && "hidden",
             )}
           >
@@ -2365,7 +2365,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     const preview = buildExpandedImagePreview(composerImages, imageId);
                     if (preview) onExpandImage(preview);
                   }}
-                  className="mb-3"
+                  className="mb-2"
                 />
               )}
 
@@ -2378,7 +2378,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   onRemove={(commentId) =>
                     removeComposerDraftReviewComment(composerDraftTarget, commentId)
                   }
-                  className="mb-3"
+                  className="mb-2"
                 />
               )}
 
@@ -2391,7 +2391,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   onRemove={(contextId) =>
                     removeComposerDraftElementContext(composerDraftTarget, contextId)
                   }
-                  className="mb-3"
+                  className="mb-2"
                 />
               )}
 
@@ -2402,7 +2402,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 (image) =>
                   !composerPreviewAnnotations.some((annotation) => annotation.id === image.id),
               ) && (
-                <div className="mb-3 flex flex-wrap gap-2">
+                <div className="mb-2 flex flex-wrap gap-1.5">
                   {composerImages
                     .filter(
                       (image) =>
@@ -2444,7 +2444,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                                 <span
                                   role="img"
                                   aria-label="Draft attachment may not persist"
-                                  className="absolute left-1 top-1 inline-flex items-center justify-center rounded bg-background/85 p-0.5 text-amber-600"
+                                  className="absolute left-1 top-1 inline-flex items-center justify-center rounded bg-background/85 p-0.5 text-warning-foreground"
                                 >
                                   <CircleAlertIcon className="size-3" />
                                 </span>
@@ -2544,7 +2544,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
           {/* Bottom toolbar */}
           {isComposerCollapsedMobile ? null : activePendingApproval ? (
-            <div className="flex items-center justify-end gap-2 px-2.5 pb-2.5 sm:px-3 sm:pb-3">
+            <div className="flex items-center justify-end gap-2 px-2.5 pb-2 sm:px-3 sm:pb-2.5">
               <ComposerPendingApprovalActions
                 requestId={activePendingApproval.requestId}
                 isResponding={respondingRequestIds.includes(activePendingApproval.requestId)}
@@ -2556,7 +2556,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               data-chat-composer-footer="true"
               data-chat-composer-footer-compact={isComposerFooterCompact ? "true" : "false"}
               className={cn(
-                "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-2.5 pb-2.5 sm:px-3 sm:pb-3",
+                "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-2.5 pb-2 sm:px-3 sm:pb-2.5",
                 pendingUserInputs.length > 0 && "pt-2",
                 isComposerFooterCompact ? "gap-1.5" : "gap-2 sm:gap-0",
                 showMobilePendingAnswerActions && "hidden sm:flex",
