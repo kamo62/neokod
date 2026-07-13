@@ -19,7 +19,7 @@ function environmentEntry(environmentId: EnvironmentId, label: string) {
       httpBaseUrl: `https://${environmentId}.example.test`,
       wsBaseUrl: `wss://${environmentId}.example.test`,
     }),
-    profile: Option.none(),
+    wslBearerToken: Option.none(),
   };
 }
 

@@ -23,12 +23,12 @@ const nodeEnvironmentScript = `prepend_path_if_dir() {
 }
 
 wsl_node_satisfies_engine() {
-  T3_NODE_ENGINE_RANGE=@@T3_NODE_ENGINE_RANGE@@
-  if [ -z "$T3_NODE_ENGINE_RANGE" ]; then
+  NEOKOD_NODE_ENGINE_RANGE=@@NEOKOD_NODE_ENGINE_RANGE@@
+  if [ -z "$NEOKOD_NODE_ENGINE_RANGE" ]; then
     return 0
   fi
-  node - "$T3_NODE_ENGINE_RANGE" <<'NODE'
-@@T3_NODE_ENGINE_CHECK_SCRIPT@@
+  node - "$NEOKOD_NODE_ENGINE_RANGE" <<'NODE'
+@@NEOKOD_NODE_ENGINE_CHECK_SCRIPT@@
 NODE
 }
 
@@ -92,9 +92,9 @@ ensure_wsl_node_path() {
   fi
 
   if ! command -v node >/dev/null 2>&1 && [ -d "$NVM_DIR/versions/node" ]; then
-    for T3_NODE_BIN in "$NVM_DIR"/versions/node/*/bin; do
-      if [ -x "$T3_NODE_BIN/node" ]; then
-        PATH="$T3_NODE_BIN:$PATH"
+    for NEOKOD_NODE_BIN in "$NVM_DIR"/versions/node/*/bin; do
+      if [ -x "$NEOKOD_NODE_BIN/node" ]; then
+        PATH="$NEOKOD_NODE_BIN:$PATH"
         export PATH
       fi
     done
@@ -108,9 +108,9 @@ const shellSingleQuote = (value: string): string => `'${value.replaceAll("'", "'
 
 export function buildWslNodeEnvScript(nodeEngineRange?: string | null): string {
   return nodeEnvironmentScript
-    .replaceAll("@@T3_NODE_ENGINE_RANGE@@", shellSingleQuote(nodeEngineRange?.trim() || ""))
+    .replaceAll("@@NEOKOD_NODE_ENGINE_RANGE@@", shellSingleQuote(nodeEngineRange?.trim() || ""))
     .replaceAll(
-      "@@T3_NODE_ENGINE_CHECK_SCRIPT@@",
+      "@@NEOKOD_NODE_ENGINE_CHECK_SCRIPT@@",
       `${satisfiesSemverRange.toString()}\n(${nodeEngineCheckMain.toString()})();`,
     )
     .replace(/\n+$/u, "");

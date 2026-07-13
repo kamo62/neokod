@@ -127,7 +127,7 @@ const withIdentity = <A, E, R>(
                 ? Effect.fail(input.legacyPathProbeError)
                 : Effect.succeed(input.legacyPathExists === true && path.endsWith("/neokod")),
             readFileString: () =>
-              Effect.succeed(input.packageJson ?? '{"t3codeCommitHash":"abcdef1234567890"}'),
+              Effect.succeed(input.packageJson ?? '{"neokodCommitHash":"abcdef1234567890"}'),
           }),
         ),
         Layer.provideMerge(makeAssetsLayer(input.pngIconPath ?? Option.none())),
@@ -200,10 +200,31 @@ describe("DesktopAppIdentity", () => {
         calls,
         environment: {
           env: {
-            T3CODE_COMMIT_HASH: "0123456789abcdef",
+            NEOKOD_COMMIT_HASH: "0123456789abcdef",
           },
         },
         pngIconPath: Option.some("/icon.png"),
+      },
+    );
+  });
+
+  it.effect("reads the legacy embedded commit hash for one release", () => {
+    const calls: ElectronAppCalls = {
+      setAboutPanelOptions: [],
+      setDockIcon: [],
+      setName: [],
+    };
+
+    return withIdentity(
+      Effect.gen(function* () {
+        const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
+        yield* identity.configure;
+
+        assert.equal(calls.setAboutPanelOptions[0]?.version, "abcdef123456");
+      }),
+      {
+        calls,
+        packageJson: '{"t3codeCommitHash":"abcdef1234567890"}',
       },
     );
   });

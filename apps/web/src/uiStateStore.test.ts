@@ -9,6 +9,7 @@ import {
   PERSISTED_STATE_KEY,
   type PersistedUiState,
   persistState,
+  readPersistedState,
   removePinnedThreads,
   reorderProjects,
   resolveProjectExpanded,
@@ -267,6 +268,16 @@ describe("uiStateStore persistence", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("migrates the previous t3code:ui-state:v1 key and prefers the new key", () => {
+    localStorageStub.setItem("t3code:ui-state:v1", JSON.stringify({ sidebarView: "workspace" }));
+    expect(readPersistedState().sidebarView).toBe("workspace");
+    // write-forward populates the new key
+    expect(localStorageStub.getItem(PERSISTED_STATE_KEY)).not.toBeNull();
+    // the new key wins over legacy
+    localStorageStub.setItem(PERSISTED_STATE_KEY, JSON.stringify({ sidebarView: "threads" }));
+    expect(readPersistedState().sidebarView).toBe("threads");
   });
 
   it("persists raw UI preferences including thread visit markers", () => {

@@ -34,7 +34,7 @@ describe("CopilotProvider", () => {
         const draft = yield* makePendingCopilotProvider(decodeSettings({ enabled: false }));
         NodeAssert.equal(draft.enabled, false);
         NodeAssert.equal(draft.status, "disabled");
-        NodeAssert.equal(draft.message, "GitHub Copilot is disabled in T3 Code settings.");
+        NodeAssert.equal(draft.message, "GitHub Copilot is disabled in Neokod settings.");
       }),
   );
 

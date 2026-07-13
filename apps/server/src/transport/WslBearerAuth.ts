@@ -13,7 +13,7 @@ import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerRespondable from "effect/unstable/http/HttpServerRespondable";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 import * as HttpRouter from "effect/unstable/http/HttpRouter";
-import { randomBytes } from "node:crypto";
+import * as NodeCrypto from "node:crypto";
 
 import * as ServerConfig from "../config.ts";
 import { timingSafeEqualUtf8 } from "../crypto/serverCrypto.ts";
@@ -41,14 +41,22 @@ export class WslBearerAuth extends Context.Service<
     readonly authorizeBearerHeader: (
       authorization: string | undefined,
     ) => Effect.Effect<void, EnvironmentWslBearerInvalidError>;
-    readonly authorizeHttpRequest: Effect.Effect<void, EnvironmentWslBearerInvalidError>;
+    readonly authorizeHttpRequest: Effect.Effect<
+      void,
+      EnvironmentWslBearerInvalidError,
+      HttpServerRequest.HttpServerRequest
+    >;
     readonly issueWebSocketTicket: Effect.Effect<WslWebSocketTicket>;
     readonly consumeWebSocketTicket: (
       ticket: string | null,
     ) => Effect.Effect<void, EnvironmentWslBearerInvalidError>;
-    readonly authorizeWebSocketUpgrade: Effect.Effect<void, EnvironmentWslBearerInvalidError>;
+    readonly authorizeWebSocketUpgrade: Effect.Effect<
+      void,
+      EnvironmentWslBearerInvalidError,
+      HttpServerRequest.HttpServerRequest
+    >;
   }
->()("t3/transport/WslBearerAuth") {}
+>()("neokod/transport/WslBearerAuth") {}
 
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
@@ -90,7 +98,7 @@ export const make = Effect.gen(function* () {
     for (const [ticket, record] of tickets) {
       if (record.expiresAt.epochMilliseconds <= now.epochMilliseconds) tickets.delete(ticket);
     }
-    const ticket = randomBytes(24).toString("base64url");
+    const ticket = NodeCrypto.randomBytes(24).toString("base64url");
     tickets.set(ticket, { expiresAt });
     return { ticket, expiresAt: DateTime.toUtc(expiresAt) } satisfies WslWebSocketTicket;
   }).pipe(Effect.withSpan("WslBearerAuth.issueWebSocketTicket"));

@@ -130,6 +130,10 @@ const SettingsWatcherLive = Layer.effectDiscard(
       ),
       Effect.forkScoped,
     );
+    // `Stream.fromPubSub` subscribes only when its consumer starts. Yield
+    // before this layer becomes usable so the first settings update cannot
+    // race the watcher and leave live provider instances stale.
+    yield* Effect.yieldNow;
   }),
 );
 

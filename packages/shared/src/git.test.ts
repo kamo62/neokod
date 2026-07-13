@@ -12,23 +12,23 @@ import {
 
 describe("normalizeGitRemoteUrl", () => {
   it("canonicalizes equivalent GitHub remotes across protocol variants", () => {
-    expect(normalizeGitRemoteUrl("git@github.com:T3Tools/T3Code.git")).toBe(
-      "github.com/t3tools/t3code",
+    expect(normalizeGitRemoteUrl("git@github.com:Kamo62/neokod.git")).toBe(
+      "github.com/kamo62/neokod",
     );
-    expect(normalizeGitRemoteUrl("https://github.com/T3Tools/T3Code.git")).toBe(
-      "github.com/t3tools/t3code",
+    expect(normalizeGitRemoteUrl("https://github.com/Kamo62/neokod.git")).toBe(
+      "github.com/kamo62/neokod",
     );
-    expect(normalizeGitRemoteUrl("ssh://git@github.com/T3Tools/T3Code")).toBe(
-      "github.com/t3tools/t3code",
+    expect(normalizeGitRemoteUrl("ssh://git@github.com/Kamo62/neokod")).toBe(
+      "github.com/kamo62/neokod",
     );
   });
 
   it("preserves nested group paths for providers like GitLab", () => {
-    expect(normalizeGitRemoteUrl("git@gitlab.com:T3Tools/platform/T3Code.git")).toBe(
-      "gitlab.com/t3tools/platform/t3code",
+    expect(normalizeGitRemoteUrl("git@gitlab.com:Kamo62/platform/neokod.git")).toBe(
+      "gitlab.com/kamo62/platform/neokod",
     );
-    expect(normalizeGitRemoteUrl("https://gitlab.com/T3Tools/platform/T3Code.git")).toBe(
-      "gitlab.com/t3tools/platform/t3code",
+    expect(normalizeGitRemoteUrl("https://gitlab.com/Kamo62/platform/neokod.git")).toBe(
+      "gitlab.com/kamo62/platform/neokod",
     );
   });
 
@@ -45,11 +45,11 @@ describe("normalizeGitRemoteUrl", () => {
 describe("parseGitHubRepositoryNameWithOwnerFromRemoteUrl", () => {
   it("extracts the owner and repository from common GitHub remote shapes", () => {
     expect(
-      parseGitHubRepositoryNameWithOwnerFromRemoteUrl("git@github.com:T3Tools/T3Code.git"),
-    ).toBe("T3Tools/T3Code");
+      parseGitHubRepositoryNameWithOwnerFromRemoteUrl("git@github.com:Kamo62/neokod.git"),
+    ).toBe("Kamo62/neokod");
     expect(
-      parseGitHubRepositoryNameWithOwnerFromRemoteUrl("https://github.com/T3Tools/T3Code.git"),
-    ).toBe("T3Tools/T3Code");
+      parseGitHubRepositoryNameWithOwnerFromRemoteUrl("https://github.com/Kamo62/neokod.git"),
+    ).toBe("Kamo62/neokod");
   });
 });
 

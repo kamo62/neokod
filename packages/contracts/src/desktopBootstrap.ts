@@ -9,7 +9,7 @@ const DesktopBackendBootstrapCommon = {
   // Omitted when the desktop launches the backend inside WSL, since the
   // Windows-side baseDir maps to /mnt/c/... and the Linux side should use its
   // own home directory instead.
-  t3Home: Schema.optional(Schema.String),
+  neokodHome: Schema.optional(Schema.String),
   otlpTracesUrl: Schema.optional(Schema.String),
   otlpMetricsUrl: Schema.optional(Schema.String),
 } as const;

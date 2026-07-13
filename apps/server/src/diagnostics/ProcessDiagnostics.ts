@@ -41,7 +41,7 @@ export class ProcessDiagnostics extends Context.Service<
       readonly signal: ServerProcessSignal;
     }) => Effect.Effect<ServerSignalProcessResult>;
   }
->()("t3/diagnostics/ProcessDiagnostics") {}
+>()("neokod/diagnostics/ProcessDiagnostics") {}
 
 class ProcessDiagnosticsQueryTimeoutError extends Schema.TaggedErrorClass<ProcessDiagnosticsQueryTimeoutError>()(
   "ProcessDiagnosticsQueryTimeoutError",
@@ -82,7 +82,7 @@ class ProcessDiagnosticsServerProcessSignalError extends Schema.TaggedErrorClass
   { pid: Schema.Number },
 ) {
   override get message(): string {
-    return "Refusing to signal the T3 server process.";
+    return "Refusing to signal the Neokod server process.";
   }
 }
 
@@ -94,7 +94,7 @@ class ProcessDiagnosticsNotDescendantError extends Schema.TaggedErrorClass<Proce
   },
 ) {
   override get message(): string {
-    return `Process ${this.pid} is not a live descendant of the T3 server.`;
+    return `Process ${this.pid} is not a live descendant of the Neokod server.`;
   }
 }
 

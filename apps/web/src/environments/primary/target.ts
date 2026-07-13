@@ -100,10 +100,16 @@ export interface PrimaryEnvironmentTarget {
 
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
 
+const browserOrigin = (): string | undefined =>
+  typeof window === "undefined" ? undefined : window.location.origin;
+
 function getDesktopLocalEnvironmentBootstrap(): DesktopEnvironmentBootstrap | null {
   // The primary (Windows-native) backend keeps the "primary" id. The
   // plural list may include a second WSL entry; the primary-target
   // resolver only cares about the primary, so just find it.
+  if (typeof window === "undefined") {
+    return null;
+  }
   const bootstraps = window.desktopBridge?.getLocalEnvironmentBootstraps() ?? [];
   return bootstraps.find((entry) => entry.id === PRIMARY_LOCAL_ENVIRONMENT_ID) ?? null;
 }
@@ -132,9 +138,10 @@ function normalizeBaseUrl(
   source: PrimaryEnvironmentTargetSource,
   urlKind: PrimaryEnvironmentUrlKind,
 ): string {
+  const baseUrl = browserOrigin();
   return parseTargetUrl({
     rawValue,
-    baseUrl: window.location.origin,
+    ...(baseUrl === undefined ? {} : { baseUrl }),
     source,
     urlKind,
   }).toString();
@@ -145,9 +152,10 @@ function swapBaseUrlProtocol(
   nextProtocol: "http:" | "https:" | "ws:" | "wss:",
   urlKind: PrimaryEnvironmentUrlKind,
 ): string {
+  const baseUrl = browserOrigin();
   const url = parseTargetUrl({
     rawValue,
-    baseUrl: window.location.origin,
+    ...(baseUrl === undefined ? {} : { baseUrl }),
     source: "configured",
     urlKind,
   });
@@ -294,7 +302,7 @@ export function resolveDesktopEnvironmentBootstrapTarget(
 function resolveHttpRequestBaseUrl(primaryTarget: PrimaryEnvironmentTarget): string {
   const httpBaseUrl = primaryTarget.target.httpBaseUrl;
   const configuredDevServerUrl = import.meta.env.VITE_DEV_SERVER_URL?.trim();
-  if (!configuredDevServerUrl) {
+  if (!configuredDevServerUrl || typeof window === "undefined") {
     return httpBaseUrl;
   }
 
@@ -369,8 +377,16 @@ function resolveConfiguredPrimaryTarget(): PrimaryEnvironmentTarget | null {
 }
 
 function resolveWindowOriginPrimaryTarget(): PrimaryEnvironmentTarget {
+  const origin = browserOrigin();
+  if (origin === undefined) {
+    throw new PrimaryEnvironmentUrlInvalidError({
+      source: "window-origin",
+      urlKind: "http-base-url",
+      cause: new ReferenceError("window is unavailable"),
+    });
+  }
   const url = parseTargetUrl({
-    rawValue: window.location.origin,
+    rawValue: origin,
     source: "window-origin",
     urlKind: "http-base-url",
   });

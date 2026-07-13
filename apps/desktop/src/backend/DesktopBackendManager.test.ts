@@ -36,7 +36,7 @@ const baseConfig: DesktopBackendManager.DesktopBackendStartConfig = {
     mode: "desktop",
     noBrowser: true,
     port: 3773,
-    t3Home: "/tmp/t3",
+    neokodHome: "/tmp/neokod",
     transport: "loopback",
     host: "127.0.0.1",
   },
@@ -262,15 +262,15 @@ describe("DesktopBackendManager", () => {
         yield* Deferred.await(firstRequest);
 
         assert.equal(readyCount, 0);
-        assert.deepEqual(requestUrls, ["http://127.0.0.1:3773/.well-known/t3/environment"]);
+        assert.deepEqual(requestUrls, ["http://127.0.0.1:3773/.well-known/neokod/environment"]);
 
         yield* TestClock.adjust(Duration.millis(100));
         yield* Queue.take(exited);
 
         assert.equal(readyCount, 1);
         assert.deepEqual(requestUrls, [
-          "http://127.0.0.1:3773/.well-known/t3/environment",
-          "http://127.0.0.1:3773/.well-known/t3/environment",
+          "http://127.0.0.1:3773/.well-known/neokod/environment",
+          "http://127.0.0.1:3773/.well-known/neokod/environment",
         ]);
       }).pipe(Effect.provide(TestClock.layer())),
     ),

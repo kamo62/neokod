@@ -58,7 +58,7 @@ function makeLayer(
     runningUnderArm64Translation: false,
   }).pipe(
     Layer.provide(
-      Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest({ T3CODE_HOME: baseDir })),
+      Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest({ NEOKOD_HOME: baseDir })),
     ),
   );
   return DesktopConnectionCatalogStore.layer.pipe(
@@ -75,7 +75,7 @@ const withStore = <A, E, R>(
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-      prefix: "t3-desktop-connection-catalog-test-",
+      prefix: "neokod-desktop-connection-catalog-test-",
     });
     return yield* effect.pipe(Effect.provide(makeLayer(baseDir, encryptionAvailable)));
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped);
@@ -88,6 +88,7 @@ describe("DesktopConnectionCatalogStore", () => {
         const fileSystem = yield* FileSystem.FileSystem;
         const store = yield* DesktopConnectionCatalogStore.DesktopConnectionCatalogStore;
         const legacyProofTokenKey = ["remote", "D", "pop", "Tokens"].join("");
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
         const legacyCatalog = JSON.stringify({
           schemaVersion: 1,
           targets: [{ label: "remote.example.com" }, { kind: "relay" }],
@@ -99,6 +100,7 @@ describe("DesktopConnectionCatalogStore", () => {
         yield* fileSystem.makeDirectory(environment.stateDir, { recursive: true });
         yield* fileSystem.writeFileString(
           catalogPath,
+          // @effect-diagnostics-next-line preferSchemaOverJson:off
           JSON.stringify({
             version: 1,
             encryptedCatalog: Encoding.encodeBase64(
@@ -115,6 +117,7 @@ describe("DesktopConnectionCatalogStore", () => {
           assert.notInclude(raw.value, "secret");
         }
 
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
         const persistedEnvelope = JSON.parse(yield* fileSystem.readFileString(catalogPath)) as {
           readonly encryptedCatalog: string;
         };
@@ -163,7 +166,7 @@ describe("DesktopConnectionCatalogStore", () => {
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-desktop-connection-catalog-test-",
+        prefix: "neokod-desktop-connection-catalog-test-",
       });
       const failDecrypt = yield* Ref.make(false);
       const layer = makeLayer(baseDir, true, failDecrypt);

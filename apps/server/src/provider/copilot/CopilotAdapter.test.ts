@@ -29,7 +29,7 @@ import { makeCopilotAdapter } from "./CopilotAdapter.ts";
 import { mapCopilotTodosToPlanSteps, normalizeCopilotTodoStatus } from "./CopilotAdapter.ts";
 
 class CopilotAdapterTag extends Context.Service<CopilotAdapterTag, CopilotAdapterShape>()(
-  "t3/provider/copilot/CopilotAdapter.test/CopilotAdapterTag",
+  "neokod/provider/copilot/CopilotAdapter.test/CopilotAdapterTag",
 ) {}
 
 const asThreadId = (value: string): ThreadId => ThreadId.make(value);

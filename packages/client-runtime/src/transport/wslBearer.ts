@@ -15,15 +15,18 @@ export const issueWslWebSocketTicket = Effect.fn("clientRuntime.transport.issueW
   }) {
     const requestUrl = environmentEndpointUrl(input.httpBaseUrl, "/api/wsl-auth/websocket-ticket");
     const httpClient = yield* HttpClient.HttpClient;
+    const request = HttpClientRequest.post(requestUrl).pipe(
+      HttpClientRequest.bearerToken(input.wslBearerToken),
+    );
     return yield* executeEnvironmentHttpRequest(
       requestUrl,
       input.timeoutMs ?? DEFAULT_WSL_REQUEST_TIMEOUT_MS,
-      HttpClientRequest.post(requestUrl).pipe(
-        HttpClientRequest.bearerToken(input.wslBearerToken),
-        Effect.flatMap(httpClient.execute),
-        Effect.flatMap(HttpClientResponse.filterStatusOk),
-        Effect.flatMap(HttpClientResponse.schemaBodyJson(WslWebSocketTicketResult)),
-      ),
+      httpClient
+        .execute(request)
+        .pipe(
+          Effect.flatMap(HttpClientResponse.filterStatusOk),
+          Effect.flatMap(HttpClientResponse.schemaBodyJson(WslWebSocketTicketResult)),
+        ),
     );
   },
 );

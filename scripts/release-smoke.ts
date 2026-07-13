@@ -16,7 +16,7 @@ const workspaceFiles = [
   "apps/server/package.json",
   "apps/desktop/package.json",
   "apps/web/package.json",
-  "oxlint-plugin-t3code/package.json",
+  "oxlint-plugin-neokod/package.json",
   "packages/client-runtime/package.json",
   "packages/contracts/package.json",
   "packages/shared/package.json",
@@ -176,7 +176,7 @@ function assertMissing(path: string, message: string): void {
   }
 }
 
-const tempRoot = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-release-smoke-"));
+const tempRoot = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "neokod-release-smoke-"));
 
 try {
   copyWorkspaceManifestFixture(tempRoot);

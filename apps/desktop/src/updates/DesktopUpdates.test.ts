@@ -126,7 +126,7 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
 
   const environmentLayer = DesktopEnvironment.layer({
     dirname: "/repo/apps/desktop/src",
-    homeDirectory: `/tmp/t3-desktop-updates-home-${process.pid}`,
+    homeDirectory: `/tmp/neokod-desktop-updates-home-${process.pid}`,
     platform: "darwin",
     processArch: "x64",
     appVersion: "1.2.3",
@@ -139,9 +139,9 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
       Layer.mergeAll(
         NodeServices.layer,
         DesktopConfig.layerTest({
-          T3CODE_HOME: `/tmp/t3-desktop-updates-test-${process.pid}`,
-          T3CODE_DESKTOP_MOCK_UPDATES: "true",
-          T3CODE_DESKTOP_MOCK_UPDATE_SERVER_PORT: "4141",
+          NEOKOD_HOME: `/tmp/neokod-desktop-updates-test-${process.pid}`,
+          NEOKOD_DESKTOP_MOCK_UPDATES: "true",
+          NEOKOD_DESKTOP_MOCK_UPDATE_SERVER_PORT: "4141",
           ...options.env,
         }),
       ),
@@ -170,9 +170,9 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
     Layer.provideMerge(settingsLayer),
     Layer.provideMerge(
       DesktopConfig.layerTest({
-        T3CODE_HOME: `/tmp/t3-desktop-updates-test-${process.pid}`,
-        T3CODE_DESKTOP_MOCK_UPDATES: "true",
-        T3CODE_DESKTOP_MOCK_UPDATE_SERVER_PORT: "4141",
+        NEOKOD_HOME: `/tmp/neokod-desktop-updates-test-${process.pid}`,
+        NEOKOD_DESKTOP_MOCK_UPDATES: "true",
+        NEOKOD_DESKTOP_MOCK_UPDATE_SERVER_PORT: "4141",
         ...options.env,
       }),
     ),

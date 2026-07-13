@@ -152,7 +152,7 @@ const makeExitLogFixture = Effect.fn("makeExitLogFixture")(function* (prefix: st
   return {
     exitLogPath,
     wrapperPath: yield* makeMockAgentWrapper({
-      T3_ACP_EXIT_LOG_PATH: exitLogPath,
+      NEOKOD_ACP_EXIT_LOG_PATH: exitLogPath,
     }),
   };
 });
@@ -300,14 +300,14 @@ const baseCursorSettings: CursorSettings = {
 };
 const cursorAcpDiscoveryFailedMessage = [
   "Cursor ACP model discovery failed.",
-  "Cursor CLI setup may be incomplete; install or enable the Cursor CLI, restart T3 Code, and try again.",
+  "Cursor CLI setup may be incomplete; install or enable the Cursor CLI, restart Neokod, and try again.",
   "See https://cursor.com/docs/cli/installation.",
   "Check server logs for ACP details.",
 ].join(" ");
-const missingCursorBinaryPath = "/definitely/not/installed/t3-cursor-agent";
+const missingCursorBinaryPath = "/definitely/not/installed/neokod-cursor-agent";
 const cursorCliCommandMissingMessage = [
   `Cursor CLI command \`${missingCursorBinaryPath}\` was not found.`,
-  `Install or enable the Cursor CLI, make sure \`${missingCursorBinaryPath}\` is on PATH, then restart T3 Code.`,
+  `Install or enable the Cursor CLI, make sure \`${missingCursorBinaryPath}\` is on PATH, then restart Neokod.`,
   "See https://cursor.com/docs/cli/installation.",
 ].join(" ");
 
@@ -458,7 +458,7 @@ describe("checkCursorProviderStatus", () => {
         },
         {
           ...process.env,
-          T3_ACP_REQUEST_LOG_PATH: requestLogPath,
+          NEOKOD_ACP_REQUEST_LOG_PATH: requestLogPath,
         },
       ),
     );

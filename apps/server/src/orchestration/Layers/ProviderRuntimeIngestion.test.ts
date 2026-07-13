@@ -218,7 +218,7 @@ describe("ProviderRuntimeIngestion", () => {
   });
 
   async function createHarness(options?: { serverSettings?: Partial<ServerSettings> }) {
-    const workspaceRoot = makeTempDir("t3-provider-project-");
+    const workspaceRoot = makeTempDir("neokod-provider-project-");
     NodeFS.mkdirSync(NodePath.join(workspaceRoot, ".git"));
     const provider = createProviderServiceHarness();
     const orchestrationLayer = OrchestrationEngineLive.pipe(

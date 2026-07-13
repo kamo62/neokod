@@ -22,7 +22,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 
-const DATABASE_NAME = "t3code:connection-runtime";
+const DATABASE_NAME = "neokod:connection-runtime";
 const DATABASE_VERSION = 2;
 const CATALOG_STORE_NAME = "catalog";
 const SHELL_STORE_NAME = "shell";
@@ -263,10 +263,12 @@ export const makeCatalogStore = Effect.fn("web.connectionStorage.makeCatalogStor
     }
     const raw = yield* backend.read;
     let catalog = EMPTY_CONNECTION_CATALOG_DOCUMENT;
+    let recoveredFromCorruption = false;
     if (raw !== null && raw.trim() !== "") {
       catalog = yield* decodeCatalog(raw).pipe(
         Effect.catch((error) =>
           Effect.gen(function* () {
+            recoveredFromCorruption = true;
             yield* Effect.logWarning("Discarding a corrupt web connection catalog.", {
               error: error.message,
             });
@@ -279,21 +281,21 @@ export const makeCatalogStore = Effect.fn("web.connectionStorage.makeCatalogStor
                 ),
               );
             }
-            const encoded = yield* encodeCatalog(EMPTY_CONNECTION_CATALOG_DOCUMENT);
-            yield* backend.write(encoded).pipe(
-              Effect.catch((cause) =>
-                Effect.logWarning("Could not persist the recovered web connection catalog.", {
-                  error: cause.message,
-                }),
-              ),
-            );
             return EMPTY_CONNECTION_CATALOG_DOCUMENT;
           }),
         ),
       );
     }
     const encoded = yield* encodeCatalog(catalog);
-    yield* backend.write(encoded);
+    yield* backend.write(encoded).pipe(
+      Effect.catch((cause) =>
+        recoveredFromCorruption
+          ? Effect.logWarning("Could not persist the recovered web connection catalog.", {
+              error: cause.message,
+            })
+          : Effect.fail(cause),
+      ),
+    );
     yield* Ref.set(state, Option.some(catalog));
     return catalog;
   });

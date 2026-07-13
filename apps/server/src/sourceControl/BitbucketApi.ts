@@ -28,13 +28,31 @@ import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 
 const DEFAULT_API_BASE_URL = "https://api.bitbucket.org/2.0";
 
+const bitbucketEnv = <A>(
+  name: string,
+  legacyName: string,
+  read: (key: string) => Config.Config<A>,
+) => read(name).pipe(Config.orElse(() => read(legacyName)));
+
 const BitbucketApiEnvConfig = Config.all({
-  baseUrl: Config.string("T3CODE_BITBUCKET_API_BASE_URL").pipe(
-    Config.withDefault(DEFAULT_API_BASE_URL),
+  baseUrl: bitbucketEnv(
+    "NEOKOD_BITBUCKET_API_BASE_URL",
+    "T3CODE_BITBUCKET_API_BASE_URL",
+    Config.string,
+  ).pipe(Config.withDefault(DEFAULT_API_BASE_URL)),
+  accessToken: bitbucketEnv(
+    "NEOKOD_BITBUCKET_ACCESS_TOKEN",
+    "T3CODE_BITBUCKET_ACCESS_TOKEN",
+    Config.string,
+  ).pipe(Config.option),
+  email: bitbucketEnv("NEOKOD_BITBUCKET_EMAIL", "T3CODE_BITBUCKET_EMAIL", Config.string).pipe(
+    Config.option,
   ),
-  accessToken: Config.string("T3CODE_BITBUCKET_ACCESS_TOKEN").pipe(Config.option),
-  email: Config.string("T3CODE_BITBUCKET_EMAIL").pipe(Config.option),
-  apiToken: Config.string("T3CODE_BITBUCKET_API_TOKEN").pipe(Config.option),
+  apiToken: bitbucketEnv(
+    "NEOKOD_BITBUCKET_API_TOKEN",
+    "T3CODE_BITBUCKET_API_TOKEN",
+    Config.string,
+  ).pipe(Config.option),
 });
 
 const BitbucketApiOperation = Schema.Literals([
@@ -290,7 +308,7 @@ export class BitbucketApi extends Context.Service<
       readonly force?: boolean;
     }) => Effect.Effect<void, BitbucketApiError>;
   }
->()("t3/sourceControl/BitbucketApi") {}
+>()("neokod/sourceControl/BitbucketApi") {}
 
 function nonEmpty(value: string | undefined): Option.Option<string> {
   const trimmed = value?.trim();
@@ -428,7 +446,7 @@ function checkoutBranchName(input: {
     return input.headBranch;
   }
 
-  return `t3code/pr-${input.pullRequestId}/${sanitizeBranchFragment(input.headBranch)}`;
+  return `neokod/pr-${input.pullRequestId}/${sanitizeBranchFragment(input.headBranch)}`;
 }
 
 function repositoryNameWithOwner(
@@ -468,7 +486,7 @@ function authFromConfig(
     account: Option.none(),
     host: Option.some("bitbucket.org"),
     detail: Option.some(
-      "Set T3CODE_BITBUCKET_EMAIL and T3CODE_BITBUCKET_API_TOKEN, or T3CODE_BITBUCKET_ACCESS_TOKEN.",
+      "Set NEOKOD_BITBUCKET_EMAIL and NEOKOD_BITBUCKET_API_TOKEN, or NEOKOD_BITBUCKET_ACCESS_TOKEN.",
     ),
   };
 }

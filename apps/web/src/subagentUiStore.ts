@@ -8,7 +8,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import { resolveStorage } from "./lib/storage";
 
-const SUBAGENT_UI_STORAGE_KEY = "t3code:subagent-ui-state:v1";
+const SUBAGENT_UI_STORAGE_KEY = "neokod:subagent-ui-state:v1";
 export const HIDDEN_SUBAGENT_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
 export const MAX_HIDDEN_SUBAGENT_THREAD_ENTRIES = 100;
 

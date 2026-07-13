@@ -194,13 +194,13 @@ describe("buildTurnStartParams", () => {
   });
 });
 
-describe("T3 browser developer instructions", () => {
+describe("Neokod browser developer instructions", () => {
   it("prefers the product-native preview tools in both collaboration modes", () => {
     for (const instructions of [
       CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS,
       CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
     ]) {
-      NodeAssert.match(instructions, /t3-code/);
+      NodeAssert.match(instructions, /neokod/);
       NodeAssert.match(instructions, /preview_status/);
       NodeAssert.match(instructions, /preview_open/);
       NodeAssert.match(instructions, /Do not switch to global browser skills/);
@@ -213,7 +213,7 @@ describe("hasConfiguredMcpServer", () => {
     NodeAssert.equal(hasConfiguredMcpServer(undefined), false);
     NodeAssert.equal(hasConfiguredMcpServer(["--model", "gpt-5.4"]), false);
     NodeAssert.equal(
-      hasConfiguredMcpServer(["-c", 'mcp_servers.t3-code.url="http://127.0.0.1/mcp"']),
+      hasConfiguredMcpServer(["-c", 'mcp_servers.neokod.url="http://127.0.0.1/mcp"']),
       true,
     );
   });

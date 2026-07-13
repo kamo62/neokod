@@ -1,7 +1,4 @@
-import {
-  mapAtomCommandResult,
-  type AtomCommandResult,
-} from "@neokod/client-runtime/state/runtime";
+import { mapAtomCommandResult, type AtomCommandResult } from "@neokod/client-runtime/state/runtime";
 import type { ScopedThreadRef } from "@neokod/contracts";
 
 import type { OpenPreviewMutation } from "~/browser/openFileInPreview";

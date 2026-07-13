@@ -17,7 +17,12 @@
         const DARK_BACKGROUND = "#161616";
         const themeColorMeta = document.querySelector('meta[name="theme-color"]');
         try {
-          const storedTheme = window.localStorage.getItem("t3code:theme");
+          const storedTheme =
+            window.localStorage.getItem("neokod:theme") ??
+            window.localStorage.getItem("t3code:theme");
+          if (storedTheme !== null && window.localStorage.getItem("neokod:theme") === null) {
+            window.localStorage.setItem("neokod:theme", storedTheme);
+          }
           const theme =
             storedTheme === "light" || storedTheme === "dark" || storedTheme === "system"
               ? storedTheme

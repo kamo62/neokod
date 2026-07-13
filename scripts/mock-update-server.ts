@@ -18,8 +18,12 @@ const resolveMockUpdateServerConfig = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const config = yield* Config.all({
-    port: Config.port("T3CODE_DESKTOP_MOCK_UPDATE_SERVER_PORT").pipe(Config.withDefault(3000)),
-    root: Config.string("T3CODE_DESKTOP_MOCK_UPDATE_SERVER_ROOT").pipe(
+    port: Config.port("NEOKOD_DESKTOP_MOCK_UPDATE_SERVER_PORT").pipe(
+      Config.orElse(() => Config.port("T3CODE_DESKTOP_MOCK_UPDATE_SERVER_PORT")),
+      Config.withDefault(3000),
+    ),
+    root: Config.string("NEOKOD_DESKTOP_MOCK_UPDATE_SERVER_ROOT").pipe(
+      Config.orElse(() => Config.string("T3CODE_DESKTOP_MOCK_UPDATE_SERVER_ROOT")),
       Config.withDefault("../release-mock"),
     ),
   });

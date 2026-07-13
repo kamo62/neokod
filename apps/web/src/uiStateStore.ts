@@ -3,8 +3,9 @@ import { parseScopedThreadKey } from "@neokod/client-runtime/environment";
 import { create } from "zustand";
 import { normalizeProjectPathForComparison } from "./lib/projectPaths";
 
-export const PERSISTED_STATE_KEY = "t3code:ui-state:v1";
+export const PERSISTED_STATE_KEY = "neokod:ui-state:v1";
 const LEGACY_PERSISTED_STATE_KEYS = [
+  "t3code:ui-state:v1",
   "t3code:renderer-state:v8",
   "t3code:renderer-state:v7",
   "t3code:renderer-state:v6",
@@ -136,7 +137,7 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
   };
 }
 
-function readPersistedState(): UiState {
+export function readPersistedState(): UiState {
   if (typeof window === "undefined") {
     return initialState;
   }
@@ -148,7 +149,13 @@ function readPersistedState(): UiState {
         if (!legacyRaw) {
           continue;
         }
-        return parsePersistedState(JSON.parse(legacyRaw) as PersistedUiState);
+        const migrated = parsePersistedState(JSON.parse(legacyRaw) as PersistedUiState);
+        try {
+          window.localStorage.setItem(PERSISTED_STATE_KEY, JSON.stringify(migrated));
+        } catch {
+          // Best-effort write-forward; reads still fall back to the legacy key.
+        }
+        return migrated;
       }
       return initialState;
     }

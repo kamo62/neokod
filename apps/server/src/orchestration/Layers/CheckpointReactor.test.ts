@@ -206,7 +206,7 @@ function runGit(cwd: string, args: ReadonlyArray<string>) {
 }
 
 function createGitRepository() {
-  const cwd = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-checkpoint-handler-"));
+  const cwd = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "neokod-checkpoint-handler-"));
   runGit(cwd, ["init", "--initial-branch=main"]);
   runGit(cwd, ["config", "user.email", "test@example.com"]);
   runGit(cwd, ["config", "user.name", "Test User"]);
@@ -303,7 +303,7 @@ describe("CheckpointReactor", () => {
     );
 
     const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
-      prefix: "t3-checkpoint-reactor-test-",
+      prefix: "neokod-checkpoint-reactor-test-",
     });
     const vcsStatusBroadcasterLayer = Layer.succeed(VcsStatusBroadcaster, {
       getStatus: () => Effect.die("getStatus should not be called in this test"),
@@ -830,7 +830,7 @@ describe("CheckpointReactor", () => {
 
   it("continues processing runtime events after a single checkpoint runtime failure", async () => {
     const nonRepositorySessionCwd = NodeFS.mkdtempSync(
-      NodePath.join(NodeOS.tmpdir(), "t3-checkpoint-runtime-non-repo-"),
+      NodePath.join(NodeOS.tmpdir(), "neokod-checkpoint-runtime-non-repo-"),
     );
     tempDirs.push(nonRepositorySessionCwd);
 

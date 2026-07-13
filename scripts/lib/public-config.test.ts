@@ -33,7 +33,7 @@ describe("loadRepoEnv", () => {
 });
 
 function makeTemporaryDirectory() {
-  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3code-public-config-"));
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "neokod-public-config-"));
   temporaryDirectories.push(directory);
   return directory;
 }

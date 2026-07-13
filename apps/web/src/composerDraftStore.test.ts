@@ -75,7 +75,7 @@ import {
   insertInlineTerminalContextPlaceholder,
   type TerminalContextDraft,
 } from "./lib/terminalContext";
-import { createDebouncedStorage } from "./lib/storage";
+import { createDebouncedStorage, resolveStorage } from "./lib/storage";
 
 function makeImage(input: {
   id: string;
@@ -1766,5 +1766,24 @@ describe("createDebouncedStorage", () => {
     vi.advanceTimersByTime(300);
     expect(base.setItem).toHaveBeenCalledTimes(1);
     expect(base.setItem).toHaveBeenCalledWith("key", "v2");
+  });
+});
+
+describe("resolveStorage", () => {
+  it("copies legacy t3code state to the new neokod key when it is first read", () => {
+    const base = createMockStorage();
+    base.setItem("t3code:composer-drafts:v1", "legacy-state");
+
+    expect(resolveStorage(base).getItem("neokod:composer-drafts:v1")).toBe("legacy-state");
+    expect(base.setItem).toHaveBeenLastCalledWith("neokod:composer-drafts:v1", "legacy-state");
+  });
+
+  it("prefers existing neokod state over the legacy key", () => {
+    const base = createMockStorage();
+    base.setItem("t3code:composer-drafts:v1", "legacy-state");
+    base.setItem("neokod:composer-drafts:v1", "current-state");
+
+    expect(resolveStorage(base).getItem("neokod:composer-drafts:v1")).toBe("current-state");
+    expect(base.setItem).toHaveBeenCalledTimes(2);
   });
 });

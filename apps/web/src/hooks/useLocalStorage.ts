@@ -32,9 +32,18 @@ const isomorphicLocalStorage: Storage =
         };
       })();
 
+const legacyKey = (key: string) =>
+  key.startsWith("neokod:")
+    ? `t3code:${key.slice("neokod:".length)}`
+    : key.replace(/^neokod\./, "t3code.");
+
 const read = (key: string) => {
   try {
-    return isomorphicLocalStorage.getItem(key);
+    const current = isomorphicLocalStorage.getItem(key);
+    if (current !== null) return current;
+    const legacy = isomorphicLocalStorage.getItem(legacyKey(key));
+    if (legacy !== null) isomorphicLocalStorage.setItem(key, legacy);
+    return legacy;
   } catch (cause) {
     throw new LocalStorageOperationError({ operation: "read", storageKey: key, cause });
   }
@@ -78,7 +87,7 @@ export const removeLocalStorageItem = (key: string) => {
   }
 };
 
-const LOCAL_STORAGE_CHANGE_EVENT = "t3code:local_storage_change";
+const LOCAL_STORAGE_CHANGE_EVENT = "neokod:local_storage_change";
 
 interface LocalStorageChangeDetail {
   key: string;

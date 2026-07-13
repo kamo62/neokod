@@ -1,14 +1,14 @@
 {
-  "name": "t3",
-  "version": "2.1.0",
+  "name": "neokod",
+  "version": "3.0.3",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pingdotgg/t3code",
+    "url": "https://github.com/kamo62/neokod",
     "directory": "apps/server"
   },
   "bin": {
-    "t3": "./dist/bin.mjs"
+    "neokod": "./dist/bin.mjs"
   },
   "files": [
     "dist"

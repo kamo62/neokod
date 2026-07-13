@@ -4,7 +4,7 @@ import * as NodeCrypto from "node:crypto";
 import type { OrchestrationEvent, ProviderRuntimeEvent } from "@neokod/contracts";
 
 export const MANAGED_CLIENT_EVIDENCE_SCHEMA_VERSION = "v0";
-export const MANAGED_CLIENT_EVIDENCE_CLIENT = "t3code";
+export const MANAGED_CLIENT_EVIDENCE_CLIENT = "neokod";
 
 export type ManagedClientEvidenceEventType =
   | "session_start"

@@ -41,7 +41,7 @@ const LEGACY_BASELINE = new Map<string, number>([
   ["apps/server/src/provider/Layers/ProviderSessionReaper.test.ts", 21],
   ["apps/server/src/server.test.ts", 1],
   ["apps/web/src/environments/runtime/service.addSavedEnvironment.test.ts", 1],
-  ["oxlint-plugin-t3code/rules/no-manual-effect-runtime-in-tests.test.ts", 7],
+  ["oxlint-plugin-neokod/rules/no-manual-effect-runtime-in-tests.test.ts", 7],
   ["packages/client-runtime/src/wsTransport.test.ts", 2],
 ]);
 

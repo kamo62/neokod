@@ -1,8 +1,4 @@
-import {
-  DEFAULT_SERVER_SETTINGS,
-  ProviderDriverKind,
-  ProviderInstanceId,
-} from "@neokod/contracts";
+import { DEFAULT_SERVER_SETTINGS, ProviderDriverKind, ProviderInstanceId } from "@neokod/contracts";
 import { DEFAULT_CLIENT_SETTINGS } from "@neokod/contracts/settings";
 import { describe, expect, it } from "vite-plus/test";
 

@@ -31,6 +31,7 @@ import { assert, it } from "@effect/vitest";
 import { assertFailure, assertTrue } from "@effect/vitest/utils";
 import * as Deferred from "effect/Deferred";
 import * as DateTime from "effect/DateTime";
+import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -40,6 +41,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import {
   FetchHttpClient,
@@ -267,9 +269,9 @@ const makeBrowserOtlpPayload = (spanName: string) =>
         url: collector.url,
         exportInterval: "10 millis",
         resource: {
-          serviceName: "t3-web",
+          serviceName: "neokod-web",
           attributes: {
-            "service.runtime": "t3-web",
+            "service.runtime": "neokod-web",
             "service.mode": "browser",
             "service.version": "test",
           },
@@ -327,7 +329,9 @@ const buildAppUnderTest = (options?: {
 }) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
-    const tempBaseDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-router-test-" });
+    const tempBaseDir = yield* fileSystem.makeTempDirectoryScoped({
+      prefix: "neokod-router-test-",
+    });
     const baseDir = options?.config?.baseDir ?? tempBaseDir;
     const devUrl = options?.config?.devUrl;
     const derivedPaths = yield* ServerConfig.deriveServerPaths(baseDir, devUrl);
@@ -341,7 +345,7 @@ const buildAppUnderTest = (options?: {
       otlpTracesUrl: undefined,
       otlpMetricsUrl: undefined,
       otlpExportIntervalMs: 10_000,
-      otlpServiceName: "t3-server",
+      otlpServiceName: "neokod-server",
       mode: "desktop",
       port: 0,
       transport: "loopback",
@@ -863,7 +867,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const staticDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-router-static-" });
+      const staticDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "neokod-router-static-",
+      });
       const indexPath = path.join(staticDir, "index.html");
       yield* fileSystem.writeFileString(indexPath, "<html>router-static-ok</html>");
 
@@ -893,7 +899,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     Effect.gen(function* () {
       yield* buildAppUnderTest();
 
-      const url = yield* getHttpServerUrl("/.well-known/t3/environment");
+      const url = yield* getHttpServerUrl("/.well-known/neokod/environment");
       const response = yield* fetchEffect(url);
       const body = yield* responseJsonEffect<typeof testEnvironmentDescriptor>(response);
 
@@ -906,7 +912,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     Effect.gen(function* () {
       yield* buildAppUnderTest();
 
-      const url = yield* getHttpServerUrl("/.well-known/t3/environment");
+      const url = yield* getHttpServerUrl("/.well-known/neokod/environment");
       const response = yield* fetchEffect(url, {
         headers: {
           origin: crossOriginClientOrigin,
@@ -917,6 +923,27 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(response.status, 200);
       assertBrowserApiCorsResponseHeaders(response.headers);
       assert.deepEqual(body, testEnvironmentDescriptor);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("allows Neokod desktop origins and rejects legacy desktop origins in dev", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: { devUrl: new URL("http://127.0.0.1:5173") },
+      });
+      const url = yield* getHttpServerUrl("/.well-known/neokod/environment");
+
+      for (const origin of ["neokod://app", "neokod-dev://app"]) {
+        const response = yield* fetchEffect(url, { headers: { origin } });
+        assert.equal(response.status, 200);
+        assertBrowserApiCorsResponseHeaders(response.headers, { origin, credentials: true });
+      }
+
+      for (const origin of ["t3://app", "t3-dev://app"]) {
+        const response = yield* fetchEffect(url, { headers: { origin } });
+        assert.equal(response.status, 200);
+        assert.equal(response.headers["access-control-allow-origin"], undefined);
+      }
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -934,7 +961,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               attributes: [
                 {
                   key: "service.name",
-                  value: { stringValue: "t3-web" },
+                  value: { stringValue: "neokod-web" },
                 },
               ],
             },
@@ -1075,7 +1102,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             "rpc.method": "server.getSettings",
           },
           resourceAttributes: {
-            "service.name": "t3-web",
+            "service.name": "neokod-web",
           },
           scope: {
             name: "effect",
@@ -1201,7 +1228,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         assert.deepEqual(record.links, []);
         assert.equal(record.scope.name, scopeSpan.scope.name);
         assert.deepEqual(record.scope.attributes, {});
-        assert.equal(record.resourceAttributes["service.name"], "t3-web");
+        assert.equal(record.resourceAttributes["service.name"], "neokod-web");
         assert.equal(record.status?.code, String(span.status.code));
       }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
@@ -1497,7 +1524,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const workspaceDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-ws-project-search-" });
+      const workspaceDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "neokod-ws-project-search-",
+      });
       yield* fs.writeFileString(
         path.join(workspaceDir, "needle-file.ts"),
         "export const needle = 1;",
@@ -1526,7 +1555,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const workspaceDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-ws-project-files-" });
+      const workspaceDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "neokod-ws-project-files-",
+      });
       yield* fs.makeDirectory(path.join(workspaceDir, "src"), { recursive: true });
       yield* fs.writeFileString(
         path.join(workspaceDir, "src", "index.ts"),
@@ -1563,7 +1594,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const workspaceDir = yield* fs.makeTempDirectoryScoped({
-        prefix: "t3-ws-project-search-gitignored-",
+        prefix: "neokod-ws-project-search-gitignored-",
       });
       yield* fs.writeFileString(path.join(workspaceDir, ".gitignore"), ".venv/\n");
       yield* fs.makeDirectory(path.join(workspaceDir, ".venv", "lib"), { recursive: true });
@@ -1620,10 +1651,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const workspaceDir = yield* fs.makeTempDirectoryScoped({
-        prefix: "t3-ws-workspace-errors-",
+        prefix: "neokod-ws-workspace-errors-",
       });
       const outsideDir = yield* fs.makeTempDirectoryScoped({
-        prefix: "t3-ws-workspace-errors-outside-",
+        prefix: "neokod-ws-workspace-errors-outside-",
       });
       const outsideFile = path.join(outsideDir, "outside.txt");
       yield* fs.writeFileString(outsideFile, "outside\n");
@@ -1733,7 +1764,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const blockedRoot = yield* fs.makeTempDirectoryScoped({
-        prefix: "t3-ws-workspace-stat-error-",
+        prefix: "neokod-ws-workspace-stat-error-",
       });
       const workspaceRoot = path.join(blockedRoot, "workspace");
       yield* fs.makeDirectory(workspaceRoot);
@@ -1763,7 +1794,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const workspaceDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-ws-project-write-" });
+      const workspaceDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "neokod-ws-project-write-",
+      });
 
       yield* buildAppUnderTest();
 
@@ -1788,7 +1821,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const parentDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-ws-project-create-" });
+      const parentDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-ws-project-create-" });
       const missingWorkspaceRoot = path.join(parentDir, "nested", "new-project");
 
       yield* buildAppUnderTest();
@@ -1821,7 +1854,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
   it.effect("routes websocket rpc projects.writeFile errors", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const workspaceDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-ws-project-write-" });
+      const workspaceDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "neokod-ws-project-write-",
+      });
 
       yield* buildAppUnderTest();
 
@@ -2724,16 +2759,16 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
   it.effect("enriches replayed project events with repository identity metadata", () =>
     Effect.gen(function* () {
       const repositoryIdentity = {
-        canonicalKey: "github.com/t3tools/t3code",
+        canonicalKey: "github.com/kamo62/neokod",
         locator: {
           source: "git-remote" as const,
           remoteName: "origin",
-          remoteUrl: "git@github.com:T3Tools/t3code.git",
+          remoteUrl: "git@github.com:Kamo62/neokod.git",
         },
-        displayName: "T3Tools/t3code",
+        displayName: "Kamo62/neokod",
         provider: "github",
-        owner: "T3Tools",
-        name: "t3code",
+        owner: "Kamo62",
+        name: "neokod",
       };
 
       yield* buildAppUnderTest({
@@ -3216,7 +3251,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             isRepo: true,
             hasPrimaryRemote: true,
             isDefaultRef: false,
-            refName: "t3code/bootstrap-refName",
+            refName: "neokod/bootstrap-refName",
             hasWorkingTreeChanges: false,
             workingTree: {
               files: [],
@@ -3252,7 +3287,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               bootstrapGitOperations.push("create-worktree");
               return {
                 worktree: {
-                  refName: "t3code/bootstrap-refName",
+                  refName: "neokod/bootstrap-refName",
                   path: "/tmp/bootstrap-worktree",
                 },
               };
@@ -3328,7 +3363,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 prepareWorktree: {
                   projectCwd: "/tmp/project",
                   baseBranch: "main",
-                  branch: "t3code/bootstrap-refName",
+                  branch: "neokod/bootstrap-refName",
                   startFromOrigin: true,
                 },
                 runSetupScript: true,
@@ -3352,7 +3387,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         assert.deepEqual(createWorktree.mock.calls[0]?.[0], {
           cwd: "/tmp/project",
           refName: fetchedOriginCommit,
-          newRefName: "t3code/bootstrap-refName",
+          newRefName: "neokod/bootstrap-refName",
           baseRefName: "main",
           path: null,
         });
@@ -3401,7 +3436,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         (_: Parameters<GitVcsDriver.GitVcsDriver["Service"]["createWorktree"]>[0]) =>
           Effect.succeed({
             worktree: {
-              refName: "t3code/bootstrap-refName",
+              refName: "neokod/bootstrap-refName",
               path: "/tmp/bootstrap-worktree",
             },
           }),
@@ -3472,7 +3507,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               prepareWorktree: {
                 projectCwd: "/tmp/project",
                 baseBranch: "main",
-                branch: "t3code/bootstrap-refName",
+                branch: "neokod/bootstrap-refName",
               },
               runSetupScript: true,
             },
@@ -3506,7 +3541,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         (_: Parameters<GitVcsDriver.GitVcsDriver["Service"]["createWorktree"]>[0]) =>
           Effect.succeed({
             worktree: {
-              refName: "t3code/bootstrap-refName",
+              refName: "neokod/bootstrap-refName",
               path: "/tmp/bootstrap-worktree",
             },
           }),
@@ -3593,7 +3628,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               prepareWorktree: {
                 projectCwd: "/tmp/project",
                 baseBranch: "main",
-                branch: "t3code/bootstrap-refName",
+                branch: "neokod/bootstrap-refName",
               },
               runSetupScript: true,
             },
@@ -3677,7 +3712,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               prepareWorktree: {
                 projectCwd: "/tmp/project",
                 baseBranch: "main",
-                branch: "t3code/bootstrap-refName",
+                branch: "neokod/bootstrap-refName",
               },
               runSetupScript: false,
             },

@@ -76,7 +76,7 @@ describe("ManagedClientEvidence", () => {
     NodeAssert.deepEqual(evidenceFromProviderRuntimeEvent(event, repo), {
       event_id: "evt-session-start",
       schema_version: "v0",
-      client: "t3code",
+      client: "neokod",
       client_session_id: "thread-1",
       event_type: "session_start",
       timestamp: CREATED_AT,
@@ -107,7 +107,7 @@ describe("ManagedClientEvidence", () => {
     NodeAssert.deepEqual(evidenceFromOrchestrationEvent(event), {
       event_id: "evt-prompt",
       schema_version: "v0",
-      client: "t3code",
+      client: "neokod",
       client_session_id: "thread-1",
       event_type: "prompt",
       timestamp: CREATED_AT,
@@ -130,7 +130,7 @@ describe("ManagedClientEvidence", () => {
     NodeAssert.deepEqual(evidenceFromProviderRuntimeEvent(event), {
       event_id: "evt-assistant",
       schema_version: "v0",
-      client: "t3code",
+      client: "neokod",
       client_session_id: "thread-1",
       event_type: "assistant_message",
       timestamp: CREATED_AT,
@@ -162,7 +162,7 @@ describe("ManagedClientEvidence", () => {
     NodeAssert.deepEqual(evidenceFromProviderRuntimeEvent(toolEvent), {
       event_id: "evt-tool",
       schema_version: "v0",
-      client: "t3code",
+      client: "neokod",
       client_session_id: "thread-1",
       event_type: "tool_execution",
       timestamp: CREATED_AT,
@@ -175,7 +175,7 @@ describe("ManagedClientEvidence", () => {
     NodeAssert.deepEqual(evidenceFromProviderRuntimeEvent(permissionEvent), {
       event_id: "evt-permission",
       schema_version: "v0",
-      client: "t3code",
+      client: "neokod",
       client_session_id: "thread-1",
       event_type: "permission_decision",
       timestamp: CREATED_AT,
@@ -201,7 +201,7 @@ describe("ManagedClientEvidence", () => {
     NodeAssert.deepEqual(evidenceFromProviderRuntimeEvent(permissionEvent), {
       event_id: "evt-sdk-permission",
       schema_version: "v0",
-      client: "t3code",
+      client: "neokod",
       client_session_id: "thread-1",
       event_type: "permission_decision",
       timestamp: CREATED_AT,
@@ -237,7 +237,7 @@ describe("ManagedClientEvidence", () => {
     NodeAssert.deepEqual(evidenceFromProviderRuntimeEvent(usageEvent), {
       event_id: "evt-usage",
       schema_version: "v0",
-      client: "t3code",
+      client: "neokod",
       client_session_id: "thread-1",
       event_type: "token_usage",
       timestamp: CREATED_AT,

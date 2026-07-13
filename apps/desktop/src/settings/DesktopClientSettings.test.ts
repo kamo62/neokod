@@ -50,7 +50,7 @@ function makeLayer(baseDir: string) {
     runningUnderArm64Translation: false,
   }).pipe(
     Layer.provide(
-      Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest({ T3CODE_HOME: baseDir })),
+      Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest({ NEOKOD_HOME: baseDir })),
     ),
   );
 
@@ -66,7 +66,7 @@ const withClientSettings = <A, E, R>(
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-      prefix: "t3-desktop-client-settings-test-",
+      prefix: "neokod-desktop-client-settings-test-",
     });
     return yield* effect.pipe(Effect.provide(makeLayer(baseDir)));
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped);

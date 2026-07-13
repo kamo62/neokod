@@ -18,9 +18,18 @@ if (originalWindow === undefined) {
 }
 
 afterEach(() => {
-  Object.defineProperty(testWindow, "Notification", { configurable: true, value: originalWindowNotification });
-  Object.defineProperty(testWindow, "isSecureContext", { configurable: true, value: originalSecureContext });
-  Object.defineProperty(globalThis, "Notification", { configurable: true, value: originalNotification });
+  Object.defineProperty(testWindow, "Notification", {
+    configurable: true,
+    value: originalWindowNotification,
+  });
+  Object.defineProperty(testWindow, "isSecureContext", {
+    configurable: true,
+    value: originalSecureContext,
+  });
+  Object.defineProperty(globalThis, "Notification", {
+    configurable: true,
+    value: originalNotification,
+  });
 });
 
 afterAll(() => {
@@ -37,9 +46,15 @@ function installNotification(permission: NotificationPermission, construct = vi.
       construct(...args);
     }
   }
-  Object.defineProperty(testWindow, "Notification", { configurable: true, value: TestNotification });
+  Object.defineProperty(testWindow, "Notification", {
+    configurable: true,
+    value: TestNotification,
+  });
   Object.defineProperty(testWindow, "isSecureContext", { configurable: true, value: true });
-  Object.defineProperty(globalThis, "Notification", { configurable: true, value: TestNotification });
+  Object.defineProperty(globalThis, "Notification", {
+    configurable: true,
+    value: TestNotification,
+  });
   return TestNotification;
 }
 
@@ -61,15 +76,26 @@ describe("browser activity notifications", () => {
 
   it("handles permission races and constructor failures without claiming delivery", () => {
     installNotification("default");
-    expect(showBrowserActivityNotification({ title: "x", tag: "x", onClick: () => {} })).toBe("not-granted");
-    installNotification("granted", vi.fn(() => { throw new Error("blocked"); }));
-    expect(showBrowserActivityNotification({ title: "x", tag: "x", onClick: () => {} })).toBe("construction-failed");
+    expect(showBrowserActivityNotification({ title: "x", tag: "x", onClick: () => {} })).toBe(
+      "not-granted",
+    );
+    installNotification(
+      "granted",
+      vi.fn(() => {
+        throw new Error("blocked");
+      }),
+    );
+    expect(showBrowserActivityNotification({ title: "x", tag: "x", onClick: () => {} })).toBe(
+      "construction-failed",
+    );
   });
 
   it("creates silent granted notifications", () => {
     const construct = vi.fn();
     installNotification("granted", construct);
-    expect(showBrowserActivityNotification({ title: "Finished", tag: "scope", onClick: () => {} })).toBe("shown");
+    expect(
+      showBrowserActivityNotification({ title: "Finished", tag: "scope", onClick: () => {} }),
+    ).toBe("shown");
     expect(construct).toHaveBeenCalledWith("Finished", { tag: "scope", silent: true });
   });
 });

@@ -200,7 +200,10 @@ describe("getPinnedAndUnpinnedSidebarThreads", () => {
   it("keeps live scoped pins in preference order with no duplicate visible row", () => {
     const local = makeThread({ id: ThreadId.make("same-id"), archivedAt: null });
     const remote = makeThread({ id: ThreadId.make("same-id"), archivedAt: null });
-    const archived = makeThread({ id: ThreadId.make("archived"), archivedAt: "2026-03-09T10:00:00.000Z" });
+    const archived = makeThread({
+      id: ThreadId.make("archived"),
+      archivedAt: "2026-03-09T10:00:00.000Z",
+    });
     const keys = new Map([
       [local, "local:same-id"],
       [remote, "remote:same-id"],
@@ -293,12 +296,12 @@ describe("resolveSidebarNewThreadSeedContext", () => {
         activeThread: {
           projectId: "project-1",
           branch: "feature/existing",
-          worktreePath: "/repo/.t3/worktrees/existing",
+          worktreePath: "/repo/.neokod/worktrees/existing",
         },
         activeDraftThread: {
           projectId: "project-1",
           branch: "feature/draft",
-          worktreePath: "/repo/.t3/worktrees/draft",
+          worktreePath: "/repo/.neokod/worktrees/draft",
           envMode: "worktree",
           startFromOrigin: true,
         },

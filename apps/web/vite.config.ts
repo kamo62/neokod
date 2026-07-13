@@ -11,12 +11,16 @@ const port = Number(process.env.PORT ?? 5733);
 const host = "127.0.0.1";
 const configuredWsUrl = process.env.VITE_WS_URL?.trim();
 const configuredAppVersion = process.env.APP_VERSION?.trim() || pkg.version;
-const sourcemapEnv = process.env.T3CODE_WEB_SOURCEMAP?.trim().toLowerCase();
+const sourcemapEnv = (process.env.NEOKOD_WEB_SOURCEMAP ?? process.env.T3CODE_WEB_SOURCEMAP)
+  ?.trim()
+  .toLowerCase();
 
 // Vite 8.1's experimental bundled dev mode: serves rolldown-bundled chunks in
 // dev for much faster startup/reload on large module graphs, with HMR served
-// as hot patches. Opt-in while experimental: T3CODE_BUNDLED_DEV=1 pnpm dev:web
-const bundledDevEnv = process.env.T3CODE_BUNDLED_DEV?.trim().toLowerCase();
+// as hot patches. Opt-in while experimental: NEOKOD_BUNDLED_DEV=1 pnpm dev:web
+const bundledDevEnv = (process.env.NEOKOD_BUNDLED_DEV ?? process.env.T3CODE_BUNDLED_DEV)
+  ?.trim()
+  .toLowerCase();
 const bundledDev = bundledDevEnv === "1" || bundledDevEnv === "true";
 
 const buildSourcemap: boolean | "hidden" =

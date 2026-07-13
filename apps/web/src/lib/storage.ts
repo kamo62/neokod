@@ -35,8 +35,39 @@ export function isStateStorage(
   );
 }
 
+const legacyStorageKey = (name: string) =>
+  name.startsWith("neokod:") ? `t3code:${name.slice("neokod:".length)}` : undefined;
+
+const isPromise = (value: unknown): value is Promise<string | null> =>
+  typeof value === "object" && value !== null && "then" in value;
+
 export function resolveStorage(storage: Partial<StateStorage> | null | undefined): StateStorage {
-  return isStateStorage(storage) ? storage : createMemoryStorage();
+  const resolvedStorage = isStateStorage(storage) ? storage : createMemoryStorage();
+  return {
+    getItem: (name) => {
+      const current = resolvedStorage.getItem(name);
+      const legacyName = legacyStorageKey(name);
+      if (!legacyName) {
+        return current;
+      }
+      const migrate = (value: string | null) => {
+        if (value !== null) {
+          return value;
+        }
+        const legacy = resolvedStorage.getItem(legacyName);
+        const copyForward = (legacyValue: string | null) => {
+          if (legacyValue !== null) {
+            resolvedStorage.setItem(name, legacyValue);
+          }
+          return legacyValue;
+        };
+        return isPromise(legacy) ? legacy.then(copyForward) : copyForward(legacy);
+      };
+      return isPromise(current) ? current.then(migrate) : migrate(current);
+    },
+    setItem: (name, value) => resolvedStorage.setItem(name, value),
+    removeItem: (name) => resolvedStorage.removeItem(name),
+  };
 }
 
 export function createDebouncedStorage(

@@ -1,4 +1,5 @@
 import { HostProcessEnvironment, HostProcessPlatform } from "@neokod/shared/hostProcess";
+import { resolveNeokodHome } from "@neokod/shared/neokodHome";
 import {
   listLoginShellCandidates,
   mergePathEntries,
@@ -84,9 +85,13 @@ export const expandHomePath = Effect.fn(function* (input: string) {
 });
 
 export const resolveBaseDir = Effect.fn(function* (raw: string | undefined) {
-  const { join, resolve } = yield* Path.Path;
-  if (!raw || raw.trim().length === 0) {
-    return join(NodeOS.homedir(), ".t3");
+  const { resolve } = yield* Path.Path;
+  if (raw?.trim()) {
+    return resolve(yield* expandHomePath(raw.trim()));
   }
-  return resolve(yield* expandHomePath(raw.trim()));
+  return yield* resolveNeokodHome({
+    configuredHome: undefined,
+    homeDirectory: NodeOS.homedir(),
+    onWarning: (message) => process.stderr.write(`[server] ${message}\n`),
+  });
 });

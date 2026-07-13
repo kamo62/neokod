@@ -63,7 +63,7 @@ export class ServerRuntimeStartup extends Context.Service<
       effect: Effect.Effect<A, E>,
     ) => Effect.Effect<A, E | ServerRuntimeStartupError>;
   }
->()("t3/serverRuntimeStartup") {}
+>()("neokod/serverRuntimeStartup") {}
 
 interface QueuedCommand {
   readonly run: Effect.Effect<void, never>;
@@ -451,7 +451,7 @@ export const make = Effect.gen(function* () {
       } else {
         yield* Effect.logDebug("startup phase: browser open check");
         const startupBrowserTarget = yield* resolveStartupBrowserTarget;
-        yield* Effect.logInfo("Open the local T3 Code URL.").pipe(
+        yield* Effect.logInfo("Open the local Neokod URL.").pipe(
           Effect.annotateLogs({ startupUrl: startupBrowserTarget }),
         );
         yield* runStartupPhase("browser.open", maybeOpenBrowser(startupBrowserTarget));

@@ -310,10 +310,10 @@ describe("VcsStatusBroadcaster", () => {
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const realDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-vcs-status-real-",
+        prefix: "neokod-vcs-status-real-",
       });
       const linkParent = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-vcs-status-link-",
+        prefix: "neokod-vcs-status-link-",
       });
       const linkDir = path.join(linkParent, "repo-link");
       yield* fileSystem.symlink(realDir, linkDir);

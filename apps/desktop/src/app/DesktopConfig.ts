@@ -10,6 +10,23 @@ const trimNonEmptyOption = (value: string): Option.Option<string> => {
 const trimmedString = (name: string) =>
   Config.string(name).pipe(Config.option, Config.map(Option.flatMap(trimNonEmptyOption)));
 
+const legacyTrimmedString = (name: string, legacyName: string) =>
+  Config.string(name).pipe(
+    Config.orElse(() => Config.string(legacyName)),
+    Config.option,
+    Config.map(Option.flatMap(trimNonEmptyOption)),
+  );
+
+const legacyOptionalBoolean = (name: string, legacyName: string) =>
+  Config.boolean(name).pipe(
+    Config.orElse(() => Config.boolean(legacyName)),
+    Config.option,
+    Config.map(Option.getOrElse(() => false)),
+  );
+
+const legacyPort = (name: string, legacyName: string) =>
+  Config.port(name).pipe(Config.orElse(() => Config.port(legacyName)));
+
 const optionalBoolean = (name: string) =>
   Config.boolean(name).pipe(Config.option, Config.map(Option.getOrElse(() => false)));
 
@@ -21,21 +38,29 @@ const compactEnv = (env: Readonly<Record<string, string | undefined>>): Record<s
 export const DesktopConfig = Config.all({
   appDataDirectory: trimmedString("APPDATA"),
   xdgConfigHome: trimmedString("XDG_CONFIG_HOME"),
-  t3Home: trimmedString("T3CODE_HOME"),
+  neokodHome: legacyTrimmedString("NEOKOD_HOME", "T3CODE_HOME"),
   devServerUrl: Config.url("VITE_DEV_SERVER_URL").pipe(Config.option),
-  appUserModelIdOverride: trimmedString("T3CODE_DESKTOP_APP_USER_MODEL_ID"),
-  configuredBackendPort: Config.port("T3CODE_PORT").pipe(Config.option),
-  commitHashOverride: trimmedString("T3CODE_COMMIT_HASH"),
-  otlpTracesUrl: trimmedString("T3CODE_OTLP_TRACES_URL"),
-  otlpExportIntervalMs: Config.int("T3CODE_OTLP_EXPORT_INTERVAL_MS").pipe(
+  appUserModelIdOverride: legacyTrimmedString(
+    "NEOKOD_DESKTOP_APP_USER_MODEL_ID",
+    "T3CODE_DESKTOP_APP_USER_MODEL_ID",
+  ),
+  configuredBackendPort: legacyPort("NEOKOD_PORT", "T3CODE_PORT").pipe(Config.option),
+  commitHashOverride: legacyTrimmedString("NEOKOD_COMMIT_HASH", "T3CODE_COMMIT_HASH"),
+  otlpTracesUrl: legacyTrimmedString("NEOKOD_OTLP_TRACES_URL", "T3CODE_OTLP_TRACES_URL"),
+  otlpExportIntervalMs: Config.int("NEOKOD_OTLP_EXPORT_INTERVAL_MS").pipe(
+    Config.orElse(() => Config.int("T3CODE_OTLP_EXPORT_INTERVAL_MS")),
     Config.withDefault(10_000),
   ),
   appImagePath: trimmedString("APPIMAGE"),
-  disableAutoUpdate: optionalBoolean("T3CODE_DISABLE_AUTO_UPDATE"),
-  mockUpdates: optionalBoolean("T3CODE_DESKTOP_MOCK_UPDATES"),
-  mockUpdateServerPort: Config.port("T3CODE_DESKTOP_MOCK_UPDATE_SERVER_PORT").pipe(
-    Config.withDefault(3000),
+  disableAutoUpdate: legacyOptionalBoolean(
+    "NEOKOD_DISABLE_AUTO_UPDATE",
+    "T3CODE_DISABLE_AUTO_UPDATE",
   ),
+  mockUpdates: legacyOptionalBoolean("NEOKOD_DESKTOP_MOCK_UPDATES", "T3CODE_DESKTOP_MOCK_UPDATES"),
+  mockUpdateServerPort: legacyPort(
+    "NEOKOD_DESKTOP_MOCK_UPDATE_SERVER_PORT",
+    "T3CODE_DESKTOP_MOCK_UPDATE_SERVER_PORT",
+  ).pipe(Config.withDefault(3000)),
 });
 
 export const layerTest = (env: Readonly<Record<string, string | undefined>>) =>

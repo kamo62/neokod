@@ -19,12 +19,12 @@ export const runServerCommand = (
   });
 
 export const startCommand = Command.make("start", { ...sharedServerCommandFlags }).pipe(
-  Command.withDescription("Run the T3 Code server."),
+  Command.withDescription("Run the Neokod server."),
   Command.withHandler((flags) => runServerCommand(flags)),
 );
 
 export const serveCommand = Command.make("serve", { ...sharedServerCommandFlags }).pipe(
-  Command.withDescription("Run the local T3 Code server without opening a browser."),
+  Command.withDescription("Run the local Neokod server without opening a browser."),
   Command.withHandler((flags) =>
     runServerCommand(flags, {
       startupPresentation: "headless",

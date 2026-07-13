@@ -61,7 +61,7 @@ export default defineConfig({
       "**/routeTree.gen.ts",
     ],
     plugins: ["eslint", "oxc", "react", "unicorn", "typescript"],
-    jsPlugins: ["./oxlint-plugin-t3code/index.ts"],
+    jsPlugins: ["./oxlint-plugin-neokod/index.ts"],
     categories: {
       correctness: "warn",
       suspicious: "warn",
@@ -105,10 +105,10 @@ export default defineConfig({
           ],
         },
       ],
-      "t3code/no-global-process-runtime": "error",
-      "t3code/no-inline-schema-compile": "warn",
-      "t3code/no-manual-effect-runtime-in-tests": "error",
-      "t3code/namespace-node-imports": "error",
+      "neokod/no-global-process-runtime": "error",
+      "neokod/no-inline-schema-compile": "warn",
+      "neokod/no-manual-effect-runtime-in-tests": "error",
+      "neokod/namespace-node-imports": "error",
     },
     options: {
       // Revisit once Oxlint's tsgolint path can integrate with @effect/tsgo diagnostics.
