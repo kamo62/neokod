@@ -8,10 +8,7 @@ import { afterEach, vi } from "vite-plus/test";
 import { makeCatalogBackend, makeCatalogStore } from "./storage";
 
 const emptyCatalog = {
-  schemaVersion: 1,
-  targets: [],
-  profiles: [],
-  credentials: [],
+  schemaVersion: 2,
 } as const;
 const decodeCatalog = Schema.decodeUnknownSync(Schema.fromJsonString(ConnectionCatalogDocument));
 

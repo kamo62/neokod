@@ -7,10 +7,9 @@ import {
 
 /**
  * Desktop-local secondary backends (e.g. a parallel WSL backend) are registered
- * by the connection platform source as bearer connections whose id carries this
+ * by the connection platform source as WSL bearer connections whose id carries this
  * prefix. It is the renderer's single signal that an environment is a
- * host-managed local backend rather than a user-saved remote
- * environment.
+ * host-managed local backend rather than the loopback primary.
  *
  * Keep this the one source of truth: the producer (`connection/platform.ts`)
  * mints ids via {@link desktopLocalConnectionId} and every consumer classifies
@@ -25,9 +24,9 @@ export function desktopLocalConnectionId(backendId: string): string {
 
 export function isDesktopLocalConnectionTarget(
   target: ConnectionTarget,
-): target is Extract<ConnectionTarget, { readonly _tag: "BearerConnectionTarget" }> {
+): target is Extract<ConnectionTarget, { readonly _tag: "WslConnectionTarget" }> {
   return (
-    target._tag === "BearerConnectionTarget" &&
+    target._tag === "WslConnectionTarget" &&
     target.connectionId.startsWith(DESKTOP_LOCAL_CONNECTION_ID_PREFIX)
   );
 }

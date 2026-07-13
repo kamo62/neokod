@@ -32,8 +32,8 @@ import {
   base64UrlEncode,
   signPayload,
   timingSafeEqualBase64Url,
-} from "../auth/utils.ts";
-import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
+} from "../crypto/serverCrypto.ts";
+import * as ServerSecretStore from "../secrets/ServerSecretStore.ts";
 import { resolveAttachmentPathById } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";

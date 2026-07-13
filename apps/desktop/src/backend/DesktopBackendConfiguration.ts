@@ -10,7 +10,6 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
-import * as SynchronizedRef from "effect/SynchronizedRef";
 
 import serverPackageJson from "../../../server/package.json" with { type: "json" };
 
@@ -37,7 +36,7 @@ export class DesktopBackendConfiguration extends Context.Service<
   {
     // Build the Windows-native primary backend's start config. Reads the
     // primary's loopback port/host from DesktopLocalServer. Can fail
-    // with PlatformError because bootstrap token generation now uses
+    // with PlatformError because the WSL bearer generator uses
     // crypto.randomBytes under the hood (post Effect 4 migration).
     readonly resolvePrimary: Effect.Effect<
       DesktopBackendManager.DesktopBackendStartConfig,
@@ -159,7 +158,6 @@ const readPersistedBackendObservabilitySettings = Effect.gen(function* () {
 });
 
 interface SharedBootstrapInput {
-  readonly bootstrapToken: string;
   readonly observabilitySettings: BackendObservabilitySettings;
 }
 
@@ -335,7 +333,6 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
       t3Home: environment.baseDir,
       transport: "loopback" as const,
       host: backendConfig.bindHost,
-      desktopBootstrapToken: input.bootstrapToken,
       ...buildObservabilityFragment(input.observabilitySettings),
     };
 
@@ -363,6 +360,7 @@ const resolveWslStartConfig = Effect.fn("desktop.backendConfiguration.resolveWsl
   input: SharedBootstrapInput & {
     readonly port: number;
     readonly distro: string | null;
+    readonly wslBearerToken: string;
   },
 ): Effect.fn.Return<
   DesktopBackendManager.DesktopBackendStartConfig,
@@ -383,8 +381,8 @@ const resolveWslStartConfig = Effect.fn("desktop.backendConfiguration.resolveWsl
   // 127.0.0.1 inside WSL. Binding to 0.0.0.0 plus advertising the
   // WSL IP as the renderer-visible URL avoids that dependency.
   // This wildcard is the sole non-loopback bind exception and remains
-  // protected by the transitional desktop bootstrap credential and bearer
-  // session boundary.
+  // protected by the desktop-generated WSL bearer and single-use WebSocket
+  // ticket boundary.
   const wslBindHost = "0.0.0.0" as const;
 
   const bootstrap = {
@@ -396,7 +394,7 @@ const resolveWslStartConfig = Effect.fn("desktop.backendConfiguration.resolveWsl
     // the SQLite file with the primary).
     transport: "wsl-bearer" as const,
     host: wslBindHost,
-    desktopBootstrapToken: input.bootstrapToken,
+    wslBearerToken: input.wslBearerToken,
     ...buildObservabilityFragment(input.observabilitySettings),
   };
 
@@ -548,53 +546,31 @@ export const make = Effect.gen(function* () {
   const wslEnvironment = yield* DesktopWslEnvironment.DesktopWslEnvironment;
   const settings = yield* DesktopAppSettings.DesktopAppSettings;
   const crypto = yield* Crypto.Crypto;
-  // SynchronizedRef (not a plain Ref) so the read-generate-write is atomic.
-  // crypto.randomBytes is a yield point, and resolvePrimary + resolveWsl can
-  // resolve concurrently; with a plain Ref both could observe None, generate
-  // distinct tokens, and one would overwrite the other — leaving the two
-  // backends holding mismatched tokens and breaking the shared-token
-  // invariant the renderer relies on. modifyEffect serializes the whole
-  // get-or-create so the first caller wins and the rest reuse its token.
-  const tokenRef = yield* SynchronizedRef.make(Option.none<string>());
-  const getOrCreateBootstrapToken = SynchronizedRef.modifyEffect(tokenRef, (current) =>
-    Option.match(current, {
-      onSome: (token) => Effect.succeed([token, current] as const),
-      onNone: () =>
-        crypto.randomBytes(24).pipe(
-          Effect.map((bytes) => {
-            const token = Encoding.encodeHex(bytes);
-            return [token, Option.some(token)] as const;
-          }),
-        ),
-    }),
-  );
+  const makeWslBearerToken = crypto.randomBytes(24).pipe(Effect.map(Encoding.encodeHex));
 
-  // Both resolvers share the same bootstrap token: the renderer holds a
-  // single token and uses it against whichever backend it's currently
-  // talking to. Observability settings get re-read each resolve so a
+  // Observability settings get re-read each resolve so a
   // hot-swap of the server-settings file is picked up on the next
   // restart cycle without having to bounce the desktop process.
   const sharedInputs = Effect.gen(function* () {
-    const bootstrapToken = yield* getOrCreateBootstrapToken;
     const observabilitySettings = yield* readPersistedBackendObservabilitySettings.pipe(
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),
     );
-    return { bootstrapToken, observabilitySettings } satisfies SharedBootstrapInput;
+    return { observabilitySettings } satisfies SharedBootstrapInput;
   });
 
   const buildWslPrimaryConfig = Effect.gen(function* () {
     // wsl-only mode pipes the WSL backend through the same port the
     // Windows primary would normally take. That way the renderer
-    // still loads from the configured local endpoint, and primary-aware code paths (cookie
-    // auth, the env switcher's "primary" id) keep working without
-    // a parallel "secondary" registration.
+    // still loads from the configured local endpoint, and primary-aware code
+    // paths keep working without a parallel secondary registration.
     const backendConfig = yield* localServer.config;
     const persistedSettings = yield* settings.get;
     const shared = yield* sharedInputs;
     yield* wslEnvironment.preWarm(persistedSettings.wslDistro);
     return yield* resolveWslStartConfig({
       ...shared,
+      wslBearerToken: yield* makeWslBearerToken,
       port: backendConfig.port,
       distro: persistedSettings.wslDistro,
     }).pipe(
@@ -655,7 +631,11 @@ export const make = Effect.gen(function* () {
     resolveWsl: (input) =>
       Effect.gen(function* () {
         const shared = yield* sharedInputs;
-        return yield* resolveWslStartConfig({ ...shared, ...input }).pipe(
+        return yield* resolveWslStartConfig({
+          ...shared,
+          ...input,
+          wslBearerToken: yield* makeWslBearerToken,
+        }).pipe(
           Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),
           Effect.provideService(DesktopWslEnvironment.DesktopWslEnvironment, wslEnvironment),
           Effect.provideService(FileSystem.FileSystem, fileSystem),

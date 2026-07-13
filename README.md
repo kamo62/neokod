@@ -27,6 +27,17 @@ Install the latest macOS or Windows desktop build from [Neokod releases](https:/
 
 The initial builds are unsigned, so macOS Gatekeeper and Windows SmartScreen may require manual confirmation.
 
+### Local access boundary
+
+Neokod is local-first. The native desktop backend and standalone `t3 serve`
+listen on `127.0.0.1` and use direct HTTP and WebSocket connections without an
+application session, pairing flow, cookie, or bearer credential.
+
+The only non-loopback exception is a desktop-managed WSL backend. It listens on
+`0.0.0.0` inside WSL and remains fail-closed behind a desktop-generated bearer
+for HTTP plus short-lived, single-use WebSocket tickets. The WSL credential is
+delivered only through the live desktop topology and is never persisted.
+
 ## Upstream updates
 
 The fork keeps T3 Code's release-aware rebase helper. In a fresh clone, configure the public upstream once:

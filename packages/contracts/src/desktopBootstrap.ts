@@ -10,7 +10,6 @@ const DesktopBackendBootstrapCommon = {
   // Windows-side baseDir maps to /mnt/c/... and the Linux side should use its
   // own home directory instead.
   t3Home: Schema.optional(Schema.String),
-  desktopBootstrapToken: TrimmedNonEmptyString,
   otlpTracesUrl: Schema.optional(Schema.String),
   otlpMetricsUrl: Schema.optional(Schema.String),
 } as const;
@@ -28,6 +27,7 @@ export const DesktopBackendBootstrap = Schema.Union([
     ...DesktopBackendBootstrapCommon,
     transport: Schema.Literal("wsl-bearer"),
     host: Schema.Literal("0.0.0.0"),
+    wslBearerToken: TrimmedNonEmptyString,
   }),
 ]);
 

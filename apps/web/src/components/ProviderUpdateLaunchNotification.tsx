@@ -18,10 +18,9 @@ import { stackedThreadToast, toastManager } from "./ui/toast";
 
 /**
  * True when a desktop-local secondary backend (the parallel WSL backend) is
- * present alongside the primary. Local secondaries connect over loopback with a
- * `local:<backendInstanceId>` bearer connection id; everything else (SSH, relay,
- * remote) is ignored. Gating on this keeps non-WSL users on the unchanged
- * single-prompt flow.
+ * present alongside the primary. WSL secondaries carry a
+ * `local:<backendInstanceId>` connection id. Gating on this keeps non-WSL users
+ * on the unchanged single-prompt flow.
  */
 function useHasLocalSecondaryEnvironment(): boolean {
   const { environments } = useEnvironments();

@@ -77,26 +77,6 @@ export function createEnvironmentCatalogAtoms<R, E>(
     ),
   );
 
-  const register = createRuntimeCommand(runtime, {
-    label: "environment-catalog:register",
-    scheduler: commandScheduler,
-    concurrency: serial,
-    execute: (
-      target: Parameters<EnvironmentRegistry.EnvironmentRegistry["Service"]["register"]>[0],
-    ) =>
-      EnvironmentRegistry.EnvironmentRegistry.pipe(
-        Effect.flatMap((registry) => registry.register(target)),
-      ),
-  });
-  const remove = createRuntimeCommand(runtime, {
-    label: "environment-catalog:remove",
-    scheduler: commandScheduler,
-    concurrency: serial,
-    execute: (environmentId: EnvironmentIdType) =>
-      EnvironmentRegistry.EnvironmentRegistry.pipe(
-        Effect.flatMap((registry) => registry.remove(environmentId)),
-      ),
-  });
   const retryNow = createRuntimeCommand(runtime, {
     label: "environment-catalog:retry-now",
     scheduler: commandScheduler,
@@ -113,8 +93,6 @@ export function createEnvironmentCatalogAtoms<R, E>(
     networkStatusAtom,
     networkStatusValueAtom,
     stateAtom,
-    register,
-    remove,
     retryNow,
   };
 }

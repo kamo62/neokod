@@ -116,7 +116,7 @@ const withHarness = <A, E, R>(
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
 
 describe("DesktopBackendConfiguration", () => {
-  it.effect("resolvePrimary produces a stable scoped bootstrap token", () =>
+  it.effect("resolvePrimary produces an unauthenticated loopback bootstrap", () =>
     withHarness(
       Effect.gen(function* () {
         const environment = yield* DesktopEnvironment.DesktopEnvironment;
@@ -139,23 +139,22 @@ describe("DesktopBackendConfiguration", () => {
         assert.equal(first.bootstrap.transport, "loopback");
         assert.equal(first.bootstrap.host, "127.0.0.1");
         assert.equal(first.bootstrap.t3Home, environment.baseDir);
-        assert.match(first.bootstrap.desktopBootstrapToken, /^[0-9a-f]{48}$/i);
-        assert.equal(second.bootstrap.desktopBootstrapToken, first.bootstrap.desktopBootstrapToken);
+        assert.notProperty(first.bootstrap, "wslBearerToken");
+        assert.deepEqual(second.bootstrap, first.bootstrap);
       }),
     ),
   );
 
-  it.effect("resolveWsl reuses the primary's bootstrap token", () =>
+  it.effect("resolveWsl generates a bearer for the wildcard listener", () =>
     withHarness(
       Effect.gen(function* () {
         const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
 
-        const primary = yield* configuration.resolvePrimary;
         const wsl = yield* configuration.resolveWsl({ port: 5000, distro: null });
 
         assert.equal(wsl.bootstrap.transport, "wsl-bearer");
         assert.equal(wsl.bootstrap.host, "0.0.0.0");
-        assert.equal(wsl.bootstrap.desktopBootstrapToken, primary.bootstrap.desktopBootstrapToken);
+        assert.match(wsl.bootstrap.wslBearerToken, /^[0-9a-f]{48}$/i);
       }),
     ),
   );
@@ -287,22 +286,18 @@ describe("DesktopBackendConfiguration", () => {
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
-  it.effect("resolvePrimary and resolveWsl share one token under concurrent resolution", () =>
+  it.effect("keeps the loopback primary credential-free during concurrent WSL resolution", () =>
     withHarness(
       Effect.gen(function* () {
         const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
 
-        // Resolve both before any token is cached, concurrently, so the
-        // generate step (a yield point) can interleave. The atomic
-        // get-or-create must still hand both the same token; a non-atomic
-        // Ref would let each generate its own and break the shared-token
-        // invariant.
         const [primary, wsl] = yield* Effect.all(
           [configuration.resolvePrimary, configuration.resolveWsl({ port: 5000, distro: null })],
           { concurrency: "unbounded" },
         );
 
-        assert.equal(wsl.bootstrap.desktopBootstrapToken, primary.bootstrap.desktopBootstrapToken);
+        assert.notProperty(primary.bootstrap, "wslBearerToken");
+        assert.match(wsl.bootstrap.wslBearerToken, /^[0-9a-f]{48}$/i);
       }),
     ),
   );

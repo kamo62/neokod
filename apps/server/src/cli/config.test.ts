@@ -45,7 +45,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
             port: 4888,
             transport: "loopback",
             host: "127.0.0.1",
-            desktopBootstrapToken: "desktop-bootstrap-token",
           }
         : {
             mode: "desktop",
@@ -53,7 +52,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
             port: 4888,
             transport: "wsl-bearer",
             host: "0.0.0.0",
-            desktopBootstrapToken: "desktop-bootstrap-token",
+            wslBearerToken: "wsl-bearer-token",
           };
     const encoded = yield* encodeDesktopBootstrap(bootstrap);
     yield* fileSystem.writeFileString(filePath, `${encoded}\n`);
@@ -133,7 +132,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         port: 4888,
         transport: "wsl-bearer",
         host: "0.0.0.0",
-        desktopBootstrapToken: "desktop-bootstrap-token",
+        wslBearerToken: "wsl-bearer-token",
       });
     }),
   );
@@ -152,7 +151,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
 
       expect(resolved.host).toBe("127.0.0.1");
       expect(resolved.transport).toBe("loopback");
-      expect(resolved.desktopBootstrapToken).toBe("desktop-bootstrap-token");
+      expect(resolved.wslBearerToken).toBeUndefined();
     }),
   );
 
@@ -161,14 +160,14 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       isServerBindAuthorized({
         host: "0.0.0.0",
         transport: "loopback",
-        desktopBootstrapToken: "desktop-bootstrap-token",
+        wslBearerToken: undefined,
       }),
     ).toBe(false);
     expect(
       isServerBindAuthorized({
         host: "0.0.0.0",
         transport: "wsl-bearer",
-        desktopBootstrapToken: undefined,
+        wslBearerToken: undefined,
       }),
     ).toBe(false);
   });

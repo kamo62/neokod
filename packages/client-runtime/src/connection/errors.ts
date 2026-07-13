@@ -1,17 +1,10 @@
 import type { EnvironmentId } from "@t3tools/contracts";
-import type { RemoteEnvironmentAuthError } from "../authorization/remote.ts";
+import type { RemoteEnvironmentRequestError } from "../rpc/http.ts";
 import {
   ConnectionBlockedError,
   type ConnectionAttemptError,
   ConnectionTransientError,
 } from "./model.ts";
-
-export function profileMissingError(connectionId: string): ConnectionBlockedError {
-  return new ConnectionBlockedError({
-    reason: "configuration",
-    detail: `Connection profile ${connectionId} is unavailable.`,
-  });
-}
 
 export function credentialMissingError(connectionId: string): ConnectionBlockedError {
   return new ConnectionBlockedError({
@@ -31,20 +24,13 @@ export function environmentMismatchError(input: {
 }
 
 export function mapRemoteEnvironmentError(
-  error: RemoteEnvironmentAuthError,
+  error: RemoteEnvironmentRequestError,
 ): ConnectionAttemptError {
   switch (error._tag) {
-    case "EnvironmentAuthInvalidError":
+    case "EnvironmentWslBearerInvalidError":
       return new ConnectionBlockedError({
         reason: "authentication",
-        detail: "The environment credential is invalid.",
-        traceId: error.traceId,
-      });
-    case "EnvironmentScopeRequiredError":
-    case "EnvironmentOperationForbiddenError":
-      return new ConnectionBlockedError({
-        reason: "permission",
-        detail: "The environment credential does not grant the required access.",
+        detail: "The WSL environment credential is invalid.",
         traceId: error.traceId,
       });
     case "EnvironmentRequestInvalidError":
@@ -59,9 +45,9 @@ export function mapRemoteEnvironmentError(
         detail: "The environment endpoint could not be found.",
         traceId: error.traceId,
       });
-    case "RemoteEnvironmentAuthTimeoutError":
+    case "RemoteEnvironmentRequestTimeoutError":
       return new ConnectionTransientError({ reason: "timeout", detail: error.message });
-    case "RemoteEnvironmentAuthFetchError":
+    case "RemoteEnvironmentRequestFetchError":
       return new ConnectionTransientError({ reason: "network", detail: error.message });
     case "EnvironmentInternalError":
       return new ConnectionTransientError({
@@ -69,8 +55,14 @@ export function mapRemoteEnvironmentError(
         detail: "The environment could not authorize the connection.",
         traceId: error.traceId,
       });
-    case "RemoteEnvironmentAuthInvalidJsonError":
-    case "RemoteEnvironmentAuthUndeclaredStatusError":
+    case "RemoteEnvironmentRequestUndeclaredStatusError":
+      return error.status === 401
+        ? new ConnectionBlockedError({
+            reason: "authentication",
+            detail: "The WSL environment rejected its bearer credential.",
+          })
+        : new ConnectionTransientError({ reason: "remote-unavailable", detail: error.message });
+    case "RemoteEnvironmentRequestInvalidJsonError":
       return new ConnectionTransientError({
         reason: "remote-unavailable",
         detail: error.message,

@@ -8,8 +8,9 @@
   `bun run dev -- --base-dir ~/.t3-2`
 - `bun run start` — Runs the production server (serves built web app as static files).
 - Public start/serve commands listen on `127.0.0.1`; there is no public host or
-  network-exposure flag. The desktop parent alone can supply the private WSL
-  `wsl-bearer` bootstrap envelope.
+  network-exposure or auth flag. Their HTTP and WebSocket paths are direct. The
+  desktop parent alone can supply the private WSL `wsl-bearer` bootstrap
+  envelope.
 - `bun run build` — Builds contracts, web app, and server through Turbo.
 - `bun run typecheck` — Strict TypeScript checks for all packages.
 - `bun run test` — Runs workspace tests.
@@ -26,8 +27,9 @@
 - Desktop production windows load the bundled UI from `t3code://app/index.html` (not a `127.0.0.1` document URL).
 - Desktop packaging includes `apps/server/dist` (the `t3` backend) and starts
   the primary on `127.0.0.1`. A desktop-managed WSL child may bind internally
-  to `0.0.0.0`, but its `wsl-bearer` discriminator, bootstrap credential, and bearer exchange remain
-  mandatory.
+  to `0.0.0.0`, but its `wsl-bearer` discriminator and bearer remain mandatory.
+  Sensitive WSL HTTP carries `Authorization: Bearer`; WebSocket preparation
+  exchanges it for a short-lived, single-use ticket held only in memory.
 - Your tester can still open it on macOS by right-clicking the app and choosing **Open** on first launch.
 - To keep staging files for debugging package contents, run: `bun run dist:desktop:dmg -- --keep-stage`
 - To allow code-signing/notarization when configured in CI/secrets, add: `--signed`.

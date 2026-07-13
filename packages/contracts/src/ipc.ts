@@ -97,7 +97,7 @@ import type {
   OrchestrationSubscribeThreadInput,
   OrchestrationThreadStreamItem,
 } from "./orchestration.ts";
-import { EnvironmentId } from "./baseSchemas.ts";
+import { EnvironmentId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { EditorId } from "./editor.ts";
 import type { ClientSettings, ServerSettings, ServerSettingsPatch } from "./settings.ts";
 import type {
@@ -261,45 +261,47 @@ export const DesktopUpdateCheckResultSchema = Schema.Struct({
 // a plain string so the env-runtime can compare against it without
 // importing brand machinery from the desktop package.
 export const PRIMARY_LOCAL_ENVIRONMENT_ID = "primary";
+const WslDesktopEnvironmentId = Schema.Union([
+  Schema.Literal(PRIMARY_LOCAL_ENVIRONMENT_ID),
+  TrimmedNonEmptyString.check(Schema.isPattern(/^wsl:.+/)),
+]);
 
-export interface DesktopEnvironmentBootstrap {
-  // Stable backend instance id (e.g. "primary" or "wsl:ubuntu"). The
-  // web env runtime keys local environments off this so projects
-  // routed to a specific backend reopen against the same one.
-  id: string;
-  label: string;
-  // Only desktop-produced `wsl-bearer` entries may use non-loopback URLs.
-  // Loopback entries remain authenticated by the transitional session stack
-  // until Stage 5 removes that control plane.
-  transport: "loopback" | "wsl-bearer";
-  // Concrete WSL distro used by the current backend run. This stays separate
-  // from id because a default-tracking instance keeps the stable
-  // "wsl:default" IPC target while each run launches a specific distro.
-  runningDistro?: string | null;
-  httpBaseUrl: string | null;
-  wsBaseUrl: string | null;
-  bootstrapToken?: string;
-}
+export type DesktopEnvironmentBootstrap =
+  | {
+      readonly id: typeof PRIMARY_LOCAL_ENVIRONMENT_ID;
+      readonly label: string;
+      readonly transport: "loopback";
+      readonly httpBaseUrl: string;
+      readonly wsBaseUrl: string;
+    }
+  | {
+      readonly id: string;
+      readonly label: string;
+      readonly transport: "wsl-bearer";
+      readonly runningDistro: string;
+      readonly httpBaseUrl: string;
+      readonly wsBaseUrl: string;
+      readonly wslBearerToken: string;
+    };
 
-export const DesktopEnvironmentBootstrapSchema = Schema.Struct({
-  id: Schema.String,
-  label: Schema.String,
-  transport: Schema.Literals(["loopback", "wsl-bearer"]),
-  runningDistro: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  httpBaseUrl: Schema.NullOr(Schema.String),
-  wsBaseUrl: Schema.NullOr(Schema.String),
-  bootstrapToken: Schema.optionalKey(Schema.String),
-});
-
-export const PersistedSavedEnvironmentRecordSchema = Schema.Struct({
-  environmentId: EnvironmentId,
-  label: Schema.String,
-  wsBaseUrl: Schema.String,
-  httpBaseUrl: Schema.String,
-  createdAt: Schema.String,
-  lastConnectedAt: Schema.NullOr(Schema.String),
-});
-export type PersistedSavedEnvironmentRecord = typeof PersistedSavedEnvironmentRecordSchema.Type;
+export const DesktopEnvironmentBootstrapSchema = Schema.Union([
+  Schema.Struct({
+    id: Schema.Literal(PRIMARY_LOCAL_ENVIRONMENT_ID),
+    label: Schema.String,
+    transport: Schema.Literal("loopback"),
+    httpBaseUrl: Schema.String,
+    wsBaseUrl: Schema.String,
+  }),
+  Schema.Struct({
+    id: WslDesktopEnvironmentId,
+    label: Schema.String,
+    transport: Schema.Literal("wsl-bearer"),
+    runningDistro: TrimmedNonEmptyString,
+    httpBaseUrl: Schema.String,
+    wsBaseUrl: Schema.String,
+    wslBearerToken: TrimmedNonEmptyString,
+  }),
+]);
 
 export interface PickFolderOptions {
   initialPath?: string | null;
@@ -826,7 +828,6 @@ export interface DesktopBridge {
   // info (omits instances whose backend hasn't produced a config yet).
   // The primary backend is identified by id === PRIMARY_LOCAL_ENVIRONMENT_ID.
   getLocalEnvironmentBootstraps: () => readonly DesktopEnvironmentBootstrap[];
-  getLocalEnvironmentBearerToken: () => Promise<string>;
   getClientSettings: () => Promise<ClientSettings | null>;
   setClientSettings: (settings: ClientSettings) => Promise<void>;
   getConnectionCatalog?: () => Promise<string | null>;

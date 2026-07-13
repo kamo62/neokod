@@ -15,6 +15,7 @@ describe("DesktopEnvironmentBootstrapSchema", () => {
         runningDistro: "Ubuntu",
         httpBaseUrl: "http://127.0.0.1:3774/",
         wsBaseUrl: "ws://127.0.0.1:3774/",
+        wslBearerToken: "wsl-bearer-token",
       }),
     ).toEqual({
       id: "wsl:default",
@@ -23,19 +24,38 @@ describe("DesktopEnvironmentBootstrapSchema", () => {
       runningDistro: "Ubuntu",
       httpBaseUrl: "http://127.0.0.1:3774/",
       wsBaseUrl: "ws://127.0.0.1:3774/",
+      wslBearerToken: "wsl-bearer-token",
     });
   });
 
-  it("allows non-running and non-WSL bootstraps to report no running distro", () => {
+  it("keeps the loopback primary credential-free", () => {
     expect(
       decode({
         id: "primary",
         label: "Windows",
         transport: "loopback",
-        runningDistro: null,
-        httpBaseUrl: null,
-        wsBaseUrl: null,
-      }).runningDistro,
-    ).toBeNull();
+        httpBaseUrl: "http://127.0.0.1:3773/",
+        wsBaseUrl: "ws://127.0.0.1:3773/",
+      }),
+    ).toEqual({
+      id: "primary",
+      label: "Windows",
+      transport: "loopback",
+      httpBaseUrl: "http://127.0.0.1:3773/",
+      wsBaseUrl: "ws://127.0.0.1:3773/",
+    });
+  });
+
+  it("rejects WSL topology without its bearer", () => {
+    expect(() =>
+      decode({
+        id: "wsl:default",
+        label: "WSL (Ubuntu)",
+        transport: "wsl-bearer",
+        runningDistro: "Ubuntu",
+        httpBaseUrl: "http://127.0.0.1:3774/",
+        wsBaseUrl: "ws://127.0.0.1:3774/",
+      }),
+    ).toThrow();
   });
 });

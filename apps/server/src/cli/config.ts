@@ -117,7 +117,7 @@ export interface CliServerFlags {
   readonly logWebSocketEvents: Option.Option<boolean>;
 }
 
-export interface CliAuthLocationFlags {
+export interface CliProjectLocationFlags {
   readonly baseDir: Option.Option<string>;
   readonly devUrl?: Option.Option<URL>;
 }
@@ -147,8 +147,6 @@ export const sharedServerCommandFlags = {
   autoBootstrapProjectFromCwd: autoBootstrapProjectFromCwdFlag,
   logWebSocketEvents: logWebSocketEventsFlag,
 } as const;
-
-export const authLocationFlags = sharedServerLocationFlags;
 
 const resolveOptionPrecedence = <Value>(
   ...values: ReadonlyArray<Option.Option<Value>>
@@ -255,7 +253,8 @@ export const resolveServerConfig = (
       ),
       () => mode === "desktop",
     );
-    const desktopBootstrapToken = bootstrap?.desktopBootstrapToken;
+    const wslBearerToken =
+      bootstrap?.transport === "wsl-bearer" ? bootstrap.wslBearerToken : undefined;
     const autoBootstrapProjectFromCwd = Option.getOrElse(
       resolveOptionPrecedence(
         Option.fromUndefinedOr(options?.forceAutoBootstrapProjectFromCwd),
@@ -306,7 +305,7 @@ export const resolveServerConfig = (
       devUrl,
       noBrowser,
       startupPresentation,
-      desktopBootstrapToken,
+      wslBearerToken,
       autoBootstrapProjectFromCwd,
       logWebSocketEvents,
     };
@@ -314,8 +313,8 @@ export const resolveServerConfig = (
     return config;
   });
 
-export const resolveCliAuthConfig = (
-  flags: CliAuthLocationFlags,
+export const resolveCliProjectConfig = (
+  flags: CliProjectLocationFlags,
   cliLogLevel: Option.Option<LogLevel.LogLevel>,
 ) =>
   resolveServerConfig(

@@ -19,7 +19,7 @@ const readyWslConfig: DesktopBackendManager.DesktopBackendStartConfig = {
     port: 3774,
     transport: "wsl-bearer",
     host: "0.0.0.0",
-    desktopBootstrapToken: "bootstrap-token",
+    wslBearerToken: "wsl-bearer-token",
   },
   bootstrapDelivery: "stdin",
   httpBaseUrl: new URL("http://127.0.0.1:3774"),
@@ -57,13 +57,13 @@ describe("getLocalEnvironmentBootstraps", () => {
           runningDistro: "Ubuntu",
           httpBaseUrl: "http://127.0.0.1:3774/",
           wsBaseUrl: "ws://127.0.0.1:3774/",
-          bootstrapToken: "bootstrap-token",
+          wslBearerToken: "wsl-bearer-token",
         },
       ]);
     }).pipe(Effect.provide(DesktopBackendPool.layerTest([defaultWslInstance]))),
   );
 
-  it.effect("publishes a pending bootstrap only while a transient retry is scheduled", () => {
+  it.effect("withholds incomplete WSL topology while a transient retry is scheduled", () => {
     const retryingConfig: DesktopBackendManager.DesktopBackendStartConfig = {
       ...readyWslConfig,
       preflightFailure: Option.some({
@@ -86,16 +86,7 @@ describe("getLocalEnvironmentBootstraps", () => {
 
     return Effect.gen(function* () {
       const result = yield* getLocalEnvironmentBootstraps.handler();
-      assert.deepEqual(result, [
-        {
-          id: "wsl:default",
-          label: "WSL (default distro)",
-          transport: "wsl-bearer",
-          runningDistro: null,
-          httpBaseUrl: null,
-          wsBaseUrl: null,
-        },
-      ]);
+      assert.deepEqual(result, []);
     }).pipe(Effect.provide(DesktopBackendPool.layerTest([retryingInstance])));
   });
 

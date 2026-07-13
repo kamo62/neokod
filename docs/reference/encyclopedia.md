@@ -1,5 +1,13 @@
 # Encyclopedia
 
+## Local transport boundary
+
+The native desktop backend and `t3 serve` are direct loopback transports on
+`127.0.0.1`. The desktop-managed WSL backend is the only wildcard listener and
+uses `wsl-bearer`: a desktop-generated HTTP bearer plus a short-lived,
+single-use WebSocket ticket. This is a narrow transport boundary, not a user
+session, pairing, scope, or remote-access system.
+
 This is a living glossary for T3 Code. It explains what common terms mean in this codebase.
 
 ## Table of contents

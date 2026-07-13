@@ -5,17 +5,15 @@ untracked; do not commit it.
 
 ## Local-first carve-out (2026-07-13)
 
-The current `feat/local-first-carveout` worktree has Stages 1-3 committed and Stage
-4 applied but intentionally uncommitted. Stage 2 deletes the product's SSH and
-Tailscale connection paths, LAN/manual endpoint advertising, and public host
-selection. Desktop primary, standalone `t3 serve`, and Vite bind to
-`127.0.0.1`. Desktop-managed WSL remains on its internal `0.0.0.0` bind and
-still requires the private `wsl-bearer` discriminator and inherited desktop bootstrap credential followed by bearer
-session exchange. Do not collapse that boundary before Stage 5. Stage 3 deletes the hosted service
-infrastructure and outbound mobile-activity publisher while retaining the pure shared
-agent-awareness projection and local browser notifications. Stage 4 removes the hosted application,
-pairing UI, identity integration, and remote connection client/contracts. Stages 5-6 (local auth
-control-plane removal and the `@neokod` package rename) are not part of this worktree change.
+The current `feat/local-first-carveout` worktree has Stages 1-4 committed and
+Stage 5 applied but intentionally uncommitted. Native desktop, standalone `t3
+serve`, and Vite bind to `127.0.0.1`; loopback HTTP and WebSocket are direct and
+have no application auth/session control plane. Desktop-managed WSL remains the
+sole `0.0.0.0` exception and fails closed behind a desktop-generated HTTP bearer
+plus short-lived, single-use WebSocket tickets. The bearer is topology-only and
+never persisted. Agent-awareness notifications and both toast/coordinator mounts
+remain local and unconditional. Stage 6, the `@t3tools` to `@neokod` package
+rename, is deliberately not applied.
 
 ## What this fork is
 
@@ -315,7 +313,7 @@ the original UI order are landed. What's next:
      `apps/server/src/provider/copilot/GithubDeviceLogin.ts` (start + poll
      honoring `authorization_pending`/`slow_down`/expiry/denial, cancellation,
      one flow per environment); token in `ServerSecretStore`
-     (`apps/server/src/auth/ServerSecretStore.ts`, confirmed present; NO
+     (`apps/server/src/secrets/ServerSecretStore.ts`, confirmed present; NO
      settings.json fallback); RPCs `copilotDeviceLoginStart`/`Status` (+
      `copilotSignOut`) registered like `testManagedClientEvidenceConnection`;
      `CopilotDriver.ts` passes `gitHubToken` when stored, otherwise leaves the

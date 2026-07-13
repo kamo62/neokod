@@ -93,6 +93,9 @@ export interface PrimaryEnvironmentTarget {
     readonly httpBaseUrl: string;
     readonly wsBaseUrl: string;
   };
+  readonly transport:
+    | { readonly _tag: "Loopback" }
+    | { readonly _tag: "WslBearer"; readonly token: string };
 }
 
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -218,28 +221,41 @@ function validateTargetUrls(input: {
 
   const httpIsLoopback = isLoopbackHostname(httpUrl.hostname);
   const wsIsLoopback = isLoopbackHostname(wsUrl.hostname);
-  if (httpIsLoopback && wsIsLoopback) {
+  const bootstrap = input.desktopBootstrap;
+  if (bootstrap?.transport === "loopback") {
+    if (!httpIsLoopback || !wsIsLoopback) {
+      throw new PrimaryEnvironmentTargetRejectedError({
+        source: input.source,
+        reason: "non-loopback",
+      });
+    }
     return {
       source: input.source,
       target: { httpBaseUrl: httpUrl.toString(), wsBaseUrl: wsUrl.toString() },
+      transport: { _tag: "Loopback" },
     };
   }
-  if (input.source !== "desktop-managed") {
+  if (bootstrap === undefined && httpIsLoopback && wsIsLoopback) {
+    return {
+      source: input.source,
+      target: { httpBaseUrl: httpUrl.toString(), wsBaseUrl: wsUrl.toString() },
+      transport: { _tag: "Loopback" },
+    };
+  }
+  if (input.source !== "desktop-managed" || bootstrap?.transport !== "wsl-bearer") {
     throw new PrimaryEnvironmentTargetRejectedError({
       source: input.source,
       reason: "non-loopback",
     });
   }
 
-  const bootstrap = input.desktopBootstrap;
   const isWslId =
     bootstrap?.id === PRIMARY_LOCAL_ENVIRONMENT_ID || bootstrap?.id.startsWith("wsl:") === true;
   if (
     httpIsLoopback !== wsIsLoopback ||
-    bootstrap?.transport !== "wsl-bearer" ||
     !isWslId ||
-    !bootstrap?.runningDistro?.trim() ||
-    !bootstrap.bootstrapToken?.trim()
+    !bootstrap.runningDistro?.trim() ||
+    !bootstrap.wslBearerToken?.trim()
   ) {
     throw new PrimaryEnvironmentTargetRejectedError({
       source: input.source,
@@ -250,6 +266,7 @@ function validateTargetUrls(input: {
   return {
     source: input.source,
     target: { httpBaseUrl: httpUrl.toString(), wsBaseUrl: wsUrl.toString() },
+    transport: { _tag: "WslBearer", token: bootstrap.wslBearerToken },
   };
 }
 

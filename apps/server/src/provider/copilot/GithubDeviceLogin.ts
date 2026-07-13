@@ -6,7 +6,7 @@ import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Semaphore from "effect/Semaphore";
 
-import * as ServerSecretStore from "../../auth/ServerSecretStore.ts";
+import * as ServerSecretStore from "../../secrets/ServerSecretStore.ts";
 import * as ProviderRegistry from "../Services/ProviderRegistry.ts";
 
 /** Public Copilot editor-integration device-flow client id, proven 2026-07-10. */

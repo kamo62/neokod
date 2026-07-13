@@ -83,33 +83,9 @@
       "types": "./src/orchestrationTiming.ts",
       "import": "./src/orchestrationTiming.ts"
     },
-    "./remote": {
-      "types": "./src/remote.ts",
-      "import": "./src/remote.ts"
-    },
-    "./relaySigning": {
-      "types": "./src/relaySigning.ts",
-      "import": "./src/relaySigning.ts"
-    },
-    "./dpop": {
-      "types": "./src/dpop.ts",
-      "import": "./src/dpop.ts"
-    },
-    "./dpopCommon": {
-      "types": "./src/dpopCommon.ts",
-      "import": "./src/dpopCommon.ts"
-    },
-    "./oauthScope": {
-      "types": "./src/oauthScope.ts",
-      "import": "./src/oauthScope.ts"
-    },
     "./searchRanking": {
       "types": "./src/searchRanking.ts",
       "import": "./src/searchRanking.ts"
-    },
-    "./qrCode": {
-      "types": "./src/qrCode.ts",
-      "import": "./src/qrCode.ts"
     },
     "./cliArgs": {
       "types": "./src/cliArgs.ts",
@@ -165,8 +141,6 @@
     "test": "vp test run"
   },
   "dependencies": {
-    "@noble/curves": "catalog:",
-    "@noble/hashes": "catalog:",
     "@t3tools/contracts": "workspace:*",
     "effect": "catalog:",
     "yaml": "catalog:"

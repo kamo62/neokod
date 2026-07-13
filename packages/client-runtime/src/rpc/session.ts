@@ -15,10 +15,7 @@ import type {
   ConnectionTransientError,
   PreparedConnection,
 } from "../connection/model.ts";
-import {
-  ConnectionBlockedError,
-  ConnectionTransientError as ConnectionTransientErrorClass,
-} from "../connection/model.ts";
+import { ConnectionTransientError as ConnectionTransientErrorClass } from "../connection/model.ts";
 
 const SOCKET_OPEN_TIMEOUT = "15 seconds";
 
@@ -45,11 +42,6 @@ type InitialConfigError = Effect.Error<
 
 function mapInitialConfigError(error: InitialConfigError): ConnectionAttemptError {
   switch (error._tag) {
-    case "EnvironmentAuthorizationError":
-      return new ConnectionBlockedError({
-        reason: "permission",
-        detail: error.message,
-      });
     case "KeybindingsConfigParseError":
     case "ServerSettingsError":
       return new ConnectionTransientErrorClass({

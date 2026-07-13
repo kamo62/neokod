@@ -85,16 +85,16 @@ class TestWebSocket {
 const TARGET = new PrimaryConnectionTarget({
   environmentId: EnvironmentId.make("environment-1"),
   label: "Test environment",
-  httpBaseUrl: "https://environment.example.test",
-  wsBaseUrl: "wss://environment.example.test",
+  httpBaseUrl: "http://127.0.0.1:3773",
+  wsBaseUrl: "ws://127.0.0.1:3773",
 });
 
 const PREPARED: PreparedConnection = {
   environmentId: TARGET.environmentId,
   label: TARGET.label,
   httpBaseUrl: TARGET.httpBaseUrl,
-  socketUrl: "wss://environment.example.test/ws?wsTicket=test",
-  httpAuthorization: null,
+  socketUrl: "ws://127.0.0.1:3773/ws",
+  wslBearerAuthorization: null,
   target: TARGET,
 };
 
@@ -110,12 +110,6 @@ const SERVER_CONFIG: ServerConfigType = {
     capabilities: {
       repositoryIdentity: true,
     },
-  },
-  auth: {
-    policy: "loopback-browser",
-    bootstrapMethods: ["one-time-token"],
-    sessionMethods: ["browser-session-cookie", "bearer-access-token"],
-    sessionCookieName: "t3_session",
   },
   cwd: "/tmp/workspace",
   keybindingsConfigPath: "/tmp/workspace/keybindings.json",

@@ -39,7 +39,6 @@ const baseConfig: DesktopBackendManager.DesktopBackendStartConfig = {
     t3Home: "/tmp/t3",
     transport: "loopback",
     host: "127.0.0.1",
-    desktopBootstrapToken: "token",
   },
   bootstrapDelivery: "fd3",
   extendEnv: true,

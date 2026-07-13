@@ -39,6 +39,20 @@ T3 Code runs as a **Node.js WebSocket server** that wraps `codex app-server` (JS
 
 - **Local notifications**: Browser activity notifications project local thread state through `packages/shared/src/agentAwareness.ts`. The server no longer publishes provider activity to a hosted relay or mobile push service.
 
+## Access boundary
+
+| Runtime                     | Bind                 | HTTP / WebSocket access                                                                            |
+| --------------------------- | -------------------- | -------------------------------------------------------------------------------------------------- |
+| Native desktop backend      | `127.0.0.1`          | Direct local HTTP and `/ws`; no application auth session                                           |
+| Standalone `t3 serve`       | `127.0.0.1`          | Direct local HTTP and `/ws`; no application auth session                                           |
+| Desktop-managed WSL backend | `0.0.0.0` inside WSL | Desktop-generated bearer on sensitive HTTP; bearer-authorized short-lived, single-use `/ws` ticket |
+
+The server rejects a non-loopback bind unless its private desktop bootstrap
+selects `wsl-bearer` and supplies a token. Public CLI flags, environment
+variables, Vite configuration, and persisted connection records cannot select
+that exception. Static app assets remain loadable; WSL environment metadata,
+orchestration APIs, observability ingestion, and WebSocket upgrades fail closed.
+
 ## Event Lifecycle
 
 ### Startup and client connect

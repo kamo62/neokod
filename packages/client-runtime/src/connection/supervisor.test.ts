@@ -44,7 +44,7 @@ const PREPARED_CONNECTION: PreparedConnection = {
   label: TARGET.label,
   httpBaseUrl: TARGET.httpBaseUrl,
   socketUrl: "wss://environment.example.test/ws",
-  httpAuthorization: null,
+  wslBearerAuthorization: null,
   target: TARGET,
 };
 

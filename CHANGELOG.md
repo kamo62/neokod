@@ -5,12 +5,14 @@ Release impact: Major because this removes product surfaces, remote connection t
 - Removed the React Native mobile app and the marketing site as part of the local-first carve-out.
 - Removed SSH backend connections, Tailscale integration, LAN/manual endpoint advertising, and public server host selection.
 - Constrained the desktop primary, standalone server, and development web server to `127.0.0.1`.
-- Retained the authenticated desktop-managed WSL exception: its internal wildcard bind still requires the private `wsl-bearer` discriminator, desktop bootstrap credential, and bearer-session exchange.
-- Purged retired remote saved-environment records during desktop catalog migration.
+- Cut native desktop and standalone `t3 serve` over to direct unauthenticated loopback HTTP and WebSocket transport, removing browser cookies, pairing, sessions, scopes, DPoP, and auth administration.
+- Retained a narrow fail-closed desktop-managed WSL exception: its internal wildcard bind requires the private `wsl-bearer` discriminator, direct bearer validation on sensitive HTTP, and a short-lived single-use WebSocket ticket.
+- Purged retired remote targets, profiles, credentials, DPoP tokens, and saved-environment secrets into the empty schema-v2 connection catalog.
 - Removed the hosted Cloudflare/Postgres/APNs relay infrastructure and the server's outbound mobile-activity publisher while retaining local browser notifications.
 - Removed relay-only workspace, release-smoke, Alchemy reference-sync, and `@effect/sql-pg` configuration.
 - Removed the hosted application, pairing UI, identity-provider integration, remote connection client/contracts, and their desktop preload, CSP, build, CI, configuration, and documentation surfaces.
-- Retained the temporary local auth/session control plane, automatic startup-token bootstrap, desktop bootstrap bearer, and WSL bearer path for Stage 5.
+- Relocated the reusable server secret store and asset-token cryptography outside the deleted auth control plane.
+- Made the normal local shell, both toast providers, activity and slow-RPC coordinators, tracing, event routing, and provider-update notifications unconditional.
 - Restored the browser crypto service required to generate local project and thread command IDs after the remote client removal.
 
 ## 1.1.0 - 2026-07-12 (Minor)

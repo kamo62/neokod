@@ -14,9 +14,8 @@ import {
 
 /**
  * A local environment is either the same-origin primary backend or a
- * desktop-local secondary (the parallel WSL backend), which connects over
- * loopback with a bearer token and carries a `local:<backendInstanceId>`
- * connection id. SSH, relay, and other remote targets are excluded.
+ * desktop-local secondary (the parallel WSL backend), which uses the explicit
+ * WSL bearer transport and carries a `local:<backendInstanceId>` connection id.
  */
 function isLocalConnectionTarget(target: ConnectionCatalogEntry["target"]): boolean {
   return target._tag === "PrimaryConnectionTarget" || isDesktopLocalConnectionTarget(target);

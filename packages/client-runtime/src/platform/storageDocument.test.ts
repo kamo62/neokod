@@ -1,51 +1,25 @@
-import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
 import {
-  BearerConnectionCredential,
-  BearerConnectionProfile,
-  BearerConnectionRegistration,
-} from "../connection/catalog.ts";
-import { BearerConnectionTarget } from "../connection/model.ts";
-import {
   EMPTY_CONNECTION_CATALOG_DOCUMENT,
-  registerConnectionInCatalog,
-  removeConnectionFromCatalog,
+  normalizeConnectionCatalogDocument,
 } from "./storageDocument.ts";
 
-const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
-const TARGET = new BearerConnectionTarget({
-  environmentId: ENVIRONMENT_ID,
-  label: "Remote",
-  connectionId: "bearer-1",
-});
-const PROFILE = new BearerConnectionProfile({
-  connectionId: TARGET.connectionId,
-  environmentId: ENVIRONMENT_ID,
-  label: TARGET.label,
-  httpBaseUrl: "https://remote.example.test",
-  wsBaseUrl: "wss://remote.example.test",
-});
-const CREDENTIAL = new BearerConnectionCredential({ token: "bearer-token" });
-
 describe("ConnectionCatalogDocument", () => {
-  it("registers and removes a bearer connection atomically", () => {
-    const registered = registerConnectionInCatalog(
+  it("keeps the canonical local-only document empty", () => {
+    expect(normalizeConnectionCatalogDocument({ schemaVersion: 2 })).toEqual(
       EMPTY_CONNECTION_CATALOG_DOCUMENT,
-      new BearerConnectionRegistration({
-        target: TARGET,
-        profile: PROFILE,
-        credential: CREDENTIAL,
-      }),
     );
+  });
 
-    expect(registered.targets).toEqual([TARGET]);
-    expect(registered.profiles).toEqual([PROFILE]);
-    expect(registered.credentials).toEqual([
-      { connectionId: TARGET.connectionId, credential: CREDENTIAL },
-    ]);
-    expect(removeConnectionFromCatalog(registered, TARGET)).toEqual(
-      EMPTY_CONNECTION_CATALOG_DOCUMENT,
-    );
+  it("discards legacy targets, profiles, and credentials", () => {
+    expect(
+      normalizeConnectionCatalogDocument({
+        schemaVersion: 1,
+        targets: [{ environmentId: "remote" }],
+        profiles: [{ token: "must-not-survive" }],
+        credentials: [{ token: "must-not-survive" }],
+      }),
+    ).toEqual(EMPTY_CONNECTION_CATALOG_DOCUMENT);
   });
 });

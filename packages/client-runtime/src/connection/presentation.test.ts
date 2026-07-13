@@ -2,10 +2,10 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Option from "effect/Option";
 
-import { BearerConnectionProfile, type ConnectionCatalogEntry } from "./catalog.ts";
+import type { ConnectionCatalogEntry } from "./catalog.ts";
 import {
-  BearerConnectionTarget,
   ConnectionTransientError,
+  WslConnectionTarget,
   type SupervisorConnectionState,
 } from "./model.ts";
 import {
@@ -16,23 +16,17 @@ import {
   presentConnectionState,
 } from "./presentation.ts";
 
-const TARGET = new BearerConnectionTarget({
+const TARGET = new WslConnectionTarget({
   environmentId: EnvironmentId.make("environment-1"),
-  label: "Remote environment",
+  label: "WSL environment",
   connectionId: "connection-1",
+  httpBaseUrl: "http://172.27.0.2:3778",
+  wsBaseUrl: "ws://172.27.0.2:3778",
 });
 
 const ENTRY: ConnectionCatalogEntry = {
   target: TARGET,
-  profile: Option.some(
-    new BearerConnectionProfile({
-      connectionId: TARGET.connectionId,
-      environmentId: TARGET.environmentId,
-      label: TARGET.label,
-      httpBaseUrl: "https://environment.example.test",
-      wsBaseUrl: "wss://environment.example.test",
-    }),
-  ),
+  wslBearerToken: Option.some("wsl-bearer-token"),
 };
 
 function supervisorState(overrides: Partial<SupervisorConnectionState>): SupervisorConnectionState {
@@ -51,7 +45,7 @@ function supervisorState(overrides: Partial<SupervisorConnectionState>): Supervi
 
 describe("connection presentation", () => {
   it("preserves profile display information without exposing credentials", () => {
-    expect(connectionCatalogDisplayUrl(ENTRY)).toBe("https://environment.example.test");
+    expect(connectionCatalogDisplayUrl(ENTRY)).toBe("http://172.27.0.2:3778");
   });
 
   it("distinguishes initial connection, reconnect, and retry errors", () => {

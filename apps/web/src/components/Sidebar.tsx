@@ -403,7 +403,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
     primaryEnvironmentId !== null && thread.environmentId !== primaryEnvironmentId;
   const remoteEnvLabel = environment?.label ?? null;
   // A desktop-local secondary backend (e.g. the WSL backend) shows up as a
-  // bearer environment whose connection id is prefixed "local:". It runs on the
+  // WSL bearer target whose connection id is prefixed "local:". It runs on the
   // user's own machine, so the cloud icon is misleading — label it "Local" and
   // suppress the cloud icon (the project header already shows a container icon
   // for desktop-local projects, see sidebarProjectGrouping).

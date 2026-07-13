@@ -1,147 +1,64 @@
 # Connection Runtime
 
-The connection runtime owns connectivity, authentication, retries, transport
-lifetime, cached environment data, and environment-scoped operations.
+The connection runtime owns local topology, retry policy, transport lifetime,
+cached environment data, and environment-scoped operations. It supports exactly
+two in-memory target forms:
 
-The web app mounts this runtime once at the application root. There is no legacy
-connection owner or supported mixed mode.
+- `PrimaryConnectionTarget`: the direct loopback desktop or `t3 serve` backend;
+- `WslConnectionTarget`: a desktop-proven WSL endpoint with an in-memory bearer.
+
+There are no saved remote targets, profiles, credentials, registrations, or
+DPoP tokens. The schema-v2 catalog is intentionally empty; its v1 decoder exists
+only to discard legacy connection data during the 2.0.0 migration.
 
 ## Ownership
 
-Each registered environment has one scoped Effect `Context` containing focused
-services:
+- `EnvironmentRegistry` reconciles the current platform topology and owns one
+  scoped supervisor per environment.
+- `EnvironmentSupervisor` owns desired state, retries, and the current lease.
+- `ConnectionResolver` prepares a direct loopback socket or obtains a WSL
+  WebSocket ticket.
+- `RpcSessionFactory` performs one socket attempt and initial config probe.
+- Shell and thread services own HTTP snapshots, live subscriptions, and caches.
 
-- `EnvironmentSupervisor` owns desired state, retry scheduling, and the active
-  session scope.
-- `ConnectionBroker` prepares credentials and endpoints for primary and bearer
-  targets.
-- `RpcSessionFactory` performs one transport attempt. It does not retry.
-- `EnvironmentRpc` exposes the active session without leaking the transport.
-- `EnvironmentProjectCommands` and `EnvironmentThreadCommands` construct
-  orchestration commands, IDs, and timestamps.
-- `EnvironmentShell` and `EnvironmentThreads` own live subscriptions and cached
-  snapshots.
+The supervisor is the sole retry owner. Transient failures retry with bounded
+backoff; configuration or WSL bearer failures remain blocked until topology
+changes. Cached projections never establish connection health and never
+overwrite newer live state.
 
-`EnvironmentServicesFactory` assembles that context, and `EnvironmentRegistry`
-owns its scope. There is no aggregate environment runtime facade. React
-components do not create connections, transports, retry loops, or RPC clients.
+## Access matrix
 
-## Connection State
+| Target                      | Discovery                                       | HTTP                                | WebSocket                                                         | Persistence                                  |
+| --------------------------- | ----------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------- | -------------------------------------------- |
+| Native primary / `t3 serve` | Loopback URL                                    | Direct, unauthenticated             | Direct `/ws`                                                      | Cache only                                   |
+| Desktop WSL                 | Current `getLocalEnvironmentBootstraps()` entry | `Authorization: Bearer <wsl token>` | Bearer-protected ticket request, then one fresh single-use ticket | Cache only; token and target are memory-only |
 
-The supervisor is the only retry owner.
+The desktop generates a 192-bit WSL token for each WSL backend start. The WSL
+server binds `0.0.0.0`, compares bearer values in constant time, and protects
+sensitive environment/orchestration HTTP. `POST
+/api/wsl-auth/websocket-ticket` issues an opaque ticket with a 30-second
+lifetime; `/ws` deletes it on first validation, including failed expiry checks.
+The long-lived bearer is never placed in a WebSocket URL.
 
-1. A persisted or platform registration marks an environment as desired.
-2. If the device is offline, the supervisor releases the active session and
-   waits without consuming retry attempts.
-3. When online, the supervisor asks the broker for one prepared connection and
-   asks the session factory for one RPC session.
-4. Transient failures retry forever with exponential backoff capped at 16
-   seconds.
-5. Connectivity changes, application activation, and explicit user retry
-   interrupt the current wait and trigger a fresh attempt.
-6. Authentication or configuration failures remain blocked until an external
-   wakeup changes the relevant input.
-7. An involuntary session close keeps the registration and cache, then retries.
-8. Explicit removal closes the session and deletes the registration,
-   credentials, shell cache, and thread cache.
+Native primary and standalone server bootstraps carry no secret. Their HTTP and
+WebSocket paths are direct because their bind is fixed to `127.0.0.1`. A
+wildcard listener without the private WSL discriminator and token is rejected at
+startup.
 
-The UI derives `available`, `offline`, `connecting`, `reconnecting`,
-`connected`, and `error` from supervisor state plus explicit data-sync state.
-It does not infer connection health from cached data or the existence of a
-transport object. An environment becomes `connected` after the socket opens and
-the initial config RPC succeeds, proving that the server is responsive. Shell
-and thread synchronization are independent data states. A healthy RPC
-transport with a failed shell subscription is shown as connected with a
-synchronization error, not as a reconnect that is not actually scheduled.
+## Platform and data boundary
 
-## Data Boundary
+The web platform reads the primary plus desktop WSL topology, keeps those
+registrations in memory, and provides network/lifecycle wakeups. Finite HTTP
+snapshots, durable WebSocket subscriptions, and commands remain separate APIs.
+Only shell and thread snapshots are persisted in IndexedDB or desktop storage.
 
-Finite requests, durable subscriptions, and commands are separate APIs:
-
-- Query atoms revalidate when the RPC generation changes.
-- Subscription atoms switch to replacement sessions.
-- Expected subscription failures update domain sync state and wait for a
-  replacement session; they do not take down a healthy transport.
-- Mutations resolve the current environment runtime at execution time.
-- Shell and thread snapshots are available while offline.
-- A connected transport may have `empty`, `cached`, `synchronizing`, `live`, or
-  failed shell and thread data independently.
-- Cached shell and thread projections are never allowed to overwrite newer live
-  data during a fast reconnect.
-- Domain atom factories route effects through the environment registry and
-  resolve the current scoped service at execution time.
-- The web app owns its Atom runtime, React hooks, and feature composition.
-
-The Promise bridge exists only at the React/Atom boundary. Runtime and business
-logic remain Effect-native.
-
-## Platform Layers
-
-The web app provides:
-
-- network status and network-change streams;
-- application lifecycle wakeups;
-- primary-environment bearer authorization;
-- client presentation metadata;
-- platform registrations;
-- persistent catalog, credential, shell, and thread stores;
-- HTTP and telemetry layers.
-
-Platform layers adapt operating-system capabilities. They do not implement
-connection policy.
-
-The desktop primary and public `t3 serve` startup are IPv4-loopback-only. The
-only non-loopback exception is desktop-managed WSL topology: the desktop parent
-may bind the WSL child to its internal wildcard interface and publishes the
-matching WSL origin together with the transitional bootstrap credential. The
-renderer requires the `wsl-bearer` discriminator, distro, credential, and matching
-HTTP/WebSocket origins before exchanging the credential for a bearer session.
-Configured Vite URLs and browser origins never receive this exception.
-
-Hosted services and outbound mobile activity publishing are not part of the local-first runtime.
-Local browser notifications use the pure shared agent-awareness projection and do not publish
-activity off-device.
-
-## Source Boundaries
-
-The public package subpaths mirror the runtime layers:
-
-- `connection/core` contains state, catalog, retry policy, and connectivity.
-- `connection/transport` contains brokerage, authorization, attempts, and RPC
-  sessions.
-- `connection/platform` declares capabilities and persistence contracts.
-- `connection/services` contains environment-scoped data services.
-- `connection/application` assembles registries, discovery, and startup.
-- `connection/atoms` adapts shared services to application-owned Atom runtimes.
-- `connection/presentation` contains pure UI projections.
-
-Other reusable state lives in domain subpaths such as `shell`, `threads`,
-`terminal`, and `vcs`. Applications must import explicit package subpaths; the
-package intentionally has no root export.
-
-## Application Boundary
-
-The application root mounts the shared connection application layer, creates
-its own Atom runtime, and selects the domain atom factories required by that
-platform. The web app may expose different hooks and features without changing
-connection ownership.
-
-Application code must not construct `WsTransport`, RPC clients, retry loops, or
-raw orchestration commands. Persistence paths belong to the platform
-registration and cache stores, with explicit migration or invalidation policy.
+Both toast providers, the slow-RPC coordinator, activity notification
+coordinator, tracing bootstrap, event router, and provider-update notification
+mount unconditionally in the normal root shell. Local activity notifications
+therefore do not depend on an auth/session state.
 
 ## Verification
 
-Core state-machine tests use `@effect/vitest` and deterministic service layers.
-Required coverage includes:
-
-- offline startup and online wakeup;
-- forever retry with the 16-second cap;
-- explicit retry interrupting backoff;
-- authentication wakeups;
-- involuntary close and reconnect;
-- explicit removal clearing all owned state;
-- bearer authorization and ticket issuance;
-- shell and thread cache hydration;
-- durable subscriptions switching sessions;
-- command metadata and idempotent queued-command metadata.
+Required coverage includes direct loopback preparation, rejection of missing or
+incorrect WSL bearers, expired/reused WebSocket tickets, legacy-catalog purge,
+retry behavior, cache hydration, and durable subscriptions switching sessions.

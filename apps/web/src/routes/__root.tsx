@@ -34,7 +34,6 @@ import {
 import { useUiStateStore } from "../uiStateStore";
 import { syncBrowserChromeTheme } from "../hooks/useTheme";
 import { configureClientTracing } from "../observability/clientTracing";
-import { resolveInitialServerAuthGateState } from "../environments/primary";
 import { shellEnvironment } from "../state/shell";
 import { useAtomValue } from "@effect/atom-react";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -51,12 +50,6 @@ import {
 } from "../components/KeybindingsUpdateToast.logic";
 
 export const Route = createRootRoute({
-  beforeLoad: async () => {
-    const authGateState = await resolveInitialServerAuthGateState();
-    return {
-      authGateState,
-    };
-  },
   component: RootRouteView,
   errorComponent: RootRouteErrorView,
   head: () => ({
@@ -88,7 +81,7 @@ function RootRouteView() {
     <ToastProvider>
       <AnchoredToastProvider>
         <DocumentTitleSync />
-        <AuthenticatedTracingBootstrap />
+        <TracingBootstrap />
         <SlowRpcRequestToastCoordinator />
         <ActivityNotificationCoordinator />
         <EventRouter />
@@ -187,7 +180,7 @@ function errorDetails(error: unknown): string {
   }
 }
 
-function AuthenticatedTracingBootstrap() {
+function TracingBootstrap() {
   useEffect(() => {
     void configureClientTracing();
   }, []);

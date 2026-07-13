@@ -71,7 +71,7 @@ export class ServerConfig extends Context.Service<
     readonly devUrl: URL | undefined;
     readonly noBrowser: boolean;
     readonly startupPresentation: StartupPresentation;
-    readonly desktopBootstrapToken: string | undefined;
+    readonly wslBearerToken: string | undefined;
     readonly autoBootstrapProjectFromCwd: boolean;
     readonly logWebSocketEvents: boolean;
   }
@@ -174,7 +174,7 @@ const makeTest = Effect.fn("ServerConfig.makeTest")(function* (
     port: 0,
     transport: "loopback",
     host: "127.0.0.1",
-    desktopBootstrapToken: undefined,
+    wslBearerToken: undefined,
     staticDir: undefined,
     devUrl,
     noBrowser: false,
@@ -183,10 +183,10 @@ const makeTest = Effect.fn("ServerConfig.makeTest")(function* (
 });
 
 export function isServerBindAuthorized(
-  config: Pick<ServerConfig["Service"], "host" | "transport" | "desktopBootstrapToken">,
+  config: Pick<ServerConfig["Service"], "host" | "transport" | "wslBearerToken">,
 ): boolean {
   if (config.host === "127.0.0.1") return config.transport === "loopback";
-  return config.transport === "wsl-bearer" && Boolean(config.desktopBootstrapToken?.trim());
+  return config.transport === "wsl-bearer" && Boolean(config.wslBearerToken?.trim());
 }
 
 export const layerTest = (cwd: string, baseDirOrPrefix: string | { readonly prefix: string }) =>

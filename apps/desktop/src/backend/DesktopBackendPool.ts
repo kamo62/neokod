@@ -33,21 +33,14 @@
 //     picker that shows up when the toggle is on. Default-off, so
 //     users who never opted in see the same surface as before.
 //
-// Renderer-side wiring (apps/web/src/environments/local/):
-//   - reconcileLocalSecondaryEnvironments() runs at app boot and after
-//     WSL settings changes. It reads getLocalEnvironmentBootstraps(),
-//     skips the primary (which the existing primary/ runtime owns),
-//     and for every other entry POSTs the shared bootstrap token to
-//     /api/auth/bootstrap/bearer on that backend's URL, fetches the
-//     descriptor, builds a SavedEnvironmentRecord marked desktopLocal,
-//     writes the bearer to the secret store, and opens a connection
-//     through the same saved-env path remote envs use.
-//   - The desktopLocal marker filters records out of saved-env
-//     persistence, so toggling WSL off or switching distros doesn't
-//     pollute the user's settings file. The sidebar, CommandPalette,
-//     env switcher, and project-id routing all read the saved-env
-//     registry, so the WSL backend shows up there without any
-//     per-surface changes.
+// Renderer-side wiring:
+//   - reconcileLocalSecondaryEnvironments() reads these bootstraps at app
+//     startup and after WSL settings changes.
+//   - The loopback primary connects directly. Each WSL bootstrap carries an
+//     in-memory desktop-generated bearer used for HTTP and for obtaining a
+//     short-lived, single-use WebSocket ticket.
+//   - No backend registration or credential is persisted in the browser or
+//     desktop connection catalog.
 //
 // Browser validation (2026-05-17, dev:desktop with wslBackendEnabled=true,
 // wslDistro="Ubuntu"):
@@ -56,9 +49,8 @@
 //   - Per-instance log files: server-child.log + server-child-wsl_Ubuntu.log.
 //   - Distinct environment ids reported by each backend's
 //     /.well-known/t3/environment (Windows vs Linux platform).
-//   - Renderer completes the bearer-token bootstrap against the WSL
-//     backend (POST /api/auth/bootstrap/bearer 200), obtains a
-//     ws-token (POST /api/auth/ws-token 200), and holds an
+//   - Renderer sends the WSL bearer for HTTP, obtains a single-use ticket
+//     from POST /api/wsl-auth/websocket-ticket, and holds an
 //     ESTABLISHED WebSocket connection to both ports (netstat).
 //
 // Migration history (commits):

@@ -1,16 +1,12 @@
 import * as NodeOS from "node:os";
 
-import { QrCode } from "@t3tools/shared/qrCode";
 import * as Effect from "effect/Effect";
 import { HttpServer } from "effect/unstable/http";
 
 import { ServerConfig } from "./config.ts";
-import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 
 export interface HeadlessServeAccessInfo {
   readonly connectionString: string;
-  readonly token: string;
-  readonly startupUrl: string;
 }
 
 type NetworkInterfacesMap = ReturnType<typeof NodeOS.networkInterfaces>;
@@ -89,60 +85,15 @@ export const resolveListeningPort = (address: unknown, fallbackPort: number): nu
   return fallbackPort;
 };
 
-export const buildStartupUrl = (connectionString: string, token: string): string => {
-  const url = new URL(connectionString);
-  url.pathname = "/";
-  url.hash = "";
-  url.searchParams.set("token", token);
-  return url.toString();
-};
-
-export const renderTerminalQrCode = (value: string, margin = 2): string => {
-  const qrCode = QrCode.encodeText(value, QrCode.Ecc.MEDIUM);
-  const rows: Array<string> = [];
-  const isDark = (x: number, y: number): boolean =>
-    x >= 0 && x < qrCode.size && y >= 0 && y < qrCode.size && qrCode.getModule(x, y);
-
-  for (let y = -margin; y < qrCode.size + margin; y += 2) {
-    let row = "";
-
-    for (let x = -margin; x < qrCode.size + margin; x += 1) {
-      const topDark = isDark(x, y);
-      const bottomDark = isDark(x, y + 1);
-
-      row += topDark ? (bottomDark ? "█" : "▀") : bottomDark ? "▄" : " ";
-    }
-
-    rows.push(row);
-  }
-
-  return rows.join("\n");
-};
-
 export const formatHeadlessServeOutput = (accessInfo: HeadlessServeAccessInfo): string =>
-  [
-    "T3 Code server is ready.",
-    `Connection string: ${accessInfo.connectionString}`,
-    `Token: ${accessInfo.token}`,
-    `Startup URL: ${accessInfo.startupUrl}`,
-    "",
-    renderTerminalQrCode(accessInfo.startupUrl),
-    "",
-  ].join("\n");
+  ["T3 Code server is ready.", `Local URL: ${accessInfo.connectionString}`, ""].join("\n");
 
 export const issueHeadlessServeAccessInfo = Effect.fn("issueHeadlessServeAccessInfo")(function* () {
   const serverConfig = yield* ServerConfig;
   const httpServer = yield* HttpServer.HttpServer;
-  const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
   const connectionString = resolveHeadlessConnectionString(
     serverConfig.host,
     resolveListeningPort(httpServer.address, serverConfig.port),
   );
-  const issued = yield* serverAuth.issueStartupPairingCredential();
-
-  return {
-    connectionString,
-    token: issued.credential,
-    startupUrl: buildStartupUrl(connectionString, issued.credential),
-  } satisfies HeadlessServeAccessInfo;
+  return { connectionString } satisfies HeadlessServeAccessInfo;
 });

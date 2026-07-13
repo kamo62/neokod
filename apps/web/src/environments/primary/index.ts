@@ -13,31 +13,6 @@ export {
   writePrimaryEnvironmentDescriptor as updatePrimaryEnvironmentDescriptor,
 } from "./context";
 
-export {
-  createServerPairingCredential,
-  fetchSessionState,
-  isPrimaryEnvironmentPairingCredentialRejectedError,
-  isPrimaryEnvironmentRequestError,
-  listServerClientSessions,
-  listServerPairingLinks,
-  peekPairingTokenFromUrl,
-  PrimaryEnvironmentPairingCredentialRejectedError,
-  PrimaryEnvironmentRequestError,
-  reauthenticatePrimaryEnvironment,
-  resolveInitialServerAuthGateState,
-  revokeOtherServerClientSessions,
-  revokeServerClientSession,
-  revokeServerPairingLink,
-  stripPairingTokenFromUrl,
-  submitServerAuthCredential,
-  takePairingTokenFromUrl,
-  type ServerClientSessionRecord,
-  type ServerPairingLinkRecord,
-  __resetServerAuthBootstrapForTests,
-} from "./auth";
-
-export { refreshPrimarySessionState, usePrimarySessionState } from "./sessionState";
-
 export { PrimaryEnvironmentHttpClient } from "./httpClient";
 
 export {

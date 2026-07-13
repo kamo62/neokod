@@ -9,7 +9,7 @@ import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
-import * as ServerSecretStore from "../../auth/ServerSecretStore.ts";
+import * as ServerSecretStore from "../../secrets/ServerSecretStore.ts";
 import * as ProviderRegistry from "../Services/ProviderRegistry.ts";
 import {
   COPILOT_GITHUB_TOKEN_SECRET,

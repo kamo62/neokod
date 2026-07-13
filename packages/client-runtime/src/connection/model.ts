@@ -15,19 +15,18 @@ export class PrimaryConnectionTarget extends Schema.TaggedClass<PrimaryConnectio
   },
 ) {}
 
-export class BearerConnectionTarget extends Schema.TaggedClass<BearerConnectionTarget>()(
-  "BearerConnectionTarget",
+export class WslConnectionTarget extends Schema.TaggedClass<WslConnectionTarget>()(
+  "WslConnectionTarget",
   {
     ...ConnectionTargetBase,
     connectionId: Schema.String,
+    httpBaseUrl: Schema.String,
+    wsBaseUrl: Schema.String,
   },
 ) {}
 
-export const ConnectionTarget = Schema.Union([PrimaryConnectionTarget, BearerConnectionTarget]);
+export const ConnectionTarget = Schema.Union([PrimaryConnectionTarget, WslConnectionTarget]);
 export type ConnectionTarget = typeof ConnectionTarget.Type;
-
-export const PersistedConnectionTarget = Schema.Union([BearerConnectionTarget]);
-export type PersistedConnectionTarget = typeof PersistedConnectionTarget.Type;
 
 export type ConnectionTargetKind = ConnectionTarget["_tag"];
 
@@ -78,8 +77,8 @@ export class ConnectionBlockedError extends Schema.TaggedErrorClass<ConnectionBl
 
 export type ConnectionAttemptError = ConnectionTransientError | ConnectionBlockedError;
 
-export interface PreparedHttpAuthorization {
-  readonly _tag: "Bearer";
+export interface PreparedWslBearerAuthorization {
+  readonly _tag: "WslBearer";
   readonly token: string;
 }
 
@@ -88,7 +87,7 @@ export interface PreparedConnection {
   readonly label: string;
   readonly httpBaseUrl: string;
   readonly socketUrl: string;
-  readonly httpAuthorization: PreparedHttpAuthorization | null;
+  readonly wslBearerAuthorization: PreparedWslBearerAuthorization | null;
   readonly target: ConnectionTarget;
 }
 

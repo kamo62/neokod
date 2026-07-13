@@ -1,7 +1,4 @@
-import {
-  BearerConnectionTarget,
-  PrimaryConnectionTarget,
-} from "@t3tools/client-runtime/connection";
+import { PrimaryConnectionTarget, WslConnectionTarget } from "@t3tools/client-runtime/connection";
 import { EnvironmentId, PRIMARY_LOCAL_ENVIRONMENT_ID } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -14,10 +11,12 @@ import {
 
 describe("desktop local connection identity", () => {
   it("preserves the desktop backend instance id", () => {
-    const target = new BearerConnectionTarget({
+    const target = new WslConnectionTarget({
       connectionId: desktopLocalConnectionId("wsl:Ubuntu"),
       environmentId: EnvironmentId.make("environment-wsl"),
       label: "WSL (Ubuntu)",
+      httpBaseUrl: "http://172.27.0.2:4000",
+      wsBaseUrl: "ws://172.27.0.2:4000",
     });
 
     expect(isDesktopLocalConnectionTarget(target)).toBe(true);
@@ -60,6 +59,8 @@ describe("desktop local topology reads", () => {
       transport: "wsl-bearer" as const,
       httpBaseUrl: "http://127.0.0.1:4000",
       wsBaseUrl: "ws://127.0.0.1:4000",
+      runningDistro: "Ubuntu",
+      wslBearerToken: "wsl-bearer-token",
     };
 
     const reader = createDesktopSecondaryBootstrapsReader(() => ({
@@ -84,6 +85,8 @@ describe("desktop local topology reads", () => {
       transport: "wsl-bearer" as const,
       httpBaseUrl: "http://127.0.0.1:4000",
       wsBaseUrl: "ws://127.0.0.1:4000",
+      runningDistro: "Ubuntu",
+      wslBearerToken: "wsl-bearer-token",
     };
     let readBootstraps = () => [secondary];
     const reader = createDesktopSecondaryBootstrapsReader(() => ({

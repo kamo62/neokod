@@ -2,20 +2,12 @@ import {
   ConnectionCatalogDocument,
   type ConnectionCatalogDocument as ConnectionCatalogDocumentType,
   ConnectionPersistenceError,
-  ConnectionRegistrationStore,
-  ConnectionTargetStore,
   EMPTY_CONNECTION_CATALOG_DOCUMENT,
   EnvironmentCacheStore,
-  registerConnectionInCatalog,
-  removeCatalogValue,
-  removeConnectionFromCatalog,
-  replaceCatalogValue,
+  StoredConnectionCatalogDocument,
+  normalizeConnectionCatalogDocument,
 } from "@t3tools/client-runtime/platform";
-import {
-  ConnectionTransientError,
-  CredentialStore,
-  ProfileStore,
-} from "@t3tools/client-runtime/connection";
+import { ConnectionTransientError } from "@t3tools/client-runtime/connection";
 import {
   EnvironmentId,
   OrchestrationShellSnapshot,
@@ -54,8 +46,11 @@ const StoredThreadSnapshot = Schema.Struct({
   snapshot: OrchestrationThreadDetailSnapshot,
 });
 const StoredThreadSnapshotJson = Schema.fromJsonString(StoredThreadSnapshot);
+const StoredConnectionCatalogDocumentJson = Schema.fromJsonString(StoredConnectionCatalogDocument);
+const decodeStoredConnectionCatalogDocument = Schema.decodeUnknownEffect(
+  StoredConnectionCatalogDocumentJson,
+);
 const ConnectionCatalogDocumentJson = Schema.fromJsonString(ConnectionCatalogDocument);
-const decodeConnectionCatalogDocument = Schema.decodeUnknownEffect(ConnectionCatalogDocumentJson);
 const encodeConnectionCatalogDocument = Schema.encodeEffect(ConnectionCatalogDocumentJson);
 const decodeStoredShellSnapshot = Schema.decodeUnknownEffect(StoredShellSnapshotJson);
 const encodeStoredShellSnapshot = Schema.encodeEffect(StoredShellSnapshotJson);
@@ -71,9 +66,6 @@ function catalogError(operation: string, cause: unknown) {
 
 function persistenceError(
   operation:
-    | "list-targets"
-    | "register-connection"
-    | "remove-connection"
     | "load-shell"
     | "save-shell"
     | "load-thread"
@@ -197,7 +189,8 @@ function threadCacheKey(environmentId: EnvironmentId, threadId: ThreadId) {
 }
 
 const decodeCatalog = Effect.fn("web.connectionStorage.decodeCatalog")(function* (raw: string) {
-  return yield* decodeConnectionCatalogDocument(raw).pipe(
+  return yield* decodeStoredConnectionCatalogDocument(raw).pipe(
+    Effect.map(normalizeConnectionCatalogDocument),
     Effect.mapError((cause) => catalogError("decode", cause)),
   );
 });
@@ -255,9 +248,6 @@ export function makeCatalogBackend(database: IDBDatabase): CatalogBackend {
 
 interface CatalogStore {
   readonly read: Effect.Effect<ConnectionCatalogDocumentType, ConnectionTransientError>;
-  readonly update: (
-    transform: (catalog: ConnectionCatalogDocumentType) => ConnectionCatalogDocumentType,
-  ) => Effect.Effect<void, ConnectionTransientError>;
 }
 
 export const makeCatalogStore = Effect.fn("web.connectionStorage.makeCatalogStore")(function* (
@@ -302,24 +292,14 @@ export const makeCatalogStore = Effect.fn("web.connectionStorage.makeCatalogStor
         ),
       );
     }
+    const encoded = yield* encodeCatalog(catalog);
+    yield* backend.write(encoded);
     yield* Ref.set(state, Option.some(catalog));
     return catalog;
   });
 
   const read = lock.withPermits(1)(loadUnlocked());
-  const update: CatalogStore["update"] = Effect.fn("web.connectionStorage.updateCatalog")(
-    function* (transform) {
-      yield* lock.withPermits(1)(
-        Effect.gen(function* () {
-          const next = transform(yield* loadUnlocked());
-          yield* backend.write(yield* encodeCatalog(next));
-          yield* Ref.set(state, Option.some(next));
-        }),
-      );
-    },
-  );
-
-  return { read, update } satisfies CatalogStore;
+  return { read } satisfies CatalogStore;
 });
 
 export const connectionStorageLayer = Layer.effectContext(
@@ -328,74 +308,7 @@ export const connectionStorageLayer = Layer.effectContext(
       Effect.sync(() => database.close()),
     );
     const catalog = yield* makeCatalogStore(makeCatalogBackend(database));
-
-    const targetStore = ConnectionTargetStore.of({
-      list: catalog.read.pipe(
-        Effect.map((document) => document.targets),
-        Effect.mapError((cause) => persistenceError("list-targets", cause)),
-      ),
-    });
-    const registrationStore = ConnectionRegistrationStore.of({
-      register: (registration) =>
-        catalog
-          .update((document) => registerConnectionInCatalog(document, registration))
-          .pipe(Effect.mapError((cause) => persistenceError("register-connection", cause))),
-      remove: (target) =>
-        catalog
-          .update((document) => removeConnectionFromCatalog(document, target))
-          .pipe(Effect.mapError((cause) => persistenceError("remove-connection", cause))),
-    });
-    const profileStore = ProfileStore.make({
-      get: (connectionId) =>
-        catalog.read.pipe(
-          Effect.map((document) =>
-            Option.fromUndefinedOr(
-              document.profiles.find((profile) => profile.connectionId === connectionId),
-            ),
-          ),
-        ),
-      put: (profile) =>
-        catalog.update((document) => ({
-          ...document,
-          profiles: replaceCatalogValue(document.profiles, (value) => value.connectionId, profile),
-        })),
-      remove: (connectionId) =>
-        catalog.update((document) => ({
-          ...document,
-          profiles: removeCatalogValue(
-            document.profiles,
-            (value) => value.connectionId,
-            connectionId,
-          ),
-        })),
-    });
-    const credentialStore = CredentialStore.make({
-      get: (connectionId) =>
-        catalog.read.pipe(
-          Effect.map((document) =>
-            Option.fromUndefinedOr(
-              document.credentials.find((entry) => entry.connectionId === connectionId)?.credential,
-            ),
-          ),
-        ),
-      put: (connectionId, credential) =>
-        catalog.update((document) => ({
-          ...document,
-          credentials: replaceCatalogValue(document.credentials, (value) => value.connectionId, {
-            connectionId,
-            credential,
-          }),
-        })),
-      remove: (connectionId) =>
-        catalog.update((document) => ({
-          ...document,
-          credentials: removeCatalogValue(
-            document.credentials,
-            (value) => value.connectionId,
-            connectionId,
-          ),
-        })),
-    });
+    yield* catalog.read;
     const cacheStore = EnvironmentCacheStore.of({
       loadShell: (environmentId) =>
         readDatabaseValue(database, SHELL_STORE_NAME, environmentId).pipe(
@@ -499,11 +412,6 @@ export const connectionStorageLayer = Layer.effectContext(
         ).pipe(Effect.mapError((cause) => persistenceError("clear-environment", cause))),
     });
 
-    return Context.make(ConnectionTargetStore, targetStore).pipe(
-      Context.add(ConnectionRegistrationStore, registrationStore),
-      Context.add(ProfileStore.ConnectionProfileStore, profileStore),
-      Context.add(CredentialStore.ConnectionCredentialStore, credentialStore),
-      Context.add(EnvironmentCacheStore, cacheStore),
-    );
+    return Context.make(EnvironmentCacheStore, cacheStore);
   }),
 );

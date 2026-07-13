@@ -34,7 +34,7 @@ const PREPARED: PreparedConnection = {
   label: TARGET.label,
   httpBaseUrl: TARGET.httpBaseUrl,
   socketUrl: TARGET.wsBaseUrl,
-  httpAuthorization: null,
+  wslBearerAuthorization: null,
   target: TARGET,
 };
 

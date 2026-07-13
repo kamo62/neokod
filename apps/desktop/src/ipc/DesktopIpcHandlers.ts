@@ -18,7 +18,6 @@ import {
   confirm,
   getAppBranding,
   getLocalEnvironmentBootstraps,
-  getLocalEnvironmentBearerToken,
   openExternal,
   pickFolder,
   setTheme,
@@ -33,7 +32,6 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
 
   yield* ipc.handleSync(getAppBranding);
   yield* ipc.handleSync(getLocalEnvironmentBootstraps);
-  yield* ipc.handle(getLocalEnvironmentBearerToken);
 
   yield* ipc.handle(getClientSettings);
   yield* ipc.handle(setClientSettings);
