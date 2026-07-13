@@ -922,6 +922,27 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("allows Neokod desktop origins and rejects legacy desktop origins in dev", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: { devUrl: new URL("http://127.0.0.1:5173") },
+      });
+      const url = yield* getHttpServerUrl("/.well-known/neokod/environment");
+
+      for (const origin of ["neokod://app", "neokod-dev://app"]) {
+        const response = yield* fetchEffect(url, { headers: { origin } });
+        assert.equal(response.status, 200);
+        assertBrowserApiCorsResponseHeaders(response.headers, { origin, credentials: true });
+      }
+
+      for (const origin of ["t3://app", "t3-dev://app"]) {
+        const response = yield* fetchEffect(url, { headers: { origin } });
+        assert.equal(response.status, 200);
+        assert.equal(response.headers["access-control-allow-origin"], undefined);
+      }
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("proxies browser OTLP trace exports through the server", () =>
     Effect.gen(function* () {
       const upstreamRequests: Array<{

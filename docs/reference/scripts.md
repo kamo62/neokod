@@ -23,8 +23,8 @@
 ## Desktop `.dmg` packaging notes
 
 - Default build is unsigned/not notarized for local sharing.
-- The DMG build uses `assets/macos-icon-1024.png` as the production app icon source.
-- Desktop production windows load the bundled UI from `t3code://app/index.html` (not a `127.0.0.1` document URL).
+- The DMG build uses `assets/prod/black-macos-1024.png` as the production app icon source.
+- Desktop production windows load the bundled UI from `neokod://app/index.html` (not a `127.0.0.1` document URL).
 - Desktop packaging includes `apps/server/dist` (the `neokod` backend) and starts
   the primary on `127.0.0.1`. A desktop-managed WSL child may bind internally
   to `0.0.0.0`, but its `wsl-bearer` discriminator and bearer remain mandatory.

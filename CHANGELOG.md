@@ -1,3 +1,11 @@
+## 3.0.2 - 2026-07-13 (Patch)
+
+Release impact: Patch because this corrects Stage 4 desktop identity and CORS regression coverage without changing public contracts.
+
+- Fixed the desktop launcher identity test to load under an explicit development environment and assert the Neokod development protocol.
+- Added CORS coverage for Neokod desktop renderer origins and rejection of legacy T3 origins during credentialed development requests.
+- Finalized desktop metadata around the existing Neokod application identity, renderer protocols, staged publisher data, WSL prebuild marker, and Neokod-named production icon assets.
+
 ## 3.0.1 - 2026-07-13 (Patch)
 
 Release impact: Patch because this corrects environment precedence and reserved script variables without changing public contracts.

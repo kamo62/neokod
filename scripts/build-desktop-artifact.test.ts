@@ -342,6 +342,22 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
   );
 
+  it.effect("keeps Neokod packaging identifiers, artifacts, and protocols", () =>
+    Effect.gen(function* () {
+      const config = yield* createBuildConfig("mac", "dmg", "1.2.3", false, false, undefined);
+
+      assert.equal(config.appId, "com.kamo62.neokod");
+      assert.equal(config.productName, "Neokod");
+      assert.equal(config.artifactName, "Neokod-${version}-${arch}.${ext}");
+      assert.deepStrictEqual(config.mac, {
+        target: ["dmg", "zip"],
+        icon: "icon.icns",
+        category: "public.app-category.developer-tools",
+        protocols: [{ name: "Neokod", schemes: ["neokod", "neokod-dev"] }],
+      });
+    }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
+  );
+
   it("promotes target fff binaries to direct staged dependencies", () => {
     assert.deepStrictEqual(resolveFffNativeDependencies("mac", "arm64", "0.9.4"), {
       "@ff-labs/fff-bin-darwin-arm64": "0.9.4",

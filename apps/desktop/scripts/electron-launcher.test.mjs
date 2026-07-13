@@ -3,6 +3,25 @@ import { assert, describe, it } from "vite-plus/test";
 import { makeDevelopmentLauncherScript, resolveElectronBinaryPath } from "./electron-launcher.mjs";
 
 describe("electron development launcher", () => {
+  it("keeps the Neokod development identity and protocol", async () => {
+    const previousDevServerUrl = process.env.VITE_DEV_SERVER_URL;
+    process.env.VITE_DEV_SERVER_URL = "http://127.0.0.1:5173";
+    try {
+      const { APP_BUNDLE_ID, APP_DISPLAY_NAME, APP_PROTOCOL_SCHEMES } =
+        await import("./electron-launcher.mjs?test-development-identity");
+
+      assert.equal(APP_DISPLAY_NAME, "Neokod (Dev)");
+      assert.match(APP_BUNDLE_ID, /^com\.kamo62\.neokod\.dev\./u);
+      assert.deepEqual(APP_PROTOCOL_SCHEMES, ["neokod-dev"]);
+    } finally {
+      if (previousDevServerUrl === undefined) {
+        delete process.env.VITE_DEV_SERVER_URL;
+      } else {
+        process.env.VITE_DEV_SERVER_URL = previousDevServerUrl;
+      }
+    }
+  });
+
   it("uses captured values only as fallbacks for a live runner environment", () => {
     const script = makeDevelopmentLauncherScript({
       electronBinaryPath: "/repo/node_modules/electron/Electron",
@@ -22,7 +41,7 @@ describe("electron development launcher", () => {
     assert.notInclude(script, "\nexport VITE_DEV_SERVER_URL=");
     assert.include(
       script,
-      "exec '/repo/node_modules/electron/Electron' --t3code-dev-root='/repo/apps/desktop' '/repo/apps/desktop/dist-electron/main.cjs' \"$@\"",
+      "exec '/repo/node_modules/electron/Electron' --neokod-dev-root='/repo/apps/desktop' '/repo/apps/desktop/dist-electron/main.cjs' \"$@\"",
     );
   });
 
