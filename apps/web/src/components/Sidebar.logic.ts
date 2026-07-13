@@ -283,6 +283,33 @@ export function getVisibleSidebarThreadIds<TThreadId>(
   );
 }
 
+export function getPinnedAndUnpinnedSidebarThreads<
+  T extends Pick<Thread, "id" | "archivedAt">,
+>(input: {
+  threads: readonly T[];
+  pinnedThreadKeys: readonly string[];
+  getThreadKey: (thread: T) => string;
+}): { pinned: T[]; unpinned: T[]; visibleThreadKeys: string[] } {
+  const liveByKey = new Map(
+    input.threads
+      .filter((thread) => thread.archivedAt === null)
+      .map((thread) => [input.getThreadKey(thread), thread] as const),
+  );
+  const pinned = input.pinnedThreadKeys.flatMap((key) => {
+    const thread = liveByKey.get(key);
+    return thread ? [thread] : [];
+  });
+  const pinnedKeys = new Set(input.pinnedThreadKeys);
+  const unpinned = input.threads.filter(
+    (thread) => thread.archivedAt === null && !pinnedKeys.has(input.getThreadKey(thread)),
+  );
+  return {
+    pinned,
+    unpinned,
+    visibleThreadKeys: [...pinned, ...unpinned].map(input.getThreadKey),
+  };
+}
+
 export function getSidebarThreadIdsToPrewarm<TThreadId>(
   visibleThreadIds: readonly TThreadId[],
   limit = SIDEBAR_THREAD_PREWARM_LIMIT,

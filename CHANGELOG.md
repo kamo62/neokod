@@ -5,6 +5,8 @@ Release impact: Minor because the cumulative redesign will add backward-compatib
 - Added a static semantic light/dark token foundation for surfaces, text, lines, focus, brand, and state aliases.
 - Bridged the semantic palette through existing Tailwind and shadcn variables, including sidebar roles, without changing theme ownership.
 - Added the fixed UI, metadata, chat, compact-row, and surface-header scale for later visual passes.
+- Added persisted Threads/Workspace sidebar selection and scoped local pinned-thread preferences.
+- Added the atom-backed flat Threads view with live-only Pinned rows, shared thread actions, and keyboard-visible ordering.
 
 ## 2.0.0 - 2026-07-13 (Major)
 

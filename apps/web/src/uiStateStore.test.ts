@@ -9,15 +9,20 @@ import {
   PERSISTED_STATE_KEY,
   type PersistedUiState,
   persistState,
+  removePinnedThreads,
   reorderProjects,
   resolveProjectExpanded,
   setProjectExpanded,
+  setSidebarView,
   setThreadChangedFilesExpanded,
+  togglePinnedThread,
   type UiState,
 } from "./uiStateStore";
 
 function makeUiState(overrides: Partial<UiState> = {}): UiState {
   return {
+    sidebarView: "threads",
+    pinnedThreadKeys: [],
     projectExpandedById: {},
     projectOrder: [],
     threadLastVisitedAtById: {},
@@ -77,6 +82,18 @@ describe("uiStateStore pure functions", () => {
       "environment-b:/repo": false,
     });
     expect(setProjectExpanded(next, keys, false)).toBe(next);
+  });
+
+  it("persists valid scoped pins in insertion order and removes deleted pins", () => {
+    const first = "environment-a:thread-1";
+    const second = "environment-b:thread-1";
+    const pinned = togglePinnedThread(togglePinnedThread(makeUiState(), first), second);
+
+    expect(pinned.pinnedThreadKeys).toEqual([first, second]);
+    expect(togglePinnedThread(pinned, first).pinnedThreadKeys).toEqual([second]);
+    expect(togglePinnedThread(pinned, "invalid")).toBe(pinned);
+    expect(removePinnedThreads(pinned, [first, "missing"]).pinnedThreadKeys).toEqual([second]);
+    expect(setSidebarView(pinned, "workspace").sidebarView).toBe("workspace");
   });
 
   it("reorders from the current atom-derived project order", () => {
@@ -151,6 +168,8 @@ describe("parsePersistedState", () => {
     });
 
     expect(parsed).toEqual({
+      sidebarView: "threads",
+      pinnedThreadKeys: [],
       projectExpandedById: {
         logical: false,
       },
@@ -164,6 +183,24 @@ describe("parsePersistedState", () => {
         },
       },
     });
+  });
+
+  it("sanitizes malformed sidebar preferences and keeps scoped pin keys", () => {
+    const parsed = parsePersistedState({
+      sidebarView: "invalid" as "threads",
+      pinnedThreadKeys: [
+        "environment-a:thread-1",
+        "",
+        "environment-a:thread-1",
+        "unscoped-thread",
+        ":missing-environment",
+        "missing-thread:",
+        1 as never,
+      ],
+    });
+
+    expect(parsed.sidebarView).toBe("threads");
+    expect(parsed.pinnedThreadKeys).toEqual(["environment-a:thread-1"]);
   });
 
   it("migrates legacy CWD project preferences into local alias keys", () => {
@@ -255,6 +292,8 @@ describe("uiStateStore persistence", () => {
       localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
     ) as PersistedUiState;
     expect(persisted).toEqual({
+      sidebarView: "threads",
+      pinnedThreadKeys: [],
       projectExpandedById: {
         logical: false,
       },

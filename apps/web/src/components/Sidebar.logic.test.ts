@@ -3,6 +3,7 @@ import {
   createThreadJumpHintVisibilityController,
   getSidebarThreadIdsToPrewarm,
   getVisibleSidebarThreadIds,
+  getPinnedAndUnpinnedSidebarThreads,
   resolveAdjacentThreadId,
   getFallbackThreadIdAfterDelete,
   getVisibleThreadsForProject,
@@ -192,6 +193,29 @@ describe("getSidebarThreadIdsToPrewarm", () => {
 
   it("returns no thread ids when the limit is zero", () => {
     expect(getSidebarThreadIdsToPrewarm(["t1", "t2"], 0)).toEqual([]);
+  });
+});
+
+describe("getPinnedAndUnpinnedSidebarThreads", () => {
+  it("keeps live scoped pins in preference order with no duplicate visible row", () => {
+    const local = makeThread({ id: ThreadId.make("same-id"), archivedAt: null });
+    const remote = makeThread({ id: ThreadId.make("same-id"), archivedAt: null });
+    const archived = makeThread({ id: ThreadId.make("archived"), archivedAt: "2026-03-09T10:00:00.000Z" });
+    const keys = new Map([
+      [local, "local:same-id"],
+      [remote, "remote:same-id"],
+      [archived, "local:archived"],
+    ]);
+
+    const result = getPinnedAndUnpinnedSidebarThreads({
+      threads: [local, remote, archived],
+      pinnedThreadKeys: ["remote:same-id", "local:archived", "missing"],
+      getThreadKey: (thread) => keys.get(thread)!,
+    });
+
+    expect(result.pinned).toEqual([remote]);
+    expect(result.unpinned).toEqual([local]);
+    expect(result.visibleThreadKeys).toEqual(["remote:same-id", "local:same-id"]);
   });
 });
 

@@ -1,4 +1,5 @@
 import { Debouncer } from "@tanstack/react-pacer";
+import { parseScopedThreadKey } from "@neokod/client-runtime/environment";
 import { create } from "zustand";
 import { normalizeProjectPathForComparison } from "./lib/projectPaths";
 
@@ -17,6 +18,8 @@ const LEGACY_PERSISTED_STATE_KEYS = [
 ] as const;
 
 export interface PersistedUiState {
+  sidebarView?: "threads" | "workspace";
+  pinnedThreadKeys?: string[];
   projectExpandedById?: Record<string, boolean>;
   projectOrder?: string[];
   threadLastVisitedAtById?: Record<string, string>;
@@ -36,9 +39,14 @@ export interface UiThreadState {
   threadChangedFilesExpandedById: Record<string, Record<string, boolean>>;
 }
 
-export interface UiState extends UiProjectState, UiThreadState {}
+export interface UiState extends UiProjectState, UiThreadState {
+  sidebarView: "threads" | "workspace";
+  pinnedThreadKeys: string[];
+}
 
 const initialState: UiState = {
+  sidebarView: "threads",
+  pinnedThreadKeys: [],
   projectExpandedById: {},
   projectOrder: [],
   threadLastVisitedAtById: {},
@@ -115,6 +123,10 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
       : sanitizeStringArray(parsed.projectOrder);
 
   return {
+    sidebarView: parsed.sidebarView === "workspace" ? "workspace" : "threads",
+    pinnedThreadKeys: sanitizeStringArray(parsed.pinnedThreadKeys).filter(
+      (key) => parseScopedThreadKey(key) !== null,
+    ),
     projectExpandedById,
     projectOrder,
     threadLastVisitedAtById: sanitizeTimestampRecord(parsed.threadLastVisitedAtById),
@@ -195,6 +207,8 @@ export function persistState(state: UiState): void {
     window.localStorage.setItem(
       PERSISTED_STATE_KEY,
       JSON.stringify({
+        sidebarView: state.sidebarView,
+        pinnedThreadKeys: state.pinnedThreadKeys,
         projectExpandedById,
         projectOrder: state.projectOrder,
         threadLastVisitedAtById: state.threadLastVisitedAtById,
@@ -344,6 +358,26 @@ export function setProjectExpanded(
   };
 }
 
+export function setSidebarView(state: UiState, sidebarView: UiState["sidebarView"]): UiState {
+  return state.sidebarView === sidebarView ? state : { ...state, sidebarView };
+}
+
+export function togglePinnedThread(state: UiState, threadKey: string): UiState {
+  if (parseScopedThreadKey(threadKey) === null) return state;
+  const pinnedThreadKeys = state.pinnedThreadKeys.includes(threadKey)
+    ? state.pinnedThreadKeys.filter((key) => key !== threadKey)
+    : [...state.pinnedThreadKeys, threadKey];
+  return { ...state, pinnedThreadKeys };
+}
+
+export function removePinnedThreads(state: UiState, threadKeys: readonly string[]): UiState {
+  const deletedThreadKeys = new Set(threadKeys);
+  const pinnedThreadKeys = state.pinnedThreadKeys.filter((key) => !deletedThreadKeys.has(key));
+  return pinnedThreadKeys.length === state.pinnedThreadKeys.length
+    ? state
+    : { ...state, pinnedThreadKeys };
+}
+
 export function reorderProjects(
   state: UiState,
   currentProjectOrder: readonly string[],
@@ -389,6 +423,9 @@ export function reorderProjects(
 }
 
 interface UiStateStore extends UiState {
+  setSidebarView: (sidebarView: UiState["sidebarView"]) => void;
+  togglePinnedThread: (threadKey: string) => void;
+  removePinnedThreads: (threadKeys: readonly string[]) => void;
   markThreadVisited: (threadId: string, visitedAt: string) => void;
   markThreadUnread: (threadId: string, latestTurnCompletedAt: string | null | undefined) => void;
   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
@@ -402,6 +439,9 @@ interface UiStateStore extends UiState {
 
 export const useUiStateStore = create<UiStateStore>((set) => ({
   ...readPersistedState(),
+  setSidebarView: (sidebarView) => set((state) => setSidebarView(state, sidebarView)),
+  togglePinnedThread: (threadKey) => set((state) => togglePinnedThread(state, threadKey)),
+  removePinnedThreads: (threadKeys) => set((state) => removePinnedThreads(state, threadKeys)),
   markThreadVisited: (threadId, visitedAt) =>
     set((state) => markThreadVisited(state, threadId, visitedAt)),
   markThreadUnread: (threadId, latestTurnCompletedAt) =>
