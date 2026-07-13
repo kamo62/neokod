@@ -55,23 +55,35 @@ describe("projectScripts helpers", () => {
     });
 
     expect(env).toMatchObject({
+      NEOKOD_PROJECT_ROOT: "/repo",
+      NEOKOD_WORKTREE_PATH: "/repo/worktree-a",
       T3CODE_PROJECT_ROOT: "/repo",
       T3CODE_WORKTREE_PATH: "/repo/worktree-a",
     });
+    expect(env.NEOKOD_PROJECT_ROOT).toBe(env.T3CODE_PROJECT_ROOT);
+    expect(env.NEOKOD_WORKTREE_PATH).toBe(env.T3CODE_WORKTREE_PATH);
   });
 
-  it("allows overriding runtime env values", () => {
+  it("preserves reserved runtime env parity over extra values", () => {
     const env = projectScriptRuntimeEnv({
       project: { cwd: "/repo" },
+      worktreePath: "/repo/worktree-a",
       extraEnv: {
-        T3CODE_PROJECT_ROOT: "/custom-root",
+        NEOKOD_PROJECT_ROOT: "/custom-root",
+        T3CODE_PROJECT_ROOT: "/legacy-custom-root",
+        NEOKOD_WORKTREE_PATH: "/custom-worktree",
+        T3CODE_WORKTREE_PATH: "/legacy-custom-worktree",
         CUSTOM_FLAG: "1",
       },
     });
 
-    expect(env.T3CODE_PROJECT_ROOT).toBe("/custom-root");
+    expect(env.NEOKOD_PROJECT_ROOT).toBe("/repo");
+    expect(env.T3CODE_PROJECT_ROOT).toBe("/repo");
+    expect(env.NEOKOD_WORKTREE_PATH).toBe("/repo/worktree-a");
+    expect(env.T3CODE_WORKTREE_PATH).toBe("/repo/worktree-a");
+    expect(env.NEOKOD_PROJECT_ROOT).toBe(env.T3CODE_PROJECT_ROOT);
+    expect(env.NEOKOD_WORKTREE_PATH).toBe(env.T3CODE_WORKTREE_PATH);
     expect(env.CUSTOM_FLAG).toBe("1");
-    expect(env.T3CODE_WORKTREE_PATH).toBeUndefined();
   });
 
   it("prefers the worktree path for script cwd resolution", () => {

@@ -6,6 +6,7 @@ import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NetService from "@neokod/shared/Net";
 import { HostProcessEnvironment } from "@neokod/shared/hostProcess";
+import { resolveNeokodHome } from "@neokod/shared/neokodHome";
 import { resolveSpawnCommand } from "@neokod/shared/shell";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
@@ -27,10 +28,6 @@ const BASE_WEB_PORT = 5733;
 const MAX_HASH_OFFSET = 3000;
 const MAX_PORT = 65535;
 const DESKTOP_DEV_LOOPBACK_HOST = "127.0.0.1";
-
-export const DEFAULT_T3_HOME = Effect.map(Effect.service(Path.Path), (path) =>
-  path.join(NodeOS.homedir(), ".t3"),
-);
 
 const MODE_ARGS = {
   dev: [
@@ -70,7 +67,7 @@ export class DevRunnerConfigurationError extends Schema.TaggedErrorClass<DevRunn
 export class DevRunnerInvalidPortOffsetError extends Schema.TaggedErrorClass<DevRunnerInvalidPortOffsetError>()(
   "DevRunnerInvalidPortOffsetError",
   {
-    configKey: Schema.Literal("T3CODE_PORT_OFFSET"),
+    configKey: Schema.Literal("NEOKOD_PORT_OFFSET"),
     portOffset: Schema.Number,
     minimum: Schema.Number,
   },
@@ -137,29 +134,21 @@ export const DevRunnerError = Schema.Union([
 export type DevRunnerError = typeof DevRunnerError.Type;
 export const isDevRunnerError = Schema.is(DevRunnerError);
 
-const optionalStringConfig = (name: string): Config.Config<string | undefined> =>
+const optionalLegacyStringConfig = (name: string, legacyName: string) =>
   Config.string(name).pipe(
+    Config.orElse(() => Config.string(legacyName)),
     Config.option,
-    Config.map((value) => Option.getOrUndefined(value)),
+    Config.map(Option.getOrUndefined),
   );
-const optionalBooleanConfig = (name: string): Config.Config<boolean | undefined> =>
-  Config.boolean(name).pipe(
-    Config.option,
-    Config.map((value) => Option.getOrUndefined(value)),
-  );
-const optionalPortConfig = (name: string): Config.Config<number | undefined> =>
-  Config.port(name).pipe(
-    Config.option,
-    Config.map((value) => Option.getOrUndefined(value)),
-  );
-const optionalIntegerConfig = (name: string): Config.Config<number | undefined> =>
+const optionalLegacyIntegerConfig = (name: string, legacyName: string) =>
   Config.int(name).pipe(
+    Config.orElse(() => Config.int(legacyName)),
     Config.option,
-    Config.map((value) => Option.getOrUndefined(value)),
+    Config.map(Option.getOrUndefined),
   );
 const OffsetConfig = Config.all({
-  portOffset: optionalIntegerConfig("T3CODE_PORT_OFFSET"),
-  devInstance: optionalStringConfig("T3CODE_DEV_INSTANCE"),
+  portOffset: optionalLegacyIntegerConfig("NEOKOD_PORT_OFFSET", "T3CODE_PORT_OFFSET"),
+  devInstance: optionalLegacyStringConfig("NEOKOD_DEV_INSTANCE", "T3CODE_DEV_INSTANCE"),
 });
 
 export function resolveOffset(config: {
@@ -173,7 +162,7 @@ export function resolveOffset(config: {
     if (config.portOffset < 0) {
       return Effect.fail(
         new DevRunnerInvalidPortOffsetError({
-          configKey: "T3CODE_PORT_OFFSET",
+          configKey: "NEOKOD_PORT_OFFSET",
           portOffset: config.portOffset,
           minimum: 0,
         }),
@@ -181,7 +170,7 @@ export function resolveOffset(config: {
     }
     return Effect.succeed({
       offset: config.portOffset,
-      source: `T3CODE_PORT_OFFSET=${config.portOffset}`,
+      source: `NEOKOD_PORT_OFFSET=${config.portOffset}`,
     });
   }
 
@@ -193,24 +182,19 @@ export function resolveOffset(config: {
   if (/^\d+$/.test(seed)) {
     return Effect.succeed({
       offset: Number(seed),
-      source: `numeric T3CODE_DEV_INSTANCE=${seed}`,
+      source: `numeric NEOKOD_DEV_INSTANCE=${seed}`,
     });
   }
 
   const offset = ((Hash.string(seed) >>> 0) % MAX_HASH_OFFSET) + 1;
-  return Effect.succeed({ offset, source: `hashed T3CODE_DEV_INSTANCE=${seed}` });
+  return Effect.succeed({ offset, source: `hashed NEOKOD_DEV_INSTANCE=${seed}` });
 }
 
 function resolveBaseDir(baseDir: string | undefined): Effect.Effect<string, never, Path.Path> {
-  return Effect.gen(function* () {
-    const path = yield* Path.Path;
-    const configured = baseDir?.trim();
-
-    if (configured) {
-      return path.resolve(configured);
-    }
-
-    return yield* DEFAULT_T3_HOME;
+  return resolveNeokodHome({
+    configuredHome: baseDir,
+    homeDirectory: NodeOS.homedir(),
+    onWarning: (message) => process.stderr.write(`[dev-runner] ${message}\n`),
   });
 }
 
@@ -219,7 +203,7 @@ interface CreateDevRunnerEnvInput {
   readonly baseEnv: NodeJS.ProcessEnv;
   readonly serverOffset: number;
   readonly webOffset: number;
-  readonly t3Home: string | undefined;
+  readonly neokodHome: string | undefined;
   readonly noBrowser: boolean | undefined;
   readonly autoBootstrapProjectFromCwd: boolean | undefined;
   readonly logWebSocketEvents: boolean | undefined;
@@ -232,7 +216,7 @@ export function createDevRunnerEnv({
   baseEnv,
   serverOffset,
   webOffset,
-  t3Home,
+  neokodHome,
   noBrowser,
   autoBootstrapProjectFromCwd,
   logWebSocketEvents,
@@ -242,7 +226,7 @@ export function createDevRunnerEnv({
   return Effect.gen(function* () {
     const serverPort = port ?? BASE_SERVER_PORT + serverOffset;
     const webPort = BASE_WEB_PORT + webOffset;
-    const resolvedBaseDir = yield* resolveBaseDir(t3Home);
+    const resolvedBaseDir = yield* resolveBaseDir(neokodHome);
     const isDesktopMode = mode === "dev:desktop";
 
     const output: NodeJS.ProcessEnv = {
@@ -251,52 +235,49 @@ export function createDevRunnerEnv({
       VITE_DEV_SERVER_URL:
         devUrl?.toString() ??
         `http://${isDesktopMode ? DESKTOP_DEV_LOOPBACK_HOST : "localhost"}:${webPort}`,
-      T3CODE_HOME: resolvedBaseDir,
+      NEOKOD_HOME: resolvedBaseDir,
     };
 
     if (!isDesktopMode) {
-      output.T3CODE_PORT = String(serverPort);
+      output.NEOKOD_PORT = String(serverPort);
       output.VITE_HTTP_URL = `http://localhost:${serverPort}`;
       output.VITE_WS_URL = `ws://localhost:${serverPort}`;
     } else {
-      output.T3CODE_PORT = String(serverPort);
+      output.NEOKOD_PORT = String(serverPort);
       output.VITE_HTTP_URL = `http://${DESKTOP_DEV_LOOPBACK_HOST}:${serverPort}`;
       output.VITE_WS_URL = `ws://${DESKTOP_DEV_LOOPBACK_HOST}:${serverPort}`;
-      delete output.T3CODE_MODE;
-      delete output.T3CODE_NO_BROWSER;
+      delete output.NEOKOD_MODE;
+      delete output.NEOKOD_NO_BROWSER;
     }
 
     if (!isDesktopMode && noBrowser !== undefined) {
-      output.T3CODE_NO_BROWSER = noBrowser ? "1" : "0";
+      output.NEOKOD_NO_BROWSER = noBrowser ? "1" : "0";
     } else if (!isDesktopMode) {
-      delete output.T3CODE_NO_BROWSER;
+      delete output.NEOKOD_NO_BROWSER;
     }
 
     if (autoBootstrapProjectFromCwd !== undefined) {
-      output.T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD = autoBootstrapProjectFromCwd ? "1" : "0";
+      output.NEOKOD_AUTO_BOOTSTRAP_PROJECT_FROM_CWD = autoBootstrapProjectFromCwd ? "1" : "0";
     } else {
-      delete output.T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD;
+      delete output.NEOKOD_AUTO_BOOTSTRAP_PROJECT_FROM_CWD;
     }
 
     if (logWebSocketEvents !== undefined) {
-      output.T3CODE_LOG_WS_EVENTS = logWebSocketEvents ? "1" : "0";
+      output.NEOKOD_LOG_WS_EVENTS = logWebSocketEvents ? "1" : "0";
     } else {
-      delete output.T3CODE_LOG_WS_EVENTS;
+      delete output.NEOKOD_LOG_WS_EVENTS;
     }
 
     if (mode === "dev") {
-      output.T3CODE_MODE = "web";
-      delete output.T3CODE_DESKTOP_WS_URL;
+      output.NEOKOD_MODE = "web";
     }
 
     if (mode === "dev:server" || mode === "dev:web") {
-      output.T3CODE_MODE = "web";
-      delete output.T3CODE_DESKTOP_WS_URL;
+      output.NEOKOD_MODE = "web";
     }
 
     if (isDesktopMode) {
       output.HOST = DESKTOP_DEV_LOOPBACK_HOST;
-      delete output.T3CODE_DESKTOP_WS_URL;
     }
 
     return output;
@@ -442,7 +423,7 @@ export function resolveModePortOffsets<R = NetService.NetService>({
 
 interface DevRunnerCliInput {
   readonly mode: DevMode;
-  readonly t3Home: string | undefined;
+  readonly neokodHome: string | undefined;
   readonly noBrowser: boolean | undefined;
   readonly autoBootstrapProjectFromCwd: boolean | undefined;
   readonly logWebSocketEvents: boolean | undefined;
@@ -458,7 +439,7 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
       Effect.mapError(
         (cause) =>
           new DevRunnerConfigurationError({
-            configKeys: ["T3CODE_PORT_OFFSET", "T3CODE_DEV_INSTANCE"],
+            configKeys: ["NEOKOD_PORT_OFFSET", "NEOKOD_DEV_INSTANCE"],
             cause,
           }),
       ),
@@ -479,7 +460,7 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
       baseEnv: hostEnvironment,
       serverOffset,
       webOffset,
-      t3Home: input.t3Home,
+      neokodHome: input.neokodHome,
       noBrowser: input.noBrowser,
       autoBootstrapProjectFromCwd: input.autoBootstrapProjectFromCwd,
       logWebSocketEvents: input.logWebSocketEvents,
@@ -493,7 +474,7 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
         : "";
 
     yield* Effect.logInfo(
-      `[dev-runner] mode=${input.mode} source=${source}${selectionSuffix} serverPort=${String(env.T3CODE_PORT)} webPort=${String(env.PORT)} baseDir=${String(env.T3CODE_HOME)}`,
+      `[dev-runner] mode=${input.mode} source=${source}${selectionSuffix} serverPort=${String(env.NEOKOD_PORT)} webPort=${String(env.PORT)} baseDir=${String(env.NEOKOD_HOME)}`,
     );
 
     if (input.dryRun) {
@@ -557,29 +538,53 @@ const devRunnerCli = Command.make("dev-runner", {
   mode: Argument.choice("mode", DEV_RUNNER_MODES).pipe(
     Argument.withDescription("Development mode to run."),
   ),
-  t3Home: Flag.string("home-dir").pipe(
-    Flag.withDescription("Base directory for all T3 Code data (equivalent to T3CODE_HOME)."),
-    Flag.withFallbackConfig(optionalStringConfig("T3CODE_HOME")),
+  neokodHome: Flag.string("home-dir").pipe(
+    Flag.withDescription("Base directory for all Neokod data (equivalent to NEOKOD_HOME)."),
+    Flag.withFallbackConfig(optionalLegacyStringConfig("NEOKOD_HOME", "T3CODE_HOME")),
   ),
   noBrowser: Flag.boolean("no-browser").pipe(
-    Flag.withDescription("Browser auto-open toggle (equivalent to T3CODE_NO_BROWSER)."),
-    Flag.withFallbackConfig(optionalBooleanConfig("T3CODE_NO_BROWSER")),
+    Flag.withDescription("Browser auto-open toggle (equivalent to NEOKOD_NO_BROWSER)."),
+    Flag.withFallbackConfig(
+      Config.boolean("NEOKOD_NO_BROWSER").pipe(
+        Config.orElse(() => Config.boolean("T3CODE_NO_BROWSER")),
+        Config.option,
+        Config.map(Option.getOrUndefined),
+      ),
+    ),
   ),
   autoBootstrapProjectFromCwd: Flag.boolean("auto-bootstrap-project-from-cwd").pipe(
     Flag.withDescription(
-      "Auto-bootstrap toggle (equivalent to T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD).",
+      "Auto-bootstrap toggle (equivalent to NEOKOD_AUTO_BOOTSTRAP_PROJECT_FROM_CWD).",
     ),
-    Flag.withFallbackConfig(optionalBooleanConfig("T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD")),
+    Flag.withFallbackConfig(
+      Config.boolean("NEOKOD_AUTO_BOOTSTRAP_PROJECT_FROM_CWD").pipe(
+        Config.orElse(() => Config.boolean("T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD")),
+        Config.option,
+        Config.map(Option.getOrUndefined),
+      ),
+    ),
   ),
   logWebSocketEvents: Flag.boolean("log-websocket-events").pipe(
-    Flag.withDescription("WebSocket event logging toggle (equivalent to T3CODE_LOG_WS_EVENTS)."),
+    Flag.withDescription("WebSocket event logging toggle (equivalent to NEOKOD_LOG_WS_EVENTS)."),
     Flag.withAlias("log-ws-events"),
-    Flag.withFallbackConfig(optionalBooleanConfig("T3CODE_LOG_WS_EVENTS")),
+    Flag.withFallbackConfig(
+      Config.boolean("NEOKOD_LOG_WS_EVENTS").pipe(
+        Config.orElse(() => Config.boolean("T3CODE_LOG_WS_EVENTS")),
+        Config.option,
+        Config.map(Option.getOrUndefined),
+      ),
+    ),
   ),
   port: Flag.integer("port").pipe(
     Flag.withSchema(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 }))),
-    Flag.withDescription("Server port override (forwards to T3CODE_PORT)."),
-    Flag.withFallbackConfig(optionalPortConfig("T3CODE_PORT")),
+    Flag.withDescription("Server port override (forwards to NEOKOD_PORT)."),
+    Flag.withFallbackConfig(
+      Config.port("NEOKOD_PORT").pipe(
+        Config.orElse(() => Config.port("T3CODE_PORT")),
+        Config.option,
+        Config.map(Option.getOrUndefined),
+      ),
+    ),
   ),
   devUrl: Flag.string("dev-url").pipe(
     Flag.withSchema(Schema.URLFromString),

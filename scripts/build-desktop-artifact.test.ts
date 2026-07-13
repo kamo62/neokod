@@ -101,7 +101,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           ConfigProvider.layer(
             ConfigProvider.fromEnv({
               env: {
-                T3CODE_DESKTOP_UPDATE_REPOSITORY: "kamo62/neokod",
+                NEOKOD_DESKTOP_UPDATE_REPOSITORY: "kamo62/neokod",
               },
             }),
           ),
@@ -472,11 +472,11 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           ConfigProvider.layer(
             ConfigProvider.fromEnv({
               env: {
-                T3CODE_DESKTOP_SKIP_BUILD: "true",
-                T3CODE_DESKTOP_KEEP_STAGE: "true",
-                T3CODE_DESKTOP_SIGNED: "true",
-                T3CODE_DESKTOP_VERBOSE: "true",
-                T3CODE_DESKTOP_MOCK_UPDATES: "true",
+                NEOKOD_DESKTOP_SKIP_BUILD: "true",
+                NEOKOD_DESKTOP_KEEP_STAGE: "true",
+                NEOKOD_DESKTOP_SIGNED: "true",
+                NEOKOD_DESKTOP_VERBOSE: "true",
+                NEOKOD_DESKTOP_MOCK_UPDATES: "true",
               },
             }),
           ),
@@ -489,5 +489,46 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       assert.equal(resolved.verbose, false);
       assert.equal(resolved.mockUpdates, false);
     }),
+  );
+
+  it.effect("prefers Neokod build environment values and reads legacy fallbacks", () =>
+    Effect.forEach(
+      [
+        {
+          env: { T3CODE_DESKTOP_PLATFORM: "linux" },
+          platform: "linux",
+        },
+        {
+          env: { NEOKOD_DESKTOP_PLATFORM: "mac", T3CODE_DESKTOP_PLATFORM: "linux" },
+          platform: "mac",
+        },
+      ],
+      ({ env, platform }) =>
+        Effect.flatMap(
+          resolveBuildOptions({
+            platform: Option.none(),
+            target: Option.none(),
+            arch: Option.none(),
+            buildVersion: Option.none(),
+            outputDir: Option.none(),
+            skipBuild: Option.none(),
+            keepStage: Option.none(),
+            signed: Option.none(),
+            verbose: Option.none(),
+            mockUpdates: Option.none(),
+            mockUpdateServerPort: Option.none(),
+            wslPrebuild: Option.none(),
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                Layer.succeed(HostProcessPlatform, "darwin"),
+                Layer.succeed(HostProcessArchitecture, "arm64"),
+                ConfigProvider.layer(ConfigProvider.fromEnv({ env })),
+              ),
+            ),
+          ),
+          (resolved) => Effect.sync(() => assert.equal(resolved.platform, platform)),
+        ),
+    ),
   );
 });

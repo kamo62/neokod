@@ -1,6 +1,6 @@
 import { defineConfig } from "vite-plus";
 
-const shouldLaunchElectronAfterPack = process.env.T3CODE_DESKTOP_DEV === "1";
+const shouldLaunchElectronAfterPack = process.env.NEOKOD_DESKTOP_DEV === "1";
 
 export default defineConfig({
   run: {
@@ -12,7 +12,7 @@ export default defineConfig({
       },
       dev: {
         command:
-          "node scripts/build-preview-annotation-css.mjs && cross-env T3CODE_DESKTOP_DEV=1 vp pack --watch",
+          "node scripts/build-preview-annotation-css.mjs && cross-env NEOKOD_DESKTOP_DEV=1 vp pack --watch",
         dependsOn: ["t3#build"],
         cache: false,
       },

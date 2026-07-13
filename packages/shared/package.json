@@ -131,6 +131,10 @@
       "types": "./src/hostProcess.ts",
       "import": "./src/hostProcess.ts"
     },
+    "./neokodHome": {
+      "types": "./src/neokodHome.ts",
+      "import": "./src/neokodHome.ts"
+    },
     "./httpReadiness": {
       "types": "./src/httpReadiness.ts",
       "import": "./src/httpReadiness.ts"

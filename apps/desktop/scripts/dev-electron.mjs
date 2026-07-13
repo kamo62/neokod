@@ -33,7 +33,10 @@ const watchedDirectories = [
 const forcedShutdownTimeoutMs = 1_500;
 const restartDebounceMs = 120;
 const childTreeGracePeriodMs = 1_200;
-const remoteDebuggingPort = process.env.T3CODE_DESKTOP_REMOTE_DEBUGGING_PORT?.trim();
+const remoteDebuggingPort = (
+  process.env.NEOKOD_DESKTOP_REMOTE_DEBUGGING_PORT ??
+  process.env.T3CODE_DESKTOP_REMOTE_DEBUGGING_PORT
+)?.trim();
 // oxlint-disable-next-line t3code/no-global-process-runtime -- Standalone dev script has no Effect runtime.
 const hostPlatform = NodeOS.platform();
 
@@ -48,8 +51,7 @@ const childEnv = { ...process.env };
 delete childEnv.ELECTRON_RUN_AS_NODE;
 const devProtocolClient = resolveDevProtocolClient();
 if (devProtocolClient) {
-  childEnv.T3CODE_DESKTOP_APP_USER_MODEL_ID = devProtocolClient.appBundleId;
-  childEnv.T3CODE_DESKTOP_PROTOCOL_REGISTRATION_MANAGED = "1";
+  childEnv.NEOKOD_DESKTOP_APP_USER_MODEL_ID = devProtocolClient.appBundleId;
 }
 
 let shuttingDown = false;

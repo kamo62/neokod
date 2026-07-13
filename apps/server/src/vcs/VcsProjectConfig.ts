@@ -71,7 +71,8 @@ export const make = Effect.gen(function* () {
   const findConfigPath = Effect.fn("VcsProjectConfig.findConfigPath")(function* (cwd: string) {
     let current = cwd;
     while (true) {
-      const candidate = path.join(current, ".t3code", "vcs.json");
+      const candidate = path.join(current, ".neokod", "vcs.json");
+      const legacyCandidate = path.join(current, ".t3code", "vcs.json");
       const exists = yield* fileSystem.exists(candidate).pipe(
         Effect.mapError(
           (cause) =>
@@ -88,6 +89,23 @@ export const make = Effect.gen(function* () {
       );
       if (exists) {
         return Option.some(candidate);
+      }
+      const legacyExists = yield* fileSystem.exists(legacyCandidate).pipe(
+        Effect.mapError(
+          (cause) =>
+            new VcsProjectConfigError({
+              operation: "inspect",
+              cwd,
+              configPath: legacyCandidate,
+              cause,
+            }),
+        ),
+        Effect.catchTags({
+          VcsProjectConfigError: (error) => logVcsProjectConfigError(error).pipe(Effect.as(false)),
+        }),
+      );
+      if (legacyExists) {
+        return Option.some(legacyCandidate);
       }
 
       const parent = path.dirname(current);

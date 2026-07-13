@@ -3,9 +3,9 @@
 - `bun run dev` — Starts contracts, server, and web in `turbo watch` mode.
 - `bun run dev:server` — Starts just the WebSocket server (uses Bun TypeScript execution).
 - `bun run dev:web` — Starts just the Vite dev server for the web app.
-- Dev commands default `T3CODE_STATE_DIR` to `~/.t3/dev` to keep dev state isolated from desktop/prod state.
+- Dev commands use `NEOKOD_HOME` and the `~/.neokod` state root; development state remains isolated under its `dev` directory.
 - Override server CLI-equivalent flags from root dev commands with `--`, for example:
-  `bun run dev -- --base-dir ~/.t3-2`
+  `bun run dev -- --base-dir ~/.neokod-2`
 - `bun run start` — Runs the production server (serves built web app as static files).
 - Public start/serve commands listen on `127.0.0.1`; there is no public host or
   network-exposure or auth flag. Their HTTP and WebSocket paths are direct. The
@@ -33,8 +33,7 @@
 - Your tester can still open it on macOS by right-clicking the app and choosing **Open** on first launch.
 - To keep staging files for debugging package contents, run: `bun run dist:desktop:dmg -- --keep-stage`
 - To allow code-signing/notarization when configured in CI/secrets, add: `--signed`.
-- Signed macOS builds also require `T3CODE_APPLE_TEAM_ID` and
-  `T3CODE_MACOS_PROVISIONING_PROFILE`.
+- Signed macOS builds use Electron Builder and Apple signing environment variables.
 - Windows `--signed` uses Azure Trusted Signing and expects:
   `AZURE_TRUSTED_SIGNING_ENDPOINT`, `AZURE_TRUSTED_SIGNING_ACCOUNT_NAME`,
   `AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME`, and `AZURE_TRUSTED_SIGNING_PUBLISHER_NAME`.
@@ -43,10 +42,10 @@
 
 ## Running multiple dev instances
 
-Set `T3CODE_DEV_INSTANCE` to any value to deterministically shift all dev ports together.
+Set `NEOKOD_DEV_INSTANCE` to any value to deterministically shift all dev ports together.
 
 - Default ports: server `3773`, web `5733`
-- Shifted ports: `base + offset` (offset is hashed from `T3CODE_DEV_INSTANCE`)
-- Example: `T3CODE_DEV_INSTANCE=branch-a bun run dev:desktop`
+- Shifted ports: `base + offset` (offset is hashed from `NEOKOD_DEV_INSTANCE`)
+- Example: `NEOKOD_DEV_INSTANCE=branch-a bun run dev:desktop`
 
-If you want full control instead of hashing, set `T3CODE_PORT_OFFSET` to a numeric offset.
+If you want full control instead of hashing, set `NEOKOD_PORT_OFFSET` to a numeric offset.

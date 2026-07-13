@@ -40,12 +40,12 @@ describe("DesktopEnvironment", () => {
       const environment = yield* makeEnvironment(
         {},
         {
-          T3CODE_HOME: " /tmp/t3 ",
-          T3CODE_COMMIT_HASH: " 0123456789abcdef ",
-          T3CODE_PORT: "4949",
+          NEOKOD_HOME: " /tmp/t3 ",
+          NEOKOD_COMMIT_HASH: " 0123456789abcdef ",
+          NEOKOD_PORT: "4949",
           VITE_DEV_SERVER_URL: "http://localhost:5173",
-          T3CODE_OTLP_TRACES_URL: " http://127.0.0.1:4318/v1/traces ",
-          T3CODE_OTLP_EXPORT_INTERVAL_MS: "2500",
+          NEOKOD_OTLP_TRACES_URL: " http://127.0.0.1:4318/v1/traces ",
+          NEOKOD_OTLP_EXPORT_INTERVAL_MS: "2500",
         },
       );
 
@@ -81,7 +81,7 @@ describe("DesktopEnvironment", () => {
       const environment = yield* makeEnvironment(
         {},
         {
-          T3CODE_HOME: "/tmp/t3",
+          NEOKOD_HOME: "/tmp/t3",
         },
       );
 
@@ -93,12 +93,39 @@ describe("DesktopEnvironment", () => {
     }),
   );
 
+  it.effect("prefers Neokod environment values and reads legacy fallbacks", () =>
+    Effect.forEach(
+      [
+        {
+          env: { T3CODE_HOME: "/tmp/legacy", T3CODE_PORT: "4948" },
+          home: "/tmp/legacy",
+          port: 4948,
+        },
+        {
+          env: {
+            NEOKOD_HOME: "/tmp/neokod",
+            T3CODE_HOME: "/tmp/legacy",
+            NEOKOD_PORT: "4949",
+            T3CODE_PORT: "4948",
+          },
+          home: "/tmp/neokod",
+          port: 4949,
+        },
+      ],
+      ({ env, home, port }) =>
+        Effect.map(makeEnvironment({}, env), (environment) => {
+          assert.equal(environment.baseDir, home);
+          assert.deepEqual(environment.configuredBackendPort, Option.some(port));
+        }),
+    ),
+  );
+
   it.effect("uses a configured app user model id override", () =>
     Effect.gen(function* () {
       const environment = yield* makeEnvironment(
         {},
         {
-          T3CODE_DESKTOP_APP_USER_MODEL_ID: " com.kamo62.neokod.dev.local ",
+          NEOKOD_DESKTOP_APP_USER_MODEL_ID: " com.kamo62.neokod.dev.local ",
           VITE_DEV_SERVER_URL: "http://localhost:5173",
         },
       );

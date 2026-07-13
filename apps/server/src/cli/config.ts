@@ -27,7 +27,7 @@ export const portFlag = Flag.integer("port").pipe(
   Flag.optional,
 );
 export const baseDirFlag = Flag.string("base-dir").pipe(
-  Flag.withDescription("Base directory path (equivalent to T3CODE_HOME)."),
+  Flag.withDescription("Base directory path (equivalent to NEOKOD_HOME)."),
   Flag.optional,
 );
 export const devUrlFlag = Flag.string("dev-url").pipe(
@@ -52,54 +52,60 @@ export const autoBootstrapProjectFromCwdFlag = Flag.boolean("auto-bootstrap-proj
 );
 export const logWebSocketEventsFlag = Flag.boolean("log-websocket-events").pipe(
   Flag.withDescription(
-    "Emit server-side logs for outbound WebSocket push traffic (equivalent to T3CODE_LOG_WS_EVENTS).",
+    "Emit server-side logs for outbound WebSocket push traffic (equivalent to NEOKOD_LOG_WS_EVENTS).",
   ),
   Flag.withAlias("log-ws-events"),
   Flag.optional,
 );
+const envConfig = <A>(
+  name: string,
+  legacyName: string,
+  read: (key: string) => Config.Config<A>,
+) => read(name).pipe(Config.orElse(() => read(legacyName)));
+
 const EnvServerConfig = Config.all({
-  logLevel: Config.logLevel("T3CODE_LOG_LEVEL").pipe(Config.withDefault("Info")),
-  traceMinLevel: Config.logLevel("T3CODE_TRACE_MIN_LEVEL").pipe(Config.withDefault("Info")),
-  traceTimingEnabled: Config.boolean("T3CODE_TRACE_TIMING_ENABLED").pipe(Config.withDefault(true)),
-  traceFile: Config.string("T3CODE_TRACE_FILE").pipe(
+  logLevel: envConfig("NEOKOD_LOG_LEVEL", "T3CODE_LOG_LEVEL", Config.logLevel).pipe(Config.withDefault("Info")),
+  traceMinLevel: envConfig("NEOKOD_TRACE_MIN_LEVEL", "T3CODE_TRACE_MIN_LEVEL", Config.logLevel).pipe(Config.withDefault("Info")),
+  traceTimingEnabled: envConfig("NEOKOD_TRACE_TIMING_ENABLED", "T3CODE_TRACE_TIMING_ENABLED", Config.boolean).pipe(Config.withDefault(true)),
+  traceFile: envConfig("NEOKOD_TRACE_FILE", "T3CODE_TRACE_FILE", Config.string).pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  traceMaxBytes: Config.int("T3CODE_TRACE_MAX_BYTES").pipe(Config.withDefault(10 * 1024 * 1024)),
-  traceMaxFiles: Config.int("T3CODE_TRACE_MAX_FILES").pipe(Config.withDefault(10)),
-  traceBatchWindowMs: Config.int("T3CODE_TRACE_BATCH_WINDOW_MS").pipe(Config.withDefault(200)),
-  otlpTracesUrl: Config.string("T3CODE_OTLP_TRACES_URL").pipe(
+  traceMaxBytes: envConfig("NEOKOD_TRACE_MAX_BYTES", "T3CODE_TRACE_MAX_BYTES", Config.int).pipe(Config.withDefault(10 * 1024 * 1024)),
+  traceMaxFiles: envConfig("NEOKOD_TRACE_MAX_FILES", "T3CODE_TRACE_MAX_FILES", Config.int).pipe(Config.withDefault(10)),
+  traceBatchWindowMs: envConfig("NEOKOD_TRACE_BATCH_WINDOW_MS", "T3CODE_TRACE_BATCH_WINDOW_MS", Config.int).pipe(Config.withDefault(200)),
+  otlpTracesUrl: envConfig("NEOKOD_OTLP_TRACES_URL", "T3CODE_OTLP_TRACES_URL", Config.string).pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  otlpMetricsUrl: Config.string("T3CODE_OTLP_METRICS_URL").pipe(
+  otlpMetricsUrl: envConfig("NEOKOD_OTLP_METRICS_URL", "T3CODE_OTLP_METRICS_URL", Config.string).pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  otlpExportIntervalMs: Config.int("T3CODE_OTLP_EXPORT_INTERVAL_MS").pipe(
+  otlpExportIntervalMs: envConfig("NEOKOD_OTLP_EXPORT_INTERVAL_MS", "T3CODE_OTLP_EXPORT_INTERVAL_MS", Config.int).pipe(
     Config.withDefault(10_000),
   ),
-  otlpServiceName: Config.string("T3CODE_OTLP_SERVICE_NAME").pipe(Config.withDefault("t3-server")),
-  mode: Config.schema(ServerConfig.RuntimeMode, "T3CODE_MODE").pipe(
+  otlpServiceName: envConfig("NEOKOD_OTLP_SERVICE_NAME", "T3CODE_OTLP_SERVICE_NAME", Config.string).pipe(Config.withDefault("neokod-server")),
+  mode: envConfig("NEOKOD_MODE", "T3CODE_MODE", (name) => Config.schema(ServerConfig.RuntimeMode, name)).pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  port: Config.port("T3CODE_PORT").pipe(Config.option, Config.map(Option.getOrUndefined)),
-  t3Home: Config.string("T3CODE_HOME").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  port: envConfig("NEOKOD_PORT", "T3CODE_PORT", Config.port).pipe(Config.option, Config.map(Option.getOrUndefined)),
+  neokodHome: envConfig("NEOKOD_HOME", "T3CODE_HOME", Config.string).pipe(Config.option, Config.map(Option.getOrUndefined)),
   devUrl: Config.url("VITE_DEV_SERVER_URL").pipe(Config.option, Config.map(Option.getOrUndefined)),
-  noBrowser: Config.boolean("T3CODE_NO_BROWSER").pipe(
+  noBrowser: envConfig("NEOKOD_NO_BROWSER", "T3CODE_NO_BROWSER", Config.boolean).pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  bootstrapFd: Config.int("T3CODE_BOOTSTRAP_FD").pipe(
+  bootstrapFd: envConfig("NEOKOD_BOOTSTRAP_FD", "T3CODE_BOOTSTRAP_FD", Config.int).pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  autoBootstrapProjectFromCwd: Config.boolean("T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD").pipe(
+  autoBootstrapProjectFromCwd: envConfig("NEOKOD_AUTO_BOOTSTRAP_PROJECT_FROM_CWD", "T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD", Config.boolean).pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  logWebSocketEvents: Config.boolean("T3CODE_LOG_WS_EVENTS").pipe(
+  logWebSocketEvents: envConfig("NEOKOD_LOG_WS_EVENTS", "T3CODE_LOG_WS_EVENTS", Config.boolean).pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
@@ -197,8 +203,8 @@ export const resolveServerConfig = (
     const mode: ServerConfig.RuntimeMode = Option.getOrElse(
       resolveOptionPrecedence(
         normalizedFlags.mode,
-        Option.fromUndefinedOr(env.mode),
         Option.fromUndefinedOr(bootstrap?.mode),
+        Option.fromUndefinedOr(env.mode),
       ),
       () => "web",
     );
@@ -206,8 +212,8 @@ export const resolveServerConfig = (
     const port = yield* Option.match(
       resolveOptionPrecedence(
         normalizedFlags.port,
-        Option.fromUndefinedOr(env.port),
         Option.fromUndefinedOr(bootstrap?.port),
+        Option.fromUndefinedOr(env.port),
       ),
       {
         onSome: (value) => Effect.succeed(value),
@@ -227,8 +233,8 @@ export const resolveServerConfig = (
       Option.getOrUndefined(
         resolveOptionPrecedence(
           normalizedFlags.baseDir,
-          Option.fromUndefinedOr(env.t3Home),
-          Option.fromUndefinedOr(bootstrap?.t3Home),
+          Option.fromUndefinedOr(bootstrap?.neokodHome),
+          Option.fromUndefinedOr(env.neokodHome),
         ),
       ),
     );
@@ -248,8 +254,8 @@ export const resolveServerConfig = (
       resolveOptionPrecedence(
         isHeadlessStartup ? Option.some(true) : Option.none(),
         normalizedFlags.noBrowser,
-        Option.fromUndefinedOr(env.noBrowser),
         Option.fromUndefinedOr(bootstrap?.noBrowser),
+        Option.fromUndefinedOr(env.noBrowser),
       ),
       () => mode === "desktop",
     );
@@ -284,12 +290,12 @@ export const resolveServerConfig = (
       traceMaxBytes: env.traceMaxBytes,
       traceMaxFiles: env.traceMaxFiles,
       otlpTracesUrl:
-        env.otlpTracesUrl ??
         bootstrap?.otlpTracesUrl ??
+        env.otlpTracesUrl ??
         persistedObservabilitySettings.otlpTracesUrl,
       otlpMetricsUrl:
-        env.otlpMetricsUrl ??
         bootstrap?.otlpMetricsUrl ??
+        env.otlpMetricsUrl ??
         persistedObservabilitySettings.otlpMetricsUrl,
       otlpExportIntervalMs: env.otlpExportIntervalMs,
       otlpServiceName: env.otlpServiceName,

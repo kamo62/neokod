@@ -23,7 +23,7 @@ If you want a log message to show up in the trace file, emit it inside an active
 
 ### Traces
 
-Completed spans are written as NDJSON records to `serverTracePath` (by default, `~/.t3/userdata/logs/server.trace.ndjson`).
+Completed spans are written as NDJSON records to `serverTracePath` (by default, `~/.neokod/userdata/logs/server.trace.ndjson`).
 
 Important fields in each record:
 
@@ -100,16 +100,16 @@ Default Grafana login:
 #### 2. Export OTLP env vars
 
 ```bash
-export T3CODE_OTLP_TRACES_URL=http://localhost:4318/v1/traces
-export T3CODE_OTLP_METRICS_URL=http://localhost:4318/v1/metrics
-export T3CODE_OTLP_SERVICE_NAME=t3-local
+export NEOKOD_OTLP_TRACES_URL=http://localhost:4318/v1/traces
+export NEOKOD_OTLP_METRICS_URL=http://localhost:4318/v1/metrics
+export NEOKOD_OTLP_SERVICE_NAME=neokod-local
 ```
 
 Optional:
 
 ```bash
-export T3CODE_TRACE_MIN_LEVEL=Info
-export T3CODE_TRACE_TIMING_ENABLED=true
+export NEOKOD_TRACE_MIN_LEVEL=Info
+export NEOKOD_TRACE_TIMING_ENABLED=true
 ```
 
 #### 3. Launch the app from that same shell
@@ -134,23 +134,23 @@ node --run dev:desktop
 
 Packaged desktop app:
 
-Launch the actual app executable from the same shell so the desktop app and embedded backend inherit `T3CODE_OTLP_*`.
+Launch the actual app executable from the same shell so the desktop app and embedded backend inherit `NEOKOD_OTLP_*`.
 
 macOS app bundle example:
 
 ```bash
-T3CODE_OTLP_TRACES_URL=http://localhost:4318/v1/traces \
-T3CODE_OTLP_METRICS_URL=http://localhost:4318/v1/metrics \
-T3CODE_OTLP_SERVICE_NAME=t3-desktop \
+NEOKOD_OTLP_TRACES_URL=http://localhost:4318/v1/traces \
+NEOKOD_OTLP_METRICS_URL=http://localhost:4318/v1/metrics \
+NEOKOD_OTLP_SERVICE_NAME=neokod-desktop \
 "/Applications/T3 Code.app/Contents/MacOS/T3 Code"
 ```
 
 Direct binary example:
 
 ```bash
-T3CODE_OTLP_TRACES_URL=http://localhost:4318/v1/traces \
-T3CODE_OTLP_METRICS_URL=http://localhost:4318/v1/metrics \
-T3CODE_OTLP_SERVICE_NAME=t3-desktop \
+NEOKOD_OTLP_TRACES_URL=http://localhost:4318/v1/traces \
+NEOKOD_OTLP_METRICS_URL=http://localhost:4318/v1/metrics \
+NEOKOD_OTLP_SERVICE_NAME=neokod-desktop \
 ./path/to/your/desktop-app-binary
 ```
 
@@ -169,7 +169,7 @@ The trace file is the fastest way to inspect raw span data.
 Tail it:
 
 ```bash
-tail -f "$T3CODE_HOME/userdata/logs/server.trace.ndjson"
+tail -f "$NEOKOD_HOME/userdata/logs/server.trace.ndjson"
 ```
 
 In monorepo dev, use:
@@ -186,7 +186,7 @@ jq -c 'select(.exit._tag != "Success") | {
   durationMs,
   exit,
   attributes
-}' "$T3CODE_HOME/userdata/logs/server.trace.ndjson"
+}' "$NEOKOD_HOME/userdata/logs/server.trace.ndjson"
 ```
 
 Show slow spans:
@@ -197,7 +197,7 @@ jq -c 'select(.durationMs > 1000) | {
   durationMs,
   traceId,
   spanId
-}' "$T3CODE_HOME/userdata/logs/server.trace.ndjson"
+}' "$NEOKOD_HOME/userdata/logs/server.trace.ndjson"
 ```
 
 Inspect embedded log events:
@@ -214,7 +214,7 @@ jq -c 'select(any(.events[]?; .attributes["effect.logLevel"] != null)) | {
         level: .attributes["effect.logLevel"]
       }
   ]
-}' "$T3CODE_HOME/userdata/logs/server.trace.ndjson"
+}' "$NEOKOD_HOME/userdata/logs/server.trace.ndjson"
 ```
 
 Follow one trace:
@@ -225,7 +225,7 @@ jq -r 'select(.traceId == "TRACE_ID_HERE") | [
   .spanId,
   (.parentSpanId // "-"),
   .durationMs
-] | @tsv' "$T3CODE_HOME/userdata/logs/server.trace.ndjson"
+] | @tsv' "$NEOKOD_HOME/userdata/logs/server.trace.ndjson"
 ```
 
 Filter orchestration commands:
@@ -236,7 +236,7 @@ jq -c 'select(.attributes["orchestration.command_type"] != null) | {
   durationMs,
   commandType: .attributes["orchestration.command_type"],
   aggregateKind: .attributes["orchestration.aggregate_kind"]
-}' "$T3CODE_HOME/userdata/logs/server.trace.ndjson"
+}' "$NEOKOD_HOME/userdata/logs/server.trace.ndjson"
 ```
 
 Filter git activity:
@@ -251,7 +251,7 @@ jq -c 'select(.attributes["git.operation"] != null) | {
     .events[]
     | select(.name == "git.hook.started" or .name == "git.hook.finished")
   ]
-}' "$T3CODE_HOME/userdata/logs/server.trace.ndjson"
+}' "$NEOKOD_HOME/userdata/logs/server.trace.ndjson"
 ```
 
 ### Use Tempo When You Need A Real Trace Viewer
@@ -273,7 +273,7 @@ Recommended flow in Grafana:
 
 Good first searches:
 
-- service name such as `t3-local`, `t3-dev`, or `t3-desktop`
+- service name such as `neokod-local`, `neokod-dev`, or `neokod-desktop`
 - span names like `sql.execute`, `git.runCommand`, `provider.sendTurn`
 - orchestration spans with attributes like `orchestration.command_type`
 
@@ -359,7 +359,7 @@ If you need those later, add client-side instrumentation or a dedicated server f
 
 Usually one of these is true:
 
-- `T3CODE_OTLP_TRACES_URL` was not set
+- `NEOKOD_OTLP_TRACES_URL` was not set
 - the app was launched from a different environment than the one where you exported the vars
 - the app was not fully restarted after changing env
 - Grafana is looking at the wrong time range or service name
@@ -483,19 +483,19 @@ It provides:
 
 Local trace file:
 
-- `T3CODE_TRACE_FILE`: override trace file path
-- `T3CODE_TRACE_MAX_BYTES`: per-file rotation size, default `10485760`
-- `T3CODE_TRACE_MAX_FILES`: rotated file count, default `10`
-- `T3CODE_TRACE_BATCH_WINDOW_MS`: flush window, default `200`
-- `T3CODE_TRACE_MIN_LEVEL`: minimum trace level, default `Info`
-- `T3CODE_TRACE_TIMING_ENABLED`: enable timing metadata, default `true`
+- `NEOKOD_TRACE_FILE`: override trace file path
+- `NEOKOD_TRACE_MAX_BYTES`: per-file rotation size, default `10485760`
+- `NEOKOD_TRACE_MAX_FILES`: rotated file count, default `10`
+- `NEOKOD_TRACE_BATCH_WINDOW_MS`: flush window, default `200`
+- `NEOKOD_TRACE_MIN_LEVEL`: minimum trace level, default `Info`
+- `NEOKOD_TRACE_TIMING_ENABLED`: enable timing metadata, default `true`
 
 OTLP export:
 
-- `T3CODE_OTLP_TRACES_URL`: OTLP trace endpoint
-- `T3CODE_OTLP_METRICS_URL`: OTLP metric endpoint
-- `T3CODE_OTLP_EXPORT_INTERVAL_MS`: export interval, default `10000`
-- `T3CODE_OTLP_SERVICE_NAME`: service name, default `t3-server`
+- `NEOKOD_OTLP_TRACES_URL`: OTLP trace endpoint
+- `NEOKOD_OTLP_METRICS_URL`: OTLP metric endpoint
+- `NEOKOD_OTLP_EXPORT_INTERVAL_MS`: export interval, default `10000`
+- `NEOKOD_OTLP_SERVICE_NAME`: service name, default `neokod-server`
 
 If the OTLP URLs are unset, local tracing still works and metrics stay in-process only.
 

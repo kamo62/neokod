@@ -1,3 +1,20 @@
+## 3.0.1 - 2026-07-13 (Patch)
+
+Release impact: Patch because this corrects environment precedence and reserved script variables without changing public contracts.
+
+- Fixed OTLP bootstrap precedence and legacy compatibility coverage across server, desktop, build, launcher, and dev-runner boundaries.
+- Preserved identical reserved Neokod and legacy project-script environment values when scripts add custom variables.
+
+## 3.0.0 - 2026-07-13 (Major)
+
+Release impact: Major because the home/state and environment contracts now use Neokod names, with one-release legacy reads for existing installs and scripts.
+
+- Added `NEOKOD_*` environment variables with `T3CODE_*` read fallback through 3.0.0; new names take precedence.
+- Migrated the default state root from `~/.t3` to `~/.neokod` by atomic rename when only the legacy directory exists, falling back safely for that launch if migration fails.
+- Hardened bootstrap, desktop, dev-runner, launcher, and terminal compatibility so new env names win, legacy names fall back safely, and legacy values do not leak into child or WSL processes.
+- Moved project VCS configuration to `.neokod/vcs.json` with legacy `.t3code/vcs.json` read fallback.
+- Project setup scripts now emit both `NEOKOD_PROJECT_ROOT`/`NEOKOD_WORKTREE_PATH` and legacy names for the transition.
+
 ## 2.1.0 - 2026-07-13 (Minor)
 
 Release impact: Minor because the cumulative redesign adds backward-compatible sidebar tabs and local pinned-thread preferences.
