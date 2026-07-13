@@ -19,6 +19,7 @@ import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstall
 import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
 import { ProviderUpdateLaunchNotification } from "../components/ProviderUpdateLaunchNotification";
 import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToastCoordinator";
+import { ActivityNotificationCoordinator } from "../notifications/ActivityNotificationCoordinator";
 import { Button } from "../components/ui/button";
 import {
   AnchoredToastProvider,
@@ -132,6 +133,7 @@ function RootRouteView() {
         <ConnectOnboardingDialog />
         <SshPasswordPromptDialog />
         <SlowRpcRequestToastCoordinator />
+        <ActivityNotificationCoordinator />
         <HostedStaticEnvironmentBootstrap />
         {primaryEnvironmentAuthenticated ? <EventRouter /> : null}
         {primaryEnvironmentAuthenticated ? <ProviderUpdateLaunchNotification /> : null}

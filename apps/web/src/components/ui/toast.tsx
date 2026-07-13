@@ -587,7 +587,7 @@ function Toasts({ position }: { position: ToastPosition }) {
           return (
             <Toast.Root
               className={cn(
-                "absolute z-[calc(9999-var(--toast-index))] w-full overflow-visible select-none rounded-lg border bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 [transition:transform_.5s_cubic-bezier(.22,1,.36,1),opacity_.5s,height_.15s] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
+                "absolute z-[calc(9999-var(--toast-index))] w-full overflow-visible select-none rounded-lg border bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 motion-reduce:transition-none [transition:transform_.5s_cubic-bezier(.22,1,.36,1),opacity_.5s,height_.15s] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
                 // Base positioning using data-position
                 "data-[position*=right]:right-0 data-[position*=right]:left-auto",
                 "data-[position*=left]:right-auto data-[position*=left]:left-0",
@@ -677,7 +677,7 @@ function Toasts({ position }: { position: ToastPosition }) {
                 className={cn(
                   // `overflow-x: clip` avoids the CSS quirk where pairing `hidden` + `y: visible`
                   // forces `y` to `auto`. Expandable detail panels can extend below without being cut off.
-                  "pointer-events-auto min-h-0 overflow-y-visible pl-3.5 text-sm transition-opacity duration-250 [overflow-x:clip] data-expanded:opacity-100",
+                  "pointer-events-auto min-h-0 overflow-y-visible pl-3.5 text-sm transition-opacity duration-250 motion-reduce:transition-none [overflow-x:clip] data-expanded:opacity-100",
                   stackedActionLayout
                     ? "flex flex-col gap-2 py-2.5 pr-3.5"
                     : cn("py-3", "flex items-center justify-between gap-1.5", inlineContentEndPad),

@@ -1,6 +1,6 @@
 import { ArchiveIcon, ArchiveX, LoaderIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtomValue } from "@effect/atom-react";
 import {
   defaultInstanceIdForDriver,
@@ -92,6 +92,12 @@ import {
 } from "./settingsLayout";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { useAtomCommand } from "../../state/use-atom-command";
+import {
+  readBrowserNotificationCapability,
+  requestBrowserNotificationPermission,
+  subscribeBrowserNotificationCapability,
+  type BrowserNotificationCapability,
+} from "../../notifications/browserNotification";
 
 const THEME_OPTIONS = [
   {
@@ -437,6 +443,10 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.autoOpenPlanSidebar !== DEFAULT_UNIFIED_SETTINGS.autoOpenPlanSidebar
         ? ["Auto-open task panel"]
         : []),
+      ...(settings.webActivityNotificationsEnabled !==
+      DEFAULT_UNIFIED_SETTINGS.webActivityNotificationsEnabled
+        ? ["Task activity notifications"]
+        : []),
       ...(settings.enableAssistantStreaming !== DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming
         ? ["Assistant output"]
         : []),
@@ -466,6 +476,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       isGitWritingModelDirty,
       settings.appIconVariant,
       settings.autoOpenPlanSidebar,
+      settings.webActivityNotificationsEnabled,
       settings.confirmThreadArchive,
       settings.confirmThreadDelete,
       settings.addProjectBaseDirectory,
@@ -499,6 +510,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
       sidebarThreadPreviewCount: DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount,
       autoOpenPlanSidebar: DEFAULT_UNIFIED_SETTINGS.autoOpenPlanSidebar,
+      webActivityNotificationsEnabled: DEFAULT_UNIFIED_SETTINGS.webActivityNotificationsEnabled,
       enableAssistantStreaming: DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming,
       automaticGitFetchInterval: DEFAULT_UNIFIED_SETTINGS.automaticGitFetchInterval,
       defaultThreadEnvMode: DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode,
@@ -556,6 +568,21 @@ export function GeneralSettingsPanel() {
   const selectedIconVariant =
     APP_ICON_VARIANT_OPTIONS.find((option) => option.value === settings.appIconVariant) ??
     APP_ICON_VARIANT_OPTIONS[1];
+  const [browserNotificationCapability, setBrowserNotificationCapability] =
+    useState<BrowserNotificationCapability>(() => readBrowserNotificationCapability());
+
+  useEffect(
+    () => subscribeBrowserNotificationCapability(() => setBrowserNotificationCapability(readBrowserNotificationCapability())),
+    [],
+  );
+
+  const systemNotificationDescription = {
+    unsupported: "System notifications are unavailable in this browser. In-app notifications still work.",
+    insecure: "System notifications require a secure (HTTPS) page. In-app notifications still work.",
+    default: "System notifications are off until you enable them. In-app notifications still work.",
+    granted: "System notifications are enabled when Neokod is not focused.",
+    denied: "System notifications are blocked by your browser. In-app notifications still work.",
+  }[browserNotificationCapability];
 
   return (
     <SettingsPageContainer>
@@ -711,6 +738,52 @@ export function GeneralSettingsPanel() {
               onCheckedChange={(checked) => updateSettings({ wordWrap: Boolean(checked) })}
               aria-label="Wrap code, tables, diffs, and file previews by default"
             />
+          }
+        />
+
+        <SettingsRow
+          title="Task activity notifications"
+          description="Notify when an agent needs attention, finishes, fails, or a terminal command completes."
+          resetAction={
+            settings.webActivityNotificationsEnabled !==
+            DEFAULT_UNIFIED_SETTINGS.webActivityNotificationsEnabled ? (
+              <SettingResetButton
+                label="task activity notifications"
+                onClick={() =>
+                  updateSettings({
+                    webActivityNotificationsEnabled:
+                      DEFAULT_UNIFIED_SETTINGS.webActivityNotificationsEnabled,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.webActivityNotificationsEnabled}
+              onCheckedChange={(checked) =>
+                updateSettings({ webActivityNotificationsEnabled: Boolean(checked) })
+              }
+              aria-label="Task activity notifications"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="System notifications"
+          description={systemNotificationDescription}
+          control={
+            browserNotificationCapability === "default" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  void requestBrowserNotificationPermission().then(setBrowserNotificationCapability);
+                }}
+              >
+                Enable system notifications
+              </Button>
+            ) : null
           }
         />
 
