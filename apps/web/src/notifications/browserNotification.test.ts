@@ -62,7 +62,7 @@ describe("browser activity notifications", () => {
   it("handles permission races and constructor failures without claiming delivery", () => {
     installNotification("default");
     expect(showBrowserActivityNotification({ title: "x", tag: "x", onClick: () => {} })).toBe("not-granted");
-    installNotification("granted", () => { throw new Error("blocked"); });
+    installNotification("granted", vi.fn(() => { throw new Error("blocked"); }));
     expect(showBrowserActivityNotification({ title: "x", tag: "x", onClick: () => {} })).toBe("construction-failed");
   });
 

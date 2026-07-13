@@ -190,7 +190,7 @@ export function reduceEnvironmentActivityObservation(
           thread,
           input,
           "agent-completed",
-          pendingOutcome?.turnId ?? latestTurnId ?? retainedActiveTurnId,
+          pendingOutcome?.turnId ?? latestTurnId ?? retainedActiveTurnId ?? undefined,
         ),
       );
     }
