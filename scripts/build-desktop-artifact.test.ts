@@ -150,8 +150,6 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           "@effect/platform-node": "catalog:",
           "@t3tools/contracts": "workspace:*",
           "@t3tools/shared": "workspace:*",
-          "@t3tools/ssh": "workspace:*",
-          "@t3tools/tailscale": "workspace:*",
           effect: "catalog:",
           electron: "41.5.0",
         },

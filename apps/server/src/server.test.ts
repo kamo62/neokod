@@ -372,6 +372,7 @@ const buildAppUnderTest = (options?: {
       otlpServiceName: "t3-server",
       mode: "desktop",
       port: 0,
+      transport: "loopback",
       host: "127.0.0.1",
       cwd: process.cwd(),
       baseDir,
@@ -383,8 +384,6 @@ const buildAppUnderTest = (options?: {
       desktopBootstrapToken: defaultDesktopBootstrapToken,
       autoBootstrapProjectFromCwd: false,
       logWebSocketEvents: false,
-      tailscaleServeEnabled: false,
-      tailscaleServePort: 443,
       ...options?.config,
     };
     const layerConfig = ServerConfig.layer(config);
@@ -1407,6 +1406,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       yield* buildAppUnderTest({
         config: {
           host: "0.0.0.0",
+          transport: "wsl-bearer",
         },
       });
 
@@ -3380,6 +3380,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       yield* buildAppUnderTest({
         config: {
           host: "0.0.0.0",
+          transport: "wsl-bearer",
         },
       });
 
@@ -3427,6 +3428,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       yield* buildAppUnderTest({
         config: {
           host: "0.0.0.0",
+          transport: "wsl-bearer",
         },
       });
 
@@ -3468,6 +3470,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       yield* buildAppUnderTest({
         config: {
           host: "0.0.0.0",
+          transport: "wsl-bearer",
         },
       });
 
@@ -3579,6 +3582,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       yield* buildAppUnderTest({
         config: {
           host: "0.0.0.0",
+          transport: "wsl-bearer",
         },
       });
 
@@ -3638,6 +3642,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       yield* buildAppUnderTest({
         config: {
           host: "0.0.0.0",
+          transport: "wsl-bearer",
         },
       });
 

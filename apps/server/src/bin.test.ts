@@ -71,6 +71,7 @@ const makeCliTestServerConfig = (baseDir: string) =>
       otlpServiceName: "t3-server",
       mode: "web",
       port: 0,
+      transport: "loopback",
       host: "127.0.0.1",
       cwd: process.cwd(),
       baseDir,
@@ -82,8 +83,6 @@ const makeCliTestServerConfig = (baseDir: string) =>
       desktopBootstrapToken: undefined,
       autoBootstrapProjectFromCwd: false,
       logWebSocketEvents: false,
-      tailscaleServeEnabled: false,
-      tailscaleServePort: 443,
     } satisfies ServerConfig.ServerConfig["Service"];
   });
 

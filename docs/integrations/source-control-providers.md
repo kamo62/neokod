@@ -112,13 +112,17 @@ Bitbucket uses API tokens instead of a CLI tool:
 
 **Git is required** – T3 Code uses Git for all local operations. Ensure `git` is installed on your server.
 
-**Server-side setup** – Authentication happens on the machine running T3 Code (the server), not your local browser. If you're using a hosted or team instance, your administrator may have already configured providers.
+**Backend-side setup** – Authentication happens in the local desktop/server process, not in the browser renderer. The Neokod backend listens on loopback; its desktop-managed WSL backend is the only authenticated non-loopback exception.
 
 **Common issues:**
 
 - **Provider shows "Not authenticated"** – Run the login command for that provider (e.g., `gh auth login`) in a terminal on the server, then rescan in Settings
 - **Bitbucket not connecting** – Double-check your environment variables are set in the correct shell profile and the server was restarted
 - **Can't push to a remote** – Verify your Git remote URL matches the provider you've authenticated with (SSH vs HTTPS remotes may need different credentials)
+
+Git remotes may still use SSH. That source-control transport is independent of
+the removed Neokod SSH connection target; Neokod itself no longer opens remote
+backends through SSH tunnels.
 
 **Need more help?** Check your provider's CLI documentation:
 

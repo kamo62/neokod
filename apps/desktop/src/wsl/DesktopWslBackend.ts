@@ -17,8 +17,7 @@
 // Port allocation: each WSL instance gets a freshly scanned port to
 // avoid colliding with the primary or with a previously-registered WSL
 // instance that's still tearing down. The scan only checks loopback
-// (127.0.0.1) since the WSL backend is loopback-only — the primary
-// owns LAN exposure when the user opts in.
+// (127.0.0.1) on the Windows side.
 
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -33,7 +32,7 @@ import * as NetService from "@t3tools/shared/Net";
 import * as DesktopObservability from "../app/DesktopObservability.ts";
 import * as DesktopBackendConfiguration from "../backend/DesktopBackendConfiguration.ts";
 import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
-import * as DesktopServerExposure from "../backend/DesktopServerExposure.ts";
+import * as DesktopLocalServer from "../backend/DesktopLocalServer.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopWslEnvironment from "./DesktopWslEnvironment.ts";
 
@@ -96,7 +95,7 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const pool = yield* DesktopBackendPool.DesktopBackendPool;
     const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
-    const serverExposure = yield* DesktopServerExposure.DesktopServerExposure;
+    const localServer = yield* DesktopLocalServer.DesktopLocalServer;
     const wslEnvironment = yield* DesktopWslEnvironment.DesktopWslEnvironment;
     const appSettings = yield* DesktopAppSettings.DesktopAppSettings;
     const net = yield* NetService.NetService;
@@ -135,7 +134,7 @@ export const layer = Layer.effect(
     const startNew = Effect.fn("desktop.wslBackend.startNew")(function* (input: {
       readonly distro: string | null;
     }) {
-      const primaryConfig = yield* serverExposure.backendConfig;
+      const primaryConfig = yield* localServer.config;
       const port = yield* scanForWslPort(primaryConfig.port + 1).pipe(
         Effect.provideService(NetService.NetService, net),
         Effect.map((value) => Option.some(value)),

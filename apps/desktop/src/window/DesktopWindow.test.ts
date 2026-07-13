@@ -29,7 +29,6 @@ import * as ElectronShell from "../electron/ElectronShell.ts";
 import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import { MENU_ACTION_CHANNEL } from "../ipc/channels.ts";
-import * as DesktopServerExposure from "../backend/DesktopServerExposure.ts";
 import * as DesktopWindow from "./DesktopWindow.ts";
 import * as PreviewManager from "../preview/Manager.ts";
 
@@ -100,21 +99,6 @@ const desktopAssetsLayer = Layer.succeed(DesktopAssets.DesktopAssets, {
   resolveResourcePath: () => Effect.succeed(Option.none<string>()),
 } satisfies DesktopAssets.DesktopAssets["Service"]);
 
-const desktopServerExposureLayer = Layer.succeed(DesktopServerExposure.DesktopServerExposure, {
-  getState: Effect.die("unexpected getState"),
-  backendConfig: Effect.succeed({
-    port: 3773,
-    bindHost: "127.0.0.1",
-    httpBaseUrl: new URL("http://127.0.0.1:3773"),
-    tailscaleServeEnabled: false,
-    tailscaleServePort: 443,
-  }),
-  configureFromSettings: () => Effect.die("unexpected configureFromSettings"),
-  setMode: () => Effect.die("unexpected setMode"),
-  setTailscaleServeEnabled: () => Effect.die("unexpected setTailscaleServeEnabled"),
-  getAdvertisedEndpoints: Effect.die("unexpected getAdvertisedEndpoints"),
-} satisfies DesktopServerExposure.DesktopServerExposure["Service"]);
-
 const electronMenuLayer = Layer.succeed(ElectronMenu.ElectronMenu, {
   setApplicationMenu: () => Effect.void,
   popupTemplate: () => Effect.void,
@@ -170,7 +154,6 @@ function makeTestLayer(input: {
       Layer.mergeAll(
         desktopAssetsLayer,
         desktopEnvironmentLayer,
-        desktopServerExposureLayer,
         DesktopState.layer,
         electronMenuLayer,
         Layer.succeed(ElectronShell.ElectronShell, {
@@ -267,7 +250,6 @@ const makeSplashScenario = (createOutcomes: readonly (Electron.BrowserWindow | n
         Layer.mergeAll(
           desktopAssetsLayer,
           desktopEnvironmentLayer,
-          desktopServerExposureLayer,
           electronMenuLayer,
           Layer.succeed(ElectronShell.ElectronShell, {
             openExternal: () => Effect.succeed(true),

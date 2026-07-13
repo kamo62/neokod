@@ -110,16 +110,16 @@ describe("formatWslShellTransportFailureReason", () => {
 });
 
 describe("buildWslNodeEnvPreamble", () => {
-  it("passes the required Node engine range into the shared resolver", () => {
+  it("passes the required Node engine range into the WSL-local resolver", () => {
     const preamble = buildWslNodeEnvPreamble("^22.16 || ^23.11 || >=24.10");
 
     expect(preamble).toContain("T3_NODE_ENGINE_RANGE='^22.16 || ^23.11 || >=24.10'");
     expect(preamble.indexOf("T3_NODE_ENGINE_RANGE=")).toBeLessThan(
-      preamble.lastIndexOf("ensure_remote_node_path || true"),
+      preamble.lastIndexOf("ensure_wsl_node_path || true"),
     );
   });
 
-  it("keeps the shared resolver permissive when no Node engine range is provided", () => {
+  it("keeps the WSL-local resolver permissive when no Node engine range is provided", () => {
     expect(buildWslNodeEnvPreamble()).toContain("T3_NODE_ENGINE_RANGE=''");
   });
 });

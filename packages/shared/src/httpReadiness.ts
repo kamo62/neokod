@@ -37,7 +37,7 @@ export function describeReadinessCause(cause: unknown): unknown {
 }
 
 /**
- * Generic HTTP readiness probe shared by the SSH tunnel and the desktop backend
+ * Generic HTTP readiness probe used by the desktop backend
  * manager. Polls `baseUrl + path` until it returns a 2xx response or the overall
  * `timeoutMs` elapses. Each individual probe is bounded by `probeTimeoutMs` so a
  * single hung request cannot stall the retry loop, and the retry cadence is
@@ -76,7 +76,7 @@ export const waitForHttpReady = Effect.fn("shared.httpReadiness.waitForHttpReady
 
   // Tracks errors this function itself produced via `makeError`, so the
   // pass-through guards below never double-wrap an already-constructed error
-  // (mirrors the SSH original's `cause instanceof SshReadinessError` checks).
+  // Preserve structured readiness errors while normalizing transport failures.
   const makeError = input.makeError;
   const madeErrors = new WeakSet<object>();
   const fail = (cause: unknown): E => {

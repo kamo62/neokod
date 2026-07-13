@@ -3,6 +3,18 @@
 Continuation notes for a fresh session opened in this directory. Keep this file
 untracked; do not commit it.
 
+## Local-first carve-out (2026-07-13)
+
+The current `feat/local-first-carveout` worktree has Stage 1 committed and Stage
+2 applied but intentionally uncommitted. Stage 2 deletes the product's SSH and
+Tailscale connection paths, LAN/manual endpoint advertising, and public host
+selection. Desktop primary, standalone `t3 serve`, and Vite bind to
+`127.0.0.1`. Desktop-managed WSL remains on its internal `0.0.0.0` bind and
+still requires the private `wsl-bearer` discriminator and inherited desktop bootstrap credential followed by bearer
+session exchange. Do not collapse that boundary before Stage 5. Stages 3-6
+(including relay/cloud/Clerk/auth removal and the `@neokod` package rename) are
+not part of this worktree change.
+
 ## What this fork is
 
 MIT fork of pingdotgg/t3code (web GUI driving local coding-agent CLIs). Org goal:

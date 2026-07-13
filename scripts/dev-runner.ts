@@ -27,7 +27,6 @@ const BASE_WEB_PORT = 5733;
 const MAX_HASH_OFFSET = 3000;
 const MAX_PORT = 65535;
 const DESKTOP_DEV_LOOPBACK_HOST = "127.0.0.1";
-const DEV_PORT_PROBE_HOSTS = ["127.0.0.1", "0.0.0.0", "::1", "::"] as const;
 
 export const DEFAULT_T3_HOME = Effect.map(Effect.service(Path.Path), (path) =>
   path.join(NodeOS.homedir(), ".t3"),
@@ -224,7 +223,6 @@ interface CreateDevRunnerEnvInput {
   readonly noBrowser: boolean | undefined;
   readonly autoBootstrapProjectFromCwd: boolean | undefined;
   readonly logWebSocketEvents: boolean | undefined;
-  readonly host: string | undefined;
   readonly port: number | undefined;
   readonly devUrl: URL | undefined;
 }
@@ -238,7 +236,6 @@ export function createDevRunnerEnv({
   noBrowser,
   autoBootstrapProjectFromCwd,
   logWebSocketEvents,
-  host,
   port,
   devUrl,
 }: CreateDevRunnerEnvInput): Effect.Effect<NodeJS.ProcessEnv, never, Path.Path> {
@@ -267,11 +264,6 @@ export function createDevRunnerEnv({
       output.VITE_WS_URL = `ws://${DESKTOP_DEV_LOOPBACK_HOST}:${serverPort}`;
       delete output.T3CODE_MODE;
       delete output.T3CODE_NO_BROWSER;
-      delete output.T3CODE_HOST;
-    }
-
-    if (!isDesktopMode && host !== undefined) {
-      output.T3CODE_HOST = host;
     }
 
     if (!isDesktopMode && noBrowser !== undefined) {
@@ -321,28 +313,10 @@ function portPairForOffset(offset: number): {
   };
 }
 
-export function checkPortAvailabilityOnHosts<R>(
-  port: number,
-  hosts: ReadonlyArray<string>,
-  canListenOnHost: (port: number, host: string) => Effect.Effect<boolean, never, R>,
-): Effect.Effect<boolean, never, R> {
-  return Effect.gen(function* () {
-    for (const host of hosts) {
-      if (!(yield* canListenOnHost(port, host))) {
-        return false;
-      }
-    }
-
-    return true;
-  });
-}
-
 const defaultCheckPortAvailability: PortAvailabilityCheck<NetService.NetService> = (port) =>
   Effect.gen(function* () {
     const net = yield* NetService.NetService;
-    return yield* checkPortAvailabilityOnHosts(port, DEV_PORT_PROBE_HOSTS, (candidatePort, host) =>
-      net.canListenOnHost(candidatePort, host),
-    );
+    return yield* net.canListenOnHost(port, DESKTOP_DEV_LOOPBACK_HOST);
   });
 
 interface FindFirstAvailableOffsetInput<R = NetService.NetService> {
@@ -472,7 +446,6 @@ interface DevRunnerCliInput {
   readonly noBrowser: boolean | undefined;
   readonly autoBootstrapProjectFromCwd: boolean | undefined;
   readonly logWebSocketEvents: boolean | undefined;
-  readonly host: string | undefined;
   readonly port: number | undefined;
   readonly devUrl: URL | undefined;
   readonly dryRun: boolean;
@@ -510,7 +483,6 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
       noBrowser: input.noBrowser,
       autoBootstrapProjectFromCwd: input.autoBootstrapProjectFromCwd,
       logWebSocketEvents: input.logWebSocketEvents,
-      host: input.host,
       port: input.port,
       devUrl: input.devUrl,
     });
@@ -603,10 +575,6 @@ const devRunnerCli = Command.make("dev-runner", {
     Flag.withDescription("WebSocket event logging toggle (equivalent to T3CODE_LOG_WS_EVENTS)."),
     Flag.withAlias("log-ws-events"),
     Flag.withFallbackConfig(optionalBooleanConfig("T3CODE_LOG_WS_EVENTS")),
-  ),
-  host: Flag.string("host").pipe(
-    Flag.withDescription("Server host/interface override (forwards to T3CODE_HOST)."),
-    Flag.withFallbackConfig(optionalStringConfig("T3CODE_HOST")),
   ),
   port: Flag.integer("port").pipe(
     Flag.withSchema(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 }))),

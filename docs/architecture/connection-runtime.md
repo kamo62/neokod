@@ -14,7 +14,7 @@ services:
 - `EnvironmentSupervisor` owns desired state, retry scheduling, and the active
   session scope.
 - `ConnectionBroker` prepares credentials and endpoints for primary, bearer,
-  relay, and SSH targets.
+  and relay targets.
 - `RpcSessionFactory` performs one transport attempt. It does not retry.
 - `EnvironmentRpc` exposes the active session without leaking the transport.
 - `EnvironmentProjectCommands` and `EnvironmentThreadCommands` construct
@@ -89,6 +89,14 @@ The web app provides:
 
 Platform layers adapt operating-system capabilities. They do not implement
 connection policy.
+
+The desktop primary and public `t3 serve` startup are IPv4-loopback-only. The
+only non-loopback exception is desktop-managed WSL topology: the desktop parent
+may bind the WSL child to its internal wildcard interface and publishes the
+matching WSL origin together with the transitional bootstrap credential. The
+renderer requires the `wsl-bearer` discriminator, distro, credential, and matching
+HTTP/WebSocket origins before exchanging the credential for a bearer session.
+Configured Vite URLs and browser origins never receive this exception.
 
 ## Source Boundaries
 

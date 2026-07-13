@@ -63,7 +63,8 @@ export class ServerConfig extends Context.Service<
     readonly otlpServiceName: string;
     readonly mode: RuntimeMode;
     readonly port: number;
-    readonly host: string | undefined;
+    readonly transport: "loopback" | "wsl-bearer";
+    readonly host: "127.0.0.1" | "0.0.0.0";
     readonly cwd: string;
     readonly baseDir: string;
     readonly staticDir: string | undefined;
@@ -73,8 +74,6 @@ export class ServerConfig extends Context.Service<
     readonly desktopBootstrapToken: string | undefined;
     readonly autoBootstrapProjectFromCwd: boolean;
     readonly logWebSocketEvents: boolean;
-    readonly tailscaleServeEnabled: boolean;
-    readonly tailscaleServePort: number;
   }
 >()("t3/config/ServerConfig") {
   /** @deprecated Import and use `layerTest` from this module. */
@@ -172,10 +171,9 @@ const makeTest = Effect.fn("ServerConfig.makeTest")(function* (
     mode: "web",
     autoBootstrapProjectFromCwd: false,
     logWebSocketEvents: false,
-    tailscaleServeEnabled: false,
-    tailscaleServePort: 443,
     port: 0,
-    host: undefined,
+    transport: "loopback",
+    host: "127.0.0.1",
     desktopBootstrapToken: undefined,
     staticDir: undefined,
     devUrl,
@@ -183,6 +181,13 @@ const makeTest = Effect.fn("ServerConfig.makeTest")(function* (
     startupPresentation: "browser",
   });
 });
+
+export function isServerBindAuthorized(
+  config: Pick<ServerConfig["Service"], "host" | "transport" | "desktopBootstrapToken">,
+): boolean {
+  if (config.host === "127.0.0.1") return config.transport === "loopback";
+  return config.transport === "wsl-bearer" && Boolean(config.desktopBootstrapToken?.trim());
+}
 
 export const layerTest = (cwd: string, baseDirOrPrefix: string | { readonly prefix: string }) =>
   Layer.effect(ServerConfig, makeTest(cwd, baseDirOrPrefix));

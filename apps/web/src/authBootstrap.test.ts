@@ -78,6 +78,7 @@ function installDesktopBootstrap() {
       {
         id: "primary",
         label: "Local environment",
+        transport: "loopback",
         httpBaseUrl: "http://localhost:3773",
         wsBaseUrl: "ws://localhost:3773",
         bootstrapToken: "desktop-bootstrap-token",
@@ -152,6 +153,7 @@ describe("resolveInitialServerAuthGateState", () => {
         {
           id: "primary",
           label: "Windows",
+          transport: "loopback",
           httpBaseUrl: "http://localhost:3773",
           wsBaseUrl: "ws://localhost:3773",
           bootstrapToken: "desktop-bootstrap-token",
@@ -169,8 +171,8 @@ describe("resolveInitialServerAuthGateState", () => {
 
   it("uses https urls when the primary environment uses wss", async () => {
     await installAuthApi({ session: () => unauthenticatedSession(LOOPBACK_AUTH) });
-    vi.stubEnv("VITE_HTTP_URL", "https://remote.example.com");
-    vi.stubEnv("VITE_WS_URL", "wss://remote.example.com");
+    vi.stubEnv("VITE_HTTP_URL", "https://127.0.0.1:3773");
+    vi.stubEnv("VITE_WS_URL", "wss://127.0.0.1:3773");
 
     const { resolveInitialServerAuthGateState, resolvePrimaryEnvironmentHttpUrl } =
       await import("./environments/primary");
@@ -180,7 +182,7 @@ describe("resolveInitialServerAuthGateState", () => {
       auth: LOOPBACK_AUTH,
     });
     expect(resolvePrimaryEnvironmentHttpUrl("/api/auth/session")).toBe(
-      "https://remote.example.com/api/auth/session",
+      "https://127.0.0.1:3773/api/auth/session",
     );
   });
 
@@ -210,6 +212,7 @@ describe("resolveInitialServerAuthGateState", () => {
         {
           id: "primary",
           label: "Windows",
+          transport: "loopback",
           httpBaseUrl: "http://127.0.0.1:3773",
           wsBaseUrl: "ws://127.0.0.1:3773",
         },
@@ -396,6 +399,7 @@ describe("resolveInitialServerAuthGateState", () => {
         {
           id: "primary",
           label: "Windows",
+          transport: "loopback",
           httpBaseUrl: "http://localhost:3773",
           wsBaseUrl: "ws://localhost:3773",
           bootstrapToken: "desktop-bootstrap-token",

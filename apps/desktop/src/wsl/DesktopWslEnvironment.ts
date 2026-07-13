@@ -9,10 +9,10 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
-import { buildRemoteNodeEnvScript } from "@t3tools/ssh/tunnel";
 import { satisfiesSemverRange } from "@t3tools/shared/semver";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+import { buildWslNodeEnvScript } from "./wslNodeEnvironment.ts";
 import { parseWslDistroList, type WslDistro } from "./wslPathParsing.ts";
 
 const PROCESS_TERMINATE_GRACE = Duration.seconds(1);
@@ -129,13 +129,12 @@ export const formatWslShellTransportFailureReason = (
   }
 };
 
-// Reuse the SSH remote resolver so WSL and SSH discover version-managed Node
-// the same way. Passing the engine range lets the resolver fall through to
+// Passing the engine range lets the resolver fall through to
 // version managers like nvm when a system node exists but is too old.
 export const buildWslNodeEnvPreamble = (
   nodeEngineRange?: string | null,
-): string => `${buildRemoteNodeEnvScript({ nodeEngineRange: nodeEngineRange ?? null })}
-ensure_remote_node_path || true
+): string => `${buildWslNodeEnvScript(nodeEngineRange)}
+ensure_wsl_node_path || true
 `;
 
 // wsl.exe re-escapes args before forwarding them to the Linux side, which
@@ -148,7 +147,7 @@ const runWslShell = (
   options: EnsureWslNodePtyOptions = {},
 ): Effect.Effect<ShellResult, never, ChildProcessSpawner.ChildProcessSpawner> => {
   const spawner = ChildProcessSpawner.ChildProcessSpawner;
-  // -l picks up profile-managed PATH; the shared resolver covers supported
+  // -l picks up profile-managed PATH; the WSL-local resolver covers supported
   // version managers that non-interactive login shells can miss. -s so bash
   // reads the script from stdin.
   const command = ChildProcess.make(
@@ -304,8 +303,8 @@ export const parseToolchainReport = (stdout: string): ToolchainReport => {
   return { missingTools, nodeVersion };
 };
 
-// Pulls the absolute node path the WSL distro resolved after the shared remote
-// resolver repaired PATH. Returns null when no node was found, which the caller
+// Pulls the absolute node path after the WSL-local resolver repaired PATH.
+// Returns null when no node was found, which the caller
 // turns into an actionable "install Node" message instead of a confusing
 // node-pty error.
 export const parseNodePath = (stdout: string): string | null => {

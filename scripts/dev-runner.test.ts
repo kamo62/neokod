@@ -13,7 +13,6 @@ import * as Stream from "effect/Stream";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
 import {
-  checkPortAvailabilityOnHosts,
   createDevRunnerEnv,
   findFirstAvailableOffset,
   getDevRunnerModeArgs,
@@ -55,7 +54,6 @@ const devServerInput = {
   noBrowser: undefined,
   autoBootstrapProjectFromCwd: undefined,
   logWebSocketEvents: undefined,
-  host: undefined,
   port: 13_773,
   devUrl: undefined,
   dryRun: false,
@@ -139,7 +137,6 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           noBrowser: undefined,
           autoBootstrapProjectFromCwd: undefined,
           logWebSocketEvents: undefined,
-          host: undefined,
           port: undefined,
           devUrl: undefined,
         });
@@ -160,7 +157,6 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           noBrowser: true,
           autoBootstrapProjectFromCwd: false,
           logWebSocketEvents: true,
-          host: "0.0.0.0",
           port: 4222,
           devUrl: new URL("http://localhost:7331"),
         });
@@ -172,7 +168,6 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         assert.equal(env.T3CODE_NO_BROWSER, "1");
         assert.equal(env.T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD, "0");
         assert.equal(env.T3CODE_LOG_WS_EVENTS, "1");
-        assert.equal(env.T3CODE_HOST, "0.0.0.0");
         assert.equal(env.VITE_DEV_SERVER_URL, "http://localhost:7331/");
       }),
     );
@@ -190,7 +185,6 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           noBrowser: undefined,
           autoBootstrapProjectFromCwd: undefined,
           logWebSocketEvents: undefined,
-          host: undefined,
           port: undefined,
           devUrl: undefined,
         });
@@ -213,7 +207,6 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           noBrowser: undefined,
           autoBootstrapProjectFromCwd: undefined,
           logWebSocketEvents: false,
-          host: undefined,
           port: undefined,
           devUrl: undefined,
         });
@@ -234,7 +227,6 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           noBrowser: undefined,
           autoBootstrapProjectFromCwd: undefined,
           logWebSocketEvents: undefined,
-          host: undefined,
           port: undefined,
           devUrl: undefined,
         });
@@ -252,7 +244,6 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
             T3CODE_PORT: "13773",
             T3CODE_MODE: "web",
             T3CODE_NO_BROWSER: "0",
-            T3CODE_HOST: "0.0.0.0",
             VITE_DEV_SERVER_URL: "http://127.0.0.1:8526",
             VITE_WS_URL: "ws://localhost:13773",
           },
@@ -262,7 +253,6 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           noBrowser: true,
           autoBootstrapProjectFromCwd: undefined,
           logWebSocketEvents: undefined,
-          host: "127.0.0.1",
           port: 4222,
           devUrl: undefined,
         });
@@ -275,7 +265,6 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         assert.equal(env.VITE_HTTP_URL, "http://127.0.0.1:4222");
         assert.equal(env.T3CODE_MODE, undefined);
         assert.equal(env.T3CODE_NO_BROWSER, undefined);
-        assert.equal(env.T3CODE_HOST, undefined);
         assert.equal(env.VITE_WS_URL, "ws://127.0.0.1:4222");
       }),
     );
@@ -291,7 +280,6 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           noBrowser: undefined,
           autoBootstrapProjectFromCwd: undefined,
           logWebSocketEvents: undefined,
-          host: undefined,
           port: undefined,
           devUrl: undefined,
         });
@@ -363,36 +351,6 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         assert.equal(error.baseWebPort, 5_733);
         assert.equal(error.maximumPort, 65_535);
         assert.ok(!("cause" in error));
-      }),
-    );
-  });
-
-  describe("checkPortAvailabilityOnHosts", () => {
-    it.effect("checks overlapping hosts sequentially to avoid self-interference", () =>
-      Effect.gen(function* () {
-        let inFlightCount = 0;
-        const calls: Array<[number, string]> = [];
-
-        const available = yield* checkPortAvailabilityOnHosts(
-          13_773,
-          ["127.0.0.1", "0.0.0.0", "::"],
-          (port, host) =>
-            Effect.promise(async () => {
-              calls.push([port, host]);
-              inFlightCount += 1;
-              const overlapped = inFlightCount > 1;
-              await Promise.resolve();
-              inFlightCount -= 1;
-              return !overlapped;
-            }),
-        );
-
-        assert.equal(available, true);
-        assert.deepStrictEqual(calls, [
-          [13_773, "127.0.0.1"],
-          [13_773, "0.0.0.0"],
-          [13_773, "::"],
-        ]);
       }),
     );
   });

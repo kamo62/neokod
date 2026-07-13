@@ -153,8 +153,6 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
     ? Layer.succeed(DesktopAppSettings.DesktopAppSettings, {
         get: Effect.succeed(DesktopAppSettings.DEFAULT_DESKTOP_SETTINGS),
         load: Effect.succeed(DesktopAppSettings.DEFAULT_DESKTOP_SETTINGS),
-        setServerExposureMode: () => Effect.die("unexpected server exposure update"),
-        setTailscaleServe: () => Effect.die("unexpected Tailscale Serve update"),
         setUpdateChannel: () => Effect.fail(setUpdateChannelError),
         setWslBackendEnabled: () => Effect.die("unexpected WSL backend toggle"),
         setWslDistro: () => Effect.die("unexpected WSL distro change"),

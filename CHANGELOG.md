@@ -1,8 +1,12 @@
 ## 2.0.0 - 2026-07-13 (Major)
 
-Release impact: Major because this removes product surfaces and their package, build, and release contracts.
+Release impact: Major because this removes product surfaces, remote connection transports, and their package, build, and release contracts.
 
 - Removed the React Native mobile app and the marketing site as part of the local-first carve-out.
+- Removed SSH backend connections, Tailscale integration, LAN/manual endpoint advertising, and public server host selection.
+- Constrained the desktop primary, standalone server, and development web server to `127.0.0.1`.
+- Retained the authenticated desktop-managed WSL exception: its internal wildcard bind still requires the private `wsl-bearer` discriminator, desktop bootstrap credential, and bearer-session exchange.
+- Purged retired direct-remote saved-environment records during desktop catalog migration while preserving relay records for the later cloud stage.
 
 ## 1.1.0 - 2026-07-12 (Minor)
 

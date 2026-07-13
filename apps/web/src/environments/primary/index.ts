@@ -45,10 +45,13 @@ export {
   isDesktopEnvironmentBootstrapIncompleteError,
   isPrimaryEnvironmentProtocolUnsupportedError,
   isPrimaryEnvironmentUrlInvalidError,
+  isPrimaryEnvironmentTargetRejectedError,
   PrimaryEnvironmentProtocolUnsupportedError,
   PrimaryEnvironmentUrlInvalidError,
+  PrimaryEnvironmentTargetRejectedError,
   readPrimaryEnvironmentTarget,
   resolvePrimaryEnvironmentHttpUrl,
+  resolveDesktopEnvironmentBootstrapTarget,
   isLoopbackHostname,
   type PrimaryEnvironmentTarget,
 } from "./target";

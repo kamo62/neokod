@@ -97,19 +97,14 @@ it.layer(NodeServices.layer)("EnvironmentAuthPolicy.layer", (it) => {
     ),
   );
 
-  it.effect("uses remote-reachable policy for non-loopback web hosts", () =>
-    Effect.gen(function* () {
-      const policy = yield* EnvironmentAuthPolicy.EnvironmentAuthPolicy;
-      const descriptor = yield* policy.getDescriptor();
-
-      expect(descriptor.policy).toBe("remote-reachable");
-    }).pipe(
-      Effect.provide(
-        makeEnvironmentAuthPolicyLayer({
-          mode: "web",
-          host: "192.168.1.50",
-        }),
-      ),
-    ),
-  );
+  it("rejects non-loopback hosts at the server bind boundary", () => {
+    expect(
+      ServerConfig.isServerBindAuthorized({
+        // @ts-expect-error Stage 2 deliberately excludes LAN hosts from server configuration.
+        host: "192.168.1.50",
+        transport: "loopback",
+        desktopBootstrapToken: undefined,
+      }),
+    ).toBe(false);
+  });
 });

@@ -6,8 +6,10 @@ import {
   getPrimaryKnownEnvironment,
   isDesktopEnvironmentBootstrapIncompleteError,
   isPrimaryEnvironmentProtocolUnsupportedError,
+  isPrimaryEnvironmentTargetRejectedError,
   isPrimaryEnvironmentUrlInvalidError,
   readPrimaryEnvironmentTarget,
+  resolveDesktopEnvironmentBootstrapTarget,
   resolvePrimaryEnvironmentHttpUrl,
   resolveInitialPrimaryEnvironmentDescriptor,
   resetPrimaryEnvironmentDescriptorForTests,
@@ -117,41 +119,41 @@ describe("environmentBootstrap", () => {
   });
 
   it("uses https descriptor urls when the primary environment uses wss", async () => {
-    vi.stubEnv("VITE_HTTP_URL", "https://remote.example.com");
-    vi.stubEnv("VITE_WS_URL", "wss://remote.example.com");
+    vi.stubEnv("VITE_HTTP_URL", "https://127.0.0.1:3773");
+    vi.stubEnv("VITE_WS_URL", "wss://127.0.0.1:3773");
     await installDescriptorApi();
 
     await expect(resolveInitialPrimaryEnvironmentDescriptor()).resolves.toEqual(BASE_ENVIRONMENT);
     expect(resolvePrimaryEnvironmentHttpUrl("/.well-known/t3/environment")).toBe(
-      "https://remote.example.com/.well-known/t3/environment",
+      "https://127.0.0.1:3773/.well-known/t3/environment",
     );
   });
 
   it("derives the websocket url when only VITE_HTTP_URL is configured", async () => {
-    vi.stubEnv("VITE_HTTP_URL", "https://remote.example.com");
+    vi.stubEnv("VITE_HTTP_URL", "https://127.0.0.1:3773");
     await installDescriptorApi();
 
     await expect(resolveInitialPrimaryEnvironmentDescriptor()).resolves.toEqual(BASE_ENVIRONMENT);
     expect(resolvePrimaryEnvironmentHttpUrl("/.well-known/t3/environment")).toBe(
-      "https://remote.example.com/.well-known/t3/environment",
+      "https://127.0.0.1:3773/.well-known/t3/environment",
     );
     expect(getPrimaryKnownEnvironment()?.target).toEqual({
-      httpBaseUrl: "https://remote.example.com/",
-      wsBaseUrl: "wss://remote.example.com/",
+      httpBaseUrl: "https://127.0.0.1:3773/",
+      wsBaseUrl: "wss://127.0.0.1:3773/",
     });
   });
 
   it("derives the http url when only VITE_WS_URL is configured", async () => {
-    vi.stubEnv("VITE_WS_URL", "wss://remote.example.com");
+    vi.stubEnv("VITE_WS_URL", "wss://127.0.0.1:3773");
     await installDescriptorApi();
 
     await expect(resolveInitialPrimaryEnvironmentDescriptor()).resolves.toEqual(BASE_ENVIRONMENT);
     expect(resolvePrimaryEnvironmentHttpUrl("/.well-known/t3/environment")).toBe(
-      "https://remote.example.com/.well-known/t3/environment",
+      "https://127.0.0.1:3773/.well-known/t3/environment",
     );
     expect(getPrimaryKnownEnvironment()?.target).toEqual({
-      httpBaseUrl: "https://remote.example.com/",
-      wsBaseUrl: "wss://remote.example.com/",
+      httpBaseUrl: "https://127.0.0.1:3773/",
+      wsBaseUrl: "wss://127.0.0.1:3773/",
     });
   });
 
@@ -177,6 +179,7 @@ describe("environmentBootstrap", () => {
           {
             id: "primary",
             label: "Windows",
+            transport: "loopback",
             httpBaseUrl: "http://127.0.0.1:3773",
             wsBaseUrl: "ws://127.0.0.1:3773",
             bootstrapToken: "desktop-bootstrap-token",
@@ -210,6 +213,159 @@ describe("environmentBootstrap", () => {
     expect(error.message).not.toContain("http://[");
   });
 
+  it.each([
+    [
+      "remote configured target",
+      "https://remote.example.com",
+      "wss://remote.example.com",
+      "non-loopback",
+    ],
+    ["LAN configured target", "http://192.168.1.20:3773", "ws://192.168.1.20:3773", "non-loopback"],
+    ["wildcard configured target", "http://0.0.0.0:3773", "ws://0.0.0.0:3773", "non-loopback"],
+    [
+      "mismatched configured hosts",
+      "http://127.0.0.1:3773",
+      "ws://localhost:3773",
+      "endpoint-mismatch",
+    ],
+    [
+      "embedded credentials",
+      "http://user:secret@127.0.0.1:3773",
+      "ws://127.0.0.1:3773",
+      "credentials",
+    ],
+  ])("rejects %s", (_label, httpBaseUrl, wsBaseUrl, reason) => {
+    vi.stubEnv("VITE_HTTP_URL", httpBaseUrl);
+    vi.stubEnv("VITE_WS_URL", wsBaseUrl);
+
+    const error = captureThrown(readPrimaryEnvironmentTarget);
+    expect(isPrimaryEnvironmentTargetRejectedError(error)).toBe(true);
+    expect(error).toMatchObject({ source: "configured", reason });
+  });
+
+  it("accepts an authenticated desktop WSL primary target", () => {
+    vi.stubGlobal("window", {
+      location: new URL("http://127.0.0.1:5733/"),
+      history: { replaceState: vi.fn() },
+      desktopBridge: {
+        getLocalEnvironmentBootstraps: () => [
+          {
+            id: "primary",
+            label: "WSL",
+            transport: "wsl-bearer",
+            runningDistro: "Ubuntu",
+            httpBaseUrl: "http://172.28.64.10:3773",
+            wsBaseUrl: "ws://172.28.64.10:3773",
+            bootstrapToken: "desktop-bootstrap-token",
+          },
+        ],
+      },
+    });
+
+    expect(readPrimaryEnvironmentTarget()).toEqual({
+      source: "desktop-managed",
+      target: {
+        httpBaseUrl: "http://172.28.64.10:3773/",
+        wsBaseUrl: "ws://172.28.64.10:3773/",
+      },
+    });
+  });
+
+  it("accepts an authenticated parallel WSL bootstrap", () => {
+    expect(
+      resolveDesktopEnvironmentBootstrapTarget({
+        id: "wsl:default",
+        label: "WSL (Ubuntu)",
+        transport: "wsl-bearer",
+        runningDistro: "Ubuntu",
+        httpBaseUrl: "http://172.28.64.10:3774",
+        wsBaseUrl: "ws://172.28.64.10:3774",
+        bootstrapToken: "desktop-bootstrap-token",
+      }),
+    ).toEqual({
+      source: "desktop-managed",
+      target: {
+        httpBaseUrl: "http://172.28.64.10:3774/",
+        wsBaseUrl: "ws://172.28.64.10:3774/",
+      },
+    });
+  });
+
+  it.each([
+    ["localhost", "http://localhost:3773", "ws://localhost:3773"],
+    ["IPv4 loopback", "http://127.0.0.1:3773", "ws://127.0.0.1:3773"],
+    ["IPv6 loopback", "http://[::1]:3773", "ws://[::1]:3773"],
+  ])("accepts %s configured targets", (_label, httpBaseUrl, wsBaseUrl) => {
+    vi.stubEnv("VITE_HTTP_URL", httpBaseUrl);
+    vi.stubEnv("VITE_WS_URL", wsBaseUrl);
+
+    expect(readPrimaryEnvironmentTarget()).toMatchObject({
+      source: "configured",
+      target: { httpBaseUrl: `${httpBaseUrl}/`, wsBaseUrl: `${wsBaseUrl}/` },
+    });
+  });
+
+  it("rejects a non-loopback desktop target with the loopback discriminator", () => {
+    vi.stubGlobal("window", {
+      location: new URL("http://127.0.0.1:5733/"),
+      history: { replaceState: vi.fn() },
+      desktopBridge: {
+        getLocalEnvironmentBootstraps: () => [
+          {
+            id: "primary",
+            label: "Local environment",
+            transport: "loopback",
+            httpBaseUrl: "http://192.168.1.20:3773",
+            wsBaseUrl: "ws://192.168.1.20:3773",
+          },
+        ],
+      },
+    });
+
+    const error = captureThrown(readPrimaryEnvironmentTarget);
+    expect(isPrimaryEnvironmentTargetRejectedError(error)).toBe(true);
+    expect(error).toMatchObject({ source: "desktop-managed", reason: "wsl-authentication" });
+  });
+
+  it("rejects a forged WSL discriminator without its credential", () => {
+    const error = captureThrown(() =>
+      resolveDesktopEnvironmentBootstrapTarget({
+        id: "wsl:default",
+        label: "WSL (Ubuntu)",
+        transport: "wsl-bearer",
+        runningDistro: "Ubuntu",
+        httpBaseUrl: "http://172.28.64.10:3774",
+        wsBaseUrl: "ws://172.28.64.10:3774",
+      }),
+    );
+
+    expect(error).toMatchObject({ source: "desktop-managed", reason: "wsl-authentication" });
+  });
+
+  it("rejects mismatched authenticated WSL origins", () => {
+    const error = captureThrown(() =>
+      resolveDesktopEnvironmentBootstrapTarget({
+        id: "wsl:default",
+        label: "WSL (Ubuntu)",
+        transport: "wsl-bearer",
+        runningDistro: "Ubuntu",
+        httpBaseUrl: "http://172.28.64.10:3774",
+        wsBaseUrl: "ws://172.28.64.11:3774",
+        bootstrapToken: "desktop-bootstrap-token",
+      }),
+    );
+
+    expect(error).toMatchObject({ source: "desktop-managed", reason: "endpoint-mismatch" });
+  });
+
+  it("rejects a non-loopback window origin", () => {
+    installTestBrowser("https://app.example.com/");
+
+    const error = captureThrown(readPrimaryEnvironmentTarget);
+    expect(isPrimaryEnvironmentTargetRejectedError(error)).toBe(true);
+    expect(error).toMatchObject({ source: "window-origin", reason: "non-loopback" });
+  });
+
   it("describes which desktop bootstrap endpoint is missing", () => {
     vi.stubGlobal("window", {
       location: new URL("http://127.0.0.1:5733/"),
@@ -219,6 +375,7 @@ describe("environmentBootstrap", () => {
           {
             id: "primary",
             label: "Local environment",
+            transport: "loopback",
             httpBaseUrl: "http://127.0.0.1:3773",
             bootstrapToken: "desktop-bootstrap-token",
           },

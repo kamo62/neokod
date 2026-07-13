@@ -17,10 +17,9 @@ const readyWslConfig: DesktopBackendManager.DesktopBackendStartConfig = {
     mode: "desktop",
     noBrowser: true,
     port: 3774,
+    transport: "wsl-bearer",
     host: "0.0.0.0",
     desktopBootstrapToken: "bootstrap-token",
-    tailscaleServeEnabled: false,
-    tailscaleServePort: 443,
   },
   bootstrapDelivery: "stdin",
   httpBaseUrl: new URL("http://127.0.0.1:3774"),
@@ -54,6 +53,7 @@ describe("getLocalEnvironmentBootstraps", () => {
         {
           id: "wsl:default",
           label: "WSL (Ubuntu)",
+          transport: "wsl-bearer",
           runningDistro: "Ubuntu",
           httpBaseUrl: "http://127.0.0.1:3774/",
           wsBaseUrl: "ws://127.0.0.1:3774/",
@@ -90,6 +90,7 @@ describe("getLocalEnvironmentBootstraps", () => {
         {
           id: "wsl:default",
           label: "WSL (default distro)",
+          transport: "wsl-bearer",
           runningDistro: null,
           httpBaseUrl: null,
           wsBaseUrl: null,

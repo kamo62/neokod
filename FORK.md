@@ -13,6 +13,16 @@ upstream file — a stale manifest is worse than no manifest.
 
 ## How to read this
 
+### Local-first carve-out status (2026-07-13)
+
+Stage 2 removes Neokod's SSH backend transport, Tailscale integration, LAN
+advertising, and selectable server binding. The desktop primary, standalone
+`t3 serve`, and the Vite development server now listen on `127.0.0.1`. The
+desktop-managed WSL child remains the sole internal wildcard-bind exception;
+its private `wsl-bearer` discriminator, existing bootstrap credential, and bearer-session exchange remain intact
+until Stage 5. Relay, cloud, Clerk, the broader session/auth control plane, and
+the `@t3tools/*` namespace are intentionally unchanged in this stage.
+
 - **Fork-owned** — new files/directories upstream doesn't know about. These
   never conflict on rebase (upstream can't move lines in a file it doesn't
   have); they're listed for completeness, not as a conflict risk.

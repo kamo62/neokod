@@ -16,7 +16,7 @@ import serverPackageJson from "../../../server/package.json" with { type: "json"
 
 import * as DesktopBackendManager from "./DesktopBackendManager.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
-import * as DesktopServerExposure from "./DesktopServerExposure.ts";
+import * as DesktopLocalServer from "./DesktopLocalServer.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopWslEnvironment from "../wsl/DesktopWslEnvironment.ts";
 
@@ -36,7 +36,7 @@ export class DesktopBackendConfiguration extends Context.Service<
   DesktopBackendConfiguration,
   {
     // Build the Windows-native primary backend's start config. Reads the
-    // primary's port/host/exposure from DesktopServerExposure. Can fail
+    // primary's loopback port/host from DesktopLocalServer. Can fail
     // with PlatformError because bootstrap token generation now uses
     // crypto.randomBytes under the hood (post Effect 4 migration).
     readonly resolvePrimary: Effect.Effect<
@@ -44,10 +44,8 @@ export class DesktopBackendConfiguration extends Context.Service<
       PlatformError.PlatformError
     >;
     // Build a WSL backend start config for the given distro on the given
-    // port. The WSL backend is always loopback-only (the primary owns LAN
-    // exposure when the user opts in), so this takes the port directly and
-    // hardcodes 127.0.0.1. Distro=null means "WSL default distro" and is
-    // forwarded to wsl.exe with no -d flag.
+    // port. Distro=null means "WSL default distro" and is forwarded to
+    // wsl.exe with no -d flag.
     readonly resolveWsl: (input: {
       readonly port: number;
       readonly distro: string | null;
@@ -77,13 +75,7 @@ const DESKTOP_BACKEND_ENV_NAMES = [
   "T3CODE_PORT",
   "T3CODE_MODE",
   "T3CODE_NO_BROWSER",
-  "T3CODE_HOST",
   "T3CODE_DESKTOP_WS_URL",
-  "T3CODE_DESKTOP_LAN_ACCESS",
-  "T3CODE_DESKTOP_LAN_HOST",
-  "T3CODE_DESKTOP_HTTPS_ENDPOINTS",
-  "T3CODE_TAILSCALE_SERVE",
-  "T3CODE_TAILSCALE_SERVE_PORT",
 ] as const;
 
 // Sensitive env vars that the WSL backend needs but Windows process.env won't
@@ -175,8 +167,8 @@ interface WslPreflightSuccess {
   readonly _tag: "Ready";
   readonly runningDistro: string;
   readonly linuxEntryPath: string;
-  // Absolute path to the node binary the preflight validated after the shared
-  // remote resolver repaired PATH. The launch must use this exact path so it
+  // Absolute path to the node binary the WSL preflight validated after its
+  // local resolver repaired PATH. The launch must use this exact path so it
   // doesn't fall through to a different/old node than the one node-pty was
   // built against.
   readonly nodePath: string;
@@ -330,21 +322,20 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
   ): Effect.fn.Return<
     DesktopBackendManager.DesktopBackendStartConfig,
     never,
-    DesktopEnvironment.DesktopEnvironment | DesktopServerExposure.DesktopServerExposure
+    DesktopEnvironment.DesktopEnvironment | DesktopLocalServer.DesktopLocalServer
   > {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
-    const serverExposure = yield* DesktopServerExposure.DesktopServerExposure;
-    const backendExposure = yield* serverExposure.backendConfig;
+    const localServer = yield* DesktopLocalServer.DesktopLocalServer;
+    const backendConfig = yield* localServer.config;
 
     const bootstrap = {
       mode: "desktop" as const,
       noBrowser: true,
-      port: backendExposure.port,
+      port: backendConfig.port,
       t3Home: environment.baseDir,
-      host: backendExposure.bindHost,
+      transport: "loopback" as const,
+      host: backendConfig.bindHost,
       desktopBootstrapToken: input.bootstrapToken,
-      tailscaleServeEnabled: backendExposure.tailscaleServeEnabled,
-      tailscaleServePort: backendExposure.tailscaleServePort,
       ...buildObservabilityFragment(input.observabilitySettings),
     };
 
@@ -361,7 +352,7 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
       extendEnv: true,
       bootstrap,
       bootstrapDelivery: "fd3",
-      httpBaseUrl: backendExposure.httpBaseUrl,
+      httpBaseUrl: backendConfig.httpBaseUrl,
       captureOutput: true,
       preflightFailure: Option.none(),
     } satisfies DesktopBackendManager.DesktopBackendStartConfig;
@@ -391,10 +382,10 @@ const resolveWslStartConfig = Effect.fn("desktop.backendConfiguration.resolveWsl
   // fetch both saw "Failed to fetch" when the backend only bound to
   // 127.0.0.1 inside WSL. Binding to 0.0.0.0 plus advertising the
   // WSL IP as the renderer-visible URL avoids that dependency.
-  // Security-wise this is acceptable for the local-only WSL backend:
-  // the network it exposes on is the WSL-vEthernet network, not the
-  // LAN; the primary owns LAN exposure when the user opts in.
-  const wslBindHost = "0.0.0.0";
+  // This wildcard is the sole non-loopback bind exception and remains
+  // protected by the transitional desktop bootstrap credential and bearer
+  // session boundary.
+  const wslBindHost = "0.0.0.0" as const;
 
   const bootstrap = {
     mode: "desktop" as const,
@@ -403,14 +394,9 @@ const resolveWslStartConfig = Effect.fn("desktop.backendConfiguration.resolveWsl
     // Omit t3Home so the Linux backend uses its own home dir instead of
     // the Windows-side baseDir (which would be a /mnt/c path and share
     // the SQLite file with the primary).
+    transport: "wsl-bearer" as const,
     host: wslBindHost,
     desktopBootstrapToken: input.bootstrapToken,
-    // PortSchema rejects 0, so when tailscale serve is disabled we still
-    // need a valid number in this slot. The backend reads tailscaleServePort
-    // only when tailscaleServeEnabled is true, so the actual value here is
-    // inert.
-    tailscaleServeEnabled: false,
-    tailscaleServePort: 443,
     ...buildObservabilityFragment(input.observabilitySettings),
   };
 
@@ -558,7 +544,7 @@ const resolveWslStartConfig = Effect.fn("desktop.backendConfiguration.resolveWsl
 export const make = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const fileSystem = yield* FileSystem.FileSystem;
-  const serverExposure = yield* DesktopServerExposure.DesktopServerExposure;
+  const localServer = yield* DesktopLocalServer.DesktopLocalServer;
   const wslEnvironment = yield* DesktopWslEnvironment.DesktopWslEnvironment;
   const settings = yield* DesktopAppSettings.DesktopAppSettings;
   const crypto = yield* Crypto.Crypto;
@@ -600,17 +586,16 @@ export const make = Effect.gen(function* () {
   const buildWslPrimaryConfig = Effect.gen(function* () {
     // wsl-only mode pipes the WSL backend through the same port the
     // Windows primary would normally take. That way the renderer
-    // still loads from the local-only endpoint advertised by
-    // DesktopServerExposure, and primary-aware code paths (cookie
+    // still loads from the configured local endpoint, and primary-aware code paths (cookie
     // auth, the env switcher's "primary" id) keep working without
     // a parallel "secondary" registration.
-    const backendExposure = yield* serverExposure.backendConfig;
+    const backendConfig = yield* localServer.config;
     const persistedSettings = yield* settings.get;
     const shared = yield* sharedInputs;
     yield* wslEnvironment.preWarm(persistedSettings.wslDistro);
     return yield* resolveWslStartConfig({
       ...shared,
-      port: backendExposure.port,
+      port: backendConfig.port,
       distro: persistedSettings.wslDistro,
     }).pipe(
       Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),
@@ -623,7 +608,7 @@ export const make = Effect.gen(function* () {
     const shared = yield* sharedInputs;
     return yield* resolvePrimaryStartConfig(shared).pipe(
       Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),
-      Effect.provideService(DesktopServerExposure.DesktopServerExposure, serverExposure),
+      Effect.provideService(DesktopLocalServer.DesktopLocalServer, localServer),
     );
   });
 

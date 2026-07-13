@@ -93,6 +93,7 @@ export const getLocalEnvironmentBootstraps = DesktopIpc.makeSyncIpcMethod({
         bootstraps.push({
           id: instance.id,
           label: yield* instance.label,
+          transport: "wsl-bearer",
           runningDistro: null,
           httpBaseUrl: null,
           wsBaseUrl: null,
@@ -104,6 +105,7 @@ export const getLocalEnvironmentBootstraps = DesktopIpc.makeSyncIpcMethod({
       bootstraps.push({
         id: instance.id,
         label: runningDistro === null ? yield* instance.label : `WSL (${runningDistro})`,
+        transport: bootstrap.transport,
         runningDistro,
         httpBaseUrl: httpBaseUrl.href,
         wsBaseUrl: toWebSocketBaseUrl(httpBaseUrl),

@@ -57,12 +57,34 @@ export class DesktopEnvironmentBootstrapIncompleteError extends Schema.TaggedErr
   }
 }
 
+const PrimaryEnvironmentTargetRejectedReason = Schema.Literals([
+  "credentials",
+  "endpoint-mismatch",
+  "non-loopback",
+  "wsl-authentication",
+]);
+
+export class PrimaryEnvironmentTargetRejectedError extends Schema.TaggedErrorClass<PrimaryEnvironmentTargetRejectedError>()(
+  "PrimaryEnvironmentTargetRejectedError",
+  {
+    source: PrimaryEnvironmentTargetSource,
+    reason: PrimaryEnvironmentTargetRejectedReason,
+  },
+) {
+  override get message(): string {
+    return `The ${this.source} primary environment target was rejected (${this.reason}).`;
+  }
+}
+
 export const isPrimaryEnvironmentUrlInvalidError = Schema.is(PrimaryEnvironmentUrlInvalidError);
 export const isPrimaryEnvironmentProtocolUnsupportedError = Schema.is(
   PrimaryEnvironmentProtocolUnsupportedError,
 );
 export const isDesktopEnvironmentBootstrapIncompleteError = Schema.is(
   DesktopEnvironmentBootstrapIncompleteError,
+);
+export const isPrimaryEnvironmentTargetRejectedError = Schema.is(
+  PrimaryEnvironmentTargetRejectedError,
 );
 
 export interface PrimaryEnvironmentTarget {
@@ -141,6 +163,117 @@ export function isLoopbackHostname(hostname: string): boolean {
   return LOOPBACK_HOSTNAMES.has(normalizeHostname(hostname));
 }
 
+function effectivePort(url: URL): string {
+  if (url.port !== "") return url.port;
+  return url.protocol === "https:" || url.protocol === "wss:" ? "443" : "80";
+}
+
+function validateTargetUrls(input: {
+  readonly source: PrimaryEnvironmentTargetSource;
+  readonly httpBaseUrl: string;
+  readonly wsBaseUrl: string;
+  readonly desktopBootstrap?: DesktopEnvironmentBootstrap;
+}): PrimaryEnvironmentTarget {
+  const httpUrl = parseTargetUrl({
+    rawValue: input.httpBaseUrl,
+    source: input.source,
+    urlKind: "http-base-url",
+  });
+  const wsUrl = parseTargetUrl({
+    rawValue: input.wsBaseUrl,
+    source: input.source,
+    urlKind: "websocket-base-url",
+  });
+  if (httpUrl.protocol !== "http:" && httpUrl.protocol !== "https:") {
+    throw new PrimaryEnvironmentProtocolUnsupportedError({
+      source: input.source,
+      protocol: httpUrl.protocol,
+    });
+  }
+  if (wsUrl.protocol !== "ws:" && wsUrl.protocol !== "wss:") {
+    throw new PrimaryEnvironmentProtocolUnsupportedError({
+      source: input.source,
+      protocol: wsUrl.protocol,
+    });
+  }
+  if (httpUrl.username || httpUrl.password || wsUrl.username || wsUrl.password) {
+    throw new PrimaryEnvironmentTargetRejectedError({
+      source: input.source,
+      reason: "credentials",
+    });
+  }
+  const protocolsMatch =
+    (httpUrl.protocol === "http:" && wsUrl.protocol === "ws:") ||
+    (httpUrl.protocol === "https:" && wsUrl.protocol === "wss:");
+  if (
+    !protocolsMatch ||
+    normalizeHostname(httpUrl.hostname) !== normalizeHostname(wsUrl.hostname) ||
+    effectivePort(httpUrl) !== effectivePort(wsUrl)
+  ) {
+    throw new PrimaryEnvironmentTargetRejectedError({
+      source: input.source,
+      reason: "endpoint-mismatch",
+    });
+  }
+
+  const httpIsLoopback = isLoopbackHostname(httpUrl.hostname);
+  const wsIsLoopback = isLoopbackHostname(wsUrl.hostname);
+  if (httpIsLoopback && wsIsLoopback) {
+    return {
+      source: input.source,
+      target: { httpBaseUrl: httpUrl.toString(), wsBaseUrl: wsUrl.toString() },
+    };
+  }
+  if (input.source !== "desktop-managed") {
+    throw new PrimaryEnvironmentTargetRejectedError({
+      source: input.source,
+      reason: "non-loopback",
+    });
+  }
+
+  const bootstrap = input.desktopBootstrap;
+  const isWslId =
+    bootstrap?.id === PRIMARY_LOCAL_ENVIRONMENT_ID || bootstrap?.id.startsWith("wsl:") === true;
+  if (
+    httpIsLoopback !== wsIsLoopback ||
+    bootstrap?.transport !== "wsl-bearer" ||
+    !isWslId ||
+    !bootstrap?.runningDistro?.trim() ||
+    !bootstrap.bootstrapToken?.trim()
+  ) {
+    throw new PrimaryEnvironmentTargetRejectedError({
+      source: input.source,
+      reason: "wsl-authentication",
+    });
+  }
+
+  return {
+    source: input.source,
+    target: { httpBaseUrl: httpUrl.toString(), wsBaseUrl: wsUrl.toString() },
+  };
+}
+
+export function resolveDesktopEnvironmentBootstrapTarget(
+  desktopBootstrap: DesktopEnvironmentBootstrap,
+): PrimaryEnvironmentTarget {
+  if (!desktopBootstrap.httpBaseUrl || !desktopBootstrap.wsBaseUrl) {
+    throw new DesktopEnvironmentBootstrapIncompleteError({
+      hasHttpBaseUrl: Boolean(desktopBootstrap.httpBaseUrl),
+      hasWsBaseUrl: Boolean(desktopBootstrap.wsBaseUrl),
+    });
+  }
+  return validateTargetUrls({
+    source: "desktop-managed",
+    httpBaseUrl: normalizeBaseUrl(desktopBootstrap.httpBaseUrl, "desktop-managed", "http-base-url"),
+    wsBaseUrl: normalizeBaseUrl(
+      desktopBootstrap.wsBaseUrl,
+      "desktop-managed",
+      "websocket-base-url",
+    ),
+    desktopBootstrap,
+  });
+}
+
 function resolveHttpRequestBaseUrl(primaryTarget: PrimaryEnvironmentTarget): string {
   const httpBaseUrl = primaryTarget.target.httpBaseUrl;
   const configuredDevServerUrl = import.meta.env.VITE_DEV_SERVER_URL?.trim();
@@ -164,6 +297,17 @@ function resolveHttpRequestBaseUrl(primaryTarget: PrimaryEnvironmentTarget): str
     source: "configured",
     urlKind: "development-server-url",
   });
+  if (
+    (devServerUrl.protocol !== "http:" && devServerUrl.protocol !== "https:") ||
+    !isLoopbackHostname(devServerUrl.hostname) ||
+    devServerUrl.username !== "" ||
+    devServerUrl.password !== ""
+  ) {
+    throw new PrimaryEnvironmentTargetRejectedError({
+      source: "configured",
+      reason: devServerUrl.username || devServerUrl.password ? "credentials" : "non-loopback",
+    });
+  }
 
   const isCurrentOriginDevServer =
     (currentUrl.protocol === "http:" || currentUrl.protocol === "https:") &&
@@ -200,13 +344,11 @@ function resolveConfiguredPrimaryTarget(): PrimaryEnvironmentTarget | null {
       ? swapBaseUrlProtocol(configuredHttpBaseUrl, "wss:", "http-base-url")
       : swapBaseUrlProtocol(configuredHttpBaseUrl!, "ws:", "http-base-url"));
 
-  return {
+  return validateTargetUrls({
     source: "configured",
-    target: {
-      httpBaseUrl: normalizeBaseUrl(resolvedHttpBaseUrl, "configured", "http-base-url"),
-      wsBaseUrl: normalizeBaseUrl(resolvedWsBaseUrl, "configured", "websocket-base-url"),
-    },
-  };
+    httpBaseUrl: normalizeBaseUrl(resolvedHttpBaseUrl, "configured", "http-base-url"),
+    wsBaseUrl: normalizeBaseUrl(resolvedWsBaseUrl, "configured", "websocket-base-url"),
+  });
 }
 
 function resolveWindowOriginPrimaryTarget(): PrimaryEnvironmentTarget {
@@ -226,13 +368,11 @@ function resolveWindowOriginPrimaryTarget(): PrimaryEnvironmentTarget {
       protocol: url.protocol,
     });
   }
-  return {
+  return validateTargetUrls({
     source: "window-origin",
-    target: {
-      httpBaseUrl,
-      wsBaseUrl: url.toString(),
-    },
-  };
+    httpBaseUrl,
+    wsBaseUrl: url.toString(),
+  });
 }
 
 function resolveDesktopPrimaryTarget(): PrimaryEnvironmentTarget | null {
@@ -243,28 +383,7 @@ function resolveDesktopPrimaryTarget(): PrimaryEnvironmentTarget | null {
   if (!desktopBootstrap.httpBaseUrl && !desktopBootstrap.wsBaseUrl) {
     return null;
   }
-  if (!desktopBootstrap.httpBaseUrl || !desktopBootstrap.wsBaseUrl) {
-    throw new DesktopEnvironmentBootstrapIncompleteError({
-      hasHttpBaseUrl: Boolean(desktopBootstrap.httpBaseUrl),
-      hasWsBaseUrl: Boolean(desktopBootstrap.wsBaseUrl),
-    });
-  }
-
-  return {
-    source: "desktop-managed",
-    target: {
-      httpBaseUrl: normalizeBaseUrl(
-        desktopBootstrap.httpBaseUrl,
-        "desktop-managed",
-        "http-base-url",
-      ),
-      wsBaseUrl: normalizeBaseUrl(
-        desktopBootstrap.wsBaseUrl,
-        "desktop-managed",
-        "websocket-base-url",
-      ),
-    },
-  };
+  return resolveDesktopEnvironmentBootstrapTarget(desktopBootstrap);
 }
 
 export function resolvePrimaryEnvironmentHttpUrl(

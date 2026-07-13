@@ -11,6 +11,7 @@ describe("DesktopEnvironmentBootstrapSchema", () => {
       decode({
         id: "wsl:default",
         label: "WSL (Ubuntu)",
+        transport: "wsl-bearer",
         runningDistro: "Ubuntu",
         httpBaseUrl: "http://127.0.0.1:3774/",
         wsBaseUrl: "ws://127.0.0.1:3774/",
@@ -18,6 +19,7 @@ describe("DesktopEnvironmentBootstrapSchema", () => {
     ).toEqual({
       id: "wsl:default",
       label: "WSL (Ubuntu)",
+      transport: "wsl-bearer",
       runningDistro: "Ubuntu",
       httpBaseUrl: "http://127.0.0.1:3774/",
       wsBaseUrl: "ws://127.0.0.1:3774/",
@@ -29,6 +31,7 @@ describe("DesktopEnvironmentBootstrapSchema", () => {
       decode({
         id: "primary",
         label: "Windows",
+        transport: "loopback",
         runningDistro: null,
         httpBaseUrl: null,
         wsBaseUrl: null,

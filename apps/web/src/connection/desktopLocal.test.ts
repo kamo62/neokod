@@ -57,6 +57,7 @@ describe("desktop local topology reads", () => {
     const secondary = {
       id: "wsl:Ubuntu",
       label: "WSL: Ubuntu",
+      transport: "wsl-bearer" as const,
       httpBaseUrl: "http://127.0.0.1:4000",
       wsBaseUrl: "ws://127.0.0.1:4000",
     };
@@ -67,6 +68,7 @@ describe("desktop local topology reads", () => {
           ...secondary,
           id: PRIMARY_LOCAL_ENVIRONMENT_ID,
           label: "Windows",
+          transport: "loopback",
         },
         secondary,
       ],
@@ -79,6 +81,7 @@ describe("desktop local topology reads", () => {
     const secondary = {
       id: "wsl:Ubuntu",
       label: "WSL: Ubuntu",
+      transport: "wsl-bearer" as const,
       httpBaseUrl: "http://127.0.0.1:4000",
       wsBaseUrl: "ws://127.0.0.1:4000",
     };

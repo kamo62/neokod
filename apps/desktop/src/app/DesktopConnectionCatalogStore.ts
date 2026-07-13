@@ -1,11 +1,4 @@
-import {
-  BearerConnectionCredential,
-  BearerConnectionProfile,
-  BearerConnectionTarget,
-  RelayConnectionTarget,
-  SshConnectionProfile,
-  SshConnectionTarget,
-} from "@t3tools/client-runtime/connection";
+import { RelayConnectionTarget } from "@t3tools/client-runtime/connection";
 import {
   ConnectionCatalogDocument as RuntimeConnectionCatalogDocument,
   type ConnectionCatalogDocument as RuntimeConnectionCatalogDocumentType,
@@ -56,7 +49,6 @@ const DesktopConnectionCatalogStoreWriteOperation = Schema.Literals([
 
 const DesktopConnectionCatalogStoreMigrationOperation = Schema.Literals([
   "read-legacy-registry",
-  "read-legacy-secret",
   "encode-catalog",
   "persist-catalog",
 ]);
@@ -122,14 +114,11 @@ export class DesktopConnectionCatalogStoreMigrationError extends Schema.TaggedEr
   {
     operation: DesktopConnectionCatalogStoreMigrationOperation,
     catalogPath: Schema.String,
-    environmentId: Schema.optionalKey(Schema.String),
     cause: Schema.Defect(),
   },
 ) {
   override get message(): string {
-    const environment =
-      this.environmentId === undefined ? "" : ` for environment ${this.environmentId}`;
-    return `Legacy desktop saved-environment migration failed during ${this.operation}${environment} into ${this.catalogPath}.`;
+    return `Legacy desktop saved-environment migration failed during ${this.operation} into ${this.catalogPath}.`;
   }
 }
 
@@ -281,23 +270,10 @@ const writeDocument = Effect.fn("desktop.connectionCatalogStore.writeDocument")(
   );
 });
 
-function connectionId(prefix: "bearer" | "ssh", environmentId: string): string {
-  return `${prefix}:${environmentId}`;
-}
-
-const migrateSavedEnvironmentRecords = Effect.fn(
-  "desktop.connectionCatalogStore.migrateSavedEnvironmentRecords",
-)(function* (
+const migrateSavedEnvironmentRecords = (
   records: readonly PersistedSavedEnvironmentRecord[],
-  savedEnvironments: DesktopSavedEnvironments.DesktopSavedEnvironments["Service"],
-  catalogPath: string,
-): Effect.fn.Return<
-  RuntimeConnectionCatalogDocumentType,
-  DesktopConnectionCatalogStoreMigrationError
-> {
+): RuntimeConnectionCatalogDocumentType => {
   const targets: Array<RuntimeConnectionCatalogDocumentType["targets"][number]> = [];
-  const profiles: Array<RuntimeConnectionCatalogDocumentType["profiles"][number]> = [];
-  const credentials: Array<RuntimeConnectionCatalogDocumentType["credentials"][number]> = [];
 
   for (const record of records) {
     if (record.relayManaged !== undefined) {
@@ -307,73 +283,18 @@ const migrateSavedEnvironmentRecords = Effect.fn(
           label: record.label,
         }),
       );
-      continue;
-    }
-
-    if (record.desktopSsh !== undefined) {
-      const id = connectionId("ssh", record.environmentId);
-      targets.push(
-        new SshConnectionTarget({
-          environmentId: record.environmentId,
-          label: record.label,
-          connectionId: id,
-        }),
-      );
-      profiles.push(
-        new SshConnectionProfile({
-          connectionId: id,
-          environmentId: record.environmentId,
-          label: record.label,
-          target: record.desktopSsh,
-        }),
-      );
-      continue;
-    }
-
-    const id = connectionId("bearer", record.environmentId);
-    targets.push(
-      new BearerConnectionTarget({
-        environmentId: record.environmentId,
-        label: record.label,
-        connectionId: id,
-      }),
-    );
-    profiles.push(
-      new BearerConnectionProfile({
-        connectionId: id,
-        environmentId: record.environmentId,
-        label: record.label,
-        httpBaseUrl: record.httpBaseUrl,
-        wsBaseUrl: record.wsBaseUrl,
-      }),
-    );
-    const token = yield* savedEnvironments.getSecret(record.environmentId).pipe(
-      Effect.mapError(
-        (cause) =>
-          new DesktopConnectionCatalogStoreMigrationError({
-            operation: "read-legacy-secret",
-            catalogPath,
-            environmentId: record.environmentId,
-            cause,
-          }),
-      ),
-    );
-    if (Option.isSome(token)) {
-      credentials.push({
-        connectionId: id,
-        credential: new BearerConnectionCredential({ token: token.value }),
-      });
     }
   }
 
-  return {
+  const catalog: RuntimeConnectionCatalogDocumentType = {
     schemaVersion: 1,
     targets,
-    profiles,
-    credentials,
+    profiles: [],
+    credentials: [],
     remoteDpopTokens: [],
   };
-});
+  return catalog;
+};
 
 export const make = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
@@ -445,7 +366,7 @@ export const make = Effect.gen(function* () {
     if (records.length === 0) {
       return Option.none<string>();
     }
-    const catalog = yield* migrateSavedEnvironmentRecords(records, savedEnvironments, catalogPath);
+    const catalog = migrateSavedEnvironmentRecords(records);
     const encoded = yield* encodeRuntimeConnectionCatalogDocumentJson(catalog).pipe(
       Effect.mapError(
         (cause) =>
