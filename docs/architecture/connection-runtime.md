@@ -1,11 +1,10 @@
 # Connection Runtime
 
-The connection runtime is shared by web and mobile. It owns connectivity,
-authentication, retries, transport lifetime, cached environment data, and
-environment-scoped operations.
+The connection runtime owns connectivity, authentication, retries, transport
+lifetime, cached environment data, and environment-scoped operations.
 
-Web and mobile mount this runtime once at the application root. There is no
-legacy connection owner or supported mixed mode.
+The web app mounts this runtime once at the application root. There is no legacy
+connection owner or supported mixed mode.
 
 ## Ownership
 
@@ -71,14 +70,14 @@ Finite requests, durable subscriptions, and commands are separate APIs:
   data during a fast reconnect.
 - Domain atom factories route effects through the environment registry and
   resolve the current scoped service at execution time.
-- Web and mobile own their Atom runtimes, React hooks, and feature composition.
+- The web app owns its Atom runtime, React hooks, and feature composition.
 
 The Promise bridge exists only at the React/Atom boundary. Runtime and business
 logic remain Effect-native.
 
 ## Platform Layers
 
-Web and mobile provide:
+The web app provides:
 
 - network status and network-change streams;
 - application lifecycle wakeups;
@@ -112,8 +111,8 @@ package intentionally has no root export.
 
 The application root mounts the shared connection application layer, creates
 its own Atom runtime, and selects the domain atom factories required by that
-platform. Web and mobile may expose different hooks and features without
-changing connection ownership.
+platform. The web app may expose different hooks and features without changing
+connection ownership.
 
 Application code must not construct `WsTransport`, RPC clients, retry loops, or
 raw orchestration commands. Persistence paths belong to the platform

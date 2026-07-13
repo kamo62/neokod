@@ -1,3 +1,9 @@
+## 2.0.0 - 2026-07-13 (Major)
+
+Release impact: Major because this removes product surfaces and their package, build, and release contracts.
+
+- Removed the React Native mobile app and the marketing site as part of the local-first carve-out.
+
 ## 1.1.0 - 2026-07-12 (Minor)
 
 Release impact: Minor because this adds selectable Neokod icon variants and packages the assets without breaking existing settings or release contracts.

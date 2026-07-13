@@ -35,7 +35,7 @@ Make the fork a focused OMApp desktop agent app while keeping upstream T3 Code r
 
 ### 2. Cleanup
 
-- Remove `apps/mobile` from active package and build paths.
+- Remove the native mobile app from active package and build paths.
 - Remove or disable native-mobile-only scripts.
 - Keep responsive web and desktop preview behavior.
 

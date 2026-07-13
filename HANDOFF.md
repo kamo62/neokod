@@ -388,12 +388,12 @@ Rename surface:
 
 - `apps/web/src/branding.ts` base name; desktop `productName` in
   `apps/desktop/package.json` ("T3 Code (Alpha)"); `apps/web/index.html`
-  title/splash; `apps/mobile/app.config.ts`.
+  title/splash.
 - A few dozen literal "T3 Code" strings in web UI copy (settings, connections,
   update dialogs; grep `"T3 Code"`) that should switch to `APP_BASE_NAME`
   interpolation as part of the rename.
-- Icons: `apps/web/public/*` favicons/apple-touch, `apps/desktop/resources/icon.*`,
-  `apps/mobile/assets/*`, `apps/marketing/public/*`.
+- Icons: `apps/web/public/*` favicons/apple-touch and
+  `apps/desktop/resources/icon.*`.
 - Do NOT rename the internal package scope `@t3tools/*` (1000+ references, zero
   user visibility, large rebase surface against upstream).
 
@@ -413,15 +413,14 @@ enterprise working set (SSO/RBAC + KMS, Postgres/HA, OTel).
 New code in fork-owned directories/files only; edits to shared upstream files must
 be one import + one registration/mount entry wherever possible; never reformat
 upstream code; update `FORK.md` for every shared file touched; lockfile changes via
-`pnpm install --lockfile-only` (a plain install churns unrelated mobile
-peer-resolution sections; documented in FORK.md); rebase with
+`pnpm install --lockfile-only`; rebase with
 `scripts/rebase-upstream.sh` per upstream release. Commit in logical units; never
 push to upstream. Upstream remote fetch works but push is disabled
 (`DISABLED_NO_PUSH`); add the org's internal remote as `origin` when it exists.
 
 ## Verification commands
 
-- All packages: `vp check` and `vp run typecheck`. If native mobile code changed, also `vp run lint:mobile`.
+- All packages: `vp check` and `vp run typecheck`.
 - Web only: `node_modules/.bin/vp run --filter @t3tools/web typecheck`; tests via `vp test run <path>` from `apps/web`.
 - Server (package name `t3`): `node_modules/.bin/vp run --filter t3 typecheck`; Copilot suite `vp test run src/provider/copilot/` from `apps/server`.
 - Contracts: `@t3tools/contracts` typecheck + tests.

@@ -16,9 +16,6 @@ export default defineConfig({
       "**/dist/**",
       "**/dist-electron/**",
       "**/.{idea,git,cache,output,temp}/**",
-      // Fork (OMApp): apps/mobile is excluded from the active product; kept
-      // in-tree for cheap upstream resync but out of lint/fmt/test. See FORK.md.
-      "**/apps/mobile/**",
     ],
     hookTimeout: 60_000,
     testTimeout: 60_000,
@@ -39,7 +36,6 @@ export default defineConfig({
       "pnpm-lock.yaml",
       "*.tsbuildinfo",
       "**/routeTree.gen.ts",
-      "apps/mobile/**",
       "apps/web/public/mockServiceWorker.js",
       "apps/web/src/lib/vendor/qrcodegen.ts",
       "*.icon/**",
@@ -64,7 +60,6 @@ export default defineConfig({
       "pnpm-lock.yaml",
       "*.tsbuildinfo",
       "**/routeTree.gen.ts",
-      "apps/mobile/**",
     ],
     plugins: ["eslint", "oxc", "react", "unicorn", "typescript"],
     jsPlugins: ["./oxlint-plugin-t3code/index.ts"],
