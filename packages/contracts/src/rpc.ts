@@ -60,11 +60,6 @@ import {
 } from "./orchestration.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
-  RelayClientInstallFailedError,
-  RelayClientInstallProgressEventSchema,
-  RelayClientStatusSchema,
-} from "./relayClient.ts";
-import {
   ProjectListEntriesError,
   ProjectListEntriesInput,
   ProjectListEntriesResult,
@@ -223,10 +218,6 @@ export const WS_METHODS = {
   copilotDeviceLoginStatus: "copilot.deviceLoginStatus",
   copilotSignOut: "copilot.signOut",
 
-  // Cloud environment methods
-  cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
-  cloudInstallRelayClient: "cloud.installRelayClient",
-
   // Source control methods
   sourceControlLookupRepository: "sourceControl.lookupRepository",
   sourceControlCloneRepository: "sourceControl.cloneRepository",
@@ -356,19 +347,6 @@ export const WsCopilotSignOutRpc = Rpc.make(WS_METHODS.copilotSignOut, {
   payload: Schema.Struct({}),
   success: CopilotSignOutResult,
   error: EnvironmentAuthorizationError,
-});
-
-export const WsCloudGetRelayClientStatusRpc = Rpc.make(WS_METHODS.cloudGetRelayClientStatus, {
-  payload: Schema.Struct({}),
-  success: RelayClientStatusSchema,
-  error: EnvironmentAuthorizationError,
-});
-
-export const WsCloudInstallRelayClientRpc = Rpc.make(WS_METHODS.cloudInstallRelayClient, {
-  payload: Schema.Struct({}),
-  success: RelayClientInstallProgressEventSchema,
-  error: Schema.Union([RelayClientInstallFailedError, EnvironmentAuthorizationError]),
-  stream: true,
 });
 
 export const WsSourceControlLookupRepositoryRpc = Rpc.make(
@@ -739,8 +717,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsCopilotDeviceLoginStartRpc,
   WsCopilotDeviceLoginStatusRpc,
   WsCopilotSignOutRpc,
-  WsCloudGetRelayClientStatusRpc,
-  WsCloudInstallRelayClientRpc,
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,

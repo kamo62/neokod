@@ -35,7 +35,6 @@ const PersistedSavedEnvironmentStorageRecordSchema = Schema.Struct({
   wsBaseUrl: Schema.String,
   createdAt: Schema.String,
   lastConnectedAt: Schema.NullOr(Schema.String),
-  relayManaged: Schema.optionalKey(Schema.Struct({ relayUrl: Schema.String })),
   encryptedBearerToken: Schema.optionalKey(Schema.String),
 });
 
@@ -187,10 +186,7 @@ function toPersistedSavedEnvironmentRecord(
     createdAt: record.createdAt,
     lastConnectedAt: record.lastConnectedAt,
   };
-  return {
-    ...nextRecord,
-    ...(record.relayManaged ? { relayManaged: record.relayManaged } : {}),
-  };
+  return nextRecord;
 }
 
 function toSavedEnvironmentStorageRecord(
@@ -205,12 +201,9 @@ function toSavedEnvironmentStorageRecord(
     createdAt: record.createdAt,
     lastConnectedAt: record.lastConnectedAt,
   };
-  const metadata = {
-    ...(record.relayManaged ? { relayManaged: record.relayManaged } : {}),
-  };
   return Option.match(encryptedBearerToken, {
-    onNone: () => ({ ...nextRecord, ...metadata }),
-    onSome: (value) => ({ ...nextRecord, ...metadata, encryptedBearerToken: value }),
+    onNone: () => nextRecord,
+    onSome: (value) => ({ ...nextRecord, encryptedBearerToken: value }),
   });
 }
 

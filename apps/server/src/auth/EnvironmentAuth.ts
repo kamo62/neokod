@@ -907,9 +907,9 @@ export const make = Effect.gen(function* () {
     issueStartupPairingCredential().pipe(
       Effect.map((issued) => {
         const url = new URL(baseUrl);
-        url.pathname = "/pair";
-        url.searchParams.delete("token");
-        url.hash = new URLSearchParams([["token", issued.credential]]).toString();
+        url.pathname = "/";
+        url.hash = "";
+        url.searchParams.set("token", issued.credential);
         return url.toString();
       }),
       Effect.withSpan("EnvironmentAuth.issueStartupPairingUrl"),

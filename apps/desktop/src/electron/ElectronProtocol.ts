@@ -52,7 +52,7 @@ export interface DesktopProtocolRegistrationInput {
   readonly scheme: string;
   readonly targetOrigin: URL;
   readonly backendOrigin: URL;
-  readonly clerkFrontendApiHostname: string | undefined;
+  readonly readWslConnectOrigins?: () => Promise<ReadonlyArray<string>>;
 }
 
 export class ElectronProtocol extends Context.Service<
@@ -64,32 +64,45 @@ export class ElectronProtocol extends Context.Service<
   }
 >()("@t3tools/desktop/electron/ElectronProtocol") {}
 
-export function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrationInput): string {
-  const clerkOrigin = input.clerkFrontendApiHostname
-    ? `https://${input.clerkFrontendApiHostname}`
-    : undefined;
-  const scriptSources = [
-    "'self'",
-    "'unsafe-inline'",
-    ...(clerkOrigin ? [clerkOrigin] : []),
-    "https://challenges.cloudflare.com",
-  ];
+function normalizeWslConnectOrigins(origins: ReadonlyArray<string>): ReadonlyArray<string> {
+  return origins.flatMap((value) => {
+    try {
+      const url = new URL(value);
+      return url.protocol === "http:" || url.protocol === "ws:" ? [url.origin] : [];
+    } catch {
+      return [];
+    }
+  });
+}
 
-  // The renderer connects directly to user-configured environments in addition to
-  // the build-configured Clerk, relay, and OTLP endpoints. Those environment
-  // origins are not known when this response policy is created, so restrict
-  // connections by the network schemes the client supports instead of by host.
-  const connectSources = ["'self'", "http:", "https:", "ws:", "wss:"];
+export function makeDesktopContentSecurityPolicy(
+  input: DesktopProtocolRegistrationInput,
+  wslConnectOrigins: ReadonlyArray<string> = [],
+): string {
+  const localOrigins = [
+    ...new Set([
+      input.targetOrigin.origin,
+      input.backendOrigin.origin,
+      ...normalizeWslConnectOrigins(wslConnectOrigins),
+    ]),
+  ];
+  const connectSources = [
+    "'self'",
+    ...localOrigins,
+    "http://127.0.0.1:*",
+    "ws://127.0.0.1:*",
+    "http://localhost:*",
+    "ws://localhost:*",
+  ];
 
   return [
     "default-src 'self'",
-    `script-src ${scriptSources.join(" ")}`,
+    "script-src 'self' 'unsafe-inline'",
     `connect-src ${connectSources.join(" ")}`,
-    `img-src 'self' ${input.scheme}: blob: data: http: https:`,
+    `img-src 'self' ${input.scheme}: blob: data: ${localOrigins.join(" ")}`,
     "style-src 'self' 'unsafe-inline'",
     `font-src 'self' ${input.scheme}: data:`,
     "worker-src 'self' blob:",
-    "frame-src 'self' https://challenges.cloudflare.com",
     "form-action 'self'",
   ].join("; ");
 }
@@ -106,15 +119,14 @@ function withContentSecurityPolicy(response: Response, policy: string): Response
 
 async function proxyRequest(
   request: Request,
-  targetOrigin: URL,
-  contentSecurityPolicy: string,
+  input: DesktopProtocolRegistrationInput,
 ): Promise<Response> {
   const requestUrl = new URL(request.url);
   if (requestUrl.host !== DESKTOP_HOST) {
     return new Response(null, { status: 404 });
   }
 
-  const targetUrl = new URL(`${requestUrl.pathname}${requestUrl.search}`, targetOrigin);
+  const targetUrl = new URL(`${requestUrl.pathname}${requestUrl.search}`, input.targetOrigin);
   const headers = new Headers(request.headers);
   const headersToRemove: string[] = [];
   for (const name of headers.keys()) {
@@ -146,7 +158,11 @@ async function proxyRequest(
     request.method === "GET" || request.method === "HEAD"
       ? await fetchWithTransientRetry(targetUrl.toString(), init)
       : await Electron.net.fetch(targetUrl.toString(), init);
-  return withContentSecurityPolicy(response, contentSecurityPolicy);
+  const wslConnectOrigins = await input.readWslConnectOrigins?.();
+  return withContentSecurityPolicy(
+    response,
+    makeDesktopContentSecurityPolicy(input, wslConnectOrigins ?? []),
+  );
 }
 
 const TRANSIENT_FETCH_RETRY_DELAYS_MS = [0, 50, 150] as const;
@@ -176,14 +192,10 @@ export const make = Effect.gen(function* () {
     function* (input: DesktopProtocolRegistrationInput) {
       if (yield* Ref.get(registered)) return;
 
-      const contentSecurityPolicy = makeDesktopContentSecurityPolicy(input);
-
       yield* Effect.acquireRelease(
         Effect.try({
           try: () => {
-            Electron.protocol.handle(input.scheme, (request) =>
-              proxyRequest(request, input.targetOrigin, contentSecurityPolicy),
-            );
+            Electron.protocol.handle(input.scheme, (request) => proxyRequest(request, input));
           },
           catch: (cause) => new ElectronProtocolRegistrationError({ scheme: input.scheme, cause }),
         }).pipe(Effect.andThen(Ref.set(registered, true))),

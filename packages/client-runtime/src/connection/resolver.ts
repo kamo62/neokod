@@ -1,5 +1,3 @@
-import { RelayEnvironmentConnectScope } from "@t3tools/contracts/relay";
-import { withRelayClientTracing } from "@t3tools/shared/relayTracing";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -7,7 +5,6 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as RemoteEnvironmentAuthorization from "../authorization/service.ts";
-import * as ManagedRelay from "../relay/managedRelay.ts";
 import * as ClientCapabilities from "../platform/capabilities.ts";
 import {
   BearerConnectionCredential,
@@ -15,18 +12,12 @@ import {
   type ConnectionCatalogEntry,
 } from "./catalog.ts";
 import * as ConnectionCredentialStore from "./credentialStore.ts";
-import {
-  credentialMissingError,
-  environmentMismatchError,
-  mapManagedRelayError,
-  profileMissingError,
-} from "./errors.ts";
+import { credentialMissingError, environmentMismatchError, profileMissingError } from "./errors.ts";
 import type {
   BearerConnectionTarget,
   ConnectionTarget,
   PreparedConnection,
   PrimaryConnectionTarget,
-  RelayConnectionTarget,
 } from "./model.ts";
 import { ConnectionBlockedError, type ConnectionAttemptError } from "./model.ts";
 
@@ -134,58 +125,9 @@ const makeBearerBroker = Effect.fn("clientRuntime.connection.broker.makeBearer")
   });
 });
 
-const makeRelayBroker = Effect.fn("clientRuntime.connection.broker.makeRelay")(function* () {
-  const relay = yield* ManagedRelay.ManagedRelayClient;
-  const session = yield* ClientCapabilities.CloudSession;
-  const identity = yield* ClientCapabilities.RelayDeviceIdentity;
-  const remote = yield* RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization;
-
-  return Effect.fnUntraced(
-    function* (target: RelayConnectionTarget) {
-      const authorized = yield* remote.authorizeDpop({
-        expectedEnvironmentId: target.environmentId,
-        obtainBootstrap: Effect.gen(function* () {
-          const clerkToken = yield* session.clerkToken.pipe(
-            Effect.withSpan("relay.connection.cloudSessionToken.resolve"),
-          );
-          const deviceId = yield* identity.deviceId.pipe(
-            Effect.withSpan("relay.connection.deviceIdentity.resolve"),
-          );
-          const connected = yield* relay
-            .connectEnvironment({
-              clerkToken,
-              scopes: [RelayEnvironmentConnectScope],
-              environmentId: target.environmentId,
-              ...(Option.isSome(deviceId) ? { deviceId: deviceId.value } : {}),
-            })
-            .pipe(Effect.mapError(mapManagedRelayError));
-          if (connected.environmentId !== target.environmentId) {
-            return yield* environmentMismatchError({
-              expected: target.environmentId,
-              actual: connected.environmentId,
-            });
-          }
-          return connected;
-        }).pipe(Effect.withSpan("relay.connection.bootstrap.obtain")),
-      });
-      return {
-        environmentId: authorized.environmentId,
-        label: authorized.label,
-        httpBaseUrl: authorized.httpBaseUrl,
-        socketUrl: authorized.socketUrl,
-        httpAuthorization: authorized.httpAuthorization,
-        target,
-      } satisfies PreparedConnection;
-    },
-    Effect.withSpan("clientRuntime.connection.broker.relay"),
-    withRelayClientTracing,
-  );
-});
-
 export const make = Effect.gen(function* () {
   const primary = yield* makePrimaryBroker();
   const bearer = yield* makeBearerBroker();
-  const relay = yield* makeRelayBroker();
 
   const prepare = Effect.fn("clientRuntime.connection.broker.prepare")(function* (
     entry: ConnectionCatalogEntry,
@@ -200,8 +142,6 @@ export const make = Effect.gen(function* () {
         return yield* primary(target);
       case "BearerConnectionTarget":
         return yield* bearer({ ...entry, target });
-      case "RelayConnectionTarget":
-        return yield* relay(target);
     }
   });
 

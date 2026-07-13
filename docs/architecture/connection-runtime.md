@@ -13,8 +13,8 @@ services:
 
 - `EnvironmentSupervisor` owns desired state, retry scheduling, and the active
   session scope.
-- `ConnectionBroker` prepares credentials and endpoints for primary, bearer,
-  and relay targets.
+- `ConnectionBroker` prepares credentials and endpoints for primary and bearer
+  targets.
 - `RpcSessionFactory` performs one transport attempt. It does not retry.
 - `EnvironmentRpc` exposes the active session without leaking the transport.
 - `EnvironmentProjectCommands` and `EnvironmentThreadCommands` construct
@@ -37,8 +37,8 @@ The supervisor is the only retry owner.
    asks the session factory for one RPC session.
 4. Transient failures retry forever with exponential backoff capped at 16
    seconds.
-5. Connectivity changes, application activation, credential changes, and
-   explicit user retry interrupt the current wait and trigger a fresh attempt.
+5. Connectivity changes, application activation, and explicit user retry
+   interrupt the current wait and trigger a fresh attempt.
 6. Authentication or configuration failures remain blocked until an external
    wakeup changes the relevant input.
 7. An involuntary session close keeps the registration and cache, then retries.
@@ -81,11 +81,11 @@ The web app provides:
 
 - network status and network-change streams;
 - application lifecycle wakeups;
-- cloud session credentials;
-- device identity;
+- primary-environment bearer authorization;
+- client presentation metadata;
 - platform registrations;
 - persistent catalog, credential, shell, and thread stores;
-- HTTP, crypto, and telemetry layers.
+- HTTP and telemetry layers.
 
 Platform layers adapt operating-system capabilities. They do not implement
 connection policy.
@@ -98,10 +98,9 @@ renderer requires the `wsl-bearer` discriminator, distro, credential, and matchi
 HTTP/WebSocket origins before exchanging the credential for a bearer session.
 Configured Vite URLs and browser origins never receive this exception.
 
-Hosted relay deployment and outbound mobile activity publishing are no longer part of the server.
-The remaining relay target paths belong to the transitional cloud client and stay until that client
-is removed. Local browser notifications use the pure shared agent-awareness projection and do not
-publish activity off-device.
+Hosted services and outbound mobile activity publishing are not part of the local-first runtime.
+Local browser notifications use the pure shared agent-awareness projection and do not publish
+activity off-device.
 
 ## Source Boundaries
 
@@ -142,8 +141,7 @@ Required coverage includes:
 - authentication wakeups;
 - involuntary close and reconnect;
 - explicit removal clearing all owned state;
-- relay token reuse and refresh;
-- progressive relay discovery;
+- bearer authorization and ticket issuance;
 - shell and thread cache hydration;
 - durable subscriptions switching sessions;
 - command metadata and idempotent queued-command metadata.

@@ -28,7 +28,7 @@ import * as Arr from "effect/Array";
 import * as Duration from "effect/Duration";
 import * as Equal from "effect/Equal";
 import * as Result from "effect/Result";
-import { APP_VERSION, HOSTED_APP_CHANNEL, HOSTED_APP_CHANNEL_LABEL } from "../../branding";
+import { APP_VERSION } from "../../branding";
 import {
   canCheckForUpdate,
   getDesktopUpdateButtonTooltip,
@@ -39,7 +39,6 @@ import {
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { TraitsPicker } from "../chat/TraitsPicker";
 import { isElectron } from "../../env";
-import { buildHostedChannelSelectionUrl, type HostedAppChannel } from "../../hostedPairing";
 import { useTheme } from "../../hooks/useTheme";
 import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
 import { useThreadActions } from "../../hooks/useThreadActions";
@@ -208,7 +207,6 @@ function AboutVersionSection() {
 
   const hasDesktopBridge = typeof window !== "undefined" && Boolean(window.desktopBridge);
   const selectedUpdateChannel = updateState?.channel ?? "latest";
-  const selectedHostedAppChannel = hasDesktopBridge ? null : HOSTED_APP_CHANNEL;
 
   const handleUpdateChannelChange = useCallback(
     (channel: DesktopUpdateChannel) => {
@@ -381,36 +379,6 @@ function AboutVersionSection() {
             </Select>
           }
         />
-      ) : selectedHostedAppChannel ? (
-        <SettingsRow
-          title="Update track"
-          description="Switches the hosted app release channel."
-          control={
-            <Select
-              value={selectedHostedAppChannel}
-              onValueChange={(value) => {
-                if (value === selectedHostedAppChannel) return;
-                window.location.assign(
-                  buildHostedChannelSelectionUrl({
-                    channel: value as HostedAppChannel,
-                  }),
-                );
-              }}
-            >
-              <SelectTrigger className="w-full sm:w-40" aria-label="Update track">
-                <SelectValue>{HOSTED_APP_CHANNEL_LABEL}</SelectValue>
-              </SelectTrigger>
-              <SelectPopup align="end" alignItemWithTrigger={false}>
-                <SelectItem hideIndicator value="latest">
-                  Latest
-                </SelectItem>
-                <SelectItem hideIndicator value="nightly">
-                  Nightly
-                </SelectItem>
-              </SelectPopup>
-            </Select>
-          }
-        />
       ) : null}
     </>
   );
@@ -572,13 +540,18 @@ export function GeneralSettingsPanel() {
     useState<BrowserNotificationCapability>(() => readBrowserNotificationCapability());
 
   useEffect(
-    () => subscribeBrowserNotificationCapability(() => setBrowserNotificationCapability(readBrowserNotificationCapability())),
+    () =>
+      subscribeBrowserNotificationCapability(() =>
+        setBrowserNotificationCapability(readBrowserNotificationCapability()),
+      ),
     [],
   );
 
   const systemNotificationDescription = {
-    unsupported: "System notifications are unavailable in this browser. In-app notifications still work.",
-    insecure: "System notifications require a secure (HTTPS) page. In-app notifications still work.",
+    unsupported:
+      "System notifications are unavailable in this browser. In-app notifications still work.",
+    insecure:
+      "System notifications require a secure (HTTPS) page. In-app notifications still work.",
     default: "System notifications are off until you enable them. In-app notifications still work.",
     granted: "System notifications are enabled when Neokod is not focused.",
     denied: "System notifications are blocked by your browser. In-app notifications still work.",
@@ -778,7 +751,9 @@ export function GeneralSettingsPanel() {
                 size="sm"
                 variant="outline"
                 onClick={() => {
-                  void requestBrowserNotificationPermission().then(setBrowserNotificationCapability);
+                  void requestBrowserNotificationPermission().then(
+                    setBrowserNotificationCapability,
+                  );
                 }}
               >
                 Enable system notifications
@@ -1127,7 +1102,7 @@ export function GeneralSettingsPanel() {
       </SettingsSection>
 
       <SettingsSection title="About">
-        {isElectron || HOSTED_APP_CHANNEL ? (
+        {isElectron ? (
           <AboutVersionSection />
         ) : (
           <SettingsRow

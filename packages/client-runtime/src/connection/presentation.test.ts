@@ -106,14 +106,14 @@ describe("connection presentation", () => {
           attempt: 2,
           lastFailure: new ConnectionTransientError({
             reason: "transport",
-            detail: "Relay connection timed out.",
+            detail: "Remote connection timed out.",
             traceId: "trace-retry",
           }),
         }),
       ),
     ).toEqual({
       phase: "reconnecting",
-      error: "Relay connection timed out.",
+      error: "Remote connection timed out.",
       traceId: "trace-retry",
     });
   });
@@ -126,10 +126,10 @@ describe("connection presentation", () => {
     expect(
       connectionStatusText({
         phase: "reconnecting",
-        error: "Relay request timed out.",
+        error: "Remote request timed out.",
         traceId: "trace-retry",
       }),
-    ).toBe("Failed to connect. Reconnecting... Reason: Relay request timed out.");
+    ).toBe("Failed to connect. Reconnecting... Reason: Remote request timed out.");
   });
 
   it("presents the supervisor's offline state without consulting shell state", () => {

@@ -6,7 +6,8 @@ T3 Code has one server-side observability model:
 - completed spans go to a local NDJSON trace file
 - traces and metrics can also be exported over OTLP to a real backend like Grafana LGTM
 
-The local trace file is the persisted source of truth. There is no separate persisted server log file anymore.
+The local trace file is the persisted source of truth. There is no separate persisted server log
+file and no product-managed remote telemetry service.
 
 ## Where To Find Things
 

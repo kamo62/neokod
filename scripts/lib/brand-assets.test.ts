@@ -37,21 +37,21 @@ describe("brand-assets", () => {
     });
   });
 
-  it("can target hosted web dist directly", () => {
+  it("can target web dist directly", () => {
     expect(resolveWebIconOverrides("production", "apps/web/dist")).toContainEqual({
       sourceRelativePath: BRAND_ASSET_PATHS.productionWebAppleTouchIconPng,
       targetRelativePath: "apps/web/dist/apple-touch-icon.png",
     });
   });
 
-  it("maps hosted nightly web assets to nightly icons", () => {
+  it("maps nightly web assets to nightly icons", () => {
     expect(resolveWebIconOverrides("nightly", "apps/web/dist")).toContainEqual({
       sourceRelativePath: BRAND_ASSET_PATHS.nightlyWebFaviconIco,
       targetRelativePath: "apps/web/dist/favicon.ico",
     });
   });
 
-  it("maps hosted release channels to web asset brands", () => {
+  it("maps release channels to web asset brands", () => {
     expect(resolveWebAssetBrandForChannel("latest")).toBe("production");
     expect(resolveWebAssetBrandForChannel("nightly")).toBe("nightly");
   });

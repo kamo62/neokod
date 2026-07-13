@@ -25,8 +25,8 @@ describe("browser target resolver", () => {
     });
   });
 
-  it("refuses public relay hosts until the authenticated gateway exists", async () => {
-    readPreparedConnection.mockReturnValue({ httpBaseUrl: "https://relay.example.com" });
+  it("refuses public remote hosts until the authenticated gateway exists", async () => {
+    readPreparedConnection.mockReturnValue({ httpBaseUrl: "https://remote.example.com" });
     const { resolveBrowserNavigationTarget } = await import("./browserTargetResolver");
     expect(() =>
       resolveBrowserNavigationTarget(EnvironmentId.make("environment-1"), {

@@ -107,7 +107,9 @@ export class PrimaryEnvironmentPairingCredentialRequiredError extends Schema.Tag
   },
 ) {
   override get message(): string {
-    return "Enter a pairing token to continue.";
+    return this.providedLength === 0
+      ? "Open the startup URL printed by the Neokod server or launch the desktop app again."
+      : "Enter a pairing token to continue.";
   }
 }
 
@@ -140,13 +142,7 @@ export interface ServerClientSessionRecord {
   readonly current: boolean;
 }
 
-type ServerAuthGateState =
-  | { status: "authenticated" }
-  | {
-      status: "requires-auth";
-      auth: AuthSessionState["auth"];
-      errorMessage?: string;
-    };
+type ServerAuthGateState = { status: "authenticated" };
 
 let bootstrapPromise: Promise<ServerAuthGateState> | null = null;
 let resolvedAuthenticatedGateState: ServerAuthGateState | null = null;
@@ -318,30 +314,19 @@ function isTransientBootstrapError(error: unknown): boolean {
 }
 
 async function bootstrapServerAuth(): Promise<ServerAuthGateState> {
-  const bootstrapCredential = getDesktopBootstrapCredential();
+  const bootstrapCredential = takePairingTokenFromUrl() ?? getDesktopBootstrapCredential();
   const currentSession = await fetchSessionState();
   if (currentSession.authenticated) {
     return { status: "authenticated" };
   }
 
   if (!bootstrapCredential) {
-    return {
-      status: "requires-auth",
-      auth: currentSession.auth,
-    };
+    throw new PrimaryEnvironmentPairingCredentialRequiredError({ providedLength: 0 });
   }
 
-  try {
-    await exchangeBootstrapCredential(bootstrapCredential);
-    await waitForAuthenticatedSessionAfterBootstrap();
-    return { status: "authenticated" };
-  } catch (error) {
-    return {
-      status: "requires-auth",
-      auth: currentSession.auth,
-      errorMessage: error instanceof Error ? error.message : "Authentication failed.",
-    };
-  }
+  await exchangeBootstrapCredential(bootstrapCredential);
+  await waitForAuthenticatedSessionAfterBootstrap();
+  return { status: "authenticated" };
 }
 
 export async function submitServerAuthCredential(credential: string): Promise<void> {
@@ -516,9 +501,7 @@ export async function resolveInitialServerAuthGateState(): Promise<ServerAuthGat
     return bootstrapPromise;
   }
 
-  const nextPromise = bootstrapServerAuth();
-  bootstrapPromise = nextPromise;
-  return nextPromise
+  const nextPromise = bootstrapServerAuth()
     .then((result) => {
       if (result.status === "authenticated") {
         resolvedAuthenticatedGateState = result;
@@ -530,6 +513,8 @@ export async function resolveInitialServerAuthGateState(): Promise<ServerAuthGat
         bootstrapPromise = null;
       }
     });
+  bootstrapPromise = nextPromise;
+  return nextPromise;
 }
 
 // Used by the WSL backend swap: invalidate the cached authenticated state

@@ -119,20 +119,19 @@ describe("DesktopConnectionCatalogStore", () => {
     ),
   );
 
-  it.effect("keeps relay records and purges legacy direct-remote records during migration", () =>
+  it.effect("purges legacy remote records during migration", () =>
     withStore(
       Effect.gen(function* () {
         const store = yield* DesktopConnectionCatalogStore.DesktopConnectionCatalogStore;
         const savedEnvironments = yield* DesktopSavedEnvironments.DesktopSavedEnvironments;
         const records: readonly PersistedSavedEnvironmentRecord[] = [
           {
-            environmentId: EnvironmentId.make("relay-environment"),
-            label: "Relay",
-            httpBaseUrl: "https://relay.example.com/",
-            wsBaseUrl: "wss://relay.example.com/",
+            environmentId: EnvironmentId.make("legacy-remote-environment"),
+            label: "Legacy remote",
+            httpBaseUrl: "https://remote.example.com/",
+            wsBaseUrl: "wss://remote.example.com/",
             createdAt: "2026-06-01T00:00:00.000Z",
             lastConnectedAt: null,
-            relayManaged: { relayUrl: "https://relay-control.example.com/" },
           },
           {
             environmentId: EnvironmentId.make("retired-environment"),
@@ -160,12 +159,7 @@ describe("DesktopConnectionCatalogStore", () => {
         }
         const catalog = yield* decodeConnectionCatalog(migrated.value);
 
-        assert.lengthOf(catalog.targets, 1);
-        assert.deepInclude(catalog.targets[0], {
-          _tag: "RelayConnectionTarget",
-          environmentId: EnvironmentId.make("relay-environment"),
-          label: "Relay",
-        });
+        assert.deepEqual(catalog.targets, []);
         assert.deepEqual(catalog.profiles, []);
         assert.deepEqual(catalog.credentials, []);
 

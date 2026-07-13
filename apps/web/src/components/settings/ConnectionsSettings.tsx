@@ -1,14 +1,11 @@
-import { ChevronsLeftRightEllipsisIcon, PlusIcon, TriangleAlertIcon } from "lucide-react";
-import { useAuth } from "@clerk/react";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { PlusIcon, TriangleAlertIcon } from "lucide-react";
+import { memo, useCallback, useMemo, useState } from "react";
 import {
   AuthAccessReadScope,
   AuthAccessWriteScope,
   AuthAdministrativeScopes,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
-  AuthRelayReadScope,
-  AuthRelayWriteScope,
   AuthReviewWriteScope,
   AuthStandardClientScopes,
   AuthTerminalOperateScope,
@@ -16,28 +13,13 @@ import {
   type AuthEnvironmentScope,
   type AuthPairingLink,
   type DesktopWslState,
-  type EnvironmentId,
 } from "@t3tools/contracts";
-import {
-  connectionStatusText,
-  RelayConnectionRegistration,
-  RelayConnectionTarget,
-} from "@t3tools/client-runtime/connection";
-import { findErrorTraceId } from "@t3tools/client-runtime/errors";
-import {
-  isAtomCommandInterrupted,
-  settlePromise,
-  squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
-import type { RelayClientEnvironmentRecord } from "@t3tools/contracts/relay";
 import * as DateTime from "effect/DateTime";
-import * as Option from "effect/Option";
 
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { cn } from "../../lib/utils";
 import { formatElapsedDurationLabel, formatExpiresInLabel } from "../../timestampFormat";
 import { applyWslEnableSelection } from "./ConnectionsSettings.logic";
-import { resolveRelayClerkTokenOptions } from "../../cloud/publicConfig";
 import {
   SettingsPageContainer,
   SettingsRow,
@@ -67,17 +49,13 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
-import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Button } from "../ui/button";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import { Textarea } from "../ui/textarea";
-import { getPairingTokenFromUrl } from "../../pairingUrl";
-import { readHostedPairingRequest } from "../../hostedPairing";
 import {
   createServerPairingCredential,
   revokeOtherServerClientSessions,
@@ -89,26 +67,10 @@ import {
 } from "~/environments/primary";
 import { isDesktopLocalConnectionTarget } from "~/connection/desktopLocal";
 import { resolveServerConfigVersionMismatch } from "~/versionSkew";
-import { usePrimaryCloudLinkState } from "~/cloud/primaryCloudLinkState";
-import { isCloudEnabled } from "~/cloud/publicConfig";
-import {
-  linkPrimaryEnvironment as linkPrimaryEnvironmentAtom,
-  unlinkPrimaryEnvironment as unlinkPrimaryEnvironmentAtom,
-  updatePrimaryEnvironmentPreferences as updatePrimaryEnvironmentPreferencesAtom,
-} from "~/cloud/linkEnvironmentAtoms";
 import { authEnvironment } from "~/state/auth";
-import { environmentCatalog } from "~/connection/catalog";
-import { connectPairing as connectPairingAtom } from "~/connection/onboarding";
 import { useEnvironmentQuery } from "~/state/query";
 import { desktopWslStateAtom, refreshDesktopWslState } from "~/state/desktopWslState";
-import {
-  type EnvironmentPresentation,
-  useEnvironments,
-  usePrimaryEnvironment,
-  useRelayEnvironmentDiscovery,
-} from "~/state/environments";
-import { relayEnvironmentDiscovery } from "~/state/relay";
-import { useAtomCommand } from "../../state/use-atom-command";
+import { useEnvironments, usePrimaryEnvironment } from "~/state/environments";
 
 // Sentinels for the consolidated WSL backend picker. The colon is
 // rejected by DISTRO_NAME_PATTERN (validated on the desktop side) so
@@ -163,16 +125,6 @@ const PAIRING_SCOPE_OPTIONS: ReadonlyArray<{
     scope: AuthAccessWriteScope,
     title: "Manage access",
     description: "Issue and revoke credentials for other clients.",
-  },
-  {
-    scope: AuthRelayReadScope,
-    title: "View relay",
-    description: "Inspect managed relay connectivity.",
-  },
-  {
-    scope: AuthRelayWriteScope,
-    title: "Manage relay",
-    description: "Change managed tunnel connectivity.",
   },
 ];
 
@@ -272,55 +224,6 @@ function ConnectionStatusDot({
       </TooltipPopup>
     </Tooltip>
   );
-}
-
-function parsePairingUrlFields(
-  input: string,
-): { readonly host: string; readonly pairingCode: string } | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-
-  try {
-    const urlLikeInput =
-      /^[a-zA-Z][a-zA-Z\d+.-]*:\/\//u.test(trimmed) || trimmed.startsWith("//")
-        ? trimmed
-        : `https://${trimmed}`;
-    const url = new URL(urlLikeInput, window.location.origin);
-    const hostedPairingRequest = readHostedPairingRequest(url);
-    if (hostedPairingRequest) {
-      return {
-        host: hostedPairingRequest.host,
-        pairingCode: hostedPairingRequest.token,
-      };
-    }
-
-    const pairingCode = getPairingTokenFromUrl(url);
-    if (!pairingCode) return null;
-    return {
-      host: url.origin,
-      pairingCode,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function parseRemotePairingFields(input: { readonly host: string; readonly pairingCode: string }): {
-  readonly host: string;
-  readonly pairingCode: string;
-} {
-  const parsedPairingUrl = parsePairingUrlFields(input.host);
-  if (parsedPairingUrl) return parsedPairingUrl;
-
-  const host = input.host.trim();
-  const pairingCode = input.pairingCode.trim();
-  if (!host) {
-    throw new Error("Enter a backend host.");
-  }
-  if (!pairingCode) {
-    throw new Error("Enter a pairing code.");
-  }
-  return { host, pairingCode };
 }
 
 /** Direct row in the card – same pattern as the Provider / ACP-agent list rows. */
@@ -793,555 +696,6 @@ const PairingClientsList = memo(function PairingClientsList({
   );
 });
 
-type SavedBackendListRowProps = {
-  environment: EnvironmentPresentation;
-  removingEnvironmentId: EnvironmentId | null;
-  onConnect: (environmentId: EnvironmentId) => void;
-  onRemove: (environmentId: EnvironmentId) => void;
-};
-
-function SavedBackendListRow({
-  environment,
-  removingEnvironmentId,
-  onConnect,
-  onRemove,
-}: SavedBackendListRowProps) {
-  const environmentId = environment.environmentId;
-  const connectionState = environment.connection.phase;
-  const isConnected = connectionState === "connected";
-  const isConnecting = connectionState === "connecting" || connectionState === "reconnecting";
-  const stateDotClassName =
-    connectionState === "connected"
-      ? "bg-success"
-      : connectionState === "connecting" || connectionState === "reconnecting"
-        ? "bg-warning"
-        : connectionState === "error"
-          ? "bg-destructive"
-          : "bg-muted-foreground/40";
-  const statusTooltip = connectionStatusText(environment.connection);
-  const errorTraceId = environment.connection.traceId;
-  const { copyToClipboard: copyTraceIdToClipboard } = useCopyToClipboard<{ traceId: string }>({
-    target: "trace ID",
-    onCopy: ({ traceId }) => {
-      toastManager.add({
-        type: "success",
-        title: "Trace ID copied",
-        description: traceId,
-      });
-    },
-    onError: (error) => {
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: "Could not copy trace ID",
-          description: error.message,
-        }),
-      );
-    },
-  });
-  const copyTraceId = useCallback(
-    (traceId: string) => {
-      copyTraceIdToClipboard(traceId, { traceId });
-    },
-    [copyTraceIdToClipboard],
-  );
-  const versionMismatch = resolveServerConfigVersionMismatch(environment.serverConfig);
-  const metadataBits = environment.relayManaged ? ["T3 Connect"] : [];
-
-  // The WSL backend is a desktop-managed local backend (it surfaces as a bearer
-  // environment whose connection id is prefixed "local:"), not a remote
-  // environment you connect to or remove here — its lifecycle is driven by the
-  // WSL on/off + distro picker on this page.
-  const isWslEnvironment = isDesktopLocalConnectionTarget(environment.entry.target);
-
-  return (
-    <div className={ITEM_ROW_CLASSNAME}>
-      <div className={ITEM_ROW_INNER_CLASSNAME}>
-        <div className="min-w-0 flex-1 space-y-1">
-          <div className="flex min-h-5 items-center gap-1.5">
-            <ConnectionStatusDot
-              tooltipText={statusTooltip}
-              dotClassName={stateDotClassName}
-              pingClassName={
-                connectionState === "connecting" || connectionState === "reconnecting"
-                  ? "bg-warning/60 duration-2000"
-                  : null
-              }
-            />
-            <h3 className="text-sm font-medium text-foreground">{environment.label}</h3>
-          </div>
-          {metadataBits.length > 0 ? (
-            <p className="text-xs text-muted-foreground">{metadataBits.join(" · ")}</p>
-          ) : null}
-          {versionMismatch ? (
-            <p className="flex items-center gap-1 text-warning text-xs">
-              <TriangleAlertIcon className="size-3.5 shrink-0" />
-              Version drift: client {versionMismatch.clientVersion}, server{" "}
-              {versionMismatch.serverVersion}.
-            </p>
-          ) : null}
-          {environment.connection.error ? (
-            <p className="flex min-w-0 items-center gap-2 text-destructive text-xs">
-              <span className="truncate">{connectionStatusText(environment.connection)}</span>
-              {errorTraceId ? (
-                <button
-                  type="button"
-                  className="shrink-0 underline underline-offset-2"
-                  onClick={() => copyTraceId(errorTraceId)}
-                >
-                  Copy trace ID
-                </button>
-              ) : null}
-            </p>
-          ) : null}
-        </div>
-        <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto sm:justify-end">
-          {isWslEnvironment ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button size="xs" variant="outline" disabled>
-                    Managed above
-                  </Button>
-                }
-              />
-              <TooltipPopup side="top" className="max-w-80 whitespace-pre-wrap leading-tight">
-                The WSL backend is managed by the WSL setting above — turn it on or off there.
-              </TooltipPopup>
-            </Tooltip>
-          ) : (
-            <Button
-              size="xs"
-              variant="outline"
-              disabled={isConnecting || removingEnvironmentId === environmentId}
-              onClick={() =>
-                void (isConnected ? onRemove(environmentId) : onConnect(environmentId))
-              }
-            >
-              {isConnected
-                ? removingEnvironmentId === environmentId
-                  ? "Disconnecting…"
-                  : "Disconnect"
-                : isConnecting
-                  ? "Connecting…"
-                  : "Connect"}
-            </Button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CloudLinkSwitch({
-  checked,
-  disabled,
-  disabledReason,
-  onCheckedChange,
-}: {
-  readonly checked: boolean;
-  readonly disabled: boolean;
-  readonly disabledReason: string | null;
-  readonly onCheckedChange?: (enabled: boolean) => void;
-}) {
-  const control = (
-    <Switch
-      aria-label="Enable T3 Connect"
-      checked={checked}
-      disabled={disabled}
-      {...(onCheckedChange ? { onCheckedChange } : {})}
-    />
-  );
-  return disabledReason ? (
-    <Tooltip>
-      <TooltipTrigger render={<span className="inline-flex">{control}</span>} />
-      <TooltipPopup side="top">{disabledReason}</TooltipPopup>
-    </Tooltip>
-  ) : (
-    control
-  );
-}
-
-function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: boolean }) {
-  const { getToken, isSignedIn } = useAuth();
-  const refreshRelayEnvironments = useAtomCommand(relayEnvironmentDiscovery.refresh, {
-    reportFailure: false,
-  });
-  const linkPrimaryEnvironment = useAtomCommand(linkPrimaryEnvironmentAtom, {
-    reportFailure: false,
-  });
-  const unlinkPrimaryEnvironment = useAtomCommand(unlinkPrimaryEnvironmentAtom, {
-    reportFailure: false,
-  });
-  const updatePrimaryEnvironmentPreferences = useAtomCommand(
-    updatePrimaryEnvironmentPreferencesAtom,
-    { reportFailure: false },
-  );
-  const primaryCloudLinkState = usePrimaryCloudLinkState();
-  const [operationError, setOperationError] = useState<string | null>(null);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [isUpdatingPreference, setIsUpdatingPreference] = useState(false);
-
-  const reportUpdateFailure = (cause: unknown) => {
-    const message = cause instanceof Error ? cause.message : "Could not update T3 Connect access.";
-    const traceId = findErrorTraceId(cause);
-    console.error("[t3-connect] Could not update T3 Connect", { message, traceId, cause });
-    setOperationError(traceId ? `${message} Trace ID: ${traceId}` : message);
-    toastManager.add({
-      type: "error",
-      title: "Could not update T3 Connect",
-      description: message,
-      data: traceId
-        ? {
-            secondaryActionProps: {
-              children: "Copy trace ID",
-              onClick: () => void navigator.clipboard?.writeText(traceId),
-            },
-          }
-        : undefined,
-    });
-  };
-
-  const updateLink = async (enabled: boolean) => {
-    setIsUpdating(true);
-    setOperationError(null);
-    const tokenResult = await settlePromise(() => getToken(resolveRelayClerkTokenOptions()));
-    if (tokenResult._tag === "Failure") {
-      reportUpdateFailure(squashAtomCommandFailure(tokenResult));
-      setIsUpdating(false);
-      return;
-    }
-
-    const target = primaryCloudLinkState.target;
-    if (!target) {
-      reportUpdateFailure(new Error("Local environment is not ready yet."));
-      setIsUpdating(false);
-      return;
-    }
-    if (enabled && !tokenResult.value) {
-      reportUpdateFailure(new Error("Sign in to T3 Connect before linking this environment."));
-      setIsUpdating(false);
-      return;
-    }
-
-    const linkResult =
-      enabled && tokenResult.value
-        ? await linkPrimaryEnvironment({
-            target,
-            clerkToken: tokenResult.value,
-          })
-        : await unlinkPrimaryEnvironment({
-            target,
-            clerkToken: tokenResult.value ?? null,
-          });
-    if (linkResult._tag === "Failure") {
-      if (!isAtomCommandInterrupted(linkResult)) {
-        reportUpdateFailure(squashAtomCommandFailure(linkResult));
-      }
-      setIsUpdating(false);
-      return;
-    }
-
-    primaryCloudLinkState.refresh();
-    const refreshResult = await refreshRelayEnvironments();
-    if (refreshResult._tag === "Failure") {
-      if (!isAtomCommandInterrupted(refreshResult)) {
-        reportUpdateFailure(squashAtomCommandFailure(refreshResult));
-      }
-      setIsUpdating(false);
-      return;
-    }
-
-    toastManager.add({
-      type: "success",
-      title: enabled ? "T3 Connect linked" : "T3 Connect unlinked",
-      description: enabled
-        ? "This environment is available through T3 Connect."
-        : "This environment is no longer available through T3 Connect.",
-    });
-    setIsUpdating(false);
-  };
-
-  const updatePublishAgentActivity = async (enabled: boolean) => {
-    const target = primaryCloudLinkState.target;
-    if (!target) {
-      reportUpdateFailure(new Error("Local environment is not ready yet."));
-      return;
-    }
-
-    setIsUpdatingPreference(true);
-    setOperationError(null);
-    const updateResult = await updatePrimaryEnvironmentPreferences({
-      target,
-      publishAgentActivity: enabled,
-    });
-    if (updateResult._tag === "Failure") {
-      if (!isAtomCommandInterrupted(updateResult)) {
-        reportUpdateFailure(squashAtomCommandFailure(updateResult));
-      }
-      setIsUpdatingPreference(false);
-      return;
-    }
-
-    primaryCloudLinkState.refresh();
-    toastManager.add({
-      type: "success",
-      title: enabled ? "Agent activity enabled" : "Agent activity disabled",
-      description: enabled
-        ? "This environment can publish agent activity to your mobile clients."
-        : "This environment will stop publishing agent activity.",
-    });
-    setIsUpdatingPreference(false);
-  };
-  const disabledReason = !isSignedIn
-    ? "Sign in to T3 Connect to manage this environment."
-    : !canManageRelay
-      ? "Your session does not have permission to manage T3 Connect access."
-      : null;
-  const linked = primaryCloudLinkState.data?.linked ?? false;
-
-  return (
-    <>
-      <SettingsRow
-        title="T3 Connect"
-        description={
-          linked
-            ? "This environment is available to your other devices through T3 Connect."
-            : "Make this environment available to your other devices through T3 Connect."
-        }
-        status={operationError ?? primaryCloudLinkState.error}
-        control={
-          <CloudLinkSwitch
-            checked={linked}
-            disabled={
-              !canManageRelay || !isSignedIn || primaryCloudLinkState.isPending || isUpdating
-            }
-            disabledReason={disabledReason}
-            onCheckedChange={(enabled) => void updateLink(enabled)}
-          />
-        }
-      />
-      {linked ? (
-        <SettingsRow
-          title="Publish agent activity"
-          description="Send activity from this environment to your mobile clients for push notifications and Live Activities."
-          className="bg-muted/20 pl-7 sm:pl-8"
-          control={
-            <Switch
-              aria-label="Publish agent activity to mobile clients"
-              checked={primaryCloudLinkState.data?.publishAgentActivity ?? false}
-              disabled={
-                !canManageRelay ||
-                !isSignedIn ||
-                primaryCloudLinkState.isPending ||
-                isUpdating ||
-                isUpdatingPreference
-              }
-              onCheckedChange={(enabled) => void updatePublishAgentActivity(enabled)}
-            />
-          }
-        />
-      ) : null}
-    </>
-  );
-}
-
-function CloudLinkRow({ canManageRelay }: { readonly canManageRelay: boolean }) {
-  return isCloudEnabled() ? <ConfiguredCloudLinkRow canManageRelay={canManageRelay} /> : null;
-}
-
-function EmptyRemoteEnvironments({ cloudEnabled = true }: { readonly cloudEnabled?: boolean }) {
-  return (
-    <Empty className="min-h-52">
-      <EmptyMedia variant="icon">
-        <ChevronsLeftRightEllipsisIcon />
-      </EmptyMedia>
-      <EmptyHeader>
-        <EmptyTitle>No saved remote environments</EmptyTitle>
-        <EmptyDescription>
-          {cloudEnabled
-            ? "Click “Add environment” to pair another environment, or connect one from T3 Connect."
-            : "Click “Add environment” to pair another environment."}
-        </EmptyDescription>
-      </EmptyHeader>
-    </Empty>
-  );
-}
-
-function RemoteEnvironmentRowsSkeleton() {
-  return (
-    <div className={ITEM_ROW_CLASSNAME}>
-      <div className={ITEM_ROW_INNER_CLASSNAME}>
-        <div className="min-w-0 flex-1 space-y-2">
-          <Skeleton className="h-4 w-32 rounded-full" />
-          <Skeleton className="h-3 w-20 rounded-full" />
-        </div>
-        <Skeleton className="h-7 w-16 rounded-md" />
-      </div>
-    </div>
-  );
-}
-
-function ConfiguredCloudRemoteEnvironmentRows({
-  primaryEnvironmentId,
-  savedEnvironmentIds,
-}: {
-  readonly primaryEnvironmentId: EnvironmentId | null;
-  readonly savedEnvironmentIds: ReadonlyArray<EnvironmentId>;
-}) {
-  const environmentsState = useRelayEnvironmentDiscovery();
-  const registerEnvironment = useAtomCommand(environmentCatalog.register, {
-    reportFailure: false,
-  });
-  const refreshRelayEnvironments = useAtomCommand(relayEnvironmentDiscovery.refresh, {
-    reportFailure: false,
-  });
-  const connectRelayEnvironment = useCallback(
-    (environment: RelayClientEnvironmentRecord) =>
-      registerEnvironment(
-        new RelayConnectionRegistration({
-          target: new RelayConnectionTarget({
-            environmentId: environment.environmentId,
-            label: environment.label,
-          }),
-        }),
-      ),
-    [registerEnvironment],
-  );
-  const [connectingEnvironmentId, setConnectingEnvironmentId] = useState<EnvironmentId | null>(
-    null,
-  );
-  const savedIds = useMemo(() => new Set(savedEnvironmentIds), [savedEnvironmentIds]);
-
-  useEffect(() => {
-    void refreshRelayEnvironments();
-  }, [refreshRelayEnvironments]);
-
-  const connectEnvironment = async (environment: RelayClientEnvironmentRecord) => {
-    setConnectingEnvironmentId(environment.environmentId);
-    const result = await connectRelayEnvironment(environment);
-    setConnectingEnvironmentId(null);
-    if (result._tag === "Success") {
-      toastManager.add({
-        type: "success",
-        title: "Environment connected",
-        description: `${environment.label} is available through T3 Connect.`,
-      });
-      return;
-    }
-    if (isAtomCommandInterrupted(result)) {
-      return;
-    }
-    const cause = squashAtomCommandFailure(result);
-    const message =
-      cause instanceof Error ? cause.message : "Could not connect the T3 Connect environment.";
-    const traceId = findErrorTraceId(cause);
-    console.error("[t3-connect] Could not connect environment", { message, traceId, cause });
-    toastManager.add({
-      type: "error",
-      title: "Could not connect environment",
-      description: message,
-      data: traceId
-        ? {
-            secondaryActionProps: {
-              children: "Copy trace ID",
-              onClick: () => void navigator.clipboard?.writeText(traceId),
-            },
-          }
-        : undefined,
-    });
-  };
-
-  const connectableEnvironments = [...environmentsState.environments.values()].filter(
-    ({ environment }) =>
-      environment.environmentId !== primaryEnvironmentId &&
-      !savedIds.has(environment.environmentId),
-  );
-
-  if (
-    savedEnvironmentIds.length === 0 &&
-    environmentsState.refreshing &&
-    environmentsState.environments.size === 0
-  ) {
-    return <RemoteEnvironmentRowsSkeleton />;
-  }
-
-  if (savedEnvironmentIds.length === 0 && connectableEnvironments.length === 0) {
-    return <EmptyRemoteEnvironments />;
-  }
-
-  return connectableEnvironments.map(({ environment, availability, error }) => (
-    <div key={environment.environmentId} className={ITEM_ROW_CLASSNAME}>
-      <div className={ITEM_ROW_INNER_CLASSNAME}>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <ConnectionStatusDot
-              dotClassName={
-                availability === "online"
-                  ? "bg-success"
-                  : availability === "error"
-                    ? "bg-destructive"
-                    : availability === "checking"
-                      ? "bg-warning"
-                      : "bg-muted-foreground/35"
-              }
-              pingClassName={availability === "checking" ? "bg-warning/60 duration-2000" : null}
-              tooltipText={
-                availability === "online"
-                  ? "Relay online"
-                  : availability === "offline"
-                    ? "Relay offline"
-                    : availability === "checking"
-                      ? "Checking relay status"
-                      : (Option.getOrNull(error)?.message ?? "Relay status unavailable")
-              }
-            />
-            <p className="truncate text-sm font-medium">{environment.label}</p>
-          </div>
-          <p
-            className={cn(
-              "mt-1 truncate text-xs",
-              availability === "error" ? "text-destructive" : "text-muted-foreground",
-            )}
-          >
-            {availability === "online"
-              ? "Available · Relay online"
-              : availability === "offline"
-                ? "Available · Relay offline"
-                : availability === "checking"
-                  ? "Available · Checking relay status…"
-                  : (Option.getOrNull(error)?.message ?? "Available · Relay status unavailable")}
-          </p>
-        </div>
-        <Button
-          size="sm"
-          disabled={connectingEnvironmentId !== null}
-          onClick={() => void connectEnvironment(environment)}
-        >
-          {connectingEnvironmentId === environment.environmentId ? "Connecting…" : "Connect"}
-        </Button>
-      </div>
-    </div>
-  ));
-}
-
-function CloudRemoteEnvironmentRows({
-  primaryEnvironmentId,
-  savedEnvironmentIds,
-}: {
-  readonly primaryEnvironmentId: EnvironmentId | null;
-  readonly savedEnvironmentIds: ReadonlyArray<EnvironmentId>;
-}) {
-  return isCloudEnabled() ? (
-    <ConfiguredCloudRemoteEnvironmentRows
-      primaryEnvironmentId={primaryEnvironmentId}
-      savedEnvironmentIds={savedEnvironmentIds}
-    />
-  ) : savedEnvironmentIds.length === 0 ? (
-    <EmptyRemoteEnvironments cloudEnabled={false} />
-  ) : null;
-}
-
 export function ConnectionsSettings() {
   const desktopBridge = window.desktopBridge;
   const { environments } = useEnvironments();
@@ -1354,24 +708,8 @@ export function ConnectionsSettings() {
       ? (primarySessionState.data.scopes ?? null)
       : null;
   const canManageLocalBackend = currentSessionScopes?.includes(AuthAccessWriteScope) ?? false;
-  const canManageRelay = currentSessionScopes?.includes(AuthRelayWriteScope) ?? false;
   const primaryVersionMismatch = resolveServerConfigVersionMismatch(
     primaryEnvironment?.serverConfig ?? null,
-  );
-
-  const connectPairing = useAtomCommand(connectPairingAtom, { reportFailure: false });
-  const removeEnvironment = useAtomCommand(environmentCatalog.remove, { reportFailure: false });
-  const retryEnvironment = useAtomCommand(environmentCatalog.retryNow, { reportFailure: false });
-  const savedEnvironments = useMemo(
-    () =>
-      environments
-        .filter((environment) => environment.entry.target._tag !== "PrimaryConnectionTarget")
-        .toSorted((left, right) => left.label.localeCompare(right.label)),
-    [environments],
-  );
-  const savedEnvironmentIds = useMemo(
-    () => savedEnvironments.map((environment) => environment.environmentId),
-    [savedEnvironments],
   );
 
   const [desktopAccessManagementMutationError, setDesktopAccessManagementMutationError] = useState<
@@ -1384,13 +722,6 @@ export function ConnectionsSettings() {
     string | null
   >(null);
   const [isRevokingOtherDesktopClients, setIsRevokingOtherDesktopClients] = useState(false);
-  const [addBackendDialogOpen, setAddBackendDialogOpen] = useState(false);
-  const [savedBackendHost, setSavedBackendHost] = useState("");
-  const [savedBackendPairingCode, setSavedBackendPairingCode] = useState("");
-  const [savedBackendError, setSavedBackendError] = useState<string | null>(null);
-  const [isAddingSavedBackend, setIsAddingSavedBackend] = useState(false);
-  const [removingSavedEnvironmentId, setRemovingSavedEnvironmentId] =
-    useState<EnvironmentId | null>(null);
   const [isUpdatingWslBackend, setIsUpdatingWslBackend] = useState(false);
   const [desktopWslMutationError, setDesktopWslMutationError] = useState<string | null>(null);
 
@@ -1505,103 +836,6 @@ export function ConnectionsSettings() {
     } finally {
       setIsRevokingOtherDesktopClients(false);
     }
-  }, []);
-
-  const handleAddSavedBackend = useCallback(async () => {
-    setIsAddingSavedBackend(true);
-    setSavedBackendError(null);
-    let remotePairingInput: ReturnType<typeof parseRemotePairingFields>;
-    try {
-      remotePairingInput = parseRemotePairingFields({
-        host: savedBackendHost,
-        pairingCode: savedBackendPairingCode,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to add backend.";
-      setSavedBackendError(message);
-      setIsAddingSavedBackend(false);
-      return;
-    }
-
-    const result = await connectPairing(remotePairingInput);
-    if (result._tag === "Failure") {
-      if (!isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        const message = error instanceof Error ? error.message : "Failed to add backend.";
-        setSavedBackendError(message);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not add backend",
-            description: message,
-          }),
-        );
-      }
-      setIsAddingSavedBackend(false);
-      return;
-    }
-
-    setSavedBackendHost("");
-    setSavedBackendPairingCode("");
-    setAddBackendDialogOpen(false);
-    toastManager.add({
-      type: "success",
-      title: "Backend added",
-      description: "The environment is saved and will reconnect on app startup.",
-    });
-    setIsAddingSavedBackend(false);
-  }, [connectPairing, savedBackendHost, savedBackendPairingCode]);
-
-  const handleConnectSavedBackend = useCallback(
-    async (environmentId: EnvironmentId) => {
-      setSavedBackendError(null);
-      const result = await retryEnvironment(environmentId);
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        const message = error instanceof Error ? error.message : "Failed to connect backend.";
-        setSavedBackendError(message);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not connect backend",
-            description: message,
-          }),
-        );
-      }
-    },
-    [retryEnvironment],
-  );
-
-  const handleRemoveSavedBackend = useCallback(
-    async (environmentId: EnvironmentId) => {
-      setRemovingSavedEnvironmentId(environmentId);
-      setSavedBackendError(null);
-      const result = await removeEnvironment(environmentId);
-      setRemovingSavedEnvironmentId(null);
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        const message = error instanceof Error ? error.message : "Failed to remove backend.";
-        setSavedBackendError(message);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not remove backend",
-            description: message,
-          }),
-        );
-      }
-    },
-    [removeEnvironment],
-  );
-
-  const handleSavedBackendHostChange = useCallback((value: string) => {
-    const parsedPairingUrl = parsePairingUrlFields(value);
-    if (parsedPairingUrl) {
-      setSavedBackendHost(parsedPairingUrl.host);
-      setSavedBackendPairingCode(parsedPairingUrl.pairingCode);
-      return;
-    }
-    setSavedBackendHost(value);
   }, []);
 
   const applyWslSettingChange = useCallback(
@@ -1856,7 +1090,6 @@ export function ConnectionsSettings() {
             ) : null}
             <SettingsRow title="Local access" description="Limited to this machine." />
             {desktopBridge ? renderWslRow() : null}
-            <CloudLinkRow canManageRelay={canManageRelay} />
           </SettingsSection>
 
           <SettingsSection
@@ -1963,104 +1196,8 @@ export function ConnectionsSettings() {
             title="Administrative access"
             description="Pairing links and client-session management require the access:write scope for this backend."
           />
-          <CloudLinkRow canManageRelay={canManageRelay} />
         </SettingsSection>
       )}
-
-      <SettingsSection
-        title="Remote environments"
-        headerAction={
-          <Dialog
-            open={addBackendDialogOpen}
-            onOpenChange={(open) => {
-              setAddBackendDialogOpen(open);
-              if (!open) setSavedBackendError(null);
-            }}
-          >
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <DialogTrigger
-                    render={
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        className="h-5 gap-1 rounded-sm px-1 text-[11px] font-normal text-muted-foreground/60 hover:text-muted-foreground"
-                        aria-label="Add environment"
-                      >
-                        <PlusIcon className="size-3" />
-                        <span>Add environment</span>
-                      </Button>
-                    }
-                  />
-                }
-              />
-              <TooltipPopup side="top">Add environment</TooltipPopup>
-            </Tooltip>
-            <DialogPopup className="max-h-[80dvh] sm:max-w-3xl">
-              <DialogHeader>
-                <DialogTitle>Add environment</DialogTitle>
-                <DialogDescription>Pair another environment to this client.</DialogDescription>
-              </DialogHeader>
-              <DialogPanel className="space-y-4">
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
-                  <label className="block">
-                    <span className="mb-1.5 block text-xs font-medium text-foreground">Host</span>
-                    <Input
-                      value={savedBackendHost}
-                      onChange={(event) => handleSavedBackendHostChange(event.target.value)}
-                      placeholder="backend.example.com"
-                      disabled={isAddingSavedBackend}
-                      spellCheck={false}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1.5 block text-xs font-medium text-foreground">
-                      Pairing code
-                    </span>
-                    <Input
-                      value={savedBackendPairingCode}
-                      onChange={(event) => setSavedBackendPairingCode(event.target.value)}
-                      placeholder="PAIRCODE"
-                      disabled={isAddingSavedBackend}
-                      spellCheck={false}
-                    />
-                  </label>
-                </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Paste a full pairing URL into the host field to fill both values.
-                </p>
-                {savedBackendError ? (
-                  <p className="text-xs text-destructive">{savedBackendError}</p>
-                ) : null}
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  disabled={isAddingSavedBackend}
-                  onClick={() => void handleAddSavedBackend()}
-                >
-                  <PlusIcon className="size-3.5" />
-                  {isAddingSavedBackend ? "Adding…" : "Add environment"}
-                </Button>
-              </DialogPanel>
-            </DialogPopup>
-          </Dialog>
-        }
-      >
-        {savedEnvironments.map((environment) => (
-          <SavedBackendListRow
-            key={environment.environmentId}
-            environment={environment}
-            removingEnvironmentId={removingSavedEnvironmentId}
-            onConnect={handleConnectSavedBackend}
-            onRemove={handleRemoveSavedBackend}
-          />
-        ))}
-        <CloudRemoteEnvironmentRows
-          primaryEnvironmentId={primaryEnvironmentId}
-          savedEnvironmentIds={savedEnvironmentIds}
-        />
-      </SettingsSection>
     </SettingsPageContainer>
   );
 }

@@ -1,14 +1,12 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
-import * as TokenStore from "../authorization/tokenStore.ts";
 import {
   BearerConnectionCredential,
   BearerConnectionProfile,
   BearerConnectionRegistration,
-  RelayConnectionRegistration,
 } from "../connection/catalog.ts";
-import { BearerConnectionTarget, RelayConnectionTarget } from "../connection/model.ts";
+import { BearerConnectionTarget } from "../connection/model.ts";
 import {
   EMPTY_CONNECTION_CATALOG_DOCUMENT,
   registerConnectionInCatalog,
@@ -16,97 +14,37 @@ import {
 } from "./storageDocument.ts";
 
 const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
-
-const BEARER_TARGET = new BearerConnectionTarget({
+const TARGET = new BearerConnectionTarget({
   environmentId: ENVIRONMENT_ID,
   label: "Remote",
   connectionId: "bearer-1",
 });
-const BEARER_PROFILE = new BearerConnectionProfile({
-  connectionId: BEARER_TARGET.connectionId,
+const PROFILE = new BearerConnectionProfile({
+  connectionId: TARGET.connectionId,
   environmentId: ENVIRONMENT_ID,
-  label: BEARER_TARGET.label,
+  label: TARGET.label,
   httpBaseUrl: "https://remote.example.test",
   wsBaseUrl: "wss://remote.example.test",
 });
-const BEARER_CREDENTIAL = new BearerConnectionCredential({
-  token: "bearer-token",
-});
-const REMOTE_TOKEN = new TokenStore.RemoteDpopAccessToken({
-  environmentId: ENVIRONMENT_ID,
-  label: "Remote",
-  endpoint: {
-    httpBaseUrl: "https://remote.example.test",
-    wsBaseUrl: "wss://remote.example.test",
-    providerKind: "cloudflare_tunnel",
-  },
-  accessToken: "dpop-token",
-  expiresAtEpochMs: 1_000_000,
-  dpopThumbprint: "thumbprint",
-});
+const CREDENTIAL = new BearerConnectionCredential({ token: "bearer-token" });
 
 describe("ConnectionCatalogDocument", () => {
-  it("registers a bearer connection as one catalog mutation", () => {
-    const document = registerConnectionInCatalog(
+  it("registers and removes a bearer connection atomically", () => {
+    const registered = registerConnectionInCatalog(
       EMPTY_CONNECTION_CATALOG_DOCUMENT,
       new BearerConnectionRegistration({
-        target: BEARER_TARGET,
-        profile: BEARER_PROFILE,
-        credential: BEARER_CREDENTIAL,
+        target: TARGET,
+        profile: PROFILE,
+        credential: CREDENTIAL,
       }),
     );
 
-    expect(document.targets).toEqual([BEARER_TARGET]);
-    expect(document.profiles).toEqual([BEARER_PROFILE]);
-    expect(document.credentials).toEqual([
-      {
-        connectionId: BEARER_TARGET.connectionId,
-        credential: BEARER_CREDENTIAL,
-      },
+    expect(registered.targets).toEqual([TARGET]);
+    expect(registered.profiles).toEqual([PROFILE]);
+    expect(registered.credentials).toEqual([
+      { connectionId: TARGET.connectionId, credential: CREDENTIAL },
     ]);
-  });
-
-  it("replaces obsolete connection metadata without discarding a reusable DPoP token", () => {
-    const bearer = registerConnectionInCatalog(
-      {
-        ...EMPTY_CONNECTION_CATALOG_DOCUMENT,
-        remoteDpopTokens: [REMOTE_TOKEN],
-      },
-      new BearerConnectionRegistration({
-        target: BEARER_TARGET,
-        profile: BEARER_PROFILE,
-        credential: BEARER_CREDENTIAL,
-      }),
-    );
-    const relayTarget = new RelayConnectionTarget({
-      environmentId: ENVIRONMENT_ID,
-      label: "Remote",
-    });
-    const relay = registerConnectionInCatalog(
-      bearer,
-      new RelayConnectionRegistration({ target: relayTarget }),
-    );
-
-    expect(relay.targets).toEqual([relayTarget]);
-    expect(relay.profiles).toEqual([]);
-    expect(relay.credentials).toEqual([]);
-    expect(relay.remoteDpopTokens).toEqual([REMOTE_TOKEN]);
-  });
-
-  it("removes every catalog record owned by an explicit disconnect", () => {
-    const registered = registerConnectionInCatalog(
-      {
-        ...EMPTY_CONNECTION_CATALOG_DOCUMENT,
-        remoteDpopTokens: [REMOTE_TOKEN],
-      },
-      new BearerConnectionRegistration({
-        target: BEARER_TARGET,
-        profile: BEARER_PROFILE,
-        credential: BEARER_CREDENTIAL,
-      }),
-    );
-
-    expect(removeConnectionFromCatalog(registered, BEARER_TARGET)).toEqual(
+    expect(removeConnectionFromCatalog(registered, TARGET)).toEqual(
       EMPTY_CONNECTION_CATALOG_DOCUMENT,
     );
   });

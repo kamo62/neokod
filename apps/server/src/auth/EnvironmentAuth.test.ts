@@ -153,7 +153,7 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
 
       const pairingUrl = yield* serverAuth.issueStartupPairingUrl("http://127.0.0.1:3773");
-      const token = new URLSearchParams(new URL(pairingUrl).hash.slice(1)).get("token");
+      const token = new URL(pairingUrl).searchParams.get("token");
       const listedPairingLinks = yield* serverAuth.listPairingLinks();
       expect(token).toBeTruthy();
       expect(

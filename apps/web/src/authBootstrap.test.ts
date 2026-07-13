@@ -177,9 +177,8 @@ describe("resolveInitialServerAuthGateState", () => {
     const { resolveInitialServerAuthGateState, resolvePrimaryEnvironmentHttpUrl } =
       await import("./environments/primary");
 
-    await expect(resolveInitialServerAuthGateState()).resolves.toEqual({
-      status: "requires-auth",
-      auth: LOOPBACK_AUTH,
+    await expect(resolveInitialServerAuthGateState()).rejects.toMatchObject({
+      _tag: "PrimaryEnvironmentPairingCredentialRequiredError",
     });
     expect(resolvePrimaryEnvironmentHttpUrl("/api/auth/session")).toBe(
       "https://127.0.0.1:3773/api/auth/session",
@@ -193,9 +192,8 @@ describe("resolveInitialServerAuthGateState", () => {
     const { resolveInitialServerAuthGateState, resolvePrimaryEnvironmentHttpUrl } =
       await import("./environments/primary");
 
-    await expect(resolveInitialServerAuthGateState()).resolves.toEqual({
-      status: "requires-auth",
-      auth: LOOPBACK_AUTH,
+    await expect(resolveInitialServerAuthGateState()).rejects.toMatchObject({
+      _tag: "PrimaryEnvironmentPairingCredentialRequiredError",
     });
     expect(resolvePrimaryEnvironmentHttpUrl("/api/auth/session")).toBe(
       "http://localhost:5735/api/auth/session",
@@ -222,22 +220,21 @@ describe("resolveInitialServerAuthGateState", () => {
     const { resolveInitialServerAuthGateState, resolvePrimaryEnvironmentHttpUrl } =
       await import("./environments/primary");
 
-    await expect(resolveInitialServerAuthGateState()).resolves.toEqual({
-      status: "requires-auth",
-      auth: DESKTOP_AUTH,
+    await expect(resolveInitialServerAuthGateState()).rejects.toMatchObject({
+      _tag: "PrimaryEnvironmentPairingCredentialRequiredError",
     });
     expect(resolvePrimaryEnvironmentHttpUrl("/api/auth/session")).toBe(
       "http://127.0.0.1:5733/api/auth/session",
     );
   });
 
-  it("returns a requires-auth state instead of throwing when no bootstrap credential exists", async () => {
+  it("fails with an actionable error when no startup credential exists", async () => {
     await installAuthApi({ session: () => unauthenticatedSession(LOOPBACK_AUTH) });
     const { resolveInitialServerAuthGateState } = await import("./environments/primary");
 
-    await expect(resolveInitialServerAuthGateState()).resolves.toEqual({
-      status: "requires-auth",
-      auth: LOOPBACK_AUTH,
+    await expect(resolveInitialServerAuthGateState()).rejects.toMatchObject({
+      _tag: "PrimaryEnvironmentPairingCredentialRequiredError",
+      message: "Open the startup URL printed by the Neokod server or launch the desktop app again.",
     });
   });
 
@@ -262,13 +259,12 @@ describe("resolveInitialServerAuthGateState", () => {
 
     const { resolveInitialServerAuthGateState } = await import("./environments/primary");
 
-    const gateStatePromise = resolveInitialServerAuthGateState();
+    const gateStateAssertion = expect(resolveInitialServerAuthGateState()).rejects.toMatchObject({
+      _tag: "PrimaryEnvironmentPairingCredentialRequiredError",
+    });
     await vi.advanceTimersByTimeAsync(2_000);
 
-    await expect(gateStatePromise).resolves.toEqual({
-      status: "requires-auth",
-      auth: LOOPBACK_AUTH,
-    });
+    await gateStateAssertion;
     expect(attempts).toBe(4);
   });
 
@@ -289,7 +285,7 @@ describe("resolveInitialServerAuthGateState", () => {
     expect(testWindow.location.searchParams.get("token")).toBeNull();
   });
 
-  it("allows manual token submission after the initial auth check requires pairing", async () => {
+  it("allows a local token retry after the initial startup credential is absent", async () => {
     const nextSession = sequence(
       unauthenticatedSession(LOOPBACK_AUTH),
       authenticatedSession(LOOPBACK_AUTH),
@@ -301,9 +297,8 @@ describe("resolveInitialServerAuthGateState", () => {
     const { resolveInitialServerAuthGateState, submitServerAuthCredential } =
       await import("./environments/primary");
 
-    await expect(resolveInitialServerAuthGateState()).resolves.toEqual({
-      status: "requires-auth",
-      auth: LOOPBACK_AUTH,
+    await expect(resolveInitialServerAuthGateState()).rejects.toMatchObject({
+      _tag: "PrimaryEnvironmentPairingCredentialRequiredError",
     });
     await expect(submitServerAuthCredential("retry-token")).resolves.toBeUndefined();
     await expect(resolveInitialServerAuthGateState()).resolves.toEqual({
@@ -427,14 +422,13 @@ describe("resolveInitialServerAuthGateState", () => {
 
     const { resolveInitialServerAuthGateState } = await import("./environments/primary");
 
-    const gateStatePromise = resolveInitialServerAuthGateState();
+    const gateStateAssertion = expect(resolveInitialServerAuthGateState()).rejects.toMatchObject({
+      _tag: "PrimaryEnvironmentAuthSessionTimeoutError",
+      message: "Timed out waiting for authenticated session after bootstrap.",
+    });
     await vi.advanceTimersByTimeAsync(2_000);
 
-    await expect(gateStatePromise).resolves.toEqual({
-      status: "requires-auth",
-      auth: DESKTOP_AUTH,
-      errorMessage: "Timed out waiting for authenticated session after bootstrap.",
-    });
+    await gateStateAssertion;
     expect(testApi.calls.browserSession).toEqual([{ credential: "desktop-bootstrap-token" }]);
   });
 

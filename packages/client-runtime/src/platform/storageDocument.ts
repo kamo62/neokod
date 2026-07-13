@@ -6,7 +6,6 @@ import {
   ConnectionProfile,
 } from "../connection/catalog.ts";
 import { type ConnectionTarget, PersistedConnectionTarget } from "../connection/model.ts";
-import * as TokenStore from "../authorization/tokenStore.ts";
 
 export const StoredConnectionCredential = Schema.Struct({
   connectionId: Schema.String,
@@ -19,7 +18,6 @@ export const ConnectionCatalogDocument = Schema.Struct({
   targets: Schema.Array(PersistedConnectionTarget),
   profiles: Schema.Array(ConnectionProfile),
   credentials: Schema.Array(StoredConnectionCredential),
-  remoteDpopTokens: Schema.Array(TokenStore.RemoteDpopAccessToken),
 });
 export type ConnectionCatalogDocument = typeof ConnectionCatalogDocument.Type;
 
@@ -28,7 +26,6 @@ export const EMPTY_CONNECTION_CATALOG_DOCUMENT: ConnectionCatalogDocument = Obje
   targets: [],
   profiles: [],
   credentials: [],
-  remoteDpopTokens: [],
 });
 
 export function replaceCatalogValue<A>(
@@ -49,19 +46,12 @@ export function removeCatalogValue<A>(
 }
 
 function connectionIdOf(target: ConnectionTarget): string | null {
-  switch (target._tag) {
-    case "PrimaryConnectionTarget":
-    case "RelayConnectionTarget":
-      return null;
-    case "BearerConnectionTarget":
-      return target.connectionId;
-  }
+  return target._tag === "BearerConnectionTarget" ? target.connectionId : null;
 }
 
 function removeConnectionMetadata(
   document: ConnectionCatalogDocument,
   target: ConnectionTarget,
-  removeRemoteToken: boolean,
 ): ConnectionCatalogDocument {
   const connectionId = connectionIdOf(target);
   return {
@@ -79,13 +69,6 @@ function removeConnectionMetadata(
       connectionId === null
         ? document.credentials
         : removeCatalogValue(document.credentials, (value) => value.connectionId, connectionId),
-    remoteDpopTokens: removeRemoteToken
-      ? removeCatalogValue(
-          document.remoteDpopTokens,
-          (value) => value.environmentId,
-          target.environmentId,
-        )
-      : document.remoteDpopTokens,
   };
 }
 
@@ -97,35 +80,25 @@ export function registerConnectionInCatalog(
   const previous = document.targets.find(
     (candidate) => candidate.environmentId === target.environmentId,
   );
-  const cleaned =
-    previous === undefined ? document : removeConnectionMetadata(document, previous, false);
-  const next: ConnectionCatalogDocument = {
+  const cleaned = previous === undefined ? document : removeConnectionMetadata(document, previous);
+  return {
     ...cleaned,
     targets: replaceCatalogValue(cleaned.targets, (value) => value.environmentId, target),
+    profiles: replaceCatalogValue(
+      cleaned.profiles,
+      (value) => value.connectionId,
+      registration.profile,
+    ),
+    credentials: replaceCatalogValue(cleaned.credentials, (value) => value.connectionId, {
+      connectionId: target.connectionId,
+      credential: registration.credential,
+    }),
   };
-
-  switch (registration._tag) {
-    case "RelayConnectionRegistration":
-      return next;
-    case "BearerConnectionRegistration":
-      return {
-        ...next,
-        profiles: replaceCatalogValue(
-          next.profiles,
-          (value) => value.connectionId,
-          registration.profile,
-        ),
-        credentials: replaceCatalogValue(next.credentials, (value) => value.connectionId, {
-          connectionId: registration.target.connectionId,
-          credential: registration.credential,
-        }),
-      };
-  }
 }
 
 export function removeConnectionFromCatalog(
   document: ConnectionCatalogDocument,
   target: ConnectionTarget,
 ): ConnectionCatalogDocument {
-  return removeConnectionMetadata(document, target, true);
+  return removeConnectionMetadata(document, target);
 }

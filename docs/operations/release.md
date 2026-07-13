@@ -6,8 +6,8 @@
 - macOS x64 DMG and update ZIP
 - Windows x64 NSIS installer with the WSL `node-pty` prebuild
 
-The workflow uses GitHub-hosted runners and does not require T3 Connect, Clerk, Cloudflare, npm,
-Vercel, Discord, or a separate GitHub App.
+The workflow uses GitHub-hosted runners and has no hosted application-service or npm-publishing
+dependency.
 
 ## Stable releases
 

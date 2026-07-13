@@ -5,16 +5,17 @@ untracked; do not commit it.
 
 ## Local-first carve-out (2026-07-13)
 
-The current `feat/local-first-carveout` worktree has Stages 1-2 committed and Stage
-3 applied but intentionally uncommitted. Stage 2 deletes the product's SSH and
+The current `feat/local-first-carveout` worktree has Stages 1-3 committed and Stage
+4 applied but intentionally uncommitted. Stage 2 deletes the product's SSH and
 Tailscale connection paths, LAN/manual endpoint advertising, and public host
 selection. Desktop primary, standalone `t3 serve`, and Vite bind to
 `127.0.0.1`. Desktop-managed WSL remains on its internal `0.0.0.0` bind and
 still requires the private `wsl-bearer` discriminator and inherited desktop bootstrap credential followed by bearer
-session exchange. Do not collapse that boundary before Stage 5. Stage 3 deletes the hosted relay
+session exchange. Do not collapse that boundary before Stage 5. Stage 3 deletes the hosted service
 infrastructure and outbound mobile-activity publisher while retaining the pure shared
-agent-awareness projection and local browser notifications. Stages 4-6 (cloud/Clerk/auth removal
-and the `@neokod` package rename) are not part of this worktree change.
+agent-awareness projection and local browser notifications. Stage 4 removes the hosted application,
+pairing UI, identity integration, and remote connection client/contracts. Stages 5-6 (local auth
+control-plane removal and the `@neokod` package rename) are not part of this worktree change.
 
 ## What this fork is
 

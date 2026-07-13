@@ -38,7 +38,6 @@ describe("ElectronProtocol", () => {
             scheme: "neokod-dev",
             targetOrigin: new URL("http://127.0.0.1:3773/"),
             backendOrigin: new URL("http://127.0.0.1:3774/"),
-            clerkFrontendApiHostname: "clerk.t3.codes",
           });
           assert.isDefined(handler);
 
@@ -57,15 +56,15 @@ describe("ElectronProtocol", () => {
           assert.equal(yield* Effect.promise(() => response.text()), "ok");
           assert.include(
             response.headers.get("content-security-policy") ?? "",
-            "script-src 'self' 'unsafe-inline' https://clerk.t3.codes https://challenges.cloudflare.com",
+            "script-src 'self' 'unsafe-inline'",
           );
           assert.include(
             response.headers.get("content-security-policy") ?? "",
-            "connect-src 'self' http: https: ws: wss:",
+            "connect-src 'self' http://127.0.0.1:3773 http://127.0.0.1:3774 http://127.0.0.1:* ws://127.0.0.1:* http://localhost:* ws://localhost:*",
           );
           assert.include(
             response.headers.get("content-security-policy") ?? "",
-            "img-src 'self' neokod-dev: blob: data: http: https:",
+            "img-src 'self' neokod-dev: blob: data: http://127.0.0.1:3773 http://127.0.0.1:3774",
           );
           assert.include(
             response.headers.get("content-security-policy") ?? "",
@@ -102,7 +101,6 @@ describe("ElectronProtocol", () => {
             scheme: "neokod",
             targetOrigin: new URL("http://127.0.0.1:3773/"),
             backendOrigin: new URL("http://127.0.0.1:3773/"),
-            clerkFrontendApiHostname: undefined,
           });
           return yield* Effect.promise(() => handler!(new Request("neokod://other/")));
         }),
@@ -130,7 +128,6 @@ describe("ElectronProtocol", () => {
             scheme: "neokod-dev",
             targetOrigin: new URL("http://127.0.0.1:5733/"),
             backendOrigin: new URL("http://127.0.0.1:3773/"),
-            clerkFrontendApiHostname: undefined,
           });
           return yield* Effect.promise(() => handler!(new Request("neokod-dev://app/")));
         }),
@@ -154,7 +151,6 @@ describe("ElectronProtocol", () => {
           scheme: "neokod-dev",
           targetOrigin: new URL("http://127.0.0.1:3773/"),
           backendOrigin: new URL("http://127.0.0.1:3774/"),
-          clerkFrontendApiHostname: undefined,
         }),
       ).pipe(Effect.flip);
 
@@ -179,7 +175,6 @@ describe("ElectronProtocol", () => {
             scheme: "neokod",
             targetOrigin: new URL("http://127.0.0.1:3773/"),
             backendOrigin: new URL("http://127.0.0.1:3773/"),
-            clerkFrontendApiHostname: undefined,
           }),
         ),
       );
@@ -195,12 +190,11 @@ describe("ElectronProtocol", () => {
     }).pipe(Effect.provide(ElectronProtocol.layer)),
   );
 
-  it("keeps executable sources host-restricted while allowing runtime network resources", () => {
+  it("restricts executable and network sources to local runtime origins", () => {
     const policy = ElectronProtocol.makeDesktopContentSecurityPolicy({
       scheme: "neokod",
       targetOrigin: new URL("http://127.0.0.1:3773/"),
       backendOrigin: new URL("http://127.0.0.1:3773/"),
-      clerkFrontendApiHostname: "clerk.t3.codes",
     });
     const directives = Object.fromEntries(
       policy.split("; ").map((directive) => {
@@ -209,21 +203,43 @@ describe("ElectronProtocol", () => {
       }),
     );
 
-    assert.deepEqual(directives["script-src"], [
+    assert.deepEqual(directives["script-src"], ["'self'", "'unsafe-inline'"]);
+    assert.deepEqual(directives["connect-src"], [
       "'self'",
-      "'unsafe-inline'",
-      "https://clerk.t3.codes",
-      "https://challenges.cloudflare.com",
+      "http://127.0.0.1:3773",
+      "http://127.0.0.1:*",
+      "ws://127.0.0.1:*",
+      "http://localhost:*",
+      "ws://localhost:*",
     ]);
-    assert.deepEqual(directives["connect-src"], ["'self'", "http:", "https:", "ws:", "wss:"]);
     assert.deepEqual(directives["img-src"], [
       "'self'",
       "neokod:",
       "blob:",
       "data:",
-      "http:",
-      "https:",
+      "http://127.0.0.1:3773",
     ]);
+    assert.isUndefined(directives["frame-src"]);
     assert.deepEqual(directives["font-src"], ["'self'", "neokod:", "data:"]);
+  });
+
+  it("allows only explicit HTTP and WebSocket WSL origins", () => {
+    const policy = ElectronProtocol.makeDesktopContentSecurityPolicy(
+      {
+        scheme: "neokod",
+        targetOrigin: new URL("http://127.0.0.1:3773/"),
+        backendOrigin: new URL("http://127.0.0.1:3773/"),
+      },
+      [
+        "http://172.24.16.1:4888/path",
+        "ws://172.24.16.1:4888/ws",
+        "https://public.example.test",
+        "not-a-url",
+      ],
+    );
+
+    assert.include(policy, "http://172.24.16.1:4888");
+    assert.include(policy, "ws://172.24.16.1:4888");
+    assert.notInclude(policy, "public.example.test");
   });
 });

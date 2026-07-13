@@ -16,7 +16,7 @@ describe("shouldShowOpenInPicker", () => {
     ).toBe(true);
   });
 
-  it("hides the picker when hosted static mode has no primary environment", () => {
+  it("hides the picker when no primary environment is available", () => {
     expect(
       shouldShowOpenInPicker({
         activeProjectName: "codething-mvp",

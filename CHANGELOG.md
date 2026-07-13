@@ -6,9 +6,12 @@ Release impact: Major because this removes product surfaces, remote connection t
 - Removed SSH backend connections, Tailscale integration, LAN/manual endpoint advertising, and public server host selection.
 - Constrained the desktop primary, standalone server, and development web server to `127.0.0.1`.
 - Retained the authenticated desktop-managed WSL exception: its internal wildcard bind still requires the private `wsl-bearer` discriminator, desktop bootstrap credential, and bearer-session exchange.
-- Purged retired direct-remote saved-environment records during desktop catalog migration while preserving relay records for the later cloud stage.
+- Purged retired remote saved-environment records during desktop catalog migration.
 - Removed the hosted Cloudflare/Postgres/APNs relay infrastructure and the server's outbound mobile-activity publisher while retaining local browser notifications.
-- Removed relay-only workspace, release-smoke, Alchemy reference-sync, and `@effect/sql-pg` configuration; the transitional cloud client's relay contracts and utilities remain for the later cloud stage.
+- Removed relay-only workspace, release-smoke, Alchemy reference-sync, and `@effect/sql-pg` configuration.
+- Removed the hosted application, pairing UI, identity-provider integration, remote connection client/contracts, and their desktop preload, CSP, build, CI, configuration, and documentation surfaces.
+- Retained the temporary local auth/session control plane, automatic startup-token bootstrap, desktop bootstrap bearer, and WSL bearer path for Stage 5.
+- Restored the browser crypto service required to generate local project and thread command IDs after the remote client removal.
 
 ## 1.1.0 - 2026-07-12 (Minor)
 

@@ -34,9 +34,9 @@ export function formatIssuedPairingCredential(
   const pairUrl =
     options?.baseUrl != null && options.baseUrl.length > 0
       ? (() => {
-          const url = new URL("/pair", options.baseUrl);
-          url.searchParams.delete("token");
-          url.hash = new URLSearchParams([["token", credential.credential]]).toString();
+          const url = new URL("/", options.baseUrl);
+          url.hash = "";
+          url.searchParams.set("token", credential.credential);
           return url.toString();
         })()
       : undefined;

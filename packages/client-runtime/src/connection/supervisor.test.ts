@@ -1,5 +1,4 @@
 import { EnvironmentId } from "@t3tools/contracts";
-import { RelayClientTracer } from "@t3tools/shared/relayTracing";
 import { describe, expect, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -9,7 +8,6 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
-import * as Tracer from "effect/Tracer";
 
 import type { WsRpcProtocolClient } from "../rpc/protocol.ts";
 import type { ConnectionCatalogEntry } from "./catalog.ts";
@@ -19,7 +17,6 @@ import {
   ConnectionBlockedError,
   ConnectionTransientError,
   PrimaryConnectionTarget,
-  RelayConnectionTarget,
   type ConnectionAttemptError,
   type ConnectionTarget,
   type NetworkStatus,
@@ -37,18 +34,8 @@ const TARGET = new PrimaryConnectionTarget({
   wsBaseUrl: "wss://environment.example.test",
 });
 
-const RELAY_TARGET = new RelayConnectionTarget({
-  environmentId: TARGET.environmentId,
-  label: TARGET.label,
-});
-
 const TARGET_ENTRY: ConnectionCatalogEntry = {
   target: TARGET,
-  profile: Option.none(),
-};
-
-const RELAY_ENTRY: ConnectionCatalogEntry = {
-  target: RELAY_TARGET,
   profile: Option.none(),
 };
 
@@ -124,7 +111,7 @@ const makeHarness = Effect.fn("TestConnectionHarness.make")(function* (options?:
   const releaseCount = yield* Ref.make(0);
   const wakeups = yield* SubscriptionRef.make<{
     readonly sequence: number;
-    readonly reason: "application-active" | "credentials-changed";
+    readonly reason: "application-active";
   }>({
     sequence: 0,
     reason: "application-active",
@@ -198,7 +185,7 @@ const makeHarness = Effect.fn("TestConnectionHarness.make")(function* (options?:
     sessionCount,
     releaseCount,
     setNetworkStatus: (status: NetworkStatus) => SubscriptionRef.set(networkStatus, status),
-    wake: (reason: "application-active" | "credentials-changed") =>
+    wake: (reason: "application-active") =>
       SubscriptionRef.update(wakeups, (event) => ({
         sequence: event.sequence + 1,
         reason,
@@ -216,49 +203,6 @@ const makeHarness = Effect.fn("TestConnectionHarness.make")(function* (options?:
 });
 
 describe("EnvironmentSupervisor", () => {
-  it.effect("exports each relay setup as a standalone linked trace that ends at readiness", () =>
-    Effect.gen(function* () {
-      const spans: Array<Tracer.NativeSpan> = [];
-      const tracer = Tracer.make({
-        span: (options) => {
-          const span = new Tracer.NativeSpan(options);
-          const end = span.end.bind(span);
-          span.end = (endTime, exit) => {
-            end(endTime, exit);
-            spans.push(span);
-          };
-          return span;
-        },
-      });
-      const harness = yield* makeHarness({
-        prepare: (attempt) =>
-          attempt === 1 ? Effect.fail(transient()) : Effect.succeed(PREPARED_CONNECTION),
-      });
-      const supervisor = yield* EnvironmentSupervisor.make(RELAY_ENTRY, {
-        initiallyDesired: true,
-      }).pipe(
-        Effect.provide(harness.dependencies),
-        Effect.provideService(RelayClientTracer, Option.some(tracer)),
-      );
-
-      yield* awaitState(
-        supervisor.state,
-        (state) => state.phase === "backoff" && state.attempt === 1,
-      );
-      const firstAttempt = spans.find((span) => span.name === "relay.connection.attempt");
-      expect(firstAttempt).toBeDefined();
-
-      yield* TestClock.adjust("1 second");
-      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
-
-      const attempts = spans.filter((span) => span.name === "relay.connection.attempt");
-      expect(attempts).toHaveLength(2);
-      expect(attempts[0]?.traceId).not.toBe(attempts[1]?.traceId);
-      expect(attempts[1]?.links.map((link) => link.span.spanId)).toContain(attempts[0]?.spanId);
-      expect(yield* Ref.get(harness.releaseCount)).toBe(0);
-    }).pipe(Effect.provide(TestClock.layer())),
-  );
-
   it.effect("does not attempt a connection until it is desired", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness();
@@ -342,7 +286,7 @@ describe("EnvironmentSupervisor", () => {
     Effect.gen(function* () {
       const harness = yield* makeHarness({
         prepare: (attempt) =>
-          attempt === 1 ? Effect.fail(transient("Relay connection timed out.")) : Effect.never,
+          attempt === 1 ? Effect.fail(transient("Remote connection timed out.")) : Effect.never,
       });
       const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
         initiallyDesired: true,
@@ -366,7 +310,7 @@ describe("EnvironmentSupervisor", () => {
         lastFailure: {
           _tag: "ConnectionTransientError",
           reason: "transport",
-          message: "Relay connection timed out.",
+          message: "Remote connection timed out.",
         },
       });
     }).pipe(Effect.provide(TestClock.layer())),
@@ -527,7 +471,7 @@ describe("EnvironmentSupervisor", () => {
     }),
   );
 
-  it.effect("retries a blocked connection when platform credentials change", () =>
+  it.effect("retries a blocked connection when the application becomes active", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({
         prepare: (attempt) =>
@@ -538,7 +482,7 @@ describe("EnvironmentSupervisor", () => {
       }).pipe(Effect.provide(harness.dependencies));
 
       yield* awaitState(supervisor.state, (state) => state.phase === "blocked");
-      yield* harness.wake("credentials-changed");
+      yield* harness.wake("application-active");
       yield* awaitState(supervisor.state, (state) => state.phase === "connected");
 
       expect(yield* Ref.get(harness.prepareCount)).toBe(2);
@@ -557,14 +501,9 @@ describe("EnvironmentSupervisor", () => {
       }).pipe(Effect.provide(harness.dependencies));
 
       yield* Deferred.await(firstAttemptStarted);
-      yield* Effect.all(
-        [
-          harness.wake("credentials-changed"),
-          harness.wake("application-active"),
-          harness.wake("credentials-changed"),
-        ],
-        { concurrency: "unbounded" },
-      );
+      yield* Effect.all([harness.wake("application-active"), harness.wake("application-active")], {
+        concurrency: "unbounded",
+      });
       yield* Effect.yieldNow;
 
       expect(yield* Ref.get(harness.prepareCount)).toBe(1);
@@ -745,64 +684,6 @@ describe("EnvironmentSupervisor", () => {
     }),
   );
 
-  it.effect("does not churn a healthy session when credentials change", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness();
-      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
-        initiallyDesired: true,
-      }).pipe(Effect.provide(harness.dependencies));
-
-      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
-      yield* harness.wake("credentials-changed");
-      yield* Effect.yieldNow;
-
-      expect(yield* Ref.get(harness.sessionCount)).toBe(1);
-      expect(yield* Ref.get(harness.releaseCount)).toBe(0);
-      expect((yield* SubscriptionRef.get(supervisor.state)).phase).toBe("connected");
-    }),
-  );
-
-  it.effect("releases and reconnects a relay session when credentials change", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness();
-      const supervisor = yield* EnvironmentSupervisor.make(RELAY_ENTRY, {
-        initiallyDesired: true,
-      }).pipe(Effect.provide(harness.dependencies));
-
-      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
-      yield* harness.wake("credentials-changed");
-      yield* awaitState(
-        supervisor.state,
-        (state) => state.phase === "connected" && state.generation === 2,
-      );
-
-      expect(yield* Ref.get(harness.sessionCount)).toBe(2);
-      expect(yield* Ref.get(harness.releaseCount)).toBe(1);
-    }),
-  );
-
-  it.effect("interrupts relay setup when credentials change", () =>
-    Effect.gen(function* () {
-      const firstAttemptStarted = yield* Deferred.make<void>();
-      const harness = yield* makeHarness({
-        prepare: (attempt) =>
-          attempt === 1
-            ? Deferred.succeed(firstAttemptStarted, undefined).pipe(Effect.andThen(Effect.never))
-            : Effect.succeed(PREPARED_CONNECTION),
-      });
-      const supervisor = yield* EnvironmentSupervisor.make(RELAY_ENTRY, {
-        initiallyDesired: true,
-      }).pipe(Effect.provide(harness.dependencies));
-
-      yield* Deferred.await(firstAttemptStarted);
-      yield* harness.wake("credentials-changed");
-      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
-
-      expect(yield* Ref.get(harness.prepareCount)).toBe(2);
-      expect(yield* Ref.get(harness.sessionCount)).toBe(1);
-    }),
-  );
-
   it.effect("explicit disconnect releases the session and returns to available", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness();
@@ -831,9 +712,8 @@ describe("EnvironmentSupervisor", () => {
       yield* Effect.all(
         [
           supervisor.disconnect,
-          harness.wake("credentials-changed"),
           harness.wake("application-active"),
-          harness.wake("credentials-changed"),
+          harness.wake("application-active"),
         ],
         { concurrency: "unbounded" },
       );

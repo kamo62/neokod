@@ -10,7 +10,7 @@ import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 export interface HeadlessServeAccessInfo {
   readonly connectionString: string;
   readonly token: string;
-  readonly pairingUrl: string;
+  readonly startupUrl: string;
 }
 
 type NetworkInterfacesMap = ReturnType<typeof NodeOS.networkInterfaces>;
@@ -89,11 +89,11 @@ export const resolveListeningPort = (address: unknown, fallbackPort: number): nu
   return fallbackPort;
 };
 
-export const buildPairingUrl = (connectionString: string, token: string): string => {
+export const buildStartupUrl = (connectionString: string, token: string): string => {
   const url = new URL(connectionString);
-  url.pathname = "/pair";
-  url.searchParams.delete("token");
-  url.hash = new URLSearchParams([["token", token]]).toString();
+  url.pathname = "/";
+  url.hash = "";
+  url.searchParams.set("token", token);
   return url.toString();
 };
 
@@ -124,9 +124,9 @@ export const formatHeadlessServeOutput = (accessInfo: HeadlessServeAccessInfo): 
     "T3 Code server is ready.",
     `Connection string: ${accessInfo.connectionString}`,
     `Token: ${accessInfo.token}`,
-    `Pairing URL: ${accessInfo.pairingUrl}`,
+    `Startup URL: ${accessInfo.startupUrl}`,
     "",
-    renderTerminalQrCode(accessInfo.pairingUrl),
+    renderTerminalQrCode(accessInfo.startupUrl),
     "",
   ].join("\n");
 
@@ -143,6 +143,6 @@ export const issueHeadlessServeAccessInfo = Effect.fn("issueHeadlessServeAccessI
   return {
     connectionString,
     token: issued.credential,
-    pairingUrl: buildPairingUrl(connectionString, issued.credential),
+    startupUrl: buildStartupUrl(connectionString, issued.credential),
   } satisfies HeadlessServeAccessInfo;
 });

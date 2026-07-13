@@ -1,4 +1,3 @@
-import { RelayConnectionTarget } from "@t3tools/client-runtime/connection";
 import {
   ConnectionCatalogDocument as RuntimeConnectionCatalogDocument,
   type ConnectionCatalogDocument as RuntimeConnectionCatalogDocumentType,
@@ -271,27 +270,13 @@ const writeDocument = Effect.fn("desktop.connectionCatalogStore.writeDocument")(
 });
 
 const migrateSavedEnvironmentRecords = (
-  records: readonly PersistedSavedEnvironmentRecord[],
+  _records: readonly PersistedSavedEnvironmentRecord[],
 ): RuntimeConnectionCatalogDocumentType => {
-  const targets: Array<RuntimeConnectionCatalogDocumentType["targets"][number]> = [];
-
-  for (const record of records) {
-    if (record.relayManaged !== undefined) {
-      targets.push(
-        new RelayConnectionTarget({
-          environmentId: record.environmentId,
-          label: record.label,
-        }),
-      );
-    }
-  }
-
   const catalog: RuntimeConnectionCatalogDocumentType = {
     schemaVersion: 1,
-    targets,
+    targets: [],
     profiles: [],
     credentials: [],
-    remoteDpopTokens: [],
   };
   return catalog;
 };

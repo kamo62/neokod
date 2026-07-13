@@ -5,9 +5,7 @@ import * as Stream from "effect/Stream";
 import * as ConnectionResolver from "./resolver.ts";
 import * as ConnectionDriver from "./driver.ts";
 import * as EnvironmentRegistry from "./registry.ts";
-import * as ConnectionOnboarding from "./onboarding.ts";
 import * as PlatformConnectionSource from "../platform/source.ts";
-import * as RelayEnvironmentDiscovery from "../relay/discovery.ts";
 import * as RemoteEnvironmentAuthorization from "../authorization/service.ts";
 import * as RpcSession from "../rpc/session.ts";
 
@@ -21,13 +19,7 @@ const driverLayer = ConnectionDriver.layer.pipe(
 
 const registryLayer = EnvironmentRegistry.layer.pipe(Layer.provide(driverLayer));
 
-const onboardingLayer = ConnectionOnboarding.layer.pipe(Layer.provide(registryLayer));
-
-const connectionServicesLayer = Layer.mergeAll(
-  registryLayer,
-  RelayEnvironmentDiscovery.layer,
-  onboardingLayer,
-);
+const connectionServicesLayer = registryLayer;
 
 const connectionStartupLayer = Layer.effectDiscard(
   Effect.gen(function* () {
