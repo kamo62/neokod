@@ -1711,11 +1711,11 @@ function OpenCommandPaletteDialog(props: {
       desktopWslState ??= (await window.desktopBridge?.getWslState().catch(() => null)) ?? null;
       let primaryRunningDistro: string | null = null;
       try {
+        const primaryBootstrap = window.desktopBridge
+          ?.getLocalEnvironmentBootstraps()
+          .find((bootstrap) => bootstrap.id === PRIMARY_LOCAL_ENVIRONMENT_ID);
         primaryRunningDistro =
-          window.desktopBridge
-            ?.getLocalEnvironmentBootstraps()
-            .find((bootstrap) => bootstrap.id === PRIMARY_LOCAL_ENVIRONMENT_ID)?.runningDistro ??
-          null;
+          primaryBootstrap?.transport === "wsl-bearer" ? primaryBootstrap.runningDistro : null;
       } catch {
         // Keep UNC routing strict when the live primary identity cannot be read.
       }
@@ -1731,7 +1731,8 @@ function OpenCommandPaletteDialog(props: {
             const bootstrap = desktopLocalBootstraps.find(
               (candidate) => candidate.httpBaseUrl === environment.displayUrl,
             );
-            const runningDistro = bootstrap?.runningDistro ?? null;
+            const runningDistro =
+              bootstrap?.transport === "wsl-bearer" ? bootstrap.runningDistro : null;
             return [
               {
                 environmentId: environment.environmentId,

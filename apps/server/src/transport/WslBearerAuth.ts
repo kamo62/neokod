@@ -41,12 +41,20 @@ export class WslBearerAuth extends Context.Service<
     readonly authorizeBearerHeader: (
       authorization: string | undefined,
     ) => Effect.Effect<void, EnvironmentWslBearerInvalidError>;
-    readonly authorizeHttpRequest: Effect.Effect<void, EnvironmentWslBearerInvalidError>;
+    readonly authorizeHttpRequest: Effect.Effect<
+      void,
+      EnvironmentWslBearerInvalidError,
+      HttpServerRequest.HttpServerRequest
+    >;
     readonly issueWebSocketTicket: Effect.Effect<WslWebSocketTicket>;
     readonly consumeWebSocketTicket: (
       ticket: string | null,
     ) => Effect.Effect<void, EnvironmentWslBearerInvalidError>;
-    readonly authorizeWebSocketUpgrade: Effect.Effect<void, EnvironmentWslBearerInvalidError>;
+    readonly authorizeWebSocketUpgrade: Effect.Effect<
+      void,
+      EnvironmentWslBearerInvalidError,
+      HttpServerRequest.HttpServerRequest
+    >;
   }
 >()("neokod/transport/WslBearerAuth") {}
 

@@ -21,10 +21,12 @@ export const issueWslWebSocketTicket = Effect.fn("clientRuntime.transport.issueW
     return yield* executeEnvironmentHttpRequest(
       requestUrl,
       input.timeoutMs ?? DEFAULT_WSL_REQUEST_TIMEOUT_MS,
-      httpClient.execute(request).pipe(
-        Effect.flatMap(HttpClientResponse.filterStatusOk),
-        Effect.flatMap(HttpClientResponse.schemaBodyJson(WslWebSocketTicketResult)),
-      ),
+      httpClient
+        .execute(request)
+        .pipe(
+          Effect.flatMap(HttpClientResponse.filterStatusOk),
+          Effect.flatMap(HttpClientResponse.schemaBodyJson(WslWebSocketTicketResult)),
+        ),
     );
   },
 );

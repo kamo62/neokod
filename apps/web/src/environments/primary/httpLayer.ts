@@ -11,13 +11,12 @@ export function makePrimaryEnvironmentHttpLayer() {
       const baseLayer = remoteHttpClientLayer(globalThis.fetch);
       const resolved = readPrimaryEnvironmentTarget();
       if (resolved.transport._tag === "Loopback") return baseLayer;
+      const bearerToken = resolved.transport.token;
       return Layer.effect(
         HttpClient.HttpClient,
         Effect.map(HttpClient.HttpClient, (client) =>
           client.pipe(
-            HttpClient.mapRequest((request) =>
-              HttpClientRequest.bearerToken(request, resolved.transport.token),
-            ),
+            HttpClient.mapRequest((request) => HttpClientRequest.bearerToken(request, bearerToken)),
           ),
         ),
       ).pipe(Layer.provide(baseLayer));

@@ -156,7 +156,9 @@ describe("DesktopBackendConfiguration", () => {
 
         const wsl = yield* configuration.resolveWsl({ port: 5000, distro: null });
 
-        assert.equal(wsl.bootstrap.transport, "wsl-bearer");
+        if (wsl.bootstrap.transport !== "wsl-bearer") {
+          return assert.fail("expected resolveWsl to produce a wsl-bearer bootstrap");
+        }
         assert.equal(wsl.bootstrap.host, "0.0.0.0");
         assert.match(wsl.bootstrap.wslBearerToken, /^[0-9a-f]{48}$/i);
       }),
@@ -301,6 +303,9 @@ describe("DesktopBackendConfiguration", () => {
         );
 
         assert.notProperty(primary.bootstrap, "wslBearerToken");
+        if (wsl.bootstrap.transport !== "wsl-bearer") {
+          return assert.fail("expected resolveWsl to produce a wsl-bearer bootstrap");
+        }
         assert.match(wsl.bootstrap.wslBearerToken, /^[0-9a-f]{48}$/i);
       }),
     ),

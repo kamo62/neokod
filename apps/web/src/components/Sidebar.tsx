@@ -322,7 +322,7 @@ function buildThreadJumpLabelMap(input: {
 interface SidebarThreadRowProps {
   thread: SidebarThreadSummary;
   projectCwd: string | null;
-  contextLabel?: string;
+  contextLabel?: string | undefined;
   orderedProjectThreadKeys: readonly string[];
   isActive: boolean;
   jumpLabel: string | null;
@@ -968,7 +968,7 @@ interface SidebarProjectThreadListProps {
   openPrLink: (event: React.MouseEvent<HTMLElement>, prUrl: string) => void;
   expandThreadListForProject: (projectKey: string) => void;
   collapseThreadListForProject: (projectKey: string) => void;
-  threadContextLabelByKey?: ReadonlyMap<string, string>;
+  threadContextLabelByKey?: ReadonlyMap<string, string> | undefined;
 }
 
 const SidebarProjectThreadList = memo(function SidebarProjectThreadList(

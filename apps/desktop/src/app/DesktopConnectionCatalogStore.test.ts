@@ -88,6 +88,7 @@ describe("DesktopConnectionCatalogStore", () => {
         const fileSystem = yield* FileSystem.FileSystem;
         const store = yield* DesktopConnectionCatalogStore.DesktopConnectionCatalogStore;
         const legacyProofTokenKey = ["remote", "D", "pop", "Tokens"].join("");
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
         const legacyCatalog = JSON.stringify({
           schemaVersion: 1,
           targets: [{ label: "remote.example.com" }, { kind: "relay" }],
@@ -99,6 +100,7 @@ describe("DesktopConnectionCatalogStore", () => {
         yield* fileSystem.makeDirectory(environment.stateDir, { recursive: true });
         yield* fileSystem.writeFileString(
           catalogPath,
+          // @effect-diagnostics-next-line preferSchemaOverJson:off
           JSON.stringify({
             version: 1,
             encryptedCatalog: Encoding.encodeBase64(
@@ -115,6 +117,7 @@ describe("DesktopConnectionCatalogStore", () => {
           assert.notInclude(raw.value, "secret");
         }
 
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
         const persistedEnvelope = JSON.parse(yield* fileSystem.readFileString(catalogPath)) as {
           readonly encryptedCatalog: string;
         };
