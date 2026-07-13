@@ -75,7 +75,7 @@ export class ServerConfig extends Context.Service<
     readonly autoBootstrapProjectFromCwd: boolean;
     readonly logWebSocketEvents: boolean;
   }
->()("t3/config/ServerConfig") {
+>()("neokod/config/ServerConfig") {
   /** @deprecated Import and use `layerTest` from this module. */
   static readonly layerTest = (
     cwd: string,

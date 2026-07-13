@@ -48,7 +48,7 @@ export class WslBearerAuth extends Context.Service<
     ) => Effect.Effect<void, EnvironmentWslBearerInvalidError>;
     readonly authorizeWebSocketUpgrade: Effect.Effect<void, EnvironmentWslBearerInvalidError>;
   }
->()("t3/transport/WslBearerAuth") {}
+>()("neokod/transport/WslBearerAuth") {}
 
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;

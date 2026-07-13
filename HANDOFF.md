@@ -6,14 +6,14 @@ untracked; do not commit it.
 ## Local-first carve-out (2026-07-13)
 
 The current `feat/local-first-carveout` worktree has Stages 1-4 committed and
-Stage 5 applied but intentionally uncommitted. Native desktop, standalone `t3
+Stage 5 applied but intentionally uncommitted. Native desktop, standalone `neokod
 serve`, and Vite bind to `127.0.0.1`; loopback HTTP and WebSocket are direct and
 have no application auth/session control plane. Desktop-managed WSL remains the
 sole `0.0.0.0` exception and fails closed behind a desktop-generated HTTP bearer
 plus short-lived, single-use WebSocket tickets. The bearer is topology-only and
 never persisted. Agent-awareness notifications and both toast/coordinator mounts
-remain local and unconditional. Stage 6, the `@neokod` to `@neokod` package
-rename, is deliberately not applied.
+remain local and unconditional. The package scope is `@neokod`; the remaining
+rebrand work is tracked in the Neokod rebrand plan.
 
 ## What this fork is
 
@@ -434,5 +434,5 @@ push to upstream. Upstream remote fetch works but push is disabled
 
 - All packages: `vp check` and `vp run typecheck`.
 - Web only: `node_modules/.bin/vp run --filter @neokod/web typecheck`; tests via `vp test run <path>` from `apps/web`.
-- Server (package name `t3`): `node_modules/.bin/vp run --filter t3 typecheck`; Copilot suite `vp test run src/provider/copilot/` from `apps/server`.
+- Server (package name `neokod`): `node_modules/.bin/vp run --filter neokod typecheck`; Copilot suite `vp test run src/provider/copilot/` from `apps/server`.
 - Contracts: `@neokod/contracts` typecheck + tests.

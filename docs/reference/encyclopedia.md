@@ -2,7 +2,7 @@
 
 ## Local transport boundary
 
-The native desktop backend and `t3 serve` are direct loopback transports on
+The native desktop backend and `neokod serve` are direct loopback transports on
 `127.0.0.1`. The desktop-managed WSL backend is the only wildcard listener and
 uses `wsl-bearer`: a desktop-generated HTTP bearer plus a short-lived,
 single-use WebSocket ticket. This is a narrow transport boundary, not a user

@@ -4,6 +4,7 @@ Release impact: Patch because this corrects environment precedence and reserved 
 
 - Fixed OTLP bootstrap precedence and legacy compatibility coverage across server, desktop, build, launcher, and dev-runner boundaries.
 - Preserved identical reserved Neokod and legacy project-script environment values when scripts add custom variables.
+- Completed the internal Neokod service-key migration and removed obsolete pairing-token startup coverage.
 
 ## 3.0.0 - 2026-07-13 (Major)
 
@@ -14,6 +15,7 @@ Release impact: Major because the home/state and environment contracts now use N
 - Hardened bootstrap, desktop, dev-runner, launcher, and terminal compatibility so new env names win, legacy names fall back safely, and legacy values do not leak into child or WSL processes.
 - Moved project VCS configuration to `.neokod/vcs.json` with legacy `.t3code/vcs.json` read fallback.
 - Project setup scripts now emit both `NEOKOD_PROJECT_ROOT`/`NEOKOD_WORKTREE_PATH` and legacy names for the transition.
+- Renamed the published package and executable from `t3` to `neokod`; use `npx neokod@latest` or `neokod serve`. The `t3` package and bin have no compatibility alias.
 
 ## 2.1.0 - 2026-07-13 (Minor)
 
@@ -35,7 +37,7 @@ Release impact: Major because this removes product surfaces, remote connection t
 - Removed the React Native mobile app and the marketing site as part of the local-first carve-out.
 - Removed SSH backend connections, Tailscale integration, LAN/manual endpoint advertising, and public server host selection.
 - Constrained the desktop primary, standalone server, and development web server to `127.0.0.1`.
-- Cut native desktop and standalone `t3 serve` over to direct unauthenticated loopback HTTP and WebSocket transport, removing browser cookies, pairing, sessions, scopes, DPoP, and auth administration.
+- Cut native desktop and the legacy standalone `t3 serve` command over to direct unauthenticated loopback HTTP and WebSocket transport, removing browser cookies, pairing, sessions, scopes, DPoP, and auth administration.
 - Retained a narrow fail-closed desktop-managed WSL exception: its internal wildcard bind requires the private `wsl-bearer` discriminator, direct bearer validation on sensitive HTTP, and a short-lived single-use WebSocket ticket.
 - Purged retired remote targets, profiles, credentials, DPoP tokens, and saved-environment secrets into the empty schema-v2 connection catalog.
 - Removed the hosted Cloudflare/Postgres/APNs relay infrastructure and the server's outbound mobile-activity publisher while retaining local browser notifications.

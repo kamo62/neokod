@@ -79,7 +79,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           "run",
           "--filter=@neokod/contracts",
           "--filter=@neokod/web",
-          "--filter=t3",
+          "--filter=neokod",
           "--parallel",
           "dev",
         ]);

@@ -86,7 +86,7 @@ export const resolveListeningPort = (address: unknown, fallbackPort: number): nu
 };
 
 export const formatHeadlessServeOutput = (accessInfo: HeadlessServeAccessInfo): string =>
-  ["T3 Code server is ready.", `Local URL: ${accessInfo.connectionString}`, ""].join("\n");
+  ["Neokod server is ready.", `Local URL: ${accessInfo.connectionString}`, ""].join("\n");
 
 export const issueHeadlessServeAccessInfo = Effect.fn("issueHeadlessServeAccessInfo")(function* () {
   const serverConfig = yield* ServerConfig;

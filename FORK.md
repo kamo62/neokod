@@ -17,7 +17,7 @@ upstream file — a stale manifest is worse than no manifest.
 
 Stages 1-5 remove Neokod's mobile/marketing products, public and hosted
 transports, remote connection records, and the loopback auth/session control
-plane. Desktop primary, standalone `t3 serve`, and Vite listen on `127.0.0.1`;
+plane. Desktop primary, standalone `neokod serve`, and Vite listen on `127.0.0.1`;
 their HTTP and WebSocket paths are direct. Desktop-managed WSL remains the sole
 internal wildcard-bind exception and uses a desktop-generated HTTP bearer plus
 short-lived, single-use WebSocket tickets. Local agent-awareness notifications

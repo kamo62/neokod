@@ -4,7 +4,7 @@ The connection runtime owns local topology, retry policy, transport lifetime,
 cached environment data, and environment-scoped operations. It supports exactly
 two in-memory target forms:
 
-- `PrimaryConnectionTarget`: the direct loopback desktop or `t3 serve` backend;
+- `PrimaryConnectionTarget`: the direct loopback desktop or `neokod serve` backend;
 - `WslConnectionTarget`: a desktop-proven WSL endpoint with an in-memory bearer.
 
 There are no saved remote targets, profiles, credentials, registrations, or
@@ -30,7 +30,7 @@ overwrite newer live state.
 
 | Target                      | Discovery                                       | HTTP                                | WebSocket                                                         | Persistence                                  |
 | --------------------------- | ----------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------- | -------------------------------------------- |
-| Native primary / `t3 serve` | Loopback URL                                    | Direct, unauthenticated             | Direct `/ws`                                                      | Cache only                                   |
+| Native primary / `neokod serve` | Loopback URL                                    | Direct, unauthenticated             | Direct `/ws`                                                      | Cache only                                   |
 | Desktop WSL                 | Current `getLocalEnvironmentBootstraps()` entry | `Authorization: Bearer <wsl token>` | Bearer-protected ticket request, then one fresh single-use ticket | Cache only; token and target are memory-only |
 
 The desktop generates a 192-bit WSL token for each WSL backend start. The WSL

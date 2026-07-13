@@ -31,6 +31,7 @@ import { assert, it } from "@effect/vitest";
 import { assertFailure, assertTrue } from "@effect/vitest/utils";
 import * as Deferred from "effect/Deferred";
 import * as DateTime from "effect/DateTime";
+import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -40,6 +41,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import {
   FetchHttpClient,

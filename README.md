@@ -38,14 +38,14 @@ Install the latest macOS or Windows build from [Neokod releases](https://github.
 ### Run the CLI without installing
 
 ```bash
-npx t3@latest
+npx neokod@latest
 ```
 
-The CLI/bin name is still `t3`. Use `npx t3@latest --help` for the full reference.
+Use `npx neokod@latest --help` for the full reference.
 
 ## Local access boundary
 
-Neokod is local-first. The native desktop backend and the standalone `t3 serve` listen on `127.0.0.1` and use direct HTTP and WebSocket connections with no application session, pairing flow, cookie, or bearer credential.
+Neokod is local-first. The native desktop backend and the standalone `neokod serve` listen on `127.0.0.1` and use direct HTTP and WebSocket connections with no application session, pairing flow, cookie, or bearer credential.
 
 The only non-loopback exception is a desktop-managed WSL backend. It listens on `0.0.0.0` inside WSL and stays fail-closed behind a desktop-generated bearer for HTTP plus short-lived, single-use WebSocket tickets. The WSL credential is delivered only through the live desktop topology and is never persisted.
 

@@ -253,7 +253,7 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
       if (error._tag !== "ShowHelp") {
         assert.fail(`Expected ShowHelp, got ${error._tag}`);
       }
-      assert.deepEqual(error.commandPath, ["t3", "project", "add"]);
+      assert.deepEqual(error.commandPath, ["neokod", "project", "add"]);
       const optionError = error.errors[0] as CliError.CliError | undefined;
       if (!optionError || optionError._tag !== "UnrecognizedOption") {
         assert.fail(`Expected UnrecognizedOption, got ${String(optionError?._tag)}`);

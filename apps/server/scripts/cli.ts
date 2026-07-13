@@ -205,7 +205,7 @@ const createVpPmPublishArgs = (config: PublishCommandConfig): ReadonlyArray<stri
   const args = [
     "publish",
     "--filter",
-    "t3",
+    "neokod",
     "--access",
     config.access,
     "--tag",
@@ -319,7 +319,7 @@ const publishCmd = Command.make(
 // ---------------------------------------------------------------------------
 
 const cli = Command.make("cli").pipe(
-  Command.withDescription("T3 server build & publish CLI."),
+  Command.withDescription("Neokod server build & publish CLI."),
   Command.withSubcommands([buildCmd, publishCmd]),
 );
 
