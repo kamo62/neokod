@@ -150,14 +150,14 @@ const PlanSidebar = memo(function PlanSidebar({
   return (
     <div
       className={cn(
-        "flex min-h-0 flex-col bg-card/50",
+        "flex min-h-0 flex-col bg-surface-panel",
         mode === "sidebar"
-          ? "h-full w-[340px] shrink-0 border-l border-border/70"
+          ? "h-full w-[340px] shrink-0 border-l border-surface-divider"
           : "h-full w-full",
       )}
     >
       {/* Header */}
-      <div className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-3">
+      <div className="right-panel-pane-header justify-between px-3">
         <div className="flex items-center gap-2">
           <Badge
             variant="info"
@@ -178,7 +178,7 @@ const PlanSidebar = memo(function PlanSidebar({
               <MenuTrigger
                 render={
                   <Button
-                    size="icon-xs"
+                    size="icon-sm"
                     variant="ghost"
                     className="text-muted-foreground/50 hover:text-foreground/70"
                     aria-label="Plan actions"

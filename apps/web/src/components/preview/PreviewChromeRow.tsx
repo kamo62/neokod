@@ -111,7 +111,7 @@ export function PreviewChromeRow({
               render={
                 <Button
                   variant="ghost"
-                  size="icon-xs"
+                  size="icon-sm"
                   onClick={canGoBack ? onBack : NOOP}
                   disabled={!canGoBack}
                   aria-label="Back"
@@ -128,7 +128,7 @@ export function PreviewChromeRow({
               render={
                 <Button
                   variant="ghost"
-                  size="icon-xs"
+                  size="icon-sm"
                   onClick={canGoForward ? onForward : NOOP}
                   disabled={!canGoForward}
                   aria-label="Forward"
@@ -145,7 +145,7 @@ export function PreviewChromeRow({
               render={
                 <Button
                   variant="ghost"
-                  size="icon-xs"
+                  size="icon-sm"
                   onClick={refreshDisabled ? NOOP : onRefresh}
                   disabled={refreshDisabled}
                   aria-label={loading ? "Stop" : "Refresh"}
@@ -208,7 +208,7 @@ export function PreviewChromeRow({
                   render={
                     <Button
                       variant="ghost"
-                      size="icon-xs"
+                      size="icon-sm"
                       onClick={onOpenInBrowser}
                       aria-label="Open in system browser"
                       type="button"
@@ -229,7 +229,7 @@ export function PreviewChromeRow({
               render={
                 <Button
                   variant={pickActive ? "secondary" : "ghost"}
-                  size="icon-xs"
+                  size="icon-sm"
                   onClick={onPickElement}
                   disabled={pickDisabled}
                   aria-label={pickActive ? "Cancel annotation" : "Annotate preview"}
@@ -255,7 +255,7 @@ export function PreviewChromeRow({
               render={
                 <Button
                   variant={recording ? "secondary" : "ghost"}
-                  size="icon-xs"
+                  size="icon-sm"
                   onClick={(event) => onCapture(event.shiftKey)}
                   aria-label={recording ? "Stop recording" : "Capture screenshot"}
                   type="button"

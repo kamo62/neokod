@@ -7,6 +7,7 @@ Release impact: Minor because the cumulative redesign will add backward-compatib
 - Added the fixed UI, metadata, chat, compact-row, and surface-header scale for later visual passes.
 - Added persisted Threads/Workspace sidebar selection and scoped local pinned-thread preferences.
 - Added the atom-backed flat Threads view with live-only Pinned rows, shared thread actions, and keyboard-visible ordering.
+- Restyled the persisted right-panel surfaces with one compact token-based tab, header, divider, and panel-toolbar chrome.
 
 ## 2.0.0 - 2026-07-13 (Major)
 

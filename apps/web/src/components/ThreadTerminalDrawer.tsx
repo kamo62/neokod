@@ -1195,8 +1195,8 @@ export default function ThreadTerminalDrawer({
       <aside
         data-terminal-owner={isPanel ? "right-panel" : "drawer"}
         className={cn(
-          "thread-terminal-drawer relative flex min-w-0 flex-col overflow-hidden bg-background",
-          isPanel ? "h-full flex-1" : "shrink-0 border-t border-border/80",
+          "thread-terminal-drawer relative flex min-w-0 flex-col overflow-hidden",
+          isPanel ? "h-full flex-1 bg-surface-panel" : "shrink-0 border-t border-border/80 bg-background",
         )}
         style={isPanel ? undefined : { height: `${drawerHeight}px` }}
       >
@@ -1229,8 +1229,8 @@ export default function ThreadTerminalDrawer({
     <aside
       data-terminal-owner={isPanel ? "right-panel" : "drawer"}
       className={cn(
-        "thread-terminal-drawer relative flex min-w-0 flex-col overflow-hidden bg-background",
-        isPanel ? "h-full flex-1" : "shrink-0 border-t border-border/80",
+        "thread-terminal-drawer relative flex min-w-0 flex-col overflow-hidden",
+        isPanel ? "h-full flex-1 bg-surface-panel" : "shrink-0 border-t border-border/80 bg-background",
       )}
       style={isPanel ? undefined : { height: `${drawerHeight}px` }}
     >
@@ -1246,41 +1246,64 @@ export default function ThreadTerminalDrawer({
 
       {!hasTerminalSidebar && (
         <div className="pointer-events-none absolute right-2 top-2 z-20">
-          <div className="pointer-events-auto inline-flex items-center overflow-hidden rounded-md border border-border/80 bg-background/70">
+          <div
+            className={cn(
+              "pointer-events-auto inline-flex items-center overflow-hidden rounded-md border",
+              isPanel ? "right-panel-terminal-controls" : "border-border/80 bg-background/70",
+            )}
+          >
             <TerminalActionButton
-              className={`p-1 text-foreground/90 transition-colors ${
+              className={`${isPanel ? "right-panel-icon-button" : "p-1 text-foreground/90"} ${
                 hasReachedSplitLimit
                   ? "cursor-not-allowed opacity-45 hover:bg-transparent"
-                  : "hover:bg-accent"
+                  : isPanel
+                    ? "hover:bg-surface-hover"
+                    : "hover:bg-accent"
               }`}
               onClick={onSplitTerminalAction}
               label={splitTerminalActionLabel}
             >
               <SquareSplitHorizontal className="size-3.25" />
             </TerminalActionButton>
-            <div className="h-4 w-px bg-border/80" />
+            <div
+              className={cn("h-4 w-px", isPanel ? "bg-surface-divider" : "bg-border/80")}
+            />
             <TerminalActionButton
-              className={`p-1 text-foreground/90 transition-colors ${
+              className={`${isPanel ? "right-panel-icon-button" : "p-1 text-foreground/90"} ${
                 hasReachedSplitLimit
                   ? "cursor-not-allowed opacity-45 hover:bg-transparent"
-                  : "hover:bg-accent"
+                  : isPanel
+                    ? "hover:bg-surface-hover"
+                    : "hover:bg-accent"
               }`}
               onClick={onSplitTerminalVerticalAction}
               label={splitTerminalVerticalActionLabel}
             >
               <SquareSplitVertical className="size-3.25" />
             </TerminalActionButton>
-            <div className="h-4 w-px bg-border/80" />
+            <div
+              className={cn("h-4 w-px", isPanel ? "bg-surface-divider" : "bg-border/80")}
+            />
             <TerminalActionButton
-              className="p-1 text-foreground/90 transition-colors hover:bg-accent"
+              className={cn(
+                isPanel
+                  ? "right-panel-icon-button"
+                  : "p-1 text-foreground/90 transition-colors hover:bg-accent",
+              )}
               onClick={onNewTerminalAction}
               label={newTerminalActionLabel}
             >
               <Plus className="size-3.25" />
             </TerminalActionButton>
-            <div className="h-4 w-px bg-border/80" />
+            <div
+              className={cn("h-4 w-px", isPanel ? "bg-surface-divider" : "bg-border/80")}
+            />
             <TerminalActionButton
-              className="p-1 text-foreground/90 transition-colors hover:bg-accent"
+              className={cn(
+                isPanel
+                  ? "right-panel-icon-button"
+                  : "p-1 text-foreground/90 transition-colors hover:bg-accent",
+              )}
               onClick={() => onCloseTerminal(resolvedActiveTerminalId)}
               label={closeTerminalActionLabel}
             >
