@@ -29,6 +29,7 @@ const clientSettings: ClientSettings = {
   sidebarThreadSortOrder: "created_at",
   sidebarThreadPreviewCount: 6,
   timestampFormat: "24-hour",
+  webActivityNotificationsEnabled: true,
   wordWrap: true,
 };
 
