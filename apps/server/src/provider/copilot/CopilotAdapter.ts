@@ -42,8 +42,8 @@ import {
   ThreadId,
   TurnId,
   type UserInputQuestion,
-} from "@t3tools/contracts";
-import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
+} from "@neokod/contracts";
+import { getModelSelectionStringOptionValue } from "@neokod/shared/model";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";

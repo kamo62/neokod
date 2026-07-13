@@ -3,7 +3,7 @@ import {
   type OrchestrationShellSnapshot,
   type OrchestrationThreadDetailSnapshot,
   type ThreadId,
-} from "@t3tools/contracts";
+} from "@neokod/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -53,11 +53,11 @@ export class EnvironmentCacheStore extends Context.Service<
       environmentId: EnvironmentId,
     ) => Effect.Effect<void, ConnectionPersistenceError>;
   }
->()("@t3tools/client-runtime/platform/persistence/EnvironmentCacheStore") {}
+>()("@neokod/client-runtime/platform/persistence/EnvironmentCacheStore") {}
 
 export class EnvironmentOwnedDataCleanup extends Context.Reference<{
   readonly clear: (environmentId: EnvironmentId) => Effect.Effect<void>;
-}>("@t3tools/client-runtime/platform/persistence/EnvironmentOwnedDataCleanup", {
+}>("@neokod/client-runtime/platform/persistence/EnvironmentOwnedDataCleanup", {
   defaultValue: () => ({
     clear: () => Effect.void,
   }),

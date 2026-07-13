@@ -1,10 +1,10 @@
-import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
+import type { AtomCommandResult } from "@neokod/client-runtime/state/runtime";
 import type {
   EnvironmentId,
   PreviewCloseInput,
   PreviewSessionSnapshot,
   ScopedThreadRef,
-} from "@t3tools/contracts";
+} from "@neokod/contracts";
 
 import { beginPreviewSessionClose, cancelPreviewSessionClose } from "~/previewStateStore";
 

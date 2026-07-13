@@ -14,16 +14,16 @@ import {
   type ProviderInstanceConfig,
   type ProviderInstanceId,
   type ScopedThreadRef,
-} from "@t3tools/contracts";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
+} from "@neokod/contracts";
+import { scopeThreadRef } from "@neokod/client-runtime/environment";
+import { safeErrorLogAttributes } from "@neokod/client-runtime/errors";
 import {
   isAtomCommandInterrupted,
   settlePromise,
   squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
-import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
-import { createModelSelection } from "@t3tools/shared/model";
+} from "@neokod/client-runtime/state/runtime";
+import { DEFAULT_UNIFIED_SETTINGS } from "@neokod/contracts/settings";
+import { createModelSelection } from "@neokod/shared/model";
 import * as Arr from "effect/Array";
 import * as Duration from "effect/Duration";
 import * as Equal from "effect/Equal";

@@ -1,5 +1,5 @@
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import type { ScopedThreadRef, TurnId } from "@t3tools/contracts";
+import { scopedThreadKey } from "@neokod/client-runtime/environment";
+import type { ScopedThreadRef, TurnId } from "@neokod/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 

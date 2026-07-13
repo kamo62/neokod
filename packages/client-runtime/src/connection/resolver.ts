@@ -16,7 +16,7 @@ export class ConnectionResolver extends Context.Service<
       entry: ConnectionCatalogEntry,
     ) => Effect.Effect<PreparedConnection, ConnectionAttemptError>;
   }
->()("@t3tools/client-runtime/connection/resolver/ConnectionResolver") {}
+>()("@neokod/client-runtime/connection/resolver/ConnectionResolver") {}
 
 function directSocketUrl(wsBaseUrl: string): string {
   const url = new URL(wsBaseUrl);

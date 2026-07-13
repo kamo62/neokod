@@ -1,4 +1,4 @@
-import { type ServerConfig, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
+import { type ServerConfig, type ServerLifecycleWelcomePayload } from "@neokod/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Option from "effect/Option";
 

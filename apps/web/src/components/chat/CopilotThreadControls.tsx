@@ -11,8 +11,8 @@
  * add a custom-agent editor surface if authoring (not just selecting) is ever
  * needed; today authoring lives in `settings.json`.
  */
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import type { CopilotCustomAgents } from "@t3tools/contracts/settings";
+import type { EnvironmentId, ScopedThreadRef } from "@neokod/contracts";
+import type { CopilotCustomAgents } from "@neokod/contracts/settings";
 import { Bot } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";

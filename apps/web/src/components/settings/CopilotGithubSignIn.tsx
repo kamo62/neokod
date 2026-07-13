@@ -5,7 +5,7 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
+} from "@neokod/client-runtime/state/runtime";
 
 import { usePrimaryEnvironment } from "../../state/environments";
 import { serverEnvironment } from "../../state/server";

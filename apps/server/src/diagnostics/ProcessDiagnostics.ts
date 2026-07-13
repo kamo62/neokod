@@ -3,8 +3,8 @@ import type {
   ServerProcessDiagnosticsResult,
   ServerProcessSignal,
   ServerSignalProcessResult,
-} from "@t3tools/contracts";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+} from "@neokod/contracts";
+import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";

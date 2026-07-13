@@ -7,10 +7,10 @@ import type {
   ServerProviderAuth,
   ServerProviderModel,
   ServerProviderState,
-} from "@t3tools/contracts";
-import { ProviderDriverKind } from "@t3tools/contracts";
+} from "@neokod/contracts";
+import { ProviderDriverKind } from "@neokod/contracts";
 import type * as EffectAcpSchema from "effect-acp/schema";
-import { causeErrorTag } from "@t3tools/shared/observability";
+import { causeErrorTag } from "@neokod/shared/observability";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -27,8 +27,8 @@ import {
   createModelCapabilities,
   getProviderOptionBooleanSelectionValue,
   getProviderOptionStringSelectionValue,
-} from "@t3tools/shared/model";
-import { resolveSpawnCommand } from "@t3tools/shared/shell";
+} from "@neokod/shared/model";
+import { resolveSpawnCommand } from "@neokod/shared/shell";
 
 import {
   buildBooleanOptionDescriptor,

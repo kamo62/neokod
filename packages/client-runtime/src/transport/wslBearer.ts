@@ -1,4 +1,4 @@
-import { WslWebSocketTicketResult } from "@t3tools/contracts";
+import { WslWebSocketTicketResult } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
 

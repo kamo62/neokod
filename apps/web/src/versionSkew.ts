@@ -1,4 +1,4 @@
-import type { EnvironmentId, ServerConfig } from "@t3tools/contracts";
+import type { EnvironmentId, ServerConfig } from "@neokod/contracts";
 import * as Schema from "effect/Schema";
 
 import { APP_VERSION } from "./branding";

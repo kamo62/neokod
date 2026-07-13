@@ -11,13 +11,13 @@ import { useAtomValue } from "@effect/atom-react";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
+} from "@neokod/client-runtime/state/runtime";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type {
   ServerProcessDiagnosticsEntry,
   ServerProcessResourceHistorySummary,
   ServerProcessSignal,
-} from "@t3tools/contracts";
+} from "@neokod/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 

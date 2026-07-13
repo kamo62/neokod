@@ -1,7 +1,7 @@
 import {
   EMPTY_CONNECTION_CATALOG_DOCUMENT,
   ConnectionCatalogDocument,
-} from "@t3tools/client-runtime/platform";
+} from "@neokod/client-runtime/platform";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -89,7 +89,7 @@ export class DesktopConnectionCatalogStore extends Context.Service<
     >;
     readonly clear: Effect.Effect<void>;
   }
->()("@t3tools/desktop/app/DesktopConnectionCatalogStore") {}
+>()("@neokod/desktop/app/DesktopConnectionCatalogStore") {}
 
 const readDocument = (
   fileSystem: FileSystem.FileSystem,

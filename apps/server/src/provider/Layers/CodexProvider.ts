@@ -21,11 +21,11 @@ import type {
   ProviderOptionDescriptor,
   ServerProviderModel,
   ServerProviderSkill,
-} from "@t3tools/contracts";
-import { ServerSettingsError } from "@t3tools/contracts";
+} from "@neokod/contracts";
+import { ServerSettingsError } from "@neokod/contracts";
 
-import { createModelCapabilities } from "@t3tools/shared/model";
-import { resolveSpawnCommand } from "@t3tools/shared/shell";
+import { createModelCapabilities } from "@neokod/shared/model";
+import { resolveSpawnCommand } from "@neokod/shared/shell";
 import {
   AUTH_PROBE_TIMEOUT_MS,
   buildServerProvider,

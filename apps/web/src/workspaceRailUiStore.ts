@@ -8,8 +8,8 @@
  * or lifting their local state. Each request bumps a per-thread, per-popover
  * nonce that the target component watches; there is no durable state to persist.
  */
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import { scopedThreadKey } from "@neokod/client-runtime/environment";
+import type { ScopedThreadRef } from "@neokod/contracts";
 import { create } from "zustand";
 
 export type RailPopover = "goal" | "fleet" | "mcp";

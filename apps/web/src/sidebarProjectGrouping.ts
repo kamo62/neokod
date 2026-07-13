@@ -1,5 +1,5 @@
-import { scopeProjectRef } from "@t3tools/client-runtime/environment";
-import type { EnvironmentId, ScopedProjectRef } from "@t3tools/contracts";
+import { scopeProjectRef } from "@neokod/client-runtime/environment";
+import type { EnvironmentId, ScopedProjectRef } from "@neokod/contracts";
 import {
   deriveLogicalProjectKeyFromSettings,
   derivePhysicalProjectKey,

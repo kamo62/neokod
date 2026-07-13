@@ -4,9 +4,9 @@ import {
   type ScopedThreadRef,
   type ServerProviderSkill,
   type TurnId,
-} from "@t3tools/contracts";
-import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
-import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
+} from "@neokod/contracts";
+import { parseScopedThreadKey } from "@neokod/client-runtime/environment";
+import { resolveChatListAnchoredEndSpace } from "@neokod/shared/chatList";
 import {
   createContext,
   Fragment,
@@ -96,7 +96,7 @@ import {
 } from "~/lib/previewAnnotation";
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
-import { type TimestampFormat } from "@t3tools/contracts/settings";
+import { type TimestampFormat } from "@neokod/contracts/settings";
 import { formatChatTimestampTooltip, formatShortTimestamp } from "../../timestampFormat";
 
 import {

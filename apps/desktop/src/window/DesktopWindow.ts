@@ -6,7 +6,7 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 
 import type * as Electron from "electron";
-import { DEFAULT_APP_ICON_VARIANT, type AppIconVariant } from "@t3tools/contracts";
+import { DEFAULT_APP_ICON_VARIANT, type AppIconVariant } from "@neokod/contracts";
 
 import * as DesktopAssets from "../app/DesktopAssets.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
@@ -81,7 +81,7 @@ export class DesktopWindow extends Context.Service<
     readonly syncAppearance: Effect.Effect<void>;
     readonly syncIconVariant?: (variant: AppIconVariant) => Effect.Effect<void>;
   }
->()("@t3tools/desktop/window/DesktopWindow") {}
+>()("@neokod/desktop/window/DesktopWindow") {}
 
 const { logInfo: logWindowInfo, logWarning: logWindowWarning } =
   makeComponentLogger("desktop-window");

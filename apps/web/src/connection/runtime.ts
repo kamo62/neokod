@@ -1,6 +1,6 @@
-import { Connection } from "@t3tools/client-runtime/connection";
-import { shellSnapshotLoaderLayer } from "@t3tools/client-runtime/state/shell";
-import { threadSnapshotLoaderLayer } from "@t3tools/client-runtime/state/threads";
+import { Connection } from "@neokod/client-runtime/connection";
+import { shellSnapshotLoaderLayer } from "@neokod/client-runtime/state/shell";
+import { threadSnapshotLoaderLayer } from "@neokod/client-runtime/state/threads";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

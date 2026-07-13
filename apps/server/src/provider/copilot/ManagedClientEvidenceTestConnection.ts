@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeCrypto from "node:crypto";
 
-import type { CopilotManagedClientEvidenceSettings } from "@t3tools/contracts";
+import type { CopilotManagedClientEvidenceSettings } from "@neokod/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";

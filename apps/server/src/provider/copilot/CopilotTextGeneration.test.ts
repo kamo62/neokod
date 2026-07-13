@@ -2,8 +2,8 @@ import * as NodeAssert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { describe } from "vite-plus/test";
-import { ProviderInstanceId } from "@t3tools/contracts";
-import { createModelSelection } from "@t3tools/shared/model";
+import { ProviderInstanceId } from "@neokod/contracts";
+import { createModelSelection } from "@neokod/shared/model";
 
 import { makeCopilotTextGeneration } from "./CopilotTextGeneration.ts";
 

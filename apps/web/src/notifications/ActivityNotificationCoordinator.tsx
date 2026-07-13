@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
-import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import { scopeThreadRef, scopedThreadKey } from "@neokod/client-runtime/environment";
+import type { EnvironmentId, ScopedThreadRef } from "@neokod/contracts";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import { useCallback, useEffect, useRef, useState } from "react";

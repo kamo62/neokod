@@ -25,7 +25,7 @@ import {
   type ProviderDriverKind,
   type ServerProvider,
   type ServerProviderModel,
-} from "@t3tools/contracts";
+} from "@neokod/contracts";
 
 import { cn } from "../../lib/utils";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";

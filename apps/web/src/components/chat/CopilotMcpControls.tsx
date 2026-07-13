@@ -15,15 +15,15 @@
  * `provider/copilot/CopilotMcpServers.ts`. It's a one-line `enabled !== false`
  * that web can't import from the server module and that doesn't belong in the
  * schema-only contracts package; if a third consumer appears, hoist it to
- * `@t3tools/shared`.
+ * `@neokod/shared`.
  */
 import type {
   CopilotMcpServers,
   EnvironmentId,
   ProviderInstanceId,
   ScopedThreadRef,
-} from "@t3tools/contracts";
-import { defaultInstanceIdForDriver, ProviderDriverKind } from "@t3tools/contracts";
+} from "@neokod/contracts";
+import { defaultInstanceIdForDriver, ProviderDriverKind } from "@neokod/contracts";
 import { Boxes } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";

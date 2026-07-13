@@ -1,7 +1,7 @@
 import * as NodeAssert from "node:assert/strict";
 import type { ModelInfo } from "@github/copilot-sdk";
 import { it } from "@effect/vitest";
-import { CopilotSettings } from "@t3tools/contracts";
+import { CopilotSettings } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";

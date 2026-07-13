@@ -3,7 +3,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
+} from "@neokod/client-runtime/state/runtime";
 import {
   Plus,
   SquareSplitHorizontal,
@@ -16,8 +16,8 @@ import {
   type ResolvedKeybindingsConfig,
   type ScopedThreadRef,
   type ThreadId,
-} from "@t3tools/contracts";
-import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
+} from "@neokod/contracts";
+import { getTerminalLabel } from "@neokod/shared/terminalLabels";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import {
   type PointerEvent as ReactPointerEvent,

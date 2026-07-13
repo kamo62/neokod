@@ -5,7 +5,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import type { AppIconVariant } from "@t3tools/contracts";
+import type { AppIconVariant } from "@neokod/contracts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 
 export interface DesktopIconPaths {
@@ -50,7 +50,7 @@ export class DesktopAssets extends Context.Service<
       fileName: string,
     ) => Effect.Effect<Option.Option<string>, DesktopAssetProbeError>;
   }
->()("@t3tools/desktop/app/DesktopAssets") {}
+>()("@neokod/desktop/app/DesktopAssets") {}
 
 export const resolveIconVariantPaths = (
   assets: DesktopAssets["Service"],

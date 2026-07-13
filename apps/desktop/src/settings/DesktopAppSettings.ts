@@ -1,5 +1,5 @@
-import { DesktopUpdateChannelSchema, type DesktopUpdateChannel } from "@t3tools/contracts";
-import { fromLenientJson } from "@t3tools/shared/schemaJson";
+import { DesktopUpdateChannelSchema, type DesktopUpdateChannel } from "@neokod/contracts";
+import { fromLenientJson } from "@neokod/shared/schemaJson";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -116,7 +116,7 @@ export class DesktopAppSettings extends Context.Service<
     >;
     readonly applyWslWindowsFallbackInMemory: Effect.Effect<DesktopSettingsChange>;
   }
->()("@t3tools/desktop/settings/DesktopAppSettings") {}
+>()("@neokod/desktop/settings/DesktopAppSettings") {}
 
 export function resolveDefaultDesktopSettings(appVersion: string): DesktopSettings {
   return {

@@ -297,8 +297,8 @@ Before building any harness, the integration owner uses a clean disposable workt
 
 ```sh
 vp install --frozen-lockfile
-vp run --filter @t3tools/web test:browser:install
-vp run --filter @t3tools/web test:browser -- ComposerCommandMenu.browser.tsx
+vp run --filter @neokod/web test:browser:install
+vp run --filter @neokod/web test:browser -- ComposerCommandMenu.browser.tsx
 ```
 
 This clean frozen install and one real Chromium launch is a blocking compatibility gate. If it fails, stop and resolve the dependency/toolchain issue before M2.
@@ -398,7 +398,7 @@ Add `browser_test` to `.github/workflows/ci.yml`:
 - setup Vite+ with frozen install behavior
 - cache `~/.cache/ms-playwright` keyed by OS plus `pnpm-lock.yaml`
 - run Chromium-only install with `DEBIAN_FRONTEND=noninteractive`
-- run only `vp run --filter @t3tools/web test:browser`
+- run only `vp run --filter @neokod/web test:browser`
 - no `continue-on-error`, retries, or geometry exceptions
 
 OS packages installed by `--with-deps` are not assumed cached. Record cold install+launch time and steady browser-suite time from Ubuntu. Do not assert a sub-five-minute target until measurements prove it. Keep existing 10-minute unit `test` job unchanged.
@@ -456,7 +456,7 @@ OS packages installed by `--with-deps` are not assumed cached. Record cold insta
 - [ ] Real LegendList is not part of M1 or this release gate unless it first passes three stock Ubuntu runs independently.
 - [ ] Separate browser CI job is blocking, has 20-minute timeout and binary cache, and does not overload the existing unit job.
 - [ ] Every new blocking browser case set passes three consecutive local and three consecutive Ubuntu runs before merge.
-- [ ] `vp check`, `vp run typecheck`, `vp test`, `vp run --filter @t3tools/web test:browser`, and `vp run build` pass at final integration.
+- [ ] `vp check`, `vp run typecheck`, `vp test`, `vp run --filter @neokod/web test:browser`, and `vp run build` pass at final integration.
 
 | ID | Scenario | Setup | Expected | Type |
 |---|---|---|---|---|

@@ -1,7 +1,7 @@
 import {
   EnvironmentOwnedDataCleanup,
   PlatformConnectionSource,
-} from "@t3tools/client-runtime/platform";
+} from "@neokod/client-runtime/platform";
 import {
   ConnectionBlockedError,
   Connectivity,
@@ -12,10 +12,10 @@ import {
   Wakeups,
   WslConnectionRegistration,
   WslConnectionTarget,
-} from "@t3tools/client-runtime/connection";
-import { fetchRemoteEnvironmentDescriptor } from "@t3tools/client-runtime/environment";
-import { EnvironmentRpcRequestObserver, remoteHttpClientLayer } from "@t3tools/client-runtime/rpc";
-import { type DesktopEnvironmentBootstrap, PRIMARY_LOCAL_ENVIRONMENT_ID } from "@t3tools/contracts";
+} from "@neokod/client-runtime/connection";
+import { fetchRemoteEnvironmentDescriptor } from "@neokod/client-runtime/environment";
+import { EnvironmentRpcRequestObserver, remoteHttpClientLayer } from "@neokod/client-runtime/rpc";
+import { type DesktopEnvironmentBootstrap, PRIMARY_LOCAL_ENVIRONMENT_ID } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";

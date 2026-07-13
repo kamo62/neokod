@@ -1,7 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeOS from "node:os";
-import * as NetService from "@t3tools/shared/Net";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as NetService from "@neokod/shared/Net";
+import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import { assert, describe, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
@@ -66,8 +66,8 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
       Effect.sync(() => {
         assert.deepStrictEqual(getDevRunnerModeArgs("dev:desktop"), [
           "run",
-          "--filter=@t3tools/desktop",
-          "--filter=@t3tools/web",
+          "--filter=@neokod/desktop",
+          "--filter=@neokod/web",
           "dev",
         ]);
       }),
@@ -77,8 +77,8 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
       Effect.sync(() => {
         assert.deepStrictEqual(getDevRunnerModeArgs("dev"), [
           "run",
-          "--filter=@t3tools/contracts",
-          "--filter=@t3tools/web",
+          "--filter=@neokod/contracts",
+          "--filter=@neokod/web",
           "--filter=t3",
           "--parallel",
           "dev",

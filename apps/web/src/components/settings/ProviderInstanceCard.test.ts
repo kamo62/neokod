@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { CopilotManagedClientEvidenceSettings, ServerProviderModel } from "@t3tools/contracts";
+import type { CopilotManagedClientEvidenceSettings, ServerProviderModel } from "@neokod/contracts";
 
 import {
   deriveProviderModelsForDisplay,

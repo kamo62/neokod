@@ -1,6 +1,6 @@
 import { TriangleAlertIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import type { DesktopWslState } from "@t3tools/contracts";
+import type { DesktopWslState } from "@neokod/contracts";
 
 import { applyWslEnableSelection } from "./ConnectionsSettings.logic";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";

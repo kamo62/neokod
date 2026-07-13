@@ -3,7 +3,7 @@ import {
   type EnvironmentWslBearerInvalidReason,
   WslWebSocketTicketResult,
   type WslWebSocketTicketResult as WslWebSocketTicket,
-} from "@t3tools/contracts";
+} from "@neokod/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";

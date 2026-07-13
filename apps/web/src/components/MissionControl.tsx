@@ -1,9 +1,9 @@
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type { OrchestrationThreadActivity, ScopedThreadRef } from "@t3tools/contracts";
+import { scopeThreadRef } from "@neokod/client-runtime/environment";
+import type { OrchestrationThreadActivity, ScopedThreadRef } from "@neokod/contracts";
 import type {
   EnvironmentProject,
   EnvironmentThreadShell,
-} from "@t3tools/client-runtime/state/shell";
+} from "@neokod/client-runtime/state/shell";
 import { useNavigate } from "@tanstack/react-router";
 import { ActivityIcon, BotIcon, CircleIcon, GitBranchIcon } from "lucide-react";
 

@@ -17,8 +17,8 @@ import {
   pruneHiddenSubagentTaskIds,
   selectHiddenSubagentTaskIds,
 } from "../subagentUiStore";
-import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { ThreadId } from "@t3tools/contracts";
+import { scopeThreadRef, scopedThreadKey } from "@neokod/client-runtime/environment";
+import { ThreadId } from "@neokod/contracts";
 
 function makeCard(overrides: Partial<SubagentCard> & { taskId: string }): SubagentCard {
   return {

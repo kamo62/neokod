@@ -11,10 +11,10 @@ import {
   type SourceControlProviderAuth,
   type SourceControlRepositoryCloneUrls,
   type SourceControlRepositoryVisibility,
-} from "@t3tools/contracts";
+} from "@neokod/contracts";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
-import { sanitizeBranchFragment } from "@t3tools/shared/git";
-import { detectSourceControlProviderFromRemoteUrl } from "@t3tools/shared/sourceControl";
+import { sanitizeBranchFragment } from "@neokod/shared/git";
+import { detectSourceControlProviderFromRemoteUrl } from "@neokod/shared/sourceControl";
 
 import {
   BitbucketPullRequestListSchema,

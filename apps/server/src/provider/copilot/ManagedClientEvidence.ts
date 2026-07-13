@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeCrypto from "node:crypto";
 
-import type { OrchestrationEvent, ProviderRuntimeEvent } from "@t3tools/contracts";
+import type { OrchestrationEvent, ProviderRuntimeEvent } from "@neokod/contracts";
 
 export const MANAGED_CLIENT_EVIDENCE_SCHEMA_VERSION = "v0";
 export const MANAGED_CLIENT_EVIDENCE_CLIENT = "t3code";

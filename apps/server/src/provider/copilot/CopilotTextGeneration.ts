@@ -14,9 +14,9 @@
  * @module provider/copilot/CopilotTextGeneration
  */
 import type { CopilotClient, PermissionRequestResult } from "@github/copilot-sdk";
-import { TextGenerationError, type ModelSelection } from "@t3tools/contracts";
-import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@t3tools/shared/git";
-import { extractJsonObject } from "@t3tools/shared/schemaJson";
+import { TextGenerationError, type ModelSelection } from "@neokod/contracts";
+import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@neokod/shared/git";
+import { extractJsonObject } from "@neokod/shared/schemaJson";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 

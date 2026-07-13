@@ -1,6 +1,6 @@
 import Mime from "@effect/platform-node/Mime";
-import { EnvironmentHttpApi } from "@t3tools/contracts";
-import { decodeOtlpTraceRecords } from "@t3tools/shared/observability";
+import { EnvironmentHttpApi } from "@neokod/contracts";
+import { decodeOtlpTraceRecords } from "@neokod/shared/observability";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";

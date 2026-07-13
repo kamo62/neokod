@@ -1,4 +1,4 @@
-import type { OrchestrationShellSnapshot } from "@t3tools/contracts";
+import type { OrchestrationShellSnapshot } from "@neokod/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -47,7 +47,7 @@ export class ShellSnapshotLoader extends Context.Service<
       prepared: PreparedConnection,
     ) => Effect.Effect<Option.Option<OrchestrationShellSnapshot>>;
   }
->()("@t3tools/client-runtime/state/shellSnapshotHttp/ShellSnapshotLoader") {}
+>()("@neokod/client-runtime/state/shellSnapshotHttp/ShellSnapshotLoader") {}
 
 export const shellSnapshotLoaderLayer: Layer.Layer<
   ShellSnapshotLoader,

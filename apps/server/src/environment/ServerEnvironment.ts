@@ -1,5 +1,5 @@
-import { EnvironmentId, type ExecutionEnvironmentDescriptor } from "@t3tools/contracts";
-import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import { EnvironmentId, type ExecutionEnvironmentDescriptor } from "@neokod/contracts";
+import { HostProcessArchitecture, HostProcessPlatform } from "@neokod/shared/hostProcess";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";

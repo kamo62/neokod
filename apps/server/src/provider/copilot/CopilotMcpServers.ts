@@ -1,5 +1,5 @@
 import type { MCPServerConfig } from "@github/copilot-sdk";
-import type { CopilotMcpServers, CopilotSettings } from "@t3tools/contracts";
+import type { CopilotMcpServers, CopilotSettings } from "@neokod/contracts";
 
 // The settings schema mirrors the SDK union but its optional keys admit an
 // explicit `undefined` (Effect Schema optionals under

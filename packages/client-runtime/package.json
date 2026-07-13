@@ -1,5 +1,5 @@
 {
-  "name": "@t3tools/client-runtime",
+  "name": "@neokod/client-runtime",
   "private": true,
   "type": "module",
   "exports": {
@@ -121,8 +121,8 @@
     "test": "vp test run"
   },
   "dependencies": {
-    "@t3tools/contracts": "workspace:*",
-    "@t3tools/shared": "workspace:*",
+    "@neokod/contracts": "workspace:*",
+    "@neokod/shared": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

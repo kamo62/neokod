@@ -14,6 +14,7 @@ Release impact: Major because this removes product surfaces, remote connection t
 - Relocated the reusable server secret store and asset-token cryptography outside the deleted auth control plane.
 - Made the normal local shell, both toast providers, activity and slow-RPC coordinators, tracing, event routing, and provider-update notifications unconditional.
 - Restored the browser crypto service required to generate local project and thread command IDs after the remote client removal.
+- Renamed the surviving workspace packages into the `@neokod/*` namespace while retaining the public `t3` server package and CLI name.
 
 ## 1.1.0 - 2026-07-12 (Minor)
 

@@ -7,7 +7,7 @@
  *
  * @module provider/copilot/CopilotEnvironment
  */
-import type { CopilotSettings } from "@t3tools/contracts";
+import type { CopilotSettings } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 import * as Path from "effect/Path";
 

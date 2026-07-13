@@ -11,7 +11,7 @@ import {
   TrimmedNonEmptyString,
   type SourceControlRepositoryVisibility,
   type VcsError,
-} from "@t3tools/contracts";
+} from "@neokod/contracts";
 
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import {

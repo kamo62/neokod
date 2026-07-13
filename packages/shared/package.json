@@ -1,5 +1,5 @@
 {
-  "name": "@t3tools/shared",
+  "name": "@neokod/shared",
   "private": true,
   "type": "module",
   "exports": {
@@ -141,7 +141,7 @@
     "test": "vp test run"
   },
   "dependencies": {
-    "@t3tools/contracts": "workspace:*",
+    "@neokod/contracts": "workspace:*",
     "effect": "catalog:",
     "yaml": "catalog:"
   },

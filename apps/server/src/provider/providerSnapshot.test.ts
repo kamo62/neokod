@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
-import { ProviderDriverKind, type ModelCapabilities } from "@t3tools/contracts";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
-import { createModelCapabilities } from "@t3tools/shared/model";
+import { ProviderDriverKind, type ModelCapabilities } from "@neokod/contracts";
+import { HostProcessPlatform } from "@neokod/shared/hostProcess";
+import { createModelCapabilities } from "@neokod/shared/model";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";

@@ -6,8 +6,8 @@
  * panel, or picker of its own. Every indicator is backed by real state; there
  * are no dead placeholder slots.
  */
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type { EnvironmentId, ModelSelection, ThreadId } from "@t3tools/contracts";
+import { scopeThreadRef } from "@neokod/client-runtime/environment";
+import type { EnvironmentId, ModelSelection, ThreadId } from "@neokod/contracts";
 import { FileDiff, ShieldCheck, TerminalSquare } from "lucide-react";
 import { memo, useMemo } from "react";
 import { useComposerHandleContext } from "../../composerHandleContext";

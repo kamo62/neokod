@@ -11,7 +11,7 @@ import type {
   PreviewAnnotationRegionTarget,
   PreviewAnnotationStrokeTarget,
   PreviewAnnotationStyleChange,
-} from "@t3tools/contracts";
+} from "@neokod/contracts";
 
 import { previewAnnotationStyles } from "./AnnotationStyles.generated.ts";
 import {

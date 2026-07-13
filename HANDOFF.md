@@ -12,7 +12,7 @@ have no application auth/session control plane. Desktop-managed WSL remains the
 sole `0.0.0.0` exception and fails closed behind a desktop-generated HTTP bearer
 plus short-lived, single-use WebSocket tickets. The bearer is topology-only and
 never persisted. Agent-awareness notifications and both toast/coordinator mounts
-remain local and unconditional. Stage 6, the `@t3tools` to `@neokod` package
+remain local and unconditional. Stage 6, the `@neokod` to `@neokod` package
 rename, is deliberately not applied.
 
 ## What this fork is
@@ -406,7 +406,7 @@ Rename surface:
   interpolation as part of the rename.
 - Icons: `apps/web/public/*` favicons/apple-touch and
   `apps/desktop/resources/icon.*`.
-- Do NOT rename the internal package scope `@t3tools/*` (1000+ references, zero
+- Do NOT rename the internal package scope `@neokod/*` (1000+ references, zero
   user visibility, large rebase surface against upstream).
 
 ## Cross-repo dependency / risk
@@ -433,6 +433,6 @@ push to upstream. Upstream remote fetch works but push is disabled
 ## Verification commands
 
 - All packages: `vp check` and `vp run typecheck`.
-- Web only: `node_modules/.bin/vp run --filter @t3tools/web typecheck`; tests via `vp test run <path>` from `apps/web`.
+- Web only: `node_modules/.bin/vp run --filter @neokod/web typecheck`; tests via `vp test run <path>` from `apps/web`.
 - Server (package name `t3`): `node_modules/.bin/vp run --filter t3 typecheck`; Copilot suite `vp test run src/provider/copilot/` from `apps/server`.
-- Contracts: `@t3tools/contracts` typecheck + tests.
+- Contracts: `@neokod/contracts` typecheck + tests.

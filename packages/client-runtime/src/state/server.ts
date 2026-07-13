@@ -4,7 +4,7 @@ import {
   type ServerConfigStreamEvent,
   type ServerLifecycleWelcomePayload,
   WS_METHODS,
-} from "@t3tools/contracts";
+} from "@neokod/contracts";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";

@@ -1,4 +1,4 @@
-import type { OrchestrationThreadDetailSnapshot, ThreadId } from "@t3tools/contracts";
+import type { OrchestrationThreadDetailSnapshot, ThreadId } from "@neokod/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -64,7 +64,7 @@ export class ThreadSnapshotLoader extends Context.Service<
       threadId: ThreadId,
     ) => Effect.Effect<Option.Option<OrchestrationThreadDetailSnapshot>>;
   }
->()("@t3tools/client-runtime/state/threadSnapshotHttp/ThreadSnapshotLoader") {}
+>()("@neokod/client-runtime/state/threadSnapshotHttp/ThreadSnapshotLoader") {}
 
 export const threadSnapshotLoaderLayer: Layer.Layer<
   ThreadSnapshotLoader,

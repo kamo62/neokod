@@ -1,5 +1,5 @@
 import { expect, it } from "vite-plus/test";
-import type { CopilotCustomAgents } from "@t3tools/contracts/settings";
+import type { CopilotCustomAgents } from "@neokod/contracts/settings";
 import { buildAgentOptions } from "./CopilotThreadControls";
 
 it("buildAgentOptions prepends a Default option with empty value", () => {

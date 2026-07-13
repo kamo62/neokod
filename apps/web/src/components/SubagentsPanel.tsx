@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import type { OrchestrationThreadActivity, ScopedThreadRef } from "@t3tools/contracts";
-import { type TimestampFormat } from "@t3tools/contracts/settings";
+import type { OrchestrationThreadActivity, ScopedThreadRef } from "@neokod/contracts";
+import { type TimestampFormat } from "@neokod/contracts/settings";
 import { CheckIcon, LoaderIcon, TriangleAlertIcon, XIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Badge } from "./ui/badge";

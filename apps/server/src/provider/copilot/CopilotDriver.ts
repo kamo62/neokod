@@ -22,7 +22,7 @@
  * @module provider/Drivers/CopilotDriver
  */
 import { CopilotClient, RuntimeConnection } from "@github/copilot-sdk";
-import { CopilotSettings, ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
+import { CopilotSettings, ProviderDriverKind, type ServerProvider } from "@neokod/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";

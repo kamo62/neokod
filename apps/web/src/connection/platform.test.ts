@@ -1,4 +1,4 @@
-import { PRIMARY_LOCAL_ENVIRONMENT_ID } from "@t3tools/contracts";
+import { PRIMARY_LOCAL_ENVIRONMENT_ID } from "@neokod/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
 import {

@@ -1,4 +1,4 @@
-import { satisfiesSemverRange } from "@t3tools/shared/semver";
+import { satisfiesSemverRange } from "@neokod/shared/semver";
 
 const nodeEngineCheckMain = function nodeEngineCheckMain() {
   const range = process.argv[2] || "";

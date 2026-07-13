@@ -2,12 +2,12 @@ import type {
   ProjectScript,
   ProjectScriptIcon,
   ResolvedKeybindingsConfig,
-} from "@t3tools/contracts";
+} from "@neokod/contracts";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
   type AtomCommandResult,
-} from "@t3tools/client-runtime/state/runtime";
+} from "@neokod/client-runtime/state/runtime";
 import {
   BugIcon,
   ChevronDownIcon,

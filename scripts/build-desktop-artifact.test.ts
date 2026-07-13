@@ -30,7 +30,7 @@ import {
   STAGE_INSTALL_ARGS,
 } from "./build-desktop-artifact.ts";
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
-import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import { HostProcessArchitecture, HostProcessPlatform } from "@neokod/shared/hostProcess";
 
 function mockProcess(exitCode: number) {
   return ChildProcessSpawner.makeHandle({
@@ -140,8 +140,8 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       resolveDesktopRuntimeDependencies(
         {
           "@effect/platform-node": "catalog:",
-          "@t3tools/contracts": "workspace:*",
-          "@t3tools/shared": "workspace:*",
+          "@neokod/contracts": "workspace:*",
+          "@neokod/shared": "workspace:*",
           effect: "catalog:",
           electron: "41.5.0",
         },

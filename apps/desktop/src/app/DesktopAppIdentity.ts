@@ -6,7 +6,7 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 
-import { DEFAULT_APP_ICON_VARIANT, type AppIconVariant } from "@t3tools/contracts";
+import { DEFAULT_APP_ICON_VARIANT, type AppIconVariant } from "@neokod/contracts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as DesktopAssets from "./DesktopAssets.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
@@ -39,7 +39,7 @@ export class DesktopAppIdentity extends Context.Service<
     readonly configure: Effect.Effect<void>;
     readonly setIconVariant: (variant: AppIconVariant) => Effect.Effect<void>;
   }
->()("@t3tools/desktop/app/DesktopAppIdentity") {}
+>()("@neokod/desktop/app/DesktopAppIdentity") {}
 
 const normalizeCommitHash = (value: string): Option.Option<string> => {
   const trimmed = value.trim();

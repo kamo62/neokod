@@ -6,14 +6,14 @@ import {
   EnvironmentCacheStore,
   StoredConnectionCatalogDocument,
   normalizeConnectionCatalogDocument,
-} from "@t3tools/client-runtime/platform";
-import { ConnectionTransientError } from "@t3tools/client-runtime/connection";
+} from "@neokod/client-runtime/platform";
+import { ConnectionTransientError } from "@neokod/client-runtime/connection";
 import {
   EnvironmentId,
   OrchestrationShellSnapshot,
   OrchestrationThreadDetailSnapshot,
   ThreadId,
-} from "@t3tools/contracts";
+} from "@neokod/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

@@ -2,9 +2,9 @@ import {
   parseScopedThreadKey,
   scopeProjectRef,
   scopeThreadRef,
-} from "@t3tools/client-runtime/environment";
-import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { EnvironmentId, type ScopedThreadRef, ThreadId } from "@t3tools/contracts";
+} from "@neokod/client-runtime/environment";
+import { settlePromise, squashAtomCommandFailure } from "@neokod/client-runtime/state/runtime";
+import { EnvironmentId, type ScopedThreadRef, ThreadId } from "@neokod/contracts";
 import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/unstable/reactivity";

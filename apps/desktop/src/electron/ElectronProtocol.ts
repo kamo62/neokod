@@ -62,7 +62,7 @@ export class ElectronProtocol extends Context.Service<
       input: DesktopProtocolRegistrationInput,
     ) => Effect.Effect<void, ElectronProtocolRegistrationError, Scope.Scope>;
   }
->()("@t3tools/desktop/electron/ElectronProtocol") {}
+>()("@neokod/desktop/electron/ElectronProtocol") {}
 
 function normalizeWslConnectOrigins(origins: ReadonlyArray<string>): ReadonlyArray<string> {
   return origins.flatMap((value) => {

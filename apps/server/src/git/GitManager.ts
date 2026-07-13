@@ -28,28 +28,28 @@ import {
   type VcsStatusRemoteResult,
   VcsStatusResult,
   ModelSelection,
-} from "@t3tools/contracts";
+} from "@neokod/contracts";
 import {
   detectSourceControlProviderFromGitRemoteUrl,
   mergeGitStatusParts,
   resolveAutoFeatureBranchName,
   sanitizeBranchFragment,
   sanitizeFeatureBranchName,
-} from "@t3tools/shared/git";
+} from "@neokod/shared/git";
 import {
   getChangeRequestTerminologyForKind,
   type ChangeRequestTerminology,
-} from "@t3tools/shared/sourceControl";
+} from "@neokod/shared/sourceControl";
 
-import { GitManagerError, GitPullRequestMaterializationError } from "@t3tools/contracts";
+import { GitManagerError, GitPullRequestMaterializationError } from "@neokod/contracts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import { extractBranchNameFromRemoteRef } from "./remoteRefs.ts";
 import * as ServerSettings from "../serverSettings.ts";
-import type { GitManagerServiceError } from "@t3tools/contracts";
+import type { GitManagerServiceError } from "@neokod/contracts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
-import type { ChangeRequest } from "@t3tools/contracts";
+import type { ChangeRequest } from "@neokod/contracts";
 
 export interface GitActionProgressReporter {
   readonly publish: (event: GitActionProgressEvent) => Effect.Effect<void, never>;

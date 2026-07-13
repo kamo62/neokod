@@ -9,7 +9,7 @@ import {
   TurnId,
   type OrchestrationEvent,
   type ProviderRuntimeEvent,
-} from "@t3tools/contracts";
+} from "@neokod/contracts";
 
 import {
   evidenceFromOrchestrationEvent,

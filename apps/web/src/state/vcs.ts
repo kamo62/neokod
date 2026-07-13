@@ -1,7 +1,7 @@
 import {
   createVcsActionManager,
   createVcsEnvironmentAtoms,
-} from "@t3tools/client-runtime/state/vcs";
+} from "@neokod/client-runtime/state/vcs";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 

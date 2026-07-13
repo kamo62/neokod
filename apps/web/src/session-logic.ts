@@ -11,7 +11,7 @@ import {
   type UserInputQuestion,
   type ThreadId,
   type TurnId,
-} from "@t3tools/contracts";
+} from "@neokod/contracts";
 
 import type {
   ChatMessage,

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckIcon, Target, XIcon } from "lucide-react";
-import { type EnvironmentId, type ThreadId } from "@t3tools/contracts";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { type EnvironmentId, type ThreadId } from "@neokod/contracts";
+import { scopeThreadRef } from "@neokod/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
+} from "@neokod/client-runtime/state/runtime";
 import { useThreadShell } from "../../state/entities";
 import { selectRailPopoverOpenNonce, useWorkspaceRailUiStore } from "../../workspaceRailUiStore";
 import { threadEnvironment } from "../../state/threads";

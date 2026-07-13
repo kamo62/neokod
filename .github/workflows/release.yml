@@ -76,7 +76,7 @@ jobs:
           run-install: true
 
       - name: Ensure Electron runtime is installed
-        run: vp run --filter @t3tools/desktop ensure:electron
+        run: vp run --filter @neokod/desktop ensure:electron
 
       - id: release_meta
         name: Resolve release version

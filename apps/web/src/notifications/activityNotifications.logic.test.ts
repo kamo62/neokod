@@ -1,5 +1,5 @@
-import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
-import type { OrchestrationLatestTurn, OrchestrationSession, OrchestrationThreadShell, TerminalSummary } from "@t3tools/contracts";
+import { scopeThreadRef, scopedThreadKey } from "@neokod/client-runtime/environment";
+import type { OrchestrationLatestTurn, OrchestrationSession, OrchestrationThreadShell, TerminalSummary } from "@neokod/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {

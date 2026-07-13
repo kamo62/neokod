@@ -4,11 +4,11 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
-import { type CursorSettings, type ModelSelection } from "@t3tools/contracts";
-import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@t3tools/shared/git";
-import { extractJsonObject } from "@t3tools/shared/schemaJson";
+import { type CursorSettings, type ModelSelection } from "@neokod/contracts";
+import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@neokod/shared/git";
+import { extractJsonObject } from "@neokod/shared/schemaJson";
 
-import { TextGenerationError } from "@t3tools/contracts";
+import { TextGenerationError } from "@neokod/contracts";
 import * as TextGeneration from "./TextGeneration.ts";
 import {
   buildBranchNamePrompt,

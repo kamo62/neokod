@@ -3,7 +3,7 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Socket from "effect/unstable/socket/Socket";
 
-import { remoteHttpClientLayer } from "@t3tools/client-runtime/rpc";
+import { remoteHttpClientLayer } from "@neokod/client-runtime/rpc";
 import * as PrimaryEnvironmentHttpClient from "../environments/primary/httpClient";
 import { primaryEnvironmentHttpLayer } from "../environments/primary/httpLayer";
 

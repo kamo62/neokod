@@ -14,8 +14,8 @@ import {
   type ModelCapabilities,
   ProviderDriverKind,
   type ServerProviderModel,
-} from "@t3tools/contracts";
-import { createModelCapabilities } from "@t3tools/shared/model";
+} from "@neokod/contracts";
+import { createModelCapabilities } from "@neokod/shared/model";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";

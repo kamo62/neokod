@@ -1,4 +1,4 @@
-import type { ServerConfig } from "@t3tools/contracts";
+import type { ServerConfig } from "@neokod/contracts";
 
 import type { ConnectionCatalogEntry } from "./catalog.ts";
 import type { NetworkStatus, SupervisorConnectionState } from "./model.ts";

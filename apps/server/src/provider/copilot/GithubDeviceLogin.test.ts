@@ -1,7 +1,7 @@
 import * as NodeAssert from "node:assert/strict";
 import { afterEach, beforeEach, it, vi } from "vite-plus/test";
 
-import { ProviderDriverKind } from "@t3tools/contracts";
+import { ProviderDriverKind } from "@neokod/contracts";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

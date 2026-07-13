@@ -3,7 +3,7 @@ import type {
   DesktopAppStageLabel,
   DesktopRuntimeArch,
   DesktopRuntimeInfo,
-} from "@t3tools/contracts";
+} from "@neokod/contracts";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -73,7 +73,7 @@ export class DesktopEnvironment extends Context.Service<
     readonly resolveResourcePathCandidates: (fileName: string) => readonly string[];
     readonly developmentDockIconPath: string;
   }
->()("@t3tools/desktop/app/DesktopEnvironment") {}
+>()("@neokod/desktop/app/DesktopEnvironment") {}
 
 const APP_BASE_NAME = "Neokod";
 

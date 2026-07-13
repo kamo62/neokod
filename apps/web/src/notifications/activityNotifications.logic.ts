@@ -1,12 +1,12 @@
-import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { scopeThreadRef, scopedThreadKey } from "@neokod/client-runtime/environment";
 import type {
   EnvironmentId,
   OrchestrationLatestTurnState,
   OrchestrationProjectShell,
   OrchestrationThreadShell,
   TerminalSummary,
-} from "@t3tools/contracts";
-import { projectThreadAwareness } from "@t3tools/shared/agentAwareness";
+} from "@neokod/contracts";
+import { projectThreadAwareness } from "@neokod/shared/agentAwareness";
 
 const MAX_LRU_ENTRIES = 512;
 const TOMBSTONE_MS = 10 * 60 * 1_000;

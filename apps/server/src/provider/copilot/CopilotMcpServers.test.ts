@@ -2,7 +2,7 @@ import * as NodeAssert from "node:assert/strict";
 import { describe, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
-import { CopilotSettings } from "@t3tools/contracts";
+import { CopilotSettings } from "@neokod/contracts";
 
 import { resolveCopilotMcpServers } from "./CopilotMcpServers.ts";
 

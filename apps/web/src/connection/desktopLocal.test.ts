@@ -1,5 +1,5 @@
-import { PrimaryConnectionTarget, WslConnectionTarget } from "@t3tools/client-runtime/connection";
-import { EnvironmentId, PRIMARY_LOCAL_ENVIRONMENT_ID } from "@t3tools/contracts";
+import { PrimaryConnectionTarget, WslConnectionTarget } from "@neokod/client-runtime/connection";
+import { EnvironmentId, PRIMARY_LOCAL_ENVIRONMENT_ID } from "@neokod/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {

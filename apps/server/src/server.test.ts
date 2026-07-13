@@ -1,7 +1,7 @@
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeSocket from "@effect/platform-node/NodeSocket";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 
 import {
   CommandId,
@@ -26,7 +26,7 @@ import {
   WS_METHODS,
   WsRpcGroup,
   EditorId,
-} from "@t3tools/contracts";
+} from "@neokod/contracts";
 import { assert, it } from "@effect/vitest";
 import { assertFailure, assertTrue } from "@effect/vitest/utils";
 import * as Deferred from "effect/Deferred";

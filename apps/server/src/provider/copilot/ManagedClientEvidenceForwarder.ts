@@ -1,4 +1,4 @@
-import type { CopilotManagedClientEvidenceSettings } from "@t3tools/contracts";
+import type { CopilotManagedClientEvidenceSettings } from "@neokod/contracts";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";

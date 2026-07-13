@@ -21,7 +21,7 @@ plane. Desktop primary, standalone `t3 serve`, and Vite listen on `127.0.0.1`;
 their HTTP and WebSocket paths are direct. Desktop-managed WSL remains the sole
 internal wildcard-bind exception and uses a desktop-generated HTTP bearer plus
 short-lived, single-use WebSocket tickets. Local agent-awareness notifications
-and their unconditional root-shell mounts remain. The `@t3tools/*` namespace is
+and their unconditional root-shell mounts remain. The `@neokod/*` namespace is
 intentionally unchanged until Stage 6.
 
 - **Fork-owned** — new files/directories upstream doesn't know about. These

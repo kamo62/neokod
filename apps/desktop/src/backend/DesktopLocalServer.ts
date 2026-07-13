@@ -17,7 +17,7 @@ export class DesktopLocalServer extends Context.Service<
     readonly config: Effect.Effect<DesktopLocalServerConfig>;
     readonly configure: (port: number) => Effect.Effect<DesktopLocalServerConfig>;
   }
->()("@t3tools/desktop/backend/DesktopLocalServer") {}
+>()("@neokod/desktop/backend/DesktopLocalServer") {}
 
 const makeConfig = (port: number): DesktopLocalServerConfig => ({
   port,

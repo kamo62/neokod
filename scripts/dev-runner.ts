@@ -4,9 +4,9 @@ import * as NodeOS from "node:os";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as NetService from "@t3tools/shared/Net";
-import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
-import { resolveSpawnCommand } from "@t3tools/shared/shell";
+import * as NetService from "@neokod/shared/Net";
+import { HostProcessEnvironment } from "@neokod/shared/hostProcess";
+import { resolveSpawnCommand } from "@neokod/shared/shell";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Hash from "effect/Hash";
@@ -35,15 +35,15 @@ export const DEFAULT_T3_HOME = Effect.map(Effect.service(Path.Path), (path) =>
 const MODE_ARGS = {
   dev: [
     "run",
-    "--filter=@t3tools/contracts",
-    "--filter=@t3tools/web",
+    "--filter=@neokod/contracts",
+    "--filter=@neokod/web",
     "--filter=t3",
     "--parallel",
     "dev",
   ],
   "dev:server": ["run", "--filter=t3", "dev"],
-  "dev:web": ["run", "--filter=@t3tools/web", "dev"],
-  "dev:desktop": ["run", "--filter=@t3tools/desktop", "--filter=@t3tools/web", "dev"],
+  "dev:web": ["run", "--filter=@neokod/web", "dev"],
+  "dev:desktop": ["run", "--filter=@neokod/desktop", "--filter=@neokod/web", "dev"],
 } as const satisfies Record<string, ReadonlyArray<string>>;
 
 type DevMode = keyof typeof MODE_ARGS;

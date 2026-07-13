@@ -1,7 +1,7 @@
 import * as NodeAssert from "node:assert/strict";
 import { describe, it } from "vite-plus/test";
 
-import type { CopilotManagedClientEvidenceSettings } from "@t3tools/contracts";
+import type { CopilotManagedClientEvidenceSettings } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
