@@ -27,7 +27,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
 }: PanelLayoutControlsProps) {
   return (
     <div
-      className="flex h-full shrink-0 items-center gap-1 [-webkit-app-region:no-drag]"
+      className="flex h-full shrink-0 items-center gap-0.5 [-webkit-app-region:no-drag]"
       data-panel-layout-controls
     >
       <Tooltip>

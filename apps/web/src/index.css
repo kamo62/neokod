@@ -6,7 +6,7 @@
 
 :root {
   --app-scrollbar-width: 6px;
-  --workspace-topbar-height: 52px;
+  --workspace-topbar-height: var(--surface-header-height);
   --workspace-controls-top: 0px;
   --workspace-controls-left: calc(env(safe-area-inset-left) + 0.75rem);
   --workspace-controls-right: calc(env(safe-area-inset-right) + 0.75rem);
@@ -23,7 +23,7 @@
 }
 
 .wco {
-  --workspace-topbar-height: env(titlebar-area-height, 52px);
+  --workspace-topbar-height: env(titlebar-area-height, var(--surface-header-height));
   --workspace-controls-top: env(titlebar-area-y, 0px);
   --workspace-controls-left: calc(env(titlebar-area-x, 0px) + 0.75rem);
   --workspace-controls-right: calc(
@@ -132,6 +132,7 @@
   body {
     @apply text-foreground relative;
     background-color: var(--app-chrome-background);
+    font-size: var(--font-size-ui);
   }
 }
 
@@ -166,6 +167,7 @@
     align-items: center;
     background-color: var(--surface-panel);
     border-color: var(--surface-divider);
+    font-size: var(--font-size-ui);
   }
 
   .workspace-titlebar-controls {
@@ -188,6 +190,7 @@
     @apply flex h-[var(--surface-header-height)] min-h-[var(--surface-header-height)] shrink-0 items-center border-b;
     background-color: var(--surface-panel);
     border-color: var(--surface-divider);
+    font-size: var(--font-size-ui-sm);
   }
 
   .right-panel-tab-chip {

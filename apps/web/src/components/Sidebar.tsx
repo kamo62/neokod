@@ -737,7 +737,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <span className="flex min-w-0 flex-1 items-center gap-1 text-xs">
+                  <span className="flex min-w-0 flex-1 items-center gap-1 text-ui">
                     <span
                       className="min-w-0 flex-1 truncate"
                       data-testid={`thread-title-${thread.id}`}
@@ -745,7 +745,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
                       {thread.title}
                     </span>
                     {props.contextLabel ? (
-                      <span className="shrink-0 text-[10px] text-muted-foreground/60">
+                      <span className="shrink-0 text-meta text-[var(--text-tertiary)]">
                         {props.contextLabel}
                       </span>
                     ) : null}
@@ -1023,7 +1023,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
         <SidebarMenuSubItem className="w-full" data-thread-selection-safe>
           <div
             data-thread-selection-safe
-            className="flex h-6 w-full translate-x-0 items-center px-2 text-left text-[10px] text-muted-foreground/60"
+            className="flex h-6 w-full translate-x-0 items-center px-2 text-left text-meta text-text-tertiary"
           >
             <span>No threads yet</span>
           </div>
@@ -1070,7 +1070,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
             render={showMoreButtonRender}
             data-thread-selection-safe
             size="sm"
-            className="h-6 w-full translate-x-0 justify-start px-2 text-left text-[10px] text-muted-foreground/60 hover:bg-accent hover:text-muted-foreground/80"
+            className="h-6 w-full translate-x-0 justify-start px-2 text-left text-meta text-text-tertiary hover:bg-accent hover:text-foreground"
             onClick={() => {
               expandThreadListForProject(projectKey);
             }}
@@ -1088,7 +1088,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
             render={showLessButtonRender}
             data-thread-selection-safe
             size="sm"
-            className="h-6 w-full translate-x-0 justify-start px-2 text-left text-[10px] text-muted-foreground/60 hover:bg-accent hover:text-muted-foreground/80"
+            className="h-6 w-full translate-x-0 justify-start px-2 text-left text-meta text-text-tertiary hover:bg-accent hover:text-foreground"
             onClick={() => {
               collapseThreadListForProject(projectKey);
             }}
@@ -2342,7 +2342,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               {project.displayName}
             </span>
             {project.groupedProjectCount > 1 ? (
-              <span className="shrink-0 text-[10px] text-muted-foreground/60">
+              <span className="shrink-0 text-meta text-text-tertiary">
                 {project.groupedProjectCount} projects
               </span>
             ) : null}
@@ -2863,7 +2863,7 @@ function SidebarBrand() {
       <span className="truncate text-sm font-medium tracking-tight text-muted-foreground">
         Code
       </span>
-      <span className="sidebar-brand-stage shrink-0 items-center whitespace-nowrap rounded-full bg-muted/50 px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.18em] text-muted-foreground/60">
+      <span className="sidebar-brand-stage shrink-0 items-center whitespace-nowrap rounded-full bg-muted/50 px-1.5 py-0.5 text-meta font-medium uppercase tracking-[0.18em] text-text-tertiary">
         {stageLabel}
       </span>
     </Link>
@@ -2914,11 +2914,11 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
         <SidebarMenuItem>
           <SidebarMenuButton
             size="sm"
-            className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+            className="gap-2 px-2 py-1.5 text-ui text-text-secondary hover:bg-accent hover:text-foreground"
             onClick={handleSettingsClick}
           >
             <SettingsIcon className="size-3.5" />
-            <span className="text-xs">Settings</span>
+            <span className="text-ui">Settings</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
@@ -3048,13 +3048,13 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               render={
                 <SidebarMenuButton
                   size="sm"
-                  className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground focus-visible:ring-0"
+                  className="gap-2 px-2 py-1.5 text-ui text-text-secondary hover:bg-accent hover:text-foreground focus-visible:ring-0"
                   data-testid="command-palette-trigger"
                 />
               }
             >
               <SearchIcon className="size-3.5 text-muted-foreground/70" />
-              <span className="flex-1 truncate text-left text-xs">Search</span>
+              <span className="flex-1 truncate text-left text-ui">Search</span>
               {commandPaletteShortcutLabel ? (
                 <Kbd className="h-4 min-w-0 rounded-sm px-1.5 text-[10px]">
                   {commandPaletteShortcutLabel}
@@ -3090,7 +3090,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
       <LocalSecondaryStatus />
       <SidebarGroup className="px-2 py-2">
         <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
-          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+          <span className="text-ui font-medium text-[var(--text-secondary)]">
             Projects
           </span>
           <div className="flex items-center gap-1">
@@ -3111,7 +3111,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                     type="button"
                     aria-label="Add project"
                     data-testid="sidebar-add-project-trigger"
-                    className="inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-md px-[calc(--spacing(1)-1px)] text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+                    className="inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-md px-[calc(--spacing(1)-1px)] text-[var(--text-secondary)] transition-colors hover:bg-accent hover:text-foreground"
                     onClick={openAddProject}
                   />
                 }
@@ -3197,7 +3197,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
         )}
 
         {projectsLength === 0 && (
-          <div className="px-2 pt-4 text-center text-xs text-muted-foreground/60">
+          <div className="px-2 pt-4 text-center text-meta text-text-tertiary">
             No projects yet
           </div>
         )}
@@ -3327,36 +3327,36 @@ function SidebarThreadsContent({
               render={
                 <SidebarMenuButton
                   size="sm"
-                  className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+                  className="gap-2 px-2 py-1.5 text-ui text-text-secondary hover:bg-accent hover:text-foreground"
                 />
               }
             >
               <SearchIcon className="size-3.5" />
-              <span className="text-xs">Search</span>
+              <span className="text-ui">Search</span>
             </CommandDialogTrigger>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
               size="sm"
-              className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+              className="gap-2 px-2 py-1.5 text-ui text-text-secondary hover:bg-accent hover:text-foreground"
               onClick={() => void handleNewThread(scopeProjectRef(project.environmentId, project.id))}
             >
               <SquarePenIcon className="size-3.5" />
-              <span className="text-xs">New thread</span>
+              <span className="text-ui">New thread</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarGroup>
       {pinnedThreads.length > 0 ? (
         <SidebarGroup className="px-2 py-1">
-          <div className="px-2 text-[length:var(--font-size-meta)] font-medium uppercase tracking-wider text-[var(--text-tertiary)]">
+          <div className="px-2 text-ui font-medium text-[var(--text-secondary)]">
             Pinned
           </div>
           <SidebarProjectItem {...itemProps} flatThreads={pinnedThreads} />
         </SidebarGroup>
       ) : null}
       <SidebarGroup className="px-2 py-1">
-        <div className="px-2 text-[length:var(--font-size-meta)] font-medium uppercase tracking-wider text-[var(--text-tertiary)]">
+        <div className="px-2 text-ui font-medium text-[var(--text-secondary)]">
           Threads
         </div>
         <SidebarProjectItem {...itemProps} flatThreads={unpinnedThreads} />

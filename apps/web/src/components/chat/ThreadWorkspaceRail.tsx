@@ -122,7 +122,7 @@ export const ThreadWorkspaceRail = memo(function ThreadWorkspaceRail({
   );
 
   return (
-    <div className="flex shrink-0 items-center gap-1">
+    <div className="flex shrink-0 items-center gap-0.5 text-ui-sm">
       {view.modelLabel &&
         (composerHandle ? (
           <Tooltip>
@@ -140,7 +140,7 @@ export const ThreadWorkspaceRail = memo(function ThreadWorkspaceRail({
             <TooltipPopup side="top">Model: {view.modelLabel} — click to change</TooltipPopup>
           </Tooltip>
         ) : (
-          <span className="max-w-32 truncate text-xs text-muted-foreground">{view.modelLabel}</span>
+          <span className="max-w-32 truncate text-ui-sm text-muted-foreground">{view.modelLabel}</span>
         ))}
 
       {view.terminal && (
@@ -200,7 +200,7 @@ export const ThreadWorkspaceRail = memo(function ThreadWorkspaceRail({
         <Tooltip>
           <TooltipTrigger
             render={
-              <span className="inline-flex h-6 items-center rounded-md border border-input px-1.5 text-[10px] font-medium text-muted-foreground" />
+              <span className="inline-flex h-6 items-center rounded-md border border-input px-1.5 text-meta font-medium text-muted-foreground" />
             }
           >
             Fleet
@@ -214,7 +214,7 @@ export const ThreadWorkspaceRail = memo(function ThreadWorkspaceRail({
           <TooltipTrigger
             render={
               <span
-                className={`inline-flex h-6 items-center gap-1 rounded-md border px-1.5 text-[10px] font-medium ${
+                className={`inline-flex h-6 items-center gap-1 rounded-md border px-1.5 text-meta font-medium ${
                   view.governance.variant === "gateway"
                     ? "border-primary/40 text-primary"
                     : "border-input text-muted-foreground"

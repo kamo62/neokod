@@ -115,7 +115,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
 
   if (isLocked) {
     return (
-      <span className="inline-flex min-w-0 max-w-[48%] flex-1 items-center justify-start gap-1 rounded-md border border-transparent px-[calc(--spacing(2)-1px)] text-sm font-medium text-muted-foreground/70 md:hidden">
+      <span className="inline-flex min-w-0 max-w-[48%] flex-1 items-center justify-start gap-1 rounded-md border border-transparent px-[calc(--spacing(2)-1px)] text-ui font-medium text-muted-foreground md:hidden">
         {triggerContent}
       </span>
     );
@@ -239,7 +239,7 @@ export const BranchToolbar = memo(function BranchToolbar({
   if (!hasActiveThread || !activeProject) return null;
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-2.5 pb-3 pt-1 sm:px-3">
+    <div className="mx-auto flex w-full max-w-3xl items-center gap-1.5 px-2.5 pb-2.5 pt-1 sm:px-3">
       {isMobile ? (
         <MobileRunContextSelector
           envLocked={envLocked}

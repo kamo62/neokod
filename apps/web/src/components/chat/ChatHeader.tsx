@@ -79,14 +79,14 @@ export const ChatHeader = memo(function ChatHeader({
     primaryEnvironmentId,
   });
   return (
-    <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden sm:gap-3">
+    <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden sm:gap-2">
         <Tooltip>
           <TooltipTrigger
             render={
               <h2
                 aria-label={activeThreadTitle}
-                className="min-w-0 flex-1 truncate text-sm font-medium text-foreground"
+                className="min-w-0 flex-1 truncate text-ui font-medium text-foreground"
               >
                 {activeThreadTitle}
               </h2>
@@ -99,7 +99,7 @@ export const ChatHeader = memo(function ChatHeader({
       <div
         data-chat-header-actions
         className={cn(
-          "flex shrink-0 items-center justify-end gap-2 @3xl/header-actions:gap-3",
+          "flex shrink-0 items-center justify-end gap-1.5 @3xl/header-actions:gap-2",
           rightPanelOpen ? "pr-0" : "pr-16",
         )}
       >

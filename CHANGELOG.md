@@ -8,6 +8,7 @@ Release impact: Minor because the cumulative redesign will add backward-compatib
 - Added persisted Threads/Workspace sidebar selection and scoped local pinned-thread preferences.
 - Added the atom-backed flat Threads view with live-only Pinned rows, shared thread actions, and keyboard-visible ordering.
 - Restyled the persisted right-panel surfaces with one compact token-based tab, header, divider, and panel-toolbar chrome.
+- Applied the fixed shell typography and density scale to sidebar rows, workspace headers, status rails, and branch/panel controls.
 
 ## 2.0.0 - 2026-07-13 (Major)
 
