@@ -1,3 +1,10 @@
+## 3.0.3 - 2026-07-13 (Patch)
+
+Release impact: Patch because this restores reliable server regression coverage without changing public contracts.
+
+- Corrected renamed Bitbucket and GitHub pull-request fixtures so their derived repository identities match their configured remotes.
+- Ensured provider-instance settings watching subscribes before the hydration layer accepts updates, so a changed Codex binary path always triggers a fresh probe.
+
 ## 3.0.2 - 2026-07-13 (Patch)
 
 Release impact: Patch because this corrects Stage 4 desktop identity and CORS regression coverage without changing public contracts.
