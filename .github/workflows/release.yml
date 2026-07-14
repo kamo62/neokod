@@ -6,7 +6,7 @@ on:
       - "v*.*.*"
       - "!v*-nightly.*"
   schedule:
-    - cron: "0 */3 * * *"
+    - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
       channel:
@@ -162,6 +162,7 @@ jobs:
           name: wsl-node-pty-x64
           path: wsl-prebuild/pty.node
           if-no-files-found: error
+          retention-days: 3
 
   build:
     name: Build ${{ matrix.label }}
@@ -257,6 +258,7 @@ jobs:
           name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
           path: release-publish/*
           if-no-files-found: error
+          retention-days: 3
 
   release:
     name: Publish GitHub Release
