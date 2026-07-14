@@ -1,3 +1,9 @@
+## 3.0.8 - 2026-07-14 (Patch)
+
+Release impact: Patch because this changes only when the release pipeline runs, not the published application or its update contracts.
+
+- Changed nightly releases to build on every push to `main` (including merged pull requests) instead of a daily schedule, so a release reflects the current committed state. Stable releases still come from `vX.Y.Z` tag pushes.
+
 ## 3.0.7 - 2026-07-14 (Patch)
 
 Release impact: Patch because this changes only the release pipeline's internal artifact handling, not the published application or its update contracts.

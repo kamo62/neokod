@@ -16,8 +16,8 @@ versions become the latest GitHub Release; suffixed versions are prereleases.
 
 ## Nightly releases
 
-The scheduled job checks every three hours and skips when `HEAD` matches the latest nightly tag. A
-manual dispatch with `channel=nightly` uses the same path.
+Every push to `main`, including merged pull requests, builds a nightly prerelease. A manual dispatch
+with `channel=nightly` uses the same path.
 
 Nightly versions retain the upstream format:
 
