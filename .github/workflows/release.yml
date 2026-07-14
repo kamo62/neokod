@@ -6,7 +6,7 @@ on:
       - "v*.*.*"
       - "!v*-nightly.*"
   schedule:
-    - cron: "0 */3 * * *"
+    - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
       channel:
@@ -162,13 +162,48 @@ jobs:
           name: wsl-node-pty-x64
           path: wsl-prebuild/pty.node
           if-no-files-found: error
+          retention-days: 1
+
+  create_release:
+    name: Create draft release
+    needs: [preflight]
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Create draft release if absent
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+          REF: ${{ needs.preflight.outputs.ref }}
+          RELEASE_NAME: ${{ needs.preflight.outputs.release_name }}
+          IS_PRERELEASE: ${{ needs.preflight.outputs.is_prerelease }}
+          PREVIOUS_TAG: ${{ needs.preflight.outputs.previous_tag }}
+        run: |
+          # Never re-draft an existing release: flipping a published release
+          # back to draft would pull it (and its updater feed) out from under
+          # users if a later build then fails. Leave any existing release as-is
+          # and let the build jobs upload into it.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; leaving its published/draft state unchanged."
+            exit 0
+          fi
+          args=(--draft --generate-notes --target "$REF" --title "$RELEASE_NAME")
+          [[ "$IS_PRERELEASE" == "true" ]] && args+=(--prerelease)
+          [[ -n "$PREVIOUS_TAG" ]] && args+=(--notes-start-tag "$PREVIOUS_TAG")
+          gh release create "$TAG" "${args[@]}"
 
   build:
     name: Build ${{ matrix.label }}
-    needs: [preflight, build_wsl_node_pty]
-    if: ${{ !cancelled() && needs.preflight.result == 'success' }}
+    needs: [preflight, build_wsl_node_pty, create_release]
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.create_release.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -244,7 +279,13 @@ jobs:
           mkdir -p release-publish
           shopt -s nullglob
           for pattern in "release/*.dmg" "release/*.zip" "release/*.exe" "release/*.blockmap" "release/*.yml"; do
-            for file in $pattern; do cp "$file" release-publish/; done
+            for file in $pattern; do
+              # builder-debug.yml is emitted identically by every platform under
+              # --verbose and is not an updater manifest. Keep it out of the
+              # release so three jobs do not race to --clobber the same asset.
+              [[ "$(basename "$file")" == "builder-debug.yml" ]] && continue
+              cp "$file" release-publish/
+            done
           done
           if [[ "${{ matrix.platform }}" == "mac" && "${{ matrix.arch }}" != "arm64" ]]; then
             for manifest in release-publish/*-mac.yml; do
@@ -252,15 +293,23 @@ jobs:
             done
           fi
 
-      - uses: actions/upload-artifact@v7
-        with:
-          name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
-          path: release-publish/*
-          if-no-files-found: error
+      - name: Upload assets to draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+        run: |
+          shopt -s nullglob
+          assets=(release-publish/*)
+          if [[ ${#assets[@]} -eq 0 ]]; then
+            echo "No release assets found to upload." >&2
+            exit 1
+          fi
+          gh release upload "$TAG" "${assets[@]}" --clobber
 
   release:
-    name: Publish GitHub Release
-    needs: [preflight, build]
+    name: Finalize GitHub Release
+    needs: [preflight, create_release, build]
     if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build.result == 'success' }}
     runs-on: ubuntu-24.04
     permissions:
@@ -270,12 +319,6 @@ jobs:
         with:
           ref: ${{ needs.preflight.outputs.ref }}
 
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: desktop-*
-          merge-multiple: true
-          path: release-assets
-
       - uses: voidzero-dev/setup-vp@v1
         with:
           node-version-file: package.json
@@ -284,30 +327,59 @@ jobs:
 
       - name: Merge macOS updater manifests
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.preflight.outputs.tag }}
         run: |
+          mkdir -p release-assets
+          gh release download "$TAG" --dir release-assets --pattern '*.yml'
           shopt -s nullglob
-          for x64_manifest in release-assets/*-mac-x64.yml; do
+          # The updater feed must be complete before we flip the draft live.
+          # Assert on structure, not channel-specific names: stable emits
+          # latest-*.yml, nightly emits nightly-*.yml. Expect exactly one macOS
+          # x64 manifest and exactly one Windows manifest (the channel .yml with
+          # no platform suffix), so a gap fails loudly instead of publishing a
+          # broken auto-update feed.
+          mac_x64=(release-assets/*-mac-x64.yml)
+          if [[ ${#mac_x64[@]} -ne 1 ]]; then
+            echo "Expected exactly one macOS x64 updater manifest, found ${#mac_x64[@]}" >&2
+            exit 1
+          fi
+          win_manifests=()
+          for manifest in release-assets/*.yml; do
+            case "$(basename "$manifest")" in
+              *-mac.yml | *-mac-x64.yml) ;;
+              *) win_manifests+=("$manifest") ;;
+            esac
+          done
+          if [[ ${#win_manifests[@]} -ne 1 ]]; then
+            echo "Expected exactly one Windows updater manifest, found ${#win_manifests[@]}" >&2
+            exit 1
+          fi
+          merged=0
+          for x64_manifest in "${mac_x64[@]}"; do
             arm64_manifest="${x64_manifest%-x64.yml}.yml"
             if [[ -f "$arm64_manifest" ]]; then
               node scripts/merge-update-manifests.ts --platform mac "$arm64_manifest" "$x64_manifest"
-              rm "$x64_manifest"
+              gh release upload "$TAG" "$arm64_manifest" --clobber
+              gh release delete-asset "$TAG" "$(basename "$x64_manifest")" --yes
+              merged=$((merged + 1))
             fi
           done
+          if [[ "$merged" -ne 1 ]]; then
+            echo "Expected exactly one macOS manifest merge, got $merged" >&2
+            exit 1
+          fi
 
       - name: Publish release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.preflight.outputs.tag }}
-          target_commitish: ${{ needs.preflight.outputs.ref }}
-          name: ${{ needs.preflight.outputs.release_name }}
-          generate_release_notes: true
-          previous_tag: ${{ needs.preflight.outputs.previous_tag }}
-          prerelease: ${{ needs.preflight.outputs.is_prerelease }}
-          make_latest: ${{ needs.preflight.outputs.make_latest }}
-          files: |
-            release-assets/*.dmg
-            release-assets/*.zip
-            release-assets/*.exe
-            release-assets/*.blockmap
-            release-assets/*.yml
-          fail_on_unmatched_files: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+          MAKE_LATEST: ${{ needs.preflight.outputs.make_latest }}
+        run: |
+          if [[ "$MAKE_LATEST" == "true" ]]; then
+            gh release edit "$TAG" --draft=false --latest
+          else
+            gh release edit "$TAG" --draft=false --latest=false
+          fi

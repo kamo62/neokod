@@ -1,3 +1,9 @@
+## 3.0.7 - 2026-07-14 (Patch)
+
+Release impact: Patch because this changes only the release pipeline's internal artifact handling, not the published application or its update contracts.
+
+- Reworked the nightly and stable release workflow to publish desktop binaries straight to the GitHub Release instead of staging ~2 GB of GitHub Actions artifacts per run, which had exhausted the Actions storage quota. Builds now upload to a draft release, and a finalize step merges the macOS arm64 and x64 auto-updater manifests (for both the latest and nightly channels) before publishing. Slowed the nightly schedule to once daily and capped the remaining small cross-job prebuild artifact at one day.
+
 ## 3.0.6 - 2026-07-14 (Patch)
 
 Release impact: Patch because this adds test infrastructure without changing runtime contracts.
