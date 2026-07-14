@@ -58,7 +58,9 @@ function RpcSessionSurface({
 
   return (
     <section aria-label="RPC session">
-      <p role="status">{environmentLabel ? `${environmentLabel} connected` : "Connecting"}</p>
+      <p role="status" aria-label="connection status">
+        {environmentLabel ? `${environmentLabel} connected` : "Connecting"}
+      </p>
       <output aria-label="Terminal output">{terminalLines.join("\n")}</output>
     </section>
   );
@@ -92,7 +94,7 @@ describe("RpcSession browser harness", () => {
       <RpcSessionSurface onRuntimeDispose={(dispose) => (disposeRuntime = dispose)} />,
     );
 
-    const status = page.getByRole("status");
+    const status = page.getByRole("status", { name: "connection status" });
     await expect.element(status).toBeVisible();
     await expect.element(status).toHaveTextContent("Browser environment connected");
     await environmentServer.waitForSubscription(WS_METHODS.subscribeTerminalEvents);
