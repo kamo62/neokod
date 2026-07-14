@@ -1,3 +1,9 @@
+## 3.0.4 - 2026-07-14 (Patch)
+
+Release impact: Patch because this adds a deterministic asset-maintenance script without changing runtime contracts.
+
+- Added the scripted Neokod regeneration path for all development and nightly blueprint PNG and ICO assets.
+
 ## 3.0.3 - 2026-07-13 (Patch)
 
 Release impact: Patch because this restores reliable server regression coverage without changing public contracts.
