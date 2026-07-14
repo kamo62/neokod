@@ -458,6 +458,33 @@ describe("activity notifications occurrence reducer", () => {
     ).toEqual([]);
   });
 
+  it("baselines a tombstoned pending approval when it first reappears after reconnect", () => {
+    // Thread is known but NOT pending, then it disappears and is tombstoned. The tombstone
+    // therefore carries approvalPending: false, so the existing pending-state check cannot be
+    // what suppresses the reappearance below — only connection-generation baselining can.
+    let state = observe(createActivityObservationState(), input(ENV_A, 0)).state;
+    state = observe(state, input(ENV_A, 1, { threads: [] })).state;
+    // Reconnect baseline snapshot (new generation) that does not yet include the thread, so the
+    // environment's live generation advances before the thread reappears (baseline is now false).
+    state = observe(state, input(ENV_A, 2, { generation: 2, threads: [] })).state;
+    // First reappearance in the new generation is already pending. Without generation baselining
+    // this is a false -> true edge that would notify; the reconnect baseline must swallow it.
+    const reappearance = observe(
+      state,
+      input(ENV_A, 3, { generation: 2, threads: [thread({ hasPendingApprovals: true })] }),
+    );
+    expect(reappearance.occurrences).toEqual([]);
+    state = reappearance.state;
+    // A genuine later rising edge in the same generation still notifies (ordinal 1).
+    state = observe(state, input(ENV_A, 4, { generation: 2, threads: [thread()] })).state;
+    expect(
+      observe(
+        state,
+        input(ENV_A, 5, { generation: 2, threads: [thread({ hasPendingApprovals: true })] }),
+      ).occurrences,
+    ).toMatchObject([{ kind: "approval-needed", ordinal: 1 }]);
+  });
+
   it("A-U10 consumes disabled queued and in-flight occurrences before re-enable", () => {
     let state = observe(createActivityObservationState(), input(ENV_A, 0)).state;
     state = observe(

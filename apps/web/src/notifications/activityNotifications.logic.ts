@@ -70,6 +70,7 @@ interface ThreadObservation {
     readonly kind: "agent-completed" | "agent-failed";
     readonly turnId: string;
   } | null;
+  attentionBaselineGeneration: number | null;
   approvalPending: boolean;
   inputPending: boolean;
   approvalOrdinal: number;
@@ -152,8 +153,12 @@ export function reduceEnvironmentActivityObservation(
   for (const thread of input.threads) {
     const scope = scopedThreadKey(scopeThreadRef(input.environmentId, thread.id));
     seenScopes.add(scope);
+    const reappearedFromTombstone = next.tombstones.has(scope);
     const observation = observationFor(next, scope);
     next.tombstones.delete(scope);
+    const attentionBaseline =
+      baseline ||
+      (reappearedFromTombstone && observation.attentionBaselineGeneration !== input.generation);
 
     const retainedActiveTurnId = observation.activeTurnId;
     const retainedActiveTurnSeenLive = observation.activeTurnSeenLive;
@@ -214,12 +219,12 @@ export function reduceEnvironmentActivityObservation(
       );
     }
 
-    if (!baseline && !observation.approvalPending && thread.hasPendingApprovals) {
+    if (!attentionBaseline && !observation.approvalPending && thread.hasPendingApprovals) {
       occurrences.push(
         attentionOccurrence(thread, input, "approval-needed", ++observation.approvalOrdinal),
       );
     }
-    if (!baseline && !observation.inputPending && thread.hasPendingUserInput) {
+    if (!attentionBaseline && !observation.inputPending && thread.hasPendingUserInput) {
       occurrences.push(
         attentionOccurrence(thread, input, "input-needed", ++observation.inputOrdinal),
       );
@@ -244,6 +249,7 @@ export function reduceEnvironmentActivityObservation(
     observation.latestTurnCompleted = completedTurn;
     observation.rawFailure = rawFailure;
     observation.rawFailureTurnId = rawFailure ? failureTurnId : null;
+    observation.attentionBaselineGeneration = input.generation;
     observation.approvalPending = thread.hasPendingApprovals;
     observation.inputPending = thread.hasPendingUserInput;
     if (baseline) observation.pendingOutcome = null;
@@ -504,6 +510,7 @@ function observationFor(state: ReturnType<typeof cloneState>, scope: string): Th
     rawFailure: false,
     rawFailureTurnId: null,
     pendingOutcome: null,
+    attentionBaselineGeneration: null,
     approvalPending: false,
     inputPending: false,
     approvalOrdinal: 0,
