@@ -1,3 +1,9 @@
+## 3.0.6 - 2026-07-14 (Patch)
+
+Release impact: Patch because this adds test infrastructure without changing runtime contracts.
+
+- Added the M2 stage 2 codec-first MSW WebSocket browser harness: an in-browser mock that decodes/encodes every frame through the real WsRpcGroup RPC codec (unknown or malformed client traffic fails the test), a controllable in-memory environment server with fixtures, a leak-asserting reset/teardown (zero open WebSocket clients and zero RPC subscriptions), and a first real-runtime browser test that drives RpcSessionFactory end to end. Exposed the RPC session layer for the harness.
+
 ## 3.0.5 - 2026-07-14 (Patch)
 
 Release impact: Patch because this adds test-only coverage without changing runtime contracts.
