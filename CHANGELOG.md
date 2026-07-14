@@ -1,3 +1,9 @@
+## 3.0.5 - 2026-07-14 (Patch)
+
+Release impact: Patch because this adds test-only coverage without changing runtime contracts.
+
+- Added RPC/socket codec contract tests (M2 stage 1) pinning the WsRpcGroup wire protocol: per-direction request/response schemas, exact request envelopes with headers and trace fields, Ping/Pong liveness, forward-compatible handling of unknown envelopes, and malformed-frame rejection.
+
 ## 3.0.4 - 2026-07-14 (Patch)
 
 Release impact: Patch because this adds a deterministic asset-maintenance script without changing runtime contracts.
