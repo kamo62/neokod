@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - main
-    tags:
-      - "v*.*.*"
-      - "!v*-nightly.*"
   workflow_dispatch:
     inputs:
       channel:
@@ -25,6 +22,13 @@ on:
 permissions:
   contents: read
 
+# Serialize release runs per ref so two close pushes cannot race the same
+# version tag. Do not cancel a run mid-publish; queue instead. A queued run that
+# finds its version already released then skips via the gate.
+concurrency:
+  group: release-neokod-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   preflight:
     name: Preflight
@@ -38,23 +42,60 @@ jobs:
       previous_tag: ${{ steps.previous_tag.outputs.previous_tag }}
       is_prerelease: ${{ steps.release_meta.outputs.is_prerelease }}
       make_latest: ${{ steps.release_meta.outputs.make_latest }}
+      should_release: ${{ steps.gate.outputs.should_release }}
       ref: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
+      - id: gate
+        name: Decide whether to release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # Only an automatic push can be a no-op skip; dispatches always proceed.
+          # This runs before setup so an unchanged-version push does no expensive
+          # work (no dependency install, no Electron download, no build).
+          if [[ "$GITHUB_EVENT_NAME" != "push" ]]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          raw="$(grep -m1 -E '^## ' CHANGELOG.md | sed -E 's/^## +//; s/[[:space:]].*//' || true)"
+          [[ -n "$raw" ]] || { echo "Could not read a release version from CHANGELOG.md" >&2; exit 1; }
+          version="${raw#v}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || { echo "Invalid release version: $raw" >&2; exit 1; }
+          tag="v$version"
+          # Fail closed: only a definite 404 counts as "does not exist". Any other
+          # failure (auth, rate limit, network) stops the run rather than risk
+          # rebuilding over an existing release.
+          if gh api "repos/$GH_REPO/releases/tags/$tag" >/dev/null 2>gate_err; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "Release $tag already exists; skipping the build for this push."
+          elif grep -qiE 'HTTP 404|Not Found' gate_err; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Could not determine whether release $tag exists:" >&2
+            cat gate_err >&2
+            exit 1
+          fi
+
       - uses: voidzero-dev/setup-vp@v1
+        if: steps.gate.outputs.should_release == 'true'
         with:
           node-version-file: package.json
           cache: true
           run-install: true
 
       - name: Ensure Electron runtime is installed
+        if: steps.gate.outputs.should_release == 'true'
         run: vp run --filter @neokod/desktop ensure:electron
 
       - id: release_meta
         name: Resolve release version
+        if: steps.gate.outputs.should_release == 'true'
         shell: bash
         env:
           DISPATCH_CHANNEL: ${{ github.event.inputs.channel }}
@@ -63,7 +104,8 @@ jobs:
           NIGHTLY_SHA: ${{ github.sha }}
           NIGHTLY_RUN_NUMBER: ${{ github.run_number }}
         run: |
-          if [[ ( "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF_TYPE" == "branch" ) || ( "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "${DISPATCH_CHANNEL:-stable}" == "nightly" ) ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "${DISPATCH_CHANNEL:-stable}" == "nightly" ]]; then
+            # Nightly is on-demand only; there is no scheduled or per-commit nightly.
             nightly_date="$(date -u -d "$NIGHTLY_DATE" +%Y%m%d)"
             node scripts/resolve-nightly-release.ts \
               --date "$nightly_date" \
@@ -74,11 +116,14 @@ jobs:
             echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
             echo "make_latest=false" >> "$GITHUB_OUTPUT"
           else
-            if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            # Normal release. A manual dispatch may pin a version; otherwise the
+            # version is the top entry of CHANGELOG.md, so every push to main
+            # cuts a release for the current changelog version.
+            if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && -n "$DISPATCH_VERSION" ]]; then
               raw="$DISPATCH_VERSION"
-              [[ -n "$raw" ]] || { echo "Stable dispatch requires a version." >&2; exit 1; }
             else
-              raw="$GITHUB_REF_NAME"
+              raw="$(grep -m1 -E '^## ' CHANGELOG.md | sed -E 's/^## +//; s/[[:space:]].*//' || true)"
+              [[ -n "$raw" ]] || { echo "Could not read a release version from CHANGELOG.md" >&2; exit 1; }
             fi
             version="${raw#v}"
             [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || { echo "Invalid release version: $raw" >&2; exit 1; }
@@ -96,10 +141,14 @@ jobs:
           fi
 
       - run: vp check
+        if: steps.gate.outputs.should_release == 'true'
       - run: vp run typecheck
+        if: steps.gate.outputs.should_release == 'true'
       - run: vp run test
+        if: steps.gate.outputs.should_release == 'true'
 
       - id: previous_tag
+        if: steps.gate.outputs.should_release == 'true'
         run: |
           node scripts/resolve-previous-release-tag.ts \
             --channel "${{ steps.release_meta.outputs.release_channel }}" \
@@ -109,7 +158,7 @@ jobs:
   build_wsl_node_pty:
     name: Build WSL node-pty
     needs: [preflight]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' }}
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.preflight.outputs.should_release == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -142,7 +191,7 @@ jobs:
   create_release:
     name: Create draft release
     needs: [preflight]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' }}
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.preflight.outputs.should_release == 'true' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -174,7 +223,7 @@ jobs:
   build:
     name: Build ${{ matrix.label }}
     needs: [preflight, build_wsl_node_pty, create_release]
-    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.create_release.result == 'success' }}
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.create_release.result == 'success' && needs.preflight.outputs.should_release == 'true' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     permissions:
@@ -285,7 +334,7 @@ jobs:
   release:
     name: Finalize GitHub Release
     needs: [preflight, create_release, build]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build.result == 'success' }}
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build.result == 'success' && needs.preflight.outputs.should_release == 'true' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write

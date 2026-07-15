@@ -1,3 +1,9 @@
+## 3.0.9 - 2026-07-14 (Patch)
+
+Release impact: Patch because this changes only how the release pipeline is triggered and versioned, not the published application or its update contracts.
+
+- Made every push to `main` publish a normal release at the top `CHANGELOG.md` version, skipping when that version already has a release. Removed the per-commit nightly build and the version-tag trigger; nightly prereleases are now on-demand only via a manual dispatch with `channel=nightly`.
+
 ## 3.0.8 - 2026-07-14 (Patch)
 
 Release impact: Patch because this changes only when the release pipeline runs, not the published application or its update contracts.

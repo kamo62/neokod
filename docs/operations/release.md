@@ -9,15 +9,19 @@
 The workflow uses GitHub-hosted runners and has no hosted application-service or npm-publishing
 dependency.
 
-## Stable releases
+## Normal releases
 
-Push a `vX.Y.Z` tag or dispatch the workflow with `channel=stable` and a version. Plain `X.Y.Z`
-versions become the latest GitHub Release; suffixed versions are prereleases.
+Every push to `main`, including merged pull requests, builds a normal release. The version is the top
+entry of `CHANGELOG.md`, so bumping the changelog and merging cuts that release. A push whose version
+already has a release is skipped, so merges that do not change the version do not rebuild or
+republish. A manual dispatch with `channel=stable` and an explicit `version` pins a specific version
+and always publishes. Plain `X.Y.Z` versions become the latest GitHub Release; suffixed versions are
+prereleases.
 
 ## Nightly releases
 
-Every push to `main`, including merged pull requests, builds a nightly prerelease. A manual dispatch
-with `channel=nightly` uses the same path.
+Nightly prereleases are built on demand only: dispatch the workflow with `channel=nightly`. There is
+no scheduled or per-commit nightly build.
 
 Nightly versions retain the upstream format:
 
