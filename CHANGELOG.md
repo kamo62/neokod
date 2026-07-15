@@ -1,3 +1,11 @@
+## 3.0.10 - 2026-07-15 (Patch)
+
+Release impact: Patch because these are backward-compatible fixes ported from upstream T3 Code.
+
+- Switched missing project favicons to a client-side fallback: the server marks the missing-favicon asset with a dedicated filename instead of serving a placeholder SVG, and the client renders the folder icon when it sees that marker.
+- Fixed the truncated chat error alert layout.
+- Labeled the Max and Ultra reasoning efforts in the Codex provider.
+
 ## 3.0.9 - 2026-07-14 (Patch)
 
 Release impact: Patch because this changes only how the release pipeline is triggered and versioned, not the published application or its update contracts.
