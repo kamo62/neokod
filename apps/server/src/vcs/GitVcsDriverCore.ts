@@ -1538,6 +1538,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           }),
         );
         yield* runGit("GitVcsDriver.prepareCommitContext.addSelected", cwd, [
+          "--literal-pathspecs",
           "add",
           "-A",
           "--",
