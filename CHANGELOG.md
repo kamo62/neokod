@@ -1,3 +1,24 @@
+## 3.0.14 - 2026-07-18 (Patch)
+
+Release impact: Patch because providers now require explicit enablement before probing or configuration, without changing provider contracts.
+
+- Defaulted Codex, Claude, and Copilot provider drivers off alongside the existing opt-in providers.
+- Clarified disabled provider cards and restored the provider update-check preference with other settings defaults.
+
+## 3.0.13 - 2026-07-18 (Patch)
+
+Release impact: Patch because desktop updates now consistently use the supported stable feed without changing application APIs.
+
+- Removed the selectable nightly update track and migrates legacy persisted nightly settings to stable on load.
+- Forced updater checks to the latest stable feed with prerelease and downgrade installs disabled.
+- Added sanitized update-feed failures that identify the feed and HTTP status without exposing credentials.
+
+## 3.0.12 - 2026-07-18 (Patch)
+
+Release impact: Patch because this recovers safely from obsolete or unreadable local connection-catalog data without changing public contracts.
+
+- Fixed packaged desktop startup when a legacy encrypted connection catalog cannot be decrypted. Both the desktop catalog store and web storage layer now fail open to the canonical empty catalog, allowing the local primary environment and its providers to register.
+
 ## 3.0.11 - 2026-07-18 (Patch)
 
 Release impact: Patch because this fixes packaged desktop startup without changing any contracts.

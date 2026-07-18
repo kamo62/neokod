@@ -11,7 +11,6 @@ import * as DesktopAppSettings from "./DesktopAppSettings.ts";
 
 const DesktopSettingsPatch = Schema.Struct({
   updateChannel: Schema.optionalKey(Schema.Literals(["latest", "nightly"])),
-  updateChannelConfiguredByUser: Schema.optionalKey(Schema.Boolean),
   wslBackendEnabled: Schema.optionalKey(Schema.Boolean),
   wslMode: Schema.optionalKey(Schema.Literals(["local", "wsl"])),
   wslDistro: Schema.optionalKey(Schema.NullOr(Schema.String)),
@@ -81,12 +80,11 @@ describe("DesktopSettings", () => {
     ),
   );
 
-  it("defaults packaged nightly builds to the nightly update channel", () => {
+  it("keeps packaged nightly builds on the stable update channel", () => {
     assert.deepEqual(
       DesktopAppSettings.resolveDefaultDesktopSettings("0.0.17-nightly.20260415.1"),
       {
-        updateChannel: "nightly",
-        updateChannelConfiguredByUser: false,
+        updateChannel: "latest",
         wslBackendEnabled: false,
         wslOnly: false,
         wslDistro: null,
@@ -94,15 +92,13 @@ describe("DesktopSettings", () => {
     );
   });
 
-  it.effect("persists update and WSL settings", () =>
+  it.effect("persists WSL settings", () =>
     withSettings(
       Effect.gen(function* () {
         const settings = yield* DesktopAppSettings.DesktopAppSettings;
-        const channel = yield* settings.setUpdateChannel("nightly");
         const enabled = yield* settings.setWslBackendEnabled(true);
         const distro = yield* settings.setWslDistro("Ubuntu-22.04");
 
-        assert.isTrue(channel.changed);
         assert.isTrue(enabled.changed);
         assert.equal(distro.settings.wslDistro, "Ubuntu-22.04");
         assert.equal((yield* settings.load).wslBackendEnabled, true);
@@ -122,28 +118,12 @@ describe("DesktopSettings", () => {
           `{ "retiredNetworkMode": "public", "updateChannel": "nightly" }\n`,
         );
 
-        assert.equal((yield* settings.load).updateChannel, "nightly");
+        assert.equal((yield* settings.load).updateChannel, "latest");
         yield* settings.setWslBackendEnabled(true);
         assert.notInclude(
           yield* fileSystem.readFileString(environment.desktopSettingsPath),
           "retiredNetworkMode",
         );
-      }),
-    ),
-  );
-
-  it.effect("reports failed settings writes", () =>
-    withSettings(
-      Effect.gen(function* () {
-        const environment = yield* DesktopEnvironment.DesktopEnvironment;
-        const fileSystem = yield* FileSystem.FileSystem;
-        const settings = yield* DesktopAppSettings.DesktopAppSettings;
-        yield* fileSystem.makeDirectory(environment.desktopSettingsPath, { recursive: true });
-
-        const error = yield* settings.setUpdateChannel("nightly").pipe(Effect.flip);
-        assert.instanceOf(error, DesktopAppSettings.DesktopSettingsWriteError);
-        assert.equal(error.operation, "replace-settings-file");
-        assert.equal(error.path, environment.desktopSettingsPath);
       }),
     ),
   );
