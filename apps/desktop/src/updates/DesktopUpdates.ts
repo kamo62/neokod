@@ -152,7 +152,11 @@ function describeUpdateCheckFailure(
   config: Option.Option<AppUpdateYmlConfig>,
 ): string {
   const causeMessage = error.cause instanceof Error ? error.cause.message : "";
-  const status = causeMessage.match(/(?:HTTP\s*|status(?:\s+code)?\s*)([1-5]\d\d)/i)?.[1];
+  // electron-updater HttpError messages lead with the bare status ("404 Not
+  // Found..."); other transports spell out "HTTP <status>" or "status <code>".
+  const status =
+    causeMessage.match(/(?:HTTP\s*|status(?:\s+code)?\s*)([1-5]\d\d)/i)?.[1] ??
+    causeMessage.match(/^\s*([1-5]\d\d)\b/)?.[1];
   return `Update feed check failed for ${describeUpdateFeed(config)}${status ? ` (HTTP ${status})` : ""}.`;
 }
 

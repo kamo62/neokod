@@ -194,7 +194,8 @@ export const make = Effect.gen(function* () {
       const canEncrypt = yield* encryptionAvailable.pipe(
         Effect.catch((cause) =>
           logCatalogWarning("encryption availability probe failed; treating as unavailable", {
-            cause: String(cause),
+            error: cause.message,
+            cause: cause.cause instanceof Error ? cause.cause.message : String(cause.cause),
           }).pipe(Effect.as(false)),
         ),
       );

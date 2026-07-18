@@ -321,32 +321,15 @@ export const make = Effect.gen(function* () {
   return DesktopAppSettings.of({
     get: SynchronizedRef.get(settingsRef),
     load: Effect.gen(function* () {
-      const raw = yield* fileSystem
-        .readFileString(environment.desktopSettingsPath)
-        .pipe(Effect.option);
+      // Retired channel preferences (nightly) normalize to latest in memory on
+      // decode; the next natural settings write persists that, so no eager
+      // rewrite is needed here (an eager projection write would drop unknown
+      // forward-compatible fields from newer versions' documents).
       const settings = yield* readSettings(
         fileSystem,
         environment.desktopSettingsPath,
         environment.appVersion,
       );
-      // Rewrite retired channel preferences immediately so nightly cannot be
-      // reintroduced by a later settings write.
-      if (Option.isSome(raw) && /"updateChannel"\s*:\s*"nightly"/.test(raw.value)) {
-        const suffix = yield* crypto.randomUUIDv4.pipe(
-          Effect.map((uuid) => uuid.replace(/-/g, "")),
-          Effect.option,
-        );
-        if (Option.isSome(suffix)) {
-          yield* writeSettings({
-            fileSystem,
-            path,
-            settingsPath: environment.desktopSettingsPath,
-            settings,
-            defaultSettings: environment.defaultDesktopSettings,
-            suffix: suffix.value,
-          }).pipe(Effect.ignore);
-        }
-      }
       return yield* SynchronizedRef.setAndGet(settingsRef, settings);
     }).pipe(Effect.withSpan("desktop.settings.load")),
     setWslBackendEnabled: (enabled) =>

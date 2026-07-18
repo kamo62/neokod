@@ -38,13 +38,13 @@ describe("CopilotDriver", () => {
     );
   });
 
-  it("defaults to enabled, matching Claude — this fork's other out-of-the-box driver", () => {
-    NodeAssert.equal(CopilotDriver.defaultConfig().enabled, true);
-    NodeAssert.equal(ClaudeDriver.defaultConfig().enabled, true);
+  it("defaults to disabled until the user enables it, matching Claude", () => {
+    NodeAssert.equal(CopilotDriver.defaultConfig().enabled, false);
+    NodeAssert.equal(ClaudeDriver.defaultConfig().enabled, false);
   });
 
-  it("leaves Codex's existing default untouched", () => {
-    NodeAssert.equal(CodexDriver.defaultConfig().enabled, true);
+  it("ships Codex disabled by default", () => {
+    NodeAssert.equal(CodexDriver.defaultConfig().enabled, false);
   });
 
   it("ships Cursor/Grok/OpenCode disabled by default", () => {

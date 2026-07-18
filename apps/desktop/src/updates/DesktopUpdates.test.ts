@@ -321,7 +321,11 @@ describe("DesktopUpdates", () => {
   });
 
   it.effect("logs bounded updater failure context without exposing the cause", () => {
-    const cause = new Error("HTTP 404 for https://user:secret@example.com/update?token=secret");
+    // Mirrors electron-updater's HttpError message shape, which leads with the
+    // bare status rather than an "HTTP" prefix.
+    const cause = new Error(
+      '404 Not Found\n"method: GET url: https://user:secret@example.com/update?token=secret"',
+    );
     const updaterError = new ElectronUpdater.ElectronUpdaterCheckForUpdatesError({
       channel: null,
       cause,
