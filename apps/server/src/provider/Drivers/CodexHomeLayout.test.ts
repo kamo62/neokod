@@ -138,8 +138,8 @@ it.layer(NodeServices.layer)("CodexHomeLayout", (it) => {
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const sharedHome = yield* makeTempDir("t3code-codex-shared-");
-        const shadowRoot = yield* makeTempDir("t3code-codex-shadow-root-");
+        const sharedHome = yield* makeTempDir("neokod-codex-shared-");
+        const shadowRoot = yield* makeTempDir("neokod-codex-shadow-root-");
         const shadowHome = path.join(shadowRoot, "shadow");
         const sharedLocks = path.join(sharedHome, "mcp-oauth-locks");
         const shadowLocks = path.join(shadowHome, "mcp-oauth-locks");
