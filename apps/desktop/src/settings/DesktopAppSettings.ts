@@ -1,4 +1,4 @@
-import { DesktopUpdateChannelSchema, type DesktopUpdateChannel } from "@neokod/contracts";
+import type { DesktopUpdateChannel } from "@neokod/contracts";
 import { fromLenientJson } from "@neokod/shared/schemaJson";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -16,7 +16,6 @@ import { isValidDistroName } from "../wsl/wslPathParsing.ts";
 
 export interface DesktopSettings {
   readonly updateChannel: DesktopUpdateChannel;
-  readonly updateChannelConfiguredByUser: boolean;
   // Was a "local" | "wsl" swap mode in an earlier iteration of the WSL
   // integration. We now run Windows and WSL backends side by side, so the
   // setting is just whether the WSL backend should be running alongside the
@@ -41,15 +40,14 @@ export interface DesktopSettingsChange {
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   updateChannel: "latest",
-  updateChannelConfiguredByUser: false,
   wslBackendEnabled: false,
   wslDistro: null,
   wslOnly: false,
 };
 
 const DesktopSettingsDocument = Schema.Struct({
-  updateChannel: Schema.optionalKey(DesktopUpdateChannelSchema),
-  updateChannelConfiguredByUser: Schema.optionalKey(Schema.Boolean),
+  // Accept the retired value so loading an existing document can normalize it.
+  updateChannel: Schema.optionalKey(Schema.Literals(["latest", "nightly"])),
   // Newer form of the WSL toggle. `wslMode` is still accepted on load so
   // existing on-disk settings keep working; on the next persist we write the
   // new boolean and the legacy key drops out.
@@ -98,9 +96,6 @@ export class DesktopAppSettings extends Context.Service<
   {
     readonly load: Effect.Effect<DesktopSettings>;
     readonly get: Effect.Effect<DesktopSettings>;
-    readonly setUpdateChannel: (
-      channel: DesktopUpdateChannel,
-    ) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
     readonly setWslBackendEnabled: (
       enabled: boolean,
     ) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
@@ -134,11 +129,6 @@ function normalizeDesktopSettingsDocument(
   appVersion: string,
 ): DesktopSettings {
   const defaultSettings = resolveDefaultDesktopSettings(appVersion);
-  const parsedUpdateChannel = Option.fromNullishOr(parsed.updateChannel);
-  const isLegacySettings = parsed.updateChannelConfiguredByUser === undefined;
-  const updateChannelConfiguredByUser =
-    parsed.updateChannelConfiguredByUser === true ||
-    (isLegacySettings && Option.contains(parsedUpdateChannel, "nightly"));
 
   // Newer form wins when both are present; otherwise fall back to the legacy
   // `wslMode === "wsl"` signal so users coming off the swap-mode build keep
@@ -148,10 +138,7 @@ function normalizeDesktopSettingsDocument(
     (parsed.wslBackendEnabled === undefined && parsed.wslMode === "wsl");
 
   return {
-    updateChannel: updateChannelConfiguredByUser
-      ? Option.getOrElse(parsedUpdateChannel, () => defaultSettings.updateChannel)
-      : defaultSettings.updateChannel,
-    updateChannelConfiguredByUser,
+    updateChannel: defaultSettings.updateChannel,
     wslBackendEnabled,
     wslDistro: normalizeWslDistro(parsed.wslDistro),
     wslOnly: parsed.wslOnly === true,
@@ -164,12 +151,6 @@ function toDesktopSettingsDocument(
 ): DesktopSettingsDocument {
   const document: Mutable<DesktopSettingsDocument> = {};
 
-  if (settings.updateChannel !== defaults.updateChannel) {
-    document.updateChannel = settings.updateChannel;
-  }
-  if (settings.updateChannelConfiguredByUser !== defaults.updateChannelConfiguredByUser) {
-    document.updateChannelConfiguredByUser = settings.updateChannelConfiguredByUser;
-  }
   if (settings.wslBackendEnabled !== defaults.wslBackendEnabled) {
     document.wslBackendEnabled = settings.wslBackendEnabled;
   }
@@ -181,19 +162,6 @@ function toDesktopSettingsDocument(
   }
 
   return document;
-}
-
-function setUpdateChannel(
-  settings: DesktopSettings,
-  requestedChannel: DesktopUpdateChannel,
-): DesktopSettings {
-  return settings.updateChannel === requestedChannel
-    ? settings
-    : {
-        ...settings,
-        updateChannel: requestedChannel,
-        updateChannelConfiguredByUser: true,
-      };
 }
 
 function setWslBackendEnabled(settings: DesktopSettings, enabled: boolean): DesktopSettings {
@@ -353,17 +321,34 @@ export const make = Effect.gen(function* () {
   return DesktopAppSettings.of({
     get: SynchronizedRef.get(settingsRef),
     load: Effect.gen(function* () {
+      const raw = yield* fileSystem
+        .readFileString(environment.desktopSettingsPath)
+        .pipe(Effect.option);
       const settings = yield* readSettings(
         fileSystem,
         environment.desktopSettingsPath,
         environment.appVersion,
       );
+      // Rewrite retired channel preferences immediately so nightly cannot be
+      // reintroduced by a later settings write.
+      if (Option.isSome(raw) && /"updateChannel"\s*:\s*"nightly"/.test(raw.value)) {
+        const suffix = yield* crypto.randomUUIDv4.pipe(
+          Effect.map((uuid) => uuid.replace(/-/g, "")),
+          Effect.option,
+        );
+        if (Option.isSome(suffix)) {
+          yield* writeSettings({
+            fileSystem,
+            path,
+            settingsPath: environment.desktopSettingsPath,
+            settings,
+            defaultSettings: environment.defaultDesktopSettings,
+            suffix: suffix.value,
+          }).pipe(Effect.ignore);
+        }
+      }
       return yield* SynchronizedRef.setAndGet(settingsRef, settings);
     }).pipe(Effect.withSpan("desktop.settings.load")),
-    setUpdateChannel: (channel) =>
-      persist((settings) => setUpdateChannel(settings, channel)).pipe(
-        Effect.withSpan("desktop.settings.setUpdateChannel", { attributes: { channel } }),
-      ),
     setWslBackendEnabled: (enabled) =>
       persist((settings) => setWslBackendEnabled(settings, enabled)).pipe(
         Effect.withSpan("desktop.settings.setWslBackendEnabled", { attributes: { enabled } }),
@@ -409,7 +394,6 @@ export const layerTest = (initialSettings: DesktopSettings = DEFAULT_DESKTOP_SET
       return DesktopAppSettings.of({
         get: SynchronizedRef.get(settingsRef),
         load: SynchronizedRef.get(settingsRef),
-        setUpdateChannel: (channel) => update((settings) => setUpdateChannel(settings, channel)),
         setWslBackendEnabled: (enabled) =>
           update((settings) => setWslBackendEnabled(settings, enabled)),
         setWslDistro: (distro) => update((settings) => setWslDistro(settings, distro)),
