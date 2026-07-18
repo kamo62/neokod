@@ -4,6 +4,8 @@ Neokod is a local-first desktop app for coding with the AI agent CLIs you alread
 
 Neokod began as a fork of T3 Code and has been carved down to a local-first 2.0 release: no cloud service, no mobile app, no remote-access control plane. Your projects, threads, and history stay on your machine, and Neokod talks directly to the providers you choose.
 
+Neokod continues to track upstream T3 Code selectively: fixes and updates that apply to the local-first tree are backported as needed, with original authorship preserved. Upstream changes tied to the removed cloud, mobile, and relay layers are not ported.
+
 ## What it does
 
 - Drive coding agents from one desktop workspace: parallel threads, per-thread git worktrees, diffs, branches, commits, and PRs.
