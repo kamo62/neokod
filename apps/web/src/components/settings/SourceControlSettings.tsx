@@ -17,6 +17,10 @@ import { cn } from "../../lib/utils";
 import { usePrimaryEnvironment } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { sourceControlEnvironment } from "../../state/sourceControl";
+import {
+  resolveSourceControlAuthSummary,
+  resolveSourceControlDiscoveryView,
+} from "./SourceControlSettings.logic";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsibleContent } from "../ui/collapsible";
@@ -190,7 +194,14 @@ function itemSummary({
       return <span>Available. {item.installHint}</span>;
     }
 
-    if (auth.status === "unauthenticated") {
+    const summary = resolveSourceControlAuthSummary({
+      authStatus: auth.status,
+      authDetail: optionLabel(auth.detail),
+      label: item.label,
+      installHint: item.installHint,
+    });
+
+    if (summary.kind === "unauthenticated-guidance") {
       return (
         <span>
           {item.label} is not authenticated on this server. Sign in or configure credentials using
@@ -199,11 +210,8 @@ function itemSummary({
         </span>
       );
     }
-    return (
-      <span>
-        Could not verify {item.label}. {item.installHint}
-      </span>
-    );
+
+    return <span>{summary.text}</span>;
   }
 
   return <span>Available</span>;
@@ -395,6 +403,24 @@ function SourceControlSectionSkeleton({
   );
 }
 
+function WaitingForEnvironmentDiscovery() {
+  return (
+    <SettingsSection title="Server environment">
+      <Empty className="min-h-88">
+        <EmptyMedia variant="icon">
+          <GitPullRequestIcon />
+        </EmptyMedia>
+        <EmptyHeader>
+          <EmptyTitle>Waiting for an environment</EmptyTitle>
+          <EmptyDescription>
+            Connect an environment to scan its server for Git and hosting integrations.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    </SettingsSection>
+  );
+}
+
 function EmptySourceControlDiscovery({
   error,
   isPending,
@@ -452,7 +478,12 @@ export function SourceControlSettingsPanel() {
   const result = discovery.data ?? EMPTY_DISCOVERY_RESULT;
   const hasDiscoveryItems =
     result.versionControlSystems.length > 0 || result.sourceControlProviders.length > 0;
-  const isInitialScanPending = discovery.isPending && discovery.data === null;
+  const view = resolveSourceControlDiscoveryView({
+    hasEnvironment: environmentId !== null,
+    isPending: discovery.isPending,
+    hasData: discovery.data !== null,
+    hasDiscoveryItems,
+  });
   const handleScan = () => {
     discovery.refresh();
   };
@@ -478,12 +509,14 @@ export function SourceControlSettingsPanel() {
 
   return (
     <SettingsPageContainer>
-      {isInitialScanPending ? (
+      {view === "waiting-for-environment" ? (
+        <WaitingForEnvironmentDiscovery />
+      ) : view === "loading" ? (
         <>
           <SourceControlSectionSkeleton title="Version Control" headerAction={scanButton} />
           <SourceControlSectionSkeleton title="Source Control Providers" />
         </>
-      ) : hasDiscoveryItems ? (
+      ) : view === "results" ? (
         <>
           {result.versionControlSystems.length > 0 ? (
             <SettingsSection title="Version Control" headerAction={scanButton}>

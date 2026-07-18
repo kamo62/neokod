@@ -1,3 +1,10 @@
+## 3.0.16 - 2026-07-18 (Patch)
+
+Release impact: Patch because this refines source-control discovery presentation and probing without changing public contracts.
+
+- Split the Source Control settings empty state: a waiting-for-environment notice now appears when no environment is connected, and "Nothing detected yet" only when a scan genuinely returned zero items.
+- Extended Azure DevOps discovery to verify the azure-devops CLI extension; a missing extension reports an unverified state with the install command, and unrelated az failures no longer downgrade an authenticated user.
+
 ## 3.0.15 - 2026-07-18 (Patch)
 
 Release impact: Patch because this only changes user-visible branding text and badge visibility; no stored data or cross-version contracts are affected.
