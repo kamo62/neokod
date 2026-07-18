@@ -210,6 +210,7 @@ import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { ChatHeader } from "./chat/ChatHeader";
+import { ThreadRunBanner } from "./chat/ThreadRunBanner";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -1836,6 +1837,7 @@ function ChatViewContent(props: ChatViewProps) {
     () => deriveActivePlanState(threadActivities, activeLatestTurn?.turnId ?? undefined),
     [activeLatestTurn?.turnId, threadActivities],
   );
+  const hasPlanData = (activePlan?.steps.length ?? 0) > 0 || sidebarProposedPlan !== null;
   const planSidebarLabel = sidebarProposedPlan || interactionMode === "plan" ? "Plan" : "Tasks";
   const showPlanFollowUpPrompt =
     pendingUserInputs.length === 0 &&
@@ -5135,6 +5137,19 @@ function ChatViewContent(props: ChatViewProps) {
           />
         </header>
 
+        <ThreadRunBanner
+          thread={activeThread}
+          activePlan={activePlan}
+          activeWorkStartedAt={activeWorkStartedAt}
+          hasPendingApprovals={activePendingApproval !== null}
+          hasPendingUserInput={activePendingUserInput !== null}
+          isWorking={isWorking}
+          interruptAvailable={phase === "running" && activePendingUserInput === null}
+          hasPlanData={hasPlanData}
+          onOpenPlan={togglePlanSidebar}
+          onInterrupt={onInterrupt}
+        />
+
         {/* Error banner */}
         <ProviderStatusBanner status={activeProviderStatus} />
         <ThreadErrorBanner
@@ -5248,8 +5263,7 @@ function ChatViewContent(props: ChatViewProps) {
                       respondingRequestIds={respondingRequestIds}
                       showPlanFollowUpPrompt={showPlanFollowUpPrompt}
                       activeProposedPlan={activeProposedPlan}
-                      activePlan={activePlan as { turnId?: TurnId } | null}
-                      sidebarProposedPlan={sidebarProposedPlan as { turnId?: TurnId } | null}
+                      hasPlanData={hasPlanData}
                       planSidebarLabel={planSidebarLabel}
                       planSidebarOpen={planSidebarOpen}
                       runtimeMode={runtimeMode}
