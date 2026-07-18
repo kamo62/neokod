@@ -15,7 +15,7 @@ import type { ReactNode } from "react";
 
 import type { DraftId } from "../../composerDraftStore";
 import { getProviderModelCapabilities } from "../../providerModels";
-import { shouldRenderTraitsControls, TraitsMenuContent, TraitsPicker } from "./TraitsPicker";
+import { shouldRenderTraitsControls, TraitsPicker } from "./TraitsPicker";
 
 export type ComposerProviderStateInput = {
   provider: ProviderDriverKind;
@@ -80,10 +80,22 @@ export function getComposerProviderState(input: ComposerProviderStateInput): Com
   };
 }
 
-function renderTraitsControl(
-  Component: typeof TraitsMenuContent | typeof TraitsPicker,
-  input: TraitsRenderInput,
-): ReactNode {
+/**
+ * Whether the composer has a thread or draft target to persist
+ * provider-option changes to. Traits are only actionable (and thus only
+ * ever rendered) when there is somewhere to write selections to; callers
+ * that need to know whether traits are exposable without rendering them
+ * (e.g. the combined model+traits summary label) should use this same
+ * check so they never advertise a trait the popover can't expose.
+ */
+export function hasComposerTraitsTarget(input: {
+  threadRef?: ScopedThreadRef | undefined;
+  draftId?: DraftId | undefined;
+}): boolean {
+  return input.threadRef !== undefined || input.draftId !== undefined;
+}
+
+export function renderProviderTraitsPicker(input: TraitsRenderInput): ReactNode {
   const {
     provider,
     instanceId,
@@ -95,15 +107,14 @@ function renderTraitsControl(
     prompt,
     onPromptChange,
   } = input;
-  const hasTarget = threadRef !== undefined || draftId !== undefined;
   if (
-    !hasTarget ||
+    !hasComposerTraitsTarget({ threadRef, draftId }) ||
     !shouldRenderTraitsControls({ provider, models, model, modelOptions, prompt })
   ) {
     return null;
   }
   return (
-    <Component
+    <TraitsPicker
       provider={provider}
       {...(instanceId ? { instanceId } : {})}
       models={models}
@@ -115,12 +126,4 @@ function renderTraitsControl(
       onPromptChange={onPromptChange}
     />
   );
-}
-
-export function renderProviderTraitsMenuContent(input: TraitsRenderInput): ReactNode {
-  return renderTraitsControl(TraitsMenuContent, input);
-}
-
-export function renderProviderTraitsPicker(input: TraitsRenderInput): ReactNode {
-  return renderTraitsControl(TraitsPicker, input);
 }

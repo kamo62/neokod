@@ -190,22 +190,26 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
   );
 });
 
-export const BranchToolbar = memo(function BranchToolbar({
+export interface UseThreadEnvironmentContextInput {
+  environmentId: EnvironmentId;
+  threadId: ThreadId;
+  draftId?: DraftId;
+  envLocked: boolean;
+  effectiveEnvModeOverride?: EnvMode;
+}
+
+/**
+ * Resolves the current local/worktree mode and active project for a thread
+ * (server or draft), shared between `BranchToolbar` and `EnvironmentPanel`
+ * so both surfaces derive the same workspace-mode state.
+ */
+export function useThreadEnvironmentContext({
   environmentId,
   threadId,
   draftId,
-  onEnvModeChange,
-  effectiveEnvModeOverride,
-  activeThreadBranchOverride,
-  onActiveThreadBranchOverrideChange,
-  startFromOrigin,
-  onStartFromOriginChange,
   envLocked,
-  onCheckoutPullRequestRequest,
-  onComposerFocusRequest,
-  availableEnvironments,
-  onEnvironmentChange,
-}: BranchToolbarProps) {
+  effectiveEnvModeOverride,
+}: UseThreadEnvironmentContextInput) {
   const threadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
     [environmentId, threadId],
@@ -230,6 +234,43 @@ export const BranchToolbar = memo(function BranchToolbar({
       draftThreadEnvMode: draftThread?.envMode,
     });
   const envModeLocked = envLocked || (serverThread !== null && activeWorktreePath !== null);
+
+  return {
+    threadRef,
+    serverThread,
+    draftThread,
+    activeProject,
+    hasActiveThread,
+    activeWorktreePath,
+    effectiveEnvMode,
+    envModeLocked,
+  };
+}
+
+export const BranchToolbar = memo(function BranchToolbar({
+  environmentId,
+  threadId,
+  draftId,
+  onEnvModeChange,
+  effectiveEnvModeOverride,
+  activeThreadBranchOverride,
+  onActiveThreadBranchOverrideChange,
+  startFromOrigin,
+  onStartFromOriginChange,
+  envLocked,
+  onCheckoutPullRequestRequest,
+  onComposerFocusRequest,
+  availableEnvironments,
+  onEnvironmentChange,
+}: BranchToolbarProps) {
+  const { activeProject, hasActiveThread, activeWorktreePath, effectiveEnvMode, envModeLocked } =
+    useThreadEnvironmentContext({
+      environmentId,
+      threadId,
+      ...(draftId ? { draftId } : {}),
+      envLocked,
+      ...(effectiveEnvModeOverride ? { effectiveEnvModeOverride } : {}),
+    });
 
   const showEnvironmentPicker = Boolean(
     availableEnvironments && availableEnvironments.length > 1 && onEnvironmentChange,

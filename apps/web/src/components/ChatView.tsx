@@ -139,6 +139,7 @@ import { BranchToolbar } from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import PlanSidebar from "./PlanSidebar";
 import SubagentsPanel from "./SubagentsPanel";
+import EnvironmentPanel from "./EnvironmentPanel";
 import { MissionControlHost } from "./MissionControl";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import { ChevronDownIcon, TriangleAlertIcon, WifiOffIcon } from "lucide-react";
@@ -5046,6 +5047,16 @@ function ChatViewContent(props: ChatViewProps) {
         onDismiss={dismissSubagent}
         turnSettled={latestTurnSettled}
         mode="embedded"
+      />
+    ) : activeRightPanelSurface?.kind === "environment" ? (
+      <EnvironmentPanel
+        environmentId={activeThreadRef.environmentId}
+        threadId={activeThreadRef.threadId}
+        {...(draftId ? { draftId } : {})}
+        gitCwd={gitCwd}
+        envLocked={envLocked}
+        {...(canOverrideServerThreadEnvMode ? { effectiveEnvModeOverride: envMode } : {})}
+        isServerThread={isServerThread}
       />
     ) : activeRightPanelSurface?.kind === "files" || activeRightPanelSurface?.kind === "file" ? (
       activeProject && activeWorkspaceRoot ? (
