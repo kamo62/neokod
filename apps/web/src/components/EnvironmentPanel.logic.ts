@@ -62,6 +62,50 @@ export function resolveEnvironmentBaseBranchLabel(input: {
   return input.autoResolvedBaseRef;
 }
 
+export interface CompareWithBaseAvailability {
+  readonly disabled: boolean;
+  readonly disabledReason: string | null;
+  /**
+   * The exact base ref to write into the Diff panel's selection. Never
+   * `null` when `disabled` is `false` -- "automatic" resolution is resolved
+   * here, once, so the ref the panel opens the Diff surface with always
+   * matches the one it just displayed (a PR targeting "release" must not
+   * silently open a diff against an automatically-resolved "main").
+   */
+  readonly baseRef: string | null;
+}
+
+/**
+ * Gates the "Compare with base" action. Mirrors the same
+ * `isServerThread && isRepo` condition `RightPanelTabs`/`ChatView` already
+ * use to gate the Diff surface itself (drafts have no diff surface to open
+ * yet), plus a panel-specific check: never open a diff range against a base
+ * we couldn't actually resolve.
+ */
+export function resolveCompareWithBaseAvailability(input: {
+  isServerThread: boolean;
+  isRepo: boolean;
+  baseBranchLabel: string | null;
+}): CompareWithBaseAvailability {
+  if (!input.isServerThread || !input.isRepo) {
+    return {
+      disabled: true,
+      // Mirrors RightPanelTabs' SURFACE_DISABLED_REASONS.diff wording so the
+      // two surfaces never disagree about why Diff is unavailable.
+      disabledReason: "Diff is only available for server threads in Git repositories.",
+      baseRef: null,
+    };
+  }
+  if (!input.baseBranchLabel) {
+    return {
+      disabled: true,
+      disabledReason: "No base branch could be resolved to compare against.",
+      baseRef: null,
+    };
+  }
+  return { disabled: false, disabledReason: null, baseRef: input.baseBranchLabel };
+}
+
 export type EnvironmentActionId = "commit" | "commit_push" | "push" | "pr";
 export type EnvironmentActionKind = "open_commit_dialog" | "run_action" | "open_pr";
 

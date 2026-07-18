@@ -3,6 +3,7 @@ import { assert, describe, it } from "vite-plus/test";
 
 import { buildMenuItems } from "./GitActionsControl.logic";
 import {
+  resolveCompareWithBaseAvailability,
   resolveEnvironmentAheadBehind,
   resolveEnvironmentBaseBranchLabel,
   resolveEnvironmentChangeStats,
@@ -178,5 +179,94 @@ describe("resolveEnvironmentContextualActions", () => {
     assert.match(push?.disabledReason ?? "", /origin/);
     assert.equal(pr?.disabled, true);
     assert.match(pr?.disabledReason ?? "", /origin/);
+  });
+
+  function commitPushAction(gitStatus: VcsStatusResult, hasPrimaryRemote = true) {
+    const actions = resolveEnvironmentContextualActions({
+      gitStatus,
+      menuItems: buildMenuItems(gitStatus, false, hasPrimaryRemote),
+      isBusy: false,
+      hasPrimaryRemote,
+      terminology: DEFAULT_CHANGE_REQUEST_TERMINOLOGY,
+    });
+    return actions.find((action) => action.id === "commit_push");
+  }
+
+  it("disables commit & push when the branch is behind upstream", () => {
+    const commitPush = commitPushAction(status({ hasWorkingTreeChanges: true, behindCount: 1 }));
+    assert.equal(commitPush?.disabled, true);
+    assert.equal(
+      commitPush?.disabledReason,
+      "Branch is behind upstream. Pull/rebase before pushing.",
+    );
+  });
+
+  it("disables commit & push on a detached HEAD", () => {
+    const commitPush = commitPushAction(status({ hasWorkingTreeChanges: true, refName: null }));
+    assert.equal(commitPush?.disabled, true);
+    assert.equal(commitPush?.disabledReason, "Detached HEAD: checkout a refName before pushing.");
+  });
+
+  it("disables commit & push on a clean worktree", () => {
+    const commitPush = commitPushAction(status({ hasWorkingTreeChanges: false }));
+    assert.equal(commitPush?.disabled, true);
+    assert.equal(commitPush?.disabledReason, "Worktree is clean. Make changes before committing.");
+  });
+
+  it("enables commit & push without an upstream when a primary remote can create one", () => {
+    // First push of a new branch: no upstream yet, but a primary remote is
+    // configured, so commit_push can still create + push it in one step.
+    const commitPush = commitPushAction(
+      status({ hasWorkingTreeChanges: true, hasUpstream: false, hasPrimaryRemote: true }),
+      true,
+    );
+    assert.equal(commitPush?.disabled, false);
+    assert.equal(commitPush?.disabledReason, null);
+  });
+});
+
+describe("resolveCompareWithBaseAvailability", () => {
+  it("passes through the panel's displayed base ref when everything is resolvable", () => {
+    const availability = resolveCompareWithBaseAvailability({
+      isServerThread: true,
+      isRepo: true,
+      baseBranchLabel: "release",
+    });
+    assert.deepEqual(availability, { disabled: false, disabledReason: null, baseRef: "release" });
+  });
+
+  it("disables Compare for draft (non-server) threads", () => {
+    const availability = resolveCompareWithBaseAvailability({
+      isServerThread: false,
+      isRepo: true,
+      baseBranchLabel: "main",
+    });
+    assert.equal(availability.disabled, true);
+    assert.equal(availability.baseRef, null);
+    assert.match(availability.disabledReason ?? "", /server threads/);
+  });
+
+  it("disables Compare when the workspace isn't a Git repo", () => {
+    const availability = resolveCompareWithBaseAvailability({
+      isServerThread: true,
+      isRepo: false,
+      baseBranchLabel: null,
+    });
+    assert.equal(availability.disabled, true);
+    assert.equal(availability.baseRef, null);
+  });
+
+  it("disables Compare with a dedicated reason when no base can be resolved", () => {
+    const availability = resolveCompareWithBaseAvailability({
+      isServerThread: true,
+      isRepo: true,
+      baseBranchLabel: null,
+    });
+    assert.equal(availability.disabled, true);
+    assert.equal(availability.baseRef, null);
+    assert.equal(
+      availability.disabledReason,
+      "No base branch could be resolved to compare against.",
+    );
   });
 });

@@ -1027,7 +1027,7 @@ export default function GitActionsControl({
         </Group>
       )}
 
-      {isRepo && activeThreadRef ? (
+      {activeThreadRef ? (
         <Tooltip>
           <TooltipTrigger
             render={
@@ -1041,6 +1041,8 @@ export default function GitActionsControl({
           >
             <FolderGit2Icon aria-hidden="true" className="size-3.5" />
           </TooltipTrigger>
+          {/* Reachable even when this workspace isn't a Git repo yet -- the
+              panel itself surfaces the "Initialize Git" prompt in that state. */}
           <TooltipPopup side="top">Environment</TooltipPopup>
         </Tooltip>
       ) : null}

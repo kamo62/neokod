@@ -6,6 +6,7 @@ import {
 } from "@neokod/client-runtime/state/runtime";
 import type {
   GitActionProgressEvent,
+  GitActionProgressPhase,
   GitRunStackedActionResult,
   GitStackedAction,
   VcsStatusResult,
@@ -49,6 +50,17 @@ export interface UseGitActionsControllerInput {
   gitCwd: string | null;
   activeThreadRef: ScopedThreadRef | null;
   draftId?: DraftId;
+  /**
+   * Whether this instance owns the effects that should only ever run once
+   * per thread regardless of how many surfaces mount this hook: the
+   * focus/visibilitychange VCS-status refresh listeners, and the live
+   * thread-branch-sync effect (which persists a metadata write). Defaults
+   * to `true`. The always-mounted header `GitActionsControl` keeps the
+   * default; `EnvironmentPanel` (which mounts only while the panel is
+   * open, alongside the header) passes `false` so the two instances don't
+   * double up on global listeners or duplicate metadata writes.
+   */
+  ownsGlobalEffects?: boolean;
 }
 
 export interface PendingDefaultBranchAction {
@@ -82,6 +94,24 @@ interface ActiveGitActionProgress {
   hookName: string | null;
   lastOutputLine: string | null;
   currentPhaseLabel: string | null;
+  /** Set from the `action_failed` progress event's `phase`, when the server
+   * reports one. Lets the failure toast say which step landed vs. which
+   * failed (e.g. "commit succeeded; push failed") instead of a bare
+   * "Action failed". */
+  failedPhase: GitActionProgressPhase | null;
+}
+
+function describeGitActionPhase(phase: GitActionProgressPhase): string {
+  switch (phase) {
+    case "branch":
+      return "branch creation";
+    case "commit":
+      return "commit";
+    case "push":
+      return "push";
+    case "pr":
+      return "pull request creation";
+  }
 }
 
 const GIT_STATUS_WINDOW_REFRESH_DEBOUNCE_MS = 250;
@@ -136,6 +166,7 @@ export function useGitActionsController({
   gitCwd,
   activeThreadRef,
   draftId,
+  ownsGlobalEffects = true,
 }: UseGitActionsControllerInput) {
   const updateThreadMetadata = useAtomCommand(
     threadEnvironment.updateMetadata,
@@ -271,7 +302,10 @@ export function useGitActionsController({
     activeDraftThread.worktreePath === null;
 
   useEffect(() => {
-    if (isGitActionRunning || isSelectingWorktreeBase) {
+    // Only the owning instance persists live branch-sync metadata writes;
+    // a second mounted instance (e.g. the panel while the header is also
+    // mounted) would otherwise race the same write for no benefit.
+    if (!ownsGlobalEffects || isGitActionRunning || isSelectingWorktreeBase) {
       return;
     }
 
@@ -290,6 +324,7 @@ export function useGitActionsController({
     gitStatusForActions,
     isGitActionRunning,
     isSelectingWorktreeBase,
+    ownsGlobalEffects,
     persistThreadBranchSync,
   ]);
 
@@ -321,7 +356,10 @@ export function useGitActionsController({
   }, [updateActiveProgressToast]);
 
   useEffect(() => {
-    if (gitCwd === null) {
+    // Only the owning instance registers the window-level listeners; both
+    // the header and the panel querying the same status atom would
+    // otherwise each fire a refresh RPC per focus/visibility change.
+    if (!ownsGlobalEffects || gitCwd === null) {
       return;
     }
 
@@ -351,7 +389,7 @@ export function useGitActionsController({
       window.removeEventListener("focus", scheduleRefreshCurrentGitStatus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [activeEnvironmentId, gitCwd, refreshVcsStatus]);
+  }, [activeEnvironmentId, gitCwd, ownsGlobalEffects, refreshVcsStatus]);
 
   const openExistingPr = useCallback(async () => {
     const api = readLocalApi();
@@ -458,6 +496,7 @@ export function useGitActionsController({
         hookName: null,
         lastOutputLine: null,
         currentPhaseLabel: progressStages[0] ?? "Running git action...",
+        failedPhase: null,
       };
 
       const applyProgressEvent = (event: GitActionProgressEvent) => {
@@ -508,8 +547,11 @@ export function useGitActionsController({
             // elapsed description visible until the final success state renders.
             return;
           case "action_failed":
-            // Let the settled mutation publish the error toast to avoid a
-            // transient intermediate state before the final failure message.
+            // Record which phase failed so the settled mutation below can
+            // say "commit succeeded; push failed" instead of a bare
+            // "Action failed"; the toast itself is still published there to
+            // avoid a transient intermediate state before the final message.
+            progress.failedPhase = event.phase;
             return;
         }
 
@@ -525,6 +567,7 @@ export function useGitActionsController({
         onProgress: applyProgressEvent,
       });
 
+      const finishedProgress = activeGitActionProgressRef.current;
       activeGitActionProgressRef.current = null;
       if (result._tag === "Failure") {
         if (isAtomCommandInterrupted(result)) {
@@ -532,13 +575,30 @@ export function useGitActionsController({
           return;
         }
 
+        // A failed action can still have landed a partial result (e.g.
+        // commit_push commits locally, then fails to push). Refresh VCS
+        // status immediately so the header/panel reflect that instead of
+        // showing stale "clean" or "nothing to push" state.
+        requestVcsStatusRefresh(refreshVcsStatus, activeEnvironmentId, gitCwd);
+
         const error = squashAtomCommandFailure(result);
+        const errorMessage = error instanceof Error ? error.message : "An error occurred.";
+        const failedPhase = finishedProgress?.failedPhase ?? null;
+        // Only a reported phase strictly after "commit" implies the commit
+        // itself landed; "branch"/"commit"/unreported failures mean nothing
+        // was committed, so fall back to the generic message.
+        const commitLikelyLanded =
+          includesCommit && (action === "commit_push" || action === "commit_push_pr");
+        const description =
+          commitLikelyLanded && (failedPhase === "push" || failedPhase === "pr")
+            ? `Commit succeeded; ${describeGitActionPhase(failedPhase)} failed: ${errorMessage}`
+            : errorMessage;
         toastManager.update(
           resolvedProgressToastId,
           stackedThreadToast({
             type: "error",
             title: "Action failed",
-            description: error instanceof Error ? error.message : "An error occurred.",
+            description,
             ...(scopedToastData !== undefined ? { data: scopedToastData } : {}),
           }),
         );

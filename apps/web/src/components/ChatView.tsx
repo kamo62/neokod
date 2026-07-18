@@ -5054,6 +5054,7 @@ function ChatViewContent(props: ChatViewProps) {
         gitCwd={gitCwd}
         envLocked={envLocked}
         {...(canOverrideServerThreadEnvMode ? { effectiveEnvModeOverride: envMode } : {})}
+        isServerThread={isServerThread}
       />
     ) : activeRightPanelSurface?.kind === "files" || activeRightPanelSurface?.kind === "file" ? (
       activeProject && activeWorkspaceRoot ? (

@@ -35,6 +35,7 @@ import { GitCommitDialog } from "./gitActions/GitCommitDialog";
 import { GitDefaultBranchConfirmDialog } from "./gitActions/GitDefaultBranchConfirmDialog";
 import { useGitActionsController } from "./gitActions/useGitActionsController";
 import {
+  resolveCompareWithBaseAvailability,
   resolveEnvironmentAheadBehind,
   resolveEnvironmentBaseBranchLabel,
   resolveEnvironmentChangeStats,
@@ -49,6 +50,13 @@ export interface EnvironmentPanelProps {
   gitCwd: string | null;
   envLocked: boolean;
   effectiveEnvModeOverride?: EnvMode;
+  /**
+   * Whether this thread is a real server thread rather than a not-yet-sent
+   * draft. Mirrors `ChatView`'s own gate on the Diff surface -- drafts have
+   * no diff surface to open, so Compare-with-base must stay disabled there
+   * instead of landing on the Diff panel's "select a thread" empty state.
+   */
+  isServerThread: boolean;
 }
 
 function EnvironmentActionIcon({
@@ -80,6 +88,7 @@ export default function EnvironmentPanel({
   gitCwd,
   envLocked,
   effectiveEnvModeOverride,
+  isServerThread,
 }: EnvironmentPanelProps) {
   const activeThreadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
@@ -98,6 +107,10 @@ export default function EnvironmentPanel({
     gitCwd,
     activeThreadRef,
     ...(draftId ? { draftId } : {}),
+    // The header's GitActionsControl is always mounted while the panel is
+    // open and already owns the focus/visibility refresh listeners and the
+    // live branch-sync effect; a second copy here would double both.
+    ownsGlobalEffects: false,
   });
   const {
     gitStatus,
@@ -150,12 +163,25 @@ export default function EnvironmentPanel({
   const autoResolvedBaseRef =
     baseRefPreview.data?.sources.find((source) => source.kind === "branch-range")?.baseRef ?? null;
   const baseBranchLabel = resolveEnvironmentBaseBranchLabel({ gitStatus, autoResolvedBaseRef });
+  const compareWithBaseAvailability = useMemo(
+    () => resolveCompareWithBaseAvailability({ isServerThread, isRepo, baseBranchLabel }),
+    [isServerThread, isRepo, baseBranchLabel],
+  );
 
   const compareWithBase = useCallback(() => {
+    if (compareWithBaseAvailability.disabled || compareWithBaseAvailability.baseRef === null) {
+      return;
+    }
+    // Write the exact base ref this panel just displayed -- not "automatic"
+    // -- so the Diff panel can never resolve a different base than the one
+    // shown here (e.g. a PR targeting "release" while automatic resolution
+    // would otherwise pick "main").
     useDiffPanelStore.getState().selectGitScope(activeThreadRef, "branch");
-    useDiffPanelStore.getState().selectBranchBaseRef(activeThreadRef, null);
+    useDiffPanelStore
+      .getState()
+      .selectBranchBaseRef(activeThreadRef, compareWithBaseAvailability.baseRef);
     useRightPanelStore.getState().open(activeThreadRef, "diff");
-  }, [activeThreadRef]);
+  }, [activeThreadRef, compareWithBaseAvailability]);
 
   const runContextualAction = useCallback(
     (action: EnvironmentContextualAction) => {
@@ -311,15 +337,39 @@ export default function EnvironmentPanel({
             <Separator />
 
             <section>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-center"
-                onClick={compareWithBase}
-              >
-                <FileDiffIcon className="size-3.5" aria-hidden />
-                Compare with base
-              </Button>
+              {(() => {
+                const compareButton = (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={compareWithBaseAvailability.disabled}
+                    className={cn(
+                      "w-full justify-center",
+                      compareWithBaseAvailability.disabled && "pointer-events-none",
+                    )}
+                    onClick={compareWithBase}
+                  >
+                    <FileDiffIcon className="size-3.5" aria-hidden />
+                    Compare with base
+                  </Button>
+                );
+                if (
+                  !compareWithBaseAvailability.disabled ||
+                  !compareWithBaseAvailability.disabledReason
+                ) {
+                  return compareButton;
+                }
+                return (
+                  <Tooltip>
+                    <TooltipTrigger render={<span className="block w-full cursor-not-allowed" />}>
+                      {compareButton}
+                    </TooltipTrigger>
+                    <TooltipPopup side="top">
+                      {compareWithBaseAvailability.disabledReason}
+                    </TooltipPopup>
+                  </Tooltip>
+                );
+              })()}
             </section>
           </div>
         </ScrollArea>
