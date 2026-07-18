@@ -23,6 +23,7 @@ import {
 function makeUiState(overrides: Partial<UiState> = {}): UiState {
   return {
     sidebarView: "workspace",
+    sidebarViewMigratedToWorkspace: true,
     pinnedThreadKeys: [],
     projectExpandedById: {},
     projectOrder: [],
@@ -149,6 +150,20 @@ describe("uiStateStore pure functions", () => {
 });
 
 describe("parsePersistedState", () => {
+  it("migrates the former threads default to workspace exactly once", () => {
+    expect(parsePersistedState({ sidebarView: "threads" })).toMatchObject({
+      sidebarView: "workspace",
+      sidebarViewMigratedToWorkspace: true,
+    });
+    expect(
+      parsePersistedState({ sidebarView: "threads", sidebarViewMigratedToWorkspace: true }),
+    ).toMatchObject({ sidebarView: "threads", sidebarViewMigratedToWorkspace: true });
+    expect(parsePersistedState({})).toMatchObject({
+      sidebarView: "workspace",
+      sidebarViewMigratedToWorkspace: true,
+    });
+  });
+
   it("hydrates raw UI-owned state without server entities", () => {
     const parsed = parsePersistedState({
       projectExpandedById: {
@@ -170,6 +185,7 @@ describe("parsePersistedState", () => {
 
     expect(parsed).toEqual({
       sidebarView: "workspace",
+      sidebarViewMigratedToWorkspace: true,
       pinnedThreadKeys: [],
       projectExpandedById: {
         logical: false,
@@ -275,8 +291,12 @@ describe("uiStateStore persistence", () => {
     expect(readPersistedState().sidebarView).toBe("workspace");
     // write-forward populates the new key
     expect(localStorageStub.getItem(PERSISTED_STATE_KEY)).not.toBeNull();
-    // the new key wins over legacy
-    localStorageStub.setItem(PERSISTED_STATE_KEY, JSON.stringify({ sidebarView: "threads" }));
+    // the new key wins over legacy (marker present: an explicit post-migration
+    // threads choice must survive the parse)
+    localStorageStub.setItem(
+      PERSISTED_STATE_KEY,
+      JSON.stringify({ sidebarView: "threads", sidebarViewMigratedToWorkspace: true }),
+    );
     expect(readPersistedState().sidebarView).toBe("threads");
   });
 
@@ -304,6 +324,7 @@ describe("uiStateStore persistence", () => {
     ) as PersistedUiState;
     expect(persisted).toEqual({
       sidebarView: "workspace",
+      sidebarViewMigratedToWorkspace: true,
       pinnedThreadKeys: [],
       projectExpandedById: {
         logical: false,

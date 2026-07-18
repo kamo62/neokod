@@ -13,6 +13,7 @@ interface ThreadRunBannerProps {
   readonly hasPendingUserInput: boolean;
   readonly isWorking: boolean;
   readonly interruptAvailable: boolean;
+  readonly hasPlanData: boolean;
   readonly onOpenPlan: () => void;
   readonly onInterrupt: () => void;
 }
@@ -77,10 +78,12 @@ export function ThreadRunBanner(props: ThreadRunBannerProps) {
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <Button size="xs" variant="ghost" className="gap-1.5" onClick={props.onOpenPlan}>
-            <ListTodoIcon className="size-3.5" />
-            <span className="max-sm:sr-only">Open plan</span>
-          </Button>
+          {props.hasPlanData ? (
+            <Button size="xs" variant="ghost" className="gap-1.5" onClick={props.onOpenPlan}>
+              <ListTodoIcon className="size-3.5" />
+              <span className="max-sm:sr-only">Open plan</span>
+            </Button>
+          ) : null}
           {summary.interruptAvailable ? (
             <Button size="xs" variant="destructive" className="gap-1.5" onClick={props.onInterrupt}>
               <SquareIcon className="size-3" fill="currentColor" /> Stop

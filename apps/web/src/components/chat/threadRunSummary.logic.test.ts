@@ -76,4 +76,42 @@ describe("deriveThreadRunSummary", () => {
       compact: false,
     });
   });
+
+  it("derives stopped and failed terminal summaries", () => {
+    const live = input();
+    for (const [state, status] of [
+      ["interrupted", "stopped"],
+      ["error", "failed"],
+    ] as const) {
+      expect(
+        deriveThreadRunSummary({
+          ...live,
+          isWorking: false,
+          thread: {
+            ...live.thread,
+            latestTurn: {
+              ...live.thread.latestTurn!,
+              state,
+              completedAt: "2026-07-18T10:01:03.000Z",
+            },
+            session: { status: "idle" },
+          },
+        }),
+      ).toMatchObject({ status, compact: true });
+    }
+  });
+
+  it("formats elapsed hours and omits unavailable or negative durations", () => {
+    expect(
+      deriveThreadRunSummary(input({ nowMs: Date.parse("2026-07-18T12:30:03.000Z") }))?.elapsed,
+    ).toBe("2h 30m");
+    expect(
+      deriveThreadRunSummary(
+        input({ activeWorkStartedAt: null, thread: { ...input().thread, latestTurn: null } }),
+      ),
+    ).toBeNull();
+    expect(
+      deriveThreadRunSummary(input({ nowMs: Date.parse("2026-07-18T10:00:02.000Z") }))?.elapsed,
+    ).toBeNull();
+  });
 });

@@ -20,6 +20,7 @@ const LEGACY_PERSISTED_STATE_KEYS = [
 
 export interface PersistedUiState {
   sidebarView?: "threads" | "workspace";
+  sidebarViewMigratedToWorkspace?: boolean;
   pinnedThreadKeys?: string[];
   projectExpandedById?: Record<string, boolean>;
   projectOrder?: string[];
@@ -42,11 +43,13 @@ export interface UiThreadState {
 
 export interface UiState extends UiProjectState, UiThreadState {
   sidebarView: "threads" | "workspace";
+  sidebarViewMigratedToWorkspace: true;
   pinnedThreadKeys: string[];
 }
 
 const initialState: UiState = {
   sidebarView: "workspace",
+  sidebarViewMigratedToWorkspace: true,
   pinnedThreadKeys: [],
   projectExpandedById: {},
   projectOrder: [],
@@ -124,7 +127,14 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
       : sanitizeStringArray(parsed.projectOrder);
 
   return {
-    sidebarView: parsed.sidebarView === "threads" ? "threads" : "workspace",
+    // Earlier releases persisted the former default ("threads") for every
+    // user. Move that stale default once, while retaining choices made after
+    // this migration.
+    sidebarView:
+      parsed.sidebarViewMigratedToWorkspace === true && parsed.sidebarView === "threads"
+        ? "threads"
+        : "workspace",
+    sidebarViewMigratedToWorkspace: true,
     pinnedThreadKeys: sanitizeStringArray(parsed.pinnedThreadKeys).filter(
       (key) => parseScopedThreadKey(key) !== null,
     ),
@@ -215,6 +225,7 @@ export function persistState(state: UiState): void {
       PERSISTED_STATE_KEY,
       JSON.stringify({
         sidebarView: state.sidebarView,
+        sidebarViewMigratedToWorkspace: state.sidebarViewMigratedToWorkspace,
         pinnedThreadKeys: state.pinnedThreadKeys,
         projectExpandedById,
         projectOrder: state.projectOrder,

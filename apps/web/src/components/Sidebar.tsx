@@ -112,7 +112,8 @@ import { isModelPickerOpen } from "../modelPickerVisibility";
 import { useShortcutModifierState } from "../shortcutModifierState";
 import { readLocalApi } from "../localApi";
 import { useComposerDraftStore } from "../composerDraftStore";
-import { useNewThreadHandler } from "../hooks/useHandleNewThread";
+import { useHandleNewThread, useNewThreadHandler } from "../hooks/useHandleNewThread";
+import { startNewThreadFromContext } from "../lib/chatThreadActions";
 import { useDesktopUpdateState } from "../state/desktopUpdate";
 
 import { useThreadActions } from "../hooks/useThreadActions";
@@ -2921,13 +2922,11 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
 });
 
 function SidebarPrimaryNav({
-  project,
-  handleNewThread,
+  onStartNewThread,
   openAddProject,
   commandPaletteShortcutLabel,
 }: {
-  project: SidebarProjectSnapshot | null;
-  handleNewThread: ReturnType<typeof useNewThreadHandler>;
+  onStartNewThread: () => Promise<boolean>;
   openAddProject: () => void;
   commandPaletteShortcutLabel: string | null;
 }) {
@@ -2938,13 +2937,14 @@ function SidebarPrimaryNav({
     if (isMobile) setOpenMobile(false);
   }, [isMobile, setOpenMobile]);
   const startThread = useCallback(() => {
-    if (!project) {
-      openAddProject();
-      return;
-    }
-    void handleNewThread(scopeProjectRef(project.environmentId, project.id));
-    finishNavigation();
-  }, [finishNavigation, handleNewThread, openAddProject, project]);
+    void onStartNewThread().then((didStart) => {
+      if (didStart) {
+        finishNavigation();
+      } else {
+        openAddProject();
+      }
+    });
+  }, [finishNavigation, onStartNewThread, openAddProject]);
 
   return (
     <SidebarGroup className="px-2 pt-2 pb-1">
@@ -3396,7 +3396,8 @@ export default function Sidebar() {
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const sidebarThreadPreviewCount = useClientSettings((s) => s.sidebarThreadPreviewCount);
   const updateSettings = useUpdateClientSettings();
-  const handleNewThread = useNewThreadHandler();
+  const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
+    useHandleNewThread();
   const { archiveThread, deleteThread } = useThreadActions();
   const { isMobile, setOpenMobile } = useSidebar();
   const routeThreadRef = useParams({
@@ -3411,6 +3412,16 @@ export default function Sidebar() {
   );
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const openAddProjectCommandPalette = useOpenAddProjectCommandPalette();
+  const startNewThreadFromActiveContext = useCallback(
+    () =>
+      startNewThreadFromContext({
+        activeDraftThread,
+        activeThread: activeThread ?? undefined,
+        defaultProjectRef,
+        handleNewThread,
+      }),
+    [activeDraftThread, activeThread, defaultProjectRef, handleNewThread],
+  );
   const [expandedThreadListsByProject, setExpandedThreadListsByProject] = useState<
     ReadonlySet<string>
   >(() => new Set());
@@ -4021,8 +4032,7 @@ export default function Sidebar() {
         <>
           <SidebarViewTabs sidebarView={sidebarView} setSidebarView={setSidebarView} />
           <SidebarPrimaryNav
-            project={sidebarProjects[0] ?? null}
-            handleNewThread={handleNewThread}
+            onStartNewThread={startNewThreadFromActiveContext}
             openAddProject={openAddProjectCommandPalette}
             commandPaletteShortcutLabel={commandPaletteShortcutLabel}
           />

@@ -14,6 +14,7 @@ import { useProjects, useThreadShells } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
 import {
   formatMissionControlRelativeTime,
+  resolveMissionControlThreadStatusPill,
   selectMissionControlDashboardGroups,
 } from "./MissionControl.logic";
 
@@ -28,6 +29,7 @@ function HomeDashboardThreadRow({
   project: EnvironmentProject;
   onOpen: (thread: EnvironmentThreadShell) => void;
 }) {
+  const status = resolveMissionControlThreadStatusPill(thread);
   return (
     <button
       type="button"
@@ -39,9 +41,7 @@ function HomeDashboardThreadRow({
           <CircleIcon
             className={cn(
               "size-2 shrink-0 fill-current",
-              thread.latestTurn?.state === "running"
-                ? "text-emerald-500"
-                : "text-muted-foreground/50",
+              status ? status.colorClass : "text-muted-foreground/50",
             )}
           />
           <span className="truncate">{thread.title}</span>

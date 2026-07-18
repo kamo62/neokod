@@ -10,12 +10,17 @@ export function useThreadRunSummary(
 ): ThreadRunSummary | null {
   const [nowMs, setNowMs] = useState(Date.now);
   const summary = deriveThreadRunSummary({ ...input, nowMs });
+  const startedAt =
+    input.activeWorkStartedAt ??
+    input.thread.latestTurn?.startedAt ??
+    input.thread.latestTurn?.requestedAt;
 
   useEffect(() => {
+    setNowMs(Date.now());
     if (!input.isWorking) return;
-    const interval = window.setInterval(() => setNowMs(Date.now()), 1_000);
-    return () => window.clearInterval(interval);
-  }, [input.isWorking]);
+    const interval = setInterval(() => setNowMs(Date.now()), 1_000);
+    return () => clearInterval(interval);
+  }, [input.isWorking, input.thread, startedAt]);
 
   return summary;
 }

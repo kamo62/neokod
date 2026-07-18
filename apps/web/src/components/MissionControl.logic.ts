@@ -5,7 +5,7 @@ import type {
 import type { OrchestrationThreadActivity } from "@neokod/contracts";
 
 import { deriveSubagentCards } from "../session-logic";
-import { resolveThreadStatusPill } from "./Sidebar.logic";
+import { resolveThreadStatusPill, type ThreadStatusPill } from "./Sidebar.logic";
 
 export interface MissionControlRowView {
   readonly workerCount: number;
@@ -48,10 +48,17 @@ export function selectMissionControlThreads(
     .filter(
       (thread) =>
         thread.latestTurn !== null &&
+        thread.archivedAt === null &&
         projectKeys.has(`${thread.environmentId}:${thread.projectId}`),
     )
     .toSorted(compareMissionControlThreads)
     .slice(0, cap);
+}
+
+export function resolveMissionControlThreadStatusPill(
+  thread: EnvironmentThreadShell,
+): ThreadStatusPill | null {
+  return resolveThreadStatusPill({ thread });
 }
 
 export function groupMissionControlThreads(
@@ -93,7 +100,7 @@ export function selectMissionControlDashboardGroups(
   const recent: EnvironmentThreadShell[] = [];
 
   for (const thread of eligible) {
-    const status = resolveThreadStatusPill({ thread })?.label;
+    const status = resolveMissionControlThreadStatusPill(thread)?.label;
     if (status === "Working" || status === "Connecting") {
       running.push(thread);
     } else if (status === "Pending Approval" || status === "Awaiting Input") {
