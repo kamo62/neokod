@@ -21,9 +21,6 @@ const EncryptedConnectionCatalogDocument = Schema.Struct({
 });
 type EncryptedConnectionCatalogDocument = typeof EncryptedConnectionCatalogDocument.Type;
 
-const decodeEncryptedDocument = Schema.decodeUnknownEffect(
-  Schema.fromJsonString(EncryptedConnectionCatalogDocument),
-);
 const encodeEncryptedDocument = Schema.encodeEffect(
   Schema.fromJsonString(EncryptedConnectionCatalogDocument),
 );
@@ -90,32 +87,6 @@ export class DesktopConnectionCatalogStore extends Context.Service<
     readonly clear: Effect.Effect<void>;
   }
 >()("@neokod/desktop/app/DesktopConnectionCatalogStore") {}
-
-const readDocument = (
-  fileSystem: FileSystem.FileSystem,
-  catalogPath: string,
-): Effect.Effect<
-  Option.Option<EncryptedConnectionCatalogDocument>,
-  DesktopConnectionCatalogStoreReadError | DesktopConnectionCatalogStoreDocumentDecodeError
-> =>
-  fileSystem.readFileString(catalogPath).pipe(
-    Effect.catch((cause) =>
-      cause.reason._tag === "NotFound"
-        ? Effect.succeed<string | null>(null)
-        : Effect.fail(new DesktopConnectionCatalogStoreReadError({ catalogPath, cause })),
-    ),
-    Effect.flatMap((raw) =>
-      raw === null
-        ? Effect.succeed(Option.none())
-        : decodeEncryptedDocument(raw).pipe(
-            Effect.map(Option.some),
-            Effect.mapError(
-              (cause) =>
-                new DesktopConnectionCatalogStoreDocumentDecodeError({ catalogPath, cause }),
-            ),
-          ),
-    ),
-  );
 
 export const make = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
@@ -217,26 +188,10 @@ export const make = Effect.gen(function* () {
   return DesktopConnectionCatalogStore.of({
     get: Effect.gen(function* () {
       yield* purgeLegacyRegistry;
-      if (!(yield* encryptionAvailable)) return Option.none();
-      const document = yield* readDocument(fileSystem, catalogPath);
-      if (Option.isSome(document)) {
-        yield* Effect.gen(function* () {
-          const encrypted = yield* Effect.fromResult(
-            Encoding.decodeBase64(document.value.encryptedCatalog),
-          );
-          yield* safeStorage.decryptString(encrypted);
-        }).pipe(
-          Effect.mapError(
-            (cause) =>
-              new DesktopConnectionCatalogStoreProtectionError({
-                operation: "decrypt-catalog",
-                catalogPath,
-                cause,
-              }),
-          ),
-        );
+      const canEncrypt = yield* encryptionAvailable.pipe(Effect.orElseSucceed(() => false));
+      if (canEncrypt) {
+        yield* writeCatalog(canonicalEmptyCatalog);
       }
-      yield* writeCatalog(canonicalEmptyCatalog);
       return Option.some(canonicalEmptyCatalog);
     }).pipe(Effect.withSpan("desktop.connectionCatalogStore.get")),
     set: () =>

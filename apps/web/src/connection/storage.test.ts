@@ -35,18 +35,37 @@ describe("makeCatalogStore", () => {
     }),
   );
 
-  it.effect("does not hide catalog read failures", () =>
+  it.effect("recovers IPC catalog read failures with an empty document", () =>
+    Effect.gen(function* () {
+      const getConnectionCatalog = vi.fn().mockRejectedValue(new Error("permission denied"));
+      const setConnectionCatalog = vi.fn().mockResolvedValue(true);
+      vi.stubGlobal("window", {
+        desktopBridge: {
+          getConnectionCatalog,
+          setConnectionCatalog,
+        },
+      });
+      const store = yield* makeCatalogStore(makeCatalogBackend({} as IDBDatabase));
+
+      expect(yield* store.read).toEqual(emptyCatalog);
+      expect(getConnectionCatalog).toHaveBeenCalledOnce();
+      expect(setConnectionCatalog).toHaveBeenCalledOnce();
+      expect(decodeCatalog(setConnectionCatalog.mock.calls[0]![0])).toEqual(emptyCatalog);
+    }),
+  );
+
+  it.effect("recovers catalog persistence failures with an empty document", () =>
     Effect.gen(function* () {
       const failure = new ConnectionTransientError({
         reason: "remote-unavailable",
         detail: "permission denied",
       });
       const store = yield* makeCatalogStore({
-        read: Effect.fail(failure),
-        write: () => Effect.void,
+        read: Effect.succeed(null),
+        write: () => Effect.fail(failure),
       });
 
-      expect(yield* Effect.flip(store.read)).toBe(failure);
+      expect(yield* store.read).toEqual(emptyCatalog);
     }),
   );
 });

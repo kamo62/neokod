@@ -1,3 +1,9 @@
+## 3.0.12 - 2026-07-18 (Patch)
+
+Release impact: Patch because this recovers safely from obsolete or unreadable local connection-catalog data without changing public contracts.
+
+- Fixed packaged desktop startup when a legacy encrypted connection catalog cannot be decrypted. Both the desktop catalog store and web storage layer now fail open to the canonical empty catalog, allowing the local primary environment and its providers to register.
+
 ## 3.0.11 - 2026-07-18 (Patch)
 
 Release impact: Patch because this fixes packaged desktop startup without changing any contracts.
