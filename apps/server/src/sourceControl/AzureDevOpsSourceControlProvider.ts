@@ -1,6 +1,11 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { SourceControlProviderError, type ChangeRequest } from "@neokod/contracts";
+import * as Option from "effect/Option";
+import {
+  SourceControlProviderError,
+  type ChangeRequest,
+  type SourceControlProviderAuth,
+} from "@neokod/contracts";
 
 import * as AzureDevOpsCli from "./AzureDevOpsCli.ts";
 import * as SourceControlProvider from "./SourceControlProvider.ts";
@@ -11,6 +16,11 @@ import {
   type SourceControlAuthProbeInput,
   type SourceControlCliDiscoverySpec,
 } from "./SourceControlProviderDiscovery.ts";
+import type * as VcsProcess from "../vcs/VcsProcess.ts";
+
+const AZURE_DEVOPS_EXTENSION_ARGS = ["extension", "show", "--name", "azure-devops"];
+const AZURE_DEVOPS_EXTENSION_INSTALL_HINT =
+  "Install the Azure DevOps CLI extension: az extension add --name azure-devops";
 
 function parseAzureAuth(input: SourceControlAuthProbeInput) {
   const account = input.stdout.trim().split(/\r?\n/)[0]?.trim();
@@ -38,6 +48,63 @@ function parseAzureAuth(input: SourceControlAuthProbeInput) {
   });
 }
 
+// Matches the az CLI's own wording when an extension is not installed, e.g.
+// `The extension azure-devops is not installed.` Requiring both the extension name and
+// a "not installed"/"not found" phrase keeps this from misfiring on unrelated az failures
+// (corrupt config, tenant errors, transient network issues) that also exit non-zero.
+function isAzureDevOpsExtensionNotInstalledMessage(output: string): boolean {
+  const normalized = output.toLowerCase();
+  return (
+    normalized.includes("azure-devops") &&
+    (normalized.includes("not installed") || normalized.includes("not found"))
+  );
+}
+
+function refineAzureAuth(input: {
+  readonly auth: SourceControlProviderAuth;
+  readonly process: VcsProcess.VcsProcess["Service"];
+  readonly cwd: string;
+}): Effect.Effect<SourceControlProviderAuth> {
+  // Only a confirmed Azure login is worth refining further; leave unauthenticated
+  // and unknown auth states as-is since the extension check would be moot.
+  if (input.auth.status !== "authenticated") {
+    return Effect.succeed(input.auth);
+  }
+
+  return input.process
+    .run({
+      operation: "source-control.discovery.azure-devops-extension",
+      command: "az",
+      args: AZURE_DEVOPS_EXTENSION_ARGS,
+      cwd: input.cwd,
+      allowNonZeroExit: true,
+      timeoutMs: 5_000,
+      maxOutputBytes: 8_000,
+      appendTruncationMarker: true,
+    })
+    .pipe(
+      Effect.map((result) => {
+        if (result.exitCode === 0) {
+          return input.auth;
+        }
+
+        // Any other non-zero exit is an unrelated az failure, not proof the extension is
+        // missing: fail open and keep the already-confirmed authenticated state.
+        if (!isAzureDevOpsExtensionNotInstalledMessage(`${result.stdout}\n${result.stderr}`)) {
+          return input.auth;
+        }
+
+        return providerAuth({
+          status: "unknown",
+          account: Option.getOrUndefined(input.auth.account),
+          host: "dev.azure.com",
+          detail: AZURE_DEVOPS_EXTENSION_INSTALL_HINT,
+        });
+      }),
+      Effect.orElseSucceed(() => input.auth),
+    );
+}
+
 export const discovery = {
   type: "cli",
   kind: "azure-devops",
@@ -46,6 +113,7 @@ export const discovery = {
   versionArgs: ["--version"],
   authArgs: ["account", "show", "--query", "user.name", "-o", "tsv"],
   parseAuth: parseAzureAuth,
+  refineAuth: refineAzureAuth,
   installHint:
     "Install the Azure command-line tools (`az`), then enable Azure DevOps support with `az extension add --name azure-devops`.",
 } satisfies SourceControlCliDiscoverySpec;

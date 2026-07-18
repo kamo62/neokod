@@ -8,6 +8,43 @@ Release impact: Patch because these are backward-compatible fixes ported from up
 - Threaded the working directory through the Claude capability probe and isolated Claude instances via CLAUDE_CONFIG_DIR instead of HOME.
 - Shared MCP OAuth locks across Codex shadow homes and fixed dropped events during the initial thread snapshot.
 
+## 3.0.16 - 2026-07-18 (Patch)
+
+Release impact: Patch because this refines source-control discovery presentation and probing without changing public contracts.
+
+- Split the Source Control settings empty state: a waiting-for-environment notice now appears when no environment is connected, and "Nothing detected yet" only when a scan genuinely returned zero items.
+- Extended Azure DevOps discovery to verify the azure-devops CLI extension; a missing extension reports an unverified state with the install command, and unrelated az failures no longer downgrade an authenticated user.
+
+## 3.0.15 - 2026-07-18 (Patch)
+
+Release impact: Patch because this only changes user-visible branding text and badge visibility; no stored data or cross-version contracts are affected.
+
+- Replaced the sidebar's old T3 glyph wordmark with a styled "Neokod" text wordmark.
+- Stable packaged builds no longer show a stage badge and display the bare name "Neokod" instead of "Neokod (Alpha)"; Dev and Nightly badges are unchanged.
+- Updated the static web page title and the desktop launcher's fallback title to match.
+- Made `stageLabel` nullable on the desktop branding contract (`DesktopAppBranding`/`DesktopAppStageLabel`) so stable builds can represent "no stage" instead of a placeholder value.
+
+## 3.0.14 - 2026-07-18 (Patch)
+
+Release impact: Patch because providers now require explicit enablement before probing or configuration, without changing provider contracts.
+
+- Defaulted Codex, Claude, and Copilot provider drivers off alongside the existing opt-in providers.
+- Clarified disabled provider cards and restored the provider update-check preference with other settings defaults.
+
+## 3.0.13 - 2026-07-18 (Patch)
+
+Release impact: Patch because desktop updates now consistently use the supported stable feed without changing application APIs.
+
+- Removed the selectable nightly update track and migrates legacy persisted nightly settings to stable on load.
+- Forced updater checks to the latest stable feed with prerelease and downgrade installs disabled.
+- Added sanitized update-feed failures that identify the feed and HTTP status without exposing credentials.
+
+## 3.0.12 - 2026-07-18 (Patch)
+
+Release impact: Patch because this recovers safely from obsolete or unreadable local connection-catalog data without changing public contracts.
+
+- Fixed packaged desktop startup when a legacy encrypted connection catalog cannot be decrypted. Both the desktop catalog store and web storage layer now fail open to the canonical empty catalog, allowing the local primary environment and its providers to register.
+
 ## 3.0.11 - 2026-07-18 (Patch)
 
 Release impact: Patch because this fixes packaged desktop startup without changing any contracts.

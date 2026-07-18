@@ -15,7 +15,7 @@ const repoRoot = NodePath.resolve(desktopDir, "..", "..");
 const devBundleIdSuffix = NodePath.basename(repoRoot)
   .toLowerCase()
   .replaceAll(/[^a-z0-9]+/g, "");
-export const APP_DISPLAY_NAME = isDevelopment ? "Neokod (Dev)" : "Neokod (Alpha)";
+export const APP_DISPLAY_NAME = isDevelopment ? "Neokod (Dev)" : "Neokod";
 export const APP_BUNDLE_ID = isDevelopment
   ? `com.kamo62.neokod.dev.${devBundleIdSuffix || "local"}`
   : "com.kamo62.neokod";

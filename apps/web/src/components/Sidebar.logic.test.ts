@@ -39,40 +39,40 @@ import {
 const localEnvironmentId = EnvironmentId.make("environment-local");
 
 describe("resolveSidebarStageBadgeLabel", () => {
-  it("returns Nightly for nightly primary server versions", () => {
+  it("returns Nightly for nightly primary server versions even with no stable stage label", () => {
     expect(
       resolveSidebarStageBadgeLabel({
         primaryServerVersion: "0.0.28-nightly.20260616.12",
-        fallbackStageLabel: "Alpha",
+        fallbackStageLabel: null,
       }),
     ).toBe("Nightly");
   });
 
-  it("returns the fallback label for stable primary server versions", () => {
+  it("resolves to nothing (badge hidden) for stable primary server versions", () => {
     expect(
       resolveSidebarStageBadgeLabel({
         primaryServerVersion: "0.0.27",
-        fallbackStageLabel: "Alpha",
+        fallbackStageLabel: null,
       }),
-    ).toBe("Alpha");
+    ).toBeNull();
   });
 
-  it("returns the fallback label when the primary server version is missing", () => {
+  it("resolves to nothing (badge hidden) when the primary server version is missing", () => {
     expect(
       resolveSidebarStageBadgeLabel({
         primaryServerVersion: null,
-        fallbackStageLabel: "Dev",
+        fallbackStageLabel: null,
       }),
-    ).toBe("Dev");
+    ).toBeNull();
   });
 
   it("returns the fallback label for malformed nightly prerelease versions", () => {
     expect(
       resolveSidebarStageBadgeLabel({
         primaryServerVersion: "0.0.28-nightly.20260616",
-        fallbackStageLabel: "Alpha",
+        fallbackStageLabel: "Dev",
       }),
-    ).toBe("Alpha");
+    ).toBe("Dev");
   });
 });
 

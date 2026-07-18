@@ -208,6 +208,9 @@ Logged in to gitlab.com as gitlab-user
       ) {
         return Effect.succeed(processOutput("azure-user@example.com\n"));
       }
+      if (input.command === "az" && input.args.join(" ") === "extension show --name azure-devops") {
+        return Effect.succeed(processOutput("azure-devops extension installed\n"));
+      }
       return Effect.fail(
         new VcsProcessSpawnError({
           operation: input.operation,
