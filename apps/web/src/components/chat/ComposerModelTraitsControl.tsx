@@ -3,7 +3,7 @@ import {
   type ProviderDriverKind,
   type ResolvedKeybindingsConfig,
 } from "@neokod/contracts";
-import { memo, useMemo, useState } from "react";
+import { memo, useMemo, useState, type ReactNode } from "react";
 import type { VariantProps } from "class-variance-authority";
 import { ChevronDownIcon } from "lucide-react";
 import { Button, buttonVariants } from "../ui/button";
@@ -13,15 +13,20 @@ import { cn } from "~/lib/utils";
 import { useModelPickerScrollLock } from "~/hooks/useModelPickerScrollLock";
 import { ModelPickerContent } from "./ModelPickerContent";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
-import {
-  ModelEsque,
-  getTriggerDisplayModelLabel,
-  getTriggerDisplayModelName,
-  resolveTriggerModel,
-} from "./providerIconUtils";
+import { ModelEsque } from "./providerIconUtils";
 import type { ProviderInstanceEntry } from "../../providerInstances";
 
-export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+/**
+ * Combined model + provider-options composer control. Wraps the same
+ * `ModelPickerContent` that `ProviderModelPicker` uses (unchanged, reused
+ * as-is) behind a single trigger whose label summarizes both the selected
+ * model and its primary trait (e.g. "GPT-5.4 · High"), and presents the
+ * provider-options control (`traitsFooter`, typically a rendered
+ * `TraitsPicker`) as an adjacent section below the model list. Neither the
+ * model nor the traits selection state is forked here — both remain owned
+ * by `ProviderModelPicker`/`TraitsPicker`'s existing derivation.
+ */
+export const ComposerModelTraitsControl = memo(function ComposerModelTraitsControl(props: {
   /**
    * The instance currently selected in the composer. Drives the trigger
    * icon, label and the default-highlighted combobox row.
@@ -44,9 +49,14 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   onOpenChange?: (open: boolean) => void;
   getModelDisabledReason?: (instanceId: ProviderInstanceId, model: string) => string | null;
   onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
+  /** Combined "Model · Trait" summary, derived by ComposerModelTraitsControl.logic.ts. */
+  summaryLabel: string;
+  /** Pre-rendered provider-options control (e.g. from renderProviderTraitsPicker), or null when the provider has no options for this model. */
+  traitsFooter?: ReactNode;
 }) {
   const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
   const isMenuOpen = props.open ?? uncontrolledIsMenuOpen;
+  useModelPickerScrollLock(isMenuOpen);
 
   // Resolve the active instance entry by exact routing key. The composer
   // resolves fallbacks before rendering this component; if the selected
@@ -58,10 +68,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   }, [props.activeInstanceId, props.instanceEntries]);
 
   const activeInstanceId = props.activeInstanceId;
-  const selectedInstanceOptions = props.modelOptionsByInstance.get(activeInstanceId) ?? [];
-  const selectedModel = resolveTriggerModel(selectedInstanceOptions, props.model);
-  const triggerTitle = selectedModel ? getTriggerDisplayModelName(selectedModel) : props.model;
-  const triggerLabel = selectedModel ? getTriggerDisplayModelLabel(selectedModel) : props.model;
   const duplicateDriverCount = props.instanceEntries.filter(
     (entry) => activeEntry !== null && entry.driverKind === activeEntry.driverKind,
   ).length;
@@ -73,8 +79,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       setUncontrolledIsMenuOpen(open);
     }
   };
-
-  useModelPickerScrollLock(isMenuOpen);
 
   const handleInstanceModelChange = (instanceId: ProviderInstanceId, model: string) => {
     if (props.disabled) return;
@@ -98,7 +102,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           <Button
             size="sm"
             variant={props.triggerVariant ?? "ghost"}
-            data-chat-provider-model-picker="true"
+            data-chat-model-traits-control="true"
             className={cn(
               "min-w-0 justify-between whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80",
               props.compact ? "max-w-42 shrink-0" : "max-w-48 shrink sm:max-w-56 sm:px-3",
@@ -126,9 +130,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           ) : null}
           <Tooltip>
             <TooltipTrigger render={<span className="min-w-0 flex-1 overflow-hidden truncate" />}>
-              {triggerTitle}
+              {props.summaryLabel}
             </TooltipTrigger>
-            <TooltipPopup side="top">{triggerLabel}</TooltipPopup>
+            <TooltipPopup side="top">{props.summaryLabel}</TooltipPopup>
           </Tooltip>
         </span>
         <span aria-hidden="true" className="flex items-center">
@@ -140,21 +144,32 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         className="border-0 bg-transparent p-0 shadow-none before:hidden [--viewport-inline-padding:0]"
         viewportClassName="!overflow-hidden p-0"
       >
-        <ModelPickerContent
-          activeInstanceId={activeInstanceId}
-          model={props.model}
-          lockedProvider={props.lockedProvider}
-          lockedContinuationGroupKey={props.lockedContinuationGroupKey ?? null}
-          instanceEntries={props.instanceEntries}
-          {...(props.keybindings ? { keybindings: props.keybindings } : {})}
-          modelOptionsByInstance={props.modelOptionsByInstance}
-          terminalOpen={props.terminalOpen ?? false}
-          onRequestClose={() => setIsMenuOpen(false)}
-          {...(props.getModelDisabledReason
-            ? { getModelDisabledReason: props.getModelDisabledReason }
-            : {})}
-          onInstanceModelChange={handleInstanceModelChange}
-        />
+        <div className="flex w-full max-w-100 flex-col gap-1.5">
+          <ModelPickerContent
+            activeInstanceId={activeInstanceId}
+            model={props.model}
+            lockedProvider={props.lockedProvider}
+            lockedContinuationGroupKey={props.lockedContinuationGroupKey ?? null}
+            instanceEntries={props.instanceEntries}
+            {...(props.keybindings ? { keybindings: props.keybindings } : {})}
+            modelOptionsByInstance={props.modelOptionsByInstance}
+            terminalOpen={props.terminalOpen ?? false}
+            onRequestClose={() => setIsMenuOpen(false)}
+            {...(props.getModelDisabledReason
+              ? { getModelDisabledReason: props.getModelDisabledReason }
+              : {})}
+            onInstanceModelChange={handleInstanceModelChange}
+          />
+          {props.traitsFooter ? (
+            <div
+              data-chat-model-traits-control-footer="true"
+              className="flex items-center justify-between gap-2 rounded-lg border bg-popover px-3 py-2 text-popover-foreground shadow-lg/5"
+            >
+              <span className="font-medium text-muted-foreground text-xs">Provider options</span>
+              {props.traitsFooter}
+            </div>
+          ) : null}
+        </div>
       </PopoverPopup>
     </Popover>
   );

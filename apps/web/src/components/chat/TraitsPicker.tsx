@@ -150,7 +150,7 @@ function getSelectedTraits(
   };
 }
 
-function getTraitsSectionVisibility(input: {
+export function getTraitsSectionVisibility(input: {
   provider: ProviderDriverKind;
   models: ReadonlyArray<ServerProviderModel>;
   model: string | null | undefined;
@@ -193,6 +193,28 @@ export function shouldRenderTraitsControls(input: {
   allowPromptInjectedEffort?: boolean;
 }): boolean {
   return getTraitsSectionVisibility(input).hasAnyControls;
+}
+
+/**
+ * Formats a single provider-option descriptor's current value the same way
+ * the trigger label does, so callers that need just one trait (e.g. a
+ * combined model+traits summary) stay in sync with the full trigger label
+ * without re-deriving the formatting rules.
+ */
+export function formatProviderOptionTraitLabel(
+  descriptor: ProviderOptionDescriptor,
+  options?: { isUltrathinkOverride?: boolean },
+): string | null {
+  if (options?.isUltrathinkOverride) {
+    return "Ultrathink";
+  }
+  if (descriptor.type === "boolean") {
+    if (descriptor.id === "fastMode") {
+      return descriptor.currentValue === true ? "Fast" : "Normal";
+    }
+    return `${descriptor.label} ${descriptor.currentValue === true ? "On" : "Off"}`;
+  }
+  return getProviderOptionCurrentLabel(descriptor) ?? null;
 }
 
 export interface TraitsMenuContentProps {
@@ -383,16 +405,10 @@ export const TraitsPicker = memo(function TraitsPicker({
 
   const triggerLabels: Array<string> = [];
   for (const descriptor of descriptors) {
-    const label =
-      ultrathinkPromptControlled && descriptor.id === primarySelectDescriptor?.id
-        ? "Ultrathink"
-        : descriptor.type === "boolean"
-          ? descriptor.id === "fastMode"
-            ? descriptor.currentValue === true
-              ? "Fast"
-              : "Normal"
-            : `${descriptor.label} ${descriptor.currentValue === true ? "On" : "Off"}`
-          : getProviderOptionCurrentLabel(descriptor);
+    const label = formatProviderOptionTraitLabel(descriptor, {
+      isUltrathinkOverride:
+        ultrathinkPromptControlled && descriptor.id === primarySelectDescriptor?.id,
+    });
     if (typeof label === "string" && label.length > 0) {
       triggerLabels.push(label);
     }
