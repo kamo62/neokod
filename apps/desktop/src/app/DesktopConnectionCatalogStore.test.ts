@@ -151,18 +151,24 @@ describe("DesktopConnectionCatalogStore", () => {
     ),
   );
 
-  it.effect("does not persist when secure storage is unavailable", () =>
+  it.effect("returns the empty catalog without persisting when secure storage is unavailable", () =>
     withStore(
       Effect.gen(function* () {
         const store = yield* DesktopConnectionCatalogStore.DesktopConnectionCatalogStore;
         assert.isFalse(yield* store.set("{}"));
-        assert.deepStrictEqual(yield* store.get, Option.none());
+        const catalog = yield* store.get;
+        assert.isTrue(Option.isSome(catalog));
+        if (Option.isSome(catalog)) {
+          assert.deepStrictEqual(yield* decodeConnectionCatalog(catalog.value), {
+            schemaVersion: 2,
+          });
+        }
       }),
       false,
     ),
   );
 
-  it.effect("fails closed when an existing encrypted catalog cannot be decrypted", () =>
+  it.effect("replaces an undecryptable legacy catalog with the empty catalog", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const baseDir = yield* fileSystem.makeTempDirectoryScoped({
@@ -170,18 +176,32 @@ describe("DesktopConnectionCatalogStore", () => {
       });
       const failDecrypt = yield* Ref.make(false);
       const layer = makeLayer(baseDir, true, failDecrypt);
+      const environment = yield* DesktopEnvironment.DesktopEnvironment.pipe(Effect.provide(layer));
       const store = yield* DesktopConnectionCatalogStore.DesktopConnectionCatalogStore.pipe(
         Effect.provide(layer),
       );
-
-      assert.isTrue(yield* store.set("legacy"));
       yield* Ref.set(failDecrypt, true);
-      const error = yield* store.get.pipe(Effect.flip);
-      assert.instanceOf(
-        error,
-        DesktopConnectionCatalogStore.DesktopConnectionCatalogStoreProtectionError,
+      const catalogPath = environment.path.join(environment.stateDir, "connection-catalog.json");
+      yield* fileSystem.makeDirectory(environment.stateDir, { recursive: true });
+      yield* fileSystem.writeFileString(
+        catalogPath,
+        '{"version":1,"encryptedCatalog":"bm90LWVuY3J5cHRlZA=="}',
       );
-      assert.equal(error.operation, "decrypt-catalog");
+
+      const catalog = yield* store.get;
+      assert.isTrue(Option.isSome(catalog));
+      if (Option.isSome(catalog)) {
+        assert.deepStrictEqual(yield* decodeConnectionCatalog(catalog.value), { schemaVersion: 2 });
+      }
+
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      const persistedEnvelope = JSON.parse(yield* fileSystem.readFileString(catalogPath)) as {
+        readonly encryptedCatalog: string;
+      };
+      const persistedCatalog = textDecoder.decode(
+        Result.getOrThrow(Encoding.decodeBase64(persistedEnvelope.encryptedCatalog)),
+      );
+      assert.include(persistedCatalog, '"schemaVersion":2');
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   );
 

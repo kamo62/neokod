@@ -1,8 +1,6 @@
 import {
-  DesktopUpdateChannelSchema,
   type DesktopRuntimeInfo,
   type DesktopUpdateActionResult,
-  type DesktopUpdateChannel,
   type DesktopUpdateCheckResult,
   type DesktopUpdateState,
 } from "@neokod/contracts";
@@ -26,8 +24,6 @@ import * as DesktopState from "../app/DesktopState.ts";
 import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as IpcChannels from "../ipc/channels.ts";
-import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
-import { resolveDefaultDesktopUpdateChannel } from "./updateChannels.ts";
 import {
   createInitialDesktopUpdateState,
   reduceDesktopUpdateStateOnCheckFailure,
@@ -59,30 +55,6 @@ const decodeUpdateInfo = Schema.decodeUnknownEffect(UpdateInfo);
 const decodeDownloadProgressInfo = Schema.decodeUnknownEffect(DownloadProgressInfo);
 
 const currentIsoTimestamp = DateTime.now.pipe(Effect.map(DateTime.formatIso));
-
-export class DesktopUpdateActionInProgressError extends Schema.TaggedErrorClass<DesktopUpdateActionInProgressError>()(
-  "DesktopUpdateActionInProgressError",
-  {
-    action: Schema.Literals(["check", "download", "install"]),
-    requestedChannel: DesktopUpdateChannelSchema,
-  },
-) {
-  override get message(): string {
-    return `Cannot change the desktop update channel to ${this.requestedChannel} while an update ${this.action} action is in progress.`;
-  }
-}
-
-export class DesktopUpdateChannelPersistenceError extends Schema.TaggedErrorClass<DesktopUpdateChannelPersistenceError>()(
-  "DesktopUpdateChannelPersistenceError",
-  {
-    channel: DesktopUpdateChannelSchema,
-    cause: Schema.instanceOf(DesktopAppSettings.DesktopSettingsWriteError),
-  },
-) {
-  override get message(): string {
-    return `Failed to persist the ${this.channel} desktop update channel.`;
-  }
-}
 
 export class DesktopUpdatePollerError extends Schema.TaggedErrorClass<DesktopUpdatePollerError>()(
   "DesktopUpdatePollerError",
@@ -134,13 +106,6 @@ export class DesktopUpdateUnexpectedActionError extends Schema.TaggedErrorClass<
 
 export type DesktopUpdateConfigureError = never;
 
-export const DesktopUpdateSetChannelError = Schema.Union([
-  DesktopUpdateActionInProgressError,
-  DesktopUpdateChannelPersistenceError,
-]);
-export type DesktopUpdateSetChannelError = typeof DesktopUpdateSetChannelError.Type;
-export const isDesktopUpdateSetChannelError = Schema.is(DesktopUpdateSetChannelError);
-
 export class DesktopUpdates extends Context.Service<
   DesktopUpdates,
   {
@@ -148,9 +113,6 @@ export class DesktopUpdates extends Context.Service<
     readonly emitState: Effect.Effect<void>;
     readonly disabledReason: Effect.Effect<Option.Option<string>>;
     readonly configure: Effect.Effect<void, DesktopUpdateConfigureError, Scope.Scope>;
-    readonly setChannel: (
-      channel: DesktopUpdateChannel,
-    ) => Effect.Effect<DesktopUpdateState, DesktopUpdateSetChannelError>;
     readonly check: (reason: string) => Effect.Effect<DesktopUpdateCheckResult>;
     readonly download: Effect.Effect<DesktopUpdateActionResult>;
     readonly install: Effect.Effect<DesktopUpdateActionResult>;
@@ -178,13 +140,32 @@ function parseAppUpdateYml(raw: string): Effect.Effect<Option.Option<AppUpdateYm
   );
 }
 
+function describeUpdateFeed(config: Option.Option<AppUpdateYmlConfig>): string {
+  if (Option.isNone(config)) return "configured update feed";
+  const { provider, owner, repo } = config.value;
+  if (provider && owner && repo) return `${provider}/${owner}/${repo}`;
+  return provider ?? "configured update feed";
+}
+
+function describeUpdateCheckFailure(
+  error: ElectronUpdater.ElectronUpdaterCheckForUpdatesError,
+  config: Option.Option<AppUpdateYmlConfig>,
+): string {
+  const causeMessage = error.cause instanceof Error ? error.cause.message : "";
+  // electron-updater HttpError messages lead with the bare status ("404 Not
+  // Found..."); other transports spell out "HTTP <status>" or "status <code>".
+  const status =
+    causeMessage.match(/(?:HTTP\s*|status(?:\s+code)?\s*)([1-5]\d\d)/i)?.[1] ??
+    causeMessage.match(/^\s*([1-5]\d\d)\b/)?.[1];
+  return `Update feed check failed for ${describeUpdateFeed(config)}${status ? ` (HTTP ${status})` : ""}.`;
+}
+
 function createBaseUpdateState(
-  channel: DesktopUpdateChannel,
   enabled: boolean,
   environment: DesktopEnvironment.DesktopEnvironment["Service"],
 ): DesktopUpdateState {
   return {
-    ...createInitialDesktopUpdateState(environment.appVersion, environment.runtimeInfo, channel),
+    ...createInitialDesktopUpdateState(environment.appVersion, environment.runtimeInfo, "latest"),
     enabled,
     status: enabled ? "idle" : "disabled",
   };
@@ -247,7 +228,6 @@ export const make = Effect.gen(function* () {
   const electronWindow = yield* ElectronWindow.ElectronWindow;
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const fileSystem = yield* FileSystem.FileSystem;
-  const desktopSettings = yield* DesktopAppSettings.DesktopAppSettings;
 
   const appUpdateYmlConfigRef = yield* Ref.make<Option.Option<AppUpdateYmlConfig>>(Option.none());
   const updateCheckInFlightRef = yield* Ref.make(false);
@@ -322,18 +302,14 @@ export const make = Effect.gen(function* () {
     return Option.none<"check" | "download" | "install">();
   });
 
-  const applyAutoUpdaterChannel = Effect.fn("desktop.updates.applyAutoUpdaterChannel")(function* (
-    channel: DesktopUpdateChannel,
-  ) {
-    yield* Effect.annotateCurrentSpan({ channel });
-    const allowsPrerelease = channel === "nightly";
-    yield* electronUpdater.setChannel(channel);
-    yield* electronUpdater.setAllowPrerelease(allowsPrerelease);
-    yield* electronUpdater.setAllowDowngrade(allowsPrerelease);
+  const configureAutoUpdater = Effect.fn("desktop.updates.configureAutoUpdater")(function* () {
+    yield* electronUpdater.setChannel("latest");
+    yield* electronUpdater.setAllowPrerelease(false);
+    yield* electronUpdater.setAllowDowngrade(false);
     yield* logUpdaterInfo("using update channel", {
-      channel,
-      allowPrerelease: allowsPrerelease,
-      allowDowngrade: allowsPrerelease,
+      channel: "latest",
+      allowPrerelease: false,
+      allowDowngrade: false,
     });
   });
 
@@ -366,12 +342,13 @@ export const make = Effect.gen(function* () {
           "desktop.updates.handleCheckForUpdatesFailure",
         )(function* (error) {
           const failedAt = yield* currentIsoTimestamp;
+          const message = describeUpdateCheckFailure(error, yield* Ref.get(appUpdateYmlConfigRef));
           yield* updateState((current) =>
-            reduceDesktopUpdateStateOnCheckFailure(current, error.message, failedAt),
+            reduceDesktopUpdateStateOnCheckFailure(current, message, failedAt),
           );
-          yield* logUpdaterError(error.message, {
+          yield* logUpdaterError(message, {
             errorTag: error._tag,
-            channel: error.channel,
+            feed: describeUpdateFeed(yield* Ref.get(appUpdateYmlConfigRef)),
           });
           return true;
         }),
@@ -555,17 +532,6 @@ export const make = Effect.gen(function* () {
       Effect.flatMap(
         Effect.fn("desktop.updates.applyUpdateAvailable")(function* (info) {
           const state = yield* Ref.get(updateStateRef);
-          if (resolveDefaultDesktopUpdateChannel(info.version) !== state.channel) {
-            yield* logUpdaterInfo("ignoring update that does not match selected channel", {
-              version: info.version,
-              channel: state.channel,
-            });
-            const checkedAt = yield* currentIsoTimestamp;
-            yield* setState(reduceDesktopUpdateStateOnNoUpdate(state, checkedAt));
-            yield* Ref.set(lastLoggedDownloadMilestoneRef, -1);
-            return;
-          }
-
           const checkedAt = yield* currentIsoTimestamp;
           yield* setState(
             reduceDesktopUpdateStateOnUpdateAvailable(state, info.version, checkedAt),
@@ -712,9 +678,8 @@ export const make = Effect.gen(function* () {
         } as ElectronUpdater.ElectronUpdaterFeedUrl);
       }
 
-      const settings = yield* desktopSettings.get;
       const enabled = yield* shouldEnableAutoUpdates;
-      yield* setState(createBaseUpdateState(settings.updateChannel, enabled, environment));
+      yield* setState(createBaseUpdateState(enabled, environment));
       if (!enabled) {
         return;
       }
@@ -722,7 +687,7 @@ export const make = Effect.gen(function* () {
 
       yield* electronUpdater.setAutoDownload(false);
       yield* electronUpdater.setAutoInstallOnAppQuit(false);
-      yield* applyAutoUpdaterChannel(settings.updateChannel);
+      yield* configureAutoUpdater();
       yield* electronUpdater.setDisableDifferentialDownload(
         isArm64HostRunningIntelBuild(environment.runtimeInfo),
       );
@@ -758,46 +723,6 @@ export const make = Effect.gen(function* () {
 
       yield* startUpdatePollers;
     }).pipe(Effect.withSpan("desktop.updates.configure")),
-    setChannel: Effect.fn("desktop.updates.setChannel")(function* (
-      nextChannel: DesktopUpdateChannel,
-    ) {
-      yield* Effect.annotateCurrentSpan({ channel: nextChannel });
-      const activeAction = yield* activeUpdateAction;
-      if (Option.isSome(activeAction)) {
-        return yield* new DesktopUpdateActionInProgressError({
-          action: activeAction.value,
-          requestedChannel: nextChannel,
-        });
-      }
-
-      const state = yield* Ref.get(updateStateRef);
-      if (nextChannel === state.channel) {
-        return state;
-      }
-
-      yield* desktopSettings
-        .setUpdateChannel(nextChannel)
-        .pipe(
-          Effect.mapError(
-            (cause) => new DesktopUpdateChannelPersistenceError({ channel: nextChannel, cause }),
-          ),
-        );
-
-      const enabled = yield* shouldEnableAutoUpdates;
-      yield* setState(createBaseUpdateState(nextChannel, enabled, environment));
-
-      if (!enabled || !(yield* Ref.get(updaterConfiguredRef))) {
-        return yield* Ref.get(updateStateRef);
-      }
-
-      yield* applyAutoUpdaterChannel(nextChannel);
-      const allowDowngrade = yield* electronUpdater.allowDowngrade;
-      yield* electronUpdater.setAllowDowngrade(true);
-      yield* checkForUpdates("channel-change").pipe(
-        Effect.ensuring(electronUpdater.setAllowDowngrade(allowDowngrade).pipe(Effect.ignore)),
-      );
-      return yield* Ref.get(updateStateRef);
-    }),
     check: Effect.fn("desktop.updates.check")(function* (reason: string) {
       yield* Effect.annotateCurrentSpan({ reason });
       if (!(yield* Ref.get(updaterConfiguredRef))) {
