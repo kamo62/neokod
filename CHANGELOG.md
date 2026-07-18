@@ -1,3 +1,13 @@
+## 3.0.19 - 2026-07-18 (Minor)
+
+Release impact: Minor because this adds backward-compatible UI surfaces and navigation behavior without changing storage or server contracts.
+
+- Made the project tree the default sidebar view with persistent New thread, Search, Home, and Mission Control actions; existing installs migrate off the old flat-threads default once, and explicit choices persist afterwards.
+- Replaced the empty no-thread pane with a Home dashboard grouping Running, Needs attention, Plan ready, and Recent threads.
+- Added a thread run banner below the chat header with the goal, plan step progress, elapsed time, status, Open plan, and Stop, collapsing to a compact summary when the run completes.
+- Combined model and reasoning-effort selection into one visible composer control with a live summary label.
+- Added a unified Environment right-panel with branch and base, change stats, ahead/behind, and contextual commit, push, pull-request, and compare actions over the existing VCS state.
+
 ## 3.0.18 - 2026-07-18 (Patch)
 
 Release impact: Patch because this clarifies an incompatible Copilot runtime and exposes the existing provider failure without changing any contracts.
