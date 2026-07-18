@@ -232,6 +232,10 @@ it.effect(
         cwd: "/repo",
       });
 
+      // Extension-missing is reported as "unknown" (not "unauthenticated") because the
+      // account genuinely is authenticated; only whether DevOps commands will work is in
+      // question. The parsed account is preserved and the remediation detail is set so
+      // the UI can surface it instead of a generic "not verified" message.
       assert.deepStrictEqual(
         {
           status: item.status,
@@ -241,11 +245,103 @@ it.effect(
         },
         {
           status: "available",
-          auth: "unauthenticated",
-          account: Option.none(),
+          auth: "unknown",
+          account: Option.some("azure-user@example.com"),
           detail: Option.some(
             "Install the Azure DevOps CLI extension: az extension add --name azure-devops",
           ),
+        },
+      );
+    }),
+);
+
+it.effect(
+  "keeps Azure CLI auth authenticated during discovery when the extension probe fails to spawn",
+  () =>
+    Effect.gen(function* () {
+      const process: VcsProcess.VcsProcess["Service"] = {
+        run: (input) => {
+          if (input.args.join(" ") === "--version") {
+            return Effect.succeed(processResult("azure-cli 2.60.0\n"));
+          }
+          if (input.args.join(" ") === "account show --query user.name -o tsv") {
+            return Effect.succeed(processResult("azure-user@example.com\n"));
+          }
+          if (input.args.join(" ") === "extension show --name azure-devops") {
+            return Effect.fail(notFound(input));
+          }
+          return Effect.fail(notFound(input));
+        },
+      };
+
+      const item = yield* probeSourceControlProvider({
+        spec: AzureDevOpsSourceControlProvider.discovery,
+        process,
+        cwd: "/repo",
+      });
+
+      assert.deepStrictEqual(
+        {
+          status: item.status,
+          auth: item.auth.status,
+          account: item.auth.account,
+          detail: item.auth.detail,
+        },
+        {
+          status: "available",
+          auth: "authenticated",
+          account: Option.some("azure-user@example.com"),
+          detail: Option.none(),
+        },
+      );
+    }),
+);
+
+it.effect(
+  "keeps Azure CLI auth authenticated during discovery when the extension probe fails for an unrelated reason",
+  () =>
+    Effect.gen(function* () {
+      const process: VcsProcess.VcsProcess["Service"] = {
+        run: (input) => {
+          if (input.args.join(" ") === "--version") {
+            return Effect.succeed(processResult("azure-cli 2.60.0\n"));
+          }
+          if (input.args.join(" ") === "account show --query user.name -o tsv") {
+            return Effect.succeed(processResult("azure-user@example.com\n"));
+          }
+          if (input.args.join(" ") === "extension show --name azure-devops") {
+            return Effect.succeed(
+              processResult("", {
+                stderr: "ERROR: Please run 'az login' to setup account.\n",
+                exitCode: ChildProcessSpawner.ExitCode(1),
+              }),
+            );
+          }
+          return Effect.fail(notFound(input));
+        },
+      };
+
+      const item = yield* probeSourceControlProvider({
+        spec: AzureDevOpsSourceControlProvider.discovery,
+        process,
+        cwd: "/repo",
+      });
+
+      // A non-zero exit that does not actually say the extension is missing (corrupt
+      // config, tenant error, transient failure, ...) must not downgrade a genuinely
+      // authenticated account.
+      assert.deepStrictEqual(
+        {
+          status: item.status,
+          auth: item.auth.status,
+          account: item.auth.account,
+          detail: item.auth.detail,
+        },
+        {
+          status: "available",
+          auth: "authenticated",
+          account: Option.some("azure-user@example.com"),
+          detail: Option.none(),
         },
       );
     }),

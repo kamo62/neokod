@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import {
   SourceControlProviderError,
   type ChangeRequest,
@@ -47,6 +48,18 @@ function parseAzureAuth(input: SourceControlAuthProbeInput) {
   });
 }
 
+// Matches the az CLI's own wording when an extension is not installed, e.g.
+// `The extension azure-devops is not installed.` Requiring both the extension name and
+// a "not installed"/"not found" phrase keeps this from misfiring on unrelated az failures
+// (corrupt config, tenant errors, transient network issues) that also exit non-zero.
+function isAzureDevOpsExtensionNotInstalledMessage(output: string): boolean {
+  const normalized = output.toLowerCase();
+  return (
+    normalized.includes("azure-devops") &&
+    (normalized.includes("not installed") || normalized.includes("not found"))
+  );
+}
+
 function refineAzureAuth(input: {
   readonly auth: SourceControlProviderAuth;
   readonly process: VcsProcess.VcsProcess["Service"];
@@ -70,15 +83,24 @@ function refineAzureAuth(input: {
       appendTruncationMarker: true,
     })
     .pipe(
-      Effect.map((result) =>
-        result.exitCode === 0
-          ? input.auth
-          : providerAuth({
-              status: "unauthenticated",
-              host: "dev.azure.com",
-              detail: AZURE_DEVOPS_EXTENSION_INSTALL_HINT,
-            }),
-      ),
+      Effect.map((result) => {
+        if (result.exitCode === 0) {
+          return input.auth;
+        }
+
+        // Any other non-zero exit is an unrelated az failure, not proof the extension is
+        // missing: fail open and keep the already-confirmed authenticated state.
+        if (!isAzureDevOpsExtensionNotInstalledMessage(`${result.stdout}\n${result.stderr}`)) {
+          return input.auth;
+        }
+
+        return providerAuth({
+          status: "unknown",
+          account: Option.getOrUndefined(input.auth.account),
+          host: "dev.azure.com",
+          detail: AZURE_DEVOPS_EXTENSION_INSTALL_HINT,
+        });
+      }),
       Effect.orElseSucceed(() => input.auth),
     );
 }

@@ -17,7 +17,10 @@ import { cn } from "../../lib/utils";
 import { usePrimaryEnvironment } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { sourceControlEnvironment } from "../../state/sourceControl";
-import { resolveSourceControlDiscoveryView } from "./SourceControlSettings.logic";
+import {
+  resolveSourceControlAuthSummary,
+  resolveSourceControlDiscoveryView,
+} from "./SourceControlSettings.logic";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsibleContent } from "../ui/collapsible";
@@ -191,7 +194,14 @@ function itemSummary({
       return <span>Available. {item.installHint}</span>;
     }
 
-    if (auth.status === "unauthenticated") {
+    const summary = resolveSourceControlAuthSummary({
+      authStatus: auth.status,
+      authDetail: optionLabel(auth.detail),
+      label: item.label,
+      installHint: item.installHint,
+    });
+
+    if (summary.kind === "unauthenticated-guidance") {
       return (
         <span>
           {item.label} is not authenticated on this server. Sign in or configure credentials using
@@ -200,11 +210,8 @@ function itemSummary({
         </span>
       );
     }
-    return (
-      <span>
-        Could not verify {item.label}. {item.installHint}
-      </span>
-    );
+
+    return <span>{summary.text}</span>;
   }
 
   return <span>Available</span>;
