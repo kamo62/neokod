@@ -1,3 +1,12 @@
+## 3.0.15 - 2026-07-18 (Patch)
+
+Release impact: Patch because this only changes user-visible branding text and badge visibility; no stored data or cross-version contracts are affected.
+
+- Replaced the sidebar's old T3 glyph wordmark with a styled "Neokod" text wordmark.
+- Stable packaged builds no longer show a stage badge and display the bare name "Neokod" instead of "Neokod (Alpha)"; Dev and Nightly badges are unchanged.
+- Updated the static web page title and the desktop launcher's fallback title to match.
+- Made `stageLabel` nullable on the desktop branding contract (`DesktopAppBranding`/`DesktopAppStageLabel`) so stable builds can represent "no stage" instead of a placeholder value.
+
 ## 3.0.11 - 2026-07-18 (Patch)
 
 Release impact: Patch because this fixes packaged desktop startup without changing any contracts.

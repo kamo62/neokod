@@ -137,6 +137,27 @@ describe("DesktopEnvironment", () => {
     }),
   );
 
+  it.effect("resolves the branding stage label per build type", () =>
+    Effect.gen(function* () {
+      const devEnvironment = yield* makeEnvironment(
+        {},
+        { VITE_DEV_SERVER_URL: "http://localhost:5173" },
+      );
+      assert.equal(devEnvironment.branding.stageLabel, "Dev");
+      assert.equal(devEnvironment.displayName, "Neokod (Dev)");
+
+      const nightlyEnvironment = yield* makeEnvironment({
+        appVersion: "0.0.28-nightly.20260616.12",
+      });
+      assert.equal(nightlyEnvironment.branding.stageLabel, "Nightly");
+      assert.equal(nightlyEnvironment.displayName, "Neokod (Nightly)");
+
+      const stableEnvironment = yield* makeEnvironment({ appVersion: "0.0.27" });
+      assert.equal(stableEnvironment.branding.stageLabel, null);
+      assert.equal(stableEnvironment.displayName, "Neokod");
+    }),
+  );
+
   it.effect("resolves picker defaults without nullish sentinels", () =>
     Effect.gen(function* () {
       const environment = yield* makeEnvironment();

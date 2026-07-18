@@ -2881,7 +2881,9 @@ function useSidebarStageLabel() {
 
 function NeokodWordmark() {
   return (
-    <span className="truncate text-sm font-semibold tracking-tight text-foreground">Neokod</span>
+    <span className="shrink-0 truncate text-sm font-semibold tracking-tight text-foreground">
+      Neokod
+    </span>
   );
 }
 
