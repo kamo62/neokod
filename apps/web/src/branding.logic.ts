@@ -2,15 +2,15 @@ const NIGHTLY_SERVER_VERSION_PATTERN = /-nightly\.\d{8}\.\d+$/;
 
 export function formatAppDisplayName(input: {
   readonly baseName: string;
-  readonly stageLabel: string;
+  readonly stageLabel: string | null | undefined;
 }): string {
-  return `${input.baseName} (${input.stageLabel})`;
+  return input.stageLabel ? `${input.baseName} (${input.stageLabel})` : input.baseName;
 }
 
 export function resolveServerBackedAppStageLabel(input: {
   readonly primaryServerVersion: string | null | undefined;
-  readonly fallbackStageLabel: string;
-}): string {
+  readonly fallbackStageLabel: string | null | undefined;
+}): string | null | undefined {
   return input.primaryServerVersion &&
     NIGHTLY_SERVER_VERSION_PATTERN.test(input.primaryServerVersion)
     ? "Nightly"
@@ -20,7 +20,7 @@ export function resolveServerBackedAppStageLabel(input: {
 export function resolveServerBackedAppDisplayName(input: {
   readonly baseName: string;
   readonly fallbackDisplayName: string;
-  readonly fallbackStageLabel: string;
+  readonly fallbackStageLabel: string | null | undefined;
   readonly primaryServerVersion: string | null | undefined;
 }): string {
   const stageLabel = resolveServerBackedAppStageLabel({
