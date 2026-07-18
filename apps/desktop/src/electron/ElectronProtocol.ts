@@ -185,6 +185,28 @@ async function fetchWithTransientRetry(url: string, init: RequestInit): Promise<
   throw lastError;
 }
 
+// Must be called synchronously at main-process module load, strictly before
+// Electron's ready event — running it inside the startup Effect loses the race.
+// Without standard+secure privileges the desktop scheme has an opaque origin,
+// so the renderer document's CSP 'self' matches nothing and every script and
+// stylesheet is blocked. Upstream inherited this registration from
+// @clerk/electron's bridge; the local-first carve-out removed Clerk, so the
+// desktop registers its own schemes here.
+export function registerDesktopSchemePrivileges(): void {
+  Electron.protocol.registerSchemesAsPrivileged(
+    [DESKTOP_PRODUCTION_SCHEME, DESKTOP_DEVELOPMENT_SCHEME].map((scheme) => ({
+      scheme,
+      privileges: {
+        standard: true,
+        secure: true,
+        supportFetchAPI: true,
+        corsEnabled: true,
+        stream: true,
+      },
+    })),
+  );
+}
+
 export const make = Effect.gen(function* () {
   const registered = yield* Ref.make(false);
 

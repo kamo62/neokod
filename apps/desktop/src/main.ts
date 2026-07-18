@@ -43,6 +43,10 @@ import * as DesktopWindow from "./window/DesktopWindow.ts";
 import * as DesktopWslBackend from "./wsl/DesktopWslBackend.ts";
 import * as DesktopWslEnvironment from "./wsl/DesktopWslEnvironment.ts";
 
+// Scheme privileges must be registered before Electron's ready event fires, so
+// this runs synchronously at module load rather than inside the Effect program.
+ElectronProtocol.registerDesktopSchemePrivileges();
+
 const desktopEnvironmentLayer = Layer.unwrap(
   Effect.gen(function* () {
     const metadata = yield* Effect.service(ElectronApp.ElectronApp).pipe(

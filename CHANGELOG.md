@@ -1,3 +1,9 @@
+## 3.0.11 - 2026-07-18 (Patch)
+
+Release impact: Patch because this fixes packaged desktop startup without changing any contracts.
+
+- Fixed the packaged desktop app rendering a black screen. The `neokod`/`neokod-dev` schemes were never registered as privileged (standard, secure, fetch, CORS, streaming), so the renderer origin was opaque and the CSP's `'self'` directives blocked every script and stylesheet. Upstream inherited this registration as a side effect of `@clerk/electron`, which the local-first carve-out removed; the desktop now registers its own scheme privileges at main-process module load, before Electron's ready event.
+
 ## 3.0.10 - 2026-07-15 (Patch)
 
 Release impact: Patch because these are backward-compatible fixes ported from upstream T3 Code.
