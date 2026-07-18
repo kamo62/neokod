@@ -1,6 +1,16 @@
 import type { ContextMenuItem, PreviewSessionSnapshot } from "@neokod/contracts";
 import { getTerminalLabel } from "@neokod/shared/terminalLabels";
-import { Bot, ClipboardList, FileDiff, Files, Globe2, Plus, TerminalSquare, X } from "lucide-react";
+import {
+  Bot,
+  ClipboardList,
+  FileDiff,
+  Files,
+  FolderGit2,
+  Globe2,
+  Plus,
+  TerminalSquare,
+  X,
+} from "lucide-react";
 import {
   type MouseEvent as ReactMouseEvent,
   type ReactElement,
@@ -207,6 +217,8 @@ function surfaceTitle(
       return "Plan";
     case "subagents":
       return "Subagents";
+    case "environment":
+      return "Environment";
     case "preview": {
       const snapshot = surface.resourceId ? sessions[surface.resourceId] : null;
       if (!snapshot || snapshot.navStatus._tag === "Idle") return "Browser";
@@ -270,6 +282,8 @@ function SurfaceIcon({
       return <ClipboardList className="size-3.5 shrink-0" />;
     case "subagents":
       return <Bot className="size-3.5 shrink-0" />;
+    case "environment":
+      return <FolderGit2 className="size-3.5 shrink-0" />;
   }
 }
 

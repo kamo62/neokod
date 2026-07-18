@@ -22,6 +22,7 @@ export const RIGHT_PANEL_KINDS = [
   "file",
   "preview",
   "terminal",
+  "environment",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -46,7 +47,8 @@ export type RightPanelSurface =
       revealRequestId: number;
     }
   | { id: "plan"; kind: "plan" }
-  | { id: "subagents"; kind: "subagents" };
+  | { id: "subagents"; kind: "subagents" }
+  | { id: "environment"; kind: "environment" };
 
 const RIGHT_PANEL_STORAGE_KEY = "neokod:right-panel-state:v2";
 const RIGHT_PANEL_STORAGE_VERSION = 8;
@@ -103,6 +105,8 @@ const singletonSurface = (
       return { id: "plan", kind };
     case "subagents":
       return { id: "subagents", kind };
+    case "environment":
+      return { id: "environment", kind };
   }
 };
 
