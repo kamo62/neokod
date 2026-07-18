@@ -8,7 +8,7 @@ import {
 import {
   getComposerPromptInjectionState,
   getComposerProviderState,
-  renderProviderTraitsMenuContent,
+  hasComposerTraitsTarget,
   renderProviderTraitsPicker,
 } from "./composerProviderState";
 
@@ -243,6 +243,23 @@ describe("provider traits render guards", () => {
     };
 
     expect(renderProviderTraitsPicker(args)).toBeNull();
-    expect(renderProviderTraitsMenuContent(args)).toBeNull();
+  });
+});
+
+describe("hasComposerTraitsTarget", () => {
+  it("is false when neither a thread nor a draft target is provided", () => {
+    expect(hasComposerTraitsTarget({})).toBe(false);
+  });
+
+  it("is true when a thread target is provided", () => {
+    expect(
+      hasComposerTraitsTarget({
+        threadRef: { environmentId: "env-1", threadId: "thread-1" } as never,
+      }),
+    ).toBe(true);
+  });
+
+  it("is true when a draft target is provided", () => {
+    expect(hasComposerTraitsTarget({ draftId: "draft-1" as never })).toBe(true);
   });
 });

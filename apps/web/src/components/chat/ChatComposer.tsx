@@ -83,6 +83,7 @@ import { searchSlashCommandItems } from "./composerSlashCommandSearch";
 import {
   getComposerPromptInjectionState,
   getComposerProviderState,
+  hasComposerTraitsTarget,
   renderProviderTraitsPicker,
 } from "./composerProviderState";
 import { ContextWindowMeter } from "./ContextWindowMeter";
@@ -1168,11 +1169,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [composerDraftTarget, promptRef, scheduleComposerFocus, setComposerDraftPrompt],
   );
 
+  const composerTraitsTarget = {
+    ...(routeKind === "server" ? { threadRef: routeThreadRef } : {}),
+    ...(routeKind === "draft" && draftId ? { draftId } : {}),
+  };
   const providerTraitsPicker = renderProviderTraitsPicker({
     provider: selectedProvider,
     instanceId: selectedInstanceId,
-    ...(routeKind === "server" ? { threadRef: routeThreadRef } : {}),
-    ...(routeKind === "draft" && draftId ? { draftId } : {}),
+    ...composerTraitsTarget,
     model: selectedModel,
     models: selectedProviderModels,
     modelOptions: composerModelOptions?.[selectedInstanceId],
@@ -1184,11 +1188,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       modelOptionsByInstance.get(selectedInstanceId) ?? [],
       selectedModelForPickerWithCustomFallback,
     ),
+    modelDisplayFallback: selectedModelForPickerWithCustomFallback,
     provider: selectedProvider,
     models: selectedProviderModels,
     modelSlug: selectedModel,
     prompt,
     modelOptions: composerModelOptions?.[selectedInstanceId],
+    hasTraitsTarget: hasComposerTraitsTarget(composerTraitsTarget),
   });
   const pendingPrimaryAction = useMemo(
     () =>

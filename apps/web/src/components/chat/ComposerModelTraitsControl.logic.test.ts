@@ -64,6 +64,21 @@ describe("getComposerPrimaryTraitLabel", () => {
       modelSlug: MODEL,
       prompt: "",
       modelOptions: undefined,
+      hasTraitsTarget: true,
+    });
+    expect(label).toBeNull();
+  });
+
+  it("returns null when there is no thread/draft target, even though the provider has traits", () => {
+    const label = getComposerPrimaryTraitLabel({
+      provider: PROVIDER,
+      models: modelWith([
+        selectDescriptor("effort", [{ id: "high", label: "High", isDefault: true }]),
+      ]),
+      modelSlug: MODEL,
+      prompt: "",
+      modelOptions: undefined,
+      hasTraitsTarget: false,
     });
     expect(label).toBeNull();
   });
@@ -81,8 +96,49 @@ describe("getComposerPrimaryTraitLabel", () => {
       modelSlug: MODEL,
       prompt: "",
       modelOptions: undefined,
+      hasTraitsTarget: true,
     });
     expect(label).toBe("High");
+  });
+
+  it("picks the first of several select descriptors as primary", () => {
+    const label = getComposerPrimaryTraitLabel({
+      provider: PROVIDER,
+      models: modelWith([
+        selectDescriptor("effort", [
+          { id: "low", label: "Low" },
+          { id: "high", label: "High", isDefault: true },
+        ]),
+        selectDescriptor("contextWindow", [
+          { id: "200k", label: "200k", isDefault: true },
+          { id: "1m", label: "1M" },
+        ]),
+      ]),
+      modelSlug: MODEL,
+      prompt: "",
+      // Override both selects away from their defaults; the first
+      // descriptor (effort) should still win regardless of value.
+      modelOptions: selections(["effort", "low"], ["contextWindow", "1m"]),
+      hasTraitsTarget: true,
+    });
+    expect(label).toBe("Low");
+  });
+
+  it("prefers an explicit selection over the descriptor's default", () => {
+    const label = getComposerPrimaryTraitLabel({
+      provider: PROVIDER,
+      models: modelWith([
+        selectDescriptor("effort", [
+          { id: "low", label: "Low" },
+          { id: "high", label: "High", isDefault: true },
+        ]),
+      ]),
+      modelSlug: MODEL,
+      prompt: "",
+      modelOptions: selections(["effort", "low"]),
+      hasTraitsTarget: true,
+    });
+    expect(label).toBe("Low");
   });
 
   it("falls back to the first boolean descriptor when there is no select descriptor", () => {
@@ -92,19 +148,33 @@ describe("getComposerPrimaryTraitLabel", () => {
       modelSlug: MODEL,
       prompt: "",
       modelOptions: selections(["thinking", true]),
+      hasTraitsTarget: true,
     });
     expect(label).toBe("Thinking On");
   });
 
-  it("uses the fastMode-specific Fast/Normal formatting when fastMode is primary", () => {
+  it("uses the fastMode-specific Fast/Normal formatting when fastMode is primary and on", () => {
     const label = getComposerPrimaryTraitLabel({
       provider: PROVIDER,
       models: modelWith([booleanDescriptor("fastMode", "Fast mode")]),
       modelSlug: MODEL,
       prompt: "",
       modelOptions: selections(["fastMode", true]),
+      hasTraitsTarget: true,
     });
     expect(label).toBe("Fast");
+  });
+
+  it("uses the fastMode-specific Fast/Normal formatting when fastMode is primary and off", () => {
+    const label = getComposerPrimaryTraitLabel({
+      provider: PROVIDER,
+      models: modelWith([booleanDescriptor("fastMode", "Fast mode")]),
+      modelSlug: MODEL,
+      prompt: "",
+      modelOptions: selections(["fastMode", false]),
+      hasTraitsTarget: true,
+    });
+    expect(label).toBe("Normal");
   });
 
   it("overrides the primary select descriptor label with Ultrathink when prompt-injected", () => {
@@ -124,6 +194,7 @@ describe("getComposerPrimaryTraitLabel", () => {
       modelSlug: MODEL,
       prompt: "Ultrathink:\nInvestigate this failure",
       modelOptions: undefined,
+      hasTraitsTarget: true,
     });
     expect(label).toBe("Ultrathink");
   });
@@ -143,6 +214,7 @@ describe("formatComposerModelTraitsSummary", () => {
       modelSlug: MODEL,
       prompt: "",
       modelOptions: undefined,
+      hasTraitsTarget: true,
     });
     expect(summary).toBe("GPT-5.4 · High");
   });
@@ -155,11 +227,27 @@ describe("formatComposerModelTraitsSummary", () => {
       modelSlug: MODEL,
       prompt: "",
       modelOptions: undefined,
+      hasTraitsTarget: true,
     });
     expect(summary).toBe("GPT-5.4");
   });
 
-  it("shows the primary trait alone when the model is missing", () => {
+  it("shows the model name alone when there is no thread/draft target, even with traits available", () => {
+    const summary = formatComposerModelTraitsSummary({
+      model: GPT_MODEL,
+      provider: PROVIDER,
+      models: modelWith([
+        selectDescriptor("effort", [{ id: "high", label: "High", isDefault: true }]),
+      ]),
+      modelSlug: MODEL,
+      prompt: "",
+      modelOptions: undefined,
+      hasTraitsTarget: false,
+    });
+    expect(summary).toBe("GPT-5.4");
+  });
+
+  it("shows the primary trait alone when the model is missing and there is no slug fallback", () => {
     const summary = formatComposerModelTraitsSummary({
       model: null,
       provider: PROVIDER,
@@ -169,11 +257,12 @@ describe("formatComposerModelTraitsSummary", () => {
       modelSlug: MODEL,
       prompt: "",
       modelOptions: undefined,
+      hasTraitsTarget: true,
     });
     expect(summary).toBe("High");
   });
 
-  it("falls back to a placeholder when both the model and traits are missing", () => {
+  it("falls back to a placeholder when the model, slug fallback, and traits are all missing", () => {
     const summary = formatComposerModelTraitsSummary({
       model: undefined,
       provider: PROVIDER,
@@ -181,6 +270,7 @@ describe("formatComposerModelTraitsSummary", () => {
       modelSlug: null,
       prompt: "",
       modelOptions: undefined,
+      hasTraitsTarget: true,
     });
     expect(summary).toBe(COMPOSER_MODEL_TRAITS_NO_MODEL_LABEL);
   });
@@ -193,6 +283,51 @@ describe("formatComposerModelTraitsSummary", () => {
       modelSlug: MODEL,
       prompt: "",
       modelOptions: undefined,
+      hasTraitsTarget: true,
+    });
+    expect(summary).toBe("GPT-5.4");
+  });
+
+  it("shows the raw selected slug when the model catalog can't resolve it (empty/loading catalog)", () => {
+    const summary = formatComposerModelTraitsSummary({
+      model: undefined,
+      modelDisplayFallback: "gpt-5.4-preview",
+      provider: PROVIDER,
+      models: modelWith([]),
+      modelSlug: "gpt-5.4-preview",
+      prompt: "",
+      modelOptions: undefined,
+      hasTraitsTarget: true,
+    });
+    expect(summary).toBe("gpt-5.4-preview");
+  });
+
+  it("joins the raw slug fallback with the primary trait, same as a resolved model name", () => {
+    const summary = formatComposerModelTraitsSummary({
+      model: undefined,
+      modelDisplayFallback: "gpt-5.4-preview",
+      provider: PROVIDER,
+      models: modelWith([
+        selectDescriptor("effort", [{ id: "high", label: "High", isDefault: true }]),
+      ]),
+      modelSlug: MODEL,
+      prompt: "",
+      modelOptions: undefined,
+      hasTraitsTarget: true,
+    });
+    expect(summary).toBe("gpt-5.4-preview · High");
+  });
+
+  it("prefers the resolved model over the raw slug fallback when both are available", () => {
+    const summary = formatComposerModelTraitsSummary({
+      model: GPT_MODEL,
+      modelDisplayFallback: MODEL,
+      provider: PROVIDER,
+      models: modelWith([]),
+      modelSlug: MODEL,
+      prompt: "",
+      modelOptions: undefined,
+      hasTraitsTarget: true,
     });
     expect(summary).toBe("GPT-5.4");
   });
