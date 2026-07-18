@@ -33,6 +33,9 @@ export type SourceControlCliDiscoverySpec = SourceControlDiscoverySpecBase & {
   readonly executable: string;
   readonly versionArgs: ReadonlyArray<string>;
   readonly authArgs: ReadonlyArray<string>;
+  // Slow-starting CLIs (az is a Python app with multi-second cold start) need
+  // more than the default probe budget or they read as not installed.
+  readonly probeTimeoutMs?: number;
   readonly parseAuth: (input: SourceControlAuthProbeInput) => SourceControlProviderAuth;
   readonly refineAuth?: (input: {
     readonly auth: SourceControlProviderAuth;
@@ -172,7 +175,7 @@ function probeCli(input: {
       command: input.spec.executable,
       args: input.spec.versionArgs,
       cwd: input.cwd,
-      timeoutMs: 5_000,
+      timeoutMs: input.spec.probeTimeoutMs ?? 5_000,
       maxOutputBytes: 8_000,
       appendTruncationMarker: true,
     })
@@ -249,7 +252,7 @@ export function probeSourceControlProvider(input: {
           args: spec.authArgs,
           cwd: input.cwd,
           allowNonZeroExit: true,
-          timeoutMs: 5_000,
+          timeoutMs: spec.probeTimeoutMs ?? 5_000,
           maxOutputBytes: 8_000,
           appendTruncationMarker: true,
         })
@@ -308,7 +311,7 @@ export const refineUnknownRemoteProvider = Effect.fn("refineUnknownRemoteProvide
           args: spec.authArgs,
           cwd: input.cwd,
           allowNonZeroExit: true,
-          timeoutMs: 5_000,
+          timeoutMs: spec.probeTimeoutMs ?? 5_000,
           maxOutputBytes: 8_000,
           appendTruncationMarker: true,
         })
