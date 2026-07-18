@@ -209,6 +209,7 @@ import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { ChatHeader } from "./chat/ChatHeader";
+import { ThreadRunBanner } from "./chat/ThreadRunBanner";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -5123,6 +5124,18 @@ function ChatViewContent(props: ChatViewProps) {
             onDeleteProjectScript={deleteProjectScript}
           />
         </header>
+
+        <ThreadRunBanner
+          thread={activeThread}
+          activePlan={activePlan}
+          activeWorkStartedAt={activeWorkStartedAt}
+          hasPendingApprovals={activePendingApproval !== null}
+          hasPendingUserInput={activePendingUserInput !== null}
+          isWorking={isWorking}
+          interruptAvailable={phase === "running"}
+          onOpenPlan={togglePlanSidebar}
+          onInterrupt={onInterrupt}
+        />
 
         {/* Error banner */}
         <ProviderStatusBanner status={activeProviderStatus} />
