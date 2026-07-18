@@ -189,14 +189,14 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       });
 
       assert.deepEqual(next.providers.codex, {
-        enabled: true,
+        enabled: false,
         binaryPath: "/opt/homebrew/bin/codex",
         homePath: "/Users/julius/.codex",
         shadowHomePath: "",
         customModels: [],
       });
       assert.deepEqual(next.providers.claudeAgent, {
-        enabled: true,
+        enabled: false,
         binaryPath: "/usr/local/bin/claude",
         homePath: "",
         customModels: ["claude-custom"],
@@ -430,14 +430,14 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       });
 
       assert.deepEqual(next.providers.codex, {
-        enabled: true,
+        enabled: false,
         binaryPath: "/opt/homebrew/bin/codex",
         homePath: "",
         shadowHomePath: "",
         customModels: [],
       });
       assert.deepEqual(next.providers.claudeAgent, {
-        enabled: true,
+        enabled: false,
         binaryPath: "/opt/homebrew/bin/claude",
         homePath: "",
         customModels: [],
