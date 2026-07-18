@@ -14,6 +14,7 @@ import * as Schema from "effect/Schema";
 
 import * as ElectronSafeStorage from "../electron/ElectronSafeStorage.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
+import { makeComponentLogger } from "./DesktopObservability.ts";
 
 const EncryptedConnectionCatalogDocument = Schema.Struct({
   version: Schema.Literal(1),
@@ -25,6 +26,8 @@ const encodeEncryptedDocument = Schema.encodeEffect(
   Schema.fromJsonString(EncryptedConnectionCatalogDocument),
 );
 const encodeEmptyCatalog = Schema.encodeEffect(Schema.fromJsonString(ConnectionCatalogDocument));
+
+const { logWarning: logCatalogWarning } = makeComponentLogger("desktop-connection-catalog");
 
 export class DesktopConnectionCatalogStoreWriteError extends Schema.TaggedErrorClass<DesktopConnectionCatalogStoreWriteError>()(
   "DesktopConnectionCatalogStoreWriteError",
@@ -188,7 +191,13 @@ export const make = Effect.gen(function* () {
   return DesktopConnectionCatalogStore.of({
     get: Effect.gen(function* () {
       yield* purgeLegacyRegistry;
-      const canEncrypt = yield* encryptionAvailable.pipe(Effect.orElseSucceed(() => false));
+      const canEncrypt = yield* encryptionAvailable.pipe(
+        Effect.catch((cause) =>
+          logCatalogWarning("encryption availability probe failed; treating as unavailable", {
+            cause: String(cause),
+          }).pipe(Effect.as(false)),
+        ),
+      );
       if (canEncrypt) {
         yield* writeCatalog(canonicalEmptyCatalog);
       }
