@@ -65,7 +65,7 @@ describe("CopilotDriver", () => {
 // test bodies below both need to reach.
 
 const copilotSdkState = vi.hoisted(() => ({
-  startShouldFail: false,
+  startFailureMessage: undefined as string | undefined,
   callOrder: [] as Array<string>,
   clients: [] as Array<{ startCalls: number; stopCalls: number }>,
 }));
@@ -81,8 +81,8 @@ vi.mock("@github/copilot-sdk", () => {
 
     start(): Promise<void> {
       this.startCalls += 1;
-      if (copilotSdkState.startShouldFail) {
-        return Promise.reject(new Error("simulated Copilot runtime start failure"));
+      if (copilotSdkState.startFailureMessage) {
+        return Promise.reject(new Error(copilotSdkState.startFailureMessage));
       }
       return Promise.resolve();
     }
@@ -134,6 +134,7 @@ const isProviderDriverError = Schema.is(ProviderDriverError);
 function makeCreateInput(input: {
   readonly instanceId: ProviderInstanceId;
   readonly enabled: boolean;
+  readonly binaryPath?: string;
 }): ProviderDriverCreateInput<CopilotSettings> {
   return {
     instanceId: input.instanceId,
@@ -141,7 +142,7 @@ function makeCreateInput(input: {
     accentColor: undefined,
     environment: [],
     enabled: input.enabled,
-    config: decodeCopilotSettings({}),
+    config: decodeCopilotSettings({ binaryPath: input.binaryPath ?? "" }),
   };
 }
 
@@ -242,7 +243,7 @@ describe("CopilotDriver — lifecycle", () => {
 
   it.effect("surfaces a client.start() failure as a ProviderDriverError", () =>
     Effect.gen(function* () {
-      copilotSdkState.startShouldFail = true;
+      copilotSdkState.startFailureMessage = "simulated Copilot runtime start failure";
       const instanceId = ProviderInstanceId.make("githubCopilot_start_failure");
 
       const error = yield* CopilotDriver.create(
@@ -260,7 +261,33 @@ describe("CopilotDriver — lifecycle", () => {
     }).pipe(
       Effect.ensuring(
         Effect.sync(() => {
-          copilotSdkState.startShouldFail = false;
+          copilotSdkState.startFailureMessage = undefined;
+        }),
+      ),
+    ),
+  );
+
+  it.effect("explains when a configured runtime rejects the SDK server arguments", () =>
+    Effect.gen(function* () {
+      copilotSdkState.startFailureMessage =
+        "CLI server exited with code 1 stderr: error: too many arguments. Expected 0 arguments but got 1.";
+      const error = yield* CopilotDriver.create(
+        makeCreateInput({
+          instanceId: ProviderInstanceId.make("githubCopilot_incompatible_runtime"),
+          enabled: true,
+          binaryPath: "/usr/local/bin/copilot",
+        }),
+      ).pipe(Effect.provide(testLayer), Effect.scoped, Effect.flip);
+
+      NodeAssert.ok(isProviderDriverError(error));
+      NodeAssert.equal(
+        error.detail,
+        "The configured runtime at /usr/local/bin/copilot is not compatible with the Copilot SDK. Use a current GitHub Copilot CLI that supports --headless and --stdio, or clear Runtime path to use Neokod's bundled runtime.",
+      );
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          copilotSdkState.startFailureMessage = undefined;
         }),
       ),
     ),

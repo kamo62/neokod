@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   isCurrentDeviceLoginGeneration,
+  getCopilotSignInStatusMessage,
   reduceCopilotGithubSignIn,
   shouldPollDeviceLogin,
   type CopilotGithubSignInState,
@@ -17,6 +18,15 @@ const visible: CopilotGithubSignInState = {
 };
 
 describe("reduceCopilotGithubSignIn", () => {
+  it("shows a provider creation error instead of stale disabled status", () => {
+    expect(
+      getCopilotSignInStatusMessage({
+        providerStatus: "disabled",
+        providerError: "Driver 'githubCopilot' failed to create instance: incompatible runtime",
+      }),
+    ).toBe("Driver 'githubCopilot' failed to create instance: incompatible runtime");
+  });
+
   it("starts from idle and exposes a returned device code", () => {
     expect(reduceCopilotGithubSignIn({ tag: "idle" }, { type: "start" })).toEqual({
       tag: "starting",

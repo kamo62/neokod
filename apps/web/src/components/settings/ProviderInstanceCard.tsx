@@ -1061,6 +1061,7 @@ export function ProviderInstanceCard({
                       <CopilotGithubSignIn
                         isAuthenticated={liveProvider?.auth.status === "authenticated"}
                         providerStatus={liveProvider?.status}
+                        providerError={enabled ? liveProvider?.unavailableReason : undefined}
                         onRefresh={onVerify}
                       />
                     ) : null}

@@ -136,6 +136,15 @@ export function isCurrentDeviceLoginGeneration(current: number, candidate: numbe
   return current === candidate;
 }
 
+export function getCopilotSignInStatusMessage(input: {
+  readonly providerStatus: string | undefined;
+  readonly providerError: string | undefined;
+}): string {
+  return (
+    input.providerError ?? `Signed in. Provider status: ${input.providerStatus ?? "authenticated"}.`
+  );
+}
+
 function formatCountdown(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
@@ -147,6 +156,7 @@ function commandFailureMessage(error: unknown, fallback: string): string {
 export function CopilotGithubSignIn(props: {
   readonly isAuthenticated: boolean;
   readonly providerStatus: string | undefined;
+  readonly providerError: string | undefined;
   readonly onRefresh: () => void | Promise<void>;
 }) {
   const primaryEnvironment = usePrimaryEnvironment();
@@ -360,16 +370,12 @@ export function CopilotGithubSignIn(props: {
               </div>
             ) : null}
             {state.tag === "authorized" ? "Authorized. Verifying Copilot access..." : null}
-            {state.tag === "signed_in"
-              ? `Signed in. Provider status: ${props.providerStatus ?? "authenticated"}.`
-              : null}
+            {state.tag === "signed_in" ? getCopilotSignInStatusMessage(props) : null}
             {state.tag === "expired" ? "Code expired." : null}
             {state.tag === "denied" ? "Sign-in was denied." : null}
             {state.tag === "error" || state.tag === "sign_out_error" ? state.message : null}
             {state.tag === "signing_out" ? "Signing out..." : null}
-            {state.tag === "idle" && showSignedIn
-              ? `Signed in. Provider status: ${props.providerStatus ?? "authenticated"}.`
-              : null}
+            {state.tag === "idle" && showSignedIn ? getCopilotSignInStatusMessage(props) : null}
           </div>
         </DialogPanel>
         <DialogFooter>

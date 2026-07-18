@@ -66,6 +66,13 @@ const decodeCopilotSettings = Schema.decodeSync(CopilotSettings);
 const DRIVER_KIND = ProviderDriverKind.make("githubCopilot");
 const SNAPSHOT_REFRESH_INTERVAL = Duration.minutes(5);
 
+function copilotRuntimeStartErrorDetail(binaryPath: string, cause: unknown): string {
+  const detail =
+    cause instanceof Error ? cause.message : "Failed to start the GitHub Copilot runtime.";
+  if (!binaryPath || !detail.includes("too many arguments")) return detail;
+  return `The configured runtime at ${binaryPath} is not compatible with the Copilot SDK. Use a current GitHub Copilot CLI that supports --headless and --stdio, or clear Runtime path to use Neokod's bundled runtime.`;
+}
+
 // GitHub Copilot's CLI runtime ships bundled inside `@github/copilot-sdk` —
 // there is no separate binary for the user to update out-of-band the way
 // `claude update` or `npm i -g @openai/codex` works for the other drivers.
@@ -154,10 +161,7 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
             new ProviderDriverError({
               driver: DRIVER_KIND,
               instanceId,
-              detail:
-                cause instanceof Error
-                  ? cause.message
-                  : "Failed to start the GitHub Copilot runtime.",
+              detail: copilotRuntimeStartErrorDetail(binaryPath, cause),
               cause,
             }),
         });
