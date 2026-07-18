@@ -2,8 +2,9 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   deriveMissionControlRowView,
   groupMissionControlThreads,
+  selectMissionControlDashboardGroups,
   selectMissionControlThreads,
-} from "./MissionControl";
+} from "./MissionControl.logic";
 
 const project = (id: string, title = id) => ({ id, environmentId: "local", title }) as any;
 
@@ -125,5 +126,32 @@ describe("Mission Control helpers", () => {
       lastActivityAt: "2026-07-10T11:00:00.000Z",
       workspaceLabel: "demo",
     });
+  });
+
+  it("uses the sidebar status contract to group dashboard threads without duplicates", () => {
+    const groups = selectMissionControlDashboardGroups(
+      [
+        thread("running", { session: { status: "running" } }),
+        thread("approval", { hasPendingApprovals: true }),
+        thread("plan", {
+          interactionMode: "plan",
+          hasActionableProposedPlan: true,
+          latestTurn: {
+            state: "completed",
+            startedAt: "2026-07-10T09:00:00.000Z",
+            completedAt: "2026-07-10T10:00:00.000Z",
+          },
+          session: { status: "ready", activeTurnId: null },
+        }),
+        thread("recent"),
+      ],
+      [project("project-a")],
+      5,
+    );
+
+    expect(groups.running.map((candidate) => candidate.id)).toEqual(["running"]);
+    expect(groups.needsAttention.map((candidate) => candidate.id)).toEqual(["approval"]);
+    expect(groups.planReady.map((candidate) => candidate.id)).toEqual(["plan"]);
+    expect(groups.recent.map((candidate) => candidate.id)).toEqual(["recent"]);
   });
 });

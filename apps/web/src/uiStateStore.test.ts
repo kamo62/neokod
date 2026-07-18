@@ -22,7 +22,7 @@ import {
 
 function makeUiState(overrides: Partial<UiState> = {}): UiState {
   return {
-    sidebarView: "threads",
+    sidebarView: "workspace",
     pinnedThreadKeys: [],
     projectExpandedById: {},
     projectOrder: [],
@@ -169,7 +169,7 @@ describe("parsePersistedState", () => {
     });
 
     expect(parsed).toEqual({
-      sidebarView: "threads",
+      sidebarView: "workspace",
       pinnedThreadKeys: [],
       projectExpandedById: {
         logical: false,
@@ -200,7 +200,7 @@ describe("parsePersistedState", () => {
       ],
     });
 
-    expect(parsed.sidebarView).toBe("threads");
+    expect(parsed.sidebarView).toBe("workspace");
     expect(parsed.pinnedThreadKeys).toEqual(["environment-a:thread-1"]);
   });
 
@@ -303,7 +303,7 @@ describe("uiStateStore persistence", () => {
       localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
     ) as PersistedUiState;
     expect(persisted).toEqual({
-      sidebarView: "threads",
+      sidebarView: "workspace",
       pinnedThreadKeys: [],
       projectExpandedById: {
         logical: false,

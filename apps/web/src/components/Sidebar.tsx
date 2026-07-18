@@ -1,4 +1,5 @@
 import {
+  ActivityIcon,
   ArchiveIcon,
   ArrowUpDownIcon,
   ChevronRightIcon,
@@ -6,6 +7,7 @@ import {
   ContainerIcon,
   FolderPlusIcon,
   Globe2Icon,
+  HouseIcon,
   LoaderIcon,
   PinIcon,
   SearchIcon,
@@ -184,6 +186,7 @@ import {
 } from "./ui/sidebar";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { useOpenAddProjectCommandPalette } from "../commandPaletteContext";
+import { useMissionControlUiStore } from "../missionControlUiStore";
 import {
   getSidebarThreadIdsToPrewarm,
   getPinnedAndUnpinnedSidebarThreads,
@@ -2917,6 +2920,95 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   );
 });
 
+function SidebarPrimaryNav({
+  project,
+  handleNewThread,
+  openAddProject,
+  commandPaletteShortcutLabel,
+}: {
+  project: SidebarProjectSnapshot | null;
+  handleNewThread: ReturnType<typeof useNewThreadHandler>;
+  openAddProject: () => void;
+  commandPaletteShortcutLabel: string | null;
+}) {
+  const navigate = useNavigate();
+  const { isMobile, setOpenMobile } = useSidebar();
+  const openMissionControl = useMissionControlUiStore((state) => state.setOpen);
+  const finishNavigation = useCallback(() => {
+    if (isMobile) setOpenMobile(false);
+  }, [isMobile, setOpenMobile]);
+  const startThread = useCallback(() => {
+    if (!project) {
+      openAddProject();
+      return;
+    }
+    void handleNewThread(scopeProjectRef(project.environmentId, project.id));
+    finishNavigation();
+  }, [finishNavigation, handleNewThread, openAddProject, project]);
+
+  return (
+    <SidebarGroup className="px-2 pt-2 pb-1">
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            size="sm"
+            className="gap-2 px-2 py-1.5 text-ui text-text-secondary hover:bg-accent hover:text-foreground"
+            onClick={startThread}
+          >
+            <SquarePenIcon className="size-3.5" />
+            <span className="flex-1 text-left text-ui">New thread</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <CommandDialogTrigger
+            render={
+              <SidebarMenuButton
+                size="sm"
+                className="gap-2 px-2 py-1.5 text-ui text-text-secondary hover:bg-accent hover:text-foreground"
+                data-testid="command-palette-trigger"
+              />
+            }
+          >
+            <SearchIcon className="size-3.5" />
+            <span className="flex-1 text-left text-ui">Search</span>
+            {commandPaletteShortcutLabel ? (
+              <Kbd className="h-4 min-w-0 rounded-sm px-1.5 text-[10px]">
+                {commandPaletteShortcutLabel}
+              </Kbd>
+            ) : null}
+          </CommandDialogTrigger>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            size="sm"
+            className="gap-2 px-2 py-1.5 text-ui text-text-secondary hover:bg-accent hover:text-foreground"
+            onClick={() => {
+              finishNavigation();
+              void navigate({ to: "/" });
+            }}
+          >
+            <HouseIcon className="size-3.5" />
+            <span className="text-ui">Home</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            size="sm"
+            className="gap-2 px-2 py-1.5 text-ui text-text-secondary hover:bg-accent hover:text-foreground"
+            onClick={() => {
+              finishNavigation();
+              openMissionControl(true);
+            }}
+          >
+            <ActivityIcon className="size-3.5" />
+            <span className="text-ui">Mission Control</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </SidebarGroup>
+  );
+}
+
 interface SidebarProjectsContentProps {
   panelId: string;
   tabId: string;
@@ -2945,7 +3037,6 @@ interface SidebarProjectsContentProps {
   activeRouteProjectKey: string | null;
   routeThreadKey: string | null;
   newThreadShortcutLabel: string | null;
-  commandPaletteShortcutLabel: string | null;
   threadJumpLabelByKey: ReadonlyMap<string, string>;
   attachThreadListAutoAnimateRef: (node: HTMLElement | null) => void;
   expandThreadListForProject: (projectKey: string) => void;
@@ -2988,7 +3079,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     activeRouteProjectKey,
     routeThreadKey,
     newThreadShortcutLabel,
-    commandPaletteShortcutLabel,
     threadJumpLabelByKey,
     attachThreadListAutoAnimateRef,
     expandThreadListForProject,
@@ -3027,29 +3117,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
 
   return (
     <SidebarContent id={panelId} role="tabpanel" aria-labelledby={tabId} className="gap-0">
-      <SidebarGroup className="px-2 pt-2 pb-1">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <CommandDialogTrigger
-              render={
-                <SidebarMenuButton
-                  size="sm"
-                  className="gap-2 px-2 py-1.5 text-ui text-text-secondary hover:bg-accent hover:text-foreground focus-visible:ring-0"
-                  data-testid="command-palette-trigger"
-                />
-              }
-            >
-              <SearchIcon className="size-3.5 text-muted-foreground/70" />
-              <span className="flex-1 truncate text-left text-ui">Search</span>
-              {commandPaletteShortcutLabel ? (
-                <Kbd className="h-4 min-w-0 rounded-sm px-1.5 text-[10px]">
-                  {commandPaletteShortcutLabel}
-                </Kbd>
-              ) : null}
-            </CommandDialogTrigger>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarGroup>
       {showArm64IntelBuildWarning && arm64IntelBuildWarningDescription ? (
         <SidebarGroup className="px-2 pt-2 pb-0">
           <Alert variant="warning" className="rounded-2xl border-warning/40 bg-warning/8">
@@ -3195,7 +3262,7 @@ function SidebarViewTabs({
   sidebarView: "threads" | "workspace";
   setSidebarView: (view: "threads" | "workspace") => void;
 }) {
-  const views = ["threads", "workspace"] as const;
+  const views = ["workspace", "threads"] as const;
   return (
     <div className="px-2 pt-1" role="tablist" aria-label="Sidebar view">
       <div className="grid grid-cols-2 rounded-md bg-[var(--surface-control)] p-0.5 text-[length:var(--font-size-ui)]">
@@ -3236,7 +3303,7 @@ function SidebarViewTabs({
               )?.focus();
             }}
           >
-            {view}
+            {view === "workspace" ? "Projects" : "All threads"}
           </button>
         ))}
       </div>
@@ -3297,35 +3364,6 @@ function SidebarThreadsContent({
   } satisfies SidebarProjectItemProps;
   return (
     <SidebarContent id={panelId} role="tabpanel" aria-labelledby={tabId} className="gap-0">
-      <SidebarGroup className="px-2 pt-2 pb-1">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <CommandDialogTrigger
-              render={
-                <SidebarMenuButton
-                  size="sm"
-                  className="gap-2 px-2 py-1.5 text-ui text-text-secondary hover:bg-accent hover:text-foreground"
-                />
-              }
-            >
-              <SearchIcon className="size-3.5" />
-              <span className="text-ui">Search</span>
-            </CommandDialogTrigger>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              size="sm"
-              className="gap-2 px-2 py-1.5 text-ui text-text-secondary hover:bg-accent hover:text-foreground"
-              onClick={() =>
-                void handleNewThread(scopeProjectRef(project.environmentId, project.id))
-              }
-            >
-              <SquarePenIcon className="size-3.5" />
-              <span className="text-ui">New thread</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarGroup>
       {pinnedThreads.length > 0 ? (
         <SidebarGroup className="px-2 py-1">
           <div className="px-2 text-ui font-medium text-[var(--text-secondary)]">Pinned</div>
@@ -3982,6 +4020,12 @@ export default function Sidebar() {
       ) : (
         <>
           <SidebarViewTabs sidebarView={sidebarView} setSidebarView={setSidebarView} />
+          <SidebarPrimaryNav
+            project={sidebarProjects[0] ?? null}
+            handleNewThread={handleNewThread}
+            openAddProject={openAddProjectCommandPalette}
+            commandPaletteShortcutLabel={commandPaletteShortcutLabel}
+          />
           {sidebarView === "threads" ? (
             <SidebarThreadsContent
               panelId="sidebar-view-panel-threads"
@@ -4026,7 +4070,6 @@ export default function Sidebar() {
               activeRouteProjectKey={activeRouteProjectKey}
               routeThreadKey={routeThreadKey}
               newThreadShortcutLabel={newThreadShortcutLabel}
-              commandPaletteShortcutLabel={commandPaletteShortcutLabel}
               threadJumpLabelByKey={visibleThreadJumpLabelByKey}
               attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
               expandThreadListForProject={expandThreadListForProject}

@@ -46,7 +46,7 @@ export interface UiState extends UiProjectState, UiThreadState {
 }
 
 const initialState: UiState = {
-  sidebarView: "threads",
+  sidebarView: "workspace",
   pinnedThreadKeys: [],
   projectExpandedById: {},
   projectOrder: [],
@@ -124,7 +124,7 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
       : sanitizeStringArray(parsed.projectOrder);
 
   return {
-    sidebarView: parsed.sidebarView === "workspace" ? "workspace" : "threads",
+    sidebarView: parsed.sidebarView === "threads" ? "threads" : "workspace",
     pinnedThreadKeys: sanitizeStringArray(parsed.pinnedThreadKeys).filter(
       (key) => parseScopedThreadKey(key) !== null,
     ),
