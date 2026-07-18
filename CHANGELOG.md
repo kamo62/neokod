@@ -1,3 +1,11 @@
+## 3.0.18 - 2026-07-18 (Patch)
+
+Release impact: Patch because this clarifies an incompatible Copilot runtime and exposes the existing provider failure without changing any contracts.
+
+- Explain that a custom runtime must support the Copilot SDK's headless stdio flags and direct users to the bundled runtime when it does not.
+- Show a Copilot driver creation error after GitHub sign-in instead of stale disabled status.
+- Gave slow-starting source-control CLIs a real discovery probe budget: Azure DevOps probes now allow 20s, so an installed `az` no longer reads as missing.
+
 ## 3.0.17 - 2026-07-18 (Patch)
 
 Release impact: Patch because these are backward-compatible fixes ported from upstream T3 Code.
