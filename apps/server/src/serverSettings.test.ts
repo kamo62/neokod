@@ -114,6 +114,20 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }),
   );
 
+  it.effect("keeps the saved text-generation selection when every provider is disabled", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+
+      const settings = yield* serverSettings.getSettings;
+
+      assert.isFalse(settings.providers.codex.enabled);
+      assert.deepEqual(
+        settings.textGenerationModelSelection,
+        DEFAULT_SERVER_SETTINGS.textGenerationModelSelection,
+      );
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
   it.effect(
     "decodes legacy object-shaped textGenerationModelSelection.options from settings.json",
     () =>
