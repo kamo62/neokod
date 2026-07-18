@@ -1,6 +1,10 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { SourceControlProviderError, type ChangeRequest } from "@neokod/contracts";
+import {
+  SourceControlProviderError,
+  type ChangeRequest,
+  type SourceControlProviderAuth,
+} from "@neokod/contracts";
 
 import * as AzureDevOpsCli from "./AzureDevOpsCli.ts";
 import * as SourceControlProvider from "./SourceControlProvider.ts";
@@ -11,6 +15,11 @@ import {
   type SourceControlAuthProbeInput,
   type SourceControlCliDiscoverySpec,
 } from "./SourceControlProviderDiscovery.ts";
+import type * as VcsProcess from "../vcs/VcsProcess.ts";
+
+const AZURE_DEVOPS_EXTENSION_ARGS = ["extension", "show", "--name", "azure-devops"];
+const AZURE_DEVOPS_EXTENSION_INSTALL_HINT =
+  "Install the Azure DevOps CLI extension: az extension add --name azure-devops";
 
 function parseAzureAuth(input: SourceControlAuthProbeInput) {
   const account = input.stdout.trim().split(/\r?\n/)[0]?.trim();
@@ -38,6 +47,42 @@ function parseAzureAuth(input: SourceControlAuthProbeInput) {
   });
 }
 
+function refineAzureAuth(input: {
+  readonly auth: SourceControlProviderAuth;
+  readonly process: VcsProcess.VcsProcess["Service"];
+  readonly cwd: string;
+}): Effect.Effect<SourceControlProviderAuth> {
+  // Only a confirmed Azure login is worth refining further; leave unauthenticated
+  // and unknown auth states as-is since the extension check would be moot.
+  if (input.auth.status !== "authenticated") {
+    return Effect.succeed(input.auth);
+  }
+
+  return input.process
+    .run({
+      operation: "source-control.discovery.azure-devops-extension",
+      command: "az",
+      args: AZURE_DEVOPS_EXTENSION_ARGS,
+      cwd: input.cwd,
+      allowNonZeroExit: true,
+      timeoutMs: 5_000,
+      maxOutputBytes: 8_000,
+      appendTruncationMarker: true,
+    })
+    .pipe(
+      Effect.map((result) =>
+        result.exitCode === 0
+          ? input.auth
+          : providerAuth({
+              status: "unauthenticated",
+              host: "dev.azure.com",
+              detail: AZURE_DEVOPS_EXTENSION_INSTALL_HINT,
+            }),
+      ),
+      Effect.orElseSucceed(() => input.auth),
+    );
+}
+
 export const discovery = {
   type: "cli",
   kind: "azure-devops",
@@ -46,6 +91,7 @@ export const discovery = {
   versionArgs: ["--version"],
   authArgs: ["account", "show", "--query", "user.name", "-o", "tsv"],
   parseAuth: parseAzureAuth,
+  refineAuth: refineAzureAuth,
   installHint:
     "Install the Azure command-line tools (`az`), then enable Azure DevOps support with `az extension add --name azure-devops`.",
 } satisfies SourceControlCliDiscoverySpec;

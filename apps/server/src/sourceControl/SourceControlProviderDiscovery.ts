@@ -34,6 +34,11 @@ export type SourceControlCliDiscoverySpec = SourceControlDiscoverySpecBase & {
   readonly versionArgs: ReadonlyArray<string>;
   readonly authArgs: ReadonlyArray<string>;
   readonly parseAuth: (input: SourceControlAuthProbeInput) => SourceControlProviderAuth;
+  readonly refineAuth?: (input: {
+    readonly auth: SourceControlProviderAuth;
+    readonly process: VcsProcess.VcsProcess["Service"];
+    readonly cwd: string;
+  }) => Effect.Effect<SourceControlProviderAuth>;
   readonly refineUnknownRemote?: (
     input: SourceControlUnknownRemoteRefinementInput,
   ) => SourceControlProviderInfo | null;
@@ -255,6 +260,22 @@ export function probeSourceControlProvider(input: {
                 ...item,
                 auth: spec.parseAuth(result),
               }) satisfies SourceControlProviderDiscoveryItem,
+          ),
+          Effect.flatMap((probedItem) =>
+            spec.refineAuth
+              ? spec
+                  .refineAuth({
+                    auth: probedItem.auth,
+                    process: input.process,
+                    cwd: input.cwd,
+                  })
+                  .pipe(
+                    Effect.map(
+                      (auth) =>
+                        ({ ...probedItem, auth }) satisfies SourceControlProviderDiscoveryItem,
+                    ),
+                  )
+              : Effect.succeed(probedItem),
           ),
           Effect.catch((cause) =>
             Effect.succeed({
