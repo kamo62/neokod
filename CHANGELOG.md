@@ -1,3 +1,13 @@
+## 3.0.17 - 2026-07-18 (Patch)
+
+Release impact: Patch because these are backward-compatible fixes ported from upstream T3 Code.
+
+- Skipped undecodable provider runtime rows when listing sessions.
+- Fixed an image-upload stack overflow in command dispatch.
+- Improved Git diagnostics outside repositories and made selected commit paths literal.
+- Threaded the working directory through the Claude capability probe and isolated Claude instances via CLAUDE_CONFIG_DIR instead of HOME.
+- Shared MCP OAuth locks across Codex shadow homes and fixed dropped events during the initial thread snapshot.
+
 ## 3.0.16 - 2026-07-18 (Patch)
 
 Release impact: Patch because this refines source-control discovery presentation and probing without changing public contracts.
