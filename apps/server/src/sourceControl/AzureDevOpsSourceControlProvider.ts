@@ -78,7 +78,7 @@ function refineAzureAuth(input: {
       args: AZURE_DEVOPS_EXTENSION_ARGS,
       cwd: input.cwd,
       allowNonZeroExit: true,
-      timeoutMs: 5_000,
+      timeoutMs: 20_000,
       maxOutputBytes: 8_000,
       appendTruncationMarker: true,
     })
@@ -112,6 +112,9 @@ export const discovery = {
   executable: "az",
   versionArgs: ["--version"],
   authArgs: ["account", "show", "--query", "user.name", "-o", "tsv"],
+  // az is a Python CLI that can take several seconds to cold-start; the
+  // default 5s probe budget misreads it as not installed.
+  probeTimeoutMs: 20_000,
   parseAuth: parseAzureAuth,
   refineAuth: refineAzureAuth,
   installHint:
