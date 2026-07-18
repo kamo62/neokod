@@ -261,14 +261,21 @@ export const makeCatalogStore = Effect.fn("web.connectionStorage.makeCatalogStor
     if (Option.isSome(cached)) {
       return cached.value;
     }
-    const raw = yield* backend.read;
+    const raw = yield* backend.read.pipe(
+      Effect.catch((error) =>
+        Effect.logWarning(
+          "Could not load the web connection catalog; starting from an empty document.",
+          {
+            error: error.message,
+          },
+        ).pipe(Effect.as(null)),
+      ),
+    );
     let catalog = EMPTY_CONNECTION_CATALOG_DOCUMENT;
-    let recoveredFromCorruption = false;
     if (raw !== null && raw.trim() !== "") {
       catalog = yield* decodeCatalog(raw).pipe(
         Effect.catch((error) =>
           Effect.gen(function* () {
-            recoveredFromCorruption = true;
             yield* Effect.logWarning("Discarding a corrupt web connection catalog.", {
               error: error.message,
             });
@@ -288,12 +295,10 @@ export const makeCatalogStore = Effect.fn("web.connectionStorage.makeCatalogStor
     }
     const encoded = yield* encodeCatalog(catalog);
     yield* backend.write(encoded).pipe(
-      Effect.catch((cause) =>
-        recoveredFromCorruption
-          ? Effect.logWarning("Could not persist the recovered web connection catalog.", {
-              error: cause.message,
-            })
-          : Effect.fail(cause),
+      Effect.catch((error) =>
+        Effect.logWarning("Could not persist the web connection catalog.", {
+          error: error.message,
+        }),
       ),
     );
     yield* Ref.set(state, Option.some(catalog));

@@ -12,7 +12,7 @@ function readInjectedDesktopAppBranding(): DesktopAppBranding | null {
 const injectedDesktopAppBranding = readInjectedDesktopAppBranding();
 export const APP_BASE_NAME = injectedDesktopAppBranding?.baseName ?? "Neokod";
 export const APP_STAGE_LABEL =
-  injectedDesktopAppBranding?.stageLabel ?? (import.meta.env.DEV ? "Dev" : "Alpha");
+  injectedDesktopAppBranding?.stageLabel ?? (import.meta.env.DEV ? "Dev" : null);
 export const APP_DISPLAY_NAME =
   injectedDesktopAppBranding?.displayName ??
   formatAppDisplayName({ baseName: APP_BASE_NAME, stageLabel: APP_STAGE_LABEL });

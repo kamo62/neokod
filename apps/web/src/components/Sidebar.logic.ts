@@ -67,8 +67,8 @@ export interface ThreadJumpHintVisibilityController {
 
 export function resolveSidebarStageBadgeLabel(input: {
   primaryServerVersion: string | null | undefined;
-  fallbackStageLabel: string;
-}): string {
+  fallbackStageLabel: string | null | undefined;
+}): string | null | undefined {
   return resolveServerBackedAppStageLabel(input);
 }
 

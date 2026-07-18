@@ -20,7 +20,7 @@ const SDK_MODEL_CAPABILITIES: ModelInfo["capabilities"] = {
 describe("CopilotProvider", () => {
   it.effect("makePendingCopilotProvider reports a not-yet-checked warning when enabled", () =>
     Effect.gen(function* () {
-      const draft = yield* makePendingCopilotProvider(decodeSettings({}));
+      const draft = yield* makePendingCopilotProvider(decodeSettings({ enabled: true }));
       NodeAssert.equal(draft.enabled, true);
       NodeAssert.equal(draft.status, "warning");
       NodeAssert.equal(draft.installed, false);
@@ -46,7 +46,7 @@ describe("CopilotProvider", () => {
           Promise.resolve({ isAuthenticated: true, authType: "gh-cli" as const, login: "octocat" }),
         listModels: () => Promise.resolve([]),
       };
-      const draft = yield* checkCopilotProviderStatus(decodeSettings({}), client);
+      const draft = yield* checkCopilotProviderStatus(decodeSettings({ enabled: true }), client);
       NodeAssert.equal(draft.status, "ready");
       NodeAssert.equal(draft.installed, true);
       NodeAssert.equal(draft.version, "1.2.3");
@@ -66,7 +66,7 @@ describe("CopilotProvider", () => {
           return Promise.resolve([]);
         },
       };
-      const draft = yield* checkCopilotProviderStatus(decodeSettings({}), client);
+      const draft = yield* checkCopilotProviderStatus(decodeSettings({ enabled: true }), client);
       NodeAssert.equal(draft.status, "error");
       NodeAssert.equal(draft.auth.status, "unauthenticated");
       NodeAssert.equal(listModelsProbed, false);
@@ -80,7 +80,7 @@ describe("CopilotProvider", () => {
         getAuthStatus: () => Promise.resolve({ isAuthenticated: true }),
         listModels: () => Promise.resolve([]),
       };
-      const draft = yield* checkCopilotProviderStatus(decodeSettings({}), client);
+      const draft = yield* checkCopilotProviderStatus(decodeSettings({ enabled: true }), client);
       NodeAssert.equal(draft.status, "error");
       NodeAssert.equal(draft.installed, false);
     }),
@@ -130,7 +130,7 @@ describe("CopilotProvider", () => {
             },
           ]),
       };
-      const draft = yield* checkCopilotProviderStatus(decodeSettings({}), client);
+      const draft = yield* checkCopilotProviderStatus(decodeSettings({ enabled: true }), client);
 
       NodeAssert.deepEqual(
         draft.models.map((model) => model.slug),
@@ -154,7 +154,7 @@ describe("CopilotProvider", () => {
           getAuthStatus: () => Promise.resolve({ isAuthenticated: true }),
           listModels: () => Promise.reject(new Error("boom")),
         };
-        const draft = yield* checkCopilotProviderStatus(decodeSettings({}), client);
+        const draft = yield* checkCopilotProviderStatus(decodeSettings({ enabled: true }), client);
 
         NodeAssert.ok(draft.models.some((model) => model.slug === "gpt-5"));
       }),
@@ -169,9 +169,10 @@ describe("CopilotProvider", () => {
           getAuthStatus: () => Promise.resolve({ isAuthenticated: true }),
           listModels: () => new Promise<never>(() => {}),
         };
-        const fiber = yield* checkCopilotProviderStatus(decodeSettings({}), client).pipe(
-          Effect.forkScoped,
-        );
+        const fiber = yield* checkCopilotProviderStatus(
+          decodeSettings({ enabled: true }),
+          client,
+        ).pipe(Effect.forkScoped);
         yield* Effect.yieldNow;
         yield* TestClock.adjust("8001 millis");
         const draft = yield* Fiber.join(fiber);

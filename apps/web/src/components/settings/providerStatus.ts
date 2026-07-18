@@ -28,7 +28,16 @@ export type ProviderStatusKey = keyof typeof PROVIDER_STATUS_STYLES;
  * state — which happens before the first probe or when an instance names a
  * driver this build does not ship.
  */
-export function getProviderSummary(provider: ServerProvider | undefined) {
+export function getProviderSummary(
+  provider: ServerProvider | undefined,
+  options?: { readonly enabled: boolean },
+) {
+  if (!provider && options?.enabled === false) {
+    return {
+      headline: "Disabled",
+      detail: "Disabled — enable to detect and configure",
+    };
+  }
   if (!provider) {
     return {
       headline: "Checking provider status",
