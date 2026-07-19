@@ -2712,6 +2712,35 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           },
         });
         return;
+      case "task_updated": {
+        const status = message.patch.status;
+        if (status === "completed" || status === "failed" || status === "killed") {
+          const summary = message.patch.description ?? message.patch.error;
+          yield* offerRuntimeEvent({
+            ...base,
+            type: "task.completed",
+            payload: {
+              taskId: RuntimeTaskId.make(message.task_id),
+              status: status === "killed" ? "stopped" : status,
+              ...(typeof summary === "string" && summary.length > 0 ? { summary } : {}),
+            },
+          });
+          return;
+        }
+        const description = message.patch.description?.trim();
+        if (!description) {
+          return;
+        }
+        yield* offerRuntimeEvent({
+          ...base,
+          type: "task.progress",
+          payload: {
+            taskId: RuntimeTaskId.make(message.task_id),
+            description,
+          },
+        });
+        return;
+      }
       case "task_notification":
         yield* emitThreadTokenUsage(
           context,
@@ -2776,6 +2805,10 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         );
         return;
       default:
+        // Intentionally ignore untyped snapshots; per-task lifecycle arrives via task_started/task_updated/task_progress.
+        if ((message as { readonly subtype: string }).subtype === "background_tasks_changed") {
+          return;
+        }
         yield* emitRuntimeWarning(
           context,
           describeUnknownSdkMessage(`Claude system message '${message.subtype}'`, message),

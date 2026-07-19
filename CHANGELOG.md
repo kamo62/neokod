@@ -1,3 +1,10 @@
+## 3.0.23 - 2026-07-19 (Patch)
+
+Release impact: Patch because this fixes provider environment import and background-task log noise without changing storage or server contracts.
+
+- Imported the user's shell-exported provider keys (CODEX_LB_API_KEY, CODEX_LB_BASE_URL, OPENAI_API_KEY, OPENAI_BASE_URL, ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL) into the spawned provider process, so a Codex proxy configured in the shell is picked up without also adding it to each provider in Settings.
+- Stopped the work log from filling with red unknown-system-message rows for background-task updates. Task lifecycle changes now settle the matching worker or update its progress only when there is text to show, and empty backgrounding or timing updates are no longer surfaced as warnings.
+
 ## 3.0.22 - 2026-07-19 (Minor)
 
 Release impact: Minor because this adds UI surfaces and restyles the app without changing storage or server contracts.
