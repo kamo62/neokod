@@ -1152,6 +1152,14 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
           schemes: ["neokod", "neokod-dev"],
         },
       ],
+      // Signed builds ship as Developer ID with the hardened runtime and are
+      // notarized. Squirrel.Mac (auto-update) and Gatekeeper reject the ad-hoc
+      // signature of an unsigned build, so the install-and-restart step needs
+      // this. electron-builder's default entitlements already allow the JIT,
+      // unsigned executable memory, and library-validation bypass the spawned
+      // server, node-pty, and bundled Copilot runtime require. Notarization
+      // reads the App Store Connect API key from the APPLE_API_* env vars.
+      ...(signed ? { hardenedRuntime: true, gatekeeperAssess: false, notarize: true } : {}),
     };
   }
 
