@@ -135,6 +135,7 @@ interface ClaudeTurnState {
   readonly assistantTextBlockOrder: Array<AssistantTextBlockState>;
   readonly capturedProposedPlanKeys: Set<string>;
   nextSyntheticAssistantBlockIndex: number;
+  settled: boolean;
 }
 
 interface AssistantTextBlockState {
@@ -200,6 +201,7 @@ interface ClaudeSessionContext {
   lastAssistantUuid: string | undefined;
   lastThreadStartedId: string | undefined;
   stopped: boolean;
+  interruptedTurnIds: Set<TurnId>;
 }
 
 interface ClaudeQueryRuntime extends AsyncIterable<SDKMessage> {
@@ -1891,10 +1893,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     });
   });
 
-  const completeTurn = Effect.fn("completeTurn")(function* (
+  const computeResultUsageSnapshot = Effect.fn("computeResultUsageSnapshot")(function* (
     context: ClaudeSessionContext,
-    status: ProviderRuntimeTurnStatus,
-    errorMessage?: string,
     result?: SDKResultMessage,
   ) {
     const resultContextWindow = maxClaudeContextWindowFromModelUsage(result?.modelUsage);
@@ -1967,6 +1967,24 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           }
         : undefined);
 
+    return usageSnapshot;
+  });
+
+  const completeTurn = Effect.fn("completeTurn")(function* (
+    context: ClaudeSessionContext,
+    status: ProviderRuntimeTurnStatus,
+    errorMessage?: string,
+    result?: SDKResultMessage,
+  ) {
+    const activeTurn = context.turnState;
+    if (activeTurn?.settled) {
+      return;
+    }
+    if (activeTurn) {
+      activeTurn.settled = true;
+    }
+
+    const usageSnapshot = yield* computeResultUsageSnapshot(context, result);
     const turnState = context.turnState;
     if (!turnState) {
       yield* emitThreadTokenUsage(context, usageSnapshot, {
@@ -2078,6 +2096,18 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       updatedAt,
       ...(status === "failed" && errorMessage ? { lastError: errorMessage } : {}),
     };
+    yield* updateResumeCursor(context);
+  });
+
+  const absorbInterruptedResult = Effect.fn("absorbInterruptedResult")(function* (
+    context: ClaudeSessionContext,
+    result: SDKResultMessage,
+  ) {
+    const usageSnapshot = yield* computeResultUsageSnapshot(context, result);
+    yield* emitThreadTokenUsage(context, usageSnapshot, {
+      rawMethod: "claude/result",
+      rawPayload: result,
+    });
     yield* updateResumeCursor(context);
   });
 
@@ -2492,6 +2522,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         assistantTextBlockOrder: [],
         capturedProposedPlanKeys: new Set(),
         nextSyntheticAssistantBlockIndex: -1,
+        settled: false,
       };
       context.session = {
         ...context.session,
@@ -2563,6 +2594,14 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     message: SDKMessage,
   ) {
     if (message.type !== "result") {
+      return;
+    }
+
+    const realTurn = context.turnState !== undefined && context.turnState.synthetic !== true;
+    if (context.interruptedTurnIds.size > 0 && (!realTurn || isInterruptedResult(message))) {
+      yield* absorbInterruptedResult(context, message);
+      const oldest = context.interruptedTurnIds.values().next().value;
+      if (oldest !== undefined) context.interruptedTurnIds.delete(oldest);
       return;
     }
 
@@ -2900,6 +2939,22 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     yield* logNativeSdkMessage(context, message);
     yield* ensureThreadId(context, message);
 
+    // Only a real turn suppresses this drain; stopped-turn chatter during a new
+    // real turn is a residual because the SDK does not provide turn lineage.
+    const realTurn = context.turnState !== undefined && context.turnState.synthetic !== true;
+    if (context.interruptedTurnIds.size > 0 && !realTurn) {
+      if (message.type === "result") {
+        yield* handleResultMessage(context, message);
+        return;
+      }
+      if (message.type === "assistant") {
+        context.lastAssistantUuid = message.uuid;
+        yield* updateResumeCursor(context);
+        return;
+      }
+      return;
+    }
+
     switch (message.type) {
       case "stream_event":
         yield* handleStreamEvent(context, message);
@@ -3025,6 +3080,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     if (context.turnState) {
       yield* completeTurn(context, "interrupted", "Session stopped.");
     }
+    context.interruptedTurnIds.clear();
 
     yield* Queue.shutdown(context.promptQueue);
 
@@ -3608,6 +3664,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         lastAssistantUuid: resumeState?.resumeSessionAt,
         lastThreadStartedId: undefined,
         stopped: false,
+        interruptedTurnIds: new Set(),
       };
       yield* Ref.set(contextRef, context);
       sessions.set(threadId, context);
@@ -3745,6 +3802,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         assistantTextBlockOrder: [],
         capturedProposedPlanKeys: new Set(),
         nextSyntheticAssistantBlockIndex: -1,
+        settled: false,
       };
 
       const updatedAt = yield* nowIso;
@@ -3792,6 +3850,19 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   const interruptTurn: ClaudeAdapterShape["interruptTurn"] = Effect.fn("interruptTurn")(
     function* (threadId, _turnId) {
       const context = yield* requireSession(threadId);
+      const active = context.turnState;
+      const targetId = active?.turnId;
+      if (_turnId !== undefined && targetId !== undefined && String(_turnId) !== String(targetId)) {
+        yield* Effect.tryPromise({
+          try: () => context.query.interrupt(),
+          catch: (cause) => toRequestError(threadId, "turn/interrupt", cause),
+        });
+        return;
+      }
+      if (active && !active.settled) {
+        context.interruptedTurnIds.add(active.turnId);
+        yield* completeTurn(context, "interrupted", "Interrupted by user.");
+      }
       yield* Effect.tryPromise({
         try: () => context.query.interrupt(),
         catch: (cause) => toRequestError(threadId, "turn/interrupt", cause),
