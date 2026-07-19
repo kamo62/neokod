@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   deriveToolCallLabel,
+  deriveToolIconKindFromName,
   deriveToolCallResultSummary,
   formatInProgressToolLabel,
 } from "./ToolCallLabel.logic";
 
 describe("deriveToolCallLabel", () => {
+  it("maps tool names to transcript icon kinds", () => {
+    expect(deriveToolIconKindFromName("Bash")).toBe("terminal");
+    expect(deriveToolIconKindFromName("Grep")).toBe("search");
+    expect(deriveToolIconKindFromName("Read")).toBe("eye");
+    expect(deriveToolIconKindFromName("Edit")).toBe("square-pen");
+    expect(deriveToolIconKindFromName("Skill")).toBe("sparkles");
+    expect(deriveToolIconKindFromName(null)).toBe("wrench");
+  });
+
   it("summarizes shell commands without their long arguments", () => {
     expect(
       deriveToolCallLabel({

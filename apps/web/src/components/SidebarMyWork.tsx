@@ -46,23 +46,30 @@ function MyWorkRow({
     <div className="group/my-work-row relative">
       <button
         type="button"
-        className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-ui text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex w-full min-w-0 items-start gap-2 rounded-md px-2 py-1 pr-7 text-left text-ui text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         onClick={onOpen}
       >
         {done ? (
-          <CheckIcon className="size-3 shrink-0 text-muted-foreground/45" aria-label="Done" />
+          <CheckIcon
+            className="mt-0.5 size-3 shrink-0 text-muted-foreground/45"
+            aria-label="Done"
+          />
         ) : (
           <span
             aria-label={status?.label}
             className={cn(
-              "size-1.5 shrink-0 rounded-full",
+              "mt-1.5 size-1.5 shrink-0 rounded-full",
               needsAttention ? "bg-amber-500 dark:bg-amber-300/90" : status?.dotClass,
               status?.pulse && "animate-pulse",
             )}
           />
         )}
-        <span className="min-w-0 flex-1 truncate">{thread.title}</span>
-        <span className="max-w-24 truncate text-meta text-muted-foreground/65">{projectName}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate">{thread.title}</span>
+          {projectName ? (
+            <span className="block truncate text-meta text-muted-foreground/65">{projectName}</span>
+          ) : null}
+        </span>
       </button>
       <button
         type="button"
@@ -146,28 +153,27 @@ export function SidebarMyWork({
         <div className="mt-1 space-y-1">
           {GROUPS.map(({ key, title }) => {
             const group = groups[key];
+            if (group.length === 0) return null;
             return (
               <div key={key} className="group/my-work-group">
                 <div className="flex h-5 items-center justify-between px-2 text-meta font-medium uppercase tracking-wide text-muted-foreground/75">
                   <span>{title}</span>
-                  {group.length > 0 ? (
-                    <button
-                      type="button"
-                      className="opacity-0 transition-opacity hover:text-foreground group-hover/my-work-group:opacity-100 group-focus-within/my-work-group:opacity-100"
-                      onClick={() =>
-                        dismissThreads(
-                          Object.fromEntries(
-                            group.map((thread) => [
-                              `${thread.environmentId}:${thread.id}`,
-                              computeThreadSignature(thread),
-                            ]),
-                          ),
-                        )
-                      }
-                    >
-                      Clear
-                    </button>
-                  ) : null}
+                  <button
+                    type="button"
+                    className="opacity-0 transition-opacity hover:text-foreground group-hover/my-work-group:opacity-100 group-focus-within/my-work-group:opacity-100"
+                    onClick={() =>
+                      dismissThreads(
+                        Object.fromEntries(
+                          group.map((thread) => [
+                            `${thread.environmentId}:${thread.id}`,
+                            computeThreadSignature(thread),
+                          ]),
+                        ),
+                      )
+                    }
+                  >
+                    Clear
+                  </button>
                 </div>
                 {group.map((thread) => (
                   <MyWorkRow

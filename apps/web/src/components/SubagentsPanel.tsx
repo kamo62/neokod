@@ -1,13 +1,25 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { OrchestrationThreadActivity, ScopedThreadRef } from "@neokod/contracts";
 import { type TimestampFormat } from "@neokod/contracts/settings";
-import { CheckIcon, LoaderIcon, TriangleAlertIcon, XIcon } from "lucide-react";
+import {
+  CheckIcon,
+  EyeIcon,
+  LoaderIcon,
+  SearchIcon,
+  SparklesIcon,
+  SquarePenIcon,
+  TerminalIcon,
+  TriangleAlertIcon,
+  WrenchIcon,
+  XIcon,
+} from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Badge } from "./ui/badge";
 import ChatMarkdown from "./ChatMarkdown";
 import { ScrollArea } from "./ui/scroll-area";
 import { deriveSubagentCards, formatElapsed, type SubagentCard } from "../session-logic";
 import { formatTimestamp } from "../timestampFormat";
+import { deriveToolIconKindFromName, type ToolCallIconKind } from "./chat/ToolCallLabel.logic";
 
 const EMPTY_DISMISSED: ReadonlySet<string> = new Set();
 
@@ -19,6 +31,20 @@ const EMPTY_DISMISSED: ReadonlySet<string> = new Set();
  */
 function toPlainPreview(text: string): string {
   return text.replace(/`+/g, "").trim();
+}
+
+export function cleanSubagentProgressLabel(label: string | null | undefined): string {
+  return label?.replace(/^(?:Running|Ran)\s+/u, "").trim() || "Working…";
+}
+
+function subagentProgressIcon(iconKind: ToolCallIconKind): React.ReactNode {
+  const className = "mt-0.5 size-3 shrink-0 text-muted-foreground/50";
+  if (iconKind === "terminal") return <TerminalIcon className={className} aria-hidden />;
+  if (iconKind === "search") return <SearchIcon className={className} aria-hidden />;
+  if (iconKind === "eye") return <EyeIcon className={className} aria-hidden />;
+  if (iconKind === "square-pen") return <SquarePenIcon className={className} aria-hidden />;
+  if (iconKind === "sparkles") return <SparklesIcon className={className} aria-hidden />;
+  return <WrenchIcon className={className} aria-hidden />;
 }
 
 /**
@@ -319,23 +345,21 @@ const SubagentsPanel = memo(function SubagentsPanel({
             <div className="mt-3 space-y-2 border-l border-border/50 pl-2.5">
               {selected.progress.length > 0 ? (
                 selected.progress.map((entry, index) => {
-                  const text = entry.summary ?? entry.description ?? "Working…";
+                  const text = cleanSubagentProgressLabel(entry.summary ?? entry.description);
                   return (
                     <div
                       key={`${selected.taskId}:${entry.at}:${entry.lastToolName ?? entry.summary ?? entry.description ?? index}`}
-                      className="text-[12px] leading-snug text-muted-foreground/80"
+                      className="flex gap-1.5 text-[12px] leading-snug text-muted-foreground/80"
                     >
-                      <ChatMarkdown
-                        text={text}
-                        cwd={markdownCwd}
-                        threadRef={threadRef}
-                        isStreaming={false}
-                      />
-                      {entry.lastToolName ? (
-                        <p className="mt-0.5 text-[10px] text-muted-foreground/40">
-                          {entry.lastToolName}
-                        </p>
-                      ) : null}
+                      {subagentProgressIcon(deriveToolIconKindFromName(entry.lastToolName))}
+                      <div className="min-w-0">
+                        <ChatMarkdown
+                          text={text}
+                          cwd={markdownCwd}
+                          threadRef={threadRef}
+                          isStreaming={false}
+                        />
+                      </div>
                     </div>
                   );
                 })
@@ -390,16 +414,16 @@ const SubagentsPanel = memo(function SubagentsPanel({
                             {card.progress.map((entry, index) => (
                               <div
                                 key={`${card.taskId}:${entry.at}:${entry.lastToolName ?? entry.summary ?? entry.description ?? index}`}
-                                className="text-[11px]"
+                                className="flex gap-1.5 text-[11px]"
                               >
-                                <p className="leading-snug text-muted-foreground/70">
-                                  {toPlainPreview(entry.summary ?? entry.description ?? "Working…")}
+                                {subagentProgressIcon(
+                                  deriveToolIconKindFromName(entry.lastToolName),
+                                )}
+                                <p className="min-w-0 leading-snug text-muted-foreground/70">
+                                  {toPlainPreview(
+                                    cleanSubagentProgressLabel(entry.summary ?? entry.description),
+                                  )}
                                 </p>
-                                {entry.lastToolName ? (
-                                  <p className="text-[10px] text-muted-foreground/40">
-                                    {entry.lastToolName}
-                                  </p>
-                                ) : null}
                               </div>
                             ))}
                           </div>
