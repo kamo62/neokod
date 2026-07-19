@@ -2,7 +2,7 @@
 
 Release impact: Patch because this changes only how an interrupted turn settles, with no storage or contract changes.
 
-- Fixed the Stop button appearing to do nothing while background workers were still running. Stop now settles the turn to interrupted the moment you press it and hands control back, instead of waiting for a final result that the running workers hold back, and it tells the runtime to abort the work. The session stays open so your next message continues normally. Late output from the stopped turn is drained quietly so it cannot reopen the turn as Working or be mistaken for a newer turn's result, and the stopped turn's final usage is still counted.
+- Fixed the Stop button appearing to do nothing while background workers were still running. Stop now settles the turn to interrupted the moment you press it and hands control back, instead of waiting for a final result that the running workers hold back, and it tells the runtime to abort the work. Settling no longer issues a usage query that could itself hang on a stalled stream. The session stays open so your next message continues normally, system and telemetry events keep flowing, and late output from the stopped turn is drained quietly so it cannot reopen the turn as Working. A stopped turn's final usage is still counted.
 
 ## 3.0.24 - 2026-07-19 (Patch)
 

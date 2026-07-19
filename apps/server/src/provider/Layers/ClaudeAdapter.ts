@@ -1896,6 +1896,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   const computeResultUsageSnapshot = Effect.fn("computeResultUsageSnapshot")(function* (
     context: ClaudeSessionContext,
     result?: SDKResultMessage,
+    // Querying live context usage issues an SDK control request. On the
+    // interrupt path the stream may be wedged behind background sub-agents, so
+    // that request can hang indefinitely; callers settling a turn under
+    // interrupt pass false to fall back to the last known usage instead.
+    queryContextUsage = true,
   ) {
     const resultContextWindow = maxClaudeContextWindowFromModelUsage(result?.modelUsage);
     if (resultContextWindow !== undefined) {
@@ -1908,10 +1913,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       context.lastKnownTotalProcessedTokens = accumulatedTotalProcessedTokens;
     }
 
-    const contextUsageSnapshot = yield* queryCurrentContextUsage(
-      context,
-      accumulatedTotalProcessedTokens ?? context.lastKnownTotalProcessedTokens,
-    );
+    const contextUsageSnapshot = queryContextUsage
+      ? yield* queryCurrentContextUsage(
+          context,
+          accumulatedTotalProcessedTokens ?? context.lastKnownTotalProcessedTokens,
+        )
+      : undefined;
     const resultUsageRecord =
       result?.usage && typeof result.usage === "object" && !Array.isArray(result.usage)
         ? (result.usage as Record<string, unknown>)
@@ -1975,6 +1982,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     status: ProviderRuntimeTurnStatus,
     errorMessage?: string,
     result?: SDKResultMessage,
+    options?: { readonly queryContextUsage?: boolean },
   ) {
     const activeTurn = context.turnState;
     if (activeTurn?.settled) {
@@ -1984,7 +1992,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       activeTurn.settled = true;
     }
 
-    const usageSnapshot = yield* computeResultUsageSnapshot(context, result);
+    const usageSnapshot = yield* computeResultUsageSnapshot(
+      context,
+      result,
+      options?.queryContextUsage ?? true,
+    );
     const turnState = context.turnState;
     if (!turnState) {
       yield* emitThreadTokenUsage(context, usageSnapshot, {
@@ -2103,7 +2115,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     context: ClaudeSessionContext,
     result: SDKResultMessage,
   ) {
-    const usageSnapshot = yield* computeResultUsageSnapshot(context, result);
+    // The result already carries its own usage; avoid a live context-usage
+    // query so a wedged stream cannot stall draining the interrupted turn.
+    const usageSnapshot = yield* computeResultUsageSnapshot(context, result, false);
     yield* emitThreadTokenUsage(context, usageSnapshot, {
       rawMethod: "claude/result",
       rawPayload: result,
@@ -2939,8 +2953,14 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     yield* logNativeSdkMessage(context, message);
     yield* ensureThreadId(context, message);
 
-    // Only a real turn suppresses this drain; stopped-turn chatter during a new
-    // real turn is a residual because the SDK does not provide turn lineage.
+    // While draining an interrupted turn with no active real turn, suppress only
+    // the frames that would resurrect "Working": an assistant frame spins up a
+    // synthetic turn (flipping the session back to running) and a stream_event /
+    // user frame repopulates in-flight tools. Results are still routed (to be
+    // absorbed), and system frames (compaction, telemetry, session state) fall
+    // through to normal handling so nothing load-bearing is dropped. Stopped-turn
+    // chatter arriving during a new real turn is a residual: the SDK provides no
+    // turn lineage on the wire, so it cannot be separated from the live turn.
     const realTurn = context.turnState !== undefined && context.turnState.synthetic !== true;
     if (context.interruptedTurnIds.size > 0 && !realTurn) {
       if (message.type === "result") {
@@ -2952,7 +2972,10 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         yield* updateResumeCursor(context);
         return;
       }
-      return;
+      if (message.type === "stream_event" || message.type === "user") {
+        return;
+      }
+      // System and any other frames fall through to normal dispatch below.
     }
 
     switch (message.type) {
@@ -3861,7 +3884,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       }
       if (active && !active.settled) {
         context.interruptedTurnIds.add(active.turnId);
-        yield* completeTurn(context, "interrupted", "Interrupted by user.");
+        // Settle without a live context-usage query: the stream may be wedged
+        // behind background sub-agents, and that query would hang Stop here.
+        yield* completeTurn(context, "interrupted", "Interrupted by user.", undefined, {
+          queryContextUsage: false,
+        });
       }
       yield* Effect.tryPromise({
         try: () => context.query.interrupt(),
