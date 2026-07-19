@@ -2975,7 +2975,14 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       if (message.type === "stream_event" || message.type === "user") {
         return;
       }
-      // System and any other frames fall through to normal dispatch below.
+      // A system "status" frame emits session.state.changed -> running, which
+      // would resurrect "Working" on the already-settled turn; suppress just
+      // that subtype. Other system frames (telemetry, task lifecycle,
+      // compaction, init) fall through to normal handling.
+      if (message.type === "system" && message.subtype === "status") {
+        return;
+      }
+      // Remaining frames fall through to normal dispatch below.
     }
 
     switch (message.type) {

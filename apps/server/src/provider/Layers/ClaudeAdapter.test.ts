@@ -1978,6 +1978,59 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect(
+    "T10 suppresses a system status frame that would resurrect Working while draining",
+    () => {
+      const harness = makeHarness();
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        const events: Array<ProviderRuntimeEvent> = [];
+        yield* Stream.runForEach(adapter.streamEvents, (event) =>
+          Effect.sync(() => events.push(event)),
+        ).pipe(Effect.forkChild);
+        const session = yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+        });
+        const turn = yield* adapter.sendTurn({
+          threadId: session.threadId,
+          input: "A",
+          attachments: [],
+        });
+        yield* adapter.interruptTurn(session.threadId, turn.turnId);
+        const afterInterrupt = events.length;
+        // A running/waiting status frame during drain must not re-emit
+        // session.state.changed, which downstream would flip the session back to
+        // running with no active turn.
+        harness.query.emit({
+          type: "system",
+          subtype: "status",
+          status: "running",
+          session_id: "sdk-a",
+          uuid: "drain-status",
+        } as unknown as SDKMessage);
+        yield* drainSdkMessages;
+
+        const resurrectedWorking = events
+          .slice(afterInterrupt)
+          .some(
+            (event) =>
+              event.type === "session.state.changed" &&
+              ((event as { readonly payload?: { readonly state?: string } }).payload?.state ===
+                "running" ||
+                (event as { readonly payload?: { readonly state?: string } }).payload?.state ===
+                  "waiting"),
+          );
+        assert.equal(resurrectedWorking, false);
+        assert.equal((yield* adapter.listSessions())[0]?.status, "ready");
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    },
+  );
+
   it.effect("closes the session when the Claude stream aborts after a turn starts", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
