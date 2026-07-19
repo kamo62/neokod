@@ -13,6 +13,7 @@ interface ThreadRunBannerProps {
   readonly hasPendingUserInput: boolean;
   readonly isWorking: boolean;
   readonly interruptAvailable: boolean;
+  readonly activeToolLabel?: string | undefined;
   readonly hasPlanData: boolean;
   readonly onOpenPlan: () => void;
   readonly onInterrupt: () => void;
@@ -27,6 +28,7 @@ export function ThreadRunBanner(props: ThreadRunBannerProps) {
     hasPendingUserInput: props.hasPendingUserInput,
     isWorking: props.isWorking,
     interruptAvailable: props.interruptAvailable,
+    activeToolLabel: props.activeToolLabel,
   });
   if (!summary) return null;
 

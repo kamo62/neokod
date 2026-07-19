@@ -1119,6 +1119,7 @@ describe("deriveWorkLogEntries", () => {
     expect(entry).toMatchObject({
       command: "bun run dev",
       detail: '{ "dev": "vite dev --port 3000" }',
+      exitCode: 0,
       itemType: "command_execution",
       toolTitle: "bash",
     });

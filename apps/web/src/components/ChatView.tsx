@@ -211,6 +211,7 @@ import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { ChatHeader } from "./chat/ChatHeader";
 import { ThreadRunBanner } from "./chat/ThreadRunBanner";
+import { deriveToolCallLabel, formatInProgressToolLabel } from "./chat/ToolCallLabel.logic";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -2194,6 +2195,24 @@ function ChatViewContent(props: ChatViewProps) {
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
+  const activeToolLabel = useMemo(() => {
+    const activeTool = workLogEntries.findLast(
+      (entry) => entry.toolLifecycleStatus === "inProgress",
+    );
+    if (!activeTool) return undefined;
+    return formatInProgressToolLabel(
+      deriveToolCallLabel({
+        toolName: activeTool.toolName,
+        input: activeTool.toolInput,
+        command: activeTool.command,
+        changedFiles: activeTool.changedFiles,
+        itemType: activeTool.itemType,
+        requestKind: activeTool.requestKind,
+        workspaceRoot: activeWorkspaceRoot,
+        fallbackLabel: activeTool.toolTitle ?? activeTool.label,
+      }),
+    );
+  }, [activeWorkspaceRoot, workLogEntries]);
   const activeTerminalLaunchContext =
     terminalUiLaunchContext?.threadId === activeThreadId ? terminalUiLaunchContext : null;
   // Default true while loading to avoid toolbar flicker.
@@ -5145,6 +5164,7 @@ function ChatViewContent(props: ChatViewProps) {
           hasPendingUserInput={activePendingUserInput !== null}
           isWorking={isWorking}
           interruptAvailable={phase === "running" && activePendingUserInput === null}
+          activeToolLabel={activeToolLabel}
           hasPlanData={hasPlanData}
           onOpenPlan={togglePlanSidebar}
           onInterrupt={onInterrupt}

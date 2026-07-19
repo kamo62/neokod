@@ -5,7 +5,20 @@ import {
   deriveMessagesTimelineRows,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
+  summarizeWorkGroupActivity,
 } from "./MessagesTimeline.logic";
+
+describe("summarizeWorkGroupActivity", () => {
+  it("uses the activity kinds instead of a generic tool-call count", () => {
+    expect(
+      summarizeWorkGroupActivity([
+        { id: "read", createdAt: "", label: "", tone: "tool", requestKind: "file-read" },
+        { id: "run", createdAt: "", label: "", tone: "tool", command: "pytest" },
+        { id: "search", createdAt: "", label: "", tone: "tool", itemType: "web_search" },
+      ]),
+    ).toBe("Read files, Ran commands, Searched");
+  });
+});
 
 describe("computeMessageDurationStart", () => {
   it("returns message createdAt when there is no preceding user message", () => {

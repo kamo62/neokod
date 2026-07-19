@@ -109,6 +109,7 @@ export type MessagesTimelineRow =
       hiddenCount: number;
       expanded: boolean;
       onlyToolEntries: boolean;
+      activitySummary: string;
     }
   | {
       kind: "turn-fold";
@@ -141,6 +142,32 @@ export type MessagesTimelineRow =
 export interface StableMessagesTimelineRowsState {
   byId: Map<string, MessagesTimelineRow>;
   result: MessagesTimelineRow[];
+}
+
+export function summarizeWorkGroupActivity(entries: ReadonlyArray<WorkLogEntry>): string {
+  const categories = new Set<string>();
+  for (const entry of entries) {
+    if (entry.requestKind === "file-read" || entry.itemType === "image_view")
+      categories.add("Read files");
+    else if (
+      entry.requestKind === "file-change" ||
+      entry.itemType === "file_change" ||
+      (entry.changedFiles?.length ?? 0) > 0
+    )
+      categories.add("Edited files");
+    else if (
+      entry.itemType === "web_search" ||
+      /(?:search|grep|glob|find)/i.test(entry.toolName ?? "")
+    )
+      categories.add("Searched");
+    else if (
+      entry.requestKind === "command" ||
+      entry.itemType === "command_execution" ||
+      entry.command
+    )
+      categories.add("Ran commands");
+  }
+  return [...categories].join(", ") || "Worked";
 }
 
 export function computeMessageDurationStart(
@@ -471,6 +498,7 @@ export function deriveMessagesTimelineRows(input: {
             hiddenCount: hiddenEntries.length,
             expanded,
             onlyToolEntries: visibleGroupedEntries.every((entry) => workLogEntryIsToolLike(entry)),
+            activitySummary: summarizeWorkGroupActivity(visibleGroupedEntries),
           });
         }
       }
