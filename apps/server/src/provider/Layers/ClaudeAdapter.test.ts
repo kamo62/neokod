@@ -1868,9 +1868,49 @@ describe("ClaudeAdapterLive", () => {
         type: "system",
         subtype: "task_updated",
         task_id: "task-subagent-1",
-        patch: { status: "running", description: "Reviewing the migration" },
+        patch: { is_backgrounded: true },
         session_id: "sdk-session-task-update",
         uuid: "task-update-1",
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "system",
+        subtype: "task_updated",
+        task_id: "task-subagent-2",
+        patch: { status: "running" },
+        session_id: "sdk-session-task-update",
+        uuid: "task-update-2",
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "system",
+        subtype: "task_updated",
+        task_id: "task-subagent-3",
+        patch: { description: "Reading files" },
+        session_id: "sdk-session-task-update",
+        uuid: "task-update-3",
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "system",
+        subtype: "task_updated",
+        task_id: "task-subagent-4",
+        patch: { status: "completed", description: "Done" },
+        session_id: "sdk-session-task-update",
+        uuid: "task-update-4",
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "system",
+        subtype: "task_updated",
+        task_id: "task-subagent-5",
+        patch: { status: "killed" },
+        session_id: "sdk-session-task-update",
+        uuid: "task-update-5",
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "system",
+        subtype: "task_updated",
+        task_id: "task-subagent-6",
+        patch: { status: "failed", error: "boom" },
+        session_id: "sdk-session-task-update",
+        uuid: "task-update-6",
       } as unknown as SDKMessage);
       harness.query.emit({
         type: "system",
@@ -1884,11 +1924,42 @@ describe("ClaudeAdapterLive", () => {
       yield* Effect.yieldNow;
       runtimeEventsFiber.interruptUnsafe();
 
-      const progressEvent = runtimeEvents.find((event) => event.type === "task.progress");
-      assert.equal(progressEvent?.type, "task.progress");
-      if (progressEvent?.type === "task.progress") {
-        assert.equal(progressEvent.payload.description, "Reviewing the migration");
-      }
+      const taskEvents = runtimeEvents.filter(
+        (event) => event.type === "task.progress" || event.type === "task.completed",
+      );
+      assert.deepEqual(
+        taskEvents.map((event) => {
+          if (event.type === "task.progress") {
+            return {
+              type: event.type,
+              taskId: String(event.payload.taskId),
+              description: event.payload.description,
+            };
+          }
+          return {
+            type: event.type,
+            taskId: String(event.payload.taskId),
+            status: event.payload.status,
+            summary: event.payload.summary,
+          };
+        }),
+        [
+          { type: "task.progress", taskId: "task-subagent-3", description: "Reading files" },
+          {
+            type: "task.completed",
+            taskId: "task-subagent-4",
+            status: "completed",
+            summary: "Done",
+          },
+          {
+            type: "task.completed",
+            taskId: "task-subagent-5",
+            status: "stopped",
+            summary: undefined,
+          },
+          { type: "task.completed", taskId: "task-subagent-6", status: "failed", summary: "boom" },
+        ],
+      );
       assert.equal(
         runtimeEvents.some((event) => event.type === "runtime.warning"),
         false,
