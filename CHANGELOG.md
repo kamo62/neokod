@@ -1,3 +1,11 @@
+## 3.0.22 - 2026-07-19 (Minor)
+
+Release impact: Minor because this adds UI surfaces and restyles the app without changing storage or server contracts.
+
+- Retuned the default theme to a Codex-style palette and system fonts, light and dark: white/#181818 canvases, #339cff accent, the Codex diff and skill colors, and cool-biased neutrals, replacing the previous warm greys and the bundled DM Sans.
+- Rendered agent tool calls as readable verb-first rows — a tool icon, a verb, and the file or command target ("Ran git diff", "Read spec.py", "Edited src/spec.py") with running/done/failed status and the raw command still available on expand, and the current tool now shows in the run banner. Commands read the real command from the tool input, and the running indicator shows for active tools.
+- Added a My Work cross-project inbox above the project tree: Active, Needs you, and Recent threads from every project, with collapse, per-item dismiss (off your radar, not deleted), a per-group clear, and undo. A dismissed thread reappears when it finishes, needs input, or starts new work.
+
 ## 3.0.21 - 2026-07-19 (Patch)
 
 Release impact: Patch because this changes only how the macOS build is signed and distributed, not the application or its update contracts.
