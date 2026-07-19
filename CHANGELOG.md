@@ -1,3 +1,9 @@
+## 3.0.20 - 2026-07-19 (Patch)
+
+Release impact: Patch because this fixes the packaged Copilot runtime launch without changing contracts.
+
+- The packaged app now spawns the bundled native Copilot runtime directly instead of letting the SDK re-enter the Neokod server binary as its node executable.
+
 ## 3.0.19 - 2026-07-18 (Minor)
 
 Release impact: Minor because this adds backward-compatible UI surfaces and navigation behavior without changing storage or server contracts.

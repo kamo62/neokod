@@ -30,6 +30,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
+import { HostProcessArchitecture, HostProcessPlatform } from "@neokod/shared/hostProcess";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderDriverError } from "../Errors.ts";
@@ -58,6 +59,7 @@ import {
   resolveCopilotBaseDirectory,
 } from "./CopilotEnvironment.ts";
 import { checkCopilotProviderStatus, makePendingCopilotProvider } from "./CopilotProvider.ts";
+import { resolveBundledCopilotRuntime } from "./CopilotRuntime.ts";
 import { makeCopilotTextGeneration } from "./CopilotTextGeneration.ts";
 import { getStoredGithubToken } from "./GithubDeviceLogin.ts";
 
@@ -140,8 +142,13 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
       });
 
       const binaryPath = effectiveConfig.binaryPath.trim();
+      const hostPlatform = yield* HostProcessPlatform;
+      const hostArchitecture = yield* HostProcessArchitecture;
+      const runtimePath =
+        binaryPath ||
+        resolveBundledCopilotRuntime({ platform: hostPlatform, architecture: hostArchitecture });
       const client = new CopilotClient({
-        ...(binaryPath ? { connection: RuntimeConnection.forStdio({ path: binaryPath }) } : {}),
+        ...(runtimePath ? { connection: RuntimeConnection.forStdio({ path: runtimePath }) } : {}),
         ...(resolvedBaseDirectory ? { baseDirectory: resolvedBaseDirectory } : {}),
         ...(gitHubToken ? { gitHubToken } : {}),
         env: processEnv,
