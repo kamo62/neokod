@@ -67,7 +67,7 @@ describe("CopilotDriver", () => {
 const copilotSdkState = vi.hoisted(() => ({
   startFailureMessage: undefined as string | undefined,
   callOrder: [] as Array<string>,
-  clients: [] as Array<{ startCalls: number; stopCalls: number }>,
+  clients: [] as Array<{ startCalls: number; stopCalls: number; options: unknown }>,
 }));
 
 vi.mock("@github/copilot-sdk", () => {
@@ -75,7 +75,10 @@ vi.mock("@github/copilot-sdk", () => {
     startCalls = 0;
     stopCalls = 0;
 
-    constructor() {
+    options: unknown;
+
+    constructor(options: unknown) {
+      this.options = options;
       copilotSdkState.clients.push(this);
     }
 
@@ -155,6 +158,45 @@ const testLayer = ServerConfig.layerTest(process.cwd(), {
 );
 
 describe("CopilotDriver — lifecycle", () => {
+  it.effect("uses the bundled native runtime when no custom path is configured", () =>
+    Effect.gen(function* () {
+      const before = copilotSdkState.clients.length;
+
+      yield* CopilotDriver.create(
+        makeCreateInput({
+          instanceId: ProviderInstanceId.make("githubCopilot_bundled_runtime"),
+          enabled: false,
+        }),
+      ).pipe(Effect.provide(testLayer), Effect.scoped);
+
+      const created = copilotSdkState.clients.slice(before);
+      const connection = (created[0]!.options as { connection?: { path?: string } }).connection;
+      NodeAssert.ok(connection?.path, "expected a bundled stdio runtime connection");
+      NodeAssert.ok(
+        connection.path.endsWith(process.platform === "win32" ? "copilot.exe" : "copilot"),
+        "expected the bundled native Copilot executable",
+      );
+    }),
+  );
+
+  it.effect("keeps a configured runtime path unchanged", () =>
+    Effect.gen(function* () {
+      const before = copilotSdkState.clients.length;
+
+      yield* CopilotDriver.create(
+        makeCreateInput({
+          instanceId: ProviderInstanceId.make("githubCopilot_custom_runtime"),
+          enabled: false,
+          binaryPath: "/usr/local/bin/copilot",
+        }),
+      ).pipe(Effect.provide(testLayer), Effect.scoped);
+
+      const created = copilotSdkState.clients.slice(before);
+      const connection = (created[0]!.options as { connection?: { path?: string } }).connection;
+      NodeAssert.equal(connection?.path, "/usr/local/bin/copilot");
+    }),
+  );
+
   it.effect("starts the bundled runtime exactly once per created instance when enabled", () =>
     Effect.gen(function* () {
       const before = copilotSdkState.clients.length;

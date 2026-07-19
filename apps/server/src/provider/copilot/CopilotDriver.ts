@@ -58,6 +58,7 @@ import {
   resolveCopilotBaseDirectory,
 } from "./CopilotEnvironment.ts";
 import { checkCopilotProviderStatus, makePendingCopilotProvider } from "./CopilotProvider.ts";
+import { resolveBundledCopilotRuntime } from "./CopilotRuntime.ts";
 import { makeCopilotTextGeneration } from "./CopilotTextGeneration.ts";
 import { getStoredGithubToken } from "./GithubDeviceLogin.ts";
 
@@ -140,8 +141,9 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
       });
 
       const binaryPath = effectiveConfig.binaryPath.trim();
+      const runtimePath = binaryPath || resolveBundledCopilotRuntime();
       const client = new CopilotClient({
-        ...(binaryPath ? { connection: RuntimeConnection.forStdio({ path: binaryPath }) } : {}),
+        ...(runtimePath ? { connection: RuntimeConnection.forStdio({ path: runtimePath }) } : {}),
         ...(resolvedBaseDirectory ? { baseDirectory: resolvedBaseDirectory } : {}),
         ...(gitHubToken ? { gitHubToken } : {}),
         env: processEnv,
