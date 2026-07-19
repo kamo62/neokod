@@ -81,6 +81,10 @@ import { APP_STAGE_LABEL } from "../branding";
 import { useOpenPrLink } from "../lib/openPullRequestLink";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isMacPlatform } from "../lib/utils";
+import type {
+  EnvironmentProject,
+  EnvironmentThreadShell,
+} from "@neokod/client-runtime/state/shell";
 import {
   readThreadShell,
   useProject,
@@ -227,6 +231,7 @@ import {
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
 import { SidebarProviderUpdatePill } from "./sidebar/SidebarProviderUpdatePill";
+import { SidebarMyWork } from "./SidebarMyWork";
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: "Last user message",
   created_at: "Created at",
@@ -1871,6 +1876,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           return;
         }
         useUiStateStore.getState().removePinnedThreads([threadKey]);
+        useUiStateStore.getState().removeMyWorkDismissed([threadKey]);
       }
       removeFromSelection(threadKeys);
     },
@@ -2240,6 +2246,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         );
       } else if (result._tag === "Success") {
         useUiStateStore.getState().removePinnedThreads([threadKey]);
+        useUiStateStore.getState().removeMyWorkDismissed([threadKey]);
       }
     },
     [
@@ -3046,6 +3053,8 @@ interface SidebarProjectsContentProps {
   suppressProjectClickForContextMenuRef: React.RefObject<boolean>;
   attachProjectListAutoAnimateRef: (node: HTMLElement | null) => void;
   projectsLength: number;
+  myWorkProjects: readonly EnvironmentProject[];
+  myWorkThreads: readonly EnvironmentThreadShell[];
 }
 
 const SidebarProjectsContent = memo(function SidebarProjectsContent(
@@ -3088,6 +3097,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     suppressProjectClickForContextMenuRef,
     attachProjectListAutoAnimateRef,
     projectsLength,
+    myWorkProjects,
+    myWorkThreads,
   } = props;
 
   const handleProjectSortOrderChange = useCallback(
@@ -3142,6 +3153,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
       ) : null}
       <LocalSecondaryStatus />
       <SidebarGroup className="px-2 py-2">
+        <SidebarMyWork projects={myWorkProjects} threads={myWorkThreads} />
         <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
           <span className="text-ui font-medium text-[var(--text-secondary)]">Projects</span>
           <div className="flex items-center gap-1">
@@ -4089,6 +4101,8 @@ export default function Sidebar() {
               suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
               attachProjectListAutoAnimateRef={attachProjectListAutoAnimateRef}
               projectsLength={projects.length}
+              myWorkProjects={projects}
+              myWorkThreads={sidebarThreads}
             />
           )}
 
