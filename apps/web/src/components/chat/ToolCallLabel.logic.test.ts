@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
-import { deriveToolCallLabel, deriveToolCallResultSummary } from "./ToolCallLabel.logic";
+import {
+  deriveToolCallLabel,
+  deriveToolCallResultSummary,
+  formatInProgressToolLabel,
+} from "./ToolCallLabel.logic";
 
 describe("deriveToolCallLabel", () => {
   it("summarizes shell commands without their long arguments", () => {
@@ -20,14 +24,14 @@ describe("deriveToolCallLabel", () => {
         input: { path: "/work/src/spec.py" },
         fallbackLabel: "Tool",
       }),
-    ).toEqual({ verb: "Read", target: "spec.py", iconKind: "eye" });
+    ).toEqual({ verb: "Read", target: "src/spec.py", iconKind: "eye" });
     expect(
       deriveToolCallLabel({
         toolName: "Edit",
         input: { filePath: "/work/src/app.ts" },
         fallbackLabel: "Tool",
       }),
-    ).toEqual({ verb: "Edited", target: "app.ts", iconKind: "square-pen" });
+    ).toEqual({ verb: "Edited", target: "src/app.ts", iconKind: "square-pen" });
     expect(
       deriveToolCallLabel({
         toolName: "Grep",
@@ -65,6 +69,49 @@ describe("deriveToolCallLabel", () => {
       target: "neokod/apps/web/src/session-logic.ts",
       iconKind: "square-pen",
     });
+  });
+
+  it("keeps enough of out-of-workspace paths to disambiguate duplicate basenames", () => {
+    expect(
+      deriveToolCallLabel({
+        toolName: "Read",
+        input: { path: "/src/spec.py" },
+        fallbackLabel: "Tool",
+      }),
+    ).toMatchObject({ target: "src/spec.py" });
+    expect(
+      deriveToolCallLabel({
+        toolName: "Read",
+        input: { path: "/tests/spec.py" },
+        fallbackLabel: "Tool",
+      }),
+    ).toMatchObject({ target: "tests/spec.py" });
+  });
+
+  it("parses shell labels around assignments, flags, quotes, and pipes", () => {
+    expect(
+      deriveToolCallLabel({
+        toolName: "bash",
+        command: "MODE=test sed -n '1,20p' spec.py",
+        fallbackLabel: "Tool",
+      }),
+    ).toMatchObject({ verb: "Read", target: "spec.py" });
+    expect(
+      deriveToolCallLabel({
+        toolName: "bash",
+        command: 'rg -n -C 5 "foo bar" src | head',
+        fallbackLabel: "Tool",
+      }),
+    ).toMatchObject({ verb: "Searched", target: '"foo bar"' });
+  });
+
+  it("uses action verbs for in-flight non-command tools and a distinct skill icon", () => {
+    expect(formatInProgressToolLabel({ verb: "Read", target: "spec.py", iconKind: "eye" })).toBe(
+      "Read spec.py",
+    );
+    expect(deriveToolCallLabel({ toolName: "Skill", fallbackLabel: "Tool" }).iconKind).toBe(
+      "sparkles",
+    );
   });
 
   it("only exposes result summaries supplied by the work entry", () => {

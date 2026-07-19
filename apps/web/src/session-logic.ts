@@ -74,6 +74,7 @@ export interface WorkLogEntry {
   toolTitle?: string;
   toolName?: string;
   toolInput?: unknown;
+  toolOutput?: unknown;
   toolData?: unknown;
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
@@ -851,6 +852,9 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (toolInput !== undefined) {
     entry.toolInput = toolInput;
   }
+  if (data?.rawOutput !== undefined) {
+    entry.toolOutput = data.rawOutput;
+  }
   if (itemType === "mcp_tool_call" && data?.item !== undefined) {
     entry.toolData = data.item;
   }
@@ -929,6 +933,7 @@ function mergeDerivedWorkLogEntries(
   const toolTitle = next.toolTitle ?? previous.toolTitle;
   const toolName = next.toolName ?? previous.toolName;
   const toolInput = next.toolInput ?? previous.toolInput;
+  const toolOutput = next.toolOutput ?? previous.toolOutput;
   const itemType = next.itemType ?? previous.itemType;
   const requestKind = next.requestKind ?? previous.requestKind;
   const collapseKey = next.collapseKey ?? previous.collapseKey;
@@ -946,6 +951,7 @@ function mergeDerivedWorkLogEntries(
     ...(toolTitle ? { toolTitle } : {}),
     ...(toolName ? { toolName } : {}),
     ...(toolInput !== undefined ? { toolInput } : {}),
+    ...(toolOutput !== undefined ? { toolOutput } : {}),
     ...(itemType ? { itemType } : {}),
     ...(requestKind ? { requestKind } : {}),
     ...(collapseKey ? { collapseKey } : {}),
@@ -1170,9 +1176,13 @@ function extractToolCommand(payload: Record<string, unknown> | null): {
   const item = asRecord(data?.item);
   const itemResult = asRecord(item?.result);
   const itemInput = asRecord(item?.input);
+  const input = asRecord(data?.input);
+  const rawInput = asRecord(data?.rawInput);
   const itemType = asTrimmedString(payload?.itemType);
   const detail = asTrimmedString(payload?.detail);
   const candidates: unknown[] = [
+    input?.command,
+    rawInput?.command,
     item?.command,
     itemInput?.command,
     itemResult?.command,

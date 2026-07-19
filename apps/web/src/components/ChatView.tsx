@@ -211,7 +211,6 @@ import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { ChatHeader } from "./chat/ChatHeader";
 import { ThreadRunBanner } from "./chat/ThreadRunBanner";
-import { deriveToolCallLabel, formatInProgressToolLabel } from "./chat/ToolCallLabel.logic";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -227,6 +226,7 @@ import {
   collectUserMessageBlobPreviewUrls,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
+  deriveActiveToolLabel,
   hasServerAcknowledgedLocalDispatch,
   getStartedThreadModelChangeBlockReason,
   LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
@@ -2196,23 +2196,22 @@ function ChatViewContent(props: ChatViewProps) {
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
   const activeToolLabel = useMemo(() => {
-    const activeTool = workLogEntries.findLast(
-      (entry) => entry.toolLifecycleStatus === "inProgress",
-    );
-    if (!activeTool) return undefined;
-    return formatInProgressToolLabel(
-      deriveToolCallLabel({
-        toolName: activeTool.toolName,
-        input: activeTool.toolInput,
-        command: activeTool.command,
-        changedFiles: activeTool.changedFiles,
-        itemType: activeTool.itemType,
-        requestKind: activeTool.requestKind,
-        workspaceRoot: activeWorkspaceRoot,
-        fallbackLabel: activeTool.toolTitle ?? activeTool.label,
-      }),
-    );
-  }, [activeWorkspaceRoot, workLogEntries]);
+    return deriveActiveToolLabel({
+      phase,
+      hasPendingApproval: activePendingApproval !== null,
+      hasPendingUserInput: activePendingUserInput !== null,
+      activeTurnId: activeThread?.session?.activeTurnId,
+      entries: workLogEntries,
+      workspaceRoot: activeWorkspaceRoot,
+    });
+  }, [
+    activePendingApproval,
+    activePendingUserInput,
+    activeThread?.session?.activeTurnId,
+    activeWorkspaceRoot,
+    phase,
+    workLogEntries,
+  ]);
   const activeTerminalLaunchContext =
     terminalUiLaunchContext?.threadId === activeThreadId ? terminalUiLaunchContext : null;
   // Default true while loading to avoid toolbar flicker.

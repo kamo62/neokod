@@ -53,6 +53,7 @@ import {
   PaintbrushIcon,
   SquarePenIcon,
   SearchIcon,
+  SparklesIcon,
   TerminalIcon,
   Undo2Icon,
   WrenchIcon,
@@ -67,6 +68,7 @@ import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeStableMessagesTimelineRows,
+  buildToolCallExpandedBody,
   deriveMessagesTimelineRows,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
@@ -1120,7 +1122,11 @@ const WorkGroupSection = memo(function WorkGroupSection({
 }) {
   const { workspaceRoot } = use(TimelineRowCtx);
   const nonEmptyEntries = useMemo(
-    () => groupedEntries.filter((entry) => !workEntryIndicatesToolNeutralStatus(entry)),
+    () =>
+      groupedEntries.filter(
+        (entry) =>
+          !workEntryIndicatesToolNeutralStatus(entry) || entry.toolLifecycleStatus === "inProgress",
+      ),
     [groupedEntries],
   );
   const onlyToolEntries = nonEmptyEntries.every((entry) => workLogEntryIsToolLike(entry));
@@ -1738,6 +1744,7 @@ type WorkEntryIconName =
   | "circle-alert"
   | "eye"
   | "search"
+  | "sparkles"
   | "hammer"
   | "message-circle"
   | "square-pen"
@@ -1758,6 +1765,8 @@ function WorkEntryIconSvg({ name, className }: { name: WorkEntryIconName; classN
       return <EyeIcon className={className} aria-hidden />;
     case "search":
       return <SearchIcon className={className} aria-hidden />;
+    case "sparkles":
+      return <SparklesIcon className={className} aria-hidden />;
     case "hammer":
       return <HammerIcon className={className} aria-hidden />;
     case "message-circle":
@@ -1803,44 +1812,6 @@ function workToneIcon(tone: TimelineWorkEntry["tone"]): {
   };
 }
 
-function workEntryRawCommand(
-  workEntry: Pick<TimelineWorkEntry, "command" | "rawCommand">,
-): string | null {
-  const rawCommand = workEntry.rawCommand?.trim();
-  if (!rawCommand || !workEntry.command) {
-    return null;
-  }
-  return rawCommand === workEntry.command.trim() ? null : rawCommand;
-}
-
-function buildToolCallExpandedBody(
-  workEntry: TimelineWorkEntry,
-  workspaceRoot: string | undefined,
-): string | null {
-  const blocks: string[] = [];
-  if (workEntry.itemType === "mcp_tool_call" && workEntry.toolData !== undefined) {
-    blocks.push(`MCP call\n${JSON.stringify(workEntry.toolData, null, 2)}`);
-  }
-  const raw = workEntryRawCommand(workEntry);
-  if (raw?.trim()) {
-    blocks.push(raw.trim());
-  } else if (workEntry.command?.trim()) {
-    blocks.push(workEntry.command.trim());
-  }
-  if (workEntry.detail?.trim()) {
-    blocks.push(workEntry.detail.trim());
-  }
-  const changedFiles = workEntry.changedFiles ?? [];
-  if (changedFiles.length > 0) {
-    blocks.push(
-      changedFiles
-        .map((filePath) => formatWorkspaceRelativePath(filePath, workspaceRoot))
-        .join("\n"),
-    );
-  }
-  return blocks.length > 0 ? blocks.join("\n\n") : null;
-}
-
 const stopRowToggle = (e: { stopPropagation: () => void }) => e.stopPropagation();
 
 const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
@@ -1864,7 +1835,9 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   });
   const entryIconName: WorkEntryIconName = showWarningIndicator
     ? "x"
-    : (presentation.iconKind satisfies ToolCallIconKind);
+    : workLogEntryIsToolLike(workEntry)
+      ? (presentation.iconKind satisfies ToolCallIconKind)
+      : iconConfig.iconName;
   const displayText = formatToolCallLabel(presentation);
   const resultSummary = deriveToolCallResultSummary(workEntry);
   const expandedBody = buildToolCallExpandedBody(workEntry, workspaceRoot);
@@ -1933,9 +1906,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                 {presentation.verb}
               </span>
               {presentation.target ? (
-                <span className="min-w-0 truncate text-text-primary underline decoration-text-secondary/50 underline-offset-2">
-                  {presentation.target}
-                </span>
+                <span className="min-w-0 truncate text-text-primary">{presentation.target}</span>
               ) : null}
               {resultSummary ? (
                 <span className="shrink-0 text-meta tabular-nums text-text-secondary">

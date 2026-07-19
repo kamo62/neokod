@@ -902,6 +902,44 @@ describe("deriveWorkLogEntries", () => {
     expect(entry?.command).toBe("bun run lint");
   });
 
+  it("prefers command input over command detail and ignores non-string input", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "claude-command",
+        kind: "tool.completed",
+        summary: "Ran command",
+        payload: {
+          itemType: "command_execution",
+          detail: "Bash: pytest",
+          data: { input: { command: "pytest -q" } },
+        },
+      }),
+      makeActivity({
+        id: "copilot-command",
+        kind: "tool.completed",
+        summary: "Ran command",
+        payload: {
+          itemType: "command_execution",
+          detail: "file.txt",
+          data: { rawInput: { command: ["git", "status"] } },
+        },
+      }),
+      makeActivity({
+        id: "bad-command-input",
+        kind: "tool.completed",
+        summary: "Ran command",
+        payload: {
+          itemType: "command_execution",
+          detail: "pwd",
+          data: { input: { command: { value: "pwd" } } },
+        },
+      }),
+    ]);
+    expect(entries.map((entry) => entry.command).sort()).toEqual(
+      ["pytest -q", "git status", "pwd"].sort(),
+    );
+  });
+
   it("extracts failed tool lifecycle status from item payloads", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({

@@ -6,6 +6,8 @@ import {
   type TimelineEntry,
   type WorkLogEntry,
 } from "../../session-logic";
+import { formatWorkspaceRelativePath } from "../../filePathDisplay";
+import { deriveToolCallAction } from "./ToolCallLabel.logic";
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
 import { type MessageId, type OrchestrationLatestTurn, type TurnId } from "@neokod/contracts";
 
@@ -147,27 +149,64 @@ export interface StableMessagesTimelineRowsState {
 export function summarizeWorkGroupActivity(entries: ReadonlyArray<WorkLogEntry>): string {
   const categories = new Set<string>();
   for (const entry of entries) {
-    if (entry.requestKind === "file-read" || entry.itemType === "image_view")
-      categories.add("Read files");
-    else if (
-      entry.requestKind === "file-change" ||
-      entry.itemType === "file_change" ||
-      (entry.changedFiles?.length ?? 0) > 0
-    )
-      categories.add("Edited files");
-    else if (
-      entry.itemType === "web_search" ||
-      /(?:search|grep|glob|find)/i.test(entry.toolName ?? "")
-    )
-      categories.add("Searched");
-    else if (
-      entry.requestKind === "command" ||
-      entry.itemType === "command_execution" ||
-      entry.command
-    )
-      categories.add("Ran commands");
+    const action = deriveToolCallAction({
+      toolName: entry.toolName,
+      input: entry.toolInput,
+      command: entry.command,
+      changedFiles: entry.changedFiles,
+      itemType: entry.itemType,
+      requestKind: entry.requestKind,
+      fallbackLabel: entry.toolTitle ?? entry.label,
+    });
+    if (action === "read" || entry.itemType === "image_view") categories.add("Read files");
+    else if (action === "edit") categories.add("Edited files");
+    else if (action === "search") categories.add("Searched");
+    else if (action === "command") categories.add("Ran commands");
+    else categories.add("Worked");
   }
   return [...categories].join(", ") || "Worked";
+}
+
+function formatToolPayload(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+export function buildToolCallExpandedBody(
+  entry: WorkLogEntry,
+  workspaceRoot: string | undefined,
+): string | null {
+  const blocks: string[] = [];
+  if (entry.itemType === "mcp_tool_call" && entry.toolData !== undefined) {
+    blocks.push(`MCP call\n${formatToolPayload(entry.toolData)}`);
+  }
+  if (entry.toolInput !== undefined) {
+    blocks.push(`Input\n${formatToolPayload(entry.toolInput)}`);
+  }
+  if (entry.rawCommand?.trim() && entry.rawCommand !== entry.command?.trim()) {
+    blocks.push(entry.rawCommand.trim());
+  } else if (entry.command?.trim()) {
+    blocks.push(entry.command.trim());
+  }
+  if (entry.detail?.trim()) {
+    blocks.push(entry.detail.trim());
+  }
+  if (entry.toolOutput !== undefined) {
+    blocks.push(`Output\n${formatToolPayload(entry.toolOutput)}`);
+  }
+  if ((entry.changedFiles?.length ?? 0) > 0) {
+    blocks.push(
+      entry
+        .changedFiles!.map((path) => formatWorkspaceRelativePath(path, workspaceRoot))
+        .join("\n"),
+    );
+  }
+  if (blocks.length > 0) return blocks.join("\n\n");
+  return workLogEntryIsToolLike(entry) ? "No input or output provided." : null;
 }
 
 export function computeMessageDurationStart(
@@ -464,7 +503,8 @@ export function deriveMessagesTimelineRows(input: {
         cursor += 1;
       }
       const visibleGroupedEntries = groupedEntries.filter(
-        (entry) => !workEntryIndicatesToolNeutralStatus(entry),
+        (entry) =>
+          !workEntryIndicatesToolNeutralStatus(entry) || entry.toolLifecycleStatus === "inProgress",
       );
       if (visibleGroupedEntries.length > 0) {
         if (visibleGroupedEntries.length <= MAX_VISIBLE_WORK_LOG_ENTRIES) {
