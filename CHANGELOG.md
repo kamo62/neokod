@@ -1,3 +1,9 @@
+## 3.0.21 - 2026-07-19 (Patch)
+
+Release impact: Patch because this changes only how the macOS build is signed and distributed, not the application or its update contracts.
+
+- Signed and notarized the macOS build with a Developer ID certificate under the hardened runtime. Auto-update (Squirrel.Mac) and Gatekeeper reject the previous ad-hoc signature, so installing a downloaded update silently kept the old version; signed builds now install and relaunch on the new version.
+
 ## 3.0.20 - 2026-07-19 (Patch)
 
 Release impact: Patch because this fixes the packaged Copilot runtime launch without changing contracts.
