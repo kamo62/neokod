@@ -16,6 +16,10 @@ import {
   setProjectExpanded,
   setSidebarView,
   setThreadChangedFilesExpanded,
+  toggleMyWorkCollapsed,
+  dismissMyWorkThread,
+  dismissMyWorkThreads,
+  undoMyWorkDismissal,
   togglePinnedThread,
   type UiState,
 } from "./uiStateStore";
@@ -24,6 +28,9 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
   return {
     sidebarView: "workspace",
     sidebarViewMigratedToWorkspace: true,
+    myWorkCollapsed: false,
+    myWorkDismissed: {},
+    myWorkLastDismissed: null,
     pinnedThreadKeys: [],
     projectExpandedById: {},
     projectOrder: [],
@@ -147,6 +154,17 @@ describe("uiStateStore pure functions", () => {
         .threadChangedFilesExpandedById,
     ).toEqual({});
   });
+
+  it("dismisses My Work entries, restores the last one, and toggles collapse", () => {
+    const first = "environment-a:thread-1";
+    const second = "environment-a:thread-2";
+    const dismissed = dismissMyWorkThreads(makeUiState(), { [first]: "first", [second]: "second" });
+
+    expect(toggleMyWorkCollapsed(makeUiState()).myWorkCollapsed).toBe(true);
+    expect(dismissed.myWorkDismissed).toEqual({ [first]: "first", [second]: "second" });
+    expect(undoMyWorkDismissal(dismissed).myWorkDismissed).toEqual({ [first]: "first" });
+    expect(dismissMyWorkThread(makeUiState(), "not-a-key", "signature")).toEqual(makeUiState());
+  });
 });
 
 describe("parsePersistedState", () => {
@@ -154,6 +172,9 @@ describe("parsePersistedState", () => {
     expect(parsePersistedState({ sidebarView: "threads" })).toMatchObject({
       sidebarView: "workspace",
       sidebarViewMigratedToWorkspace: true,
+      myWorkCollapsed: false,
+      myWorkDismissed: {},
+      myWorkLastDismissed: null,
     });
     expect(
       parsePersistedState({ sidebarView: "threads", sidebarViewMigratedToWorkspace: true }),
@@ -186,6 +207,9 @@ describe("parsePersistedState", () => {
     expect(parsed).toEqual({
       sidebarView: "workspace",
       sidebarViewMigratedToWorkspace: true,
+      myWorkCollapsed: false,
+      myWorkDismissed: {},
+      myWorkLastDismissed: null,
       pinnedThreadKeys: [],
       projectExpandedById: {
         logical: false,
@@ -302,6 +326,10 @@ describe("uiStateStore persistence", () => {
 
   it("persists raw UI preferences including thread visit markers", () => {
     const state = makeUiState({
+      myWorkCollapsed: true,
+      myWorkDismissed: {
+        "environment:thread-1": "turn-1",
+      },
       projectExpandedById: {
         logical: false,
       },
@@ -325,6 +353,10 @@ describe("uiStateStore persistence", () => {
     expect(persisted).toEqual({
       sidebarView: "workspace",
       sidebarViewMigratedToWorkspace: true,
+      myWorkCollapsed: true,
+      myWorkDismissed: {
+        "environment:thread-1": "turn-1",
+      },
       pinnedThreadKeys: [],
       projectExpandedById: {
         logical: false,

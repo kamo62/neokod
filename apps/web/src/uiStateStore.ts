@@ -21,6 +21,8 @@ const LEGACY_PERSISTED_STATE_KEYS = [
 export interface PersistedUiState {
   sidebarView?: "threads" | "workspace";
   sidebarViewMigratedToWorkspace?: boolean;
+  myWorkCollapsed?: boolean;
+  myWorkDismissed?: Record<string, string>;
   pinnedThreadKeys?: string[];
   projectExpandedById?: Record<string, boolean>;
   projectOrder?: string[];
@@ -44,12 +46,18 @@ export interface UiThreadState {
 export interface UiState extends UiProjectState, UiThreadState {
   sidebarView: "threads" | "workspace";
   sidebarViewMigratedToWorkspace: true;
+  myWorkCollapsed: boolean;
+  myWorkDismissed: Record<string, string>;
+  myWorkLastDismissed: { threadKey: string; signature: string } | null;
   pinnedThreadKeys: string[];
 }
 
 const initialState: UiState = {
   sidebarView: "workspace",
   sidebarViewMigratedToWorkspace: true,
+  myWorkCollapsed: false,
+  myWorkDismissed: {},
+  myWorkLastDismissed: null,
   pinnedThreadKeys: [],
   projectExpandedById: {},
   projectOrder: [],
@@ -102,6 +110,18 @@ function sanitizeTimestampRecord(value: unknown): Record<string, string> {
   );
 }
 
+function sanitizeMyWorkDismissed(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string] =>
+        parseScopedThreadKey(entry[0]) !== null &&
+        typeof entry[1] === "string" &&
+        entry[1].length > 0,
+    ),
+  );
+}
+
 export function parsePersistedState(parsed: PersistedUiState): UiState {
   const projectExpandedById =
     parsed.projectExpandedById === undefined
@@ -135,6 +155,9 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
         ? "threads"
         : "workspace",
     sidebarViewMigratedToWorkspace: true,
+    myWorkCollapsed: parsed.myWorkCollapsed === true,
+    myWorkDismissed: sanitizeMyWorkDismissed(parsed.myWorkDismissed),
+    myWorkLastDismissed: null,
     pinnedThreadKeys: sanitizeStringArray(parsed.pinnedThreadKeys).filter(
       (key) => parseScopedThreadKey(key) !== null,
     ),
@@ -226,6 +249,8 @@ export function persistState(state: UiState): void {
       JSON.stringify({
         sidebarView: state.sidebarView,
         sidebarViewMigratedToWorkspace: state.sidebarViewMigratedToWorkspace,
+        myWorkCollapsed: state.myWorkCollapsed,
+        myWorkDismissed: state.myWorkDismissed,
         pinnedThreadKeys: state.pinnedThreadKeys,
         projectExpandedById,
         projectOrder: state.projectOrder,
@@ -380,6 +405,42 @@ export function setSidebarView(state: UiState, sidebarView: UiState["sidebarView
   return state.sidebarView === sidebarView ? state : { ...state, sidebarView };
 }
 
+export function toggleMyWorkCollapsed(state: UiState): UiState {
+  return { ...state, myWorkCollapsed: !state.myWorkCollapsed };
+}
+
+export function dismissMyWorkThread(state: UiState, threadKey: string, signature: string): UiState {
+  if (parseScopedThreadKey(threadKey) === null || !signature) return state;
+  return {
+    ...state,
+    myWorkDismissed: { ...state.myWorkDismissed, [threadKey]: signature },
+    myWorkLastDismissed: { threadKey, signature },
+  };
+}
+
+export function dismissMyWorkThreads(
+  state: UiState,
+  dismissed: Readonly<Record<string, string>>,
+): UiState {
+  return Object.entries(dismissed).reduce(
+    (next, [threadKey, signature]) => dismissMyWorkThread(next, threadKey, signature),
+    state,
+  );
+}
+
+export function undoMyWorkDismissal(state: UiState): UiState {
+  const lastDismissed = state.myWorkLastDismissed;
+  if (
+    !lastDismissed ||
+    state.myWorkDismissed[lastDismissed.threadKey] !== lastDismissed.signature
+  ) {
+    return state;
+  }
+  const myWorkDismissed = { ...state.myWorkDismissed };
+  delete myWorkDismissed[lastDismissed.threadKey];
+  return { ...state, myWorkDismissed, myWorkLastDismissed: null };
+}
+
 export function togglePinnedThread(state: UiState, threadKey: string): UiState {
   if (parseScopedThreadKey(threadKey) === null) return state;
   const pinnedThreadKeys = state.pinnedThreadKeys.includes(threadKey)
@@ -442,6 +503,10 @@ export function reorderProjects(
 
 interface UiStateStore extends UiState {
   setSidebarView: (sidebarView: UiState["sidebarView"]) => void;
+  toggleMyWorkCollapsed: () => void;
+  dismissMyWorkThread: (threadKey: string, signature: string) => void;
+  dismissMyWorkThreads: (dismissed: Readonly<Record<string, string>>) => void;
+  undoMyWorkDismissal: () => void;
   togglePinnedThread: (threadKey: string) => void;
   removePinnedThreads: (threadKeys: readonly string[]) => void;
   markThreadVisited: (threadId: string, visitedAt: string) => void;
@@ -458,6 +523,11 @@ interface UiStateStore extends UiState {
 export const useUiStateStore = create<UiStateStore>((set) => ({
   ...readPersistedState(),
   setSidebarView: (sidebarView) => set((state) => setSidebarView(state, sidebarView)),
+  toggleMyWorkCollapsed: () => set(toggleMyWorkCollapsed),
+  dismissMyWorkThread: (threadKey, signature) =>
+    set((state) => dismissMyWorkThread(state, threadKey, signature)),
+  dismissMyWorkThreads: (dismissed) => set((state) => dismissMyWorkThreads(state, dismissed)),
+  undoMyWorkDismissal: () => set(undoMyWorkDismissal),
   togglePinnedThread: (threadKey) => set((state) => togglePinnedThread(state, threadKey)),
   removePinnedThreads: (threadKeys) => set((state) => removePinnedThreads(state, threadKeys)),
   markThreadVisited: (threadId, visitedAt) =>

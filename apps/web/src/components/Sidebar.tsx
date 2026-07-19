@@ -227,6 +227,7 @@ import {
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
 import { SidebarProviderUpdatePill } from "./sidebar/SidebarProviderUpdatePill";
+import { SidebarMyWork } from "./SidebarMyWork";
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: "Last user message",
   created_at: "Created at",
@@ -3142,6 +3143,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
       ) : null}
       <LocalSecondaryStatus />
       <SidebarGroup className="px-2 py-2">
+        <SidebarMyWork />
         <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
           <span className="text-ui font-medium text-[var(--text-secondary)]">Projects</span>
           <div className="flex items-center gap-1">
