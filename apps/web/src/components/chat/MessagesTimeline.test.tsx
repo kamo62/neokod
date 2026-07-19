@@ -455,6 +455,7 @@ describe("MessagesTimeline", () => {
       />,
     );
 
+    expect(markup).toContain("Edited");
     expect(markup).toContain("neokod/apps/web/src/session-logic.ts");
     expect(markup).not.toContain("C:/Users/mike/dev-stuff/neokod/apps/web/src/session-logic.ts");
   });

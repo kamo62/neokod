@@ -1,11 +1,91 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   computeStableMessagesTimelineRows,
+  buildToolCallExpandedBody,
   computeMessageDurationStart,
   deriveMessagesTimelineRows,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
+  summarizeWorkGroupActivity,
 } from "./MessagesTimeline.logic";
+
+describe("summarizeWorkGroupActivity", () => {
+  it("uses the activity kinds instead of a generic tool-call count", () => {
+    expect(
+      summarizeWorkGroupActivity([
+        { id: "read", createdAt: "", label: "", tone: "tool", requestKind: "file-read" },
+        { id: "run", createdAt: "", label: "", tone: "tool", command: "pytest" },
+        { id: "search", createdAt: "", label: "", tone: "tool", itemType: "web_search" },
+      ]),
+    ).toBe("Read files, Ran commands, Searched");
+  });
+
+  it("classifies dynamic tool names and preserves empty and mixed summaries", () => {
+    expect(summarizeWorkGroupActivity([])).toBe("Worked");
+    expect(
+      summarizeWorkGroupActivity([
+        { id: "read", createdAt: "", label: "", tone: "tool", toolName: "Read" },
+      ]),
+    ).toBe("Read files");
+    expect(
+      summarizeWorkGroupActivity([
+        { id: "read", createdAt: "", label: "", tone: "tool", toolName: "Read" },
+        { id: "unknown", createdAt: "", label: "", tone: "tool", toolName: "Custom" },
+      ]),
+    ).toBe("Read files, Worked");
+  });
+});
+
+describe("buildToolCallExpandedBody", () => {
+  it("keeps input-only tools expandable and includes full raw output", () => {
+    expect(
+      buildToolCallExpandedBody(
+        {
+          id: "read",
+          createdAt: "",
+          label: "Read",
+          tone: "tool",
+          toolName: "Read",
+          toolInput: { path: "/outside/src/spec.py" },
+          toolOutput: { content: "first\nsecond" },
+        },
+        "/workspace",
+      ),
+    ).toContain('Input\n{\n  "path": "/outside/src/spec.py"\n}');
+    expect(
+      buildToolCallExpandedBody(
+        { id: "empty", createdAt: "", label: "Tool", tone: "tool" },
+        "/workspace",
+      ),
+    ).toBe("No input or output provided.");
+  });
+});
+
+describe("in-progress tool visibility", () => {
+  it("keeps neutral in-progress tools in timeline rows", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "tool-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:00Z",
+          entry: {
+            id: "tool",
+            createdAt: "2026-01-01T00:00:00Z",
+            label: "Read",
+            tone: "tool",
+            toolLifecycleStatus: "inProgress",
+          },
+        },
+      ],
+      isWorking: true,
+      activeTurnStartedAt: "2026-01-01T00:00:00Z",
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+    expect(rows).toContainEqual(expect.objectContaining({ kind: "work" }));
+  });
+});
 
 describe("computeMessageDurationStart", () => {
   it("returns message createdAt when there is no preceding user message", () => {

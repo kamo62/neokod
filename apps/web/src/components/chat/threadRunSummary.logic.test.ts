@@ -48,6 +48,29 @@ describe("deriveThreadRunSummary", () => {
     });
   });
 
+  it("adds the active tool to a working status only", () => {
+    expect(deriveThreadRunSummary(input({ activeToolLabel: "Running pytest" }))?.statusLabel).toBe(
+      "Working · Running pytest",
+    );
+    expect(
+      deriveThreadRunSummary(
+        input({
+          activeToolLabel: "Running pytest",
+          isWorking: false,
+          thread: {
+            ...input().thread,
+            session: { status: "idle" },
+            latestTurn: {
+              ...input().thread.latestTurn!,
+              state: "completed",
+              completedAt: "2026-07-18T10:01:03.000Z",
+            },
+          },
+        }),
+      )?.statusLabel,
+    ).toBe("Completed");
+  });
+
   it("keeps a completed run as a compact summary", () => {
     const live = input();
     expect(

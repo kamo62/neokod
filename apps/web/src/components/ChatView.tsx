@@ -226,6 +226,7 @@ import {
   collectUserMessageBlobPreviewUrls,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
+  deriveActiveToolLabel,
   hasServerAcknowledgedLocalDispatch,
   getStartedThreadModelChangeBlockReason,
   LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
@@ -2194,6 +2195,23 @@ function ChatViewContent(props: ChatViewProps) {
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
+  const activeToolLabel = useMemo(() => {
+    return deriveActiveToolLabel({
+      phase,
+      hasPendingApproval: activePendingApproval !== null,
+      hasPendingUserInput: activePendingUserInput !== null,
+      activeTurnId: activeThread?.session?.activeTurnId,
+      entries: workLogEntries,
+      workspaceRoot: activeWorkspaceRoot,
+    });
+  }, [
+    activePendingApproval,
+    activePendingUserInput,
+    activeThread?.session?.activeTurnId,
+    activeWorkspaceRoot,
+    phase,
+    workLogEntries,
+  ]);
   const activeTerminalLaunchContext =
     terminalUiLaunchContext?.threadId === activeThreadId ? terminalUiLaunchContext : null;
   // Default true while loading to avoid toolbar flicker.
@@ -5145,6 +5163,7 @@ function ChatViewContent(props: ChatViewProps) {
           hasPendingUserInput={activePendingUserInput !== null}
           isWorking={isWorking}
           interruptAvailable={phase === "running" && activePendingUserInput === null}
+          activeToolLabel={activeToolLabel}
           hasPlanData={hasPlanData}
           onOpenPlan={togglePlanSidebar}
           onInterrupt={onInterrupt}

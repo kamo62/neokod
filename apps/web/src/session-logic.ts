@@ -68,9 +68,13 @@ export interface WorkLogEntry {
   detail?: string;
   command?: string;
   rawCommand?: string;
+  exitCode?: number;
   changedFiles?: ReadonlyArray<string>;
   tone: "thinking" | "tool" | "info" | "error";
   toolTitle?: string;
+  toolName?: string;
+  toolInput?: unknown;
+  toolOutput?: unknown;
   toolData?: unknown;
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
@@ -829,17 +833,30 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (commandPreview.rawCommand) {
     entry.rawCommand = commandPreview.rawCommand;
   }
+  const exitCode = extractToolExitCode(payload);
+  if (exitCode !== undefined) {
+    entry.exitCode = exitCode;
+  }
   if (changedFiles.length > 0) {
     entry.changedFiles = changedFiles;
   }
   if (title) {
     entry.toolTitle = title;
   }
-  if (itemType === "mcp_tool_call") {
-    const data = asRecord(payload?.data);
-    if (data?.item !== undefined) {
-      entry.toolData = data.item;
-    }
+  const data = asRecord(payload?.data);
+  const toolName = asTrimmedString(data?.toolName) ?? asTrimmedString(data?.kind);
+  if (toolName) {
+    entry.toolName = toolName;
+  }
+  const toolInput = data?.input ?? data?.rawInput;
+  if (toolInput !== undefined) {
+    entry.toolInput = toolInput;
+  }
+  if (data?.rawOutput !== undefined) {
+    entry.toolOutput = data.rawOutput;
+  }
+  if (itemType === "mcp_tool_call" && data?.item !== undefined) {
+    entry.toolData = data.item;
   }
   if (itemType) {
     entry.itemType = itemType;
@@ -912,7 +929,11 @@ function mergeDerivedWorkLogEntries(
   const detail = next.detail ?? previous.detail;
   const command = next.command ?? previous.command;
   const rawCommand = next.rawCommand ?? previous.rawCommand;
+  const exitCode = next.exitCode ?? previous.exitCode;
   const toolTitle = next.toolTitle ?? previous.toolTitle;
+  const toolName = next.toolName ?? previous.toolName;
+  const toolInput = next.toolInput ?? previous.toolInput;
+  const toolOutput = next.toolOutput ?? previous.toolOutput;
   const itemType = next.itemType ?? previous.itemType;
   const requestKind = next.requestKind ?? previous.requestKind;
   const collapseKey = next.collapseKey ?? previous.collapseKey;
@@ -925,8 +946,12 @@ function mergeDerivedWorkLogEntries(
     ...(detail ? { detail } : {}),
     ...(command ? { command } : {}),
     ...(rawCommand ? { rawCommand } : {}),
+    ...(exitCode !== undefined ? { exitCode } : {}),
     ...(changedFiles.length > 0 ? { changedFiles } : {}),
     ...(toolTitle ? { toolTitle } : {}),
+    ...(toolName ? { toolName } : {}),
+    ...(toolInput !== undefined ? { toolInput } : {}),
+    ...(toolOutput !== undefined ? { toolOutput } : {}),
     ...(itemType ? { itemType } : {}),
     ...(requestKind ? { requestKind } : {}),
     ...(collapseKey ? { collapseKey } : {}),
@@ -1151,9 +1176,13 @@ function extractToolCommand(payload: Record<string, unknown> | null): {
   const item = asRecord(data?.item);
   const itemResult = asRecord(item?.result);
   const itemInput = asRecord(item?.input);
+  const input = asRecord(data?.input);
+  const rawInput = asRecord(data?.rawInput);
   const itemType = asTrimmedString(payload?.itemType);
   const detail = asTrimmedString(payload?.detail);
   const candidates: unknown[] = [
+    input?.command,
+    rawInput?.command,
     item?.command,
     itemInput?.command,
     itemResult?.command,
@@ -1176,6 +1205,17 @@ function extractToolCommand(payload: Record<string, unknown> | null): {
     command: null,
     rawCommand: null,
   };
+}
+
+function extractToolExitCode(payload: Record<string, unknown> | null): number | undefined {
+  const data = asRecord(payload?.data);
+  const item = asRecord(data?.item);
+  const result = asRecord(item?.result);
+  if (typeof result?.exitCode === "number" && Number.isInteger(result.exitCode)) {
+    return result.exitCode;
+  }
+  const detail = asTrimmedString(payload?.detail);
+  return detail ? stripTrailingExitCode(detail).exitCode : undefined;
 }
 
 function extractToolTitle(payload: Record<string, unknown> | null): string | null {

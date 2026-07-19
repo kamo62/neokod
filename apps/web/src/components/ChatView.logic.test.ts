@@ -9,6 +9,7 @@ import {
   buildThreadTurnInterruptInput,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
+  deriveActiveToolLabel,
   getStartedThreadModelChangeBlockReason,
   hasServerAcknowledgedLocalDispatch,
   reconcileMountedTerminalThreadIds,
@@ -91,6 +92,54 @@ describe("buildThreadTurnInterruptInput", () => {
     expect(buildThreadTurnInterruptInput(makeThread({ session: readySession }))).toEqual({
       threadId,
     });
+  });
+});
+
+describe("deriveActiveToolLabel", () => {
+  const entry = {
+    id: "tool",
+    createdAt: now,
+    turnId: TurnId.make("turn-running"),
+    label: "Read",
+    tone: "tool" as const,
+    toolName: "Read",
+    toolInput: { path: "spec.py" },
+    toolLifecycleStatus: "inProgress" as const,
+  };
+
+  it("uses only the active turn and suppresses inactive phases", () => {
+    expect(
+      deriveActiveToolLabel({
+        phase: "running",
+        activeTurnId: TurnId.make("turn-running"),
+        entries: [{ ...entry, turnId: TurnId.make("turn-old"), command: "pytest" }, entry],
+      }),
+    ).toBe("Read spec.py");
+    for (const phase of ["disconnected", "connecting", "ready"] as const) {
+      expect(
+        deriveActiveToolLabel({
+          phase,
+          activeTurnId: TurnId.make("turn-running"),
+          entries: [entry],
+        }),
+      ).toBeUndefined();
+    }
+    expect(
+      deriveActiveToolLabel({
+        phase: "running",
+        hasPendingUserInput: true,
+        activeTurnId: TurnId.make("turn-running"),
+        entries: [entry],
+      }),
+    ).toBeUndefined();
+    expect(
+      deriveActiveToolLabel({
+        phase: "running",
+        hasPendingApproval: true,
+        activeTurnId: TurnId.make("turn-running"),
+        entries: [entry],
+      }),
+    ).toBeUndefined();
   });
 });
 

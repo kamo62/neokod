@@ -20,12 +20,49 @@ import {
   type TerminalContextDraft,
 } from "../lib/terminalContext";
 import type { DraftThreadEnvMode } from "../composerDraftStore";
+import { type WorkLogEntry } from "../session-logic";
+import { deriveToolCallLabel, formatInProgressToolLabel } from "./chat/ToolCallLabel.logic";
 
 export const LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = "neokod:last-invoked-script-by-project";
 export const MAX_HIDDEN_MOUNTED_TERMINAL_THREADS = 10;
 export const MAX_HIDDEN_MOUNTED_PREVIEW_THREADS = 3;
 
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
+
+export function deriveActiveToolLabel(input: {
+  readonly phase: SessionPhase;
+  readonly hasPendingApproval?: boolean | undefined;
+  readonly hasPendingUserInput?: boolean | undefined;
+  readonly activeTurnId: TurnId | null | undefined;
+  readonly entries: ReadonlyArray<WorkLogEntry>;
+  readonly workspaceRoot?: string | undefined;
+}): string | undefined {
+  if (
+    input.phase !== "running" ||
+    input.hasPendingApproval ||
+    input.hasPendingUserInput ||
+    input.activeTurnId === null ||
+    input.activeTurnId === undefined
+  ) {
+    return undefined;
+  }
+  const activeTool = input.entries.findLast(
+    (entry) => entry.turnId === input.activeTurnId && entry.toolLifecycleStatus === "inProgress",
+  );
+  if (!activeTool) return undefined;
+  return formatInProgressToolLabel(
+    deriveToolCallLabel({
+      toolName: activeTool.toolName,
+      input: activeTool.toolInput,
+      command: activeTool.command,
+      changedFiles: activeTool.changedFiles,
+      itemType: activeTool.itemType,
+      requestKind: activeTool.requestKind,
+      workspaceRoot: input.workspaceRoot,
+      fallbackLabel: activeTool.toolTitle ?? activeTool.label,
+    }),
+  );
+}
 
 export function buildLocalDraftThread(
   threadId: ThreadId,

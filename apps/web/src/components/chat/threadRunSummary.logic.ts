@@ -42,6 +42,7 @@ export interface ThreadRunSummaryInput {
   readonly hasPendingUserInput: boolean;
   readonly isWorking: boolean;
   readonly interruptAvailable: boolean;
+  readonly activeToolLabel?: string | undefined;
   readonly nowMs: number;
 }
 
@@ -71,7 +72,7 @@ export function deriveThreadRunSummary(input: ThreadRunSummaryInput): ThreadRunS
   return {
     title: thread.goal ?? thread.title,
     status,
-    statusLabel: statusLabel(status),
+    statusLabel: statusLabel(status, input.activeToolLabel),
     startedAt,
     elapsed: formatElapsed(startedAt, endedAt, input.nowMs),
     completedSteps,
@@ -110,7 +111,7 @@ function resolveStatus(input: {
   }
 }
 
-function statusLabel(status: ThreadRunStatus): string {
+function statusLabel(status: ThreadRunStatus, activeToolLabel: string | undefined): string {
   switch (status) {
     case "awaiting-approval":
       return "Pending approval";
@@ -125,7 +126,7 @@ function statusLabel(status: ThreadRunStatus): string {
     case "failed":
       return "Failed";
     default:
-      return "Working";
+      return activeToolLabel ? `Working · ${activeToolLabel}` : "Working";
   }
 }
 
