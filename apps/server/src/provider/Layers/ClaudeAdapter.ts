@@ -135,6 +135,7 @@ interface ClaudeTurnState {
   readonly assistantTextBlockOrder: Array<AssistantTextBlockState>;
   readonly capturedProposedPlanKeys: Set<string>;
   nextSyntheticAssistantBlockIndex: number;
+  settled: boolean;
 }
 
 interface AssistantTextBlockState {
@@ -200,6 +201,7 @@ interface ClaudeSessionContext {
   lastAssistantUuid: string | undefined;
   lastThreadStartedId: string | undefined;
   stopped: boolean;
+  interruptedTurnIds: Set<TurnId>;
 }
 
 interface ClaudeQueryRuntime extends AsyncIterable<SDKMessage> {
@@ -1891,11 +1893,14 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     });
   });
 
-  const completeTurn = Effect.fn("completeTurn")(function* (
+  const computeResultUsageSnapshot = Effect.fn("computeResultUsageSnapshot")(function* (
     context: ClaudeSessionContext,
-    status: ProviderRuntimeTurnStatus,
-    errorMessage?: string,
     result?: SDKResultMessage,
+    // Querying live context usage issues an SDK control request. On the
+    // interrupt path the stream may be wedged behind background sub-agents, so
+    // that request can hang indefinitely; callers settling a turn under
+    // interrupt pass false to fall back to the last known usage instead.
+    queryContextUsage = true,
   ) {
     const resultContextWindow = maxClaudeContextWindowFromModelUsage(result?.modelUsage);
     if (resultContextWindow !== undefined) {
@@ -1908,10 +1913,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       context.lastKnownTotalProcessedTokens = accumulatedTotalProcessedTokens;
     }
 
-    const contextUsageSnapshot = yield* queryCurrentContextUsage(
-      context,
-      accumulatedTotalProcessedTokens ?? context.lastKnownTotalProcessedTokens,
-    );
+    const contextUsageSnapshot = queryContextUsage
+      ? yield* queryCurrentContextUsage(
+          context,
+          accumulatedTotalProcessedTokens ?? context.lastKnownTotalProcessedTokens,
+        )
+      : undefined;
     const resultUsageRecord =
       result?.usage && typeof result.usage === "object" && !Array.isArray(result.usage)
         ? (result.usage as Record<string, unknown>)
@@ -1967,6 +1974,29 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           }
         : undefined);
 
+    return usageSnapshot;
+  });
+
+  const completeTurn = Effect.fn("completeTurn")(function* (
+    context: ClaudeSessionContext,
+    status: ProviderRuntimeTurnStatus,
+    errorMessage?: string,
+    result?: SDKResultMessage,
+    options?: { readonly queryContextUsage?: boolean },
+  ) {
+    const activeTurn = context.turnState;
+    if (activeTurn?.settled) {
+      return;
+    }
+    if (activeTurn) {
+      activeTurn.settled = true;
+    }
+
+    const usageSnapshot = yield* computeResultUsageSnapshot(
+      context,
+      result,
+      options?.queryContextUsage ?? true,
+    );
     const turnState = context.turnState;
     if (!turnState) {
       yield* emitThreadTokenUsage(context, usageSnapshot, {
@@ -2078,6 +2108,20 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       updatedAt,
       ...(status === "failed" && errorMessage ? { lastError: errorMessage } : {}),
     };
+    yield* updateResumeCursor(context);
+  });
+
+  const absorbInterruptedResult = Effect.fn("absorbInterruptedResult")(function* (
+    context: ClaudeSessionContext,
+    result: SDKResultMessage,
+  ) {
+    // The result already carries its own usage; avoid a live context-usage
+    // query so a wedged stream cannot stall draining the interrupted turn.
+    const usageSnapshot = yield* computeResultUsageSnapshot(context, result, false);
+    yield* emitThreadTokenUsage(context, usageSnapshot, {
+      rawMethod: "claude/result",
+      rawPayload: result,
+    });
     yield* updateResumeCursor(context);
   });
 
@@ -2492,6 +2536,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         assistantTextBlockOrder: [],
         capturedProposedPlanKeys: new Set(),
         nextSyntheticAssistantBlockIndex: -1,
+        settled: false,
       };
       context.session = {
         ...context.session,
@@ -2563,6 +2608,14 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     message: SDKMessage,
   ) {
     if (message.type !== "result") {
+      return;
+    }
+
+    const realTurn = context.turnState !== undefined && context.turnState.synthetic !== true;
+    if (context.interruptedTurnIds.size > 0 && (!realTurn || isInterruptedResult(message))) {
+      yield* absorbInterruptedResult(context, message);
+      const oldest = context.interruptedTurnIds.values().next().value;
+      if (oldest !== undefined) context.interruptedTurnIds.delete(oldest);
       return;
     }
 
@@ -2900,6 +2953,38 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     yield* logNativeSdkMessage(context, message);
     yield* ensureThreadId(context, message);
 
+    // While draining an interrupted turn with no active real turn, suppress only
+    // the frames that would resurrect "Working": an assistant frame spins up a
+    // synthetic turn (flipping the session back to running) and a stream_event /
+    // user frame repopulates in-flight tools. Results are still routed (to be
+    // absorbed), and system frames (compaction, telemetry, session state) fall
+    // through to normal handling so nothing load-bearing is dropped. Stopped-turn
+    // chatter arriving during a new real turn is a residual: the SDK provides no
+    // turn lineage on the wire, so it cannot be separated from the live turn.
+    const realTurn = context.turnState !== undefined && context.turnState.synthetic !== true;
+    if (context.interruptedTurnIds.size > 0 && !realTurn) {
+      if (message.type === "result") {
+        yield* handleResultMessage(context, message);
+        return;
+      }
+      if (message.type === "assistant") {
+        context.lastAssistantUuid = message.uuid;
+        yield* updateResumeCursor(context);
+        return;
+      }
+      if (message.type === "stream_event" || message.type === "user") {
+        return;
+      }
+      // A system "status" frame emits session.state.changed -> running, which
+      // would resurrect "Working" on the already-settled turn; suppress just
+      // that subtype. Other system frames (telemetry, task lifecycle,
+      // compaction, init) fall through to normal handling.
+      if (message.type === "system" && message.subtype === "status") {
+        return;
+      }
+      // Remaining frames fall through to normal dispatch below.
+    }
+
     switch (message.type) {
       case "stream_event":
         yield* handleStreamEvent(context, message);
@@ -3025,6 +3110,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     if (context.turnState) {
       yield* completeTurn(context, "interrupted", "Session stopped.");
     }
+    context.interruptedTurnIds.clear();
 
     yield* Queue.shutdown(context.promptQueue);
 
@@ -3608,6 +3694,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         lastAssistantUuid: resumeState?.resumeSessionAt,
         lastThreadStartedId: undefined,
         stopped: false,
+        interruptedTurnIds: new Set(),
       };
       yield* Ref.set(contextRef, context);
       sessions.set(threadId, context);
@@ -3745,6 +3832,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         assistantTextBlockOrder: [],
         capturedProposedPlanKeys: new Set(),
         nextSyntheticAssistantBlockIndex: -1,
+        settled: false,
       };
 
       const updatedAt = yield* nowIso;
@@ -3792,6 +3880,23 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   const interruptTurn: ClaudeAdapterShape["interruptTurn"] = Effect.fn("interruptTurn")(
     function* (threadId, _turnId) {
       const context = yield* requireSession(threadId);
+      const active = context.turnState;
+      const targetId = active?.turnId;
+      if (_turnId !== undefined && targetId !== undefined && String(_turnId) !== String(targetId)) {
+        yield* Effect.tryPromise({
+          try: () => context.query.interrupt(),
+          catch: (cause) => toRequestError(threadId, "turn/interrupt", cause),
+        });
+        return;
+      }
+      if (active && !active.settled) {
+        context.interruptedTurnIds.add(active.turnId);
+        // Settle without a live context-usage query: the stream may be wedged
+        // behind background sub-agents, and that query would hang Stop here.
+        yield* completeTurn(context, "interrupted", "Interrupted by user.", undefined, {
+          queryContextUsage: false,
+        });
+      }
       yield* Effect.tryPromise({
         try: () => context.query.interrupt(),
         catch: (cause) => toRequestError(threadId, "turn/interrupt", cause),
