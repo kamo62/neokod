@@ -173,7 +173,7 @@ describe("CopilotDriver — lifecycle", () => {
       const connection = (created[0]!.options as { connection?: { path?: string } }).connection;
       NodeAssert.ok(connection?.path, "expected a bundled stdio runtime connection");
       NodeAssert.ok(
-        connection.path.endsWith(process.platform === "win32" ? "copilot.exe" : "copilot"),
+        /copilot(\.exe)?$/.test(connection.path),
         "expected the bundled native Copilot executable",
       );
     }),

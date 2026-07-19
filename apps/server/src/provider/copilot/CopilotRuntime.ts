@@ -21,14 +21,13 @@ const defaultResolveFrom: CopilotModuleResolver = (fromPathOrUrl, request) =>
 // because pnpm isolates transitive dependencies, so resolution hops require
 // contexts along that chain. @github/copilot has no exports map (subpaths are
 // open), and the platform package's "." export is the native binary itself.
-export const resolveBundledCopilotRuntime = (input?: {
-  readonly platform?: NodeJS.Platform;
-  readonly architecture?: string;
+export const resolveBundledCopilotRuntime = (input: {
+  readonly platform: NodeJS.Platform;
+  readonly architecture: string;
   readonly resolveFrom?: CopilotModuleResolver;
 }): string | undefined => {
-  const platform = input?.platform ?? process.platform;
-  const architecture = input?.architecture ?? process.arch;
-  const resolveFrom = input?.resolveFrom ?? defaultResolveFrom;
+  const { platform, architecture } = input;
+  const resolveFrom = input.resolveFrom ?? defaultResolveFrom;
 
   let copilotPackageJson: string;
   try {

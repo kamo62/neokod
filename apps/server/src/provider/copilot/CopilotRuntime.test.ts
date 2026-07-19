@@ -1,5 +1,8 @@
 import * as NodeAssert from "node:assert/strict";
-import { describe, it } from "vite-plus/test";
+import { it } from "@effect/vitest";
+import { HostProcessArchitecture, HostProcessPlatform } from "@neokod/shared/hostProcess";
+import * as Effect from "effect/Effect";
+import { describe } from "vite-plus/test";
 
 import {
   getCopilotPlatformPackageNames,
@@ -115,12 +118,17 @@ describe("CopilotRuntime", () => {
     );
   });
 
-  it("resolves the real bundled runtime in this workspace", () => {
-    const runtime = resolveBundledCopilotRuntime();
-    NodeAssert.ok(runtime, "expected the workspace dependency chain to resolve");
-    NodeAssert.ok(
-      /copilot(\.exe)?$/.test(runtime),
-      `expected a native copilot binary path, got ${runtime}`,
-    );
-  });
+  it.effect("resolves the real bundled runtime in this workspace", () =>
+    Effect.gen(function* () {
+      const runtime = resolveBundledCopilotRuntime({
+        platform: yield* HostProcessPlatform,
+        architecture: yield* HostProcessArchitecture,
+      });
+      NodeAssert.ok(runtime, "expected the workspace dependency chain to resolve");
+      NodeAssert.ok(
+        /copilot(\.exe)?$/.test(runtime),
+        `expected a native copilot binary path, got ${runtime}`,
+      );
+    }),
+  );
 });
