@@ -2332,7 +2332,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
           <div
             className={cn(
-              "relative px-2.5 pb-2 sm:px-3",
+              "relative flex min-w-0 flex-col px-2.5 pb-2 sm:px-3",
               hasComposerHeader ? "pt-2" : "pt-3",
               isComposerCollapsedMobile && "hidden",
             )}
@@ -2478,7 +2478,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 </div>
               )}
 
-            <div className="relative">
+            <div className="relative min-w-0">
               <ComposerPromptEditor
                 editorRef={composerEditorRef}
                 value={
@@ -2561,7 +2561,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               data-chat-composer-footer="true"
               data-chat-composer-footer-compact={isComposerFooterCompact ? "true" : "false"}
               className={cn(
-                "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-2.5 pb-2 sm:px-3 sm:pb-2.5",
+                "flex min-w-0 shrink-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-2.5 pb-2 sm:px-3 sm:pb-2.5",
                 pendingUserInputs.length > 0 && "pt-2",
                 isComposerFooterCompact ? "gap-1.5" : "gap-2 sm:gap-0",
                 showMobilePendingAnswerActions && "hidden sm:flex",

@@ -34,19 +34,19 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
 
   return (
     <div className="relative mt-4 rounded-2xl bg-card/40 shadow-xs/5 not-dark:bg-clip-padding after:pointer-events-none after:absolute after:inset-0 after:z-20 after:rounded-2xl after:border after:border-input">
-      <div className="sticky top-0 z-10 mb-3 flex items-center justify-between gap-2 rounded-t-2xl bg-card/72 p-3 backdrop-blur-md">
-        <p className="flex items-center gap-1 font-medium text-foreground text-xs leading-4">
-          <span>{files.length} changed files</span>
+      <div className="sticky top-0 z-10 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-t-2xl bg-card/72 p-3 backdrop-blur-md">
+        <p className="flex min-w-0 flex-1 items-center gap-1 font-medium text-foreground text-xs leading-4">
+          <span className="truncate">{files.length} changed files</span>
           {hasNonZeroStat(summaryStat) && (
             <DiffStatLabel
               additions={summaryStat.additions}
-              className="text-xs leading-4"
+              className="shrink-0 text-xs leading-4"
               deletions={summaryStat.deletions}
               layout="inline"
             />
           )}
         </p>
-        <div className="flex items-center gap-1.5">
+        <div className="ml-auto flex max-w-full shrink-0 flex-wrap justify-end gap-1.5">
           <Button
             type="button"
             size="xs"

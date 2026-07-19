@@ -1,3 +1,9 @@
+## 3.0.26 - 2026-07-19 (Patch)
+
+Release impact: Patch because this fixes responsive layout without changing UI behavior or contracts.
+
+- Reserved flex space for composer controls, changed-files header actions, and sidebar pin actions so narrow panes do not overlap or clip text and controls.
+
 ## 3.0.25 - 2026-07-19 (Patch)
 
 Release impact: Patch because this changes only how an interrupted turn settles, with no storage or contract changes.
