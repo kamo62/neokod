@@ -1,8 +1,8 @@
 ## 3.1.0 - 2026-07-19 (Minor)
 
-Release impact: Minor because this adds backward-compatible review WebSocket RPCs and contract types.
+Release impact: Minor because this reworks the Diff pane and adds backward-compatible review RPCs without changing storage or existing contracts.
 
-- Added on-demand changed-file list and per-file diff review RPCs so clients can load large diffs without a combined preview truncating them.
+- Reworked the Diff pane into a file-navigated review panel. A filterable changed-file tree lists every changed file and loads that file's diff on its own, so a large branch no longer hits the "diff truncated" wall. Backed by two on-demand review endpoints (the changed-file list and per-file diffs) so the full changeset is always reachable.
 
 ## 3.0.26 - 2026-07-19 (Patch)
 

@@ -88,7 +88,36 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
 }) {
   const { files, allDirectoriesExpanded, onOpenTurnDiff, resolvedTheme, turnId } = props;
-  const treeNodes = useMemo(() => buildTurnDiffTree(files), [files]);
+  return (
+    <DiffFilesTree
+      files={files}
+      allDirectoriesExpanded={allDirectoriesExpanded}
+      resolvedTheme={resolvedTheme}
+      onSelectFile={(path) => onOpenTurnDiff(turnId, path)}
+    />
+  );
+});
+
+export const DiffFilesTree = memo(function DiffFilesTree(props: {
+  files: ReadonlyArray<TurnDiffFileChange>;
+  allDirectoriesExpanded?: boolean;
+  activeFilePath?: string | null;
+  resolvedTheme: "light" | "dark";
+  onSelectFile: (path: string) => void;
+}) {
+  const {
+    files,
+    allDirectoriesExpanded = false,
+    activeFilePath,
+    onSelectFile,
+    resolvedTheme,
+  } = props;
+  const [filter, setFilter] = useState("");
+  const matchingFiles = useMemo(() => {
+    const query = filter.trim().toLocaleLowerCase();
+    return query ? files.filter((file) => file.path.toLocaleLowerCase().includes(query)) : files;
+  }, [files, filter]);
+  const treeNodes = useMemo(() => buildTurnDiffTree(matchingFiles), [matchingFiles]);
   const directoryPathsKey = useMemo(
     () => collectDirectoryPaths(treeNodes).join("\u0000"),
     [treeNodes],
@@ -170,9 +199,13 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
       <button
         key={`file:${node.path}`}
         type="button"
-        className="group flex w-full items-center gap-1.5 rounded-xl py-1 pr-3 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
         style={{ paddingLeft: `${leftPadding}px` }}
-        onClick={() => onOpenTurnDiff(turnId, node.path)}
+        onClick={() => onSelectFile(node.path)}
+        aria-current={node.path === activeFilePath ? "true" : undefined}
+        className={cn(
+          "group flex w-full items-center gap-1.5 rounded-xl py-1 pr-3 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+          node.path === activeFilePath && "bg-accent text-foreground",
+        )}
       >
         {hasDirectoryNodes || depth > 0 ? (
           <span aria-hidden="true" className="size-3.5 shrink-0" />
@@ -195,7 +228,21 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
     );
   };
 
-  return <div className="space-y-0.5">{treeNodes.map((node) => renderTreeNode(node, 0))}</div>;
+  return (
+    <div className="space-y-2">
+      <label className="relative block">
+        <span className="sr-only">Filter changed files</span>
+        <input
+          type="search"
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          placeholder="Filter files..."
+          className="h-7 w-full rounded-md border border-border/70 bg-background/60 px-2 text-xs outline-none placeholder:text-muted-foreground/70 focus-visible:ring-2 focus-visible:ring-ring"
+        />
+      </label>
+      <div className="space-y-0.5">{treeNodes.map((node) => renderTreeNode(node, 0))}</div>
+    </div>
+  );
 });
 
 function collectDirectoryPaths(nodes: ReadonlyArray<TurnDiffTreeNode>): string[] {
