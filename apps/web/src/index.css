@@ -36,14 +36,8 @@
 
 @theme inline {
   --animate-skeleton: skeleton 2s -1s infinite linear;
-  --font-sans:
-    "DM Sans Variable", "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
-    sans-serif;
-  /* Lead with the bundled JetBrains Mono (imported in main.tsx) so packaged
-     macOS and Windows builds render identically instead of depending on the
-     OS-only SF Mono. System fonts remain as fallbacks. */
-  --font-mono:
-    "JetBrains Mono", "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   --color-surface-canvas: var(--surface-canvas);
   --color-surface-sidebar: var(--surface-sidebar);
   --color-surface-panel: var(--surface-panel);
@@ -313,24 +307,25 @@
 :root {
   color-scheme: light;
   --radius: 0.625rem;
-  --surface-canvas: #f7f7f5;
-  --surface-sidebar: #f1f1ee;
-  --surface-panel: #fbfbf9;
+  --surface-canvas: #ffffff;
+  --surface-sidebar: #f7f9fb;
+  --surface-panel: #f7f9fb;
   --surface-elevated: #ffffff;
-  --surface-control: #eeeeeb;
-  --surface-hover: color-mix(in srgb, var(--text-primary) 5%, var(--surface-panel));
-  --surface-selected: color-mix(in srgb, var(--text-primary) 8%, var(--surface-panel));
-  --text-primary: #20201e;
-  --text-secondary: #5f5f5a;
-  --text-tertiary: #6e6e68;
+  --surface-control: #eef2f7;
+  --surface-hover: color-mix(in srgb, var(--brand) 6%, var(--surface-panel));
+  --surface-selected: color-mix(in srgb, var(--brand) 12%, var(--surface-panel));
+  --text-primary: #1a1c1f;
+  --text-secondary: #59636f;
+  --text-tertiary: #6b7480;
   --text-inverse: #ffffff;
-  --line-subtle: #e7e7e2;
-  --line-default: #d5d5cf;
-  --line-strong: #8a8a84;
-  --focus-ring: #2563eb;
-  --surface-divider: #deded8;
-  --brand: #1d4ed8;
-  --brand-foreground: #ffffff;
+  --line-subtle: #e5eaf0;
+  --line-default: #d5dce5;
+  --line-strong: #b8c2cc;
+  --focus-ring: #278eea;
+  --surface-divider: #dfe6ee;
+  --brand: #339cff;
+  --brand-foreground: #0a1a2a;
+  --skill: #924ff7;
   --font-size-ui: 12px;
   --font-size-ui-sm: 11px;
   --font-size-meta: 10px;
@@ -352,17 +347,17 @@
   --secondary-foreground: var(--text-primary);
   --muted: var(--surface-control);
   --muted-foreground: var(--text-secondary);
-  --accent: var(--surface-hover);
-  --accent-foreground: var(--text-primary);
-  --destructive: var(--color-red-500);
+  --accent: var(--brand);
+  --accent-foreground: var(--brand-foreground);
+  --destructive: #ba2623;
   --border: var(--line-default);
   --input: var(--line-strong);
   --ring: var(--focus-ring);
-  --destructive-foreground: var(--color-red-700);
+  --destructive-foreground: #8d1c1a;
   --info: var(--color-blue-500);
   --info-foreground: var(--color-blue-700);
-  --success: var(--color-emerald-500);
-  --success-foreground: var(--color-emerald-700);
+  --success: #00a240;
+  --success-foreground: #007331;
   --warning: var(--color-amber-500);
   --warning-foreground: var(--color-amber-700);
   --sidebar: var(--surface-sidebar);
@@ -376,24 +371,25 @@
 
   @variant dark {
     color-scheme: dark;
-    --surface-canvas: #181817;
-    --surface-sidebar: #1d1d1b;
-    --surface-panel: #20201e;
-    --surface-elevated: #262624;
-    --surface-control: #292927;
-    --surface-hover: color-mix(in srgb, var(--text-primary) 7%, var(--surface-panel));
-    --surface-selected: color-mix(in srgb, var(--text-primary) 11%, var(--surface-panel));
-    --text-primary: #f4f4f0;
-    --text-secondary: #c5c5be;
-    --text-tertiary: #9c9c95;
-    --text-inverse: #181817;
-    --line-subtle: #30302d;
-    --line-default: #3d3d39;
-    --line-strong: #777770;
-    --focus-ring: #60a5fa;
-    --surface-divider: #363632;
-    --brand: #60a5fa;
-    --brand-foreground: #0b1f3a;
+    --surface-canvas: #181818;
+    --surface-sidebar: #1b1f23;
+    --surface-panel: #1f2328;
+    --surface-elevated: #242a30;
+    --surface-control: #252b31;
+    --surface-hover: color-mix(in srgb, var(--brand) 14%, var(--surface-panel));
+    --surface-selected: color-mix(in srgb, var(--brand) 22%, var(--surface-panel));
+    --text-primary: #ffffff;
+    --text-secondary: #c4ccd6;
+    --text-tertiary: #9da8b5;
+    --text-inverse: #181818;
+    --line-subtle: #2a3037;
+    --line-default: #363d46;
+    --line-strong: #5a6573;
+    --focus-ring: #339cff;
+    --surface-divider: #303740;
+    --brand: #339cff;
+    --brand-foreground: #071d33;
+    --skill: #ad7bf9;
 
     --background: var(--surface-canvas);
     --app-chrome-background: var(--surface-canvas);
@@ -408,17 +404,17 @@
     --secondary-foreground: var(--text-primary);
     --muted: var(--surface-control);
     --muted-foreground: var(--text-secondary);
-    --accent: var(--surface-hover);
-    --accent-foreground: var(--text-primary);
-    --destructive: color-mix(in srgb, var(--color-red-500) 90%, var(--color-white));
+    --accent: var(--brand);
+    --accent-foreground: var(--brand-foreground);
+    --destructive: #fa423e;
     --border: var(--line-default);
     --input: var(--line-strong);
     --ring: var(--focus-ring);
-    --destructive-foreground: var(--color-red-400);
+    --destructive-foreground: #ff938e;
     --info: var(--color-blue-500);
     --info-foreground: var(--color-blue-400);
-    --success: var(--color-emerald-500);
-    --success-foreground: var(--color-emerald-400);
+    --success: #40c977;
+    --success-foreground: #72dda2;
     --warning: var(--color-amber-500);
     --warning-foreground: var(--color-amber-400);
     --sidebar: var(--surface-sidebar);
@@ -433,14 +429,7 @@
 }
 
 body {
-  font-family:
-    "DM Sans Variable",
-    "DM Sans",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    system-ui,
-    sans-serif;
+  font-family: var(--font-sans);
   margin: 0;
   padding: 0;
 }
@@ -480,8 +469,7 @@ body::after {
 
 pre,
 code {
-  font-family:
-    "JetBrains Mono", "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: var(--font-mono);
 }
 
 /* Window drag region (frameless titlebar) */
