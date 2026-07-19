@@ -35,9 +35,15 @@ import {
   VcsStatusStreamEvent,
 } from "./git.ts";
 import {
+  ReviewChangedFilesError,
+  ReviewChangedFilesInput,
+  ReviewChangedFilesResult,
   ReviewDiffPreviewError,
   ReviewDiffPreviewInput,
   ReviewDiffPreviewResult,
+  ReviewFileDiffError,
+  ReviewFileDiffInput,
+  ReviewFileDiffResult,
 } from "./review.ts";
 import { KeybindingsConfigError } from "./keybindings.ts";
 import {
@@ -173,6 +179,8 @@ export const WS_METHODS = {
 
   // Review methods
   reviewGetDiffPreview: "review.getDiffPreview",
+  reviewGetChangedFiles: "review.getChangedFiles",
+  reviewGetFileDiff: "review.getFileDiff",
 
   // Terminal methods
   terminalOpen: "terminal.open",
@@ -483,6 +491,18 @@ export const WsReviewGetDiffPreviewRpc = Rpc.make(WS_METHODS.reviewGetDiffPrevie
   error: ReviewDiffPreviewError,
 });
 
+export const WsReviewGetChangedFilesRpc = Rpc.make(WS_METHODS.reviewGetChangedFiles, {
+  payload: ReviewChangedFilesInput,
+  success: ReviewChangedFilesResult,
+  error: ReviewChangedFilesError,
+});
+
+export const WsReviewGetFileDiffRpc = Rpc.make(WS_METHODS.reviewGetFileDiff, {
+  payload: ReviewFileDiffInput,
+  success: ReviewFileDiffResult,
+  error: ReviewFileDiffError,
+});
+
 export const WsTerminalOpenRpc = Rpc.make(WS_METHODS.terminalOpen, {
   payload: TerminalOpenInput,
   success: TerminalSessionSnapshot,
@@ -712,6 +732,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsVcsSwitchRefRpc,
   WsVcsInitRpc,
   WsReviewGetDiffPreviewRpc,
+  WsReviewGetChangedFilesRpc,
+  WsReviewGetFileDiffRpc,
   WsTerminalOpenRpc,
   WsTerminalAttachRpc,
   WsTerminalWriteRpc,

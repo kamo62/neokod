@@ -13,5 +13,15 @@ export function createReviewEnvironmentAtoms<R, E>(
       tag: WS_METHODS.reviewGetDiffPreview,
       staleTimeMs: 5_000,
     }),
+    changedFiles: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:review:changed-files",
+      tag: WS_METHODS.reviewGetChangedFiles,
+      staleTimeMs: 5_000,
+    }),
+    fileDiff: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:review:file-diff",
+      tag: WS_METHODS.reviewGetFileDiff,
+      staleTimeMs: 5_000,
+    }),
   };
 }

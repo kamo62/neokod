@@ -11,6 +11,12 @@ import {
   type ReviewDiffPreviewError,
   type ReviewDiffPreviewInput,
   type ReviewDiffPreviewResult,
+  type ReviewChangedFilesError,
+  type ReviewChangedFilesInput,
+  type ReviewChangedFilesResult,
+  type ReviewFileDiffError,
+  type ReviewFileDiffInput,
+  type ReviewFileDiffResult,
 } from "@neokod/contracts";
 
 import * as ServerConfig from "../config.ts";
@@ -23,6 +29,12 @@ export class ReviewService extends Context.Service<
     readonly getDiffPreview: (
       input: ReviewDiffPreviewInput,
     ) => Effect.Effect<ReviewDiffPreviewResult, ReviewDiffPreviewError>;
+    readonly getChangedFiles: (
+      input: ReviewChangedFilesInput,
+    ) => Effect.Effect<ReviewChangedFilesResult, ReviewChangedFilesError>;
+    readonly getFileDiff: (
+      input: ReviewFileDiffInput,
+    ) => Effect.Effect<ReviewFileDiffResult, ReviewFileDiffError>;
   }
 >()("neokod/review/ReviewService") {}
 
@@ -106,8 +118,38 @@ export const make = Effect.gen(function* () {
     return yield* getDriverDiffPreview(input);
   });
 
+  const getChangedFiles: ReviewService["Service"]["getChangedFiles"] = Effect.fn(
+    "ReviewService.getChangedFiles",
+  )(function* (input) {
+    yield* assertWorkspaceBoundCwd(input.cwd);
+
+    const handle = yield* vcsRegistry.detect({ cwd: input.cwd, requestedKind: "auto" });
+    if (!handle || handle.kind === "git") return yield* git.getChangedFiles(input);
+    return yield* new VcsUnsupportedOperationError({
+      operation: "ReviewService.getChangedFiles",
+      kind: handle.kind,
+      detail: `The ${handle.kind} VCS driver does not support review changed-file lists.`,
+    });
+  });
+
+  const getFileDiff: ReviewService["Service"]["getFileDiff"] = Effect.fn(
+    "ReviewService.getFileDiff",
+  )(function* (input) {
+    yield* assertWorkspaceBoundCwd(input.cwd);
+
+    const handle = yield* vcsRegistry.detect({ cwd: input.cwd, requestedKind: "auto" });
+    if (!handle || handle.kind === "git") return yield* git.getFileDiff(input);
+    return yield* new VcsUnsupportedOperationError({
+      operation: "ReviewService.getFileDiff",
+      kind: handle.kind,
+      detail: `The ${handle.kind} VCS driver does not support review file diffs.`,
+    });
+  });
+
   return ReviewService.of({
     getDiffPreview,
+    getChangedFiles,
+    getFileDiff,
   });
 });
 

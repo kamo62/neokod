@@ -2132,6 +2132,22 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                   },
                 ],
               }),
+            getChangedFiles: (input) =>
+              Effect.succeed({
+                cwd: input.cwd,
+                scope: input.scope,
+                baseRef: input.scope === "working-tree" ? "HEAD" : (input.baseRef ?? null),
+                headRef: input.scope === "working-tree" ? null : "feature/demo",
+                files: [{ path: "dirty.ts", kind: "modified", additions: 1, deletions: 0 }],
+                generatedAt: DateTime.nowUnsafe(),
+              }),
+            getFileDiff: (input) =>
+              Effect.succeed({
+                path: input.path,
+                diff: "file-diff",
+                diffHash: "hash-file",
+                truncated: false,
+              }),
           },
         },
       });
@@ -2246,6 +2262,24 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         ),
       );
       assert.equal(diffPreview.sources[0]?.diff, "dirty-diff");
+
+      const changedFiles = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.reviewGetChangedFiles]({ cwd: "/tmp/repo", scope: "working-tree" }),
+        ),
+      );
+      assert.equal(changedFiles.files[0]?.path, "dirty.ts");
+
+      const fileDiff = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.reviewGetFileDiff]({
+            cwd: "/tmp/repo",
+            scope: "working-tree",
+            path: "dirty.ts",
+          }),
+        ),
+      );
+      assert.equal(fileDiff.diff, "file-diff");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

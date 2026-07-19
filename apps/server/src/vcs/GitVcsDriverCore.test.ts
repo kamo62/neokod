@@ -316,6 +316,49 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         );
       }),
     );
+
+    it.effect("lists changed files and fetches an untruncated per-file diff on demand", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* git(cwd, ["checkout", "-b", "feature/review-fetch"]);
+        yield* git(cwd, ["mv", "README.md", "RENAMED.md"]);
+        yield* git(cwd, ["commit", "-m", "rename readme"]);
+        yield* writeTextFile(cwd, "untracked.ts", "export const untracked = true;\n");
+
+        const workingFiles = yield* driver.getChangedFiles({
+          cwd,
+          scope: "working-tree",
+        });
+        const branchFiles = yield* driver.getChangedFiles({
+          cwd,
+          scope: "branch-range",
+          baseRef: initialBranch,
+        });
+        const fileDiff = yield* driver.getFileDiff({
+          cwd,
+          scope: "working-tree",
+          path: "untracked.ts",
+        });
+
+        assert.deepInclude(workingFiles.files, {
+          path: "untracked.ts",
+          kind: "added",
+          additions: 0,
+          deletions: 0,
+        });
+        assert.deepInclude(branchFiles.files, {
+          path: "RENAMED.md",
+          kind: "renamed",
+          additions: 0,
+          deletions: 0,
+        });
+        assert.include(fileDiff.diff, "untracked.ts");
+        assert.isNotEmpty(fileDiff.diffHash);
+        assert.equal(fileDiff.truncated, false);
+      }),
+    );
   });
 
   describe("repository status", () => {

@@ -21,8 +21,11 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import {
   GitCommandError,
+  type ReviewChangedFile,
+  type ReviewChangedFilesInput,
   type ReviewDiffPreviewInput,
   type ReviewDiffPreviewSource,
+  type ReviewFileDiffInput,
   type VcsRef,
 } from "@neokod/contracts";
 import { dedupeRemoteBranchesWithLocalMatches } from "@neokod/shared/git";
@@ -45,6 +48,7 @@ const RANGE_COMMIT_SUMMARY_MAX_OUTPUT_BYTES = 19_000;
 const RANGE_DIFF_SUMMARY_MAX_OUTPUT_BYTES = 19_000;
 const RANGE_DIFF_PATCH_MAX_OUTPUT_BYTES = 59_000;
 const REVIEW_DIFF_PATCH_MAX_OUTPUT_BYTES = 120_000;
+const REVIEW_CHANGED_FILES_MAX_OUTPUT_BYTES = 1_000_000;
 const REVIEW_UNTRACKED_DIFF_MAX_OUTPUT_BYTES = 80_000;
 const WORKSPACE_FILES_MAX_OUTPUT_BYTES = 120_000;
 const STATUS_UPSTREAM_REFRESH_INTERVAL = Duration.seconds(15);
@@ -119,6 +123,22 @@ function parseNumstatEntries(
   stdout: string,
 ): Array<{ path: string; insertions: number; deletions: number }> {
   const entries: Array<{ path: string; insertions: number; deletions: number }> = [];
+  if (stdout.includes("\0")) {
+    const fields = stdout.split("\0");
+    for (let index = 0; index < fields.length; index += 1) {
+      const [addedRaw, deletedRaw, rawPath = ""] = (fields[index] ?? "").split("\t");
+      if (addedRaw === undefined || deletedRaw === undefined) continue;
+      const path = rawPath.length > 0 ? rawPath : (fields[(index += 2)] ?? "");
+      if (path.length === 0) continue;
+      entries.push({
+        path,
+        insertions: Number.parseInt(addedRaw, 10) || 0,
+        deletions: Number.parseInt(deletedRaw, 10) || 0,
+      });
+    }
+    return entries;
+  }
+
   for (const line of stdout.split(/\r?\n/g)) {
     if (line.trim().length === 0) continue;
     const [addedRaw, deletedRaw, ...pathParts] = line.split("\t");
@@ -135,6 +155,29 @@ function parseNumstatEntries(
       insertions: Number.isFinite(added) ? added : 0,
       deletions: Number.isFinite(deleted) ? deleted : 0,
     });
+  }
+  return entries;
+}
+
+function parseNameStatusEntries(stdout: string): Array<{ path: string; kind: string }> {
+  const kindByCode: Record<string, string> = {
+    A: "added",
+    M: "modified",
+    D: "deleted",
+    R: "renamed",
+    C: "copied",
+    T: "typechanged",
+    U: "unmerged",
+  };
+  const fields = stdout.split("\0");
+  const entries: Array<{ path: string; kind: string }> = [];
+  for (let index = 0; index < fields.length; index += 1) {
+    const status = fields[index] ?? "";
+    const code = status[0];
+    if (!code) continue;
+    const path =
+      code === "R" || code === "C" ? (fields[(index += 2)] ?? "") : (fields[++index] ?? "");
+    if (path.length > 0) entries.push({ path, kind: kindByCode[code] ?? "modified" });
   }
   return entries;
 }
@@ -1861,6 +1904,186 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     };
   });
 
+  const hashReviewDiff = (cwd: string, operation: string, diff: string) =>
+    crypto.digest("SHA-256", new TextEncoder().encode(diff)).pipe(
+      Effect.map(Encoding.encodeHex),
+      Effect.mapError(
+        (cause) =>
+          new GitCommandError({
+            operation,
+            command: "crypto.digest SHA-256",
+            cwd,
+            detail: "Failed to hash review diff.",
+            cause,
+          }),
+      ),
+    );
+
+  const getChangedFiles = Effect.fn("getChangedFiles")(function* (input: ReviewChangedFilesInput) {
+    const details = yield* statusDetailsLocal(input.cwd);
+    if (!details.isRepo) {
+      return {
+        cwd: input.cwd,
+        scope: input.scope,
+        baseRef: null,
+        headRef: null,
+        files: [],
+        generatedAt: yield* DateTime.now,
+      };
+    }
+
+    const baseRef =
+      input.scope === "working-tree"
+        ? "HEAD"
+        : (input.baseRef ??
+          (details.branch
+            ? yield* resolveBaseBranchForNoUpstream(input.cwd, details.branch).pipe(
+                Effect.orElseSucceed(() => null),
+              )
+            : null));
+    const headRef = input.scope === "working-tree" ? null : (details.branch ?? "HEAD");
+    if (!baseRef) {
+      return {
+        cwd: input.cwd,
+        scope: input.scope,
+        baseRef: null,
+        headRef,
+        files: [],
+        generatedAt: yield* DateTime.now,
+      };
+    }
+
+    const target = input.scope === "working-tree" ? "HEAD" : `${baseRef}...HEAD`;
+    const [numstatResult, nameStatusResult] = yield* Effect.all([
+      executeGit(
+        "GitVcsDriver.getChangedFiles.numstat",
+        input.cwd,
+        [
+          "diff",
+          "--numstat",
+          "-z",
+          "--find-renames",
+          ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
+          target,
+        ],
+        { maxOutputBytes: REVIEW_CHANGED_FILES_MAX_OUTPUT_BYTES },
+      ),
+      executeGit(
+        "GitVcsDriver.getChangedFiles.nameStatus",
+        input.cwd,
+        [
+          "diff",
+          "--name-status",
+          "-z",
+          "--find-renames",
+          ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
+          target,
+        ],
+        { maxOutputBytes: REVIEW_CHANGED_FILES_MAX_OUTPUT_BYTES },
+      ),
+    ]);
+    const files = new Map<string, ReviewChangedFile>();
+    for (const entry of parseNameStatusEntries(nameStatusResult.stdout)) {
+      files.set(entry.path, { path: entry.path, kind: entry.kind, additions: 0, deletions: 0 });
+    }
+    for (const entry of parseNumstatEntries(numstatResult.stdout)) {
+      const existing = files.get(entry.path);
+      files.set(entry.path, {
+        path: entry.path,
+        kind: existing?.kind ?? "modified",
+        additions: entry.insertions,
+        deletions: entry.deletions,
+      });
+    }
+    if (input.scope === "working-tree") {
+      const untracked = yield* executeGit(
+        "GitVcsDriver.getChangedFiles.untracked",
+        input.cwd,
+        ["ls-files", "--others", "--exclude-standard", "-z"],
+        { maxOutputBytes: REVIEW_CHANGED_FILES_MAX_OUTPUT_BYTES },
+      );
+      for (const path of splitNullSeparatedGitStdoutPaths(untracked)) {
+        files.set(path, { path, kind: "added", additions: 0, deletions: 0 });
+      }
+    }
+
+    return {
+      cwd: input.cwd,
+      scope: input.scope,
+      baseRef,
+      headRef,
+      files: Array.from(files.values()),
+      generatedAt: yield* DateTime.now,
+    };
+  });
+
+  const getFileDiff = Effect.fn("getFileDiff")(function* (input: ReviewFileDiffInput) {
+    const details = yield* statusDetailsLocal(input.cwd);
+    const baseRef =
+      input.scope === "working-tree"
+        ? "HEAD"
+        : (input.baseRef ??
+          (details.branch
+            ? yield* resolveBaseBranchForNoUpstream(input.cwd, details.branch).pipe(
+                Effect.orElseSucceed(() => null),
+              )
+            : null));
+    const isUntracked =
+      details.isRepo && input.scope === "working-tree"
+        ? splitNullSeparatedGitStdoutPaths(
+            yield* executeGit("GitVcsDriver.getFileDiff.untracked", input.cwd, [
+              "ls-files",
+              "--others",
+              "--exclude-standard",
+              "-z",
+              "--",
+              input.path,
+            ]),
+          ).includes(input.path)
+        : false;
+    const result =
+      details.isRepo && baseRef
+        ? yield* executeGit(
+            "GitVcsDriver.getFileDiff",
+            input.cwd,
+            isUntracked
+              ? [
+                  "diff",
+                  "--patch",
+                  "--no-color",
+                  "--no-ext-diff",
+                  ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
+                  "--no-index",
+                  "--",
+                  "/dev/null",
+                  input.path,
+                ]
+              : [
+                  "diff",
+                  "--patch",
+                  "--no-color",
+                  "--no-ext-diff",
+                  ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
+                  input.scope === "working-tree" ? "HEAD" : `${baseRef}...HEAD`,
+                  "--",
+                  input.path,
+                ],
+            {
+              allowNonZeroExit: isUntracked,
+              maxOutputBytes: REVIEW_DIFF_PATCH_MAX_OUTPUT_BYTES,
+              appendTruncationMarker: true,
+            },
+          )
+        : { stdout: "", stdoutTruncated: false };
+    const diff = result.stdout;
+    return {
+      path: input.path,
+      diff,
+      diffHash: yield* hashReviewDiff(input.cwd, "GitVcsDriver.getFileDiff.hash", diff),
+      truncated: result.stdoutTruncated,
+    };
+  });
+
   const getReviewDiffPreview = Effect.fn("getReviewDiffPreview")(function* (
     input: ReviewDiffPreviewInput,
   ) {
@@ -1940,23 +2163,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           )
         : null;
     const baseDiff = baseResult?.stdout ?? "";
-    const hashDiff = (diff: string) =>
-      crypto.digest("SHA-256", new TextEncoder().encode(diff)).pipe(
-        Effect.map(Encoding.encodeHex),
-        Effect.mapError(
-          (cause) =>
-            new GitCommandError({
-              operation: "GitVcsDriver.getReviewDiffPreview.hash",
-              command: "crypto.digest SHA-256",
-              cwd: input.cwd,
-              detail: "Failed to hash review diff.",
-              cause,
-            }),
-        ),
-      );
     const [dirtyDiffHash, baseDiffHash] = yield* Effect.all([
-      hashDiff(dirtyDiff),
-      hashDiff(baseDiff),
+      hashReviewDiff(input.cwd, "GitVcsDriver.getReviewDiffPreview.hash", dirtyDiff),
+      hashReviewDiff(input.cwd, "GitVcsDriver.getReviewDiffPreview.hash", baseDiff),
     ]);
 
     const sources: ReviewDiffPreviewSource[] = [
@@ -2555,6 +2764,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     pushCurrentBranch,
     pullCurrentBranch,
     readRangeContext,
+    getChangedFiles,
+    getFileDiff,
     getReviewDiffPreview,
     readConfigValue,
     listRefs,

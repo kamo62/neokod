@@ -1436,6 +1436,14 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.reviewGetDiffPreview, review.getDiffPreview(input), {
             "rpc.aggregate": "review",
           }),
+        [WS_METHODS.reviewGetChangedFiles]: (input) =>
+          observeRpcEffect(WS_METHODS.reviewGetChangedFiles, review.getChangedFiles(input), {
+            "rpc.aggregate": "review",
+          }),
+        [WS_METHODS.reviewGetFileDiff]: (input) =>
+          observeRpcEffect(WS_METHODS.reviewGetFileDiff, review.getFileDiff(input), {
+            "rpc.aggregate": "review",
+          }),
         [WS_METHODS.terminalOpen]: (input) =>
           observeRpcEffect(WS_METHODS.terminalOpen, terminalManager.open(input), {
             "rpc.aggregate": "terminal",

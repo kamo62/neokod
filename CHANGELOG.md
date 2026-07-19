@@ -1,3 +1,9 @@
+## 3.1.0 - 2026-07-19 (Minor)
+
+Release impact: Minor because this adds backward-compatible review WebSocket RPCs and contract types.
+
+- Added on-demand changed-file list and per-file diff review RPCs so clients can load large diffs without a combined preview truncating them.
+
 ## 3.0.26 - 2026-07-19 (Patch)
 
 Release impact: Patch because this fixes responsive layout without changing UI behavior or contracts.
