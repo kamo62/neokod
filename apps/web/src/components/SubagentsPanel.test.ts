@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { SubagentCard } from "../session-logic";
 import {
   deriveSubagentTabs,
+  cleanSubagentProgressLabel,
   displayStatus,
   isDismissableEmptyWorker,
   isFinishedWorker,
@@ -50,6 +51,17 @@ describe("subagentSecondaryLabel", () => {
 
   it("returns null when neither is known", () => {
     expect(subagentSecondaryLabel(makeCard({ taskId: "a" }))).toBe(null);
+  });
+});
+
+describe("cleanSubagentProgressLabel", () => {
+  it("strips running prefixes and falls back for missing labels", () => {
+    expect(cleanSubagentProgressLabel("Running List root and read Package.swift")).toBe(
+      "List root and read Package.swift",
+    );
+    expect(cleanSubagentProgressLabel("Ran Bun test")).toBe("Bun test");
+    expect(cleanSubagentProgressLabel(null)).toBe("Working…");
+    expect(cleanSubagentProgressLabel("")).toBe("Working…");
   });
 });
 

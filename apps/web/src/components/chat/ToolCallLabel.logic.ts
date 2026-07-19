@@ -20,6 +20,16 @@ export interface ToolCallLabel {
   readonly iconKind: ToolCallIconKind;
 }
 
+export function deriveToolIconKindFromName(name: string | null | undefined): ToolCallIconKind {
+  const normalizedName = name?.toLowerCase() ?? "";
+  if (/\b(?:bash|shell|exec|terminal)\b/u.test(normalizedName)) return "terminal";
+  if (/\b(?:grep|search|glob|find)\b/u.test(normalizedName)) return "search";
+  if (/\b(?:read|view|cat)\b/u.test(normalizedName)) return "eye";
+  if (/\b(?:edit|write|patch)\b/u.test(normalizedName)) return "square-pen";
+  if (/\bskill\b/u.test(normalizedName)) return "sparkles";
+  return "wrench";
+}
+
 export function deriveToolCallResultSummary(input: {
   readonly exitCode?: number | undefined;
 }): string | undefined {
@@ -218,7 +228,7 @@ export function deriveToolCallLabel(input: ToolCallLabelInput): ToolCallLabel {
   }
   return {
     verb: input.toolName || input.fallbackLabel,
-    iconKind: /skill/i.test(input.toolName ?? "") ? "sparkles" : "wrench",
+    iconKind: deriveToolIconKindFromName(input.toolName),
   };
 }
 
