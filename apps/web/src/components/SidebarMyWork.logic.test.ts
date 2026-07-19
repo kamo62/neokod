@@ -68,7 +68,17 @@ describe("My Work visibility", () => {
     expect(countMyWorkThreads(visible)).toBe(0);
   });
 
-  it("restores a dismissed thread when its live state changes", () => {
+  it("keeps a dismissed running thread hidden while activity streams", () => {
+    const working = thread("thread-1");
+    const dismissed = {
+      [`${working.environmentId}:${working.id}`]: computeThreadSignature(working),
+    };
+    const streamedActivity = thread("thread-1", { updatedAt: "2026-07-19T10:02:00.000Z" });
+
+    expect(resolveVisibleMyWork(groups(streamedActivity), dismissed).running).toEqual([]);
+  });
+
+  it("restores a dismissed thread after meaningful transitions", () => {
     const working = thread("thread-1");
     const dismissed = {
       [`${working.environmentId}:${working.id}`]: computeThreadSignature(working),
@@ -83,11 +93,38 @@ describe("My Work visibility", () => {
       updatedAt: "2026-07-19T10:01:00.000Z",
     });
     const needsInput = thread("thread-1", { hasPendingUserInput: true });
-    const newActivity = thread("thread-1", { updatedAt: "2026-07-19T10:02:00.000Z" });
+    const newTurn = thread("thread-1", {
+      latestTurn: { ...working.latestTurn!, turnId: TurnId.make("turn-2") },
+    });
 
-    expect(resolveVisibleMyWork(groups(completed), dismissed).running).toEqual([completed]);
-    expect(resolveVisibleMyWork(groups(needsInput), dismissed).running).toEqual([needsInput]);
-    expect(resolveVisibleMyWork(groups(newActivity), dismissed).running).toEqual([newActivity]);
+    expect(
+      resolveVisibleMyWork(
+        { running: [], needsAttention: [], planReady: [], recent: [completed] },
+        dismissed,
+      ).recent,
+    ).toEqual([completed]);
+    expect(
+      resolveVisibleMyWork(
+        { running: [], needsAttention: [needsInput], planReady: [], recent: [] },
+        dismissed,
+      ).needsAttention,
+    ).toEqual([needsInput]);
+    expect(resolveVisibleMyWork(groups(newTurn), dismissed).running).toEqual([newTurn]);
+  });
+
+  it("puts plan-ready work in Needs you", () => {
+    const planReady = thread("thread-1", {
+      interactionMode: "plan",
+      hasActionableProposedPlan: true,
+      latestTurn: { ...thread("thread-1").latestTurn!, state: "completed" },
+    });
+
+    expect(
+      resolveVisibleMyWork(
+        { running: [], needsAttention: [], planReady: [planReady], recent: [] },
+        {},
+      ).needsAttention,
+    ).toEqual([planReady]);
   });
 
   it("filters every entry cleared from a group", () => {

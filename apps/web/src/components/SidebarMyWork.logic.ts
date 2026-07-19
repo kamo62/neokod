@@ -16,7 +16,6 @@ export function computeThreadSignature(thread: EnvironmentThreadShell): string {
     thread.hasPendingApprovals ? "1" : "0",
     thread.hasPendingUserInput ? "1" : "0",
     thread.session?.status ?? "",
-    thread.updatedAt,
   ].join("\u001f");
 }
 
@@ -33,7 +32,7 @@ export function resolveVisibleMyWork(
 
   return {
     running: visible(dashboardGroups.running),
-    needsAttention: visible(dashboardGroups.needsAttention),
+    needsAttention: visible([...dashboardGroups.needsAttention, ...dashboardGroups.planReady]),
     recent: visible(dashboardGroups.recent),
   };
 }

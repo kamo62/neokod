@@ -1,5 +1,8 @@
 import { scopeThreadRef } from "@neokod/client-runtime/environment";
-import type { EnvironmentThreadShell } from "@neokod/client-runtime/state/shell";
+import type {
+  EnvironmentProject,
+  EnvironmentThreadShell,
+} from "@neokod/client-runtime/state/shell";
 import { useNavigate } from "@tanstack/react-router";
 import { CheckIcon, ChevronRightIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -7,7 +10,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { useUiStateStore } from "../uiStateStore";
 import { cn } from "~/lib/utils";
-import { useProjects, useThreadShells } from "../state/entities";
 import { selectMissionControlDashboardGroups } from "./MissionControl.logic";
 import {
   computeThreadSignature,
@@ -77,10 +79,14 @@ function MyWorkRow({
   );
 }
 
-export function SidebarMyWork() {
+export function SidebarMyWork({
+  projects,
+  threads,
+}: {
+  projects: ReadonlyArray<EnvironmentProject>;
+  threads: ReadonlyArray<EnvironmentThreadShell>;
+}) {
   const navigate = useNavigate();
-  const projects = useProjects();
-  const threads = useThreadShells();
   const collapsed = useUiStateStore((state) => state.myWorkCollapsed);
   const dismissed = useUiStateStore((state) => state.myWorkDismissed);
   const lastDismissed = useUiStateStore((state) => state.myWorkLastDismissed);
@@ -88,7 +94,7 @@ export function SidebarMyWork() {
   const dismissThread = useUiStateStore((state) => state.dismissMyWorkThread);
   const dismissThreads = useUiStateStore((state) => state.dismissMyWorkThreads);
   const undoDismiss = useUiStateStore((state) => state.undoMyWorkDismissal);
-  const [undoVisible, setUndoVisible] = useState(false);
+  const [now, setNow] = useState(Date.now);
   const dashboardGroups = useMemo(
     () => selectMissionControlDashboardGroups(threads, projects, MY_WORK_RECENT_CAP),
     [projects, threads],
@@ -106,10 +112,13 @@ export function SidebarMyWork() {
 
   useEffect(() => {
     if (!lastDismissed) return;
-    setUndoVisible(true);
-    const timeout = window.setTimeout(() => setUndoVisible(false), 5000);
+    const remaining = Math.max(0, 5000 - (Date.now() - lastDismissed.dismissedAt));
+    setNow(Date.now());
+    const timeout = window.setTimeout(() => setNow(Date.now()), remaining);
     return () => window.clearTimeout(timeout);
-  }, [lastDismissed]);
+  }, [lastDismissed?.dismissedAt]);
+
+  const undoVisible = lastDismissed !== null && now - lastDismissed.dismissedAt < 5000;
 
   const openThread = useCallback(
     (thread: EnvironmentThreadShell) => {
@@ -186,7 +195,7 @@ export function SidebarMyWork() {
               className="ml-2 text-meta text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
               onClick={() => {
                 undoDismiss();
-                setUndoVisible(false);
+                setNow(0);
               }}
             >
               Undo dismiss

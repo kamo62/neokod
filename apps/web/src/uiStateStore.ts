@@ -48,7 +48,10 @@ export interface UiState extends UiProjectState, UiThreadState {
   sidebarViewMigratedToWorkspace: true;
   myWorkCollapsed: boolean;
   myWorkDismissed: Record<string, string>;
-  myWorkLastDismissed: { threadKey: string; signature: string } | null;
+  myWorkLastDismissed: {
+    dismissed: Array<{ threadKey: string; signature: string }>;
+    dismissedAt: number;
+  } | null;
   pinnedThreadKeys: string[];
 }
 
@@ -410,34 +413,36 @@ export function toggleMyWorkCollapsed(state: UiState): UiState {
 }
 
 export function dismissMyWorkThread(state: UiState, threadKey: string, signature: string): UiState {
-  if (parseScopedThreadKey(threadKey) === null || !signature) return state;
-  return {
-    ...state,
-    myWorkDismissed: { ...state.myWorkDismissed, [threadKey]: signature },
-    myWorkLastDismissed: { threadKey, signature },
-  };
+  return dismissMyWorkThreads(state, { [threadKey]: signature });
 }
 
 export function dismissMyWorkThreads(
   state: UiState,
   dismissed: Readonly<Record<string, string>>,
 ): UiState {
-  return Object.entries(dismissed).reduce(
-    (next, [threadKey, signature]) => dismissMyWorkThread(next, threadKey, signature),
-    state,
+  const entries = Object.entries(dismissed).filter(
+    (entry): entry is [string, string] => parseScopedThreadKey(entry[0]) !== null && !!entry[1],
   );
+  if (entries.length === 0) return state;
+  return {
+    ...state,
+    myWorkDismissed: { ...state.myWorkDismissed, ...Object.fromEntries(entries) },
+    myWorkLastDismissed: {
+      dismissed: entries.map(([threadKey, signature]) => ({ threadKey, signature })),
+      dismissedAt: Date.now(),
+    },
+  };
 }
 
 export function undoMyWorkDismissal(state: UiState): UiState {
   const lastDismissed = state.myWorkLastDismissed;
-  if (
-    !lastDismissed ||
-    state.myWorkDismissed[lastDismissed.threadKey] !== lastDismissed.signature
-  ) {
+  if (!lastDismissed) {
     return state;
   }
   const myWorkDismissed = { ...state.myWorkDismissed };
-  delete myWorkDismissed[lastDismissed.threadKey];
+  for (const { threadKey, signature } of lastDismissed.dismissed) {
+    if (myWorkDismissed[threadKey] === signature) delete myWorkDismissed[threadKey];
+  }
   return { ...state, myWorkDismissed, myWorkLastDismissed: null };
 }
 
@@ -455,6 +460,16 @@ export function removePinnedThreads(state: UiState, threadKeys: readonly string[
   return pinnedThreadKeys.length === state.pinnedThreadKeys.length
     ? state
     : { ...state, pinnedThreadKeys };
+}
+
+export function removeMyWorkDismissed(state: UiState, threadKeys: readonly string[]): UiState {
+  const deletedThreadKeys = new Set(threadKeys);
+  const myWorkDismissed = Object.fromEntries(
+    Object.entries(state.myWorkDismissed).filter(([key]) => !deletedThreadKeys.has(key)),
+  );
+  return Object.keys(myWorkDismissed).length === Object.keys(state.myWorkDismissed).length
+    ? state
+    : { ...state, myWorkDismissed };
 }
 
 export function reorderProjects(
@@ -509,6 +524,7 @@ interface UiStateStore extends UiState {
   undoMyWorkDismissal: () => void;
   togglePinnedThread: (threadKey: string) => void;
   removePinnedThreads: (threadKeys: readonly string[]) => void;
+  removeMyWorkDismissed: (threadKeys: readonly string[]) => void;
   markThreadVisited: (threadId: string, visitedAt: string) => void;
   markThreadUnread: (threadId: string, latestTurnCompletedAt: string | null | undefined) => void;
   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
@@ -530,6 +546,7 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
   undoMyWorkDismissal: () => set(undoMyWorkDismissal),
   togglePinnedThread: (threadKey) => set((state) => togglePinnedThread(state, threadKey)),
   removePinnedThreads: (threadKeys) => set((state) => removePinnedThreads(state, threadKeys)),
+  removeMyWorkDismissed: (threadKeys) => set((state) => removeMyWorkDismissed(state, threadKeys)),
   markThreadVisited: (threadId, visitedAt) =>
     set((state) => markThreadVisited(state, threadId, visitedAt)),
   markThreadUnread: (threadId, latestTurnCompletedAt) =>

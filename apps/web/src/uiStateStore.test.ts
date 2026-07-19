@@ -10,6 +10,7 @@ import {
   type PersistedUiState,
   persistState,
   readPersistedState,
+  removeMyWorkDismissed,
   removePinnedThreads,
   reorderProjects,
   resolveProjectExpanded,
@@ -155,14 +156,17 @@ describe("uiStateStore pure functions", () => {
     ).toEqual({});
   });
 
-  it("dismisses My Work entries, restores the last one, and toggles collapse", () => {
+  it("dismisses and restores a My Work batch, and prunes deleted entries", () => {
     const first = "environment-a:thread-1";
     const second = "environment-a:thread-2";
     const dismissed = dismissMyWorkThreads(makeUiState(), { [first]: "first", [second]: "second" });
 
     expect(toggleMyWorkCollapsed(makeUiState()).myWorkCollapsed).toBe(true);
     expect(dismissed.myWorkDismissed).toEqual({ [first]: "first", [second]: "second" });
-    expect(undoMyWorkDismissal(dismissed).myWorkDismissed).toEqual({ [first]: "first" });
+    expect(undoMyWorkDismissal(dismissed).myWorkDismissed).toEqual({});
+    expect(removeMyWorkDismissed(dismissed, [first]).myWorkDismissed).toEqual({
+      [second]: "second",
+    });
     expect(dismissMyWorkThread(makeUiState(), "not-a-key", "signature")).toEqual(makeUiState());
   });
 });
