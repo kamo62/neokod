@@ -1,3 +1,10 @@
+## 3.0.24 - 2026-07-19 (Patch)
+
+Release impact: Patch because this restyles existing surfaces without changing storage or server contracts.
+
+- Neutralized the theme surfaces to true grey in both light and dark, replacing the blue-biased greys, and gave My Work rows two lines so the project name sits under the thread title instead of being cut off.
+- Rendered the Subagents panel's tool rows in the same verb-first style as the main transcript: a tool icon with a cleaned label, dropping the redundant tool-name subtext line.
+
 ## 3.0.23 - 2026-07-19 (Patch)
 
 Release impact: Patch because this fixes provider environment import and background-task log noise without changing storage or server contracts.
