@@ -116,6 +116,9 @@ describe("DesktopShellEnvironment", () => {
             PATH: "/opt/homebrew/bin:/usr/bin",
             SSH_AUTH_SOCK: "/tmp/secretive.sock",
             HOMEBREW_PREFIX: "/opt/homebrew",
+            CODEX_LB_API_KEY: "test-codex-key",
+            OPENAI_API_KEY: "test-openai-key",
+            ANTHROPIC_API_KEY: "test-anthropic-key",
           });
         },
       });
@@ -125,6 +128,9 @@ describe("DesktopShellEnvironment", () => {
       assert.equal(env.PATH, "/opt/homebrew/bin:/usr/bin:/Users/test/.local/bin");
       assert.equal(env.SSH_AUTH_SOCK, "/tmp/secretive.sock");
       assert.equal(env.HOMEBREW_PREFIX, "/opt/homebrew");
+      assert.equal(env.CODEX_LB_API_KEY, "test-codex-key");
+      assert.equal(env.OPENAI_API_KEY, "test-openai-key");
+      assert.equal(env.ANTHROPIC_API_KEY, "test-anthropic-key");
     }),
   );
 

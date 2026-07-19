@@ -2712,6 +2712,30 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           },
         });
         return;
+      case "task_updated": {
+        const status = message.patch.status;
+        if (status === "completed" || status === "failed" || status === "killed") {
+          yield* offerRuntimeEvent({
+            ...base,
+            type: "task.completed",
+            payload: {
+              taskId: RuntimeTaskId.make(message.task_id),
+              status: status === "killed" ? "stopped" : status,
+              ...(message.patch.description ? { summary: message.patch.description } : {}),
+            },
+          });
+          return;
+        }
+        yield* offerRuntimeEvent({
+          ...base,
+          type: "task.progress",
+          payload: {
+            taskId: RuntimeTaskId.make(message.task_id),
+            description: message.patch.description ?? "",
+          },
+        });
+        return;
+      }
       case "task_notification":
         yield* emitThreadTokenUsage(
           context,
@@ -2776,6 +2800,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         );
         return;
       default:
+        if ((message as { readonly subtype: string }).subtype === "background_tasks_changed") {
+          return;
+        }
         yield* emitRuntimeWarning(
           context,
           describeUnknownSdkMessage(`Claude system message '${message.subtype}'`, message),
