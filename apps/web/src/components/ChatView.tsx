@@ -5166,7 +5166,6 @@ function ChatViewContent(props: ChatViewProps) {
           activeToolLabel={activeToolLabel}
           hasPlanData={hasPlanData}
           onOpenPlan={togglePlanSidebar}
-          onInterrupt={onInterrupt}
         />
 
         {/* Error banner */}

@@ -1,3 +1,9 @@
+## 3.0.27 - 2026-07-19 (Patch)
+
+Release impact: Patch because this removes a duplicate control without changing behavior or contracts.
+
+- Removed the redundant Stop button from the thread run banner. The composer's Stop control (the send button while a turn is running) is now the single place to stop a run; the run banner keeps showing the working status and elapsed time.
+
 ## 3.0.26 - 2026-07-19 (Patch)
 
 Release impact: Patch because this fixes responsive layout without changing UI behavior or contracts.

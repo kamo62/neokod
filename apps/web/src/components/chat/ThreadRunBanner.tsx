@@ -1,4 +1,4 @@
-import { CheckIcon, CircleAlertIcon, Clock3Icon, ListTodoIcon, SquareIcon } from "lucide-react";
+import { CheckIcon, CircleAlertIcon, Clock3Icon, ListTodoIcon } from "lucide-react";
 import type { ActivePlanState } from "../../session-logic";
 import type { Thread } from "../../types";
 import { cn } from "~/lib/utils";
@@ -16,7 +16,6 @@ interface ThreadRunBannerProps {
   readonly activeToolLabel?: string | undefined;
   readonly hasPlanData: boolean;
   readonly onOpenPlan: () => void;
-  readonly onInterrupt: () => void;
 }
 
 export function ThreadRunBanner(props: ThreadRunBannerProps) {
@@ -84,11 +83,6 @@ export function ThreadRunBanner(props: ThreadRunBannerProps) {
             <Button size="xs" variant="ghost" className="gap-1.5" onClick={props.onOpenPlan}>
               <ListTodoIcon className="size-3.5" />
               <span className="max-sm:sr-only">Open plan</span>
-            </Button>
-          ) : null}
-          {summary.interruptAvailable ? (
-            <Button size="xs" variant="destructive" className="gap-1.5" onClick={props.onInterrupt}>
-              <SquareIcon className="size-3" fill="currentColor" /> Stop
             </Button>
           ) : null}
         </div>
