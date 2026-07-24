@@ -2,6 +2,7 @@
 import * as NodeCrypto from "node:crypto";
 
 import type { CopilotManagedClientEvidenceSettings } from "@neokod/contracts";
+import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
@@ -105,7 +106,8 @@ export const testManagedClientEvidenceConnection = (
 
     const httpClient = yield* HttpClient.HttpClient;
     const timestamp = yield* DateTime.now.pipe(Effect.map(DateTime.formatIso));
-    const identity = collectClientIdentity(getKnownGithubLogin());
+    const platform = yield* HostProcessPlatform;
+    const identity = collectClientIdentity(platform, getKnownGithubLogin());
     const body = withClientIdentity(
       makeManagedClientEvidenceBatch(makeTestConnectionEvents(timestamp)),
       identity,

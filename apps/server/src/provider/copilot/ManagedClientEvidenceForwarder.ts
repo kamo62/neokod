@@ -1,4 +1,5 @@
 import type { CopilotManagedClientEvidenceSettings } from "@neokod/contracts";
+import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
@@ -77,7 +78,8 @@ const postWithBackoff = (
 ) =>
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
-    const identity = collectClientIdentity(getKnownGithubLogin());
+    const platform = yield* HostProcessPlatform;
+    const identity = collectClientIdentity(platform, getKnownGithubLogin());
     const body = withClientIdentity(makeManagedClientEvidenceBatch(events), identity);
     const baseMs = Duration.toMillis(options.backoffBase);
     const maxMs = Duration.toMillis(options.backoffMax);

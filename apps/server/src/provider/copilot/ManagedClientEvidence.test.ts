@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeAssert from "node:assert/strict";
-import * as NodeOs from "node:os";
+import * as NodeOS from "node:os";
 import { describe, it, vi } from "vite-plus/test";
 
 import {
@@ -296,17 +296,17 @@ describe("ManagedClientEvidence", () => {
   });
 
   describe("collectClientIdentity", () => {
-    it("collects v1, hostname, and os_platform, and trims/omits a blank github login", () => {
-      const identity = collectClientIdentity("  ");
+    it("collects v1, hostname, and the supplied platform, and trims/omits a blank github login", () => {
+      const identity = collectClientIdentity("linux", "  ");
 
       NodeAssert.equal(identity.v, 1);
-      NodeAssert.equal(identity.hostname, NodeOs.hostname());
-      NodeAssert.equal(identity.os_platform, process.platform);
+      NodeAssert.equal(identity.hostname, NodeOS.hostname());
+      NodeAssert.equal(identity.os_platform, "linux");
       NodeAssert.equal(identity.github_login, undefined);
     });
 
     it("includes a trimmed github_login when supplied", () => {
-      const identity = collectClientIdentity("  octocat  ");
+      const identity = collectClientIdentity("linux", "  octocat  ");
 
       NodeAssert.equal(identity.github_login, "octocat");
     });
@@ -315,12 +315,12 @@ describe("ManagedClientEvidence", () => {
       userInfoInterceptor.mode = "throw";
 
       try {
-        const identity = collectClientIdentity();
+        const identity = collectClientIdentity("darwin");
 
         NodeAssert.equal(identity.v, 1);
         NodeAssert.equal("os_username" in identity, false);
-        NodeAssert.equal(identity.hostname, NodeOs.hostname());
-        NodeAssert.equal(identity.os_platform, process.platform);
+        NodeAssert.equal(identity.hostname, NodeOS.hostname());
+        NodeAssert.equal(identity.os_platform, "darwin");
       } finally {
         userInfoInterceptor.mode = "real";
       }
@@ -331,7 +331,7 @@ describe("ManagedClientEvidence", () => {
       userInfoInterceptor.value = { username: "jdoe" };
 
       try {
-        const identity = collectClientIdentity();
+        const identity = collectClientIdentity("darwin");
         NodeAssert.equal(identity.os_username, "jdoe");
       } finally {
         userInfoInterceptor.mode = "real";
@@ -343,7 +343,7 @@ describe("ManagedClientEvidence", () => {
   describe("withClientIdentity", () => {
     it("attaches client_identity alongside events without altering the events array", () => {
       const batch = makeManagedClientEvidenceBatch([]);
-      const identity = collectClientIdentity();
+      const identity = collectClientIdentity("linux");
 
       const withIdentity = withClientIdentity(batch, identity);
 

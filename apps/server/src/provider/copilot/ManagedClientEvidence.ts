@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeCrypto from "node:crypto";
-import * as NodeOs from "node:os";
+import * as NodeOS from "node:os";
 
 import type { OrchestrationEvent, ProviderRuntimeEvent } from "@neokod/contracts";
 
@@ -118,7 +118,7 @@ export interface ManagedClientEvidencePostBody extends ManagedClientEvidenceBatc
  */
 function collectOsUsername(): string | undefined {
   try {
-    const username = NodeOs.userInfo().username.trim();
+    const username = NodeOS.userInfo().username.trim();
     return username.length > 0 ? username : undefined;
   } catch {
     return undefined;
@@ -128,17 +128,23 @@ function collectOsUsername(): string | undefined {
 /**
  * Builds the machine-identity block sent with every evidence batch.
  * `githubLogin` is supplied by the caller (see `ManagedClientIdentityRegistry`)
- * rather than resolved here — this stays a plain, synchronous, zero-I/O
- * helper so collecting identity never delays or blocks posting evidence.
+ * rather than resolved here, and `platform` comes from `HostProcessPlatform`
+ * (injected by the Effect call sites, see `@neokod/shared/hostProcess`)
+ * rather than reading the global `process` directly — this stays a plain,
+ * synchronous, zero-I/O helper either way, so collecting identity never
+ * delays or blocks posting evidence.
  */
-export function collectClientIdentity(githubLogin?: string): ManagedClientIdentity {
+export function collectClientIdentity(
+  platform: string,
+  githubLogin?: string,
+): ManagedClientIdentity {
   const osUsername = collectOsUsername();
   const trimmedLogin = githubLogin?.trim();
   return {
     v: MANAGED_CLIENT_IDENTITY_VERSION,
     ...(osUsername ? { os_username: osUsername } : {}),
-    hostname: NodeOs.hostname(),
-    os_platform: process.platform,
+    hostname: NodeOS.hostname(),
+    os_platform: platform,
     ...(trimmedLogin ? { github_login: trimmedLogin } : {}),
   };
 }
