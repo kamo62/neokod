@@ -1,6 +1,6 @@
 # Architecture
 
-Neokod runs as a **Node.js WebSocket server** that wraps `codex app-server` (JSON-RPC over stdio) and serves a React web app.
+Neokod runs as a **Node.js WebSocket server** that drives the provider CLI you choose per session (JSON-RPC or a comparable adapter protocol, mostly over stdio) and serves a React web app.
 
 ```
 ┌─────────────────────────────────┐
@@ -19,9 +19,11 @@ Neokod runs as a **Node.js WebSocket server** that wraps `codex app-server` (JSO
 │  CheckpointReactor              │
 │  RuntimeReceiptBus              │
 └──────────┬──────────────────────┘
-           │ JSON-RPC over stdio
+           │ per-provider adapter (mostly stdio)
 ┌──────────▼──────────────────────┐
-│  codex app-server               │
+│  Provider CLI                   │
+│  Claude Code, Codex, Copilot,   │
+│  Cursor, Grok, or OpenCode      │
 └─────────────────────────────────┘
 ```
 
@@ -31,7 +33,7 @@ Neokod runs as a **Node.js WebSocket server** that wraps `codex app-server` (JSO
 
 - **Server**: `apps/server` is the main coordinator. It serves the web app, accepts WebSocket requests, waits for startup readiness before welcoming clients, and sends all outbound pushes through a single ordered push path.
 
-- **Provider runtime**: `codex app-server` does the actual provider/session work. The server talks to it over JSON-RPC on stdio and translates those runtime events into the app's orchestration model.
+- **Provider runtime**: The provider CLI you choose (Claude Code, Codex CLI, Copilot CLI, Cursor CLI, Grok CLI, or OpenCode) does the actual session work. The server talks to it through a per-provider adapter and translates those runtime events into the app's orchestration model.
 
 - **Background workers**: Long-running async flows such as runtime ingestion, command reaction, and checkpoint processing run as queue-backed workers. This keeps work ordered, reduces timing races, and gives tests a deterministic way to wait for the system to go idle.
 
@@ -90,7 +92,7 @@ sequenceDiagram
     participant Transport as WsTransport
     participant Server as wsServer
     participant Provider as ProviderService
-    participant Codex as codex app-server
+    participant CLI as provider CLI
     participant Ingest as ProviderRuntimeIngestion
     participant Engine as OrchestrationEngine
     participant Push as ServerPushBus
@@ -98,8 +100,8 @@ sequenceDiagram
     Browser->>Transport: Send user action
     Transport->>Server: Typed WebSocket request
     Server->>Provider: Route request
-    Provider->>Codex: JSON-RPC over stdio
-    Codex-->>Ingest: Provider runtime events
+    Provider->>CLI: Per-provider adapter call
+    CLI-->>Ingest: Provider runtime events
     Ingest->>Engine: Normalize into orchestration events
     Engine-->>Server: Domain events
     Server->>Push: Publish orchestration.domainEvent
@@ -108,7 +110,7 @@ sequenceDiagram
 
 1. A user action in the browser becomes a typed request through [`WsTransport`][1] and the browser API layer in [`nativeApi`][12].
 2. [`wsServer`][3] decodes that request using the shared WebSocket contracts in [`ws.ts`][6] and routes it to the right service.
-3. [`ProviderService`][8] starts or resumes a session and talks to `codex app-server` over JSON-RPC on stdio.
+3. [`ProviderService`][8] starts or resumes a session and talks to the selected provider CLI through its adapter.
 4. Provider-native events are pulled back into the server by [`ProviderRuntimeIngestion`][9], which converts them into orchestration events.
 5. [`OrchestrationEngine`][10] persists those events, updates the read model, and exposes them as domain events.
 6. [`wsServer`][3] pushes those updates to the browser through [`ServerPushBus`][5] on channels defined in [`orchestration.ts`][11].
