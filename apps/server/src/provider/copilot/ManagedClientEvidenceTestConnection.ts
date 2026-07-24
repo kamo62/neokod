@@ -7,16 +7,54 @@ import * as Effect from "effect/Effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 
 import {
+  collectClientIdentity,
   MANAGED_CLIENT_EVIDENCE_CLIENT,
   MANAGED_CLIENT_EVIDENCE_SCHEMA_VERSION,
   makeManagedClientEvidenceBatch,
+  withClientIdentity,
   type ManagedClientEvidenceEvent,
 } from "./ManagedClientEvidence.ts";
+import { getKnownGithubLogin } from "./ManagedClientIdentityRegistry.ts";
+
+export interface ManagedClientEvidenceRecordedIdentity {
+  readonly osUsername?: string | undefined;
+  readonly githubLogin?: string | undefined;
+}
 
 export interface ManagedClientEvidenceTestConnectionResult {
   readonly ok: boolean;
   readonly status: number | null;
   readonly message: string;
+  /**
+   * AI-Orch's echo of what it actually recorded for this credential
+   * (`recorded_identity` in the response body), when the server returns
+   * one. AI-Orch is the source of truth here and may report a different
+   * identity than what was sent.
+   */
+  readonly recordedIdentity?: ManagedClientEvidenceRecordedIdentity | undefined;
+}
+
+function maybeTrimmedString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+/**
+ * Defensive, duck-typed read of an untrusted JSON response body — a schema
+ * decode failure (or a body that doesn't include `recorded_identity` at
+ * all) should never turn a successful connectivity check into a failure.
+ */
+function extractRecordedIdentity(json: unknown): ManagedClientEvidenceRecordedIdentity | undefined {
+  if (!json || typeof json !== "object" || Array.isArray(json)) return undefined;
+  const recorded = (json as Record<string, unknown>).recorded_identity;
+  if (!recorded || typeof recorded !== "object" || Array.isArray(recorded)) return undefined;
+  const record = recorded as Record<string, unknown>;
+  const osUsername = maybeTrimmedString(record.os_username);
+  const githubLogin = maybeTrimmedString(record.github_login);
+  if (!osUsername && !githubLogin) return undefined;
+  return {
+    ...(osUsername ? { osUsername } : {}),
+    ...(githubLogin ? { githubLogin } : {}),
+  };
 }
 
 /**
@@ -67,7 +105,11 @@ export const testManagedClientEvidenceConnection = (
 
     const httpClient = yield* HttpClient.HttpClient;
     const timestamp = yield* DateTime.now.pipe(Effect.map(DateTime.formatIso));
-    const body = makeManagedClientEvidenceBatch(makeTestConnectionEvents(timestamp));
+    const identity = collectClientIdentity(getKnownGithubLogin());
+    const body = withClientIdentity(
+      makeManagedClientEvidenceBatch(makeTestConnectionEvents(timestamp)),
+      identity,
+    );
 
     const exit = yield* Effect.exit(
       HttpClientRequest.post(
@@ -89,7 +131,19 @@ export const testManagedClientEvidenceConnection = (
     }
 
     const status = exit.value.status;
-    return status >= 200 && status < 300
-      ? { ok: true, status, message: "Connection verified." }
-      : { ok: false, status, message: `Governance endpoint returned HTTP ${status}.` };
+    if (status < 200 || status >= 300) {
+      return { ok: false, status, message: `Governance endpoint returned HTTP ${status}.` };
+    }
+
+    const recordedIdentity = yield* exit.value.json.pipe(
+      Effect.map(extractRecordedIdentity),
+      Effect.orElseSucceed(() => undefined),
+    );
+
+    return {
+      ok: true,
+      status,
+      message: "Connection verified.",
+      ...(recordedIdentity ? { recordedIdentity } : {}),
+    };
   });

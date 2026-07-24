@@ -7,18 +7,27 @@ import * as FiberRuntime from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
+import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
+import {
+  HttpClient,
+  HttpClientError,
+  HttpClientRequest,
+  HttpClientResponse,
+} from "effect/unstable/http";
 
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { ProviderService } from "../Services/ProviderService.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import {
+  collectClientIdentity,
   evidenceFromOrchestrationEvent,
   evidenceFromProviderRuntimeEvent,
   makeManagedClientEvidenceBatch,
+  withClientIdentity,
   type ManagedClientEvidenceEvent,
 } from "./ManagedClientEvidence.ts";
+import { getKnownGithubLogin } from "./ManagedClientIdentityRegistry.ts";
 
 const DEFAULT_QUEUE_CAPACITY = 1_000;
 const DEFAULT_FLUSH_WITHIN = "2 seconds";
@@ -50,6 +59,17 @@ function nextBackoffMs(currentMs: number, maxMs: number): number {
   return Math.min(currentMs * 2, maxMs);
 }
 
+/**
+ * 408 (request timeout) and 429 (rate limited) are transient by definition
+ * even though they're 4xx, so they keep retrying alongside 5xx/network
+ * errors. Every other 4xx is treated as permanent: an old server rejecting
+ * an unknown field (e.g. `client_identity`) with a 400 would otherwise
+ * retry forever, silently halting all evidence and hammering the endpoint.
+ */
+function isPermanentClientError(status: number | undefined): boolean {
+  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429;
+}
+
 const postWithBackoff = (
   settings: CopilotManagedClientEvidenceSettings,
   events: ReadonlyArray<ManagedClientEvidenceEvent>,
@@ -57,13 +77,14 @@ const postWithBackoff = (
 ) =>
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
-    const body = makeManagedClientEvidenceBatch(events);
+    const identity = collectClientIdentity(getKnownGithubLogin());
+    const body = withClientIdentity(makeManagedClientEvidenceBatch(events), identity);
     const baseMs = Duration.toMillis(options.backoffBase);
     const maxMs = Duration.toMillis(options.backoffMax);
     let delayMs = baseMs;
 
     while (true) {
-      const exit = yield* Effect.exit(
+      const result = yield* Effect.result(
         HttpClientRequest.post(
           `${settings.governanceUrl.replace(/\/+$/, "")}/v1/managed-client/evidence`,
         ).pipe(
@@ -75,12 +96,24 @@ const postWithBackoff = (
           Effect.asVoid,
         ),
       );
-      if (exit._tag === "Success") {
+      if (Result.isSuccess(result)) {
+        return;
+      }
+      const failure = result.failure;
+      const status = HttpClientError.isHttpClientError(failure)
+        ? failure.response?.status
+        : undefined;
+      if (isPermanentClientError(status)) {
+        yield* Effect.logWarning(
+          "managed-client evidence POST rejected with a permanent client error; dropping batch",
+          { eventCount: body.events.length, status },
+        );
         return;
       }
       yield* Effect.logWarning("managed-client evidence POST failed; retrying", {
         eventCount: body.events.length,
         nextRetryMs: delayMs,
+        ...(status !== undefined ? { status } : {}),
       });
       yield* Effect.sleep(Duration.millis(delayMs));
       delayMs = nextBackoffMs(delayMs, maxMs);

@@ -9,6 +9,7 @@ import * as Schema from "effect/Schema";
 import { describe } from "vite-plus/test";
 
 import { checkCopilotProviderStatus, makePendingCopilotProvider } from "./CopilotProvider.ts";
+import { getKnownGithubLogin, setKnownGithubLogin } from "./ManagedClientIdentityRegistry.ts";
 
 const decodeSettings = Schema.decodeSync(CopilotSettings);
 
@@ -78,7 +79,26 @@ describe("CopilotProvider", () => {
       NodeAssert.equal(draft.auth.email, "octocat");
       NodeAssert.equal(draft.usage?.windows[0]?.bucketId, "premium_interactions");
       NodeAssert.equal(draft.usage?.windows[0]?.used, 12);
+      NodeAssert.equal(getKnownGithubLogin(), "octocat");
     }),
+  );
+
+  it.effect(
+    "checkCopilotProviderStatus shares the resolved github login with ManagedClientIdentityRegistry, and clears it when unauthenticated",
+    () =>
+      Effect.gen(function* () {
+        setKnownGithubLogin("stale-login");
+        const client = {
+          getStatus: () => Promise.resolve({ version: "1.2.3", protocolVersion: 2 }),
+          getAuthStatus: () => Promise.resolve({ isAuthenticated: false }),
+          listModels: () => Promise.resolve([]),
+          rpc: emptyQuotaRpc,
+        };
+
+        yield* checkCopilotProviderStatus(decodeSettings({ enabled: true }), client);
+
+        NodeAssert.equal(getKnownGithubLogin(), undefined);
+      }),
   );
 
   it.effect("checkCopilotProviderStatus forwards the GitHub token to quota lookup", () =>

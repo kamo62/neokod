@@ -1,10 +1,12 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeCrypto from "node:crypto";
+import * as NodeOs from "node:os";
 
 import type { OrchestrationEvent, ProviderRuntimeEvent } from "@neokod/contracts";
 
 export const MANAGED_CLIENT_EVIDENCE_SCHEMA_VERSION = "v0";
 export const MANAGED_CLIENT_EVIDENCE_CLIENT = "neokod";
+export const MANAGED_CLIENT_IDENTITY_VERSION = 1;
 
 export type ManagedClientEvidenceEventType =
   | "session_start"
@@ -80,6 +82,72 @@ export type ManagedClientEvidenceEvent = ManagedClientEvidenceBase &
 
 export interface ManagedClientEvidenceBatch {
   readonly events: ReadonlyArray<ManagedClientEvidenceEvent>;
+}
+
+/**
+ * Client-reported machine identity attached at the batch level (not per
+ * event — the per-event `v0` schema above is untouched). Structured only:
+ * this never flows into an event's `content` field. `os_username`/
+ * `hostname`/`os_platform` describe the machine Neokod is running on;
+ * `github_login` is the developer's signed-in GitHub identity when Copilot
+ * has one. AI-Orch is the source of truth for what gets recorded and may
+ * echo a different value back (see `recorded_identity` on the test
+ * connection result).
+ */
+export interface ManagedClientIdentity {
+  readonly v: typeof MANAGED_CLIENT_IDENTITY_VERSION;
+  readonly os_username?: string;
+  readonly hostname: string;
+  readonly os_platform?: string;
+  readonly github_login?: string;
+}
+
+/**
+ * Batch body with `client_identity` attached alongside `events`. Both the
+ * live forwarder and the test-connection probe build this the same way so
+ * the wire shape never drifts between them.
+ */
+export interface ManagedClientEvidencePostBody extends ManagedClientEvidenceBatch {
+  readonly client_identity: ManagedClientIdentity;
+}
+
+/**
+ * `os.userInfo()` can throw when the process has no resolvable passwd entry
+ * (rare, but seen in some minimal containers) — that failure only drops
+ * `os_username`, it never blocks evidence from being sent.
+ */
+function collectOsUsername(): string | undefined {
+  try {
+    const username = NodeOs.userInfo().username.trim();
+    return username.length > 0 ? username : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Builds the machine-identity block sent with every evidence batch.
+ * `githubLogin` is supplied by the caller (see `ManagedClientIdentityRegistry`)
+ * rather than resolved here — this stays a plain, synchronous, zero-I/O
+ * helper so collecting identity never delays or blocks posting evidence.
+ */
+export function collectClientIdentity(githubLogin?: string): ManagedClientIdentity {
+  const osUsername = collectOsUsername();
+  const trimmedLogin = githubLogin?.trim();
+  return {
+    v: MANAGED_CLIENT_IDENTITY_VERSION,
+    ...(osUsername ? { os_username: osUsername } : {}),
+    hostname: NodeOs.hostname(),
+    os_platform: process.platform,
+    ...(trimmedLogin ? { github_login: trimmedLogin } : {}),
+  };
+}
+
+export function withClientIdentity(
+  batch: ManagedClientEvidenceBatch,
+  identity: ManagedClientIdentity,
+): ManagedClientEvidencePostBody {
+  return { ...batch, client_identity: identity };
 }
 
 export function sha256EvidenceContent(value: string): string {

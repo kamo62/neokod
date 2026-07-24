@@ -29,6 +29,7 @@ import {
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
 import { getCopilotQuota } from "./CopilotQuota.ts";
+import { setKnownGithubLogin } from "./ManagedClientIdentityRegistry.ts";
 
 export const COPILOT_DRIVER_KIND = ProviderDriverKind.make("githubCopilot");
 const COPILOT_PRESENTATION = {
@@ -274,6 +275,12 @@ export const checkCopilotProviderStatus = Effect.fn("checkCopilotProviderStatus"
   }
 
   const auth = authResult.success.value;
+  // Shares this already-known login with the managed-client evidence path
+  // (see ManagedClientIdentityRegistry) so evidence batches can attach
+  // `github_login` without the forwarder reaching for a live CopilotClient
+  // or running its own auth-status probe. Cleared on an unauthenticated
+  // result so evidence stops claiming a login that no longer applies.
+  setKnownGithubLogin(auth.isAuthenticated ? auth.login : undefined);
   if (!auth.isAuthenticated) {
     return buildServerProvider({
       presentation: COPILOT_PRESENTATION,

@@ -1,5 +1,7 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import * as NodeAssert from "node:assert/strict";
-import { describe, it } from "vite-plus/test";
+import * as NodeOs from "node:os";
+import { describe, it, vi } from "vite-plus/test";
 
 import {
   EventId,
@@ -12,12 +14,39 @@ import {
 } from "@neokod/contracts";
 
 import {
+  collectClientIdentity,
   evidenceFromOrchestrationEvent,
   evidenceFromProviderRuntimeEvent,
   makeManagedClientEvidenceBatch,
   sha256EvidenceContent,
+  withClientIdentity,
   type ManagedClientEvidenceRepoContext,
 } from "./ManagedClientEvidence.ts";
+
+// `vi.spyOn` can't redefine a live ESM namespace export, so `userInfo()`
+// failure/override is modeled through a hoisted interceptor the mock
+// factory reads on every call instead — everything else on `node:os`
+// (notably `hostname()`) passes through to the real implementation.
+const userInfoInterceptor = vi.hoisted(() => ({
+  mode: "real" as "real" | "throw" | "value",
+  value: undefined as { readonly username: string } | undefined,
+}));
+
+vi.mock("node:os", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:os")>();
+  return {
+    ...actual,
+    userInfo: (...args: Parameters<typeof actual.userInfo>) => {
+      if (userInfoInterceptor.mode === "throw") {
+        throw new Error("no passwd entry for uid");
+      }
+      if (userInfoInterceptor.mode === "value" && userInfoInterceptor.value) {
+        return userInfoInterceptor.value as ReturnType<typeof actual.userInfo>;
+      }
+      return actual.userInfo(...args);
+    },
+  };
+});
 
 const COPILOT_DRIVER = ProviderDriverKind.make("githubCopilot");
 const THREAD_ID = ThreadId.make("thread-1");
@@ -264,5 +293,62 @@ describe("ManagedClientEvidence", () => {
         .length,
       50,
     );
+  });
+
+  describe("collectClientIdentity", () => {
+    it("collects v1, hostname, and os_platform, and trims/omits a blank github login", () => {
+      const identity = collectClientIdentity("  ");
+
+      NodeAssert.equal(identity.v, 1);
+      NodeAssert.equal(identity.hostname, NodeOs.hostname());
+      NodeAssert.equal(identity.os_platform, process.platform);
+      NodeAssert.equal(identity.github_login, undefined);
+    });
+
+    it("includes a trimmed github_login when supplied", () => {
+      const identity = collectClientIdentity("  octocat  ");
+
+      NodeAssert.equal(identity.github_login, "octocat");
+    });
+
+    it("omits os_username but keeps the rest of the identity when userInfo() throws", () => {
+      userInfoInterceptor.mode = "throw";
+
+      try {
+        const identity = collectClientIdentity();
+
+        NodeAssert.equal(identity.v, 1);
+        NodeAssert.equal("os_username" in identity, false);
+        NodeAssert.equal(identity.hostname, NodeOs.hostname());
+        NodeAssert.equal(identity.os_platform, process.platform);
+      } finally {
+        userInfoInterceptor.mode = "real";
+      }
+    });
+
+    it("includes a trimmed os_username when userInfo() succeeds", () => {
+      userInfoInterceptor.mode = "value";
+      userInfoInterceptor.value = { username: "jdoe" };
+
+      try {
+        const identity = collectClientIdentity();
+        NodeAssert.equal(identity.os_username, "jdoe");
+      } finally {
+        userInfoInterceptor.mode = "real";
+        userInfoInterceptor.value = undefined;
+      }
+    });
+  });
+
+  describe("withClientIdentity", () => {
+    it("attaches client_identity alongside events without altering the events array", () => {
+      const batch = makeManagedClientEvidenceBatch([]);
+      const identity = collectClientIdentity();
+
+      const withIdentity = withClientIdentity(batch, identity);
+
+      NodeAssert.deepEqual(withIdentity.events, batch.events);
+      NodeAssert.deepEqual(withIdentity.client_identity, identity);
+    });
   });
 });

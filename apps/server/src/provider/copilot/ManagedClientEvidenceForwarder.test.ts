@@ -28,6 +28,7 @@ import { OrchestrationEngineService } from "../../orchestration/Services/Orchest
 import { ProviderService } from "../Services/ProviderService.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ManagedClientEvidenceForwarderLive } from "./ManagedClientEvidenceForwarder.ts";
+import { setKnownGithubLogin } from "./ManagedClientIdentityRegistry.ts";
 
 const COPILOT_DRIVER = ProviderDriverKind.make("githubCopilot");
 const THREAD_ID = ThreadId.make("thread-forwarder");
@@ -50,6 +51,15 @@ interface CapturedPost {
   readonly url: string;
   readonly authorization: string | undefined;
   readonly bodyKeys: ReadonlyArray<string>;
+  readonly clientIdentity:
+    | {
+        readonly v: number;
+        readonly os_username?: string;
+        readonly hostname: string;
+        readonly os_platform?: string;
+        readonly github_login?: string;
+      }
+    | undefined;
   readonly events: ReadonlyArray<{
     readonly event_id: string;
     readonly schema_version: string;
@@ -179,11 +189,14 @@ const makePostCaptureHttpLayer = (
     HttpClient.HttpClient,
     HttpClient.make((request) => {
       const rawBody = (request.body as { readonly body?: Uint8Array }).body;
-      const body = JSON.parse(decoder.decode(rawBody)) as Pick<CapturedPost, "events">;
+      const body = JSON.parse(decoder.decode(rawBody)) as Pick<CapturedPost, "events"> & {
+        readonly client_identity?: CapturedPost["clientIdentity"];
+      };
       const post: CapturedPost = {
         url: request.url,
         authorization: request.headers.Authorization,
         bodyKeys: Object.keys(body),
+        clientIdentity: body.client_identity,
         events: body.events,
       };
       const webResponse = typeof response === "function" ? response(post) : response;
@@ -536,7 +549,7 @@ it("posts managed-client evidence using the v0 batch envelope", () =>
 
     yield* Scope.close(scope, Exit.void);
 
-    NodeAssert.deepEqual(post.bodyKeys, ["events"]);
+    NodeAssert.deepEqual([...post.bodyKeys].sort(), ["client_identity", "events"]);
     NodeAssert.equal(post.url, "https://orch.example/v1/managed-client/evidence");
     NodeAssert.equal(post.authorization, "Bearer air_test");
     NodeAssert.equal(post.events.length, 1);
@@ -554,4 +567,180 @@ it("posts managed-client evidence using the v0 batch envelope", () =>
         event_type: "session_start",
       },
     );
+  }).pipe(Effect.provide(TestClock.layer())));
+
+it("attaches client_identity at the batch level, present even without a known github login", () =>
+  Effect.gen(function* () {
+    setKnownGithubLogin(undefined);
+    const providerEvents = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+    const posts = yield* Queue.unbounded<CapturedPost>();
+
+    const layer = ManagedClientEvidenceForwarderLive({ flushWithin: "10 millis" }).pipe(
+      Layer.provideMerge(makeProviderLayer(providerEvents)),
+      Layer.provideMerge(makeOrchestrationLayer()),
+      Layer.provideMerge(makeEnabledSettingsLayer()),
+      Layer.provideMerge(makePostCaptureHttpLayer(posts)),
+    );
+
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(layer, scope);
+    yield* PubSub.publish(providerEvents, sessionStarted(1));
+    yield* TestClock.adjust("10 millis");
+    const post = yield* Queue.take(posts);
+
+    yield* Scope.close(scope, Exit.void);
+
+    NodeAssert.ok(post.clientIdentity, "expected client_identity on the batch");
+    NodeAssert.equal(post.clientIdentity?.v, 1);
+    NodeAssert.equal(typeof post.clientIdentity?.hostname, "string");
+    NodeAssert.ok(post.clientIdentity && post.clientIdentity.hostname.length > 0);
+    NodeAssert.equal(post.clientIdentity?.github_login, undefined);
+  }).pipe(Effect.provide(TestClock.layer())));
+
+it("includes github_login in client_identity once the Copilot auth probe has resolved one", () =>
+  Effect.gen(function* () {
+    setKnownGithubLogin("octocat");
+    const providerEvents = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+    const posts = yield* Queue.unbounded<CapturedPost>();
+
+    const layer = ManagedClientEvidenceForwarderLive({ flushWithin: "10 millis" }).pipe(
+      Layer.provideMerge(makeProviderLayer(providerEvents)),
+      Layer.provideMerge(makeOrchestrationLayer()),
+      Layer.provideMerge(makeEnabledSettingsLayer()),
+      Layer.provideMerge(makePostCaptureHttpLayer(posts)),
+    );
+
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(layer, scope);
+    yield* PubSub.publish(providerEvents, sessionStarted(1));
+    yield* TestClock.adjust("10 millis");
+    const post = yield* Queue.take(posts);
+
+    yield* Scope.close(scope, Exit.void);
+    setKnownGithubLogin(undefined);
+
+    NodeAssert.equal(post.clientIdentity?.github_login, "octocat");
+  }).pipe(Effect.provide(TestClock.layer())));
+
+it("drops a batch permanently on a 400 response and keeps consuming later events", () => {
+  const logs: Array<{ readonly message: string; readonly status: unknown }> = [];
+  const logger = Logger.make<unknown, void>(({ fiber, message }) => {
+    const annotations = fiber.getRef(References.CurrentLogAnnotations);
+    logs.push({ message: String(message), status: annotations.status });
+  });
+
+  return Effect.gen(function* () {
+    const providerEvents = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+    const posts = yield* Queue.unbounded<CapturedPost>();
+    let attemptCount = 0;
+
+    const layer = ManagedClientEvidenceForwarderLive({ flushWithin: "10 millis" }).pipe(
+      Layer.provideMerge(makeProviderLayer(providerEvents)),
+      Layer.provideMerge(makeOrchestrationLayer()),
+      Layer.provideMerge(makeEnabledSettingsLayer()),
+      Layer.provideMerge(
+        makePostCaptureHttpLayer(posts, () => {
+          attemptCount += 1;
+          return new Response(null, { status: 400 });
+        }),
+      ),
+    );
+
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(layer, scope);
+
+    yield* PubSub.publish(providerEvents, sessionStarted(1));
+    yield* TestClock.adjust("10 millis");
+    yield* flushEffects;
+    const firstPost = yield* Queue.take(posts);
+
+    yield* PubSub.publish(providerEvents, sessionStarted(2));
+    yield* TestClock.adjust("10 millis");
+    const secondPost = yield* Queue.take(posts);
+
+    yield* Scope.close(scope, Exit.void);
+
+    NodeAssert.deepEqual(
+      firstPost.events.map((event) => event.event_id),
+      ["evt-1"],
+    );
+    NodeAssert.deepEqual(
+      secondPost.events.map((event) => event.event_id),
+      ["evt-2"],
+    );
+    NodeAssert.equal(attemptCount, 2, "a 400 must not be retried");
+    NodeAssert.ok(
+      logs.some((log) => log.message.includes("permanent client error") && log.status === 400),
+    );
+  }).pipe(
+    Effect.provide(
+      Layer.mergeAll(TestClock.layer(), Logger.layer([logger], { mergeWithExisting: false })),
+    ),
+  );
+});
+
+it("retries on 429 the same as a 5xx response", () =>
+  Effect.gen(function* () {
+    const providerEvents = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+    const attempts = yield* Queue.unbounded<ReadonlyArray<string>>();
+    let attemptCount = 0;
+    const httpLayer = Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) => {
+        const rawBody = (request.body as { readonly body?: Uint8Array }).body;
+        const body = JSON.parse(decoder.decode(rawBody)) as {
+          readonly events: ReadonlyArray<{ readonly event_id: string }>;
+        };
+        attemptCount += 1;
+        return Queue.offer(
+          attempts,
+          body.events.map((event) => event.event_id),
+        ).pipe(
+          Effect.as(
+            HttpClientResponse.fromWeb(
+              request,
+              new Response(null, { status: attemptCount === 1 ? 429 : 200 }),
+            ),
+          ),
+        );
+      }),
+    );
+
+    const layer = ManagedClientEvidenceForwarderLive({
+      backoffBase: "1 second",
+      flushWithin: "1 hour",
+    }).pipe(
+      Layer.provideMerge(makeProviderLayer(providerEvents)),
+      Layer.provideMerge(makeOrchestrationLayer()),
+      Layer.provideMerge(
+        ServerSettingsService.layerTest({
+          providers: {
+            githubCopilot: {
+              managedClientEvidence: {
+                enabled: true,
+                governanceUrl: "https://orch.example/",
+                credential: "air_test",
+              },
+            },
+          },
+        }),
+      ),
+      Layer.provideMerge(httpLayer),
+    );
+
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(layer, scope);
+
+    for (let index = 0; index < 50; index += 1) {
+      yield* PubSub.publish(providerEvents, sessionStarted(index));
+    }
+
+    const first = yield* Queue.take(attempts);
+    const retryFiber = yield* Queue.take(attempts).pipe(Effect.forkScoped);
+    yield* TestClock.adjust("1 second");
+    const second = yield* Fiber.join(retryFiber);
+
+    yield* Scope.close(scope, Exit.void);
+
+    NodeAssert.deepEqual(first, second);
   }).pipe(Effect.provide(TestClock.layer())));

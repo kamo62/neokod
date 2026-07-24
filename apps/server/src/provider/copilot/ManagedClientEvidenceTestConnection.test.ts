@@ -7,12 +7,22 @@ import * as Layer from "effect/Layer";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
 import { testManagedClientEvidenceConnection } from "./ManagedClientEvidenceTestConnection.ts";
+import { setKnownGithubLogin } from "./ManagedClientIdentityRegistry.ts";
 
 const decoder = new TextDecoder();
 
 interface CapturedPost {
   readonly url: string;
   readonly authorization: string | undefined;
+  readonly clientIdentity:
+    | {
+        readonly v: number;
+        readonly os_username?: string;
+        readonly hostname: string;
+        readonly os_platform?: string;
+        readonly github_login?: string;
+      }
+    | undefined;
   readonly events: ReadonlyArray<{
     readonly event_id: string;
     readonly schema_version: string;
@@ -38,10 +48,13 @@ const makeHttpLayer = (response: Response | ((post: CapturedPost) => Response)) 
     HttpClient.HttpClient,
     HttpClient.make((request) => {
       const rawBody = (request.body as { readonly body?: Uint8Array }).body;
-      const body = JSON.parse(decoder.decode(rawBody)) as Pick<CapturedPost, "events">;
+      const body = JSON.parse(decoder.decode(rawBody)) as Pick<CapturedPost, "events"> & {
+        readonly client_identity?: CapturedPost["clientIdentity"];
+      };
       const post: CapturedPost = {
         url: request.url,
         authorization: request.headers.Authorization,
+        clientIdentity: body.client_identity,
         events: body.events,
       };
       posts.push(post);
@@ -138,5 +151,76 @@ describe("testManagedClientEvidenceConnection", () => {
       );
 
       NodeAssert.equal(result.message.includes("air_test"), false);
+    }));
+
+  it("attaches client_identity to the test-connection batch, present even without a github login", () =>
+    Effect.gen(function* () {
+      setKnownGithubLogin(undefined);
+      const { layer, posts } = makeHttpLayer(Response.json({ ok: true }));
+      yield* testManagedClientEvidenceConnection(makeSettings()).pipe(Effect.provide(layer));
+
+      NodeAssert.equal(posts.length, 1);
+      const identity = posts[0]!.clientIdentity;
+      NodeAssert.ok(identity, "expected client_identity on the test-connection batch");
+      NodeAssert.equal(identity?.v, 1);
+      NodeAssert.equal(typeof identity?.hostname, "string");
+      NodeAssert.ok(identity && identity.hostname.length > 0);
+      NodeAssert.equal(identity?.github_login, undefined);
+    }));
+
+  it("includes github_login in client_identity once the Copilot auth probe has resolved one", () =>
+    Effect.gen(function* () {
+      setKnownGithubLogin("octocat");
+      const { layer, posts } = makeHttpLayer(Response.json({ ok: true }));
+      yield* testManagedClientEvidenceConnection(makeSettings()).pipe(Effect.provide(layer));
+      setKnownGithubLogin(undefined);
+
+      NodeAssert.equal(posts[0]!.clientIdentity?.github_login, "octocat");
+    }));
+
+  it("plumbs the server's recorded_identity ack through the result", () =>
+    Effect.gen(function* () {
+      const { layer } = makeHttpLayer(
+        Response.json({
+          ok: true,
+          recorded_identity: { os_username: "jdoe", github_login: "jdoe-gh" },
+        }),
+      );
+      const result = yield* testManagedClientEvidenceConnection(makeSettings()).pipe(
+        Effect.provide(layer),
+      );
+
+      NodeAssert.deepEqual(result.recordedIdentity, {
+        osUsername: "jdoe",
+        githubLogin: "jdoe-gh",
+      });
+    }));
+
+  it("omits recordedIdentity when the response body has no recorded_identity", () =>
+    Effect.gen(function* () {
+      const { layer } = makeHttpLayer(Response.json({ ok: true }));
+      const result = yield* testManagedClientEvidenceConnection(makeSettings()).pipe(
+        Effect.provide(layer),
+      );
+
+      NodeAssert.equal("recordedIdentity" in result, false);
+    }));
+
+  it("still reports success when the response body cannot be parsed as JSON", () =>
+    Effect.gen(function* () {
+      const layer = Layer.succeed(
+        HttpClient.HttpClient,
+        HttpClient.make((request) =>
+          Effect.succeed(
+            HttpClientResponse.fromWeb(request, new Response("not json", { status: 200 })),
+          ),
+        ),
+      );
+      const result = yield* testManagedClientEvidenceConnection(makeSettings()).pipe(
+        Effect.provide(layer),
+      );
+
+      NodeAssert.equal(result.ok, true);
+      NodeAssert.equal(result.recordedIdentity, undefined);
     }));
 });
