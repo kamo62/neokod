@@ -776,4 +776,111 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         assert.equal(rawAfterSecondRead, rawAfterFirstRead);
       }),
   );
+
+  it.effect(
+    "stores the posthogApiKey and otlpHeaders secrets outside settings.json and redacts them on disk",
+    () =>
+      Effect.gen(function* () {
+        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+        const serverConfig = yield* ServerConfig.ServerConfig;
+        const fileSystem = yield* FileSystem.FileSystem;
+
+        const next = yield* serverSettings.updateSettings({
+          providers: {
+            githubCopilot: {
+              managedClientEvidence: {
+                backend: "posthog",
+                posthogHost: "https://us.i.posthog.com",
+                posthogApiKey: "phc_secret_key",
+                otlpHeaders: "Authorization=Bearer secret",
+              },
+            },
+          },
+        });
+
+        // Server-internal read sees the real values.
+        assert.equal(
+          next.providers.githubCopilot.managedClientEvidence.posthogApiKey,
+          "phc_secret_key",
+        );
+        assert.equal(
+          next.providers.githubCopilot.managedClientEvidence.otlpHeaders,
+          "Authorization=Bearer secret",
+        );
+        assert.isTrue(next.providers.githubCopilot.managedClientEvidence.posthogApiKeyRedacted);
+        assert.isTrue(next.providers.githubCopilot.managedClientEvidence.otlpHeadersRedacted);
+
+        const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+        assert.notInclude(raw, "phc_secret_key");
+        assert.notInclude(raw, "Bearer secret");
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        const managedClientEvidence = JSON.parse(raw).providers.githubCopilot.managedClientEvidence;
+        assert.equal(managedClientEvidence.posthogHost, "https://us.i.posthog.com");
+        assert.isTrue(managedClientEvidence.posthogApiKeyRedacted);
+        assert.isTrue(managedClientEvidence.otlpHeadersRedacted);
+        assert.isTrue(!managedClientEvidence.posthogApiKey);
+        assert.isTrue(!managedClientEvidence.otlpHeaders);
+      }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect(
+    "materializes the real posthogApiKey/otlpHeaders for server reads but redacts them for the client",
+    () =>
+      Effect.gen(function* () {
+        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+
+        yield* serverSettings.updateSettings({
+          providers: {
+            githubCopilot: {
+              managedClientEvidence: {
+                backend: "otlp",
+                posthogApiKey: "phc_secret_key",
+                otlpHeaders: "Authorization=Bearer secret",
+              },
+            },
+          },
+        });
+
+        const materialized = yield* serverSettings.getSettings;
+        assert.equal(
+          materialized.providers.githubCopilot.managedClientEvidence.posthogApiKey,
+          "phc_secret_key",
+        );
+        assert.equal(
+          materialized.providers.githubCopilot.managedClientEvidence.otlpHeaders,
+          "Authorization=Bearer secret",
+        );
+
+        const redacted = ServerSettingsModule.redactServerSettingsForClient(materialized);
+        assert.equal(redacted.providers.githubCopilot.managedClientEvidence.posthogApiKey, "");
+        assert.equal(redacted.providers.githubCopilot.managedClientEvidence.otlpHeaders, "");
+        assert.isTrue(redacted.providers.githubCopilot.managedClientEvidence.posthogApiKeyRedacted);
+        assert.isTrue(redacted.providers.githubCopilot.managedClientEvidence.otlpHeadersRedacted);
+      }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect(
+    "leaves posthogApiKey/otlpHeaders untouched when they're empty (nothing to redact or persist)",
+    () =>
+      Effect.gen(function* () {
+        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+
+        const next = yield* serverSettings.updateSettings({
+          providers: {
+            githubCopilot: {
+              managedClientEvidence: {
+                backend: "ai-orch",
+              },
+            },
+          },
+        });
+
+        assert.equal(next.providers.githubCopilot.managedClientEvidence.posthogApiKey, "");
+        assert.equal(next.providers.githubCopilot.managedClientEvidence.otlpHeaders, "");
+        assert.isUndefined(
+          next.providers.githubCopilot.managedClientEvidence.posthogApiKeyRedacted,
+        );
+        assert.isUndefined(next.providers.githubCopilot.managedClientEvidence.otlpHeadersRedacted);
+      }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
 });

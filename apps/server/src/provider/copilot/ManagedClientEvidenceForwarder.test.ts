@@ -473,7 +473,18 @@ it("reacts to managed-client evidence settings changes at runtime", () =>
     const posts = yield* Queue.unbounded<CapturedPost>();
     let subscribeCount = 0;
     const settings = makeReactiveSettingsLayer(
-      { enabled: false, gatewayEnabled: false, governanceUrl: "", credential: "" },
+      {
+        enabled: false,
+        gatewayEnabled: false,
+        backend: "ai-orch",
+        governanceUrl: "",
+        credential: "",
+        posthogHost: "",
+        posthogApiKey: "",
+        otlpEndpoint: "",
+        otlpHeaders: "",
+        includeMachineIdentity: true,
+      },
       settingsChanges,
     );
 
@@ -500,8 +511,14 @@ it("reacts to managed-client evidence settings changes at runtime", () =>
     yield* settings.publishCurrent({
       enabled: true,
       gatewayEnabled: false,
+      backend: "ai-orch",
       governanceUrl: "https://orch.example",
       credential: "air_test",
+      posthogHost: "",
+      posthogApiKey: "",
+      otlpEndpoint: "",
+      otlpHeaders: "",
+      includeMachineIdentity: true,
     });
     yield* flushEffects;
     NodeAssert.equal(subscribeCount, 1);
@@ -512,8 +529,14 @@ it("reacts to managed-client evidence settings changes at runtime", () =>
     yield* settings.publishCurrent({
       enabled: false,
       gatewayEnabled: false,
+      backend: "ai-orch",
       governanceUrl: "https://orch.example",
       credential: "air_test",
+      posthogHost: "",
+      posthogApiKey: "",
+      otlpEndpoint: "",
+      otlpHeaders: "",
+      includeMachineIdentity: true,
     });
     yield* flushEffects;
     yield* PubSub.publish(providerEvents, sessionStarted(3));

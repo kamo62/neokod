@@ -37,8 +37,14 @@ const makeSettings = (
 ): CopilotManagedClientEvidenceSettings => ({
   enabled: true,
   gatewayEnabled: false,
+  backend: "ai-orch",
   governanceUrl: "https://orch.example",
   credential: "air_test",
+  posthogHost: "",
+  posthogApiKey: "",
+  otlpEndpoint: "",
+  otlpHeaders: "",
+  includeMachineIdentity: true,
   ...overrides,
 });
 
