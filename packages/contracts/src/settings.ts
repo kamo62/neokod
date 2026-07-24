@@ -367,29 +367,60 @@ export const CopilotDefaultAgent = Schema.Struct({
 });
 export type CopilotDefaultAgent = typeof CopilotDefaultAgent.Type;
 
+// Which evidence sink the forwarder posts to. AI-Orch is the org's governance
+// endpoint (the only backend that recorded a `recorded_identity` ack); the
+// other two are public, org-agnostic destinations so the fork works without
+// any org-specific service. Existing configs decode with no `backend` key at
+// all, so the default must stay "ai-orch" to keep them behaving unchanged.
+export const CopilotManagedClientEvidenceBackend = Schema.Literals(["ai-orch", "posthog", "otlp"]);
+export type CopilotManagedClientEvidenceBackend = typeof CopilotManagedClientEvidenceBackend.Type;
+
 export const CopilotManagedClientEvidenceSettings = Schema.Struct({
-  // Recording: passive evidence forwarding to AI-Orch. Fail-open, never blocks
-  // the provider stream. This is the v1 governance role.
+  // Recording: passive evidence forwarding to the configured backend. Fail-open,
+  // never blocks the provider stream. This is the v1 governance role.
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Gateway: route MCP (and, later, model) calls THROUGH the AI-Orch gateway —
   // an active, in-request-path role. Decoupled from `enabled` so recording does
   // not silently pull the gateway into the request path. Default off.
   gatewayEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  backend: CopilotManagedClientEvidenceBackend.pipe(
+    Schema.withDecodingDefault(Effect.succeed("ai-orch")),
+  ),
   governanceUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   credential: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   // Set once the server has moved `credential` into ServerSecretStore.
   // `credential` stays "" on disk and in client-facing reads while this is
   // true; mirrors `ProviderInstanceEnvironmentVariable.valueRedacted`.
   credentialRedacted: Schema.optionalKey(Schema.Boolean),
+  posthogHost: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  posthogApiKey: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  // Same redaction convention as `credentialRedacted` above.
+  posthogApiKeyRedacted: Schema.optionalKey(Schema.Boolean),
+  otlpEndpoint: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  // Raw "key=value,key2=value2" header list, since OTLP/HTTP headers commonly
+  // carry a bearer token — redacted the same way as `credential` above.
+  otlpHeaders: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  otlpHeadersRedacted: Schema.optionalKey(Schema.Boolean),
+  // When off, no machine-derived identifier (OS username, hostname, GitHub
+  // login) is attached to outgoing evidence on any backend.
+  includeMachineIdentity: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
 });
 export type CopilotManagedClientEvidenceSettings = typeof CopilotManagedClientEvidenceSettings.Type;
 
 const CopilotManagedClientEvidenceSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   gatewayEnabled: Schema.optionalKey(Schema.Boolean),
+  backend: Schema.optionalKey(CopilotManagedClientEvidenceBackend),
   governanceUrl: Schema.optionalKey(TrimmedString),
   credential: Schema.optionalKey(TrimmedString),
   credentialRedacted: Schema.optionalKey(Schema.Boolean),
+  posthogHost: Schema.optionalKey(TrimmedString),
+  posthogApiKey: Schema.optionalKey(TrimmedString),
+  posthogApiKeyRedacted: Schema.optionalKey(Schema.Boolean),
+  otlpEndpoint: Schema.optionalKey(TrimmedString),
+  otlpHeaders: Schema.optionalKey(TrimmedString),
+  otlpHeadersRedacted: Schema.optionalKey(Schema.Boolean),
+  includeMachineIdentity: Schema.optionalKey(Schema.Boolean),
 });
 
 export const CopilotSettings = makeProviderSettingsSchema(
@@ -449,8 +480,14 @@ export const CopilotSettings = makeProviderSettingsSchema(
         Effect.succeed({
           enabled: false,
           gatewayEnabled: false,
+          backend: "ai-orch",
           governanceUrl: "",
           credential: "",
+          posthogHost: "",
+          posthogApiKey: "",
+          otlpEndpoint: "",
+          otlpHeaders: "",
+          includeMachineIdentity: true,
         }),
       ),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
