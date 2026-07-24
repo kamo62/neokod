@@ -254,7 +254,7 @@ function makeCodexProbeSnapshot(
   input: Partial<CodexAppServerProviderSnapshot> = {},
 ): CodexAppServerProviderSnapshot {
   return {
-    version: "1.0.0",
+    version: "0.145.0",
     account: {
       account: {
         type: "chatgpt",
@@ -326,7 +326,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
           );
           assert.strictEqual(status.status, "ready");
           assert.strictEqual(status.installed, true);
-          assert.strictEqual(status.version, "1.0.0");
+          assert.strictEqual(status.version, "0.145.0");
           assert.strictEqual(status.auth.status, "authenticated");
           assert.strictEqual(status.auth.type, "chatgpt");
           assert.strictEqual(status.auth.label, "ChatGPT Pro 20x Subscription");
@@ -348,6 +348,21 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               shortDescription: "Debug failing GitHub Actions checks",
             },
           ]);
+        }),
+      );
+
+      it.effect("warns without blocking an older Codex CLI", () =>
+        Effect.gen(function* () {
+          const status = yield* checkCodexProviderStatus(defaultCodexSettings, () =>
+            Effect.succeed(makeCodexProbeSnapshot({ version: "0.144.9" })),
+          );
+
+          assert.strictEqual(status.status, "warning");
+          assert.match(
+            status.message ?? "",
+            /Codex CLI 0\.144\.9 is older than the supported 0\.145\.0/,
+          );
+          assert.strictEqual(status.auth.status, "authenticated");
         }),
       );
 

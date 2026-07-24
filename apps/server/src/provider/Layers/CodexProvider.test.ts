@@ -1,6 +1,31 @@
 import { assert, it } from "@effect/vitest";
 
-import { mapCodexModelCapabilities } from "./CodexProvider.ts";
+import {
+  codexVersionWarning,
+  isCodexVersionBelowMinimum,
+  mapCodexModelCapabilities,
+  MINIMUM_SUPPORTED_CODEX_VERSION,
+  parseCodexVersion,
+} from "./CodexProvider.ts";
+
+it("parses Codex CLI versions from app-server user agents", () => {
+  assert.equal(parseCodexVersion("codex-cli/0.145.0"), "0.145.0");
+  assert.equal(parseCodexVersion("codex-cli 0.144.1"), "0.144.1");
+  assert.equal(parseCodexVersion("unknown"), undefined);
+});
+
+it("warns only for Codex versions below the binding target", () => {
+  assert.equal(isCodexVersionBelowMinimum("0.144.9"), true);
+  assert.equal(isCodexVersionBelowMinimum(MINIMUM_SUPPORTED_CODEX_VERSION), false);
+  assert.equal(isCodexVersionBelowMinimum("0.146.0"), false);
+  const belowWarning = codexVersionWarning("0.144.9");
+  assert.ok(belowWarning !== undefined);
+  assert.match(belowWarning, /older than the supported 0\.145\.0/);
+  assert.equal(codexVersionWarning("0.146.0"), undefined);
+  const unknownWarning = codexVersionWarning(undefined);
+  assert.ok(unknownWarning !== undefined);
+  assert.match(unknownWarning, /version could not be determined/);
+});
 
 it("maps current Codex model capability fields", () => {
   const capabilities = mapCodexModelCapabilities({
