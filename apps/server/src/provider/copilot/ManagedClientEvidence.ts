@@ -105,10 +105,13 @@ export interface ManagedClientIdentity {
 /**
  * Batch body with `client_identity` attached alongside `events`. Both the
  * live forwarder and the test-connection probe build this the same way so
- * the wire shape never drifts between them.
+ * the wire shape never drifts between them. `client_identity` is optional
+ * rather than required: `includeMachineIdentity` lets the forwarder decide
+ * not to attach one at all, in which case the key is omitted entirely
+ * (see `AiOrchSink`) rather than sent as some placeholder value.
  */
 export interface ManagedClientEvidencePostBody extends ManagedClientEvidenceBatch {
-  readonly client_identity: ManagedClientIdentity;
+  readonly client_identity?: ManagedClientIdentity;
 }
 
 /**
