@@ -37,6 +37,7 @@ import { Collapsible, CollapsibleContent } from "../ui/collapsible";
 import { DraftInput } from "../ui/draft-input";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { ScrollArea } from "../ui/scroll-area";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { Textarea } from "../ui/textarea";
@@ -335,22 +336,63 @@ function ProviderEnvironmentSection(props: {
  */
 const GOVERNANCE_SSO_ENROLMENT_URL: string | null = null;
 
+function isManagedClientEvidenceReady(settings: CopilotManagedClientEvidenceSettings): boolean {
+  switch (settings.backend) {
+    case "posthog":
+      return (
+        settings.posthogHost.trim().length > 0 &&
+        (settings.posthogApiKey.trim().length > 0 || settings.posthogApiKeyRedacted === true)
+      );
+    case "otlp":
+      return settings.otlpEndpoint.trim().length > 0;
+    case "ai-orch":
+      return (
+        settings.governanceUrl.trim().length > 0 &&
+        (settings.credential.trim().length > 0 || settings.credentialRedacted === true)
+      );
+  }
+}
+
+function describeManagedClientEvidenceMissingFields(
+  settings: CopilotManagedClientEvidenceSettings,
+): string {
+  switch (settings.backend) {
+    case "posthog":
+      return "Evidence forwarding stays off until a PostHog host and API key are set.";
+    case "otlp":
+      return "Evidence forwarding stays off until an OTLP endpoint is set.";
+    case "ai-orch":
+      return "Evidence forwarding stays off until a governance URL and credential are set.";
+  }
+}
+
 /** Pure so it can be unit tested without a render harness (see ProviderInstanceCard.test.ts). */
 export function describeManagedClientEvidenceReadiness(
   settings: CopilotManagedClientEvidenceSettings,
 ): string {
-  const hasCredential =
-    settings.credential.trim().length > 0 || settings.credentialRedacted === true;
-  if (settings.governanceUrl.trim().length === 0 || !hasCredential) {
-    return "Evidence forwarding stays off until a governance URL and credential are set.";
+  if (!isManagedClientEvidenceReady(settings)) {
+    return describeManagedClientEvidenceMissingFields(settings);
   }
   return settings.enabled
     ? "Evidence forwarding is on."
     : "Fields are set. Turn on evidence forwarding above when you're ready.";
 }
 
-const MANAGED_CLIENT_IDENTITY_TRANSPARENCY_NOTE =
-  "When evidence forwarding is enabled, your OS username, hostname, and GitHub login (if signed in) are recorded alongside evidence sent to AI-Orch.";
+/** Pure so it can be unit tested without a render harness (see ProviderInstanceCard.test.ts). */
+export function describeMachineIdentityTransparency(includeMachineIdentity: boolean): string {
+  return includeMachineIdentity
+    ? "Your OS username, hostname, and GitHub login (if signed in) are recorded alongside evidence sent to the configured backend."
+    : "No OS username, hostname, or GitHub login is recorded — evidence is sent without any machine-identifying information.";
+}
+
+const MANAGED_CLIENT_EVIDENCE_BACKEND_OPTIONS: ReadonlyArray<{
+  readonly value: CopilotManagedClientEvidenceSettings["backend"];
+  readonly label: string;
+}> = [
+  { value: "ai-orch", label: "AI-Orch" },
+  { value: "posthog", label: "PostHog" },
+  { value: "otlp", label: "OpenTelemetry (OTLP)" },
+];
 
 /**
  * Pure so it can be unit tested without a render harness (see
@@ -529,72 +571,191 @@ function CopilotGovernanceSection(props: {
       ? describeRecordedIdentity(testState.recordedIdentity)
       : undefined;
 
+  const backend = props.settings.backend;
+
   return (
     <div className="grid gap-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 space-y-0.5">
-          <p className="text-xs font-medium text-foreground">Governance (AI-Orch)</p>
+          <p className="text-xs font-medium text-foreground">Telemetry &amp; governance</p>
           <p className="text-xs text-muted-foreground">
             {describeManagedClientEvidenceReadiness(props.settings)}
           </p>
           <p className="text-xs text-muted-foreground">
-            {MANAGED_CLIENT_IDENTITY_TRANSPARENCY_NOTE}
+            {describeMachineIdentityTransparency(props.settings.includeMachineIdentity)}
           </p>
         </div>
         <Switch
           checked={props.settings.enabled}
           onCheckedChange={(checked) => props.onChange({ enabled: Boolean(checked) })}
-          aria-label="Enable AI-Orch evidence forwarding"
+          aria-label="Enable evidence forwarding"
         />
       </div>
       <label className="block">
-        <span className="text-xs font-medium text-foreground">Governance URL</span>
-        <DraftInput
-          className="mt-1.5"
-          value={props.settings.governanceUrl}
-          onCommit={(value) => props.onChange({ governanceUrl: value.trim() })}
-          placeholder="https://ai-orch.example.com"
-          autoComplete="off"
-          spellCheck={false}
-        />
+        <span className="text-xs font-medium text-foreground">Backend</span>
+        <Select
+          value={backend}
+          onValueChange={(value) => {
+            if (value === "ai-orch" || value === "posthog" || value === "otlp") {
+              props.onChange({ backend: value });
+            }
+          }}
+        >
+          <SelectTrigger className="mt-1.5 w-full" aria-label="Evidence backend">
+            <SelectValue>
+              {MANAGED_CLIENT_EVIDENCE_BACKEND_OPTIONS.find((option) => option.value === backend)
+                ?.label ?? "AI-Orch"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectPopup align="start" alignItemWithTrigger={false}>
+            {MANAGED_CLIENT_EVIDENCE_BACKEND_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
       </label>
-      {GOVERNANCE_SSO_ENROLMENT_URL ? (
-        <Button type="button" size="xs" variant="outline" className="w-fit">
-          Enrol via SSO
-        </Button>
-      ) : (
-        <label className="block">
-          <span className="text-xs font-medium text-foreground">Credential</span>
-          <DraftInput
-            className="mt-1.5"
-            value={props.settings.credentialRedacted ? "" : props.settings.credential}
-            onCommit={(value) =>
-              props.onChange({ credential: value.trim(), credentialRedacted: false })
-            }
-            type="password"
-            autoComplete="off"
-            placeholder={
-              props.settings.credentialRedacted
-                ? "Stored secret - enter a new value to replace"
-                : "air_..."
-            }
-            spellCheck={false}
-          />
-        </label>
-      )}
+      {backend === "ai-orch" ? (
+        <>
+          <label className="block">
+            <span className="text-xs font-medium text-foreground">Governance URL</span>
+            <DraftInput
+              className="mt-1.5"
+              value={props.settings.governanceUrl}
+              onCommit={(value) => props.onChange({ governanceUrl: value.trim() })}
+              placeholder="https://ai-orch.example.com"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          {GOVERNANCE_SSO_ENROLMENT_URL ? (
+            <Button type="button" size="xs" variant="outline" className="w-fit">
+              Enrol via SSO
+            </Button>
+          ) : (
+            <label className="block">
+              <span className="text-xs font-medium text-foreground">Credential</span>
+              <DraftInput
+                className="mt-1.5"
+                value={props.settings.credentialRedacted ? "" : props.settings.credential}
+                onCommit={(value) =>
+                  props.onChange({ credential: value.trim(), credentialRedacted: false })
+                }
+                type="password"
+                autoComplete="off"
+                placeholder={
+                  props.settings.credentialRedacted
+                    ? "Stored secret - enter a new value to replace"
+                    : "air_..."
+                }
+                spellCheck={false}
+              />
+            </label>
+          )}
+          <label className="flex items-center justify-between gap-3">
+            <span className="min-w-0 space-y-0.5">
+              <span className="block text-xs font-medium text-foreground">
+                Route MCP through gateway
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                Active path — sends MCP calls through AI-Orch. Independent of recording; default
+                off.
+              </span>
+            </span>
+            <Switch
+              checked={props.settings.gatewayEnabled}
+              onCheckedChange={(checked) => props.onChange({ gatewayEnabled: Boolean(checked) })}
+              aria-label="Route MCP through the AI-Orch gateway"
+            />
+          </label>
+        </>
+      ) : null}
+      {backend === "posthog" ? (
+        <>
+          <label className="block">
+            <span className="text-xs font-medium text-foreground">PostHog host</span>
+            <DraftInput
+              className="mt-1.5"
+              value={props.settings.posthogHost}
+              onCommit={(value) => props.onChange({ posthogHost: value.trim() })}
+              placeholder="https://us.i.posthog.com"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-foreground">API key</span>
+            <DraftInput
+              className="mt-1.5"
+              value={props.settings.posthogApiKeyRedacted ? "" : props.settings.posthogApiKey}
+              onCommit={(value) =>
+                props.onChange({ posthogApiKey: value.trim(), posthogApiKeyRedacted: false })
+              }
+              type="password"
+              autoComplete="off"
+              placeholder={
+                props.settings.posthogApiKeyRedacted
+                  ? "Stored secret - enter a new value to replace"
+                  : "phc_..."
+              }
+              spellCheck={false}
+            />
+          </label>
+        </>
+      ) : null}
+      {backend === "otlp" ? (
+        <>
+          <label className="block">
+            <span className="text-xs font-medium text-foreground">OTLP endpoint</span>
+            <DraftInput
+              className="mt-1.5"
+              value={props.settings.otlpEndpoint}
+              onCommit={(value) => props.onChange({ otlpEndpoint: value.trim() })}
+              placeholder="https://otel.example.com"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-foreground">Headers</span>
+            <DraftInput
+              className="mt-1.5"
+              value={props.settings.otlpHeadersRedacted ? "" : props.settings.otlpHeaders}
+              onCommit={(value) =>
+                props.onChange({ otlpHeaders: value.trim(), otlpHeadersRedacted: false })
+              }
+              type="password"
+              autoComplete="off"
+              placeholder={
+                props.settings.otlpHeadersRedacted
+                  ? "Stored secret - enter a new value to replace"
+                  : "Authorization=Bearer ..."
+              }
+              spellCheck={false}
+            />
+            <span className="mt-1 block text-xs text-muted-foreground">
+              Comma-separated key=value pairs, e.g. "Authorization=Bearer token,X-Custom=value".
+            </span>
+          </label>
+        </>
+      ) : null}
       <label className="flex items-center justify-between gap-3">
         <span className="min-w-0 space-y-0.5">
           <span className="block text-xs font-medium text-foreground">
-            Route MCP through gateway
+            Include machine identity
           </span>
           <span className="block text-xs text-muted-foreground">
-            Active path — sends MCP calls through AI-Orch. Independent of recording; default off.
+            When off, no OS username, hostname, or GitHub login is attached to evidence on any
+            backend.
           </span>
         </span>
         <Switch
-          checked={props.settings.gatewayEnabled}
-          onCheckedChange={(checked) => props.onChange({ gatewayEnabled: Boolean(checked) })}
-          aria-label="Route MCP through the AI-Orch gateway"
+          checked={props.settings.includeMachineIdentity}
+          onCheckedChange={(checked) =>
+            props.onChange({ includeMachineIdentity: Boolean(checked) })
+          }
+          aria-label="Include machine identity with evidence"
         />
       </label>
       {props.onTestConnection ? (
