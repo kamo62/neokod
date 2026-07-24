@@ -14,6 +14,7 @@ import {
   type ModelCapabilities,
   ProviderDriverKind,
   type ServerProviderModel,
+  type ServerProviderUsage,
 } from "@neokod/contracts";
 import { createModelCapabilities } from "@neokod/shared/model";
 import * as DateTime from "effect/DateTime";
@@ -27,6 +28,7 @@ import {
   providerModelsFromSettings,
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
+import { getCopilotQuota } from "./CopilotQuota.ts";
 
 export const COPILOT_DRIVER_KIND = ProviderDriverKind.make("githubCopilot");
 const COPILOT_PRESENTATION = {
@@ -206,7 +208,8 @@ export const makePendingCopilotProvider = (
  */
 export const checkCopilotProviderStatus = Effect.fn("checkCopilotProviderStatus")(function* (
   copilotSettings: CopilotSettings,
-  client: Pick<CopilotClient, "getStatus" | "getAuthStatus" | "listModels">,
+  client: Pick<CopilotClient, "getStatus" | "getAuthStatus" | "listModels" | "rpc">,
+  gitHubToken?: string,
 ): Effect.fn.Return<ServerProviderDraft> {
   const checkedAt = yield* nowIso;
   const models = copilotModels(copilotSettings);
@@ -289,21 +292,31 @@ export const checkCopilotProviderStatus = Effect.fn("checkCopilotProviderStatus"
     });
   }
 
-  const modelListResult = yield* Effect.tryPromise(() => client.listModels()).pipe(
-    Effect.timeoutOption(STATUS_PROBE_TIMEOUT_MS),
-    Effect.result,
+  const [modelListResult, quotaResult] = yield* Effect.all(
+    [
+      Effect.tryPromise(() => client.listModels()).pipe(
+        Effect.timeoutOption(STATUS_PROBE_TIMEOUT_MS),
+        Effect.result,
+      ),
+      getCopilotQuota(client, gitHubToken).pipe(Effect.timeoutOption(STATUS_PROBE_TIMEOUT_MS)),
+    ],
+    { concurrency: "unbounded" },
   );
   const liveModels =
     Result.isSuccess(modelListResult) && Option.isSome(modelListResult.success)
       ? modelsFromModelInfo(modelListResult.success.value)
       : [];
   const readyModels = liveModels.length > 0 ? copilotModels(copilotSettings, liveModels) : models;
+  const usage: ServerProviderUsage | undefined = Option.isSome(quotaResult)
+    ? quotaResult.value
+    : undefined;
 
   return buildServerProvider({
     presentation: COPILOT_PRESENTATION,
     enabled: true,
     checkedAt,
     models: readyModels,
+    ...(usage ? { usage } : {}),
     probe: {
       installed: true,
       version: status.version,

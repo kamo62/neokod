@@ -7,6 +7,12 @@ Release impact: Minor because this adds UI observability and surfaces, reusing e
 - Surfaced provider error messages in the transcript instead of a blank "No input or output provided" row. GitHub Copilot monthly-quota errors now show a clear message directing you to another provider until the quota resets.
 - Stopped the model, branch, and new-thread pickers from fading and clipping their first and last rows: the scroll-edge mask was removed from those picker lists (shared scroll surfaces keep it), and the existing scrollbar indicates overflow.
 
+## 3.1.0 - 2026-07-23 (Minor)
+
+Release impact: Minor because this adds an optional `usage` field to the provider snapshot contract (backward compatible; older clients omit and ignore it) plus new server read behavior, with no breaking changes.
+
+- Surfaced GitHub Copilot usage and quota on the provider snapshot. The Copilot provider probe now reads account quota from the SDK's `account.getQuota` RPC during its existing five-minute status refresh and attaches per-bucket usage windows (premium interactions, chat, completions) with used, entitlement, remaining percentage, overage, and reset date. Quota is read only when authenticated, is bounded by the same probe timeout as the model lookup, and any failure or malformed value leaves provider health unchanged with usage simply absent.
+
 ## 3.0.27 - 2026-07-19 (Patch)
 
 Release impact: Patch because this removes a duplicate control without changing behavior or contracts.

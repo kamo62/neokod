@@ -66,10 +66,6 @@ You do not need any extra env vars. Just run the app normally and inspect `serve
 Examples:
 
 ```bash
-npx neokod
-```
-
-```bash
 node --run dev
 ```
 
@@ -113,12 +109,6 @@ export NEOKOD_TRACE_TIMING_ENABLED=true
 ```
 
 #### 3. Launch the app from that same shell
-
-CLI:
-
-```bash
-npx neokod
-```
 
 Monorepo web/server dev:
 

@@ -190,7 +190,7 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
       const adapter = yield* makeCopilotAdapter(client, effectiveConfig, adapterOptions);
       const textGeneration = yield* makeCopilotTextGeneration(client);
 
-      const checkProvider = checkCopilotProviderStatus(effectiveConfig, client).pipe(
+      const checkProvider = checkCopilotProviderStatus(effectiveConfig, client, gitHubToken).pipe(
         Effect.map(stampIdentity),
         Effect.provideService(Path.Path, path),
       );

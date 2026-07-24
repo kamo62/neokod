@@ -7,6 +7,7 @@ import type {
   ServerProviderSlashCommand,
   ServerProviderModel,
   ServerProviderState,
+  ServerProviderUsage,
 } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 import * as PlatformError from "effect/PlatformError";
@@ -216,6 +217,7 @@ export function buildServerProvider(input: {
   models: ReadonlyArray<ServerProviderModel>;
   slashCommands?: ReadonlyArray<ServerProviderSlashCommand>;
   skills?: ReadonlyArray<ServerProviderSkill>;
+  usage?: ServerProviderUsage;
   probe: ProviderProbeResult;
 }): ServerProviderDraft {
   const versionAdvisory = input.driver
@@ -241,6 +243,7 @@ export function buildServerProvider(input: {
     auth: input.probe.auth,
     checkedAt: input.checkedAt,
     ...(input.probe.message ? { message: input.probe.message } : {}),
+    ...(input.usage ? { usage: input.usage } : {}),
     models: input.models,
     slashCommands: [...(input.slashCommands ?? [])],
     skills: [...(input.skills ?? [])],
