@@ -10,31 +10,31 @@ import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
-import {
-  HttpClient,
-  HttpClientError,
-  HttpClientRequest,
-  HttpClientResponse,
-} from "effect/unstable/http";
 
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { ProviderService } from "../Services/ProviderService.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { makeAiOrchSink } from "./AiOrchSink.ts";
+import type { EvidenceSink } from "./EvidenceSink.ts";
 import {
   collectClientIdentity,
   evidenceFromOrchestrationEvent,
   evidenceFromProviderRuntimeEvent,
-  makeManagedClientEvidenceBatch,
-  withClientIdentity,
   type ManagedClientEvidenceEvent,
 } from "./ManagedClientEvidence.ts";
 import { getKnownGithubLogin } from "./ManagedClientIdentityRegistry.ts";
+import { makeOtlpSink } from "./OtlpSink.ts";
+import { makePostHogSink } from "./PostHogSink.ts";
 
 const DEFAULT_QUEUE_CAPACITY = 1_000;
 const DEFAULT_FLUSH_WITHIN = "2 seconds";
 const DEFAULT_BACKOFF_BASE = "1 second";
 const DEFAULT_BACKOFF_MAX = "60 seconds";
 const DEFAULT_FINAL_DRAIN_TIMEOUT = "2 seconds";
+// Cap on how long a destination's `Retry-After` can push a retry out to —
+// independent of (and typically much larger than) `backoffMax`, since a
+// server can ask for an arbitrarily long delay.
+const MAX_RETRY_AFTER_MS = 5 * 60 * 1000;
 
 export interface ManagedClientEvidenceForwarderOptions {
   readonly queueCapacity?: number | undefined;
@@ -52,8 +52,21 @@ interface NormalizedManagedClientEvidenceForwarderOptions {
   readonly finalDrainTimeout: Duration.Input;
 }
 
+/**
+ * Backend-aware: each backend has its own minimum set of fields that must be
+ * populated before the forwarder starts a run (mirroring the pre-slice-2
+ * ai-orch-only check below).
+ */
 function isEnabled(settings: CopilotManagedClientEvidenceSettings): boolean {
-  return settings.enabled && settings.governanceUrl.length > 0 && settings.credential.length > 0;
+  if (!settings.enabled) return false;
+  switch (settings.backend) {
+    case "posthog":
+      return settings.posthogHost.length > 0 && settings.posthogApiKey.length > 0;
+    case "otlp":
+      return settings.otlpEndpoint.length > 0;
+    case "ai-orch":
+      return settings.governanceUrl.length > 0 && settings.credential.length > 0;
+  }
 }
 
 function nextBackoffMs(currentMs: number, maxMs: number): number {
@@ -61,63 +74,69 @@ function nextBackoffMs(currentMs: number, maxMs: number): number {
 }
 
 /**
- * 408 (request timeout) and 429 (rate limited) are transient by definition
- * even though they're 4xx, so they keep retrying alongside 5xx/network
- * errors. Every other 4xx is treated as permanent: an old server rejecting
- * an unknown field (e.g. `client_identity`) with a 400 would otherwise
- * retry forever, silently halting all evidence and hammering the endpoint.
+ * Resolves the `EvidenceSink` for the currently configured `backend`.
+ * `PostHogSink` is the only sink that needs anything beyond `HttpClient` to
+ * construct (its per-install anonymous id), so this is the only place that
+ * requirement reaches the forwarder — inferred directly rather than spelled
+ * out, since the three branches don't share a requirement type worth naming.
  */
-function isPermanentClientError(status: number | undefined): boolean {
-  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429;
-}
+const resolveEvidenceSink = (settings: CopilotManagedClientEvidenceSettings) => {
+  switch (settings.backend) {
+    case "posthog":
+      return makePostHogSink({
+        posthogHost: settings.posthogHost,
+        posthogApiKey: settings.posthogApiKey,
+      });
+    case "otlp":
+      return Effect.succeed(
+        makeOtlpSink({ otlpEndpoint: settings.otlpEndpoint, otlpHeaders: settings.otlpHeaders }),
+      );
+    case "ai-orch":
+      return Effect.succeed(
+        makeAiOrchSink({ governanceUrl: settings.governanceUrl, credential: settings.credential }),
+      );
+  }
+};
 
 const postWithBackoff = (
+  sink: EvidenceSink,
   settings: CopilotManagedClientEvidenceSettings,
+  platform: string,
   events: ReadonlyArray<ManagedClientEvidenceEvent>,
   options: NormalizedManagedClientEvidenceForwarderOptions,
 ) =>
   Effect.gen(function* () {
-    const httpClient = yield* HttpClient.HttpClient;
-    const platform = yield* HostProcessPlatform;
-    const identity = collectClientIdentity(platform, getKnownGithubLogin());
-    const body = withClientIdentity(makeManagedClientEvidenceBatch(events), identity);
+    const identity = settings.includeMachineIdentity
+      ? collectClientIdentity(platform, getKnownGithubLogin())
+      : undefined;
     const baseMs = Duration.toMillis(options.backoffBase);
     const maxMs = Duration.toMillis(options.backoffMax);
     let delayMs = baseMs;
 
     while (true) {
-      const result = yield* Effect.result(
-        HttpClientRequest.post(
-          `${settings.governanceUrl.replace(/\/+$/, "")}/v1/managed-client/evidence`,
-        ).pipe(
-          HttpClientRequest.bearerToken(settings.credential),
-          HttpClientRequest.setHeader("content-type", "application/json"),
-          HttpClientRequest.bodyJson(body),
-          Effect.flatMap(httpClient.execute),
-          Effect.flatMap(HttpClientResponse.filterStatusOk),
-          Effect.asVoid,
-        ),
-      );
+      const result = yield* Effect.result(sink.send(events, identity));
       if (Result.isSuccess(result)) {
         return;
       }
       const failure = result.failure;
-      const status = HttpClientError.isHttpClientError(failure)
-        ? failure.response?.status
-        : undefined;
-      if (isPermanentClientError(status)) {
+      if (failure._tag === "EvidenceSinkPermanentError") {
         yield* Effect.logWarning(
-          "managed-client evidence POST rejected with a permanent client error; dropping batch",
-          { eventCount: body.events.length, status },
+          "managed-client evidence POST rejected with a permanent error; dropping batch",
+          { eventCount: events.length, sink: sink.name, status: failure.status },
         );
         return;
       }
+      const nextDelayMs =
+        failure.retryAfterMs !== undefined
+          ? Math.min(failure.retryAfterMs, MAX_RETRY_AFTER_MS)
+          : delayMs;
       yield* Effect.logWarning("managed-client evidence POST failed; retrying", {
-        eventCount: body.events.length,
-        nextRetryMs: delayMs,
-        ...(status !== undefined ? { status } : {}),
+        eventCount: events.length,
+        sink: sink.name,
+        nextRetryMs: nextDelayMs,
+        ...(failure.status !== undefined ? { status: failure.status } : {}),
       });
-      yield* Effect.sleep(Duration.millis(delayMs));
+      yield* Effect.sleep(Duration.millis(nextDelayMs));
       delayMs = nextBackoffMs(delayMs, maxMs);
     }
   });
@@ -129,8 +148,13 @@ const runForwarder = (
   Effect.gen(function* () {
     const provider = yield* ProviderService;
     const orchestration = yield* OrchestrationEngineService;
+    const platform = yield* HostProcessPlatform;
+    const sink = yield* resolveEvidenceSink(settings);
     const queue = yield* Queue.sliding<ManagedClientEvidenceEvent>(options.queueCapacity);
     const dropped = yield* Ref.make(0);
+
+    const postBatch = (batch: ReadonlyArray<ManagedClientEvidenceEvent>) =>
+      postWithBackoff(sink, settings, platform, batch, options);
 
     const enqueue = (event: ManagedClientEvidenceEvent | undefined) =>
       event
@@ -156,7 +180,7 @@ const runForwarder = (
     );
     yield* Stream.fromQueue(queue).pipe(
       Stream.groupedWithin(50, options.flushWithin),
-      Stream.runForEach((batch) => postWithBackoff(settings, batch, options)),
+      Stream.runForEach(postBatch),
       Effect.forkScoped,
     );
 
@@ -165,7 +189,7 @@ const runForwarder = (
         Effect.flatMap((events) =>
           events.length === 0
             ? Effect.void
-            : postWithBackoff(settings, events.slice(0, 50), options).pipe(
+            : postBatch(events.slice(0, 50)).pipe(
                 Effect.timeout(options.finalDrainTimeout),
                 Effect.catch(() => Effect.void),
               ),
