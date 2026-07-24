@@ -219,8 +219,14 @@ describe("CopilotSettings.mcpServers", () => {
     expect(decodeCopilotSettings({}).managedClientEvidence).toEqual({
       enabled: false,
       gatewayEnabled: false,
+      backend: "ai-orch",
       governanceUrl: "",
       credential: "",
+      posthogHost: "",
+      posthogApiKey: "",
+      otlpEndpoint: "",
+      otlpHeaders: "",
+      includeMachineIdentity: true,
     });
   });
 
@@ -325,8 +331,14 @@ describe("CopilotSettings.mcpServers", () => {
     expect(decoded.managedClientEvidence).toEqual({
       enabled: true,
       gatewayEnabled: false,
+      backend: "ai-orch",
       governanceUrl: "https://governance.example",
       credential: "air_test",
+      posthogHost: "",
+      posthogApiKey: "",
+      otlpEndpoint: "",
+      otlpHeaders: "",
+      includeMachineIdentity: true,
     });
     expect(patch.providers?.githubCopilot?.managedClientEvidence?.credential).toBe("air_test");
   });
@@ -345,5 +357,69 @@ describe("CopilotSettings.mcpServers", () => {
     expect(patch.providers?.githubCopilot?.managedClientEvidence).toEqual({
       enabled: true,
     });
+  });
+
+  it("defaults backend to ai-orch so legacy configs behave unchanged", () => {
+    const decoded = decodeCopilotSettings({
+      managedClientEvidence: {
+        enabled: true,
+        governanceUrl: "https://governance.example",
+        credential: "air_test",
+      },
+    });
+
+    expect(decoded.managedClientEvidence.backend).toBe("ai-orch");
+  });
+
+  it("decodes posthog and otlp backend settings and their secret-redaction markers", () => {
+    const decoded = decodeCopilotSettings({
+      managedClientEvidence: {
+        backend: "posthog",
+        posthogHost: " https://us.i.posthog.com ",
+        posthogApiKey: " phc_test ",
+        otlpEndpoint: " https://otel.example.com ",
+        otlpHeaders: " Authorization=Bearer test ",
+        includeMachineIdentity: false,
+      },
+    });
+
+    expect(decoded.managedClientEvidence).toEqual({
+      enabled: false,
+      gatewayEnabled: false,
+      backend: "posthog",
+      governanceUrl: "",
+      credential: "",
+      posthogHost: "https://us.i.posthog.com",
+      posthogApiKey: "phc_test",
+      otlpEndpoint: "https://otel.example.com",
+      otlpHeaders: "Authorization=Bearer test",
+      includeMachineIdentity: false,
+    });
+
+    const patch = decodeServerSettingsPatch({
+      providers: {
+        githubCopilot: {
+          managedClientEvidence: {
+            backend: "otlp",
+            posthogApiKeyRedacted: true,
+            otlpHeadersRedacted: true,
+          },
+        },
+      },
+    });
+
+    expect(patch.providers?.githubCopilot?.managedClientEvidence).toEqual({
+      backend: "otlp",
+      posthogApiKeyRedacted: true,
+      otlpHeadersRedacted: true,
+    });
+  });
+
+  it("rejects an unknown backend value", () => {
+    expect(() =>
+      decodeCopilotSettings({
+        managedClientEvidence: { backend: "datadog" },
+      }),
+    ).toThrow();
   });
 });

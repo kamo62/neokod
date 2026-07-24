@@ -605,4 +605,282 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       );
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
+
+  it.effect(
+    "stores the managed-client-evidence credential outside settings.json and redacts it on disk",
+    () =>
+      Effect.gen(function* () {
+        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+        const serverConfig = yield* ServerConfig.ServerConfig;
+        const fileSystem = yield* FileSystem.FileSystem;
+
+        const next = yield* serverSettings.updateSettings({
+          providers: {
+            githubCopilot: {
+              managedClientEvidence: {
+                governanceUrl: "https://ai-orch.example.com",
+                credential: "air_secret_token",
+              },
+            },
+          },
+        });
+
+        // Server-internal read sees the real credential.
+        assert.equal(
+          next.providers.githubCopilot.managedClientEvidence.credential,
+          "air_secret_token",
+        );
+        assert.isTrue(next.providers.githubCopilot.managedClientEvidence.credentialRedacted);
+
+        const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+        assert.notInclude(raw, "air_secret_token");
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        const managedClientEvidence = JSON.parse(raw).providers.githubCopilot.managedClientEvidence;
+        assert.equal(managedClientEvidence.governanceUrl, "https://ai-orch.example.com");
+        assert.isTrue(managedClientEvidence.credentialRedacted);
+        assert.isTrue(!managedClientEvidence.credential);
+      }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect(
+    "materializes the real managed-client-evidence credential for server reads but redacts it for the client",
+    () =>
+      Effect.gen(function* () {
+        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+
+        yield* serverSettings.updateSettings({
+          providers: {
+            githubCopilot: {
+              managedClientEvidence: {
+                governanceUrl: "https://ai-orch.example.com",
+                credential: "air_secret_token",
+              },
+            },
+          },
+        });
+
+        const materialized = yield* serverSettings.getSettings;
+        assert.equal(
+          materialized.providers.githubCopilot.managedClientEvidence.credential,
+          "air_secret_token",
+        );
+
+        const redacted = ServerSettingsModule.redactServerSettingsForClient(materialized);
+        assert.equal(redacted.providers.githubCopilot.managedClientEvidence.credential, "");
+        assert.isTrue(redacted.providers.githubCopilot.managedClientEvidence.credentialRedacted);
+      }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect(
+    "falls back to the legacy plaintext credential when the secret store has nothing recorded yet",
+    () =>
+      Effect.gen(function* () {
+        const serverConfig = yield* ServerConfig.ServerConfig;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+
+        // Simulates settings.json already marked redacted (e.g. restored from
+        // a backup taken mid-migration) while the secret store backing it is
+        // empty (e.g. a fresh secrets directory). Materialize must not
+        // silently blank the credential in this upgrade-window state.
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        const rawUnmigrated = JSON.stringify({
+          providers: {
+            githubCopilot: {
+              managedClientEvidence: {
+                enabled: true,
+                governanceUrl: "https://ai-orch.example.com",
+                credential: "air_not_yet_in_store",
+                credentialRedacted: true,
+              },
+            },
+          },
+        });
+        yield* fileSystem.writeFileString(serverConfig.settingsPath, rawUnmigrated);
+
+        const materialized = yield* serverSettings.getSettings;
+        assert.equal(
+          materialized.providers.githubCopilot.managedClientEvidence.credential,
+          "air_not_yet_in_store",
+        );
+      }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect(
+    "eagerly migrates a legacy plaintext managed-client-evidence credential on load, idempotently, with no window where the credential is lost",
+    () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const baseDir = yield* fileSystem.makeTempDirectory({
+          prefix: "neokod-server-settings-mce-migration-test-",
+        });
+
+        const serverConfig = yield* ServerConfig.ServerConfig.pipe(
+          Effect.provide(ServerConfig.layerTest(process.cwd(), baseDir)),
+        );
+
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        const rawLegacy = JSON.stringify({
+          providers: {
+            githubCopilot: {
+              managedClientEvidence: {
+                enabled: true,
+                governanceUrl: "https://ai-orch.example.com",
+                credential: "air_legacy_plaintext",
+              },
+            },
+          },
+        });
+        yield* fileSystem.writeFileString(serverConfig.settingsPath, rawLegacy);
+
+        const bootLayer = ServerSettingsModule.layer.pipe(
+          Layer.provide(ServerSecretStore.layer),
+          Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
+        );
+
+        // First "boot" against the legacy file: the very first read must
+        // surface the real credential (no window where the forwarder loses
+        // it) and must migrate settings.json to the redacted form.
+        const firstRead = yield* Effect.gen(function* () {
+          const settings = yield* ServerSettingsModule.ServerSettingsService;
+          return yield* settings.getSettings;
+        }).pipe(Effect.provide(bootLayer));
+
+        assert.equal(
+          firstRead.providers.githubCopilot.managedClientEvidence.credential,
+          "air_legacy_plaintext",
+        );
+
+        const rawAfterFirstRead = yield* fileSystem.readFileString(serverConfig.settingsPath);
+        assert.notInclude(rawAfterFirstRead, "air_legacy_plaintext");
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        const parsedAfterFirstRead = JSON.parse(rawAfterFirstRead);
+        assert.isTrue(
+          parsedAfterFirstRead.providers.githubCopilot.managedClientEvidence.credentialRedacted,
+        );
+
+        // Second "boot" against the now-migrated file and the same secrets
+        // dir: migration is a no-op, and the credential still materializes
+        // correctly from the store.
+        const secondRead = yield* Effect.gen(function* () {
+          const settings = yield* ServerSettingsModule.ServerSettingsService;
+          return yield* settings.getSettings;
+        }).pipe(Effect.provide(bootLayer));
+
+        assert.equal(
+          secondRead.providers.githubCopilot.managedClientEvidence.credential,
+          "air_legacy_plaintext",
+        );
+
+        const rawAfterSecondRead = yield* fileSystem.readFileString(serverConfig.settingsPath);
+        assert.equal(rawAfterSecondRead, rawAfterFirstRead);
+      }),
+  );
+
+  it.effect(
+    "stores the posthogApiKey and otlpHeaders secrets outside settings.json and redacts them on disk",
+    () =>
+      Effect.gen(function* () {
+        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+        const serverConfig = yield* ServerConfig.ServerConfig;
+        const fileSystem = yield* FileSystem.FileSystem;
+
+        const next = yield* serverSettings.updateSettings({
+          providers: {
+            githubCopilot: {
+              managedClientEvidence: {
+                backend: "posthog",
+                posthogHost: "https://us.i.posthog.com",
+                posthogApiKey: "phc_secret_key",
+                otlpHeaders: "Authorization=Bearer secret",
+              },
+            },
+          },
+        });
+
+        // Server-internal read sees the real values.
+        assert.equal(
+          next.providers.githubCopilot.managedClientEvidence.posthogApiKey,
+          "phc_secret_key",
+        );
+        assert.equal(
+          next.providers.githubCopilot.managedClientEvidence.otlpHeaders,
+          "Authorization=Bearer secret",
+        );
+        assert.isTrue(next.providers.githubCopilot.managedClientEvidence.posthogApiKeyRedacted);
+        assert.isTrue(next.providers.githubCopilot.managedClientEvidence.otlpHeadersRedacted);
+
+        const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+        assert.notInclude(raw, "phc_secret_key");
+        assert.notInclude(raw, "Bearer secret");
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        const managedClientEvidence = JSON.parse(raw).providers.githubCopilot.managedClientEvidence;
+        assert.equal(managedClientEvidence.posthogHost, "https://us.i.posthog.com");
+        assert.isTrue(managedClientEvidence.posthogApiKeyRedacted);
+        assert.isTrue(managedClientEvidence.otlpHeadersRedacted);
+        assert.isTrue(!managedClientEvidence.posthogApiKey);
+        assert.isTrue(!managedClientEvidence.otlpHeaders);
+      }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect(
+    "materializes the real posthogApiKey/otlpHeaders for server reads but redacts them for the client",
+    () =>
+      Effect.gen(function* () {
+        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+
+        yield* serverSettings.updateSettings({
+          providers: {
+            githubCopilot: {
+              managedClientEvidence: {
+                backend: "otlp",
+                posthogApiKey: "phc_secret_key",
+                otlpHeaders: "Authorization=Bearer secret",
+              },
+            },
+          },
+        });
+
+        const materialized = yield* serverSettings.getSettings;
+        assert.equal(
+          materialized.providers.githubCopilot.managedClientEvidence.posthogApiKey,
+          "phc_secret_key",
+        );
+        assert.equal(
+          materialized.providers.githubCopilot.managedClientEvidence.otlpHeaders,
+          "Authorization=Bearer secret",
+        );
+
+        const redacted = ServerSettingsModule.redactServerSettingsForClient(materialized);
+        assert.equal(redacted.providers.githubCopilot.managedClientEvidence.posthogApiKey, "");
+        assert.equal(redacted.providers.githubCopilot.managedClientEvidence.otlpHeaders, "");
+        assert.isTrue(redacted.providers.githubCopilot.managedClientEvidence.posthogApiKeyRedacted);
+        assert.isTrue(redacted.providers.githubCopilot.managedClientEvidence.otlpHeadersRedacted);
+      }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect(
+    "leaves posthogApiKey/otlpHeaders untouched when they're empty (nothing to redact or persist)",
+    () =>
+      Effect.gen(function* () {
+        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+
+        const next = yield* serverSettings.updateSettings({
+          providers: {
+            githubCopilot: {
+              managedClientEvidence: {
+                backend: "ai-orch",
+              },
+            },
+          },
+        });
+
+        assert.equal(next.providers.githubCopilot.managedClientEvidence.posthogApiKey, "");
+        assert.equal(next.providers.githubCopilot.managedClientEvidence.otlpHeaders, "");
+        assert.isUndefined(
+          next.providers.githubCopilot.managedClientEvidence.posthogApiKeyRedacted,
+        );
+        assert.isUndefined(next.providers.githubCopilot.managedClientEvidence.otlpHeadersRedacted);
+      }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
 });

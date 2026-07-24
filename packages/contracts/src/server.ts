@@ -589,12 +589,21 @@ export class ServerProviderUpdateError extends Schema.TaggedErrorClass<ServerPro
  * Result of a one-shot Copilot managed-client-evidence governance
  * connectivity check (`server.testManagedClientEvidenceConnection`).
  * `ok`/`status`/`message` describe the AI-Orch endpoint's response; the
- * credential under test is never included.
+ * credential under test is never included. `recordedIdentity` echoes
+ * AI-Orch's `recorded_identity` ack when the endpoint returns one — AI-Orch
+ * is the source of truth and may report a different identity than what was
+ * sent.
  */
 export const CopilotManagedClientEvidenceTestConnectionResult = Schema.Struct({
   ok: Schema.Boolean,
   status: Schema.NullOr(Schema.Number),
   message: TrimmedNonEmptyString,
+  recordedIdentity: Schema.optional(
+    Schema.Struct({
+      osUsername: Schema.optional(TrimmedNonEmptyString),
+      githubLogin: Schema.optional(TrimmedNonEmptyString),
+    }),
+  ),
 });
 
 export const CopilotDeviceLoginStartResult = Schema.Struct({

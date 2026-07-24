@@ -1,4 +1,5 @@
 import * as NodeAssert from "node:assert/strict";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "vite-plus/test";
 
 import {
@@ -24,10 +25,12 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
+import * as ServerConfig from "../../config.ts";
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { ProviderService } from "../Services/ProviderService.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ManagedClientEvidenceForwarderLive } from "./ManagedClientEvidenceForwarder.ts";
+import { setKnownGithubLogin } from "./ManagedClientIdentityRegistry.ts";
 
 const COPILOT_DRIVER = ProviderDriverKind.make("githubCopilot");
 const THREAD_ID = ThreadId.make("thread-forwarder");
@@ -50,6 +53,15 @@ interface CapturedPost {
   readonly url: string;
   readonly authorization: string | undefined;
   readonly bodyKeys: ReadonlyArray<string>;
+  readonly clientIdentity:
+    | {
+        readonly v: number;
+        readonly os_username?: string;
+        readonly hostname: string;
+        readonly os_platform?: string;
+        readonly github_login?: string;
+      }
+    | undefined;
   readonly events: ReadonlyArray<{
     readonly event_id: string;
     readonly schema_version: string;
@@ -179,11 +191,14 @@ const makePostCaptureHttpLayer = (
     HttpClient.HttpClient,
     HttpClient.make((request) => {
       const rawBody = (request.body as { readonly body?: Uint8Array }).body;
-      const body = JSON.parse(decoder.decode(rawBody)) as Pick<CapturedPost, "events">;
+      const body = JSON.parse(decoder.decode(rawBody)) as Pick<CapturedPost, "events"> & {
+        readonly client_identity?: CapturedPost["clientIdentity"];
+      };
       const post: CapturedPost = {
         url: request.url,
         authorization: request.headers.Authorization,
         bodyKeys: Object.keys(body),
+        clientIdentity: body.client_identity,
         events: body.events,
       };
       const webResponse = typeof response === "function" ? response(post) : response;
@@ -460,7 +475,18 @@ it("reacts to managed-client evidence settings changes at runtime", () =>
     const posts = yield* Queue.unbounded<CapturedPost>();
     let subscribeCount = 0;
     const settings = makeReactiveSettingsLayer(
-      { enabled: false, gatewayEnabled: false, governanceUrl: "", credential: "" },
+      {
+        enabled: false,
+        gatewayEnabled: false,
+        backend: "ai-orch",
+        governanceUrl: "",
+        credential: "",
+        posthogHost: "",
+        posthogApiKey: "",
+        otlpEndpoint: "",
+        otlpHeaders: "",
+        includeMachineIdentity: true,
+      },
       settingsChanges,
     );
 
@@ -487,8 +513,14 @@ it("reacts to managed-client evidence settings changes at runtime", () =>
     yield* settings.publishCurrent({
       enabled: true,
       gatewayEnabled: false,
+      backend: "ai-orch",
       governanceUrl: "https://orch.example",
       credential: "air_test",
+      posthogHost: "",
+      posthogApiKey: "",
+      otlpEndpoint: "",
+      otlpHeaders: "",
+      includeMachineIdentity: true,
     });
     yield* flushEffects;
     NodeAssert.equal(subscribeCount, 1);
@@ -499,8 +531,14 @@ it("reacts to managed-client evidence settings changes at runtime", () =>
     yield* settings.publishCurrent({
       enabled: false,
       gatewayEnabled: false,
+      backend: "ai-orch",
       governanceUrl: "https://orch.example",
       credential: "air_test",
+      posthogHost: "",
+      posthogApiKey: "",
+      otlpEndpoint: "",
+      otlpHeaders: "",
+      includeMachineIdentity: true,
     });
     yield* flushEffects;
     yield* PubSub.publish(providerEvents, sessionStarted(3));
@@ -536,7 +574,7 @@ it("posts managed-client evidence using the v0 batch envelope", () =>
 
     yield* Scope.close(scope, Exit.void);
 
-    NodeAssert.deepEqual(post.bodyKeys, ["events"]);
+    NodeAssert.deepEqual([...post.bodyKeys].sort(), ["client_identity", "events"]);
     NodeAssert.equal(post.url, "https://orch.example/v1/managed-client/evidence");
     NodeAssert.equal(post.authorization, "Bearer air_test");
     NodeAssert.equal(post.events.length, 1);
@@ -554,4 +592,534 @@ it("posts managed-client evidence using the v0 batch envelope", () =>
         event_type: "session_start",
       },
     );
+  }).pipe(Effect.provide(TestClock.layer())));
+
+it("attaches client_identity at the batch level, present even without a known github login", () =>
+  Effect.gen(function* () {
+    setKnownGithubLogin(undefined);
+    const providerEvents = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+    const posts = yield* Queue.unbounded<CapturedPost>();
+
+    const layer = ManagedClientEvidenceForwarderLive({ flushWithin: "10 millis" }).pipe(
+      Layer.provideMerge(makeProviderLayer(providerEvents)),
+      Layer.provideMerge(makeOrchestrationLayer()),
+      Layer.provideMerge(makeEnabledSettingsLayer()),
+      Layer.provideMerge(makePostCaptureHttpLayer(posts)),
+    );
+
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(layer, scope);
+    yield* PubSub.publish(providerEvents, sessionStarted(1));
+    yield* TestClock.adjust("10 millis");
+    const post = yield* Queue.take(posts);
+
+    yield* Scope.close(scope, Exit.void);
+
+    NodeAssert.ok(post.clientIdentity, "expected client_identity on the batch");
+    NodeAssert.equal(post.clientIdentity?.v, 1);
+    NodeAssert.equal(typeof post.clientIdentity?.hostname, "string");
+    NodeAssert.ok(post.clientIdentity && post.clientIdentity.hostname.length > 0);
+    NodeAssert.equal(post.clientIdentity?.github_login, undefined);
+  }).pipe(Effect.provide(TestClock.layer())));
+
+it("includes github_login in client_identity once the Copilot auth probe has resolved one", () =>
+  Effect.gen(function* () {
+    setKnownGithubLogin("octocat");
+    const providerEvents = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+    const posts = yield* Queue.unbounded<CapturedPost>();
+
+    const layer = ManagedClientEvidenceForwarderLive({ flushWithin: "10 millis" }).pipe(
+      Layer.provideMerge(makeProviderLayer(providerEvents)),
+      Layer.provideMerge(makeOrchestrationLayer()),
+      Layer.provideMerge(makeEnabledSettingsLayer()),
+      Layer.provideMerge(makePostCaptureHttpLayer(posts)),
+    );
+
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(layer, scope);
+    yield* PubSub.publish(providerEvents, sessionStarted(1));
+    yield* TestClock.adjust("10 millis");
+    const post = yield* Queue.take(posts);
+
+    yield* Scope.close(scope, Exit.void);
+    setKnownGithubLogin(undefined);
+
+    NodeAssert.equal(post.clientIdentity?.github_login, "octocat");
+  }).pipe(Effect.provide(TestClock.layer())));
+
+it("drops a batch permanently on a 400 response and keeps consuming later events", () => {
+  const logs: Array<{ readonly message: string; readonly status: unknown }> = [];
+  const logger = Logger.make<unknown, void>(({ fiber, message }) => {
+    const annotations = fiber.getRef(References.CurrentLogAnnotations);
+    logs.push({ message: String(message), status: annotations.status });
+  });
+
+  return Effect.gen(function* () {
+    const providerEvents = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+    const posts = yield* Queue.unbounded<CapturedPost>();
+    let attemptCount = 0;
+
+    const layer = ManagedClientEvidenceForwarderLive({ flushWithin: "10 millis" }).pipe(
+      Layer.provideMerge(makeProviderLayer(providerEvents)),
+      Layer.provideMerge(makeOrchestrationLayer()),
+      Layer.provideMerge(makeEnabledSettingsLayer()),
+      Layer.provideMerge(
+        makePostCaptureHttpLayer(posts, () => {
+          attemptCount += 1;
+          return new Response(null, { status: 400 });
+        }),
+      ),
+    );
+
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(layer, scope);
+
+    yield* PubSub.publish(providerEvents, sessionStarted(1));
+    yield* TestClock.adjust("10 millis");
+    yield* flushEffects;
+    const firstPost = yield* Queue.take(posts);
+
+    yield* PubSub.publish(providerEvents, sessionStarted(2));
+    yield* TestClock.adjust("10 millis");
+    const secondPost = yield* Queue.take(posts);
+
+    yield* Scope.close(scope, Exit.void);
+
+    NodeAssert.deepEqual(
+      firstPost.events.map((event) => event.event_id),
+      ["evt-1"],
+    );
+    NodeAssert.deepEqual(
+      secondPost.events.map((event) => event.event_id),
+      ["evt-2"],
+    );
+    NodeAssert.equal(attemptCount, 2, "a 400 must not be retried");
+    NodeAssert.ok(
+      logs.some((log) => log.message.includes("permanent client error") && log.status === 400),
+    );
+  }).pipe(
+    Effect.provide(
+      Layer.mergeAll(TestClock.layer(), Logger.layer([logger], { mergeWithExisting: false })),
+    ),
+  );
+});
+
+it("retries on 429 the same as a 5xx response", () =>
+  Effect.gen(function* () {
+    const providerEvents = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+    const attempts = yield* Queue.unbounded<ReadonlyArray<string>>();
+    let attemptCount = 0;
+    const httpLayer = Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) => {
+        const rawBody = (request.body as { readonly body?: Uint8Array }).body;
+        const body = JSON.parse(decoder.decode(rawBody)) as {
+          readonly events: ReadonlyArray<{ readonly event_id: string }>;
+        };
+        attemptCount += 1;
+        return Queue.offer(
+          attempts,
+          body.events.map((event) => event.event_id),
+        ).pipe(
+          Effect.as(
+            HttpClientResponse.fromWeb(
+              request,
+              new Response(null, { status: attemptCount === 1 ? 429 : 200 }),
+            ),
+          ),
+        );
+      }),
+    );
+
+    const layer = ManagedClientEvidenceForwarderLive({
+      backoffBase: "1 second",
+      flushWithin: "1 hour",
+    }).pipe(
+      Layer.provideMerge(makeProviderLayer(providerEvents)),
+      Layer.provideMerge(makeOrchestrationLayer()),
+      Layer.provideMerge(
+        ServerSettingsService.layerTest({
+          providers: {
+            githubCopilot: {
+              managedClientEvidence: {
+                enabled: true,
+                governanceUrl: "https://orch.example/",
+                credential: "air_test",
+              },
+            },
+          },
+        }),
+      ),
+      Layer.provideMerge(httpLayer),
+    );
+
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(layer, scope);
+
+    for (let index = 0; index < 50; index += 1) {
+      yield* PubSub.publish(providerEvents, sessionStarted(index));
+    }
+
+    const first = yield* Queue.take(attempts);
+    const retryFiber = yield* Queue.take(attempts).pipe(Effect.forkScoped);
+    yield* TestClock.adjust("1 second");
+    const second = yield* Fiber.join(retryFiber);
+
+    yield* Scope.close(scope, Exit.void);
+
+    NodeAssert.deepEqual(first, second);
+  }).pipe(Effect.provide(TestClock.layer())));
+
+it("honors a Retry-After (seconds) header instead of the exponential backoff delay", () =>
+  Effect.gen(function* () {
+    const providerEvents = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+    const attempts = yield* Queue.unbounded<ReadonlyArray<string>>();
+    let attemptCount = 0;
+    const httpLayer = Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) => {
+        const rawBody = (request.body as { readonly body?: Uint8Array }).body;
+        const body = JSON.parse(decoder.decode(rawBody)) as {
+          readonly events: ReadonlyArray<{ readonly event_id: string }>;
+        };
+        attemptCount += 1;
+        return Queue.offer(
+          attempts,
+          body.events.map((event) => event.event_id),
+        ).pipe(
+          Effect.as(
+            HttpClientResponse.fromWeb(
+              request,
+              attemptCount === 1
+                ? new Response(null, { status: 429, headers: { "retry-after": "5" } })
+                : new Response(null, { status: 200 }),
+            ),
+          ),
+        );
+      }),
+    );
+
+    // backoffBase is deliberately much larger than the Retry-After delay, so
+    // the retry only lands on schedule if Retry-After actually won.
+    const layer = ManagedClientEvidenceForwarderLive({
+      backoffBase: "1 hour",
+      flushWithin: "1 hour",
+    }).pipe(
+      Layer.provideMerge(makeProviderLayer(providerEvents)),
+      Layer.provideMerge(makeOrchestrationLayer()),
+      Layer.provideMerge(makeEnabledSettingsLayer()),
+      Layer.provideMerge(httpLayer),
+    );
+
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(layer, scope);
+
+    for (let index = 0; index < 50; index += 1) {
+      yield* PubSub.publish(providerEvents, sessionStarted(index));
+    }
+
+    const first = yield* Queue.take(attempts);
+    const retryFiber = yield* Queue.take(attempts).pipe(Effect.forkScoped);
+    yield* TestClock.adjust("5 seconds");
+    const second = yield* Fiber.join(retryFiber);
+
+    yield* Scope.close(scope, Exit.void);
+
+    NodeAssert.deepEqual(first, second);
+  }).pipe(Effect.provide(TestClock.layer())));
+
+it("caps a huge Retry-After at 5 minutes", () =>
+  Effect.gen(function* () {
+    const providerEvents = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+    const attempts = yield* Queue.unbounded<ReadonlyArray<string>>();
+    let attemptCount = 0;
+    const httpLayer = Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) => {
+        const rawBody = (request.body as { readonly body?: Uint8Array }).body;
+        const body = JSON.parse(decoder.decode(rawBody)) as {
+          readonly events: ReadonlyArray<{ readonly event_id: string }>;
+        };
+        attemptCount += 1;
+        return Queue.offer(
+          attempts,
+          body.events.map((event) => event.event_id),
+        ).pipe(
+          Effect.as(
+            HttpClientResponse.fromWeb(
+              request,
+              // 1 hour of requested delay; the forwarder must cap this at 5 minutes.
+              attemptCount === 1
+                ? new Response(null, { status: 503, headers: { "retry-after": "3600" } })
+                : new Response(null, { status: 200 }),
+            ),
+          ),
+        );
+      }),
+    );
+
+    const layer = ManagedClientEvidenceForwarderLive({
+      backoffBase: "1 second",
+      flushWithin: "1 hour",
+    }).pipe(
+      Layer.provideMerge(makeProviderLayer(providerEvents)),
+      Layer.provideMerge(makeOrchestrationLayer()),
+      Layer.provideMerge(makeEnabledSettingsLayer()),
+      Layer.provideMerge(httpLayer),
+    );
+
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(layer, scope);
+
+    for (let index = 0; index < 50; index += 1) {
+      yield* PubSub.publish(providerEvents, sessionStarted(index));
+    }
+
+    const first = yield* Queue.take(attempts);
+    const retryFiber = yield* Queue.take(attempts).pipe(Effect.forkScoped);
+    yield* TestClock.adjust("5 minutes");
+    const second = yield* Fiber.join(retryFiber);
+
+    yield* Scope.close(scope, Exit.void);
+
+    NodeAssert.deepEqual(first, second);
+  }).pipe(Effect.provide(TestClock.layer())));
+
+it("posts to the otlp backend when configured, using OTLP wire shape", () =>
+  Effect.gen(function* () {
+    const providerEvents = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+    const posts = yield* Queue.unbounded<{ readonly url: string; readonly body: unknown }>();
+    const decoder = new TextDecoder();
+    const httpLayer = Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) => {
+        const rawBody = (request.body as { readonly body?: Uint8Array }).body;
+        const body = JSON.parse(decoder.decode(rawBody)) as unknown;
+        return Queue.offer(posts, { url: request.url, body }).pipe(
+          Effect.as(HttpClientResponse.fromWeb(request, Response.json({ status: "Ok" }))),
+        );
+      }),
+    );
+
+    const layer = ManagedClientEvidenceForwarderLive({ flushWithin: "10 millis" }).pipe(
+      Layer.provideMerge(makeProviderLayer(providerEvents)),
+      Layer.provideMerge(makeOrchestrationLayer()),
+      Layer.provideMerge(
+        ServerSettingsService.layerTest({
+          providers: {
+            githubCopilot: {
+              managedClientEvidence: {
+                enabled: true,
+                backend: "otlp",
+                otlpEndpoint: "https://otel.example.com",
+                otlpHeaders: "",
+              },
+            },
+          },
+        }),
+      ),
+      Layer.provideMerge(httpLayer),
+    );
+
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(layer, scope);
+    yield* PubSub.publish(providerEvents, sessionStarted(1));
+    yield* TestClock.adjust("10 millis");
+    const post = yield* Queue.take(posts);
+
+    yield* Scope.close(scope, Exit.void);
+
+    NodeAssert.equal(post.url, "https://otel.example.com/v1/logs");
+    const body = post.body as { readonly resourceLogs?: ReadonlyArray<unknown> };
+    NodeAssert.ok(Array.isArray(body.resourceLogs), "expected an OTLP resourceLogs payload");
+  }).pipe(Effect.provide(TestClock.layer())));
+
+it("posts to the posthog backend when configured, using PostHog wire shape", () =>
+  Effect.gen(function* () {
+    const providerEvents = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+    const posts = yield* Queue.unbounded<{ readonly url: string; readonly body: unknown }>();
+    const decoder = new TextDecoder();
+    const httpLayer = Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) => {
+        const rawBody = (request.body as { readonly body?: Uint8Array }).body;
+        const body = JSON.parse(decoder.decode(rawBody)) as unknown;
+        return Queue.offer(posts, { url: request.url, body }).pipe(
+          Effect.as(HttpClientResponse.fromWeb(request, Response.json({ status: "Ok" }))),
+        );
+      }),
+    );
+
+    const layer = ManagedClientEvidenceForwarderLive({ flushWithin: "10 millis" }).pipe(
+      Layer.provideMerge(makeProviderLayer(providerEvents)),
+      Layer.provideMerge(makeOrchestrationLayer()),
+      Layer.provideMerge(
+        ServerSettingsService.layerTest({
+          providers: {
+            githubCopilot: {
+              managedClientEvidence: {
+                enabled: true,
+                backend: "posthog",
+                posthogHost: "https://us.i.posthog.com",
+                posthogApiKey: "phc_test",
+              },
+            },
+          },
+        }),
+      ),
+      Layer.provideMerge(httpLayer),
+      Layer.provideMerge(
+        ServerConfig.layerTest(process.cwd(), { prefix: "neokod-forwarder-posthog-" }),
+      ),
+    );
+
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(layer, scope);
+    yield* PubSub.publish(providerEvents, sessionStarted(1));
+    yield* TestClock.adjust("10 millis");
+    const post = yield* Queue.take(posts);
+
+    yield* Scope.close(scope, Exit.void);
+
+    NodeAssert.equal(post.url, "https://us.i.posthog.com/batch/");
+    const body = post.body as {
+      readonly api_key?: string;
+      readonly batch?: ReadonlyArray<unknown>;
+    };
+    NodeAssert.equal(body.api_key, "phc_test");
+    NodeAssert.ok(Array.isArray(body.batch), "expected a PostHog batch payload");
+  }).pipe(Effect.provide(Layer.mergeAll(TestClock.layer(), NodeServices.layer))));
+
+it("stays disabled for the posthog backend until posthogHost and posthogApiKey are both set", () =>
+  Effect.gen(function* () {
+    const providerEvents = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+    const posts = yield* Queue.unbounded<unknown>();
+    const httpLayer = Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) =>
+        Queue.offer(posts, request.url).pipe(
+          Effect.as(HttpClientResponse.fromWeb(request, Response.json({ status: "Ok" }))),
+        ),
+      ),
+    );
+
+    const layer = ManagedClientEvidenceForwarderLive({ flushWithin: "10 millis" }).pipe(
+      Layer.provideMerge(makeProviderLayer(providerEvents)),
+      Layer.provideMerge(makeOrchestrationLayer()),
+      Layer.provideMerge(
+        ServerSettingsService.layerTest({
+          providers: {
+            githubCopilot: {
+              managedClientEvidence: {
+                enabled: true,
+                backend: "posthog",
+                posthogHost: "https://us.i.posthog.com",
+                posthogApiKey: "",
+              },
+            },
+          },
+        }),
+      ),
+      Layer.provideMerge(httpLayer),
+      Layer.provideMerge(
+        ServerConfig.layerTest(process.cwd(), { prefix: "neokod-forwarder-posthog-off-" }),
+      ),
+    );
+
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(layer, scope);
+    yield* PubSub.publish(providerEvents, sessionStarted(1));
+    yield* TestClock.adjust("10 millis");
+    const pending = yield* Queue.poll(posts);
+
+    yield* Scope.close(scope, Exit.void);
+
+    NodeAssert.ok(Option.isNone(pending), "expected no request without a posthogApiKey");
+  }).pipe(Effect.provide(Layer.mergeAll(TestClock.layer(), NodeServices.layer))));
+
+it("stays disabled for the otlp backend until otlpEndpoint is set", () =>
+  Effect.gen(function* () {
+    const providerEvents = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+    const posts = yield* Queue.unbounded<unknown>();
+    const httpLayer = Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) =>
+        Queue.offer(posts, request.url).pipe(
+          Effect.as(HttpClientResponse.fromWeb(request, Response.json({ status: "Ok" }))),
+        ),
+      ),
+    );
+
+    const layer = ManagedClientEvidenceForwarderLive({ flushWithin: "10 millis" }).pipe(
+      Layer.provideMerge(makeProviderLayer(providerEvents)),
+      Layer.provideMerge(makeOrchestrationLayer()),
+      Layer.provideMerge(
+        ServerSettingsService.layerTest({
+          providers: {
+            githubCopilot: {
+              managedClientEvidence: {
+                enabled: true,
+                backend: "otlp",
+                otlpEndpoint: "",
+              },
+            },
+          },
+        }),
+      ),
+      Layer.provideMerge(httpLayer),
+    );
+
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(layer, scope);
+    yield* PubSub.publish(providerEvents, sessionStarted(1));
+    yield* TestClock.adjust("10 millis");
+    const pending = yield* Queue.poll(posts);
+
+    yield* Scope.close(scope, Exit.void);
+
+    NodeAssert.ok(Option.isNone(pending), "expected no request without an otlpEndpoint");
+  }).pipe(Effect.provide(TestClock.layer())));
+
+it("treats a legacy config without `backend` as ai-orch (backward compat)", () =>
+  Effect.gen(function* () {
+    const providerEvents = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+    const posts = yield* Queue.unbounded<{ readonly url: string }>();
+    const httpLayer = Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) =>
+        Queue.offer(posts, { url: request.url }).pipe(
+          Effect.as(HttpClientResponse.fromWeb(request, Response.json({ ok: true }))),
+        ),
+      ),
+    );
+
+    // No `backend` key at all — mirrors a settings.json written before slice 2.
+    const layer = ManagedClientEvidenceForwarderLive({ flushWithin: "10 millis" }).pipe(
+      Layer.provideMerge(makeProviderLayer(providerEvents)),
+      Layer.provideMerge(makeOrchestrationLayer()),
+      Layer.provideMerge(
+        ServerSettingsService.layerTest({
+          providers: {
+            githubCopilot: {
+              managedClientEvidence: {
+                enabled: true,
+                governanceUrl: "https://orch.example",
+                credential: "air_test",
+              },
+            },
+          },
+        }),
+      ),
+      Layer.provideMerge(httpLayer),
+    );
+
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(layer, scope);
+    yield* PubSub.publish(providerEvents, sessionStarted(1));
+    yield* TestClock.adjust("10 millis");
+    const post = yield* Queue.take(posts);
+
+    yield* Scope.close(scope, Exit.void);
+
+    NodeAssert.equal(post.url, "https://orch.example/v1/managed-client/evidence");
   }).pipe(Effect.provide(TestClock.layer())));
