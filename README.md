@@ -33,9 +33,9 @@ Install and authenticate at least one provider before use, for example:
 
 - Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
 - Claude: install [Claude Code](https://claude.com/product/claude-code) and run `claude auth login`
-- Copilot: install the GitHub Copilot CLI, then sign in from Neokod using the in-app GitHub device sign-in flow, no separate login command needed
+- Copilot: install [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli), then sign in from Neokod using the in-app GitHub device sign-in flow, no separate login command needed
 - Cursor: install [Cursor CLI](https://cursor.com/cli) and run `cursor-agent login`
-- Grok: install the Grok CLI and authenticate it directly
+- Grok: install [Grok CLI](https://docs.x.ai/build/overview) and authenticate it directly
 - OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
 
 ## Install and run
