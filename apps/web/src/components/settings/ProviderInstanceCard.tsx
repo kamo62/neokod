@@ -347,6 +347,28 @@ export function describeManagedClientEvidenceReadiness(
     : "Fields are set. Turn on evidence forwarding above when you're ready.";
 }
 
+const MANAGED_CLIENT_IDENTITY_TRANSPARENCY_NOTE =
+  "When evidence forwarding is enabled, your OS username, hostname, and GitHub login (if signed in) are recorded alongside evidence sent to AI-Orch.";
+
+/**
+ * Pure so it can be unit tested without a render harness (see
+ * ProviderInstanceCard.test.ts). Graceful fallbacks: either field can be
+ * absent (AI-Orch is the source of truth for what it actually stored), and
+ * `undefined` means nothing worth showing yet.
+ */
+export function describeRecordedIdentity(
+  recordedIdentity:
+    | { readonly osUsername?: string | undefined; readonly githubLogin?: string | undefined }
+    | undefined,
+): string | undefined {
+  const osUsername = recordedIdentity?.osUsername?.trim();
+  const githubLogin = recordedIdentity?.githubLogin?.trim();
+  if (osUsername && githubLogin) return `Recording as ${osUsername} / GitHub: ${githubLogin}`;
+  if (osUsername) return `Recording as ${osUsername}`;
+  if (githubLogin) return `Recording as GitHub: ${githubLogin}`;
+  return undefined;
+}
+
 export function formatCopilotMcpServersForEditor(servers: CopilotMcpServers): string {
   return Object.keys(servers).length === 0 ? "" : JSON.stringify(servers, null, 2);
 }
@@ -464,13 +486,26 @@ function CopilotGovernanceSection(props: {
   readonly settings: CopilotManagedClientEvidenceSettings;
   readonly onChange: (patch: Partial<CopilotManagedClientEvidenceSettings>) => void;
   readonly onTestConnection?:
-    | (() => Promise<{ readonly ok: boolean; readonly message: string }>)
+    | (() => Promise<{
+        readonly ok: boolean;
+        readonly message: string;
+        readonly recordedIdentity?:
+          | { readonly osUsername?: string | undefined; readonly githubLogin?: string | undefined }
+          | undefined;
+      }>)
     | undefined;
 }) {
   const [testState, setTestState] = useState<
     | { readonly status: "idle" }
     | { readonly status: "pending" }
-    | { readonly status: "done"; readonly ok: boolean; readonly message: string }
+    | {
+        readonly status: "done";
+        readonly ok: boolean;
+        readonly message: string;
+        readonly recordedIdentity?:
+          | { readonly osUsername?: string | undefined; readonly githubLogin?: string | undefined }
+          | undefined;
+      }
   >({ status: "idle" });
 
   const runTestConnection = () => {
@@ -478,9 +513,19 @@ function CopilotGovernanceSection(props: {
     if (!onTestConnection || testState.status === "pending") return;
     setTestState({ status: "pending" });
     void onTestConnection().then((result) => {
-      setTestState({ status: "done", ok: result.ok, message: result.message });
+      setTestState({
+        status: "done",
+        ok: result.ok,
+        message: result.message,
+        recordedIdentity: result.recordedIdentity,
+      });
     });
   };
+
+  const recordedIdentityLabel =
+    testState.status === "done" && testState.ok
+      ? describeRecordedIdentity(testState.recordedIdentity)
+      : undefined;
 
   return (
     <div className="grid gap-3">
@@ -489,6 +534,9 @@ function CopilotGovernanceSection(props: {
           <p className="text-xs font-medium text-foreground">Governance (AI-Orch)</p>
           <p className="text-xs text-muted-foreground">
             {describeManagedClientEvidenceReadiness(props.settings)}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {MANAGED_CLIENT_IDENTITY_TRANSPARENCY_NOTE}
           </p>
         </div>
         <Switch
@@ -542,26 +590,31 @@ function CopilotGovernanceSection(props: {
         />
       </label>
       {props.onTestConnection ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            size="xs"
-            variant="outline"
-            className="w-fit shrink-0"
-            disabled={testState.status === "pending"}
-            onClick={runTestConnection}
-          >
-            {testState.status === "pending" ? (
-              <LoaderIcon className="animate-spin" />
-            ) : (
-              <RefreshCwIcon />
-            )}
-            Test connection
-          </Button>
-          {testState.status === "done" ? (
-            <span className={cn("text-xs", testState.ok ? "text-success" : "text-destructive")}>
-              {testState.message}
-            </span>
+        <div className="grid gap-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              className="w-fit shrink-0"
+              disabled={testState.status === "pending"}
+              onClick={runTestConnection}
+            >
+              {testState.status === "pending" ? (
+                <LoaderIcon className="animate-spin" />
+              ) : (
+                <RefreshCwIcon />
+              )}
+              Test connection
+            </Button>
+            {testState.status === "done" ? (
+              <span className={cn("text-xs", testState.ok ? "text-success" : "text-destructive")}>
+                {testState.message}
+              </span>
+            ) : null}
+          </div>
+          {recordedIdentityLabel ? (
+            <span className="text-xs text-muted-foreground">{recordedIdentityLabel}</span>
           ) : null}
         </div>
       ) : null}
@@ -613,7 +666,13 @@ interface ProviderInstanceCardProps {
     | ((patch: Partial<CopilotManagedClientEvidenceSettings>) => void)
     | undefined;
   readonly onTestManagedClientEvidenceConnection?:
-    | (() => Promise<{ readonly ok: boolean; readonly message: string }>)
+    | (() => Promise<{
+        readonly ok: boolean;
+        readonly message: string;
+        readonly recordedIdentity?:
+          | { readonly osUsername?: string | undefined; readonly githubLogin?: string | undefined }
+          | undefined;
+      }>)
     | undefined;
   /**
    * Hidden `CopilotSettings.mcpServers` (`providers.githubCopilot.mcpServers`).

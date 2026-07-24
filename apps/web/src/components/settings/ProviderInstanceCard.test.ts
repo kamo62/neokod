@@ -4,6 +4,7 @@ import type { CopilotManagedClientEvidenceSettings, ServerProviderModel } from "
 import {
   deriveProviderModelsForDisplay,
   describeManagedClientEvidenceReadiness,
+  describeRecordedIdentity,
   formatCopilotMcpServersForEditor,
   parseCopilotMcpServersDraft,
 } from "./ProviderInstanceCard";
@@ -128,5 +129,29 @@ describe("describeManagedClientEvidenceReadiness", () => {
         settings({ governanceUrl: "https://orch.example", credential: "air_test", enabled: true }),
       ),
     ).toEqual("Evidence forwarding is on.");
+  });
+});
+
+describe("describeRecordedIdentity", () => {
+  it("returns undefined when there is nothing to show yet", () => {
+    expect(describeRecordedIdentity(undefined)).toBeUndefined();
+    expect(describeRecordedIdentity({})).toBeUndefined();
+    expect(describeRecordedIdentity({ osUsername: "  ", githubLogin: "  " })).toBeUndefined();
+  });
+
+  it("shows both fields when present", () => {
+    expect(describeRecordedIdentity({ osUsername: "jdoe", githubLogin: "jdoe-gh" })).toEqual(
+      "Recording as jdoe / GitHub: jdoe-gh",
+    );
+  });
+
+  it("falls back to just the OS username when there is no github login", () => {
+    expect(describeRecordedIdentity({ osUsername: "jdoe" })).toEqual("Recording as jdoe");
+  });
+
+  it("falls back to just the github login when there is no OS username", () => {
+    expect(describeRecordedIdentity({ githubLogin: "jdoe-gh" })).toEqual(
+      "Recording as GitHub: jdoe-gh",
+    );
   });
 });

@@ -1336,6 +1336,9 @@ export function ProviderSettingsPanel() {
   const runManagedClientEvidenceTestConnection = async (): Promise<{
     readonly ok: boolean;
     readonly message: string;
+    readonly recordedIdentity?:
+      | { readonly osUsername?: string | undefined; readonly githubLogin?: string | undefined }
+      | undefined;
   }> => {
     if (!primaryEnvironment) {
       return { ok: false, message: "No active environment." };
@@ -1345,7 +1348,11 @@ export function ProviderSettingsPanel() {
       input: {},
     });
     if (result._tag === "Success") {
-      return { ok: result.value.ok, message: result.value.message };
+      return {
+        ok: result.value.ok,
+        message: result.value.message,
+        recordedIdentity: result.value.recordedIdentity,
+      };
     }
     if (isAtomCommandInterrupted(result)) {
       return { ok: false, message: "Test connection was interrupted." };
