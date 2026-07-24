@@ -32,6 +32,10 @@ export function ThreadRunBanner(props: ThreadRunBannerProps) {
   if (!summary) return null;
 
   const isAttention = summary.attention !== null;
+  const hasPlanProgress = summary.totalSteps > 0;
+  const progressPercent = hasPlanProgress
+    ? Math.min(100, Math.max(0, (summary.completedSteps / summary.totalSteps) * 100))
+    : 0;
   return (
     <section
       aria-label="Thread run progress"
@@ -67,10 +71,30 @@ export function ThreadRunBanner(props: ThreadRunBannerProps) {
             {summary.title}
           </span>
           <span className="shrink-0 text-[11px] text-muted-foreground">{summary.statusLabel}</span>
-          {summary.totalSteps > 0 ? (
-            <span className="hidden shrink-0 text-[11px] text-muted-foreground sm:inline">
-              {summary.completedSteps} of {summary.totalSteps} steps
-            </span>
+          {hasPlanProgress ? (
+            <>
+              <span className="hidden shrink-0 text-[11px] text-muted-foreground sm:inline">
+                {summary.completedSteps} of {summary.totalSteps} steps
+              </span>
+              <span className="flex shrink-0 items-center gap-1.5 text-[11px] tabular-nums text-muted-foreground">
+                <span>
+                  {summary.completedSteps}/{summary.totalSteps}
+                </span>
+                <span
+                  className="h-0.5 w-12 overflow-hidden rounded-full bg-muted/20"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={progressPercent}
+                  aria-label="Plan progress"
+                >
+                  <span
+                    className="block h-full rounded-full bg-muted-foreground/60 transition-[width] duration-300 motion-reduce:transition-none"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </span>
+              </span>
+            </>
           ) : null}
           {summary.elapsed ? (
             <span className="ml-auto flex shrink-0 items-center gap-1 text-[11px] tabular-nums text-muted-foreground">

@@ -1,3 +1,12 @@
+## 3.2.0 - 2026-07-24 (Minor)
+
+Release impact: Minor because this adds UI observability and surfaces, reusing existing `task.*` runtime events and provider error payloads, with no storage or contract breaking changes.
+
+- Added per-agent observability to the Subagents cards: live elapsed time, current activity, token/AIU usage when the provider reports it, and result summaries. Copilot worker usage is attributed through the existing `task.*` activity path, and terminal cards no longer show a stale live activity.
+- Added a plan progress indicator to the thread run banner: a completed/total fraction and a thin progress bar, so a plan with untouched steps no longer reads as stuck.
+- Surfaced provider error messages in the transcript instead of a blank "No input or output provided" row. GitHub Copilot monthly-quota errors now show a clear message directing you to another provider until the quota resets.
+- Stopped the model, branch, and new-thread pickers from fading and clipping their first and last rows: the scroll-edge mask was removed from those picker lists (shared scroll surfaces keep it), and the existing scrollbar indicates overflow.
+
 ## 3.1.0 - 2026-07-23 (Minor)
 
 Release impact: Minor because this adds an optional `usage` field to the provider snapshot contract (backward compatible; older clients omit and ignore it) plus new server read behavior, with no breaking changes.

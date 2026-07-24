@@ -17,7 +17,12 @@ import { cn } from "~/lib/utils";
 import { Badge } from "./ui/badge";
 import ChatMarkdown from "./ChatMarkdown";
 import { ScrollArea } from "./ui/scroll-area";
-import { deriveSubagentCards, formatElapsed, type SubagentCard } from "../session-logic";
+import {
+  deriveSubagentCards,
+  formatElapsed,
+  type SubagentCard,
+  type SubagentUsage,
+} from "../session-logic";
 import { formatTimestamp } from "../timestampFormat";
 import { deriveToolIconKindFromName, type ToolCallIconKind } from "./chat/ToolCallLabel.logic";
 
@@ -35,6 +40,14 @@ function toPlainPreview(text: string): string {
 
 export function cleanSubagentProgressLabel(label: string | null | undefined): string {
   return label?.replace(/^(?:Running|Ran)\s+/u, "").trim() || "Working…";
+}
+
+export function formatSubagentUsage(usage: SubagentUsage | null): string | null {
+  if (!usage) return null;
+  const parts: string[] = [];
+  if (usage.totalTokens !== null) parts.push(`${usage.totalTokens.toLocaleString()} tok`);
+  if (usage.totalNanoAiu !== null) parts.push(`${usage.totalNanoAiu.toLocaleString()} nAIU`);
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 function subagentProgressIcon(iconKind: ToolCallIconKind): React.ReactNode {
@@ -195,9 +208,19 @@ const SubagentsPanel = memo(function SubagentsPanel({
 }: SubagentsPanelProps) {
   const cards = useMemo(() => deriveSubagentCards(activities), [activities]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const visibleCards = useMemo(() => visibleSubagentCards(cards, dismissed), [cards, dismissed]);
   const selected = resolveSelectedSubagent(visibleCards, selectedTaskId);
   const tabs = useMemo(() => deriveSubagentTabs(visibleCards), [visibleCards]);
+  const hasLiveCard = cards.some((card) => card.status === "inProgress");
+  const timerActive = hasLiveCard && !turnSettled;
+
+  useEffect(() => {
+    setNowMs(Date.now());
+    if (!timerActive) return;
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [timerActive]);
 
   const dismissWorker = (taskId: string) => {
     onDismiss?.(taskId);
@@ -210,6 +233,9 @@ const SubagentsPanel = memo(function SubagentsPanel({
   useEffect(() => {
     if (selected) streamEndRef.current?.scrollIntoView({ block: "end" });
   }, [selected, progressCount]);
+
+  const elapsedFor = (card: SubagentCard): string | null =>
+    formatElapsed(card.startedAt, card.completedAt ?? new Date(nowMs).toISOString());
 
   return (
     <div
@@ -319,13 +345,23 @@ const SubagentsPanel = memo(function SubagentsPanel({
                   </p>
                   <span className="shrink-0 text-[11px] text-muted-foreground/50 tabular-nums">
                     {displayStatus(selected, turnSettled).label} ·{" "}
-                    {formatElapsed(selected.startedAt, selected.completedAt ?? undefined) ??
-                      formatTimestamp(selected.startedAt, timestampFormat)}
+                    {elapsedFor(selected) ?? formatTimestamp(selected.startedAt, timestampFormat)}
                   </span>
                 </div>
                 {subagentSecondaryLabel(selected) ? (
                   <p className="truncate text-[11px] text-muted-foreground/60">
                     {subagentSecondaryLabel(selected)}
+                  </p>
+                ) : null}
+                {selected.currentActivity ? (
+                  <p className="mt-1 truncate text-[11px] text-muted-foreground/70">
+                    <span className="text-muted-foreground/45">Now · </span>
+                    {toPlainPreview(cleanSubagentProgressLabel(selected.currentActivity))}
+                  </p>
+                ) : null}
+                {formatSubagentUsage(selected.usage) ? (
+                  <p className="mt-1 text-[11px] text-muted-foreground/60 tabular-nums">
+                    Σ {formatSubagentUsage(selected.usage)}
                   </p>
                 ) : null}
                 {selected.summary ? (
@@ -372,7 +408,7 @@ const SubagentsPanel = memo(function SubagentsPanel({
         ) : (
           <div className="space-y-2 p-3">
             {visibleCards.map((card) => {
-              const elapsed = formatElapsed(card.startedAt, card.completedAt ?? undefined);
+              const elapsed = elapsedFor(card);
               const secondary = subagentSecondaryLabel(card);
               const status = displayStatus(card, turnSettled);
               return (
@@ -402,6 +438,17 @@ const SubagentsPanel = memo(function SubagentsPanel({
                         {secondary ? (
                           <p className="truncate text-[11px] text-muted-foreground/60">
                             {secondary}
+                          </p>
+                        ) : null}
+                        {card.currentActivity ? (
+                          <p className="mt-1 truncate text-[11px] text-muted-foreground/70">
+                            <span className="text-muted-foreground/45">Now · </span>
+                            {toPlainPreview(cleanSubagentProgressLabel(card.currentActivity))}
+                          </p>
+                        ) : null}
+                        {formatSubagentUsage(card.usage) ? (
+                          <p className="mt-1 text-[11px] text-muted-foreground/60 tabular-nums">
+                            Σ {formatSubagentUsage(card.usage)}
                           </p>
                         ) : null}
                         {card.summary ? (

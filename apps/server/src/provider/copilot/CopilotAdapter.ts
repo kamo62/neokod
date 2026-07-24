@@ -112,6 +112,12 @@ interface CopilotUsageAccumulator {
   durationMs: number;
 }
 
+interface CopilotWorkerUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  totalNanoAiu?: number;
+}
+
 interface CopilotPermissionRequestRecord {
   readonly data: {
     readonly requestId: string;
@@ -131,6 +137,7 @@ interface CopilotSessionContext {
   // in-flight assistant/tool events) to the task id keyed on the spawning
   // `toolCallId`. Populated at subagent.started, cleared at completed/failed.
   readonly subagentTaskByAgentId: Map<string, RuntimeTaskId>;
+  readonly subagentUsageByAgentId: Map<string, CopilotWorkerUsage>;
   // Copilot plan/tasklist refresh coalescing: `session.todos_changed` is a
   // signal-only event, so we re-read the SQL todo table on each signal but
   // guard against overlapping reads (dirty flag re-runs once more).
@@ -146,6 +153,43 @@ interface CopilotSessionContext {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function nonNegativeNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function copilotWorkerUsage(value: unknown): CopilotWorkerUsage | undefined {
+  if (!isRecord(value)) return undefined;
+  const copilotUsage = isRecord(value.copilotUsage) ? value.copilotUsage : undefined;
+  const inputTokens = nonNegativeNumber(value.inputTokens);
+  const outputTokens = nonNegativeNumber(value.outputTokens);
+  const totalNanoAiu = nonNegativeNumber(copilotUsage?.totalNanoAiu);
+  if (inputTokens === undefined && outputTokens === undefined && totalNanoAiu === undefined) {
+    return undefined;
+  }
+  return {
+    ...(inputTokens !== undefined ? { inputTokens } : {}),
+    ...(outputTokens !== undefined ? { outputTokens } : {}),
+    ...(totalNanoAiu !== undefined ? { totalNanoAiu } : {}),
+  };
+}
+
+function addCopilotWorkerUsage(
+  previous: CopilotWorkerUsage | undefined,
+  next: CopilotWorkerUsage | undefined,
+): CopilotWorkerUsage | undefined {
+  if (!next) return previous;
+  const sum = (left: number | undefined, right: number | undefined): number | undefined =>
+    left === undefined && right === undefined ? undefined : (left ?? 0) + (right ?? 0);
+  const inputTokens = sum(previous?.inputTokens, next.inputTokens);
+  const outputTokens = sum(previous?.outputTokens, next.outputTokens);
+  const totalNanoAiu = sum(previous?.totalNanoAiu, next.totalNanoAiu);
+  return {
+    ...(inputTokens !== undefined ? { inputTokens } : {}),
+    ...(outputTokens !== undefined ? { outputTokens } : {}),
+    ...(totalNanoAiu !== undefined ? { totalNanoAiu } : {}),
+  };
 }
 
 function parseCopilotResume(raw: unknown): { copilotSessionId: string } | undefined {
@@ -294,7 +338,9 @@ interface CopilotTodoRow {
   readonly description?: string;
   readonly status?: string;
 }
-type CopilotReadSqlTodos = () => Promise<{ readonly rows?: ReadonlyArray<CopilotTodoRow> }>;
+type CopilotReadSqlTodos = () => Promise<{
+  readonly rows?: ReadonlyArray<CopilotTodoRow>;
+}>;
 
 /**
  * The SDK's structured-plan reader, when the running CLI build exposes it.
@@ -432,7 +478,11 @@ function summarizeWorkerProgressLine(text: string): string | undefined {
 function toRequestError(threadId: ThreadId, method: string, cause: unknown): ProviderAdapterError {
   const message = cause instanceof Error ? cause.message.toLowerCase() : "";
   if (message.includes("unknown session") || message.includes("not found")) {
-    return new ProviderAdapterSessionNotFoundError({ provider: PROVIDER, threadId, cause });
+    return new ProviderAdapterSessionNotFoundError({
+      provider: PROVIDER,
+      threadId,
+      cause,
+    });
   }
   return new ProviderAdapterRequestError({
     provider: PROVIDER,
@@ -480,7 +530,9 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
   const nativeEventLogger =
     options?.nativeEventLogger ??
     (options?.nativeEventLogPath !== undefined
-      ? yield* makeEventNdjsonLogger(options.nativeEventLogPath, { stream: "native" })
+      ? yield* makeEventNdjsonLogger(options.nativeEventLogPath, {
+          stream: "native",
+        })
       : undefined);
 
   const sessions = new Map<ThreadId, CopilotSessionContext>();
@@ -541,7 +593,12 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
   ): Effect.Effect<CopilotSessionContext, ProviderAdapterSessionNotFoundError> => {
     const ctx = sessions.get(threadId);
     if (!ctx || ctx.stopped) {
-      return Effect.fail(new ProviderAdapterSessionNotFoundError({ provider: PROVIDER, threadId }));
+      return Effect.fail(
+        new ProviderAdapterSessionNotFoundError({
+          provider: PROVIDER,
+          threadId,
+        }),
+      );
     }
     return Effect.succeed(ctx);
   };
@@ -552,6 +609,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       ctx.stopped = true;
       ctx.toolCalls.clear();
       ctx.subagentTaskByAgentId.clear();
+      ctx.subagentUsageByAgentId.clear();
       ctx.permissionRequests.clear();
       yield* settlePendingApprovalsAsCancelled(ctx.pendingApprovals);
       yield* settlePendingUserInputsAsEmptyAnswers(ctx.pendingUserInputs);
@@ -609,6 +667,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       const toolCalls = new Map<string, CopilotToolCallRecord>();
       const permissionRequests = new Map<string, CopilotPermissionRequestRecord>();
       const subagentTaskByAgentId = new Map<string, RuntimeTaskId>();
+      const subagentUsageByAgentId = new Map<string, CopilotWorkerUsage>();
       // Populated once the session record below is assigned; the SDK never
       // invokes onPermissionRequest/onUserInputRequest before createSession
       // resolves, but the closures are handed to the SDK before `ctx`
@@ -662,7 +721,10 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
             case "decline":
               return { kind: "reject" } as const;
             case "cancel":
-              return { kind: "reject", feedback: "Request cancelled by user." } as const;
+              return {
+                kind: "reject",
+                feedback: "Request cancelled by user.",
+              } as const;
           }
         });
         try {
@@ -687,7 +749,10 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
             multiSelect: false,
             options:
               request.choices && request.choices.length > 0
-                ? request.choices.map((choice: string) => ({ label: choice, description: choice }))
+                ? request.choices.map((choice: string) => ({
+                    label: choice,
+                    description: choice,
+                  }))
                 : [{ label: "OK", description: "Continue" }],
           };
           yield* offerRuntimeEvent({
@@ -734,7 +799,9 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         ...(copilotSettings.defaultAgent
           ? {
               defaultAgent: copilotSettings.defaultAgent.excludedTools
-                ? { excludedTools: [...copilotSettings.defaultAgent.excludedTools] }
+                ? {
+                    excludedTools: [...copilotSettings.defaultAgent.excludedTools],
+                  }
                 : {},
             }
           : {}),
@@ -786,6 +853,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         toolCalls,
         permissionRequests,
         subagentTaskByAgentId,
+        subagentUsageByAgentId,
         usage: {
           usedTokens: 0,
           inputTokens: 0,
@@ -888,6 +956,18 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       });
 
       copilotSession.on("assistant.usage", (event) => {
+        const workerTaskId = event.agentId
+          ? sessionCtx.subagentTaskByAgentId.get(event.agentId)
+          : undefined;
+        const workerUsage = event.agentId
+          ? addCopilotWorkerUsage(
+              sessionCtx.subagentUsageByAgentId.get(event.agentId),
+              copilotWorkerUsage(event.data),
+            )
+          : undefined;
+        if (event.agentId && workerUsage) {
+          sessionCtx.subagentUsageByAgentId.set(event.agentId, workerUsage);
+        }
         runFork(
           Effect.gen(function* () {
             yield* logNative(input.threadId, "assistant.usage", event);
@@ -926,6 +1006,22 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
               },
               ...rawSessionEvent("assistant.usage", event.data),
             });
+            if (workerTaskId && event.agentId && workerUsage) {
+              yield* offerRuntimeEvent({
+                type: "task.progress",
+                ...(yield* makeEventStamp()),
+                provider: PROVIDER,
+                threadId: input.threadId,
+                turnId: sessionCtx.activeTurnId,
+                payload: {
+                  taskId: workerTaskId,
+                  agentId: event.agentId,
+                  description: "Working",
+                  usage: workerUsage,
+                },
+                ...rawSessionEvent("assistant.usage", event.data),
+              });
+            }
           }),
         );
       });
@@ -1044,7 +1140,11 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       });
 
       copilotSession.on("subagent.completed", (event) => {
+        const workerUsage = event.agentId
+          ? sessionCtx.subagentUsageByAgentId.get(event.agentId)
+          : undefined;
         if (event.agentId) sessionCtx.subagentTaskByAgentId.delete(event.agentId);
+        if (event.agentId) sessionCtx.subagentUsageByAgentId.delete(event.agentId);
         runFork(
           Effect.gen(function* () {
             yield* logNative(input.threadId, "subagent.completed", event);
@@ -1058,7 +1158,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
                 taskId: RuntimeTaskId.make(event.data.toolCallId),
                 status: "completed",
                 summary: event.data.agentDisplayName,
-                usage: event.data,
+                usage: { ...event.data, ...workerUsage },
                 ...(event.agentId ? { agentId: event.agentId } : {}),
               },
               ...rawSessionEvent("subagent.completed", event.data),
@@ -1068,7 +1168,11 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       });
 
       copilotSession.on("subagent.failed", (event) => {
+        const workerUsage = event.agentId
+          ? sessionCtx.subagentUsageByAgentId.get(event.agentId)
+          : undefined;
         if (event.agentId) sessionCtx.subagentTaskByAgentId.delete(event.agentId);
+        if (event.agentId) sessionCtx.subagentUsageByAgentId.delete(event.agentId);
         runFork(
           Effect.gen(function* () {
             yield* logNative(input.threadId, "subagent.failed", event);
@@ -1082,7 +1186,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
                 taskId: RuntimeTaskId.make(event.data.toolCallId),
                 status: "failed",
                 summary: event.data.error,
-                usage: event.data,
+                usage: { ...event.data, ...workerUsage },
                 ...(event.agentId ? { agentId: event.agentId } : {}),
               },
               ...rawSessionEvent("subagent.failed", event.data),
@@ -1114,7 +1218,9 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
               permissionRequest: event.data.permissionRequest,
               ...(event.data.resolvedByHook ? { resolvedByHook: event.data.resolvedByHook } : {}),
             };
-            sessionCtx.permissionRequests.set(event.data.requestId, { data: requestData });
+            sessionCtx.permissionRequests.set(event.data.requestId, {
+              data: requestData,
+            });
           }),
         );
       });
@@ -1170,7 +1276,10 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
               turnId: sessionCtx.activeTurnId,
               ...providerRefs(sessionCtx),
               itemId: RuntimeItemId.make(event.data.messageId),
-              payload: { streamKind: "assistant_text", delta: event.data.deltaContent },
+              payload: {
+                streamKind: "assistant_text",
+                delta: event.data.deltaContent,
+              },
             });
           }),
         );
@@ -1191,7 +1300,10 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
               turnId: sessionCtx.activeTurnId,
               ...providerRefs(sessionCtx),
               itemId: RuntimeItemId.make(event.data.reasoningId),
-              payload: { streamKind: "reasoning_text", delta: event.data.deltaContent },
+              payload: {
+                streamKind: "reasoning_text",
+                delta: event.data.deltaContent,
+              },
             });
           }),
         );
@@ -1382,6 +1494,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
           Effect.gen(function* () {
             sessionCtx.toolCalls.clear();
             sessionCtx.subagentTaskByAgentId.clear();
+            sessionCtx.subagentUsageByAgentId.clear();
             const turnId = sessionCtx.activeTurnId;
             if (!turnId) return;
             sessionCtx.activeTurnId = undefined;
@@ -1391,7 +1504,9 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
               provider: PROVIDER,
               threadId: input.threadId,
               turnId,
-              payload: { state: event.data.aborted ? "cancelled" : "completed" },
+              payload: {
+                state: event.data.aborted ? "cancelled" : "completed",
+              },
             });
           }),
         );
@@ -1468,7 +1583,11 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
             detail: `Attachment file not found for id '${attachment.id}'.`,
           });
         }
-        attachments.push({ type: "file", path: attachmentPath, displayName: attachment.name });
+        attachments.push({
+          type: "file",
+          path: attachmentPath,
+          displayName: attachment.name,
+        });
       }
 
       const prompt = input.input?.trim() ?? "";
@@ -1483,7 +1602,11 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       const isSteering = ctx.activeTurnId !== undefined;
       const turnId = ctx.activeTurnId ?? TurnId.make(yield* randomUUIDv4);
       ctx.activeTurnId = turnId;
-      ctx.session = { ...ctx.session, activeTurnId: turnId, updatedAt: yield* nowIso };
+      ctx.session = {
+        ...ctx.session,
+        activeTurnId: turnId,
+        updatedAt: yield* nowIso,
+      };
 
       if (!isSteering) {
         yield* offerRuntimeEvent({
@@ -1540,7 +1663,11 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         ctx.turns.push({ id: turnId, items: [{ prompt, messageId }] });
       }
 
-      return { threadId: input.threadId, turnId, resumeCursor: ctx.session.resumeCursor };
+      return {
+        threadId: input.threadId,
+        turnId,
+        resumeCursor: ctx.session.resumeCursor,
+      };
     });
 
   const interruptTurn: CopilotAdapterShape["interruptTurn"] = (threadId) =>
@@ -1592,7 +1719,10 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       const ctx = yield* requireSession(threadId);
       return {
         threadId,
-        turns: ctx.turns.map((turn) => ({ id: turn.id, items: [...turn.items] })),
+        turns: ctx.turns.map((turn) => ({
+          id: turn.id,
+          items: [...turn.items],
+        })),
       };
     });
 
@@ -1609,7 +1739,10 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       ctx.turns.splice(Math.max(0, ctx.turns.length - numTurns));
       return {
         threadId,
-        turns: ctx.turns.map((turn) => ({ id: turn.id, items: [...turn.items] })),
+        turns: ctx.turns.map((turn) => ({
+          id: turn.id,
+          items: [...turn.items],
+        })),
       };
     });
 
@@ -1629,10 +1762,14 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
     });
 
   const stopAll: CopilotAdapterShape["stopAll"] = () =>
-    Effect.forEach(Array.from(sessions.values()), stopSessionInternal, { discard: true });
+    Effect.forEach(Array.from(sessions.values()), stopSessionInternal, {
+      discard: true,
+    });
 
   yield* Effect.addFinalizer(() =>
-    Effect.forEach(Array.from(sessions.values()), stopSessionInternal, { discard: true }).pipe(
+    Effect.forEach(Array.from(sessions.values()), stopSessionInternal, {
+      discard: true,
+    }).pipe(
       Effect.catch((cause) =>
         Effect.logError("Failed to emit GitHub Copilot session shutdown event.", { cause }),
       ),

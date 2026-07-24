@@ -52,7 +52,12 @@ interface FakeCopilotSession {
     };
     readonly plan: {
       readonly readSqlTodosWithDependencies: () => Promise<{
-        rows: Array<{ id?: string; title?: string; description?: string; status?: string }>;
+        rows: Array<{
+          id?: string;
+          title?: string;
+          description?: string;
+          status?: string;
+        }>;
         dependencies: Array<{ todoId: string; dependsOn: string }>;
       }>;
     };
@@ -61,7 +66,12 @@ interface FakeCopilotSession {
   readonly sentMessages: Array<unknown>;
   readonly fleetStarts: Array<{ prompt?: string }>;
   readonly setTodoRows: (
-    rows: Array<{ id?: string; title?: string; description?: string; status?: string }>,
+    rows: Array<{
+      id?: string;
+      title?: string;
+      description?: string;
+      status?: string;
+    }>,
   ) => void;
   readonly disconnectCalls: Array<string>;
   readonly abortCalls: number;
@@ -75,7 +85,12 @@ function makeFakeCopilotSession(sessionId: string): FakeCopilotSession {
   const fleetStarts: Array<{ prompt?: string }> = [];
   const disconnectCalls: Array<string> = [];
   const setModelCalls: Array<{ model: string; options: unknown }> = [];
-  let todoRows: Array<{ id?: string; title?: string; description?: string; status?: string }> = [];
+  let todoRows: Array<{
+    id?: string;
+    title?: string;
+    description?: string;
+    status?: string;
+  }> = [];
   let abortCalls = 0;
   let messageCounter = 0;
 
@@ -115,7 +130,10 @@ function makeFakeCopilotSession(sessionId: string): FakeCopilotSession {
         },
       },
       plan: {
-        readSqlTodosWithDependencies: async () => ({ rows: todoRows, dependencies: [] }),
+        readSqlTodosWithDependencies: async () => ({
+          rows: todoRows,
+          dependencies: [],
+        }),
       },
     },
     emit: (eventType, event) => {
@@ -182,7 +200,9 @@ const CopilotAdapterTestLayer = Layer.unwrap(
     client = makeCopilotClientTestDouble();
     return Layer.effect(
       CopilotAdapterTag,
-      makeCopilotAdapter(client, testCopilotSettings, { instanceId: INSTANCE_ID }),
+      makeCopilotAdapter(client, testCopilotSettings, {
+        instanceId: INSTANCE_ID,
+      }),
     );
   }),
 ).pipe(
@@ -281,7 +301,11 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
       });
       const fakeSession = latestSession();
       fakeSession.emit("tool.execution_start", {
-        data: { toolCallId: "call-1", toolName: "bash", arguments: { command: "ls" } },
+        data: {
+          toolCallId: "call-1",
+          toolName: "bash",
+          arguments: { command: "ls" },
+        },
       });
       fakeSession.emit("tool.execution_complete", {
         data: {
@@ -560,7 +584,9 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
       });
       const adapterLayer = Layer.effect(
         CopilotAdapterTag,
-        makeCopilotAdapter(scopedClient, settings, { instanceId: INSTANCE_ID }),
+        makeCopilotAdapter(scopedClient, settings, {
+          instanceId: INSTANCE_ID,
+        }),
       ).pipe(
         Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
         Layer.provideMerge(NodeServices.layer),
@@ -602,7 +628,10 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
         threadId: asThreadId("thread-custom-agents"),
         cwd: "/tmp/project",
         runtimeMode: "full-access",
-        resumeCursor: { schemaVersion: 1, copilotSessionId: "fake-session-1" },
+        resumeCursor: {
+          schemaVersion: 1,
+          copilotSessionId: "fake-session-1",
+        },
       });
 
       NodeAssert.deepEqual(
@@ -669,7 +698,9 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
       const settings = yield* decodeCopilotSettings({ fleetMode: true });
       const adapterLayer = Layer.effect(
         CopilotAdapterTag,
-        makeCopilotAdapter(scopedClient, settings, { instanceId: INSTANCE_ID }),
+        makeCopilotAdapter(scopedClient, settings, {
+          instanceId: INSTANCE_ID,
+        }),
       ).pipe(
         Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
         Layer.provideMerge(NodeServices.layer),
@@ -778,7 +809,11 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
       const onPermissionRequest = latestOnPermissionRequest();
       const decisionPromise = Promise.resolve(
         onPermissionRequest(
-          { kind: "shell", fullCommandText: "rm -rf /", canOfferSessionApproval: true } as never,
+          {
+            kind: "shell",
+            fullCommandText: "rm -rf /",
+            canOfferSessionApproval: true,
+          } as never,
           { sessionId: latestSession().sessionId },
         ),
       );
@@ -790,7 +825,9 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
 
       yield* adapter.respondToRequest(threadId, ApprovalRequestId.make(requestId!), "accept");
       const decision = yield* Effect.promise(() => decisionPromise);
-      NodeAssert.deepEqual(decision, { kind: "approve-once" } satisfies PermissionRequestResult);
+      NodeAssert.deepEqual(decision, {
+        kind: "approve-once",
+      } satisfies PermissionRequestResult);
     }),
   );
 
@@ -829,7 +866,9 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
 
       yield* adapter.respondToRequest(threadId, ApprovalRequestId.make(requestId), "decline");
       const decision = yield* Effect.promise(() => decisionPromise);
-      NodeAssert.deepEqual(decision, { kind: "reject" } satisfies PermissionRequestResult);
+      NodeAssert.deepEqual(decision, {
+        kind: "reject",
+      } satisfies PermissionRequestResult);
     }),
   );
 
@@ -848,12 +887,18 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
       const decision = yield* Effect.promise(() =>
         Promise.resolve(
           onPermissionRequest(
-            { kind: "shell", fullCommandText: "ls", canOfferSessionApproval: true } as never,
+            {
+              kind: "shell",
+              fullCommandText: "ls",
+              canOfferSessionApproval: true,
+            } as never,
             { sessionId: latestSession().sessionId },
           ),
         ),
       );
-      NodeAssert.deepEqual(decision, { kind: "approve-once" } satisfies PermissionRequestResult);
+      NodeAssert.deepEqual(decision, {
+        kind: "approve-once",
+      } satisfies PermissionRequestResult);
     }),
   );
 
@@ -877,9 +922,16 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
         runtimeMode: "full-access",
       });
       const fakeSession = latestSession();
-      fakeSession.emit("assistant.turn_start", { data: { turnId: "sdk-turn-1" } });
+      fakeSession.emit("assistant.turn_start", {
+        data: { turnId: "sdk-turn-1" },
+      });
       fakeSession.emit("assistant.usage", {
-        data: { model: "gpt-5", inputTokens: 10, outputTokens: 5, cacheReadTokens: 3 },
+        data: {
+          model: "gpt-5",
+          inputTokens: 10,
+          outputTokens: 5,
+          cacheReadTokens: 3,
+        },
       });
       fakeSession.emit("assistant.usage", {
         data: { model: "gpt-5", outputTokens: 7, reasoningTokens: 2 },
@@ -924,14 +976,20 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
         runtimeMode: "full-access",
       });
       const fakeSession = latestSession();
-      fakeSession.emit("session.usage_checkpoint", { data: { totalNanoAiu: 123 } });
+      fakeSession.emit("session.usage_checkpoint", {
+        data: { totalNanoAiu: 123 },
+      });
       fakeSession.emit("session.context_changed", {
         data: { cwd: "/tmp/project", branch: "main" },
       });
       fakeSession.emit("session.shutdown", {
         data: {
           shutdownType: "normal",
-          codeChanges: { filesModified: ["a.ts"], linesAdded: 1, linesRemoved: 0 },
+          codeChanges: {
+            filesModified: ["a.ts"],
+            linesAdded: 1,
+            linesRemoved: 0,
+          },
           modelMetrics: {},
           sessionStartTime: 1,
           totalApiDurationMs: 2,
@@ -995,7 +1053,7 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
               event.type === "content.delta" ||
               event.type === "item.completed"),
         ),
-        Stream.take(4),
+        Stream.take(5),
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -1022,19 +1080,37 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
         agentId: "agent-1",
         data: { deltaContent: "partial", messageId: "wmsg-1" },
       });
+      fakeSession.emit("assistant.usage", {
+        agentId: "agent-1",
+        data: {
+          copilotUsage: { totalNanoAiu: 12 },
+        },
+      });
       // A completed worker message becomes one coalesced progress row.
       fakeSession.emit("assistant.message", {
         agentId: "agent-1",
-        data: { content: "Reviewed the diff.\nLooks good.", messageId: "wmsg-1" },
+        data: {
+          content: "Reviewed the diff.\nLooks good.",
+          messageId: "wmsg-1",
+        },
       });
       // A worker tool call becomes one progress row keyed on the tool name.
       fakeSession.emit("tool.execution_start", {
         agentId: "agent-1",
-        data: { toolCallId: "wtc-1", toolName: "bash", arguments: { command: "ls" } },
+        data: {
+          toolCallId: "wtc-1",
+          toolName: "bash",
+          arguments: { command: "ls" },
+        },
       });
       fakeSession.emit("subagent.completed", {
         agentId: "agent-1",
-        data: { toolCallId: "tc-1", agentName: "reviewer", agentDisplayName: "Reviewer" },
+        data: {
+          toolCallId: "tc-1",
+          agentName: "reviewer",
+          agentDisplayName: "Reviewer",
+          totalTokens: 42,
+        },
       });
 
       const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
@@ -1052,7 +1128,7 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
       NodeAssert.equal(started.payload.parentToolCallId, "tc-1");
 
       const progress = events.filter((event) => event.type === "task.progress");
-      NodeAssert.equal(progress.length, 2);
+      NodeAssert.equal(progress.length, 3);
       NodeAssert.equal(
         progress.every(
           (event) => event.type === "task.progress" && event.payload.agentId === "agent-1",
@@ -1078,10 +1154,72 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
         ),
         true,
       );
+      const usageProgress = progress.find(
+        (event) => event.type === "task.progress" && event.payload.usage !== undefined,
+      );
+      NodeAssert.ok(usageProgress && usageProgress.type === "task.progress");
+      NodeAssert.deepEqual(usageProgress.payload.usage, { totalNanoAiu: 12 });
 
       const completed = events.find((event) => event.type === "task.completed");
       NodeAssert.ok(completed && completed.type === "task.completed");
       NodeAssert.equal(completed.payload.agentId, "agent-1");
+      const completedUsage = completed.payload.usage as
+        | { totalTokens?: number; totalNanoAiu?: number }
+        | undefined;
+      NodeAssert.equal(completedUsage?.totalTokens, 42);
+      NodeAssert.equal(completedUsage?.totalNanoAiu, 12);
+    }),
+  );
+
+  it.effect("clears worker usage attribution after session.idle", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CopilotAdapterTag;
+      const threadId = asThreadId("thread-worker-idle-usage-clear");
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId && event.type === "task.completed"),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        provider: PROVIDER,
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+      const fakeSession = latestSession();
+      fakeSession.emit("subagent.started", {
+        agentId: "agent-idle",
+        data: {
+          toolCallId: "tc-idle",
+          agentName: "reviewer",
+          agentDisplayName: "Reviewer",
+        },
+      });
+      fakeSession.emit("assistant.usage", {
+        agentId: "agent-idle",
+        data: { copilotUsage: { totalNanoAiu: 12 } },
+      });
+      fakeSession.emit("session.idle", { data: { aborted: false } });
+      fakeSession.emit("subagent.completed", {
+        agentId: "agent-idle",
+        data: {
+          toolCallId: "tc-idle",
+          agentName: "reviewer",
+          agentDisplayName: "Reviewer",
+          totalTokens: 42,
+        },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      const completed = events[0]!;
+      NodeAssert.ok(completed.type === "task.completed");
+      const completedUsage = completed.payload.usage as
+        | { totalTokens?: number; totalNanoAiu?: number }
+        | undefined;
+      NodeAssert.equal(completedUsage?.totalTokens, 42);
+      NodeAssert.equal(completedUsage?.totalNanoAiu, undefined);
     }),
   );
 
@@ -1221,7 +1359,10 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
       });
       // Main agent's synthesis (no agentId) → main thread (the final result).
       fakeSession.emit("assistant.message", {
-        data: { content: "The reviewer found no issues.", messageId: "main-1" },
+        data: {
+          content: "The reviewer found no issues.",
+          messageId: "main-1",
+        },
       });
 
       const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
@@ -1302,7 +1443,11 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
         runtimeMode: "full-access",
       });
       const fakeSession = latestSession();
-      const shell = { kind: "shell", fullCommandText: "ls", canOfferSessionApproval: true };
+      const shell = {
+        kind: "shell",
+        fullCommandText: "ls",
+        canOfferSessionApproval: true,
+      };
       fakeSession.emit("permission.requested", {
         data: { requestId: "dup-1", permissionRequest: shell },
       });
@@ -1381,7 +1526,9 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
       try {
         const adapterLayer = Layer.effect(
           CopilotAdapterTag,
-          makeCopilotAdapter(scopedClient, testCopilotSettings, { instanceId: INSTANCE_ID }),
+          makeCopilotAdapter(scopedClient, testCopilotSettings, {
+            instanceId: INSTANCE_ID,
+          }),
         ).pipe(
           Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
           Layer.provideMerge(NodeServices.layer),
