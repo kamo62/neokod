@@ -778,6 +778,50 @@ describe("deriveWorkLogEntries", () => {
     expect(entries[0]?.tone).toBe("error");
   });
 
+  it("maps quota errors to Copilot guidance instead of the empty work-log fallback", () => {
+    const [entry] = deriveWorkLogEntries([
+      makeActivity({
+        id: "copilot-quota-error",
+        kind: "runtime.error",
+        summary: "Runtime error",
+        tone: "error",
+        payload: {
+          message: "You have exceeded your monthly quota",
+          class: "provider_error",
+          detail: {
+            errorType: "quota",
+            errorCode: "quota_exceeded",
+            statusCode: 402,
+            message: "You have exceeded your monthly quota",
+          },
+        },
+      }),
+    ]);
+
+    expect(entry?.detail).toBe(
+      "GitHub Copilot monthly quota exceeded. Switch to another provider (Claude or Codex) until it resets next month.",
+    );
+    expect(entry?.detail).not.toBe("No input or output provided.");
+  });
+
+  it("maps generic provider errors to their real message, including detail.message fallback", () => {
+    const [entry] = deriveWorkLogEntries([
+      makeActivity({
+        id: "provider-error",
+        kind: "runtime.error",
+        summary: "Runtime error",
+        tone: "error",
+        payload: {
+          class: "provider_error",
+          detail: { message: "Copilot service unavailable" },
+        },
+      }),
+    ]);
+
+    expect(entry?.detail).toBe("Copilot service unavailable");
+    expect(entry?.detail).not.toBe("No input or output provided.");
+  });
+
   it("keeps tool entries from every turn and tags each with its turn id", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({

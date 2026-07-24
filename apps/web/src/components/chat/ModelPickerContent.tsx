@@ -97,8 +97,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     onInstanceModelChange,
   } = props;
   const [searchQuery, setSearchQuery] = useState("");
-  const [showTopScrollFade, setShowTopScrollFade] = useState(false);
-  const [showBottomScrollFade, setShowBottomScrollFade] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const modelListRef = useRef<LegendListRef | null>(null);
   const highlightedModelKeyRef = useRef<string | null>(null);
@@ -436,15 +434,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       new Map(filteredModels.map((model) => [`${model.instanceId}:${model.slug}`, model] as const)),
     [filteredModels],
   );
-  const updateModelListScrollFades = useCallback(() => {
-    const scrollElement = modelListRef.current?.getScrollableNode();
-    if (!(scrollElement instanceof HTMLElement)) {
-      return;
-    }
-    const maxScrollOffset = Math.max(0, scrollElement.scrollHeight - scrollElement.clientHeight);
-    setShowTopScrollFade(scrollElement.scrollTop > 1);
-    setShowBottomScrollFade(maxScrollOffset - scrollElement.scrollTop > 1);
-  }, []);
   const modelJumpShortcutContext = useMemo(
     () =>
       ({
@@ -503,20 +492,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       window.removeEventListener("keydown", onWindowKeyDown, true);
     };
   }, [handleModelSelect, keybindings, modelJumpModelKeys, modelJumpShortcutContext]);
-
-  useLayoutEffect(() => {
-    setShowTopScrollFade(false);
-    setShowBottomScrollFade(filteredModelKeys.length > 5);
-    let nestedFrame = 0;
-    const frame = window.requestAnimationFrame(() => {
-      updateModelListScrollFades();
-      nestedFrame = window.requestAnimationFrame(updateModelListScrollFades);
-    });
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.cancelAnimationFrame(nestedFrame);
-    };
-  }, [filteredModelKeys, updateModelListScrollFades]);
 
   return (
     <TooltipProvider delay={0}>
@@ -656,13 +631,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                   estimatedItemSize={60}
                   drawDistance={480}
                   recycleItems
-                  onLayout={updateModelListScrollFades}
-                  onScroll={updateModelListScrollFades}
-                  className={cn(
-                    "scrollbar-gutter-both h-full overflow-x-hidden overscroll-y-contain py-1.5 [--fade-size:1.5rem]",
-                    showTopScrollFade && "mask-t-from-[calc(100%-var(--fade-size))]",
-                    showBottomScrollFade && "mask-b-from-[calc(100%-var(--fade-size))]",
-                  )}
+                  className="scrollbar-gutter-both h-full overflow-x-hidden overscroll-y-contain py-1.5"
                 />
               </ComboboxListVirtualized>
             </div>

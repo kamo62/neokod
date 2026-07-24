@@ -42,7 +42,11 @@ describe("deriveSubagentCards", () => {
       makeActivity({
         kind: "task.started",
         sequence: 1,
-        payload: { taskId: "task-b", description: "Builder", taskType: "codex" },
+        payload: {
+          taskId: "task-b",
+          description: "Builder",
+          taskType: "codex",
+        },
       }),
     ]);
     expect(cards.length).toBe(2);
@@ -80,7 +84,11 @@ describe("deriveSubagentCards", () => {
         kind: "task.completed",
         createdAt: "2026-02-23T00:00:05.000Z",
         sequence: 1,
-        payload: { taskId: "task-a", status: "completed", summary: "Done exploring" },
+        payload: {
+          taskId: "task-a",
+          status: "completed",
+          summary: "Done exploring",
+        },
       }),
     ]);
     expect(card?.status).toBe("completed");
@@ -91,7 +99,11 @@ describe("deriveSubagentCards", () => {
 
   it("propagates a failed status", () => {
     const [card] = deriveSubagentCards([
-      makeActivity({ kind: "task.started", sequence: 0, payload: { taskId: "task-a" } }),
+      makeActivity({
+        kind: "task.started",
+        sequence: 0,
+        payload: { taskId: "task-a" },
+      }),
       makeActivity({
         kind: "task.completed",
         sequence: 1,
@@ -104,22 +116,94 @@ describe("deriveSubagentCards", () => {
 
   it("accumulates progress entries in order", () => {
     const [card] = deriveSubagentCards([
-      makeActivity({ kind: "task.started", sequence: 0, payload: { taskId: "task-a" } }),
+      makeActivity({
+        kind: "task.started",
+        sequence: 0,
+        payload: { taskId: "task-a" },
+      }),
       makeActivity({
         kind: "task.progress",
         sequence: 1,
-        payload: { taskId: "task-a", description: "Step 1", lastToolName: "grep" },
+        payload: {
+          taskId: "task-a",
+          description: "Step 1",
+          lastToolName: "grep",
+        },
       }),
       makeActivity({
         kind: "task.progress",
         sequence: 2,
-        payload: { taskId: "task-a", description: "Step 2", summary: "halfway" },
+        payload: {
+          taskId: "task-a",
+          description: "Step 2",
+          summary: "halfway",
+        },
       }),
     ]);
     expect(card?.progress.length).toBe(2);
     expect(card?.progress[0]?.description).toBe("Step 1");
     expect(card?.progress[0]?.lastToolName).toBe("grep");
     expect(card?.progress[1]?.summary).toBe("halfway");
+  });
+
+  it("derives current activity and latest per-agent usage without surfacing usage ticks as work", () => {
+    const [card] = deriveSubagentCards([
+      makeActivity({
+        kind: "task.started",
+        sequence: 0,
+        payload: { taskId: "task-a", description: "Explorer" },
+      }),
+      makeActivity({
+        kind: "task.progress",
+        sequence: 1,
+        payload: {
+          taskId: "task-a",
+          description: "Inspecting the diff",
+          lastToolName: "grep",
+          usage: { totalTokens: 12, copilotUsage: { totalNanoAiu: 4 } },
+        },
+      }),
+      makeActivity({
+        kind: "task.progress",
+        sequence: 2,
+        payload: {
+          taskId: "task-a",
+          description: "Working",
+          usage: { totalTokens: 25, copilotUsage: { totalNanoAiu: 9 } },
+        },
+      }),
+      makeActivity({
+        kind: "task.completed",
+        sequence: 3,
+        payload: { taskId: "task-a", status: "completed", summary: "Explorer" },
+      }),
+    ]);
+    expect(card?.currentActivity).toBe(null);
+    expect(card?.summary).toBe("Inspecting the diff");
+    expect(card?.progress).toHaveLength(1);
+    expect(card?.usage).toEqual({ totalTokens: 25, totalNanoAiu: 9 });
+  });
+
+  it("keeps usage from a completion event beside the result summary", () => {
+    const [card] = deriveSubagentCards([
+      makeActivity({
+        kind: "task.started",
+        sequence: 0,
+        payload: { taskId: "task-a" },
+      }),
+      makeActivity({
+        kind: "task.completed",
+        sequence: 1,
+        payload: {
+          taskId: "task-a",
+          status: "completed",
+          summary: "Done",
+          usage: { input_tokens: 20, output_tokens: 5 },
+        },
+      }),
+    ]);
+    expect(card?.summary).toBe("Done");
+    expect(card?.usage).toEqual({ totalTokens: 25, totalNanoAiu: null });
   });
 
   it("reads the stored ingestion shape (detail, not description)", () => {
@@ -129,12 +213,21 @@ describe("deriveSubagentCards", () => {
       makeActivity({
         kind: "task.started",
         sequence: 0,
-        payload: { taskId: "task-a", detail: "Explorer", taskType: "reviewer", model: "gpt-5" },
+        payload: {
+          taskId: "task-a",
+          detail: "Explorer",
+          taskType: "reviewer",
+          model: "gpt-5",
+        },
       }),
       makeActivity({
         kind: "task.progress",
         sequence: 1,
-        payload: { taskId: "task-a", detail: "Inspecting the diff", lastToolName: "grep" },
+        payload: {
+          taskId: "task-a",
+          detail: "Inspecting the diff",
+          lastToolName: "grep",
+        },
       }),
       makeActivity({
         kind: "task.completed",

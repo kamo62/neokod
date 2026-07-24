@@ -59,6 +59,39 @@ describe("buildToolCallExpandedBody", () => {
       ),
     ).toBe("No input or output provided.");
   });
+
+  it("renders quota guidance and generic provider messages instead of the empty fallback", () => {
+    const quotaMessage =
+      "GitHub Copilot monthly quota exceeded. Switch to another provider (Claude or Codex) until it resets next month.";
+    const genericMessage = "Copilot service unavailable";
+
+    expect(
+      buildToolCallExpandedBody(
+        {
+          id: "quota-error",
+          createdAt: "",
+          label: "Runtime error",
+          tone: "error",
+          detail: quotaMessage,
+        },
+        "/workspace",
+      ),
+    ).toBe(quotaMessage);
+    expect(
+      buildToolCallExpandedBody(
+        {
+          id: "provider-error",
+          createdAt: "",
+          label: "Runtime error",
+          tone: "error",
+          detail: genericMessage,
+        },
+        "/workspace",
+      ),
+    ).toBe(genericMessage);
+    expect(quotaMessage).not.toBe("No input or output provided.");
+    expect(genericMessage).not.toBe("No input or output provided.");
+  });
 });
 
 describe("in-progress tool visibility", () => {

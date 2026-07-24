@@ -32,7 +32,11 @@ export const PROVIDER_OPTIONS: Array<{
   pickerSidebarBadge?: "new" | "soon";
 }> = [
   { value: ProviderDriverKind.make("codex"), label: "Codex", available: true },
-  { value: ProviderDriverKind.make("claudeAgent"), label: "Claude", available: true },
+  {
+    value: ProviderDriverKind.make("claudeAgent"),
+    label: "Claude",
+    available: true,
+  },
   {
     value: ProviderDriverKind.make("opencode"),
     label: "OpenCode",
@@ -97,6 +101,11 @@ export interface SubagentProgressEntry {
   at: string;
 }
 
+export interface SubagentUsage {
+  totalTokens: number | null;
+  totalNanoAiu: number | null;
+}
+
 export interface SubagentCard {
   taskId: string;
   name: string;
@@ -112,6 +121,8 @@ export interface SubagentCard {
   startedAt: string;
   completedAt: string | null;
   summary: string | null;
+  currentActivity: string | null;
+  usage: SubagentUsage | null;
   progress: SubagentProgressEntry[];
 }
 
@@ -674,6 +685,51 @@ export function deriveWorkLogEntries(
 const optionalString = (value: unknown): string | null =>
   typeof value === "string" && value.length > 0 ? value : null;
 
+function optionalNonNegativeNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function readUsageNumber(record: Record<string, unknown>, ...keys: string[]): number | null {
+  for (const key of keys) {
+    const value = optionalNonNegativeNumber(record[key]);
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+function readSubagentUsage(value: unknown): SubagentUsage | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const inputTokens = readUsageNumber(record, "inputTokens", "input_tokens");
+  const outputTokens = readUsageNumber(record, "outputTokens", "output_tokens");
+  const totalTokens =
+    readUsageNumber(record, "totalTokens", "total_tokens") ??
+    (inputTokens !== null || outputTokens !== null
+      ? (inputTokens ?? 0) + (outputTokens ?? 0)
+      : null);
+  const copilotUsage =
+    record.copilotUsage &&
+    typeof record.copilotUsage === "object" &&
+    !Array.isArray(record.copilotUsage)
+      ? (record.copilotUsage as Record<string, unknown>)
+      : null;
+  const totalNanoAiu = copilotUsage
+    ? readUsageNumber(copilotUsage, "totalNanoAiu", "total_nano_aiu")
+    : readUsageNumber(record, "totalNanoAiu", "total_nano_aiu");
+  return totalTokens === null && totalNanoAiu === null ? null : { totalTokens, totalNanoAiu };
+}
+
+function mergeSubagentUsage(
+  previous: SubagentUsage | null,
+  next: SubagentUsage | null,
+): SubagentUsage | null {
+  if (!next) return previous;
+  return {
+    totalTokens: next.totalTokens ?? previous?.totalTokens ?? null,
+    totalNanoAiu: next.totalNanoAiu ?? previous?.totalNanoAiu ?? null,
+  };
+}
+
 /**
  * Group sub-agent/task-worker lifecycle activities into per-task cards.
  *
@@ -717,6 +773,8 @@ export function deriveSubagentCards(
         startedAt: activity.createdAt,
         completedAt: null,
         summary: null,
+        currentActivity: null,
+        usage: null,
         progress: [],
       });
       continue;
@@ -726,12 +784,24 @@ export function deriveSubagentCards(
     if (!card) continue;
 
     if (activity.kind === "task.progress") {
-      card.progress.push({
-        description: optionalString(payload?.detail) ?? optionalString(payload?.description),
-        summary: optionalString(payload?.summary),
-        lastToolName: optionalString(payload?.lastToolName),
-        at: activity.createdAt,
-      });
+      const description = optionalString(payload?.detail) ?? optionalString(payload?.description);
+      const summary = optionalString(payload?.summary);
+      const lastToolName = optionalString(payload?.lastToolName);
+      const usage = readSubagentUsage(payload?.usage);
+      card.usage = mergeSubagentUsage(card.usage, usage);
+      // A usage-only update still travels as task.progress because that is the
+      // existing durable activity path, but it must not replace the real work
+      // description shown as the current activity.
+      const usageOnly = usage !== null && description === "Working" && !summary && !lastToolName;
+      if (!usageOnly) {
+        card.progress.push({
+          description,
+          summary,
+          lastToolName,
+          at: activity.createdAt,
+        });
+        card.currentActivity = summary ?? description;
+      }
       continue;
     }
 
@@ -739,7 +809,13 @@ export function deriveSubagentCards(
     const status = payload?.status;
     card.status =
       status === "completed" || status === "failed" || status === "stopped" ? status : "completed";
-    card.summary = optionalString(payload?.detail) ?? optionalString(payload?.summary);
+    const completionSummary = optionalString(payload?.detail) ?? optionalString(payload?.summary);
+    card.summary =
+      completionSummary && completionSummary !== card.name
+        ? completionSummary
+        : card.currentActivity;
+    card.currentActivity = null;
+    card.usage = mergeSubagentUsage(card.usage, readSubagentUsage(payload?.usage));
     card.completedAt = activity.createdAt;
   }
   return [...byTaskId.values()];
@@ -776,6 +852,28 @@ function extractWorkLogToolLifecycleStatus(
   return undefined;
 }
 
+const COPILOT_QUOTA_ERROR_MESSAGE =
+  "GitHub Copilot monthly quota exceeded. Switch to another provider (Claude or Codex) until it resets next month.";
+
+function extractErrorMessage(payload: Record<string, unknown> | null): string | null {
+  const detail = asRecord(payload?.detail);
+  const message =
+    typeof payload?.message === "string" && payload.message.length > 0
+      ? payload.message
+      : typeof detail?.message === "string" && detail.message.length > 0
+        ? detail.message
+        : null;
+  if (message === null) {
+    return null;
+  }
+
+  return detail?.errorCode === "quota_exceeded" ||
+    detail?.statusCode === 402 ||
+    detail?.errorType === "quota"
+    ? COPILOT_QUOTA_ERROR_MESSAGE
+    : message;
+}
+
 function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWorkLogEntry {
   const payload =
     activity.payload && typeof activity.payload === "object"
@@ -800,7 +898,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       ? payload.detail
       : null;
   const taskLabel = taskSummary || taskDetailAsLabel;
-  const detail = isTaskActivity
+  const defaultDetail = isTaskActivity
     ? !taskDetailAsLabel &&
       payload &&
       typeof payload.detail === "string" &&
@@ -808,6 +906,8 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       ? stripTrailingExitCode(payload.detail).output
       : null
     : extractToolDetail(payload, title ?? activity.summary);
+  const detail =
+    activity.tone === "error" ? (extractErrorMessage(payload) ?? defaultDetail) : defaultDetail;
   const toolCallId = isTaskActivity ? null : extractToolCallId(payload);
   const entry: DerivedWorkLogEntry = {
     id: activity.id,

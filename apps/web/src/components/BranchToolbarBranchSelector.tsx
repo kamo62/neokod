@@ -450,8 +450,6 @@ export function BranchToolbarBranchSelector({
   );
 
   const branchListScrollElementRef = useRef<HTMLElement | null>(null);
-  const [showTopBranchScrollFade, setShowTopBranchScrollFade] = useState(false);
-  const [showBottomBranchScrollFade, setShowBottomBranchScrollFade] = useState(false);
   const fetchNextBranchPage = useCallback(() => {
     if (!hasNextPage || isFetchingNextPage) {
       return;
@@ -479,15 +477,12 @@ export function BranchToolbarBranchSelector({
   }, [fetchNextBranchPage, hasNextPage, isBranchMenuOpen, isFetchingNextPage]);
 
   const branchListRef = useRef<LegendListRef | null>(null);
-  const updateBranchListScrollFades = useCallback(() => {
+  const updateBranchListScrollElement = useCallback(() => {
     const scrollElement = branchListRef.current?.getScrollableNode?.();
     if (!(scrollElement instanceof HTMLElement)) {
       return;
     }
     branchListScrollElementRef.current = scrollElement;
-    const maxScrollOffset = Math.max(0, scrollElement.scrollHeight - scrollElement.clientHeight);
-    setShowTopBranchScrollFade(scrollElement.scrollTop > 1);
-    setShowBottomBranchScrollFade(maxScrollOffset - scrollElement.scrollTop > 1);
   }, []);
 
   useLayoutEffect(() => {
@@ -495,12 +490,10 @@ export function BranchToolbarBranchSelector({
       return;
     }
 
-    setShowTopBranchScrollFade(false);
-    setShowBottomBranchScrollFade(filteredBranchPickerItems.length > 8);
     let nestedFrame = 0;
     const frame = requestAnimationFrame(() => {
-      updateBranchListScrollFades();
-      nestedFrame = requestAnimationFrame(updateBranchListScrollFades);
+      updateBranchListScrollElement();
+      nestedFrame = requestAnimationFrame(updateBranchListScrollElement);
     });
     return () => {
       cancelAnimationFrame(frame);
@@ -510,7 +503,7 @@ export function BranchToolbarBranchSelector({
     deferredTrimmedBranchQuery,
     filteredBranchPickerItems.length,
     isBranchMenuOpen,
-    updateBranchListScrollFades,
+    updateBranchListScrollElement,
   ]);
 
   useEffect(() => {
@@ -712,18 +705,14 @@ export function BranchToolbarBranchSelector({
                   }
                 }}
                 onLayout={() => {
-                  updateBranchListScrollFades();
+                  updateBranchListScrollElement();
                   maybeFetchNextBranchPage();
                 }}
                 onScroll={() => {
-                  updateBranchListScrollFades();
+                  updateBranchListScrollElement();
                   maybeFetchNextBranchPage();
                 }}
-                className={cn(
-                  "scrollbar-gutter-stable overflow-x-hidden overscroll-y-contain ps-1 pe-0 pt-2 pb-1 [--fade-size:1.5rem]",
-                  showTopBranchScrollFade && "mask-t-from-[calc(100%-var(--fade-size))]",
-                  showBottomBranchScrollFade && "mask-b-from-[calc(100%-var(--fade-size))]",
-                )}
+                className="scrollbar-gutter-stable overflow-x-hidden overscroll-y-contain ps-1 pe-0 pt-2 pb-1"
                 style={{ maxHeight: "14rem" }}
               />
             </ComboboxListVirtualized>

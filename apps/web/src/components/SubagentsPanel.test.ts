@@ -5,6 +5,7 @@ import {
   deriveSubagentTabs,
   cleanSubagentProgressLabel,
   displayStatus,
+  formatSubagentUsage,
   isDismissableEmptyWorker,
   isFinishedWorker,
   resolveSelectedSubagent,
@@ -31,6 +32,8 @@ function makeCard(overrides: Partial<SubagentCard> & { taskId: string }): Subage
     startedAt: "2026-07-04T00:00:00.000Z",
     completedAt: null,
     summary: null,
+    currentActivity: null,
+    usage: null,
     progress: [],
     ...overrides,
   };
@@ -65,11 +68,33 @@ describe("cleanSubagentProgressLabel", () => {
   });
 });
 
+describe("formatSubagentUsage", () => {
+  it("formats token and Copilot AIU usage", () => {
+    expect(formatSubagentUsage({ totalTokens: 1234, totalNanoAiu: 56 })).toBe(
+      "1,234 tok · 56 nAIU",
+    );
+  });
+
+  it("returns null when usage is unavailable", () => {
+    expect(formatSubagentUsage(null)).toBe(null);
+  });
+});
+
 describe("deriveSubagentTabs", () => {
   it("emits one tab per card in order, carrying label, hint, and status", () => {
     const tabs = deriveSubagentTabs([
-      makeCard({ taskId: "a", name: "Explorer", model: "gpt-5", status: "inProgress" }),
-      makeCard({ taskId: "b", name: "Builder", kind: "codex", status: "completed" }),
+      makeCard({
+        taskId: "a",
+        name: "Explorer",
+        model: "gpt-5",
+        status: "inProgress",
+      }),
+      makeCard({
+        taskId: "b",
+        name: "Builder",
+        kind: "codex",
+        status: "completed",
+      }),
     ]);
     expect(tabs).toEqual([
       { taskId: "a", label: "Explorer", hint: "gpt-5", status: "inProgress" },
@@ -149,7 +174,14 @@ describe("isDismissableEmptyWorker", () => {
         makeCard({
           taskId: "a",
           status: "stopped",
-          progress: [{ at: "now", description: null, summary: "Stopped", lastToolName: null }],
+          progress: [
+            {
+              at: "now",
+              description: null,
+              summary: "Stopped",
+              lastToolName: null,
+            },
+          ],
         }),
       ),
     ).toBe(false);
@@ -188,7 +220,10 @@ describe("hidden worker persistence helpers", () => {
     const persisted = migratePersistedSubagentUiState(
       {
         hiddenTaskIdsByThreadKey: {
-          [scopedThreadKey(primaryRef)]: { taskIds: ["task-a"], updatedAt: Date.now() },
+          [scopedThreadKey(primaryRef)]: {
+            taskIds: ["task-a"],
+            updatedAt: Date.now(),
+          },
         },
       },
       1,
@@ -214,7 +249,10 @@ describe("hidden worker persistence helpers", () => {
     );
     const oldRef = scopeThreadRef("old" as never, ThreadId.make("old"));
     const oldKey = scopedThreadKey(oldRef);
-    entries[oldKey] = { taskIds: ["old-task"], updatedAt: now - HIDDEN_SUBAGENT_MAX_AGE_MS - 1 };
+    entries[oldKey] = {
+      taskIds: ["old-task"],
+      updatedAt: now - HIDDEN_SUBAGENT_MAX_AGE_MS - 1,
+    };
 
     const pruned = pruneHiddenSubagentTaskIds(entries, now);
 
