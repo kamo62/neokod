@@ -44,6 +44,7 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import * as Types from "effect/Types";
 import { writeFileStringAtomically } from "./atomicWrite.ts";
 import * as ServerConfig from "./config.ts";
 import { type DeepPartial, deepMerge } from "@neokod/shared/Struct";
@@ -126,12 +127,15 @@ const MANAGED_CLIENT_EVIDENCE_SECRET_FIELDS: ReadonlyArray<ManagedClientEvidence
 function redactManagedClientEvidenceSecretFields(
   managedClientEvidence: CopilotManagedClientEvidenceSettings,
 ): CopilotManagedClientEvidenceSettings {
-  let next = managedClientEvidence;
+  let changed = false;
+  const next: Types.Mutable<CopilotManagedClientEvidenceSettings> = { ...managedClientEvidence };
   for (const field of MANAGED_CLIENT_EVIDENCE_SECRET_FIELDS) {
     if (next[field.valueKey].length === 0) continue;
-    next = { ...next, [field.valueKey]: "", [field.redactedKey]: true };
+    next[field.valueKey] = "";
+    next[field.redactedKey] = true;
+    changed = true;
   }
-  return next;
+  return changed ? next : managedClientEvidence;
 }
 
 function redactProviderEnvironmentVariable(
@@ -494,7 +498,10 @@ const make = Effect.gen(function* () {
   ): Effect.Effect<ServerSettings, ServerSettingsError> =>
     Effect.gen(function* () {
       const managedClientEvidence = settings.providers.githubCopilot.managedClientEvidence;
-      let next = managedClientEvidence;
+      let changed = false;
+      const next: Types.Mutable<CopilotManagedClientEvidenceSettings> = {
+        ...managedClientEvidence,
+      };
       for (const field of MANAGED_CLIENT_EVIDENCE_SECRET_FIELDS) {
         if (next[field.valueKey].length === 0 && !next[field.redactedKey]) continue;
         const secret = yield* secretStore.get(field.secretName).pipe(
@@ -507,12 +514,12 @@ const make = Effect.gen(function* () {
               }),
           ),
         );
-        const value = Option.isSome(secret)
-          ? textDecoder.decode(secret.value)
-          : next[field.valueKey];
-        next = { ...next, [field.valueKey]: value };
+        if (Option.isSome(secret)) {
+          next[field.valueKey] = textDecoder.decode(secret.value);
+          changed = true;
+        }
       }
-      if (next === managedClientEvidence) return settings;
+      if (!changed) return settings;
       return {
         ...settings,
         providers: {
@@ -697,7 +704,10 @@ const make = Effect.gen(function* () {
   ): Effect.Effect<ServerSettings, ServerSettingsError> =>
     Effect.gen(function* () {
       const managedClientEvidence = next.providers.githubCopilot.managedClientEvidence;
-      let updated = managedClientEvidence;
+      let changed = false;
+      const updated: Types.Mutable<CopilotManagedClientEvidenceSettings> = {
+        ...managedClientEvidence,
+      };
       for (const field of MANAGED_CLIENT_EVIDENCE_SECRET_FIELDS) {
         if (updated[field.redactedKey]) {
           // Client left the redacted marker in place (unchanged secret) or a
@@ -728,9 +738,11 @@ const make = Effect.gen(function* () {
               }),
           ),
         );
-        updated = { ...updated, [field.valueKey]: "", [field.redactedKey]: true };
+        updated[field.valueKey] = "";
+        updated[field.redactedKey] = true;
+        changed = true;
       }
-      if (updated === managedClientEvidence) return next;
+      if (!changed) return next;
       return {
         ...next,
         providers: {

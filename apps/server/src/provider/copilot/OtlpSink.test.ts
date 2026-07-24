@@ -121,23 +121,23 @@ describe("evidenceEventToOtlpLogRecord", () => {
 
   it("never includes repo.remote (strips PII, keeps branch/commit)", () => {
     const record = evidenceEventToOtlpLogRecord(promptEvent, 0);
-    const keys = record.attributes.map((attr) => attr.key);
-    NodeAssert.equal(keys.includes("repo.remote"), false);
+    const keys = new Set(record.attributes.map((attr) => attr.key));
+    NodeAssert.equal(keys.has("repo.remote"), false);
     NodeAssert.equal(containsSubstring(record, "github.com/example/repo"), false);
-    NodeAssert.ok(keys.includes("repo.branch"));
-    NodeAssert.ok(keys.includes("repo.commit"));
+    NodeAssert.ok(keys.has("repo.branch"));
+    NodeAssert.ok(keys.has("repo.commit"));
   });
 
   it("never includes file_change.paths (strips PII, keeps the diff hash)", () => {
     const record = evidenceEventToOtlpLogRecord(fileChangeEvent, 0);
-    const keys = record.attributes.map((attr) => attr.key);
-    NodeAssert.equal(keys.includes("file_change.paths"), false);
+    const keys = new Set(record.attributes.map((attr) => attr.key));
+    NodeAssert.equal(keys.has("file_change.paths"), false);
     NodeAssert.equal(
       containsSubstring(record, "secret-project"),
       false,
       "expected no file path anywhere in the log record",
     );
-    NodeAssert.ok(keys.includes("file_change.diff_sha256"));
+    NodeAssert.ok(keys.has("file_change.diff_sha256"));
   });
 });
 
