@@ -1,3 +1,10 @@
+## 3.2.1 - 2026-07-24 (Patch)
+
+Release impact: Patch because this refreshes the vendored Codex app-server protocol bindings and adds a backward-compatible runtime compatibility warning, with no provider contract changes.
+
+- Regenerated the Codex app-server protocol bindings against the `rust-v0.145.0` release, pinned to the release commit rather than a mid-cycle commit. This picks up methods added since the previous pin: workspace messages, usage-limit reset-credit consumption, thread environment connect/disconnect, the `writes` approval mode, and fork-through-turn.
+- Warned when the runtime Codex CLI is older than the supported protocol target (read from the app-server handshake), without blocking the provider.
+
 ## 3.2.0 - 2026-07-24 (Minor)
 
 Release impact: Minor because this adds UI observability and surfaces, reusing existing `task.*` runtime events and provider error payloads, with no storage or contract breaking changes.

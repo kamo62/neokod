@@ -26,9 +26,11 @@ import { ServerSettingsError } from "@neokod/contracts";
 
 import { createModelCapabilities } from "@neokod/shared/model";
 import { resolveSpawnCommand } from "@neokod/shared/shell";
+import { compareSemverVersions } from "@neokod/shared/semver";
 import {
   AUTH_PROBE_TIMEOUT_MS,
   buildServerProvider,
+  parseGenericCliVersion,
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
@@ -36,6 +38,7 @@ import packageJson from "../../../package.json" with { type: "json" };
 const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnError);
 
 const CODEX_APP_SERVER_PROBE_FORCE_KILL_AFTER = "2 seconds" as const;
+export const MINIMUM_SUPPORTED_CODEX_VERSION = "0.145.0";
 
 const CODEX_PRESENTATION = {
   displayName: "Codex",
@@ -104,6 +107,25 @@ function codexAccountAuthLabel(account: CodexSchema.V2GetAccountResponse["accoun
 function codexAccountEmail(account: CodexSchema.V2GetAccountResponse["account"]) {
   if (!account || account.type !== "chatgpt") return undefined;
   return account.email;
+}
+
+export function parseCodexVersion(userAgent: string | undefined): string | undefined {
+  return userAgent === undefined ? undefined : (parseGenericCliVersion(userAgent) ?? undefined);
+}
+
+export function isCodexVersionBelowMinimum(version: string | undefined): boolean {
+  return (
+    version !== undefined && compareSemverVersions(version, MINIMUM_SUPPORTED_CODEX_VERSION) < 0
+  );
+}
+
+export function codexVersionWarning(version: string | undefined): string | undefined {
+  if (version === undefined) {
+    return `Codex CLI version could not be determined; update to ${MINIMUM_SUPPORTED_CODEX_VERSION} if needed.`;
+  }
+  return isCodexVersionBelowMinimum(version)
+    ? `Codex CLI ${version} is older than the supported ${MINIMUM_SUPPORTED_CODEX_VERSION}; some features may not work — update codex.`
+    : undefined;
 }
 
 export function mapCodexModelCapabilities(
@@ -343,9 +365,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
   });
   yield* client.notify("initialized", undefined);
 
-  // Extract the version string after the first '/' in userAgent, up to the next space or the end
-  const versionMatch = initialize.userAgent.match(/\/([^\s]+)/);
-  const version = versionMatch ? versionMatch[1] : undefined;
+  const version = parseCodexVersion(initialize.userAgent);
 
   const accountResponse = yield* client.request("account/read", {});
   if (!accountResponse.account && accountResponse.requiresOpenaiAuth) {
@@ -552,6 +572,12 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
 
   const snapshot = probeResult.success.value;
   const accountStatus = accountProbeStatus(snapshot.account);
+  const versionWarning = codexVersionWarning(snapshot.version);
+  const status =
+    accountStatus.status === "ready" && isCodexVersionBelowMinimum(snapshot.version)
+      ? "warning"
+      : accountStatus.status;
+  const message = [accountStatus.message, versionWarning].filter(Boolean).join(" ");
 
   return buildServerProvider({
     presentation: CODEX_PRESENTATION,
@@ -562,9 +588,9 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     probe: {
       installed: true,
       version: snapshot.version ?? null,
-      status: accountStatus.status,
+      status,
       auth: accountStatus.auth,
-      ...(accountStatus.message ? { message: accountStatus.message } : {}),
+      ...(message ? { message } : {}),
     },
   });
 });
