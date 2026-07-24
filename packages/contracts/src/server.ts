@@ -152,6 +152,22 @@ export const ServerProviderUpdateState = Schema.Struct({
 });
 export type ServerProviderUpdateState = typeof ServerProviderUpdateState.Type;
 
+export const ServerProviderUsageWindow = Schema.Struct({
+  bucketId: TrimmedNonEmptyString,
+  used: NonNegativeInt,
+  entitlement: Schema.NullOr(NonNegativeInt),
+  remainingPercentage: Schema.Number,
+  resetDate: Schema.optional(TrimmedNonEmptyString),
+  unlimited: Schema.Boolean,
+  overage: NonNegativeInt,
+});
+export type ServerProviderUsageWindow = typeof ServerProviderUsageWindow.Type;
+
+export const ServerProviderUsage = Schema.Struct({
+  windows: Schema.Array(ServerProviderUsageWindow),
+});
+export type ServerProviderUsage = typeof ServerProviderUsage.Type;
+
 export const ServerProvider = Schema.Struct({
   // Routing key for the configured instance this snapshot represents. This
   // is the only stable identity consumers may use for provider routing.
@@ -172,6 +188,7 @@ export const ServerProvider = Schema.Struct({
   auth: ServerProviderAuth,
   checkedAt: IsoDateTime,
   message: Schema.optional(TrimmedNonEmptyString),
+  usage: Schema.optional(ServerProviderUsage),
   // Optional for back-compat: every legacy producer omits this field and
   // an absent value is interpreted as `"available"` by consumers (see
   // `isProviderAvailable`). New `ProviderInstanceRegistry` outputs set it

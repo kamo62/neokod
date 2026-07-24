@@ -25,6 +25,46 @@ describe("ServerProvider", () => {
     expect(parsed.skills).toEqual([]);
     expect(parsed.versionAdvisory).toBeUndefined();
     expect(parsed.updateState).toBeUndefined();
+    expect(parsed.usage).toBeUndefined();
+  });
+
+  it("decodes provider usage windows", () => {
+    const parsed = decodeServerProvider({
+      instanceId: "githubCopilot",
+      driver: "githubCopilot",
+      enabled: true,
+      installed: true,
+      version: "1.0.5",
+      status: "ready",
+      auth: {
+        status: "authenticated",
+      },
+      checkedAt: "2026-04-10T00:00:00.000Z",
+      models: [],
+      usage: {
+        windows: [
+          {
+            bucketId: "premium_interactions",
+            used: 12,
+            entitlement: 100,
+            remainingPercentage: 88,
+            resetDate: "2026-05-01",
+            unlimited: false,
+            overage: 2,
+          },
+        ],
+      },
+    });
+
+    expect(parsed.usage?.windows[0]).toEqual({
+      bucketId: "premium_interactions",
+      used: 12,
+      entitlement: 100,
+      remainingPercentage: 88,
+      resetDate: "2026-05-01",
+      unlimited: false,
+      overage: 2,
+    });
   });
 
   it("defaults one-click update support when decoding older advisory snapshots", () => {

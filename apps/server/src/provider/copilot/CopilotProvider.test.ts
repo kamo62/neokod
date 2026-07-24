@@ -1,5 +1,5 @@
 import * as NodeAssert from "node:assert/strict";
-import type { ModelInfo } from "@github/copilot-sdk";
+import type { CopilotClient, ModelInfo } from "@github/copilot-sdk";
 import { it } from "@effect/vitest";
 import { CopilotSettings } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
@@ -16,6 +16,12 @@ const SDK_MODEL_CAPABILITIES: ModelInfo["capabilities"] = {
   supports: { vision: false, reasoningEffort: true },
   limits: { max_context_window_tokens: 128_000 },
 };
+
+const emptyQuotaRpc = {
+  account: {
+    getQuota: () => Promise.resolve({ quotaSnapshots: {} }),
+  },
+} as unknown as CopilotClient["rpc"];
 
 describe("CopilotProvider", () => {
   it.effect("makePendingCopilotProvider reports a not-yet-checked warning when enabled", () =>
@@ -45,6 +51,24 @@ describe("CopilotProvider", () => {
         getAuthStatus: () =>
           Promise.resolve({ isAuthenticated: true, authType: "gh-cli" as const, login: "octocat" }),
         listModels: () => Promise.resolve([]),
+        rpc: {
+          account: {
+            getQuota: () =>
+              Promise.resolve({
+                quotaSnapshots: {
+                  premium_interactions: {
+                    isUnlimitedEntitlement: false,
+                    entitlementRequests: 100,
+                    usedRequests: 12,
+                    usageAllowedWithExhaustedQuota: false,
+                    remainingPercentage: 88,
+                    overage: 0,
+                    overageAllowedWithExhaustedQuota: false,
+                  },
+                },
+              }),
+          },
+        } as unknown as CopilotClient["rpc"],
       };
       const draft = yield* checkCopilotProviderStatus(decodeSettings({ enabled: true }), client);
       NodeAssert.equal(draft.status, "ready");
@@ -52,12 +76,38 @@ describe("CopilotProvider", () => {
       NodeAssert.equal(draft.version, "1.2.3");
       NodeAssert.equal(draft.auth.status, "authenticated");
       NodeAssert.equal(draft.auth.email, "octocat");
+      NodeAssert.equal(draft.usage?.windows[0]?.bucketId, "premium_interactions");
+      NodeAssert.equal(draft.usage?.windows[0]?.used, 12);
+    }),
+  );
+
+  it.effect("checkCopilotProviderStatus forwards the GitHub token to quota lookup", () =>
+    Effect.gen(function* () {
+      let receivedToken: string | undefined;
+      const client = {
+        getStatus: () => Promise.resolve({ version: "1.2.3", protocolVersion: 2 }),
+        getAuthStatus: () => Promise.resolve({ isAuthenticated: true }),
+        listModels: () => Promise.resolve([]),
+        rpc: {
+          account: {
+            getQuota: (params: { readonly gitHubToken?: string }) => {
+              receivedToken = params.gitHubToken;
+              return Promise.resolve({ quotaSnapshots: {} });
+            },
+          },
+        } as unknown as CopilotClient["rpc"],
+      };
+
+      yield* checkCopilotProviderStatus(decodeSettings({ enabled: true }), client, "ghp_secret");
+
+      NodeAssert.equal(receivedToken, "ghp_secret");
     }),
   );
 
   it.effect("checkCopilotProviderStatus reports an error status when not authenticated", () =>
     Effect.gen(function* () {
       let listModelsProbed = false;
+      let quotaProbed = false;
       const client = {
         getStatus: () => Promise.resolve({ version: "1.2.3", protocolVersion: 2 }),
         getAuthStatus: () => Promise.resolve({ isAuthenticated: false }),
@@ -65,11 +115,20 @@ describe("CopilotProvider", () => {
           listModelsProbed = true;
           return Promise.resolve([]);
         },
+        rpc: {
+          account: {
+            getQuota: () => {
+              quotaProbed = true;
+              return Promise.resolve({ quotaSnapshots: {} });
+            },
+          },
+        } as unknown as CopilotClient["rpc"],
       };
       const draft = yield* checkCopilotProviderStatus(decodeSettings({ enabled: true }), client);
       NodeAssert.equal(draft.status, "error");
       NodeAssert.equal(draft.auth.status, "unauthenticated");
       NodeAssert.equal(listModelsProbed, false);
+      NodeAssert.equal(quotaProbed, false);
     }),
   );
 
@@ -79,6 +138,7 @@ describe("CopilotProvider", () => {
         getStatus: () => Promise.reject(new Error("connection refused")),
         getAuthStatus: () => Promise.resolve({ isAuthenticated: true }),
         listModels: () => Promise.resolve([]),
+        rpc: emptyQuotaRpc,
       };
       const draft = yield* checkCopilotProviderStatus(decodeSettings({ enabled: true }), client);
       NodeAssert.equal(draft.status, "error");
@@ -100,6 +160,7 @@ describe("CopilotProvider", () => {
           listModelsProbed = true;
           return Promise.resolve([]);
         },
+        rpc: emptyQuotaRpc,
       };
       const draft = yield* checkCopilotProviderStatus(decodeSettings({ enabled: false }), client);
       NodeAssert.equal(draft.status, "disabled");
@@ -129,6 +190,7 @@ describe("CopilotProvider", () => {
               policy: { state: "disabled", terms: "" },
             },
           ]),
+        rpc: emptyQuotaRpc,
       };
       const draft = yield* checkCopilotProviderStatus(decodeSettings({ enabled: true }), client);
 
@@ -153,6 +215,7 @@ describe("CopilotProvider", () => {
           getStatus: () => Promise.resolve({ version: "1.2.3", protocolVersion: 2 }),
           getAuthStatus: () => Promise.resolve({ isAuthenticated: true }),
           listModels: () => Promise.reject(new Error("boom")),
+          rpc: emptyQuotaRpc,
         };
         const draft = yield* checkCopilotProviderStatus(decodeSettings({ enabled: true }), client);
 
@@ -168,6 +231,7 @@ describe("CopilotProvider", () => {
           getStatus: () => Promise.resolve({ version: "1.2.3", protocolVersion: 2 }),
           getAuthStatus: () => Promise.resolve({ isAuthenticated: true }),
           listModels: () => new Promise<never>(() => {}),
+          rpc: emptyQuotaRpc,
         };
         const fiber = yield* checkCopilotProviderStatus(
           decodeSettings({ enabled: true }),
@@ -179,5 +243,26 @@ describe("CopilotProvider", () => {
 
         NodeAssert.ok(draft.models.some((model) => model.slug === "gpt-5"));
       }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("quota failure does not change a healthy authenticated provider", () =>
+    Effect.gen(function* () {
+      const client = {
+        getStatus: () => Promise.resolve({ version: "1.2.3", protocolVersion: 2 }),
+        getAuthStatus: () => Promise.resolve({ isAuthenticated: true }),
+        listModels: () => Promise.resolve([]),
+        rpc: {
+          account: {
+            getQuota: () => Promise.reject(new Error("quota unavailable")),
+          },
+        } as unknown as CopilotClient["rpc"],
+      };
+
+      const draft = yield* checkCopilotProviderStatus(decodeSettings({ enabled: true }), client);
+
+      NodeAssert.equal(draft.status, "ready");
+      NodeAssert.equal(draft.auth.status, "authenticated");
+      NodeAssert.equal(draft.usage, undefined);
+    }),
   );
 });
