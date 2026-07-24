@@ -139,6 +139,23 @@ export function buildPostHogBatchBody(input: {
   return { api_key: input.apiKey, batch: input.events };
 }
 
+export function resolvePostHogBatchUrl(posthogHost: string): string {
+  return `${posthogHost.replace(/\/+$/, "")}/batch/`;
+}
+
+/** Clearly-marked one-shot event for the "Test connection" button. */
+export function buildPostHogTestConnectionEvent(
+  distinctId: string,
+  timestamp: string,
+): PostHogEventPayload {
+  return {
+    event: "neokod_test_connection",
+    distinct_id: distinctId,
+    properties: {},
+    timestamp,
+  };
+}
+
 const POSTHOG_ANONYMOUS_ID_FILE_NAME = "posthog-anon-id";
 const POSTHOG_ANONYMOUS_ID_FALLBACK = "anonymous";
 
@@ -150,9 +167,11 @@ const POSTHOG_ANONYMOUS_ID_FALLBACK = "anonymous";
  * since that one backs this fork's own product telemetry and mixing the two
  * would let an operator correlate governance evidence with product
  * telemetry. Any read/write failure falls back to the literal "anonymous"
- * rather than blocking evidence delivery.
+ * rather than blocking evidence delivery. Exported so the test-connection
+ * probe (`ManagedClientEvidenceTestConnection.ts`) can show the exact same
+ * distinct_id the live pipeline would use.
  */
-const readOrCreatePostHogAnonymousId: Effect.Effect<
+export const readOrCreatePostHogAnonymousId: Effect.Effect<
   string,
   never,
   FileSystem.FileSystem | Path.Path | ServerConfig.ServerConfig | Crypto.Crypto
@@ -192,7 +211,7 @@ export const makePostHogSink = (
   FileSystem.FileSystem | Path.Path | ServerConfig.ServerConfig | Crypto.Crypto
 > =>
   Effect.gen(function* () {
-    const endpoint = `${settings.posthogHost.replace(/\/+$/, "")}/batch/`;
+    const endpoint = resolvePostHogBatchUrl(settings.posthogHost);
     const anonymousId = yield* readOrCreatePostHogAnonymousId;
     let identifiedOnce = false;
 

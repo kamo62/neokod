@@ -1,4 +1,5 @@
 import * as NodeAssert from "node:assert/strict";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, it } from "vite-plus/test";
 
 import type { CopilotManagedClientEvidenceSettings } from "@neokod/contracts";
@@ -6,6 +7,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
+import * as ServerConfig from "../../config.ts";
 import { testManagedClientEvidenceConnection } from "./ManagedClientEvidenceTestConnection.ts";
 import { setKnownGithubLogin } from "./ManagedClientIdentityRegistry.ts";
 
@@ -228,5 +230,203 @@ describe("testManagedClientEvidenceConnection", () => {
 
       NodeAssert.equal(result.ok, true);
       NodeAssert.equal(result.recordedIdentity, undefined);
+    }));
+});
+
+describe("testManagedClientEvidenceConnection (posthog backend)", () => {
+  const makePostHogSettings = (
+    overrides: Partial<CopilotManagedClientEvidenceSettings> = {},
+  ): CopilotManagedClientEvidenceSettings =>
+    makeSettings({
+      backend: "posthog",
+      governanceUrl: "",
+      credential: "",
+      posthogHost: "https://us.i.posthog.com",
+      posthogApiKey: "phc_test",
+      ...overrides,
+    });
+
+  it("reports a typed failure without making a request when posthogHost/posthogApiKey are unset", () =>
+    Effect.gen(function* () {
+      const posts: unknown[] = [];
+      const layer = Layer.succeed(
+        HttpClient.HttpClient,
+        HttpClient.make((request) => {
+          posts.push(request.url);
+          return Effect.succeed(
+            HttpClientResponse.fromWeb(request, Response.json({ status: "Ok" })),
+          );
+        }),
+      );
+      const result = yield* testManagedClientEvidenceConnection(
+        makePostHogSettings({ posthogApiKey: "" }),
+      ).pipe(Effect.provide(Layer.mergeAll(layer, NodeServices.layer)));
+
+      NodeAssert.deepEqual(result, {
+        ok: false,
+        status: null,
+        message: "Set a PostHog host and API key before testing.",
+      });
+      NodeAssert.equal(posts.length, 0);
+    }));
+
+  it("posts a clearly-marked neokod_test_connection event and reports success", () =>
+    Effect.gen(function* () {
+      const posts: Array<{ readonly url: string; readonly body: unknown }> = [];
+      const layer = Layer.succeed(
+        HttpClient.HttpClient,
+        HttpClient.make((request) => {
+          const rawBody = (request.body as { readonly body?: Uint8Array }).body;
+          const body = JSON.parse(decoder.decode(rawBody)) as unknown;
+          posts.push({ url: request.url, body });
+          return Effect.succeed(
+            HttpClientResponse.fromWeb(request, Response.json({ status: "Ok" })),
+          );
+        }),
+      );
+      const result = yield* testManagedClientEvidenceConnection(makePostHogSettings()).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            layer,
+            ServerConfig.layerTest(process.cwd(), { prefix: "neokod-test-connection-posthog-" }),
+          ).pipe(Layer.provideMerge(NodeServices.layer)),
+        ),
+      );
+
+      NodeAssert.equal(result.ok, true);
+      NodeAssert.equal(result.status, 200);
+      NodeAssert.equal(posts.length, 1);
+      NodeAssert.equal(posts[0]!.url, "https://us.i.posthog.com/batch/");
+      const body = posts[0]!.body as {
+        readonly api_key?: string;
+        readonly batch?: ReadonlyArray<{ event?: string }>;
+      };
+      NodeAssert.equal(body.api_key, "phc_test");
+      NodeAssert.equal(body.batch?.[0]?.event, "neokod_test_connection");
+    }));
+
+  it("reports a typed failure with the HTTP status on a non-2xx response", () =>
+    Effect.gen(function* () {
+      const layer = Layer.succeed(
+        HttpClient.HttpClient,
+        HttpClient.make((request) =>
+          Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 401 }))),
+        ),
+      );
+      const result = yield* testManagedClientEvidenceConnection(makePostHogSettings()).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            layer,
+            ServerConfig.layerTest(process.cwd(), {
+              prefix: "neokod-test-connection-posthog-401-",
+            }),
+          ).pipe(Layer.provideMerge(NodeServices.layer)),
+        ),
+      );
+
+      NodeAssert.deepEqual(result, {
+        ok: false,
+        status: 401,
+        message: "PostHog endpoint returned HTTP 401.",
+      });
+    }));
+});
+
+describe("testManagedClientEvidenceConnection (otlp backend)", () => {
+  const makeOtlpSettings = (
+    overrides: Partial<CopilotManagedClientEvidenceSettings> = {},
+  ): CopilotManagedClientEvidenceSettings =>
+    makeSettings({
+      backend: "otlp",
+      governanceUrl: "",
+      credential: "",
+      otlpEndpoint: "https://otel.example.com",
+      otlpHeaders: "Authorization=Bearer test",
+      ...overrides,
+    });
+
+  it("reports a typed failure without making a request when otlpEndpoint is unset", () =>
+    Effect.gen(function* () {
+      const posts: unknown[] = [];
+      const layer = Layer.succeed(
+        HttpClient.HttpClient,
+        HttpClient.make((request) => {
+          posts.push(request.url);
+          return Effect.succeed(
+            HttpClientResponse.fromWeb(request, Response.json({ status: "Ok" })),
+          );
+        }),
+      );
+      const result = yield* testManagedClientEvidenceConnection(
+        makeOtlpSettings({ otlpEndpoint: "" }),
+      ).pipe(Effect.provide(layer));
+
+      NodeAssert.deepEqual(result, {
+        ok: false,
+        status: null,
+        message: "Set an OTLP endpoint before testing.",
+      });
+      NodeAssert.equal(posts.length, 0);
+    }));
+
+  it("posts a clearly-marked neokod_test_connection logRecord and reports success", () =>
+    Effect.gen(function* () {
+      const posts: Array<{
+        readonly url: string;
+        readonly headers: Readonly<Record<string, string | undefined>>;
+        readonly body: unknown;
+      }> = [];
+      const layer = Layer.succeed(
+        HttpClient.HttpClient,
+        HttpClient.make((request) => {
+          const rawBody = (request.body as { readonly body?: Uint8Array }).body;
+          const body = JSON.parse(decoder.decode(rawBody)) as unknown;
+          posts.push({ url: request.url, headers: request.headers, body });
+          return Effect.succeed(
+            HttpClientResponse.fromWeb(request, Response.json({ status: "Ok" })),
+          );
+        }),
+      );
+      const result = yield* testManagedClientEvidenceConnection(makeOtlpSettings()).pipe(
+        Effect.provide(layer),
+      );
+
+      NodeAssert.equal(result.ok, true);
+      NodeAssert.equal(result.status, 200);
+      NodeAssert.equal(posts.length, 1);
+      NodeAssert.equal(posts[0]!.url, "https://otel.example.com/v1/logs");
+      NodeAssert.equal(posts[0]!.headers.authorization, "Bearer test");
+      const body = posts[0]!.body as {
+        readonly resourceLogs?: ReadonlyArray<{
+          readonly scopeLogs?: ReadonlyArray<{
+            readonly logRecords?: ReadonlyArray<{
+              readonly body?: { readonly stringValue?: string };
+            }>;
+          }>;
+        }>;
+      };
+      NodeAssert.equal(
+        body.resourceLogs?.[0]?.scopeLogs?.[0]?.logRecords?.[0]?.body?.stringValue,
+        "neokod_test_connection",
+      );
+    }));
+
+  it("reports a typed failure with the HTTP status on a non-2xx response", () =>
+    Effect.gen(function* () {
+      const layer = Layer.succeed(
+        HttpClient.HttpClient,
+        HttpClient.make((request) =>
+          Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 500 }))),
+        ),
+      );
+      const result = yield* testManagedClientEvidenceConnection(makeOtlpSettings()).pipe(
+        Effect.provide(layer),
+      );
+
+      NodeAssert.deepEqual(result, {
+        ok: false,
+        status: 500,
+        message: "OTLP endpoint returned HTTP 500.",
+      });
     }));
 });

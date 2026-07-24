@@ -208,6 +208,34 @@ export function buildOtlpLogsBody(input: {
   };
 }
 
+/** Clearly-marked one-shot logRecord for the "Test connection" button. */
+export function buildOtlpTestConnectionLogsBody(input: {
+  readonly identity: ManagedClientIdentity | undefined;
+  readonly serviceVersion: string;
+  readonly nowMs: number;
+}): OtlpLogsBody {
+  const testRecord: OtlpLogRecord = {
+    timeUnixNano: (BigInt(Math.trunc(input.nowMs)) * 1_000_000n).toString(),
+    severityNumber: OTLP_SEVERITY_NUMBER_INFO,
+    severityText: OTLP_SEVERITY_TEXT_INFO,
+    body: otlpStringValue("neokod_test_connection"),
+    attributes: [attribute("event.type", otlpStringValue("neokod_test_connection"))],
+  };
+  return {
+    resourceLogs: [
+      {
+        resource: {
+          attributes: buildOtlpResourceAttributes({
+            serviceVersion: input.serviceVersion,
+            identity: input.identity,
+          }),
+        },
+        scopeLogs: [{ scope: { name: OTLP_SCOPE_NAME }, logRecords: [testRecord] }],
+      },
+    ],
+  };
+}
+
 /** "k=v,k2=v2" -> a header record. Malformed pairs (no `=`, empty key) are skipped. */
 export function parseOtlpHeaders(raw: string): Record<string, string> {
   const headers: Record<string, string> = {};
