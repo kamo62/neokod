@@ -33,5 +33,5 @@ Both stable and nightly builds include the Electron updater manifests and blockm
 repository is derived from `GITHUB_REPOSITORY`, so Neokod builds point at the Neokod repository.
 
 Because the repository is private, users need authenticated GitHub access to download releases or
-use the updater. Signing is not configured in the initial workflow; macOS Gatekeeper and Windows
-SmartScreen may warn on internal test builds.
+use the updater. macOS builds are signed and notarized with a Developer ID. Windows builds are not
+signed, so Windows SmartScreen may warn on install.

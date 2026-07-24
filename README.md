@@ -2,7 +2,7 @@
 
 Neokod is a local-first desktop app for coding with the AI agent CLIs you already use. It brings agent chats, terminals, git worktrees, diffs, and provider sessions into one focused workspace that runs entirely on your machine.
 
-Neokod began as a fork of T3 Code and has been carved down to a local-first 2.0 release: no cloud service, no mobile app, no remote-access control plane. Your projects, threads, and history stay on your machine, and Neokod talks directly to the providers you choose.
+Neokod began as a fork of T3 Code and has been carved down to a local-first tool: no cloud service, no mobile app, no remote-access control plane. Your projects, threads, and history stay on your machine, and Neokod talks directly to the providers you choose.
 
 Neokod continues to track upstream T3 Code selectively: fixes and updates that apply to the local-first tree are backported as needed, with original authorship preserved. Upstream changes tied to the removed cloud, mobile, and relay layers are not ported.
 
@@ -10,6 +10,11 @@ Neokod continues to track upstream T3 Code selectively: fixes and updates that a
 
 - Drive coding agents from one desktop workspace: parallel threads, per-thread git worktrees, diffs, branches, commits, and PRs.
 - Keep the agent chat, an embedded terminal, and file and preview views together in the same window.
+- Find your way around with a project-tree sidebar and a cross-project "My Work" inbox, plus a Home dashboard for picking up where you left off.
+- Watch a thread run in a run banner that shows plan-step progress, elapsed time, and status as the agent works.
+- Track the workspace with an Environment panel: branch and base branch, change stats, and commit/push/PR actions.
+- See what subagents are doing in a dedicated Subagents panel.
+- Pick a provider model and its reasoning effort from one combined control.
 - Get notified when an agent finishes or needs you, so you do not have to watch a thread. An in-app toast appears when you are elsewhere in the app, a native system notification when the window is hidden, and clicking either jumps straight to that thread. Notifications are opt-out and only request OS permission when you ask.
 - Stay local. There is no Neokod cloud holding your repositories, chats, or history. The provider you pick still receives the prompts, diffs, and tool output a session needs, but that traffic goes to that provider, not through a Neokod service.
 
@@ -28,22 +33,16 @@ Install and authenticate at least one provider before use, for example:
 
 - Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
 - Claude: install [Claude Code](https://claude.com/product/claude-code) and run `claude auth login`
+- Copilot: install the GitHub Copilot CLI, then sign in from Neokod using the in-app GitHub device sign-in flow, no separate login command needed
 - Cursor: install [Cursor CLI](https://cursor.com/cli) and run `cursor-agent login`
+- Grok: install the Grok CLI and authenticate it directly
 - OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
 
 ## Install and run
 
 ### Desktop app
 
-Install the latest macOS or Windows build from [Neokod releases](https://github.com/kamo62/neokod/releases). The initial builds are unsigned, so macOS Gatekeeper and Windows SmartScreen may require manual confirmation.
-
-### Run the CLI without installing
-
-```bash
-npx neokod@latest
-```
-
-Use `npx neokod@latest --help` for the full reference.
+Install the latest macOS or Windows build from [Neokod releases](https://github.com/kamo62/neokod/releases). macOS builds are signed and notarized. Windows builds are not signed yet, so Windows SmartScreen may require manual confirmation.
 
 ## Local access boundary
 
