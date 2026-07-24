@@ -1,8 +1,15 @@
 import { CheckIcon, CircleAlertIcon, Clock3Icon, ListTodoIcon } from "lucide-react";
+import { scopeProjectRef } from "@neokod/client-runtime/environment";
+import { projectScriptCwd } from "@neokod/shared/projectScripts";
 import type { ActivePlanState } from "../../session-logic";
+import { useProject } from "../../state/entities";
+import { useEnvironmentQuery } from "../../state/query";
+import { vcsEnvironment } from "../../state/vcs";
 import type { Thread } from "../../types";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
+import { DiffStatLabel } from "./DiffStatLabel";
+import { resolveEnvironmentChangeStats } from "../EnvironmentPanel.logic";
 import { useThreadRunSummary } from "./useThreadRunSummary";
 
 interface ThreadRunBannerProps {
@@ -19,6 +26,22 @@ interface ThreadRunBannerProps {
 }
 
 export function ThreadRunBanner(props: ThreadRunBannerProps) {
+  const project = useProject(scopeProjectRef(props.thread.environmentId, props.thread.projectId));
+  const gitCwd = project
+    ? projectScriptCwd({
+        project: { cwd: project.workspaceRoot },
+        worktreePath: props.thread.worktreePath,
+      })
+    : null;
+  const gitStatusQuery = useEnvironmentQuery(
+    gitCwd === null
+      ? null
+      : vcsEnvironment.status({
+          environmentId: props.thread.environmentId,
+          input: { cwd: gitCwd },
+        }),
+  );
+  const changeStats = resolveEnvironmentChangeStats(gitStatusQuery.data);
   const summary = useThreadRunSummary({
     thread: props.thread,
     activePlan: props.activePlan,
@@ -95,6 +118,21 @@ export function ThreadRunBanner(props: ThreadRunBannerProps) {
                 </span>
               </span>
             </>
+          ) : null}
+          {changeStats.changedFileCount > 0 ? (
+            <span className="flex min-w-0 shrink items-center gap-1 text-[11px] text-muted-foreground">
+              <span aria-hidden="true">·</span>
+              <span className="truncate">
+                {changeStats.changedFileCount}{" "}
+                {changeStats.changedFileCount === 1 ? "file" : "files"} changed
+              </span>
+              <DiffStatLabel
+                additions={changeStats.additions}
+                deletions={changeStats.deletions}
+                className="shrink-0"
+                layout="inline"
+              />
+            </span>
           ) : null}
           {summary.elapsed ? (
             <span className="ml-auto flex shrink-0 items-center gap-1 text-[11px] tabular-nums text-muted-foreground">
