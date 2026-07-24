@@ -101,7 +101,7 @@ The live backend agent implementation and its event stream. The main service is 
 
 #### Provider
 
-The backend agent runtime that actually performs work. See [ProviderService.ts][14], [ProviderAdapter.ts][15], and [CodexAdapter.ts][17].
+The backend agent runtime that actually performs work. See [ProviderService.ts][14], [ProviderAdapter.ts][15], and [CodexAdapter.ts][16].
 
 #### Session
 
@@ -109,11 +109,11 @@ The live provider-backed runtime attached to a thread. Session shape is in [the 
 
 #### Runtime mode
 
-The safety/access mode for a thread or session. In [the contracts][1], the main values are `approval-required` and `full-access`. See [runtime-modes.md][18].
+The safety/access mode for a thread or session. In [the contracts][1], the main values are `approval-required` and `full-access`. See [runtime-modes.md][17].
 
 #### Interaction mode
 
-The agent interaction style for a thread. In [the contracts][1], the main values are `default` and `plan`. See [runtime-modes.md][18].
+The agent interaction style for a thread. In [the contracts][1], the main values are `default` and `plan`. See [runtime-modes.md][17].
 
 #### Assistant delivery mode
 
@@ -121,31 +121,31 @@ Controls how assistant text reaches the thread timeline. In [the contracts][1], 
 
 #### Snapshot
 
-A point-in-time view of state. The word is used in multiple layers, including orchestration, provider, and checkpointing. See [ProjectionSnapshotQuery.ts][10], [ProviderAdapter.ts][15], and [CheckpointStore.ts][19].
+A point-in-time view of state. The word is used in multiple layers, including orchestration, provider, and checkpointing. See [ProjectionSnapshotQuery.ts][10], [ProviderAdapter.ts][15], and [CheckpointStore.ts][18].
 
 ### Checkpointing
 
-Checkpointing captures workspace state over time so the app can diff turns and restore earlier points. The main pieces are [CheckpointStore.ts][19], [CheckpointDiffQuery.ts][20], and [CheckpointReactor.ts][6].
+Checkpointing captures workspace state over time so the app can diff turns and restore earlier points. The main pieces are [CheckpointStore.ts][18], [CheckpointDiffQuery.ts][19], and [CheckpointReactor.ts][6].
 
 #### Checkpoint
 
-A saved snapshot of a thread workspace at a particular turn. In practice it is a hidden Git ref in [CheckpointStore.ts][19] plus a projected summary from [ProjectionCheckpoints.ts][21]. Capture and lifecycle work happen in [CheckpointReactor.ts][6].
+A saved snapshot of a thread workspace at a particular turn. In practice it is a hidden Git ref in [CheckpointStore.ts][18] plus a projected summary from [ProjectionCheckpoints.ts][20]. Capture and lifecycle work happen in [CheckpointReactor.ts][6].
 
 #### Checkpoint ref
 
-The durable identifier for a filesystem checkpoint, stored as a Git ref. It is typed in [the contracts][1], constructed in [Utils.ts][22], and used by [CheckpointStore.ts][19].
+The durable identifier for a filesystem checkpoint, stored as a Git ref. It is typed in [the contracts][1], constructed in [Utils.ts][21], and used by [CheckpointStore.ts][18].
 
 #### Checkpoint baseline
 
-The starting checkpoint for diffing a thread timeline. This flow is surfaced through [RuntimeReceiptBus.ts][13], coordinated in [CheckpointReactor.ts][6], and supported by [Utils.ts][22].
+The starting checkpoint for diffing a thread timeline. This flow is surfaced through [RuntimeReceiptBus.ts][13], coordinated in [CheckpointReactor.ts][6], and supported by [Utils.ts][21].
 
 #### Checkpoint diff
 
-The patch difference between two checkpoints. Query logic lives in [CheckpointDiffQuery.ts][20], diff parsing lives in [Diffs.ts][23], and finalization is coordinated by [CheckpointReactor.ts][6].
+The patch difference between two checkpoints. Query logic lives in [CheckpointDiffQuery.ts][19], diff parsing lives in [Diffs.ts][22], and finalization is coordinated by [CheckpointReactor.ts][6].
 
 #### Turn diff
 
-The file patch and changed-file summary for one turn. It is usually computed in [CheckpointDiffQuery.ts][20], represented in [the contracts][1], and recorded into thread state by [projector.ts][4].
+The file patch and changed-file summary for one turn. It is usually computed in [CheckpointDiffQuery.ts][19], represented in [the contracts][1], and recorded into thread state by [projector.ts][4].
 
 ## Practical Shortcuts
 
@@ -157,8 +157,8 @@ The file patch and changed-file summary for one turn. It is usually computed in 
 
 ## Related Docs
 
-- [architecture/overview.md][24]
-- [runtime-modes.md][18]
+- [overview.md][23]
+- [runtime-modes.md][17]
 - [workspace-layout.md][2]
 
 [1]: ../../packages/contracts/src/orchestration.ts
@@ -176,11 +176,11 @@ The file patch and changed-file summary for one turn. It is usually computed in 
 [13]: ../../apps/server/src/orchestration/Services/RuntimeReceiptBus.ts
 [14]: ../../apps/server/src/provider/Layers/ProviderService.ts
 [15]: ../../apps/server/src/provider/Services/ProviderAdapter.ts
-[17]: ../../apps/server/src/provider/Layers/CodexAdapter.ts
-[18]: ../architecture/runtime-modes.md
-[19]: ../../apps/server/src/checkpointing/CheckpointStore.ts
-[20]: ../../apps/server/src/checkpointing/CheckpointDiffQuery.ts
-[21]: ../../apps/server/src/persistence/Services/ProjectionCheckpoints.ts
-[22]: ../../apps/server/src/checkpointing/Utils.ts
-[23]: ../../apps/server/src/checkpointing/Diffs.ts
-[24]: ../architecture/overview.md
+[16]: ../../apps/server/src/provider/Layers/CodexAdapter.ts
+[17]: ../architecture/runtime-modes.md
+[18]: ../../apps/server/src/checkpointing/CheckpointStore.ts
+[19]: ../../apps/server/src/checkpointing/CheckpointDiffQuery.ts
+[20]: ../../apps/server/src/persistence/Services/ProjectionCheckpoints.ts
+[21]: ../../apps/server/src/checkpointing/Utils.ts
+[22]: ../../apps/server/src/checkpointing/Diffs.ts
+[23]: ../architecture/overview.md
