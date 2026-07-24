@@ -69,6 +69,8 @@
   --text-meta: var(--font-size-meta);
   --text-chat: var(--font-size-chat);
   --text-chat--line-height: var(--line-height-chat);
+  --text-ui-lg: var(--font-size-ui-lg);
+  --text-title: var(--font-size-title);
   --color-warning-foreground: var(--warning-foreground);
   --color-warning: var(--warning);
   --color-success-foreground: var(--success-foreground);
@@ -101,6 +103,7 @@
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
+  --radius-card: 1rem;
   @keyframes skeleton {
     to {
       background-position: -200% 0;
@@ -127,6 +130,7 @@
     @apply text-foreground relative;
     background-color: var(--app-chrome-background);
     font-size: var(--font-size-ui);
+    letter-spacing: var(--tracking-tight);
   }
 }
 
@@ -314,9 +318,9 @@
   --surface-control: #ededed;
   --surface-hover: color-mix(in srgb, var(--brand) 6%, var(--surface-panel));
   --surface-selected: color-mix(in srgb, var(--brand) 12%, var(--surface-panel));
-  --text-primary: #1a1c1f;
+  --text-primary: #292929;
   --text-secondary: #5d5d5d;
-  --text-tertiary: #8a8a8a;
+  --text-tertiary: #9e9e9e;
   --text-inverse: #ffffff;
   --line-subtle: #e7e7e7;
   --line-default: #d8d8d8;
@@ -330,7 +334,12 @@
   --font-size-ui-sm: 11px;
   --font-size-meta: 10px;
   --font-size-chat: 13px;
+  --font-size-ui-lg: 14px;
+  --font-size-title: 24px;
   --line-height-chat: 1.55;
+  --tracking-tight: -0.15px;
+  --icon-nav: 14px;
+  --icon-card: 20px;
   --row-height-compact: 1.75rem;
   --surface-header-height: 46px;
 
@@ -378,7 +387,7 @@
     --surface-control: #262626;
     --surface-hover: color-mix(in srgb, var(--brand) 14%, var(--surface-panel));
     --surface-selected: color-mix(in srgb, var(--brand) 22%, var(--surface-panel));
-    --text-primary: #ffffff;
+    --text-primary: #f5f5f5;
     --text-secondary: #a8a8a8;
     --text-tertiary: #737373;
     --text-inverse: #181818;
@@ -470,6 +479,7 @@ body::after {
 pre,
 code {
   font-family: var(--font-mono);
+  letter-spacing: normal;
 }
 
 /* Window drag region (frameless titlebar) */
