@@ -130,6 +130,18 @@ describe("describeManagedClientEvidenceReadiness", () => {
       ),
     ).toEqual("Evidence forwarding is on.");
   });
+
+  it("treats a redacted stored credential as set, even though the wire value is blank", () => {
+    expect(
+      describeManagedClientEvidenceReadiness(
+        settings({
+          governanceUrl: "https://orch.example",
+          credential: "",
+          credentialRedacted: true,
+        }),
+      ),
+    ).toEqual("Fields are set. Turn on evidence forwarding above when you're ready.");
+  });
 });
 
 describe("describeRecordedIdentity", () => {

@@ -339,7 +339,9 @@ const GOVERNANCE_SSO_ENROLMENT_URL: string | null = null;
 export function describeManagedClientEvidenceReadiness(
   settings: CopilotManagedClientEvidenceSettings,
 ): string {
-  if (settings.governanceUrl.trim().length === 0 || settings.credential.trim().length === 0) {
+  const hasCredential =
+    settings.credential.trim().length > 0 || settings.credentialRedacted === true;
+  if (settings.governanceUrl.trim().length === 0 || !hasCredential) {
     return "Evidence forwarding stays off until a governance URL and credential are set.";
   }
   return settings.enabled
@@ -565,11 +567,17 @@ function CopilotGovernanceSection(props: {
           <span className="text-xs font-medium text-foreground">Credential</span>
           <DraftInput
             className="mt-1.5"
-            value={props.settings.credential}
-            onCommit={(value) => props.onChange({ credential: value.trim() })}
+            value={props.settings.credentialRedacted ? "" : props.settings.credential}
+            onCommit={(value) =>
+              props.onChange({ credential: value.trim(), credentialRedacted: false })
+            }
             type="password"
             autoComplete="off"
-            placeholder="air_..."
+            placeholder={
+              props.settings.credentialRedacted
+                ? "Stored secret - enter a new value to replace"
+                : "air_..."
+            }
             spellCheck={false}
           />
         </label>

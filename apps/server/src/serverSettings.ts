@@ -11,6 +11,7 @@
  * @module ServerSettings
  */
 import {
+  type CopilotManagedClientEvidenceSettings,
   DEFAULT_GIT_TEXT_GENERATION_MODEL,
   DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
   DEFAULT_MODEL_BY_PROVIDER,
@@ -79,6 +80,20 @@ function providerEnvironmentSecretName(input: {
   return `provider-env-${Buffer.from(input.instanceId, "utf8").toString("base64url")}-${Buffer.from(input.name, "utf8").toString("base64url")}`;
 }
 
+// Single fixed slot (not per-instance, unlike provider environment
+// variables): `providers.githubCopilot.managedClientEvidence` is a hidden,
+// singleton settings block, so one constant secret name is enough.
+const MANAGED_CLIENT_EVIDENCE_CREDENTIAL_SECRET_NAME = "copilot-managed-client-evidence-credential";
+
+function redactManagedClientEvidenceCredential(
+  managedClientEvidence: CopilotManagedClientEvidenceSettings,
+): CopilotManagedClientEvidenceSettings {
+  if (managedClientEvidence.credential.length === 0) {
+    return managedClientEvidence;
+  }
+  return { ...managedClientEvidence, credential: "", credentialRedacted: true };
+}
+
 function redactProviderEnvironmentVariable(
   variable: ProviderInstanceEnvironmentVariable,
 ): ProviderInstanceEnvironmentVariable {
@@ -105,7 +120,19 @@ export function redactServerSettingsForClient(settings: ServerSettings): ServerS
         : instance,
     ]),
   );
-  return { ...settings, providerInstances };
+  return {
+    ...settings,
+    providerInstances,
+    providers: {
+      ...settings.providers,
+      githubCopilot: {
+        ...settings.providers.githubCopilot,
+        managedClientEvidence: redactManagedClientEvidenceCredential(
+          settings.providers.githubCopilot.managedClientEvidence,
+        ),
+      },
+    },
+  };
 }
 
 export class ServerSettingsService extends Context.Service<
@@ -308,7 +335,11 @@ const make = Effect.gen(function* () {
       });
       return DEFAULT_SERVER_SETTINGS;
     }
-    return decoded.value;
+    // Eager one-time migration: a legacy settings.json may still carry a
+    // plaintext `managedClientEvidence.credential`. `migrateManagedClientEvidenceCredential`
+    // (defined below, alongside `writeSettingsAtomically`) moves it into
+    // ServerSecretStore before this value is ever handed back to a caller.
+    return yield* migrateManagedClientEvidenceCredential(decoded.value);
   });
 
   const settingsCache = yield* Cache.make<typeof cacheKey, ServerSettings, ServerSettingsError>({
@@ -360,6 +391,51 @@ const make = Effect.gen(function* () {
       return {
         ...settings,
         providerInstances: providerInstances as ServerSettings["providerInstances"],
+      };
+    });
+
+  /**
+   * Server-internal read path for `managedClientEvidence.credential`, mirroring
+   * `materializeProviderEnvironmentSecrets`. Prefers the secret store whenever
+   * there's anything to look up (a plaintext value staged for migration, or a
+   * value already marked redacted) and falls back to whatever plaintext is
+   * still sitting in `settings.json` if the store has nothing for the key, so
+   * a credential from a not-yet-migrated legacy settings.json, or one caught
+   * mid-migration, is never lost to the forwarder.
+   */
+  const materializeManagedClientEvidenceCredential = (
+    settings: ServerSettings,
+  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
+    Effect.gen(function* () {
+      const managedClientEvidence = settings.providers.githubCopilot.managedClientEvidence;
+      if (
+        managedClientEvidence.credential.length === 0 &&
+        !managedClientEvidence.credentialRedacted
+      ) {
+        return settings;
+      }
+      const secret = yield* secretStore.get(MANAGED_CLIENT_EVIDENCE_CREDENTIAL_SECRET_NAME).pipe(
+        Effect.mapError(
+          (cause) =>
+            new ServerSettingsError({
+              settingsPath,
+              operation: "read-secret",
+              cause,
+            }),
+        ),
+      );
+      const credential = Option.isSome(secret)
+        ? textDecoder.decode(secret.value)
+        : managedClientEvidence.credential;
+      return {
+        ...settings,
+        providers: {
+          ...settings.providers,
+          githubCopilot: {
+            ...settings.providers.githubCopilot,
+            managedClientEvidence: { ...managedClientEvidence, credential },
+          },
+        },
       };
     });
 
@@ -464,6 +540,66 @@ const make = Effect.gen(function* () {
       };
     });
 
+  /**
+   * Write path for `managedClientEvidence.credential`, mirroring
+   * `persistProviderEnvironmentSecrets`. A single fixed slot rather than a
+   * per-instance map, so there's no stale-secret sweep, just set-or-remove
+   * against the one constant secret name.
+   */
+  const persistManagedClientEvidenceCredential = (
+    next: ServerSettings,
+  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
+    Effect.gen(function* () {
+      const managedClientEvidence = next.providers.githubCopilot.managedClientEvidence;
+      if (managedClientEvidence.credentialRedacted) {
+        // Client left the redacted marker in place (unchanged secret) or a
+        // prior save already persisted it; nothing new to write.
+        return next;
+      }
+      if (managedClientEvidence.credential.length === 0) {
+        yield* secretStore.remove(MANAGED_CLIENT_EVIDENCE_CREDENTIAL_SECRET_NAME).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ServerSettingsError({
+                settingsPath,
+                operation: "remove-secret",
+                cause,
+              }),
+          ),
+        );
+        return next;
+      }
+      yield* secretStore
+        .set(
+          MANAGED_CLIENT_EVIDENCE_CREDENTIAL_SECRET_NAME,
+          textEncoder.encode(managedClientEvidence.credential),
+        )
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new ServerSettingsError({
+                settingsPath,
+                operation: "write-secret",
+                cause,
+              }),
+          ),
+        );
+      return {
+        ...next,
+        providers: {
+          ...next.providers,
+          githubCopilot: {
+            ...next.providers.githubCopilot,
+            managedClientEvidence: {
+              ...managedClientEvidence,
+              credential: "",
+              credentialRedacted: true,
+            },
+          },
+        },
+      };
+    });
+
   const writeSettingsAtomically = Effect.fnUntraced(
     function* (settings: ServerSettings) {
       const sparseSettingsJson = yield* encodeServerSettingsJson(
@@ -487,6 +623,76 @@ const make = Effect.gen(function* () {
         }),
     ),
   );
+
+  /**
+   * Eager one-time migration, run inline while loading settings.json:
+   * a legacy file may still carry a plaintext `managedClientEvidence.credential`
+   * (pre-dating ServerSecretStore support for this field). The secret is
+   * written to the store before settings.json is rewritten to the redacted
+   * form, so there is no window where `materializeManagedClientEvidenceCredential`
+   * (store-first, plaintext-field fallback) would see neither. Skips the
+   * store write if a secret is already there (idempotent across restarts and
+   * re-runs), and is a no-op once `credentialRedacted` is set.
+   */
+  const migrateManagedClientEvidenceCredential = (
+    settings: ServerSettings,
+  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
+    Effect.gen(function* () {
+      const managedClientEvidence = settings.providers.githubCopilot.managedClientEvidence;
+      if (
+        managedClientEvidence.credential.length === 0 ||
+        managedClientEvidence.credentialRedacted
+      ) {
+        return settings;
+      }
+
+      const existingSecret = yield* secretStore
+        .get(MANAGED_CLIENT_EVIDENCE_CREDENTIAL_SECRET_NAME)
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new ServerSettingsError({
+                settingsPath,
+                operation: "read-secret",
+                cause,
+              }),
+          ),
+        );
+      if (Option.isNone(existingSecret)) {
+        yield* secretStore
+          .set(
+            MANAGED_CLIENT_EVIDENCE_CREDENTIAL_SECRET_NAME,
+            textEncoder.encode(managedClientEvidence.credential),
+          )
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new ServerSettingsError({
+                  settingsPath,
+                  operation: "write-secret",
+                  cause,
+                }),
+            ),
+          );
+      }
+
+      const migrated: ServerSettings = {
+        ...settings,
+        providers: {
+          ...settings.providers,
+          githubCopilot: {
+            ...settings.providers.githubCopilot,
+            managedClientEvidence: {
+              ...managedClientEvidence,
+              credential: "",
+              credentialRedacted: true,
+            },
+          },
+        },
+      };
+      yield* writeSettingsAtomically(migrated);
+      return migrated;
+    });
 
   const revalidateAndEmit = writeSemaphore.withPermits(1)(
     Effect.gen(function* () {
@@ -561,21 +767,26 @@ const make = Effect.gen(function* () {
     ready: Deferred.await(startedDeferred),
     getSettings: getSettingsFromCache.pipe(
       Effect.flatMap(materializeProviderEnvironmentSecrets),
+      Effect.flatMap(materializeManagedClientEvidenceCredential),
       Effect.map(resolveTextGenerationProvider),
     ),
     updateSettings: (patch) =>
       writeSemaphore.withPermits(1)(
         Effect.gen(function* () {
           const current = yield* getSettingsFromCache;
-          const nextPersisted = yield* persistProviderEnvironmentSecrets(
+          const nextPersistedEnvironment = yield* persistProviderEnvironmentSecrets(
             current,
             applyServerSettingsPatch(current, patch),
           );
+          const nextPersisted =
+            yield* persistManagedClientEvidenceCredential(nextPersistedEnvironment);
           const next = yield* normalizeServerSettings(nextPersisted);
           yield* writeSettingsAtomically(next);
           yield* Cache.set(settingsCache, cacheKey, next);
           yield* emitChange(next);
-          const materialized = yield* materializeProviderEnvironmentSecrets(next);
+          const materialized = yield* materializeProviderEnvironmentSecrets(next).pipe(
+            Effect.flatMap(materializeManagedClientEvidenceCredential),
+          );
           return resolveTextGenerationProvider(materialized);
         }),
       ),
@@ -583,6 +794,7 @@ const make = Effect.gen(function* () {
       return Stream.fromPubSub(changesPubSub).pipe(
         Stream.mapEffect((settings) =>
           materializeProviderEnvironmentSecrets(settings).pipe(
+            Effect.flatMap(materializeManagedClientEvidenceCredential),
             Effect.catch((error: ServerSettingsError) =>
               Effect.logWarning("failed to materialize provider environment secrets", {
                 operation: error.operation,

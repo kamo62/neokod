@@ -377,6 +377,10 @@ export const CopilotManagedClientEvidenceSettings = Schema.Struct({
   gatewayEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   governanceUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   credential: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  // Set once the server has moved `credential` into ServerSecretStore.
+  // `credential` stays "" on disk and in client-facing reads while this is
+  // true; mirrors `ProviderInstanceEnvironmentVariable.valueRedacted`.
+  credentialRedacted: Schema.optionalKey(Schema.Boolean),
 });
 export type CopilotManagedClientEvidenceSettings = typeof CopilotManagedClientEvidenceSettings.Type;
 
@@ -385,6 +389,7 @@ const CopilotManagedClientEvidenceSettingsPatch = Schema.Struct({
   gatewayEnabled: Schema.optionalKey(Schema.Boolean),
   governanceUrl: Schema.optionalKey(TrimmedString),
   credential: Schema.optionalKey(TrimmedString),
+  credentialRedacted: Schema.optionalKey(Schema.Boolean),
 });
 
 export const CopilotSettings = makeProviderSettingsSchema(
