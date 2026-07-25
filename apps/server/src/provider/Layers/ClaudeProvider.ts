@@ -943,9 +943,15 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     });
   }
 
+  const capabilities = resolveCapabilities
+    ? yield* resolveCapabilities(claudeSettings).pipe(Effect.orElseSucceed(() => undefined))
+    : undefined;
+  const slashCommands = capabilities?.slashCommands ?? [];
+  const dedupedSlashCommands = dedupeSlashCommands(slashCommands);
+
   // Prefer the live catalog the running CLI reports; the static list is the
   // fallback for older builds and for a probe that could not read it.
-  const discoveredModels = capabilities.models;
+  const discoveredModels = capabilities?.models ?? [];
   const baseModels =
     discoveredModels.length > 0
       ? discoveredModels
@@ -970,12 +976,6 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
             : supportsClaudeOpus47(parsedVersion)
               ? formatClaudeOpus48UpgradeMessage(parsedVersion)
               : formatClaudeOpus47UpgradeMessage(parsedVersion);
-
-  const capabilities = resolveCapabilities
-    ? yield* resolveCapabilities(claudeSettings).pipe(Effect.orElseSucceed(() => undefined))
-    : undefined;
-  const slashCommands = capabilities?.slashCommands ?? [];
-  const dedupedSlashCommands = dedupeSlashCommands(slashCommands);
 
   if (!capabilities) {
     return buildServerProvider({
