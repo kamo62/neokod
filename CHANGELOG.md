@@ -1,3 +1,11 @@
+## 3.2.2 - 2026-07-25 (Patch)
+
+Release impact: Patch because this is a rendering optimization plus documentation accuracy fixes, with no contract changes.
+
+- Stopped the thread run banner from querying git status for threads whose banner is hidden. The banner's run summary is resolved first, and the changed-files query only runs when the banner is actually shown.
+- Fixed documentation references: the architecture overview's WebSocket-contract citation pointed at the wrong source file, and the Effect function checklist's links resolved relative to its own directory instead of the repository root.
+- Narrowed the upstream-sync exclusion in `AGENTS.md` to hosted and remote server management, so local `neokod serve` ports are no longer wrongly excluded.
+
 ## 3.2.1 - 2026-07-24 (Patch)
 
 Release impact: Patch because this refreshes the vendored Codex app-server protocol bindings and adds a backward-compatible runtime compatibility warning, with no provider contract changes.

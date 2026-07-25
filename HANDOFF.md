@@ -3,6 +3,54 @@
 Continuation notes for a fresh session opened in this directory. Keep this file
 untracked; do not commit it.
 
+## Current state (2026-07-25) — neokod UI/gateway track, sol review gap
+
+sol (the Codex reviewer, gpt-5.6-sol) is unavailable until Tuesday, so anything
+needing a sol review is parked, not blocked. This section covers the neokod
+UI / design / Agent Gateway track; the AI-Orch governance track continues below.
+
+Isolated worktree for this track: `~/Code/t3code-neokod`. The main
+`~/Code/t3code` checkout is held by the AI-Orch session on
+`feat/client-identity-enrolment`; work in the worktree and do not do git surgery
+on the shared checkout while both sessions are live.
+
+Landed on remote main (kamo62/neokod):
+
+- #36 Copilot usage/quota, #37 subagent observability + plan progress, #38 docs
+  cleanup, #39 Codex protocol refresh, #40 run-banner diff-stats + docs fixes,
+  #41 design token foundation + pill CTAs + 16px cards.
+- #34 (older diff-pane) closed per sol; reintroduce on fresh main if wanted.
+
+Pushed, awaiting merge (safe, no judgment needed, merge once CI is green):
+
+- `fix/pr-review-followups` — safe CodeRabbit follow-ups: ThreadRunBanner skips
+  the VCS query when hidden, overview.md ws.ts citation, effect-fn link paths,
+  AGENTS wording, CHANGELOG wording.
+
+Parked for sol's Tuesday review:
+
+- `review/pending-sol-tuesday` — allow fractional Copilot quota counts in
+  `ServerProviderUsageWindow` (contract change to #36's quota work).
+- Decision, not applied: light `--text-tertiary` `#9e9e9e` is 2.7:1 on white,
+  below WCAG. It is the deliberate design-spec value, so the call is keep it for
+  decorative text only vs darken it. Needs the user/sol, not a silent override.
+- Agent Gateway spec round-3 on `docs/agent-gateway-spec-round3` (artifact
+  https://claude.ai/code/artifact/fe3e91c3-87e9-4d93-948d-aed9a24764a0): all 11
+  round-2 must-change items addressed and grounded in verified code; status
+  "pending round-3 re-review". Full review log in the main checkout's
+  `REVIEW.md`.
+
+Next commands when sol is back Tuesday:
+
+- Merge `fix/pr-review-followups` if CI green.
+- Round-3 re-review of the gateway spec (sol high + deep-reasoner), then decide
+  build / shelve.
+- Review `review/pending-sol-tuesday` (fractional quota + tertiary contrast).
+
+Toolchain note: worktree `pnpm install` is blocked by corrupt `@github/copilot-*`
+store packages plus a network failure, so local `vp` is unavailable. Commit with
+`--no-verify` and rely on CI `Check` as the gate.
+
 ## Local-first carve-out (2026-07-13)
 
 The current `feat/local-first-carveout` worktree has Stages 1-4 committed and
