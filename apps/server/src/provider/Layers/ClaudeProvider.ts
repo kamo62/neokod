@@ -53,6 +53,13 @@ const MINIMUM_CLAUDE_FABLE_5_VERSION = "2.1.169";
 const MINIMUM_CLAUDE_OPUS_4_8_VERSION = "2.1.154";
 const MINIMUM_CLAUDE_OPUS_4_7_VERSION = "2.1.111";
 
+/**
+ * Static fallback catalog. The running CLI's `supportedModels()` is the live
+ * source of truth once a probe succeeds; this list keeps the settings UI
+ * populated before the first probe and covers Claude Code builds that predate
+ * the call. It also supplies the context-window descriptors the SDK does not
+ * report. The `MINIMUM_CLAUDE_*_VERSION` gates below apply only to this list.
+ */
 const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
   {
     slug: "claude-fable-5",
@@ -558,8 +565,105 @@ type ClaudeCapabilitiesProbe = {
    * the subscription/token fields are absent and auth is external AWS creds.
    */
   readonly apiProvider: string | undefined;
+  /**
+   * Live catalog reported by the SDK's `supportedModels()`. Empty when the
+   * running Claude Code build predates the call or the probe could not read it;
+   * callers then fall back to the static version-gated catalog.
+   */
+  readonly models: ReadonlyArray<ServerProviderModel>;
   readonly slashCommands: ReadonlyArray<ServerProviderSlashCommand>;
 };
+
+/**
+ * Shape of one entry from the Agent SDK's `supportedModels()`. Declared locally
+ * because the probe reads the initialization result as unknown data rather than
+ * importing SDK types into the provider contract layer.
+ */
+type ClaudeModelInfo = {
+  readonly value?: string;
+  readonly displayName?: string;
+  readonly supportsEffort?: boolean;
+  readonly supportedEffortLevels?: ReadonlyArray<string>;
+  readonly supportsFastMode?: boolean;
+};
+
+/**
+ * neokod exposes two effort levels the SDK does not report: `ultracode` maps to
+ * the CLI's `xhigh`, and `ultrathink` is a prompt-prefix mode. Both are appended
+ * to a discovered model's SDK-reported levels so live discovery does not silently
+ * drop capabilities the static catalog offered.
+ */
+const CLAUDE_EXTRA_EFFORT_LEVELS = ["ultracode", "ultrathink"] as const;
+
+function claudeEffortOptionsFromLevels(levels: ReadonlyArray<string>) {
+  const seen = new Set<string>();
+  const ordered = [...levels, ...CLAUDE_EXTRA_EFFORT_LEVELS].filter((level) => {
+    const candidate = level.trim();
+    if (!candidate || seen.has(candidate)) return false;
+    seen.add(candidate);
+    return true;
+  });
+  return ordered.map((level) => ({
+    value: level,
+    label: level === "xhigh" ? "Extra High" : toTitleCaseWords(level),
+    ...(level === "high" ? { isDefault: true } : {}),
+  }));
+}
+
+/**
+ * Map one discovered model onto neokod capabilities. The SDK reports effort and
+ * fast mode; it reports no context-window data, so a matching static entry's
+ * `contextWindow` descriptor is reused when one exists.
+ */
+function capabilitiesForClaudeModelInfo(model: ClaudeModelInfo): ModelCapabilities {
+  const slug = model.value?.trim();
+  const staticDescriptors = slug
+    ? (BUILT_IN_MODELS.find((candidate) => candidate.slug === slug)?.capabilities
+        ?.optionDescriptors ?? [])
+    : [];
+  const contextWindowDescriptor = staticDescriptors.find(
+    (descriptor) => descriptor.id === "contextWindow",
+  );
+
+  const levels = model.supportedEffortLevels ?? [];
+  const optionDescriptors = [
+    ...(model.supportsEffort !== false && levels.length > 0
+      ? [
+          buildSelectOptionDescriptor({
+            id: "effort",
+            label: "Reasoning",
+            options: claudeEffortOptionsFromLevels(levels),
+            promptInjectedValues: ["ultrathink"],
+          }),
+        ]
+      : []),
+    ...(model.supportsFastMode
+      ? [buildBooleanOptionDescriptor({ id: "fastMode", label: "Fast Mode" })]
+      : []),
+    ...(contextWindowDescriptor ? [contextWindowDescriptor] : []),
+  ];
+
+  return optionDescriptors.length > 0
+    ? createModelCapabilities({ optionDescriptors })
+    : DEFAULT_CLAUDE_MODEL_CAPABILITIES;
+}
+
+function parseClaudeSupportedModels(
+  models: ReadonlyArray<ClaudeModelInfo> | undefined,
+): ReadonlyArray<ServerProviderModel> {
+  return (models ?? []).flatMap((model) => {
+    const slug = model.value?.trim();
+    if (!slug) return [];
+    return [
+      {
+        slug,
+        name: nonEmptyProbeString(model.displayName ?? "") ?? slug,
+        isCustom: false,
+        capabilities: capabilitiesForClaudeModelInfo(model),
+      } satisfies ServerProviderModel,
+    ];
+  });
+}
 
 function parseClaudeInitializationCommands(
   commands: ReadonlyArray<ClaudeSlashCommand> | undefined,
@@ -674,6 +778,19 @@ const probeClaudeCapabilities = (
         },
       });
       const init = await q.initializationResult();
+      // Live catalog. Older Claude Code builds have no `supportedModels`, and a
+      // failure here must never fail the probe: an empty list falls back to the
+      // static version-gated catalog.
+      const supportedModels = await (async () => {
+        const readModels = (q as { supportedModels?: () => Promise<unknown> }).supportedModels;
+        if (typeof readModels !== "function") return [];
+        try {
+          const result = await readModels.call(q);
+          return Array.isArray(result) ? (result as ReadonlyArray<ClaudeModelInfo>) : [];
+        } catch {
+          return [];
+        }
+      })();
       const account = init.account as
         | {
             readonly email?: string;
@@ -687,6 +804,7 @@ const probeClaudeCapabilities = (
         subscriptionType: account?.subscriptionType,
         tokenSource: account?.tokenSource,
         apiProvider: account?.apiProvider,
+        models: parseClaudeSupportedModels(supportedModels),
         slashCommands: parseClaudeInitializationCommands(init.commands),
       } satisfies ClaudeCapabilitiesProbe;
     });
@@ -825,21 +943,33 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     });
   }
 
+  // Prefer the live catalog the running CLI reports; the static list is the
+  // fallback for older builds and for a probe that could not read it.
+  const discoveredModels = capabilities.models;
+  const baseModels =
+    discoveredModels.length > 0
+      ? discoveredModels
+      : getBuiltInClaudeModelsForVersion(parsedVersion);
   const models = providerModelsFromSettings(
-    getBuiltInClaudeModelsForVersion(parsedVersion),
+    baseModels,
     PROVIDER,
     claudeSettings.customModels,
     DEFAULT_CLAUDE_MODEL_CAPABILITIES,
   );
-  const versionUpgradeMessage = supportsClaudeOpus5(parsedVersion)
-    ? undefined
-    : supportsClaudeFable5(parsedVersion)
-      ? formatClaudeOpus5UpgradeMessage(parsedVersion)
-      : supportsClaudeOpus48(parsedVersion)
-        ? formatClaudeFable5UpgradeMessage(parsedVersion)
-        : supportsClaudeOpus47(parsedVersion)
-          ? formatClaudeOpus48UpgradeMessage(parsedVersion)
-          : formatClaudeOpus47UpgradeMessage(parsedVersion);
+  // The version gate only describes the static catalog. When the CLI reports its
+  // own models, it has already answered the question the gate approximates.
+  const versionUpgradeMessage =
+    discoveredModels.length > 0
+      ? undefined
+      : supportsClaudeOpus5(parsedVersion)
+        ? undefined
+        : supportsClaudeFable5(parsedVersion)
+          ? formatClaudeOpus5UpgradeMessage(parsedVersion)
+          : supportsClaudeOpus48(parsedVersion)
+            ? formatClaudeFable5UpgradeMessage(parsedVersion)
+            : supportsClaudeOpus47(parsedVersion)
+              ? formatClaudeOpus48UpgradeMessage(parsedVersion)
+              : formatClaudeOpus47UpgradeMessage(parsedVersion);
 
   const capabilities = resolveCapabilities
     ? yield* resolveCapabilities(claudeSettings).pipe(Effect.orElseSucceed(() => undefined))
