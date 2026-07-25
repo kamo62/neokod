@@ -580,86 +580,43 @@ type ClaudeCapabilitiesProbe = {
  * importing SDK types into the provider contract layer.
  */
 type ClaudeModelInfo = {
-  readonly value?: string;
-  readonly displayName?: string;
-  readonly supportsEffort?: boolean;
-  readonly supportedEffortLevels?: ReadonlyArray<string>;
-  readonly supportsFastMode?: boolean;
+  readonly value?: unknown;
+  readonly displayName?: unknown;
 };
 
 /**
- * neokod exposes two effort levels the SDK does not report: `ultracode` maps to
- * the CLI's `xhigh`, and `ultrathink` is a prompt-prefix mode. Both are appended
- * to a discovered model's SDK-reported levels so live discovery does not silently
- * drop capabilities the static catalog offered.
+ * Map the SDK's live catalog onto provider models.
+ *
+ * Discovery decides *which* models exist; it deliberately does not invent
+ * capabilities. `getClaudeModelCapabilities` resolves options from
+ * `BUILT_IN_MODELS` at execution time (`ClaudeAdapter`, `ClaudeTextGeneration`),
+ * so any descriptor advertised here that the static catalog lacks would be shown
+ * in the picker and then silently dropped when the turn runs. Reusing the same
+ * lookup keeps the snapshot and the execution path in agreement: a known slug
+ * keeps its full descriptor set (including ones the SDK cannot express, such as
+ * Haiku's Thinking toggle and per-model effort defaults), and a newly released
+ * slug is selectable with default capabilities until it is described statically.
+ *
+ * Entries are treated as untrusted: a non-string or blank slug is skipped, and
+ * duplicates collapse to the first occurrence.
  */
-const CLAUDE_EXTRA_EFFORT_LEVELS = ["ultracode", "ultrathink"] as const;
-
-function claudeEffortOptionsFromLevels(levels: ReadonlyArray<string>) {
-  const seen = new Set<string>();
-  const ordered = [...levels, ...CLAUDE_EXTRA_EFFORT_LEVELS].filter((level) => {
-    const candidate = level.trim();
-    if (!candidate || seen.has(candidate)) return false;
-    seen.add(candidate);
-    return true;
-  });
-  return ordered.map((level) => ({
-    value: level,
-    label: level === "xhigh" ? "Extra High" : toTitleCaseWords(level),
-    ...(level === "high" ? { isDefault: true } : {}),
-  }));
-}
-
-/**
- * Map one discovered model onto neokod capabilities. The SDK reports effort and
- * fast mode; it reports no context-window data, so a matching static entry's
- * `contextWindow` descriptor is reused when one exists.
- */
-function capabilitiesForClaudeModelInfo(model: ClaudeModelInfo): ModelCapabilities {
-  const slug = model.value?.trim();
-  const staticDescriptors = slug
-    ? (BUILT_IN_MODELS.find((candidate) => candidate.slug === slug)?.capabilities
-        ?.optionDescriptors ?? [])
-    : [];
-  const contextWindowDescriptor = staticDescriptors.find(
-    (descriptor) => descriptor.id === "contextWindow",
-  );
-
-  const levels = model.supportedEffortLevels ?? [];
-  const optionDescriptors = [
-    ...(model.supportsEffort !== false && levels.length > 0
-      ? [
-          buildSelectOptionDescriptor({
-            id: "effort",
-            label: "Reasoning",
-            options: claudeEffortOptionsFromLevels(levels),
-            promptInjectedValues: ["ultrathink"],
-          }),
-        ]
-      : []),
-    ...(model.supportsFastMode
-      ? [buildBooleanOptionDescriptor({ id: "fastMode", label: "Fast Mode" })]
-      : []),
-    ...(contextWindowDescriptor ? [contextWindowDescriptor] : []),
-  ];
-
-  return optionDescriptors.length > 0
-    ? createModelCapabilities({ optionDescriptors })
-    : DEFAULT_CLAUDE_MODEL_CAPABILITIES;
-}
-
-function parseClaudeSupportedModels(
-  models: ReadonlyArray<ClaudeModelInfo> | undefined,
+export function parseClaudeSupportedModels(
+  models: ReadonlyArray<unknown> | undefined,
 ): ReadonlyArray<ServerProviderModel> {
-  return (models ?? []).flatMap((model) => {
-    const slug = model.value?.trim();
-    if (!slug) return [];
+  const seen = new Set<string>();
+  return (models ?? []).flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const model = entry as ClaudeModelInfo;
+    const slug = typeof model.value === "string" ? model.value.trim() : "";
+    if (!slug || seen.has(slug)) return [];
+    seen.add(slug);
+    const displayName = typeof model.displayName === "string" ? model.displayName : "";
     return [
       {
         slug,
-        name: nonEmptyProbeString(model.displayName ?? "") ?? slug,
+        name: nonEmptyProbeString(displayName) ?? slug,
         isCustom: false,
-        capabilities: capabilitiesForClaudeModelInfo(model),
+        capabilities: getClaudeModelCapabilities(slug),
       } satisfies ServerProviderModel,
     ];
   });
@@ -786,7 +743,7 @@ const probeClaudeCapabilities = (
         if (typeof readModels !== "function") return [];
         try {
           const result = await readModels.call(q);
-          return Array.isArray(result) ? (result as ReadonlyArray<ClaudeModelInfo>) : [];
+          return Array.isArray(result) ? (result as ReadonlyArray<unknown>) : [];
         } catch {
           return [];
         }

@@ -1556,16 +1556,17 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             }),
           );
 
-          assert.strictEqual(
-            status.models.some((model) => model.slug === "claude-future-9"),
-            true,
-          );
+          const discovered = status.models.find((model) => model.slug === "claude-future-9");
+          assert.strictEqual(discovered?.slug, "claude-future-9");
           // A model neokod never hardcoded is now selectable, and the static
           // catalog no longer constrains the list.
           assert.strictEqual(
             status.models.some((model) => model.slug === "claude-opus-4-8"),
             false,
           );
+          // Discovery contributes the model, never invented options: the
+          // execution-time capability lookup would drop anything extra.
+          assert.deepStrictEqual(discovered?.capabilities?.optionDescriptors ?? [], []);
           // The version gate describes the static catalog only.
           assert.strictEqual(status.message, undefined);
         }).pipe(
