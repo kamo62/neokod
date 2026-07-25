@@ -48,6 +48,7 @@ const CLAUDE_PRESENTATION = {
   displayName: "Claude",
   showInteractionModeToggle: true,
 } as const;
+const MINIMUM_CLAUDE_OPUS_5_VERSION = "2.1.219";
 const MINIMUM_CLAUDE_FABLE_5_VERSION = "2.1.169";
 const MINIMUM_CLAUDE_OPUS_4_8_VERSION = "2.1.154";
 const MINIMUM_CLAUDE_OPUS_4_7_VERSION = "2.1.111";
@@ -79,6 +80,42 @@ const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
           options: [
             { value: "200k", label: "200k", isDefault: true },
             { value: "1m", label: "1M" },
+          ],
+        }),
+      ],
+    }),
+  },
+  {
+    slug: "claude-opus-5",
+    name: "Claude Opus 5",
+    isCustom: false,
+    capabilities: createModelCapabilities({
+      optionDescriptors: [
+        buildSelectOptionDescriptor({
+          id: "effort",
+          label: "Reasoning",
+          options: [
+            { value: "low", label: "Low" },
+            { value: "medium", label: "Medium" },
+            { value: "high", label: "High", isDefault: true },
+            { value: "xhigh", label: "Extra High" },
+            { value: "max", label: "Max" },
+            { value: "ultracode", label: "Ultracode" },
+            { value: "ultrathink", label: "Ultrathink" },
+          ],
+          promptInjectedValues: ["ultrathink"],
+        }),
+        buildBooleanOptionDescriptor({
+          id: "fastMode",
+          label: "Fast Mode",
+        }),
+        buildSelectOptionDescriptor({
+          id: "contextWindow",
+          label: "Context Window",
+          // Claude Code selects the 1M variant explicitly (`claude-opus-5[1m]`).
+          options: [
+            { value: "200k", label: "200k" },
+            { value: "1m", label: "1M", isDefault: true },
           ],
         }),
       ],
@@ -267,6 +304,10 @@ const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
   },
 ];
 
+function supportsClaudeOpus5(version: string | null | undefined): boolean {
+  return version ? compareSemverVersions(version, MINIMUM_CLAUDE_OPUS_5_VERSION) >= 0 : false;
+}
+
 function supportsClaudeFable5(version: string | null | undefined): boolean {
   return version ? compareSemverVersions(version, MINIMUM_CLAUDE_FABLE_5_VERSION) >= 0 : false;
 }
@@ -283,6 +324,9 @@ function getBuiltInClaudeModelsForVersion(
   version: string | null | undefined,
 ): ReadonlyArray<ServerProviderModel> {
   return BUILT_IN_MODELS.filter((model) => {
+    if (model.slug === "claude-opus-5") {
+      return supportsClaudeOpus5(version);
+    }
     if (model.slug === "claude-fable-5") {
       return supportsClaudeFable5(version);
     }
@@ -294,6 +338,11 @@ function getBuiltInClaudeModelsForVersion(
     }
     return true;
   });
+}
+
+function formatClaudeOpus5UpgradeMessage(version: string | null): string {
+  const versionLabel = version ? `v${version}` : "the installed version";
+  return `Claude Code ${versionLabel} is too old for Claude Opus 5. Upgrade to v${MINIMUM_CLAUDE_OPUS_5_VERSION} or newer to access it.`;
 }
 
 function formatClaudeFable5UpgradeMessage(version: string | null): string {
@@ -355,6 +404,7 @@ export function normalizeClaudeCliEffort(
   if (
     effort === "xhigh" &&
     model !== "claude-fable-5" &&
+    model !== "claude-opus-5" &&
     model !== "claude-opus-4-8" &&
     model !== "claude-sonnet-5"
   ) {
@@ -479,9 +529,19 @@ function claudeAuthMetadata(input: {
   return undefined;
 }
 
+function apiProviderAuthMetadata(
+  apiProvider: string | undefined,
+): { readonly type: string; readonly label: string } | undefined {
+  return apiProvider === "bedrock" ? { type: "bedrock", label: "Amazon Bedrock" } : undefined;
+}
+
 // ── SDK capability probe ────────────────────────────────────────────
 
-const CAPABILITIES_PROBE_TIMEOUT_MS = 8_000;
+// Amazon Bedrock initializes far slower than first-party auth: the SDK boots the
+// Bedrock backend and runs the `awsAuthRefresh` credential hook before returning
+// account info. The previous 8s budget expired mid-init, so the probe returned
+// `undefined` and left the provider unverified and unselectable in the picker.
+const CAPABILITIES_PROBE_TIMEOUT_MS = 25_000;
 
 function nonEmptyProbeString(value: string): string | undefined {
   const candidate = value.trim();
@@ -492,6 +552,12 @@ type ClaudeCapabilitiesProbe = {
   readonly email: string | undefined;
   readonly subscriptionType: string | undefined;
   readonly tokenSource: string | undefined;
+  /**
+   * Active API backend reported by the SDK's `AccountInfo`. Anthropic OAuth
+   * login only applies when `"firstParty"`; for Amazon Bedrock (`"bedrock"`)
+   * the subscription/token fields are absent and auth is external AWS creds.
+   */
+  readonly apiProvider: string | undefined;
   readonly slashCommands: ReadonlyArray<ServerProviderSlashCommand>;
 };
 
@@ -613,12 +679,14 @@ const probeClaudeCapabilities = (
             readonly email?: string;
             readonly subscriptionType?: string;
             readonly tokenSource?: string;
+            readonly apiProvider?: string;
           }
         | undefined;
       return {
         email: account?.email,
         subscriptionType: account?.subscriptionType,
         tokenSource: account?.tokenSource,
+        apiProvider: account?.apiProvider,
         slashCommands: parseClaudeInitializationCommands(init.commands),
       } satisfies ClaudeCapabilitiesProbe;
     });
@@ -763,13 +831,15 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     claudeSettings.customModels,
     DEFAULT_CLAUDE_MODEL_CAPABILITIES,
   );
-  const versionUpgradeMessage = supportsClaudeFable5(parsedVersion)
+  const versionUpgradeMessage = supportsClaudeOpus5(parsedVersion)
     ? undefined
-    : supportsClaudeOpus48(parsedVersion)
-      ? formatClaudeFable5UpgradeMessage(parsedVersion)
-      : supportsClaudeOpus47(parsedVersion)
-        ? formatClaudeOpus48UpgradeMessage(parsedVersion)
-        : formatClaudeOpus47UpgradeMessage(parsedVersion);
+    : supportsClaudeFable5(parsedVersion)
+      ? formatClaudeOpus5UpgradeMessage(parsedVersion)
+      : supportsClaudeOpus48(parsedVersion)
+        ? formatClaudeFable5UpgradeMessage(parsedVersion)
+        : supportsClaudeOpus47(parsedVersion)
+          ? formatClaudeOpus48UpgradeMessage(parsedVersion)
+          : formatClaudeOpus47UpgradeMessage(parsedVersion);
 
   const capabilities = resolveCapabilities
     ? yield* resolveCapabilities(claudeSettings).pipe(Effect.orElseSucceed(() => undefined))
@@ -794,10 +864,11 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     });
   }
 
-  const authMetadata = claudeAuthMetadata({
-    subscriptionType: capabilities.subscriptionType,
-    authMethod: capabilities.tokenSource,
-  });
+  const authMetadata =
+    claudeAuthMetadata({
+      subscriptionType: capabilities.subscriptionType,
+      authMethod: capabilities.tokenSource,
+    }) ?? apiProviderAuthMetadata(capabilities.apiProvider);
   return buildServerProvider({
     presentation: CLAUDE_PRESENTATION,
     enabled: claudeSettings.enabled,
