@@ -34,7 +34,7 @@ for porting:
 
 2. **Exclude anything that does not match local-first.** Reject upstream features
    that depend on infrastructure Neokod has carved out: hosted or remote
-   transports, T3 Connect, cloud sessions, remote server or standalone-service
+   transports, T3 Connect, cloud sessions, hosted or remote server/standalone-service
    management, mobile apps, the marketing site, and public or loopback auth
    control planes.
 
