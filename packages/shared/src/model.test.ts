@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { ProviderInstanceId, type ModelCapabilities } from "@neokod/contracts";
+import { ProviderDriverKind, ProviderInstanceId, type ModelCapabilities } from "@neokod/contracts";
 
 import {
   buildProviderOptionSelectionsFromDescriptors,
@@ -10,6 +10,7 @@ import {
   getProviderOptionDescriptors,
   getProviderOptionBooleanSelectionValue,
   getProviderOptionStringSelectionValue,
+  normalizeModelSlug,
 } from "./model.ts";
 
 const codexCaps: ModelCapabilities = createModelCapabilities({
@@ -124,6 +125,14 @@ describe("descriptor helpers", () => {
         { id: "fastMode", value: true },
       ],
     });
+  });
+
+  it("expands the bare Claude opus alias to Opus 5", () => {
+    const claude = ProviderDriverKind.make("claudeAgent");
+
+    expect(normalizeModelSlug("opus", claude)).toBe("claude-opus-5");
+    expect(normalizeModelSlug("opus-5", claude)).toBe("claude-opus-5");
+    expect(normalizeModelSlug("opus-4.8", claude)).toBe("claude-opus-4-8");
   });
 
   it("reads typed option selection values", () => {
