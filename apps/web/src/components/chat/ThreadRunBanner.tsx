@@ -33,15 +33,6 @@ export function ThreadRunBanner(props: ThreadRunBannerProps) {
         worktreePath: props.thread.worktreePath,
       })
     : null;
-  const gitStatusQuery = useEnvironmentQuery(
-    gitCwd === null
-      ? null
-      : vcsEnvironment.status({
-          environmentId: props.thread.environmentId,
-          input: { cwd: gitCwd },
-        }),
-  );
-  const changeStats = resolveEnvironmentChangeStats(gitStatusQuery.data);
   const summary = useThreadRunSummary({
     thread: props.thread,
     activePlan: props.activePlan,
@@ -52,6 +43,15 @@ export function ThreadRunBanner(props: ThreadRunBannerProps) {
     interruptAvailable: props.interruptAvailable,
     activeToolLabel: props.activeToolLabel,
   });
+  const gitStatusQuery = useEnvironmentQuery(
+    !summary || gitCwd === null
+      ? null
+      : vcsEnvironment.status({
+          environmentId: props.thread.environmentId,
+          input: { cwd: gitCwd },
+        }),
+  );
+  const changeStats = resolveEnvironmentChangeStats(gitStatusQuery.data);
   if (!summary) return null;
 
   const isAttention = summary.attention !== null;

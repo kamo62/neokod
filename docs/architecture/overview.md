@@ -81,7 +81,7 @@ sequenceDiagram
 1. The browser boots `WsTransport` and registers typed listeners in `wsNativeApi`.
 2. The server accepts the connection in [`wsServer`][3] and brings up the runtime graph defined in [`serverLayers`][7].
 3. `ServerReadiness` waits until the key startup barriers are complete.
-4. Once the server is ready, [`wsServer`][3] sends `server.welcome` from the contracts in [`ws.ts`][6] through [`ServerPushBus`][5].
+4. Once the server is ready, [`wsServer`][3] sends `server.welcome` from the contracts in [`ws.ts`][5] through [`ServerPushBus`][5].
 5. The browser receives that ordered push through `WsTransport`, and `wsNativeApi` uses it to seed local client state.
 
 ### User turn flow
@@ -109,7 +109,7 @@ sequenceDiagram
 ```
 
 1. A user action in the browser becomes a typed request through `WsTransport` and the browser API layer in `nativeApi`.
-2. [`wsServer`][3] decodes that request using the shared WebSocket contracts in [`ws.ts`][6] and routes it to the right service.
+2. [`wsServer`][3] decodes that request using the shared WebSocket contracts in [`ws.ts`][5] and routes it to the right service.
 3. [`ProviderService`][8] starts or resumes a session and talks to the selected provider CLI through its adapter.
 4. Provider-native events are pulled back into the server by [`ProviderRuntimeIngestion`][9], which converts them into orchestration events.
 5. [`OrchestrationEngine`][10] persists those events, updates the read model, and exposes them as domain events.
