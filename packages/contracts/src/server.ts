@@ -4,6 +4,7 @@ import { ExecutionEnvironmentDescriptor } from "./environment.ts";
 import {
   IsoDateTime,
   NonNegativeInt,
+  NonNegativeNumber,
   PositiveInt,
   ProjectId,
   ThreadId,
@@ -154,12 +155,12 @@ export type ServerProviderUpdateState = typeof ServerProviderUpdateState.Type;
 
 export const ServerProviderUsageWindow = Schema.Struct({
   bucketId: TrimmedNonEmptyString,
-  used: NonNegativeInt,
-  entitlement: Schema.NullOr(NonNegativeInt),
+  used: NonNegativeNumber,
+  entitlement: Schema.NullOr(NonNegativeNumber),
   remainingPercentage: Schema.Number,
   resetDate: Schema.optional(TrimmedNonEmptyString),
   unlimited: Schema.Boolean,
-  overage: NonNegativeInt,
+  overage: NonNegativeNumber,
 });
 export type ServerProviderUsageWindow = typeof ServerProviderUsageWindow.Type;
 

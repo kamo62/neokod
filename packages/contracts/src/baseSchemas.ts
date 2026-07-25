@@ -14,6 +14,7 @@ export const TrimmedString = Schema.String.pipe(
 export const TrimmedNonEmptyString = TrimmedString.check(Schema.isNonEmpty());
 
 export const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
+export const NonNegativeNumber = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0));
 export const PositiveInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1));
 export const PortSchema = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 }));
 

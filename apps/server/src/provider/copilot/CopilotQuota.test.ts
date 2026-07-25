@@ -140,10 +140,25 @@ describe("CopilotQuota", () => {
     }),
   );
 
-  it.effect("degrades to undefined when the SDK reports a fractional count", () =>
+  it.effect("preserves a fractional count instead of dropping the usage window", () =>
     Effect.gen(function* () {
       const client = makeClient(async () => ({
         quotaSnapshots: { chat: makeSnapshot({ usedRequests: 1.5 }) },
+      }));
+
+      const usage = yield* getCopilotQuota(client);
+
+      // Premium interactions carry multipliers, so the SDK legitimately reports
+      // fractional counts. Rejecting them used to discard the whole snapshot.
+      NodeAssert.equal(usage?.windows.length, 1);
+      NodeAssert.equal(usage?.windows[0]?.used, 1.5);
+    }),
+  );
+
+  it.effect("still degrades to undefined when the SDK reports a non-finite count", () =>
+    Effect.gen(function* () {
+      const client = makeClient(async () => ({
+        quotaSnapshots: { chat: makeSnapshot({ usedRequests: Number.POSITIVE_INFINITY }) },
       }));
 
       NodeAssert.equal(yield* getCopilotQuota(client), undefined);
