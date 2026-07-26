@@ -5,6 +5,7 @@ import * as Schema from "effect/Schema";
 import {
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
+  FALLBACK_RUNTIME_MODE,
   ModelSelection,
   OrchestrationCommand,
   OrchestrationEvent,
@@ -625,7 +626,7 @@ it.effect("decodes orchestration session runtime mode defaults", () =>
   }),
 );
 
-it.effect("falls back for unknown persisted thread runtime modes", () =>
+it.effect("fails closed for unknown persisted thread runtime modes", () =>
   Effect.gen(function* () {
     const common = {
       id: "thread-1",
@@ -653,8 +654,9 @@ it.effect("falls back for unknown persisted thread runtime modes", () =>
       hasActionableProposedPlan: false,
     });
 
-    assert.strictEqual(thread.runtimeMode, DEFAULT_RUNTIME_MODE);
-    assert.strictEqual(shell.runtimeMode, DEFAULT_RUNTIME_MODE);
+    // Corrupt persisted permissions must never regain full access.
+    assert.strictEqual(thread.runtimeMode, FALLBACK_RUNTIME_MODE);
+    assert.strictEqual(shell.runtimeMode, FALLBACK_RUNTIME_MODE);
   }),
 );
 
