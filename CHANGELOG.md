@@ -1,3 +1,10 @@
+## 3.4.0 - 2026-07-26 (Minor)
+
+Release impact: Minor because this adds an opt-in runtime mode and provider contract value without changing the default.
+
+- Added the opt-in Auto runtime mode. Codex and Claude use AI-reviewed approvals; providers without an AI-review concept keep their existing user-approval behavior.
+- Added forward-compatible persisted runtime-mode decoding so rollback to an older build falls back safely instead of failing startup.
+
 ## 3.3.0 - 2026-07-26 (Minor)
 
 Release impact: Minor because this adds Claude model discovery and a new model, and widens the provider usage contract in a backward-compatible way (integer quota counts still decode), with no breaking changes.

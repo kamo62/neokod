@@ -41,6 +41,7 @@ import {
   RuntimeTaskId,
   ThreadId,
   TurnId,
+  type RuntimeMode,
   type UserInputQuestion,
 } from "@neokod/contracts";
 import { getModelSelectionStringOptionValue } from "@neokod/shared/model";
@@ -77,6 +78,19 @@ type CopilotUserInputRequest = Parameters<CopilotUserInputHandler>[0];
 type CopilotUserInputResponse = Awaited<ReturnType<CopilotUserInputHandler>>;
 type CopilotRpcFleetStart = (params: { prompt?: string }) => Promise<{ started: boolean }>;
 const COPILOT_REASONING_EFFORTS: ReadonlySet<string> = new Set(["low", "medium", "high", "xhigh"]);
+
+function copilotAutoApprovePermissions(runtimeMode: RuntimeMode): boolean {
+  switch (runtimeMode) {
+    case "full-access":
+      return true;
+    case "auto":
+      // Copilot has no AI reviewer; Auto intentionally uses the user approval path.
+      return false;
+    case "approval-required":
+    case "auto-accept-edits":
+      return false;
+  }
+}
 
 /** Adapter contract for this driver — naming anchor only, see `ClaudeAdapterShape`. */
 export interface CopilotAdapterShape extends ProviderAdapterShape<ProviderAdapterError> {}
@@ -677,7 +691,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       const onPermissionRequest = async (
         request: PermissionRequest,
       ): Promise<PermissionRequestResult> => {
-        if (input.runtimeMode === "full-access") {
+        if (copilotAutoApprovePermissions(input.runtimeMode)) {
           return { kind: "approve-once" };
         }
 
@@ -1246,7 +1260,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
             // phantom prompt. Genuine interactive approvals emit their own
             // request.opened from onPermissionRequest and are untouched here.
             if (
-              input.runtimeMode === "full-access" ||
+              copilotAutoApprovePermissions(input.runtimeMode) ||
               requestRecord.data.resolvedByHook ||
               sessionCtx.pendingCallbackCount === 0
             ) {

@@ -13,7 +13,7 @@ import {
   IsoDateTime,
   ProviderInstanceId,
   ProviderSessionRuntimeStatus,
-  RuntimeMode,
+  RuntimeModeStored,
   ThreadId,
 } from "@neokod/contracts";
 
@@ -44,7 +44,7 @@ export const ProviderSessionRuntime = Schema.Struct({
    */
   providerInstanceId: Schema.NullOr(ProviderInstanceId),
   adapterKey: Schema.String,
-  runtimeMode: RuntimeMode,
+  runtimeMode: RuntimeModeStored,
   status: ProviderSessionRuntimeStatus,
   lastSeenAt: IsoDateTime,
   resumeCursor: Schema.NullOr(Schema.Unknown),

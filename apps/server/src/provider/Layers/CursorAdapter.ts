@@ -228,7 +228,8 @@ function resolveRequestedModeId(input: {
     return findModeByAliases(modeState.availableModes, ACP_PLAN_MODE_ALIASES)?.id;
   }
 
-  if (input.runtimeMode === "approval-required") {
+  if (input.runtimeMode === "approval-required" || input.runtimeMode === "auto") {
+    // Cursor has no AI reviewer; Auto uses the existing approval mode.
     return (
       findModeByAliases(modeState.availableModes, ACP_APPROVAL_MODE_ALIASES)?.id ??
       findModeByAliases(modeState.availableModes, ACP_IMPLEMENT_MODE_ALIASES)?.id ??
@@ -671,6 +672,7 @@ export function makeCursorAdapter(
                     params,
                     "acp.jsonrpc",
                   );
+                  // Cursor has no AI reviewer; Auto intentionally uses the user approval path.
                   if (input.runtimeMode === "full-access") {
                     const autoApprovedOptionId = selectAutoApprovedPermissionOption(params);
                     if (autoApprovedOptionId !== undefined) {

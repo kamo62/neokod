@@ -214,8 +214,15 @@ export function toOpenCodeFileParts(input: {
 }
 
 export function buildOpenCodePermissionRules(runtimeMode: RuntimeMode): PermissionRuleset {
-  if (runtimeMode === "full-access") {
-    return [{ permission: "*", pattern: "*", action: "allow" }];
+  switch (runtimeMode) {
+    case "full-access":
+      return [{ permission: "*", pattern: "*", action: "allow" }];
+    case "auto":
+      // OpenCode has no AI reviewer; Auto intentionally uses the user approval path.
+      break;
+    case "approval-required":
+    case "auto-accept-edits":
+      break;
   }
 
   return [

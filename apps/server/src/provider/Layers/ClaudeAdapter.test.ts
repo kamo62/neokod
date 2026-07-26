@@ -373,6 +373,25 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("derives auto permission mode from auto runtime policy without skip flag", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "auto",
+      });
+
+      const createInput = harness.getLastCreateQueryInput();
+      assert.equal(createInput?.options.permissionMode, "auto");
+      assert.equal(createInput?.options.allowDangerouslySkipPermissions, undefined);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("loads Claude filesystem settings sources for SDK sessions", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
@@ -3936,6 +3955,7 @@ describe("ClaudeAdapterLive", () => {
     { runtimeMode: "full-access", expectedBase: "bypassPermissions" },
     { runtimeMode: "approval-required", expectedBase: "default" },
     { runtimeMode: "auto-accept-edits", expectedBase: "acceptEdits" },
+    { runtimeMode: "auto", expectedBase: "auto" },
   ])(
     "restores $expectedBase permission mode after plan turn ($runtimeMode)",
     ({ runtimeMode, expectedBase }) => {
