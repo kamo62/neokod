@@ -16,7 +16,7 @@ import {
 } from "@neokod/shared/model";
 import { memo, useCallback, useState } from "react";
 import type { VariantProps } from "class-variance-authority";
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon, ZapIcon } from "lucide-react";
 import { Button, buttonVariants } from "../ui/button";
 import {
   Menu,
@@ -217,6 +217,44 @@ export function formatProviderOptionTraitLabel(
   return getProviderOptionCurrentLabel(descriptor) ?? null;
 }
 
+/**
+ * Build the traits trigger's text label plus whether the fast-mode bolt renders.
+ * Fast mode shows as a lightning bolt when on and nothing when off: "Normal" is
+ * the near-universal case and is not worth the horizontal space in a trigger
+ * that already truncates. The exception is fast mode being the only trait, where
+ * a bare bolt or bare chevron would leave the trigger unreadable.
+ */
+export function buildTraitsTriggerDisplay(input: {
+  descriptors: ReadonlyArray<ProviderOptionDescriptor>;
+  primarySelectDescriptorId: string | null;
+  ultrathinkPromptControlled: boolean;
+  fastModeEnabled: boolean;
+}): { label: string; showFastModeIcon: boolean } {
+  let hasFastMode = false;
+  const labels: Array<string> = [];
+  for (const descriptor of input.descriptors) {
+    if (descriptor.id === "fastMode" && descriptor.type === "boolean") {
+      hasFastMode = true;
+      continue;
+    }
+    const label = formatProviderOptionTraitLabel(descriptor, {
+      isUltrathinkOverride:
+        input.ultrathinkPromptControlled && descriptor.id === input.primarySelectDescriptorId,
+    });
+    if (typeof label === "string" && label.length > 0) {
+      labels.push(label);
+    }
+  }
+
+  // Only fall back to text when fast mode is genuinely the sole trait. Keying off
+  // an empty label list alone would also catch descriptors that resolved to no
+  // label at all, printing a bogus "Normal" for a model without fast mode.
+  if (labels.length === 0 && hasFastMode) {
+    return { label: input.fastModeEnabled ? "Fast" : "Normal", showFastModeIcon: false };
+  }
+  return { label: labels.join(" · "), showFastModeIcon: input.fastModeEnabled };
+}
+
 export interface TraitsMenuContentProps {
   provider: ProviderDriverKind;
   instanceId?: ProviderInstanceId;
@@ -381,7 +419,7 @@ export const TraitsPicker = memo(function TraitsPicker({
   ...persistence
 }: TraitsMenuContentProps & TraitsPersistence) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { descriptors, primarySelectDescriptor, ultrathinkPromptControlled } =
+  const { descriptors, primarySelectDescriptor, ultrathinkPromptControlled, fastModeEnabled } =
     getTraitsSectionVisibility({
       provider,
       models,
@@ -403,17 +441,12 @@ export const TraitsPicker = memo(function TraitsPicker({
     return null;
   }
 
-  const triggerLabels: Array<string> = [];
-  for (const descriptor of descriptors) {
-    const label = formatProviderOptionTraitLabel(descriptor, {
-      isUltrathinkOverride:
-        ultrathinkPromptControlled && descriptor.id === primarySelectDescriptor?.id,
-    });
-    if (typeof label === "string" && label.length > 0) {
-      triggerLabels.push(label);
-    }
-  }
-  const triggerLabel = triggerLabels.join(" · ");
+  const { label: triggerLabel, showFastModeIcon } = buildTraitsTriggerDisplay({
+    descriptors,
+    primarySelectDescriptorId: primarySelectDescriptor?.id ?? null,
+    ultrathinkPromptControlled,
+    fastModeEnabled,
+  });
 
   const isCodexStyle = provider === "codex";
 
@@ -441,11 +474,17 @@ export const TraitsPicker = memo(function TraitsPicker({
         {isCodexStyle ? (
           <span className="flex min-w-0 w-full items-center gap-2 overflow-hidden">
             {triggerLabel}
+            {showFastModeIcon ? (
+              <ZapIcon aria-label="Fast mode" className="size-3 shrink-0 opacity-80" />
+            ) : null}
             <ChevronDownIcon aria-hidden="true" className="size-3 shrink-0 opacity-60" />
           </span>
         ) : (
           <>
             <span>{triggerLabel}</span>
+            {showFastModeIcon ? (
+              <ZapIcon aria-label="Fast mode" className="size-3 shrink-0 opacity-80" />
+            ) : null}
             <ChevronDownIcon aria-hidden="true" className="size-3 opacity-60" />
           </>
         )}
