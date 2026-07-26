@@ -5,7 +5,9 @@ Release impact: Minor because this adds an opt-in runtime mode and provider cont
 - Added the opt-in Auto runtime mode. Codex uses AI-reviewed approvals; Claude currently prompts pending upstream #4495, while providers without an AI-review concept keep their existing user-approval behavior.
 - Added forward-compatible persisted runtime-mode decoding for future modes. An unrecognized mode falls back to `approval-required` (least privilege), never `full-access`, and this now covers the persisted thread and session projections as well as the contracts layer. This protects a later upgrade that introduces a new mode from startup failures on an earlier compatible build.
 - Rolling back below 3.4.0 after using Auto is unsupported: 3.3.0 decodes persisted runtime modes strictly and can still fail at startup.
+- The fallback is applied once and kept. If an older build projects a thread whose mode it does not recognize, that thread stays on `approval-required` after upgrading again, because replay resumes from the stored cursor rather than re-reading the original event. Re-select the mode on the thread to restore it.
 - Kept future Codex runtime modes fail closed rather than silently granting full access.
+- Applied the same least-privilege fallback to the composer's saved runtime-mode overrides. A saved override the build does not recognize previously fell through to the thread's own mode, which can be more permissive than the one that was picked.
 
 ## 3.3.0 - 2026-07-26 (Minor)
 

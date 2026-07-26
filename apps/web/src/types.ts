@@ -23,8 +23,11 @@ export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
  * after rolling back from a newer version. Must stay the least privileged mode:
  * unlike DEFAULT_RUNTIME_MODE, this is applied to values we could not validate,
  * so it fails closed rather than granting full access.
+ *
+ * Re-exported from contracts rather than redeclared, so the client and server
+ * cannot drift to different fallbacks.
  */
-export const FALLBACK_RUNTIME_MODE: RuntimeMode = "approval-required";
+export { FALLBACK_RUNTIME_MODE } from "@neokod/contracts";
 
 export const DEFAULT_INTERACTION_MODE: ProviderInteractionMode = "default";
 export const DEFAULT_THREAD_TERMINAL_HEIGHT = 280;

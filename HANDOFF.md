@@ -1,7 +1,8 @@
 # Handoff: org fork of T3 Code (Copilot + Claude, AI-Orch governed)
 
-Continuation notes for a fresh session opened in this directory. Keep this file
-untracked; do not commit it.
+Continuation notes for a fresh session opened in this directory. This file is
+tracked, so keep it current with what actually merged; a stale status here is
+worse than none.
 
 ## Current state (2026-07-26) — neokod track
 
@@ -40,8 +41,9 @@ distributable binaries live in Releases and are never touched).
 
 ### Open: PR #51 — Auto runtime mode
 
-Port of upstream #4272 plus hardening upstream lacks. **Currently NO-GO** — sol
-found two real gaps; `terra` is fixing them.
+Port of upstream #4272 plus hardening upstream lacks. **Ready to merge** — CI is
+green on every job and the round-3 two-lane review passed after its findings were
+fixed.
 
 Upstream has two open bugs in this feature and we defend against both:
 
@@ -55,17 +57,32 @@ Design: `RuntimeModeStored` decodes an unrecognised persisted value to
 **adapter** — `auto` is absent from `runtimeModeToPermission` so Claude prompts —
 because a UI-only gate is bypassable by a persisted or API-supplied value.
 
-Outstanding on this PR (terra in flight): make `ProjectionThreads.ts:31` and
-`ProjectionThreadSessions.ts:29` tolerant (they are strict persisted decoders
-outside contracts, so rollback still crash-loops); stop replay writing the
-fallback back into `projection_threads.runtime_mode`, which permanently destroys a
-newer value on rollback-then-upgrade; close fail-open `default` arms in
-`CodexSessionRuntime.ts:291,331`; correct changelog/composer copy that still claims
-Claude uses AI-reviewed approvals.
+One earlier fix was reverted rather than patched. To stop replay overwriting a
+newer persisted mode, a `storedRuntimeMode` field preserved the original value
+across projection writes. It read the column on _every_ row, not just unknown
+ones, so `projection_threads.runtime_mode` froze at its creation value: changing
+full-access to approval-required and restarting silently restored full-access,
+for every provider. The whole mechanism was removed. Replay is lossy again for
+unknown modes, and that loss is now permanent rather than temporary, since
+bootstrap resumes from the stored cursor. Fail-closed direction, documented in
+the changelog, re-select the mode to restore it.
 
-Four defects were found here by four different mechanisms (CI, my own checks,
-CodeRabbit, sol) and three traced to flawed instructions rather than the
-implementer. Two-lane review before merge is justified on this one.
+Accepted follow-ups, not blockers: a project mapping that outlives its
+draft-thread record synthesises a fresh record, so the picked mode is
+unrecoverable there and the thread comes back on `approval-required`;
+`CodexSessionRuntime` now sends `approvalsReviewer` unconditionally, which the
+bundled server accepts but an older external codex binary might reject. The
+`ProviderSessionRuntime` strict-decoding concern turned out to be smaller than
+first recorded: `list` skips bad rows individually, so one corrupt row does not
+stop the reaper. If that strictness is ever relaxed, use `RuntimeModeStored` in
+the row schema rather than swallowing the error, or the `?? "full-access"`
+defaults downstream become corrupt-to-full-access paths.
+
+Six defects were found here across three rounds by five mechanisms (CI, my own
+checks, CodeRabbit, sol, Fable). Most traced to flawed instructions rather than
+the implementer, and two rounds introduced a worse bug than the one being fixed.
+The last round's two reviewers each found a fail-open the other missed. Two-lane
+review before merge earned its place on this one.
 
 ### Agent Gateway — spec only, never built
 

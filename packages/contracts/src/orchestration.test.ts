@@ -654,9 +654,13 @@ it.effect("fails closed for unknown persisted thread runtime modes", () =>
       hasActionableProposedPlan: false,
     });
 
-    // Corrupt persisted permissions must never regain full access.
-    assert.strictEqual(thread.runtimeMode, FALLBACK_RUNTIME_MODE);
-    assert.strictEqual(shell.runtimeMode, FALLBACK_RUNTIME_MODE);
+    // Corrupt persisted permissions must never regain full access. Pinned to
+    // the literal as well as the constant: asserting only against
+    // FALLBACK_RUNTIME_MODE would still pass if someone redefined it as
+    // "full-access", which is the exact regression this test exists to catch.
+    assert.strictEqual(thread.runtimeMode, "approval-required");
+    assert.strictEqual(shell.runtimeMode, "approval-required");
+    assert.strictEqual(FALLBACK_RUNTIME_MODE, "approval-required");
   }),
 );
 

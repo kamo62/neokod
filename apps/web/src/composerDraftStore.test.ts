@@ -523,6 +523,97 @@ describe("composerDraftStore terminal contexts", () => {
   });
 });
 
+describe("composerDraftStore persisted runtime mode fallbacks", () => {
+  const threadId = ThreadId.make("thread-future-mode");
+  const projectId = ProjectId.make("project-future-mode");
+  const threadKey = threadKeyFor(threadId, TEST_ENVIRONMENT_ID);
+  const projectKey = scopedProjectKey(scopeProjectRef(TEST_ENVIRONMENT_ID, projectId));
+
+  beforeEach(() => {
+    resetComposerDraftStore();
+  });
+
+  function mergePersisted(persistedState: unknown) {
+    const persistApi = useComposerDraftStore.persist as unknown as {
+      getOptions: () => {
+        merge: (
+          persistedState: unknown,
+          currentState: ReturnType<typeof useComposerDraftStore.getState>,
+        ) => ReturnType<typeof useComposerDraftStore.getState>;
+      };
+    };
+    return persistApi.getOptions().merge(persistedState, useComposerDraftStore.getInitialState());
+  }
+
+  it("fails closed for a draft thread carrying an unknown runtime mode", () => {
+    const mergedState = mergePersisted({
+      draftsByThreadKey: {},
+      draftThreadsByThreadKey: {
+        [threadKey]: {
+          threadId,
+          environmentId: TEST_ENVIRONMENT_ID,
+          projectId,
+          logicalProjectKey: projectKey,
+          createdAt: "2026-03-13T12:00:00.000Z",
+          runtimeMode: "some-future-mode",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+        },
+      },
+      projectDraftThreadIdByProjectKey: {},
+    });
+
+    expect(mergedState.draftThreadsByThreadKey[threadKey]?.runtimeMode).toBe("approval-required");
+  });
+
+  it("fails closed for a composer override carrying an unknown runtime mode", () => {
+    const mergedState = mergePersisted({
+      draftsByThreadKey: {
+        [threadKey]: {
+          prompt: "",
+          attachments: [],
+          runtimeMode: "some-future-mode",
+        },
+      },
+      draftThreadsByThreadKey: {},
+      projectDraftThreadIdByProjectKey: {},
+    });
+
+    // Dropping the override would fall through to the thread's mode, which can
+    // be more permissive than the one the user actually picked.
+    expect(mergedState.draftsByThreadKey[threadKey]?.runtimeMode).toBe("approval-required");
+  });
+
+  it("leaves an absent composer override absent so the thread mode still applies", () => {
+    const mergedState = mergePersisted({
+      draftsByThreadKey: {
+        [threadKey]: {
+          prompt: "still drafting",
+          attachments: [],
+        },
+      },
+      draftThreadsByThreadKey: {},
+      projectDraftThreadIdByProjectKey: {},
+    });
+
+    expect(mergedState.draftsByThreadKey[threadKey]?.prompt).toBe("still drafting");
+    expect(mergedState.draftsByThreadKey[threadKey]?.runtimeMode ?? null).toBeNull();
+  });
+
+  it("fails closed when a project mapping outlives its draft thread record", () => {
+    const mergedState = mergePersisted({
+      draftsByThreadKey: {},
+      draftThreadsByThreadKey: {},
+      projectDraftThreadIdByProjectKey: {
+        [projectKey]: threadKey,
+      },
+    });
+
+    expect(mergedState.draftThreadsByThreadKey[threadKey]?.runtimeMode).toBe("approval-required");
+  });
+});
+
 describe("composerDraftStore element contexts", () => {
   const threadId = ThreadId.make("thread-element");
   const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);

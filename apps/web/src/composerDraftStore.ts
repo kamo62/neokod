@@ -1590,7 +1590,11 @@ function normalizePersistedDraftThreads(
           projectId: projectRef.projectId,
           logicalProjectKey,
           createdAt: new Date().toISOString(),
-          runtimeMode: DEFAULT_RUNTIME_MODE,
+          // Reached when a project mapping outlives its draft-thread record,
+          // including when the loop above dropped that record as corrupt. The
+          // mode the user picked is unrecoverable here, so fail closed and make
+          // them re-pick rather than resurrecting the thread at full access.
+          runtimeMode: FALLBACK_RUNTIME_MODE,
           interactionMode: DEFAULT_INTERACTION_MODE,
           branch: null,
           worktreePath: null,
@@ -1670,9 +1674,17 @@ function normalizePersistedDraftsByThreadId(
     const reviewComments = Array.isArray(draftCandidate.reviewComments)
       ? draftCandidate.reviewComments.filter(isReviewCommentContext)
       : [];
-    const runtimeMode = isRuntimeMode(draftCandidate.runtimeMode)
-      ? draftCandidate.runtimeMode
-      : null;
+    // An absent override means "inherit the thread mode", which is the normal
+    // case. A present but unrecognised one, e.g. after rolling back from a
+    // newer build, must not fall through to inheritance: the thread can be more
+    // permissive than the mode the user actually picked, so dropping the
+    // override would hand back access they had deliberately given up.
+    const persistedRuntimeMode: unknown = draftCandidate.runtimeMode;
+    const runtimeMode = isRuntimeMode(persistedRuntimeMode)
+      ? persistedRuntimeMode
+      : persistedRuntimeMode === undefined || persistedRuntimeMode === null
+        ? null
+        : FALLBACK_RUNTIME_MODE;
     const interactionMode =
       draftCandidate.interactionMode === "plan" || draftCandidate.interactionMode === "default"
         ? draftCandidate.interactionMode
