@@ -177,6 +177,144 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
   );
 });
 
+it.layer(BaseTestLayer)("OrchestrationProjectionPipeline worker count", (it) => {
+  it.effect("counts active workers and clears unfinished workers at turn end", () =>
+    Effect.gen(function* () {
+      const projectionPipeline = yield* OrchestrationProjectionPipeline;
+      const eventStore = yield* OrchestrationEventStore;
+      const sql = yield* SqlClient.SqlClient;
+      const threadId = ThreadId.make("thread-worker-count");
+      const turnId = TurnId.make("turn-worker-count");
+      let activitySequence = 0;
+
+      const readWorkerCount = () =>
+        sql<{ readonly workerCount: number }>`
+          SELECT worker_count AS "workerCount"
+          FROM projection_threads
+          WHERE thread_id = ${threadId}
+        `.pipe(Effect.map((rows) => rows[0]?.workerCount ?? -1));
+
+      yield* eventStore.append({
+        type: "thread.created",
+        eventId: EventId.make("evt-worker-count-created"),
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        occurredAt: "2026-07-26T00:00:00.000Z",
+        commandId: CommandId.make("cmd-worker-count-created"),
+        causationEventId: null,
+        correlationId: CommandId.make("cmd-worker-count-created"),
+        metadata: {},
+        payload: {
+          threadId,
+          projectId: ProjectId.make("project-worker-count"),
+          title: "Worker count",
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("codex"),
+            model: "gpt-5-codex",
+          },
+          runtimeMode: "full-access",
+          branch: null,
+          worktreePath: null,
+          createdAt: "2026-07-26T00:00:00.000Z",
+          updatedAt: "2026-07-26T00:00:00.000Z",
+        },
+      });
+      yield* projectionPipeline.bootstrap;
+
+      yield* eventStore.append({
+        type: "thread.session-set",
+        eventId: EventId.make("evt-worker-count-running"),
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        occurredAt: "2026-07-26T00:00:01.000Z",
+        commandId: CommandId.make("cmd-worker-count-running"),
+        causationEventId: null,
+        correlationId: CommandId.make("cmd-worker-count-running"),
+        metadata: {},
+        payload: {
+          threadId,
+          session: {
+            threadId,
+            status: "running",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: turnId,
+            lastError: null,
+            updatedAt: "2026-07-26T00:00:01.000Z",
+          },
+        },
+      });
+      yield* projectionPipeline.bootstrap;
+
+      const appendActivity = (
+        eventId: string,
+        kind: "task.started" | "task.completed",
+        taskId: string,
+      ) =>
+        eventStore.append({
+          type: "thread.activity-appended",
+          eventId: EventId.make(eventId),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: `2026-07-26T00:00:0${activitySequence + 2}.000Z`,
+          commandId: CommandId.make(`cmd-${eventId}`),
+          causationEventId: null,
+          correlationId: CommandId.make(`cmd-${eventId}`),
+          metadata: {},
+          payload: {
+            threadId,
+            activity: {
+              id: EventId.make(`${eventId}-activity`),
+              tone: "info",
+              kind,
+              summary: kind === "task.started" ? "Task started" : "Task completed",
+              payload: kind === "task.started" ? { taskId } : { taskId, status: "completed" },
+              turnId,
+              sequence: activitySequence++,
+              createdAt: `2026-07-26T00:00:0${activitySequence + 1}.000Z`,
+            },
+          },
+        });
+
+      yield* appendActivity("evt-worker-count-a-started", "task.started", "task-a");
+      yield* appendActivity("evt-worker-count-b-started", "task.started", "task-b");
+      yield* projectionPipeline.bootstrap;
+      assert.equal(yield* readWorkerCount(), 2);
+
+      yield* appendActivity("evt-worker-count-a-completed", "task.completed", "task-a");
+      yield* projectionPipeline.bootstrap;
+      assert.equal(yield* readWorkerCount(), 1);
+
+      // A missed task.completed must not leak past the authoritative turn end.
+      yield* eventStore.append({
+        type: "thread.session-set",
+        eventId: EventId.make("evt-worker-count-ended"),
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        occurredAt: "2026-07-26T00:01:00.000Z",
+        commandId: CommandId.make("cmd-worker-count-ended"),
+        causationEventId: null,
+        correlationId: CommandId.make("cmd-worker-count-ended"),
+        metadata: {},
+        payload: {
+          threadId,
+          session: {
+            threadId,
+            status: "ready",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: "2026-07-26T00:01:00.000Z",
+          },
+        },
+      });
+      yield* projectionPipeline.bootstrap;
+      assert.equal(yield* readWorkerCount(), 0);
+    }),
+  );
+});
+
 it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("neokod-runtime-mode-persisted-")))(
   "OrchestrationProjectionPipeline",
   (it) => {

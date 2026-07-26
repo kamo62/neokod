@@ -176,6 +176,37 @@ function derivePendingUserInputCountFromActivities(
   return openRequestIds.size;
 }
 
+export function deriveInFlightWorkerCount(input: {
+  readonly activities: ReadonlyArray<ProjectionThreadActivity>;
+  readonly activeTurnId: string | null;
+  readonly activeTurnState: ProjectionTurn["state"] | null;
+}): number {
+  // A missing task.completed can otherwise leak forever. Scope the count to a
+  // running active turn and force zero when the session settles; projection
+  // catch-up after restart therefore preserves live counts without stale ones.
+  if (input.activeTurnId === null || input.activeTurnState !== "running") {
+    return 0;
+  }
+
+  const inFlightTaskIds = new Set<string>();
+  for (const activity of input.activities) {
+    if (activity.turnId !== input.activeTurnId) continue;
+    if (activity.kind !== "task.started" && activity.kind !== "task.completed") continue;
+    const payload =
+      typeof activity.payload === "object" && activity.payload !== null
+        ? (activity.payload as Record<string, unknown>)
+        : null;
+    const taskId = typeof payload?.taskId === "string" ? payload.taskId : null;
+    if (!taskId) continue;
+    if (activity.kind === "task.started") {
+      inFlightTaskIds.add(taskId);
+    } else {
+      inFlightTaskIds.delete(taskId);
+    }
+  }
+  return inFlightTaskIds.size;
+}
+
 function deriveHasActionableProposedPlan(input: {
   readonly latestTurnId: string | null;
   readonly proposedPlans: ReadonlyArray<ProjectionThreadProposedPlan>;
@@ -554,11 +585,12 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         return;
       }
 
-      const [messages, proposedPlans, activities, pendingApprovals] = yield* Effect.all([
+      const [messages, proposedPlans, activities, pendingApprovals, turns] = yield* Effect.all([
         projectionThreadMessageRepository.listByThreadId({ threadId }),
         projectionThreadProposedPlanRepository.listByThreadId({ threadId }),
         projectionThreadActivityRepository.listByThreadId({ threadId }),
         projectionPendingApprovalRepository.listByThreadId({ threadId }),
+        projectionTurnRepository.listByThreadId({ threadId }),
       ]);
 
       let latestUserMessageAt: string | null = null;
@@ -579,6 +611,12 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         latestTurnId: existingRow.value.latestTurnId,
         proposedPlans,
       });
+      const activeTurn = turns.find((turn) => turn.turnId === existingRow.value.latestTurnId);
+      const workerCount = deriveInFlightWorkerCount({
+        activities,
+        activeTurnId: existingRow.value.latestTurnId,
+        activeTurnState: activeTurn?.state ?? null,
+      });
 
       yield* projectionThreadRepository.upsert({
         ...existingRow.value,
@@ -586,6 +624,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         pendingApprovalCount,
         pendingUserInputCount,
         hasActionableProposedPlan: hasActionableProposedPlan ? 1 : 0,
+        workerCount,
       });
     });
 
@@ -613,6 +652,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             pendingApprovalCount: 0,
             pendingUserInputCount: 0,
             hasActionableProposedPlan: 0,
+            workerCount: 0,
             deletedAt: null,
           });
           return;

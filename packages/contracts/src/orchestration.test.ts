@@ -653,6 +653,7 @@ it.effect("fails closed for unknown persisted thread runtime modes", () =>
       hasPendingUserInput: false,
       hasActionableProposedPlan: false,
     });
+    assert.strictEqual(shell.workerCount, 0);
 
     // Corrupt persisted permissions must never regain full access. Pinned to
     // the literal as well as the constant: asserting only against
