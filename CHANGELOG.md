@@ -1,3 +1,14 @@
+## 3.3.0 - 2026-07-26 (Minor)
+
+Release impact: Minor because this adds Claude model discovery and a new model, and widens the provider usage contract in a backward-compatible way (integer quota counts still decode), with no breaking changes.
+
+- Added Claude Opus 5, with reasoning effort, fast mode, and a context window that defaults to 1M. It appears once Claude Code v2.1.219 or newer is installed, and the bare `opus` alias now resolves to it.
+- Claude now reads its model list from the CLI itself rather than a hardcoded catalog, so newly released models appear without waiting for a Neokod update. The built-in list remains the fallback for older Claude Code builds and before the first successful probe.
+- Recognized Amazon Bedrock as a valid Claude sign-in. Bedrock-backed Claude previously showed as unauthenticated, and the capability probe timed out before Bedrock finished starting, which left the provider unselectable in the model picker.
+- Fixed Copilot usage disappearing when an allowance was reported as a fraction. Premium interactions are billed with multipliers, so a fractional count is normal, and rejecting it discarded the whole usage panel rather than just that value.
+- Raised muted text contrast in both themes to meet WCAG AA. Timestamps, metadata, and other secondary labels were below the readable-contrast floor on both the light and dark canvases.
+- Showed fast mode as a lightning bolt in the traits control rather than spelling out "Fast" or "Normal", freeing space in a control that already truncates. Fast mode on its own still reads as text, since a bare bolt would be ambiguous.
+
 ## 3.2.2 - 2026-07-25 (Patch)
 
 Release impact: Patch because this is a rendering optimization plus documentation accuracy fixes, with no contract changes.
