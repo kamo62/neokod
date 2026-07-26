@@ -125,36 +125,6 @@ export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
 /** Invalid persisted permissions must fall back to the least-privileged mode. */
 export const FALLBACK_RUNTIME_MODE: RuntimeMode = "approval-required";
 
-/**
- * Privilege ordering, least to most permissive. The literal union above is
- * declaration order and carries no meaning, so anything reasoning about "more
- * permissive than" must use this instead of comparing strings or literal index.
- *
- * `auto-accept-edits` and `auto` both sit between supervised and full access:
- * edits are applied without prompting, but neither grants unrestricted
- * execution. `auto` ranks higher because an AI reviewer, rather than the user,
- * is approving the routine actions.
- */
-export const RUNTIME_MODE_PRIVILEGE_ORDER: ReadonlyArray<RuntimeMode> = [
-  "approval-required",
-  "auto-accept-edits",
-  "auto",
-  "full-access",
-];
-
-/** Rank of a runtime mode in {@link RUNTIME_MODE_PRIVILEGE_ORDER}. */
-export function runtimeModePrivilege(mode: RuntimeMode): number {
-  return RUNTIME_MODE_PRIVILEGE_ORDER.indexOf(mode);
-}
-
-/**
- * The less permissive of two modes. Use when clamping a requested mode to a
- * ceiling, so a caller can never be granted more privilege than the ceiling
- * allows, whatever order the literals happen to be declared in.
- */
-export function clampRuntimeMode(requested: RuntimeMode, ceiling: RuntimeMode): RuntimeMode {
-  return runtimeModePrivilege(requested) <= runtimeModePrivilege(ceiling) ? requested : ceiling;
-}
 export const RuntimeModeStored = Schema.Unknown.pipe(
   Schema.decodeTo(
     RuntimeMode,

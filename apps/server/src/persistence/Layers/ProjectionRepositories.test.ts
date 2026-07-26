@@ -1,4 +1,4 @@
-import { FALLBACK_RUNTIME_MODE, ProjectId, ThreadId, ProviderInstanceId } from "@neokod/contracts";
+import { ProjectId, ThreadId, ProviderInstanceId } from "@neokod/contracts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -128,44 +128,6 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         instanceId: ProviderInstanceId.make("claudeAgent"),
         model: "claude-opus-4-6",
       });
-    }),
-  );
-
-  it.effect("preserves an unknown stored runtime mode when updating a projection", () =>
-    Effect.gen(function* () {
-      const threads = yield* ProjectionThreadRepository;
-      const sql = yield* SqlClient.SqlClient;
-      const threadId = ThreadId.make("thread-future-runtime-mode");
-
-      yield* sql`
-        INSERT INTO projection_threads (
-          thread_id, project_id, title, model_selection_json, runtime_mode,
-          interaction_mode, branch, worktree_path, goal, goal_status, latest_turn_id,
-          created_at, updated_at, archived_at, latest_user_message_at,
-          pending_approval_count, pending_user_input_count, has_actionable_proposed_plan, deleted_at
-        ) VALUES (
-          ${threadId}, 'project-future-runtime-mode', 'Future runtime mode',
-          '{"instanceId":"codex","model":"gpt-5"}', 'future-runtime-mode',
-          'default', NULL, NULL, NULL, 'active', NULL,
-          '2026-03-24T00:00:00.000Z', '2026-03-24T00:00:00.000Z', NULL, NULL,
-          0, 0, 0, NULL
-        )
-      `;
-
-      const thread = yield* threads.getById({ threadId });
-      const row = Option.getOrNull(thread);
-      if (row === null) {
-        return yield* Effect.die("Expected projection_threads row to exist.");
-      }
-      assert.strictEqual(row.runtimeMode, FALLBACK_RUNTIME_MODE);
-
-      yield* threads.upsert({ ...row, title: "Updated future runtime mode" });
-      const persisted = yield* sql<{ readonly runtimeMode: string }>`
-        SELECT runtime_mode AS "runtimeMode"
-        FROM projection_threads
-        WHERE thread_id = ${threadId}
-      `;
-      assert.strictEqual(persisted[0]?.runtimeMode, "future-runtime-mode");
     }),
   );
 });

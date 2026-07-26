@@ -14,6 +14,7 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
@@ -24,6 +25,7 @@ import {
   SqlitePersistenceMemory,
 } from "../../persistence/Layers/Sqlite.ts";
 import { OrchestrationEventStore } from "../../persistence/Services/OrchestrationEventStore.ts";
+import { ProjectionThreadRepository } from "../../persistence/Services/ProjectionThreads.ts";
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
 import {
@@ -174,6 +176,74 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
     }),
   );
 });
+
+it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("neokod-runtime-mode-persisted-")))(
+  "OrchestrationProjectionPipeline",
+  (it) => {
+    it.effect("persists a runtime-mode change without retaining the prior mode", () =>
+      Effect.gen(function* () {
+        const projectionPipeline = yield* OrchestrationProjectionPipeline;
+        const eventStore = yield* OrchestrationEventStore;
+        const threads = yield* ProjectionThreadRepository;
+        const threadId = ThreadId.make("thread-runtime-mode-persisted");
+        const createdAt = "2026-07-26T12:00:00.000Z";
+        const updatedAt = "2026-07-26T12:00:01.000Z";
+
+        const createdEvent = yield* eventStore.append({
+          type: "thread.created",
+          eventId: EventId.make("evt-runtime-mode-persisted-1"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: createdAt,
+          commandId: CommandId.make("cmd-runtime-mode-persisted-1"),
+          causationEventId: null,
+          correlationId: CommandId.make("cmd-runtime-mode-persisted-1"),
+          metadata: {},
+          payload: {
+            threadId,
+            projectId: ProjectId.make("project-runtime-mode-persisted"),
+            title: "Runtime mode persistence",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("codex"),
+              model: "gpt-5-codex",
+            },
+            runtimeMode: "full-access",
+            branch: null,
+            worktreePath: null,
+            createdAt,
+            updatedAt: createdAt,
+          },
+        });
+        yield* projectionPipeline.projectEvent(createdEvent);
+
+        const runtimeModeSetEvent = yield* eventStore.append({
+          type: "thread.runtime-mode-set",
+          eventId: EventId.make("evt-runtime-mode-persisted-2"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: updatedAt,
+          commandId: CommandId.make("cmd-runtime-mode-persisted-2"),
+          causationEventId: null,
+          correlationId: CommandId.make("cmd-runtime-mode-persisted-2"),
+          metadata: {},
+          payload: {
+            threadId,
+            runtimeMode: "approval-required",
+            updatedAt,
+          },
+        });
+        yield* projectionPipeline.projectEvent(runtimeModeSetEvent);
+
+        const persisted = yield* threads.getById({ threadId });
+        const row = Option.getOrNull(persisted);
+        if (row === null) {
+          return yield* Effect.die("Expected projection_threads row to exist.");
+        }
+        assert.strictEqual(row.runtimeMode, "approval-required");
+      }),
+    );
+  },
+);
 
 it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("neokod-base-")))(
   "OrchestrationProjectionPipeline",

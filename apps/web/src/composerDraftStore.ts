@@ -33,7 +33,12 @@ import { createModelSelection, normalizeModelSlug } from "@neokod/shared/model";
 import { useMemo } from "react";
 import { getLocalStorageItem } from "./hooks/useLocalStorage";
 import { resolveAppModelSelection, resolveAppModelSelectionForInstance } from "./modelSelection";
-import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE, type ChatImageAttachment } from "./types";
+import {
+  DEFAULT_INTERACTION_MODE,
+  DEFAULT_RUNTIME_MODE,
+  FALLBACK_RUNTIME_MODE,
+  type ChatImageAttachment,
+} from "./types";
 import {
   type TerminalContextDraft,
   ensureInlineTerminalContextPlaceholders,
@@ -1528,9 +1533,14 @@ function normalizePersistedDraftThreads(
           typeof createdAt === "string" && createdAt.length > 0
             ? createdAt
             : new Date().toISOString(),
+        // A persisted draft can carry a mode this build does not know, e.g.
+        // after rolling back from a newer version. Fall back to the least
+        // privileged mode, never the default: this value reaches thread
+        // bootstrap, so defaulting to full access would grant more than the
+        // user actually chose.
         runtimeMode: isRuntimeMode(candidateDraftThread.runtimeMode)
           ? candidateDraftThread.runtimeMode
-          : DEFAULT_RUNTIME_MODE,
+          : FALLBACK_RUNTIME_MODE,
         interactionMode:
           candidateDraftThread.interactionMode === "plan" ||
           candidateDraftThread.interactionMode === "default"

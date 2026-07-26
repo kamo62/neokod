@@ -27,8 +27,6 @@ export const ProjectionThreadSession = Schema.Struct({
   providerName: Schema.NullOr(Schema.String),
   providerInstanceId: Schema.NullOr(ProviderInstanceId),
   runtimeMode: RuntimeModeStored,
-  /** Original future-mode literal retained only for projection round-trips. */
-  storedRuntimeMode: Schema.optional(Schema.String),
   activeTurnId: Schema.NullOr(TurnId),
   lastError: Schema.NullOr(Schema.String),
   updatedAt: IsoDateTime,
