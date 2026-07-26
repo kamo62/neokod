@@ -53,6 +53,13 @@ const MINIMUM_CLAUDE_FABLE_5_VERSION = "2.1.169";
 const MINIMUM_CLAUDE_OPUS_4_8_VERSION = "2.1.154";
 const MINIMUM_CLAUDE_OPUS_4_7_VERSION = "2.1.111";
 
+/**
+ * Static fallback catalog. The running CLI's `supportedModels()` is the live
+ * source of truth once a probe succeeds; this list keeps the settings UI
+ * populated before the first probe and covers Claude Code builds that predate
+ * the call. It also supplies the context-window descriptors the SDK does not
+ * report. The `MINIMUM_CLAUDE_*_VERSION` gates below apply only to this list.
+ */
 const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
   {
     slug: "claude-fable-5",
@@ -558,8 +565,62 @@ type ClaudeCapabilitiesProbe = {
    * the subscription/token fields are absent and auth is external AWS creds.
    */
   readonly apiProvider: string | undefined;
+  /**
+   * Live catalog reported by the SDK's `supportedModels()`. Empty when the
+   * running Claude Code build predates the call or the probe could not read it;
+   * callers then fall back to the static version-gated catalog.
+   */
+  readonly models: ReadonlyArray<ServerProviderModel>;
   readonly slashCommands: ReadonlyArray<ServerProviderSlashCommand>;
 };
+
+/**
+ * Shape of one entry from the Agent SDK's `supportedModels()`. Declared locally
+ * because the probe reads the initialization result as unknown data rather than
+ * importing SDK types into the provider contract layer.
+ */
+type ClaudeModelInfo = {
+  readonly value?: unknown;
+  readonly displayName?: unknown;
+};
+
+/**
+ * Map the SDK's live catalog onto provider models.
+ *
+ * Discovery decides *which* models exist; it deliberately does not invent
+ * capabilities. `getClaudeModelCapabilities` resolves options from
+ * `BUILT_IN_MODELS` at execution time (`ClaudeAdapter`, `ClaudeTextGeneration`),
+ * so any descriptor advertised here that the static catalog lacks would be shown
+ * in the picker and then silently dropped when the turn runs. Reusing the same
+ * lookup keeps the snapshot and the execution path in agreement: a known slug
+ * keeps its full descriptor set (including ones the SDK cannot express, such as
+ * Haiku's Thinking toggle and per-model effort defaults), and a newly released
+ * slug is selectable with default capabilities until it is described statically.
+ *
+ * Entries are treated as untrusted: a non-string or blank slug is skipped, and
+ * duplicates collapse to the first occurrence.
+ */
+export function parseClaudeSupportedModels(
+  models: ReadonlyArray<unknown> | undefined,
+): ReadonlyArray<ServerProviderModel> {
+  const seen = new Set<string>();
+  return (models ?? []).flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const model = entry as ClaudeModelInfo;
+    const slug = typeof model.value === "string" ? model.value.trim() : "";
+    if (!slug || seen.has(slug)) return [];
+    seen.add(slug);
+    const displayName = typeof model.displayName === "string" ? model.displayName : "";
+    return [
+      {
+        slug,
+        name: nonEmptyProbeString(displayName) ?? slug,
+        isCustom: false,
+        capabilities: getClaudeModelCapabilities(slug),
+      } satisfies ServerProviderModel,
+    ];
+  });
+}
 
 function parseClaudeInitializationCommands(
   commands: ReadonlyArray<ClaudeSlashCommand> | undefined,
@@ -674,6 +735,19 @@ const probeClaudeCapabilities = (
         },
       });
       const init = await q.initializationResult();
+      // Live catalog. Older Claude Code builds have no `supportedModels`, and a
+      // failure here must never fail the probe: an empty list falls back to the
+      // static version-gated catalog.
+      const supportedModels = await (async () => {
+        const readModels = (q as { supportedModels?: () => Promise<unknown> }).supportedModels;
+        if (typeof readModels !== "function") return [];
+        try {
+          const result = await readModels.call(q);
+          return Array.isArray(result) ? (result as ReadonlyArray<unknown>) : [];
+        } catch {
+          return [];
+        }
+      })();
       const account = init.account as
         | {
             readonly email?: string;
@@ -687,6 +761,7 @@ const probeClaudeCapabilities = (
         subscriptionType: account?.subscriptionType,
         tokenSource: account?.tokenSource,
         apiProvider: account?.apiProvider,
+        models: parseClaudeSupportedModels(supportedModels),
         slashCommands: parseClaudeInitializationCommands(init.commands),
       } satisfies ClaudeCapabilitiesProbe;
     });
@@ -825,27 +900,39 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     });
   }
 
-  const models = providerModelsFromSettings(
-    getBuiltInClaudeModelsForVersion(parsedVersion),
-    PROVIDER,
-    claudeSettings.customModels,
-    DEFAULT_CLAUDE_MODEL_CAPABILITIES,
-  );
-  const versionUpgradeMessage = supportsClaudeOpus5(parsedVersion)
-    ? undefined
-    : supportsClaudeFable5(parsedVersion)
-      ? formatClaudeOpus5UpgradeMessage(parsedVersion)
-      : supportsClaudeOpus48(parsedVersion)
-        ? formatClaudeFable5UpgradeMessage(parsedVersion)
-        : supportsClaudeOpus47(parsedVersion)
-          ? formatClaudeOpus48UpgradeMessage(parsedVersion)
-          : formatClaudeOpus47UpgradeMessage(parsedVersion);
-
   const capabilities = resolveCapabilities
     ? yield* resolveCapabilities(claudeSettings).pipe(Effect.orElseSucceed(() => undefined))
     : undefined;
   const slashCommands = capabilities?.slashCommands ?? [];
   const dedupedSlashCommands = dedupeSlashCommands(slashCommands);
+
+  // Prefer the live catalog the running CLI reports; the static list is the
+  // fallback for older builds and for a probe that could not read it.
+  const discoveredModels = capabilities?.models ?? [];
+  const baseModels =
+    discoveredModels.length > 0
+      ? discoveredModels
+      : getBuiltInClaudeModelsForVersion(parsedVersion);
+  const models = providerModelsFromSettings(
+    baseModels,
+    PROVIDER,
+    claudeSettings.customModels,
+    DEFAULT_CLAUDE_MODEL_CAPABILITIES,
+  );
+  // The version gate only describes the static catalog. When the CLI reports its
+  // own models, it has already answered the question the gate approximates.
+  const versionUpgradeMessage =
+    discoveredModels.length > 0
+      ? undefined
+      : supportsClaudeOpus5(parsedVersion)
+        ? undefined
+        : supportsClaudeFable5(parsedVersion)
+          ? formatClaudeOpus5UpgradeMessage(parsedVersion)
+          : supportsClaudeOpus48(parsedVersion)
+            ? formatClaudeFable5UpgradeMessage(parsedVersion)
+            : supportsClaudeOpus47(parsedVersion)
+              ? formatClaudeOpus48UpgradeMessage(parsedVersion)
+              : formatClaudeOpus47UpgradeMessage(parsedVersion);
 
   if (!capabilities) {
     return buildServerProvider({
