@@ -19,6 +19,9 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { describe, expect, it } from "vite-plus/test";
+// The effect-aware runner, for tests that must not hand-roll a ManagedRuntime.
+// The plain `it` above stays for this file's existing baselined tests.
+import { assert, it as effectIt } from "@effect/vitest";
 
 import { PersistenceSqlError } from "../../persistence/Errors.ts";
 import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Layers/OrchestrationCommandReceipts.ts";
@@ -90,7 +93,7 @@ const hasMetricSnapshot = (
   );
 
 describe("OrchestrationEngine", () => {
-  it("starts from persisted rows with an unknown runtime mode", async () => {
+  effectIt.effect("starts from persisted rows with an unknown runtime mode", () => {
     const seedPersistedProjection = Layer.effectDiscard(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
@@ -194,13 +197,13 @@ describe("OrchestrationEngine", () => {
       Layer.provideMerge(ServerConfigLayer),
       Layer.provideMerge(NodeServices.layer),
     );
-    const runtime = ManagedRuntime.make(layer);
-
-    await expect(
-      runtime.runPromise(Effect.service(OrchestrationEngineService)),
-    ).resolves.toBeDefined();
-
-    await runtime.dispose();
+    // Resolving the engine is the assertion: startup reads the seeded
+    // projection rows, so an unknown persisted runtime mode would fail the
+    // decode here and crash-loop the backend (upstream t3code#4518).
+    return Effect.gen(function* () {
+      const engine = yield* Effect.service(OrchestrationEngineService);
+      assert.isDefined(engine);
+    }).pipe(Effect.provide(layer));
   });
 
   it("bootstraps command handling from persisted projections without reading the full snapshot", async () => {
