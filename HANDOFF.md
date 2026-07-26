@@ -39,11 +39,13 @@ lightning bolt. PRs #43-#48 and #50.
 Build artifacts are pruned after each release (Actions storage, not local disk;
 distributable binaries live in Releases and are never touched).
 
-### Open: PR #51 — Auto runtime mode
+### Shipped: v3.4.0 — Auto runtime mode (PR #51)
 
-Port of upstream #4272 plus hardening upstream lacks. **Ready to merge** — CI is
-green on every job and the round-3 two-lane review passed after its findings were
-fixed.
+Port of upstream #4272 plus hardening upstream lacks. Merged as **v3.4.0** after
+three review rounds; CI green on every job and both round-3 review lanes resolved.
+Kept as 3.4.0 rather than split into a 3.4.1: 3.4.0 was never tagged or released,
+so the review fixes correct code no user had run, and a 3.4.1 heading would have
+tagged v3.4.1 and skipped v3.4.0 permanently.
 
 Upstream has two open bugs in this feature and we defend against both:
 
@@ -126,8 +128,17 @@ stuck "Working", #4513 bulk delete vs missing worktree, #4463 MCP token idle exp
 
 ### Smaller known items
 
+- **`package.json` versions are stale and drifting.** `apps/web`, `apps/server` and
+  `apps/desktop` all still declare `"version": "3.0.3"`. Nothing is broken by this:
+  `release.yml:66` derives the release version solely from the first `## ` heading
+  in `CHANGELOG.md` (`grep -m1 -E '^## '`, then strip at the first whitespace), so
+  the packages are never read. But they have not moved since 3.0.3 while the
+  product shipped through 3.4.0, so anyone inspecting a package gets a wrong
+  answer. Decide whether to sync them to the changelog on release or drop the
+  field; do not half-fix by bumping once by hand. Parked deliberately 2026-07-26.
 - `formatSubagentUsage` test hardcodes US number formatting (`1,234 tok`) and fails
-  under locales using a space separator. Fix the test, not the formatter.
+  under locales using a space separator. Fix the test, not the formatter. Confirmed
+  still failing locally on 2026-07-26; it passes in CI because the runner is en-US.
 - 9 `pre-rebase-*` snapshots were verified disposable and deleted: the only
   substantive commit (`ba938a579`, thread goal + goalStatus) is already on main.
 
