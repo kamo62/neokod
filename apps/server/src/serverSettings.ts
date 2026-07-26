@@ -11,7 +11,6 @@
  * @module ServerSettings
  */
 import {
-  type CopilotManagedClientEvidenceSettings,
   DEFAULT_GIT_TEXT_GENERATION_MODEL,
   DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
   DEFAULT_MODEL_BY_PROVIDER,
@@ -44,7 +43,6 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import * as Types from "effect/Types";
 import { writeFileStringAtomically } from "./atomicWrite.ts";
 import * as ServerConfig from "./config.ts";
 import { type DeepPartial, deepMerge } from "@neokod/shared/Struct";
@@ -81,63 +79,6 @@ function providerEnvironmentSecretName(input: {
   return `provider-env-${Buffer.from(input.instanceId, "utf8").toString("base64url")}-${Buffer.from(input.name, "utf8").toString("base64url")}`;
 }
 
-// Single fixed slot (not per-instance, unlike provider environment
-// variables): `providers.githubCopilot.managedClientEvidence` is a hidden,
-// singleton settings block, so one constant secret name is enough.
-const MANAGED_CLIENT_EVIDENCE_CREDENTIAL_SECRET_NAME = "copilot-managed-client-evidence-credential";
-
-function redactManagedClientEvidenceCredential(
-  managedClientEvidence: CopilotManagedClientEvidenceSettings,
-): CopilotManagedClientEvidenceSettings {
-  if (managedClientEvidence.credential.length === 0) {
-    return managedClientEvidence;
-  }
-  return { ...managedClientEvidence, credential: "", credentialRedacted: true };
-}
-
-// Same single-fixed-slot secret convention as `credential` above, for the two
-// backend-pluggable secrets added alongside `backend`/`posthogHost`/etc.
-// (see `packages/contracts/src/settings.ts`). Both go through the same
-// generic get-or-remove/set trio below rather than duplicating the
-// credential functions field-by-field.
-const MANAGED_CLIENT_EVIDENCE_POSTHOG_API_KEY_SECRET_NAME =
-  "copilot-managed-client-evidence-posthog-api-key";
-const MANAGED_CLIENT_EVIDENCE_OTLP_HEADERS_SECRET_NAME =
-  "copilot-managed-client-evidence-otlp-headers";
-
-interface ManagedClientEvidenceSecretField {
-  readonly secretName: string;
-  readonly valueKey: "posthogApiKey" | "otlpHeaders";
-  readonly redactedKey: "posthogApiKeyRedacted" | "otlpHeadersRedacted";
-}
-
-const MANAGED_CLIENT_EVIDENCE_SECRET_FIELDS: ReadonlyArray<ManagedClientEvidenceSecretField> = [
-  {
-    secretName: MANAGED_CLIENT_EVIDENCE_POSTHOG_API_KEY_SECRET_NAME,
-    valueKey: "posthogApiKey",
-    redactedKey: "posthogApiKeyRedacted",
-  },
-  {
-    secretName: MANAGED_CLIENT_EVIDENCE_OTLP_HEADERS_SECRET_NAME,
-    valueKey: "otlpHeaders",
-    redactedKey: "otlpHeadersRedacted",
-  },
-];
-
-function redactManagedClientEvidenceSecretFields(
-  managedClientEvidence: CopilotManagedClientEvidenceSettings,
-): CopilotManagedClientEvidenceSettings {
-  let changed = false;
-  const next: Types.Mutable<CopilotManagedClientEvidenceSettings> = { ...managedClientEvidence };
-  for (const field of MANAGED_CLIENT_EVIDENCE_SECRET_FIELDS) {
-    if (next[field.valueKey].length === 0) continue;
-    next[field.valueKey] = "";
-    next[field.redactedKey] = true;
-    changed = true;
-  }
-  return changed ? next : managedClientEvidence;
-}
-
 function redactProviderEnvironmentVariable(
   variable: ProviderInstanceEnvironmentVariable,
 ): ProviderInstanceEnvironmentVariable {
@@ -164,21 +105,7 @@ export function redactServerSettingsForClient(settings: ServerSettings): ServerS
         : instance,
     ]),
   );
-  return {
-    ...settings,
-    providerInstances,
-    providers: {
-      ...settings.providers,
-      githubCopilot: {
-        ...settings.providers.githubCopilot,
-        managedClientEvidence: redactManagedClientEvidenceSecretFields(
-          redactManagedClientEvidenceCredential(
-            settings.providers.githubCopilot.managedClientEvidence,
-          ),
-        ),
-      },
-    },
-  };
+  return { ...settings, providerInstances };
 }
 
 export class ServerSettingsService extends Context.Service<
@@ -381,11 +308,7 @@ const make = Effect.gen(function* () {
       });
       return DEFAULT_SERVER_SETTINGS;
     }
-    // Eager one-time migration: a legacy settings.json may still carry a
-    // plaintext `managedClientEvidence.credential`. `migrateManagedClientEvidenceCredential`
-    // (defined below, alongside `writeSettingsAtomically`) moves it into
-    // ServerSecretStore before this value is ever handed back to a caller.
-    return yield* migrateManagedClientEvidenceCredential(decoded.value);
+    return decoded.value;
   });
 
   const settingsCache = yield* Cache.make<typeof cacheKey, ServerSettings, ServerSettingsError>({
@@ -437,98 +360,6 @@ const make = Effect.gen(function* () {
       return {
         ...settings,
         providerInstances: providerInstances as ServerSettings["providerInstances"],
-      };
-    });
-
-  /**
-   * Server-internal read path for `managedClientEvidence.credential`, mirroring
-   * `materializeProviderEnvironmentSecrets`. Prefers the secret store whenever
-   * there's anything to look up (a plaintext value staged for migration, or a
-   * value already marked redacted) and falls back to whatever plaintext is
-   * still sitting in `settings.json` if the store has nothing for the key, so
-   * a credential from a not-yet-migrated legacy settings.json, or one caught
-   * mid-migration, is never lost to the forwarder.
-   */
-  const materializeManagedClientEvidenceCredential = (
-    settings: ServerSettings,
-  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
-    Effect.gen(function* () {
-      const managedClientEvidence = settings.providers.githubCopilot.managedClientEvidence;
-      if (
-        managedClientEvidence.credential.length === 0 &&
-        !managedClientEvidence.credentialRedacted
-      ) {
-        return settings;
-      }
-      const secret = yield* secretStore.get(MANAGED_CLIENT_EVIDENCE_CREDENTIAL_SECRET_NAME).pipe(
-        Effect.mapError(
-          (cause) =>
-            new ServerSettingsError({
-              settingsPath,
-              operation: "read-secret",
-              cause,
-            }),
-        ),
-      );
-      const credential = Option.isSome(secret)
-        ? textDecoder.decode(secret.value)
-        : managedClientEvidence.credential;
-      return {
-        ...settings,
-        providers: {
-          ...settings.providers,
-          githubCopilot: {
-            ...settings.providers.githubCopilot,
-            managedClientEvidence: { ...managedClientEvidence, credential },
-          },
-        },
-      };
-    });
-
-  /**
-   * Server-internal read path for `posthogApiKey`/`otlpHeaders`, mirroring
-   * `materializeManagedClientEvidenceCredential` above but driven by
-   * `MANAGED_CLIENT_EVIDENCE_SECRET_FIELDS` since both new secrets follow the
-   * exact same single-fixed-slot shape. No eager migration companion — unlike
-   * `credential`, these fields are brand new, so there is no legacy plaintext
-   * settings.json to move out of.
-   */
-  const materializeManagedClientEvidenceSecretFields = (
-    settings: ServerSettings,
-  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
-    Effect.gen(function* () {
-      const managedClientEvidence = settings.providers.githubCopilot.managedClientEvidence;
-      let changed = false;
-      const next: Types.Mutable<CopilotManagedClientEvidenceSettings> = {
-        ...managedClientEvidence,
-      };
-      for (const field of MANAGED_CLIENT_EVIDENCE_SECRET_FIELDS) {
-        if (next[field.valueKey].length === 0 && !next[field.redactedKey]) continue;
-        const secret = yield* secretStore.get(field.secretName).pipe(
-          Effect.mapError(
-            (cause) =>
-              new ServerSettingsError({
-                settingsPath,
-                operation: "read-secret",
-                cause,
-              }),
-          ),
-        );
-        if (Option.isSome(secret)) {
-          next[field.valueKey] = textDecoder.decode(secret.value);
-          changed = true;
-        }
-      }
-      if (!changed) return settings;
-      return {
-        ...settings,
-        providers: {
-          ...settings.providers,
-          githubCopilot: {
-            ...settings.providers.githubCopilot,
-            managedClientEvidence: next,
-          },
-        },
       };
     });
 
@@ -633,128 +464,6 @@ const make = Effect.gen(function* () {
       };
     });
 
-  /**
-   * Write path for `managedClientEvidence.credential`, mirroring
-   * `persistProviderEnvironmentSecrets`. A single fixed slot rather than a
-   * per-instance map, so there's no stale-secret sweep, just set-or-remove
-   * against the one constant secret name.
-   */
-  const persistManagedClientEvidenceCredential = (
-    next: ServerSettings,
-  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
-    Effect.gen(function* () {
-      const managedClientEvidence = next.providers.githubCopilot.managedClientEvidence;
-      if (managedClientEvidence.credentialRedacted) {
-        // Client left the redacted marker in place (unchanged secret) or a
-        // prior save already persisted it; nothing new to write.
-        return next;
-      }
-      if (managedClientEvidence.credential.length === 0) {
-        yield* secretStore.remove(MANAGED_CLIENT_EVIDENCE_CREDENTIAL_SECRET_NAME).pipe(
-          Effect.mapError(
-            (cause) =>
-              new ServerSettingsError({
-                settingsPath,
-                operation: "remove-secret",
-                cause,
-              }),
-          ),
-        );
-        return next;
-      }
-      yield* secretStore
-        .set(
-          MANAGED_CLIENT_EVIDENCE_CREDENTIAL_SECRET_NAME,
-          textEncoder.encode(managedClientEvidence.credential),
-        )
-        .pipe(
-          Effect.mapError(
-            (cause) =>
-              new ServerSettingsError({
-                settingsPath,
-                operation: "write-secret",
-                cause,
-              }),
-          ),
-        );
-      return {
-        ...next,
-        providers: {
-          ...next.providers,
-          githubCopilot: {
-            ...next.providers.githubCopilot,
-            managedClientEvidence: {
-              ...managedClientEvidence,
-              credential: "",
-              credentialRedacted: true,
-            },
-          },
-        },
-      };
-    });
-
-  /**
-   * Write path for `posthogApiKey`/`otlpHeaders`, mirroring
-   * `persistManagedClientEvidenceCredential` above but driven by
-   * `MANAGED_CLIENT_EVIDENCE_SECRET_FIELDS`: set-or-remove per field against
-   * its own constant secret name, same single-fixed-slot shape as `credential`.
-   */
-  const persistManagedClientEvidenceSecretFields = (
-    next: ServerSettings,
-  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
-    Effect.gen(function* () {
-      const managedClientEvidence = next.providers.githubCopilot.managedClientEvidence;
-      let changed = false;
-      const updated: Types.Mutable<CopilotManagedClientEvidenceSettings> = {
-        ...managedClientEvidence,
-      };
-      for (const field of MANAGED_CLIENT_EVIDENCE_SECRET_FIELDS) {
-        if (updated[field.redactedKey]) {
-          // Client left the redacted marker in place (unchanged secret) or a
-          // prior save already persisted it; nothing new to write.
-          continue;
-        }
-        const value = updated[field.valueKey];
-        if (value.length === 0) {
-          yield* secretStore.remove(field.secretName).pipe(
-            Effect.mapError(
-              (cause) =>
-                new ServerSettingsError({
-                  settingsPath,
-                  operation: "remove-secret",
-                  cause,
-                }),
-            ),
-          );
-          continue;
-        }
-        yield* secretStore.set(field.secretName, textEncoder.encode(value)).pipe(
-          Effect.mapError(
-            (cause) =>
-              new ServerSettingsError({
-                settingsPath,
-                operation: "write-secret",
-                cause,
-              }),
-          ),
-        );
-        updated[field.valueKey] = "";
-        updated[field.redactedKey] = true;
-        changed = true;
-      }
-      if (!changed) return next;
-      return {
-        ...next,
-        providers: {
-          ...next.providers,
-          githubCopilot: {
-            ...next.providers.githubCopilot,
-            managedClientEvidence: updated,
-          },
-        },
-      };
-    });
-
   const writeSettingsAtomically = Effect.fnUntraced(
     function* (settings: ServerSettings) {
       const sparseSettingsJson = yield* encodeServerSettingsJson(
@@ -778,76 +487,6 @@ const make = Effect.gen(function* () {
         }),
     ),
   );
-
-  /**
-   * Eager one-time migration, run inline while loading settings.json:
-   * a legacy file may still carry a plaintext `managedClientEvidence.credential`
-   * (pre-dating ServerSecretStore support for this field). The secret is
-   * written to the store before settings.json is rewritten to the redacted
-   * form, so there is no window where `materializeManagedClientEvidenceCredential`
-   * (store-first, plaintext-field fallback) would see neither. Skips the
-   * store write if a secret is already there (idempotent across restarts and
-   * re-runs), and is a no-op once `credentialRedacted` is set.
-   */
-  const migrateManagedClientEvidenceCredential = (
-    settings: ServerSettings,
-  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
-    Effect.gen(function* () {
-      const managedClientEvidence = settings.providers.githubCopilot.managedClientEvidence;
-      if (
-        managedClientEvidence.credential.length === 0 ||
-        managedClientEvidence.credentialRedacted
-      ) {
-        return settings;
-      }
-
-      const existingSecret = yield* secretStore
-        .get(MANAGED_CLIENT_EVIDENCE_CREDENTIAL_SECRET_NAME)
-        .pipe(
-          Effect.mapError(
-            (cause) =>
-              new ServerSettingsError({
-                settingsPath,
-                operation: "read-secret",
-                cause,
-              }),
-          ),
-        );
-      if (Option.isNone(existingSecret)) {
-        yield* secretStore
-          .set(
-            MANAGED_CLIENT_EVIDENCE_CREDENTIAL_SECRET_NAME,
-            textEncoder.encode(managedClientEvidence.credential),
-          )
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new ServerSettingsError({
-                  settingsPath,
-                  operation: "write-secret",
-                  cause,
-                }),
-            ),
-          );
-      }
-
-      const migrated: ServerSettings = {
-        ...settings,
-        providers: {
-          ...settings.providers,
-          githubCopilot: {
-            ...settings.providers.githubCopilot,
-            managedClientEvidence: {
-              ...managedClientEvidence,
-              credential: "",
-              credentialRedacted: true,
-            },
-          },
-        },
-      };
-      yield* writeSettingsAtomically(migrated);
-      return migrated;
-    });
 
   const revalidateAndEmit = writeSemaphore.withPermits(1)(
     Effect.gen(function* () {
@@ -922,30 +561,21 @@ const make = Effect.gen(function* () {
     ready: Deferred.await(startedDeferred),
     getSettings: getSettingsFromCache.pipe(
       Effect.flatMap(materializeProviderEnvironmentSecrets),
-      Effect.flatMap(materializeManagedClientEvidenceCredential),
-      Effect.flatMap(materializeManagedClientEvidenceSecretFields),
       Effect.map(resolveTextGenerationProvider),
     ),
     updateSettings: (patch) =>
       writeSemaphore.withPermits(1)(
         Effect.gen(function* () {
           const current = yield* getSettingsFromCache;
-          const nextPersistedEnvironment = yield* persistProviderEnvironmentSecrets(
+          const nextPersisted = yield* persistProviderEnvironmentSecrets(
             current,
             applyServerSettingsPatch(current, patch),
           );
-          const nextPersistedCredential =
-            yield* persistManagedClientEvidenceCredential(nextPersistedEnvironment);
-          const nextPersisted =
-            yield* persistManagedClientEvidenceSecretFields(nextPersistedCredential);
           const next = yield* normalizeServerSettings(nextPersisted);
           yield* writeSettingsAtomically(next);
           yield* Cache.set(settingsCache, cacheKey, next);
           yield* emitChange(next);
-          const materialized = yield* materializeProviderEnvironmentSecrets(next).pipe(
-            Effect.flatMap(materializeManagedClientEvidenceCredential),
-            Effect.flatMap(materializeManagedClientEvidenceSecretFields),
-          );
+          const materialized = yield* materializeProviderEnvironmentSecrets(next);
           return resolveTextGenerationProvider(materialized);
         }),
       ),
@@ -953,8 +583,6 @@ const make = Effect.gen(function* () {
       return Stream.fromPubSub(changesPubSub).pipe(
         Stream.mapEffect((settings) =>
           materializeProviderEnvironmentSecrets(settings).pipe(
-            Effect.flatMap(materializeManagedClientEvidenceCredential),
-            Effect.flatMap(materializeManagedClientEvidenceSecretFields),
             Effect.catch((error: ServerSettingsError) =>
               Effect.logWarning("failed to materialize provider environment secrets", {
                 operation: error.operation,
