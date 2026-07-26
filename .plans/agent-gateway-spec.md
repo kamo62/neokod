@@ -1,6 +1,6 @@
 # neokod Agent Gateway design specification
 
-Status: Round-4 revision applied, addressing the round-3 findings from the sol and Fable review lanes; pending round-4 re-review  
+Status: Round-5 revision applied, addressing the round-4 sol findings; pending round-5 review
 Date: 2026-07-24  
 Release impact when implemented: Minor
 
@@ -421,8 +421,15 @@ Outputs:
 
 - Task ID and child thread ID.
 - Pinned accepted turn ID.
-- Result: `interrupt_requested`, `already_terminal`, or `not_active`.
+- Result: `interrupt_requested`, `already_terminal`, `not_active`, or `interrupt_pending`.
 - Current durable task state.
+
+The result cannot be resolved purely synchronously, and the spec must not pretend it can. `thread.turn.interrupt` dispatches through the shared engine, the active-turn check happens asynchronously in `ProviderCommandReactor`, and command receipts record acceptance only, not the reactor's outcome. So Phase 1 defines the outcome durably and waits for it, briefly:
+
+- The reactor writes the interrupt outcome (`interrupt_requested`, `already_terminal`, `not_active`) to an `interrupt_outcome` field on the gateway task row, in the same write that settles the check.
+- The tool resolves `already_terminal` and `not_active` locally where the durable task row can already prove them, without dispatching at all.
+- Otherwise it dispatches, then waits on the launch-coordinator rendezvous (§5.3) for the outcome to land, bounded by the same observation budget used by create and strictly shorter than the MCP client timeout.
+- If the budget elapses first it returns `interrupt_pending` with the current durable state. The interrupt is not cancelled; the caller re-reads with `neokod_task_read` or waits. This is the honest answer rather than a fabricated `not_active`.
 
 Existing command and adapter operation it wraps:
 
@@ -682,8 +689,9 @@ Required `agent_gateway_tasks` columns:
 - `intended_worktree_path`
 - `base_commit_sha` (resolved from `baseRef` at reservation and immutable thereafter, §5.2)
 - `repo_common_dir` (realpath of the repository's git common directory, the repo identity used by recovery, §5.2)
-- `worktree_claim_id` (the per-task ownership claim shared by live retries and the reconciliation worker, §5.2)
+- `worktree_claim_id` (the per-task ownership claim, written to disk as a claim marker before any git operation and read back by recovery, §5.2)
 - `launch_state`
+- `interrupt_outcome` (nullable; the reactor's settled interrupt result, which the interrupt tool waits on rather than inferring, §3.7)
 - `provider_send_idempotency_key`
 - `accepted_turn_id`
 - `terminal_state`
@@ -762,7 +770,11 @@ Recovery uses `git worktree list --porcelain` as the source of truth for existin
 - A registered worktree at the intended path on the expected branch and repository: adopt it and continue.
 - Branch present and no registered worktree: create a worktree from the existing branch.
 - A registered worktree at the intended path with a different repository or branch: mark `worktree_conflict` and stop.
-- A directory exists at the intended path but is not a registered worktree: do not crash and do not blindly reuse it. If the ownership claim does not match this task, mark `worktree_conflict` and stop. If `worktree_claim_id` proves the directory is this task's own partially created worktree, the crash happened mid-creation, so recover deterministically: remove the unregistered directory and recreate the worktree from `base_commit_sha`. This is safe precisely because the claim proves the operation owns it and no registered worktree, and therefore no provider session, is bound to it. Never attempt to adopt an unregistered directory in place, and never remove one whose claim does not match.
+- A directory exists at the intended path but is not a registered worktree: do not crash and do not blindly reuse it. A database row cannot prove ownership of a directory, so the claim must exist **on disk**. Before creating a worktree, the operation writes a claim marker file at `<intended_worktree_path>/.neokod-gateway-claim` containing `worktree_claim_id`, and it writes that file first, before any git operation. Recovery then reads the marker:
+  - Marker present and its id equals the task's `worktree_claim_id`: this is our own partially created worktree, so the crash happened mid-creation. Remove the directory and recreate from `base_commit_sha`. Safe because the marker proves the operation owns it and no registered worktree, and therefore no provider session, is bound to it.
+  - Marker absent, unreadable, or carrying a different id: mark `worktree_conflict` and stop. Never remove a directory we cannot prove we created.
+
+  Writing the marker before git also means the failure ordering is safe in both directions: a directory with a marker but no worktree is recoverable, and a directory with neither is untouched. The marker is removed when the worktree is successfully registered, so a healthy worktree carries no stray file. Never attempt to adopt an unregistered directory in place.
 - Thread exists with worktree metadata and launch state before `sending`: resume at final turn dispatch.
 - A task in `sending` without a durably pinned provider turn becomes `launch_unknown`; a command receipt does not make it safe to send again.
 
@@ -787,7 +799,8 @@ Rules:
 - `reserved`, `preparing_worktree`, and `ready_to_send` are safe to reconcile with deterministic worktree and command IDs.
 - Before calling the provider, compare-and-set `ready_to_send -> sending` and persist a stable random `provider_send_idempotency_key`.
 - Extend `ThreadTurnStartCommand` / `ThreadTurnStartRequestedPayload` with optional `providerSendIdempotencyKey`, then map it to optional `ProviderSendTurnInput.idempotencyKey`. The gateway always supplies the stable server-generated value; normal human turns may omit it. This is correlation/idempotency data, not provenance or authority.
-- The key must be durably joined to the accepted turn, or crash recovery cannot use it. Today the key and the accepted turn ID never meet in storage: `ThreadTurnStartRequestedPayload` carries no turn ID, the accepted ID is adapter-produced and lands only in projection turn rows keyed `(threadId, turnId)` plus the mutable `provider_session_runtime.activeTurnId`, and the one place both exist together is the reactor's in-memory `sendTurn` return, which is exactly what a crash destroys. Phase 1 therefore writes a `agent_gateway_turn_index` row `(environment_id, thread_id, provider_send_idempotency_key) -> accepted_turn_id` in the **same transaction** that records `accepted_turn_id` on the task row, on ingestion of `ProviderTurnStartResult`. Recovery joins on that index. `activeTurnId` is never an acceptable fallback for this join: it is mutable and a later human turn clobbers it.
+- The key cannot be joined to the accepted turn after a crash, and Phase 1 does not pretend otherwise. The task row already carries both `provider_send_idempotency_key` and `accepted_turn_id` (§4.8), so once acceptance is recorded no further index is needed. The unrecoverable case is the crash window itself: the key is durable but `accepted_turn_id` is not yet written, and nothing on the provider side records the key. `ThreadTurnStartRequestedPayload` carries no turn ID, the accepted ID is adapter-produced and lands only in projection turn rows keyed `(threadId, turnId)` plus the mutable `provider_session_runtime.activeTurnId`, and the one place both exist together is the reactor's in-memory `sendTurn` return, which is exactly what the crash destroys. Phase 1 therefore resolves a crashed `sending` task to `launch_unknown` rather than correlating, consistent with the never-auto-resend rule below. `activeTurnId` must never be used as a substitute: it is mutable and a later human turn clobbers it.
+- Automatic correlation is deferred to Phase 2 and needs exactly one change to make it possible: persist `provider_send_idempotency_key` on the projection turn row when the turn is created, so recovery can ask the durable turn store "was a turn accepted for this key?". That touches orchestration storage rather than the gateway's own tables, which is why it is out of Phase 1 scope. Until it lands, a crashed in-flight send is a user-resolvable `launch_unknown`, not silent data loss.
 - `ProviderCommandReactor` already owns the real `ProviderService.sendTurn` call, but today it forks that call with `Effect.forkScoped` and keeps only a failure recovery, discarding the success result (`apps/server/src/orchestration/Layers/ProviderCommandReactor.ts:840-860`). For a gateway-originated turn this is insufficient: the accepted `turnId` is thrown away, so nothing can deliver it back to the blocking create handler. The reactor must instead capture the `sendTurn` outcome for gateway turns and durably record it against the trusted gateway task row before the fiber completes: `accepted_turn_id` on success, `launch_failed` on a definitive rejection, `launch_unknown` on interruption or an ambiguous post-send error. It forwards the `providerSendIdempotencyKey`; `ProviderService` coalesces duplicate in-process sends by `(threadId, idempotencyKey)` and passes the key to the adapter/native request where supported.
 - Provider acceptance occurs only when `ProviderService.sendTurn` returns `ProviderTurnStartResult` with its concrete `turnId` (`packages/contracts/src/provider.ts:67-85`, `apps/server/src/provider/Layers/ProviderService.ts:645-703`). The reactor records `accepted_turn_id` against the trusted gateway task ID, then publishes a launch-coordinator signal, before emitting the parent running lifecycle.
 - The blocking create handler never observes the reactor fiber directly. It runs an `AgentGatewayLaunchCoordinator` rendezvous: after committing `sending`, it subscribes to the coordinator signal for the task, then reads the durable task row, so a result landing between the commit and the subscribe is not lost (the same subscribe-before-read ordering as the wait coordinator in §5.6). It waits only up to a bounded launch-observation budget that is strictly shorter than the provider's MCP client-call timeout, then returns the current durable launch state, which may still be `sending`. Conformance tests must confirm each provider's create-call timeout ceiling exceeds this budget.
@@ -806,7 +819,7 @@ The pinned `accepted_turn_id` is immutable. Terminal tracking, wait, read, and i
 1. Load operations in non-terminal states.
 2. Compare every task row with the child thread projection, command receipts, intended worktree, and current provider session state.
 3. Resume only states before `sending`.
-4. For a recovered `sending` task, first attempt send-key correlation: query the child session and its durable turns for a turn carrying the task's `provider_send_idempotency_key`. If a matching accepted turn is found, pin it and mark the task `accepted`, reported through the `recovered` idempotency state. Only when no correlation exists does the task become `launch_unknown`. Never resend a `sending` or `launch_unknown` task.
+4. A recovered `sending` task becomes `launch_unknown`. Phase 1 does not attempt send-key correlation, because nothing on the provider side records the send key (§5.3); the durable turn rows are keyed `(threadId, turnId)` only. Never resend a `sending` or `launch_unknown` task. When the Phase 2 turn-row key column lands, this step gains a correlation attempt before falling through to `launch_unknown`, reported through the `recovered` idempotency state.
 5. Preserve `accepted` only when `accepted_turn_id` is already durable.
 6. Rebuild missing parent `task.*` lifecycle activities with stable activity and command IDs.
 7. Reread each pinned turn's durable historical projection and close operations whose pinned turns are already terminal, covering a terminal that landed before the crash or before the pin was registered.
