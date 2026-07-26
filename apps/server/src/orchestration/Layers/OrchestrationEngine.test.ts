@@ -17,6 +17,7 @@ import * as Metric from "effect/Metric";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { describe, expect, it } from "vite-plus/test";
 
 import { PersistenceSqlError } from "../../persistence/Errors.ts";
@@ -89,6 +90,119 @@ const hasMetricSnapshot = (
   );
 
 describe("OrchestrationEngine", () => {
+  it("starts from persisted rows with an unknown runtime mode", async () => {
+    const seedPersistedProjection = Layer.effectDiscard(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const createdAt = "2026-03-03T00:00:00.000Z";
+
+        yield* sql`
+          INSERT INTO projection_projects (
+            project_id,
+            title,
+            workspace_root,
+            default_model_selection_json,
+            scripts_json,
+            created_at,
+            updated_at,
+            deleted_at
+          ) VALUES (
+            'project-unknown-runtime-mode',
+            'Persisted Project',
+            '/tmp/project-unknown-runtime-mode',
+            '{"instanceId":"codex","model":"gpt-5-codex"}',
+            '[]',
+            ${createdAt},
+            ${createdAt},
+            NULL
+          )
+        `;
+        yield* sql`
+          INSERT INTO projection_threads (
+            thread_id,
+            project_id,
+            title,
+            model_selection_json,
+            runtime_mode,
+            interaction_mode,
+            branch,
+            worktree_path,
+            latest_turn_id,
+            created_at,
+            updated_at,
+            archived_at,
+            latest_user_message_at,
+            pending_approval_count,
+            pending_user_input_count,
+            has_actionable_proposed_plan,
+            deleted_at
+          ) VALUES (
+            'thread-unknown-runtime-mode',
+            'project-unknown-runtime-mode',
+            'Persisted Thread',
+            '{"instanceId":"codex","model":"gpt-5-codex"}',
+            'future-runtime-mode',
+            'default',
+            NULL,
+            NULL,
+            NULL,
+            ${createdAt},
+            ${createdAt},
+            NULL,
+            NULL,
+            0,
+            0,
+            0,
+            NULL
+          )
+        `;
+        yield* sql`
+          INSERT INTO projection_thread_sessions (
+            thread_id,
+            status,
+            provider_name,
+            provider_instance_id,
+            runtime_mode,
+            active_turn_id,
+            last_error,
+            updated_at
+          ) VALUES (
+            'thread-unknown-runtime-mode',
+            'ready',
+            'codex',
+            'codex',
+            'future-runtime-mode',
+            NULL,
+            NULL,
+            ${createdAt}
+          )
+        `;
+      }),
+    );
+    const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
+      prefix: "neokod-orchestration-engine-test-",
+    });
+    const layer = OrchestrationEngineLive.pipe(
+      Layer.provide(
+        OrchestrationProjectionSnapshotQueryLive.pipe(Layer.provide(seedPersistedProjection)),
+      ),
+      Layer.provide(OrchestrationProjectionPipelineLive),
+      Layer.provide(OrchestrationEventStoreLive),
+      Layer.provide(OrchestrationCommandReceiptRepositoryLive),
+      Layer.provide(RepositoryIdentityResolver.layer),
+      Layer.provide(SqlitePersistenceMemory),
+      Layer.provideMerge(ServerConfigLayer),
+      Layer.provideMerge(NodeServices.layer),
+    );
+    const runtime = ManagedRuntime.make(layer);
+
+    await expect(
+      runtime.runPromise(Effect.service(OrchestrationEngineService)),
+    ).resolves.toBeDefined();
+
+    await runtime.dispose();
+  });
+
   it("bootstraps command handling from persisted projections without reading the full snapshot", async () => {
     let nextSequence = 8;
     const eventStore: OrchestrationEventStoreShape = {

@@ -12,7 +12,7 @@ import {
   NonNegativeInt,
   ProjectId,
   ProviderInteractionMode,
-  RuntimeMode,
+  RuntimeModeStored,
   ThreadId,
   TurnId,
 } from "@neokod/contracts";
@@ -28,7 +28,9 @@ export const ProjectionThread = Schema.Struct({
   projectId: ProjectId,
   title: Schema.String,
   modelSelection: ModelSelection,
-  runtimeMode: RuntimeMode,
+  runtimeMode: RuntimeModeStored,
+  /** Original future-mode literal retained only for projection round-trips. */
+  storedRuntimeMode: Schema.optional(Schema.String),
   interactionMode: ProviderInteractionMode,
   branch: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),

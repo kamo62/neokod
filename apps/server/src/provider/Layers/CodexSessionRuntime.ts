@@ -289,7 +289,6 @@ function runtimeModeToThreadConfig(input: RuntimeMode): {
         approvalsReviewer: "auto_review",
       };
     case "full-access":
-    default:
       return {
         approvalPolicy: "never",
         sandbox: "danger-full-access",
@@ -329,7 +328,6 @@ function runtimeModeToTurnSandboxPolicy(
         type: "workspaceWrite",
       };
     case "full-access":
-    default:
       return {
         type: "dangerFullAccess",
       };

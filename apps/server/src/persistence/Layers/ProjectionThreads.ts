@@ -21,7 +21,6 @@ const ProjectionThreadDbRow = ProjectionThread.mapFields(
     modelSelection: Schema.fromJsonString(ModelSelection),
   }),
 );
-type ProjectionThreadDbRow = typeof ProjectionThreadDbRow.Type;
 
 const makeProjectionThreadRepository = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -56,7 +55,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           ${row.projectId},
           ${row.title},
           ${JSON.stringify(row.modelSelection)},
-          ${row.runtimeMode},
+          ${row.storedRuntimeMode ?? row.runtimeMode},
           ${row.interactionMode},
           ${row.branch},
           ${row.worktreePath},
@@ -106,6 +105,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           title,
           model_selection_json AS "modelSelection",
           runtime_mode AS "runtimeMode",
+          runtime_mode AS "storedRuntimeMode",
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
@@ -136,6 +136,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           title,
           model_selection_json AS "modelSelection",
           runtime_mode AS "runtimeMode",
+          runtime_mode AS "storedRuntimeMode",
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",

@@ -152,7 +152,7 @@ const runtimeModeConfig: Record<
   },
   auto: {
     label: "Auto",
-    description: "An AI reviewer approves routine actions; risky ones still ask.",
+    description: "Codex uses AI-reviewed approvals; Claude currently prompts.",
     icon: SparklesIcon,
   },
   "full-access": {

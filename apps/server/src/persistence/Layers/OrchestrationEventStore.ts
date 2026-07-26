@@ -10,6 +10,7 @@ import {
   OrchestrationEventType,
   ProjectId,
   ThreadId,
+  RuntimeMode,
 } from "@neokod/contracts";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
@@ -29,6 +30,53 @@ import {
 } from "../Services/OrchestrationEventStore.ts";
 
 const decodeEvent = Schema.decodeUnknownEffect(OrchestrationEvent);
+const storedRuntimeMode = Symbol("storedRuntimeMode");
+
+type EventWithStoredRuntimeMode = OrchestrationEvent & {
+  readonly [storedRuntimeMode]?: string;
+};
+
+function rawRuntimeModeFromPayload(payload: unknown): string | undefined {
+  if (typeof payload !== "object" || payload === null || !("runtimeMode" in payload)) {
+    return undefined;
+  }
+  const runtimeMode = payload.runtimeMode;
+  return typeof runtimeMode === "string" && !Schema.is(RuntimeMode)(runtimeMode)
+    ? runtimeMode
+    : undefined;
+}
+
+function rawRuntimeModeFromEventRow(
+  row: typeof OrchestrationEventPersistedRowSchema.Type,
+): string | undefined {
+  if (row.type === "thread.session-set") {
+    if (typeof row.payload !== "object" || row.payload === null || !("session" in row.payload)) {
+      return undefined;
+    }
+    return rawRuntimeModeFromPayload(row.payload.session);
+  }
+  if (row.type === "thread.created" || row.type === "thread.runtime-mode-set") {
+    return rawRuntimeModeFromPayload(row.payload);
+  }
+  return undefined;
+}
+
+function decodePersistedEvent(row: typeof OrchestrationEventPersistedRowSchema.Type) {
+  return decodeEvent(row).pipe(
+    Effect.map((event) => {
+      const rawRuntimeMode = rawRuntimeModeFromEventRow(row);
+      if (rawRuntimeMode === undefined) {
+        return event;
+      }
+      Object.defineProperty(event, storedRuntimeMode, { value: rawRuntimeMode });
+      return event as EventWithStoredRuntimeMode;
+    }),
+  );
+}
+
+export function getStoredRuntimeMode(event: OrchestrationEvent): string | undefined {
+  return (event as EventWithStoredRuntimeMode)[storedRuntimeMode];
+}
 const UnknownFromJsonString = Schema.fromJsonString(Schema.Unknown);
 const EventMetadataFromJsonString = Schema.fromJsonString(OrchestrationEventMetadata);
 
@@ -202,7 +250,7 @@ const makeEventStore = Effect.gen(function* () {
         ),
       ),
       Effect.flatMap((row) =>
-        decodeEvent(row).pipe(
+        decodePersistedEvent(row).pipe(
           Effect.mapError(toPersistenceDecodeError("OrchestrationEventStore.append:rowToEvent")),
         ),
       ),
@@ -233,7 +281,7 @@ const makeEventStore = Effect.gen(function* () {
           ),
           Effect.flatMap((rows) =>
             Effect.forEach(rows, (row) =>
-              decodeEvent(row).pipe(
+              decodePersistedEvent(row).pipe(
                 Effect.mapError(
                   toPersistenceDecodeError("OrchestrationEventStore.readFromSequence:rowToEvent"),
                 ),

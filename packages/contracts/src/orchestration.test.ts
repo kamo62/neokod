@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import {
+  clampRuntimeMode,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
   FALLBACK_RUNTIME_MODE,
@@ -16,6 +17,8 @@ import {
   OrchestrationThreadShell,
   ProjectCreatedPayload,
   ProjectMetaUpdatedPayload,
+  RUNTIME_MODE_PRIVILEGE_ORDER,
+  runtimeModePrivilege,
   OrchestrationProposedPlan,
   OrchestrationSession,
   ProjectCreateCommand,
@@ -782,3 +785,24 @@ it.effect("ModelSelection rejects malformed instance ids", () =>
     assert.strictEqual(result._tag, "Failure");
   }),
 );
+
+it("orders runtime modes by privilege, not by literal declaration order", () => {
+  // Guards the fail-closed guarantees: anything reasoning about "more
+  // permissive than" must use the ordering, never a string or index compare.
+  assert.strictEqual(runtimeModePrivilege("approval-required"), 0);
+  assert.ok(runtimeModePrivilege("auto") > runtimeModePrivilege("auto-accept-edits"));
+  assert.ok(runtimeModePrivilege("full-access") > runtimeModePrivilege("auto"));
+
+  // The fallback must be the least privileged mode of all.
+  for (const mode of RUNTIME_MODE_PRIVILEGE_ORDER) {
+    assert.ok(runtimeModePrivilege(FALLBACK_RUNTIME_MODE) <= runtimeModePrivilege(mode));
+  }
+});
+
+it("clamps a requested runtime mode down to the ceiling, never up", () => {
+  assert.strictEqual(clampRuntimeMode("full-access", "auto"), "auto");
+  assert.strictEqual(clampRuntimeMode("auto", "approval-required"), "approval-required");
+  // Already at or below the ceiling passes through untouched.
+  assert.strictEqual(clampRuntimeMode("approval-required", "full-access"), "approval-required");
+  assert.strictEqual(clampRuntimeMode("auto", "auto"), "auto");
+});
