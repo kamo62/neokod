@@ -221,7 +221,7 @@ describe("ProviderCommandReactor", () => {
         turnId: asTurnId("turn-1"),
       }),
     );
-    const interruptTurn = vi.fn((_: unknown) => Effect.void);
+    const interruptTurn = vi.fn<ProviderServiceShape["interruptTurn"]>(() => Effect.void);
     const respondToRequest = vi.fn<ProviderServiceShape["respondToRequest"]>(() => Effect.void);
     const respondToUserInput = vi.fn<ProviderServiceShape["respondToUserInput"]>(() => Effect.void);
     const stopSession = vi.fn((input: unknown) =>
@@ -1636,6 +1636,73 @@ describe("ProviderCommandReactor", () => {
       threadId: "thread-1",
     });
   });
+
+  effectIt.effect("surfaces provider turn interrupt failures as activity", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const now = "2026-01-01T00:00:00.000Z";
+      harness.interruptTurn.mockImplementation(() =>
+        Effect.fail(
+          new ProviderAdapterRequestError({
+            provider: ProviderDriverKind.make("codex"),
+            method: "session.abort",
+            detail: "interrupt failed",
+          }),
+        ),
+      );
+
+      yield* harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-session-set-for-interrupt-error"),
+        threadId: ThreadId.make("thread-1"),
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: asTurnId("turn-1"),
+          lastError: null,
+          updatedAt: now,
+        },
+        createdAt: now,
+      });
+
+      yield* harness.engine.dispatch({
+        type: "thread.turn.interrupt",
+        commandId: CommandId.make("cmd-turn-interrupt-error"),
+        threadId: ThreadId.make("thread-1"),
+        turnId: asTurnId("turn-1"),
+        createdAt: now,
+      });
+
+      yield* Effect.promise(() =>
+        waitFor(async () => {
+          const pending = await harness.readModel();
+          const pendingThread = pending.threads.find(
+            (entry) => entry.id === ThreadId.make("thread-1"),
+          );
+          return (
+            pendingThread?.activities.some(
+              (activity) => activity.kind === "provider.turn.interrupt.failed",
+            ) ?? false
+          );
+        }),
+      );
+
+      const readModel = yield* Effect.promise(() => harness.readModel());
+      const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+      expect(thread?.activities).toContainEqual(
+        expect.objectContaining({
+          kind: "provider.turn.interrupt.failed",
+          turnId: "turn-1",
+          createdAt: now,
+          payload: expect.objectContaining({
+            detail: expect.stringContaining("interrupt failed"),
+          }),
+        }),
+      );
+    }),
+  );
 
   it("starts a fresh session when only projected session state exists", async () => {
     const harness = await createHarness();

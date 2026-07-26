@@ -14,6 +14,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { beforeEach } from "vite-plus/test";
 
 import {
+  ApprovalRequestId,
   OpenCodeSettings,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -41,6 +42,7 @@ class OpenCodeAdapter extends Context.Service<OpenCodeAdapter, OpenCodeAdapterSh
 ) {}
 
 const asThreadId = (value: string): ThreadId => ThreadId.make(value);
+const asApprovalRequestId = (value: string): ApprovalRequestId => ApprovalRequestId.make(value);
 
 type MessageEntry = {
   info: {
@@ -62,6 +64,8 @@ const runtimeMock = {
     promptAsyncError: null as Error | null,
     closeError: null as Error | null,
     messages: [] as MessageEntry[],
+    messagesCalls: [] as Array<unknown>,
+    permissionReplyCalls: [] as Array<unknown>,
     subscribedEvents: [] as unknown[],
   },
   reset() {
@@ -75,6 +79,8 @@ const runtimeMock = {
     this.state.promptAsyncError = null;
     this.state.closeError = null;
     this.state.messages = [];
+    this.state.messagesCalls.length = 0;
+    this.state.permissionReplyCalls.length = 0;
     this.state.subscribedEvents = [];
   },
 };
@@ -138,7 +144,10 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
             throw runtimeMock.state.promptAsyncError;
           }
         },
-        messages: async () => ({ data: runtimeMock.state.messages }),
+        messages: async (input: unknown) => {
+          runtimeMock.state.messagesCalls.push(input);
+          return { data: runtimeMock.state.messages };
+        },
         revert: async ({ sessionID, messageID }: { sessionID: string; messageID?: string }) => {
           runtimeMock.state.revertCalls.push({
             sessionID,
@@ -156,6 +165,11 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
             targetIndex >= 0
               ? runtimeMock.state.messages.slice(0, targetIndex + 1)
               : runtimeMock.state.messages;
+        },
+      },
+      permission: {
+        reply: async (input: unknown) => {
+          runtimeMock.state.permissionReplyCalls.push(input);
         },
       },
       event: {
@@ -392,6 +406,65 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       NodeAssert.equal(sessions[0]?.status, "ready");
       NodeAssert.equal(sessions[0]?.activeTurnId, undefined);
       NodeAssert.equal(sessions[0]?.lastError, "prompt failed");
+    }),
+  );
+
+  it.effect("resolves pending permissions when the session errors", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-session-error-permission");
+      runtimeMock.state.subscribedEvents = [
+        {
+          type: "permission.asked",
+          properties: {
+            sessionID: "http://127.0.0.1:9999/session",
+            id: "permission-session-error",
+            permission: "bash",
+            patterns: ["bun test"],
+            metadata: {},
+          },
+        },
+        {
+          type: "session.error",
+          properties: {
+            sessionID: "http://127.0.0.1:9999/session",
+            error: { data: { message: "session failed" } },
+          },
+        },
+      ];
+      const resolvedFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId && event.type === "request.resolved"),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+
+      const resolved = Array.from(
+        yield* Fiber.join(resolvedFiber).pipe(Effect.timeout("1 second")),
+      );
+      NodeAssert.deepEqual(resolved[0]?.payload, {
+        requestType: "command_execution_approval",
+        decision: "cancel",
+      });
+
+      const error = yield* adapter
+        .respondToRequest(threadId, asApprovalRequestId("permission-session-error"), "accept")
+        .pipe(Effect.flip);
+      NodeAssert.equal(error._tag, "ProviderAdapterRequestError");
+      if (error._tag !== "ProviderAdapterRequestError") {
+        throw new Error("Unexpected error type");
+      }
+      NodeAssert.equal(
+        error.detail,
+        "Unknown pending permission request: permission-session-error",
+      );
+      NodeAssert.deepEqual(runtimeMock.state.permissionReplyCalls, []);
     }),
   );
 

@@ -918,7 +918,40 @@ export function makeOpenCodeAdapter(
         case "session.error": {
           const message = sessionErrorMessage(event.properties.error);
           const activeTurnId = context.activeTurnId;
+          const pendingPermissions = [...context.pendingPermissions.values()];
+          const pendingQuestions = [...context.pendingQuestions.keys()];
+          context.pendingPermissions.clear();
+          context.pendingQuestions.clear();
           context.activeTurnId = undefined;
+          // A dead session cannot receive a normal reply, so use the existing
+          // cancel outcome to clear permissions; questions resolve with no answers.
+          for (const request of pendingPermissions) {
+            yield* emit({
+              ...(yield* buildEventBase({
+                threadId: context.session.threadId,
+                turnId: activeTurnId,
+                requestId: request.id,
+                raw: event,
+              })),
+              type: "request.resolved",
+              payload: {
+                requestType: mapPermissionToRequestType(request.permission),
+                decision: "cancel",
+              },
+            });
+          }
+          for (const requestId of pendingQuestions) {
+            yield* emit({
+              ...(yield* buildEventBase({
+                threadId: context.session.threadId,
+                turnId: activeTurnId,
+                requestId,
+                raw: event,
+              })),
+              type: "user-input.resolved",
+              payload: { answers: {} },
+            });
+          }
           yield* updateProviderSession(
             context,
             {
