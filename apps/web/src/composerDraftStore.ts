@@ -33,7 +33,12 @@ import { createModelSelection, normalizeModelSlug } from "@neokod/shared/model";
 import { useMemo } from "react";
 import { getLocalStorageItem } from "./hooks/useLocalStorage";
 import { resolveAppModelSelection, resolveAppModelSelectionForInstance } from "./modelSelection";
-import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE, type ChatImageAttachment } from "./types";
+import {
+  DEFAULT_INTERACTION_MODE,
+  DEFAULT_RUNTIME_MODE,
+  FALLBACK_RUNTIME_MODE,
+  type ChatImageAttachment,
+} from "./types";
 import {
   type TerminalContextDraft,
   ensureInlineTerminalContextPlaceholders,
@@ -1528,9 +1533,14 @@ function normalizePersistedDraftThreads(
           typeof createdAt === "string" && createdAt.length > 0
             ? createdAt
             : new Date().toISOString(),
+        // A persisted draft can carry a mode this build does not know, e.g.
+        // after rolling back from a newer version. Fall back to the least
+        // privileged mode, never the default: this value reaches thread
+        // bootstrap, so defaulting to full access would grant more than the
+        // user actually chose.
         runtimeMode: isRuntimeMode(candidateDraftThread.runtimeMode)
           ? candidateDraftThread.runtimeMode
-          : DEFAULT_RUNTIME_MODE,
+          : FALLBACK_RUNTIME_MODE,
         interactionMode:
           candidateDraftThread.interactionMode === "plan" ||
           candidateDraftThread.interactionMode === "default"
@@ -1580,7 +1590,11 @@ function normalizePersistedDraftThreads(
           projectId: projectRef.projectId,
           logicalProjectKey,
           createdAt: new Date().toISOString(),
-          runtimeMode: DEFAULT_RUNTIME_MODE,
+          // Reached when a project mapping outlives its draft-thread record,
+          // including when the loop above dropped that record as corrupt. The
+          // mode the user picked is unrecoverable here, so fail closed and make
+          // them re-pick rather than resurrecting the thread at full access.
+          runtimeMode: FALLBACK_RUNTIME_MODE,
           interactionMode: DEFAULT_INTERACTION_MODE,
           branch: null,
           worktreePath: null,
@@ -1660,9 +1674,17 @@ function normalizePersistedDraftsByThreadId(
     const reviewComments = Array.isArray(draftCandidate.reviewComments)
       ? draftCandidate.reviewComments.filter(isReviewCommentContext)
       : [];
-    const runtimeMode = isRuntimeMode(draftCandidate.runtimeMode)
-      ? draftCandidate.runtimeMode
-      : null;
+    // An absent override means "inherit the thread mode", which is the normal
+    // case. A present but unrecognised one, e.g. after rolling back from a
+    // newer build, must not fall through to inheritance: the thread can be more
+    // permissive than the mode the user actually picked, so dropping the
+    // override would hand back access they had deliberately given up.
+    const persistedRuntimeMode: unknown = draftCandidate.runtimeMode;
+    const runtimeMode = isRuntimeMode(persistedRuntimeMode)
+      ? persistedRuntimeMode
+      : persistedRuntimeMode === undefined || persistedRuntimeMode === null
+        ? null
+        : FALLBACK_RUNTIME_MODE;
     const interactionMode =
       draftCandidate.interactionMode === "plan" || draftCandidate.interactionMode === "default"
         ? draftCandidate.interactionMode

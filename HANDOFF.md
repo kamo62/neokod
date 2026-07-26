@@ -1,55 +1,153 @@
 # Handoff: org fork of T3 Code (Copilot + Claude, AI-Orch governed)
 
-Continuation notes for a fresh session opened in this directory. Keep this file
-untracked; do not commit it.
+Continuation notes for a fresh session opened in this directory. This file is
+tracked, so keep it current with what actually merged; a stale status here is
+worse than none.
 
-## Current state (2026-07-25) — neokod UI/gateway track, sol review gap
+## Current state (2026-07-26) — neokod track
 
-sol (the Codex reviewer, gpt-5.6-sol) is unavailable until Tuesday, so anything
-needing a sol review is parked, not blocked. This section covers the neokod
-UI / design / Agent Gateway track; the AI-Orch governance track continues below.
+Everything below concerns the neokod provider/UI/gateway track. The AI-Orch
+governance track continues from "Local-first carve-out" onward and is unchanged.
 
-Isolated worktree for this track: `~/Code/t3code-neokod`. The main
-`~/Code/t3code` checkout is held by the AI-Orch session on
-`feat/client-identity-enrolment`; work in the worktree and do not do git surgery
-on the shared checkout while both sessions are live.
+### Environment (all previously-noted blockers are resolved)
 
-Landed on remote main (kamo62/neokod):
+- **One checkout.** The `~/Code/t3code-neokod` worktree is gone; all work happens
+  in `~/Code/t3code`. The earlier split existed only because a second session was
+  live in this checkout. `~/Code/t3code-slice1` is still that session's worktree,
+  on the merged `feat/client-identity-enrolment` — leave it alone.
+- **Toolchain works.** `vp`, `tsgo` and tests all run locally. The long-standing
+  `@pierre/diffs` breakage is fixed: the repo patches it to add `./types` and
+  `./utils/parsePatchFiles`, and the store copy was mis-patched. Root cause of the
+  repeated install failures was NOT flaky network — the `@github/copilot-*`
+  platform binaries are ~109MB each (~650MB total) and blow pnpm's default fetch
+  timeout. Fix: `CI=true pnpm install --fetch-timeout 900000 --network-concurrency 2`.
+- **Codex sandbox is rooted at `~/Code/t3code`.** Delegating implementation only
+  works while work lives in this checkout, which is another reason not to
+  reintroduce a worktree. Codex also cannot create `.git/index.lock`, so it
+  reports success without committing — always verify and commit yourself.
+- **Never switch branches while an agent is reading the tree.** Doing so wasted an
+  11-minute sol review, which analysed a tree that lacked the changes under review.
 
-- #36 Copilot usage/quota, #37 subagent observability + plan progress, #38 docs
-  cleanup, #39 Codex protocol refresh, #40 run-banner diff-stats + docs fixes,
-  #41 design token foundation + pill CTAs + 16px cards.
-- #34 (older diff-pane) closed per sol; reintroduce on fresh main if wanted.
+### Shipped
 
-Pushed, awaiting merge (safe, no judgment needed, merge once CI is green):
+**v3.3.0** (tagged, built, published) — Claude Opus 5; live Claude model discovery
+via the SDK's `supportedModels()` so new models appear without a Neokod release;
+Bedrock-backed Claude recognised as authenticated plus a 25s capability probe;
+fractional Copilot quota counts; WCAG AA muted text in both themes; fast-mode
+lightning bolt. PRs #43-#48 and #50.
 
-- `fix/pr-review-followups` — safe CodeRabbit follow-ups: ThreadRunBanner skips
-  the VCS query when hidden, overview.md ws.ts citation, effect-fn link paths,
-  AGENTS wording, CHANGELOG wording.
+Build artifacts are pruned after each release (Actions storage, not local disk;
+distributable binaries live in Releases and are never touched).
 
-Parked for sol's Tuesday review:
+### Shipped: v3.4.0 — Auto runtime mode (PR #51)
 
-- `review/pending-sol-tuesday` — allow fractional Copilot quota counts in
-  `ServerProviderUsageWindow` (contract change to #36's quota work).
-- Decision, not applied: light `--text-tertiary` `#9e9e9e` is 2.7:1 on white,
-  below WCAG. It is the deliberate design-spec value, so the call is keep it for
-  decorative text only vs darken it. Needs the user/sol, not a silent override.
-- Agent Gateway spec round-3 on `docs/agent-gateway-spec-round3` (artifact
-  https://claude.ai/code/artifact/fe3e91c3-87e9-4d93-948d-aed9a24764a0): all 11
-  round-2 must-change items addressed and grounded in verified code; status
-  "pending round-3 re-review". Full review log in the main checkout's
-  `REVIEW.md`.
+Port of upstream #4272 plus hardening upstream lacks. Merged as **v3.4.0** after
+three review rounds; CI green on every job and both round-3 review lanes resolved.
+Kept as 3.4.0 rather than split into a 3.4.1: 3.4.0 was never tagged or released,
+so the review fixes correct code no user had run, and a 3.4.1 heading would have
+tagged v3.4.1 and skipped v3.4.0 permanently.
 
-Next commands when sol is back Tuesday:
+Upstream has two open bugs in this feature and we defend against both:
 
-- Merge `fix/pr-review-followups` if CI green.
-- Round-3 re-review of the gateway spec (sol high + deep-reasoner), then decide
-  build / shelve.
-- Review `review/pending-sol-tuesday` (fractional quota + tertiary contrast).
+- **#4518** — a persisted `auto` fails a strict startup decoder and crash-loops the
+  backend until the DB row is hand-edited.
+- **#4495** — Claude turns fail immediately under Claude's `auto` permission mode.
 
-Toolchain note: worktree `pnpm install` is blocked by corrupt `@github/copilot-*`
-store packages plus a network failure, so local `vp` is unavailable. Commit with
-`--no-verify` and rely on CI `Check` as the gate.
+Design: `RuntimeModeStored` decodes an unrecognised persisted value to
+`FALLBACK_RUNTIME_MODE = "approval-required"` (fail-closed; deliberately NOT the
+`full-access` default). Command inputs stay strict. Claude is clamped at the
+**adapter** — `auto` is absent from `runtimeModeToPermission` so Claude prompts —
+because a UI-only gate is bypassable by a persisted or API-supplied value.
+
+One earlier fix was reverted rather than patched. To stop replay overwriting a
+newer persisted mode, a `storedRuntimeMode` field preserved the original value
+across projection writes. It read the column on _every_ row, not just unknown
+ones, so `projection_threads.runtime_mode` froze at its creation value: changing
+full-access to approval-required and restarting silently restored full-access,
+for every provider. The whole mechanism was removed. Replay is lossy again for
+unknown modes, and that loss is now permanent rather than temporary, since
+bootstrap resumes from the stored cursor. Fail-closed direction, documented in
+the changelog, re-select the mode to restore it.
+
+Accepted follow-ups, not blockers: a project mapping that outlives its
+draft-thread record synthesises a fresh record, so the picked mode is
+unrecoverable there and the thread comes back on `approval-required`;
+`CodexSessionRuntime` now sends `approvalsReviewer` unconditionally, which the
+bundled server accepts but an older external codex binary might reject. The
+`ProviderSessionRuntime` strict-decoding concern turned out to be smaller than
+first recorded: `list` skips bad rows individually, so one corrupt row does not
+stop the reaper. If that strictness is ever relaxed, use `RuntimeModeStored` in
+the row schema rather than swallowing the error, or the `?? "full-access"`
+defaults downstream become corrupt-to-full-access paths.
+
+Six defects were found here across three rounds by five mechanisms (CI, my own
+checks, CodeRabbit, sol, Fable). Most traced to flawed instructions rather than
+the implementer, and two rounds introduced a worse bug than the one being fixed.
+The last round's two reviewers each found a fail-open the other missed. Two-lane
+review before merge earned its place on this one.
+
+### Agent Gateway — spec only, never built
+
+Synara-inspired (`github.com/Emanuele-web04/synara`): an opt-in, default-off local
+MCP surface letting a running agent create and coordinate real cross-provider
+neokod tasks, each a first-class thread with its own provider, model, branch and
+worktree. Phase 1 is seven tools. Distinct from provider-native subagents, which
+stay observation-only.
+
+Spec lives on `docs/agent-gateway-spec-round3` (branch name says round3; content is
+**round-5**). Artifact:
+https://claude.ai/code/artifact/fe3e91c3-87e9-4d93-948d-aed9a24764a0
+Review log: `REVIEW.md` in this checkout.
+
+Three review rounds failed. Round-5 fixed sol's round-4 findings: removed an
+`agent_gateway_turn_index` that was undefined and redundant, made the worktree
+ownership claim provable on disk rather than only in SQLite, and stopped the
+interrupt tool promising a synchronous result the architecture cannot deliver.
+**Round-5 is unreviewed.** Phase 1 is ~89 deliverables across 12+ files — build in
+slices, and only after a review passes.
+
+Relevant: upstream issue **#4456** (sub-agent UI segmentation) is effectively the
+gateway's UI half. Fable and sol independently found it unbuildable today —
+sub-agents are only `task.*` activities stamped with the parent's threadId, no
+"queued" state exists in any provider, and per-agent file attribution is impossible
+on a shared worktree. Buildable now: a worker-count badge on sidebar rows, done
+server-side as a field on `OrchestrationThreadShell`.
+
+### Verified upstream bugs worth porting (none started)
+
+- **#4524** interrupt failures silently swallowed (`ProviderCommandReactor.ts:863`)
+  — Stop looks successful while the turn keeps running. Flagged independently by
+  two passes. Highest user impact.
+- **PR #4381** OpenCode leaves pending permission requests stranded on
+  `session.error`. Small.
+- **PR #4348** unbounded OpenCode history hydration. Medium.
+
+Unverified, do not act without reproducing: #4560 cross-project context leakage
+(highest severity if real), #4561 stranded sessions after restart, #4452 turns
+stuck "Working", #4513 bulk delete vs missing worktree, #4463 MCP token idle expiry.
+
+### Smaller known items
+
+- **`package.json` versions are stale and drifting.** `apps/web`, `apps/server` and
+  `apps/desktop` all still declare `"version": "3.0.3"`. Nothing is broken by this:
+  `release.yml:66` derives the release version solely from the first `## ` heading
+  in `CHANGELOG.md` (`grep -m1 -E '^## '`, then strip at the first whitespace), so
+  the packages are never read. But they have not moved since 3.0.3 while the
+  product shipped through 3.4.0, so anyone inspecting a package gets a wrong
+  answer. Decide whether to sync them to the changelog on release or drop the
+  field; do not half-fix by bumping once by hand. Parked deliberately 2026-07-26.
+- `formatSubagentUsage` test hardcodes US number formatting (`1,234 tok`) and fails
+  under locales using a space separator. Fix the test, not the formatter. Confirmed
+  still failing locally on 2026-07-26; it passes in CI because the runner is en-US.
+- 9 `pre-rebase-*` snapshots were verified disposable and deleted: the only
+  substantive commit (`ba938a579`, thread goal + goalStatus) is already on main.
+
+### Repo hygiene (done 2026-07-26)
+
+Local branches 65 → 8, remote 48 → 5, worktrees 7 → 2. Remote now holds only
+`main`, `feat/auto-runtime-mode`, `docs/agent-gateway-spec-round3`,
+`feat/diff-pane-review` (closed PR #34, kept for possible reintroduction) and
+`wip/copilot-evidence-sink-simplification` (the other session's work, preserved).
 
 ## Local-first carve-out (2026-07-13)
 

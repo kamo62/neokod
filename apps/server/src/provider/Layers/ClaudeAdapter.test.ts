@@ -373,6 +373,29 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("clamps auto runtime policy to prompting instead of Claude's auto mode", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "auto",
+      });
+
+      const createInput = harness.getLastCreateQueryInput();
+      // Upstream t3code#4495: Claude turns fail immediately under its "auto"
+      // permission mode. Leaving permissionMode undefined makes Claude prompt for
+      // approvals, and clamping here means a persisted or API-supplied `auto`
+      // cannot bypass the composer's hidden option.
+      assert.equal(createInput?.options.permissionMode, undefined);
+      assert.equal(createInput?.options.allowDangerouslySkipPermissions, undefined);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("loads Claude filesystem settings sources for SDK sessions", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
@@ -3936,6 +3959,9 @@ describe("ClaudeAdapterLive", () => {
     { runtimeMode: "full-access", expectedBase: "bypassPermissions" },
     { runtimeMode: "approval-required", expectedBase: "default" },
     { runtimeMode: "auto-accept-edits", expectedBase: "acceptEdits" },
+    // `auto` is clamped for Claude (upstream #4495), so it restores to prompting
+    // exactly like approval-required rather than Claude's own auto mode.
+    { runtimeMode: "auto", expectedBase: "default" },
   ])(
     "restores $expectedBase permission mode after plan turn ($runtimeMode)",
     ({ runtimeMode, expectedBase }) => {

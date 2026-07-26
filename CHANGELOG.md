@@ -1,3 +1,15 @@
+## 3.4.0 - 2026-07-26 (Minor)
+
+Release impact: Minor because this adds an opt-in runtime mode and a new provider contract value, leaving the default mode and every existing mode's behavior unchanged.
+
+- Added the opt-in Auto runtime mode. Codex routes its approvals to the AI reviewer. Copilot, Cursor, Grok and OpenCode have no AI-review concept, so Auto keeps their existing user-approval behavior.
+- Auto is not offered for Claude yet. Upstream #4495 has Claude turns failing immediately under the matching permission mode, so the option is hidden while Claude is selected, and a thread already set to Auto prompts for approval instead of running with full access.
+- Codex thread starts now always state the approvals reviewer. Leaving it unset carried over the thread's previous reviewer, which left AI review active on resume after switching away from Auto.
+- Added forward-compatible decoding for persisted runtime modes. A mode this build does not recognize decodes to `approval-required` (least privilege), never `full-access`, across the contracts layer and the persisted thread and session projections. This keeps a build from failing at startup on a value written by a newer one, and keeps a future Codex mode from reaching the adapter as full access.
+- Applied the same least-privilege fallback to the composer's saved per-thread mode overrides. An unrecognized override used to fall through to the thread's own mode, which can be more permissive than the one that was picked.
+- Rolling back below 3.4.0 after using Auto is unsupported. 3.3.0 decodes persisted runtime modes strictly and can still fail at startup.
+- The fallback is applied once and kept. If a build projects a thread whose mode it does not recognize, that thread stays on `approval-required` after upgrading again, because replay resumes from the stored cursor instead of re-reading the original event. Re-select the mode on the thread to restore it.
+
 ## 3.3.0 - 2026-07-26 (Minor)
 
 Release impact: Minor because this adds Claude model discovery and a new model, and widens the provider usage contract in a backward-compatible way (integer quota counts still decode), with no breaking changes.

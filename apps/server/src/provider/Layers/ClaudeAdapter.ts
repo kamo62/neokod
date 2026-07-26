@@ -3563,6 +3563,16 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         : undefined;
       const ultracode = isClaudeUltracodeEffort(effort);
       const effectiveEffort = getEffectiveClaudeAgentEffort(effort, modelSelection?.model);
+      // `auto` is deliberately absent. Upstream t3code#4495 reports Claude turns
+      // failing immediately with `turn/setPermissionMode failed` under Claude's
+      // "auto" permission mode, and we have not verified a fix. Omitting it here
+      // leaves `permissionMode` undefined, so Claude falls back to prompting for
+      // approvals, which is the safe behaviour.
+      //
+      // This clamp lives in the adapter rather than only in the composer because
+      // the composer merely hides the option: a thread whose persisted mode is
+      // already `auto` (set while on another provider) would otherwise reach
+      // Claude untouched, as would any API-supplied value.
       const runtimeModeToPermission: Record<string, PermissionMode> = {
         "auto-accept-edits": "acceptEdits",
         "full-access": "bypassPermissions",
