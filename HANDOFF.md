@@ -4,6 +4,25 @@ Continuation notes for a fresh session opened in this directory. This file is
 tracked, so keep it current with what actually merged; a stale status here is
 worse than none.
 
+**Two repos, one checkout.** This is the thing to understand before reading
+anything below. Both remotes point at different fork lines and they are not in
+sync:
+
+| Remote     | Repo               | Contents                                                    |
+| ---------- | ------------------ | ----------------------------------------------------------- |
+| `neokod`   | `kamo62/neokod`    | The live product. `main` is what ships. Currently v3.4.0.   |
+| `origin`   | `kamo62/t3code`    | The older AI-Orch-governed line. Only `org/copilot-claude`. |
+| `upstream` | `pingdotgg/t3code` | Fetch only; push disabled.                                  |
+
+`origin/org/copilot-claude` is at `f4ace8bd0` and holds **31 commits that are not
+in neokod `main`**. Everything from "What this fork is" downward describes _that_
+line, not `main`. Do not assume a file or behaviour documented in the lower half
+exists on `main` without checking.
+
+Claims here were verified against git and GitHub on **2026-07-26**. Anything
+carrying an older date is a historical record of that session, not a statement
+about the current tree. When this file and `git` disagree, trust `git`.
+
 ## Current state (2026-07-26) — neokod track
 
 Everything below concerns the neokod provider/UI/gateway track. The AI-Orch
@@ -41,11 +60,15 @@ distributable binaries live in Releases and are never touched).
 
 ### Shipped: v3.4.0 — Auto runtime mode (PR #51)
 
-Port of upstream #4272 plus hardening upstream lacks. Merged as **v3.4.0** after
-three review rounds; CI green on every job and both round-3 review lanes resolved.
-Kept as 3.4.0 rather than split into a 3.4.1: 3.4.0 was never tagged or released,
-so the review fixes correct code no user had run, and a 3.4.1 heading would have
-tagged v3.4.1 and skipped v3.4.0 permanently.
+**Released 2026-07-26 17:28 UTC.** Merge commit `f163dbe32`, tag `v3.4.0`,
+GitHub release "Neokod v3.4.0" published with all 12 assets (arm64/x64 dmg + zip,
+x64 exe, blockmaps, `latest.yml` / `latest-mac.yml`).
+
+Port of upstream #4272 plus hardening upstream lacks, merged after three review
+rounds with CI green on every job and both round-3 review lanes resolved. Kept as
+3.4.0 rather than split into a 3.4.1: 3.4.0 was never tagged or released at that
+point, so the review fixes corrected code no user had run, and a 3.4.1 heading
+would have tagged v3.4.1 and skipped v3.4.0 permanently.
 
 Upstream has two open bugs in this feature and we defend against both:
 
@@ -142,17 +165,39 @@ stuck "Working", #4513 bulk delete vs missing worktree, #4463 MCP token idle exp
 - 9 `pre-rebase-*` snapshots were verified disposable and deleted: the only
   substantive commit (`ba938a579`, thread goal + goalStatus) is already on main.
 
-### Repo hygiene (done 2026-07-26)
+### Branch inventory (verified 2026-07-26, after the v3.4.0 release)
 
-Local branches 65 → 8, remote 48 → 5, worktrees 7 → 2. Remote now holds only
-`main`, `feat/auto-runtime-mode`, `docs/agent-gateway-spec-round3`,
-`feat/diff-pane-review` (closed PR #34, kept for possible reintroduction) and
-`wip/copilot-evidence-sink-simplification` (the other session's work, preserved).
+Local branches went 65 → 7, remote 48 → 4, worktrees 7 → 2 over this session's
+cleanup. Current state, in full:
 
-## Local-first carve-out (2026-07-13)
+| Branch                                     | Where            | Status                                                                                                                                                                     |
+| ------------------------------------------ | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main`                                     | local + `neokod` | Ships. At `f163dbe32` (v3.4.0).                                                                                                                                            |
+| `docs/agent-gateway-spec-round3`           | local + `neokod` | Round-5 spec, unreviewed. Do not build until a review passes.                                                                                                              |
+| `feat/diff-pane-review`                    | local + `neokod` | Closed PR #34, kept in case it is reintroduced.                                                                                                                            |
+| `wip/copilot-evidence-sink-simplification` | local + `neokod` | The other session's work, preserved.                                                                                                                                       |
+| `feat/browser-test-lane`                   | **local only**   | 1 commit ahead of main (`e0bc2a96b`, Chromium browser-test lane M1). Review-clean, never pushed; pending a networked `vp` install and CI. **Exists on this machine only.** |
+| `feat/client-identity-enrolment`           | local only       | Checked out in the `~/Code/t3code-slice1` worktree. Merged.                                                                                                                |
+| `org/copilot-claude`                       | local + `origin` | The older fork line. Local is at `5424488b3` and is contained in `main`; `origin/org/copilot-claude` is ahead at `f4ace8bd0` with 31 commits absent from `main`.           |
 
-The current `feat/local-first-carveout` worktree has Stages 1-4 committed and
-Stage 5 applied but intentionally uncommitted. Native desktop, standalone `neokod
+`feat/auto-runtime-mode` was deleted on both sides when PR #51 merged.
+
+Worktrees: `~/Code/t3code` (on `main`) and `~/Code/t3code-slice1` (on
+`feat/client-identity-enrolment`). Leave slice1 alone; it belongs to another
+session.
+
+## Local-first carve-out — LANDED (originally written 2026-07-13)
+
+**This is done and on `main`.** The `feat/local-first-carveout` branch and its
+worktree no longer exist; nothing is waiting to be committed. Main carries the
+whole sequence, including the two stages the old note described as outstanding:
+`4c12112f1` (Stage 2, loopback-only), `db8de279c` (Stage 3, relay removal),
+`e6c6467f7` (Stage 4, cloud/Clerk/hosted removal), `549ff8923` (Stage 5,
+auth/session control plane removal) and `b7a517969` (Stage 6, `@t3tools/*` →
+`@neokod/*`). Rebrand stages followed in `8e30d0405` and `25e46ed8d`.
+
+The description below is accurate as a statement of the resulting architecture.
+Native desktop, standalone `neokod
 serve`, and Vite bind to `127.0.0.1`; loopback HTTP and WebSocket are direct and
 have no application auth/session control plane. Desktop-managed WSL remains the
 sole `0.0.0.0` exception and fails closed behind a desktop-generated HTTP bearer
@@ -160,6 +205,21 @@ plus short-lived, single-use WebSocket tickets. The bearer is topology-only and
 never persisted. Agent-awareness notifications and both toast/coordinator mounts
 remain local and unconditional. The package scope is `@neokod`; the remaining
 rebrand work is tracked in the Neokod rebrand plan.
+
+---
+
+# Everything below describes `origin/org/copilot-claude`, not `main`
+
+The sections that follow were written across sessions on the AI-Orch-governed
+fork line in **`kamo62/t3code`**, not the shipping neokod line. That branch is at
+`f4ace8bd0` with 31 commits never brought into neokod `main`, so a file, commit
+or behaviour named below may simply not exist on `main`. Check before relying on
+it. The commit SHAs quoted (`cc71b7f26`, `ae279e107`, `64200e454` and the rest)
+resolve only on `origin/org/copilot-claude`.
+
+Where the two lines solved the same problem independently, `main` has its own
+implementation: subagent observability landed on `main` via PR #37
+(`ddc907b4e`), unrelated to the A1-A4 slices described below.
 
 ## What this fork is
 
@@ -179,8 +239,11 @@ AI-Orch's gateway can enforce.
 `FORK.md` is the authoritative, current conflict/feature map — read it first. This
 section is a fast status summary; when the two disagree, trust `FORK.md` + git.
 
-Branch `org/copilot-claude`, HEAD `cc71b7f26`. Working tree is clean apart from
-untracked `.pnpm-store/` and this file.
+Branch `org/copilot-claude`, HEAD `cc71b7f26` **as of 2026-07-04**. That is no
+longer its head: `origin/org/copilot-claude` has since moved to `f4ace8bd0`. The
+working-tree state described here is historical; this checkout is on `main` and
+clean apart from untracked `.pnpm-store/`, `REVIEW.md`, `PLAN-exec-demo.md` and
+`demo.md`.
 
 ### Session update 2026-07-04c (killable workers + Copilot tasklist)
 
@@ -378,7 +441,9 @@ that install.js. Done on this machine 2026-07-04; desktop suite passes after.
 ### Review pass (2026-07-04): fixes in the working tree, findings
 
 A high-effort review of the Phases 1–5 + MCP/governance diff ran to completion.
-Uncommitted fixes now in the working tree — commit as one fix/test unit:
+**These fixes were committed; the working tree is no longer holding them.**
+Verified on `main`: `033_ProjectionThreadsGoal.test.ts` exists and `GoalChip.tsx`
+uses `useThreadShell`. The list is kept as a record of what changed:
 
 - `GoalChip.tsx` / `ThreadWorkspaceRail.tsx` / `CopilotMcpControls.tsx`:
   `useThread` → `useThreadShell` for shell-sourced fields (goal/goalStatus,
@@ -411,7 +476,7 @@ order" + the "Sub-agent panel + in-app GitHub device login: implementation plan"
 section, which is the authoritative spec for items 2 and 3 below). Items 1–5 of
 the original UI order are landed. What's next:
 
-1. Commit the review-fix slice in the working tree (see "Review pass" above).
+1. ~~Commit the review-fix slice in the working tree~~ — done, see "Review pass".
 2. **Sub-agent panel (user's TOP priority; Codex-reviewed plan in FORK.md).**
    Target: the Codex-desktop companion-pane experience (named worker tabs,
    per-worker narrative streams, model labels, steering only where honest).

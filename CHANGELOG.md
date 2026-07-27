@@ -1,3 +1,10 @@
+## 3.4.1 - 2026-07-26 (Patch)
+
+Release impact: Patch because this surfaces failures that were previously silent and clears stale request state, with no contract changes.
+
+- Stopping a turn no longer looks successful when the provider refuses the interrupt. The failure was written to the server log and nowhere else, so the button appeared to work while the turn kept running. It now appears in the thread as a failed-interrupt activity.
+- Cleared pending OpenCode approvals and questions when a session errors. They were only ever cleared by a reply, so an approval could sit in the UI forever with nothing able to resolve it, and a later reply would be sent into a dead session.
+
 ## 3.4.0 - 2026-07-26 (Minor)
 
 Release impact: Minor because this adds an opt-in runtime mode and a new provider contract value, leaving the default mode and every existing mode's behavior unchanged.
