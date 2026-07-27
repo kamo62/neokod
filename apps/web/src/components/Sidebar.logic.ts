@@ -72,6 +72,19 @@ export function resolveSidebarStageBadgeLabel(input: {
   return resolveServerBackedAppStageLabel(input);
 }
 
+export function resolveSidebarWorkerBadge(
+  workerCount: number | undefined,
+): { readonly count: string; readonly label: string } | undefined {
+  if (typeof workerCount !== "number" || !Number.isFinite(workerCount) || workerCount <= 0) {
+    return undefined;
+  }
+  const count = Math.floor(workerCount);
+  return {
+    count: String(count),
+    label: `${count} ${count === 1 ? "worker" : "workers"} running`,
+  };
+}
+
 export function createThreadJumpHintVisibilityController(input: {
   delayMs: number;
   onVisibilityChange: (visible: boolean) => void;

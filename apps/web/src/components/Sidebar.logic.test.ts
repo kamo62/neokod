@@ -16,6 +16,7 @@ import {
   resolveSidebarNewThreadSeedContext,
   resolveSidebarNewThreadEnvMode,
   resolveSidebarStageBadgeLabel,
+  resolveSidebarWorkerBadge,
   resolveThreadRowClassName,
   resolveThreadStatusPill,
   shouldClearThreadSelectionOnMouseDown,
@@ -73,6 +74,18 @@ describe("resolveSidebarStageBadgeLabel", () => {
         fallbackStageLabel: "Dev",
       }),
     ).toBe("Dev");
+  });
+});
+
+describe("resolveSidebarWorkerBadge", () => {
+  it("hides the badge when no workers are running", () => {
+    expect(resolveSidebarWorkerBadge(0)).toBeUndefined();
+    expect(resolveSidebarWorkerBadge(undefined)).toBeUndefined();
+  });
+
+  it("formats a singular and plural accessible label", () => {
+    expect(resolveSidebarWorkerBadge(1)).toEqual({ count: "1", label: "1 worker running" });
+    expect(resolveSidebarWorkerBadge(2)).toEqual({ count: "2", label: "2 workers running" });
   });
 });
 

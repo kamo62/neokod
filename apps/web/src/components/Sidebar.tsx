@@ -202,6 +202,7 @@ import {
   resolveSidebarNewThreadSeedContext,
   resolveSidebarNewThreadEnvMode,
   resolveSidebarStageBadgeLabel,
+  resolveSidebarWorkerBadge,
   resolveThreadRowClassName,
   resolveThreadStatusPill,
   orderItemsByPreferredIds,
@@ -482,6 +483,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
   const pr = resolveThreadPr(thread.branch, gitStatus.data);
   const prStatus = prStatusIndicator(pr, gitStatus.data?.sourceControlProvider);
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
+  const workerBadge = resolveSidebarWorkerBadge(thread.workerCount);
   const isConfirmingArchive = confirmingArchiveThreadKey === threadKey && !isThreadRunning;
   const threadMetaClassName = isConfirmingArchive
     ? "pointer-events-none opacity-0"
@@ -789,6 +791,22 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
             </Tooltip>
           )}
           <ThreadWorktreeIndicator thread={thread} />
+          {workerBadge && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    role="img"
+                    aria-label={workerBadge.label}
+                    className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border/70 bg-background/80 px-1 font-mono text-[10px] font-medium tabular-nums text-muted-foreground"
+                  />
+                }
+              >
+                {workerBadge.count}
+              </TooltipTrigger>
+              <TooltipPopup side="top">{workerBadge.label}</TooltipPopup>
+            </Tooltip>
+          )}
           {terminalStatus && (
             <Tooltip>
               <TooltipTrigger

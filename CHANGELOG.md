@@ -1,3 +1,9 @@
+## 3.5.0 - 2026-07-26 (Minor)
+
+Release impact: Minor because this adds a backward-compatible projected shell field and sidebar state.
+
+- Added a quiet sidebar badge showing how many sub-agent workers are currently running for each thread.
+
 ## 3.4.1 - 2026-07-26 (Patch)
 
 Release impact: Patch because this surfaces failures that were previously silent and clears stale request state, with no contract changes.
