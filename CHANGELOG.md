@@ -1,3 +1,10 @@
+## 3.5.1 - 2026-07-27 (Patch)
+
+Release impact: Patch because this makes deletion cleanup idempotent and bulk-delete reporting accurate, with no contract changes.
+
+- Deleting several threads at once no longer stops at the first one whose worktree is already gone. The rest are now processed, and the result names how many succeeded plus each thread that failed and why. Previously the loop aborted on the first failure, after that thread had already been deleted, so it was unclear what had actually happened.
+- Removing a worktree that is already gone now succeeds instead of erroring, since the intended end state already holds. A genuine failure, such as a locked worktree, still fails, and the reported detail now includes Git's own message rather than a bare "git worktree remove failed".
+
 ## 3.5.0 - 2026-07-26 (Minor)
 
 Release impact: Minor because this adds a backward-compatible projected shell field and sidebar state.

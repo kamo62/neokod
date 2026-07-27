@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   createThreadJumpHintVisibilityController,
+  formatBulkThreadDeleteSummary,
   getSidebarThreadIdsToPrewarm,
   getVisibleSidebarThreadIds,
   getPinnedAndUnpinnedSidebarThreads,
@@ -19,6 +20,7 @@ import {
   resolveSidebarWorkerBadge,
   resolveThreadRowClassName,
   resolveThreadStatusPill,
+  runBulkThreadDeletes,
   shouldClearThreadSelectionOnMouseDown,
   sortProjectsForSidebar,
   THREAD_JUMP_HINT_SHOW_DELAY_MS,
@@ -86,6 +88,27 @@ describe("resolveSidebarWorkerBadge", () => {
   it("formats a singular and plural accessible label", () => {
     expect(resolveSidebarWorkerBadge(1)).toEqual({ count: "1", label: "1 worker running" });
     expect(resolveSidebarWorkerBadge(2)).toEqual({ count: "2", label: "2 workers running" });
+  });
+});
+
+describe("bulk thread deletion", () => {
+  it("continues after a failure and reports every attempted result", async () => {
+    const attempted: string[] = [];
+    const summary = await runBulkThreadDeletes(["one", "two", "three"], async (item) => {
+      attempted.push(item);
+      return item === "one" ? { ok: false, reason: "worktree locked" } : { ok: true };
+    });
+
+    expect(attempted).toEqual(["one", "two", "three"]);
+    expect(summary).toEqual({
+      succeeded: ["two", "three"],
+      failures: [{ item: "one", reason: "worktree locked" }],
+    });
+    expect(
+      formatBulkThreadDeleteSummary(3, summary.succeeded.length, [
+        { title: "First thread", reason: summary.failures[0]!.reason },
+      ]),
+    ).toBe("2 of 3 completed successfully.\nFailed:\nFirst thread: worktree locked");
   });
 });
 
