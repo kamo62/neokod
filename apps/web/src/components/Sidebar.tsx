@@ -1909,7 +1909,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               threadKeys.length,
               summary.succeeded.length,
               summary.failures.map(({ item, reason }) => ({
-                title: sidebarThreadByKeyRef.current.get(item)?.title ?? item,
+                // A missing entry means the row is already gone from the sidebar,
+                // so there is no title to show. Fall back to a readable label
+                // rather than the scoped thread key, which is meaningless here.
+                title: sidebarThreadByKeyRef.current.get(item)?.title ?? "Unknown thread",
                 reason,
               })),
             ),
