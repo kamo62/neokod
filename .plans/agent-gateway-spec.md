@@ -1,6 +1,6 @@
 # neokod Agent Gateway design specification
 
-Status: Round-5 revision applied, addressing the round-4 sol findings; pending round-5 review
+Status: Round-6 revision applied, addressing the round-5 review findings
 Date: 2026-07-24  
 Release impact when implemented: Minor
 
@@ -11,7 +11,7 @@ Release impact when implemented: Minor
 neokod has two separate sub-agent layers. They must not be conflated:
 
 1. **Provider-native sub-agents are the default and remain always available.** Claude Code subagents, Codex collaboration agents, and equivalent provider-owned helpers run inside their provider's own session. neokod observes their existing canonical `task.started`, `task.progress`, and `task.completed` events in the Subagents panel. They never receive or use the Agent Gateway and never call or drive neokod's mutating control plane. Phase 1 does not change this layer.
-2. **The Agent Gateway is an explicit opt-in server feature and defaults off.** It is a built-in local MCP surface that lets an agent operate neokod's orchestration system to create and coordinate cross-provider tasks. When the effective `agentGateway.enabled` setting is `false`, the dedicated gateway MCP listener is not started, no gateway MCP server is injected into any provider session, and none of the seven gateway tools exist.
+2. **The Agent Gateway is an explicit opt-in server feature and defaults off.** It is a built-in local MCP surface that lets an agent operate neokod's orchestration system to create and coordinate cross-provider tasks. When the effective `agentGateway.enabled` setting is `false`, the dedicated gateway MCP listener is not started, no gateway MCP server is injected into any provider session, and none of the six Phase 1 gateway tools exist.
 
 Enabling the Agent Gateway is a deliberate, reversible choice. In Phase 1 the setting is restart-required so provider sessions cannot retain a partially changed MCP configuration: set it to `true` and restart to enable it; set it to `false` and restart to remove it. Enabling it also means knowingly accepting the advisory trust posture and residual orchestration-sprawl risk described in §6.
 
@@ -19,10 +19,10 @@ When the gateway is enabled, the primary story is:
 
 1. A user explicitly enables the Agent Gateway, restarts neokod, and starts a normal thread with one provider and model.
 2. The running agent discovers the projects, provider instances, models, permissions, quotas, and concurrency limits available to it.
-3. The agent creates one child task or an exact bounded batch of child tasks.
+3. The agent creates one child task. Exact bounded batch creation is Phase 1b.
 4. Each child becomes a normal neokod thread with an explicit provider instance, model, runtime mode, branch, and isolated git worktree.
 5. neokod starts each provider session through the existing provider runtime.
-6. The parent agent waits for one or all child tasks and reads their durable transcripts and results.
+6. The parent agent waits for one or all child tasks and reads their durable transcripts and results. Interrupt and batch creation are Phase 1b extensions.
 7. The user sees the child threads in normal thread navigation and sees their lifecycle in the existing Subagents panel.
 
 This design uses the current provider, orchestration, projection, worktree, and `task.*` activity paths. It does not introduce a second task graph, provider runtime, transcript store, or remote control plane. The gateway's project, concurrency, recursion, and quota rules are advisory guardrails applied only to work created through gateway tools; each provider's own sandbox and approval mode remains the real boundary for filesystem, shell, and network actions.
@@ -52,7 +52,7 @@ The first implementation should extend this foundation. Replacing it with a sepa
 - Apply project, provider, model, runtime, recursion, rate, and concurrency guardrails at the gateway layer, while documenting that the shared loopback dispatch endpoint can bypass them.
 - Keep the MCP transport local to the neokod process boundary and provider child processes.
 - Stamp gateway provenance from trusted server context so gateway-created work is attributable in the existing Subagents surface.
-- Add tools in small phases. Phase 1 contains exactly seven tools: context, catalog, single create, batch create, terminal wait, interrupt, and result read.
+- Add tools in small phases. Phase 1 contains exactly five tools: context, catalog, single create, terminal wait, and result read. Interrupt and batch create are Phase 1b.
 
 ### 1.4 Non-goals
 
@@ -170,7 +170,7 @@ Extract the reusable create-thread and prepare-worktree portion into a server-si
 
 Do not route the HTTP orchestration dispatch endpoint through the extracted bootstrap dispatcher and do not add Agent Gateway auth or policy to it. Its existing direct dispatch behavior is part of neokod's local-first first-party control plane.
 
-The dispatcher owns normalization-independent command execution. It delegates domain decisions and persistence to `OrchestrationEngineService` and worktree operations to `GitWorkflowService`. The gateway entry point supplies an internal trusted dispatch context containing the reserved operation/task identifiers and server-derived origin. That context is not part of `ClientOrchestrationCommand`, is not accepted from HTTP or WebSocket payloads, and is not inferred from `commandId`.
+The dispatcher owns normalization-independent command execution. It delegates domain decisions and persistence to `OrchestrationEngineService` and worktree operations to `GitWorkflowService`. It accepts a generic internal dispatch context `{ origin, actorOverride, metadata }`; the gateway supplies its reserved operation/task identifiers and server-derived origin, while future callers may supply another origin. That context is not part of `ClientOrchestrationCommand`, is not accepted from HTTP or WebSocket payloads, and is not inferred from `commandId`.
 
 The WebSocket path keeps its existing setup-script behavior. The gateway path has no `runSetupScript` option and never calls `ProjectSetupScriptRunner`; it performs only thread creation, worktree preparation, metadata update, and turn dispatch. This is necessary because `ProjectSetupScriptRunner.runForThread` opens a host terminal and writes the configured project command to it (`apps/server/src/project/ProjectSetupScriptRunner.ts:127-164`).
 
@@ -206,9 +206,8 @@ The child thread remains the full event and transcript source.
 
 ### 2.8 Provenance
 
-Every gateway-created child thread stores structured origin data:
+Every created child thread stores structured `ThreadOrigin` data. The Phase 1 populated variant is `agent-gateway` and contains:
 
-- origin kind: `agent-gateway`
 - gateway operation ID
 - operation item key
 - root thread ID
@@ -221,7 +220,9 @@ Every gateway-created child thread stores structured origin data:
 
 The origin is stamped from trusted server state: `McpInvocationContext`, the atomically reserved gateway operation/task rows, and the selected target. The MCP caller supplies task content and exact catalog IDs, but it cannot supply or override `origin`, actor kind, root/parent thread IDs, creating provider instance, or delegation depth.
 
-The trusted gateway dispatch context carries provenance into the `thread.created` event and its projection. It also supplies an explicit `agent-gateway` actor override to event persistence. Do not infer actor kind from a `gateway:` command prefix and do not add caller-decodable origin fields to `ThreadCreateCommand` or `ThreadTurnStartBootstrapCreateThread`.
+The trusted dispatch context carries the origin into the `thread.created` event and its projection. It also supplies an explicit actor override to event persistence. Do not infer actor kind from a `gateway:` command prefix and do not add caller-decodable origin fields to `ThreadCreateCommand` or `ThreadTurnStartBootstrapCreateThread`.
+
+`ThreadOrigin` is a discriminated orchestration-contract union with `kind: "human" | "agent-gateway" | "tracker"`. Parent-thread, root-thread, creating-turn, creating-provider-instance, parent-model, and delegation-depth fields exist only on the `agent-gateway` variant. The `tracker` variant is reserved for the later tracker integration and the `human` variant carries no parent-anchored fields. The only variant populated in Phase 1 is `agent-gateway`. Decoding an unknown future `kind` soft-fails to an unsupported/absent origin for this build, preserves the surrounding thread snapshot, and never fails the whole projection; gateway policy treats it as non-creatable unless the row is grandfathered as pre-migration.
 
 The UI can render this later as "Created by Claude Opus in Thread A" or an equivalent label. Phase 1 requires the data to be present in thread detail/shell projections and the linked `task.*` activity so work is attributable in the existing Subagents panel.
 
@@ -233,7 +234,7 @@ The bearer token and authorization header never enter provenance, events, tool r
 
 Use the `neokod_` prefix. MCP clients often combine tools from several servers, so globally readable names help the agent choose correctly.
 
-All seven tools exist only while the Agent Gateway is enabled. They return structured content and a short text rendering. Validation, gateway-scope rejection, idempotency conflicts, and missing resources return stable error codes. A child task failure is data in a successful tool result.
+The six Phase 1 tools exist only while the Agent Gateway is enabled. Phase 1b adds interrupt and batch creation under the same listener. They return structured content and a short text rendering. Validation, gateway-scope rejection, idempotency conflicts, and missing resources return stable error codes. A child task failure is data in a successful tool result.
 
 Every tool that addresses a task by ID (wait, read, interrupt) authorizes each `taskId` against the caller's own root delegation tree. A taskId outside that tree is rejected as unauthorized rather than acted on, so one delegation subtree cannot wait on, read, or interrupt another subtree's tasks.
 
@@ -241,9 +242,9 @@ Tool annotations:
 
 - Discovery, catalog, wait, and read: `readOnlyHint: true`, `destructiveHint: false`, `openWorldHint: false`.
 - Create and batch create: `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`.
-- Interrupt: `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`.
+- Interrupt: `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false` (Phase 1b).
 
-### 3.2 MVP tool 1: `neokod_gateway_context`
+### 3.2 Phase 1 tool 1: `neokod_gateway_context`
 
 Purpose: Tell the caller who it is, where it is running, and what the gateway permits.
 
@@ -264,30 +265,28 @@ Outputs:
 - Allowed provider instance IDs and optional model restrictions.
 - Maximum child runtime mode.
 - Batch, active-task, rate, and recursion limits.
-- Current active task count under the root delegation tree.
+- Current active task count under the reservation scope, with the gateway root thread shown separately as identity.
 
 Existing source it wraps:
 
 - `ProjectionSnapshotQuery.getThreadDetailSnapshot`, the same durable source used by the thread snapshot HTTP route and initial `orchestration.subscribeThread` frame (`apps/server/src/orchestration/Services/ProjectionSnapshotQuery.ts:156-170`, `apps/server/src/orchestration/http.ts:55-70`).
 - `McpInvocationContext`, which already carries environment, thread, provider session, provider instance, capabilities, and credential lifetime (`apps/server/src/mcp/McpInvocationContext.ts:10-20`).
 
-### 3.3 MVP tool 2: `neokod_catalog_list`
+### 3.3 Phase 1 tool 2: `neokod_catalog_list`
 
 Purpose: Return exact allowed projects, provider instances, models, readiness, quota information, and optional base refs needed for task creation.
 
 Inputs:
 
 - `projectId?: ProjectId`: limit ref discovery to one allowed project.
-- `includeRefs?: boolean`: default `false`.
-- `refQuery?: string`: optional bounded filter when refs are included.
-- `refLimit?: number`: default `20`, maximum `100`.
+- No networked ref fetch or ref filter is accepted. The catalog returns a bounded set of locally available exact refs; `baseRef` must be one of those refs.
 
 Outputs:
 
 - Allowed projects with ID, title, repository state, and default model selection.
 - Provider instances with `instanceId`, driver, display name, enabled, installed, auth state, availability, models, and known usage windows.
 - Agent Gateway caller support for each provider.
-- Refs for the selected project when requested.
+- A bounded set of locally available exact refs for the selected project.
 - Structured warnings for unavailable providers or known exhausted quota buckets.
 
 Existing source it wraps:
@@ -297,14 +296,14 @@ Existing source it wraps:
 - The same data assembled by `server.getConfig` (`apps/server/src/ws.ts:1056-1065`).
 - `vcs.listRefs` through `GitWorkflowService.listRefs` (`packages/contracts/src/rpc.ts:162-164`, `apps/server/src/git/GitWorkflowService.ts:292-301`).
 
-### 3.4 MVP tool 3: `neokod_task_create`
+### 3.4 Phase 1 tool 3: `neokod_task_create`
 
 Purpose: Create one first-class child thread, isolated worktree, and initial provider turn.
 
 Inputs:
 
 - `operationKey: string`: required, 1 to 128 characters, stable across retries.
-- `projectId: ProjectId`: must be in the invocation scope.
+- `projectId: ProjectId`: must be the caller's project in Phase 1; cross-project creation is deferred.
 - `itemKey?: string`: defaults to `task`; 1 to 64 characters.
 - `title: string`: 1 to 160 characters.
 - `prompt: string`: uses the existing provider turn input limit.
@@ -312,8 +311,7 @@ Inputs:
 - `target.model: string`: exact model slug returned by the catalog.
 - `target.options?: ProviderOptionSelections`: validated against the target model descriptors.
 - `baseRef: string`: exact ref returned by the catalog.
-- `startFromOrigin?: boolean`: default `false`, allowed only when the capability policy permits networked git fetch.
-- `runtimeMode?: RuntimeMode`: default `approval-required`; a value above the effective ceiling (§6.5, `min(parent runtime mode, configured maximum)`) is rejected, not clamped.
+- `runtimeMode?: RuntimeMode`: default `approval-required`; a value above the effective ceiling (§6.5) is rejected, not clamped.
 - `interactionMode?: "default" | "plan"`: default `default`.
 
 The input never accepts `cwd`, `workspaceRoot`, `worktreePath`, an executable, environment variables, credentials, or a setup-script flag. Gateway task creation never runs `ProjectSetupScriptRunner`.
@@ -328,7 +326,7 @@ Outputs:
 - Runtime mode.
 - Branch.
 - Worktree path in trusted local output.
-- Launch state: `sending`, `accepted`, `launch_failed`, or `launch_unknown`. `recovered` is not a launch state; a reconciled task being replayed reports it through the idempotency field below.
+- Launch state: `sending`, `accepted`, `launch_failed_presend`, `launch_failed_rejected`, or `launch_unknown`. `recovered` is not a launch state; a reconciled task being replayed reports it through the idempotency field below.
 - Pinned accepted turn ID when launch state is `accepted`.
 - Idempotency state: `created`, `replayed`, or `recovered`.
 - Structured launch failure when applicable.
@@ -338,9 +336,9 @@ Existing command it wraps:
 - `thread.turn.start` with `bootstrap.createThread` and `bootstrap.prepareWorktree` only (`packages/contracts/src/orchestration.ts:581-626`).
 - The extracted create-thread/worktree portion of the current WebSocket bootstrap flow (`apps/server/src/ws.ts:497-701`).
 
-The tool returns when the provider has returned a concrete `ProviderTurnStartResult` (`accepted`), launch has definitively failed (`launch_failed`), the launch outcome has become unknown (`launch_unknown`), or the bounded launch-observation budget elapsed while the send is still in flight (`sending`). An orchestration command receipt alone is not success. A retry with the same `operationKey` while a task is still `sending` re-attaches to the same launch rendezvous and never re-dispatches the turn. The tool does not wait for task completion.
+The tool returns when the provider has returned a concrete `ProviderTurnStartResult` (`accepted`), launch has definitively failed (`launch_failed_presend` or `launch_failed_rejected`), the launch outcome has become unknown (`launch_unknown`), or the bounded launch-observation budget elapsed while the send is still in flight (`sending`). An orchestration command receipt alone is not success. A retry with the same `operationKey` while a task is still `sending` re-attaches to the same launch rendezvous and never re-dispatches the turn. The tool does not wait for task completion.
 
-### 3.5 MVP tool 4: `neokod_task_create_batch`
+### 3.5 Phase 1b tool 2: `neokod_task_create_batch`
 
 Purpose: Create an exact bounded set of tasks and launch them concurrently.
 
@@ -365,14 +363,14 @@ Existing command it wraps:
 Batch semantics:
 
 - The submitted list is the complete batch manifest.
-- A retry with the same owner and `operationKey` must have the same canonical request hash.
+- A retry with the same source owner scope and `operationKey` must have the same canonical request hash.
 - A changed manifest returns `operation_key_conflict`.
-- Items launch through one bounded pool. The batch launch concurrency is `min(batch size, remaining active-task headroom under the root, a fixed Phase 1 ceiling of 4)`, so a batch never exceeds the active-task reservation it already holds and never floods provider startup. Further items start as slots free.
+- Items launch through one bounded pool. The batch launch concurrency is `min(batch size, remaining active-task headroom under the reservation scope, a fixed Phase 1b ceiling of 4)`, so a batch never exceeds the active-task reservation it already holds and never floods provider startup. Further items start as slots free. This limit governs launch concurrency, not filesystem preparation: all worktree creation for one repository is serialized by the per-repository git common-directory mutex in §5.2.
 - Each item is independently durable.
 - One item failing does not cancel or delete successful siblings.
 - The response preserves input order even when launches finish out of order.
 
-### 3.6 MVP tool 5: `neokod_task_wait`
+### 3.6 Phase 1 tool 4: `neokod_task_wait`
 
 Purpose: Wait for one task or a set of tasks without polling raw provider processes.
 
@@ -409,7 +407,9 @@ Semantics:
 
 The production `RuntimeReceiptBus` cannot be used as the wait source because its live layer intentionally publishes no receipts (`apps/server/src/orchestration/Layers/RuntimeReceiptBus.ts:22-39`). Persisted projection and orchestration events are the authority.
 
-### 3.7 MVP tool 6: `neokod_task_interrupt`
+### 3.7 Phase 1b tool 1: `neokod_task_interrupt`
+
+Interrupt is cut from Phase 1 because it is the only tool that changes the shared human-turn path: it requires a new `ProviderService` lock, a new client-facing command field, a new reactor outcome path, and new race tests. A user can already stop a child thread through normal thread controls, which §6.1 names as the compensating control.
 
 Purpose: Interrupt the provider turn pinned to a gateway-created task.
 
@@ -439,14 +439,16 @@ Existing command and adapter operation it wraps:
 Semantics:
 
 - Resolve the child thread and pinned accepted turn from the server-side task row; accept neither from the caller.
-- Carry the pinned turn as `expectedActiveTurnId` on the interrupt command. Because orchestration turn IDs are not provider turn IDs, the reactor interrupts by session today (`apps/server/src/orchestration/Layers/ProviderCommandReactor.ts:882-883`), so a projection pre-check alone leaves a race: a human turn starting between the check and the session interrupt would be killed. Instead, recheck `expectedActiveTurnId` as an atomic invariant at the adapter boundary, under a per-thread lock that also serializes turn starts. Read the session's current active turn inside the lock; if it no longer equals `expectedActiveTurnId`, release without interrupting and return `not_active`. Only a match proceeds to `interruptTurn`.
+- Carry the pinned turn as `expectedActiveTurnId` on the interrupt command. Because orchestration turn IDs are not provider turn IDs, the reactor interrupts by session today (`apps/server/src/orchestration/Layers/ProviderCommandReactor.ts:882-883`), so a projection pre-check alone leaves a race: a human turn starting between the check and the session interrupt would be killed. `ProviderService` must own an explicit in-memory accepted-turn-by-thread map, set inside the turn-acceptance lock and cleared on terminal or stop. The guard reads that map under the same per-thread lock; it must hold the lock through the adapter interrupt call, not only through the comparison. If the accepted turn no longer equals `expectedActiveTurnId`, return `not_active` without calling the adapter. Only a match proceeds to `interruptTurn`.
 - This guard lives in neokod's adapter boundary, not the provider, because provider interrupt semantics differ: Copilot ignores turn IDs and Claude interrupts on mismatch, so neither can be trusted to spare a newer human turn on its own.
-- Lock scope is normative, because an over-broad lock would deadlock interrupt against the very turn it targets. The per-thread lock is owned by `ProviderService` and covers only the acceptance-and-pin critical section: from just before `adapter.sendTurn` until `ProviderTurnStartResult` is returned and the accepted turn is recorded in the session directory. It is released at acceptance, never held for the duration of a turn. Interrupt acquires the same per-thread lock, reads the current active turn, compares, and releases. This depends on `ProviderService.sendTurn` returning at adapter acceptance rather than turn completion, which is true today and is recorded as an assumption in §9.3.
+- Lock scope is normative, because an over-broad lock would deadlock interrupt against the very turn it targets. The per-thread lock is owned by `ProviderService` and covers only the acceptance-and-pin critical section: from just before `adapter.sendTurn` until `ProviderTurnStartResult` is returned and the accepted turn is recorded in the session directory. It is released at acceptance, never held for the duration of a turn. Interrupt acquires the same per-thread lock, reads the accepted-turn map, compares, calls the adapter when it matches, and releases only after that call returns. This is required because Claude interrupts even on ID mismatch and Copilot ignores turn IDs (`ClaudeAdapter.ts:3890-3913`, `CopilotAdapter.ts:1687-1693`).
 - Use one deterministic interrupt command ID per task. Repeated calls replay the same command receipt or return `already_terminal`.
 - A `launch_unknown` task has no safely pinned turn and is not interrupted automatically; return `not_active` with the launch state.
+- `already_terminal` is a net-new outcome; `processTurnInterruptRequested` currently checks only that a session exists and is not stopped, ignores `event.payload.turnId`, and interrupts by session (`ProviderCommandReactor.ts:863-884`).
+- The generic reactor must not write directly into gateway-owned rows. Record interrupt outcomes through a narrow named service seam, for example `DelegatedRunOutcomeRecorder`, so orchestration does not depend directly on gateway persistence.
 - Test the human-turn race explicitly: a human turn that starts after the projection check but before the lock must survive, and the interrupt must report `not_active`.
 
-### 3.8 MVP tool 7: `neokod_task_read`
+### 3.8 Phase 1 tool 5: `neokod_task_read`
 
 Purpose: Read a bounded durable transcript and result for a gateway-created task.
 
@@ -506,24 +508,45 @@ Add `packages/contracts/src/agentGateway.ts` and export it from the contracts pa
 - `AgentGatewayOperationId`
 - `AgentGatewayTaskId`
 - `AgentGatewayOperationKey`
-- `AgentGatewayTaskOrigin`
+- `ThreadOrigin`
 - `AgentGatewayTaskReference`
 - `AgentGatewayTaskState`
 - `AgentGatewayOperationState`
 - MVP tool input and output schemas
 - Stable gateway error code literals
+- The four-literal `RuntimeMode` order constant in `packages/contracts/src/orchestration.ts`, used only to compare modes within one provider
 
 Keep execution logic out of `packages/contracts`.
 
 ### 4.2 Thread origin
 
-Extend these persisted/projection contracts with optional `origin: AgentGatewayTaskOrigin`:
+The contract is a discriminated union, not a gateway-shaped object shared by every caller:
+
+```ts
+type ThreadOrigin =
+  | { kind: "human" }
+  | {
+      kind: "agent-gateway"
+      operationId: AgentGatewayOperationId
+      itemKey: string
+      rootThreadId: ThreadId
+      parentThreadId: ThreadId
+      creatingTurnId?: TurnId
+      creatingProviderInstanceId: ProviderInstanceId
+      parentModel: string
+      delegationDepth: number
+      createdAt: string
+    }
+  | { kind: "tracker"; integrationId: string; externalRunId?: string }
+```
+
+Extend these persisted/projection contracts with optional `origin: ThreadOrigin`:
 
 - `ThreadCreatedPayload`
 - `OrchestrationThread`
 - `OrchestrationThreadShell`
 
-Do not add `origin` to `ThreadCreateCommand`, `ClientThreadTurnStartCommand`, or `ThreadTurnStartBootstrapCreateThread`. Those are client-decodable command shapes (`packages/contracts/src/orchestration.ts:518-532`, `packages/contracts/src/orchestration.ts:581-645`). The engine enriches the `thread.created` event from the internal trusted gateway dispatch context after command decoding.
+Do not add `origin` to `ThreadCreateCommand`, `ClientThreadTurnStartCommand`, or `ThreadTurnStartBootstrapCreateThread`. Those are client-decodable command shapes (`packages/contracts/src/orchestration.ts:518-532`, `packages/contracts/src/orchestration.ts:581-645`). The engine enriches the `thread.created` event from the internal trusted dispatch context after command decoding.
 
 Persist `origin_json` on `projection_threads`. Update:
 
@@ -534,37 +557,31 @@ Persist `origin_json` on `projection_threads`. Update:
 - the next additive migration under `apps/server/src/persistence/Migrations/`
 - `apps/server/src/persistence/Migrations.ts`
 
-Older threads decode with no origin.
+Every thread created after the origin migration has a positive origin discriminant. Only rows before the migration watermark may have no origin and be treated as grandfathered human roots. A missing, ambiguous, or unknown origin on a post-migration row is not a gateway root and cannot receive `gateway.create`; policy fails closed to observe-only or rejects the scope. Unknown future `kind` values soft-fail decoding as described in §2.8 without breaking older snapshots.
 
 ### 4.3 Task lifecycle link
 
-Extend the three canonical provider-runtime task payloads with optional fields:
+The gateway emits parent orchestration activities through the shared task activity mapper and never impersonates a provider runtime event. Phase 1 does not add optional fields to the three provider-runtime task payloads: nothing consumes them, and the delegated-run row already links the parent activity to the child thread.
 
-- `childThreadId`
-- `origin`
-- `providerInstanceId` for the child target when it differs from the emitting parent
-
-The fields are optional so existing provider emitters and fixtures remain valid (`packages/contracts/src/providerRuntime.ts:464-493`).
-
-The gateway emits parent orchestration activities through the shared task activity mapper. It does not need to impersonate a provider runtime event. The optional canonical fields keep provider-native and gateway task links compatible at the projection boundary.
+Add `expectedActiveTurnId` to `ThreadTurnInterruptCommand` as the trusted server-side turn identity used by the Phase 1b adapter guard. It is not accepted from the MCP caller; the gateway loads the pinned accepted turn and constructs the command with it.
 
 ### 4.4 Event actor and metadata
 
 Extend `OrchestrationActorKind` with `agent-gateway`. Actor inference currently recognizes caller-controlled `provider:` and `server:` command prefixes, then falls back to `client` (`apps/server/src/persistence/Layers/OrchestrationEventStore.ts:70-90`). Do not add a `gateway:` prefix branch.
 
-Add optional fields to `OrchestrationEventMetadata`:
+Add optional source-neutral fields to `OrchestrationEventMetadata`:
 
-- `agentGatewayOperationId`
-- `agentGatewayTaskId`
-- `agentGatewayParentThreadId`
+- `sourceOperationId`
+- `sourceTaskId`
+- `sourceParentThreadId`
 
 The current metadata schema contains provider turn, provider item, adapter, request, and ingestion identifiers (`packages/contracts/src/orchestration.ts:1010-1029`).
 
-Add an internal-only `OrchestrationDispatchContext` parameter to `OrchestrationEngineService.dispatch`. It is carried in the in-process command envelope, never added to `OrchestrationCommand`, and is populated only by `AgentGateway` after it has loaded the reserved operation/task and `McpInvocationContext`. The engine uses it to:
+Add an internal-only generic `OrchestrationDispatchContext` parameter to `OrchestrationEngineService.dispatch` carrying `{ origin, actorOverride, metadata }`. It is carried in the in-process command envelope, never added to `OrchestrationCommand`, and is populated by the active caller after it has loaded its reserved operation/task and invocation scope. The engine uses it to:
 
 - pass an explicit trusted actor override to `OrchestrationEventStore.append`;
-- add gateway metadata to child creation, metadata update, turn start, and parent lifecycle events; and
-- enrich the origin on both `thread.created` and any `thread.upserted` projection of the child before projection, so a re-emitted or upserted child thread keeps its gateway origin rather than reverting to `client`.
+- add source metadata to child creation, metadata update, turn start, and lifecycle events; and
+- enrich the origin on both `thread.created` and any `thread.upserted` projection of the child before projection, so a re-emitted or upserted child thread keeps its source origin rather than reverting to `client`.
 
 `OrchestrationEventStore.append` accepts that optional trusted actor override from the in-process engine. HTTP and WebSocket dispatch never receive the override. Deterministic command IDs remain deduplication keys only and are never authority or provenance.
 
@@ -598,15 +615,15 @@ Add an immutable `agentGatewayPolicy` to `McpInvocationScope`:
 - optional per-provider model allowlists
 - execution access level
 - maximum child runtime mode
-- allow remote git fetch
 - maximum batch size
-- maximum active tasks under the root
-- maximum task creates per minute
+- maximum active tasks under the reservation scope
+- maximum task creates per minute under the reservation scope
 - maximum delegation depth
-- root thread ID
-- current delegation depth
+- reservation scope ID
+- root thread ID for gateway identity when applicable
+- current delegation depth when applicable
 
-The gateway registry calculates this policy when it issues the credential. The handler checks it again against current project and provider state. If the server-stamped origin lookup for a child fails or is ambiguous, the issued policy fails closed to observe-only (`gateway.discover`, `gateway.read`, `gateway.wait`) and never receives `gateway.create`. These checks are mandatory for gateway calls but remain advisory at the product trust boundary because the shared loopback dispatch route does not consume this policy.
+The gateway registry calculates this policy when it issues the credential. The handler checks it again against current project and provider state. The configured maximum is immutable on the credential, but the effective child ceiling is evaluated against the parent thread's current runtime mode during `reserveOperation` (§5.1 step 2), not a mode captured at credential issuance. If the server-stamped origin lookup for a child fails or is ambiguous, the issued policy fails closed to observe-only (`gateway.discover`, `gateway.read`, `gateway.wait`) and never receives `gateway.create`. These checks are mandatory for gateway calls but remain advisory at the product trust boundary because the shared loopback dispatch route does not consume this policy.
 
 ### 4.7 Server settings
 
@@ -618,12 +635,11 @@ Phase 1 settings:
 
 - `enabled`
 - `allowTaskCreation`
-- `allowedProjectIds`, where an empty list means current project only
+- Current caller project only in Phase 1; cross-project creation is deferred
 - `allowedProviderInstanceIds`, where an empty list means all ready local instances
 - `defaultExecutionAccess`
 - `maximumChildRuntimeMode`
-- `allowRemoteGitFetch`
-- `maximumBatchSize`
+- `maximumBatchSize` (Phase 1b)
 - `maximumActiveTasks`
 - `maximumCreatesPerMinute`
 - `maximumDelegationDepth`
@@ -631,39 +647,42 @@ Phase 1 settings:
 Recommended defaults:
 
 - `enabled: false`: no gateway listener, injection, credentials, or tools.
-- `allowTaskCreation: false`: after enabling the gateway, creation still requires an explicit user opt-in. All seven Phase 1 tools remain in the enabled server's schema, but create handlers return `gateway_task_creation_disabled` unless the issued scope has `gateway.create`.
-- Current project only.
+- `allowTaskCreation: false`: after enabling the gateway, creation still requires an explicit user opt-in. All six Phase 1 tools remain in the enabled server's schema, but create handlers return `gateway_task_creation_disabled` unless the issued scope has `gateway.create`.
+- Current caller project only; cross-project creation is deferred.
 - Isolated worktree required.
 - Child runtime mode `approval-required`.
 - Remote git fetch disabled.
-- Batch size `4`.
-- Active tasks `4` per root delegation tree.
-- Create rate `10` tasks per minute per root.
+- Batch size `4` when Phase 1b is enabled.
+- Active tasks `4` per reservation scope; the gateway reservation scope is the root thread.
+- Create rate `10` tasks per minute per reservation scope.
 - Delegation depth `1`, so a human-started root can create children and those children cannot create grandchildren.
 - Full access disabled.
 
 The setting is server-authoritative and sampled once at server startup in Phase 1. Changing it is reversible but takes effect on restart. Startup reads the effective value before building the gateway listener or issuing provider configs. This produces an exact off state instead of attempting unsafe hot removal from provider SDK sessions that may cache MCP tool definitions.
 
-Because it is restart-scoped, the settings snapshot exposes three distinct values, not one: `configured` (the persisted setting), `effective` (the value the running server sampled at startup and is actually enforcing), and `restartRequired` (true when `configured` differs from `effective`). Clients read `effective` to know what the gateway is doing now and `restartRequired` to prompt a restart, and never assume a saved change is already live.
+Phase 1 exposes the sampled `effective` setting only. `configured`/`effective`/`restartRequired` is not a Phase 1 contract: `packages/contracts/src/settings.ts` has no such precedent and Phase 1 has no UI consumer. A later settings surface may add restart affordances deliberately.
 
 ### 4.8 Durable operation receipt
 
-Add two narrow SQLite tables. `agent_gateway_operations` owns request idempotency; `agent_gateway_tasks` owns one durable row per manifest item, launch state, reservation state, pinned provider turn, and terminal tracking. Orchestration remains the transcript source of truth.
+Add two narrow SQLite tables. `delegated_run_operations` owns request idempotency; `delegated_runs` owns one durable row per manifest item, launch state, reservation state, pinned provider turn, and terminal tracking. Orchestration remains the transcript source of truth. The tables are source-neutral so tracker delegation can use the same executor later.
 
 Required columns:
 
 - `operation_id` primary key
 - `environment_id`
-- `owner_thread_id`
+- `source`
+- `owner_scope_id` (the source-specific idempotency namespace)
+- `owner_thread_id` nullable
 - `owner_provider_instance_id`
 - `owner_mcp_session_id`
 - `operation_key`
 - `kind`, `single` or `batch`
 - `request_hash`
-- `root_thread_id`
+- `root_thread_id` nullable
 - `delegation_depth`
 - `status`
 - `manifest_json`
+- `reservation_scope_id` (the limit key)
 - `created_at`
 - `updated_at`
 - `completed_at`
@@ -671,17 +690,19 @@ Required columns:
 Required uniqueness:
 
 ```text
-(environment_id, owner_thread_id, operation_key)
+(environment_id, source, owner_scope_id, operation_key)
 ```
 
-Required `agent_gateway_tasks` columns:
+Required `delegated_runs` columns:
 
 - `task_id` primary key
 - `operation_id`
 - `item_key`
-- `root_thread_id`
-- `parent_thread_id`
-- `child_thread_id`
+- `source`
+- `reservation_scope_id`
+- `root_thread_id` nullable (gateway identity only)
+- `parent_thread_id` nullable
+- `child_thread_id` nullable
 - `project_id`
 - `provider_instance_id`
 - `model_selection_json`
@@ -689,10 +710,9 @@ Required `agent_gateway_tasks` columns:
 - `intended_worktree_path`
 - `base_commit_sha` (resolved from `baseRef` at reservation and immutable thereafter, §5.2)
 - `repo_common_dir` (realpath of the repository's git common directory, the repo identity used by recovery, §5.2)
-- `worktree_claim_id` (the per-task ownership claim, written to disk as a claim marker before any git operation and read back by recovery, §5.2)
+- `worktree_claim_id` (the per-task ownership claim, written atomically to a sibling claim marker before any git operation and read back by recovery, §5.2)
 - `launch_state`
 - `interrupt_outcome` (nullable; the reactor's settled interrupt result, which the interrupt tool waits on rather than inferring, §3.7)
-- `provider_send_idempotency_key`
 - `accepted_turn_id`
 - `terminal_state`
 - `result_message_id`
@@ -706,8 +726,7 @@ Required uniqueness/indexing:
 
 ```text
 UNIQUE(operation_id, item_key)
-UNIQUE(provider_send_idempotency_key)
-INDEX(root_thread_id, reservation_active, launch_state)
+INDEX(reservation_scope_id, reservation_active, launch_state)
 INDEX(child_thread_id, accepted_turn_id)
 ```
 
@@ -715,11 +734,11 @@ The worktree identity fields are columns, not `manifest_json` entries, because r
 
 Add:
 
-- `apps/server/src/persistence/Services/AgentGatewayOperations.ts`
-- `apps/server/src/persistence/Layers/AgentGatewayOperations.ts`
+- `apps/server/src/persistence/Services/DelegatedRunOperations.ts`
+- `apps/server/src/persistence/Layers/DelegatedRunOperations.ts`
 - a migration and repository tests
 
-The repository exposes one atomic `reserveOperation` call covering both tables. Because neokod is one local server process, the service serializes reservation with one Effect semaphore and performs the idempotency lookup, active/rate recount, limit check, operation insert, and task-row inserts in one SQL transaction. A concurrent test must prove two different operation keys cannot jointly exceed the active-task limit.
+The repository exposes one atomic `reserveOperation` call covering both tables. Because neokod is one local server process, the service serializes reservation with one Effect semaphore and performs the idempotency lookup, active/rate recount, limit check, operation insert, and task-row inserts in one SQL transaction. The limit key is `reservation_scope_id`: the gateway uses its root thread ID, while a parent-less tracker caller uses its integration ID. `root_thread_id` remains gateway identity only and is never the generic concurrency or rate key. A concurrent test must prove two different operation keys cannot jointly exceed the active-task limit.
 
 Existing orchestration command receipts remain useful for every stable child command. They deduplicate one orchestration command by `commandId` (`apps/server/src/orchestration/Layers/OrchestrationEngine.ts:138-151`, `apps/server/src/persistence/Services/OrchestrationCommandReceipts.ts:25-62`). They prove only that neokod persisted the command's domain events; they do not prove that a provider accepted a turn.
 
@@ -730,26 +749,26 @@ Existing orchestration command receipts remain useful for every stable child com
 The ownership key is:
 
 ```text
-environment ID + owner thread ID + operation key
+environment ID + source + owner scope ID + operation key
 ```
 
-It deliberately excludes the short-lived provider session credential. A restarted provider session in the same parent thread can recover the same operation.
+It deliberately excludes the short-lived provider session credential. A restarted provider session in the same parent thread can recover the same operation, and a parent-less source can use its own stable owner scope without inventing a thread.
 
 Creation sequence:
 
 1. Resolve the invocation scope and current parent thread.
-2. Validate the gateway's advisory project, provider instance, model, quota, runtime ceiling, recursion, and rate rules.
+2. Validate the gateway's advisory project, provider instance, model, quota, runtime ceiling, recursion, and rate rules. Read the parent thread's current runtime mode from the projection here; never use the mode captured when the credential was issued. For a different-provider child, drop the parent runtime term and use the configured maximum alone.
 3. Canonicalize the caller-supplied request fields only and calculate SHA-256 over that canonical JSON. Resolve defaults separately for execution; the idempotency hash never includes server-resolved defaults, so a legitimate retry with identical caller input stays stable even when a default changes between calls.
 4. Enter the repository's single reservation semaphore.
-5. In one SQL transaction, read any existing operation, recount active task rows and rolling-minute creates for the root, validate the incoming task count, and insert the operation plus every task reservation.
+5. In one SQL transaction, read any existing operation, recount active task rows and rolling-minute creates for the reservation scope, validate the incoming task count, and insert the operation plus every task reservation.
 6. Release the semaphore only after commit or rollback.
 7. If an existing row has a different request hash, return `operation_key_conflict`.
 8. If the hash matches, return or reconcile the stored item identifiers without consuming new reservations.
-9. Generate stable command IDs from operation ID, item key, and stage.
+9. Generate stable command IDs from operation ID, item key, and stage for non-final stages; the final turn-start dispatch uses a fresh command ID on every attempt as specified in §5.3.
 10. Dispatch child creation stages through the shared dispatcher.
 11. Compare-and-set each task phase after every durable stage.
 
-The operation and task rows are committed before worktree creation. A retry cannot reserve a second set of children. Different operation keys cannot jointly pass the active-task limit because the count and inserts share the same process-wide critical section and SQL transaction.
+The operation and task rows are committed before worktree creation. A retry cannot reserve a second set of children. Different operation keys cannot jointly pass the active-task limit because the count and inserts share the same process-wide critical section and SQL transaction. The reservation semaphore is released before filesystem preparation; the per-repository git mutex in §5.2 then serializes worktree creation. A worktree can be registered while the caller observes an error from the preparation path, leaving the task at `preparing_worktree` and eligible for compensation; reconciliation and compensation MUST tolerate that registered-but-unreported case.
 
 ### 5.2 Worktree identity and crash windows
 
@@ -764,17 +783,22 @@ Each item receives, all pinned durably at reservation before any filesystem side
 
 Extract the worktree path derivation used by `GitVcsDriverCore.createWorktree` so the dispatcher and VCS driver use one function. The current driver derives the path from `worktreesDir`, repository name, and sanitized branch (`apps/server/src/vcs/GitVcsDriverCore.ts:2260-2269`).
 
-Recovery uses `git worktree list --porcelain` as the source of truth for existing worktrees, not directory presence or `status` alone:
+Recovery uses `git worktree list --porcelain` as the source of truth for existing worktrees, not directory presence or `status` alone. `git grep "worktree list"` returns no current implementation. The exact `git rev-parse --git-common-dir` command is already present in the low-level VCS driver (`apps/server/src/vcs/GitVcsDriver.ts:447,644`, `apps/server/src/vcs/GitVcsDriverCore.ts:958`), but no gateway recovery or persistence capability uses that lookup today. Adding `repo_common_dir` persistence, the porcelain parser, and the recovery calls is named new `GitVcsDriver` work:
 
 - No registered worktree and branch absent: create the branch at the pinned base SHA and the worktree normally.
 - A registered worktree at the intended path on the expected branch and repository: adopt it and continue.
+- The expected branch is registered at a different path: mark `worktree_conflict` and stop; never adopt a worktree at the wrong deterministic path.
 - Branch present and no registered worktree: create a worktree from the existing branch.
+- A registered intended path is marked prunable because its directory was deleted or moved, including `prunable gitdir file points to non-existent location`: run `git worktree prune`, then recreate the worktree from the immutable `base_commit_sha`.
+- The intended path is registered but its directory is missing: treat it as prunable, run `git worktree prune`, then recreate from `base_commit_sha`.
 - A registered worktree at the intended path with a different repository or branch: mark `worktree_conflict` and stop.
-- A directory exists at the intended path but is not a registered worktree: do not crash and do not blindly reuse it. A database row cannot prove ownership of a directory, so the claim must exist **on disk**. Before creating a worktree, the operation writes a claim marker file at `<intended_worktree_path>/.neokod-gateway-claim` containing `worktree_claim_id`, and it writes that file first, before any git operation. Recovery then reads the marker:
-  - Marker present and its id equals the task's `worktree_claim_id`: this is our own partially created worktree, so the crash happened mid-creation. Remove the directory and recreate from `base_commit_sha`. Safe because the marker proves the operation owns it and no registered worktree, and therefore no provider session, is bound to it.
-  - Marker absent, unreadable, or carrying a different id: mark `worktree_conflict` and stop. Never remove a directory we cannot prove we created.
+- A directory exists at the intended path but is not a registered worktree: do not crash and do not blindly reuse it. A database row cannot prove ownership of a directory, so the claim must exist beside it. Before creating a worktree, atomically write a sibling marker at `<intended_worktree_path>.neokod-claim` containing `worktree_claim_id` and the intended repository, branch, and base SHA. Write a temporary sibling file, flush/close it, and rename it into place atomically **before any git operation**. Recovery then reads the complete marker:
+  - Marker present and its id equals the task's `worktree_claim_id`: this is our own partially created directory, so the crash happened mid-creation. Remove the directory and recreate from `base_commit_sha`. Safe because the marker proves the operation owns it and no registered worktree, and therefore no provider session, is bound to it.
+  - Marker absent, unreadable, partial, or carrying a different id: mark `worktree_conflict` and stop. Never remove a directory we cannot prove we created.
 
-  Writing the marker before git also means the failure ordering is safe in both directions: a directory with a marker but no worktree is recoverable, and a directory with neither is untouched. The marker is removed when the worktree is successfully registered, so a healthy worktree carries no stray file. Never attempt to adopt an unregistered directory in place.
+Writing the marker before git and using temp-file-plus-rename means a killed writer cannot leave a partial marker that falsely resolves to `worktree_conflict` and strands the gateway's own directory. The sibling marker is removed when the worktree is successfully registered, so a healthy worktree carries no claim file inside its target. Never attempt to adopt an unregistered directory in place.
+
+The per-repository mutex is keyed by the realpath `repo_common_dir` and MUST cover the complete filesystem-preparation sequence: porcelain inspection, marker claim, `git worktree add`, branch/config metadata writes, and the final registration read. It serializes worktree creation for one repository while allowing different repositories to proceed. The §3.5 batch pool limits item launches; it does not make filesystem preparation concurrent. The mutex is required because concurrent `worktree add` operations can contend on `.git/config` and read half-written `.git/worktrees/*` metadata.
 - Thread exists with worktree metadata and launch state before `sending`: resume at final turn dispatch.
 - A task in `sending` without a durably pinned provider turn becomes `launch_unknown`; a command receipt does not make it safe to send again.
 
@@ -788,7 +812,8 @@ reserved
   -> ready_to_send
   -> sending
        -> accepted(accepted_turn_id)
-       -> launch_failed
+       -> launch_failed_presend
+       -> launch_failed_rejected
        -> launch_unknown
 accepted
   -> terminal
@@ -797,20 +822,19 @@ accepted
 Rules:
 
 - `reserved`, `preparing_worktree`, and `ready_to_send` are safe to reconcile with deterministic worktree and command IDs.
-- Before calling the provider, compare-and-set `ready_to_send -> sending` and persist a stable random `provider_send_idempotency_key`.
-- Extend `ThreadTurnStartCommand` / `ThreadTurnStartRequestedPayload` with optional `providerSendIdempotencyKey`, then map it to optional `ProviderSendTurnInput.idempotencyKey`. The gateway always supplies the stable server-generated value; normal human turns may omit it. This is correlation/idempotency data, not provenance or authority.
-- The key cannot be joined to the accepted turn after a crash, and Phase 1 does not pretend otherwise. The task row already carries both `provider_send_idempotency_key` and `accepted_turn_id` (§4.8), so once acceptance is recorded no further index is needed. The unrecoverable case is the crash window itself: the key is durable but `accepted_turn_id` is not yet written, and nothing on the provider side records the key. `ThreadTurnStartRequestedPayload` carries no turn ID, the accepted ID is adapter-produced and lands only in projection turn rows keyed `(threadId, turnId)` plus the mutable `provider_session_runtime.activeTurnId`, and the one place both exist together is the reactor's in-memory `sendTurn` return, which is exactly what the crash destroys. Phase 1 therefore resolves a crashed `sending` task to `launch_unknown` rather than correlating, consistent with the never-auto-resend rule below. `activeTurnId` must never be used as a substitute: it is mutable and a later human turn clobbers it.
-- Automatic correlation is deferred to Phase 2 and needs exactly one change to make it possible: persist `provider_send_idempotency_key` on the projection turn row when the turn is created, so recovery can ask the durable turn store "was a turn accepted for this key?". That touches orchestration storage rather than the gateway's own tables, which is why it is out of Phase 1 scope. Until it lands, a crashed in-flight send is a user-resolvable `launch_unknown`, not silent data loss.
-- `ProviderCommandReactor` already owns the real `ProviderService.sendTurn` call, but today it forks that call with `Effect.forkScoped` and keeps only a failure recovery, discarding the success result (`apps/server/src/orchestration/Layers/ProviderCommandReactor.ts:840-860`). For a gateway-originated turn this is insufficient: the accepted `turnId` is thrown away, so nothing can deliver it back to the blocking create handler. The reactor must instead capture the `sendTurn` outcome for gateway turns and durably record it against the trusted gateway task row before the fiber completes: `accepted_turn_id` on success, `launch_failed` on a definitive rejection, `launch_unknown` on interruption or an ambiguous post-send error. It forwards the `providerSendIdempotencyKey`; `ProviderService` coalesces duplicate in-process sends by `(threadId, idempotencyKey)` and passes the key to the adapter/native request where supported.
+- Immediately before dispatching the final turn-start command, compare-and-set `ready_to_send -> sending`. This CAS is in the gateway and is the boundary that makes `ready_to_send` mean that no final turn-start command has been dispatched. The final dispatch receives a fresh `commandId` on every attempt; the delegated-run row, not the command receipt, is the idempotency authority. Command IDs remain dedupe keys only and never authority or provenance.
+- `ProviderCommandReactor` already owns the real `ProviderService.sendTurn` call, but today it forks that call with `Effect.forkScoped` and keeps only a failure recovery, discarding the success result (`apps/server/src/orchestration/Layers/ProviderCommandReactor.ts:840-860`). For a gateway-originated turn this is insufficient: the accepted `turnId` is thrown away, so nothing can deliver it back to the blocking create handler. The reactor must instead capture the `sendTurn` outcome for gateway turns and durably record it through the narrow delegated-run outcome service seam before the fiber completes: `accepted_turn_id` on success, `launch_failed_rejected` on a definitive post-send rejection, and `launch_unknown` only when acceptance cannot be proven after dispatch.
+- Any reactor exit before the provider send begins, including request construction or session-start failure, MUST durably settle the task as `launch_failed_presend` and release `reservation_active`. It must not leave the task at `sending`.
 - Provider acceptance occurs only when `ProviderService.sendTurn` returns `ProviderTurnStartResult` with its concrete `turnId` (`packages/contracts/src/provider.ts:67-85`, `apps/server/src/provider/Layers/ProviderService.ts:645-703`). The reactor records `accepted_turn_id` against the trusted gateway task ID, then publishes a launch-coordinator signal, before emitting the parent running lifecycle.
 - The blocking create handler never observes the reactor fiber directly. It runs an `AgentGatewayLaunchCoordinator` rendezvous: after committing `sending`, it subscribes to the coordinator signal for the task, then reads the durable task row, so a result landing between the commit and the subscribe is not lost (the same subscribe-before-read ordering as the wait coordinator in §5.6). It waits only up to a bounded launch-observation budget that is strictly shorter than the provider's MCP client-call timeout, then returns the current durable launch state, which may still be `sending`. Conformance tests must confirm each provider's create-call timeout ceiling exceeds this budget.
-- The external provider call and SQLite acceptance write cannot be one transaction. If the process dies, the call is interrupted, or the adapter outcome is ambiguous after entering `sending` but before durable acceptance, mark `launch_unknown`. Any post-adapter error whose acceptance status cannot be proven defaults to `launch_unknown`, never `launch_failed`.
-- `launch_unknown` is never automatically resent, even when the orchestration command receipt is accepted and even when the idempotency key exists. The key prevents concurrent same-process duplicates and supports native provider dedupe where available; it does not turn an ambiguous cross-process call into proof of acceptance.
-- `launch_failed` is reserved for a definitive pre-send failure or a definitive adapter rejection proving no provider turn was accepted. These are distinct states for reservation and compensation purposes, so the task row records which one it is: `launch_failed_presend` or `launch_failed_rejected`. A post-send definitive rejection proves no turn exists, so it clears its reservation like a pre-send failure, but it must never trigger worktree or thread compensation, because the send already left the pre-send window (§5.7).
+- For the final dispatch command, the command receipt and its committed domain events are written in one SQL transaction and event publication occurs after commit. Receipt presence is therefore the `sending` discriminator: no receipt means no final command was dispatched and the task may return to `ready_to_send`; a receipt means the command was dispatched and the task must become `launch_unknown` if no accepted turn was recorded. A receipt never proves provider acceptance.
+- The external provider call and SQLite acceptance write cannot be one transaction. If the process dies or the adapter outcome is ambiguous after dispatch but before durable acceptance, mark `launch_unknown`. Any post-dispatch error whose acceptance status cannot be proven defaults to `launch_unknown`, never `launch_failed`.
+- Phase 1 launch is **at-most-once**, not exactly-once. `launch_unknown` may be reported even when no provider send occurred; it is the safe result of an ambiguous dispatch, and it is never automatically resent.
+- `launch_failed_presend` is reserved for a definitive pre-send failure. `launch_failed_rejected` is reserved for a definitive adapter rejection proving no provider turn was accepted. These are distinct states for reservation and compensation purposes. A post-send definitive rejection clears its reservation like a pre-send failure, but it must never trigger worktree or thread compensation, because the send already left the pre-send window (§5.7).
 
 The pinned `accepted_turn_id` is immutable. Terminal tracking, wait, read, and interrupt address that turn, never the child thread's mutable "latest turn." A later human turn therefore cannot replace the gateway task's result or be interrupted on its behalf.
 
-`reservation_active` is cleared only for `launch_failed_presend`, `launch_failed_rejected`, a pinned terminal turn, or explicit child deletion/stop observed through normal orchestration. `sending` and `launch_unknown` continue to count as active because provider acceptance may have occurred.
+`reservation_active` is cleared for `launch_failed_presend`, `launch_failed_rejected`, a pinned terminal turn, explicit child deletion/stop observed through normal orchestration, or any durable state that cannot progress and has been closed by reconciliation. `sending` and `launch_unknown` continue to count as active because provider acceptance may have occurred. A task must never retain a reservation solely because a coordinator, reactor, or recovery worker stopped making progress.
 
 ### 5.4 Crash recovery
 
@@ -818,13 +842,16 @@ The pinned `accepted_turn_id` is immutable. Terminal tracking, wait, read, and i
 
 1. Load operations in non-terminal states.
 2. Compare every task row with the child thread projection, command receipts, intended worktree, and current provider session state.
-3. Resume only states before `sending`.
-4. A recovered `sending` task becomes `launch_unknown`. Phase 1 does not attempt send-key correlation, because nothing on the provider side records the send key (§5.3); the durable turn rows are keyed `(threadId, turnId)` only. Never resend a `sending` or `launch_unknown` task. When the Phase 2 turn-row key column lands, this step gains a correlation attempt before falling through to `launch_unknown`, reported through the `recovered` idempotency state.
+3. Resume only states before `sending`; a task in `compensating` resumes compensation from its last durable cleanup stage and never starts a provider launch.
+4. For the final dispatch stage, inspect the durable receipt for the fresh dispatch `commandId`. A `sending` task with no receipt resolves back to `ready_to_send` because no final command was dispatched and it is safe to retry. A `sending` task with a receipt becomes `launch_unknown`; the receipt proves the command was committed, not that the provider accepted the turn, so never resend it.
 5. Preserve `accepted` only when `accepted_turn_id` is already durable.
 6. Rebuild missing parent `task.*` lifecycle activities with stable activity and command IDs.
 7. Reread each pinned turn's durable historical projection and close operations whose pinned turns are already terminal, covering a terminal that landed before the crash or before the pin was registered.
+8. Release `reservation_active` for any task that reaches a terminal failure or cannot progress after reconciliation. A registered-but-unreported worktree is reconciled by the worktree rules in §5.2 before compensation proceeds.
 
-A `launch_unknown` task keeps its active reservation with no TTL. The reservation is cleared only after a confirmed provider session stop with no active binding, observed through normal orchestration; elapsed time alone never clears it, because an ambiguous send may still have been accepted.
+A `launch_unknown` task keeps its active reservation while a provider session or active binding could still contain the ambiguous send. Once reconciliation confirms that no provider session or active binding remains and the child cannot progress, it closes the task as an unresolved launch outcome and clears `reservation_active` while retaining the row for audit. Elapsed time alone never clears it, because an ambiguous send may still have been accepted.
+
+Crash recovery from `compensating` is explicit: resume the durable compensation stages, recheck worktree ownership and provider bindings, remove the worktree only when the §5.7 guards hold, then delete the child thread only after removal succeeds. If a cleanup step fails, retain the row and diagnostic, release no provider launch, and retry compensation on the next reconciliation pass.
 
 The worker uses the same drainable worker pattern as provider ingestion and deletion reactors. It remains one local worker. No separate scheduler process is required.
 
@@ -913,7 +940,7 @@ Why no per-command hardening in Phase 1. An earlier revision proposed capability
 
 Phase 1 accepts self-approval and checkpoint revert through the raw loopback route as known residual risk, disclosed here rather than mitigated. This is the first named item for Phase 2+ hardening: introduce a first-party loopback credential, then capability-gate approval / user-input responses and checkpoint revert against it. Until that lands, the mitigations are the opt-in default-off posture, the provider sandbox, and the observability described below.
 
-Observability is the compensating control: server-stamped origin, first-class child threads, parent `task.*` cards in the existing Subagents panel, and the Phase 1 interrupt tool let the user attribute, inspect, and stop accepted runaway work. A `launch_unknown` item stays visible and consumes an active reservation until the user stops or deletes its child through the normal thread controls.
+Observability is the compensating control: server-stamped origin, first-class child threads, parent `task.*` cards in the existing Subagents panel, and normal thread controls let the user attribute, inspect, and stop accepted runaway work. Phase 1b adds the dedicated interrupt tool. A `launch_unknown` item stays visible and may consume an active reservation until reconciliation proves that no provider session or active binding remains, or until the user stops or deletes its child through the normal thread controls.
 
 Because the entire gateway is opt-in and default-off, enabling it is knowing acceptance of this residual risk. If experience shows that risk is unacceptable, Phase 2+ may authenticate the local mutating control plane as a separate cross-product hardening project. It is explicitly outside Phase 1.
 
@@ -968,25 +995,30 @@ These are gateway-layer input and sprawl guardrails. They do not apply to comman
 ### 6.5 Runtime and approval posture
 
 - Default children to `approval-required`.
-- Reject any task whose requested runtime mode exceeds the effective ceiling rather than silently clamping it, so a caller asking for more than it may have gets an explicit error, not a quietly downgraded task. The effective ceiling is `min(parent thread runtime mode, configured maximumChildRuntimeMode)`.
+- Define an explicit total-order constant in `packages/contracts/src/orchestration.ts` covering all four `RuntimeMode` literals: `approval-required < auto-accept-edits < auto < full-access`. This order is a policy comparison valid only within one provider; runtime-mode names do not have a meaningful cross-provider ordering because provider mappings differ. If the child targets a different provider from the parent, drop the parent term entirely and use `maximumChildRuntimeMode` alone.
+- Reject any task whose requested runtime mode exceeds the effective ceiling rather than silently clamping it, so a caller asking for more than it may have gets an explicit error, not a quietly downgraded task. The parent term is the parent thread's current projection value, read inside `reserveOperation` (§5.1 step 2), not the value captured when the credential was issued.
 - Do not respond automatically to child approval or user-input requests.
 - Wait reports `waiting-for-input` when durable pending request state exists.
 - A later control capability may let the parent forward a response only after a separate design for actor consent and audit.
+
+The gateway and the shared dispatcher MUST set `runtimeMode` explicitly on every command they construct, including child creation and the final turn start; they must never rely on a schema decoding default. Add a regression test asserting that a child session's persisted runtime mode equals the validated request mode.
+
+The six current `?? "full-access"` fallbacks are currently unreachable because persisted provider-session rows decode strict `RuntimeMode` (`apps/server/src/persistence/ProviderSessionRuntime.ts:47`), but `ProviderService.ts:409` is on the recovery path the gateway extends. Convert all six to `FALLBACK_RUNTIME_MODE` as no-behavior-change hardening in Slice 1: `ProviderService.ts:409`, `ProviderSessionDirectory.ts:136`, `ClaudeAdapter.ts:3426`, `ProviderRuntimeIngestion.ts:1360` and `:1610`, and `ProviderCommandReactor.ts:996` via its local `DEFAULT_RUNTIME_MODE`.
 
 The current runtime modes map to provider-specific permission behavior. Claude, for example, maps full access to `bypassPermissions` and enables its dangerous bypass flag (`apps/server/src/provider/Layers/ClaudeAdapter.ts:3566-3593`). The provider permission mode remains the action boundary; the gateway ceiling only prevents gateway tools from requesting a more permissive mode.
 
 ### 6.6 Rate, concurrency, cost, and recursion guardrails
 
-Apply these atomically in `reserveOperation` for gateway-created work:
+Apply these atomically in `reserveOperation` for delegated work:
 
 - Maximum batch size.
-- Maximum active tasks under one root delegation tree.
-- Maximum task creates per rolling minute.
+- Maximum active tasks under one `reservation_scope_id`.
+- Maximum task creates per rolling minute under one `reservation_scope_id`.
 - Optional provider-specific active-task limits.
 - Maximum delegation depth.
 - Optional model allowlists or denylists.
 
-Recommended Phase 1 limits are four active tasks, four tasks per batch, ten creates per minute, and depth one.
+Recommended Phase 1 limits are four active tasks, ten creates per minute, and depth one. Phase 1b adds a batch limit of four.
 
 When the gateway is enabled, a gateway-created child may receive a scoped gateway credential because it is a normal provider session. The policy resolver reads the child's server-stamped origin:
 
@@ -1032,13 +1064,13 @@ The bearer authenticates one provider session to the dedicated gateway MCP liste
 | Provider | Current injection mechanism | Phase 1 caller status | Required work |
 |---|---|---:|---|
 | Claude | Agent SDK `queryOptions.mcpServers` with HTTP headers | Supported when gateway enabled | Add conditional gateway injection and capability tests; no global plugin dependency |
-| Codex | App-server MCP URL plus bearer env var | Supported when gateway enabled | Add conditional gateway tool-call, launch-key, and restart tests |
-| GitHub Copilot | SDK `SessionConfigBase.mcpServers` | Supported when gateway enabled, after merge fix | Merge the reserved gateway config into `resolveCopilotMcpServers` |
+| Codex | App-server MCP URL plus bearer env var | Conditional after Slice 1 bearer-scrub conformance | Add conditional gateway tool-call and restart tests; exclude Codex from Phase 1 if scrub fails |
+| GitHub Copilot | SDK `SessionConfigBase.mcpServers` | Conditional after provider injection conformance | Merge the reserved gateway config into `resolveCopilotMcpServers` before adding Copilot to the caller set |
 | Cursor | ACP HTTP MCP descriptor with headers | Deferred from Phase 1 | Run conformance tests for tool list, call, auth, timeout, and error shapes before enabling |
 | Grok | ACP HTTP MCP descriptor with headers | Deferred from Phase 1 | Run the same ACP conformance tests before enabling |
 | OpenCode | `client.mcp.add` for an internally spawned server | Deferred from Phase 1 | Test add-before-session behavior and restart cleanup; keep external server unsupported |
 
-This matrix describes a provider acting as the parent MCP caller. The gateway server is injected into no provider while disabled. When enabled in Phase 1, only Claude, Codex, and Copilot receive it. Every ready provider instance can still be a child target because child execution uses the normal provider registry and orchestration path.
+This matrix describes a provider acting as the parent MCP caller. The gateway server is injected into no provider while disabled. Slice 1 proves Claude first; Codex is a Phase 1 caller only if the bearer-scrub conformance passes, and Copilot joins only after its injection conformance. Every ready provider instance can still be a child target because child execution uses the normal provider registry and orchestration path.
 
 ### 7.2 Copilot merge rules
 
@@ -1078,127 +1110,118 @@ Keep that boundary. Sending a bearer to an external server would move the creden
 
 ## 8. Phased delivery plan
 
-### 8.1 Phase 1: opt-in bounded fan-out, interrupt, wait, and results
+### 8.1 Phase 1 and Phase 1b slices
+
+The round-6 plan has **24 deliverable groups across 6 ordered slices**. Phase 1 is Slices 1–4 and contains exactly five tools. Phase 1b is Slices 5–6 and adds interrupt and batch create. The order follows what can invalidate the phase, not what is safest to write.
+
+#### Slice 1 — prove the listener assumption (8 deliverable groups)
+
+This slice delivers the dedicated loopback listener, scoped credential, peer guard, and the two read-only tools (`neokod_gateway_context`, `neokod_catalog_list`), with Claude as the only caller under test. The repository has exactly one HTTP listener today, provided as a single `HttpServer.HttpServer` service (`apps/server/src/server.ts`), and `McpSessionRegistry` reads `httpServer.address` from it. A second listener requires a second `HttpServer.layer` in a subtree that does not leak upward. §9.3 lists this as unvalidated and §2.3 blocks Phase 1 if it fails, so this assumption is retired first.
 
 Deliver:
 
-- `agentGateway.enabled: false` and `allowTaskCreation: false` defaults, with restart-required effective changes.
-- No listener, injection, credentials, or tools while disabled.
-- Dedicated gateway-only loopback MCP listener with both exact `127.0.0.1` binding and fail-closed remote-peer guard.
-- Exactly seven tools: context, catalog, single create, exact batch create, terminal wait, interrupt, and bounded read.
-- Single and exact batch creation.
-- Isolated worktrees.
-- No gateway setup-script execution.
-- Terminal-only wait for any/all, default 60 seconds and maximum 120 seconds.
-- Bounded transcript/result read.
-- Durable operation/task receipts, explicit launch state machine, `launch_unknown` no-resend behavior, provider-send idempotency keys, and crash reconciliation.
-- Immutable accepted turn ID for wait/read/interrupt result identity.
-- Atomic active/rate reservation, one coalesced durable multi-task wait coordinator, and provider-active compensation guard.
-- Server-stamped thread provenance and actor kind; no caller-controlled inference.
-- Parent `task.*` lifecycle.
-- Advisory capability, rate, quota, runtime, and recursion policy, with the raw loopback dispatch bypass documented.
-- Claude, Codex, and Copilot as verified parent callers.
-- Cursor, Grok, and local OpenCode held out as parent callers until conformance passes.
-- Provider-native sub-agents unchanged and always available.
+- Dedicated gateway `HttpServer` layer and actual bound-address handling.
+- Scoped gateway credential issuance, revocation, and session-generation checks.
+- Fail-closed loopback peer guard before bearer resolution.
+- `neokod_gateway_context`.
+- `neokod_catalog_list` with bounded local refs and no networked ref fetch.
+- Claude-only conditional injection and read-only tool conformance.
+- The §6.7 Codex bearer-scrub conformance test; if it fails, Codex is removed from the eventual Phase 1 caller set before the caller matrix is designed.
+- All six `?? "full-access"` conversions to `FALLBACK_RUNTIME_MODE`.
 
-Core files to add or modify:
+Acceptance:
 
-Contracts:
+- With defaults, nothing binds and no provider sees `neokod-agent-gateway` or any gateway tool.
+- When enabled, the gateway binds host exactly `127.0.0.1` on an OS-assigned port; startup fails if it cannot bind or reports a non-loopback address.
+- Main-listener routes are unchanged.
+- The peer guard rejects a missing or non-loopback `remoteAddress` before bearer resolution, with a test asserting that ordering.
+- A stopped session's old bearer is rejected and a recovered session's new bearer is accepted.
+- Claude can list and call the two read-only tools with a scoped credential; no mutation or new tables occurs in this slice.
+- The Codex scrub result is recorded before Codex is included in any three-provider caller matrix.
 
-- `packages/contracts/src/agentGateway.ts`
-- `packages/contracts/src/orchestration.ts`
-- `packages/contracts/src/provider.ts`
-- `packages/contracts/src/providerRuntime.ts`
-- `packages/contracts/src/server.ts`
-- `packages/contracts/src/settings.ts`
-- contracts package exports and schema tests
+#### Slice 2 — inert shared contracts and dispatch extraction (5 deliverable groups)
 
-MCP and provider session scope:
+Deliver:
 
-- `apps/server/src/mcp/McpInvocationContext.ts`
-- `apps/server/src/mcp/McpProviderSession.ts`
-- `apps/server/src/mcp/AgentGatewayMcpHttpServer.ts`
-- `apps/server/src/mcp/AgentGatewaySessionRegistry.ts`
-- `apps/server/src/mcp/AgentGateway.ts`
-- `apps/server/src/mcp/toolkits/agentGateway/tools.ts`
-- `apps/server/src/mcp/toolkits/agentGateway/handlers.ts`
-- `apps/server/src/provider/Layers/ProviderService.ts`
-- `apps/server/src/serverSettings.ts`
-- `apps/server/src/server.ts`
+- `ThreadOrigin` contracts, soft-fail decoding, migration watermark, and positive-origin rules.
+- Gateway settings with `effective` as the only Phase 1 settings value.
+- Renamed `delegated_run_operations` and `delegated_runs` tables, including `source`, nullable parent/root IDs, and `reservation_scope_id`, plus migration.
+- Generic `{ origin, actorOverride, metadata }` dispatch context and source-neutral event metadata.
+- `OrchestrationCommandDispatcher` extraction from `apps/server/src/ws.ts:497-701`, with WebSocket as its only caller and existing tests retained.
 
-Shared command and task projection:
+Acceptance:
 
-- `apps/server/src/orchestration/Services/OrchestrationCommandDispatcher.ts`
-- `apps/server/src/orchestration/Layers/OrchestrationCommandDispatcher.ts`
-- `apps/server/src/orchestration/Services/OrchestrationEngine.ts`
-- `apps/server/src/orchestration/Layers/OrchestrationEngine.ts`
-- `apps/server/src/orchestration/taskActivity.ts`
-- `apps/server/src/ws.ts`
-- `apps/server/src/orchestration/decider.ts`
-- `apps/server/src/orchestration/projector.ts`
-- `apps/server/src/orchestration/Layers/ProviderCommandReactor.ts`
-- `apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts`
-- `apps/server/src/orchestration/Layers/ProjectionPipeline.ts`
-- `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts`
+- Human, agent-gateway, and reserved tracker origin variants decode as specified; an unknown kind does not break an older snapshot.
+- Post-migration threads always carry a positive origin discriminant; only pre-migration rows are grandfathered.
+- Operation uniqueness works for both thread-owned and parent-less source scopes, and limits key off `reservation_scope_id`, not `root_thread_id`.
+- WebSocket setup-script behavior remains on the WebSocket path; no gateway or mutation path is introduced.
+- This slice changes contracts and persistence shape only; it does not launch a child.
 
-Persistence and worktree safety:
+#### Slice 3 — single create, launch, and real-git recovery (6 deliverable groups)
 
-- `apps/server/src/persistence/Services/AgentGatewayOperations.ts`
-- `apps/server/src/persistence/Layers/AgentGatewayOperations.ts`
-- `apps/server/src/persistence/Services/ProjectionThreads.ts`
-- `apps/server/src/persistence/Layers/ProjectionThreads.ts`
-- `apps/server/src/persistence/Services/OrchestrationEventStore.ts`
-- `apps/server/src/persistence/Layers/OrchestrationEventStore.ts`
-- `apps/server/src/persistence/Migrations/<next>_AgentGateway.ts`
-- `apps/server/src/persistence/Migrations.ts`
-- `apps/server/src/git/GitWorkflowService.ts`
-- `apps/server/src/vcs/GitVcsDriverCore.ts`
-- `packages/shared/src/worktreeCleanup.ts`
-- the explicit subpath export in `packages/shared/package.json`
-- `apps/web/src/worktreeCleanup.ts` and `apps/web/src/hooks/useThreadActions.ts` for the shared-helper import only
+Deliver:
 
-Provider injection:
+- Single `neokod_task_create` through the shared dispatcher, restricted to the caller's project.
+- Launch state machine, receipt-based `sending` recovery, fresh final-dispatch command IDs, reactor outcome capture, and the narrow delegated-run outcome service seam.
+- Sibling atomic worktree claims, `repo_common_dir` recovery data, porcelain parsing, prune/recreate handling, and the per-repository mutex.
+- Current-mode runtime ceiling evaluation and explicit `runtimeMode` on every constructed command.
+- Durable compensation and `compensating` crash recovery, including registered-but-unreported worktrees.
+- Focused real-git creation, concurrency, crash, and compensation tests.
 
-- `apps/server/src/provider/copilot/CopilotMcpServers.ts`
-- `apps/server/src/provider/copilot/CopilotAdapter.ts`
-- conditional injection and conformance tests for Claude, Codex, and Copilot
+Acceptance:
 
-Web verification:
+- Same operation input returns the same task and child IDs; changed input returns `operation_key_conflict`.
+- A final `ready_to_send -> sending` CAS happens immediately before dispatch, and each retry uses a fresh final command ID.
+- `sending` with no receipt returns to `ready_to_send`; `sending` with a receipt becomes `launch_unknown` and is never resent.
+- Every pre-send reactor exit becomes `launch_failed_presend` and releases its reservation; ambiguous post-dispatch outcomes become `launch_unknown`, even when no provider send occurred.
+- Eight or more concurrent items for one repository never race `git worktree add`; distinct repositories may prepare concurrently.
+- Prunable, missing-directory, wrong-path, wrong-branch, unregistered-directory, and registered-but-unreported cases follow §5.2 without deleting an unowned directory.
+- A child session's runtime mode equals the validated request mode, including after recovery.
+- Phase 1 launch is at-most-once and compensation never deletes a worktree while provider use is possible.
 
-- `apps/web/src/session-logic.subagents.test.ts`
-- `apps/web/src/components/SubagentsPanel.test.ts`
+#### Slice 4 — wait and read (2 deliverable groups)
 
-No Phase 1 UI behavior change is required for basic visibility. Existing task cards ignore unknown extra payload fields and already render task lifecycle. The worktree helper import is an internal refactor. A child-thread link can wait for Phase 2.
+Deliver:
 
-Phase 1 acceptance criteria:
+- Terminal-only `neokod_task_wait` with one coalesced durable wait coordinator and lost-wakeup protection.
+- Bounded `neokod_task_read` over the pinned accepted turn and archived durable transcript.
 
-- A Claude, Codex, or Copilot parent creates two tasks targeting two explicit provider instances.
-- With default settings, no gateway listener is started, no provider receives `neokod-agent-gateway`, and no gateway tool is listed.
-- Enabling the gateway without `allowTaskCreation` does not issue `gateway.create`.
-- Both child threads appear in the shell/thread list.
-- Each child uses a distinct worktree under configured `worktreesDir`.
-- Parent Subagents cards show running and terminal states.
-- Terminal-only `wait(all)` survives one child failure, cannot lose a wakeup, and rejects a timeout above 120 seconds.
-- `read` returns the durable assistant result for the pinned turn after provider process exit and remains unchanged after a later human turn.
-- `interrupt` is idempotent and refuses to interrupt a later human turn.
-- Retrying create with the same operation key returns the same task and thread IDs.
-- Retrying with changed input returns `operation_key_conflict`.
-- A forced server restart before `sending` reconciles without duplicates.
-- A forced crash after provider send begins but before durable acceptance produces `launch_unknown` and never auto-resends.
-- Concurrent different operation keys cannot jointly exceed the active-task limit.
-- Compensation cannot remove a worktree while its task is `sending`, `accepted`, `launch_unknown`, or reported active by `ProviderSessionDirectory` / `ProviderService`.
-- A depth-one child cannot create a grandchild under the recommended policy.
-- The gateway fails to start if either exact loopback binding or the peer guard is absent; a remote or missing peer address is rejected before bearer handling.
-- A stopped provider session's old bearer is rejected.
-- `apps/server/src/orchestration/http.ts` retains its existing `WslBearerAuth`-only behavior; tests and docs make clear that gateway caps are advisory and bypassable through that raw local route.
+Acceptance:
 
-Required implementation gates:
+- `wait(all)` handles one child failure, timeout bounds, terminal-before-pin, restart, and no lost wakeup.
+- `read` remains stable after provider exit, child archival, and a later human turn; it never treats an adapter receipt as provider acceptance.
 
-- `vp check`
-- `vp run typecheck`
-- `vp test`
-- Focused real-git integration tests for creation, compensation, and crash reconciliation
-- Provider-specific MCP injection tests
+#### Slice 5 — Phase 1b interrupt (2 deliverable groups)
+
+Deliver:
+
+- `neokod_task_interrupt`, `expectedActiveTurnId`, durable outcomes including the net-new `already_terminal` result, and the named outcome-recording seam.
+- `ProviderService` per-thread acceptance lock and accepted-turn-by-thread map, held through the adapter interrupt call.
+
+Acceptance:
+
+- A pinned child interrupt is idempotent, a later human turn survives, and the outcome is `not_active` when the accepted-turn map does not match.
+- Claude ID mismatch and Copilot ignored IDs cannot interrupt a newer human turn because the lock spans the adapter call.
+
+#### Slice 6 — Phase 1b batch create (1 deliverable group)
+
+Deliver:
+
+- `neokod_task_create_batch` with manifest hashing, aggregate states, bounded launch pool, and per-item partial semantics.
+
+Acceptance:
+
+- A batch never exceeds the same active-task cap as sequential creates, preserves item order, isolates failures, and still serializes filesystem preparation per repository.
+
+Cuts from Phase 1:
+
+- Batch create moves to Phase 1b because manifest hashing, aggregate states, bounded launch, and partial-item semantics add nothing that sequential creates under the same active-task cap do not.
+- Interrupt moves to Phase 1b because it is the only tool that changes the shared human-turn path; normal thread controls already stop a child.
+- `providerSendIdempotencyKey` plumbing is removed entirely because no provider records it and the final CAS already supplies same-process coalescing without durable correlation.
+- Optional fields on the three provider-runtime task payloads are removed because the shared activity mapper and delegated-run child-thread ID already provide the Phase 1 link.
+- The `configured`/`effective`/`restartRequired` settings triple is removed; Phase 1 ships `effective` only and has no UI consumer.
+- `startFromOrigin`, catalog `includeRefs`, and `refQuery` are removed so the first mutating path never performs a networked fetch for an exact catalog ref.
+- Cross-project creation is deferred; Phase 1 creates only in the caller's project.
 
 ### 8.2 Phase 2: control and inspection
 
@@ -1266,21 +1289,21 @@ Phase 3 acceptance criteria:
 | Risk | Consequence | Mitigation |
 |---|---|---|
 | Runaway fan-out through gateway tools | CPU, memory, disk, and cost exhaustion | Atomic gateway reservation applies batch, active-task, per-minute, provider, model, and recursion guardrails |
-| Raw dispatch bypasses gateway caps | Beyond extra tasks, cost, disk, and UI noise: self-approval of pending permission requests, checkpoint revert, project/thread deletion, session stop, and the WS setup-script path (§6.1) | Disclosed and accepted for Phase 1, not mitigated. Default-off opt-in, provider sandboxes remain in force, server-stamped origin, Subagents visibility and user interrupt. First named Phase 2+ hardening item |
+| Raw dispatch bypasses gateway caps | Beyond extra tasks, cost, disk, and UI noise: self-approval of pending permission requests, checkpoint revert, project/thread deletion, session stop, and the WS setup-script path (§6.1) | Disclosed and accepted for Phase 1, not mitigated. Default-off opt-in, provider sandboxes remain in force, server-stamped origin, Subagents visibility, and normal thread controls. First named Phase 2+ hardening item |
 | Recursive gateway delegation | Exponential task growth | Persisted delegation depth, default depth one, create capability removed at the gateway ceiling |
 | Model cost blow-up | Unexpected provider spend | Explicit provider and model, approval-required child default, allowlists, quota preflight, operation cost telemetry |
 | Provider quota exhaustion | Partial or complete launch failure | Read `ServerProvider.usage`, fail affected items before worktree creation when exhaustion is known, return partial batch results |
 | Copilot monthly quota | Tasks fail after SDK start or during a batch | Surface the existing clear quota error and suggest catalog alternatives; never retry automatically against a different provider |
 | Parent MCP call timeout | Agent loses the synchronous response while children continue | Durable operation key, short create response, bounded wait, replayable read |
 | Crash during worktree creation | Orphan branch, directory, or duplicate attempt | Reserve manifest first, pinned base SHA, deterministic path and branch, reconcile via `git worktree list --porcelain` (§5.2), operation-owned compensation |
-| Crash around provider send | Duplicate provider work or an untraceable result | Explicit `sending` / `accepted` / `launch_unknown` states, stable send key, immutable accepted turn ID, never auto-resend unknown |
+| Crash around provider send | Duplicate provider work or an untraceable result | Explicit `sending` / `accepted` / `launch_unknown` states, receipt-based recovery, immutable accepted turn ID, at-most-once launch, never auto-resend unknown |
 | Concurrent reservations | Two operation keys jointly exceed the active limit | One reservation semaphore plus recount and inserts in one SQL transaction |
 | Multi-task wait wakeup race | Wait sleeps past terminal state | One coalesced coordinator, subscribe before durable read, reread the full task set after every signal |
 | Shared, active, or user-modified worktree cleanup | Data loss or provider failure | Durable compensation claim, shared-reference check, live provider binding/session recheck, retain on uncertainty |
 | Full-access child writes outside the worktree | Wider filesystem changes | Explicit provider full-access grant, clear warning, no inheritance from parent, server-stamped audit provenance |
 | Prompt injection into gateway calls | Gateway guardrail abuse or raw dispatch bypass | Default-off opt-in, immutable gateway scope for tool calls, honest residual-risk warning; do not claim the shared control plane is protected |
 | Spoofed gateway attribution | Human/raw-client work appears agent-created | Trusted in-process dispatch context and operation row; never infer actor/origin from command ID or client payload |
-| Provider MCP incompatibility | Tool list or calls fail under one provider | Claude/Codex/Copilot-only Phase 1 caller set; defer ACP and OpenCode until conformance passes |
+| Provider MCP incompatibility | Tool list or calls fail under one provider | Claude-first Phase 1 caller set; Codex is conditional on bearer-scrub conformance, Copilot on injection conformance, and ACP/OpenCode remain deferred |
 | Event amplification | Large parent activity streams and noisy UI | Coalesced progress, child transcript remains in child thread, bounded diagnostics |
 | Human deletes or starts another turn on a child | Wait/read/interrupt targets the wrong work | Pin the accepted turn ID; return explicit `child_deleted` or `not_active` |
 | Gateway listener exposure | Gateway reachable outside loopback | Both exact `127.0.0.1` binding and fail-closed peer guard; no shared-listener fallback |
@@ -1288,12 +1311,12 @@ Phase 3 acceptance criteria:
 ### 9.2 Resolved Phase 1 decisions
 
 1. **Default creation authority:** explicit opt-in. The whole gateway defaults off, and `allowTaskCreation` also defaults false. There is no automatic same-project creation grant.
-2. **Project scope:** current project only by default. Other projects require an explicit allowlist entry.
+2. **Project scope:** caller project only in Phase 1. Cross-project creation is deferred.
 3. **Approval-blocked children:** they continue to count as active until terminal or explicitly interrupted/stopped. Phase 1 adds no idle auto-stop.
 4. **Wait duration:** fixed default 60 seconds and maximum 120 seconds for all Phase 1 callers. Increase or specialize only after conformance data.
 5. **Parent archival:** leave existing children running as independent first-class threads; revoke the archived parent's gateway credential and do not cascade.
 6. **Quota thresholds:** warn for non-zero percentage thresholds; block only a known exhausted hard quota. Unknown quota remains allowed under gateway rate/active guardrails.
-7. **Parent caller set:** Claude, Codex, and Copilot only. Cursor, Grok, and local OpenCode are held until their conformance tests pass in a later phase.
+7. **Parent caller set:** Claude first; Codex only if the Slice 1 bearer-scrub conformance passes; Copilot only after its injection conformance. Cursor, Grok, and local OpenCode are held until their conformance tests pass in a later phase.
 8. **Phase 1 UI:** existing thread navigation plus the Subagents panel and server-stamped provenance are sufficient. A direct parent/child link is deferred.
 
 ### 9.3 Assumptions requiring implementation validation
@@ -1303,7 +1326,7 @@ Phase 3 acceptance criteria:
 - Cursor and Grok ACP clients preserve HTTP MCP Authorization headers.
 - Local OpenCode retains the injected remote MCP server for the lifetime of the created session and cleans it up with the managed child server.
 - Claude, Codex, and Copilot accept 60-second default / 120-second maximum MCP calls. Conformance tests must confirm those ceilings before release.
-- Provider adapters that lack native send-idempotency support still preserve the gateway key through the shared send contract for correlation and same-process coalescing; crash ambiguity still becomes `launch_unknown`.
+- Provider adapters do not receive a gateway send-idempotency key in Phase 1; the final CAS and delegated-run row provide same-process coalescing and idempotency authority, while crash ambiguity becomes `launch_unknown`.
 - `ProviderService.sendTurn` returns at adapter acceptance, not turn completion (true today: it returns immediately after `routed.adapter.sendTurn` plus the session-directory upsert). The §3.7 interrupt lock depends on this. If an adapter is ever changed to block `sendTurn` until the turn completes, the acceptance-and-pin lock would be held for the whole turn and interrupt could never acquire it; that change must therefore be accompanied by moving the lock release to an explicit acceptance signal.
 - The existing model option descriptors are sufficient to validate every gateway target option without provider-specific gateway branches.
 - No durable local automation scheduler exists in the inspected gateway path. Phase 3 automation work needs a separate substrate decision.
@@ -1347,8 +1370,19 @@ Automatic fallback could silently change cost, model behavior, credentials, and 
 - Use terminal-only waits through one durable/coalesced coordinator, capped at 60/120 seconds.
 - Never compensate a worktree while provider launch or use is possible.
 - Exclude `runSetupScript` from every gateway Phase 1 contract and path.
-- Keep Phase 1 to exactly seven tools, including interrupt.
+- Keep Phase 1 to exactly five tools; interrupt and batch create are Phase 1b.
 - Treat provider and model identifiers as exact routing data.
 - Make every retry, partial failure, quota rejection, and permission denial visible in structured output.
 - Stamp actor and origin server-side; command prefixes and client payloads are not provenance.
 - Preserve local-first boundaries throughout.
+
+## Round 6 changes
+
+- A — moved worktree claims to atomically written sibling markers, added prunable and path-mismatch recovery, and named the new VCS recovery deliverables.
+- B — added the per-repository git-common-directory mutex and registered-but-unreported worktree compensation rule.
+- C — generalized origins, dispatch metadata, event fields, delegated-run tables, reservation scopes, and operation uniqueness for future sources.
+- D — replaced cross-provider runtime comparison with an explicit same-provider order, evaluated ceilings against current parent mode, required positive post-migration origins, explicit runtime modes, and safe fallback constants.
+- E — repaired launch and crash recovery with receipt-based `sending` resolution, pre-send failure capture, compensation recovery, reservation release, and at-most-once semantics.
+- F — moved interrupt to Phase 1b and specified the accepted-turn map, adapter-held lock, command contract, new outcome, and persistence seam.
+- G — replaced the flat delivery list with six ordered slices and 24 deliverable groups, each with acceptance criteria.
+- H — removed batch, interrupt, provider send-key plumbing, unused payload fields, settings triple, networked ref options, and cross-project creation from Phase 1.
