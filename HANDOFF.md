@@ -10,7 +10,7 @@ sync:
 
 | Remote     | Repo               | Contents                                                    |
 | ---------- | ------------------ | ----------------------------------------------------------- |
-| `neokod`   | `kamo62/neokod`    | The live product. `main` is what ships. Currently v3.4.0.   |
+| `neokod`   | `kamo62/neokod`    | The live product. `main` is what ships. Currently v3.5.0.   |
 | `origin`   | `kamo62/t3code`    | The older AI-Orch-governed line. Only `org/copilot-claude`. |
 | `upstream` | `pingdotgg/t3code` | Fetch only; push disabled.                                  |
 
@@ -19,11 +19,11 @@ in neokod `main`**. Everything from "What this fork is" downward describes _that
 line, not `main`. Do not assume a file or behaviour documented in the lower half
 exists on `main` without checking.
 
-Claims here were verified against git and GitHub on **2026-07-26**. Anything
+Claims here were verified against git and GitHub on **2026-07-27**. Anything
 carrying an older date is a historical record of that session, not a statement
 about the current tree. When this file and `git` disagree, trust `git`.
 
-## Current state (2026-07-26) — neokod track
+## Current state (2026-07-27) — neokod track
 
 Everything below concerns the neokod provider/UI/gateway track. The AI-Orch
 governance track continues from "Local-first carve-out" onward and is unchanged.
@@ -55,8 +55,23 @@ Bedrock-backed Claude recognised as authenticated plus a 25s capability probe;
 fractional Copilot quota counts; WCAG AA muted text in both themes; fast-mode
 lightning bolt. PRs #43-#48 and #50.
 
+**v3.4.1** (released 2026-07-27) — two verified upstream ports. Stopping a turn no
+longer looks successful when the provider refuses the interrupt: `interruptTurn`
+had no error handling and the reactor's top-level handler only logs, so the
+failure reached the server log and nowhere else while the turn kept running.
+OpenCode now clears pending approvals and questions on `session.error`; they were
+only ever cleared by a reply, so an approval could sit in the UI forever with
+nothing able to resolve it. PR #52.
+
+**v3.5.0** (released 2026-07-27) — worker-count badge on sidebar rows, computed
+server-side as an optional `OrchestrationThreadShell.workerCount` with migration
+`034`, following the `pendingApprovalCount` precedent. The one buildable slice of
+upstream #4456. PR #53.
+
 Build artifacts are pruned after each release (Actions storage, not local disk;
-distributable binaries live in Releases and are never touched).
+distributable binaries live in Releases and are never touched). Checked
+2026-07-27: three artifacts totalling 87KB, so the old 20GB problem is
+structurally gone now that binaries route to Releases rather than Actions.
 
 ### Shipped: v3.4.0 — Auto runtime mode (PR #51)
 
@@ -122,32 +137,84 @@ Spec lives on `docs/agent-gateway-spec-round3` (branch name says round3; content
 https://claude.ai/code/artifact/fe3e91c3-87e9-4d93-948d-aed9a24764a0
 Review log: `REVIEW.md` in this checkout.
 
-Three review rounds failed. Round-5 fixed sol's round-4 findings: removed an
-`agent_gateway_turn_index` that was undefined and redundant, made the worktree
-ownership claim provable on disk rather than only in SQLite, and stopped the
-interrupt tool promising a synchronous result the architecture cannot deliver.
-**Round-5 is unreviewed.** Phase 1 is ~89 deliverables across 12+ files — build in
-slices, and only after a review passes.
+**Round 6 is committed (`15a101031`) and is the current content.** Rounds 2-5 all
+failed review. Round 5 was reviewed by three independent lanes (sol, Opus, Fable):
+sol returned NO-GO, the other two GO with amendments, but they agreed on nearly
+every mechanical finding — the split was really "amend then start" versus "do not
+start". All three confirmed the architecture is sound and the spec's citations
+about our code are accurate.
+
+The fatal round-5 defect, reproduced empirically by two reviewers on git 2.54.0:
+the ownership claim marker was written _inside_ the target directory before calling
+git, and `git worktree add` refuses a non-empty directory, with `--force` not
+overriding it. Every gateway worktree creation would have failed. Round 6 moves the
+marker out, writes it atomically, and adds the prunable recovery case.
+
+Round 6 also drops `min(parent, configured)` for cross-provider targets (no
+ordering function exists in the repo, and `auto` is the least privileged real mode
+on Claude/Copilot/OpenCode but swaps the human reviewer for an AI one on Codex),
+pins the ceiling to the parent's current mode rather than the value captured at
+credential issuance, fixes `ready_to_send` recovery (re-dispatching the
+deterministic command id hits the receipt and returns without re-emitting, and the
+domain stream is hot-only, so the task stuck forever holding a reservation slot),
+generalises origin to a discriminated `ThreadOrigin` so a parent-less caller need
+not fake a parent, and requires a per-repository mutex because concurrent
+`git worktree add` on one repo fails under config-lock contention.
+
+Phase 1 is now ~35 deliverables across six ordered slices with five tools;
+interrupt and batch create moved to Phase 1b. Slice 1 is the dedicated loopback
+listener plus two read-only tools, sequenced first because the second-`HttpServer`
+assumption is the one thing that can invalidate the phase and the spec itself lists
+it unvalidated. **Round 6 is unreviewed.** Build in slices, after a review passes.
 
 Relevant: upstream issue **#4456** (sub-agent UI segmentation) is effectively the
-gateway's UI half. Fable and sol independently found it unbuildable today —
-sub-agents are only `task.*` activities stamped with the parent's threadId, no
-"queued" state exists in any provider, and per-agent file attribution is impossible
-on a shared worktree. Buildable now: a worker-count badge on sidebar rows, done
-server-side as a field on `OrchestrationThreadShell`.
+gateway's UI half. Fable and sol independently found the rest of it unbuildable
+today — sub-agents are only `task.*` activities stamped with the parent's threadId,
+no "queued" state exists in any provider, and per-agent file attribution is
+impossible on a shared worktree. The one buildable slice, the worker-count badge,
+shipped in v3.5.0.
 
-### Verified upstream bugs worth porting (none started)
+### Upstream bug ports — status as of 2026-07-27
 
-- **#4524** interrupt failures silently swallowed (`ProviderCommandReactor.ts:863`)
-  — Stop looks successful while the turn keeps running. Flagged independently by
-  two passes. Highest user impact.
-- **PR #4381** OpenCode leaves pending permission requests stranded on
-  `session.error`. Small.
-- **PR #4348** unbounded OpenCode history hydration. Medium.
+Done:
 
-Unverified, do not act without reproducing: #4560 cross-project context leakage
-(highest severity if real), #4561 stranded sessions after restart, #4452 turns
-stuck "Working", #4513 bulk delete vs missing worktree, #4463 MCP token idle expiry.
+- **#4524** interrupt failures silently swallowed — shipped in v3.4.1.
+- **PR #4381** OpenCode stranded permission requests on `session.error` — shipped
+  in v3.4.1.
+- **#4513** bulk delete aborts when the worktree is already gone — fixed in PR #54.
+
+**PR #4348 unbounded OpenCode history hydration — CLOSED, deliberately not fixed.**
+Do not reopen without new evidence. It is fixable in principle: the v2 client
+accepts `limit` and `before` on `session.messages`. But the method we call
+(`/session/{id}/message`) has no ordering parameter, the generated client does not
+reorder or slice, and neither the types nor the official docs give an ordering
+guarantee — only a _different_ v2 route (`/api/session/...`) documents `order` and
+cursors, and it returns a different response shape. Bounding a fetch whose
+truncation direction is unknown risks returning the oldest N and silently dropping
+recent turns from the transcript, which is worse than the unbounded read.
+`rollbackThread` is worse still: it derives a destructive revert target by index
+from the full list. The real fix is migrating the hydration path to the
+cursor-based route, which is a rewrite of the turn-snapshot builder, not a
+parameter change.
+
+Still open:
+
+- **#4561 stopped sessions block settling after restart — CONFIRMED, unfixed.**
+  Provider lifecycle events arrive on a hot stream with no replay
+  (`ProviderRuntimeIngestion.ts:1704-1718`), and `session.exited` is what
+  dispatches the stopped projection state. Startup only starts reactors and the
+  reaper; projection bootstrap replays events into projectors only. So an exit
+  missed before restart leaves a running projected turn permanently unsettled, and
+  the reaper skips persisted stopped bindings.
+
+**Undetermined — reading cannot settle these, they need runtime reproduction:**
+#4560 cross-project context leakage (still the highest severity if real; reproduce
+with distinct sentinel data in two projects and inspect provider inputs for
+cross-project leakage), #4452 Claude turns stuck "Working" (needs the affected
+Claude version and captured SDK frames), #4463 MCP bearer idle expiry (the registry
+deliberately expires at 30 minutes idle / 8 hours absolute while every
+authenticated request refreshes `lastUsedAt`, so the claim needs observation across
+the boundary).
 
 ### Smaller known items
 
@@ -162,25 +229,53 @@ stuck "Working", #4513 bulk delete vs missing worktree, #4463 MCP token idle exp
 - `formatSubagentUsage` test hardcodes US number formatting (`1,234 tok`) and fails
   under locales using a space separator. Fix the test, not the formatter. Confirmed
   still failing locally on 2026-07-26; it passes in CI because the runner is en-US.
+- **`Schema.is(RuntimeMode)` is recompiled on every decode.**
+  `packages/contracts/src/orchestration.ts:133`, inside `RuntimeModeStored`'s
+  transform. Lint flags it (`neokod(no-inline-schema-compile)`) as a warning, so it
+  does not fail CI, but it sits on the hot path where every persisted thread row
+  decodes. Hoist it to a module-level const. Shipped this way in 3.4.0.
+- **The pre-commit hook fails when the only staged path is under `.plans/`.**
+  `.plans/` is excluded from the formatter, so `vp fmt` exits with "Expected at
+  least one target file" and the commit is reverted. Use `--no-verify` for
+  plans-only commits, or fix the hook to skip when nothing matches.
 - 9 `pre-rebase-*` snapshots were verified disposable and deleted: the only
   substantive commit (`ba938a579`, thread goal + goalStatus) is already on main.
 
-### Branch inventory (verified 2026-07-26, after the v3.4.0 release)
+### Branch inventory (verified 2026-07-27, after the v3.5.0 release)
 
-Local branches went 65 → 7, remote 48 → 4, worktrees 7 → 2 over this session's
-cleanup. Current state, in full:
+| Branch                                     | Where            | Status                                                                                                                                                           |
+| ------------------------------------------ | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main`                                     | local + `neokod` | Ships. At `fd419855c` (v3.5.0).                                                                                                                                  |
+| `docs/agent-gateway-spec-round3`           | local + `neokod` | Branch name says round3; content is **round 6** (`15a101031`). Unreviewed. Do not build until a review passes.                                                   |
+| `fix/bulk-delete-missing-worktree`         | local + `neokod` | PR #54, open. Upstream #4513.                                                                                                                                    |
+| `feat/diff-pane-review`                    | local + `neokod` | Closed PR #34, kept in case it is reintroduced.                                                                                                                  |
+| `wip/copilot-evidence-sink-simplification` | local + `neokod` | The other session's work, preserved.                                                                                                                             |
+| `feat/browser-test-lane`                   | **local only**   | See the correction below. Needs a rebase, not a push. **Exists on this machine only.**                                                                           |
+| `feat/client-identity-enrolment`           | local only       | Checked out in the `~/Code/t3code-slice1` worktree. Merged.                                                                                                      |
+| `org/copilot-claude`                       | local + `origin` | The older fork line. Local is at `5424488b3` and is contained in `main`; `origin/org/copilot-claude` is ahead at `f4ace8bd0` with 31 commits absent from `main`. |
 
-| Branch                                     | Where            | Status                                                                                                                                                                     |
-| ------------------------------------------ | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `main`                                     | local + `neokod` | Ships. At `f163dbe32` (v3.4.0).                                                                                                                                            |
-| `docs/agent-gateway-spec-round3`           | local + `neokod` | Round-5 spec, unreviewed. Do not build until a review passes.                                                                                                              |
-| `feat/diff-pane-review`                    | local + `neokod` | Closed PR #34, kept in case it is reintroduced.                                                                                                                            |
-| `wip/copilot-evidence-sink-simplification` | local + `neokod` | The other session's work, preserved.                                                                                                                                       |
-| `feat/browser-test-lane`                   | **local only**   | 1 commit ahead of main (`e0bc2a96b`, Chromium browser-test lane M1). Review-clean, never pushed; pending a networked `vp` install and CI. **Exists on this machine only.** |
-| `feat/client-identity-enrolment`           | local only       | Checked out in the `~/Code/t3code-slice1` worktree. Merged.                                                                                                                |
-| `org/copilot-claude`                       | local + `origin` | The older fork line. Local is at `5424488b3` and is contained in `main`; `origin/org/copilot-claude` is ahead at `f4ace8bd0` with 31 commits absent from `main`.           |
+`feat/auto-runtime-mode`, `fix/upstream-verified-ports` and `feat/worker-count-badge`
+were deleted on both sides after their PRs merged (#51, #52, #53).
 
-`feat/auto-runtime-mode` was deleted on both sides when PR #51 merged.
+**Correction to the previous entry for `feat/browser-test-lane`.** It was recorded
+as "1 commit ahead of main, review-clean, never pushed", which is true and
+misleading. It is 1 ahead and, as of this writing, nearly 200 commits behind, having
+branched from `a1153e971` on 2026-07-12. Compute the current gap with
+`git rev-list --count feat/browser-test-lane..main` rather than trusting a number
+written here. The commit itself is small and sound (6 files, 204 insertions: a
+blocking Chromium browser-test CI job, one `.browser.tsx` test, vite config, docs).
+Pushing it as-is is pointless because CI would run against a stale base. The work
+is a rebase onto current main, and the `vite.config.ts` and `apps/web/package.json`
+hunks are the most likely to have moved.
+
+**Decision pending on `origin/org/copilot-claude`.** A full triage of all 31
+commits found every one either superseded on `main` (usually by an exact
+patch-equivalent commit) or documentation churn. Nothing unique and wanted. `main`
+is also strictly ahead, holding the in-app GitHub device login and the local-first
+carve-out that branch never received. The recommendation is to retire it. **Not
+done, because that branch is the sole non-symbolic ref keeping those 31 commits
+alive** — no tag contains them — so deleting it makes them garbage-collectable.
+Needs an explicit decision, not an agent's say-so.
 
 Worktrees: `~/Code/t3code` (on `main`) and `~/Code/t3code-slice1` (on
 `feat/client-identity-enrolment`). Leave slice1 alone; it belongs to another
