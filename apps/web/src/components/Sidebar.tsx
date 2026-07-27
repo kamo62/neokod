@@ -193,6 +193,7 @@ import { useThreadSelectionStore } from "../threadSelectionStore";
 import { useOpenAddProjectCommandPalette } from "../commandPaletteContext";
 import { useMissionControlUiStore } from "../missionControlUiStore";
 import {
+  formatBulkThreadDeleteSummary,
   getSidebarThreadIdsToPrewarm,
   getPinnedAndUnpinnedSidebarThreads,
   resolveAdjacentThreadId,
@@ -205,6 +206,7 @@ import {
   resolveSidebarWorkerBadge,
   resolveThreadRowClassName,
   resolveThreadStatusPill,
+  runBulkThreadDeletes,
   orderItemsByPreferredIds,
   shouldClearThreadSelectionOnMouseDown,
   sortProjectsForSidebar,
@@ -1874,29 +1876,49 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       }
 
       const deletedThreadKeys = new Set(threadKeys);
-      for (const threadKey of threadKeys) {
+      const summary = await runBulkThreadDeletes(threadKeys, async (threadKey) => {
         const thread = sidebarThreadByKeyRef.current.get(threadKey);
-        if (!thread) continue;
+        if (!thread) {
+          return { ok: false, reason: "Thread is no longer available." };
+        }
         const result = await deleteThread(scopeThreadRef(thread.environmentId, thread.id), {
           deletedThreadKeys,
         });
         if (result._tag === "Failure") {
-          if (!isAtomCommandInterrupted(result)) {
-            const error = squashAtomCommandFailure(result);
-            toastManager.add(
-              stackedThreadToast({
-                type: "error",
-                title: "Failed to delete threads",
-                description: error instanceof Error ? error.message : "An error occurred.",
-              }),
-            );
-          }
-          return;
+          const error = squashAtomCommandFailure(result);
+          return {
+            ok: false,
+            reason: isAtomCommandInterrupted(result)
+              ? "Deletion was interrupted."
+              : error instanceof Error
+                ? error.message
+                : "An error occurred.",
+          };
         }
         useUiStateStore.getState().removePinnedThreads([threadKey]);
         useUiStateStore.getState().removeMyWorkDismissed([threadKey]);
-      }
+        return { ok: true };
+      });
       removeFromSelection(threadKeys);
+      if (summary.failures.length > 0) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Bulk delete completed with errors",
+            description: formatBulkThreadDeleteSummary(
+              threadKeys.length,
+              summary.succeeded.length,
+              summary.failures.map(({ item, reason }) => ({
+                // A missing entry means the row is already gone from the sidebar,
+                // so there is no title to show. Fall back to a readable label
+                // rather than the scoped thread key, which is meaningless here.
+                title: sidebarThreadByKeyRef.current.get(item)?.title ?? "Unknown thread",
+                reason,
+              })),
+            ),
+          }),
+        );
+      }
     },
     [
       appSettingsConfirmThreadDelete,

@@ -12,7 +12,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { GitCommandError } from "@neokod/contracts";
 import { ServerConfig } from "../config.ts";
-import { splitNullSeparatedGitStdoutPaths } from "./GitVcsDriverCore.ts";
+import { parseGitWorktreePorcelain, splitNullSeparatedGitStdoutPaths } from "./GitVcsDriverCore.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
 
 const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
@@ -23,20 +23,27 @@ const TestLayer = GitVcsDriver.layer.pipe(
   Layer.provideMerge(NodeServices.layer),
 );
 
-const makeNonRepositoryHandle = () =>
+const makeProcessHandle = (input: {
+  readonly exitCode: number;
+  readonly stdout?: string;
+  readonly stderr?: string;
+}) =>
   ChildProcessSpawner.makeHandle({
     pid: ChildProcessSpawner.ProcessId(1),
-    exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(128)),
+    exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(input.exitCode)),
     isRunning: Effect.succeed(false),
     kill: () => Effect.void,
     unref: Effect.succeed(Effect.void),
     stdin: Sink.drain,
-    stdout: Stream.empty,
-    stderr: Stream.encodeText(Stream.make("fatal: not a git repository")),
+    stdout: Stream.encodeText(Stream.make(input.stdout ?? "")),
+    stderr: Stream.encodeText(Stream.make(input.stderr ?? "")),
     all: Stream.empty,
     getInputFd: () => Sink.drain,
     getOutputFd: () => Stream.empty,
   });
+
+const makeNonRepositoryHandle = () =>
+  makeProcessHandle({ exitCode: 128, stderr: "fatal: not a git repository" });
 
 const makeTmpDir = (
   prefix = "git-vcs-driver-test-",
@@ -132,6 +139,74 @@ it.effect("uses stable diagnostics for every parsed non-repository command", () 
       { args: ["branch", "--no-color", "--no-column"], lcAll: "C" },
     ]);
   }).pipe(Effect.provide(layer));
+});
+
+it.effect("prunes an exact stale registration after its worktree directory is gone", () => {
+  return Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const pathService = yield* Path.Path;
+    const cwd = yield* makeTmpDir();
+    const physicalCwd = yield* fileSystem.realPath(cwd);
+    const worktreePath = pathService.join(cwd, "missing-worktree");
+    const registeredPath = pathService.join(physicalCwd, "missing-worktree");
+    let listCount = 0;
+    const commands: string[][] = [];
+    const spawner = ChildProcessSpawner.make((command) =>
+      Effect.sync(() => {
+        if (!ChildProcess.isStandardCommand(command)) {
+          return assert.fail("expected a standard Git command");
+        }
+        const args = [...command.args];
+        commands.push(args);
+        if (args[0] === "worktree" && args[1] === "remove") {
+          return makeProcessHandle({
+            exitCode: 128,
+            stderr: "fatal: target is not a working tree",
+          });
+        }
+        if (args[0] === "worktree" && args[1] === "list") {
+          listCount += 1;
+          return makeProcessHandle({
+            exitCode: 0,
+            stdout:
+              listCount === 1
+                ? [
+                    `worktree ${registeredPath}`,
+                    "HEAD abc123",
+                    "prunable gitdir file points to non-existent location",
+                    "",
+                  ].join("\0")
+                : "",
+          });
+        }
+        if (args[0] === "worktree" && args[1] === "prune") {
+          return makeProcessHandle({ exitCode: 0 });
+        }
+        return assert.fail(`unexpected Git command: ${args.join(" ")}`);
+      }),
+    );
+    const layer = GitVcsDriver.layer.pipe(
+      Layer.provide(ServerConfigLayer),
+      Layer.provideMerge(
+        Layer.merge(
+          NodeServices.layer,
+          Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner),
+        ),
+      ),
+    );
+
+    yield* Effect.gen(function* () {
+      const driver = yield* GitVcsDriver.GitVcsDriver;
+      yield* driver.removeWorktree({ cwd, path: worktreePath, force: true });
+    }).pipe(Effect.provide(layer));
+
+    assert.deepStrictEqual(commands, [
+      ["worktree", "remove", "--force", worktreePath],
+      ["worktree", "list", "--porcelain", "-z"],
+      ["worktree", "prune", "--expire", "now"],
+      ["worktree", "list", "--porcelain", "-z"],
+    ]);
+  }).pipe(Effect.provide(NodeServices.layer));
 });
 
 it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
@@ -234,7 +309,7 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
-    it.effect("does not wrap a remove-worktree command failure in a synthetic error", () =>
+    it.effect("treats an absent unregistered worktree as already removed", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();
         const pathService = yield* Path.Path;
@@ -242,19 +317,7 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         const driver = yield* GitVcsDriver.GitVcsDriver;
         yield* driver.initRepo({ cwd });
 
-        const error = yield* driver
-          .removeWorktree({ cwd, path: missingWorktree })
-          .pipe(Effect.flip);
-
-        assert.deepInclude(error, {
-          _tag: "GitCommandError",
-          operation: "GitVcsDriver.removeWorktree",
-          command: "git",
-          argumentCount: 3,
-          cwd,
-        });
-        assert.notProperty(error, "cause");
-        assert.notInclude(error.detail, "Git command failed in");
+        yield* driver.removeWorktree({ cwd, path: missingWorktree });
       }),
     );
   });
@@ -641,6 +704,27 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
   });
 
   describe("worktree operations", () => {
+    it("parses prunable registrations from NUL-delimited porcelain output", () => {
+      assert.deepStrictEqual(
+        parseGitWorktreePorcelain(
+          [
+            "worktree /repo",
+            "HEAD abc123",
+            "branch refs/heads/main",
+            "",
+            "worktree /repo-missing",
+            "HEAD def456",
+            "prunable gitdir file points to non-existent location",
+            "",
+          ].join("\0"),
+        ),
+        [
+          { path: "/repo", prunable: false },
+          { path: "/repo-missing", prunable: true },
+        ],
+      );
+    });
+
     it.effect("creates and removes a worktree for a new refName", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();
@@ -666,6 +750,34 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         yield* driver.removeWorktree({ cwd, path: worktreePath });
         const fileSystem = yield* FileSystem.FileSystem;
         assert.equal(yield* fileSystem.exists(worktreePath), false);
+      }),
+    );
+
+    it.effect("keeps genuine remove failures and includes git stderr in their detail", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const worktreePath = pathService.join(
+          yield* makeTmpDir("git-worktrees-"),
+          "locked-worktree",
+        );
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: initialBranch,
+          newRefName: "feature/locked-worktree",
+        });
+        yield* git(cwd, ["worktree", "lock", "--reason", "test lock", worktreePath]);
+
+        const error = yield* driver
+          .removeWorktree({ cwd, path: worktreePath, force: true })
+          .pipe(Effect.flip);
+
+        assert.equal(error.operation, "GitVcsDriver.removeWorktree");
+        assert.include(error.detail, "git worktree remove failed:");
+        assert.include(error.detail.toLowerCase(), "locked");
       }),
     );
   });

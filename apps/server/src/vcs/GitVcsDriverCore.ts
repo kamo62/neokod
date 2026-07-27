@@ -26,6 +26,7 @@ import {
   type VcsRef,
 } from "@neokod/contracts";
 import { dedupeRemoteBranchesWithLocalMatches } from "@neokod/shared/git";
+import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import { compactTraceAttributes } from "@neokod/shared/observability";
 import { decodeJsonResult } from "@neokod/shared/schemaJson";
 import { gitCommandDuration, gitCommandsTotal, withMetrics } from "../observability/Metrics.ts";
@@ -104,6 +105,35 @@ interface ExecuteGitOptions {
   maxOutputBytes?: number | undefined;
   appendTruncationMarker?: boolean | undefined;
   progress?: GitVcsDriver.ExecuteGitProgress | undefined;
+}
+
+export interface GitWorktreePorcelainEntry {
+  readonly path: string;
+  readonly prunable: boolean;
+}
+
+export function parseGitWorktreePorcelain(output: string): GitWorktreePorcelainEntry[] {
+  const entries: GitWorktreePorcelainEntry[] = [];
+  let current: { path: string; prunable: boolean } | null = null;
+  const finishEntry = () => {
+    if (current) {
+      entries.push(current);
+      current = null;
+    }
+  };
+
+  for (const field of output.split("\0")) {
+    if (field.startsWith("worktree ")) {
+      finishEntry();
+      current = { path: field.slice("worktree ".length), prunable: false };
+    } else if (field.startsWith("prunable") && current) {
+      current.prunable = true;
+    } else if (field === "") {
+      finishEntry();
+    }
+  }
+  finishEntry();
+  return entries;
 }
 
 function parseBranchAb(value: string): { ahead: number; behind: number } {
@@ -648,6 +678,44 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const { worktreesDir } = yield* ServerConfig;
   const crypto = yield* Crypto.Crypto;
+  const hostPlatform = yield* HostProcessPlatform;
+
+  const resolvePhysicalPath = Effect.fn("resolvePhysicalPath")(function* (value: string) {
+    const missingSegments: string[] = [];
+    let candidate = path.resolve(value);
+    while (true) {
+      const resolved = yield* fileSystem.realPath(candidate).pipe(
+        Effect.map(Option.some),
+        Effect.catch((error) =>
+          error.reason._tag === "NotFound" ? Effect.succeed(Option.none()) : Effect.fail(error),
+        ),
+      );
+      if (Option.isSome(resolved)) {
+        return path.join(resolved.value, ...missingSegments);
+      }
+      const parent = path.dirname(candidate);
+      if (parent === candidate) {
+        return candidate;
+      }
+      missingSegments.unshift(path.basename(candidate));
+      candidate = parent;
+    }
+  });
+
+  const findWorktreeRegistration = Effect.fn("findWorktreeRegistration")(function* (
+    output: string,
+    target: string,
+  ) {
+    const normalizePath = (value: string) =>
+      hostPlatform === "win32" ? value.toLowerCase() : value;
+    const targetPath = normalizePath(yield* resolvePhysicalPath(target));
+    for (const entry of parseGitWorktreePorcelain(output)) {
+      if (normalizePath(yield* resolvePhysicalPath(entry.path)) === targetPath) {
+        return entry;
+      }
+    }
+    return undefined;
+  });
 
   const executeRaw: GitVcsDriver.GitVcsDriver["Service"]["execute"] = Effect.fnUntraced(
     function* (input) {
@@ -2394,10 +2462,135 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       args.push("--force");
     }
     args.push(input.path);
-    yield* executeGit("GitVcsDriver.removeWorktree", input.cwd, args, {
+    const removeResult = yield* executeGit("GitVcsDriver.removeWorktree", input.cwd, args, {
       timeoutMs: 15_000,
-      fallbackErrorDetail: "git worktree remove failed",
+      allowNonZeroExit: true,
     });
+    if (removeResult.exitCode === 0) {
+      return;
+    }
+
+    const failedCommand = (
+      operation: string,
+      commandArgs: readonly string[],
+      fallbackDetail: string,
+      result: GitVcsDriver.ExecuteGitResult,
+    ) =>
+      new GitCommandError({
+        ...gitCommandContext({ operation, cwd: input.cwd, args: commandArgs }),
+        detail: result.stderr.trim()
+          ? `${fallbackDetail}: ${result.stderr.trim()}`
+          : fallbackDetail,
+        ...(result.exitCode === null ? {} : { exitCode: result.exitCode }),
+        stdoutLength: result.stdout.length,
+        stderrLength: result.stderr.length,
+      });
+
+    const pathExists = (operation: string, detail: string) =>
+      fileSystem.exists(input.path).pipe(
+        Effect.mapError(
+          (cause) =>
+            new GitCommandError({
+              ...gitCommandContext({ operation, cwd: input.cwd, args }),
+              detail,
+              cause,
+            }),
+        ),
+      );
+
+    const checkedGit = Effect.fn("removeWorktree.checkedGit")(function* (
+      operation: string,
+      commandArgs: readonly string[],
+      failureDetail: string,
+      timeoutMs: number,
+    ) {
+      const result = yield* executeGit(operation, input.cwd, commandArgs, {
+        timeoutMs,
+        allowNonZeroExit: true,
+      });
+      if (result.exitCode !== 0) {
+        return yield* failedCommand(operation, commandArgs, failureDetail, result);
+      }
+      return result;
+    });
+
+    const readRegistration = Effect.fn("removeWorktree.readRegistration")(function* (
+      operation: string,
+      failureDetail: string,
+    ) {
+      const listArgs = ["worktree", "list", "--porcelain", "-z"] as const;
+      const result = yield* checkedGit(operation, listArgs, failureDetail, 5_000);
+      return yield* findWorktreeRegistration(result.stdout, input.path).pipe(
+        Effect.mapError(
+          (cause) =>
+            new GitCommandError({
+              ...gitCommandContext({ operation, cwd: input.cwd, args: listArgs }),
+              detail: "Unable to resolve worktree registration paths.",
+              cause,
+            }),
+        ),
+      );
+    });
+
+    const removeError = failedCommand(
+      "GitVcsDriver.removeWorktree",
+      args,
+      "git worktree remove failed",
+      removeResult,
+    );
+    if (
+      yield* pathExists(
+        "GitVcsDriver.removeWorktree.inspectPath",
+        "Unable to determine whether the worktree path still exists.",
+      )
+    ) {
+      return yield* removeError;
+    }
+
+    const registration = yield* readRegistration(
+      "GitVcsDriver.removeWorktree.list",
+      "git worktree list failed",
+    );
+    if (!registration) {
+      if (
+        yield* pathExists(
+          "GitVcsDriver.removeWorktree.verifyAbsentPath",
+          "Unable to verify that the unregistered worktree path remains absent.",
+        )
+      ) {
+        return yield* removeError;
+      }
+      return;
+    }
+    if (!registration.prunable) {
+      return yield* removeError;
+    }
+
+    yield* checkedGit(
+      "GitVcsDriver.removeWorktree.prune",
+      ["worktree", "prune", "--expire", "now"],
+      "git worktree prune failed",
+      15_000,
+    );
+
+    const stillRegistered = yield* readRegistration(
+      "GitVcsDriver.removeWorktree.verify",
+      "git worktree list failed after pruning",
+    );
+    const pathReappeared = yield* pathExists(
+      "GitVcsDriver.removeWorktree.verifyPath",
+      "Unable to verify that the worktree path is absent after pruning.",
+    );
+    if (stillRegistered || pathReappeared) {
+      return yield* new GitCommandError({
+        ...gitCommandContext({
+          operation: "GitVcsDriver.removeWorktree.verify",
+          cwd: input.cwd,
+          args,
+        }),
+        detail: "Git worktree cleanup completed without removing the target registration.",
+      });
+    }
   });
 
   const renameBranch: GitVcsDriver.GitVcsDriver["Service"]["renameBranch"] = Effect.fn(

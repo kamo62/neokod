@@ -65,6 +65,47 @@ export interface ThreadJumpHintVisibilityController {
   dispose: () => void;
 }
 
+export interface BulkThreadDeleteFailure<T> {
+  readonly item: T;
+  readonly reason: string;
+}
+
+export interface BulkThreadDeleteSummary<T> {
+  readonly succeeded: readonly T[];
+  readonly failures: readonly BulkThreadDeleteFailure<T>[];
+}
+
+export async function runBulkThreadDeletes<T>(
+  items: readonly T[],
+  deleteOne: (
+    item: T,
+  ) => Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: string }>,
+): Promise<BulkThreadDeleteSummary<T>> {
+  const succeeded: T[] = [];
+  const failures: BulkThreadDeleteFailure<T>[] = [];
+  for (const item of items) {
+    const result = await deleteOne(item);
+    if (result.ok) {
+      succeeded.push(item);
+    } else {
+      failures.push({ item, reason: result.reason });
+    }
+  }
+  return { succeeded, failures };
+}
+
+export function formatBulkThreadDeleteSummary(
+  total: number,
+  succeeded: number,
+  failures: readonly { readonly title: string; readonly reason: string }[],
+): string {
+  return [
+    `${succeeded} of ${total} completed successfully.`,
+    "Failed:",
+    ...failures.map(({ title, reason }) => `${title}: ${reason}`),
+  ].join("\n");
+}
+
 export function resolveSidebarStageBadgeLabel(input: {
   primaryServerVersion: string | null | undefined;
   fallbackStageLabel: string | null | undefined;
