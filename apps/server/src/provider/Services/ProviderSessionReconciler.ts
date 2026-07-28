@@ -47,6 +47,11 @@ export const planProviderSessionReconciliation = ({
   bindings,
 }: ProviderSessionReconcileInputs): ReadonlyArray<ProviderSessionReconcileAction> => {
   const liveThreadIds = new Set(liveSessions.map((session) => session.threadId));
+  // Safe to collapse by thread: `provider_session_runtime.thread_id` is the
+  // table's PRIMARY KEY, so a thread has at most one binding. If that ever
+  // becomes one row per provider instance, this must filter by provider and
+  // terminal status before collapsing, or a live binding could hide an eligible
+  // stopped one and leave the turn stuck running.
   const bindingsByThreadId = new Map(bindings.map((binding) => [binding.threadId, binding]));
 
   return projected.threads.flatMap((thread) => {
