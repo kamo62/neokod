@@ -184,15 +184,15 @@ interface ClaudeTaskState {
  * compaction the two diverge permanently, so growth is measured from the
  * boundary instead of read off the cumulative total.
  *
- * `totalProcessedAtCompaction` is filled by the first `task_progress` after the
- * boundary rather than read at it. Nothing available at boundary time is
- * reliably on the cumulative scale: `pre_tokens` measures the context we just
- * discarded, and a resumed session has no local cumulative reading at all until
- * a frame arrives. Anchoring on the first post-boundary frame costs only the
- * work done in that short gap and cannot mix scales.
+ * `totalProcessedAtCompaction` is filled by the first non-regressed task usage
+ * frame after the boundary rather than read at it. Nothing available at
+ * boundary time is reliably on the cumulative scale: `pre_tokens` measures the
+ * context we just discarded, and a resumed session has no local cumulative
+ * reading at all until a frame arrives. Anchoring on the first post-boundary
+ * frame costs only the work done in that gap and cannot mix scales.
  */
 interface ClaudeCompactionBaseline {
-  readonly postTokens: number;
+  readonly postTokens: number | undefined;
   readonly totalProcessedAtCompaction: number | undefined;
 }
 
@@ -542,15 +542,36 @@ function normalizeClaudeTaskProgressTokenUsage(
     return undefined;
   }
 
-  const baseline = context.compactionBaseline;
-  const estimatedActiveTokens =
-    baseline?.totalProcessedAtCompaction !== undefined
-      ? baseline.postTokens + Math.max(0, totalTokens - baseline.totalProcessedAtCompaction)
-      : (baseline?.postTokens ?? totalTokens);
+  const previousTotalTokens = context.lastKnownTotalProcessedTokens;
+  if (previousTotalTokens !== undefined && totalTokens < previousTotalTokens) {
+    return undefined;
+  }
+  context.lastKnownTotalProcessedTokens = totalTokens;
 
-  // The floor needs no compaction handling of its own: the boundary emits a
-  // snapshot of its own, so `lastUsedTokens` already describes the current
-  // epoch by the time any post-compaction frame is read.
+  const baseline = context.compactionBaseline;
+  if (baseline !== undefined && baseline.postTokens === undefined) {
+    return undefined;
+  }
+
+  // Read both halves before the write below, so the estimate cannot depend on
+  // narrowing that a reassignment would discard.
+  const postTokens = baseline?.postTokens;
+  const anchor = baseline?.totalProcessedAtCompaction ?? (baseline ? totalTokens : undefined);
+  if (baseline !== undefined && baseline.totalProcessedAtCompaction === undefined) {
+    context.compactionBaseline = {
+      ...baseline,
+      totalProcessedAtCompaction: totalTokens,
+    };
+  }
+
+  const estimatedActiveTokens =
+    postTokens !== undefined && anchor !== undefined
+      ? postTokens + Math.max(0, totalTokens - anchor)
+      : (postTokens ?? totalTokens);
+
+  // A baseline only exists after the boundary emitted its own snapshot, so
+  // `lastUsedTokens` already describes the current epoch whenever this estimate
+  // is active.
   const lastUsedTokens = context.lastKnownTokenUsage?.usedTokens;
   const activeTokens =
     lastUsedTokens !== undefined
@@ -1794,8 +1815,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
 
     context.lastKnownTokenUsage = usage;
-    context.lastKnownTotalProcessedTokens =
-      usage.totalProcessedTokens ?? context.lastKnownTotalProcessedTokens;
+    if (usage.totalProcessedTokens !== undefined) {
+      context.lastKnownTotalProcessedTokens = Math.max(
+        usage.totalProcessedTokens,
+        context.lastKnownTotalProcessedTokens ?? usage.totalProcessedTokens,
+      );
+    }
 
     const turnState = context.turnState;
     const stamp = yield* makeEventStamp();
@@ -1842,7 +1867,20 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
 
     context.lastKnownContextWindow = usage.maxTokens;
-    return normalizeClaudeContextUsageApiSnapshot(usage, totalProcessedTokens);
+    const snapshot = normalizeClaudeContextUsageApiSnapshot(usage, totalProcessedTokens);
+    const baseline = context.compactionBaseline;
+    if (
+      snapshot !== undefined &&
+      baseline !== undefined &&
+      (baseline.postTokens === undefined ||
+        (baseline.totalProcessedAtCompaction !== undefined && totalProcessedTokens !== undefined))
+    ) {
+      context.compactionBaseline = {
+        postTokens: snapshot.usedTokens,
+        totalProcessedAtCompaction: totalProcessedTokens,
+      };
+    }
+    return snapshot;
   });
 
   const emitProposedPlanCompleted = Effect.fn("emitProposedPlanCompleted")(function* (
@@ -1940,15 +1978,17 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
     const maxTokens = resultContextWindow ?? context.lastKnownContextWindow;
     const accumulatedTotalProcessedTokens = claudeTotalProcessedTokens(result?.usage);
-    if (accumulatedTotalProcessedTokens !== undefined) {
-      context.lastKnownTotalProcessedTokens = accumulatedTotalProcessedTokens;
-    }
+    const totalProcessedTokens =
+      accumulatedTotalProcessedTokens !== undefined
+        ? Math.max(
+            accumulatedTotalProcessedTokens,
+            context.lastKnownTotalProcessedTokens ?? accumulatedTotalProcessedTokens,
+          )
+        : context.lastKnownTotalProcessedTokens;
+    context.lastKnownTotalProcessedTokens = totalProcessedTokens;
 
     const contextUsageSnapshot = queryContextUsage
-      ? yield* queryCurrentContextUsage(
-          context,
-          accumulatedTotalProcessedTokens ?? context.lastKnownTotalProcessedTokens,
-        )
+      ? yield* queryCurrentContextUsage(context, totalProcessedTokens)
       : undefined;
     const resultUsageRecord =
       result?.usage && typeof result.usage === "object" && !Array.isArray(result.usage)
@@ -1965,26 +2005,25 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       !resultHasActiveUsage &&
       claudeTotalProcessedTokens(resultUsageRecord) !== undefined;
     const resultIterationSnapshot = resultUsageRecord
-      ? normalizeClaudeActiveTokenUsage(
-          resultUsageRecord,
-          maxTokens,
-          accumulatedTotalProcessedTokens ?? context.lastKnownTotalProcessedTokens,
-        )
+      ? normalizeClaudeActiveTokenUsage(resultUsageRecord, maxTokens, totalProcessedTokens)
       : undefined;
     const lastGoodUsage = context.lastKnownTokenUsage;
     const usageSnapshot: ThreadTokenUsageSnapshot | undefined =
       contextUsageSnapshot ??
-      (resultTotalOnly && lastGoodUsage
+      ((resultTotalOnly ||
+        (context.compactionBaseline !== undefined &&
+          (!queryContextUsage || context.compactionBaseline.postTokens === undefined))) &&
+      lastGoodUsage
         ? {
             ...lastGoodUsage,
             ...(typeof maxTokens === "number" && Number.isFinite(maxTokens) && maxTokens > 0
               ? { maxTokens }
               : {}),
-            ...(typeof accumulatedTotalProcessedTokens === "number" &&
-            Number.isFinite(accumulatedTotalProcessedTokens) &&
-            accumulatedTotalProcessedTokens > lastGoodUsage.usedTokens
+            ...(typeof totalProcessedTokens === "number" &&
+            Number.isFinite(totalProcessedTokens) &&
+            totalProcessedTokens > lastGoodUsage.usedTokens
               ? {
-                  totalProcessedTokens: accumulatedTotalProcessedTokens,
+                  totalProcessedTokens,
                 }
               : {}),
           }
@@ -1995,11 +2034,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             ...(typeof maxTokens === "number" && Number.isFinite(maxTokens) && maxTokens > 0
               ? { maxTokens }
               : {}),
-            ...(typeof accumulatedTotalProcessedTokens === "number" &&
-            Number.isFinite(accumulatedTotalProcessedTokens) &&
-            accumulatedTotalProcessedTokens > lastGoodUsage.usedTokens
+            ...(typeof totalProcessedTokens === "number" &&
+            Number.isFinite(totalProcessedTokens) &&
+            totalProcessedTokens > lastGoodUsage.usedTokens
               ? {
-                  totalProcessedTokens: accumulatedTotalProcessedTokens,
+                  totalProcessedTokens,
                 }
               : {}),
           }
@@ -2711,16 +2750,22 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           context.lastKnownContextWindow,
           context.lastKnownTotalProcessedTokens,
         );
-        yield* emitThreadTokenUsage(context, compactedUsage, {
+        // An interrupted stream may not service control requests while it
+        // drains, so keep the same no-query guarantee as interrupt completion.
+        const resolvedCompactedUsage =
+          compactedUsage ??
+          (context.interruptedTurnIds.size === 0
+            ? yield* queryCurrentContextUsage(context, context.lastKnownTotalProcessedTokens)
+            : undefined);
+        yield* emitThreadTokenUsage(context, resolvedCompactedUsage, {
           rawMethod: "claude/system/compact_boundary",
           rawPayload: message,
         });
-        // A boundary we cannot size clears the baseline rather than leaving the
-        // previous one in place: the compaction still happened, so the old
-        // anchor now describes a context two generations back.
-        context.compactionBaseline = compactedUsage
-          ? { postTokens: compactedUsage.usedTokens, totalProcessedAtCompaction: undefined }
-          : undefined;
+        // A boundary we cannot size clears the old baseline and leaves an
+        // unknown marker so later estimates cannot reuse the prior epoch.
+        context.compactionBaseline = resolvedCompactedUsage
+          ? { postTokens: resolvedCompactedUsage.usedTokens, totalProcessedAtCompaction: undefined }
+          : { postTokens: undefined, totalProcessedAtCompaction: undefined };
         yield* offerRuntimeEvent({
           ...base,
           type: "thread.state.changed",
@@ -2780,22 +2825,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         });
         return;
       case "task_progress": {
-        // Anchor a pending compaction before reading the frame, so the first
-        // post-boundary reading measures zero growth rather than the whole
-        // session's cumulative total.
-        const baseline = context.compactionBaseline;
-        const progressTotalTokens = claudeTotalProcessedTokens(message.usage);
-        if (
-          baseline !== undefined &&
-          baseline.totalProcessedAtCompaction === undefined &&
-          progressTotalTokens !== undefined &&
-          progressTotalTokens > 0
-        ) {
-          context.compactionBaseline = {
-            ...baseline,
-            totalProcessedAtCompaction: progressTotalTokens,
-          };
-        }
         yield* emitThreadTokenUsage(
           context,
           normalizeClaudeTaskProgressTokenUsage(message.usage, context),
