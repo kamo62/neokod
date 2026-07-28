@@ -2669,6 +2669,78 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("keeps the context meter down after a compaction instead of ratcheting back up", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+
+      const runtimeEventsFiber = yield* Stream.takeUntil(
+        adapter.streamEvents,
+        (event) => event.type === "task.progress" && event.payload.taskId === "task-after-compact",
+      ).pipe(Stream.runCollect, Effect.forkChild);
+
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+
+      yield* adapter.sendTurn({
+        threadId: THREAD_ID,
+        input: "hello",
+        attachments: [],
+      });
+
+      // Fill the context, then compact it, then keep working. The cumulative
+      // total the SDK reports never drops, so only the compaction boundary
+      // tells us the live context shrank.
+      harness.query.emit({
+        type: "system",
+        subtype: "task_progress",
+        task_id: "task-before-compact",
+        description: "working",
+        usage: { total_tokens: 150_000 },
+      } as unknown as SDKMessage);
+
+      harness.query.emit({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { pre_tokens: 150_000, post_tokens: 30_000 },
+      } as unknown as SDKMessage);
+
+      harness.query.emit({
+        type: "system",
+        subtype: "task_progress",
+        task_id: "task-after-compact",
+        description: "still working",
+        usage: { total_tokens: 155_000 },
+      } as unknown as SDKMessage);
+
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      const usageEvents = runtimeEvents.filter(
+        (event) => event.type === "thread.token-usage.updated",
+      );
+
+      const compacted = usageEvents.at(-2);
+      assert.equal(compacted?.type, "thread.token-usage.updated");
+      if (compacted?.type === "thread.token-usage.updated") {
+        assert.equal(compacted.payload.usage.usedTokens, 30_000);
+      }
+
+      // 5k of new work on top of a 30k compacted context, not the 155k
+      // cumulative total. Before the compaction baseline existed this read
+      // 155000 and the meter snapped straight back to full.
+      const afterCompaction = usageEvents.at(-1);
+      assert.equal(afterCompaction?.type, "thread.token-usage.updated");
+      if (afterCompaction?.type === "thread.token-usage.updated") {
+        assert.equal(afterCompaction.payload.usage.usedTokens, 35_000);
+      }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect(
     "preserves oversized Claude result totals after task progress snapshots are recorded",
     () => {
