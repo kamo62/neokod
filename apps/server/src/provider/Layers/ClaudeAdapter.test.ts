@@ -2708,12 +2708,23 @@ describe("ClaudeAdapterLive", () => {
         compact_metadata: { pre_tokens: 150_000, post_tokens: 30_000 },
       } as unknown as SDKMessage);
 
+      // Anchors the baseline. Nothing measurable has been processed since the
+      // boundary, so this reads as the compacted size and is suppressed as
+      // unchanged rather than emitted again.
+      harness.query.emit({
+        type: "system",
+        subtype: "task_progress",
+        task_id: "task-anchoring",
+        description: "still working",
+        usage: { total_tokens: 155_000 },
+      } as unknown as SDKMessage);
+
       harness.query.emit({
         type: "system",
         subtype: "task_progress",
         task_id: "task-after-compact",
         description: "still working",
-        usage: { total_tokens: 155_000 },
+        usage: { total_tokens: 160_000 },
       } as unknown as SDKMessage);
 
       const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
@@ -2721,20 +2732,267 @@ describe("ClaudeAdapterLive", () => {
         (event) => event.type === "thread.token-usage.updated",
       );
 
-      const compacted = usageEvents.at(-2);
-      assert.equal(compacted?.type, "thread.token-usage.updated");
-      if (compacted?.type === "thread.token-usage.updated") {
-        assert.equal(compacted.payload.usage.usedTokens, 30_000);
-      }
+      const readings = usageEvents.flatMap((event) =>
+        event.type === "thread.token-usage.updated" ? [event.payload.usage.usedTokens] : [],
+      );
 
-      // 5k of new work on top of a 30k compacted context, not the 155k
-      // cumulative total. Before the compaction baseline existed this read
-      // 155000 and the meter snapped straight back to full.
-      const afterCompaction = usageEvents.at(-1);
-      assert.equal(afterCompaction?.type, "thread.token-usage.updated");
-      if (afterCompaction?.type === "thread.token-usage.updated") {
-        assert.equal(afterCompaction.payload.usage.usedTokens, 35_000);
-      }
+      // Before the compaction baseline existed the last reading was 160000 and
+      // the meter snapped straight back to full. 35000 is 5k of work measured
+      // from the anchor on top of the 30k compacted context.
+      assert.deepEqual(readings, [150_000, 30_000, 35_000]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("anchors a compaction that lands before any progress frame", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+
+      const runtimeEventsFiber = yield* Stream.takeUntil(
+        adapter.streamEvents,
+        (event) => event.type === "task.progress" && event.payload.taskId === "task-after-resume",
+      ).pipe(Stream.runCollect, Effect.forkChild);
+
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+
+      yield* adapter.sendTurn({
+        threadId: THREAD_ID,
+        input: "hello",
+        attachments: [],
+      });
+
+      // Stands in for a resumed session: the compaction arrives with no local
+      // progress frame behind it, so nothing on the cumulative scale is known
+      // yet. `pre_tokens` describes the discarded context, not the session
+      // total, and must not be used as the anchor.
+      harness.query.emit({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { pre_tokens: 50_000, post_tokens: 20_000 },
+      } as unknown as SDKMessage);
+
+      harness.query.emit({
+        type: "system",
+        subtype: "task_progress",
+        task_id: "task-after-resume",
+        description: "working",
+        usage: { total_tokens: 505_000 },
+      } as unknown as SDKMessage);
+
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      const readings = runtimeEvents.flatMap((event) =>
+        event.type === "thread.token-usage.updated" ? [event.payload.usage.usedTokens] : [],
+      );
+
+      // Anchoring on `pre_tokens` would read 20000 + (505000 - 50000) = 475000
+      // and snap the meter straight back to full.
+      assert.deepEqual(readings, [20_000]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("re-anchors on a second compaction rather than reusing the first", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+
+      const runtimeEventsFiber = yield* Stream.takeUntil(
+        adapter.streamEvents,
+        (event) => event.type === "task.progress" && event.payload.taskId === "task-third-epoch",
+      ).pipe(Stream.runCollect, Effect.forkChild);
+
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+
+      yield* adapter.sendTurn({
+        threadId: THREAD_ID,
+        input: "hello",
+        attachments: [],
+      });
+
+      const progress = (taskId: string, totalTokens: number) => ({
+        type: "system",
+        subtype: "task_progress",
+        task_id: taskId,
+        description: "working",
+        usage: { total_tokens: totalTokens },
+      });
+      const compaction = (preTokens: number, postTokens: number) => ({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { pre_tokens: preTokens, post_tokens: postTokens },
+      });
+
+      harness.query.emit(progress("task-first-epoch", 100_000) as unknown as SDKMessage);
+      harness.query.emit(compaction(100_000, 20_000) as unknown as SDKMessage);
+      harness.query.emit(progress("task-second-anchor", 105_000) as unknown as SDKMessage);
+      harness.query.emit(progress("task-second-epoch", 115_000) as unknown as SDKMessage);
+      harness.query.emit(compaction(30_000, 10_000) as unknown as SDKMessage);
+      harness.query.emit(progress("task-third-anchor", 120_000) as unknown as SDKMessage);
+      harness.query.emit(progress("task-third-epoch", 126_000) as unknown as SDKMessage);
+
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      const readings = runtimeEvents.flatMap((event) =>
+        event.type === "thread.token-usage.updated" ? [event.payload.usage.usedTokens] : [],
+      );
+
+      // Second epoch grows 10k from its own 20k floor, then the second
+      // compaction resets to 10k and growth is measured from the new anchor.
+      // Reusing the first baseline would have read 10000 + (126000 - 105000).
+      assert.deepEqual(readings, [100_000, 20_000, 30_000, 10_000, 16_000]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("holds the reading steady when a progress frame regresses", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+
+      const runtimeEventsFiber = yield* Stream.takeUntil(
+        adapter.streamEvents,
+        (event) => event.type === "task.progress" && event.payload.taskId === "task-regressed",
+      ).pipe(Stream.runCollect, Effect.forkChild);
+
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+
+      yield* adapter.sendTurn({
+        threadId: THREAD_ID,
+        input: "hello",
+        attachments: [],
+      });
+
+      harness.query.emit({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { pre_tokens: 100_000, post_tokens: 20_000 },
+      } as unknown as SDKMessage);
+
+      harness.query.emit({
+        type: "system",
+        subtype: "task_progress",
+        task_id: "task-anchor",
+        description: "working",
+        usage: { total_tokens: 100_000 },
+      } as unknown as SDKMessage);
+
+      harness.query.emit({
+        type: "system",
+        subtype: "task_progress",
+        task_id: "task-grown",
+        description: "working",
+        usage: { total_tokens: 110_000 },
+      } as unknown as SDKMessage);
+
+      // Lower than the previous frame. The floor must hold the meter at 30000
+      // rather than let it fall back to 25000.
+      harness.query.emit({
+        type: "system",
+        subtype: "task_progress",
+        task_id: "task-regressed",
+        description: "working",
+        usage: { total_tokens: 105_000 },
+      } as unknown as SDKMessage);
+
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      const readings = runtimeEvents.flatMap((event) =>
+        event.type === "thread.token-usage.updated" ? [event.payload.usage.usedTokens] : [],
+      );
+
+      assert.deepEqual(readings, [20_000, 30_000]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("clears the baseline when a compaction boundary cannot be sized", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+
+      const runtimeEventsFiber = yield* Stream.takeUntil(
+        adapter.streamEvents,
+        (event) => event.type === "task.progress" && event.payload.taskId === "task-after-bad",
+      ).pipe(Stream.runCollect, Effect.forkChild);
+
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+
+      yield* adapter.sendTurn({
+        threadId: THREAD_ID,
+        input: "hello",
+        attachments: [],
+      });
+
+      harness.query.emit({
+        type: "system",
+        subtype: "task_progress",
+        task_id: "task-before",
+        description: "working",
+        usage: { total_tokens: 100_000 },
+      } as unknown as SDKMessage);
+
+      harness.query.emit({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { pre_tokens: 100_000, post_tokens: 20_000 },
+      } as unknown as SDKMessage);
+
+      harness.query.emit({
+        type: "system",
+        subtype: "task_progress",
+        task_id: "task-anchor",
+        description: "working",
+        usage: { total_tokens: 105_000 },
+      } as unknown as SDKMessage);
+
+      // A second compaction we cannot size. Keeping the first baseline would
+      // measure growth from a context two generations back.
+      harness.query.emit({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { pre_tokens: 40_000, post_tokens: 0 },
+      } as unknown as SDKMessage);
+
+      harness.query.emit({
+        type: "system",
+        subtype: "task_progress",
+        task_id: "task-after-bad",
+        description: "working",
+        usage: { total_tokens: 130_000 },
+      } as unknown as SDKMessage);
+
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      const readings = runtimeEvents.flatMap((event) =>
+        event.type === "thread.token-usage.updated" ? [event.payload.usage.usedTokens] : [],
+      );
+
+      // Falls back to the uncorrected cumulative reading, which is the
+      // pre-existing behaviour for a boundary carrying no usable size. The
+      // stale baseline would instead have read 20000 + (130000 - 105000).
+      assert.deepEqual(readings, [100_000, 20_000, 130_000]);
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),

@@ -183,10 +183,17 @@ interface ClaudeTaskState {
  * the live context window while nothing has been discarded from it. After a
  * compaction the two diverge permanently, so growth is measured from the
  * boundary instead of read off the cumulative total.
+ *
+ * `totalProcessedAtCompaction` is filled by the first `task_progress` after the
+ * boundary rather than read at it. Nothing available at boundary time is
+ * reliably on the cumulative scale: `pre_tokens` measures the context we just
+ * discarded, and a resumed session has no local cumulative reading at all until
+ * a frame arrives. Anchoring on the first post-boundary frame costs only the
+ * work done in that short gap and cannot mix scales.
  */
 interface ClaudeCompactionBaseline {
   readonly postTokens: number;
-  readonly totalProcessedAtCompaction: number;
+  readonly totalProcessedAtCompaction: number | undefined;
 }
 
 interface ClaudeSessionContext {
@@ -210,7 +217,6 @@ interface ClaudeSessionContext {
   lastKnownContextWindow: number | undefined;
   lastKnownTokenUsage: ThreadTokenUsageSnapshot | undefined;
   lastKnownTotalProcessedTokens: number | undefined;
-  lastTaskProgressTotalTokens: number | undefined;
   compactionBaseline: ClaudeCompactionBaseline | undefined;
   lastAssistantUuid: string | undefined;
   lastThreadStartedId: string | undefined;
@@ -538,18 +544,17 @@ function normalizeClaudeTaskProgressTokenUsage(
 
   const baseline = context.compactionBaseline;
   const estimatedActiveTokens =
-    baseline !== undefined
+    baseline?.totalProcessedAtCompaction !== undefined
       ? baseline.postTokens + Math.max(0, totalTokens - baseline.totalProcessedAtCompaction)
-      : totalTokens;
+      : (baseline?.postTokens ?? totalTokens);
 
-  // Only ratchet within a compaction epoch. Across a boundary the previous
-  // reading describes a context that no longer exists, so holding the floor
-  // there would undo the compaction the user just asked for.
+  // The floor needs no compaction handling of its own: the boundary emits a
+  // snapshot of its own, so `lastUsedTokens` already describes the current
+  // epoch by the time any post-compaction frame is read.
   const lastUsedTokens = context.lastKnownTokenUsage?.usedTokens;
-  const ratchetFloor = baseline !== undefined ? baseline.postTokens : lastUsedTokens;
   const activeTokens =
-    ratchetFloor !== undefined
-      ? Math.max(estimatedActiveTokens, ratchetFloor)
+    lastUsedTokens !== undefined
+      ? Math.max(estimatedActiveTokens, lastUsedTokens)
       : estimatedActiveTokens;
   if (lastUsedTokens !== undefined && activeTokens === lastUsedTokens) {
     return undefined;
@@ -2710,18 +2715,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           rawMethod: "claude/system/compact_boundary",
           rawPayload: message,
         });
-        if (compactedUsage) {
-          context.compactionBaseline = {
-            postTokens: compactedUsage.usedTokens,
-            // Anchor on the cumulative scale `task_progress` actually reports.
-            // `pre_tokens` is the fallback for a compaction that lands before
-            // any progress snapshot; both describe the context we just left.
-            totalProcessedAtCompaction:
-              context.lastTaskProgressTotalTokens ??
-              compactedUsage.lastUsedTokens ??
-              compactedUsage.usedTokens,
-          };
-        }
+        // A boundary we cannot size clears the baseline rather than leaving the
+        // previous one in place: the compaction still happened, so the old
+        // anchor now describes a context two generations back.
+        context.compactionBaseline = compactedUsage
+          ? { postTokens: compactedUsage.usedTokens, totalProcessedAtCompaction: undefined }
+          : undefined;
         yield* offerRuntimeEvent({
           ...base,
           type: "thread.state.changed",
@@ -2781,6 +2780,22 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         });
         return;
       case "task_progress": {
+        // Anchor a pending compaction before reading the frame, so the first
+        // post-boundary reading measures zero growth rather than the whole
+        // session's cumulative total.
+        const baseline = context.compactionBaseline;
+        const progressTotalTokens = claudeTotalProcessedTokens(message.usage);
+        if (
+          baseline !== undefined &&
+          baseline.totalProcessedAtCompaction === undefined &&
+          progressTotalTokens !== undefined &&
+          progressTotalTokens > 0
+        ) {
+          context.compactionBaseline = {
+            ...baseline,
+            totalProcessedAtCompaction: progressTotalTokens,
+          };
+        }
         yield* emitThreadTokenUsage(
           context,
           normalizeClaudeTaskProgressTokenUsage(message.usage, context),
@@ -2789,12 +2804,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             rawPayload: message,
           },
         );
-        // Kept even when the snapshot above was suppressed as unchanged: the
-        // next compaction anchors its growth estimate to this running total.
-        const progressTotalTokens = claudeTotalProcessedTokens(message.usage);
-        if (progressTotalTokens !== undefined && progressTotalTokens > 0) {
-          context.lastTaskProgressTotalTokens = progressTotalTokens;
-        }
         yield* offerRuntimeEvent({
           ...base,
           type: "task.progress",
@@ -3744,7 +3753,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         lastKnownContextWindow: initialContextWindow,
         lastKnownTokenUsage: undefined,
         lastKnownTotalProcessedTokens: undefined,
-        lastTaskProgressTotalTokens: undefined,
         compactionBaseline: undefined,
         lastAssistantUuid: resumeState?.resumeSessionAt,
         lastThreadStartedId: undefined,
