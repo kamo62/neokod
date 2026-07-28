@@ -1,3 +1,9 @@
+## 3.5.3 - 2026-07-28 (Patch)
+
+Release impact: Patch because this corrects a Claude context-meter reading with no contract or storage changes.
+
+- The context meter no longer climbs back to its pre-compaction level after a `/compact`. Claude reports tokens processed across the whole session, which only tracks the live context while nothing has been discarded from it, so the meter dropped correctly at the compaction and then the next progress update pushed it straight back up. It typically showed as the meter going red, correcting to grey, then returning to red minutes later with no new context. The meter now measures growth from the compaction point, so it reflects what is actually in the context window.
+
 ## 3.5.2 - 2026-07-27 (Patch)
 
 Release impact: Patch because this settles provider turns left running after a restart without changing public contracts.
