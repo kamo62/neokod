@@ -244,6 +244,10 @@ function initRepo(
     yield* runGit(cwd, ["init", "--initial-branch=main"]);
     yield* runGit(cwd, ["config", "user.email", "test@example.com"]);
     yield* runGit(cwd, ["config", "user.name", "Test User"]);
+    // Auto-gc forks a process that keeps writing under .git after the command
+    // returns. These repos live in scoped temp directories, so that write can
+    // outlive the test body and make the recursive cleanup fail with ENOTEMPTY.
+    yield* runGit(cwd, ["config", "gc.auto", "0"]);
     yield* fs.writeFileString(NodePath.join(cwd, "README.md"), "hello\n");
     yield* runGit(cwd, ["add", "README.md"]);
     yield* runGit(cwd, ["commit", "-m", "Initial commit"]);
@@ -258,6 +262,7 @@ function createBareRemote(): Effect.Effect<
   return Effect.gen(function* () {
     const remoteDir = yield* makeTempDir("neokod-git-remote-");
     yield* runGit(remoteDir, ["init", "--bare"]);
+    yield* runGit(remoteDir, ["config", "gc.auto", "0"]);
     return remoteDir;
   });
 }
@@ -2246,6 +2251,9 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       yield* runGit(peerDir, ["clone", remoteDir, "."]);
       yield* runGit(peerDir, ["config", "user.email", "peer@example.com"]);
       yield* runGit(peerDir, ["config", "user.name", "Peer User"]);
+      // A clone starts with its own config, so it does not inherit the
+      // auto-gc suppression that `initRepo` applies.
+      yield* runGit(peerDir, ["config", "gc.auto", "0"]);
       NodeFS.writeFileSync(NodePath.join(peerDir, "remote.txt"), "remote\n");
       yield* runGit(peerDir, ["add", "remote.txt"]);
       yield* runGit(peerDir, ["commit", "-m", "Remote base commit"]);
