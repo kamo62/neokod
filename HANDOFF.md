@@ -84,6 +84,25 @@ distributable binaries live in Releases and are never touched). Checked
 2026-07-27: three artifacts totalling 87KB, so the old 20GB problem is
 structurally gone now that binaries route to Releases rather than Actions.
 
+### In flight
+
+**3.5.3 — Claude context meter ratchet. PR #58, open, not yet released.**
+Adapted from upstream #4650. `task_progress` reports tokens processed across the
+whole session, which only tracks the live context while nothing has been
+discarded from it, so `normalizeClaudeTaskProgressTokenUsage` used the cumulative
+total as the active context size under a monotonic floor. `compact_boundary`
+dropped the reading to `post_tokens` correctly and the next `task_progress` then
+snapped it back up. The fix records a baseline at each compaction and measures
+growth from it, and scopes the ratchet to a single compaction epoch.
+
+Note for anyone touching this: the obvious anchor for "cumulative total at the
+boundary" is `totalProcessedTokens`, and it does not work.
+`makeClaudeTokenUsageSnapshot` omits that field when it is not greater than
+`usedTokens`, so it is absent in exactly the case that matters. A first pass used
+it, the baseline silently collapsed to `post_tokens`, and the regression test
+still read the unfixed value. The baseline anchors on the last observed
+`task_progress` total instead, with `pre_tokens` as fallback.
+
 ### Shipped: v3.4.0 — Auto runtime mode (PR #51)
 
 **Released 2026-07-26 17:28 UTC.** Merge commit `f163dbe32`, tag `v3.4.0`,
@@ -179,11 +198,37 @@ assumption is the one thing that can invalidate the phase and the spec itself li
 it unvalidated. **Round 6 is unreviewed.** Build in slices, after a review passes.
 
 Relevant: upstream issue **#4456** (sub-agent UI segmentation) is effectively the
-gateway's UI half. Fable and sol independently found the rest of it unbuildable
-today — sub-agents are only `task.*` activities stamped with the parent's threadId,
-no "queued" state exists in any provider, and per-agent file attribution is
-impossible on a shared worktree. The one buildable slice, the worker-count badge,
-shipped in v3.5.0.
+gateway's UI half. The one buildable slice, the worker-count badge, shipped in
+v3.5.0.
+
+**REVISED 2026-07-28. The "rest of it is unbuildable" conclusion no longer
+holds.** Fable and sol independently reached it from the constraints that
+sub-agents are only `task.*` activities stamped with the parent's threadId, that
+no "queued" state exists in any provider, and that per-agent file attribution is
+impossible on a shared worktree. Those readings of our code were accurate. The
+conclusion drawn from them was that the missing model could not be built, and
+upstream is now building it.
+
+Five stacked PRs, open as of 2026-07-28, replacing an earlier ~3,100-line single
+PR (#4551) that bundled the lot: **#4626** data model, storage and migration 043;
+**#4629** populate from providers; **#4662** attribute reused subagents to the run
+driving them; **#4663** the Agents panel; **#4664** hide subagent threads from
+user-facing lists. #4626 introduces exactly the identity layer we found missing:
+per-activation records (`SubagentActivationId`, `OrchestrationV2SubagentActivation`),
+cumulative usage, a role, and an `idle` state a subagent can rest at between
+activations, bridged to turn item status by an explicit total `Record` so adding a
+status without giving it a timeline meaning is a compile error.
+
+Read #4626's own writeup before porting anything. It documents that an earlier
+iteration copied the raw status through, wrote a `turn-item.updated` event its own
+schema could not decode, and bricked the server at startup on projection rebuild
+with no in-app recovery. That is the failure mode this area actually has.
+
+This does not make the Agent Gateway redundant, since the gateway is about
+creating and coordinating real cross-provider tasks rather than displaying
+provider-native ones. It does mean the gateway's UI half has an upstream
+reference implementation to compare against, and that a re-survey should precede
+any further gateway work.
 
 ### Upstream bug ports — status as of 2026-07-27
 
@@ -228,11 +273,78 @@ deliberately expires at 30 minutes idle / 8 hours absolute while every
 authenticated request refreshes `lastUsedAt`, so the claim needs observation across
 the boundary).
 
-### START HERE — next work, in order (survey + verification done 2026-07-27)
+All three were still open upstream on 2026-07-28. #4452 has gained reporters on
+0.0.29, including one on a direct Anthropic connection with no proxy and
+`ANTHROPIC_BASE_URL` unset, which weakens the network-path theory.
+
+### New upstream issues, surveyed 2026-07-28
+
+Checked against our tree. **None of these has a fix PR upstream**, so there is
+nothing to wait for on any of them.
+
+- **#4650 context meter ratchet — CONFIRMED in our code, fixed in PR #58.** See
+  "In flight" above.
+- **#4693 `@formkit/auto-animate` burns ~24% CPU permanently on an idle app —
+  surface matches, not yet measured here.** We carry
+  `@formkit/auto-animate@^0.9.0` (`apps/web/package.json:24`), used at
+  `Sidebar.tsx:3697` and `:3706` on permanently mounted lists, which is the
+  reporter's exact configuration. Their trace attributes 245 `TimerFire`/s and 122
+  `requestIdleCallback`/s to the library's position polling rather than to app JS.
+  Measure locally before acting; the fix direction is to drop the dependency for
+  the two sidebar lists, not to tune its options.
+- **#4713 thread stuck `running` after interrupt, stop becomes a no-op — one
+  matching row in our own state DB.** Their detection query, run against
+  `~/.neokod/userdata/state.sqlite` on 2026-07-28, returns thread
+  `514e9589-7f71-4ba1-8bf6-8d7c59af0c6f`: session `running`, active turn
+  `opencode-turn-65197929…` already `completed` at 2026-05-17. Two caveats before
+  weighting it: it is OpenCode rather than Claude, and it predates both the
+  3.0.25 stop-settles fix and the v3.5.2 reconciler, so it may already be closed.
+
+  What is **not** closed either way: the v3.5.2 reconciler settles only when a
+  projected _running_ turn agrees with a running session. This shape is a terminal
+  turn under a running session, so the reconciler skips it by design. #4713's
+  suggested secondary guard, refusing to hold `active_turn_id` on a turn already
+  in a terminal state, is genuinely additive to what we shipped. Re-run the query
+  before building; it is the cheapest evidence available.
+
+  ```sql
+  SELECT s.thread_id, tu.state, tu.completed_at
+    FROM projection_thread_sessions s
+    JOIN projection_turns tu ON tu.turn_id = s.active_turn_id
+   WHERE s.status = 'running'
+     AND tu.state IN ('interrupted','completed','error')
+     AND tu.completed_at IS NOT NULL;
+  ```
+
+Filed upstream in the last day and not yet checked against our tree: **#4710**
+OpenCode skill approval never shows and the thread hangs (note **PR #4709** "Fix
+OpenCode permission approval mapping" is open in the same area, filed an hour
+before the issue, so check whether it covers it), **#4683** background Codex memory
+activity appearing in the active conversation, **#4673** queued prompts interacting
+badly with questions, **#4658** project-level `.claude/commands` not discovered
+because the capability probe uses server cwd rather than the project (adjacent to
+the #4414 skills work in item 3), **#4696** Claude docs still describing HOME-based
+config dirs after the switch to `CLAUDE_CONFIG_DIR`.
+
+Also open upstream and mapping onto the FORK.md platform backlog rather than onto
+a bug: **#4630** cross-harness skill manager, **#4634** cross-harness MCP server
+manager. **#4621** fixes #4524, which we already shipped in v3.4.1; their approach
+routes the failure into an existing `provider.turn.interrupt.failed` activity via
+`Effect.catchCause`, which is cheap to diff against ours.
+
+### START HERE — next work, in order (survey 2026-07-27, re-surveyed 2026-07-28)
 
 An upstream and Synara survey was run, then verified by sol against our code. The
 findings below are **measured, not assumed** — reproduce a number before doubting
 it, but do not redo the survey.
+
+**Re-survey delta, 2026-07-28.** All three numbered items below have since merged
+upstream: #4622 (item 1), #4411 (item 2), #4414 (item 3). The verdicts below are
+unchanged by that, since each already said what to take and what to leave, but
+there is now a reference implementation to diff against rather than a PR
+description to reason from. Upstream also shipped **v0.0.29** on 2026-07-27, its
+first stable in a while, and nightlies continue past it. Most of that release is
+mobile, Clerk, Android and T3 Connect work that the local-first policy excludes.
 
 **1. Adapted upstream #4622 — prune activity payloads. Highest value, ready to build.**
 
@@ -284,6 +396,23 @@ Note: this will **not** fix a server-side heap OOM, because the server has alrea
 selected and decoded every full payload before projection. It improves client
 startup and WS framing. Loopback removes the WAN benefit, not the CPU/memory one.
 
+**Read upstream #4705 before starting this.** It is open as of 2026-07-28 and
+filed explicitly as the follow-up to #4622: negotiate `permessage-deflate` on the
+WebSocket, via `pnpm patch` entries against `@effect/platform-node` and
+`@effect/platform-bun`, with context takeover left on so the compression window
+is shared across frames. Their measurement, replaying 500 real
+`thread.activity-appended` frames and counting raw TCP bytes: pruned frames
+compress 4.0x, unpruned 3.7x, cold-open snapshots closer to 10x.
+
+That reorders the case for item 1. Compression gets most of the wire-size win
+without touching payload semantics at all, so it carries none of the "a new
+provider field is silently deleted at a client boundary" risk that drove the
+denylist-over-allowlist decision above. Pruning still wins on client CPU and
+memory, which compression does not touch, and the two compose. If the goal is
+bytes on the wire, compression is the cheaper and safer first move; if the goal
+is client startup cost, pruning is still the one that matters. Decide which
+problem is actually being solved before building either.
+
 **2. Upstream #4411 — new threads inherit the viewed thread's branch and worktree.**
 Present in our code at `apps/web/src/lib/chatThreadActions.ts:60-79`, which
 explicitly copies `branch` and `worktreePath`. Fix the shared local action narrowly.
@@ -315,6 +444,37 @@ discovery fits us. Do not import upstream UI or pnpm artifacts.
   which is the useful outcome. Also excluded by the local-first policy: upstream
   #4635 and #4530 managed tunnel limits, #4556 Tailscale dev sharing, #4440 Clerk.
 
+### Synara — re-survey 2026-07-28
+
+v0.6.2 (2026-07-27) shipped #472 above. **v0.6.3 (2026-07-27) is the one worth
+reading**, because it hardens turn settlement in the same places we have now been
+twice:
+
+- Claude retains the last turn id on the session context, so a terminal result
+  arriving without live turn state can still name the turn it settles. Runtime
+  ingestion drops an unattributable terminal event, which stranded the projection
+  in `running` forever. **This is the SDK no-turn-id residual we documented as
+  unresolved in the stop-settles-turn fix.**
+- Two-lane orchestration admission, merged from contributor PR #476: control
+  commands (stop, interrupt) get a dedicated queue polled ahead of the normal
+  lane, so a saturated normal queue can no longer starve a stop.
+- Provider commands are bounded per attempt and a timed-out one settles as
+  uncertain, because their delivery lock is single-permit and process-wide, making
+  a hung attempt a total outage rather than one stuck thread.
+- An urgent control-plane lifecycle variant waits a bounded time for the
+  per-thread lock and then proceeds without it, so a provider start that never
+  returns cannot hold an interrupt hostage.
+
+**Do not port the bounding work without reading Synara #483 first.** Filed
+2026-07-28: ACP providers (Cursor and Grok confirmed) return empty turns since
+v0.6.3, because the `startSession` timeout interrupts the `session/update`
+consumer. Their timeout hardening shipped a regression in the same release. The
+retained-turn-id change is the part with the clearest value and the least
+coupling to that mistake.
+
+Also open there and in the same family as upstream #4713: Synara **#465**, thread
+stays "working" after the assistant finishes, Cancel does nothing.
+
 **Excluded by policy generally:** anything about hosted or remote server
 management. We removed cloud, Clerk, hosted pairing, relay, SSH/Tailscale and the
 auth/session control plane.
@@ -329,6 +489,18 @@ auth/session control plane.
   product shipped through 3.4.0, so anyone inspecting a package gets a wrong
   answer. Decide whether to sync them to the changelog on release or drop the
   field; do not half-fix by bumping once by hand. Parked deliberately 2026-07-26.
+- **Renumbering to track upstream was considered and rejected, 2026-07-28.** The
+  question was whether to move our 3.x line closer to upstream's 0.0.x. We ship an
+  auto-updater with published `latest-mac.yml` / `latest.yml`, and electron-updater
+  compares semver and will not offer a lower version (`allowDowngrade` defaults to
+  false), so renumbering downward strands every existing install permanently with
+  no in-app path back. That is decisive on its own. Secondarily, version parity
+  would imply a correspondence that does not exist: we are a hard fork that
+  cherry-picks individual upstream fixes, not a tracking fork, so a Neokod
+  "0.0.29" would not be upstream's 0.0.29. If the goal is making the relationship
+  legible, state the baseline ("Neokod 3.5.3, based on T3 Code 0.0.29") in the
+  About dialog and at the top of the changelog rather than encoding it in the
+  version. Do not reopen this without a plan for the stranded-installs problem.
 - `formatSubagentUsage` test hardcodes US number formatting (`1,234 tok`) and fails
   under locales using a space separator. Fix the test, not the formatter. Confirmed
   still failing locally on 2026-07-26; it passes in CI because the runner is en-US.
@@ -348,7 +520,8 @@ auth/session control plane.
 
 | Branch                                     | Where            | Status                                                                                                          |
 | ------------------------------------------ | ---------------- | --------------------------------------------------------------------------------------------------------------- |
-| `main`                                     | local + `neokod` | Ships. v3.5.2.                                                                                                  |
+| `main`                                     | local + `neokod` | Ships. v3.5.2 released; 3.5.3 pending in PR #58.                                                                |
+| `fix/claude-context-meter-compaction`      | local + `neokod` | PR #58, open. Context meter ratchet, upstream #4650.                                                            |
 | `docs/agent-gateway-spec-round3`           | local + `neokod` | Branch name says round3; content is **round 6** (`15a101031`). Unreviewed. Do not build until a review passes.  |
 | `feat/diff-pane-review`                    | local + `neokod` | Closed PR #34, kept in case it is reintroduced.                                                                 |
 | `wip/copilot-evidence-sink-simplification` | local + `neokod` | The other session's work, preserved.                                                                            |
@@ -356,8 +529,9 @@ auth/session control plane.
 | `feat/client-identity-enrolment`           | local only       | Checked out in the `~/Code/t3code-slice1` worktree. Merged.                                                     |
 | `org/copilot-claude`                       | local + `origin` | Older fork line. Local `5424488b3` is contained in `main`; `origin/org/copilot-claude` is ahead at `f4ace8bd0`. |
 
-Branches for merged PRs #51 through #56 were deleted on both sides. Delete local
-branches only after confirming `git branch --merged main` lists them.
+Branches for merged PRs #51 through #57 were deleted on both sides, `docs/handoff-3.5.2`
+(PR #57) included. Delete local branches only after confirming
+`git branch --merged main` lists them.
 
 **Correction to the previous entry for `feat/browser-test-lane`.** It was recorded
 as "1 commit ahead of main, review-clean, never pushed", which is true and
