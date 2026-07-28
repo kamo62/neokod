@@ -10,7 +10,7 @@ sync:
 
 | Remote     | Repo               | Contents                                                    |
 | ---------- | ------------------ | ----------------------------------------------------------- |
-| `neokod`   | `kamo62/neokod`    | The live product. `main` is what ships. Currently v3.5.1.   |
+| `neokod`   | `kamo62/neokod`    | The live product. `main` is what ships. Currently v3.5.2.   |
 | `origin`   | `kamo62/t3code`    | The older AI-Orch-governed line. Only `org/copilot-claude`. |
 | `upstream` | `pingdotgg/t3code` | Fetch only; push disabled.                                  |
 
@@ -72,6 +72,12 @@ upstream #4456. PR #53.
 directory is already gone, and bulk thread delete finishes instead of aborting at
 the first failure, reporting how many succeeded plus each failure and its reason.
 Upstream #4513. PR #54.
+
+**v3.5.2** (released 2026-07-28) — a turn could stay stuck as running forever
+after a restart. Provider lifecycle events arrive on a live stream that is never
+replayed, so a provider that exited while the server was down never delivered the
+event that settles the turn. Startup now makes one conservative reconciliation
+pass. Upstream #4561. PR #56.
 
 Build artifacts are pruned after each release (Actions storage, not local disk;
 distributable binaries live in Releases and are never touched). Checked
@@ -202,8 +208,7 @@ from the full list. The real fix is migrating the hydration path to the
 cursor-based route, which is a rewrite of the turn-snapshot builder, not a
 parameter change.
 
-- **#4561 stopped sessions block settling after restart — FIXED in PR #56**
-  (3.5.2). Provider lifecycle events arrive on a hot stream with no replay, so a
+- **#4561 stopped sessions block settling after restart — FIXED, shipped in v3.5.2** (PR #56). Provider lifecycle events arrive on a hot stream with no replay, so a
   provider that exited while the server was down never delivered the event that
   settles the turn, and the turn stayed running forever. Startup now runs one
   reconciliation pass (`apps/server/src/provider/Services/ProviderSessionReconciler.ts`
@@ -343,8 +348,7 @@ auth/session control plane.
 
 | Branch                                     | Where            | Status                                                                                                          |
 | ------------------------------------------ | ---------------- | --------------------------------------------------------------------------------------------------------------- |
-| `main`                                     | local + `neokod` | Ships. v3.5.1.                                                                                                  |
-| `fix/reconcile-unsettled-turns-on-restart` | local + `neokod` | **PR #56, open, green.** #4561 fix. Merging it releases 3.5.2.                                                  |
+| `main`                                     | local + `neokod` | Ships. v3.5.2.                                                                                                  |
 | `docs/agent-gateway-spec-round3`           | local + `neokod` | Branch name says round3; content is **round 6** (`15a101031`). Unreviewed. Do not build until a review passes.  |
 | `feat/diff-pane-review`                    | local + `neokod` | Closed PR #34, kept in case it is reintroduced.                                                                 |
 | `wip/copilot-evidence-sink-simplification` | local + `neokod` | The other session's work, preserved.                                                                            |
@@ -352,7 +356,7 @@ auth/session control plane.
 | `feat/client-identity-enrolment`           | local only       | Checked out in the `~/Code/t3code-slice1` worktree. Merged.                                                     |
 | `org/copilot-claude`                       | local + `origin` | Older fork line. Local `5424488b3` is contained in `main`; `origin/org/copilot-claude` is ahead at `f4ace8bd0`. |
 
-Branches for merged PRs #51 through #55 were deleted on both sides. Delete local
+Branches for merged PRs #51 through #56 were deleted on both sides. Delete local
 branches only after confirming `git branch --merged main` lists them.
 
 **Correction to the previous entry for `feat/browser-test-lane`.** It was recorded
