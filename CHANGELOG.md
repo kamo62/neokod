@@ -1,3 +1,9 @@
+## 3.5.2 - 2026-07-27 (Patch)
+
+Release impact: Patch because this settles provider turns left running after a restart without changing public contracts.
+
+- A turn could stay stuck as running forever after a restart, with nothing able to settle it. Provider lifecycle events arrive on a live stream that is never replayed, so if a provider exited while the server was down, the event that settles the turn never arrived. Startup now makes one reconciliation pass and settles such a turn as interrupted, keeping the provider's error message only when it belongs to that exact turn. A turn whose provider is still running is left alone.
+
 ## 3.5.1 - 2026-07-27 (Patch)
 
 Release impact: Patch because this makes deletion cleanup idempotent and bulk-delete reporting accurate, with no contract changes.

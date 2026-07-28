@@ -10,7 +10,7 @@ sync:
 
 | Remote     | Repo               | Contents                                                    |
 | ---------- | ------------------ | ----------------------------------------------------------- |
-| `neokod`   | `kamo62/neokod`    | The live product. `main` is what ships. Currently v3.5.0.   |
+| `neokod`   | `kamo62/neokod`    | The live product. `main` is what ships. Currently v3.5.1.   |
 | `origin`   | `kamo62/t3code`    | The older AI-Orch-governed line. Only `org/copilot-claude`. |
 | `upstream` | `pingdotgg/t3code` | Fetch only; push disabled.                                  |
 
@@ -19,11 +19,11 @@ in neokod `main`**. Everything from "What this fork is" downward describes _that
 line, not `main`. Do not assume a file or behaviour documented in the lower half
 exists on `main` without checking.
 
-Claims here were verified against git and GitHub on **2026-07-27**. Anything
+Claims here were verified against git and GitHub on **2026-07-28**. Anything
 carrying an older date is a historical record of that session, not a statement
 about the current tree. When this file and `git` disagree, trust `git`.
 
-## Current state (2026-07-27) — neokod track
+## Current state (2026-07-28) — neokod track
 
 Everything below concerns the neokod provider/UI/gateway track. The AI-Orch
 governance track continues from "Local-first carve-out" onward and is unchanged.
@@ -67,6 +67,11 @@ nothing able to resolve it. PR #52.
 server-side as an optional `OrchestrationThreadShell.workerCount` with migration
 `034`, following the `pendingApprovalCount` precedent. The one buildable slice of
 upstream #4456. PR #53.
+
+**v3.5.1** (released 2026-07-27) — worktree removal is idempotent when the
+directory is already gone, and bulk thread delete finishes instead of aborting at
+the first failure, reporting how many succeeded plus each failure and its reason.
+Upstream #4513. PR #54.
 
 Build artifacts are pruned after each release (Actions storage, not local disk;
 distributable binaries live in Releases and are never touched). Checked
@@ -197,15 +202,17 @@ from the full list. The real fix is migrating the hydration path to the
 cursor-based route, which is a rewrite of the turn-snapshot builder, not a
 parameter change.
 
-Still open:
-
-- **#4561 stopped sessions block settling after restart — CONFIRMED, unfixed.**
-  Provider lifecycle events arrive on a hot stream with no replay
-  (`ProviderRuntimeIngestion.ts:1704-1718`), and `session.exited` is what
-  dispatches the stopped projection state. Startup only starts reactors and the
-  reaper; projection bootstrap replays events into projectors only. So an exit
-  missed before restart leaves a running projected turn permanently unsettled, and
-  the reaper skips persisted stopped bindings.
+- **#4561 stopped sessions block settling after restart — FIXED in PR #56**
+  (3.5.2). Provider lifecycle events arrive on a hot stream with no replay, so a
+  provider that exited while the server was down never delivered the event that
+  settles the turn, and the turn stayed running forever. Startup now runs one
+  reconciliation pass (`apps/server/src/provider/Services/ProviderSessionReconciler.ts`
+  holds the pure planner; the layer is under `Layers/`). It settles only when a
+  projected running turn and a running session agree on the same `activeTurnId`, no
+  live provider session exists, and a durable binding for the same provider is
+  stopped or errored. Settlement goes through a `thread.session.set` domain command,
+  never a projection write. Startup-only by design; add periodicity only if
+  same-process pump loss is reproduced.
 
 **Undetermined — reading cannot settle these, they need runtime reproduction:**
 #4560 cross-project context leakage (still the highest severity if real; reproduce
@@ -215,6 +222,97 @@ Claude version and captured SDK frames), #4463 MCP bearer idle expiry (the regis
 deliberately expires at 30 minutes idle / 8 hours absolute while every
 authenticated request refreshes `lastUsedAt`, so the claim needs observation across
 the boundary).
+
+### START HERE — next work, in order (survey + verification done 2026-07-27)
+
+An upstream and Synara survey was run, then verified by sol against our code. The
+findings below are **measured, not assumed** — reproduce a number before doubting
+it, but do not redo the survey.
+
+**1. Adapted upstream #4622 — prune activity payloads. Highest value, ready to build.**
+
+Measured on the live state DB (`~/.neokod/userdata/state.sqlite`, query
+`projection_thread_activities`): 1,140 activity rows, 1,545,858 payload bytes.
+`tool.completed` is 73.9% and `tool.updated` 20.3%, so tool activities are **94.2%**
+of all payload bytes. One thread alone carries 636 KB. Within them, the
+**unread `data.state` field is 1,110,122 bytes — 71.8% of all activity payload
+text.** `task.progress` is only 1.54%, so the Copilot delta-dropping decision is
+working.
+
+Cause: tool `data` crosses ingestion unchanged while `detail` is capped at 180
+chars (`ProviderRuntimeIngestion.ts:566-604`); Codex copies whole notification
+payloads into `data` (`CodexAdapter.ts:454-488`); Claude puts full tool input and
+result in both updated and completed (`ClaudeAdapter.ts:2415-2491`); ACP retains
+`rawInput`/`rawOutput`/`content` (`AcpRuntimeModel.ts:308-379`). The whole payload
+crosses the HTTP snapshot (`orchestration/http.ts:55-70`), WS live/catch-up/snapshot
+(`ws.ts:967-1052`), and replay (`ws.ts:856-876`), and activity queries select every
+`payload_json` with no row limit (`ProjectionSnapshotQuery.ts:823-845`, `:2028-2042`).
+
+**Do NOT port upstream's patch.** Its projector keeps a narrow allowlist (command
+fragments, `toolCallId`, `kind`, summarised `rawOutput`) and drops fields we
+visibly render, including non-MCP tool input/output and `toolName`. Its test targets
+upstream web and removed mobile code.
+
+Build a **denylist** instead: remove only verified-unread bulk, starting with
+`data.state`, pass every other key through, and apply it at all of the HTTP,
+replay, catch-up, live-event and snapshot boundaries. That alone targets ~72% of
+payload bytes. A closed allowlist is unsafe here because `payload` is
+`Schema.Unknown`, so a new provider field would be silently deleted at every client
+boundary with no schema error — labels or controls could vanish after a reconnect.
+Guard it to known tool activities and add before/after equality checks for work-log
+derivation and expanded tool bodies.
+
+Fields our web client actually reads, verified, so do not prune these: approvals
+`requestId`/`requestKind`/`requestType`/`detail` (`session-logic.ts:395-444`); user
+input `requestId`/`questions[]` and nested question fields (`:451-543`); plans
+`plan[].step`/`status`/`explanation` (`:550-604`); tasks `taskId`/`detail`/
+`description`/`model`/`taskType`/`agentId`/`summary`/`lastToolName`/`usage`/`status`
+(`:733-821`); errors `message`/`detail.message`/`errorCode`/`statusCode`/`errorType`
+(`:858-875`); tools `itemType`/`status`/`detail`/`title` and under `data`
+`toolName`/`kind`/`input`/`rawInput`/`rawOutput`/`item`/`toolCallId`/`command` plus
+nested command/result/exit-code and path-like fields (`:877-981`, `:1271-1537`);
+expanded rows render full input/output/MCP data
+(`MessagesTimeline.logic.ts:179-208`); context-window counters
+(`lib/contextWindow.ts:50-90`).
+
+Note: this will **not** fix a server-side heap OOM, because the server has already
+selected and decoded every full payload before projection. It improves client
+startup and WS framing. Loopback removes the WAN benefit, not the CPU/memory one.
+
+**2. Upstream #4411 — new threads inherit the viewed thread's branch and worktree.**
+Present in our code at `apps/web/src/lib/chatThreadActions.ts:60-79`, which
+explicitly copies `branch` and `worktreePath`. Fix the shared local action narrowly.
+Do NOT take upstream's 14-file UI diff; it violates the local-first UI policy.
+
+**3. Upstream #4414 — Claude skills in the composer `$` picker. Later, server-only.**
+Claude probing returns models and slash commands but no skills
+(`ClaudeProvider.ts:759-766`, `:903-965`), while the composer already consumes
+provider skills for `$` search (`ChatComposer.tsx:1071-1084`). Local filesystem
+discovery fits us. Do not import upstream UI or pnpm artifacts.
+
+**Do NOT do these, with reasons:**
+
+- **#4457 Codex approval reviewer replays.** It changes only 25 orchestration-v2
+  NDJSON fixtures, no production code, and we do not have that replay harness. Our
+  unconditional `approvalsReviewer` is correct and our unit expectations already
+  agree (`CodexSessionRuntime.ts:265-297`, `CodexSessionRuntime.test.ts:90-222`).
+  This was checked specifically because 3.4.0 changed that behaviour — we did not
+  break anything.
+- **#4413 keep settled threads reachable.** Our sidebar already forces an active
+  thread into the visible preview beyond the preview limit
+  (`Sidebar.logic.ts:526-570`); upstream's `SidebarV2` target does not exist here.
+- **#4640 files panel truncation.** Separate concern: workspace indexing has an
+  explicit 25,000-entry cap and returns a truncation flag
+  (`WorkspaceSearchIndex.ts:15-16`, `:288-299`). Activity projection cannot fix it.
+- **Synara #472 reconcile stale live thread projections.** Synara already had a
+  `ProviderRuntimeReconciler` before that PR; #472 only hardens it, and we have no
+  reconciler for it to patch. Its _pre-existing_ design informed our #4561 fix,
+  which is the useful outcome. Also excluded by the local-first policy: upstream
+  #4635 and #4530 managed tunnel limits, #4556 Tailscale dev sharing, #4440 Clerk.
+
+**Excluded by policy generally:** anything about hosted or remote server
+management. We removed cloud, Clerk, hosted pairing, relay, SSH/Tailscale and the
+auth/session control plane.
 
 ### Smaller known items
 
@@ -241,21 +339,21 @@ the boundary).
 - 9 `pre-rebase-*` snapshots were verified disposable and deleted: the only
   substantive commit (`ba938a579`, thread goal + goalStatus) is already on main.
 
-### Branch inventory (verified 2026-07-27, after the v3.5.0 release)
+### Branch inventory (verified 2026-07-28)
 
-| Branch                                     | Where            | Status                                                                                                                                                           |
-| ------------------------------------------ | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `main`                                     | local + `neokod` | Ships. At `fd419855c` (v3.5.0).                                                                                                                                  |
-| `docs/agent-gateway-spec-round3`           | local + `neokod` | Branch name says round3; content is **round 6** (`15a101031`). Unreviewed. Do not build until a review passes.                                                   |
-| `fix/bulk-delete-missing-worktree`         | local + `neokod` | PR #54, open. Upstream #4513.                                                                                                                                    |
-| `feat/diff-pane-review`                    | local + `neokod` | Closed PR #34, kept in case it is reintroduced.                                                                                                                  |
-| `wip/copilot-evidence-sink-simplification` | local + `neokod` | The other session's work, preserved.                                                                                                                             |
-| `feat/browser-test-lane`                   | **local only**   | See the correction below. Needs a rebase, not a push. **Exists on this machine only.**                                                                           |
-| `feat/client-identity-enrolment`           | local only       | Checked out in the `~/Code/t3code-slice1` worktree. Merged.                                                                                                      |
-| `org/copilot-claude`                       | local + `origin` | The older fork line. Local is at `5424488b3` and is contained in `main`; `origin/org/copilot-claude` is ahead at `f4ace8bd0` with 31 commits absent from `main`. |
+| Branch                                     | Where            | Status                                                                                                          |
+| ------------------------------------------ | ---------------- | --------------------------------------------------------------------------------------------------------------- |
+| `main`                                     | local + `neokod` | Ships. v3.5.1.                                                                                                  |
+| `fix/reconcile-unsettled-turns-on-restart` | local + `neokod` | **PR #56, open, green.** #4561 fix. Merging it releases 3.5.2.                                                  |
+| `docs/agent-gateway-spec-round3`           | local + `neokod` | Branch name says round3; content is **round 6** (`15a101031`). Unreviewed. Do not build until a review passes.  |
+| `feat/diff-pane-review`                    | local + `neokod` | Closed PR #34, kept in case it is reintroduced.                                                                 |
+| `wip/copilot-evidence-sink-simplification` | local + `neokod` | The other session's work, preserved.                                                                            |
+| `feat/browser-test-lane`                   | **local only**   | See the correction below. Needs a rebase, not a push. **Exists on this machine only.**                          |
+| `feat/client-identity-enrolment`           | local only       | Checked out in the `~/Code/t3code-slice1` worktree. Merged.                                                     |
+| `org/copilot-claude`                       | local + `origin` | Older fork line. Local `5424488b3` is contained in `main`; `origin/org/copilot-claude` is ahead at `f4ace8bd0`. |
 
-`feat/auto-runtime-mode`, `fix/upstream-verified-ports` and `feat/worker-count-badge`
-were deleted on both sides after their PRs merged (#51, #52, #53).
+Branches for merged PRs #51 through #55 were deleted on both sides. Delete local
+branches only after confirming `git branch --merged main` lists them.
 
 **Correction to the previous entry for `feat/browser-test-lane`.** It was recorded
 as "1 commit ahead of main, review-clean, never pushed", which is true and
