@@ -7,7 +7,11 @@
 
 ## Project Snapshot
 
-Neokod is a minimal web GUI for using coding agents like Codex and Claude.
+Neokod is a local-first desktop app, and a self-hostable web server, for driving coding-agent CLIs:
+Codex, Claude, Copilot, Cursor, Grok and OpenCode. It is a hard fork of `pingdotgg/t3code` and has
+diverged: cloud, Clerk auth, hosted pairing, relay and the mobile app were removed in the 2.0.0
+local-first carve-out. Treat upstream docs and issues as a reference, not as a description of this
+codebase.
 
 This repository is a VERY EARLY WIP. Proposing sweeping changes that improve long-term maintainability is encouraged.
 
