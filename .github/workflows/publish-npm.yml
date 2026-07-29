@@ -25,6 +25,12 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
+      # `npm publish --provenance` signs the build via OIDC, which needs a token
+      # this job can mint. Without it npm fails the publish outright rather than
+      # falling back to an unsigned one.
+      id-token: write
     steps:
       - uses: actions/checkout@v6
 
