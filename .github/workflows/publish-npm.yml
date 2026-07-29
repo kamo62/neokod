@@ -148,18 +148,21 @@ jobs:
             exit 1
           fi
 
+      # Authenticates through npm Trusted Publishing (OIDC), configured against
+      # this repository and workflow filename. There is no long-lived token to
+      # leak or rotate, and provenance is signed from the same identity.
+      #
+      # Trusted publishing needs npm >= 11.5.1; the pinned Node satisfies that.
+      # Renaming this file breaks publishing until the npm-side trusted publisher
+      # is updated to match.
       - name: Publish
         if: github.event_name == 'release' || inputs.dry_run == false
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           STAGE: ${{ steps.stage.outputs.stage }}
         run: |
           set -euo pipefail
-          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
-            echo "::error::NPM_TOKEN is not configured"
-            exit 1
-          fi
-          npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
+          npm_version="$(npm --version)"
+          echo "npm $npm_version"
           cd "$STAGE"
           npm publish --access public --provenance
 
