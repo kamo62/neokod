@@ -40,10 +40,44 @@ jobs:
           cache: true
           run-install: true
 
+      # `bin.ts` reads its version from apps/server/package.json, which the
+      # bundler bakes in. That file is stale in the repository, so without this
+      # the tarball is labelled correctly while `neokod --version` reports the
+      # stale value. `release.yml` aligns before building for the same reason.
+      - name: Derive version
+        id: version
+        run: |
+          set -euo pipefail
+          raw="$(grep -m1 -E '^## ' CHANGELOG.md | sed -E 's/^## +//; s/[[:space:]].*//' || true)"
+          [[ -n "$raw" ]] || { echo "::error::Could not read a version from CHANGELOG.md"; exit 1; }
+          version="${raw#v}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || {
+            echo "::error::Invalid version: $raw"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Align package versions
+        run: node scripts/update-release-package-versions.ts "${{ steps.version.outputs.version }}"
+
       # Builds the server bundle and, via its `@neokod/web#build` dependency,
       # the client that `resolveStaticDir` serves from dist/client.
       - name: Build server and web client
         run: vp run --filter neokod build
+
+      # The tarball can be labelled correctly while the binary inside it reports
+      # a different version, which is how the stale value reached 3.5.3. Assert
+      # the built artifact agrees rather than trusting the manifest alone.
+      - name: Verify the built CLI reports the published version
+        env:
+          EXPECTED: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          actual="$(node apps/server/dist/bin.mjs --version 2>&1 |
+            head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?' || true)"
+          if [[ "$actual" != "$EXPECTED" ]]; then
+            echo "::error::Built CLI reports '$actual' but publishing '$EXPECTED'"
+            exit 1
+          fi
+          echo "CLI reports $actual"
 
       - name: Build publish manifest
         run: node scripts/build-npm-publish-manifest.ts "$RUNNER_TEMP/package.json" --root .
