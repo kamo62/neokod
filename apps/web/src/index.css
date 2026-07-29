@@ -1048,3 +1048,26 @@ label:has(> select#reasoning-effort) select {
 .dark .model-picker-list::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.15);
 }
+
+/*
+ * Reduced motion.
+ *
+ * Durations are collapsed rather than animations removed, so an animation with
+ * `fill-mode: both` still lands on its end state instead of leaving an element
+ * stuck at its `from` keyframe. `animation-iteration-count` stops anything
+ * looping forever.
+ *
+ * `!important` is load-bearing: a looping animation applied through an inline
+ * `style` attribute outranks an ordinary rule here, and inline animation is how
+ * most of our indicators are written.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
