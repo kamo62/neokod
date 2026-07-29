@@ -1,0 +1,135 @@
+name: Publish npm
+
+# The desktop release stays the primary distribution. This publishes the same
+# server build as the `neokod` CLI so it can be installed on a machine that
+# already has the agent CLIs, which a desktop build cannot reach.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and verify the tarball without publishing
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-npm-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      # Builds the server bundle and, via its `@neokod/web#build` dependency,
+      # the client that `resolveStaticDir` serves from dist/client.
+      - name: Build server and web client
+        run: vp run --filter neokod build
+
+      - name: Build publish manifest
+        run: node scripts/build-npm-publish-manifest.ts "$RUNNER_TEMP/package.json" --root .
+
+      - name: Stage package
+        id: stage
+        run: |
+          stage="$RUNNER_TEMP/npm-stage"
+          rm -rf "$stage" && mkdir -p "$stage"
+          cp -R apps/server/dist "$stage/dist"
+          cp "$RUNNER_TEMP/package.json" "$stage/package.json"
+          cp LICENSE "$stage/LICENSE"
+          version="$(node -p "require('$stage/package.json').version")"
+          echo "stage=$stage" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # The workspace manifest cannot be published as-is: `catalog:` and
+      # `workspace:` specifiers survive a plain `npm pack` and produce a tarball
+      # that installs to nothing. Fail here rather than ship that to the registry.
+      - name: Verify tarball
+        env:
+          STAGE: ${{ steps.stage.outputs.stage }}
+          EXPECTED_VERSION: ${{ steps.stage.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd "$STAGE"
+          npm pack --pack-destination "$RUNNER_TEMP" >/dev/null
+          tarball="$RUNNER_TEMP/neokod-$EXPECTED_VERSION.tgz"
+          [[ -f "$tarball" ]] || { echo "::error::Expected $tarball"; exit 1; }
+
+          contents="$(tar -tzf "$tarball")"
+          for required in package/dist/bin.mjs package/dist/client/index.html; do
+            grep -qx "$required" <<<"$contents" || {
+              echo "::error::Tarball is missing $required"; exit 1; }
+          done
+
+          manifest="$(tar -xzOf "$tarball" package/package.json)"
+          node -e '
+            const m = JSON.parse(process.argv[1]);
+            const bad = Object.entries(m.dependencies ?? {}).filter(
+              ([, r]) => String(r).startsWith("catalog:") || String(r).startsWith("workspace:"),
+            );
+            if (bad.length > 0) {
+              console.error("::error::Unresolved specifiers: " + JSON.stringify(bad));
+              process.exit(1);
+            }
+            if (m.devDependencies !== undefined) {
+              console.error("::error::devDependencies must not be published");
+              process.exit(1);
+            }
+            if (m.version !== process.argv[2]) {
+              console.error(`::error::Version ${m.version} != ${process.argv[2]}`);
+              process.exit(1);
+            }
+          ' "$manifest" "$EXPECTED_VERSION"
+          echo "Verified neokod@$EXPECTED_VERSION"
+
+      # A release-triggered run must publish exactly the released version, or the
+      # npm and GitHub lines silently diverge.
+      - name: Check version matches the release tag
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          VERSION: ${{ steps.stage.outputs.version }}
+        run: |
+          if [[ "$TAG" != "v$VERSION" && "$TAG" != "$VERSION" ]]; then
+            echo "::error::Release tag $TAG does not match manifest version $VERSION"
+            exit 1
+          fi
+
+      - name: Publish
+        if: github.event_name == 'release' || inputs.dry_run == false
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          STAGE: ${{ steps.stage.outputs.stage }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
+            echo "::error::NPM_TOKEN is not configured"
+            exit 1
+          fi
+          npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
+          cd "$STAGE"
+          npm publish --access public --provenance
+
+      - name: Summary
+        env:
+          VERSION: ${{ steps.stage.outputs.version }}
+          PUBLISHED: ${{ github.event_name == 'release' || inputs.dry_run == false }}
+        run: |
+          if [[ "$PUBLISHED" == "true" ]]; then
+            echo "Published neokod@$VERSION" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Verified neokod@$VERSION (dry run, not published)" >> "$GITHUB_STEP_SUMMARY"
+          fi
