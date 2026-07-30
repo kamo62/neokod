@@ -7,7 +7,12 @@ import type {
 import { useNavigate } from "@tanstack/react-router";
 import { ActivityIcon, BotIcon, CircleIcon, GitBranchIcon } from "lucide-react";
 
-import { useProjects, useThreadActivities, useThreadShells } from "../state/entities";
+import {
+  useProjects,
+  useServerConfigs,
+  useThreadActivities,
+  useThreadShells,
+} from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { useMissionControlUiStore } from "../missionControlUiStore";
 import { cn } from "~/lib/utils";
@@ -26,6 +31,7 @@ import {
   selectMissionControlThreads,
   type MissionControlRowView,
 } from "./MissionControl.logic";
+import { resolveModelDisplayLabel } from "./chat/providerIconUtils";
 
 const MISSION_CONTROL_THREAD_CAP = 20;
 
@@ -33,6 +39,7 @@ function MissionControlThreadRowView(props: {
   thread: EnvironmentThreadShell;
   project: EnvironmentProject;
   row: MissionControlRowView;
+  modelLabel: string;
   onOpen: (ref: ScopedThreadRef) => void;
 }) {
   const threadRef = scopeThreadRef(props.thread.environmentId, props.thread.id);
@@ -57,7 +64,7 @@ function MissionControlThreadRowView(props: {
         </div>
         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span>{props.project.title}</span>
-          <span>{props.thread.modelSelection.model}</span>
+          <span>{props.modelLabel}</span>
           {props.row.goalLabel ? <span className="truncate">{props.row.goalLabel}</span> : null}
           {props.row.workspaceLabel ? (
             <span className="inline-flex items-center gap-1 truncate">
@@ -86,6 +93,7 @@ function MissionControlThreadRowView(props: {
 function MissionControlRunningThreadRow(props: {
   thread: EnvironmentThreadShell;
   project: EnvironmentProject;
+  modelLabel: string;
   onOpen: (ref: ScopedThreadRef) => void;
 }) {
   const activities = useThreadActivities(
@@ -102,6 +110,7 @@ function MissionControlRunningThreadRow(props: {
 function MissionControlThreadRow(props: {
   thread: EnvironmentThreadShell;
   project: EnvironmentProject;
+  modelLabel: string;
   onOpen: (ref: ScopedThreadRef) => void;
 }) {
   if (props.thread.latestTurn?.state === "running") {
@@ -115,6 +124,7 @@ function MissionControlThreadRow(props: {
 function MissionControlContent(props: { onOpenChange: (open: boolean) => void }) {
   const navigate = useNavigate();
   const projects = useProjects();
+  const serverConfigs = useServerConfigs();
   const threads = useThreadShells();
   const eligibleThreads = selectMissionControlThreads(threads, projects, Infinity);
   const visibleThreads = selectMissionControlThreads(threads, projects, MISSION_CONTROL_THREAD_CAP);
@@ -146,14 +156,23 @@ function MissionControlContent(props: { onOpenChange: (open: boolean) => void })
                 <div className="border-b border-border/60 bg-muted/25 px-4 py-2 text-xs font-medium text-muted-foreground">
                   {section.project.title}
                 </div>
-                {section.threads.map((thread) => (
-                  <MissionControlThreadRow
-                    key={`${thread.environmentId}:${thread.id}`}
-                    thread={thread}
-                    project={section.project}
-                    onOpen={openThread}
-                  />
-                ))}
+                {section.threads.map((thread) => {
+                  const models =
+                    serverConfigs
+                      .get(thread.environmentId)
+                      ?.providers.find(
+                        (provider) => provider.instanceId === thread.modelSelection.instanceId,
+                      )?.models ?? [];
+                  return (
+                    <MissionControlThreadRow
+                      key={`${thread.environmentId}:${thread.id}`}
+                      thread={thread}
+                      project={section.project}
+                      modelLabel={resolveModelDisplayLabel(models, thread.modelSelection.model)}
+                      onOpen={openThread}
+                    />
+                  );
+                })}
               </section>
             ))}
             {eligibleThreads.length > visibleThreads.length ? (

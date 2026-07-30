@@ -1,3 +1,11 @@
+## 3.5.6 - 2026-07-30 (Patch)
+
+Release impact: Patch because this corrects existing navigation, model-label, and theme behavior without changing public contracts.
+
+- Restored Home and Mission Control for completed work. Settled turns are intentionally cleared from the active-turn projection, so both surfaces now use the surviving user-activity timestamp and Mission Control stays mounted across every sidebar route.
+- Restored subtle hover and selection colors by mapping the shared accent token to the existing surface-hover palette instead of the brand action color.
+- Showed provider model display names in thread surfaces instead of raw slugs, and described browser-origin connections accurately in Settings.
+
 ## 3.5.5 - 2026-07-30 (Patch)
 
 Release impact: Patch because both fixes correct behaviour within existing contracts, with no schema, event or storage changes.

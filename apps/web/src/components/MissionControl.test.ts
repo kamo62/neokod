@@ -124,6 +124,22 @@ describe("Mission Control helpers", () => {
     expect(selected.map((candidate) => candidate.id)).toEqual([ThreadId.make("active")]);
   });
 
+  it("keeps settled threads with user activity after their active turn is cleared", () => {
+    const selected = selectMissionControlThreads(
+      [
+        thread("settled", {
+          latestTurn: null,
+          latestUserMessageAt: "2026-07-10T10:00:00.000Z",
+        }),
+        thread("empty-draft", { latestTurn: null }),
+      ],
+      [project("project-a")],
+      5,
+    );
+
+    expect(selected.map((candidate) => candidate.id)).toEqual([ThreadId.make("settled")]);
+  });
+
   it("groups selected threads by project and orders sections by their most recent thread", () => {
     const projects = [project("project-a", "A"), project("project-b", "B")];
     const sections = groupMissionControlThreads(

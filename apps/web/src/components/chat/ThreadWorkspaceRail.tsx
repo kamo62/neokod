@@ -7,13 +7,18 @@
  * are no dead placeholder slots.
  */
 import { scopeThreadRef } from "@neokod/client-runtime/environment";
-import type { EnvironmentId, ModelSelection, ThreadId } from "@neokod/contracts";
+import type {
+  EnvironmentId,
+  ModelSelection,
+  ServerProviderModel,
+  ThreadId,
+} from "@neokod/contracts";
 import { FileDiff, ShieldCheck, TerminalSquare } from "lucide-react";
 import { memo, useMemo } from "react";
 import { useComposerHandleContext } from "../../composerHandleContext";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { useRightPanelStore } from "../../rightPanelStore";
-import { useThreadShell } from "../../state/entities";
+import { useServerConfigs, useThreadShell } from "../../state/entities";
 import { useThreadRunningTerminalIds } from "../../state/terminalSessions";
 import { useTerminalUiStateStore } from "../../terminalUiStateStore";
 import {
@@ -24,9 +29,12 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { CopilotThreadControls } from "./CopilotThreadControls";
 import { CopilotMcpControls, threadUsesCopilot } from "./CopilotMcpControls";
+import { resolveModelDisplayLabel } from "./providerIconUtils";
+
+const EMPTY_MODELS: ReadonlyArray<ServerProviderModel> = [];
 
 export interface ThreadWorkspaceRailView {
-  /** Active model slug, or null when the thread has no resolved selection yet. */
+  /** Active model display name, falling back to its slug when discovery is unavailable. */
   modelLabel: string | null;
   /** Reused terminal presentation; non-null only while a subprocess runs. */
   terminal: TerminalStatusIndicator | null;
@@ -50,6 +58,7 @@ export interface ThreadWorkspaceRailView {
  */
 export function resolveThreadWorkspaceRailView(input: {
   modelSelection: ModelSelection | null | undefined;
+  models: ReadonlyArray<ServerProviderModel>;
   runningTerminalIds: ReadonlyArray<string>;
   hasWorkspace: boolean;
   fleetMode: boolean;
@@ -72,7 +81,9 @@ export function resolveThreadWorkspaceRailView(input: {
       : null;
 
   return {
-    modelLabel: input.modelSelection?.model ?? null,
+    modelLabel: input.modelSelection
+      ? resolveModelDisplayLabel(input.models, input.modelSelection.model)
+      : null,
     terminal: terminalStatusFromRunningIds(input.runningTerminalIds),
     showDiff: input.hasWorkspace,
     showFleet: input.fleetMode === true,
@@ -96,6 +107,12 @@ export const ThreadWorkspaceRail = memo(function ThreadWorkspaceRail({
   // Shell-only subscription: modelSelection lives on the thread shell, and the
   // detail atom churns on every streaming delta this rail does not care about.
   const modelSelection = useThreadShell(threadRef)?.modelSelection;
+  const serverConfigs = useServerConfigs();
+  const models =
+    serverConfigs
+      .get(environmentId)
+      ?.providers.find((provider) => provider.instanceId === modelSelection?.instanceId)?.models ??
+    EMPTY_MODELS;
   const runningTerminalIds = useThreadRunningTerminalIds({ environmentId, threadId });
   const providers = useEnvironmentSettings(environmentId, (settings) => settings.providers);
   const providerInstances = useEnvironmentSettings(
@@ -112,13 +129,14 @@ export const ThreadWorkspaceRail = memo(function ThreadWorkspaceRail({
     () =>
       resolveThreadWorkspaceRailView({
         modelSelection,
+        models,
         runningTerminalIds,
         hasWorkspace: Boolean(activeProjectName),
         fleetMode: copilot.fleetMode,
         usesCopilot,
         managedClientEvidence: copilot.managedClientEvidence,
       }),
-    [modelSelection, runningTerminalIds, activeProjectName, copilot, usesCopilot],
+    [modelSelection, models, runningTerminalIds, activeProjectName, copilot, usesCopilot],
   );
 
   return (

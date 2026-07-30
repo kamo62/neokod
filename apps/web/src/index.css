@@ -360,8 +360,8 @@
   --secondary-foreground: var(--text-primary);
   --muted: var(--surface-control);
   --muted-foreground: var(--text-secondary);
-  --accent: var(--brand);
-  --accent-foreground: var(--brand-foreground);
+  --accent: var(--surface-hover);
+  --accent-foreground: var(--text-primary);
   --destructive: #ba2623;
   --border: var(--line-default);
   --input: var(--line-strong);
@@ -420,8 +420,8 @@
     --secondary-foreground: var(--text-primary);
     --muted: var(--surface-control);
     --muted-foreground: var(--text-secondary);
-    --accent: var(--brand);
-    --accent-foreground: var(--brand-foreground);
+    --accent: var(--surface-hover);
+    --accent-foreground: var(--text-primary);
     --destructive: #fa423e;
     --border: var(--line-default);
     --input: var(--line-strong);

@@ -19,6 +19,7 @@ import { Spinner } from "../ui/spinner";
 import { Switch } from "../ui/switch";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { isDesktopLocalConnectionTarget } from "~/connection/desktopLocal";
+import { isLoopbackHostname } from "~/environments/primary";
 import { resolveServerConfigVersionMismatch } from "~/versionSkew";
 import { desktopWslStateAtom, refreshDesktopWslState } from "~/state/desktopWslState";
 import { useEnvironments, usePrimaryEnvironment } from "~/state/environments";
@@ -40,6 +41,9 @@ export function ConnectionsSettings() {
   const primaryVersionMismatch = resolveServerConfigVersionMismatch(
     primaryEnvironment?.serverConfig ?? null,
   );
+  const usesBrowserOrigin =
+    primaryEnvironment?.entry.target._tag === "PrimaryConnectionTarget" &&
+    !isLoopbackHostname(new URL(primaryEnvironment.entry.target.httpBaseUrl).hostname);
   const desktopWsl = useEnvironmentQuery(desktopBridge ? desktopWslStateAtom : null);
   const desktopWslState = desktopWsl.data;
   const [isUpdating, setIsUpdating] = useState(false);
@@ -247,8 +251,12 @@ export function ConnectionsSettings() {
           />
         ) : null}
         <SettingsRow
-          title="Local access"
-          description="Loopback access is direct and limited to this machine."
+          title={usesBrowserOrigin ? "Browser access" : "Local access"}
+          description={
+            usesBrowserOrigin
+              ? "This browser connects through its current HTTP and WebSocket origin."
+              : "Loopback access is direct and limited to this machine."
+          }
         />
         {desktopBridge ? renderWslRow() : null}
       </SettingsSection>
