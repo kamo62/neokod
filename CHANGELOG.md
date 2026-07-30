@@ -1,3 +1,10 @@
+## 3.5.9 - 2026-07-30 (Patch)
+
+Release impact: Patch because this corrects an error message and repairs npm publishing, with no contract, schema or storage changes.
+
+- Starting a turn in a project whose folder has been moved or deleted now says so and names the folder, instead of reporting a provider spawn failure. Spawning into a missing directory fails the same way a missing CLI does, so the old message sent you to reinstall an agent that was never the problem.
+- Releases reach npm again. Publishing the GitHub release from the release workflow never triggered the npm publish, because GitHub does not start a workflow from an event raised with its own token, so 3.5.4 through 3.5.8 were tagged and released while npm stayed on 3.5.3. The release now dispatches the publish explicitly, and the publish builds from the released tag rather than whatever the default branch has moved on to.
+
 ## 3.5.8 - 2026-07-30 (Patch)
 
 Release impact: Patch because both fixes correct behaviour within existing contracts, with no schema, event or storage changes.
