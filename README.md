@@ -95,4 +95,4 @@ Neokod is early. Expect bugs and fast-moving internals. We are not accepting con
 - [Operations](./docs/operations/ci.md)
 - [Reference](./docs/reference/encyclopedia.md)
 
-Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening an issue. Need support? Join the [Discord](https://discord.gg/jn4EGJjrvv).
+Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening an issue. Need support? Open an [issue](https://github.com/kamo62/neokod/issues).
