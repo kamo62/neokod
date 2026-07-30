@@ -711,60 +711,74 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
         onKeyDown={handleRowKeyDown}
         onContextMenu={handleRowContextMenu}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-          {prStatus && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    aria-label={prStatus.tooltip}
-                    className={`inline-flex items-center justify-center ${prStatus.colorClass} cursor-pointer rounded-sm outline-hidden focus-visible:ring-1 focus-visible:ring-ring`}
-                    onClick={handlePrClick}
-                  >
-                    <ChangeRequestStatusIcon className="size-3" />
-                  </button>
-                }
-              />
-              <TooltipPopup side="top">{prStatus.tooltip}</TooltipPopup>
-            </Tooltip>
-          )}
-          {threadStatus && <ThreadStatusLabel status={threadStatus} />}
-          {renamingThreadKey === threadKey ? (
-            <input
-              ref={handleRenameInputRef}
-              className="min-w-0 flex-1 truncate text-base sm:text-xs bg-transparent outline-none border border-ring rounded px-0.5"
-              value={renamingTitle}
-              onChange={handleRenameInputChange}
-              onKeyDown={handleRenameInputKeyDown}
-              onBlur={handleRenameInputBlur}
-              onClick={handleRenameInputClick}
-              onDoubleClick={handleRenameInputClick}
-            />
-          ) : (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span className="flex min-w-0 flex-1 items-center gap-1 text-ui">
-                    <span
-                      className="min-w-0 flex-1 truncate"
-                      data-testid={`thread-title-${thread.id}`}
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
+          <div className="flex min-w-0 items-center gap-1.5">
+            {prStatus && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label={prStatus.tooltip}
+                      className={`inline-flex items-center justify-center ${prStatus.colorClass} cursor-pointer rounded-sm outline-hidden focus-visible:ring-1 focus-visible:ring-ring`}
+                      onClick={handlePrClick}
                     >
-                      {thread.title}
-                    </span>
-                    {props.contextLabel ? (
-                      <span className="shrink-0 text-meta text-[var(--text-tertiary)]">
-                        {props.contextLabel}
-                      </span>
-                    ) : null}
-                  </span>
-                }
+                      <ChangeRequestStatusIcon className="size-3" />
+                    </button>
+                  }
+                />
+                <TooltipPopup side="top">{prStatus.tooltip}</TooltipPopup>
+              </Tooltip>
+            )}
+            {threadStatus && <ThreadStatusLabel status={threadStatus} />}
+            {renamingThreadKey === threadKey ? (
+              <input
+                ref={handleRenameInputRef}
+                className="min-w-0 flex-1 truncate text-base sm:text-xs bg-transparent outline-none border border-ring rounded px-0.5"
+                value={renamingTitle}
+                onChange={handleRenameInputChange}
+                onKeyDown={handleRenameInputKeyDown}
+                onBlur={handleRenameInputBlur}
+                onClick={handleRenameInputClick}
+                onDoubleClick={handleRenameInputClick}
               />
-              <TooltipPopup side="top" className="max-w-80 whitespace-normal leading-tight">
-                {thread.title}
-              </TooltipPopup>
-            </Tooltip>
-          )}
+            ) : (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className="flex min-w-0 flex-1 items-center gap-1 text-ui">
+                      <span
+                        className="min-w-0 flex-1 truncate"
+                        data-testid={`thread-title-${thread.id}`}
+                      >
+                        {thread.title}
+                      </span>
+                    </span>
+                  }
+                />
+                <TooltipPopup side="top" className="max-w-80 whitespace-normal leading-tight">
+                  {thread.title}
+                </TooltipPopup>
+              </Tooltip>
+            )}
+          </div>
+          {/*
+           * Second line. Moving the context label and timestamp off the title
+           * line is what stops the title truncating: it no longer shares its
+           * width with the metadata and the hover actions. It also means the
+           * timestamp no longer has to fade out to make room for those actions,
+           * since they now occupy the row's right edge rather than this space.
+           */}
+          <div className="flex min-w-0 items-center gap-1.5 text-meta text-[var(--text-tertiary)]">
+            {props.contextLabel ? (
+              <span className="min-w-0 truncate">{props.contextLabel}</span>
+            ) : null}
+            <span className="shrink-0 tabular-nums">
+              {formatRelativeTimeLabel(
+                thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt,
+              )}
+            </span>
+          </div>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {discoveredPorts.length > 0 && (
@@ -924,19 +938,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
                     </TooltipTrigger>
                     <TooltipPopup side="top">{jumpLabel}</TooltipPopup>
                   </Tooltip>
-                ) : (
-                  <span
-                    className={`text-[10px] tabular-nums ${
-                      isHighlighted
-                        ? "text-foreground/72 dark:text-foreground/82"
-                        : "text-muted-foreground/40"
-                    }`}
-                  >
-                    {formatRelativeTimeLabel(
-                      thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt,
-                    )}
-                  </span>
-                )}
+                ) : null}
               </span>
             </span>
           </div>
