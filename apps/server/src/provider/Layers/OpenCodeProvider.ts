@@ -228,7 +228,14 @@ function flattenOpenCodeModels(input: OpenCodeInventory): ReadonlyArray<ServerPr
       continue;
     }
 
+    const configured = input.config.provider?.[provider.id];
+    const whitelist = configured?.whitelist ? new Set(configured.whitelist) : null;
+    const blacklist = configured?.blacklist ? new Set(configured.blacklist) : null;
+
     for (const model of Object.values(provider.models)) {
+      if ((whitelist && !whitelist.has(model.id)) || (blacklist && blacklist.has(model.id))) {
+        continue;
+      }
       const name = nonEmptyTrimmed(model.name);
       if (!name) {
         continue;

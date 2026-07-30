@@ -570,7 +570,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
         ]);
       });
 
-      it("fills missing capabilities from the previous provider snapshot", () => {
+      it("fills missing capabilities without retaining models omitted by a refresh", () => {
         const previousProvider = {
           instanceId: ProviderInstanceId.make("cursor"),
           driver: ProviderDriverKind.make("cursor"),
@@ -595,6 +595,12 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                 ],
               }),
             },
+            {
+              slug: "removed-model",
+              name: "Removed model",
+              isCustom: false,
+              capabilities: null,
+            },
           ],
           slashCommands: [],
           skills: [],
@@ -615,7 +621,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
         } satisfies ServerProvider;
 
         assert.deepStrictEqual(mergeProviderSnapshot(previousProvider, refreshedProvider).models, [
-          ...previousProvider.models,
+          previousProvider.models[0],
         ]);
       });
 
