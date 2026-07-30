@@ -212,7 +212,22 @@ jobs:
           # users if a later build then fails. Leave any existing release as-is
           # and let the build jobs upload into it.
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists; leaving its published/draft state unchanged."
+            # Re-running the same commit is the legitimate case for reusing an
+            # existing release. A DIFFERENT commit reaching the same tag means
+            # two changes claimed one version, because the version comes from
+            # the changelog's first heading and any two branches open at once
+            # write the same one. Without this the second merge quietly uploads
+            # its build into the first one's release and ships under a version
+            # whose notes describe other work.
+            existing="$(gh release view "$TAG" --json targetCommitish --jq .targetCommitish || true)"
+            existing_sha="$(git rev-parse --verify --quiet "${existing}^{commit}" || echo "$existing")"
+            current_sha="$(git rev-parse --verify --quiet "${REF}^{commit}" || echo "$REF")"
+            if [[ -n "$existing_sha" && "$existing_sha" != "$current_sha" ]]; then
+              echo "::error::Release $TAG already exists and targets $existing_sha, but this run is for $current_sha."
+              echo "::error::Two changes claimed $TAG. Give this one the next unreleased version in CHANGELOG.md."
+              exit 1
+            fi
+            echo "Release $TAG already exists for this commit; leaving its published/draft state unchanged."
             exit 0
           fi
           args=(--draft --generate-notes --target "$REF" --title "$RELEASE_NAME")
