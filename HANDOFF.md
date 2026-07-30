@@ -27,34 +27,73 @@ about the current tree. When this file and `git` disagree, trust `git`.
 
 Read this section first. Everything below it predates this session.
 
-### Open right now
+### SECURITY — unauthenticated `/ws`, no origin check. Do this first.
 
-All three are green on full CI (`Check`, `Test`, `Browser Test`, `Release
-Smoke`) and none has been reviewed.
+**Not caused by any PR in this session. It has been true for a long time and
+nobody had looked.** Found while security-reviewing #71.
 
-| PR                                              | What                                                             | Needs               |
-| ----------------------------------------------- | ---------------------------------------------------------------- | ------------------- |
-| [#68](https://github.com/kamo62/neokod/pull/68) | New threads stop inheriting the viewed thread's branch (#4411)   | review, merge       |
-| [#69](https://github.com/kamo62/neokod/pull/69) | Release a session holding an already-ended turn (#4713)          | **two-lane review** |
-| [#70](https://github.com/kamo62/neokod/pull/70) | `Schema.is` hoist, locale-independent `formatSubagentUsage` test | review, merge       |
+The server has no application auth on the loopback transport and never
+validates `Origin` or `Host` on the WebSocket upgrade. Both verified directly:
 
-**#69 is the one that needs a real review.** It changes when a session releases
-`active_turn_id`, in the area whose documented failure mode is bricking the
-server at startup on projection rebuild (upstream's own #4626 writeup). It adds
-no schema, no new status value and no projection write, which is what keeps it
-safe, but two choices in it are worth arguing with:
+- `apps/server/src/transport/WslBearerAuth.ts` early-returns from **both**
+  `authorizeBearerHeader` and `consumeWebSocketTicket` when
+  `config.transport === "loopback"`. Loopback mode authenticates nothing.
+- `grep -n "origin\|Origin" apps/server/src/ws.ts` returns only git remote
+  names. There is no origin validation anywhere in that file.
 
-- It deliberately skips the `liveThreadIds` guard that the v3.5.2 running-turn
-  path requires. A terminal turn is terminal regardless of provider liveness,
-  and requiring absence is what leaves the stuck state unrecoverable. It is
-  still a widening of a pass this file describes as conservative.
-- It preserves `session.lastError` rather than clearing it. The first
-  implementation cleared it, which would have erased a quota or auth failure
-  from the UI, since `ChatView.tsx:1251` reads that field as the thread's error
-  text.
+What `/ws` grants once reached: workspace file read and write
+(`ws.ts:1234-1263`) and interactive shell creation and input
+(`ws.ts:1439-1456`, `terminal/Manager.ts:1775-1783`, `:2444-2457`).
+
+**The exploit path is DNS rebinding, and it works against a plain desktop
+install.** A page the user visits rebinds its own hostname to `127.0.0.1`, then
+opens a raw WebSocket to `/ws`. The server accepts it. That is unauthenticated
+remote code execution as the user, from browsing to a page. The second path is a
+reverse proxy whose auth rule misses `/ws`, which this repo's own
+`docs/operations/self-hosting.md:90-109` already warns about.
+
+**Do not "fix" this by reverting #71.** A sol review recommended exactly that
+and it is wrong. An attacker never runs our client, so `target.ts` validation
+never constrained them; they open a raw socket. Both paths above work
+identically with and without #71. Reverting only breaks the working self-hosted
+deployment and closes nothing. Sol half-conceded this itself: "malicious
+JavaScript can attempt the raw WebSocket protocol directly. The missing server
+Origin check is therefore partly pre-existing."
+
+The fix is server-side origin validation on the `/ws` upgrade. Two designs, and
+the choice is the user's because getting it wrong locks them out of their own
+deployment:
+
+1. Reject any request whose `Origin` does not match `Host`. Needs no
+   configuration, but `X-Forwarded-Host` behind Traefik makes it delicate.
+2. Require an explicitly configured expected public origin and fail closed when
+   it is absent. Safer, needs a config value.
+
+Whichever is chosen, add the negative test that is currently missing: an
+explicit configured non-loopback target must still be rejected. The five
+existing rejection tests in `target.test.ts` all cover desktop and WSL paths,
+and the test added by #71 only asserts the new permissive behaviour, so a
+refactor widening that condition to all sources would pass CI green.
 
 ### Shipped this session (2026-07-30)
 
+Six PRs merged. Everything below is on `main`, and the release will be **3.5.5**,
+whose changelog entry covers #68 and #69. `3.5.4` was published from #71 and must
+not be edited.
+
+- **#71 merged** (user's own, 14:56). `neokod serve` behind a same-origin reverse
+  proxy. **This is the root cause of the "providers will not activate" problem
+  that two sessions chased through codex auth and the capability probe.** Nothing
+  was wrong there. `validateTargetUrls` rejected every non-loopback browser
+  origin, so behind Traefik the shell loaded at a public hostname while `/ws`
+  never opened, and provider activation never reached the server. Read the
+  security section above before touching this file again.
+- **#69 merged.** Release a session holding an already-ended turn (#4713). See
+  the review notes below; it changed materially after review.
+- **#68 merged** (`fed2377a0`). New threads no longer inherit the viewed
+  thread's branch and worktree (#4411).
+- **#70 merged.** `Schema.is` hoisted off the decode hot path; the
+  `formatSubagentUsage` test made locale-independent.
 - **#65 merged** (`472c47907`). Pruned 33 shipped `.plans/`, fixed the T3
   Discord link. Its red CI was a _cancelled_ `Check` job, not a failure;
   `gh pr checks` renders both as "fail". A re-run cleared it.
@@ -87,6 +126,36 @@ Fix the hook to skip when nothing matches, rather than continuing to reach for
 `gh pr view --json` and compound `git fetch` calls, so merging succeeds but
 confirming it needs a bare `git fetch` followed by `git log`. A Bash permission
 rule would make this less awkward.
+
+### What the reviews changed on #69
+
+Reviewed by sol at high before merge, alongside a second lane on #71. Verdict was
+NO-GO, and it was right on both counts.
+
+- **The defect was in the review fix, not the original implementation.** The
+  first version cleared `session.lastError` when settling, which erases a quota
+  or auth failure from the UI. That was corrected to preserve it. Preserving it
+  _unconditionally_ was then also wrong: an error survives into later turns
+  because ingestion clears it only on `ready`
+  (`ProviderRuntimeIngestion.ts:1318-1326`), so a thread that failed, recovered
+  and then completed would settle as `ready` while still showing the old banner.
+  `ThreadErrorBanner.tsx` renders any non-null error with no status check. It now
+  follows the ingestion rule exactly: `ready` clears, everything else preserves.
+- **A changelog entry was required and missing**, and #68 had already merged
+  without one. Both are covered by the 3.5.5 entry.
+
+Two verdicts worth carrying forward:
+
+- **The missing liveness guard is safe only under the current startup
+  architecture.** Projection catch-up completes before startup
+  (`OrchestrationEngine.ts:300-302`), reconciliation finishes before commands are
+  accepted (`serverRuntimeStartup.ts:345`, `:429-430`), and adapters begin with
+  empty in-memory session maps. It is **not** a generally safe planner invariant:
+  `thread.turn-interrupt-requested` projects a turn as interrupted before the
+  provider confirms (`ProjectionPipeline.ts:1258-1291`). **If periodic or
+  automatic reconciliation is ever added, revisit this decision first.**
+- The status mapping (`completed → ready`, `error → error`, else `interrupted`)
+  and the `completedAt === null` skip were both confirmed correct.
 
 ### Running four Codex lanes in one checkout — what it cost
 
@@ -134,9 +203,39 @@ worth carrying: a release-blocking git-gc test flake, a missing `id-token: write
 permission that no dry run could catch, and a published binary reporting the
 wrong version, found by installing the package and running it.
 
-### Live problem, unresolved
+### SOLVED 2026-07-30: providers would not activate
 
-**Providers will not activate on the user's home server** (`kamo@192.168.0.100`).
+**Root cause was `validateTargetUrls` in the web client, fixed in #71.** It
+rejected every non-loopback browser origin, so behind the reverse proxy the shell
+loaded but `/ws` never opened and provider activation never reached the server.
+Everything below this paragraph is the record of two sessions looking in the
+wrong place, kept because the eliminations are still valid.
+
+The lesson: the symptom was "providers will not activate", which reads as a
+provider problem, and both sessions treated it as one. The failing component was
+the client's own connection validation. **When a symptom points at a subsystem,
+confirm the transport underneath it is actually up before investigating that
+subsystem.**
+
+Separately established on 2026-07-30, and still true:
+`**192.168.0.100 is not on the LAN**`. A full sweep of `192.168.0.0/24` from
+this machine finds three live hosts: the gateway `.1` and this Mac's own two
+interfaces. The ARP entry for `.100` persists with MAC `34:64:a9:9a:c3:88` but is
+a stale cache line, which is why the failure reads as "No route to host" rather
+than a connection refusal. Both `102.133.*` entries in `~/.ssh/config` are also
+dead on port 22. **The `Host 192.168.0.100` entry in `~/.ssh/config` is stale and
+should be updated or removed**; it is what sent two sessions down this path.
+
+Not the agent's shell sandbox, which was the standing theory. Retested with the
+sandbox disabled and the result was identical. Also not the fact that this Mac
+is dual-homed on one subnet (`en0` Wi-Fi `.129`, `en4` Ethernet `.246`, both
+active, default route on `en4`); the gateway answers on both. That dual-homing is
+a real misconfiguration worth fixing on its own, but it is unrelated.
+
+---
+
+Historical record follows. **Providers will not activate on the user's home
+server** (`kamo@192.168.0.100`).
 
 Ruled out by direct check: `codex` is installed (0.144.3), on `PATH` at
 `~/.local/bin/codex`, and **authenticated** (`auth.json` present, `codex login
@@ -187,23 +286,22 @@ into the published tarball, and npm does not allow republishing a version.
 
 ### Next, in order
 
-1. Resolve the server provider problem above. It is the only thing blocking real
-   use of what shipped. **Still not gathered on 2026-07-30**: the agent's shell
-   gets "No route to host" on port 22 while the user's reaches the box. The
-   command to run is in that section.
+1. **Close the unauthenticated `/ws` hole.** See the security section at the top.
+   Pick one of the two designs, add the missing negative test, ship it. This
+   outranks everything else on this list.
 2. Set git identity on the server: `git config --global user.name/user.email`,
-   then `gh auth login && gh auth setup-git`.
-3. Review and merge #68, #69 and #70. #69 gets two lanes; see "Open right now".
-4. Revoke the two npm tokens that were pasted into chat. Trusted Publishing
+   then `gh auth login && gh auth setup-git`. Also fix the stale
+   `Host 192.168.0.100` entry in `~/.ssh/config`.
+3. Revoke the two npm tokens that were pasted into chat. Trusted Publishing
    makes them unnecessary; the secret is already deleted but the tokens remain
    valid on the account.
-5. Consider `npm deprecate neokod@3.5.3`, or let the next release carry the
+4. Consider `npm deprecate neokod@3.5.3`, or let the next release carry the
    corrected binary version. Leaning to the latter.
-6. Build the activity-payload prune. The decision below is made; the plan is
+5. Build the activity-payload prune. The decision below is made; the plan is
    ready to execute.
-7. Fix the pre-commit hook so a commit whose staged paths are all
+6. Fix the pre-commit hook so a commit whose staged paths are all
    formatter-excluded does not fail.
-8. Restyle `ThreadRunBanner` rather than adding new loading surfaces, per the
+7. Restyle `ThreadRunBanner` rather than adding new loading surfaces, per the
    sol review. **Still unspecified.** Nobody has written down what is wrong with
    how it looks now, and an unspecified visual task handed to an agent produces
    work that has to be undone. Write the brief before starting this.
@@ -781,10 +879,7 @@ auth/session control plane.
 
 | Branch                                     | Where            | Status                                                                                                          |
 | ------------------------------------------ | ---------------- | --------------------------------------------------------------------------------------------------------------- |
-| `main`                                     | local + `neokod` | Ships. At `fc27c17b7` after #65 and #66 merged.                                                                 |
-| `fix/new-thread-branch-inheritance`        | local + `neokod` | PR #68, open, CI green, unreviewed. Upstream #4411.                                                             |
-| `fix/terminal-turn-active-id`              | local + `neokod` | PR #69, open, CI green, unreviewed. Upstream #4713. **Wants two lanes.**                                        |
-| `chore/parked-small-items`                 | local + `neokod` | PR #70, open, CI green, unreviewed. Two parked items.                                                           |
+| `main`                                     | local + `neokod` | Ships. Carries #65, #66, #68, #69, #70 and #71. Next release is 3.5.5.                                          |
 | `docs/handoff-2026-07-30`                  | local + `neokod` | PR #67, this file.                                                                                              |
 | `fix/claude-context-meter-compaction`      | local + `neokod` | PR #58, open. Context meter ratchet, upstream #4650.                                                            |
 | `docs/agent-gateway-spec-round3`           | local + `neokod` | Branch name says round3; content is **round 6** (`15a101031`). Unreviewed. Do not build until a review passes.  |
