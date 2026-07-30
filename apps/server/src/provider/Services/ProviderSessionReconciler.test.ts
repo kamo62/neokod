@@ -31,10 +31,13 @@ const now = "2026-07-27T00:00:00.000Z";
 
 const projected = (input?: {
   readonly sessionStatus?: "running" | "starting" | "interrupted";
-  readonly turnState?: "running" | "completed" | "interrupted";
+  readonly turnState?: "running" | "completed" | "interrupted" | "error";
+  readonly completedAt?: string | null;
   readonly activeTurnId?: TurnId | null;
-}): OrchestrationReadModel =>
-  ({
+  readonly lastError?: string | null;
+}): OrchestrationReadModel => {
+  const turnState = input?.turnState ?? "running";
+  return {
     snapshotSequence: 1,
     updatedAt: now,
     projects: [],
@@ -58,10 +61,15 @@ const projected = (input?: {
         checkpoints: [],
         latestTurn: {
           turnId,
-          state: input?.turnState ?? "running",
+          state: turnState,
           requestedAt: now,
           startedAt: now,
-          completedAt: null,
+          completedAt:
+            input?.completedAt === undefined
+              ? turnState === "running"
+                ? null
+                : now
+              : input.completedAt,
           assistantMessageId: null,
         },
         session: {
@@ -71,12 +79,13 @@ const projected = (input?: {
           providerInstanceId,
           runtimeMode: "full-access",
           activeTurnId: input?.activeTurnId === undefined ? turnId : input.activeTurnId,
-          lastError: null,
+          lastError: input?.lastError ?? null,
           updatedAt: now,
         },
       },
     ],
-  }) as unknown as OrchestrationReadModel;
+  } as unknown as OrchestrationReadModel;
+};
 
 const stoppedBinding = (
   runtimePayload: unknown = { activeTurnId: null },
@@ -113,7 +122,56 @@ it("plans one interrupted settlement only for an authoritative stopped binding",
         providerName: provider,
         providerInstanceId,
         runtimeMode: "full-access",
+        status: "interrupted",
         lastError: null,
+      },
+    ],
+  );
+});
+
+it("plans terminal-turn settlement without requiring a stopped binding", () => {
+  for (const [turnState, status] of [
+    ["completed", "ready"],
+    ["interrupted", "interrupted"],
+    ["error", "error"],
+  ] as const) {
+    assert.deepStrictEqual(
+      planProviderSessionReconciliation({
+        projected: projected({ turnState }),
+        liveSessions: [providerSession],
+        bindings: [{ ...stoppedBinding(), status: "running" as const }],
+      }),
+      [
+        {
+          threadId,
+          turnId,
+          providerName: provider,
+          providerInstanceId,
+          runtimeMode: "full-access",
+          status,
+          lastError: null,
+        },
+      ],
+    );
+  }
+});
+
+it("keeps the session's existing error when settling a terminal turn", () => {
+  assert.deepStrictEqual(
+    planProviderSessionReconciliation({
+      projected: projected({ turnState: "error", lastError: "quota exceeded" }),
+      liveSessions: [providerSession],
+      bindings: [{ ...stoppedBinding(), status: "running" as const }],
+    }),
+    [
+      {
+        threadId,
+        turnId,
+        providerName: provider,
+        providerInstanceId,
+        runtimeMode: "full-access",
+        status: "error",
+        lastError: "quota exceeded",
       },
     ],
   );
@@ -156,7 +214,7 @@ it("skips live, starting, unsettled, missing, and still-running bindings", () =>
       bindings: [stoppedBinding()],
     },
     {
-      projected: projected({ turnState: "interrupted" }),
+      projected: projected({ turnState: "interrupted", completedAt: null }),
       liveSessions: [],
       bindings: [stoppedBinding()],
     },
@@ -181,13 +239,13 @@ it("skips live, starting, unsettled, missing, and still-running bindings", () =>
   );
 });
 
-it.effect("dispatches the planned settlement as a thread.session.set command", () =>
+it.effect("dispatches terminal-turn settlement as a thread.session.set command", () =>
   Effect.gen(function* () {
     const commands: OrchestrationCommand[] = [];
     const layer = ProviderSessionReconcilerLive.pipe(
       Layer.provideMerge(
         Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
-          getSnapshot: () => Effect.succeed(projected()),
+          getSnapshot: () => Effect.succeed(projected({ turnState: "interrupted" })),
         } as unknown as ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]),
       ),
       Layer.provideMerge(

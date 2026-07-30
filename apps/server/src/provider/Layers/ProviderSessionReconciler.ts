@@ -40,7 +40,7 @@ const makeProviderSessionReconciler = Effect.gen(function* () {
         threadId: action.threadId,
         session: {
           threadId: action.threadId,
-          status: "interrupted",
+          status: action.status,
           providerName: action.providerName,
           ...(action.providerInstanceId !== undefined
             ? { providerInstanceId: action.providerInstanceId }

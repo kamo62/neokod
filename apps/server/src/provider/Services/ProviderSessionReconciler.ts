@@ -15,6 +15,7 @@ export interface ProviderSessionReconcileAction {
   readonly providerName: NonNullable<OrchestrationSession["providerName"]>;
   readonly providerInstanceId?: OrchestrationSession["providerInstanceId"];
   readonly runtimeMode: OrchestrationSession["runtimeMode"];
+  readonly status: OrchestrationSession["status"];
   readonly lastError: string | null;
 }
 
@@ -54,16 +55,51 @@ export const planProviderSessionReconciliation = ({
   // stopped one and leave the turn stuck running.
   const bindingsByThreadId = new Map(bindings.map((binding) => [binding.threadId, binding]));
 
-  return projected.threads.flatMap((thread) => {
+  return projected.threads.flatMap<ProviderSessionReconcileAction>((thread) => {
     const turn = thread.latestTurn;
     const session = thread.session;
     if (
-      turn?.state !== "running" ||
+      turn === null ||
       session?.status !== "running" ||
       session.activeTurnId !== turn.turnId ||
-      liveThreadIds.has(thread.id) ||
       session.providerName === null
     ) {
+      return [];
+    }
+
+    const action = {
+      threadId: thread.id,
+      turnId: turn.turnId,
+      providerName: session.providerName,
+      ...(session.providerInstanceId !== undefined
+        ? { providerInstanceId: session.providerInstanceId }
+        : {}),
+      runtimeMode: session.runtimeMode,
+    };
+
+    if (turn.state !== "running") {
+      if (turn.completedAt === null) {
+        return [];
+      }
+      const status =
+        turn.state === "completed"
+          ? ("ready" as const)
+          : turn.state === "error"
+            ? ("error" as const)
+            : ("interrupted" as const);
+      // Releasing a stuck turn id is not a reason to discard why the turn died.
+      // Overwriting this with null loses the provider's own explanation, which
+      // is the only place a quota or auth failure is reported to the user.
+      return [
+        {
+          ...action,
+          status,
+          lastError: session.lastError,
+        },
+      ];
+    }
+
+    if (liveThreadIds.has(thread.id)) {
       return [];
     }
 
@@ -81,13 +117,8 @@ export const planProviderSessionReconciliation = ({
 
     return [
       {
-        threadId: thread.id,
-        turnId: turn.turnId,
-        providerName: session.providerName,
-        ...(session.providerInstanceId !== undefined
-          ? { providerInstanceId: session.providerInstanceId }
-          : {}),
-        runtimeMode: session.runtimeMode,
+        ...action,
+        status: "interrupted",
         lastError: exactBindingError(binding, turn.turnId),
       },
     ];
