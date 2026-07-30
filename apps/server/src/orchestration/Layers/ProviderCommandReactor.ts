@@ -18,6 +18,7 @@ import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Equal from "effect/Equal";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -188,6 +189,7 @@ function buildGeneratedWorktreeBranchName(raw: string): string {
 
 const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
+  const fileSystem = yield* FileSystem.FileSystem;
   const orchestrationEngine = yield* OrchestrationEngineService;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const providerService = yield* ProviderService;
@@ -470,6 +472,28 @@ const make = Effect.gen(function* () {
       thread,
       projects: project ? [project] : [],
     });
+
+    // Spawning into a directory that no longer exists fails with ENOENT, and
+    // `isCommandMissingCause` reads any NotFound as a missing provider binary
+    // (providerSnapshot.ts). So moving or deleting a project folder was
+    // reported as a provider spawn failure, sending the user to reinstall a CLI
+    // that was never the problem. Check first and name the path.
+    //
+    // A failed check is not treated as a missing directory: if the filesystem
+    // itself errors we let the spawn proceed and report whatever it hits,
+    // rather than inventing a cause we have not established.
+    if (effectiveCwd) {
+      const workspaceExists = yield* fileSystem
+        .exists(effectiveCwd)
+        .pipe(Effect.orElseSucceed(() => true));
+      if (!workspaceExists) {
+        return yield* new ProviderAdapterRequestError({
+          provider: preferredProvider,
+          method: "thread.turn.start",
+          detail: `This thread's folder no longer exists: ${effectiveCwd}. Move it back, or create a new thread in the project's current location.`,
+        });
+      }
+    }
 
     const startProviderSession = (input?: {
       readonly resumeCursor?: unknown;

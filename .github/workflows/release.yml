@@ -365,6 +365,8 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      # Needed to dispatch the npm publish below.
+      actions: write
     steps:
       - uses: actions/checkout@v6
         with:
@@ -434,3 +436,31 @@ jobs:
           else
             gh release edit "$TAG" --draft=false --latest=false
           fi
+
+      # Publishing the release above with GITHUB_TOKEN does NOT fire the
+      # `release: published` trigger on publish-npm.yml. GitHub documents that
+      # "with the exception of workflow_dispatch and repository_dispatch, other
+      # GITHUB_TOKEN-triggered events do not create workflow runs at all". That
+      # is why v3.5.4 through v3.5.8 were tagged and released while npm stayed
+      # on 3.5.3, with every release run reporting success.
+      #
+      # workflow_dispatch is one of the two documented exceptions, so dispatching
+      # explicitly is the fix. The publish must keep running from
+      # publish-npm.yml: npm Trusted Publishing is bound to this repository AND
+      # that workflow's filename, so moving these steps here would break the
+      # OIDC identity npm authenticates against.
+      #
+      # A human publishing a draft by hand still fires the release trigger and
+      # this step does not run, so the two paths never both publish.
+      - name: Publish to npm
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh workflow run publish-npm.yml \
+            --ref "${GITHUB_REF_NAME}" \
+            -f dry_run=false \
+            -f tag="$TAG"
+          echo "Dispatched publish-npm.yml for $TAG" >> "$GITHUB_STEP_SUMMARY"

@@ -27,6 +27,9 @@ squashfs-root/
 .gstack/
 dist-electron/
 .electron-runtime/
+# Local pnpm content-addressable store. Untracked but not ignored, it lands in
+# `git add -A` as binary SQLite files.
+.pnpm-store/
 node_modules/
 *.log
 .env*

@@ -806,10 +806,21 @@ reading**, because it hardens turn settlement in the same places we have now bee
 twice:
 
 - Claude retains the last turn id on the session context, so a terminal result
-  arriving without live turn state can still name the turn it settles. Runtime
-  ingestion drops an unattributable terminal event, which stranded the projection
-  in `running` forever. **This is the SDK no-turn-id residual we documented as
-  unresolved in the stop-settles-turn fix.**
+  arriving without live turn state can still name the turn it settles.
+
+  **CORRECTED 2026-07-30. This entry previously claimed our runtime ingestion
+  "drops an unattributable terminal event", and identified that as the SDK
+  no-turn-id residual left unresolved by the stop-settles-turn fix. That is not
+  what the code does.** `ProviderRuntimeIngestion.ts:1274` explicitly ACCEPTS a
+  terminal event when no active turn is tracked ("If no active turn is tracked,
+  accept completion scoped to this thread"), and `:1596` does the same for
+  `runtime.error`. What we actually drop is a `turn.completed` that either
+  conflicts with the active turn or whose active turn has no projected row
+  (`:1268-1270`), which is a different failure with a different fix.
+
+  Anyone porting Synara's change should re-derive the problem from our code
+  first. As written, this entry sends you looking for a bug that is not there.
+
 - Two-lane orchestration admission, merged from contributor PR #476: control
   commands (stop, interrupt) get a dedicated queue polled ahead of the normal
   lane, so a saturated normal queue can no longer starve a stop.

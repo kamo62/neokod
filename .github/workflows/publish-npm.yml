@@ -13,6 +13,13 @@ on:
         required: false
         default: true
         type: boolean
+      tag:
+        description: >-
+          Release tag to publish, e.g. v3.5.8. release.yml passes this so the
+          build comes from the released commit rather than whatever the default
+          branch has moved on to. Leave blank to use the dispatched ref.
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -32,7 +39,13 @@ jobs:
       # falling back to an unsigned one.
       id-token: write
     steps:
+      # Pin to the released tag when one was passed. Two PRs merging close
+      # together already moved the changelog's first heading between a release
+      # and its publish, so building from the default branch can publish a
+      # version that does not match the tag being released.
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - uses: voidzero-dev/setup-vp@v1
         with:
@@ -135,12 +148,13 @@ jobs:
           ' "$manifest" "$EXPECTED_VERSION"
           echo "Verified neokod@$EXPECTED_VERSION"
 
-      # A release-triggered run must publish exactly the released version, or the
-      # npm and GitHub lines silently diverge.
+      # A run tied to a specific release must publish exactly that version, or
+      # the npm and GitHub lines silently diverge. Covers both entry points: the
+      # release trigger, and the dispatch release.yml sends after publishing.
       - name: Check version matches the release tag
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || inputs.tag != ''
         env:
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
           VERSION: ${{ steps.stage.outputs.version }}
         run: |
           if [[ "$TAG" != "v$VERSION" && "$TAG" != "$VERSION" ]]; then

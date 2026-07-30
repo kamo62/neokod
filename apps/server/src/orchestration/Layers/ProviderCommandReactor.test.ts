@@ -29,7 +29,7 @@ import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { it as effectIt } from "@effect/vitest";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 
 import { deriveServerPaths, ServerConfig } from "../../config.ts";
 import { TextGenerationError } from "@neokod/contracts";
@@ -60,6 +60,18 @@ import * as Clock from "effect/Clock";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import * as GitWorkflowService from "../../git/GitWorkflowService.ts";
+
+// The reactor refuses to start a session whose workspace folder is gone, so
+// these stand-in paths have to exist for the tests that are not about that.
+// Creating them keeps the real check in the exercised path; stubbing the
+// filesystem would mean these tests silently stopped covering it.
+const TEST_WORKSPACE_DIRS = ["/tmp/provider-project", "/tmp/provider-project-worktree"] as const;
+
+beforeAll(() => {
+  for (const dir of TEST_WORKSPACE_DIRS) {
+    NodeFS.mkdirSync(dir, { recursive: true });
+  }
+});
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
 const asApprovalRequestId = (value: string): ApprovalRequestId => ApprovalRequestId.make(value);
@@ -426,6 +438,81 @@ describe("ProviderCommandReactor", () => {
       drain,
     };
   }
+
+  effectIt.effect("names the missing workspace folder instead of spawning into it", () =>
+    // Spawning into a folder that has been moved or deleted fails with ENOENT,
+    // which the provider layer reads as a missing CLI, so the user is told to
+    // fix an install that was never broken. Upstream #4940.
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const now = "2026-01-01T00:00:00.000Z";
+      const missingRoot = NodePath.join(NodeOS.tmpdir(), `neokod-moved-project-${process.pid}`);
+      NodeFS.rmSync(missingRoot, { recursive: true, force: true });
+
+      yield* harness.engine.dispatch({
+        type: "project.create",
+        commandId: CommandId.make("cmd-project-moved"),
+        projectId: asProjectId("project-moved"),
+        title: "Moved Project",
+        workspaceRoot: missingRoot,
+        defaultModelSelection: {
+          instanceId: ProviderInstanceId.make("codex"),
+          model: "gpt-5-codex",
+        },
+        createdAt: now,
+      });
+      yield* harness.engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("cmd-thread-moved"),
+        threadId: ThreadId.make("thread-moved"),
+        projectId: asProjectId("project-moved"),
+        title: "Thread",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("codex"),
+          model: "gpt-5-codex",
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        branch: null,
+        worktreePath: null,
+        createdAt: now,
+      });
+
+      const startSessionCallsBefore = harness.startSession.mock.calls.length;
+
+      yield* harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-moved"),
+        threadId: ThreadId.make("thread-moved"),
+        message: {
+          messageId: asMessageId("user-message-moved"),
+          role: "user",
+          text: "hello",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      });
+      yield* Effect.promise(() => harness.drain());
+
+      // The provider is never reached, so nothing can misattribute the failure.
+      expect(harness.startSession.mock.calls.length).toBe(startSessionCallsBefore);
+
+      // Surfaces as a provider.turn.start.failed activity, which is the panel
+      // the user reads, and it names the folder rather than the provider.
+      const readModel = yield* Effect.promise(() => harness.readModel());
+      const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-moved"));
+      const failure = (thread?.activities ?? []).find(
+        (activity) => activity.kind === "provider.turn.start.failed",
+      );
+      expect(failure, "expected a provider.turn.start.failed activity").toBeDefined();
+      const detail = (failure?.payload as { readonly detail?: string } | undefined)?.detail ?? "";
+      expect(detail).toContain(missingRoot);
+      // The provider must not be blamed for a filesystem problem.
+      expect(detail).not.toContain("spawn");
+    }),
+  );
 
   it("reacts to thread.turn.start by ensuring session and sending provider turn", async () => {
     const harness = await createHarness();
