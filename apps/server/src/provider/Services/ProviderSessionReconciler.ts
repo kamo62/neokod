@@ -87,14 +87,19 @@ export const planProviderSessionReconciliation = ({
           : turn.state === "error"
             ? ("error" as const)
             : ("interrupted" as const);
-      // Releasing a stuck turn id is not a reason to discard why the turn died.
-      // Overwriting this with null loses the provider's own explanation, which
-      // is the only place a quota or auth failure is reported to the user.
+      // Same rule the live ingestion path uses: becoming `ready` clears the
+      // error, anything else keeps it. Clearing unconditionally would lose the
+      // provider's own explanation of a quota or auth failure, which is the
+      // only place the user is told why the turn died. Keeping it
+      // unconditionally is worse in the other direction: `ThreadErrorBanner`
+      // renders any non-null error regardless of session status, so a thread
+      // that recovered and completed would still show a banner from an earlier
+      // failure.
       return [
         {
           ...action,
           status,
-          lastError: session.lastError,
+          lastError: status === "ready" ? null : session.lastError,
         },
       ];
     }

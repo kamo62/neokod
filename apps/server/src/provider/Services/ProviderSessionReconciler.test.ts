@@ -156,7 +156,7 @@ it("plans terminal-turn settlement without requiring a stopped binding", () => {
   }
 });
 
-it("keeps the session's existing error when settling a terminal turn", () => {
+it("keeps the session's existing error when settling a failed terminal turn", () => {
   assert.deepStrictEqual(
     planProviderSessionReconciliation({
       projected: projected({ turnState: "error", lastError: "quota exceeded" }),
@@ -172,6 +172,30 @@ it("keeps the session's existing error when settling a terminal turn", () => {
         runtimeMode: "full-access",
         status: "error",
         lastError: "quota exceeded",
+      },
+    ],
+  );
+});
+
+it("clears a stale error when a terminal turn settles the session ready", () => {
+  // An error survives into later turns: ingestion only clears it on `ready`.
+  // Settling a completed turn must clear it too, or a thread that recovered
+  // keeps showing a banner from a failure it already moved past.
+  assert.deepStrictEqual(
+    planProviderSessionReconciliation({
+      projected: projected({ turnState: "completed", lastError: "quota exceeded" }),
+      liveSessions: [providerSession],
+      bindings: [{ ...stoppedBinding(), status: "running" as const }],
+    }),
+    [
+      {
+        threadId,
+        turnId,
+        providerName: provider,
+        providerInstanceId,
+        runtimeMode: "full-access",
+        status: "ready",
+        lastError: null,
       },
     ],
   );
