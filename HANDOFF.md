@@ -19,31 +19,107 @@ in neokod `main`**. Everything from "What this fork is" downward describes _that
 line, not `main`. Do not assume a file or behaviour documented in the lower half
 exists on `main` without checking.
 
-Claims here were verified against git and GitHub on **2026-07-28**. Anything
+Claims here were verified against git and GitHub on **2026-07-30**. Anything
 carrying an older date is a historical record of that session, not a statement
 about the current tree. When this file and `git` disagree, trust `git`.
 
-## START HERE — session of 2026-07-29/30
+## START HERE — session of 2026-07-30
 
 Read this section first. Everything below it predates this session.
 
 ### Open right now
 
-| PR                                              | What                                                      | Needs                  |
-| ----------------------------------------------- | --------------------------------------------------------- | ---------------------- |
-| [#65](https://github.com/kamo62/neokod/pull/65) | Prune 33 shipped `.plans/`, fix T3 Discord link in README | merge                  |
-| [#66](https://github.com/kamo62/neokod/pull/66) | Remove `auto-animate` (#4693), global reduced motion      | a decision, then merge |
+All three are green on full CI (`Check`, `Test`, `Browser Test`, `Release
+Smoke`) and none has been reviewed.
 
-**#66 needs an actual answer before merging**: sidebar rows lose their
-add/remove/reorder animation. That animation cost a 2-second timer _per row_,
-permanently, which is the #4693 idle CPU burn. The trade looks right under
-"Performance first", but it is the only user-visible change and it was never
-confirmed.
+| PR                                              | What                                                             | Needs               |
+| ----------------------------------------------- | ---------------------------------------------------------------- | ------------------- |
+| [#68](https://github.com/kamo62/neokod/pull/68) | New threads stop inheriting the viewed thread's branch (#4411)   | review, merge       |
+| [#69](https://github.com/kamo62/neokod/pull/69) | Release a session holding an already-ended turn (#4713)          | **two-lane review** |
+| [#70](https://github.com/kamo62/neokod/pull/70) | `Schema.is` hoist, locale-independent `formatSubagentUsage` test | review, merge       |
 
-`gh pr merge` is blocked for the agent by the permission classifier. The user
-merges, or adds a Bash permission rule.
+**#69 is the one that needs a real review.** It changes when a session releases
+`active_turn_id`, in the area whose documented failure mode is bricking the
+server at startup on projection rebuild (upstream's own #4626 writeup). It adds
+no schema, no new status value and no projection write, which is what keeps it
+safe, but two choices in it are worth arguing with:
 
-### Shipped this session
+- It deliberately skips the `liveThreadIds` guard that the v3.5.2 running-turn
+  path requires. A terminal turn is terminal regardless of provider liveness,
+  and requiring absence is what leaves the stuck state unrecoverable. It is
+  still a widening of a pass this file describes as conservative.
+- It preserves `session.lastError` rather than clearing it. The first
+  implementation cleared it, which would have erased a quota or auth failure
+  from the UI, since `ChatView.tsx:1251` reads that field as the thread's error
+  text.
+
+### Shipped this session (2026-07-30)
+
+- **#65 merged** (`472c47907`). Pruned 33 shipped `.plans/`, fixed the T3
+  Discord link. Its red CI was a _cancelled_ `Check` job, not a failure;
+  `gh pr checks` renders both as "fail". A re-run cleared it.
+- **#66 merged** (`fc27c17b7`). `auto-animate` gone, global reduced-motion
+  block in `index.css`. The trade was taken deliberately: sidebar rows lose
+  their add/remove/reorder animation, which cost a 2-second timer per row
+  permanently.
+
+Two defects were fixed in #66 before it could merge:
+
+- **The lockfile was never regenerated.** `apps/web/package.json` dropped
+  `@formkit/auto-animate` while `pnpm-lock.yaml` kept all three entries. CI
+  installs `--frozen-lockfile`, so all four jobs died at `vp install` in ~25
+  seconds with `ERR_PNPM_OUTDATED_LOCKFILE`, before running anything. Fixed with
+  `pnpm install --lockfile-only`, which leaves `node_modules` alone and produced
+  a diff of exactly 8 deletions with no collateral churn.
+- **`usePrefersReducedMotion` was dead on arrival.** Exported with zero call
+  sites. Its doc comment claimed a CSS-only guard cannot reach inline-style
+  animations, which is not how the cascade works: an `!important` declaration in
+  a stylesheet outranks a non-important inline one, which is exactly why the
+  `index.css` block marks its properties `!important`. Removed.
+
+**The pre-commit hook has a second confirmed instance of the `.plans/` bug.** A
+lockfile-only commit has no formattable target, so `vp fmt` exits with "Expected
+at least one target file" and the commit reverts. Two known paths now hit this.
+Fix the hook to skip when nothing matches, rather than continuing to reach for
+`--no-verify`.
+
+`gh pr merge` **works** for the agent. What the permission classifier blocks is
+`gh pr view --json` and compound `git fetch` calls, so merging succeeds but
+confirming it needs a bare `git fetch` followed by `git log`. A Bash permission
+rule would make this less awkward.
+
+### Running four Codex lanes in one checkout — what it cost
+
+#68, #69, #70 and the pruning decision were produced by four parallel sol lanes
+in this single checkout, with file ownership assigned up front and every lane
+told not to switch branches or commit. That part worked: no lane collided with
+another, and no lane wrote outside its assignment.
+
+What did not work is worth knowing before repeating it.
+
+- **Three of the four lanes needed correction.** One cleared `lastError` while
+  settling, which would have erased a provider's own error message from the UI.
+  One reported `vp check` passing on files that were not formatted, and shipped
+  a test asserting the formatter against its own `toLocaleString()` body, which
+  can never fail. The rule about not trusting Codex's verification claims held
+  up on both counts.
+- **The read-only lane was the most valuable of the four.** It wrote no code and
+  produced the pruning decision, including the IndexedDB slice nobody had
+  listed. Reasoning-only delegation paid better here than implementation did.
+- **The forwarder times out at 2 minutes; the Codex job does not.** Task
+  notifications arrive long before the work is done. Poll
+  `codex-companion.mjs status` and fetch with `result <task-id>`; do not treat
+  the subagent notification as completion.
+- **One lane sat in "verifying" for 23 minutes on a two-line change** and was
+  cancelled with its edits intact on disk. Cancelling and finishing by hand cost
+  less than waiting.
+- **Branches were switched while a lane was still running**, to land two PRs.
+  The rule at the top of "Environment" exists for a reason. Nothing was lost,
+  because the running lane owned different files, but its verification was
+  reading a tree that changed under it, which is the likeliest explanation for
+  the 23-minute stall above. Land PRs after all lanes finish, not between them.
+
+### Superseded: shipped in the 2026-07-29/30 session
 
 - **v3.5.3** — Claude context meter no longer ratchets back after `/compact`.
   Eight defects over three review rounds; the last two rounds were found by sol.
@@ -112,17 +188,75 @@ into the published tarball, and npm does not allow republishing a version.
 ### Next, in order
 
 1. Resolve the server provider problem above. It is the only thing blocking real
-   use of what shipped.
+   use of what shipped. **Still not gathered on 2026-07-30**: the agent's shell
+   gets "No route to host" on port 22 while the user's reaches the box. The
+   command to run is in that section.
 2. Set git identity on the server: `git config --global user.name/user.email`,
    then `gh auth login && gh auth setup-git`.
-3. Merge #65 and #66.
+3. Review and merge #68, #69 and #70. #69 gets two lanes; see "Open right now".
 4. Revoke the two npm tokens that were pasted into chat. Trusted Publishing
    makes them unnecessary; the secret is already deleted but the tokens remain
    valid on the account.
 5. Consider `npm deprecate neokod@3.5.3`, or let the next release carry the
    corrected binary version. Leaning to the latter.
-6. Restyle `ThreadRunBanner` rather than adding new loading surfaces, per the
-   sol review.
+6. Build the activity-payload prune. The decision below is made; the plan is
+   ready to execute.
+7. Fix the pre-commit hook so a commit whose staged paths are all
+   formatter-excluded does not fail.
+8. Restyle `ThreadRunBanner` rather than adding new loading surfaces, per the
+   sol review. **Still unspecified.** Nobody has written down what is wrong with
+   how it looks now, and an unspecified visual task handed to an agent produces
+   work that has to be undone. Write the brief before starting this.
+
+### DECIDED 2026-07-30: prune payloads, do not add WebSocket compression
+
+This settles the open question recorded under item 1 of the 2026-07-27 survey.
+A sol review at xhigh, reading our code rather than upstream's numbers, found the
+argument that had been missing on both sides.
+
+**The WebSocket is not the cold-start path.** A cold open fetches the full
+snapshot over HTTP (`threadSnapshotHttp.ts:23-48`); WS-embedded snapshots are a
+fallback (`threads.ts:203-240`). A warm open decodes the complete cached thread
+from IndexedDB and resumes only later WS events (`threads.ts:45-74`,
+`storage.ts:39-58` and `:356-394`). The sidebar then prewarms up to ten visible
+thread details, each retaining its activity array (`Sidebar.logic.ts:16-18`,
+`:367-372`).
+
+So compression buys nothing on the path that actually costs, and leaves the full
+decoded payload in browser heap either way. Pruning removes the 1,110,122 bytes
+of `data.state` from JSON parsing, IndexedDB encoding and retained client state.
+The `pnpm patch` against `@effect/platform-node` that compression needs is also
+a real maintenance liability: Effect platform packages are pinned to an exact
+beta and every bump would require rebasing the patch and regenerating its lock
+hash, and a rejected patch breaks staged desktop release builds
+(`build-desktop-artifact.ts:1444-1494`). Given the `@pierre/diffs` install
+history, that cost is not worth paying before profiling proves WS transport
+dominates.
+
+`data.state` is confirmed unread: no match for it anywhere in `apps/web/src` or
+`packages/client-runtime/src`, and the exhaustive `payload.data` consumer in
+`session-logic.ts:877-981` reads `toolName`, `kind`, `input`, `rawInput`,
+`rawOutput`, `item` and `toolCallId`, never `state`.
+
+Build plan, in order:
+
+1. One shared server helper removing only own-property `data.state`, cloning
+   only the changed activity. Test that every other top-level, nested tool and
+   unknown provider key stays deeply equal.
+2. Apply it at both HTTP snapshot handlers (`http.ts:27-70`), WS replay
+   (`ws.ts:856-876`), and thread live, catch-up and initial-snapshot delivery
+   (`ws.ts:967-1052`). Persisted events and projection tables stay unchanged.
+3. **Do not skip this one.** Increment the IndexedDB version and clear only the
+   derived `thread` object store on upgrade (`storage.ts:25-48`). Without it a
+   warm cache keeps loading the old full payloads before WS connects, and the
+   fix appears not to work. Preserve the catalog and shell stores.
+4. Evidence gate: re-run the payload query, confirm zero delivered `data.state`,
+   compare cold and warm snapshot bytes plus browser startup heap and time. Add
+   compression only if that measurement leaves WS transport dominant.
+
+Neither option helps a server-side heap OOM: the server selects and fully
+decodes every `payload_json` before building the snapshot
+(`ProjectionSnapshotQuery.ts:83-88`, `:823-845`, `:2028-2042`).
 
 Still untested end to end: `neokod serve --mode web` actually serving, and the
 `/ws` auth check returning a redirect rather than `101`. The second one matters
@@ -398,8 +532,15 @@ nothing to wait for on any of them.
   `requestIdleCallback`/s to the library's position polling rather than to app JS.
   Measure locally before acting; the fix direction is to drop the dependency for
   the two sidebar lists, not to tune its options.
-- **#4713 thread stuck `running` after interrupt, stop becomes a no-op — one
-  matching row in our own state DB.** Their detection query, run against
+- **#4713 thread stuck `running` after interrupt, stop becomes a no-op — BUILT,
+  PR #69, open and unreviewed.** The query was re-run on 2026-07-30 and returns
+  the **same single row and no newer ones**, across two further days of use.
+  That is the opposite of what a live defect looks like: treat the row as stale
+  residue from before the 3.0.25 and v3.5.2 fixes, and treat #69 as a defensive
+  invariant rather than an incident response. The original 2026-07-28 notes
+  follow unchanged.
+
+  Their detection query, run against
   `~/.neokod/userdata/state.sqlite` on 2026-07-28, returns thread
   `514e9589-7f71-4ba1-8bf6-8d7c59af0c6f`: session `running`, active turn
   `opencode-turn-65197929…` already `completed` at 2026-05-17. Two caveats before
@@ -519,10 +660,20 @@ bytes on the wire, compression is the cheaper and safer first move; if the goal
 is client startup cost, pruning is still the one that matters. Decide which
 problem is actually being solved before building either.
 
-**2. Upstream #4411 — new threads inherit the viewed thread's branch and worktree.**
-Present in our code at `apps/web/src/lib/chatThreadActions.ts:60-79`, which
-explicitly copies `branch` and `worktreePath`. Fix the shared local action narrowly.
-Do NOT take upstream's 14-file UI diff; it violates the local-first UI policy.
+**RESOLVED 2026-07-30 in favour of pruning.** See "DECIDED 2026-07-30" near the
+top of this file for the reasoning and the build plan. The short version is that
+the paragraph above was reasoning about the wrong path: the WebSocket is not
+where cold start spends its time, so compression misses the cost entirely.
+
+**2. Upstream #4411 — new threads inherit the viewed thread's branch and
+worktree. BUILT, PR #68, open and unreviewed.** Was at
+`apps/web/src/lib/chatThreadActions.ts:60-79`, which explicitly copied `branch`
+and `worktreePath` from the viewed thread. Only `activeDraftThread` supplies
+them now, since a draft is pre-send configuration the user is editing and a
+viewed thread is not. `envMode` moved with them; it derived `"worktree"` from
+the viewed thread's `worktreePath`, which would otherwise have produced a thread
+claiming worktree mode with no path behind it. Upstream's 14-file UI diff was
+not taken.
 
 **3. Upstream #4414 — Claude skills in the composer `$` picker. Later, server-only.**
 Claude probing returns models and slash commands but no skills
@@ -607,26 +758,34 @@ auth/session control plane.
   legible, state the baseline ("Neokod 3.5.3, based on T3 Code 0.0.29") in the
   About dialog and at the top of the changelog rather than encoding it in the
   version. Do not reopen this without a plan for the stranded-installs problem.
-- `formatSubagentUsage` test hardcodes US number formatting (`1,234 tok`) and fails
-  under locales using a space separator. Fix the test, not the formatter. Confirmed
-  still failing locally on 2026-07-26; it passes in CI because the runner is en-US.
-- **`Schema.is(RuntimeMode)` is recompiled on every decode.**
-  `packages/contracts/src/orchestration.ts:133`, inside `RuntimeModeStored`'s
-  transform. Lint flags it (`neokod(no-inline-schema-compile)`) as a warning, so it
-  does not fail CI, but it sits on the hot path where every persisted thread row
-  decodes. Hoist it to a module-level const. Shipped this way in 3.4.0.
-- **The pre-commit hook fails when the only staged path is under `.plans/`.**
-  `.plans/` is excluded from the formatter, so `vp fmt` exits with "Expected at
-  least one target file" and the commit is reverted. Use `--no-verify` for
-  plans-only commits, or fix the hook to skip when nothing matches.
+- ~~`formatSubagentUsage` test hardcodes US number formatting~~ and
+  ~~`Schema.is(RuntimeMode)` is recompiled on every decode~~ — **both done in PR
+  #70**, open and unreviewed. The test now pins digits, units and joiner while
+  letting the grouping mark vary, verified against en-US, de-DE, fr-FR's narrow
+  no-break space, ru-RU, sv-SE, en-IN and es-ES, where four-digit numbers are
+  not grouped at all. Asserting against `toLocaleString()` was rejected: the
+  formatter's body _is_ `toLocaleString()`, so that restates the implementation
+  and can never fail. The `RuntimeModeStored` predicate is hoisted to a
+  module-level const, with the fail-closed `approval-required` fallback
+  untouched.
+- **The pre-commit hook fails when every staged path is formatter-excluded.**
+  Two confirmed cases now: a `.plans/`-only commit, and a `pnpm-lock.yaml`-only
+  commit. `vp fmt` exits with "Expected at least one target file" and the commit
+  is reverted. `--no-verify` is the workaround in use; fix the hook to skip when
+  nothing matches, because reaching for `--no-verify` routinely is how a real
+  formatting miss eventually ships.
 - 9 `pre-rebase-*` snapshots were verified disposable and deleted: the only
   substantive commit (`ba938a579`, thread goal + goalStatus) is already on main.
 
-### Branch inventory (verified 2026-07-28)
+### Branch inventory (verified 2026-07-30)
 
 | Branch                                     | Where            | Status                                                                                                          |
 | ------------------------------------------ | ---------------- | --------------------------------------------------------------------------------------------------------------- |
-| `main`                                     | local + `neokod` | Ships. v3.5.2 released; 3.5.3 pending in PR #58.                                                                |
+| `main`                                     | local + `neokod` | Ships. At `fc27c17b7` after #65 and #66 merged.                                                                 |
+| `fix/new-thread-branch-inheritance`        | local + `neokod` | PR #68, open, CI green, unreviewed. Upstream #4411.                                                             |
+| `fix/terminal-turn-active-id`              | local + `neokod` | PR #69, open, CI green, unreviewed. Upstream #4713. **Wants two lanes.**                                        |
+| `chore/parked-small-items`                 | local + `neokod` | PR #70, open, CI green, unreviewed. Two parked items.                                                           |
+| `docs/handoff-2026-07-30`                  | local + `neokod` | PR #67, this file.                                                                                              |
 | `fix/claude-context-meter-compaction`      | local + `neokod` | PR #58, open. Context meter ratchet, upstream #4650.                                                            |
 | `docs/agent-gateway-spec-round3`           | local + `neokod` | Branch name says round3; content is **round 6** (`15a101031`). Unreviewed. Do not build until a review passes.  |
 | `feat/diff-pane-review`                    | local + `neokod` | Closed PR #34, kept in case it is reintroduced.                                                                 |
