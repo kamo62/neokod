@@ -1,3 +1,10 @@
+## 3.5.8 - 2026-07-30 (Patch)
+
+Release impact: Patch because both fixes correct behaviour within existing contracts, with no schema, event or storage changes.
+
+- OpenCode no longer fails the first turn on a slower machine with "Timed out waiting for OpenCode server start". Starting the OpenCode server is a cold process start, and it was allowed 5 seconds, the shortest budget of any provider step and the only one covering a spawn rather than a query to something already running. It now gets 15 seconds, and `NEOKOD_OPENCODE_SERVER_TIMEOUT_MS` raises it further on hosts that need longer. The message now names both that variable and the option of running `opencode serve` yourself and setting the server URL in settings.
+- OpenCode failures now carry their reason when they appear as the cause of another error. They previously printed as a bare `OpenCodeRuntimeError:` with no text, so a stack trace showed the failure without saying what it was.
+
 ## 3.5.7 - 2026-07-30 (Patch)
 
 Release impact: Patch because this makes the existing OpenCode model picker respect configured provider filters without changing public contracts.
@@ -14,7 +21,7 @@ Release impact: Patch because this corrects existing navigation, model-label, an
 
 ## 3.5.5 - 2026-07-30 (Patch)
 
-Release impact: Patch because both fixes correct behaviour within existing contracts, with no schema, event or storage changes.
+Release impact: Patch because these fixes correct behaviour within existing contracts, with no schema, event or storage changes.
 
 - A thread could stay stuck as running with a Stop button that did nothing. The session held on to a turn that had already finished, so there was no live turn left for Stop to act on. Startup now releases a session whose active turn has already ended. A thread that recovered no longer keeps showing an error banner from an earlier failure.
 - New threads no longer start on the branch and worktree of whichever thread you happened to be viewing. Opening a thread that ran on a feature branch and then starting a new one silently pinned the new thread to that branch, with nothing on screen saying so. Settings carried over from a draft you are still composing are unaffected.
