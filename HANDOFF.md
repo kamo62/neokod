@@ -23,6 +23,112 @@ Claims here were verified against git and GitHub on **2026-07-28**. Anything
 carrying an older date is a historical record of that session, not a statement
 about the current tree. When this file and `git` disagree, trust `git`.
 
+## START HERE — session of 2026-07-29/30
+
+Read this section first. Everything below it predates this session.
+
+### Open right now
+
+| PR                                              | What                                                      | Needs                  |
+| ----------------------------------------------- | --------------------------------------------------------- | ---------------------- |
+| [#65](https://github.com/kamo62/neokod/pull/65) | Prune 33 shipped `.plans/`, fix T3 Discord link in README | merge                  |
+| [#66](https://github.com/kamo62/neokod/pull/66) | Remove `auto-animate` (#4693), global reduced motion      | a decision, then merge |
+
+**#66 needs an actual answer before merging**: sidebar rows lose their
+add/remove/reorder animation. That animation cost a 2-second timer _per row_,
+permanently, which is the #4693 idle CPU burn. The trade looks right under
+"Performance first", but it is the only user-visible change and it was never
+confirmed.
+
+`gh pr merge` is blocked for the agent by the permission classifier. The user
+merges, or adds a Bash permission rule.
+
+### Shipped this session
+
+- **v3.5.3** — Claude context meter no longer ratchets back after `/compact`.
+  Eight defects over three review rounds; the last two rounds were found by sol.
+- **`neokod` published to npm.** Installs cleanly on Ubuntu 22.04 / Node 22.
+- **npm Trusted Publishing** configured, `NPM_TOKEN` deleted. There is no
+  long-lived publishing credential in repository secrets.
+- `docs/operations/self-hosting.md` — Traefik + Authelia forward-auth, written
+  against the user's real config.
+
+Three bugs surfaced only by doing rather than reasoning, which is the lesson
+worth carrying: a release-blocking git-gc test flake, a missing `id-token: write`
+permission that no dry run could catch, and a published binary reporting the
+wrong version, found by installing the package and running it.
+
+### Live problem, unresolved
+
+**Providers will not activate on the user's home server** (`kamo@192.168.0.100`).
+
+Ruled out by direct check: `codex` is installed (0.144.3), on `PATH` at
+`~/.local/bin/codex`, and **authenticated** (`auth.json` present, `codex login
+status` reports "Logged in using ChatGPT", `~/.codex/logs_2.sqlite` written
+recently). `HOME` and `USER` are correct.
+
+Confirmed separately: **`git config --global user.email` is unset** on that box.
+That is a real and distinct problem — git refuses to commit without an identity —
+but it does not explain the provider symptom.
+
+Not yet gathered, because the agent's shell could not reach the host while the
+user's could (both interfaces, both source addresses, port 22 closed to the
+agent). Run these from the user's terminal and paste the output:
+
+```
+ssh kamo@192.168.0.100 'pgrep -af neokod; ls -la ~/.neokod/userdata/logs/; tail -40 ~/.neokod/userdata/logs/provider/*.log'
+```
+
+Two live candidates: neokod may simply not be running (never verified beyond
+`--version` and `--help`), or the capability probe is failing or timing out.
+There is precedent for the latter in this repo: Bedrock-backed Claude needed a
+25s probe allowance in 3.3.0 for exactly this shape.
+
+Note when comparing against a release: the installed `neokod@3.5.3` binary
+reports `v3.0.3`. That mislabelling is fixed in `main` by PR #64 but is baked
+into the published tarball, and npm does not allow republishing a version.
+
+### Decisions taken, do not relitigate
+
+- **Do not renumber toward upstream's 0.0.x.** electron-updater will not offer a
+  lower version, so it strands every existing install. Recorded under "Smaller
+  known items".
+- **Do not build a combined agent trace.** A sol review at xhigh found it would
+  be a fourth representation of state already owned by `PlanSidebar`,
+  `SubagentsPanel` and the timeline's existing work-row folding. `ThreadRunBanner`
+  is already the turn-activity surface, with `deriveActiveToolLabel` and
+  `deriveActiveWorkStartedAt` already doing the derivation.
+- **Reasoning display is a server projection problem, not UI.** Adapters already
+  emit it — Codex with indexed raw _and_ summary streams, Claude as
+  `thinking_delta`, Copilot suppressed for workers, Cursor and Grok not at all
+  since the ACP parser ignores `agent_thought_chunk`. Common ingestion then drops
+  it before the web layer (`ProviderRuntimeIngestion.ts:566-613`). Specify
+  persistence and replay semantics before any UI work.
+- **No standalone elapsed-time hook.** One was written and dropped in the same
+  session: `useThreadRunSummary` already does wall-clock elapsed from the turn's
+  persisted `startedAt` at 1Hz, and the new one collided by name with
+  `formatElapsed` in `session-logic.ts:321`.
+
+### Next, in order
+
+1. Resolve the server provider problem above. It is the only thing blocking real
+   use of what shipped.
+2. Set git identity on the server: `git config --global user.name/user.email`,
+   then `gh auth login && gh auth setup-git`.
+3. Merge #65 and #66.
+4. Revoke the two npm tokens that were pasted into chat. Trusted Publishing
+   makes them unnecessary; the secret is already deleted but the tokens remain
+   valid on the account.
+5. Consider `npm deprecate neokod@3.5.3`, or let the next release carry the
+   corrected binary version. Leaning to the latter.
+6. Restyle `ThreadRunBanner` rather than adding new loading surfaces, per the
+   sol review.
+
+Still untested end to end: `neokod serve --mode web` actually serving, and the
+`/ws` auth check returning a redirect rather than `101`. The second one matters
+most — it is the difference between a proxy that protects the app and one that
+only appears to.
+
 ## Current state (2026-07-28) — neokod track
 
 Everything below concerns the neokod provider/UI/gateway track. The AI-Orch
