@@ -1,3 +1,9 @@
+## 3.5.4 - 2026-07-30 (Patch)
+
+Release impact: Patch because this restores the documented self-hosted web connection without changing server or provider contracts.
+
+- Fixed `neokod serve` behind a same-origin reverse proxy. The web client rejected every non-loopback browser origin before opening its WebSocket, so the shell loaded at a public hostname but settings changes and provider activation never reached the server. Explicit configured remote endpoints and desktop transport checks remain rejected as before.
+
 ## 3.5.3 - 2026-07-28 (Patch)
 
 Release impact: Patch because this corrects a Claude context-meter reading with no contract or storage changes.

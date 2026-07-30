@@ -243,7 +243,10 @@ function validateTargetUrls(input: {
       transport: { _tag: "Loopback" },
     };
   }
-  if (bootstrap === undefined && httpIsLoopback && wsIsLoopback) {
+  if (
+    bootstrap === undefined &&
+    (input.source === "window-origin" || (httpIsLoopback && wsIsLoopback))
+  ) {
     return {
       source: input.source,
       target: { httpBaseUrl: httpUrl.toString(), wsBaseUrl: wsUrl.toString() },
