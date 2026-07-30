@@ -2,7 +2,7 @@
 
 Release impact: Patch because this makes the existing OpenCode model picker respect configured provider filters without changing public contracts.
 
-- OpenCode provider `whitelist` and `blacklist` settings now filter Neokod's model picker just as they filter `opencode models`, instead of exposing the complete Models.dev catalog for every connected provider.
+- OpenCode provider `whitelist` and `blacklist` settings now filter Neokod's model picker just as they filter `opencode models`. Successful non-empty provider refreshes also replace removed models instead of retaining them from the previous cache.
 
 ## 3.5.6 - 2026-07-30 (Patch)
 

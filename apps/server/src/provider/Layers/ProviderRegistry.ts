@@ -97,8 +97,7 @@ const mergeProviderModels = (
       capabilities: previousModel.capabilities,
     };
   });
-  const nextSlugs = new Set(nextModels.map((model) => model.slug));
-  return [...mergedModels, ...previousModels.filter((model) => !nextSlugs.has(model.slug))];
+  return mergedModels;
 };
 
 export const mergeProviderSnapshot = (
