@@ -1,6 +1,29 @@
-import { describe, expect, it } from "@effect/vitest";
+import { afterEach, describe, expect, it, vi } from "@effect/vitest";
 
-import { resolveDesktopEnvironmentBootstrapTarget } from "./target";
+import { readPrimaryEnvironmentTarget, resolveDesktopEnvironmentBootstrapTarget } from "./target";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("browser-origin primary target boundary", () => {
+  it("accepts the same public origin used by a self-hosted web client", () => {
+    vi.stubGlobal("window", {
+      location: {
+        origin: "https://neokod.example.com",
+      },
+    });
+
+    expect(readPrimaryEnvironmentTarget()).toEqual({
+      source: "window-origin",
+      target: {
+        httpBaseUrl: "https://neokod.example.com/",
+        wsBaseUrl: "wss://neokod.example.com/",
+      },
+      transport: { _tag: "Loopback" },
+    });
+  });
+});
 
 describe("desktop primary target boundary", () => {
   it("accepts a credential-free loopback bootstrap", () => {
