@@ -38,7 +38,37 @@ const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.UnknownFromJ
 const OPENCODE_EMPTY_CONFIG_CONTENT = "{}";
 
 const OPENCODE_SERVER_READY_PREFIX = "opencode server listening";
-const DEFAULT_OPENCODE_SERVER_TIMEOUT_MS = 5_000;
+/**
+ * Budget for `opencode serve` to spawn and announce its listening URL.
+ *
+ * This is a cold process start, not a query against something already running,
+ * so it is the most expensive startup step in the provider layer and needs the
+ * headroom to match: Claude's capability probe allows 25s and the ACP model
+ * discoveries allow 15s, and both of those talk to a live process. The previous
+ * 5s was the smallest budget in the layer and the only one covering a spawn,
+ * which failed the first turn on a constrained host and then succeeded on retry
+ * once the binary was in the page cache.
+ */
+const DEFAULT_OPENCODE_SERVER_TIMEOUT_MS = 15_000;
+
+/**
+ * Operator override for hosts slower than the default allows, following
+ * `NEOKOD_STRICT_PROVIDER_LIFECYCLE_GUARD`. A value that is not a positive
+ * integer is ignored rather than treated as zero, because a zero or negative
+ * budget would fail every start immediately.
+ */
+export function parseOpenCodeServerTimeoutMs(raw: string | undefined): number {
+  if (raw === undefined) return DEFAULT_OPENCODE_SERVER_TIMEOUT_MS;
+  const parsed = Number(raw.trim());
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    return DEFAULT_OPENCODE_SERVER_TIMEOUT_MS;
+  }
+  return parsed;
+}
+
+const OPENCODE_SERVER_TIMEOUT_MS = parseOpenCodeServerTimeoutMs(
+  process.env.NEOKOD_OPENCODE_SERVER_TIMEOUT_MS,
+);
 const DEFAULT_HOSTNAME = "127.0.0.1";
 export interface OpenCodeServerProcess {
   readonly url: string;
@@ -59,6 +89,14 @@ export class OpenCodeRuntimeError extends Data.TaggedError(OPENCODE_RUNTIME_ERRO
 }> {
   static readonly is = (u: unknown): u is OpenCodeRuntimeError =>
     P.isTagged(u, OPENCODE_RUNTIME_ERROR_TAG);
+
+  // Without this the cause prints as a bare "OpenCodeRuntimeError:" with no
+  // text, because `detail` is a field and nothing populates `Error.message`.
+  // The reason only ever reached a reader through whichever outer error
+  // happened to interpolate it.
+  override get message(): string {
+    return this.detail;
+  }
 }
 
 function encodeJsonStringForDiagnostics(input: unknown): string | undefined {
@@ -347,7 +385,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
               }),
           ),
         ));
-      const timeoutMs = input.timeoutMs ?? DEFAULT_OPENCODE_SERVER_TIMEOUT_MS;
+      const timeoutMs = input.timeoutMs ?? OPENCODE_SERVER_TIMEOUT_MS;
       const args = ["serve", `--hostname=${hostname}`, `--port=${port}`];
       const spawnCommand = yield* resolveCommand(input.binaryPath, args, input.environment);
 
@@ -472,7 +510,11 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
         yield* Fiber.interrupt(exitFiber).pipe(Effect.ignore);
         return yield* new OpenCodeRuntimeError({
           operation: "startOpenCodeServerProcess",
-          detail: `Timed out waiting for OpenCode server start after ${timeoutMs}ms.`,
+          detail: [
+            `Timed out waiting for OpenCode server start after ${timeoutMs}ms.`,
+            "On a slow host, raise NEOKOD_OPENCODE_SERVER_TIMEOUT_MS, or run",
+            "`opencode serve` yourself and set the OpenCode server URL in settings.",
+          ].join(" "),
         });
       }
 
