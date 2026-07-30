@@ -58,6 +58,14 @@ export function getTriggerDisplayModelLabel(model: ModelEsque): string {
   return getTriggerDisplayModelName(model);
 }
 
+export function resolveModelDisplayLabel(
+  models: ReadonlyArray<ModelEsque>,
+  modelSlug: string,
+): string {
+  const model = models.find((candidate) => candidate.slug === modelSlug);
+  return model ? getTriggerDisplayModelLabel(model) : modelSlug;
+}
+
 /**
  * Resolves which model option a picker trigger should display. If the
  * current slug belongs to a different instance (for example after a

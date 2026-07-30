@@ -4,11 +4,18 @@ import { resolveThreadWorkspaceRailView } from "./ThreadWorkspaceRail";
 const model = (slug: string) => ({ instanceId: "codex", model: slug }) as never;
 
 describe("resolveThreadWorkspaceRailView", () => {
-  it("surfaces the active model slug, or null when unset", () => {
+  it("surfaces the live model name and falls back to its slug", () => {
     expect(resolveThreadWorkspaceRailView(base()).modelLabel).toBeNull();
     expect(
-      resolveThreadWorkspaceRailView({ ...base(), modelSelection: model("gpt-5.4") }).modelLabel,
-    ).toBe("gpt-5.4");
+      resolveThreadWorkspaceRailView({
+        ...base(),
+        modelSelection: model("gpt-5.4"),
+        models: [{ slug: "gpt-5.4", name: "GPT-5.4" }] as never,
+      }).modelLabel,
+    ).toBe("GPT-5.4");
+    expect(
+      resolveThreadWorkspaceRailView({ ...base(), modelSelection: model("custom") }).modelLabel,
+    ).toBe("custom");
   });
 
   it("only reports a terminal indicator when ids are running", () => {
@@ -80,6 +87,7 @@ describe("resolveThreadWorkspaceRailView", () => {
 function base() {
   return {
     modelSelection: null,
+    models: [],
     runningTerminalIds: [] as ReadonlyArray<string>,
     hasWorkspace: false,
     fleetMode: false,

@@ -47,7 +47,7 @@ export function selectMissionControlThreads(
   return threads
     .filter(
       (thread) =>
-        thread.latestTurn !== null &&
+        (thread.latestTurn !== null || thread.latestUserMessageAt !== null) &&
         thread.archivedAt === null &&
         projectKeys.has(`${thread.environmentId}:${thread.projectId}`),
     )
