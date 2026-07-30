@@ -38,6 +38,7 @@ const runtimeMock = {
     inventory: {
       providerList: { connected: [] as string[], all: [] as unknown[], default: {} },
       agents: [] as unknown[],
+      config: {},
     } as unknown,
   },
   reset() {
@@ -48,6 +49,7 @@ const runtimeMock = {
     this.state.inventory = {
       providerList: { connected: [], all: [] as unknown[], default: {} },
       agents: [] as unknown[],
+      config: {},
     };
   },
 };
@@ -172,6 +174,7 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
           { name: "build", hidden: false, mode: "primary" },
           { name: "plan", hidden: false, mode: "primary" },
         ],
+        config: {},
       };
 
       const snapshot = yield* checkOpenCodeProviderStatus(makeOpenCodeSettings(), process.cwd());
@@ -193,6 +196,42 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
       NodeAssert.equal(
         agentDescriptor.options.find((option) => option.isDefault === true)?.id,
         "build",
+      );
+    }),
+  );
+
+  it.effect("honors OpenCode provider model filters", () =>
+    Effect.gen(function* () {
+      runtimeMock.state.inventory = {
+        providerList: {
+          connected: ["azure"],
+          all: [
+            {
+              id: "azure",
+              name: "Azure",
+              models: {
+                "gpt-5.5": { id: "gpt-5.5", name: "GPT-5.5" },
+                "gpt-5.6-sol": { id: "gpt-5.6-sol", name: "GPT-5.6 Sol" },
+              },
+            },
+          ],
+          default: {},
+        },
+        agents: [],
+        config: {
+          provider: {
+            azure: {
+              whitelist: ["gpt-5.5"],
+            },
+          },
+        },
+      };
+
+      const snapshot = yield* checkOpenCodeProviderStatus(makeOpenCodeSettings(), process.cwd());
+
+      NodeAssert.deepEqual(
+        snapshot.models.map((model) => model.slug),
+        ["azure/gpt-5.5"],
       );
     }),
   );

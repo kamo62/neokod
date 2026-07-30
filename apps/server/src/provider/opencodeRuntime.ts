@@ -4,6 +4,7 @@ import type { ChatAttachment, ProviderApprovalDecision, RuntimeMode } from "@neo
 import {
   createOpencodeClient,
   type Agent,
+  type Config,
   type FilePartInput,
   type OpencodeClient,
   type PermissionRuleset,
@@ -100,6 +101,7 @@ export interface OpenCodeCommandResult {
 export interface OpenCodeInventory {
   readonly providerList: ProviderListResponse;
   readonly agents: ReadonlyArray<Agent>;
+  readonly config: Config;
 }
 
 export interface ParsedOpenCodeModelSlug {
@@ -544,10 +546,26 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
       Effect.map((result) => result.data ?? []),
     );
 
-  const loadOpenCodeInventory: OpenCodeRuntimeShape["loadOpenCodeInventory"] = (client) =>
-    Effect.all([loadProviders(client), loadAgents(client)], { concurrency: "unbounded" }).pipe(
-      Effect.map(([providerList, agents]) => ({ providerList, agents })),
+  const loadConfig = (client: OpencodeClient) =>
+    runOpenCodeSdk("config.get", () => client.config.get()).pipe(
+      Effect.filterMapOrFail(
+        (result) =>
+          result.data
+            ? Result.succeed(result.data)
+            : Result.fail(
+                new OpenCodeRuntimeError({
+                  operation: "config.get",
+                  detail: "OpenCode configuration was empty.",
+                }),
+              ),
+        (result) => result,
+      ),
     );
+
+  const loadOpenCodeInventory: OpenCodeRuntimeShape["loadOpenCodeInventory"] = (client) =>
+    Effect.all([loadProviders(client), loadAgents(client), loadConfig(client)], {
+      concurrency: "unbounded",
+    }).pipe(Effect.map(([providerList, agents, config]) => ({ providerList, agents, config })));
 
   return {
     startOpenCodeServerProcess,
