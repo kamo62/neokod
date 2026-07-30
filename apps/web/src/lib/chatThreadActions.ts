@@ -59,12 +59,9 @@ export function resolveThreadActionProjectRef(
 
 function buildContextualThreadOptions(context: ChatThreadActionContext): NewThreadOptions {
   return {
-    branch: context.activeThread?.branch ?? context.activeDraftThread?.branch ?? null,
-    worktreePath:
-      context.activeThread?.worktreePath ?? context.activeDraftThread?.worktreePath ?? null,
-    envMode:
-      context.activeDraftThread?.envMode ??
-      (context.activeThread?.worktreePath ? "worktree" : "local"),
+    branch: context.activeDraftThread?.branch ?? null,
+    worktreePath: context.activeDraftThread?.worktreePath ?? null,
+    envMode: context.activeDraftThread?.envMode ?? "local",
     ...(context.activeDraftThread
       ? { startFromOrigin: context.activeDraftThread.startFromOrigin }
       : {}),
