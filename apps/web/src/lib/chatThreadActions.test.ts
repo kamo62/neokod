@@ -66,7 +66,7 @@ describe("chatThreadActions", () => {
     expect(projectRef).toEqual(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID));
   });
 
-  it("starts a contextual new thread from the active draft thread", async () => {
+  it("inherits workspace options and env mode from the active draft thread", async () => {
     const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
 
     const didStart = await startNewThreadFromContext(
@@ -79,6 +79,12 @@ describe("chatThreadActions", () => {
           envMode: "worktree",
           startFromOrigin: true,
         },
+        activeThread: {
+          environmentId: ENVIRONMENT_ID,
+          projectId: PROJECT_ID,
+          branch: "feature/viewed",
+          worktreePath: "/tmp/viewed-worktree",
+        },
         handleNewThread,
       }),
     );
@@ -89,6 +95,29 @@ describe("chatThreadActions", () => {
       worktreePath: "/tmp/worktree",
       envMode: "worktree",
       startFromOrigin: true,
+    });
+  });
+
+  it("does not inherit workspace options or env mode from a viewed active thread", async () => {
+    const handleNewThread = vi.fn<ChatThreadActionContext["handleNewThread"]>(async () => {});
+
+    const didStart = await startNewThreadFromContext(
+      createContext({
+        activeThread: {
+          environmentId: ENVIRONMENT_ID,
+          projectId: PROJECT_ID,
+          branch: "feature/viewed",
+          worktreePath: "/tmp/viewed-worktree",
+        },
+        handleNewThread,
+      }),
+    );
+
+    expect(didStart).toBe(true);
+    expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), {
+      branch: null,
+      worktreePath: null,
+      envMode: "local",
     });
   });
 
