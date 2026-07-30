@@ -85,14 +85,3 @@ export function useMediaQuery(query: BreakpointQuery | MediaQueryInput | (string
 export function useIsMobile(): boolean {
   return useMediaQuery("max-md");
 }
-
-/**
- * Whether the viewer has asked for reduced motion.
- *
- * Read this before starting a looping animation. A CSS-only guard is not enough
- * for animations applied through inline styles, because an inline `animation`
- * declaration outranks a rule in a stylesheet.
- */
-export function usePrefersReducedMotion(): boolean {
-  return useMediaQuery("(prefers-reduced-motion: reduce)");
-}
