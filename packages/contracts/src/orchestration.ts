@@ -124,13 +124,13 @@ export type RuntimeMode = typeof RuntimeMode.Type;
 export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
 /** Invalid persisted permissions must fall back to the least-privileged mode. */
 export const FALLBACK_RUNTIME_MODE: RuntimeMode = "approval-required";
+const isRuntimeMode = Schema.is(RuntimeMode);
 
 export const RuntimeModeStored = Schema.Unknown.pipe(
   Schema.decodeTo(
     RuntimeMode,
     SchemaTransformation.transformOrFail({
-      decode: (value) =>
-        Effect.succeed(Schema.is(RuntimeMode)(value) ? value : FALLBACK_RUNTIME_MODE),
+      decode: (value) => Effect.succeed(isRuntimeMode(value) ? value : FALLBACK_RUNTIME_MODE),
       encode: (value) => Effect.succeed(value),
     }),
   ),

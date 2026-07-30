@@ -70,9 +70,13 @@ describe("cleanSubagentProgressLabel", () => {
 
 describe("formatSubagentUsage", () => {
   it("formats token and Copilot AIU usage", () => {
-    expect(formatSubagentUsage({ totalTokens: 1234, totalNanoAiu: 56 })).toBe(
-      "1,234 tok · 56 nAIU",
-    );
+    // Grouping is the runtime locale's call: en-US gives "1,234", de-DE
+    // "1.234", fr-FR a narrow no-break space, and es-ES does not group four
+    // digits at all. Asserting against toLocaleString would only restate the
+    // formatter's own body, so pin the digits, units and joiner and let the
+    // grouping mark vary.
+    const formatted = formatSubagentUsage({ totalTokens: 1234, totalNanoAiu: 56 });
+    expect(formatted).toMatch(/^1[,.\s]?234 tok · 56 nAIU$/);
   });
 
   it("returns null when usage is unavailable", () => {
