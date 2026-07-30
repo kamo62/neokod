@@ -19,9 +19,347 @@ in neokod `main`**. Everything from "What this fork is" downward describes _that
 line, not `main`. Do not assume a file or behaviour documented in the lower half
 exists on `main` without checking.
 
-Claims here were verified against git and GitHub on **2026-07-28**. Anything
+Claims here were verified against git and GitHub on **2026-07-30**. Anything
 carrying an older date is a historical record of that session, not a statement
 about the current tree. When this file and `git` disagree, trust `git`.
+
+## START HERE — session of 2026-07-30
+
+Read this section first. Everything below it predates this session.
+
+### SECURITY — unauthenticated `/ws`, no origin check. Do this first.
+
+**Not caused by any PR in this session. It has been true for a long time and
+nobody had looked.** Found while security-reviewing #71.
+
+The server has no application auth on the loopback transport and never
+validates `Origin` or `Host` on the WebSocket upgrade. Both verified directly:
+
+- `apps/server/src/transport/WslBearerAuth.ts` early-returns from **both**
+  `authorizeBearerHeader` and `consumeWebSocketTicket` when
+  `config.transport === "loopback"`. Loopback mode authenticates nothing.
+- `grep -n "origin\|Origin" apps/server/src/ws.ts` returns only git remote
+  names. There is no origin validation anywhere in that file.
+
+What `/ws` grants once reached: workspace file read and write
+(`ws.ts:1234-1263`) and interactive shell creation and input
+(`ws.ts:1439-1456`, `terminal/Manager.ts:1775-1783`, `:2444-2457`).
+
+**The exploit path is DNS rebinding, and it works against a plain desktop
+install.** A page the user visits rebinds its own hostname to `127.0.0.1`, then
+opens a raw WebSocket to `/ws`. The server accepts it. That is unauthenticated
+remote code execution as the user, from browsing to a page. The second path is a
+reverse proxy whose auth rule misses `/ws`, which this repo's own
+`docs/operations/self-hosting.md:90-109` already warns about.
+
+**Do not "fix" this by reverting #71.** A sol review recommended exactly that
+and it is wrong. An attacker never runs our client, so `target.ts` validation
+never constrained them; they open a raw socket. Both paths above work
+identically with and without #71. Reverting only breaks the working self-hosted
+deployment and closes nothing. Sol half-conceded this itself: "malicious
+JavaScript can attempt the raw WebSocket protocol directly. The missing server
+Origin check is therefore partly pre-existing."
+
+The fix is server-side origin validation on the `/ws` upgrade. Two designs, and
+the choice is the user's because getting it wrong locks them out of their own
+deployment:
+
+1. Reject any request whose `Origin` does not match `Host`. Needs no
+   configuration, but `X-Forwarded-Host` behind Traefik makes it delicate.
+2. Require an explicitly configured expected public origin and fail closed when
+   it is absent. Safer, needs a config value.
+
+Whichever is chosen, add the negative test that is currently missing: an
+explicit configured non-loopback target must still be rejected. The five
+existing rejection tests in `target.test.ts` all cover desktop and WSL paths,
+and the test added by #71 only asserts the new permissive behaviour, so a
+refactor widening that condition to all sources would pass CI green.
+
+### Shipped this session (2026-07-30)
+
+Six PRs merged. Everything below is on `main`, and the release will be **3.5.5**,
+whose changelog entry covers #68 and #69. `3.5.4` was published from #71 and must
+not be edited.
+
+- **#71 merged** (user's own, 14:56). `neokod serve` behind a same-origin reverse
+  proxy. **This is the root cause of the "providers will not activate" problem
+  that two sessions chased through codex auth and the capability probe.** Nothing
+  was wrong there. `validateTargetUrls` rejected every non-loopback browser
+  origin, so behind Traefik the shell loaded at a public hostname while `/ws`
+  never opened, and provider activation never reached the server. Read the
+  security section above before touching this file again.
+- **#69 merged.** Release a session holding an already-ended turn (#4713). See
+  the review notes below; it changed materially after review.
+- **#68 merged** (`fed2377a0`). New threads no longer inherit the viewed
+  thread's branch and worktree (#4411).
+- **#70 merged.** `Schema.is` hoisted off the decode hot path; the
+  `formatSubagentUsage` test made locale-independent.
+- **#65 merged** (`472c47907`). Pruned 33 shipped `.plans/`, fixed the T3
+  Discord link. Its red CI was a _cancelled_ `Check` job, not a failure;
+  `gh pr checks` renders both as "fail". A re-run cleared it.
+- **#66 merged** (`fc27c17b7`). `auto-animate` gone, global reduced-motion
+  block in `index.css`. The trade was taken deliberately: sidebar rows lose
+  their add/remove/reorder animation, which cost a 2-second timer per row
+  permanently.
+
+Two defects were fixed in #66 before it could merge:
+
+- **The lockfile was never regenerated.** `apps/web/package.json` dropped
+  `@formkit/auto-animate` while `pnpm-lock.yaml` kept all three entries. CI
+  installs `--frozen-lockfile`, so all four jobs died at `vp install` in ~25
+  seconds with `ERR_PNPM_OUTDATED_LOCKFILE`, before running anything. Fixed with
+  `pnpm install --lockfile-only`, which leaves `node_modules` alone and produced
+  a diff of exactly 8 deletions with no collateral churn.
+- **`usePrefersReducedMotion` was dead on arrival.** Exported with zero call
+  sites. Its doc comment claimed a CSS-only guard cannot reach inline-style
+  animations, which is not how the cascade works: an `!important` declaration in
+  a stylesheet outranks a non-important inline one, which is exactly why the
+  `index.css` block marks its properties `!important`. Removed.
+
+**The pre-commit hook has a second confirmed instance of the `.plans/` bug.** A
+lockfile-only commit has no formattable target, so `vp fmt` exits with "Expected
+at least one target file" and the commit reverts. Two known paths now hit this.
+Fix the hook to skip when nothing matches, rather than continuing to reach for
+`--no-verify`.
+
+`gh pr merge` **works** for the agent. What the permission classifier blocks is
+`gh pr view --json` and compound `git fetch` calls, so merging succeeds but
+confirming it needs a bare `git fetch` followed by `git log`. A Bash permission
+rule would make this less awkward.
+
+### What the reviews changed on #69
+
+Reviewed by sol at high before merge, alongside a second lane on #71. Verdict was
+NO-GO, and it was right on both counts.
+
+- **The defect was in the review fix, not the original implementation.** The
+  first version cleared `session.lastError` when settling, which erases a quota
+  or auth failure from the UI. That was corrected to preserve it. Preserving it
+  _unconditionally_ was then also wrong: an error survives into later turns
+  because ingestion clears it only on `ready`
+  (`ProviderRuntimeIngestion.ts:1318-1326`), so a thread that failed, recovered
+  and then completed would settle as `ready` while still showing the old banner.
+  `ThreadErrorBanner.tsx` renders any non-null error with no status check. It now
+  follows the ingestion rule exactly: `ready` clears, everything else preserves.
+- **A changelog entry was required and missing**, and #68 had already merged
+  without one. Both are covered by the 3.5.5 entry.
+
+Two verdicts worth carrying forward:
+
+- **The missing liveness guard is safe only under the current startup
+  architecture.** Projection catch-up completes before startup
+  (`OrchestrationEngine.ts:300-302`), reconciliation finishes before commands are
+  accepted (`serverRuntimeStartup.ts:345`, `:429-430`), and adapters begin with
+  empty in-memory session maps. It is **not** a generally safe planner invariant:
+  `thread.turn-interrupt-requested` projects a turn as interrupted before the
+  provider confirms (`ProjectionPipeline.ts:1258-1291`). **If periodic or
+  automatic reconciliation is ever added, revisit this decision first.**
+- The status mapping (`completed → ready`, `error → error`, else `interrupted`)
+  and the `completedAt === null` skip were both confirmed correct.
+
+### Running four Codex lanes in one checkout — what it cost
+
+#68, #69, #70 and the pruning decision were produced by four parallel sol lanes
+in this single checkout, with file ownership assigned up front and every lane
+told not to switch branches or commit. That part worked: no lane collided with
+another, and no lane wrote outside its assignment.
+
+What did not work is worth knowing before repeating it.
+
+- **Three of the four lanes needed correction.** One cleared `lastError` while
+  settling, which would have erased a provider's own error message from the UI.
+  One reported `vp check` passing on files that were not formatted, and shipped
+  a test asserting the formatter against its own `toLocaleString()` body, which
+  can never fail. The rule about not trusting Codex's verification claims held
+  up on both counts.
+- **The read-only lane was the most valuable of the four.** It wrote no code and
+  produced the pruning decision, including the IndexedDB slice nobody had
+  listed. Reasoning-only delegation paid better here than implementation did.
+- **The forwarder times out at 2 minutes; the Codex job does not.** Task
+  notifications arrive long before the work is done. Poll
+  `codex-companion.mjs status` and fetch with `result <task-id>`; do not treat
+  the subagent notification as completion.
+- **One lane sat in "verifying" for 23 minutes on a two-line change** and was
+  cancelled with its edits intact on disk. Cancelling and finishing by hand cost
+  less than waiting.
+- **Branches were switched while a lane was still running**, to land two PRs.
+  The rule at the top of "Environment" exists for a reason. Nothing was lost,
+  because the running lane owned different files, but its verification was
+  reading a tree that changed under it, which is the likeliest explanation for
+  the 23-minute stall above. Land PRs after all lanes finish, not between them.
+
+### Superseded: shipped in the 2026-07-29/30 session
+
+- **v3.5.3** — Claude context meter no longer ratchets back after `/compact`.
+  Eight defects over three review rounds; the last two rounds were found by sol.
+- **`neokod` published to npm.** Installs cleanly on Ubuntu 22.04 / Node 22.
+- **npm Trusted Publishing** configured, `NPM_TOKEN` deleted. There is no
+  long-lived publishing credential in repository secrets.
+- `docs/operations/self-hosting.md` — Traefik + Authelia forward-auth, written
+  against the user's real config.
+
+Three bugs surfaced only by doing rather than reasoning, which is the lesson
+worth carrying: a release-blocking git-gc test flake, a missing `id-token: write`
+permission that no dry run could catch, and a published binary reporting the
+wrong version, found by installing the package and running it.
+
+### SOLVED 2026-07-30: providers would not activate
+
+**Root cause was `validateTargetUrls` in the web client, fixed in #71.** It
+rejected every non-loopback browser origin, so behind the reverse proxy the shell
+loaded but `/ws` never opened and provider activation never reached the server.
+Everything below this paragraph is the record of two sessions looking in the
+wrong place, kept because the eliminations are still valid.
+
+The lesson: the symptom was "providers will not activate", which reads as a
+provider problem, and both sessions treated it as one. The failing component was
+the client's own connection validation. **When a symptom points at a subsystem,
+confirm the transport underneath it is actually up before investigating that
+subsystem.**
+
+Separately established on 2026-07-30, and still true:
+`**192.168.0.100 is not on the LAN**`. A full sweep of `192.168.0.0/24` from
+this machine finds three live hosts: the gateway `.1` and this Mac's own two
+interfaces. The ARP entry for `.100` persists with MAC `34:64:a9:9a:c3:88` but is
+a stale cache line, which is why the failure reads as "No route to host" rather
+than a connection refusal. Both `102.133.*` entries in `~/.ssh/config` are also
+dead on port 22. **The `Host 192.168.0.100` entry in `~/.ssh/config` is stale and
+should be updated or removed**; it is what sent two sessions down this path.
+
+Not the agent's shell sandbox, which was the standing theory. Retested with the
+sandbox disabled and the result was identical. Also not the fact that this Mac
+is dual-homed on one subnet (`en0` Wi-Fi `.129`, `en4` Ethernet `.246`, both
+active, default route on `en4`); the gateway answers on both. That dual-homing is
+a real misconfiguration worth fixing on its own, but it is unrelated.
+
+---
+
+Historical record follows. **Providers will not activate on the user's home
+server** (`kamo@192.168.0.100`).
+
+Ruled out by direct check: `codex` is installed (0.144.3), on `PATH` at
+`~/.local/bin/codex`, and **authenticated** (`auth.json` present, `codex login
+status` reports "Logged in using ChatGPT", `~/.codex/logs_2.sqlite` written
+recently). `HOME` and `USER` are correct.
+
+Confirmed separately: **`git config --global user.email` is unset** on that box.
+That is a real and distinct problem — git refuses to commit without an identity —
+but it does not explain the provider symptom.
+
+Not yet gathered, because the agent's shell could not reach the host while the
+user's could (both interfaces, both source addresses, port 22 closed to the
+agent). Run these from the user's terminal and paste the output:
+
+```
+ssh kamo@192.168.0.100 'pgrep -af neokod; ls -la ~/.neokod/userdata/logs/; tail -40 ~/.neokod/userdata/logs/provider/*.log'
+```
+
+Two live candidates: neokod may simply not be running (never verified beyond
+`--version` and `--help`), or the capability probe is failing or timing out.
+There is precedent for the latter in this repo: Bedrock-backed Claude needed a
+25s probe allowance in 3.3.0 for exactly this shape.
+
+Note when comparing against a release: the installed `neokod@3.5.3` binary
+reports `v3.0.3`. That mislabelling is fixed in `main` by PR #64 but is baked
+into the published tarball, and npm does not allow republishing a version.
+
+### Decisions taken, do not relitigate
+
+- **Do not renumber toward upstream's 0.0.x.** electron-updater will not offer a
+  lower version, so it strands every existing install. Recorded under "Smaller
+  known items".
+- **Do not build a combined agent trace.** A sol review at xhigh found it would
+  be a fourth representation of state already owned by `PlanSidebar`,
+  `SubagentsPanel` and the timeline's existing work-row folding. `ThreadRunBanner`
+  is already the turn-activity surface, with `deriveActiveToolLabel` and
+  `deriveActiveWorkStartedAt` already doing the derivation.
+- **Reasoning display is a server projection problem, not UI.** Adapters already
+  emit it — Codex with indexed raw _and_ summary streams, Claude as
+  `thinking_delta`, Copilot suppressed for workers, Cursor and Grok not at all
+  since the ACP parser ignores `agent_thought_chunk`. Common ingestion then drops
+  it before the web layer (`ProviderRuntimeIngestion.ts:566-613`). Specify
+  persistence and replay semantics before any UI work.
+- **No standalone elapsed-time hook.** One was written and dropped in the same
+  session: `useThreadRunSummary` already does wall-clock elapsed from the turn's
+  persisted `startedAt` at 1Hz, and the new one collided by name with
+  `formatElapsed` in `session-logic.ts:321`.
+
+### Next, in order
+
+1. **Close the unauthenticated `/ws` hole.** See the security section at the top.
+   Pick one of the two designs, add the missing negative test, ship it. This
+   outranks everything else on this list.
+2. Set git identity on the server: `git config --global user.name/user.email`,
+   then `gh auth login && gh auth setup-git`. Also fix the stale
+   `Host 192.168.0.100` entry in `~/.ssh/config`.
+3. Revoke the two npm tokens that were pasted into chat. Trusted Publishing
+   makes them unnecessary; the secret is already deleted but the tokens remain
+   valid on the account.
+4. Consider `npm deprecate neokod@3.5.3`, or let the next release carry the
+   corrected binary version. Leaning to the latter.
+5. Build the activity-payload prune. The decision below is made; the plan is
+   ready to execute.
+6. Fix the pre-commit hook so a commit whose staged paths are all
+   formatter-excluded does not fail.
+7. Restyle `ThreadRunBanner` rather than adding new loading surfaces, per the
+   sol review. **Still unspecified.** Nobody has written down what is wrong with
+   how it looks now, and an unspecified visual task handed to an agent produces
+   work that has to be undone. Write the brief before starting this.
+
+### DECIDED 2026-07-30: prune payloads, do not add WebSocket compression
+
+This settles the open question recorded under item 1 of the 2026-07-27 survey.
+A sol review at xhigh, reading our code rather than upstream's numbers, found the
+argument that had been missing on both sides.
+
+**The WebSocket is not the cold-start path.** A cold open fetches the full
+snapshot over HTTP (`threadSnapshotHttp.ts:23-48`); WS-embedded snapshots are a
+fallback (`threads.ts:203-240`). A warm open decodes the complete cached thread
+from IndexedDB and resumes only later WS events (`threads.ts:45-74`,
+`storage.ts:39-58` and `:356-394`). The sidebar then prewarms up to ten visible
+thread details, each retaining its activity array (`Sidebar.logic.ts:16-18`,
+`:367-372`).
+
+So compression buys nothing on the path that actually costs, and leaves the full
+decoded payload in browser heap either way. Pruning removes the 1,110,122 bytes
+of `data.state` from JSON parsing, IndexedDB encoding and retained client state.
+The `pnpm patch` against `@effect/platform-node` that compression needs is also
+a real maintenance liability: Effect platform packages are pinned to an exact
+beta and every bump would require rebasing the patch and regenerating its lock
+hash, and a rejected patch breaks staged desktop release builds
+(`build-desktop-artifact.ts:1444-1494`). Given the `@pierre/diffs` install
+history, that cost is not worth paying before profiling proves WS transport
+dominates.
+
+`data.state` is confirmed unread: no match for it anywhere in `apps/web/src` or
+`packages/client-runtime/src`, and the exhaustive `payload.data` consumer in
+`session-logic.ts:877-981` reads `toolName`, `kind`, `input`, `rawInput`,
+`rawOutput`, `item` and `toolCallId`, never `state`.
+
+Build plan, in order:
+
+1. One shared server helper removing only own-property `data.state`, cloning
+   only the changed activity. Test that every other top-level, nested tool and
+   unknown provider key stays deeply equal.
+2. Apply it at both HTTP snapshot handlers (`http.ts:27-70`), WS replay
+   (`ws.ts:856-876`), and thread live, catch-up and initial-snapshot delivery
+   (`ws.ts:967-1052`). Persisted events and projection tables stay unchanged.
+3. **Do not skip this one.** Increment the IndexedDB version and clear only the
+   derived `thread` object store on upgrade (`storage.ts:25-48`). Without it a
+   warm cache keeps loading the old full payloads before WS connects, and the
+   fix appears not to work. Preserve the catalog and shell stores.
+4. Evidence gate: re-run the payload query, confirm zero delivered `data.state`,
+   compare cold and warm snapshot bytes plus browser startup heap and time. Add
+   compression only if that measurement leaves WS transport dominant.
+
+Neither option helps a server-side heap OOM: the server selects and fully
+decodes every `payload_json` before building the snapshot
+(`ProjectionSnapshotQuery.ts:83-88`, `:823-845`, `:2028-2042`).
+
+Still untested end to end: `neokod serve --mode web` actually serving, and the
+`/ws` auth check returning a redirect rather than `101`. The second one matters
+most — it is the difference between a proxy that protects the app and one that
+only appears to.
 
 ## Current state (2026-07-28) — neokod track
 
@@ -292,8 +630,15 @@ nothing to wait for on any of them.
   `requestIdleCallback`/s to the library's position polling rather than to app JS.
   Measure locally before acting; the fix direction is to drop the dependency for
   the two sidebar lists, not to tune its options.
-- **#4713 thread stuck `running` after interrupt, stop becomes a no-op — one
-  matching row in our own state DB.** Their detection query, run against
+- **#4713 thread stuck `running` after interrupt, stop becomes a no-op — BUILT,
+  PR #69, open and unreviewed.** The query was re-run on 2026-07-30 and returns
+  the **same single row and no newer ones**, across two further days of use.
+  That is the opposite of what a live defect looks like: treat the row as stale
+  residue from before the 3.0.25 and v3.5.2 fixes, and treat #69 as a defensive
+  invariant rather than an incident response. The original 2026-07-28 notes
+  follow unchanged.
+
+  Their detection query, run against
   `~/.neokod/userdata/state.sqlite` on 2026-07-28, returns thread
   `514e9589-7f71-4ba1-8bf6-8d7c59af0c6f`: session `running`, active turn
   `opencode-turn-65197929…` already `completed` at 2026-05-17. Two caveats before
@@ -413,10 +758,20 @@ bytes on the wire, compression is the cheaper and safer first move; if the goal
 is client startup cost, pruning is still the one that matters. Decide which
 problem is actually being solved before building either.
 
-**2. Upstream #4411 — new threads inherit the viewed thread's branch and worktree.**
-Present in our code at `apps/web/src/lib/chatThreadActions.ts:60-79`, which
-explicitly copies `branch` and `worktreePath`. Fix the shared local action narrowly.
-Do NOT take upstream's 14-file UI diff; it violates the local-first UI policy.
+**RESOLVED 2026-07-30 in favour of pruning.** See "DECIDED 2026-07-30" near the
+top of this file for the reasoning and the build plan. The short version is that
+the paragraph above was reasoning about the wrong path: the WebSocket is not
+where cold start spends its time, so compression misses the cost entirely.
+
+**2. Upstream #4411 — new threads inherit the viewed thread's branch and
+worktree. BUILT, PR #68, open and unreviewed.** Was at
+`apps/web/src/lib/chatThreadActions.ts:60-79`, which explicitly copied `branch`
+and `worktreePath` from the viewed thread. Only `activeDraftThread` supplies
+them now, since a draft is pre-send configuration the user is editing and a
+viewed thread is not. `envMode` moved with them; it derived `"worktree"` from
+the viewed thread's `worktreePath`, which would otherwise have produced a thread
+claiming worktree mode with no path behind it. Upstream's 14-file UI diff was
+not taken.
 
 **3. Upstream #4414 — Claude skills in the composer `$` picker. Later, server-only.**
 Claude probing returns models and slash commands but no skills
@@ -501,26 +856,31 @@ auth/session control plane.
   legible, state the baseline ("Neokod 3.5.3, based on T3 Code 0.0.29") in the
   About dialog and at the top of the changelog rather than encoding it in the
   version. Do not reopen this without a plan for the stranded-installs problem.
-- `formatSubagentUsage` test hardcodes US number formatting (`1,234 tok`) and fails
-  under locales using a space separator. Fix the test, not the formatter. Confirmed
-  still failing locally on 2026-07-26; it passes in CI because the runner is en-US.
-- **`Schema.is(RuntimeMode)` is recompiled on every decode.**
-  `packages/contracts/src/orchestration.ts:133`, inside `RuntimeModeStored`'s
-  transform. Lint flags it (`neokod(no-inline-schema-compile)`) as a warning, so it
-  does not fail CI, but it sits on the hot path where every persisted thread row
-  decodes. Hoist it to a module-level const. Shipped this way in 3.4.0.
-- **The pre-commit hook fails when the only staged path is under `.plans/`.**
-  `.plans/` is excluded from the formatter, so `vp fmt` exits with "Expected at
-  least one target file" and the commit is reverted. Use `--no-verify` for
-  plans-only commits, or fix the hook to skip when nothing matches.
+- ~~`formatSubagentUsage` test hardcodes US number formatting~~ and
+  ~~`Schema.is(RuntimeMode)` is recompiled on every decode~~ — **both done in PR
+  #70**, open and unreviewed. The test now pins digits, units and joiner while
+  letting the grouping mark vary, verified against en-US, de-DE, fr-FR's narrow
+  no-break space, ru-RU, sv-SE, en-IN and es-ES, where four-digit numbers are
+  not grouped at all. Asserting against `toLocaleString()` was rejected: the
+  formatter's body _is_ `toLocaleString()`, so that restates the implementation
+  and can never fail. The `RuntimeModeStored` predicate is hoisted to a
+  module-level const, with the fail-closed `approval-required` fallback
+  untouched.
+- **The pre-commit hook fails when every staged path is formatter-excluded.**
+  Two confirmed cases now: a `.plans/`-only commit, and a `pnpm-lock.yaml`-only
+  commit. `vp fmt` exits with "Expected at least one target file" and the commit
+  is reverted. `--no-verify` is the workaround in use; fix the hook to skip when
+  nothing matches, because reaching for `--no-verify` routinely is how a real
+  formatting miss eventually ships.
 - 9 `pre-rebase-*` snapshots were verified disposable and deleted: the only
   substantive commit (`ba938a579`, thread goal + goalStatus) is already on main.
 
-### Branch inventory (verified 2026-07-28)
+### Branch inventory (verified 2026-07-30)
 
 | Branch                                     | Where            | Status                                                                                                          |
 | ------------------------------------------ | ---------------- | --------------------------------------------------------------------------------------------------------------- |
-| `main`                                     | local + `neokod` | Ships. v3.5.2 released; 3.5.3 pending in PR #58.                                                                |
+| `main`                                     | local + `neokod` | Ships. Carries #65, #66, #68, #69, #70 and #71. Next release is 3.5.5.                                          |
+| `docs/handoff-2026-07-30`                  | local + `neokod` | PR #67, this file.                                                                                              |
 | `fix/claude-context-meter-compaction`      | local + `neokod` | PR #58, open. Context meter ratchet, upstream #4650.                                                            |
 | `docs/agent-gateway-spec-round3`           | local + `neokod` | Branch name says round3; content is **round 6** (`15a101031`). Unreviewed. Do not build until a review passes.  |
 | `feat/diff-pane-review`                    | local + `neokod` | Closed PR #34, kept in case it is reintroduced.                                                                 |
