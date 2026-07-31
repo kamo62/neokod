@@ -5,6 +5,7 @@ import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import type {
+  CanUseTool,
   Options as ClaudeQueryOptions,
   PermissionMode,
   PermissionResult,
@@ -277,6 +278,21 @@ async function readFirstPromptMessage(
 
 const THREAD_ID = ThreadId.make("thread-claude-1");
 const RESUME_THREAD_ID = ThreadId.make("thread-claude-resume");
+
+/**
+ * Builds the third argument to the SDK's `canUseTool` callback. SDK 0.3.220
+ * made `requestId` (the control_request envelope's `request_id`) required, so
+ * derive a deterministic fixture value from the toolUseID.
+ */
+const makeCanUseToolOptions = (
+  toolUseID: string,
+  overrides?: Partial<Parameters<CanUseTool>[2]>,
+): Parameters<CanUseTool>[2] => ({
+  signal: new AbortController().signal,
+  toolUseID,
+  requestId: `req-${toolUseID}`,
+  ...overrides,
+});
 
 const drainSdkMessages = Effect.gen(function* () {
   yield* Effect.yieldNow;
@@ -3968,8 +3984,7 @@ describe("ClaudeAdapterLive", () => {
       const permissionPromise = canUseTool(
         "Bash",
         { command: "pwd" },
-        {
-          signal: new AbortController().signal,
+        makeCanUseToolOptions("tool-use-1", {
           suggestions: [
             {
               type: "setMode",
@@ -3977,8 +3992,7 @@ describe("ClaudeAdapterLive", () => {
               destination: "session",
             },
           ],
-          toolUseID: "tool-use-1",
-        },
+        }),
       );
 
       const requested = yield* Stream.runHead(adapter.streamEvents);
@@ -4048,14 +4062,7 @@ describe("ClaudeAdapterLive", () => {
         return;
       }
 
-      const agentPermissionPromise = canUseTool(
-        "Agent",
-        {},
-        {
-          signal: new AbortController().signal,
-          toolUseID: "tool-agent-1",
-        },
-      );
+      const agentPermissionPromise = canUseTool("Agent", {}, makeCanUseToolOptions("tool-agent-1"));
 
       const agentRequested = yield* Stream.runHead(adapter.streamEvents);
       assert.equal(agentRequested._tag, "Some");
@@ -4075,10 +4082,7 @@ describe("ClaudeAdapterLive", () => {
       const grepPermissionPromise = canUseTool(
         "Grep",
         { pattern: "foo", path: "src" },
-        {
-          signal: new AbortController().signal,
-          toolUseID: "tool-grep-approval-1",
-        },
+        makeCanUseToolOptions("tool-grep-approval-1"),
       );
 
       const grepRequested = yield* Stream.runHead(adapter.streamEvents);
@@ -4614,10 +4618,7 @@ describe("ClaudeAdapterLive", () => {
           plan: "# Ship it\n\n- one\n- two",
           allowedPrompts: [{ tool: "Bash", prompt: "run tests" }],
         },
-        {
-          signal: new AbortController().signal,
-          toolUseID: "tool-exit-1",
-        },
+        makeCanUseToolOptions("tool-exit-1"),
       );
 
       const proposedEvent = yield* Stream.runHead(adapter.streamEvents);
@@ -4780,10 +4781,11 @@ describe("ClaudeAdapterLive", () => {
         ],
       };
 
-      const permissionPromise = canUseTool("AskUserQuestion", askInput, {
-        signal: new AbortController().signal,
-        toolUseID: "tool-ask-1",
-      });
+      const permissionPromise = canUseTool(
+        "AskUserQuestion",
+        askInput,
+        makeCanUseToolOptions("tool-ask-1"),
+      );
 
       // The adapter should emit a user-input.requested event.
       const requestedEvent = yield* Stream.runHead(adapter.streamEvents);
@@ -4906,10 +4908,11 @@ describe("ClaudeAdapterLive", () => {
         ],
       };
 
-      const permissionPromise = canUseTool("AskUserQuestion", askInput, {
-        signal: new AbortController().signal,
-        toolUseID: "tool-ask-2",
-      });
+      const permissionPromise = canUseTool(
+        "AskUserQuestion",
+        askInput,
+        makeCanUseToolOptions("tool-ask-2"),
+      );
 
       // Should still get user-input.requested even in full-access mode.
       const requestedEvent = yield* Stream.runHead(adapter.streamEvents);
@@ -4971,10 +4974,7 @@ describe("ClaudeAdapterLive", () => {
             },
           ],
         },
-        {
-          signal: controller.signal,
-          toolUseID: "tool-ask-abort",
-        },
+        makeCanUseToolOptions("tool-ask-abort", { signal: controller.signal }),
       );
 
       const requestedEvent = yield* Stream.runHead(adapter.streamEvents);
