@@ -90,7 +90,6 @@ import { ContextWindowMeter } from "./ContextWindowMeter";
 import { buildExpandedImagePreview, type ExpandedImagePreview } from "./ExpandedImagePreview";
 import { basenameOfPath } from "../../pierre-icons";
 import { cn, randomUUID } from "~/lib/utils";
-import { Separator } from "../ui/separator";
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -226,44 +225,41 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
     : `Show ${props.planSidebarLabel.toLowerCase()} sidebar`;
 
   const interactionModeToggle = props.showInteractionModeToggle ? (
-    <>
-      <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              variant="ghost"
-              className={cn(
-                "shrink-0 whitespace-nowrap px-2 sm:px-3",
-                props.interactionMode === "plan"
-                  ? "bg-surface-selected text-text-primary hover:bg-surface-hover"
-                  : "text-text-secondary hover:text-text-primary",
-              )}
-              size="sm"
-              type="button"
-              onClick={props.onToggleInteractionMode}
-              aria-label={interactionModeTooltip}
-            />
-          }
-        >
-          {props.interactionMode === "plan" ? (
-            <PencilRulerIcon className="text-current opacity-100" />
-          ) : (
-            <BotIcon />
-          )}
-          <span className="sr-only sm:not-sr-only">
-            {props.interactionMode === "plan" ? "Plan" : "Build"}
-          </span>
-        </TooltipTrigger>
-        <TooltipPopup side="top">{interactionModeTooltip}</TooltipPopup>
-      </Tooltip>
-    </>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            className={cn(
+              "shrink-0 whitespace-nowrap px-2 sm:px-3",
+              props.interactionMode === "plan"
+                ? "bg-surface-selected text-text-primary hover:bg-surface-hover"
+                : "text-text-secondary hover:text-text-primary",
+            )}
+            size="sm"
+            type="button"
+            onClick={props.onToggleInteractionMode}
+            aria-label={interactionModeTooltip}
+          />
+        }
+      >
+        {props.interactionMode === "plan" ? (
+          <PencilRulerIcon className="text-current opacity-100" />
+        ) : (
+          <BotIcon />
+        )}
+        <span className="sr-only sm:not-sr-only">
+          {props.interactionMode === "plan" ? "Plan" : "Build"}
+        </span>
+      </TooltipTrigger>
+      <TooltipPopup side="top">{interactionModeTooltip}</TooltipPopup>
+    </Tooltip>
   ) : null;
 
+  // The footer controls separate by spacing alone; the vertical hairlines that
+  // used to sit between them drew borders on chrome the gap already carries.
   return (
     <>
-      <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
-
       <Tooltip>
         <Select
           value={props.runtimeMode}
@@ -310,34 +306,31 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
       {interactionModeToggle}
 
       {props.showPlanToggle ? (
-        <>
-          <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  className={cn(
-                    "shrink-0 whitespace-nowrap px-2 sm:px-3",
-                    props.planSidebarOpen
-                      ? "bg-surface-selected text-text-primary hover:bg-surface-hover"
-                      : "text-text-secondary hover:text-text-primary",
-                  )}
-                  size="sm"
-                  type="button"
-                  onClick={props.onTogglePlanSidebar}
-                  aria-label={planSidebarTooltip}
-                />
-              }
-            >
-              <ListTodoIcon
-                className={props.planSidebarOpen ? "text-current opacity-100" : undefined}
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                className={cn(
+                  "shrink-0 whitespace-nowrap px-2 sm:px-3",
+                  props.planSidebarOpen
+                    ? "bg-surface-selected text-text-primary hover:bg-surface-hover"
+                    : "text-text-secondary hover:text-text-primary",
+                )}
+                size="sm"
+                type="button"
+                onClick={props.onTogglePlanSidebar}
+                aria-label={planSidebarTooltip}
               />
-              <span className="sr-only sm:not-sr-only">{props.planSidebarLabel}</span>
-            </TooltipTrigger>
-            <TooltipPopup side="top">{planSidebarTooltip}</TooltipPopup>
-          </Tooltip>
-        </>
+            }
+          >
+            <ListTodoIcon
+              className={props.planSidebarOpen ? "text-current opacity-100" : undefined}
+            />
+            <span className="sr-only sm:not-sr-only">{props.planSidebarLabel}</span>
+          </TooltipTrigger>
+          <TooltipPopup side="top">{planSidebarTooltip}</TooltipPopup>
+        </Tooltip>
       ) : null}
     </>
   );
@@ -2170,8 +2163,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           ref={composerSurfaceRef}
           data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
           className={cn(
+            // One quiet surface: the panel background shift off the canvas and
+            // a subtle hairline carry the edge. The former drop shadow (in
+            // .chat-composer-glass) and line-default border made the composer
+            // read as a heavy floating box.
             "chat-composer-glass rounded-[18px] border transition-colors duration-200 has-focus-visible:border-ring/45",
-            isDragOverComposer ? "border-brand bg-surface-hover" : "border-line-default",
+            isDragOverComposer ? "border-brand bg-surface-hover" : "border-line-subtle",
             environmentUnavailable ? "opacity-75" : null,
             composerProviderState.composerSurfaceClassName,
           )}
@@ -2196,14 +2193,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         >
           {!isComposerCollapsedMobile &&
             (activePendingApproval ? (
-              <div className="rounded-t-[17px] border-b border-line-subtle bg-surface-control">
+              <div className="rounded-t-[17px] bg-surface-control">
                 <ComposerPendingApprovalPanel
                   approval={activePendingApproval}
                   pendingCount={pendingApprovals.length}
                 />
               </div>
             ) : pendingUserInputs.length > 0 ? (
-              <div className="rounded-t-[17px] border-b border-line-subtle bg-surface-control">
+              <div className="rounded-t-[17px] bg-surface-control">
                 <ComposerPendingUserInputPanel
                   pendingUserInputs={pendingUserInputs}
                   respondingRequestIds={respondingRequestIds}
@@ -2214,7 +2211,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 />
               </div>
             ) : showPlanFollowUpPrompt && activeProposedPlan ? (
-              <div className="rounded-t-[17px] border-b border-line-subtle bg-surface-control">
+              <div className="rounded-t-[17px] bg-surface-control">
                 <ComposerPlanFollowUpBanner
                   key={activeProposedPlan.id}
                   planTitle={proposedPlanTitle(activeProposedPlan.planMarkdown) ?? null}
@@ -2224,7 +2221,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
           {isComposerCollapsedMobile && activePendingApproval ? (
             <div
-              className="rounded-t-[17px] border-b border-line-subtle bg-surface-control"
+              className="rounded-t-[17px] bg-surface-control"
               data-chat-composer-collapsed-controls="true"
             >
               <ComposerPendingApprovalPanel
@@ -2241,7 +2238,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             </div>
           ) : isComposerCollapsedMobile && pendingUserInputs.length > 0 ? (
             <div
-              className="rounded-t-[17px] border-b border-line-subtle bg-surface-control"
+              className="rounded-t-[17px] bg-surface-control"
               data-chat-composer-collapsed-controls="true"
             >
               <ComposerPendingUserInputPanel
@@ -2578,7 +2575,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 showMobilePendingAnswerActions && "hidden sm:flex",
               )}
             >
-              <div className="-m-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {/*
+               * gap-2 replaces the vertical rules that used to sit between
+               * these controls. Those carried mx-0.5 either side, so dropping
+               * them at the old gap-1 would have left the footer tighter than
+               * before: fewer lines but more crowded, which is the opposite of
+               * the intent.
+               */}
+              <div className="-m-1 flex min-w-0 flex-1 items-center gap-2 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <ComposerModelTraitsControl
                   compact={isComposerFooterCompact}
                   activeInstanceId={selectedInstanceId}

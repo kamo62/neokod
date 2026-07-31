@@ -239,13 +239,11 @@
     padding-inline-end: calc(env(safe-area-inset-right) + 0.75rem);
   }
 
+  /* The composer separates from the canvas by its panel background shift and
+     a subtle border in the component; no drop shadow. */
   .chat-composer-glass,
   .chat-composer-lower-chrome {
     background: var(--surface-panel);
-  }
-
-  .chat-composer-glass {
-    box-shadow: 0 12px 28px -24px color-mix(in srgb, var(--text-primary) 48%, transparent);
   }
 
   .chat-composer-shared-blur {
@@ -256,10 +254,6 @@
   .dark .chat-composer-glass,
   .dark .chat-composer-lower-chrome {
     background: var(--surface-panel);
-  }
-
-  .dark .chat-composer-glass {
-    box-shadow: 0 12px 28px -24px color-mix(in srgb, var(--text-primary) 52%, transparent);
   }
 
   .chat-composer-lower-chrome {

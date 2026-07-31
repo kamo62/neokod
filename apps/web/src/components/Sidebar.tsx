@@ -702,10 +702,13 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
         size="sm"
         isActive={isActive}
         data-testid={`thread-row-${thread.id}`}
+        // h-auto is load-bearing: SidebarMenuSubButton pins a single-line
+        // height and clips overflow, so a two-line row is cut off without it.
+        // The old height becomes the minimum, so single-line rows are unchanged.
         className={`${resolveThreadRowClassName({
           isActive,
           isSelected,
-        })} relative isolate`}
+        })} relative isolate h-auto min-h-[var(--row-height-compact)] py-1`}
         onClick={handleRowClick}
         onDoubleClick={handleRowDoubleClick}
         onKeyDown={handleRowKeyDown}
@@ -769,7 +772,15 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
            * timestamp no longer has to fade out to make room for those actions,
            * since they now occupy the row's right edge rather than this space.
            */}
-          <div className="flex min-w-0 items-center gap-1.5 text-meta text-[var(--text-tertiary)]">
+          {/*
+           * --text-secondary, not --text-tertiary. This line is now rendered
+           * permanently rather than fading on hover, so it has to clear WCAG
+           * AA on its own: tertiary is #767676 on the #f7f7f7 sidebar, which
+           * computes to 4.24:1 and fails the 4.5:1 floor at this size.
+           * Secondary is 6.1:1 light and 7.2:1 dark. 3.3.0 raised muted text
+           * to AA deliberately; this must not walk that back.
+           */}
+          <div className="flex min-w-0 items-center gap-1.5 text-meta text-[var(--text-secondary)]">
             {props.contextLabel ? (
               <span className="min-w-0 truncate">{props.contextLabel}</span>
             ) : null}
