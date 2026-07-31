@@ -1,8 +1,9 @@
 ## 3.5.12 - 2026-07-31 (Patch)
 
-Release impact: Patch because this updates bundled provider SDKs without changing any Neokod contract, schema or storage.
+Release impact: Patch because this corrects sidebar row rendering and updates bundled provider SDKs, without changing any Neokod contract, schema or storage.
 
-- Updated the bundled GitHub Copilot SDK to 1.0.8, which moves its native binaries from 1.0.68 to 1.0.76. The packaged binaries were stale against what the SDK itself expects, which the macOS build reported as a missing dependency and Apple rejected during notarization as an invalid signature on a bundled framework.
+- Fixed sidebar thread rows clipping their second line. 3.5.11 gave rows a title line and a metadata line but left the row height fixed, so the timestamp was cut off and the selection highlight covered only the title. Row height is now a minimum rather than a fixed value.
+- Updated the bundled GitHub Copilot SDK to 1.0.8, which moves its native binaries from 1.0.68 to 1.0.76. The packaged binaries were stale against what the SDK itself expects, which the macOS build reported as a missing dependency.
 - Updated the Claude Agent SDK to 0.3.220.
 
 ## 3.5.11 - 2026-07-31 (Patch)

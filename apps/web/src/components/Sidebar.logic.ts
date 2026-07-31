@@ -411,8 +411,15 @@ export function resolveThreadRowClassName(input: {
   isActive: boolean;
   isSelected: boolean;
 }): string {
+  // Minimum height, not fixed height. Thread rows are two lines, and a pinned
+  // height clips the second one and leaves the selection highlight covering
+  // only the title. Overriding a fixed height from the call site does not work
+  // reliably either: `h-auto` merges over `h-6` but NOT over `sm:h-7`, because
+  // tailwind-merge treats a responsive variant as its own group, so the row
+  // stayed pinned at every width above the sm breakpoint. Keeping the old
+  // values as minimums leaves single-line rows unchanged.
   const baseClassName =
-    "h-6 w-full translate-x-0 cursor-pointer justify-start px-2 text-left select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring sm:h-7";
+    "min-h-6 w-full translate-x-0 cursor-pointer justify-start px-2 text-left select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring sm:min-h-7";
 
   if (input.isSelected && input.isActive) {
     return cn(
