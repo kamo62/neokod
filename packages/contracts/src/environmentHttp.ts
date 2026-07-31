@@ -27,6 +27,7 @@ export const EnvironmentWslBearerInvalidReason = Schema.Literals([
   "invalid_credential",
   "missing_websocket_ticket",
   "invalid_websocket_ticket",
+  "origin_not_allowed",
 ]);
 export type EnvironmentWslBearerInvalidReason = typeof EnvironmentWslBearerInvalidReason.Type;
 
@@ -57,6 +58,10 @@ export class EnvironmentWslBearerInvalidError extends Schema.TaggedErrorClass<En
   {
     code: Schema.Literal("wsl_bearer_invalid"),
     reason: EnvironmentWslBearerInvalidReason,
+    // Operator-facing detail for rejections that need configuration to fix
+    // (today: origin_not_allowed says which header was refused and what to set).
+    // Lands on the Error's own `message`, so it also appears in logs and traces.
+    message: Schema.optionalKey(TrimmedNonEmptyString),
     traceId: TrimmedNonEmptyString,
   },
   { httpApiStatus: 401 },

@@ -23,6 +23,7 @@ import { OtlpTracer } from "effect/unstable/observability";
 import * as ServerConfig from "./config.ts";
 import { ASSET_ROUTE_PREFIX, resolveAsset } from "./assets/AssetAccess.ts";
 import * as BrowserTraceCollector from "./observability/BrowserTraceCollector.ts";
+import { DESKTOP_RENDERER_ORIGINS } from "./transport/allowedOrigin.ts";
 import { annotateEnvironmentRequest } from "./transport/EnvironmentHttp.ts";
 import * as WslBearerAuth from "./transport/WslBearerAuth.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
@@ -30,7 +31,6 @@ import { browserApiCorsAllowedHeaders, browserApiCorsAllowedMethods } from "./ht
 
 const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
-const DESKTOP_RENDERER_ORIGINS = ["neokod://app", "neokod-dev://app"];
 
 export const browserApiCorsLayer = Layer.unwrap(
   Effect.gen(function* () {
@@ -75,7 +75,15 @@ export const serverEnvironmentHttpApiLayer = HttpApiBuilder.group(
       "descriptor",
       Effect.fn("environment.metadata.descriptor")(function* (args) {
         yield* annotateEnvironmentRequest(args.endpoint.name);
-        yield* wslBearerAuth.authorizeHttpRequest;
+        // Deliberately exempt from the Host/Origin allowlist: this is the
+        // discovery endpoint other Neokod clients probe cross-origin to find
+        // local servers, and browserApiCorsLayer already lets any web origin
+        // read it. It returns identification metadata only and performs no
+        // action, so origin-gating it would break discovery while hiding
+        // nothing a page cannot already read. The wsl-bearer transport still
+        // demands its bearer below.
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        yield* wslBearerAuth.authorizeBearerHeader(request.headers.authorization);
         return yield* serverEnvironment.getDescriptor;
       }),
     );

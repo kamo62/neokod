@@ -39,6 +39,7 @@ const makeServerConfig = Effect.fn(function* (baseDir: string) {
     port: 0,
     transport: "loopback",
     host: "127.0.0.1",
+    publicOrigins: new Set<string>(),
     wslBearerToken: undefined,
     staticDir: undefined,
     devUrl: undefined,

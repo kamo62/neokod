@@ -65,6 +65,13 @@ export class ServerConfig extends Context.Service<
     readonly port: number;
     readonly transport: "loopback" | "wsl-bearer";
     readonly host: "127.0.0.1" | "0.0.0.0";
+    /**
+     * Hostnames allowed on `Host`/`Origin` for loopback-transport requests, on
+     * top of the implicit loopback names. Parsed from NEOKOD_PUBLIC_ORIGIN; a
+     * reverse-proxy deployment must name its public origin here. See
+     * transport/allowedOrigin.ts for why this cannot be inferred.
+     */
+    readonly publicOrigins: ReadonlySet<string>;
     readonly cwd: string;
     readonly baseDir: string;
     readonly staticDir: string | undefined;
@@ -174,6 +181,7 @@ const makeTest = Effect.fn("ServerConfig.makeTest")(function* (
     port: 0,
     transport: "loopback",
     host: "127.0.0.1",
+    publicOrigins: new Set(),
     wslBearerToken: undefined,
     staticDir: undefined,
     devUrl,

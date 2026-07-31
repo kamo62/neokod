@@ -25,6 +25,16 @@
 
 const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0"]);
 
+/**
+ * Origins of the Electron renderer's privileged custom schemes. The desktop
+ * page is served from these, so its direct WebSocket upgrade to the loopback
+ * server carries them as `Origin`. A web page cannot forge them: a browser
+ * derives `Origin` from the page's real URL, and web pages only exist on
+ * http(s), so a rebinding page can only ever present an http(s) origin.
+ * `Host` is still validated for these requests.
+ */
+export const DESKTOP_RENDERER_ORIGINS: ReadonlyArray<string> = ["neokod://app", "neokod-dev://app"];
+
 function normalizeHostname(hostname: string): string {
   return hostname
     .trim()

@@ -17,6 +17,7 @@ import * as NodeCrypto from "node:crypto";
 
 import * as ServerConfig from "../config.ts";
 import { timingSafeEqualUtf8 } from "../crypto/serverCrypto.ts";
+import { DESKTOP_RENDERER_ORIGINS, decideOrigin, rejectionMessage } from "./allowedOrigin.ts";
 
 const WEBSOCKET_TICKET_TTL_MS = 30_000;
 export const WSL_WEBSOCKET_TICKET_PATH = "/api/wsl-auth/websocket-ticket";
@@ -87,7 +88,41 @@ export const make = Effect.gen(function* () {
     }
   });
 
+  // On the loopback transport nothing else authenticates the peer (the bearer
+  // and ticket checks below early-return), so this Host/Origin allowlist is
+  // what stands between a DNS-rebinding page and the workspace; the module
+  // header of ./allowedOrigin.ts carries the full reasoning. The wsl-bearer
+  // transport is exempt on both counts: its bearer token and one-time tickets
+  // already authenticate every request, and the desktop reaches that listener
+  // through a non-loopback WSL address that an allowlist keyed on hostnames
+  // could not name in advance.
+  const authorizeRequestOrigin = Effect.gen(function* () {
+    if (config.transport !== "loopback") return;
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const origin = request.headers.origin;
+    // The desktop renderer identifies itself with its privileged custom-scheme
+    // origin, which no web page can present (see DESKTOP_RENDERER_ORIGINS).
+    // Treat it like the absent Origin of a non-browser client: trusted as a
+    // sender, with its Host still validated below.
+    const decision = decideOrigin({
+      host: request.headers.host,
+      origin:
+        origin !== undefined && DESKTOP_RENDERER_ORIGINS.includes(origin) ? undefined : origin,
+      allowedOrigins: config.publicOrigins,
+    });
+    if (decision._tag === "Allowed") return;
+    const message = rejectionMessage(decision);
+    yield* Effect.logWarning(message);
+    return yield* new EnvironmentWslBearerInvalidError({
+      code: "wsl_bearer_invalid",
+      reason: "origin_not_allowed",
+      message,
+      traceId: "unavailable",
+    });
+  }).pipe(Effect.withSpan("WslBearerAuth.authorizeRequestOrigin"));
+
   const authorizeHttpRequest = Effect.gen(function* () {
+    yield* authorizeRequestOrigin;
     const request = yield* HttpServerRequest.HttpServerRequest;
     yield* authorizeBearerHeader(request.headers.authorization);
   }).pipe(Effect.withSpan("WslBearerAuth.authorizeHttpRequest"));
@@ -120,6 +155,7 @@ export const make = Effect.gen(function* () {
   });
 
   const authorizeWebSocketUpgrade = Effect.gen(function* () {
+    yield* authorizeRequestOrigin;
     const request = yield* HttpServerRequest.HttpServerRequest;
     const requestUrl = HttpServerRequest.toURL(request);
     const ticket = Option.isSome(requestUrl)

@@ -87,6 +87,29 @@ http:
           - url: http://127.0.0.1:3000
 ```
 
+### Set `NEOKOD_PUBLIC_ORIGIN` or the client cannot connect
+
+The server only accepts requests whose `Host` and `Origin` headers are loopback
+or explicitly allowlisted. This is the DNS-rebinding defence: a hostile web page
+can repoint its own hostname at `127.0.0.1` and connect straight to the port,
+and at the socket level that traffic is identical to yours arriving through the
+proxy. Both show up on loopback carrying a non-loopback hostname, so the server
+cannot infer which names are legitimate. It trusts only the ones you give it.
+
+A reverse-proxy deployment must therefore name its public origin:
+
+```bash
+NEOKOD_PUBLIC_ORIGIN=https://neokod.example.com neokod serve --mode web --port 3000
+```
+
+Without it, every proxied request and WebSocket upgrade is rejected with a 401
+and a `Refused a connection` log line naming the refused header. Comma-separate
+multiple values if the service is reachable under more than one name.
+
+A plain `neokod serve` on your own machine needs nothing set. Loopback names
+are always accepted, so the variable only matters once a proxy puts a public
+hostname in front of the server.
+
 ### The WebSocket route is the part that goes wrong
 
 The UI carries its orchestration traffic over `/ws`. Two failure modes, and
@@ -147,6 +170,7 @@ User=youruser
 ExecStart=%h/.local/bin/neokod serve --mode web --port 3000
 Restart=on-failure
 Environment=NODE_ENV=production
+Environment=NEOKOD_PUBLIC_ORIGIN=https://neokod.example.com
 
 [Install]
 WantedBy=default.target
@@ -179,10 +203,11 @@ guard rejects it, and the guard is the reason the deployment is safe.
 
 ## Troubleshooting
 
-| Symptom                                         | Cause                                                                              |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Startup dies with "Refusing to bind the server" | A non-loopback host was configured. Bind loopback and proxy instead.               |
-| UI loads, nothing updates, no agent output      | `/ws` is not reaching the server. Check upgrade headers and the proxy path rules.  |
-| A provider is missing from the picker           | Its CLI is not on the server's `PATH` for the service user.                        |
-| `node-pty` fails to install                     | No matching prebuild; install `python3`, `make` and a C++ compiler.                |
-| Terminals fail to open but the rest works       | `node-pty` built against a different Node version. Reinstall after a Node upgrade. |
+| Symptom                                                | Cause                                                                              |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| Startup dies with "Refusing to bind the server"        | A non-loopback host was configured. Bind loopback and proxy instead.               |
+| UI loads, nothing updates, no agent output             | `/ws` is not reaching the server. Check upgrade headers and the proxy path rules.  |
+| 401s behind the proxy, logs say "Refused a connection" | `NEOKOD_PUBLIC_ORIGIN` does not name the proxy's public origin. Set it.            |
+| A provider is missing from the picker                  | Its CLI is not on the server's `PATH` for the service user.                        |
+| `node-pty` fails to install                            | No matching prebuild; install `python3`, `make` and a C++ compiler.                |
+| Terminals fail to open but the rest works              | `node-pty` built against a different Node version. Reinstall after a Node upgrade. |

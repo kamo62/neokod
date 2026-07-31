@@ -58,6 +58,7 @@ const makeCliTestServerConfig = (baseDir: string) =>
       port: 0,
       transport: "loopback",
       host: "127.0.0.1",
+      publicOrigins: new Set<string>(),
       cwd: process.cwd(),
       baseDir,
       ...derivedPaths,

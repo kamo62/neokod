@@ -16,6 +16,7 @@ import { Argument, Flag } from "effect/unstable/cli";
 import { readBootstrapEnvelope } from "../bootstrap.ts";
 import * as ServerConfig from "../config.ts";
 import { expandHomePath, resolveBaseDir } from "../os-jank.ts";
+import { parseAllowedOrigins } from "../transport/allowedOrigin.ts";
 
 export const modeFlag = Flag.choice("mode", ServerConfig.RuntimeMode.literals).pipe(
   Flag.withDescription("Runtime mode."),
@@ -138,6 +139,10 @@ const EnvServerConfig = Config.all({
     "T3CODE_LOG_WS_EVENTS",
     Config.boolean,
   ).pipe(Config.option, Config.map(Option.getOrUndefined)),
+  publicOrigin: envConfig("NEOKOD_PUBLIC_ORIGIN", "T3CODE_PUBLIC_ORIGIN", Config.string).pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
 });
 
 export interface CliServerFlags {
@@ -336,6 +341,7 @@ export const resolveServerConfig = (
       ...derivedPaths,
       serverTracePath,
       host,
+      publicOrigins: parseAllowedOrigins(env.publicOrigin),
       staticDir,
       devUrl,
       noBrowser,

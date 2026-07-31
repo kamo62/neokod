@@ -351,6 +351,7 @@ const buildAppUnderTest = (options?: {
       port: 0,
       transport: "loopback",
       host: "127.0.0.1",
+      publicOrigins: new Set<string>(),
       cwd: process.cwd(),
       baseDir,
       ...derivedPaths,
@@ -945,6 +946,26 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         assert.equal(response.status, 200);
         assert.equal(response.headers["access-control-allow-origin"], undefined);
       }
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("rejects gated routes when a foreign origin reaches the loopback transport", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      // The DNS-rebinding shape as the router sees it: the socket is loopback
+      // but the browser names the attacker's page as its Origin.
+      const url = yield* getHttpServerUrl("/api/observability/v1/traces");
+      const response = yield* fetchEffect(url, {
+        method: "POST",
+        headers: { origin: "http://evil.example", "content-type": "application/json" },
+        body: "{}",
+      });
+
+      assert.equal(response.status, 401);
+      const body = yield* responseJsonEffect<{ reason: string; message: string }>(response);
+      assert.equal(body.reason, "origin_not_allowed");
+      assert.include(body.message, "NEOKOD_PUBLIC_ORIGIN");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
