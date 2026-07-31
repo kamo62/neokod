@@ -14,6 +14,10 @@ allowBuilds:
   electron: true
   electron-winstaller: false
   esbuild: true
+  # Pulled in by @github/copilot-sdk. Allowed rather than denied because we
+  # already execute that SDK's own native binaries at runtime, so blocking its
+  # transitive build script is not a boundary, only a way to break Copilot.
+  koffi: true
   msgpackr-extract: true
   msw: false
   node-pty: true
