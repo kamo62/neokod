@@ -702,69 +702,94 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
         size="sm"
         isActive={isActive}
         data-testid={`thread-row-${thread.id}`}
+        // h-auto is load-bearing: SidebarMenuSubButton pins a single-line
+        // height and clips overflow, so a two-line row is cut off without it.
+        // The old height becomes the minimum, so single-line rows are unchanged.
         className={`${resolveThreadRowClassName({
           isActive,
           isSelected,
-        })} relative isolate`}
+        })} relative isolate h-auto min-h-[var(--row-height-compact)] py-1`}
         onClick={handleRowClick}
         onDoubleClick={handleRowDoubleClick}
         onKeyDown={handleRowKeyDown}
         onContextMenu={handleRowContextMenu}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-          {prStatus && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    aria-label={prStatus.tooltip}
-                    className={`inline-flex items-center justify-center ${prStatus.colorClass} cursor-pointer rounded-sm outline-hidden focus-visible:ring-1 focus-visible:ring-ring`}
-                    onClick={handlePrClick}
-                  >
-                    <ChangeRequestStatusIcon className="size-3" />
-                  </button>
-                }
-              />
-              <TooltipPopup side="top">{prStatus.tooltip}</TooltipPopup>
-            </Tooltip>
-          )}
-          {threadStatus && <ThreadStatusLabel status={threadStatus} />}
-          {renamingThreadKey === threadKey ? (
-            <input
-              ref={handleRenameInputRef}
-              className="min-w-0 flex-1 truncate text-base sm:text-xs bg-transparent outline-none border border-ring rounded px-0.5"
-              value={renamingTitle}
-              onChange={handleRenameInputChange}
-              onKeyDown={handleRenameInputKeyDown}
-              onBlur={handleRenameInputBlur}
-              onClick={handleRenameInputClick}
-              onDoubleClick={handleRenameInputClick}
-            />
-          ) : (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span className="flex min-w-0 flex-1 items-center gap-1 text-ui">
-                    <span
-                      className="min-w-0 flex-1 truncate"
-                      data-testid={`thread-title-${thread.id}`}
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
+          <div className="flex min-w-0 items-center gap-1.5">
+            {prStatus && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label={prStatus.tooltip}
+                      className={`inline-flex items-center justify-center ${prStatus.colorClass} cursor-pointer rounded-sm outline-hidden focus-visible:ring-1 focus-visible:ring-ring`}
+                      onClick={handlePrClick}
                     >
-                      {thread.title}
-                    </span>
-                    {props.contextLabel ? (
-                      <span className="shrink-0 text-meta text-[var(--text-tertiary)]">
-                        {props.contextLabel}
-                      </span>
-                    ) : null}
-                  </span>
-                }
+                      <ChangeRequestStatusIcon className="size-3" />
+                    </button>
+                  }
+                />
+                <TooltipPopup side="top">{prStatus.tooltip}</TooltipPopup>
+              </Tooltip>
+            )}
+            {threadStatus && <ThreadStatusLabel status={threadStatus} />}
+            {renamingThreadKey === threadKey ? (
+              <input
+                ref={handleRenameInputRef}
+                className="min-w-0 flex-1 truncate text-base sm:text-xs bg-transparent outline-none border border-ring rounded px-0.5"
+                value={renamingTitle}
+                onChange={handleRenameInputChange}
+                onKeyDown={handleRenameInputKeyDown}
+                onBlur={handleRenameInputBlur}
+                onClick={handleRenameInputClick}
+                onDoubleClick={handleRenameInputClick}
               />
-              <TooltipPopup side="top" className="max-w-80 whitespace-normal leading-tight">
-                {thread.title}
-              </TooltipPopup>
-            </Tooltip>
-          )}
+            ) : (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className="flex min-w-0 flex-1 items-center gap-1 text-ui">
+                      <span
+                        className="min-w-0 flex-1 truncate"
+                        data-testid={`thread-title-${thread.id}`}
+                      >
+                        {thread.title}
+                      </span>
+                    </span>
+                  }
+                />
+                <TooltipPopup side="top" className="max-w-80 whitespace-normal leading-tight">
+                  {thread.title}
+                </TooltipPopup>
+              </Tooltip>
+            )}
+          </div>
+          {/*
+           * Second line. Moving the context label and timestamp off the title
+           * line is what stops the title truncating: it no longer shares its
+           * width with the metadata and the hover actions. It also means the
+           * timestamp no longer has to fade out to make room for those actions,
+           * since they now occupy the row's right edge rather than this space.
+           */}
+          {/*
+           * --text-secondary, not --text-tertiary. This line is now rendered
+           * permanently rather than fading on hover, so it has to clear WCAG
+           * AA on its own: tertiary is #767676 on the #f7f7f7 sidebar, which
+           * computes to 4.24:1 and fails the 4.5:1 floor at this size.
+           * Secondary is 6.1:1 light and 7.2:1 dark. 3.3.0 raised muted text
+           * to AA deliberately; this must not walk that back.
+           */}
+          <div className="flex min-w-0 items-center gap-1.5 text-meta text-[var(--text-secondary)]">
+            {props.contextLabel ? (
+              <span className="min-w-0 truncate">{props.contextLabel}</span>
+            ) : null}
+            <span className="shrink-0 tabular-nums">
+              {formatRelativeTimeLabel(
+                thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt,
+              )}
+            </span>
+          </div>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {discoveredPorts.length > 0 && (
@@ -916,7 +941,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
                       render={
                         <span
                           aria-label={jumpLabel}
-                          className="inline-flex h-5 items-center rounded-full border border-border/80 bg-background/90 px-1.5 font-mono text-[10px] font-medium tracking-tight text-foreground shadow-sm"
+                          className="inline-flex h-5 items-center rounded-full bg-[var(--surface-hover)] px-1.5 font-mono text-[10px] font-medium tracking-tight text-muted-foreground"
                         />
                       }
                     >
@@ -924,19 +949,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
                     </TooltipTrigger>
                     <TooltipPopup side="top">{jumpLabel}</TooltipPopup>
                   </Tooltip>
-                ) : (
-                  <span
-                    className={`text-[10px] tabular-nums ${
-                      isHighlighted
-                        ? "text-foreground/72 dark:text-foreground/82"
-                        : "text-muted-foreground/40"
-                    }`}
-                  >
-                    {formatRelativeTimeLabel(
-                      thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt,
-                    )}
-                  </span>
-                )}
+                ) : null}
               </span>
             </span>
           </div>

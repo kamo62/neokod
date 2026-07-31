@@ -297,7 +297,10 @@ function Sidebar({
             // Adjust the padding for floating and inset variants.
             variant === "floating" || variant === "inset"
               ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
-              : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
+              : // No rule between the sidebar and the canvas. The two surfaces
+                // already differ (--surface-sidebar against --surface-canvas), so
+                // the edge reads without drawing a line for it.
+                "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
             className,
           )}
           data-slot="sidebar-container"
@@ -937,7 +940,9 @@ function SidebarMenuSub({ className, ...props }: React.ComponentProps<"ul">) {
   return (
     <ul
       className={cn(
-        "mx-3.5 flex min-w-0 translate-x-px flex-col gap-1 border-sidebar-border border-l px-2.5 py-0.5",
+        // Indentation carries the nesting; the tree rule that used to sit here
+        // added a second signal for the same thing.
+        "mx-3.5 flex min-w-0 translate-x-px flex-col gap-1 px-2.5 py-0.5",
         "group-data-[collapsible=icon]:hidden",
         className,
       )}

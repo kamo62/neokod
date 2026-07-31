@@ -1,3 +1,10 @@
+## 3.5.11 - 2026-07-31 (Patch)
+
+Release impact: Patch because this only changes appearance, with no contract, schema or storage changes.
+
+- Sidebar thread rows are now two lines. The title has the full width of the row instead of sharing it with the context label, the timestamp and the hover actions, so it no longer truncates early. The context label and relative time sit below it. The timestamp also stops disappearing when you hover a row, since the archive and rename buttons no longer need its space.
+- Quieter sidebar and composer. The rule between the sidebar and the canvas is gone, as is the one down the left of each project's thread list, in both cases because the surfaces and indentation already showed the boundary. The composer loses its drop shadow, the rules between its footer controls, and the rules under its pending-approval panels, with spacing widened where those rules used to be.
+
 ## 3.5.10 - 2026-07-30 (Patch)
 
 Release impact: Patch because this only adds release-time safety checks, with no runtime, contract or storage changes.
