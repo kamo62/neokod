@@ -731,6 +731,26 @@ describe("resolveThreadStatusPill", () => {
 });
 
 describe("resolveThreadRowClassName", () => {
+  it("constrains row height as a minimum, never a fixed height", () => {
+    // Thread rows are two lines. A fixed height clips the second line and
+    // leaves the selection highlight covering only the title, which shipped in
+    // 3.5.11. It is not fixable from the call site either: `h-auto` merges over
+    // `h-6` but not over `sm:h-7`, since a responsive variant is its own
+    // tailwind-merge group, so the row stayed pinned above the sm breakpoint.
+    for (const input of [
+      { isActive: true, isSelected: true },
+      { isActive: true, isSelected: false },
+      { isActive: false, isSelected: true },
+      { isActive: false, isSelected: false },
+    ]) {
+      const className = resolveThreadRowClassName(input);
+      expect(className).not.toMatch(/(^|\s)h-\d/);
+      expect(className).not.toMatch(/(^|\s)sm:h-\d/);
+      expect(className).toContain("min-h-6");
+      expect(className).toContain("sm:min-h-7");
+    }
+  });
+
   it("uses the darker selected palette when a thread is both selected and active", () => {
     const className = resolveThreadRowClassName({ isActive: true, isSelected: true });
     expect(className).toContain("bg-primary/22");
