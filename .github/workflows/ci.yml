@@ -109,3 +109,9 @@ jobs:
 
       - name: Exercise release-only workflow steps
         run: node scripts/release-smoke.ts
+
+      # release.yml takes the version to release from this file's first heading,
+      # so a branch that sat open while another release shipped will aim at a
+      # tag that already exists. Catch it here rather than at merge.
+      - name: Ensure the changelog version is unreleased
+        run: node scripts/check-changelog-version.ts

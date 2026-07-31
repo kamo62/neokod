@@ -1,3 +1,9 @@
+## 3.5.10 - 2026-07-30 (Patch)
+
+Release impact: Patch because this only adds release-time safety checks, with no runtime, contract or storage changes.
+
+- Two changes can no longer claim the same version. The release takes its version from the changelog's first heading and runs on every merge, so any two branches open at once wrote the same one, and the second to merge either conflicted or aimed at a tag that already existed. Pull requests now fail early when that heading names a released version, and name the next free one. A release whose tag already exists for a different commit now fails loudly instead of quietly uploading its build into the earlier release and shipping under notes describing other work.
+
 ## 3.5.9 - 2026-07-30 (Patch)
 
 Release impact: Patch because this corrects an error message and repairs npm publishing, with no contract, schema or storage changes.
