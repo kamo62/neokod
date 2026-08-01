@@ -1,3 +1,13 @@
+## 3.5.23 - 2026-08-01 (Patch)
+
+Release impact: Patch because these correct provider stream lifetimes, checkpoint performance and three inherited defects, with no contract, schema or storage changes.
+
+- Cursor, Grok and Codex now keep their event streams tied to the session rather than to whichever call started it. The stream could otherwise be cut off by anything that ends the starting call early, such as a timeout, leaving turns that return nothing.
+- Checkpoints are faster on large repositories. Each one rebuilt its file index from scratch, discarding git's cache and re-reading the whole worktree every turn.
+- Provider command-line tools keep their sign-in when the server runs without a home directory set, as under systemd, where pull-request detection was silently failing.
+- A successful Claude compaction no longer replays an earlier error as if it were a new message.
+- Switching a draft thread to another machine keeps that machine's default working mode instead of resetting to local.
+
 ## 3.5.22 - 2026-08-01 (Patch)
 
 Release impact: Patch because this only updates internal documentation, with no runtime, contract or storage changes.
