@@ -1,16 +1,19 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeOS from "node:os";
 import { describe, expect, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import { TestClock } from "effect/testing";
+import { ChildProcessSpawner } from "effect/unstable/process";
 
 import {
   VcsProcessExitError,
   VcsProcessSpawnError,
   VcsProcessTimeoutError,
 } from "@neokod/contracts";
+import { HostProcessEnvironment } from "@neokod/shared/hostProcess";
 import * as ProcessRunner from "../processRunner.ts";
 import * as VcsProcess from "./VcsProcess.ts";
 
@@ -45,6 +48,40 @@ const captureProcessResult = (
   );
 
 describe("VcsProcess.run", () => {
+  it.effect("forwards the host environment and fills a missing HOME", () => {
+    let capturedInput: ProcessRunner.ProcessRunInput | undefined;
+    const processRunner = ProcessRunner.ProcessRunner.of({
+      run: (input) => {
+        capturedInput = input;
+        return Effect.succeed({
+          stdout: "",
+          stderr: "",
+          code: ChildProcessSpawner.ExitCode(0),
+          timedOut: false,
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        });
+      },
+    });
+
+    return Effect.gen(function* () {
+      const process = yield* VcsProcess.make;
+      yield* process.run({
+        ...baseInput,
+        env: { TOOL_CONFIG: "/tmp/tool-config" },
+      });
+
+      expect(capturedInput?.env).toMatchObject({
+        PATH: "/mock/bin",
+        HOME: NodeOS.homedir(),
+        TOOL_CONFIG: "/tmp/tool-config",
+      });
+    }).pipe(
+      Effect.provideService(ProcessRunner.ProcessRunner, processRunner),
+      Effect.provideService(HostProcessEnvironment, { PATH: "/mock/bin" }),
+    );
+  });
+
   it.effect("collects stdout", () =>
     Effect.gen(function* () {
       const result = yield* run({

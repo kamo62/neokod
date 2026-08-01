@@ -250,6 +250,52 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
     }),
   );
 
+  it.effect("keeps the notification drain alive after the startSession caller fiber ends", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("cursor-drain-outlives-caller");
+
+      const wrapperPath = yield* Effect.promise(() => makeMockAgentWrapper());
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+
+      const deltaFiber = yield* Stream.filter(
+        adapter.streamEvents,
+        (event) => event.type === "content.delta",
+      ).pipe(Stream.take(1), Stream.runCollect, Effect.forkChild);
+
+      // Run startSession in a short-lived fiber and let it end. Children of
+      // that fiber die with it, so the session/update drain only survives
+      // when it is forked into the session scope instead of the caller.
+      const startFiber = yield* adapter
+        .startSession({
+          threadId,
+          provider: ProviderDriverKind.make("cursor"),
+          cwd: process.cwd(),
+          runtimeMode: "full-access",
+          modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
+        })
+        .pipe(Effect.forkChild);
+      yield* Fiber.join(startFiber);
+
+      yield* adapter.sendTurn({
+        threadId,
+        input: "hello mock",
+        attachments: [],
+      });
+
+      const deltas = Array.from(yield* Fiber.join(deltaFiber));
+      assert.equal(deltas.length, 1);
+      const delta = deltas[0];
+      assert.isDefined(delta);
+      if (delta?.type === "content.delta") {
+        assert.equal(delta.payload.delta, "hello from mock");
+      }
+
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
   it.effect("steers a running turn instead of opening a new one on mid-turn sendTurn", () =>
     Effect.gen(function* () {
       const adapter = yield* CursorAdapter;

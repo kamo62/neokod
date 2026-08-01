@@ -1424,6 +1424,83 @@ scopedFailureLayer("CodexAdapterLive scoped startup failure", (it) => {
   );
 });
 
+const drainScopeRuntimeFactory = makeRuntimeFactory();
+const drainScopeLayer = it.layer(
+  Layer.effect(
+    CodexAdapter,
+    Effect.gen(function* () {
+      const codexConfig = decodeCodexSettings({});
+      return yield* makeCodexAdapter(codexConfig, {
+        makeRuntime: drainScopeRuntimeFactory.factory,
+      });
+    }),
+  ).pipe(
+    Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
+    Layer.provideMerge(ServerSettingsService.layerTest()),
+    Layer.provideMerge(providerSessionDirectoryTestLayer),
+    Layer.provideMerge(NodeServices.layer),
+  ),
+);
+
+drainScopeLayer("CodexAdapterLive drain scope", (it) => {
+  it.effect("keeps the provider event drain alive after the startSession caller fiber ends", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CodexAdapter;
+
+      // Run startSession in a short-lived fiber and let it end. Children of
+      // that fiber die with it, so the provider event drain only survives
+      // when it is forked into the session scope instead of the caller.
+      const startFiber = yield* adapter
+        .startSession({
+          provider: ProviderDriverKind.make("codex"),
+          threadId: asThreadId("thread-drain-scope"),
+          runtimeMode: "full-access",
+        })
+        .pipe(Effect.forkChild);
+      yield* Fiber.join(startFiber);
+
+      const runtime = drainScopeRuntimeFactory.lastRuntime;
+      NodeAssert.ok(runtime);
+
+      const firstEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+
+      yield* runtime.emit({
+        id: asEventId("evt-drain-scope"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "item/completed",
+        threadId: asThreadId("thread-drain-scope"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("msg_drain"),
+        payload: {
+          completedAtMs: 1_778_000_000_000,
+          threadId: "thread-drain-scope",
+          turnId: "turn-1",
+          item: {
+            type: "agentMessage",
+            id: "msg_drain",
+            text: "drain still alive",
+          },
+        },
+      });
+
+      const firstEvent = yield* Fiber.join(firstEventFiber);
+      NodeAssert.equal(firstEvent._tag, "Some");
+      if (firstEvent._tag !== "Some") {
+        return;
+      }
+      NodeAssert.equal(firstEvent.value.type, "item.completed");
+      if (firstEvent.value.type !== "item.completed") {
+        return;
+      }
+      NodeAssert.equal(firstEvent.value.itemId, "msg_drain");
+
+      yield* adapter.stopSession(asThreadId("thread-drain-scope"));
+    }),
+  );
+});
+
 it.effect("flushes managed native logs when the adapter layer shuts down", () =>
   Effect.gen(function* () {
     const tempDir = NodeFS.mkdtempSync(

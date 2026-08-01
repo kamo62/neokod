@@ -2,7 +2,9 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
+import * as NodeOS from "node:os";
 import { ChildProcessSpawner } from "effect/unstable/process";
+import { HostProcessEnvironment } from "@neokod/shared/hostProcess";
 
 import {
   type VcsError,
@@ -88,6 +90,7 @@ const classifyNonZeroExit = (command: string, stderr: string): VcsProcessExitFai
 
 export const make = Effect.gen(function* () {
   const processRunner = yield* ProcessRunner.ProcessRunner;
+  const hostEnvironment = yield* HostProcessEnvironment;
 
   const run = Effect.fn("VcsProcess.run")(function* (input: VcsProcessInput) {
     const baseError = {
@@ -104,7 +107,11 @@ export const make = Effect.gen(function* () {
         cwd: input.cwd,
         ...(input.spawnCwd !== undefined ? { spawnCwd: input.spawnCwd } : {}),
         ...(input.stdin !== undefined ? { stdin: input.stdin } : {}),
-        ...(input.env !== undefined ? { env: input.env } : {}),
+        env: {
+          ...hostEnvironment,
+          ...input.env,
+          HOME: input.env?.HOME ?? hostEnvironment.HOME ?? NodeOS.homedir(),
+        },
         timeout: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         maxOutputBytes: input.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES,
         outputMode: "truncate",

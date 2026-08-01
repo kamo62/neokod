@@ -188,6 +188,64 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
     }),
   );
 
+  it.effect("keeps the notification drain alive after the startSession caller fiber ends", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("grok-drain-outlives-caller");
+      const wrapperPath = yield* Effect.promise(() => makeMockGrokWrapper());
+      const adapter = yield* makeTestAdapter(wrapperPath);
+
+      const runtimeEvents: ProviderRuntimeEvent[] = [];
+      const turnCompleted = yield* Deferred.make<void>();
+      const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
+        Effect.sync(() => {
+          runtimeEvents.push(event);
+        }).pipe(
+          Effect.andThen(
+            event.type === "turn.completed"
+              ? Deferred.succeed(turnCompleted, undefined)
+              : Effect.void,
+          ),
+        ),
+      ).pipe(Effect.forkChild);
+
+      // Run startSession in a short-lived fiber and let it end. Children of
+      // that fiber die with it, so the session/update drain only survives
+      // when it is forked into the session scope instead of the caller.
+      const startFiber = yield* adapter
+        .startSession({
+          threadId,
+          provider: ProviderDriverKind.make("grok"),
+          cwd: process.cwd(),
+          runtimeMode: "full-access",
+        })
+        .pipe(Effect.forkChild);
+      yield* Fiber.join(startFiber);
+
+      yield* adapter.sendTurn({
+        threadId,
+        input: "hello grok",
+        attachments: [],
+      });
+
+      // Grok settles turns through the drain's event-stream barrier, so a
+      // dead drain never reaches turn.completed and the deltas never flow.
+      yield* Deferred.await(turnCompleted);
+      yield* Fiber.interrupt(runtimeEventsFiber);
+
+      const types = runtimeEvents.map((e) => e.type);
+      assert.include(types, "content.delta");
+      assert.include(types, "turn.completed");
+
+      const delta = runtimeEvents.find((e) => e.type === "content.delta");
+      assert.isDefined(delta);
+      if (delta?.type === "content.delta") {
+        assert.equal(delta.payload.delta, "hello from mock");
+      }
+
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
   it.effect("closes the ACP child process when a session stops", () =>
     Effect.gen(function* () {
       const threadId = ThreadId.make("grok-stop-session-close");

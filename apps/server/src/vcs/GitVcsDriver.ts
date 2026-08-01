@@ -270,6 +270,7 @@ export class GitVcsDriver extends Context.Service<
 const WORKSPACE_FILES_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 const GIT_CHECK_IGNORE_MAX_STDIN_BYTES = 256 * 1024;
 const CHECKPOINT_DIFF_MAX_OUTPUT_BYTES = 10_000_000;
+const CHECKPOINT_INDEX_FLAGS_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 const WORKSPACE_GIT_HARDENED_CONFIG_ARGS = [
   "-c",
   "core.fsmonitor=false",
@@ -647,6 +648,128 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
       return path.isAbsolute(gitCommonDir) ? gitCommonDir : path.resolve(cwd, gitCommonDir);
     });
 
+  /**
+   * Seed the throwaway checkpoint index from the repository's real index so
+   * git keeps its stat cache: `git add -A` then only re-hashes paths whose
+   * stat data changed instead of re-statting and re-hashing the entire
+   * worktree on every checkpoint. Returns false whenever seeding cannot be
+   * proven equivalent to the fresh `read-tree HEAD` index the caller builds,
+   * which then falls back to that slow path. Purely a performance change:
+   * the resulting tree content is identical either way.
+   */
+  const seedCheckpointIndexFromRepositoryIndex = (input: {
+    readonly operation: string;
+    readonly cwd: string;
+    readonly tempIndexPath: string;
+    readonly env: NodeJS.ProcessEnv;
+  }) =>
+    Effect.gen(function* () {
+      // No env override here: with GIT_INDEX_FILE set this would resolve to
+      // the temp index instead of the repository's real one.
+      const revParse = yield* execute({
+        operation: input.operation,
+        cwd: input.cwd,
+        args: ["rev-parse", "--git-path", "index", "--show-toplevel"],
+      });
+      const [rawIndexPath, toplevel] = revParse.stdout.split("\n").map((line) => line.trim());
+      if (!rawIndexPath || !toplevel) {
+        return false;
+      }
+
+      // `git add -A -- .` only updates paths under the cwd and leaves the
+      // rest of the index as seeded. The fresh-index baseline leaves those
+      // paths at HEAD, not at the (possibly staged) index state, so seeding
+      // is only equivalent when the capture runs at the repository toplevel.
+      const realCwd = yield* fileSystem.realPath(input.cwd);
+      const realToplevel = yield* fileSystem.realPath(toplevel);
+      if (realCwd !== realToplevel) {
+        return false;
+      }
+
+      const repositoryIndexPath = path.isAbsolute(rawIndexPath)
+        ? rawIndexPath
+        : path.resolve(input.cwd, rawIndexPath);
+      if (!(yield* fileSystem.exists(repositoryIndexPath))) {
+        return false;
+      }
+      const repositoryIndexStat = yield* fileSystem.stat(repositoryIndexPath);
+      const repositoryIndexMtime = Option.getOrUndefined(repositoryIndexStat.mtime);
+      if (repositoryIndexMtime === undefined) {
+        return false;
+      }
+      yield* fileSystem.copyFile(repositoryIndexPath, input.tempIndexPath);
+      // git's racy-timestamp protection compares each entry's cached mtime
+      // against the index file's own mtime and re-hashes entries stamped in
+      // the same second. A fresh copy timestamp would defeat it: a file
+      // modified in the same second it was staged would read as clean and
+      // `git add -A` would checkpoint the stale staged content (git compares
+      // whole seconds on builds without USE_NSEC). Preserve the source index
+      // mtime so the copy keeps the exact raciness semantics of the original;
+      // millisecond truncation only errs toward re-checking.
+      yield* fileSystem.utimes(input.tempIndexPath, repositoryIndexMtime, repositoryIndexMtime);
+
+      // The copy carries skip-worktree and assume-unchanged bits. `git add -A`
+      // trusts both, so a changed file behind either bit would be checkpointed
+      // with stale content. Clear them: the fresh-index baseline carries no
+      // such bits, and a checkpoint must capture the worktree as it is.
+      const lsFiles = yield* execute({
+        operation: input.operation,
+        cwd: input.cwd,
+        args: ["ls-files", "-z", "-v"],
+        env: input.env,
+        maxOutputBytes: CHECKPOINT_INDEX_FLAGS_MAX_OUTPUT_BYTES,
+      });
+      if (lsFiles.stdoutTruncated) {
+        return false;
+      }
+      const assumeUnchangedPaths: Array<string> = [];
+      const skipWorktreePaths: Array<string> = [];
+      for (const entry of lsFiles.stdout.split("\0")) {
+        if (entry.length < 3) {
+          continue;
+        }
+        const tag = entry.charAt(0);
+        // Lowercase tags mark assume-unchanged entries; "S" (or "s") marks
+        // skip-worktree entries. See git-ls-files(1) on `-v`.
+        if (tag !== tag.toUpperCase()) {
+          assumeUnchangedPaths.push(entry.slice(2));
+        }
+        if (tag === "S" || tag === "s") {
+          skipWorktreePaths.push(entry.slice(2));
+        }
+      }
+      // One invocation per flag: update-index applies `--[no-]assume-unchanged`
+      // and returns per path, silently skipping `--[no-]skip-worktree` when
+      // both are given together.
+      if (assumeUnchangedPaths.length > 0) {
+        yield* execute({
+          operation: input.operation,
+          cwd: input.cwd,
+          args: ["update-index", "--no-assume-unchanged", "-z", "--stdin"],
+          stdin: `${assumeUnchangedPaths.join("\0")}\0`,
+          env: input.env,
+        });
+      }
+      if (skipWorktreePaths.length > 0) {
+        yield* execute({
+          operation: input.operation,
+          cwd: input.cwd,
+          args: ["update-index", "--no-skip-worktree", "-z", "--stdin"],
+          stdin: `${skipWorktreePaths.join("\0")}\0`,
+          env: input.env,
+        });
+      }
+      return true;
+    }).pipe(
+      // Seeding is best-effort: any failure discards the partial copy and
+      // reports false so the caller rebuilds the index from scratch.
+      Effect.catch(() =>
+        fileSystem
+          .remove(input.tempIndexPath, { force: true })
+          .pipe(Effect.ignore, Effect.as(false)),
+      ),
+    );
+
   const checkpoints: VcsDriver.VcsCheckpointOps = {
     captureCheckpoint: Effect.fn("GitVcsDriver.checkpoints.captureCheckpoint")(function* (input) {
       const operation = "GitVcsDriver.checkpoints.captureCheckpoint";
@@ -669,14 +792,22 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         .pipe(Effect.ignore);
 
       yield* Effect.gen(function* () {
-        const headExists = yield* hasHeadCommit(input.cwd);
-        if (headExists) {
-          yield* execute({
-            operation,
-            cwd: input.cwd,
-            args: ["read-tree", "HEAD"],
-            env: commitEnv,
-          });
+        const seeded = yield* seedCheckpointIndexFromRepositoryIndex({
+          operation,
+          cwd: input.cwd,
+          tempIndexPath,
+          env: commitEnv,
+        });
+        if (!seeded) {
+          const headExists = yield* hasHeadCommit(input.cwd);
+          if (headExists) {
+            yield* execute({
+              operation,
+              cwd: input.cwd,
+              args: ["read-tree", "HEAD"],
+              env: commitEnv,
+            });
+          }
         }
 
         yield* execute({

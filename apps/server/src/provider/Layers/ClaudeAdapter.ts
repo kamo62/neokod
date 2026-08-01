@@ -2588,7 +2588,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     context: ClaudeSessionContext,
     message: SDKMessage,
   ) {
-    if (message.type !== "assistant") {
+    if (message.type !== "assistant" || message.error !== undefined) {
       return;
     }
 
