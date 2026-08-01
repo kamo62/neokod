@@ -1,3 +1,9 @@
+## 3.5.20 - 2026-08-01 (Patch)
+
+Release impact: Patch because this corrects shutdown behaviour during updates, with no contract, schema or storage changes.
+
+- The auto-updater no longer leaves a server process running after it updates. Stopping the server was allowed five seconds, and when that ran out the update carried on regardless, relaunching the app while the old server was still alive. Because the server is started detached, it then survived on its own, in one case for over a week. Shutdown now waits for the process to actually exit, escalates if it does not, and a failed shutdown blocks the update instead of stranding the old server.
+
 ## 3.5.19 - 2026-08-01 (Minor)
 
 Release impact: Minor because this adds a backward-compatible CLI workflow and makes release-version validation consult the configured release sources.
