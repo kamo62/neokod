@@ -1,3 +1,9 @@
+## 3.5.27 - 2026-08-02 (Patch)
+
+Release impact: Patch because this only updates internal documentation, with no runtime, contract or storage changes.
+
+- Updated the maintainer handoff notes for the overnight provider fixes.
+
 ## 3.5.26 - 2026-08-02 (Patch)
 
 Release impact: Patch because this corrects turn settlement in the OpenCode adapter, with no contract, schema or storage changes.
