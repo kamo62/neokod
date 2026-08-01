@@ -14,10 +14,12 @@ allowBuilds:
   electron: true
   electron-winstaller: false
   esbuild: true
-  # Pulled in by @github/copilot-sdk. Allowed rather than denied because we
-  # already execute that SDK's own native binaries at runtime, so blocking its
-  # transitive build script is not a boundary, only a way to break Copilot.
-  koffi: true
+  # Pulled in by @github/copilot-sdk. Denied deliberately: koffi ships its
+  # native binary as per-platform @koromix/koffi-* packages that its loader
+  # resolves at require time, so the install script only matters as a source-
+  # build fallback. Allowing it broke the macOS x64 release, where the
+  # prebuilt failed to load and the source build then failed to link.
+  koffi: false
   msgpackr-extract: true
   msw: false
   node-pty: true

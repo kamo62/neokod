@@ -1,3 +1,9 @@
+## 3.5.15 - 2026-08-01 (Patch)
+
+Release impact: Patch because this only changes how a dependency is installed, with no runtime, contract or storage changes.
+
+- Fixed the macOS x64 build failing to install. A transitive dependency of the Copilot SDK was allowed to run its install script, which tried to compile a native module from source when its prebuilt binary would not load, and the compile failed. It ships that binary as a per-platform package its loader resolves at runtime, so the source build was never needed.
+
 ## 3.5.13 - 2026-08-01 (Patch)
 
 Release impact: Patch because this only changes how macOS builds are signed, with no runtime, contract or storage changes.
