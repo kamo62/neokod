@@ -375,6 +375,43 @@ function sessionErrorMessage(error: unknown): string {
     : "OpenCode session failed.";
 }
 
+/**
+ * Retry-status messages that identify a credential failure and therefore can
+ * never succeed on a later attempt.
+ *
+ * OpenCode's own retry policy (SessionRetry.retryable) retries any error the
+ * provider SDK marks retryable and every 5xx, with no invalid-auth exclusion,
+ * and its schedule has no attempt cap. A gateway that wraps a bad credential
+ * in a 500 ("Internal Server Error: Invalid API key") therefore retries
+ * forever, and each attempt reaches this adapter only as a
+ * `session.status: retry` event with the message text; the status carries no
+ * status code, and its optional `action` field is only used for OpenCode Go
+ * upsells, so the message is the only classification signal available.
+ *
+ * Deliberately NOT matched, so they keep retrying: rate limits and
+ * "too many requests", overloaded/exhausted/unavailable, quota and usage
+ * limits (they reset), plain 5xx text, timeouts, network errors, 403s, and
+ * any message this list does not recognize. When in doubt an error stays
+ * retryable: the cost of a wrong "transient" is a longer spinner, while the
+ * cost of a wrong "terminal" is a killed turn that would have recovered.
+ */
+const TERMINAL_OPENCODE_RETRY_PATTERNS: ReadonlyArray<RegExp> = [
+  /invalid api key/i,
+  /incorrect api key/i,
+  /invalid x-api-key/i,
+  /api key (?:is )?(?:invalid|expired|revoked|missing)/i,
+  /expired api key/i,
+  /invalid credentials?/i,
+  /invalid bearer token/i,
+  /authentication[ _]?(?:failed|error)/i,
+  /invalid authentication/i,
+  /unauthorized/i,
+];
+
+export function isTerminalOpenCodeRetryMessage(message: string): boolean {
+  return TERMINAL_OPENCODE_RETRY_PATTERNS.some((pattern) => pattern.test(message));
+}
+
 function updateProviderSession(
   context: OpenCodeSessionContext,
   patch: Partial<ProviderSession>,
@@ -642,6 +679,93 @@ export function makeOpenCodeAdapter(
       }
     });
 
+    /**
+     * Terminal failure path shared by `session.error` and terminal retry
+     * classification: resolve everything pending, mark the provider session
+     * errored, and settle the active turn as failed. Leaving the "running"
+     * session status is the orchestration turn-end signal (see
+     * orchestration/projector.ts), so this is what stops the turn spinner.
+     */
+    const settleSessionFailure = Effect.fn("settleSessionFailure")(function* (
+      context: OpenCodeSessionContext,
+      input: {
+        readonly message: string;
+        readonly detail: unknown;
+        readonly raw: unknown;
+      },
+    ) {
+      const { message, detail, raw } = input;
+      const activeTurnId = context.activeTurnId;
+      const pendingPermissions = [...context.pendingPermissions.values()];
+      const pendingQuestions = [...context.pendingQuestions.keys()];
+      context.pendingPermissions.clear();
+      context.pendingQuestions.clear();
+      context.activeTurnId = undefined;
+      // A dead session cannot receive a normal reply, so use the existing
+      // cancel outcome to clear permissions; questions resolve with no answers.
+      for (const request of pendingPermissions) {
+        yield* emit({
+          ...(yield* buildEventBase({
+            threadId: context.session.threadId,
+            turnId: activeTurnId,
+            requestId: request.id,
+            raw,
+          })),
+          type: "request.resolved",
+          payload: {
+            requestType: mapPermissionToRequestType(request.permission),
+            decision: "cancel",
+          },
+        });
+      }
+      for (const requestId of pendingQuestions) {
+        yield* emit({
+          ...(yield* buildEventBase({
+            threadId: context.session.threadId,
+            turnId: activeTurnId,
+            requestId,
+            raw,
+          })),
+          type: "user-input.resolved",
+          payload: { answers: {} },
+        });
+      }
+      yield* updateProviderSession(
+        context,
+        {
+          status: "error",
+          lastError: message,
+        },
+        { clearActiveTurnId: true },
+      );
+      if (activeTurnId) {
+        yield* emit({
+          ...(yield* buildEventBase({
+            threadId: context.session.threadId,
+            turnId: activeTurnId,
+            raw,
+          })),
+          type: "turn.completed",
+          payload: {
+            state: "failed",
+            errorMessage: message,
+          },
+        });
+      }
+      yield* emit({
+        ...(yield* buildEventBase({
+          threadId: context.session.threadId,
+          raw,
+        })),
+        type: "runtime.error",
+        payload: {
+          message,
+          class: "provider_error",
+          detail,
+        },
+      });
+    });
+
     const handleSubscribedEvent = Effect.fn("handleSubscribedEvent")(function* (
       context: OpenCodeSessionContext,
       event: OpenCodeSubscribedEvent,
@@ -882,6 +1006,28 @@ export function makeOpenCodeAdapter(
           }
 
           if (event.properties.status.type === "retry") {
+            const retryMessage = event.properties.status.message;
+            // A credential failure cannot succeed on a later attempt, and
+            // OpenCode's retry schedule has no cap, so surfacing it as a
+            // warning left the turn spinning forever on identical retries.
+            // Settle it through the same terminal path session.error uses,
+            // then ask OpenCode to stop the futile retry loop. Terminal
+            // retries that arrive with no active turn were already settled
+            // (or raced our abort) and are dropped so they cannot emit
+            // duplicate failures or fresh warning rows for a dead turn.
+            if (isTerminalOpenCodeRetryMessage(retryMessage)) {
+              if (context.activeTurnId !== undefined) {
+                yield* settleSessionFailure(context, {
+                  message: retryMessage,
+                  detail: event.properties.status,
+                  raw: event,
+                });
+                yield* runOpenCodeSdk("session.abort", () =>
+                  context.client.session.abort({ sessionID: context.openCodeSessionId }),
+                ).pipe(Effect.ignore({ log: true }));
+              }
+              break;
+            }
             yield* emit({
               ...(yield* buildEventBase({
                 threadId: context.session.threadId,
@@ -890,7 +1036,7 @@ export function makeOpenCodeAdapter(
               })),
               type: "runtime.warning",
               payload: {
-                message: event.properties.status.message,
+                message: retryMessage,
                 detail: event.properties.status,
               },
             });
@@ -916,75 +1062,10 @@ export function makeOpenCodeAdapter(
         }
 
         case "session.error": {
-          const message = sessionErrorMessage(event.properties.error);
-          const activeTurnId = context.activeTurnId;
-          const pendingPermissions = [...context.pendingPermissions.values()];
-          const pendingQuestions = [...context.pendingQuestions.keys()];
-          context.pendingPermissions.clear();
-          context.pendingQuestions.clear();
-          context.activeTurnId = undefined;
-          // A dead session cannot receive a normal reply, so use the existing
-          // cancel outcome to clear permissions; questions resolve with no answers.
-          for (const request of pendingPermissions) {
-            yield* emit({
-              ...(yield* buildEventBase({
-                threadId: context.session.threadId,
-                turnId: activeTurnId,
-                requestId: request.id,
-                raw: event,
-              })),
-              type: "request.resolved",
-              payload: {
-                requestType: mapPermissionToRequestType(request.permission),
-                decision: "cancel",
-              },
-            });
-          }
-          for (const requestId of pendingQuestions) {
-            yield* emit({
-              ...(yield* buildEventBase({
-                threadId: context.session.threadId,
-                turnId: activeTurnId,
-                requestId,
-                raw: event,
-              })),
-              type: "user-input.resolved",
-              payload: { answers: {} },
-            });
-          }
-          yield* updateProviderSession(
-            context,
-            {
-              status: "error",
-              lastError: message,
-            },
-            { clearActiveTurnId: true },
-          );
-          if (activeTurnId) {
-            yield* emit({
-              ...(yield* buildEventBase({
-                threadId: context.session.threadId,
-                turnId: activeTurnId,
-                raw: event,
-              })),
-              type: "turn.completed",
-              payload: {
-                state: "failed",
-                errorMessage: message,
-              },
-            });
-          }
-          yield* emit({
-            ...(yield* buildEventBase({
-              threadId: context.session.threadId,
-              raw: event,
-            })),
-            type: "runtime.error",
-            payload: {
-              message,
-              class: "provider_error",
-              detail: event.properties.error,
-            },
+          yield* settleSessionFailure(context, {
+            message: sessionErrorMessage(event.properties.error),
+            detail: event.properties.error,
+            raw: event,
           });
           break;
         }
