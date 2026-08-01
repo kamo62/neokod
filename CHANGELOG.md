@@ -1,3 +1,9 @@
+## 3.5.25 - 2026-08-01 (Patch)
+
+Release impact: Patch because this corrects the environment handed to the OpenCode server process, with no contract, schema or storage changes.
+
+- An OPENCODE_CONFIG_CONTENT exported by the operator now reaches the OpenCode server. Every spawned server had that variable overwritten with an empty JSON object, written after the inherited environment, so any value the operator or their service unit had set was silently replaced. The override is removed and the caller's environment reaches the child unchanged. Inherited from upstream (t3code issue 4239).
+
 ## 3.5.24 - 2026-08-01 (Patch)
 
 Release impact: Patch because this widens two provider probe budgets, corrects a cache policy and bounds probe teardown, with no contract, schema or storage changes.

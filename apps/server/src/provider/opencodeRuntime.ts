@@ -35,7 +35,6 @@ import * as NetService from "@neokod/shared/Net";
 import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import { resolveSpawnCommand } from "@neokod/shared/shell";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.UnknownFromJsonString);
-const OPENCODE_EMPTY_CONFIG_CONTENT = "{}";
 
 const OPENCODE_SERVER_READY_PREFIX = "opencode server listening";
 /**
@@ -394,11 +393,16 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
           ChildProcess.make(spawnCommand.command, spawnCommand.args, {
             detached: hostPlatform !== "win32",
             shell: spawnCommand.shell,
-            env: {
-              ...input.environment,
-              OPENCODE_CONFIG_CONTENT: OPENCODE_EMPTY_CONFIG_CONTENT,
-            },
-            extendEnv: input.environment === undefined,
+            // The caller's environment must reach opencode untouched. This
+            // spawn used to write OPENCODE_CONFIG_CONTENT="{}" after the
+            // spread, which silently replaced a value the operator had
+            // exported. It was never a way to run opencode without a config:
+            // opencode loads its global and project config first and merges
+            // this variable as one more source on top, so "{}" only ever
+            // applied an empty overlay. Nothing here needs a config-less
+            // opencode either; the whitelist/blacklist handling in
+            // OpenCodeProvider.flattenOpenCodeModels reads the real config.
+            ...(input.environment ? { env: input.environment } : { extendEnv: true }),
           }),
         )
         .pipe(
