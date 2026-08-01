@@ -1,3 +1,9 @@
+## 3.5.13 - 2026-08-01 (Patch)
+
+Release impact: Patch because this only changes how macOS builds are signed, with no runtime, contract or storage changes.
+
+- macOS builds now repair nested framework signatures before notarization. A vendored framework inside the Copilot SDK contains a bare binary with no bundle metadata, so the signer treated the directory as a bundle and left the binary failing the standalone check Apple actually runs. Three releases were rejected for it.
+
 ## 3.5.12 - 2026-07-31 (Patch)
 
 Release impact: Patch because this corrects sidebar row rendering and updates bundled provider SDKs, without changing any Neokod contract, schema or storage.
