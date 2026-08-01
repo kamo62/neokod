@@ -1,6 +1,74 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { nextFreeVersion, readChangelogVersion } from "./check-changelog-version.ts";
+import {
+  canonicalRepositoryKey,
+  nextFreeVersion,
+  parseGitRemoteList,
+  parsePublishedVersions,
+  readChangelogVersion,
+  resolveReleaseRemotes,
+} from "./check-changelog-version.ts";
+
+describe("release remote resolution", () => {
+  it("matches the release repository instead of blindly using origin", () => {
+    const remotes = parseGitRemoteList(
+      [
+        "origin\thttps://github.com/kamo62/t3code.git (fetch)",
+        "origin\thttps://github.com/kamo62/t3code.git (push)",
+        "neokod\tgit@github.com:kamo62/neokod.git (fetch)",
+        "neokod\tgit@github.com:kamo62/neokod.git (push)",
+      ].join("\n"),
+    );
+
+    expect(resolveReleaseRemotes(remotes, "https://github.com/kamo62/neokod")).toEqual([
+      { name: "neokod", url: "git@github.com:kamo62/neokod.git" },
+    ]);
+  });
+
+  it("uses the only matching origin, as a single-origin CI checkout requires", () => {
+    const remotes = [{ name: "origin", url: "https://github.com/kamo62/neokod.git" }];
+    expect(resolveReleaseRemotes(remotes, "https://github.com/kamo62/neokod")).toEqual(remotes);
+  });
+
+  it("fails when multiple remotes do not identify the release repository", () => {
+    expect(() =>
+      resolveReleaseRemotes(
+        [
+          { name: "origin", url: "https://github.com/kamo62/t3code.git" },
+          { name: "upstream", url: "https://github.com/pingdotgg/t3code.git" },
+        ],
+        "https://github.com/kamo62/neokod",
+      ),
+    ).toThrow("Cannot determine the release remote");
+  });
+
+  it("fails when no remote is configured", () => {
+    expect(() => resolveReleaseRemotes([], "https://github.com/kamo62/neokod")).toThrow(
+      "no Git remotes configured",
+    );
+  });
+
+  it("normalizes HTTPS, SSH and scp-style repository URLs", () => {
+    expect(canonicalRepositoryKey("https://github.com/Kamo62/neokod.git")).toBe(
+      "github.com/kamo62/neokod",
+    );
+    expect(canonicalRepositoryKey("ssh://git@github.com/kamo62/neokod.git")).toBe(
+      "github.com/kamo62/neokod",
+    );
+    expect(canonicalRepositoryKey("git@github.com:kamo62/neokod.git")).toBe(
+      "github.com/kamo62/neokod",
+    );
+  });
+});
+
+describe("parsePublishedVersions", () => {
+  it("reads npm's JSON version list, including a single-version response", () => {
+    expect(parsePublishedVersions('["3.5.11", "3.5.12", "3.5.13"]')).toEqual(
+      new Set(["3.5.11", "3.5.12", "3.5.13"]),
+    );
+    expect(parsePublishedVersions('"3.5.11"')).toEqual(new Set(["3.5.11"]));
+  });
+});
 
 describe("readChangelogVersion", () => {
   it("reads the first heading the way release.yml does", () => {

@@ -6,6 +6,8 @@ import * as NodeURL from "node:url";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 
+const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:[.-][0-9A-Za-z.-]+)?$/;
+
 /**
  * Fails when the changelog's top version has already been released.
  *
@@ -30,10 +32,112 @@ export function readChangelogVersion(changelog: string): string {
   // Matches release.yml: strip the marker, then cut at the first whitespace.
   const raw = heading.replace(/^##\s+/, "").split(/\s/)[0] ?? "";
   const version = raw.startsWith("v") ? raw.slice(1) : raw;
-  if (!/^\d+\.\d+\.\d+([.-][0-9A-Za-z.-]+)?$/.test(version)) {
+  if (!VERSION_PATTERN.test(version)) {
     throw new Error(`CHANGELOG.md's first heading is not a version: '${raw}'.`);
   }
   return version;
+}
+
+export interface GitRemote {
+  readonly name: string;
+  readonly url: string;
+}
+
+/** Parses the fetch entries printed by `git remote -v`. */
+export function parseGitRemoteList(output: string): ReadonlyArray<GitRemote> {
+  const remotes = new Map<string, GitRemote>();
+  for (const line of output.split("\n")) {
+    const fields = line.trim().split(/\s+/);
+    if (fields.length < 3 || fields[2] !== "(fetch)") continue;
+    const name = fields[0];
+    const url = fields[1];
+    if (name === undefined || url === undefined) continue;
+    remotes.set(`${name}\u0000${url}`, { name, url });
+  }
+  return [...remotes.values()];
+}
+
+/** Normalizes HTTPS, SSH and scp-style Git URLs for repository identity checks. */
+export function canonicalRepositoryKey(remoteUrl: string): string | undefined {
+  const trimmed = remoteUrl.trim();
+  const scpStyle = /^(?:[^@/]+@)?([^:/]+):(.+)$/.exec(trimmed);
+  let host: string;
+  let repositoryPath: string;
+
+  if (!trimmed.includes("://") && scpStyle?.[1] !== undefined && scpStyle[2] !== undefined) {
+    host = scpStyle[1];
+    repositoryPath = scpStyle[2];
+  } else {
+    let parsed: URL;
+    try {
+      parsed = new URL(trimmed);
+    } catch {
+      return undefined;
+    }
+    host = parsed.hostname;
+    repositoryPath = parsed.pathname;
+  }
+
+  const normalizedPath = repositoryPath.replace(/^\/+|\/+$/g, "").replace(/\.git$/i, "");
+  if (host.length === 0 || normalizedPath.length === 0) return undefined;
+  return `${host.toLowerCase()}/${normalizedPath.toLowerCase()}`;
+}
+
+/**
+ * Chooses the remote used for releases. A repository identity match is
+ * required because choosing an unrelated remote would make the check pass
+ * vacuously.
+ */
+export function resolveReleaseRemotes(
+  remotes: ReadonlyArray<GitRemote>,
+  releaseRepositoryUrl: string,
+): ReadonlyArray<GitRemote> {
+  if (remotes.length === 0) {
+    throw new Error(
+      "Cannot determine the release remote: this clone has no Git remotes configured.",
+    );
+  }
+
+  const releaseRepositoryKey = canonicalRepositoryKey(releaseRepositoryUrl);
+  if (releaseRepositoryKey === undefined) {
+    throw new Error(
+      `Cannot determine the release remote: invalid release repository URL '${releaseRepositoryUrl}'.`,
+    );
+  }
+
+  const matchingRemotes = remotes.filter(
+    (remote) => canonicalRepositoryKey(remote.url) === releaseRepositoryKey,
+  );
+  if (matchingRemotes.length > 0) return matchingRemotes;
+
+  const configured = remotes.map((remote) => `${remote.name}=${remote.url}`).join(", ");
+  throw new Error(
+    [
+      `Cannot determine the release remote for '${releaseRepositoryUrl}'.`,
+      `No configured remote matches that repository, and more than one remote exists: ${configured}.`,
+      "Configure a remote for the release repository before running this check.",
+    ].join(" "),
+  );
+}
+
+export function parsePublishedVersions(output: string): ReadonlySet<string> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(output);
+  } catch (cause) {
+    throw new Error("npm returned invalid JSON while listing published neokod versions.", {
+      cause,
+    });
+  }
+
+  const values = Array.isArray(parsed) ? parsed : [parsed];
+  const versions = new Set<string>();
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const version = value.startsWith("v") ? value.slice(1) : value;
+    if (VERSION_PATTERN.test(version)) versions.add(version);
+  }
+  return versions;
 }
 
 export function nextFreeVersion(version: string, taken: ReadonlySet<string>): string {
@@ -56,17 +160,76 @@ export function nextFreeVersion(version: string, taken: ReadonlySet<string>): st
   return candidate;
 }
 
-function releasedVersions(): ReadonlySet<string> {
-  // ls-remote rather than `git tag`: CI checks out shallow and without tags,
-  // so the local tag list is empty and every check would pass vacuously.
-  const output = NodeChildProcess.execFileSync("git", ["ls-remote", "--tags", "origin"], {
-    cwd: repoRoot,
-    encoding: "utf8",
-  });
+function readReleaseMetadata(): { readonly packageName: string; readonly repositoryUrl: string } {
+  const packageJson = JSON.parse(
+    NodeFS.readFileSync(NodePath.join(repoRoot, "apps/server/package.json"), "utf8"),
+  ) as { name?: unknown; repository?: unknown };
+  const packageName = packageJson.name;
+  const repository = packageJson.repository;
+  const repositoryUrl =
+    typeof repository === "string"
+      ? repository
+      : typeof repository === "object" && repository !== null && "url" in repository
+        ? (repository as { url?: unknown }).url
+        : undefined;
+  if (typeof packageName !== "string" || typeof repositoryUrl !== "string") {
+    throw new Error("apps/server/package.json does not declare a release package and repository.");
+  }
+  return { packageName, repositoryUrl };
+}
+
+function releasedTagVersions(repositoryUrl: string): ReadonlySet<string> {
+  let remoteOutput: string;
+  try {
+    remoteOutput = NodeChildProcess.execFileSync("git", ["remote", "-v"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+  } catch (cause) {
+    throw new Error("Could not read Git remotes while determining the release remote.", { cause });
+  }
+
+  const remotes = resolveReleaseRemotes(parseGitRemoteList(remoteOutput), repositoryUrl);
   const versions = new Set<string>();
-  for (const line of output.split("\n")) {
-    const match = line.match(/refs\/tags\/v?(\d+\.\d+\.\d+(?:[.-][0-9A-Za-z.-]+)?)(?:\^\{\})?$/);
-    if (match?.[1] !== undefined) versions.add(match[1]);
+  for (const remote of remotes) {
+    let output: string;
+    try {
+      // ls-remote rather than `git tag`: CI checks out shallow and without tags.
+      output = NodeChildProcess.execFileSync("git", ["ls-remote", "--tags", remote.name], {
+        cwd: repoRoot,
+        encoding: "utf8",
+      });
+    } catch (cause) {
+      throw new Error(`Could not read release tags from remote '${remote.name}'.`, { cause });
+    }
+    for (const line of output.split("\n")) {
+      const match = line.match(/refs\/tags\/v?(\d+\.\d+\.\d+(?:[.-][0-9A-Za-z.-]+)?)(?:\^\{\})?$/);
+      if (match?.[1] !== undefined) versions.add(match[1]);
+    }
+  }
+  return versions;
+}
+
+function releasedVersions(): ReadonlySet<string> {
+  const { packageName, repositoryUrl } = readReleaseMetadata();
+  const versions = new Set(releasedTagVersions(repositoryUrl));
+
+  let npmOutput: string;
+  try {
+    npmOutput = NodeChildProcess.execFileSync("npm", ["view", packageName, "versions", "--json"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+  } catch (cause) {
+    throw new Error(`Could not read published versions for npm package '${packageName}'.`, {
+      cause,
+    });
+  }
+  for (const version of parsePublishedVersions(npmOutput)) versions.add(version);
+  if (versions.size === 0) {
+    throw new Error(
+      `Release tags and npm package '${packageName}' returned no released versions; refusing to pass vacuously.`,
+    );
   }
   return versions;
 }
