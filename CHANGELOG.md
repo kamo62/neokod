@@ -1,3 +1,10 @@
+## 3.5.19 - 2026-08-01 (Minor)
+
+Release impact: Minor because this adds a backward-compatible CLI workflow and makes release-version validation consult the configured release sources.
+
+- Added `neokod upgrade` with `--check`/`--dry-run`, global npm installation, supervisor detection for systemd and launchd, safe handling of root-required services, and explicit manual-restart guidance.
+- Fixed the changelog version check to resolve the release remote by repository identity, fail closed when remotes are ambiguous or empty, and include versions published to npm without a GitHub tag.
+
 ## 3.5.18 - 2026-08-01 (Patch)
 
 Release impact: Patch because this only adds documentation, with no runtime, contract or storage changes.

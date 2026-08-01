@@ -9,6 +9,7 @@ import packageJson from "../package.json" with { type: "json" };
 import { sharedServerCommandFlags } from "./cli/config.ts";
 import { projectCommand } from "./cli/project.ts";
 import { runServerCommand, serveCommand, startCommand } from "./cli/server.ts";
+import { upgradeCommand } from "./cli/upgrade.ts";
 
 const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NetService.layer);
 
@@ -16,7 +17,7 @@ export const makeCli = () =>
   Command.make("neokod", { ...sharedServerCommandFlags }).pipe(
     Command.withDescription("Run the Neokod server."),
     Command.withHandler((flags) => runServerCommand(flags)),
-    Command.withSubcommands([startCommand, serveCommand, projectCommand]),
+    Command.withSubcommands([startCommand, serveCommand, projectCommand, upgradeCommand]),
   );
 
 export const cli = makeCli();
