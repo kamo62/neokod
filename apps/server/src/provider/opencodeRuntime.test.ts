@@ -142,7 +142,8 @@ describe("startOpenCodeServerProcess environment passthrough", () => {
       expect(server.url).toBe(SERVER_URL);
       expect(captured).toHaveLength(1);
       // The forced empty config used to win over the spread here, so the
-      // child ran with "{}" and the user's providers and models vanished.
+      // operator's exported value was replaced with "{}" before the child
+      // ever saw it.
       expect(captured[0]?.options.env?.OPENCODE_CONFIG_CONTENT).toBe(configContent);
     }).pipe(Effect.provide(runtimeLayerWith(makeCapturingSpawner(captured))));
   });

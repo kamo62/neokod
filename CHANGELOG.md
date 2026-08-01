@@ -2,7 +2,7 @@
 
 Release impact: Patch because this corrects the environment handed to the OpenCode server process, with no contract, schema or storage changes.
 
-- OpenCode now runs with the user's own configuration. Every spawned OpenCode server had OPENCODE_CONFIG_CONTENT forced to an empty JSON object, which won over the inherited environment, so OpenCode ignored the user's config: custom providers and models never appeared in the model picker, per-provider model whitelists and blacklists never applied, and turns on a model that needs that config failed on every attempt with the upstream provider's "Invalid API key" error even though the same CLI worked when run by hand. The override is removed, the caller's environment reaches the child unchanged, and an operator-exported OPENCODE_CONFIG_CONTENT is honoured. Inherited from upstream (t3code issue 4239).
+- An OPENCODE_CONFIG_CONTENT exported by the operator now reaches the OpenCode server. Every spawned server had that variable overwritten with an empty JSON object, written after the inherited environment, so any value the operator or their service unit had set was silently replaced. The override is removed and the caller's environment reaches the child unchanged. Inherited from upstream (t3code issue 4239).
 
 ## 3.5.23 - 2026-08-01 (Patch)
 

@@ -394,12 +394,13 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
             detached: hostPlatform !== "win32",
             shell: spawnCommand.shell,
             // The caller's environment must reach opencode untouched. This
-            // spawn used to force OPENCODE_CONFIG_CONTENT="{}" on top of it,
-            // which made opencode skip the user's config entirely: custom
-            // providers and models never appeared, and turns against them
-            // failed with the upstream provider's auth error even though the
-            // same CLI worked when run by hand. Nothing here needs a
-            // config-less opencode; the whitelist/blacklist handling in
+            // spawn used to write OPENCODE_CONFIG_CONTENT="{}" after the
+            // spread, which silently replaced a value the operator had
+            // exported. It was never a way to run opencode without a config:
+            // opencode loads its global and project config first and merges
+            // this variable as one more source on top, so "{}" only ever
+            // applied an empty overlay. Nothing here needs a config-less
+            // opencode either; the whitelist/blacklist handling in
             // OpenCodeProvider.flattenOpenCodeModels reads the real config.
             ...(input.environment ? { env: input.environment } : { extendEnv: true }),
           }),
