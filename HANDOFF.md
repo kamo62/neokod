@@ -23,9 +23,154 @@ Claims here were verified against git and GitHub on **2026-07-30**. Anything
 carrying an older date is a historical record of that session, not a statement
 about the current tree. When this file and `git` disagree, trust `git`.
 
+## START HERE — session of 2026-08-01/02 (overnight)
+
+Supersedes every section below it. Read this first.
+
+### State
+
+- `main` at `d87699a82`. Three PRs merged in version order this session.
+- Released: `v3.5.24`, `v3.5.25`, `v3.5.26` tagged. npm reached **3.5.25**, with
+  3.5.26 releasing behind it. Both completed `Release Neokod` runs succeeded.
+- Open PRs: **#77 only**, a deliberately parked draft.
+- Working tree clean.
+
+### Shipped
+
+**#93 → 3.5.24. Claude provider probe.**
+
+The panel showed "Claude Agent CLI is installed but failed to run" for a CLI that
+worked. The cause was not the 25s capabilities budget that had been the suspect
+for days. It was the _version_ probe, `claude --version`, sharing the generic 4s
+`DEFAULT_TIMEOUT_MS` from `providerSnapshot.ts`, too short for a cold spawn of a
+large binary. That exact message is emitted from that branch only; a capabilities
+timeout produces a different, softer warning. Version budget is now 15s, and
+`NEOKOD_CLAUDE_PROBE_TIMEOUT_MS` acts as a **floor** on both budgets.
+
+Two independent sol reviews returned NO-GO and agreed on three findings, all
+fixed before merge:
+
+1. The probe could hang forever on a child that ignores SIGTERM. Both reviewers
+   prescribed `forceKillAfter`, and **that prescription is wrong**: in Effect
+   `4.0.0-beta.78` the spawner's `withTimeout` wraps only the instantaneous
+   signal send, not the `Deferred.await(exitSignal)` that actually hangs. Proved
+   at runtime, close took 6015ms with the child still alive, with and without
+   `forceKillAfter`. The repo already knew: commit `d6d026e54` from the 3.5.20
+   work says exactly this. `spawnAndCollect` now registers its own finalizer
+   doing SIGTERM, a bounded 2s wait, then SIGKILL.
+2. Both headline tests passed with the bug restored. The registry test advanced
+   straight to 16s, so a reverted 4s budget still timed out and still passed; the
+   driver test built its own cache instead of the seam production uses.
+3. The override could _lower_ a budget. One variable overwrote both defaults
+   absolutely, so `20000` raised the version probe and dropped capabilities from
+   25s to 20s. Now `Math.max(defaultMs, parsed)`.
+
+**#94 → 3.5.25. OpenCode spawn environment.**
+
+`opencodeRuntime.ts` wrote `OPENCODE_CONFIG_CONTENT="{}"` after the environment
+spread, so a value the operator exported was silently replaced. Override removed.
+
+**Its stated cause was wrong and was corrected before merge.** The PR, and
+upstream t3code issue 4239 which is still open, both claim `"{}"` makes opencode
+ignore the user's config and hide their providers and models. It does not. In
+`packages/opencode/src/config/config.ts`, `loadGlobal` merges `config.json`,
+`opencode.json` and `opencode.jsonc` unconditionally; the `OPENCODE_CONFIG_CONTENT`
+check there only suppresses _seeding_ a default file for editor completion, and
+the variable is then merged as one more source on top. Checked at both v1.14.19
+and the v1.18.11 this fork runs. So `"{}"` only ever applied an empty overlay.
+The changelog, spawn comment and a test comment were narrowed to the provable
+defect. Do not restore the broader claim.
+
+**#95 → 3.5.26. OpenCode turn settlement.**
+
+Six identical `Internal Server Error: Invalid API key` Work Log rows with a live
+spinner still counting at 1m26s. `OpenCodeAdapter.ts` mapped every
+`session.status` `type: "retry"` to a `runtime.warning` and nothing else, so
+`activeTurnId` was never cleared, the session never left `running`, and no
+`turn.completed` was emitted. The reconciler cannot rescue that by design, since
+it only acts once the live session is gone. Terminal credential failures now
+settle through the `session.error` path that already existed.
+
+Classification is deliberately narrow: `invalid credentials`, `authentication
+failed/error`, `invalid authentication`, `unauthorized` and similar. Rate limits,
+overloads, usage limits and plain 5xx keep retrying unchanged. The reasoning is
+recorded in the code: a wrong "transient" costs a longer spinner, a wrong
+"terminal" kills a turn that would have recovered.
+
+### Verified vs unverified
+
+- Verified: #93 after fixes, full server suite in the real tree, 1564 passed / 7
+  skipped. CI green. Merged.
+- Verified: #94 after merging main in, 1567 passed / 7 skipped. CI green. Merged.
+- Verified: #95, 1570 passed / 7 skipped, typecheck exit 0 with only pre-existing
+  suggestions in `CopilotQuota.ts` and `GithubDeviceLogin.ts`. CI green. Merged.
+- Verified: #95's settlement test fails on revert. Guard disabled with
+  `if (false && isTerminalOpenCodeRetryMessage(...))` gave `1 failed | 1569
+passed`, `AssertionError ... expected: [ 'turn.completed', 'runtime.error' ]`,
+  then restored clean. The other two new tests pass either way by design: one
+  asserts unchanged transient behaviour as an over-correction guard, the other
+  unit-tests the exported classifier.
+- Verified: releases. `v3.5.24` and `v3.5.25` on the `neokod` remote,
+  `npm view neokod version` returned 3.5.25.
+- Verified: **Codex does not leak the MCP bearer token.** Two reviewers flagged
+  `NEOKOD_MCP_BEARER_TOKEN` at `CodexAdapter.ts:1631` as inherited by shell
+  subprocesses, both citing a Synara source comment that Codex defaults
+  `ignore_default_excludes = true`. That comment is wrong for codex-cli 0.146.0.
+  `strings` on the shipped native binary shows the default exclude globs are
+  `*KEY*`, `*SECRET*`, `*TOKEN*`, and the flag defaults to `false`. The variable
+  matches `*TOKEN*` and is stripped automatically. **That name is load-bearing.
+  Never rename it to something without KEY, SECRET or TOKEN in it.** The work
+  item is dropped, not deferred.
+- **UNVERIFIED, and the thing to pick up first:** the OpenCode Zen
+  `Invalid API key` failure is **probably still present**. #94 was written to fix
+  it and its mechanism does not hold, so the real cause is unknown. #95 only
+  guarantees the turn fails cleanly instead of spinning forever. The next probe
+  belongs on the server, not in this source tree: establish whether the opencode
+  process the server spawns resolves the same Zen credentials the user's
+  interactive shell does.
+- Unverified: whether 15s is enough for a cold `claude --version` on that host's
+  disk. That is what `NEOKOD_CLAUDE_PROBE_TIMEOUT_MS` exists for, and the panel
+  message now names it.
+
+### Open items
+
+- **Agent Gateway: parked, do not build. Do not start a round 7.** Two
+  independent lanes converged on this. "Port Synara's module" is mislabelled:
+  their gateway commit touched 75 files including a 387-line reactor rewrite,
+  they have no Copilot adapter so the injection path this fork needs most is
+  untested by their 8,541 test lines, and round 6 has two confirmed defects. The
+  privilege ceiling ordering holds only for Codex and was already removed here in
+  `6a73bc68a`; crash recovery cannot locate its own receipt, because it requires a
+  fresh dispatch command ID per attempt while the proposed `delegated_runs`
+  columns store none. Revisit only on a recorded request for in-product
+  cross-provider fan-out, or if upstream ships orchestration-v2 with per-task
+  isolation, which would obsolete both designs.
+- **#77 stays a parked draft.** State recorded as a comment on the PR itself.
+- **Parallel write lanes are blocked by one flaky package.** Worktrees are
+  otherwise fine for this repo. Every fresh `pnpm install` in a new worktree dies
+  on a corrupt `@github/copilot-darwin-arm64@1.0.76` with `ENOENT`, leaving
+  `node_modules/.bin` empty, after which `npx vp` silently resolves to an
+  unrelated `vp@1.0.3` from the public registry and every gate is meaningless.
+  Removing the `.pnpm` entry and reinstalling did **not** fix it in a fresh
+  worktree; that workaround only works in the established checkout. Fix this and
+  concurrent lanes become available.
+
+### Process notes
+
+Reviewers were confidently wrong twice this session, and both times the
+correction came from checking the artefact rather than the source asserting the
+claim. On #93 both sol runs prescribed a fix that provably does not work in this
+Effect version. On the bearer token both reviewers relied on the same
+third-party comment and produced a false positive. Independent lanes agreeing
+with each other is not evidence when they read the same secondary source.
+
+Two lanes also stalled by ending their turn to wait on a buffered background
+test run. When that happens, take the gates over directly rather than resuming
+the lane repeatedly.
+
 ## START HERE — session of 2026-08-01 (second half)
 
-Supersedes the section below it. Read this first.
+Superseded by the section above. Read that first.
 
 ### State
 
