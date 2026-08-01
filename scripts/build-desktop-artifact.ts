@@ -524,6 +524,15 @@ interface StagePackageJson {
 
 export const STAGE_INSTALL_ARGS = ["install", "--prod"] as const;
 export const DESKTOP_ASAR_UNPACK = ["node_modules/@ff-labs/fff-bin-*/**/*"] as const;
+export const MAC_SIGN_HOOK_FILENAME = "mac-nested-sign-hook.cjs";
+// Vendored *.framework directories under app.asar.unpacked (for example
+// @github/copilot's MediaRemoteAdapter.framework, a bare dylib with no
+// Info.plist or resource envelope) must not receive a bundle-format signature:
+// it does not verify standalone and Apple notarization rejects the binary.
+// Ignoring the directory leaves @electron/osx-sign signing the contained
+// Mach-O files as plain files, which does verify standalone; the mac sign hook
+// then proves every unpacked Mach-O verifies before notarization.
+export const MAC_UNPACKED_FRAMEWORK_SIGN_IGNORE = String.raw`app\.asar\.unpacked/.*\.framework$`;
 
 export function resolveFffNativeDependencies(
   platform: typeof BuildPlatform.Type,
@@ -1105,6 +1114,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   signed: boolean,
   mockUpdates: boolean,
   mockUpdateServerPort: number | undefined,
+  macSignHookPath?: string,
 ) {
   const buildConfig: Record<string, unknown> = {
     appId: DESKTOP_APP_ID,
@@ -1160,6 +1170,13 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       // server, node-pty, and bundled Copilot runtime require. Notarization
       // reads the App Store Connect API key from the APPLE_API_* env vars.
       ...(signed ? { hardenedRuntime: true, gatekeeperAssess: false, notarize: true } : {}),
+      // The sign hook wraps electron-builder's default signing and verifies
+      // (repairing if needed) every Mach-O under app.asar.unpacked before
+      // notarization runs. `afterSign` cannot do this: in electron-builder
+      // 26.15.6 it fires only after notarization.
+      ...(signed && macSignHookPath !== undefined
+        ? { sign: macSignHookPath, signIgnore: [MAC_UNPACKED_FRAMEWORK_SIGN_IGNORE] }
+        : {}),
     };
   }
 
@@ -1421,6 +1438,17 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
   yield* fs.copy(stageResourcesDir, path.join(stageAppDir, "apps/desktop/prod-resources"));
 
+  // electron-builder loads the mac sign hook with require(), so stage the plain
+  // CommonJS module beside the generated package.json and reference it by
+  // absolute path in the build config.
+  const macSignHookPath =
+    options.platform === "mac" && options.signed
+      ? path.join(stageAppDir, MAC_SIGN_HOOK_FILENAME)
+      : undefined;
+  if (macSignHookPath !== undefined) {
+    yield* fs.copyFile(path.join(repoRoot, "scripts/lib", MAC_SIGN_HOOK_FILENAME), macSignHookPath);
+  }
+
   const stageDependencies = {
     ...resolvedServerDependencies,
     ...resolvedDesktopRuntimeDependencies,
@@ -1462,6 +1490,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
       options.signed,
       options.mockUpdates,
       options.mockUpdateServerPort,
+      macSignHookPath,
     ),
     dependencies: stageDependencies,
     devDependencies: {

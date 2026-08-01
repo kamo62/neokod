@@ -15,6 +15,7 @@ import {
   createBuildConfig,
   DESKTOP_ASAR_UNPACK,
   InvalidMockUpdateServerPortError,
+  MAC_UNPACKED_FRAMEWORK_SIGN_IGNORE,
   LinuxIconResizeError,
   resolveDesktopRuntimeDependencies,
   resolveFffNativeDependencies,
@@ -357,6 +358,55 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       });
     }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
   );
+
+  it.effect("wires the nested sign hook and framework sign ignore for signed mac builds", () =>
+    Effect.gen(function* () {
+      const config = yield* createBuildConfig(
+        "mac",
+        "dmg",
+        "1.2.3",
+        true,
+        false,
+        undefined,
+        "/stage/mac-nested-sign-hook.cjs",
+      );
+
+      const mac = config.mac as Record<string, unknown>;
+      assert.equal(mac.hardenedRuntime, true);
+      assert.equal(mac.notarize, true);
+      assert.equal(mac.sign, "/stage/mac-nested-sign-hook.cjs");
+      assert.deepStrictEqual(mac.signIgnore, [MAC_UNPACKED_FRAMEWORK_SIGN_IGNORE]);
+
+      const unsigned = yield* createBuildConfig("mac", "dmg", "1.2.3", false, false, undefined);
+      const unsignedMac = unsigned.mac as Record<string, unknown>;
+      assert.notProperty(unsignedMac, "sign");
+      assert.notProperty(unsignedMac, "signIgnore");
+      assert.notProperty(unsignedMac, "notarize");
+    }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
+  );
+
+  it("only suppresses bundle signing for framework directories under app.asar.unpacked", () => {
+    const signIgnore = new RegExp(MAC_UNPACKED_FRAMEWORK_SIGN_IGNORE);
+    const unpacked = "/stage/dist/mac-arm64/Neokod.app/Contents/Resources/app.asar.unpacked";
+
+    assert.isTrue(
+      signIgnore.test(
+        `${unpacked}/node_modules/@github/copilot-darwin-arm64/prebuilds/darwin-arm64/mediaremote-adapter/MediaRemoteAdapter.framework`,
+      ),
+    );
+    // The Mach-O inside keeps getting signed as a plain file.
+    assert.isFalse(
+      signIgnore.test(
+        `${unpacked}/node_modules/@github/copilot-darwin-arm64/prebuilds/darwin-arm64/mediaremote-adapter/MediaRemoteAdapter.framework/MediaRemoteAdapter`,
+      ),
+    );
+    // Frameworks outside app.asar.unpacked keep their bundle signatures.
+    assert.isFalse(
+      signIgnore.test(
+        "/stage/dist/mac-arm64/Neokod.app/Contents/Frameworks/Electron Framework.framework",
+      ),
+    );
+  });
 
   it("promotes target fff binaries to direct staged dependencies", () => {
     assert.deepStrictEqual(resolveFffNativeDependencies("mac", "arm64", "0.9.4"), {
