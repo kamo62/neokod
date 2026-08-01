@@ -2,6 +2,8 @@ import * as NodeTimersPromises from "node:timers/promises";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, it, assert } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -242,6 +244,98 @@ function hangingScopedSpawnerLayer(killCalls: Ref.Ref<number>) {
         return handle;
       }),
     ),
+  );
+}
+
+/**
+ * A child that never produces output and ignores the first kill: SIGTERM is
+ * recorded but the process keeps running, and only SIGKILL completes the
+ * exit. The scoped cleanup mirrors the real Node spawner's release, which
+ * sends the default signal and then waits for the exit signal with no bound.
+ * That unbounded wait is exactly what wedges the probe fiber when nothing
+ * escalates, so a test against this layer only completes if production
+ * escalation actually terminates the child.
+ */
+function sigtermIgnoringSpawnerLayer(signals: Ref.Ref<ReadonlyArray<string>>) {
+  return Layer.succeed(
+    ChildProcessSpawner.ChildProcessSpawner,
+    ChildProcessSpawner.make(() =>
+      Effect.gen(function* () {
+        const exitLatch = yield* Deferred.make<void>();
+        const handle = ChildProcessSpawner.makeHandle({
+          pid: ChildProcessSpawner.ProcessId(1),
+          exitCode: Deferred.await(exitLatch).pipe(Effect.as(ChildProcessSpawner.ExitCode(137))),
+          isRunning: Deferred.isDone(exitLatch).pipe(Effect.map((done) => !done)),
+          kill: (options) => {
+            const signal = options?.killSignal ?? "SIGTERM";
+            return Ref.update(signals, (all) => [...all, signal]).pipe(
+              Effect.andThen(
+                signal === "SIGKILL" ? Deferred.succeed(exitLatch, void 0) : Effect.void,
+              ),
+              // Like the real spawner, a kill only returns once the process
+              // has exited, however long that takes.
+              Effect.andThen(Deferred.await(exitLatch)),
+              Effect.asVoid,
+            );
+          },
+          unref: Effect.succeed(Effect.void),
+          stdin: Sink.drain,
+          stdout: Stream.never,
+          stderr: Stream.never,
+          all: Stream.never,
+          getInputFd: () => Sink.drain,
+          getOutputFd: () => Stream.empty,
+        });
+        yield* Effect.addFinalizer(() =>
+          Effect.flatMap(Deferred.isDone(exitLatch), (exited) =>
+            exited ? Effect.void : handle.kill().pipe(Effect.ignore),
+          ),
+        );
+        return handle;
+      }),
+    ),
+  );
+}
+
+/**
+ * A CLI whose `--version` child spawns fine but only exits after `delay`,
+ * modelling a large binary cold-starting from a slow disk. Every other
+ * command responds immediately.
+ */
+function slowColdStartSpawnerLayer(delay: Duration.Duration) {
+  return Layer.succeed(
+    ChildProcessSpawner.ChildProcessSpawner,
+    ChildProcessSpawner.make((command) => {
+      const cmd = command as unknown as { args: ReadonlyArray<string> };
+      const joined = cmd.args.join(" ");
+      if (joined === "--version") {
+        return Effect.succeed(
+          ChildProcessSpawner.makeHandle({
+            pid: ChildProcessSpawner.ProcessId(1),
+            exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)).pipe(Effect.delay(delay)),
+            isRunning: Effect.succeed(false),
+            kill: () => Effect.void,
+            unref: Effect.succeed(Effect.void),
+            stdin: Sink.drain,
+            stdout: Stream.make(encoder.encode("1.0.0\n")),
+            stderr: Stream.make(encoder.encode("")),
+            all: Stream.empty,
+            getInputFd: () => Sink.drain,
+            getOutputFd: () => Stream.empty,
+          }),
+        );
+      }
+      if (joined === "auth status") {
+        return Effect.succeed(
+          mockHandle({
+            stdout: '{"loggedIn":true,"authMethod":"claude.ai"}\n',
+            stderr: "",
+            code: 0,
+          }),
+        );
+      }
+      return Effect.die(new Error(`Unexpected args: ${joined}`));
+    }),
   );
 }
 
@@ -2096,29 +2190,65 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
         );
       });
 
-      it.effect("names the override and the retry path when the version probe times out", () =>
-        Effect.gen(function* () {
-          const killCalls = yield* Ref.make(0);
-          const statusFiber = yield* checkClaudeProviderStatus(
-            defaultClaudeSettings,
-            claudeCapabilities(),
-          ).pipe(Effect.provide(hangingScopedSpawnerLayer(killCalls)), Effect.forkChild);
+      it.effect(
+        "reports ready when a cold-start version probe needs more than the old 4s budget",
+        () =>
+          Effect.gen(function* () {
+            const statusFiber = yield* checkClaudeProviderStatus(
+              defaultClaudeSettings,
+              claudeCapabilities(),
+            ).pipe(
+              Effect.provide(slowColdStartSpawnerLayer(Duration.seconds(5))),
+              Effect.forkChild,
+            );
 
-          yield* Effect.yieldNow;
-          yield* TestClock.adjust("16 seconds");
-          yield* Effect.yieldNow;
+            // Five seconds is inside the new 15s budget but beyond the shared
+            // 4s one that misreported a slow working CLI as broken.
+            yield* Effect.yieldNow;
+            yield* TestClock.adjust("5 seconds");
+            yield* Effect.yieldNow;
 
-          const status = yield* Fiber.join(statusFiber);
-          assert.strictEqual(status.status, "error");
-          assert.strictEqual(status.installed, true);
-          assert.strictEqual(status.auth.status, "unknown");
-          // The message must hand the operator a next step, not just report
-          // the timeout.
-          assert.ok((status.message ?? "").includes("NEOKOD_CLAUDE_PROBE_TIMEOUT_MS"));
-          assert.ok((status.message ?? "").includes("Refresh"));
-          // The timed-out spawn must be torn down, not leaked.
-          assert.strictEqual(yield* Ref.get(killCalls), 1);
-        }),
+            const status = yield* Fiber.join(statusFiber);
+            assert.strictEqual(status.status, "ready");
+            assert.strictEqual(status.installed, true);
+            assert.strictEqual(status.version, "1.0.0");
+            assert.strictEqual(status.auth.status, "authenticated");
+          }),
+      );
+
+      it.effect(
+        "escalates to SIGKILL and names the override when the version probe times out on a CLI that ignores SIGTERM",
+        () =>
+          Effect.gen(function* () {
+            const signals = yield* Ref.make<ReadonlyArray<string>>([]);
+            const statusFiber = yield* checkClaudeProviderStatus(
+              defaultClaudeSettings,
+              claudeCapabilities(),
+            ).pipe(Effect.provide(sigtermIgnoringSpawnerLayer(signals)), Effect.forkChild);
+
+            yield* Effect.yieldNow;
+            // Expire the 15s probe budget; teardown starts with SIGTERM,
+            // which this child ignores.
+            yield* TestClock.adjust("16 seconds");
+            yield* Effect.yieldNow;
+            // Cover the force-kill grace so teardown escalates to SIGKILL.
+            yield* TestClock.adjust("3 seconds");
+            yield* Effect.yieldNow;
+
+            // Joining at all proves the probe fiber was not parked forever on
+            // a child that never exits after SIGTERM.
+            const status = yield* Fiber.join(statusFiber);
+            assert.strictEqual(status.status, "error");
+            assert.strictEqual(status.installed, true);
+            assert.strictEqual(status.auth.status, "unknown");
+            // The message must hand the operator a next step, not just report
+            // the timeout.
+            assert.ok((status.message ?? "").includes("NEOKOD_CLAUDE_PROBE_TIMEOUT_MS"));
+            assert.ok((status.message ?? "").includes("Refresh"));
+            // The child ignored the first kill, so teardown must have
+            // escalated and actually terminated it.
+            assert.deepStrictEqual(yield* Ref.get(signals), ["SIGTERM", "SIGKILL"]);
+          }),
       );
 
       it.effect("returns warning when the Claude initialization result is unavailable", () =>

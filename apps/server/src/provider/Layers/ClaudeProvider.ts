@@ -7,6 +7,7 @@ import {
   type ServerProviderSlashCommand,
 } from "@neokod/contracts";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -547,7 +548,9 @@ function apiProviderAuthMetadata(
  * Operator override for both Claude probe budgets (the `claude --version`
  * health check and the SDK capabilities probe), following
  * `NEOKOD_OPENCODE_SERVER_TIMEOUT_MS`. Both probes cold-start the Claude CLI
- * binary, so one knob covers both.
+ * binary, so one knob covers both. The value is a floor: each budget becomes
+ * the larger of its default and the override, so raising the shorter budget
+ * can never shrink the longer one.
  */
 export const CLAUDE_PROBE_TIMEOUT_ENV_VAR = "NEOKOD_CLAUDE_PROBE_TIMEOUT_MS";
 
@@ -558,6 +561,11 @@ export const CLAUDE_PROBE_TIMEOUT_ENV_VAR = "NEOKOD_CLAUDE_PROBE_TIMEOUT_MS";
 // in this layer.
 export const DEFAULT_CLAUDE_VERSION_PROBE_TIMEOUT_MS = 15_000;
 
+// How long a timed-out version probe may take to die after SIGTERM before the
+// teardown escalates to SIGKILL. Without the bound, a CLI that ignores
+// SIGTERM parks the probe fiber forever and Refresh spins until restart.
+const VERSION_PROBE_FORCE_KILL_AFTER = Duration.seconds(2);
+
 // Amazon Bedrock initializes far slower than first-party auth: the SDK boots the
 // Bedrock backend and runs the `awsAuthRefresh` credential hook before returning
 // account info. The previous 8s budget expired mid-init, so the probe returned
@@ -567,7 +575,10 @@ export const DEFAULT_CLAUDE_CAPABILITIES_PROBE_TIMEOUT_MS = 25_000;
 /**
  * A value that is not a positive safe integer is ignored rather than treated
  * as zero, because a zero or negative budget would fail every probe
- * immediately.
+ * immediately. A valid value acts as a floor rather than a replacement: one
+ * knob covers two budgets with different defaults, and an operator raising
+ * the 15s version budget to 20s must not silently cut the 25s capabilities
+ * budget that Bedrock initialization needs.
  */
 export function parseClaudeProbeTimeoutMs(raw: string | undefined, defaultMs: number): number {
   if (raw === undefined) return defaultMs;
@@ -575,7 +586,7 @@ export function parseClaudeProbeTimeoutMs(raw: string | undefined, defaultMs: nu
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
     return defaultMs;
   }
-  return parsed;
+  return Math.max(defaultMs, parsed);
 }
 
 const probeTimeoutOverride = process.env[CLAUDE_PROBE_TIMEOUT_ENV_VAR];
@@ -844,7 +855,9 @@ const runClaudeCommand = Effect.fn("runClaudeCommand")(function* (
     env: claudeEnvironment,
     shell: spawnCommand.shell,
   });
-  return yield* spawnAndCollect(claudeSettings.binaryPath, command);
+  return yield* spawnAndCollect(claudeSettings.binaryPath, command, {
+    forceKillAfter: VERSION_PROBE_FORCE_KILL_AFTER,
+  });
 });
 
 export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(function* (

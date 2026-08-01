@@ -99,8 +99,8 @@ describe("parseClaudeProbeTimeoutMs", () => {
     assert.strictEqual(parseClaudeProbeTimeoutMs("  60000  ", 15_000), 60_000);
   });
 
-  it("applies one override value to both probe budgets", () => {
-    // The env var is a single knob; a valid value replaces both defaults.
+  it("raises both probe budgets when the override exceeds both defaults", () => {
+    // The env var is a single knob; a value above both defaults lifts both.
     assert.strictEqual(
       parseClaudeProbeTimeoutMs("90000", DEFAULT_CLAUDE_VERSION_PROBE_TIMEOUT_MS),
       90_000,
@@ -108,6 +108,21 @@ describe("parseClaudeProbeTimeoutMs", () => {
     assert.strictEqual(
       parseClaudeProbeTimeoutMs("90000", DEFAULT_CLAUDE_CAPABILITIES_PROBE_TIMEOUT_MS),
       90_000,
+    );
+  });
+
+  it("never lowers a budget below its default", () => {
+    // A value between the two defaults, such as 20s, must raise the 15s
+    // version budget without cutting the 25s capabilities budget that
+    // Bedrock initialization needs. The override is a floor, not a
+    // replacement.
+    assert.strictEqual(
+      parseClaudeProbeTimeoutMs("20000", DEFAULT_CLAUDE_VERSION_PROBE_TIMEOUT_MS),
+      20_000,
+    );
+    assert.strictEqual(
+      parseClaudeProbeTimeoutMs("20000", DEFAULT_CLAUDE_CAPABILITIES_PROBE_TIMEOUT_MS),
+      DEFAULT_CLAUDE_CAPABILITIES_PROBE_TIMEOUT_MS,
     );
   });
 
