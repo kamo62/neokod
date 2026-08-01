@@ -17,6 +17,7 @@ import * as Cache from "effect/Cache";
 import * as Duration from "effect/Duration";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
@@ -59,6 +60,18 @@ const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
 const DRIVER_KIND = ProviderDriverKind.make("claudeAgent");
 const SNAPSHOT_REFRESH_INTERVAL = Duration.minutes(5);
 const CAPABILITIES_PROBE_TTL = Duration.minutes(5);
+
+/**
+ * TTL policy for the capabilities probe cache. `probeClaudeCapabilities`
+ * resolves to `undefined` when it errored or timed out; retaining that miss
+ * for the full TTL pins the "could not verify" snapshot for five minutes, so
+ * the panel's Refresh button replays the stale miss instead of re-probing. A
+ * successful probe keeps the full TTL; a miss expires immediately.
+ */
+export const claudeCapabilitiesProbeCacheTimeToLive = <A, E>(
+  exit: Exit.Exit<A, E>,
+): Duration.Duration =>
+  Exit.isSuccess(exit) && exit.value !== undefined ? CAPABILITIES_PROBE_TTL : Duration.zero;
 
 function isClaudeNativeCommandPath(commandPath: string): boolean {
   const normalized = normalizeCommandPath(commandPath);
@@ -151,14 +164,16 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
 
       // Per-instance capabilities cache: keyed on binary + resolved HOME so
       // account-specific probes never share auth metadata across instances.
-      const capabilitiesProbeCache = yield* Cache.make({
-        capacity: 1,
-        timeToLive: CAPABILITIES_PROBE_TTL,
-        lookup: () =>
+      const capabilitiesProbeCache = yield* Cache.makeWith(
+        (_key: string) =>
           probeClaudeCapabilities(effectiveConfig, processEnv, cwd).pipe(
             Effect.provideService(Path.Path, path),
           ),
-      });
+        {
+          capacity: 1,
+          timeToLive: claudeCapabilitiesProbeCacheTimeToLive,
+        },
+      );
       const capabilitiesCacheKey = yield* makeClaudeCapabilitiesCacheKey(effectiveConfig, cwd);
 
       const checkProvider = checkClaudeProviderStatus(
