@@ -23,6 +23,85 @@ Claims here were verified against git and GitHub on **2026-07-30**. Anything
 carrying an older date is a historical record of that session, not a statement
 about the current tree. When this file and `git` disagree, trust `git`.
 
+## START HERE — session of 2026-07-31/08-01
+
+Everything below this section predates it.
+
+### The pipeline works again. Do not re-debug it.
+
+v3.5.15 and v3.5.16 both shipped complete: signed and notarized `.dmg` and
+`.zip` for arm64 and x64, Windows `.exe`, both updater manifests. npm is at
+3.5.16 and publishes itself with no manual dispatch. This is the first working
+desktop pipeline since 3.5.9.
+
+Five unrelated failures were stacked in the same place, which is why it read as
+one intractable problem. Each is fixed and each has its own cause:
+
+- **Notarization** rejected three releases on
+  `copilot-darwin-*/prebuilds/.../MediaRemoteAdapter.framework`. That framework
+  holds a bare dylib with no `Info.plist`, so `@electron/osx-sign` bundle-signed
+  the directory and left the binary failing `codesign --verify --strict`, which
+  is the standalone check Apple's notary runs. Repaired by a `mac.sign` hook
+  (`scripts/lib/mac-nested-sign-hook.cjs`). **It must be `mac.sign`, not
+  `afterSign`**: in `app-builder-lib@26.15.6`, `afterSign` fires _after_
+  notarization.
+- **macOS x64** then failed on `koffi` compiling from source. `koffi: false` in
+  `pnpm-workspace.yaml` is deliberate: it ships per-platform prebuilt packages
+  its loader resolves at require time, so the install script is only a
+  source-build fallback. Do not flip it back to `true`.
+- **A release stopped before building**, correctly, because two changes claimed
+  3.5.12. That is the guard from #76 working.
+- **npm was stuck on 3.5.3 for five releases.** `release.yml` publishes with
+  `GITHUB_TOKEN`, and GitHub will not start a workflow from an event raised with
+  its own token, so `publish-npm.yml`'s `release: published` trigger never fired.
+  `release.yml` now dispatches it explicitly; `workflow_dispatch` is one of the
+  two documented exceptions.
+- **`npm install` failing with `ENOENT: uv_cwd`** was the user's shell sitting in
+  a deleted directory. Not a packaging problem.
+
+### Open
+
+**PR #77 — origin allowlist, complete and reviewed, deliberately unmerged.**
+Closes DNS rebinding against a default install: the loopback transport
+authenticates nothing and nothing validated `Host`/`Origin`. Three findings from
+a sol review are fixed — full-origin comparison including scheme and port (a
+hostname-only allowlist admitted `https://h:8443` when `https://h` was allowed),
+discovery-endpoint redaction, and strict authority grammar replacing `new URL()`.
+
+**Merging it stops `neokod.mashdev.xyz` connecting until
+`NEOKOD_PUBLIC_ORIGIN=https://neokod.mashdev.xyz` is set.** Merge it in the same
+sitting as setting that variable. The README section added in #83 says the server
+does not validate `Host`/`Origin`; that bullet becomes false when #77 lands and
+must be rewritten in the same change.
+
+The maintainer's position is that this is lower priority given a local app behind
+Authelia. The one correction that matters: **rebinding needs no exposed port and
+never traverses the proxy**, so Authelia does not mitigate it.
+
+### Unverified
+
+- **The sidebar two-line rows.** Three attempts. The row is a
+  `SidebarMenuSubButton`, whose _default_ className pins
+  `h-[var(--row-height-compact)]` with `overflow-hidden`; `min-h-*` and `h-*` are
+  separate tailwind-merge groups, so a `min-h` override does nothing. The fix is
+  `h-auto` on the row. `ui/sidebar.tsx:791` is NOT involved (that cva belongs to
+  `SidebarMenuButton`). The regression test renders the real component and reads
+  the merged class attribute — a test that inspects one source proves nothing.
+  **Appearance has never been checked by anyone.**
+- **OpenCode 1.15.13 -> 1.18.10** had no local typecheck against the new SDK. CI
+  green is the only evidence. Claude's 0.3.170 -> 0.3.220 bump in the same session
+  _was_ API-breaking, so this is a live risk.
+
+### Process notes worth keeping
+
+- **Never run concurrent write-capable agents on this checkout.** Two did, and
+  both reported HEAD moving under them; one write landed as an untracked file on
+  the wrong branch. Nothing was lost only because they noticed.
+- The Codex rescue forwarder times out at ~2 minutes while the Codex job runs for
+  10-25. Poll `codex-companion.mjs status`, fetch with `result <task-id>`.
+- Every security-shaped change this session needed a second reviewer to catch a
+  real hole. Three for three.
+
 ## START HERE — session of 2026-07-30
 
 Read this section first. Everything below it predates this session.

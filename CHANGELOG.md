@@ -1,3 +1,9 @@
+## 3.5.17 - 2026-08-01 (Patch)
+
+Release impact: Patch because this only updates internal documentation, with no runtime, contract or storage changes.
+
+- Updated the maintainer handoff notes for the release-pipeline repairs.
+
 ## 3.5.16 - 2026-08-01 (Patch)
 
 Release impact: Patch because this documents existing behaviour and updates a bundled provider SDK, with no contract, schema or storage changes.
