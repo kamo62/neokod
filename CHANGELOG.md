@@ -1,3 +1,10 @@
+## 3.5.16 - 2026-08-01 (Patch)
+
+Release impact: Patch because this documents existing behaviour and updates a bundled provider SDK, with no contract, schema or storage changes.
+
+- The README now has a "Security posture" section describing what the loopback listener does and does not protect. On the loopback transport the server performs no application authentication, a `/ws` connection carries workspace file read and write, interactive terminals and agent command dispatch, and neither `Host` nor `Origin` is validated, so a DNS-rebinding page in the user's own browser can reach the listener without any port being exposed. The section cross-references the self-hosting guide's warning that a reverse-proxy auth rule must cover `/ws`.
+- Updated the OpenCode SDK from 1.15.13 to 1.18.10.
+
 ## 3.5.15 - 2026-08-01 (Patch)
 
 Release impact: Patch because this only changes how a dependency is installed, with no runtime, contract or storage changes.

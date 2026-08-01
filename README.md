@@ -50,6 +50,17 @@ Neokod is local-first. The native desktop backend and the standalone `neokod ser
 
 The only non-loopback exception is a desktop-managed WSL backend. It listens on `0.0.0.0` inside WSL and stays fail-closed behind a desktop-generated bearer for HTTP plus short-lived, single-use WebSocket tickets. The WSL credential is delivered only through the live desktop topology and is never persisted.
 
+## Security posture
+
+The loopback listener trusts everything that can reach it. Read this before assuming "local only" means "only I can reach it".
+
+- `neokod serve` binds `127.0.0.1` with the `loopback` transport. On that transport the server performs no application authentication of its own: the HTTP bearer check and the WebSocket ticket check both return immediately when the transport is `loopback` (`apps/server/src/transport/WslBearerAuth.ts`, `authorizeBearerHeader` and `consumeWebSocketTicket`). Only the WSL transport described above carries a credential.
+- A connection to `/ws` gets the full RPC surface. That includes reading and writing files in your workspaces (`projectsReadFile` and `projectsWriteFile`, `apps/server/src/ws.ts` near lines 1230-1260), opening and writing to interactive terminals (`terminalOpen` and `terminalWrite`, near lines 1440-1460), and dispatching the commands that drive agents under your provider credentials (`dispatchCommand`, near line 760). There is no permission layer behind the socket.
+- The server validates neither `Host` nor `Origin`, on plain requests or on the `/ws` upgrade. DNS rebinding therefore needs no exposed port. A page you visit can re-point its own hostname to `127.0.0.1` and then call the listener from inside your browser as if it were the page's own backend. A reverse proxy with authentication in front does not stop this, because the rebound traffic goes straight to the loopback listener and never traverses the proxy. The CORS headers the server sends do not change this either; CORS does not gate WebSocket upgrades, and a rebound page is same-origin anyway. "I have not exposed a port, so I am safe" is the wrong conclusion, because your browser is on the same machine as the listener.
+- If you deploy behind a reverse proxy, the auth rule must cover `/ws` as well as the plain HTTP routes. The [self-hosting guide](./docs/operations/self-hosting.md) covers this failure mode and how to verify the policy actually holds.
+
+Keep the threat in proportion. The loopback bind does keep remote hosts out, and internet-wide scanning does not reach it. What it does not keep out is a malicious or compromised page in your own browser, and through DNS rebinding such a page can reach everything listed above.
+
 ## Development
 
 Neokod is a pnpm + Vite+ monorepo. Packages live under the `@neokod/*` scope (`@neokod/web`, `@neokod/desktop`, `@neokod/contracts`, `@neokod/shared`, `@neokod/client-runtime`).
