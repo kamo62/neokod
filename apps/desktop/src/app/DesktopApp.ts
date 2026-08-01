@@ -267,7 +267,13 @@ const scopedProgram = Effect.scoped(
         const instances = yield* pool.list;
         yield* Effect.forEach(instances, (instance) => instance.stop(), {
           concurrency: "unbounded",
-        });
+        }).pipe(
+          Effect.catchCause((cause) =>
+            logStartupError("desktop backend stop failed during application finalization", {
+              cause: Cause.pretty(cause),
+            }),
+          ),
+        );
       }).pipe(Effect.ensuring(shutdown.markComplete)),
     );
 

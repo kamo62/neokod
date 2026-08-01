@@ -6,7 +6,9 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
@@ -56,6 +58,7 @@ function makeProcess(options?: {
   readonly stdout?: Stream.Stream<Uint8Array>;
   readonly stderr?: Stream.Stream<Uint8Array>;
   readonly exitCode?: Effect.Effect<ChildProcessSpawner.ExitCode>;
+  readonly isRunning?: Effect.Effect<boolean>;
   readonly kill?: ChildProcessSpawner.ChildProcessHandle["kill"];
 }): ChildProcessSpawner.ChildProcessHandle {
   return ChildProcessSpawner.makeHandle({
@@ -64,7 +67,7 @@ function makeProcess(options?: {
     stderr: options?.stderr ?? Stream.empty,
     all: Stream.merge(options?.stdout ?? Stream.empty, options?.stderr ?? Stream.empty),
     exitCode: options?.exitCode ?? Effect.succeed(ChildProcessSpawner.ExitCode(0)),
-    isRunning: Effect.succeed(false),
+    isRunning: options?.isRunning ?? Effect.succeed(false),
     kill: options?.kill ?? (() => Effect.void),
     stdin: Sink.drain,
     getInputFd: () => Sink.drain,
@@ -338,6 +341,70 @@ describe("DesktopBackendManager", () => {
         assert.equal(Option.isNone(stoppedSnapshot.activePid), true);
       }),
     ),
+  );
+
+  it.effect("escalates a timed-out stop and keeps ownership until exit is confirmed", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const spawned = yield* Deferred.make<void>();
+        const termRequested = yield* Deferred.make<void>();
+        const killRequested = yield* Deferred.make<void>();
+        const processExit = yield* Deferred.make<ChildProcessSpawner.ExitCode>();
+        const signals: Array<string> = [];
+        let forceKillRequested = false;
+        let runningChecksAfterForceKill = 0;
+        const hang = (): Effect.Effect<void> => Effect.never;
+
+        const spawnerLayer = Layer.succeed(
+          ChildProcessSpawner.ChildProcessSpawner,
+          ChildProcessSpawner.make(() =>
+            Effect.gen(function* () {
+              yield* Deferred.succeed(spawned, void 0);
+              return makeProcess({
+                exitCode: Deferred.await(processExit),
+                isRunning: Effect.sync(() => {
+                  if (!forceKillRequested) return true;
+                  runningChecksAfterForceKill += 1;
+                  return runningChecksAfterForceKill === 1;
+                }),
+                kill: (options) => {
+                  const signal = options?.killSignal ?? "SIGTERM";
+                  signals.push(signal);
+                  if (signal === "SIGTERM" && !forceKillRequested) {
+                    return Deferred.succeed(termRequested, void 0).pipe(Effect.andThen(hang()));
+                  }
+                  if (signal === "SIGKILL") {
+                    forceKillRequested = true;
+                    return Deferred.succeed(killRequested, void 0).pipe(Effect.andThen(hang()));
+                  }
+                  return Deferred.succeed(processExit, ChildProcessSpawner.ExitCode(137));
+                },
+              });
+            }),
+          ),
+        );
+
+        const instance = yield* makeTestInstance({ spawnerLayer });
+        yield* instance.start;
+        yield* Deferred.await(spawned);
+
+        const stopExitFiber = yield* Effect.exit(
+          instance.stop({ timeout: Duration.seconds(2) }),
+        ).pipe(Effect.forkChild);
+        yield* Deferred.await(termRequested);
+        yield* TestClock.adjust(Duration.seconds(1));
+        yield* Deferred.await(killRequested);
+        yield* TestClock.adjust(Duration.seconds(1));
+
+        const stopExit = yield* Fiber.join(stopExitFiber);
+        assert.isTrue(Exit.isFailure(stopExit));
+        assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
+
+        const snapshot = yield* instance.snapshot;
+        assert.isFalse(snapshot.desiredRunning);
+        assert.deepEqual(snapshot.activePid, Option.some(123));
+      }),
+    ).pipe(Effect.provide(TestClock.layer())),
   );
 
   it.effect("does not notify shutdown before the first start has prior state", () =>

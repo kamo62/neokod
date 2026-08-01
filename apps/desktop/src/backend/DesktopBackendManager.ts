@@ -144,11 +144,23 @@ class BackendProcessSpawnError extends Schema.TaggedErrorClass<BackendProcessSpa
   }
 }
 
+export class BackendProcessStopError extends Schema.TaggedErrorClass<BackendProcessStopError>()(
+  "BackendProcessStopError",
+  {
+    pid: Schema.Int,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return `Failed to confirm that desktop backend process ${this.pid} exited.`;
+  }
+}
+
 type BackendProcessError = BackendProcessBootstrapEncodeError | BackendProcessSpawnError;
 
 interface RunBackendProcessOptions extends DesktopBackendStartConfig {
   readonly readinessTimeout?: Duration.Duration;
-  readonly onStarted?: (pid: number) => Effect.Effect<void>;
+  readonly onStarted?: (handle: ChildProcessSpawner.ChildProcessHandle) => Effect.Effect<void>;
   readonly onReady?: () => Effect.Effect<void>;
   readonly onReadinessFailure?: (error: BackendTimeoutError) => Effect.Effect<void>;
   readonly onOutput?: (
@@ -184,7 +196,9 @@ export interface DesktopBackendInstance {
   readonly id: BackendInstanceId;
   readonly label: Effect.Effect<string>;
   readonly start: Effect.Effect<void>;
-  readonly stop: (options?: { readonly timeout?: Duration.Duration }) => Effect.Effect<void>;
+  readonly stop: (options?: {
+    readonly timeout?: Duration.Duration;
+  }) => Effect.Effect<void, BackendProcessStopError>;
   readonly currentConfig: Effect.Effect<Option.Option<DesktopBackendStartConfig>>;
   readonly snapshot: Effect.Effect<DesktopBackendSnapshot>;
   // Polls desiredRunning + the instance's own ready flag until the
@@ -225,6 +239,7 @@ interface ActiveBackendRun {
   readonly scope: Scope.Closeable;
   readonly fiber: Option.Option<Fiber.Fiber<void, never>>;
   readonly pid: Option.Option<number>;
+  readonly handle: Option.Option<ChildProcessSpawner.ChildProcessHandle>;
 }
 
 interface BackendManagerState {
@@ -264,19 +279,95 @@ const withActiveRun =
 const calculateRestartDelay = (attempt: number): Duration.Duration =>
   Duration.min(Duration.times(INITIAL_RESTART_DELAY, 2 ** attempt), MAX_RESTART_DELAY);
 
+const requestTerminationSignal = (
+  handle: ChildProcessSpawner.ChildProcessHandle,
+  signal: "SIGTERM" | "SIGKILL",
+  timeout: Duration.Duration,
+): Effect.Effect<void> =>
+  handle.kill({ killSignal: signal }).pipe(
+    Effect.timeoutOption(timeout),
+    Effect.orElseSucceed(() => Option.none<void>()),
+    Effect.asVoid,
+  );
+
+const terminateProcess = Effect.fn("desktop.backendInstance.terminateProcess")(function* (
+  handle: ChildProcessSpawner.ChildProcessHandle,
+  timeout: Duration.Duration,
+): Effect.fn.Return<void, BackendProcessStopError> {
+  const signalTimeout = Duration.millis(Math.max(1, Math.floor(Duration.toMillis(timeout) / 3)));
+  const pid = Number(handle.pid);
+  const isRunning = handle.isRunning.pipe(
+    Effect.mapError((cause) => new BackendProcessStopError({ pid, cause })),
+    Effect.timeoutOption(signalTimeout),
+    Effect.flatMap(
+      Option.match({
+        onNone: () =>
+          Effect.fail(
+            new BackendProcessStopError({
+              pid,
+              cause: new Error("Timed out while checking whether the desktop backend exited."),
+            }),
+          ),
+        onSome: Effect.succeed,
+      }),
+    ),
+  );
+
+  if (!(yield* isRunning)) {
+    return;
+  }
+
+  // The dependency's forceKillAfter does not bound its exit wait. Bound each
+  // group-aware kill call here so SIGKILL is sent when SIGTERM is ignored.
+  yield* requestTerminationSignal(handle, "SIGTERM", signalTimeout);
+  if (!(yield* isRunning)) {
+    return;
+  }
+
+  yield* requestTerminationSignal(handle, "SIGKILL", signalTimeout);
+  if (yield* isRunning) {
+    return yield* new BackendProcessStopError({
+      pid,
+      cause: new Error("Process remained running after SIGKILL."),
+    });
+  }
+});
+
 const closeRun = (
   run: ActiveBackendRun,
   options?: { readonly timeout?: Duration.Duration },
-): Effect.Effect<void> => {
+): Effect.Effect<void, BackendProcessStopError> => {
   const waitForFiber = Option.match(run.fiber, {
     onNone: () => Effect.void,
     onSome: (fiber) => Fiber.await(fiber).pipe(Effect.asVoid),
   });
-  const close = Scope.close(run.scope, Exit.void).pipe(Effect.andThen(waitForFiber));
+  const timeout = options?.timeout ?? Duration.seconds(4);
+  const cleanup = Effect.gen(function* () {
+    yield* Option.match(run.handle, {
+      onNone: () => Effect.void,
+      onSome: (handle) => terminateProcess(handle, timeout),
+    });
+    yield* Scope.close(run.scope, Exit.void).pipe(Effect.ignore);
+    yield* waitForFiber;
+  });
 
-  return (
-    options?.timeout ? close.pipe(Effect.timeoutOption(options.timeout), Effect.asVoid) : close
-  ).pipe(Effect.ignore);
+  return cleanup.pipe(
+    Effect.timeoutOption(timeout),
+    Effect.flatMap(
+      Option.match({
+        onNone: () =>
+          Effect.fail(
+            new BackendProcessStopError({
+              pid: Option.getOrElse(run.pid, () =>
+                Number(Option.getOrUndefined(run.handle)?.pid ?? 0),
+              ),
+              cause: new Error("Timed out while stopping the desktop backend."),
+            }),
+          ),
+        onSome: () => Effect.void,
+      }),
+    ),
+  );
 };
 
 const waitForHttpReady = (
@@ -363,7 +454,7 @@ const runBackendProcess = Effect.fn("runBackendProcess")(function* (
       ),
     );
 
-  yield* options.onStarted?.(handle.pid) ?? Effect.void;
+  yield* options.onStarted?.(handle) ?? Effect.void;
   if (options.captureOutput) {
     yield* drainBackendOutput("stdout", handle.stdout, onOutput).pipe(Effect.forkScoped);
     yield* drainBackendOutput("stderr", handle.stderr, onOutput).pipe(Effect.forkScoped);
@@ -561,6 +652,7 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
               scope: runScope,
               fiber: Option.none(),
               pid: Option.none(),
+              handle: Option.none(),
             } satisfies ActiveBackendRun),
             nextRunId: latest.nextRunId + 1,
           },
@@ -630,14 +722,15 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
 
         const program = runBackendProcess({
           ...config.value,
-          onStarted: Effect.fn("desktop.backendInstance.onStarted")(function* (pid) {
+          onStarted: Effect.fn("desktop.backendInstance.onStarted")(function* (handle) {
             yield* updateActiveRun(runId, (run) => ({
               ...run,
-              pid: Option.some(pid),
+              pid: Option.some(handle.pid),
+              handle: Option.some(handle),
             }));
             yield* backendOutputLog.writeSessionBoundary({
               phase: "START",
-              details: `pid=${pid} port=${config.value.bootstrap.port} cwd=${config.value.cwd}`,
+              details: `pid=${handle.pid} port=${config.value.bootstrap.port} cwd=${config.value.cwd}`,
             });
           }),
           onReady: Effect.fn("desktop.backendInstance.onReady")(function* () {
@@ -747,45 +840,62 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
     });
   });
 
+  const stopMutex = yield* Semaphore.make(1);
+
   const stop = Effect.fn("desktop.backendInstance.stop")(function* (options?: {
     readonly timeout?: Duration.Duration;
-  }) {
-    const { active, restartFiber } = yield* mutex.withPermits(1)(
+  }): Effect.fn.Return<void, BackendProcessStopError> {
+    return yield* stopMutex.withPermits(1)(
       Effect.gen(function* () {
-        const result = yield* Ref.modify(state, (latest) => [
-          {
-            active: latest.active,
-            restartFiber: latest.restartFiber,
-          },
-          {
-            ...latest,
-            desiredRunning: false,
-            ready: false,
-            active: Option.none<ActiveBackendRun>(),
-            restartFiber: Option.none<Fiber.Fiber<void, never>>(),
-          },
-        ]);
-        // Ignore failures from spec.onShutdown so a downstream throw
-        // can't abort the rest of stop(). Ref.modify above already
-        // flipped state to "no active run / no restart fiber", and the
-        // physical cleanup (Fiber.interrupt + closeRun) runs after the
-        // mutex releases. If onShutdown were allowed to propagate, both
-        // would be skipped and the child process + restart fiber would
-        // be orphaned while state claimed nothing was running — the
-        // next start() would then spawn a second backend on top.
-        yield* (spec.onShutdown?.() ?? Effect.void).pipe(Effect.ignore);
-        return result;
+        const { active, restartFiber } = yield* mutex.withPermits(1)(
+          Effect.gen(function* () {
+            const result = yield* Ref.modify(state, (latest) => [
+              {
+                active: latest.active,
+                restartFiber: latest.restartFiber,
+              },
+              {
+                ...latest,
+                desiredRunning: false,
+                ready: false,
+                // Keep the active run until its process has been confirmed
+                // dead. A timed-out stop must be retryable by a later
+                // finalizer instead of making the child unowned.
+                restartFiber: Option.none<Fiber.Fiber<void, never>>(),
+              },
+            ]);
+            // Ignore failures from spec.onShutdown so a downstream throw
+            // cannot skip physical process cleanup.
+            yield* (spec.onShutdown?.() ?? Effect.void).pipe(Effect.ignore);
+            return result;
+          }),
+        );
+
+        yield* Option.match(restartFiber, {
+          onNone: () => Effect.void,
+          onSome: (fiber) => Fiber.interrupt(fiber).pipe(Effect.asVoid),
+        });
+        yield* Option.match(active, {
+          onNone: () => Effect.void,
+          onSome: (run) =>
+            closeRun(run, options).pipe(
+              Effect.andThen(
+                mutex.withPermits(1)(
+                  Ref.update(state, (latest) =>
+                    Option.match(latest.active, {
+                      onNone: () => latest,
+                      onSome: (currentRun) =>
+                        currentRun.id === run.id
+                          ? { ...latest, active: Option.none<ActiveBackendRun>() }
+                          : latest,
+                    }),
+                  ),
+                ),
+              ),
+            ),
+        });
       }),
     );
-
-    yield* Option.match(restartFiber, {
-      onNone: () => Effect.void,
-      onSome: (fiber) => Fiber.interrupt(fiber).pipe(Effect.asVoid),
-    });
-    yield* Option.match(active, {
-      onNone: () => Effect.void,
-      onSome: (run) => closeRun(run, options),
-    });
   });
 
   const waitForReady = (timeout: Duration.Duration): Effect.Effect<boolean> =>
@@ -805,7 +915,15 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
       Effect.map(Option.getOrElse(() => false)),
     );
 
-  yield* Effect.addFinalizer(() => stop());
+  yield* Effect.addFinalizer(() =>
+    stop().pipe(
+      Effect.catchCause((cause) =>
+        logInstanceError("desktop backend stop failed during finalization", {
+          cause: Cause.pretty(cause),
+        }),
+      ),
+    ),
+  );
 
   return {
     id: spec.id,

@@ -16,6 +16,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
+import type * as DesktopBackendManager from "../backend/DesktopBackendManager.ts";
 import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
@@ -101,6 +102,17 @@ export class DesktopUpdateUnexpectedActionError extends Schema.TaggedErrorClass<
 ) {
   override get message(): string {
     return `Desktop update ${this.action} action failed unexpectedly.`;
+  }
+}
+
+export class DesktopUpdateBackendShutdownError extends Schema.TaggedErrorClass<DesktopUpdateBackendShutdownError>()(
+  "DesktopUpdateBackendShutdownError",
+  {
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return "Desktop update install was blocked because a backend process did not exit.";
   }
 }
 
@@ -440,13 +452,18 @@ export const make = Effect.gen(function* () {
       // means quitAndInstall's app.quit() exits before the pool's
       // scope cascade has a chance to run its stop finalizer, so the
       // WSL child gets hard-killed by the OS instead of receiving
-      // SIGTERM + grace. Stops run concurrently with the same 5s
-      // budget the primary had on its own.
+      // SIGTERM + grace. stop() escalates to SIGKILL and only succeeds
+      // after every process is confirmed dead; a failure blocks the relaunch.
       const instances = yield* pool.list;
       yield* Effect.forEach(
         instances,
         (instance) => instance.stop({ timeout: Duration.seconds(5) }),
         { concurrency: "unbounded" },
+      ).pipe(
+        Effect.mapError(
+          (cause: DesktopBackendManager.BackendProcessStopError) =>
+            new DesktopUpdateBackendShutdownError({ cause }),
+        ),
       );
       yield* electronWindow.destroyAll;
       yield* electronUpdater.quitAndInstall({
@@ -456,6 +473,19 @@ export const make = Effect.gen(function* () {
       return { accepted: true, completed: false };
     }).pipe(
       Effect.catchTags({
+        DesktopUpdateBackendShutdownError: Effect.fn(
+          "desktop.updates.handleBackendShutdownFailure",
+        )(function* (error) {
+          yield* resetInstallAction;
+          yield* updateState((current) =>
+            reduceDesktopUpdateStateOnInstallFailure(current, error.message),
+          );
+          yield* logUpdaterError(error.message, {
+            errorTag: error._tag,
+            causeTag: error.cause instanceof Error ? error.cause.name : "BackendProcessStopError",
+          });
+          return { accepted: true, completed: false };
+        }),
         ElectronUpdaterQuitAndInstallError: Effect.fn("desktop.updates.handleInstallFailure")(
           function* (error) {
             yield* resetInstallAction;
