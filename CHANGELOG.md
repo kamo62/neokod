@@ -1,3 +1,9 @@
+## 3.5.18 - 2026-08-01 (Patch)
+
+Release impact: Patch because this only adds documentation, with no runtime, contract or storage changes.
+
+- The README's security posture section now spells out the reverse-proxy deployment. At the socket level a legitimate proxy and a DNS-rebinding attack are indistinguishable, since both reach the loopback listener with a non-loopback `Host`, so the server cannot detect a proxy and a future hostname allowlist would have to be configured with the legitimate hostname. What protects a proxied deployment today is the proxy's own authentication, and only if its rule covers `/ws` as well as the plain HTTP routes; rebinding bypasses the proxy entirely, so its authentication does not mitigate that. The self-hosting guide now points back at the section.
+
 ## 3.5.17 - 2026-08-01 (Patch)
 
 Release impact: Patch because this only updates internal documentation, with no runtime, contract or storage changes.
