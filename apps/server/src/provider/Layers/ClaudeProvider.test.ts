@@ -1,6 +1,12 @@
-import { assert, it } from "@effect/vitest";
+import { assert, describe, it } from "@effect/vitest";
 
-import { getClaudeModelCapabilities, parseClaudeSupportedModels } from "./ClaudeProvider.ts";
+import {
+  DEFAULT_CLAUDE_CAPABILITIES_PROBE_TIMEOUT_MS,
+  DEFAULT_CLAUDE_VERSION_PROBE_TIMEOUT_MS,
+  getClaudeModelCapabilities,
+  parseClaudeProbeTimeoutMs,
+  parseClaudeSupportedModels,
+} from "./ClaudeProvider.ts";
 
 it("keeps the statically described capabilities for a known discovered slug", () => {
   const models = parseClaudeSupportedModels([
@@ -74,4 +80,63 @@ it("collapses duplicate slugs to the first occurrence", () => {
 it("returns an empty list for missing or empty input", () => {
   assert.deepStrictEqual(parseClaudeSupportedModels(undefined), []);
   assert.deepStrictEqual(parseClaudeSupportedModels([]), []);
+});
+
+describe("parseClaudeProbeTimeoutMs", () => {
+  it("uses the per-probe default when the operator sets nothing", () => {
+    assert.strictEqual(
+      parseClaudeProbeTimeoutMs(undefined, DEFAULT_CLAUDE_VERSION_PROBE_TIMEOUT_MS),
+      DEFAULT_CLAUDE_VERSION_PROBE_TIMEOUT_MS,
+    );
+    assert.strictEqual(
+      parseClaudeProbeTimeoutMs(undefined, DEFAULT_CLAUDE_CAPABILITIES_PROBE_TIMEOUT_MS),
+      DEFAULT_CLAUDE_CAPABILITIES_PROBE_TIMEOUT_MS,
+    );
+  });
+
+  it("accepts a positive integer and tolerates surrounding whitespace", () => {
+    assert.strictEqual(parseClaudeProbeTimeoutMs("60000", 15_000), 60_000);
+    assert.strictEqual(parseClaudeProbeTimeoutMs("  60000  ", 15_000), 60_000);
+  });
+
+  it("raises both probe budgets when the override exceeds both defaults", () => {
+    // The env var is a single knob; a value above both defaults lifts both.
+    assert.strictEqual(
+      parseClaudeProbeTimeoutMs("90000", DEFAULT_CLAUDE_VERSION_PROBE_TIMEOUT_MS),
+      90_000,
+    );
+    assert.strictEqual(
+      parseClaudeProbeTimeoutMs("90000", DEFAULT_CLAUDE_CAPABILITIES_PROBE_TIMEOUT_MS),
+      90_000,
+    );
+  });
+
+  it("never lowers a budget below its default", () => {
+    // A value between the two defaults, such as 20s, must raise the 15s
+    // version budget without cutting the 25s capabilities budget that
+    // Bedrock initialization needs. The override is a floor, not a
+    // replacement.
+    assert.strictEqual(
+      parseClaudeProbeTimeoutMs("20000", DEFAULT_CLAUDE_VERSION_PROBE_TIMEOUT_MS),
+      20_000,
+    );
+    assert.strictEqual(
+      parseClaudeProbeTimeoutMs("20000", DEFAULT_CLAUDE_CAPABILITIES_PROBE_TIMEOUT_MS),
+      DEFAULT_CLAUDE_CAPABILITIES_PROBE_TIMEOUT_MS,
+    );
+  });
+
+  it("ignores values that would make every probe fail immediately", () => {
+    // A zero or negative budget expires before the CLI can spawn, so falling
+    // back beats honouring it.
+    for (const raw of ["0", "-1", "-60000"]) {
+      assert.strictEqual(parseClaudeProbeTimeoutMs(raw, 15_000), 15_000);
+    }
+  });
+
+  it("ignores values that are not safe integers", () => {
+    for (const raw of ["", "   ", "abc", "15s", "1.5", "1e999", "9007199254740993"]) {
+      assert.strictEqual(parseClaudeProbeTimeoutMs(raw, 15_000), 15_000);
+    }
+  });
 });

@@ -9,6 +9,7 @@ import type {
   ServerProviderState,
   ServerProviderUsage,
 } from "@neokod/contracts";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
@@ -96,10 +97,51 @@ export function isCommandMissingCause(error: unknown): boolean {
   return error instanceof PlatformError.PlatformError && error.reason._tag === "NotFound";
 }
 
-export const spawnAndCollect = (binaryPath: string, command: ChildProcess.Command) =>
+const isChildLikelyRunning = (
+  child: ChildProcessSpawner.ChildProcessHandle,
+): Effect.Effect<boolean> =>
+  // On error, assume the child is running: skipping the kills on an unknown
+  // state is what would hand control back to the unbounded exit wait below.
+  child.isRunning.pipe(Effect.orElseSucceed(() => true));
+
+/**
+ * Terminate a spawned child within a bounded window: SIGTERM, wait up to
+ * `grace`, then SIGKILL.
+ *
+ * The spawner's own scope cleanup sends SIGTERM and then waits for the exit
+ * signal with no bound, and its `forceKillAfter` option times only the
+ * instantaneous signal send rather than the exit wait, so a child that
+ * ignores SIGTERM parks the closing fiber forever. That is the dependency
+ * defect behind the 3.5.20 updater fix; `DesktopBackendManager`'s
+ * `terminateProcess` applies the same treatment on the desktop side. Running
+ * this before the spawner's cleanup guarantees the process is gone, which
+ * makes the cleanup's unbounded wait resolve immediately.
+ */
+const escalateChildTermination = (
+  child: ChildProcessSpawner.ChildProcessHandle,
+  grace: Duration.Duration,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    if (!(yield* isChildLikelyRunning(child))) return;
+    yield* child.kill({ killSignal: "SIGTERM" }).pipe(Effect.timeoutOption(grace), Effect.ignore);
+    if (!(yield* isChildLikelyRunning(child))) return;
+    yield* child.kill({ killSignal: "SIGKILL" }).pipe(Effect.timeoutOption(grace), Effect.ignore);
+  });
+
+export const spawnAndCollect = (
+  binaryPath: string,
+  command: ChildProcess.Command,
+  options?: { readonly forceKillAfter?: Duration.Duration },
+) =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const child = yield* spawner.spawn(command);
+    const forceKillAfter = options?.forceKillAfter;
+    if (forceKillAfter !== undefined) {
+      // Registered after the spawn, so on scope close it runs before the
+      // spawner's own cleanup and bounds that cleanup's exit wait.
+      yield* Effect.addFinalizer(() => escalateChildTermination(child, forceKillAfter));
+    }
     const [stdout, stderr, exitCode] = yield* Effect.all(
       [
         collectStreamAsString(child.stdout),

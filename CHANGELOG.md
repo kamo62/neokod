@@ -4,6 +4,15 @@ Release impact: Patch because this corrects the environment handed to the OpenCo
 
 - An OPENCODE_CONFIG_CONTENT exported by the operator now reaches the OpenCode server. Every spawned server had that variable overwritten with an empty JSON object, written after the inherited environment, so any value the operator or their service unit had set was silently replaced. The override is removed and the caller's environment reaches the child unchanged. Inherited from upstream (t3code issue 4239).
 
+## 3.5.24 - 2026-08-01 (Patch)
+
+Release impact: Patch because this widens two provider probe budgets, corrects a cache policy and bounds probe teardown, with no contract, schema or storage changes.
+
+- Claude no longer reports that its CLI is installed but failed to run when the first check is slow. The version probe ran under a shared four second budget, which is the last cold spawn in the provider layer still on that budget, and a large binary on a slow disk does not finish in time. It now allows fifteen seconds, matching the OpenCode server start, and NEOKOD_CLAUDE_PROBE_TIMEOUT_MS raises Claude probe budgets on hosts that need longer. The override is a floor for each budget, so a value between the two defaults extends the fifteen second version probe and leaves the twenty five second capabilities probe unchanged.
+- A version probe that outlives its budget is now killed within a bounded window. Teardown used to wait without limit for the process to exit after SIGTERM, so a CLI that ignored the signal kept the provider pending and Refresh spinning until a server restart. Teardown now escalates to SIGKILL after a two second grace period.
+- Refreshing a Claude provider that could not be verified now runs the check again. A capability probe that failed or timed out was cached for five minutes as though it had succeeded, so Refresh replayed the stale result rather than probing.
+- Claude probe messages now name the command that timed out, the budget it was given, the Refresh button and the environment variable that raises it.
+
 ## 3.5.23 - 2026-08-01 (Patch)
 
 Release impact: Patch because these correct provider stream lifetimes, checkpoint performance and three inherited defects, with no contract, schema or storage changes.
