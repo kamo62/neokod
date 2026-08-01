@@ -26,6 +26,11 @@ This matters more than for a typical web app. Agents spawn real shells with your
 provider credentials, so an unauthenticated route is remote code execution as the
 server user, not an information leak. Anyone who reaches the port has your box.
 
+The README's [Security posture](../../README.md#security-posture) section covers
+what the loopback listener itself does and does not check, including why the
+proxy's authentication does not mitigate DNS rebinding on the server's own
+machine. This guide covers the proxy configuration.
+
 ## Install
 
 Requires Node `^22.16 || ^23.11 || >=24.10`.
