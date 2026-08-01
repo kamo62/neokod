@@ -875,7 +875,11 @@ export function makeCursorAdapter(
             Effect.catch((cause) =>
               Effect.logError("Failed to process Cursor runtime notification.", { cause }),
             ),
-            Effect.forkChild,
+            // The drain's lifetime is the session's, not the caller's. Forking
+            // into `sessionScope` keeps `session/update` flowing even if the
+            // fiber running startSession ends (timeout, per-command fork);
+            // the scope close in stopSessionInternal interrupts it.
+            Effect.forkIn(sessionScope),
           );
 
           ctx.notificationFiber = nf;

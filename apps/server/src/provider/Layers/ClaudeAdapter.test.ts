@@ -987,6 +987,64 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("ignores an errored assistant frame replayed after a successful result", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const events: Array<ProviderRuntimeEvent> = [];
+      yield* Stream.runForEach(adapter.streamEvents, (event) =>
+        Effect.sync(() => events.push(event)),
+      ).pipe(Effect.forkChild);
+
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "compact this",
+        attachments: [],
+      });
+
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        session_id: "sdk-session-compact",
+        uuid: "compact-result",
+      } as unknown as SDKMessage);
+      yield* drainSdkMessages;
+
+      harness.query.emit({
+        type: "assistant",
+        error: "unknown",
+        session_id: "sdk-session-compact",
+        uuid: "historical-error-assistant",
+        parent_tool_use_id: null,
+        message: {
+          id: "historical-error-message",
+          content: [{ type: "text", text: "replayed historical error" }],
+        },
+      } as unknown as SDKMessage);
+      yield* drainSdkMessages;
+
+      assert.equal(events.filter((event) => event.type === "turn.started").length, 1);
+      assert.equal(
+        events.some(
+          (event) =>
+            event.type === "content.delta" && event.payload.delta === "replayed historical error",
+        ),
+        false,
+      );
+      assert.equal((yield* adapter.listSessions())[0]?.status, "ready");
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("steers a running turn instead of opening a new one on mid-turn sendTurn", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {

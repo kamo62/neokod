@@ -15,6 +15,7 @@ import {
   type ThreadId,
   type TurnId,
   type KeybindingCommand,
+  DEFAULT_SERVER_SETTINGS,
   OrchestrationThreadActivity,
   ProviderInteractionMode,
   ProviderDriverKind,
@@ -199,6 +200,7 @@ import { useEnvironments, usePrimaryEnvironment } from "../state/environments";
 import {
   useProject,
   useProjects,
+  useServerConfigs,
   useThread,
   useThreadProposedPlans,
   useThreadRefs,
@@ -1034,6 +1036,7 @@ function ChatViewContent(props: ChatViewProps) {
   const openPreview = useAtomCommand(previewEnvironment.open, { reportFailure: false });
   const closePreview = useAtomCommand(previewEnvironment.close, "preview close");
   const { environments } = useEnvironments();
+  const serverConfigs = useServerConfigs();
   const primaryEnvironment = usePrimaryEnvironment();
   const retryEnvironment = useAtomCommand(environmentCatalog.retryNow, { reportFailure: false });
   const environmentById = useMemo(
@@ -2269,11 +2272,18 @@ function ChatViewContent(props: ChatViewProps) {
         (env) => env.environmentId === nextEnvironmentId,
       );
       if (!target) return;
+      const targetSettings =
+        serverConfigs.get(nextEnvironmentId)?.settings ?? DEFAULT_SERVER_SETTINGS;
       setDraftThreadContext(draftId, {
         projectRef: scopeProjectRef(target.environmentId, target.projectId),
+        envMode: targetSettings.defaultThreadEnvMode,
+        startFromOrigin: resolveNewDraftStartFromOrigin({
+          envMode: targetSettings.defaultThreadEnvMode,
+          newWorktreesStartFromOrigin: targetSettings.newWorktreesStartFromOrigin,
+        }),
       });
     },
-    [draftId, envLocked, logicalProjectEnvironments, setDraftThreadContext],
+    [draftId, envLocked, logicalProjectEnvironments, serverConfigs, setDraftThreadContext],
   );
 
   const activeTerminalGroup =

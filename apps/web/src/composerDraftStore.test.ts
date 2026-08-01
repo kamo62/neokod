@@ -1194,7 +1194,7 @@ describe("composerDraftStore project draft thread mapping", () => {
     });
   });
 
-  it("clears branch and worktree context when remapping a draft to another environment", () => {
+  it("uses the target environment mode while clearing source branch and worktree context", () => {
     const store = useComposerDraftStore.getState();
     store.setProjectDraftThreadId(projectRef, draftId, {
       threadId,
@@ -1205,6 +1205,7 @@ describe("composerDraftStore project draft thread mapping", () => {
 
     store.setLogicalProjectDraftThreadId(scopedProjectKey(projectRef), remoteProjectRef, draftId, {
       threadId,
+      envMode: "worktree",
     });
 
     expect(useComposerDraftStore.getState().getDraftThread(draftId)).toMatchObject({
@@ -1212,7 +1213,7 @@ describe("composerDraftStore project draft thread mapping", () => {
       projectId,
       branch: null,
       worktreePath: null,
-      envMode: "local",
+      envMode: "worktree",
     });
   });
 
@@ -1227,6 +1228,7 @@ describe("composerDraftStore project draft thread mapping", () => {
 
     store.setDraftThreadContext(draftId, {
       projectRef: remoteProjectRef,
+      envMode: "worktree",
     });
 
     expect(useComposerDraftStore.getState().getDraftThread(draftId)).toMatchObject({
@@ -1234,7 +1236,7 @@ describe("composerDraftStore project draft thread mapping", () => {
       projectId,
       branch: null,
       worktreePath: null,
-      envMode: "local",
+      envMode: "worktree",
     });
   });
 });
