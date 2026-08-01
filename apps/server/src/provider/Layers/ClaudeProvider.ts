@@ -30,7 +30,6 @@ import {
   buildBooleanOptionDescriptor,
   buildSelectOptionDescriptor,
   buildServerProvider,
-  DEFAULT_TIMEOUT_MS,
   isCommandMissingCause,
   parseGenericCliVersion,
   providerModelsFromSettings,
@@ -544,11 +543,50 @@ function apiProviderAuthMetadata(
 
 // ── SDK capability probe ────────────────────────────────────────────
 
+/**
+ * Operator override for both Claude probe budgets (the `claude --version`
+ * health check and the SDK capabilities probe), following
+ * `NEOKOD_OPENCODE_SERVER_TIMEOUT_MS`. Both probes cold-start the Claude CLI
+ * binary, so one knob covers both.
+ */
+export const CLAUDE_PROBE_TIMEOUT_ENV_VAR = "NEOKOD_CLAUDE_PROBE_TIMEOUT_MS";
+
+// The version probe cold-spawns the Claude CLI, a ~275MB binary. The shared
+// 4s `DEFAULT_TIMEOUT_MS` assumes a warm query-style command; a first spawn on
+// a slow disk blows through it and the panel then reports a working install as
+// broken. 15s matches the OpenCode server-start budget, the other cold spawn
+// in this layer.
+export const DEFAULT_CLAUDE_VERSION_PROBE_TIMEOUT_MS = 15_000;
+
 // Amazon Bedrock initializes far slower than first-party auth: the SDK boots the
 // Bedrock backend and runs the `awsAuthRefresh` credential hook before returning
 // account info. The previous 8s budget expired mid-init, so the probe returned
 // `undefined` and left the provider unverified and unselectable in the picker.
-const CAPABILITIES_PROBE_TIMEOUT_MS = 25_000;
+export const DEFAULT_CLAUDE_CAPABILITIES_PROBE_TIMEOUT_MS = 25_000;
+
+/**
+ * A value that is not a positive safe integer is ignored rather than treated
+ * as zero, because a zero or negative budget would fail every probe
+ * immediately.
+ */
+export function parseClaudeProbeTimeoutMs(raw: string | undefined, defaultMs: number): number {
+  if (raw === undefined) return defaultMs;
+  const parsed = Number(raw.trim());
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    return defaultMs;
+  }
+  return parsed;
+}
+
+const probeTimeoutOverride = process.env[CLAUDE_PROBE_TIMEOUT_ENV_VAR];
+const VERSION_PROBE_TIMEOUT_MS = parseClaudeProbeTimeoutMs(
+  probeTimeoutOverride,
+  DEFAULT_CLAUDE_VERSION_PROBE_TIMEOUT_MS,
+);
+const CAPABILITIES_PROBE_TIMEOUT_MS = parseClaudeProbeTimeoutMs(
+  probeTimeoutOverride,
+  DEFAULT_CLAUDE_CAPABILITIES_PROBE_TIMEOUT_MS,
+);
 
 function nonEmptyProbeString(value: string): string | undefined {
   const candidate = value.trim();
@@ -773,9 +811,22 @@ const probeClaudeCapabilities = (
     ),
     Effect.timeoutOption(CAPABILITIES_PROBE_TIMEOUT_MS),
     Effect.result,
-    Effect.map((result) => {
-      if (Result.isFailure(result)) return undefined;
-      return Option.isSome(result.success) ? result.success.value : undefined;
+    // The snapshot only sees `undefined` for a missed probe, so the server log
+    // is the one place that records whether the miss was an error or the
+    // budget expiring on a slow host.
+    Effect.flatMap((result) => {
+      if (Result.isFailure(result)) {
+        return Effect.logWarning("Claude capabilities probe failed.", {
+          error: String(result.failure),
+        }).pipe(Effect.as(undefined));
+      }
+      if (Option.isNone(result.success)) {
+        return Effect.logWarning("Claude capabilities probe timed out.", {
+          timeoutMs: CAPABILITIES_PROBE_TIMEOUT_MS,
+          override: CLAUDE_PROBE_TIMEOUT_ENV_VAR,
+        }).pipe(Effect.as(undefined));
+      }
+      return Effect.succeed(result.success.value);
     }),
   );
 };
@@ -836,7 +887,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     claudeSettings,
     ["--version"],
     resolvedEnvironment,
-  ).pipe(Effect.timeoutOption(DEFAULT_TIMEOUT_MS), Effect.result);
+  ).pipe(Effect.timeoutOption(VERSION_PROBE_TIMEOUT_MS), Effect.result);
 
   if (Result.isFailure(versionProbe)) {
     const error = versionProbe.failure;
@@ -871,8 +922,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
         version: null,
         status: "error",
         auth: { status: "unknown" },
-        message:
-          "Claude Agent CLI is installed but failed to run. Timed out while running command.",
+        message: `Claude Agent CLI is installed but \`claude --version\` did not finish within ${VERSION_PROBE_TIMEOUT_MS}ms. A cold start on a slow disk can exceed this; use Refresh to retry, or set ${CLAUDE_PROBE_TIMEOUT_ENV_VAR} to a larger value and restart the server.`,
       },
     });
   }
@@ -946,7 +996,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
         version: parsedVersion,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Could not verify Claude authentication status from initialization result.",
+        message: `Could not verify Claude authentication status from initialization result. Use Refresh to retry; if this host is slow, set ${CLAUDE_PROBE_TIMEOUT_ENV_VAR} to a larger value and restart the server.`,
       },
     });
   }

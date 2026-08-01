@@ -2096,6 +2096,31 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
         );
       });
 
+      it.effect("names the override and the retry path when the version probe times out", () =>
+        Effect.gen(function* () {
+          const killCalls = yield* Ref.make(0);
+          const statusFiber = yield* checkClaudeProviderStatus(
+            defaultClaudeSettings,
+            claudeCapabilities(),
+          ).pipe(Effect.provide(hangingScopedSpawnerLayer(killCalls)), Effect.forkChild);
+
+          yield* Effect.yieldNow;
+          yield* TestClock.adjust("16 seconds");
+          yield* Effect.yieldNow;
+
+          const status = yield* Fiber.join(statusFiber);
+          assert.strictEqual(status.status, "error");
+          assert.strictEqual(status.installed, true);
+          assert.strictEqual(status.auth.status, "unknown");
+          // The message must hand the operator a next step, not just report
+          // the timeout.
+          assert.ok((status.message ?? "").includes("NEOKOD_CLAUDE_PROBE_TIMEOUT_MS"));
+          assert.ok((status.message ?? "").includes("Refresh"));
+          // The timed-out spawn must be torn down, not leaked.
+          assert.strictEqual(yield* Ref.get(killCalls), 1);
+        }),
+      );
+
       it.effect("returns warning when the Claude initialization result is unavailable", () =>
         Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(
@@ -2107,7 +2132,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
           assert.strictEqual(status.auth.status, "unknown");
           assert.strictEqual(
             status.message,
-            "Could not verify Claude authentication status from initialization result.",
+            "Could not verify Claude authentication status from initialization result. Use Refresh to retry; if this host is slow, set NEOKOD_CLAUDE_PROBE_TIMEOUT_MS to a larger value and restart the server.",
           );
         }).pipe(
           Effect.provide(
