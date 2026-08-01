@@ -13,6 +13,7 @@ import * as References from "effect/References";
 import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";
 
+import * as DesktopBackendManager from "../backend/DesktopBackendManager.ts";
 import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
@@ -28,7 +29,7 @@ interface UpdatesHarnessOptions {
     ElectronUpdater.ElectronUpdaterCheckForUpdatesError
   >;
   readonly setDisableDifferentialDownload?: Effect.Effect<void>;
-  readonly stopBackend?: Effect.Effect<void>;
+  readonly stopBackend?: Effect.Effect<void, DesktopBackendManager.BackendProcessStopError>;
   readonly env?: Record<string, string | undefined>;
 }
 
@@ -36,6 +37,8 @@ const flushCallbacks = Effect.yieldNow;
 
 function makeHarness(options: UpdatesHarnessOptions = {}) {
   let checkCount = 0;
+  let destroyAllCount = 0;
+  let quitAndInstallCount = 0;
   let allowDowngrade = false;
   const channels: string[] = [];
   const prereleaseValues: boolean[] = [];
@@ -87,7 +90,10 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
       checkCount += 1;
     }).pipe(Effect.andThen(options.checkForUpdates ?? Effect.void)),
     downloadUpdate: Effect.void,
-    quitAndInstall: () => Effect.void,
+    quitAndInstall: () =>
+      Effect.sync(() => {
+        quitAndInstallCount += 1;
+      }),
     on: (eventName, listener) =>
       Effect.acquireRelease(
         Effect.sync(() => {
@@ -112,7 +118,9 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
       Effect.sync(() => {
         sentStates.push(state as DesktopUpdateState);
       }),
-    destroyAll: Effect.void,
+    destroyAll: Effect.sync(() => {
+      destroyAllCount += 1;
+    }),
     syncAllAppearance: () => Effect.void,
   } satisfies ElectronWindow.ElectronWindow["Service"]);
 
@@ -180,6 +188,7 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
   return {
     layer,
     checkCount: () => checkCount,
+    destroyAllCount: () => destroyAllCount,
     feedUrls: () => feedUrls,
     listenerCount: () =>
       Array.from(listeners.values()).reduce(
@@ -187,6 +196,7 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
         0,
       ),
     sentStates,
+    quitAndInstallCount: () => quitAndInstallCount,
     channels,
     prereleaseValues,
     downgradeValues,
@@ -457,11 +467,45 @@ describe("DesktopUpdates", () => {
         assert.isTrue(result.accepted);
         assert.isFalse(result.completed);
         assert.isFalse(yield* Ref.get(desktopState.quitting));
+        assert.equal(harness.destroyAllCount(), 0);
+        assert.equal(harness.quitAndInstallCount(), 0);
 
         const failedState = yield* updates.getState;
         assert.equal(failedState.status, "downloaded");
         assert.equal(failedState.errorContext, "install");
         assert.equal(failedState.message, "Desktop update install action failed unexpectedly.");
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+
+  it.effect("blocks update relaunch when backend exit cannot be confirmed", () => {
+    const harness = makeHarness({
+      stopBackend: Effect.fail(
+        new DesktopBackendManager.BackendProcessStopError({
+          pid: 123,
+          cause: new Error("Process remained running after SIGKILL."),
+        }),
+      ),
+    });
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const desktopState = yield* DesktopState.DesktopState;
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+        harness.emit("update-downloaded", { version: "1.2.4" });
+        yield* flushCallbacks;
+
+        const result = yield* updates.install;
+        assert.isTrue(result.accepted);
+        assert.isFalse(result.completed);
+        assert.isFalse(yield* Ref.get(desktopState.quitting));
+        assert.equal(harness.destroyAllCount(), 0);
+        assert.equal(harness.quitAndInstallCount(), 0);
+        assert.equal(
+          (yield* updates.getState).message,
+          "Desktop update install was blocked because a backend process did not exit.",
+        );
       }),
     ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
   });
