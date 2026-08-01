@@ -119,16 +119,18 @@ const makeOpenCodeSettings = (overrides?: Partial<OpenCodeSettings>): OpenCodeSe
   });
 
 it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
-  it.effect("shows a codex-style missing binary message", () =>
+  it.effect("shows a codex-style missing binary message naming the searched PATH", () =>
     Effect.gen(function* () {
       runtimeMock.state.runVersionError = new Error("spawn opencode ENOENT");
-      const snapshot = yield* checkOpenCodeProviderStatus(makeOpenCodeSettings(), process.cwd());
+      const snapshot = yield* checkOpenCodeProviderStatus(makeOpenCodeSettings(), process.cwd(), {
+        PATH: "/usr/bin:/bin",
+      });
 
       NodeAssert.equal(snapshot.status, "error");
       NodeAssert.equal(snapshot.installed, false);
       NodeAssert.equal(
         snapshot.message,
-        "OpenCode CLI (`opencode`) is not installed or not on PATH.",
+        "OpenCode CLI (`opencode`) was not found on PATH (searched PATH: /usr/bin:/bin). If it is installed, set the binary path in the provider settings to its absolute path.",
       );
     }),
   );

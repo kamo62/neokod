@@ -455,20 +455,23 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
 
       it.effect("returns unavailable when codex is missing", () =>
         Effect.gen(function* () {
-          const status = yield* checkCodexProviderStatus(defaultCodexSettings, () =>
-            Effect.fail(
-              new CodexErrors.CodexAppServerSpawnError({
-                command: "codex app-server",
-                cause: new Error("spawn codex ENOENT"),
-              }),
-            ),
+          const status = yield* checkCodexProviderStatus(
+            defaultCodexSettings,
+            () =>
+              Effect.fail(
+                new CodexErrors.CodexAppServerSpawnError({
+                  command: "codex app-server",
+                  cause: new Error("spawn codex ENOENT"),
+                }),
+              ),
+            { PATH: "/usr/bin:/bin" },
           );
           assert.strictEqual(status.status, "error");
           assert.strictEqual(status.installed, false);
           assert.strictEqual(status.auth.status, "unknown");
           assert.strictEqual(
             status.message,
-            "Codex CLI (`codex`) is not installed or not on PATH.",
+            "Codex CLI (`codex`) was not found on PATH (searched PATH: /usr/bin:/bin). If it is installed, set the binary path in the provider settings to its absolute path.",
           );
         }),
       );
@@ -1190,9 +1193,13 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               "Real Codex probe against a missing binary should surface as 'error' in the aggregator",
             );
             assert.strictEqual(codexPersonal?.installed, false);
-            assert.strictEqual(
-              codexPersonal?.message,
-              "Codex CLI (`codex`) is not installed or not on PATH.",
+            // The message names the searched PATH, which is the live process
+            // environment here, so assert on the stable prefix only.
+            assert.ok(
+              codexPersonal?.message?.startsWith(
+                `Codex CLI (\`${missingBinary}\`) was not found on PATH`,
+              ),
+              `Unexpected probe message: ${codexPersonal?.message}`,
             );
           }).pipe(Effect.provide(runtimeServices));
         }),

@@ -13,6 +13,7 @@ import { createModelCapabilities } from "@neokod/shared/model";
 import { compareSemverVersions } from "@neokod/shared/semver";
 import {
   buildServerProvider,
+  cliNotFoundMessage,
   nonEmptyTrimmed,
   parseGenericCliVersion,
   providerModelsFromSettings,
@@ -67,6 +68,8 @@ function formatOpenCodeProbeError(input: {
   readonly cause: unknown;
   readonly isExternalServer: boolean;
   readonly serverUrl: string;
+  readonly binaryPath: string;
+  readonly environment: NodeJS.ProcessEnv | undefined;
 }): { readonly installed: boolean; readonly message: string } {
   const detail = normalizedErrorMessage(input.cause);
   const lower = detail?.toLowerCase() ?? "";
@@ -108,7 +111,11 @@ function formatOpenCodeProbeError(input: {
   if (lower.includes("enoent") || lower.includes("notfound")) {
     return {
       installed: false,
-      message: "OpenCode CLI (`opencode`) is not installed or not on PATH.",
+      message: cliNotFoundMessage({
+        cliLabel: "OpenCode CLI",
+        binaryPath: input.binaryPath,
+        environment: input.environment,
+      }),
     };
   }
 
@@ -321,6 +328,8 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
       cause,
       isExternalServer,
       serverUrl: openCodeSettings.serverUrl,
+      binaryPath: openCodeSettings.binaryPath,
+      environment: resolvedEnvironment,
     });
     return buildServerProvider({
       presentation: OPENCODE_PRESENTATION,

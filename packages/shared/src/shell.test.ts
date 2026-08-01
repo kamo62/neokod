@@ -17,6 +17,7 @@ import {
   readPathFromLaunchctl,
   readPathFromLoginShell,
   resolveCommandPath,
+  resolveKnownPosixCliDirs,
   resolveKnownWindowsCliDirs,
   resolveSpawnCommand,
   resolveWindowsEnvironment,
@@ -321,6 +322,25 @@ describe("mergePathValues", () => {
       "/usr/local/bin:/usr/bin:/USR/BIN",
     );
   });
+});
+
+describe("resolveKnownPosixCliDirs", () => {
+  effectIt.effect("derives the known user CLI directories from the home directory", () =>
+    Effect.sync(() => {
+      expect(resolveKnownPosixCliDirs("/home/tester")).toEqual([
+        "/home/tester/.local/bin",
+        "/home/tester/bin",
+        "/home/tester/.opencode/bin",
+      ]);
+    }),
+  );
+
+  effectIt.effect("returns no directories for a blank home directory", () =>
+    Effect.sync(() => {
+      expect(resolveKnownPosixCliDirs("")).toEqual([]);
+      expect(resolveKnownPosixCliDirs("   ")).toEqual([]);
+    }),
+  );
 });
 
 describe("resolveKnownWindowsCliDirs", () => {
