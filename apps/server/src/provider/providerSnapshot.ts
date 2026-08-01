@@ -68,6 +68,29 @@ export function nonEmptyTrimmed(value: string | undefined): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+/**
+ * Builds the probe message for a CLI binary that could not be spawned. Names
+ * the PATH that was actually searched (a server under systemd inherits a
+ * minimal PATH, so "not installed" alone misleads when the CLI is present in
+ * an unlisted directory) and points at the binary path setting as the
+ * escape hatch.
+ */
+export function cliNotFoundMessage(input: {
+  readonly cliLabel: string;
+  readonly binaryPath: string;
+  readonly environment: NodeJS.ProcessEnv | undefined;
+}): string {
+  const configured = input.binaryPath.trim();
+  if (configured.includes("/") || configured.includes("\\")) {
+    return `${input.cliLabel} was not found at \`${configured}\`. Check the binary path in the provider settings.`;
+  }
+  const searchedPath = nonEmptyTrimmed(
+    input.environment?.PATH ?? input.environment?.Path ?? input.environment?.path,
+  );
+  const pathDetail = searchedPath ? `searched PATH: ${searchedPath}` : "PATH is empty";
+  return `${input.cliLabel} (\`${configured}\`) was not found on PATH (${pathDetail}). If it is installed, set the binary path in the provider settings to its absolute path.`;
+}
+
 export function isCommandMissingCause(error: unknown): boolean {
   if (isProviderCommandNotFoundError(error)) return true;
   return error instanceof PlatformError.PlatformError && error.reason._tag === "NotFound";

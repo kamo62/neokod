@@ -608,6 +608,25 @@ export const isCommandAvailable = Effect.fn("shell.isCommandAvailable")(function
   );
 });
 
+/**
+ * Conventional per-user executable directories on POSIX hosts, derived from the
+ * resolved home directory. Used to augment PATH when the server inherits a
+ * minimal environment (systemd units typically get `PATH=/usr/bin:/bin` and no
+ * profile-driven additions), mirroring {@link resolveKnownWindowsCliDirs}.
+ *
+ * - `~/.local/bin` is the standard user executable directory (systemd
+ *   file-hierarchy(7), XDG); distro profiles add it when HOME is set.
+ * - `~/bin` is the traditional user bin directory that many distro profiles
+ *   also add.
+ * - `~/.opencode/bin` is the OpenCode native installer target, which the
+ *   provider maintenance layer already recognizes.
+ */
+export function resolveKnownPosixCliDirs(homeDirectory: string): ReadonlyArray<string> {
+  const home = homeDirectory.trim();
+  if (home.length === 0) return [];
+  return [`${home}/.local/bin`, `${home}/bin`, `${home}/.opencode/bin`];
+}
+
 export function resolveKnownWindowsCliDirs(env: NodeJS.ProcessEnv): ReadonlyArray<string> {
   const appData = env.APPDATA?.trim();
   const localAppData = env.LOCALAPPDATA?.trim();

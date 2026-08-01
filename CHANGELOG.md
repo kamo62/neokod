@@ -1,3 +1,10 @@
+## 3.5.21 - 2026-08-01 (Patch)
+
+Release impact: Patch because this corrects environment resolution at startup, with no contract, schema or storage changes.
+
+- Providers are found again when the server runs without a HOME, as under systemd. Startup already hydrated PATH from a login shell, but distro profiles guard the user binary directories behind a HOME check, so with none set the hydration produced nothing and Codex and OpenCode reported that their CLIs were not installed when they were. HOME is now resolved before that probe, and the conventional user directories are appended to PATH.
+- Provider not-found messages now name the PATH that was searched and point at the binary path setting, instead of asserting the CLI is not installed.
+
 ## 3.5.20 - 2026-08-01 (Patch)
 
 Release impact: Patch because this corrects shutdown behaviour during updates, with no contract, schema or storage changes.

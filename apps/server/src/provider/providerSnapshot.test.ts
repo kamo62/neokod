@@ -10,6 +10,7 @@ import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import {
+  cliNotFoundMessage,
   isCommandMissingCause,
   providerModelsFromSettings,
   spawnAndCollect,
@@ -52,6 +53,50 @@ describe("providerModelsFromSettings", () => {
       },
     ]);
   });
+});
+
+describe("cliNotFoundMessage", () => {
+  it.effect("names the searched PATH and the binary path escape hatch", () =>
+    Effect.sync(() => {
+      expect(
+        cliNotFoundMessage({
+          cliLabel: "Codex CLI",
+          binaryPath: "codex",
+          environment: { PATH: "/usr/bin:/bin" },
+        }),
+      ).toBe(
+        "Codex CLI (`codex`) was not found on PATH (searched PATH: /usr/bin:/bin). If it is installed, set the binary path in the provider settings to its absolute path.",
+      );
+    }),
+  );
+
+  it.effect("reports an empty PATH explicitly", () =>
+    Effect.sync(() => {
+      expect(
+        cliNotFoundMessage({
+          cliLabel: "OpenCode CLI",
+          binaryPath: "opencode",
+          environment: {},
+        }),
+      ).toBe(
+        "OpenCode CLI (`opencode`) was not found on PATH (PATH is empty). If it is installed, set the binary path in the provider settings to its absolute path.",
+      );
+    }),
+  );
+
+  it.effect("points at the configured location when the binary path is explicit", () =>
+    Effect.sync(() => {
+      expect(
+        cliNotFoundMessage({
+          cliLabel: "OpenCode CLI",
+          binaryPath: "/home/tester/.local/bin/opencode",
+          environment: { PATH: "/usr/bin" },
+        }),
+      ).toBe(
+        "OpenCode CLI was not found at `/home/tester/.local/bin/opencode`. Check the binary path in the provider settings.",
+      );
+    }),
+  );
 });
 
 describe("ProviderCommandNotFoundError", () => {
