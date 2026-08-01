@@ -17,7 +17,7 @@ import * as NodeCrypto from "node:crypto";
 
 import * as ServerConfig from "../config.ts";
 import { timingSafeEqualUtf8 } from "../crypto/serverCrypto.ts";
-import { DESKTOP_RENDERER_ORIGINS, decideOrigin, rejectionMessage } from "./allowedOrigin.ts";
+import { decideRequestOrigin, rejectionMessage } from "./allowedOrigin.ts";
 
 const WEBSOCKET_TICKET_TTL_MS = 30_000;
 export const WSL_WEBSOCKET_TICKET_PATH = "/api/wsl-auth/websocket-ticket";
@@ -99,15 +99,12 @@ export const make = Effect.gen(function* () {
   const authorizeRequestOrigin = Effect.gen(function* () {
     if (config.transport !== "loopback") return;
     const request = yield* HttpServerRequest.HttpServerRequest;
-    const origin = request.headers.origin;
-    // The desktop renderer identifies itself with its privileged custom-scheme
-    // origin, which no web page can present (see DESKTOP_RENDERER_ORIGINS).
-    // Treat it like the absent Origin of a non-browser client: trusted as a
-    // sender, with its Host still validated below.
-    const decision = decideOrigin({
+    // decideRequestOrigin also grants the desktop renderer's privileged
+    // custom-scheme Origin, which no web page can present; its Host is still
+    // validated like every other request's.
+    const decision = decideRequestOrigin({
       host: request.headers.host,
-      origin:
-        origin !== undefined && DESKTOP_RENDERER_ORIGINS.includes(origin) ? undefined : origin,
+      origin: request.headers.origin,
       allowedOrigins: config.publicOrigins,
     });
     if (decision._tag === "Allowed") return;

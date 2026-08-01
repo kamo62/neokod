@@ -1,5 +1,9 @@
 import Mime from "@effect/platform-node/Mime";
-import { EnvironmentHttpApi } from "@neokod/contracts";
+import {
+  EnvironmentHttpApi,
+  EnvironmentId,
+  type ExecutionEnvironmentDescriptor,
+} from "@neokod/contracts";
 import { decodeOtlpTraceRecords } from "@neokod/shared/observability";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -23,7 +27,7 @@ import { OtlpTracer } from "effect/unstable/observability";
 import * as ServerConfig from "./config.ts";
 import { ASSET_ROUTE_PREFIX, resolveAsset } from "./assets/AssetAccess.ts";
 import * as BrowserTraceCollector from "./observability/BrowserTraceCollector.ts";
-import { DESKTOP_RENDERER_ORIGINS } from "./transport/allowedOrigin.ts";
+import { DESKTOP_RENDERER_ORIGINS, decideRequestOrigin } from "./transport/allowedOrigin.ts";
 import { annotateEnvironmentRequest } from "./transport/EnvironmentHttp.ts";
 import * as WslBearerAuth from "./transport/WslBearerAuth.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
@@ -65,26 +69,60 @@ export function resolveDevRedirectUrl(devUrl: URL, requestUrl: URL): string {
   return redirectUrl.toString();
 }
 
+/**
+ * What an unauthenticated cross-origin probe of the discovery endpoint gets.
+ * Discovery needs to learn that a Neokod server answers here and what it can
+ * do, so `capabilities` stays real; it is a compile-time constant with no
+ * per-install entropy. Everything that identifies or fingerprints this
+ * particular installation is replaced: the persistent environment UUID, the
+ * label (normally the machine's real hostname), the OS/architecture pair, and
+ * the exact server version. The label reuses the generic fallback the label
+ * resolver itself emits when nothing better is known.
+ */
+function redactedDiscoveryDescriptor(
+  descriptor: ExecutionEnvironmentDescriptor,
+): ExecutionEnvironmentDescriptor {
+  return {
+    environmentId: EnvironmentId.make("unidentified"),
+    label: "Neokod environment",
+    platform: { os: "unknown", arch: "other" },
+    serverVersion: "unknown",
+    capabilities: descriptor.capabilities,
+  };
+}
+
 export const serverEnvironmentHttpApiLayer = HttpApiBuilder.group(
   EnvironmentHttpApi,
   "metadata",
   Effect.fnUntraced(function* (handlers) {
+    const config = yield* ServerConfig.ServerConfig;
     const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
     const wslBearerAuth = yield* WslBearerAuth.WslBearerAuth;
     return handlers.handle(
       "descriptor",
       Effect.fn("environment.metadata.descriptor")(function* (args) {
         yield* annotateEnvironmentRequest(args.endpoint.name);
-        // Deliberately exempt from the Host/Origin allowlist: this is the
-        // discovery endpoint other Neokod clients probe cross-origin to find
-        // local servers, and browserApiCorsLayer already lets any web origin
-        // read it. It returns identification metadata only and performs no
-        // action, so origin-gating it would break discovery while hiding
-        // nothing a page cannot already read. The wsl-bearer transport still
-        // demands its bearer below.
+        // Deliberately reachable without the hard Host/Origin gate: this is
+        // the discovery endpoint other Neokod clients probe cross-origin to
+        // find local servers, and browserApiCorsLayer already lets any web
+        // origin read it. Reachable does not mean identifying, though. Only a
+        // request the allowlist would admit (loopback, the desktop renderer,
+        // a configured public origin, or a non-browser client on a loopback
+        // Host) sees the real descriptor; anything else, such as a DNS
+        // rebinding page, gets a redacted one that reveals no stable
+        // installation identity. The wsl-bearer transport instead demands its
+        // bearer below and then serves full detail, because the bearer
+        // authenticates the caller.
         const request = yield* HttpServerRequest.HttpServerRequest;
         yield* wslBearerAuth.authorizeBearerHeader(request.headers.authorization);
-        return yield* serverEnvironment.getDescriptor;
+        const descriptor = yield* serverEnvironment.getDescriptor;
+        if (config.transport !== "loopback") return descriptor;
+        const decision = decideRequestOrigin({
+          host: request.headers.host,
+          origin: request.headers.origin,
+          allowedOrigins: config.publicOrigins,
+        });
+        return decision._tag === "Allowed" ? descriptor : redactedDiscoveryDescriptor(descriptor);
       }),
     );
   }),

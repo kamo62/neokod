@@ -8,6 +8,7 @@ import {
   DEFAULT_SERVER_SETTINGS,
   EnvironmentId,
   EventId,
+  type ExecutionEnvironmentDescriptor,
   GitCommandError,
   KeybindingRule,
   MessageId,
@@ -910,7 +911,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("includes CORS headers on public environment descriptor responses", () =>
+  it.effect("keeps the descriptor discoverable cross-origin but redacts identifying fields", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest();
 
@@ -920,11 +921,21 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           origin: crossOriginClientOrigin,
         },
       });
-      const body = yield* responseJsonEffect<typeof testEnvironmentDescriptor>(response);
+      const body = yield* responseJsonEffect<ExecutionEnvironmentDescriptor>(response);
 
       assert.equal(response.status, 200);
       assertBrowserApiCorsResponseHeaders(response.headers);
-      assert.deepEqual(body, testEnvironmentDescriptor);
+      // Discovery from a disallowed origin still answers, but the persistent
+      // environment UUID, hostname label, platform, and exact version are
+      // replaced with non-identifying values. Capabilities stay real; they
+      // carry no per-install entropy.
+      assert.deepEqual(body, {
+        environmentId: EnvironmentId.make("unidentified"),
+        label: "Neokod environment",
+        platform: { os: "unknown", arch: "other" },
+        serverVersion: "unknown",
+        capabilities: { repositoryIdentity: true },
+      });
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

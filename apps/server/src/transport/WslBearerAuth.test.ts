@@ -25,12 +25,16 @@ const makeAuth = (
   );
 
 /** A request as the upgrade/HTTP gates see it, with explicit Host and Origin. */
-const makeRequest = (input: { readonly url: string; readonly origin?: string }) => {
+const makeRequest = (input: {
+  readonly url: string;
+  readonly origin?: string;
+  readonly host?: string;
+}) => {
   const url = new URL(input.url);
   return HttpServerRequest.fromClientRequest(
     HttpClientRequest.get(input.url).pipe(
       HttpClientRequest.setHeaders({
-        host: url.host,
+        host: input.host ?? url.host,
         ...(input.origin !== undefined ? { origin: input.origin } : {}),
       }),
     ),
@@ -188,6 +192,42 @@ describe("WslBearerAuth origin validation", () => {
           }),
         ),
       );
+    }),
+  );
+
+  it.effect("rejects a malformed Host that URL parsing would have waved through", () =>
+    Effect.gen(function* () {
+      // `new URL("http://evil.example@localhost:3773")` reports hostname
+      // `localhost`; the strict Host grammar refuses the userinfo outright.
+      const auth = yield* makeAuth("loopback");
+      const failure = yield* auth.authorizeWebSocketUpgrade.pipe(
+        Effect.provideService(
+          HttpServerRequest.HttpServerRequest,
+          makeRequest({ url: "http://127.0.0.1:3773/ws", host: "evil.example@localhost:3773" }),
+        ),
+        Effect.flip,
+      );
+      expect(failure).toMatchObject({ reason: "origin_not_allowed" });
+    }),
+  );
+
+  it.effect("rejects the allowed hostname when it arrives from another port", () =>
+    Effect.gen(function* () {
+      // Cookies are not port-scoped: content on another port of the operator's
+      // host must not reach the RPC surface just by sharing the hostname.
+      const auth = yield* makeAuth("loopback", parseAllowedOrigins("https://neokod.example.com"));
+      const failure = yield* auth.authorizeHttpRequest.pipe(
+        Effect.provideService(
+          HttpServerRequest.HttpServerRequest,
+          makeRequest({
+            url: "http://neokod.example.com/api/orchestration/shell",
+            origin: "https://neokod.example.com:8443",
+          }),
+        ),
+        Effect.flip,
+      );
+      expect(failure).toMatchObject({ reason: "origin_not_allowed" });
+      expect(failure.message).toContain("https://neokod.example.com:8443");
     }),
   );
 });
