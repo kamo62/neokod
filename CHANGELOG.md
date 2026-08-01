@@ -1,3 +1,9 @@
+## 3.5.22 - 2026-08-01 (Patch)
+
+Release impact: Patch because this only updates internal documentation, with no runtime, contract or storage changes.
+
+- Updated the maintainer handoff notes.
+
 ## 3.5.21 - 2026-08-01 (Patch)
 
 Release impact: Patch because this corrects environment resolution at startup, with no contract, schema or storage changes.

@@ -23,6 +23,118 @@ Claims here were verified against git and GitHub on **2026-07-30**. Anything
 carrying an older date is a historical record of that session, not a statement
 about the current tree. When this file and `git` disagree, trust `git`.
 
+## START HERE — session of 2026-08-01 (second half)
+
+Supersedes the section below it. Read this first.
+
+### State
+
+- `main` at `8e9962be6`; npm at **3.5.20**, publishing automatically.
+- Desktop releases **work again** on both architectures. Complete signed and
+  notarized asset sets shipped for v3.5.15 onward, the first since 3.5.9.
+
+### Open PRs
+
+| PR                                              | What                                                                                           | Needs                   |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------- |
+| [#91](https://github.com/kamo62/neokod/pull/91) | ACP adapter drains scoped to the session, checkpoint index seeding, upstream #4985/#4930/#4964 | review, merge           |
+| [#90](https://github.com/kamo62/neokod/pull/90) | Provider CLIs not found when the server runs without `HOME`                                    | review, merge           |
+| [#77](https://github.com/kamo62/neokod/pull/77) | Origin allowlist, fully enforcing                                                              | **five unblocks below** |
+
+**#91 is the one that matters.** Cursor, Grok and Codex forked their
+`session/update` drains with `Effect.forkChild`, tying the drain's lifetime to
+whichever fiber called `startSession`. That is exactly what emptied every ACP
+turn in Synara v0.6.3 when they wrapped `startSession` in a timeout. We were
+safe only because `startSession` runs inside a `DrainableWorker` loop that never
+ends. We added timeouts near that path three times this week. Do not add another
+without checking the drain's scope.
+
+### #77 will not merge as-is
+
+1. It is a **draft**, so mechanically unmergeable.
+2. Its title says "not yet enforced". That is false of the current head.
+3. It carries **no CHANGELOG heading**, so merging aims a release at a consumed
+   version.
+4. The README section merged in #87 states the server does not validate `Host`
+   or `Origin`. #77 makes that false and carries no amendment.
+5. Set `NEOKOD_PUBLIC_ORIGIN=https://neokod.mashdev.xyz` on that host **before**
+   the release built from it deploys. Merging does not itself break the
+   deployment; upgrading to the resulting release does.
+
+The maintainer's position is that this is low priority because the app is local
+behind Authelia. The correction that matters, and which is now in the README:
+**rebinding needs no exposed port and never traverses the proxy.**
+
+### Gateway spec: the answer changed. Do not start a round 7.
+
+Two independent reviews returned NO-GO, and a third investigation reframed the
+whole question.
+
+- **Synara already shipped this.** `apps/server/src/agentGateway/` on their
+  `main`, roughly 17,300 lines with 8,500 of tests, MIT licensed, on an
+  Effect/SQLite/Layers architecture shaped like ours. It solves four of the five
+  hard problems our spec spends its length on. **If we ever build, the work item
+  is porting their module, not implementing our spec.**
+- **Upstream delegates without isolation.** `delegateTask` on
+  `upstream/subagent-obs/04-agents-panel` spreads the parent thread, so children
+  inherit the parent's `worktreePath` and share its checkout. Per-task worktree
+  allocation, the hardest part of our spec, upstream never attempted.
+- **Round 6 is still wrong**, five rounds in. The privilege ceiling is not a
+  ceiling: it reintroduces a total ordering `main` deliberately removed in
+  `6a73bc68a` because it only holds for Codex, and it lets an
+  `approval-required` parent create a `full-access` cross-provider child. And
+  crash recovery cannot locate its own receipt, because the fresh dispatch
+  command id is never persisted and the receipt repository only queries by id.
+
+**Worth taking into the spec cheaply, independent of building:** detached-HEAD
+child worktrees (deletes branch allocation outright), the environment privilege
+ceiling, and Codex's `shell_environment_policy` bearer exclusion.
+
+**Worth keeping from ours:** pre-create claim markers (Synara's post-create
+marker strands crashed worktrees for manual cleanup) and retaining ambiguous
+children rather than compensating them away.
+
+### Two cheap experiments worth more than another spec round
+
+1. A throwaway spike standing up a second `HttpServer` bound to `127.0.0.1:0`.
+   That assumption can invalidate the whole phase and the spec admits it is
+   unvalidated. Half a day.
+2. **`CodexAdapter.ts` passes the preview MCP bearer as an env var to the
+   app-server process.** Run a shell command through a Codex session and grep
+   its environment. If it leaks into agent shells that is a live finding on what
+   ships today. Synara's answer is a `shell_environment_policy` exclusion.
+
+### Verified vs unverified
+
+**Verified:** desktop releases produce complete signed asset sets (v3.5.15
+assets listed via `gh release view`); npm auto-publishes (3.5.16 landed from a
+release-triggered dispatch with no manual step); the origin gate keeps loopback
+zero-config (87 tests).
+
+**Unverified, and nobody should claim otherwise:**
+
+- **The sidebar's appearance.** Three attempts. The current test renders the real
+  component and was proven to fail without the fix, but no test says it looks
+  right. Nobody has looked.
+- **OpenCode 1.15.13 to 1.18.10** never typechecked locally against the new SDK.
+  Claude's bump in the same session _was_ API-breaking.
+- **#90 and #91 on a real systemd host.** #90's new message prints the PATH it
+  searched, so a residual gap is self-diagnosing.
+- **Packaged auto-update teardown** (#89). Only a signed build exercises it.
+
+### Process notes that cost real time today
+
+- **Never run concurrent write agents on this checkout.** Three recoveries were
+  needed. Read-only lanes in parallel are fine.
+- **Codex sandboxes cannot write `.git`.** Create the branch first and forbid all
+  git commands in the prompt, or the lane does nothing.
+- **Merge serially and rebase after each merge**, not before. `release.yml` fires
+  on every push to `main` and takes its version from the changelog's first
+  heading.
+- **A lane can die mid-edit.** One hit a usage limit having deliberately removed
+  a fix to prove its test caught it, leaving a broken adapter. Check the tree
+  state, do not assume a failed lane changed nothing.
+
 ## START HERE — session of 2026-07-31/08-01
 
 Everything below this section predates it.
