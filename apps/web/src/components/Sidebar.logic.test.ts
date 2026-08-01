@@ -1,4 +1,7 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { SidebarMenuSubButton } from "./ui/sidebar";
 import {
   createThreadJumpHintVisibilityController,
   formatBulkThreadDeleteSummary,
@@ -731,12 +734,12 @@ describe("resolveThreadStatusPill", () => {
 });
 
 describe("resolveThreadRowClassName", () => {
-  it("constrains row height as a minimum, never a fixed height", () => {
+  it("unpins the component's fixed height and keeps the old heights as floors", () => {
     // Thread rows are two lines. A fixed height clips the second line and
-    // leaves the selection highlight covering only the title, which shipped in
-    // 3.5.11. It is not fixable from the call site either: `h-auto` merges over
-    // `h-6` but not over `sm:h-7`, since a responsive variant is its own
-    // tailwind-merge group, so the row stayed pinned above the sm breakpoint.
+    // leaves the selection highlight covering only the title. The row must
+    // carry h-auto because SidebarMenuSubButton's own default pins
+    // h-[var(--row-height-compact)]; min-h alone never overrides it, since
+    // min-h and h are different tailwind-merge groups and both survive.
     for (const input of [
       { isActive: true, isSelected: true },
       { isActive: true, isSelected: false },
@@ -746,8 +749,13 @@ describe("resolveThreadRowClassName", () => {
       const className = resolveThreadRowClassName(input);
       expect(className).not.toMatch(/(^|\s)h-\d/);
       expect(className).not.toMatch(/(^|\s)sm:h-\d/);
+      expect(className).toContain("h-auto");
       expect(className).toContain("min-h-6");
       expect(className).toContain("sm:min-h-7");
+      // Row rhythm: py-1 plus the list's gap keeps adjacent rows visibly
+      // further apart (10px text-to-text) than the 2px between a row's own
+      // two lines, so the timestamp reads as part of its thread.
+      expect(className).toContain("py-1");
     }
   });
 
@@ -771,6 +779,80 @@ describe("resolveThreadRowClassName", () => {
     const className = resolveThreadRowClassName({ isActive: true, isSelected: false });
     expect(className).toContain("bg-accent/85");
     expect(className).toContain("hover:bg-accent");
+  });
+});
+
+describe("thread row composed className", () => {
+  // The clipped-timestamp bug shipped while the resolver-only test above was
+  // green: the fixed height came from SidebarMenuSubButton's default
+  // className in ui/sidebar.tsx, not from resolveThreadRowClassName, and
+  // tailwind-merge let it survive because min-h and h are separate groups.
+  // So render the REAL component with the REAL row className, exactly as
+  // Sidebar.tsx does, and inspect the merged class attribute. A pinned
+  // height reintroduced in either file, under any variant prefix (sm:, md:,
+  // hover:, ...), fails here.
+  function composedThreadRowClassName(input: { isActive: boolean; isSelected: boolean }): string {
+    const html = renderToStaticMarkup(
+      createElement(
+        SidebarMenuSubButton,
+        {
+          size: "sm",
+          isActive: input.isActive,
+          className: resolveThreadRowClassName(input),
+        },
+        "thread",
+      ),
+    );
+    const match = /class="([^"]*)"/.exec(html);
+    if (!match?.[1]) {
+      throw new Error(`thread row rendered without a class attribute: ${html}`);
+    }
+    // renderToStaticMarkup HTML-escapes attribute values; decode so tokens
+    // like [&>svg]:size-3.5 round-trip before scanning.
+    return match[1]
+      .replaceAll("&amp;", "&")
+      .replaceAll("&gt;", ">")
+      .replaceAll("&lt;", "<")
+      .replaceAll("&quot;", '"')
+      .replaceAll("&#x27;", "'");
+  }
+
+  // Every token whose utility (the part after its final variant prefix) is a
+  // height other than h-auto. `sm:h-7`, `h-6`, and `h-[var(--x)]` all count.
+  function fixedHeightTokens(className: string): string[] {
+    return className
+      .split(/\s+/)
+      .filter(Boolean)
+      .filter((token) => {
+        const utility = token.slice(token.lastIndexOf(":") + 1);
+        return utility.startsWith("h-") && utility !== "h-auto";
+      });
+  }
+
+  it("lets no fixed height survive tailwind-merge at any breakpoint", () => {
+    for (const input of [
+      { isActive: true, isSelected: true },
+      { isActive: true, isSelected: false },
+      { isActive: false, isSelected: true },
+      { isActive: false, isSelected: false },
+    ]) {
+      const className = composedThreadRowClassName(input);
+      expect(fixedHeightTokens(className)).toEqual([]);
+      // The row still declares its own sizing after the merge: auto height
+      // with the old single-line heights kept as responsive floors.
+      expect(className).toContain("h-auto");
+      expect(className).toContain("min-h-6");
+      expect(className).toContain("sm:min-h-7");
+    }
+  });
+
+  it("keeps the fixed single-line height for other SidebarMenuSubButton callers", () => {
+    // The shared default must stay pinned for single-line rows such as the
+    // thread list's Show more / Show less buttons, which pass h-6. Only the
+    // thread row opts out.
+    const html = renderToStaticMarkup(createElement(SidebarMenuSubButton, { size: "sm" }, "plain"));
+    const match = /class="([^"]*)"/.exec(html);
+    expect(match?.[1]).toContain("h-[var(--row-height-compact)]");
   });
 });
 

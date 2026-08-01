@@ -702,13 +702,15 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
         size="sm"
         isActive={isActive}
         data-testid={`thread-row-${thread.id}`}
-        // h-auto is load-bearing: SidebarMenuSubButton pins a single-line
-        // height and clips overflow, so a two-line row is cut off without it.
-        // The old height becomes the minimum, so single-line rows are unchanged.
-        className={`${resolveThreadRowClassName({
+        // The resolver returns the complete row className, including the
+        // h-auto that unpins SidebarMenuSubButton's fixed single-line height.
+        // Do not append height or spacing classes here; add them in
+        // resolveThreadRowClassName so the composed-height regression test in
+        // Sidebar.logic.test.ts keeps covering what actually renders.
+        className={resolveThreadRowClassName({
           isActive,
           isSelected,
-        })} relative isolate py-1`}
+        })}
         onClick={handleRowClick}
         onDoubleClick={handleRowDoubleClick}
         onKeyDown={handleRowKeyDown}
