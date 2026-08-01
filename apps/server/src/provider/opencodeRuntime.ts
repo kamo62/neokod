@@ -35,7 +35,6 @@ import * as NetService from "@neokod/shared/Net";
 import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import { resolveSpawnCommand } from "@neokod/shared/shell";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.UnknownFromJsonString);
-const OPENCODE_EMPTY_CONFIG_CONTENT = "{}";
 
 const OPENCODE_SERVER_READY_PREFIX = "opencode server listening";
 /**
@@ -394,11 +393,15 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
           ChildProcess.make(spawnCommand.command, spawnCommand.args, {
             detached: hostPlatform !== "win32",
             shell: spawnCommand.shell,
-            env: {
-              ...input.environment,
-              OPENCODE_CONFIG_CONTENT: OPENCODE_EMPTY_CONFIG_CONTENT,
-            },
-            extendEnv: input.environment === undefined,
+            // The caller's environment must reach opencode untouched. This
+            // spawn used to force OPENCODE_CONFIG_CONTENT="{}" on top of it,
+            // which made opencode skip the user's config entirely: custom
+            // providers and models never appeared, and turns against them
+            // failed with the upstream provider's auth error even though the
+            // same CLI worked when run by hand. Nothing here needs a
+            // config-less opencode; the whitelist/blacklist handling in
+            // OpenCodeProvider.flattenOpenCodeModels reads the real config.
+            ...(input.environment ? { env: input.environment } : { extendEnv: true }),
           }),
         )
         .pipe(
