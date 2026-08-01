@@ -411,15 +411,33 @@ export function resolveThreadRowClassName(input: {
   isActive: boolean;
   isSelected: boolean;
 }): string {
-  // Minimum height, not fixed height. Thread rows are two lines, and a pinned
-  // height clips the second one and leaves the selection highlight covering
-  // only the title. Overriding a fixed height from the call site does not work
-  // reliably either: `h-auto` merges over `h-6` but NOT over `sm:h-7`, because
-  // tailwind-merge treats a responsive variant as its own group, so the row
-  // stayed pinned at every width above the sm breakpoint. Keeping the old
-  // values as minimums leaves single-line rows unchanged.
+  // This is the COMPLETE className for the thread row; Sidebar.tsx passes it
+  // to SidebarMenuSubButton unmodified so the composed-height regression test
+  // in Sidebar.logic.test.ts exercises exactly what the component renders.
+  //
+  // Height: thread rows are two lines (title, then context label + relative
+  // time). Three rules matter, and all three shipped wrong at least once:
+  // 1. `h-auto` opts out of SidebarMenuSubButton's default fixed
+  //    `h-[var(--row-height-compact)]`, which pairs with `overflow-hidden` and
+  //    clipped the second line while the highlight covered only the title.
+  //    The shared default stays fixed on purpose: every other caller wants a
+  //    single-line row, and the two reference forks keep it fixed as well.
+  // 2. `h-auto` only merges over unprefixed heights. A responsive height such
+  //    as `sm:h-7` is its own tailwind-merge group and would survive. The
+  //    sub-button default has no responsive heights today; the composed test
+  //    fails if one appears, at any breakpoint.
+  // 3. `min-h-6`/`sm:min-h-7` keep the old single-line heights as floors, so
+  //    a row with little content does not collapse below the previous size.
+  //
+  // Vertical rhythm: `gap-0.5` (2px) separates the two lines inside a row and
+  // `py-1` (4px) pads the row, so with the thread list's `gap-0.5` (2px)
+  // between items, adjacent rows sit 10px apart text-to-text while the lines
+  // within a row sit 2px apart. The pinned height used to swallow the padding
+  // and make those gaps look equal, with the timestamp floating between two
+  // titles. `relative isolate` anchors the absolutely positioned hover
+  // actions and keeps their stacking context inside the row.
   const baseClassName =
-    "min-h-6 w-full translate-x-0 cursor-pointer justify-start px-2 text-left select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring sm:min-h-7";
+    "relative isolate h-auto min-h-6 w-full translate-x-0 cursor-pointer justify-start px-2 py-1 text-left select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring sm:min-h-7";
 
   if (input.isSelected && input.isActive) {
     return cn(
