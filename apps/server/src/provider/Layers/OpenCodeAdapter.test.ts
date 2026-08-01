@@ -32,6 +32,7 @@ import {
 } from "../opencodeRuntime.ts";
 import {
   appendOpenCodeAssistantTextDelta,
+  isTerminalOpenCodeRetryMessage,
   makeOpenCodeAdapter,
   mergeOpenCodeAssistantText,
 } from "./OpenCodeAdapter.ts";
@@ -67,6 +68,8 @@ const runtimeMock = {
     messagesCalls: [] as Array<unknown>,
     permissionReplyCalls: [] as Array<unknown>,
     subscribedEvents: [] as unknown[],
+    holdSubscribedEventsUntilPrompt: false,
+    onPromptCall: null as (() => void) | null,
   },
   reset() {
     this.state.startCalls.length = 0;
@@ -82,6 +85,8 @@ const runtimeMock = {
     this.state.messagesCalls.length = 0;
     this.state.permissionReplyCalls.length = 0;
     this.state.subscribedEvents = [];
+    this.state.holdSubscribedEventsUntilPrompt = false;
+    this.state.onPromptCall = null;
   },
 };
 
@@ -143,6 +148,7 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
           if (runtimeMock.state.promptAsyncError) {
             throw runtimeMock.state.promptAsyncError;
           }
+          runtimeMock.state.onPromptCall?.();
         },
         messages: async (input: unknown) => {
           runtimeMock.state.messagesCalls.push(input);
@@ -175,6 +181,18 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
       event: {
         subscribe: async () => ({
           stream: (async function* () {
+            // Optional gate for tests whose subscribed events depend on turn
+            // state: hold the replay until the first accepted prompt so
+            // sendTurn has assigned the active turn id before the pump sees
+            // the events. Without it the pump can drain the array first.
+            if (
+              runtimeMock.state.holdSubscribedEventsUntilPrompt &&
+              runtimeMock.state.promptCalls.length === 0
+            ) {
+              await new Promise<void>((resolve) => {
+                runtimeMock.state.onPromptCall = resolve;
+              });
+            }
             for (const event of runtimeMock.state.subscribedEvents) {
               yield event;
             }
@@ -240,6 +258,29 @@ beforeEach(() => {
 
 const advanceTestClock = (ms: number) =>
   TestClock.adjust(`${ms} millis`).pipe(Effect.andThen(Effect.yieldNow));
+
+/**
+ * Join a forked event-collector fiber, bounding the wait with a real timer
+ * instead of `Effect.timeout`: the suite runs on the TestClock, so a clock
+ * timeout would only fire if the test advanced it, and a regression where the
+ * awaited events never arrive would hang to the vitest budget instead of
+ * failing the assertion. Returns `Option.none()` when the deadline passes.
+ */
+const joinWithinRealTime = <A, E>(fiber: Fiber.Fiber<A, E>, millis: number) =>
+  Effect.race(
+    Fiber.join(fiber).pipe(Effect.map(Option.some)),
+    Effect.promise<Option.Option<A>>(
+      (signal) =>
+        new Promise((resolve) => {
+          // @effect-diagnostics-next-line globalTimers:off
+          const timer = setTimeout(() => resolve(Option.none()), millis);
+          signal.addEventListener("abort", () => {
+            clearTimeout(timer);
+            resolve(Option.none());
+          });
+        }),
+    ),
+  );
 
 it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
   it.effect("reuses a configured OpenCode server URL instead of spawning a local server", () =>
@@ -465,6 +506,185 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         "Unknown pending permission request: permission-session-error",
       );
       NodeAssert.deepEqual(runtimeMock.state.permissionReplyCalls, []);
+    }),
+  );
+
+  it.effect("settles the active turn when OpenCode retries a terminal credential failure", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-terminal-retry");
+      runtimeMock.state.holdSubscribedEventsUntilPrompt = true;
+      const retryStatusEvent = (attempt: number) => ({
+        type: "session.status",
+        properties: {
+          sessionID: "http://127.0.0.1:9999/session",
+          status: {
+            type: "retry",
+            attempt,
+            message: "Internal Server Error: Invalid API key",
+            next: 1754006400000,
+          },
+        },
+      });
+      // Two identical retries mirror the production incident. The second one
+      // arrives after the first has settled the turn and must not settle,
+      // warn, or abort again.
+      runtimeMock.state.subscribedEvents = [retryStatusEvent(1), retryStatusEvent(2)];
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter(
+          (event) =>
+            event.threadId === threadId &&
+            (event.type === "turn.completed" ||
+              event.type === "runtime.error" ||
+              event.type === "runtime.warning"),
+        ),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const turn = yield* adapter.sendTurn({
+        threadId,
+        input: "Fix it",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("opencode"),
+          model: "openai/gpt-5",
+        },
+      });
+
+      const joined = yield* joinWithinRealTime(eventsFiber, 2_000);
+      NodeAssert.equal(
+        Option.isSome(joined),
+        true,
+        "terminal retry must settle the turn instead of only warning",
+      );
+      const events = Array.from(Option.isSome(joined) ? joined.value : []);
+      NodeAssert.deepEqual(
+        events.map((event) => event.type),
+        ["turn.completed", "runtime.error"],
+      );
+      const completed = events[0];
+      if (completed?.type !== "turn.completed") {
+        throw new Error("Expected a turn.completed event");
+      }
+      NodeAssert.equal(String(completed.turnId), String(turn.turnId));
+      NodeAssert.deepEqual(completed.payload, {
+        state: "failed",
+        errorMessage: "Internal Server Error: Invalid API key",
+      });
+      const runtimeError = events[1];
+      if (runtimeError?.type !== "runtime.error") {
+        throw new Error("Expected a runtime.error event");
+      }
+      NodeAssert.equal(runtimeError.payload.message, "Internal Server Error: Invalid API key");
+      NodeAssert.equal(runtimeError.payload.class, "provider_error");
+
+      const sessions = yield* adapter.listSessions();
+      const session = sessions.find((entry) => entry.threadId === threadId);
+      NodeAssert.equal(session?.status, "error");
+      NodeAssert.equal(session?.activeTurnId, undefined);
+      NodeAssert.equal(session?.lastError, "Internal Server Error: Invalid API key");
+      // Exactly one abort: the settlement stopped OpenCode's retry loop, and
+      // the second retry event did not trigger a duplicate settlement.
+      NodeAssert.deepEqual(runtimeMock.state.abortCalls, ["http://127.0.0.1:9999/session"]);
+    }),
+  );
+
+  it.effect("keeps transient retry statuses as warnings without settling the turn", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-transient-retry");
+      runtimeMock.state.holdSubscribedEventsUntilPrompt = true;
+      runtimeMock.state.subscribedEvents = [
+        {
+          type: "session.status",
+          properties: {
+            sessionID: "http://127.0.0.1:9999/session",
+            status: {
+              type: "retry",
+              // A high attempt count on a transient failure stays retryable:
+              // the policy classifies by message, it does not cap attempts.
+              attempt: 7,
+              message: "Rate limit exceeded, please try again later",
+              next: 1754006400000,
+            },
+          },
+        },
+      ];
+      const warningsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter(
+          (event) =>
+            event.threadId === threadId &&
+            (event.type === "runtime.warning" ||
+              event.type === "runtime.error" ||
+              event.type === "turn.completed"),
+        ),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const turn = yield* adapter.sendTurn({
+        threadId,
+        input: "Fix it",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("opencode"),
+          model: "openai/gpt-5",
+        },
+      });
+
+      const joined = yield* joinWithinRealTime(warningsFiber, 2_000);
+      NodeAssert.equal(Option.isSome(joined), true, "transient retry must surface a warning");
+      const events = Array.from(Option.isSome(joined) ? joined.value : []);
+      const warning = events[0];
+      if (warning?.type !== "runtime.warning") {
+        throw new Error(`Expected a runtime.warning event, got ${warning?.type}`);
+      }
+      NodeAssert.equal(warning.payload.message, "Rate limit exceeded, please try again later");
+
+      const sessions = yield* adapter.listSessions();
+      const session = sessions.find((entry) => entry.threadId === threadId);
+      NodeAssert.equal(session?.status, "running");
+      NodeAssert.equal(String(session?.activeTurnId), String(turn.turnId));
+      NodeAssert.equal(session?.lastError, undefined);
+      NodeAssert.deepEqual(runtimeMock.state.abortCalls, []);
+    }),
+  );
+
+  it.effect("classifies only credential failures as terminal retry messages", () =>
+    Effect.sync(() => {
+      const terminal = [
+        "Internal Server Error: Invalid API key",
+        "401 Unauthorized",
+        "authentication_error: invalid x-api-key",
+        "Incorrect API key provided",
+        "Invalid credentials",
+      ];
+      const transient = [
+        "Rate limit exceeded",
+        "Too Many Requests",
+        "Provider is overloaded",
+        "Internal Server Error",
+        "Free usage exceeded, subscribe to Go",
+        "Usage limit reached. It will reset in 2 hours",
+        "Connection timed out",
+      ];
+      for (const message of terminal) {
+        NodeAssert.equal(isTerminalOpenCodeRetryMessage(message), true, `terminal: ${message}`);
+      }
+      for (const message of transient) {
+        NodeAssert.equal(isTerminalOpenCodeRetryMessage(message), false, `transient: ${message}`);
+      }
     }),
   );
 

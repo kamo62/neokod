@@ -1,3 +1,9 @@
+## 3.5.26 - 2026-08-02 (Patch)
+
+Release impact: Patch because this corrects turn settlement in the OpenCode adapter, with no contract, schema or storage changes.
+
+- An OpenCode turn that keeps failing on a bad credential now ends as a failed turn instead of spinning forever. OpenCode retries any error the provider SDK marks retryable and every 5xx with no attempt cap, and it has no invalid-auth exclusion, so a gateway that wraps a bad key in a 500 such as "Internal Server Error: Invalid API key" retries indefinitely. Each attempt reached the app only as another identical Work Log warning while the turn stayed running with a live spinner. Retry messages that identify a credential failure now settle the turn as failed with the provider's own message, and the adapter tells OpenCode to stop the retry loop. Rate limits, overloads, usage limits and plain server errors keep retrying exactly as before. The credential problem itself still has to be fixed in the provider configuration.
+
 ## 3.5.25 - 2026-08-01 (Patch)
 
 Release impact: Patch because this corrects the environment handed to the OpenCode server process, with no contract, schema or storage changes.
