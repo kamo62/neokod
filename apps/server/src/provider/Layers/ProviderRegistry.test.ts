@@ -579,17 +579,75 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
           );
 
           yield* Effect.yieldNow;
-          yield* TestClock.adjust("11 seconds");
+          yield* TestClock.adjust("26 seconds");
           yield* Effect.yieldNow;
 
           const status = yield* Fiber.join(statusFiber);
           assert.strictEqual(status.status, "error");
-          assert.strictEqual(
-            status.message,
-            "Timed out while checking Codex app-server provider status.",
-          );
-          assert.strictEqual(yield* Ref.get(killCalls), 1);
+          // The message must hand the operator a next step.
+          assert.ok((status.message ?? "").includes("did not finish within"));
+          assert.ok((status.message ?? "").includes("NEOKOD_CODEX_PROBE_TIMEOUT_MS"));
+          assert.ok((status.message ?? "").includes("Refresh"));
+          // Three kills: the probe's bounded escalation sends SIGTERM and,
+          // because this mock always reports the child as running, SIGKILL;
+          // the mock spawner's own release then kills once more.
+          assert.strictEqual(yield* Ref.get(killCalls), 3);
         }),
+      );
+
+      it.effect(
+        "reports ready when a cold app-server probe needs more than the old 10s budget",
+        () =>
+          Effect.gen(function* () {
+            const statusFiber = yield* checkCodexProviderStatus(defaultCodexSettings, () =>
+              Effect.succeed(makeCodexProbeSnapshot()).pipe(Effect.delay(Duration.seconds(18))),
+            ).pipe(Effect.forkChild);
+
+            // Eighteen seconds is inside the new 25s budget but beyond the
+            // shared 10s auth budget that misreported a working install as
+            // timed out.
+            yield* Effect.yieldNow;
+            yield* TestClock.adjust("18 seconds");
+            yield* Effect.yieldNow;
+
+            const status = yield* Fiber.join(statusFiber);
+            assert.strictEqual(status.status, "ready");
+            assert.strictEqual(status.installed, true);
+            assert.strictEqual(status.version, "0.145.0");
+            assert.strictEqual(status.auth.status, "authenticated");
+          }),
+      );
+
+      it.effect(
+        "escalates to SIGKILL when the app-server probe times out on a child that ignores SIGTERM",
+        () =>
+          Effect.gen(function* () {
+            const signals = yield* Ref.make<ReadonlyArray<string>>([]);
+            const statusFiber = yield* checkCodexProviderStatus(defaultCodexSettings).pipe(
+              Effect.provide(sigtermIgnoringSpawnerLayer(signals)),
+              Effect.forkChild,
+            );
+
+            yield* Effect.yieldNow;
+            // Expire the 25s probe budget; teardown starts with SIGTERM,
+            // which this child ignores.
+            yield* TestClock.adjust("26 seconds");
+            yield* Effect.yieldNow;
+            // Cover the force-kill grace so teardown escalates to SIGKILL.
+            yield* TestClock.adjust("3 seconds");
+            yield* Effect.yieldNow;
+
+            // Joining at all proves the probe fiber was not parked forever on
+            // a child that never exits after SIGTERM.
+            const status = yield* Fiber.join(statusFiber);
+            assert.strictEqual(status.status, "error");
+            assert.strictEqual(status.installed, true);
+            assert.ok((status.message ?? "").includes("NEOKOD_CODEX_PROBE_TIMEOUT_MS"));
+            assert.ok((status.message ?? "").includes("Refresh"));
+            // The child ignored the first kill, so teardown must have
+            // escalated and actually terminated it.
+            assert.deepStrictEqual(yield* Ref.get(signals), ["SIGTERM", "SIGKILL"]);
+          }),
       );
     });
 
