@@ -1,3 +1,10 @@
+## 3.5.30 - 2026-08-02 (Patch)
+
+Release impact: Patch because this bounds telemetry retry work and log output when the telemetry endpoint is unreachable, with no contract, schema or storage changes.
+
+- A server that cannot reach the telemetry endpoint no longer fills its journal with a full stack trace every few seconds. The flush loop retried the same failed batch every second with no backoff and logged the complete transport error on every attempt, so an offline endpoint produced continuous connection attempts and an endless stream of identical errors. Consecutive failures now back off exponentially from five seconds to a five minute ceiling. The first failure of a streak is logged once at warning level with the cause, later failures in the same streak appear only at debug level, and when delivery starts working again a single info line reports how many attempts failed and how many events were dropped in the meantime.
+- A telemetry batch the endpoint keeps refusing can no longer block newer events forever. Each failure pushed the failed batch back to the front of the buffer, so the buffer could never drain while the endpoint was down and a batch the endpoint always rejects would stall telemetry permanently even after it came back. A batch is now dropped after eight failed send attempts, which under the backoff schedule keeps it alive through roughly ten minutes of outage, so shorter outages still deliver every buffered event. The existing cap of one thousand buffered events keeps dropping the oldest first when the buffer overflows. Telemetry stays best effort and what is collected is unchanged.
+
 ## 3.5.29 - 2026-08-02 (Patch)
 
 Release impact: Patch because this widens the Codex status probe budget and bounds probe teardown, with no contract, schema or storage changes.

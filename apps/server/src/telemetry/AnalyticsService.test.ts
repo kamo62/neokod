@@ -2,8 +2,15 @@ import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
+import { TestClock } from "effect/testing";
+import * as HttpClient from "effect/unstable/http/HttpClient";
+import * as HttpClientError from "effect/unstable/http/HttpClientError";
+import type * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
+import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 import * as HttpServer from "effect/unstable/http/HttpServer";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
@@ -34,6 +41,48 @@ interface RecordedBatchBody {
     };
   }>;
 }
+
+const transportFailure = (request: HttpClientRequest.HttpClientRequest) =>
+  Effect.fail(
+    new HttpClientError.HttpClientError({
+      reason: new HttpClientError.TransportError({
+        request,
+        cause: new Error("fetch failed"),
+      }),
+    }),
+  );
+
+const successResponse = (request: HttpClientRequest.HttpClientRequest) =>
+  Effect.succeed(HttpClientResponse.fromWeb(request, new Response("{}", { status: 200 })));
+
+const batchEventNames = (request: HttpClientRequest.HttpClientRequest): ReadonlyArray<string> => {
+  const body = request.body;
+  if (body._tag !== "Uint8Array") {
+    return [];
+  }
+  const parsed = JSON.parse(new TextDecoder().decode(body.body)) as {
+    readonly batch?: ReadonlyArray<{ readonly event?: string }>;
+  };
+  return (parsed.batch ?? []).flatMap((entry) =>
+    typeof entry.event === "string" ? [entry.event] : [],
+  );
+};
+
+const mockClientConfigLayer = ConfigProvider.layer(
+  ConfigProvider.fromUnknown({
+    NEOKOD_TELEMETRY_ENABLED: true,
+    NEOKOD_POSTHOG_KEY: "phc_test_key",
+    NEOKOD_POSTHOG_HOST: "http://telemetry.test",
+    NEOKOD_TELEMETRY_FLUSH_BATCH_SIZE: 20,
+  }),
+);
+
+const mockClientRuntimeLayer = (client: HttpClient.HttpClient, prefix: string) =>
+  AnalyticsService.layer.pipe(
+    Layer.provideMerge(ServerConfig.ServerConfig.layerTest(process.cwd(), { prefix })),
+    Layer.provide(mockClientConfigLayer),
+    Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
+  );
 
 it.layer(NodeServices.layer)("AnalyticsService test", (it) => {
   it.effect("flush drains all buffered events across multiple batches", () =>
@@ -115,6 +164,149 @@ it.layer(NodeServices.layer)("AnalyticsService test", (it) => {
         ),
         true,
       );
+    }),
+  );
+
+  it.effect("failed flushes back off exponentially instead of retrying every second", () =>
+    Effect.gen(function* () {
+      let attempts = 0;
+      const failingClient = HttpClient.make((request) => {
+        attempts += 1;
+        return transportFailure(request);
+      });
+      const runtimeLayer = mockClientRuntimeLayer(failingClient, "neokod-telemetry-backoff-");
+
+      yield* Effect.gen(function* () {
+        const analytics = yield* AnalyticsService.AnalyticsService;
+        yield* analytics.record("test.backoff", { index: 0 });
+
+        // First scheduled flush after one second of healthy cadence.
+        yield* TestClock.adjust(Duration.millis(1_000));
+        assert.equal(attempts, 1);
+
+        // The defect retried every second. The fix waits 5 seconds after one failure.
+        yield* TestClock.adjust(Duration.millis(4_999));
+        assert.equal(attempts, 1);
+        yield* TestClock.adjust(Duration.millis(1));
+        assert.equal(attempts, 2);
+
+        // Second failure doubles the delay to 10 seconds.
+        yield* TestClock.adjust(Duration.millis(9_999));
+        assert.equal(attempts, 2);
+        yield* TestClock.adjust(Duration.millis(1));
+        assert.equal(attempts, 3);
+
+        // Third failure doubles it again to 20 seconds.
+        yield* TestClock.adjust(Duration.millis(20_000));
+        assert.equal(attempts, 4);
+      }).pipe(Effect.provide(runtimeLayer));
+    }),
+  );
+
+  it.effect("an unreachable endpoint sees bounded attempts and the stuck batch is dropped", () =>
+    Effect.gen(function* () {
+      let attempts = 0;
+      let succeed = false;
+      const deliveredBatches: Array<ReadonlyArray<string>> = [];
+      const client = HttpClient.make((request) => {
+        attempts += 1;
+        if (!succeed) {
+          return transportFailure(request);
+        }
+        deliveredBatches.push(batchEventNames(request));
+        return successResponse(request);
+      });
+      const runtimeLayer = mockClientRuntimeLayer(client, "neokod-telemetry-bounded-");
+
+      yield* Effect.gen(function* () {
+        const analytics = yield* AnalyticsService.AnalyticsService;
+        yield* analytics.record("test.stuck", { index: 0 });
+
+        yield* TestClock.adjust(Duration.millis(1_000));
+        assert.equal(attempts, 1);
+
+        // Cheap guard that fails fast on the reverted one-second retry loop.
+        yield* TestClock.adjust(Duration.millis(5_000));
+        assert.equal(attempts, 2);
+
+        // Walk the remaining backoff schedule: attempts 3 to 8 land at
+        // 16s, 36s, 76s, 156s, 316s and 616s. Attempt 8 hits the per-batch
+        // cap and drops the stuck batch.
+        yield* TestClock.adjust(Duration.millis(610_000));
+        assert.equal(attempts, 8);
+
+        // A further simulated hour of downtime produces no additional sends
+        // because the buffer is empty and the retry delay is at its ceiling.
+        yield* TestClock.adjust(Duration.hours(1));
+        assert.equal(attempts, 8);
+
+        // After recovery only newer events are delivered; the dropped batch
+        // stays dropped.
+        succeed = true;
+        yield* analytics.record("test.after-recovery", { index: 1 });
+        yield* TestClock.adjust(Duration.millis(300_000));
+        assert.equal(attempts, 9);
+        assert.deepEqual(deliveredBatches, [["test.after-recovery"]]);
+      }).pipe(Effect.provide(runtimeLayer));
+    }),
+  );
+
+  it.effect("logs one warning per failure streak and reports recovery", () =>
+    Effect.gen(function* () {
+      const logs: Array<{ readonly level: string; readonly parts: ReadonlyArray<unknown> }> = [];
+      const logger = Logger.make<unknown, void>((options) => {
+        logs.push({
+          level: options.logLevel,
+          parts: Array.isArray(options.message) ? options.message : [options.message],
+        });
+      });
+
+      let attempts = 0;
+      const deliveredEvents: Array<string> = [];
+      const client = HttpClient.make((request) => {
+        attempts += 1;
+        if (attempts <= 2) {
+          return transportFailure(request);
+        }
+        deliveredEvents.push(...batchEventNames(request));
+        return successResponse(request);
+      });
+      const runtimeLayer = mockClientRuntimeLayer(client, "neokod-telemetry-logs-").pipe(
+        Layer.provide(Logger.layer([logger], { mergeWithExisting: false })),
+      );
+
+      yield* Effect.gen(function* () {
+        const analytics = yield* AnalyticsService.AnalyticsService;
+        yield* analytics.record("test.brief-outage", { index: 0 });
+
+        // Attempt 1 fails at 1s, attempt 2 fails at 6s, attempt 3 succeeds at 16s.
+        yield* TestClock.adjust(Duration.millis(1_000));
+        yield* TestClock.adjust(Duration.millis(5_000));
+        yield* TestClock.adjust(Duration.millis(10_000));
+        assert.equal(attempts, 3);
+
+        // A brief outage loses no events.
+        assert.deepEqual(deliveredEvents, ["test.brief-outage"]);
+
+        // The streak produced exactly one warning and no error-level entries.
+        const failureLogs = logs.filter((entry) =>
+          entry.parts.some(
+            (part) => typeof part === "string" && part.includes("Failed to flush telemetry"),
+          ),
+        );
+        assert.equal(failureLogs.length, 1);
+        assert.equal(failureLogs[0]?.level, "Warn");
+        assert.equal(logs.filter((entry) => entry.level === "Error").length, 0);
+
+        // Recovery is reported once at info level.
+        const recoveryLogs = logs.filter((entry) =>
+          entry.parts.some(
+            (part) => typeof part === "string" && part.includes("Telemetry delivery recovered"),
+          ),
+        );
+        assert.equal(recoveryLogs.length, 1);
+        assert.equal(recoveryLogs[0]?.level, "Info");
+      }).pipe(Effect.provide(runtimeLayer));
     }),
   );
 });

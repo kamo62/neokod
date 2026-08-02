@@ -4,6 +4,11 @@
  * Persists an installation-scoped anonymous identifier, buffers events in
  * memory, and flushes batches over Effect's HTTP client.
  *
+ * Delivery is best effort. Consecutive send failures back off exponentially
+ * up to a ceiling, the first failure of a streak is logged once at warning
+ * level, and a batch that keeps failing is dropped after a bounded number of
+ * attempts so it cannot block newer events forever.
+ *
  * @module AnalyticsService
  */
 import { HostProcessArchitecture, HostProcessPlatform } from "@neokod/shared/hostProcess";
@@ -26,6 +31,52 @@ interface BufferedAnalyticsEvent {
   readonly event: string;
   readonly properties?: Readonly<Record<string, unknown>>;
   readonly capturedAt: string;
+}
+
+/** Interval between flush attempts while delivery is healthy. */
+const flushIntervalMillis = 1_000;
+
+/** Delay before the first retry after a send failure. Doubles per consecutive failure. */
+const failureBackoffInitialMillis = 5_000;
+
+/** Ceiling for the retry delay. An unreachable endpoint is probed at most this often. */
+const failureBackoffMaxMillis = 300_000;
+
+/**
+ * Send attempts a single batch gets before it is dropped. With the backoff
+ * schedule above the batch at the head of the buffer survives roughly ten
+ * minutes of continuous failure, so a brief outage loses nothing while a
+ * batch the endpoint keeps rejecting cannot block newer events forever.
+ */
+const maxSendAttemptsPerBatch = 8;
+
+interface FlushFailureState {
+  /** Send failures since the last successful send. Resets on success. */
+  readonly consecutiveFailures: number;
+  /** Failed attempts charged to the batch currently at the head of the buffer. */
+  readonly headBatchAttempts: number;
+  /** Events discarded by the attempt cap since the last successful send. */
+  readonly droppedEventsSinceLastSuccess: number;
+}
+
+const initialFlushFailureState: FlushFailureState = {
+  consecutiveFailures: 0,
+  headBatchAttempts: 0,
+  droppedEventsSinceLastSuccess: 0,
+};
+
+const failureBackoffMillis = (consecutiveFailures: number) =>
+  Math.min(
+    failureBackoffMaxMillis,
+    failureBackoffInitialMillis * 2 ** Math.min(consecutiveFailures - 1, 8),
+  );
+
+interface SendFailureReport {
+  readonly error: unknown;
+  readonly consecutiveFailures: number;
+  readonly batchAttempts: number;
+  readonly droppedBatch: boolean;
+  readonly batchSize: number;
 }
 
 const telemetryEnv = <A>(
@@ -149,6 +200,58 @@ export const make = Effect.gen(function* () {
     );
   });
 
+  const failureStateRef = yield* Ref.make<FlushFailureState>(initialFlushFailureState);
+
+  const registerSendFailure = (batch: ReadonlyArray<BufferedAnalyticsEvent>, error: unknown) =>
+    Ref.modify(failureStateRef, (state) => {
+      const batchAttempts = state.headBatchAttempts + 1;
+      const droppedBatch = batchAttempts >= maxSendAttemptsPerBatch;
+      const consecutiveFailures = state.consecutiveFailures + 1;
+      return [
+        {
+          error,
+          consecutiveFailures,
+          batchAttempts,
+          droppedBatch,
+          batchSize: batch.length,
+        } satisfies SendFailureReport,
+        {
+          consecutiveFailures,
+          headBatchAttempts: droppedBatch ? 0 : batchAttempts,
+          droppedEventsSinceLastSuccess:
+            state.droppedEventsSinceLastSuccess + (droppedBatch ? batch.length : 0),
+        },
+      ] as const;
+    }).pipe(
+      Effect.tap((report) =>
+        report.droppedBatch
+          ? Effect.void
+          : Ref.update(bufferRef, (current) => [...batch, ...current]),
+      ),
+    );
+
+  const reportSendFailure = (report: SendFailureReport) =>
+    Effect.gen(function* () {
+      const nextRetryMillis = failureBackoffMillis(report.consecutiveFailures);
+      if (report.droppedBatch) {
+        yield* Effect.logDebug("dropping telemetry batch after repeated send failures", {
+          attempts: report.batchAttempts,
+          droppedEvents: report.batchSize,
+        });
+      }
+      if (report.consecutiveFailures === 1) {
+        yield* Effect.logWarning("Failed to flush telemetry", {
+          cause: report.error,
+          nextRetryMillis,
+        });
+      } else {
+        yield* Effect.logDebug("Telemetry flush still failing", {
+          consecutiveFailures: report.consecutiveFailures,
+          nextRetryMillis,
+        });
+      }
+    });
+
   const flush: AnalyticsService["Service"]["flush"] = Effect.gen(function* () {
     while (true) {
       const batch = yield* Ref.modify(bufferRef, (current) => {
@@ -164,15 +267,25 @@ export const make = Effect.gen(function* () {
         return;
       }
 
-      yield* sendBatch(batch).pipe(
-        Effect.catch((error) =>
-          Ref.update(bufferRef, (current) => [...batch, ...current]).pipe(
-            Effect.flatMap(() => Effect.fail(error)),
-          ),
-        ),
+      const failure = yield* sendBatch(batch).pipe(
+        Effect.map(() => null),
+        Effect.catch((error) => registerSendFailure(batch, error)),
       );
+
+      if (failure !== null) {
+        yield* reportSendFailure(failure);
+        return;
+      }
+
+      const previous = yield* Ref.getAndSet(failureStateRef, initialFlushFailureState);
+      if (previous.consecutiveFailures > 0) {
+        yield* Effect.logInfo("Telemetry delivery recovered", {
+          failedAttempts: previous.consecutiveFailures,
+          droppedEvents: previous.droppedEventsSinceLastSuccess,
+        });
+      }
     }
-  }).pipe(Effect.catch((cause) => Effect.logError("Failed to flush telemetry", { cause })));
+  });
 
   const record: AnalyticsService["Service"]["record"] = Effect.fn("AnalyticsService.record")(
     function* (event, properties) {
@@ -188,7 +301,15 @@ export const make = Effect.gen(function* () {
     },
   );
 
-  yield* Effect.forever(Effect.sleep(1000).pipe(Effect.flatMap(() => flush)), {
+  const scheduledFlush = Effect.gen(function* () {
+    const { consecutiveFailures } = yield* Ref.get(failureStateRef);
+    const delayMillis =
+      consecutiveFailures === 0 ? flushIntervalMillis : failureBackoffMillis(consecutiveFailures);
+    yield* Effect.sleep(delayMillis);
+    yield* flush;
+  });
+
+  yield* Effect.forever(scheduledFlush, {
     disableYield: true,
   }).pipe(Effect.forkScoped);
 
