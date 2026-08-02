@@ -1,10 +1,12 @@
-import { assert, it } from "@effect/vitest";
+import { assert, describe, it } from "@effect/vitest";
 
 import {
   codexVersionWarning,
+  DEFAULT_CODEX_PROBE_TIMEOUT_MS,
   isCodexVersionBelowMinimum,
   mapCodexModelCapabilities,
   MINIMUM_SUPPORTED_CODEX_VERSION,
+  parseCodexProbeTimeoutMs,
   parseCodexVersion,
 } from "./CodexProvider.ts";
 
@@ -126,4 +128,50 @@ it("uses standard routing when the catalog has no default service tier", () => {
       currentValue: "default",
     },
   ]);
+});
+
+describe("parseCodexProbeTimeoutMs", () => {
+  it("uses the default when the operator sets nothing", () => {
+    assert.strictEqual(
+      parseCodexProbeTimeoutMs(undefined, DEFAULT_CODEX_PROBE_TIMEOUT_MS),
+      DEFAULT_CODEX_PROBE_TIMEOUT_MS,
+    );
+  });
+
+  it("accepts a positive integer and tolerates surrounding whitespace", () => {
+    assert.strictEqual(parseCodexProbeTimeoutMs("60000", DEFAULT_CODEX_PROBE_TIMEOUT_MS), 60_000);
+    assert.strictEqual(
+      parseCodexProbeTimeoutMs("  60000  ", DEFAULT_CODEX_PROBE_TIMEOUT_MS),
+      60_000,
+    );
+  });
+
+  it("never lowers the budget below its default", () => {
+    // The override is a floor: a value below the 25s default must not
+    // reintroduce the short budget this knob exists to escape.
+    assert.strictEqual(
+      parseCodexProbeTimeoutMs("10000", DEFAULT_CODEX_PROBE_TIMEOUT_MS),
+      DEFAULT_CODEX_PROBE_TIMEOUT_MS,
+    );
+  });
+
+  it("ignores values that would make every probe fail immediately", () => {
+    // A zero or negative budget expires before the app-server can spawn, so
+    // falling back beats honouring it.
+    for (const raw of ["0", "-1", "-60000"]) {
+      assert.strictEqual(
+        parseCodexProbeTimeoutMs(raw, DEFAULT_CODEX_PROBE_TIMEOUT_MS),
+        DEFAULT_CODEX_PROBE_TIMEOUT_MS,
+      );
+    }
+  });
+
+  it("ignores values that are not safe integers", () => {
+    for (const raw of ["", "   ", "abc", "15s", "1.5", "1e999", "9007199254740993"]) {
+      assert.strictEqual(
+        parseCodexProbeTimeoutMs(raw, DEFAULT_CODEX_PROBE_TIMEOUT_MS),
+        DEFAULT_CODEX_PROBE_TIMEOUT_MS,
+      );
+    }
+  });
 });

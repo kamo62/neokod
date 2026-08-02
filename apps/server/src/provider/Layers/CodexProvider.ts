@@ -28,9 +28,9 @@ import { createModelCapabilities } from "@neokod/shared/model";
 import { resolveSpawnCommand } from "@neokod/shared/shell";
 import { compareSemverVersions } from "@neokod/shared/semver";
 import {
-  AUTH_PROBE_TIMEOUT_MS,
   buildServerProvider,
   cliNotFoundMessage,
+  escalateChildTermination,
   parseGenericCliVersion,
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
@@ -40,6 +40,45 @@ const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnErro
 
 const CODEX_APP_SERVER_PROBE_FORCE_KILL_AFTER = "2 seconds" as const;
 export const MINIMUM_SUPPORTED_CODEX_VERSION = "0.145.0";
+
+/**
+ * Operator override for the Codex status probe budget, following
+ * `NEOKOD_CLAUDE_PROBE_TIMEOUT_MS`. The value is a floor: the budget becomes
+ * the larger of the default and the override, so a low or malformed value can
+ * never shrink the default.
+ */
+export const CODEX_PROBE_TIMEOUT_ENV_VAR = "NEOKOD_CODEX_PROBE_TIMEOUT_MS";
+
+// The status probe cold-spawns `codex app-server`, runs the initialize
+// handshake and reads the account, and on an authenticated install also
+// lists models and skills. That is at least as much work as the Claude
+// capabilities probe, which gets 25 seconds. The previous shared 10 second
+// auth budget assumed a warm query-style command; on a memory-constrained
+// host the cold spawn alone can exceed it and the panel then reports a
+// working install as timed out.
+export const DEFAULT_CODEX_PROBE_TIMEOUT_MS = 25_000;
+
+/**
+ * Codex-named twin of `parseClaudeProbeTimeoutMs`. A value that is not a
+ * positive safe integer falls back to the default, because a zero or
+ * negative budget would fail every probe immediately. A valid value acts as
+ * a floor: the budget becomes the larger of the default and the override,
+ * matching the Claude override semantics so operators can reason about both
+ * knobs the same way.
+ */
+export function parseCodexProbeTimeoutMs(raw: string | undefined, defaultMs: number): number {
+  if (raw === undefined) return defaultMs;
+  const parsed = Number(raw.trim());
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    return defaultMs;
+  }
+  return Math.max(defaultMs, parsed);
+}
+
+const CODEX_PROBE_TIMEOUT_MS = parseCodexProbeTimeoutMs(
+  process.env[CODEX_PROBE_TIMEOUT_ENV_VAR],
+  DEFAULT_CODEX_PROBE_TIMEOUT_MS,
+);
 
 const CODEX_PRESENTATION = {
   displayName: "Codex",
@@ -349,6 +388,18 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
           }),
       ),
     );
+  // The spawner's own scope cleanup sends SIGTERM and then waits for the
+  // exit signal with no bound, and the `forceKillAfter` option above times
+  // only the instantaneous signal send, so an app-server that ignores
+  // SIGTERM would park the closing probe fiber forever once the budget
+  // expires. Registered after the spawn, so on scope close this runs before
+  // that cleanup and bounds its wait by actually terminating the child.
+  yield* Effect.addFinalizer(() =>
+    escalateChildTermination(
+      child,
+      Duration.fromInputUnsafe(CODEX_APP_SERVER_PROBE_FORCE_KILL_AFTER),
+    ),
+  );
   const clientContext = yield* Layer.build(CodexClient.layerChildProcess(child));
   const client = yield* Effect.service(CodexClient.CodexAppServerClient).pipe(
     Effect.provide(clientContext),
@@ -529,7 +580,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     environment: resolvedEnvironment,
   }).pipe(
     Effect.scoped,
-    Effect.timeoutOption(Duration.millis(AUTH_PROBE_TIMEOUT_MS)),
+    Effect.timeoutOption(Duration.millis(CODEX_PROBE_TIMEOUT_MS)),
     Effect.result,
   );
 
@@ -570,7 +621,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
         version: null,
         status: "error",
         auth: { status: "unknown" },
-        message: "Timed out while checking Codex app-server provider status.",
+        message: `Codex CLI is installed but the app-server status probe did not finish within ${CODEX_PROBE_TIMEOUT_MS}ms. A cold start on a slow or swapping host can exceed this; use Refresh to retry, or set ${CODEX_PROBE_TIMEOUT_ENV_VAR} to a larger value and restart the server.`,
       },
     });
   }

@@ -21,8 +21,6 @@ import { createProviderVersionAdvisory } from "./providerMaintenance.ts";
 import { collectUint8StreamText } from "../stream/collectUint8StreamText.ts";
 
 export const DEFAULT_TIMEOUT_MS = 4_000;
-// Auth status checks involve disk/network lookups and can be slow on first run (especially Windows)
-export const AUTH_PROBE_TIMEOUT_MS = 10_000;
 
 export interface CommandResult {
   readonly stdout: string;
@@ -117,7 +115,7 @@ const isChildLikelyRunning = (
  * this before the spawner's cleanup guarantees the process is gone, which
  * makes the cleanup's unbounded wait resolve immediately.
  */
-const escalateChildTermination = (
+export const escalateChildTermination = (
   child: ChildProcessSpawner.ChildProcessHandle,
   grace: Duration.Duration,
 ): Effect.Effect<void> =>

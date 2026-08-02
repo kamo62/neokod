@@ -1,3 +1,11 @@
+## 3.5.29 - 2026-08-02 (Patch)
+
+Release impact: Patch because this widens the Codex status probe budget and bounds probe teardown, with no contract, schema or storage changes.
+
+- Codex no longer reports "Timed out while checking Codex app-server provider status" when the first check on a slow host is still working. The status probe spawns the Codex app-server, runs the initialize handshake, reads the account and lists models and skills, all under a shared ten second auth budget, and a cold spawn on a memory-constrained host does not finish in time. It now allows twenty five seconds, matching the Claude capabilities probe, and NEOKOD_CODEX_PROBE_TIMEOUT_MS raises it on hosts that need longer. The override is a floor, so a low or malformed value can never shrink the default.
+- A Codex probe that outlives its budget is now killed within a bounded window. Teardown waited without limit for the app-server to exit after SIGTERM, so a process that ignored the signal kept the provider pending and Refresh spinning until a server restart. Teardown now escalates to SIGKILL after a two second grace period, the same treatment the Claude version probe received in 3.5.24.
+- The Codex timeout message now names the budget that was exceeded, the Refresh button and the environment variable that raises it.
+
 ## 3.5.28 - 2026-08-02 (Patch)
 
 Release impact: Patch because this only updates internal documentation, with no runtime, contract or storage changes.
