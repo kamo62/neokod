@@ -29,9 +29,11 @@ Supersedes every section below it. Read this first.
 
 ### State
 
-- `main` at `d87699a82`. Three PRs merged in version order this session.
-- Released: `v3.5.24`, `v3.5.25`, `v3.5.26` tagged. npm reached **3.5.25**, with
-  3.5.26 releasing behind it. Both completed `Release Neokod` runs succeeded.
+- `main` at `57773cac3`. Four PRs merged in version order this session.
+- Released and confirmed complete: `v3.5.24`, `v3.5.25`, `v3.5.26` and `v3.5.27`
+  all tagged on the `neokod` remote, all four `Release Neokod` runs
+  completed/success, and `npm view neokod version` returns **3.5.27**. Nothing
+  half-released.
 - Open PRs: **#77 only**, a deliberately parked draft.
 - Working tree clean.
 
@@ -110,8 +112,9 @@ passed`, `AssertionError ... expected: [ 'turn.completed', 'runtime.error' ]`,
   then restored clean. The other two new tests pass either way by design: one
   asserts unchanged transient behaviour as an over-correction guard, the other
   unit-tests the exported classifier.
-- Verified: releases. `v3.5.24` and `v3.5.25` on the `neokod` remote,
-  `npm view neokod version` returned 3.5.25.
+- Verified: releases. `v3.5.24`, `v3.5.25`, `v3.5.26` and `v3.5.27` all present on
+  the `neokod` remote, every `Release Neokod` and `Publish npm` run
+  completed/success, and `npm view neokod version` returned 3.5.27.
 - Verified: **Codex does not leak the MCP bearer token.** Two reviewers flagged
   `NEOKOD_MCP_BEARER_TOKEN` at `CodexAdapter.ts:1631` as inherited by shell
   subprocesses, both citing a Synara source comment that Codex defaults
