@@ -1,3 +1,9 @@
+## 3.5.28 - 2026-08-02 (Patch)
+
+Release impact: Patch because this only updates internal documentation, with no runtime, contract or storage changes.
+
+- Corrected the release status in the maintainer handoff notes, which were written before the last two releases finished and named a stale commit and npm version.
+
 ## 3.5.27 - 2026-08-02 (Patch)
 
 Release impact: Patch because this only updates internal documentation, with no runtime, contract or storage changes.
