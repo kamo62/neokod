@@ -100,6 +100,7 @@ const makeOrchestrationLayer = () =>
     readEvents: () => Stream.empty,
     dispatch: dieUnused,
     streamDomainEvents: Stream.empty,
+    latestSequence: Effect.succeed(0),
   } satisfies OrchestrationEngineService["Service"]);
 
 const makeEnabledSettingsLayer = (overrides = {}) =>
