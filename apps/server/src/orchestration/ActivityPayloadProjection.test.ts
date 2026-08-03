@@ -303,3 +303,113 @@ describe("projectActivityPayload", () => {
     expect(projectActivityEvent(event)).toBe(event);
   });
 });
+
+describe("context-window snapshot dedup", () => {
+  function makeContextWindowActivity(
+    id: string,
+    usedTokens: number,
+    turn = `turn-${id}`,
+  ): OrchestrationThreadActivity {
+    return {
+      id: EventId.make(id),
+      tone: "info",
+      kind: "context-window.updated",
+      summary: "Context window updated",
+      payload: { usedTokens, maxTokens: 200_000 },
+      turnId: TurnId.make(turn),
+      createdAt: "2026-08-01T00:00:00.000Z",
+    };
+  }
+
+  it("keeps only the latest context-window activity per turn in snapshots", () => {
+    const stale = makeContextWindowActivity("ctx-1", 1_000, "turn-a");
+    const latestA = makeContextWindowActivity("ctx-2", 2_000, "turn-a");
+    const latestB = makeContextWindowActivity("ctx-3", 3_000, "turn-b");
+    const tool = codexCommand;
+
+    const projected = projectThreadDetailSnapshot({
+      snapshotSequence: 7,
+      thread: makeThread([stale, tool, latestA, latestB]),
+    });
+
+    expect(projected.thread.activities.map((activity) => activity.id)).toEqual([
+      tool.id,
+      latestA.id,
+      latestB.id,
+    ]);
+    // The retained rows keep their payloads untouched: the tool-data
+    // projection only rewrites payloads with a `data` record.
+    expect(projected.thread.activities[2]?.payload).toEqual(latestB.payload);
+  });
+
+  it("keeps a usable row per turn so a revert of the newest turn still resolves", () => {
+    // A live thread.reverted makes the client drop all activities from
+    // discarded turns; each surviving turn must keep its latest row.
+    const olderTurn = makeContextWindowActivity("ctx-old", 1_500, "turn-kept");
+    const revertedTurn = makeContextWindowActivity("ctx-new", 9_000, "turn-reverted");
+
+    const projected = projectThreadDetailSnapshot({
+      snapshotSequence: 7,
+      thread: makeThread([olderTurn, revertedTurn]),
+    });
+    const afterRevert = projected.thread.activities.filter(
+      (activity) => activity.turnId === TurnId.make("turn-kept"),
+    );
+
+    expect(afterRevert).toEqual([olderTurn]);
+  });
+
+  it("does not let a malformed row shadow an earlier valid row in the same turn", () => {
+    const valid = makeContextWindowActivity("ctx-valid", 5_000, "turn-a");
+    const malformed: OrchestrationThreadActivity = {
+      ...makeContextWindowActivity("ctx-broken", 0, "turn-a"),
+      payload: { usedTokens: null },
+    };
+
+    const projected = projectThreadDetailSnapshot({
+      snapshotSequence: 7,
+      thread: makeThread([valid, malformed]),
+    });
+
+    // The malformed row passes through and the valid row survives, so the
+    // client's backward walk (which skips rows without a finite usedTokens)
+    // still resolves the same value as with the full history.
+    expect(projected.thread.activities.map((activity) => activity.id)).toEqual([
+      valid.id,
+      malformed.id,
+    ]);
+  });
+
+  it("leaves snapshots without context-window activities untouched", () => {
+    const projected = projectThreadDetailSnapshot({
+      snapshotSequence: 7,
+      thread: makeThread([mcpTool]),
+    });
+    expect(projected.thread.activities).toEqual([mcpTool]);
+  });
+
+  it("does not filter live activity-appended events", () => {
+    const activity = makeContextWindowActivity("ctx-live", 4_000);
+    const event = {
+      sequence: 9,
+      eventId: EventId.make("event-ctx"),
+      aggregateKind: "thread",
+      aggregateId: ThreadId.make("thread-projection"),
+      occurredAt: "2026-08-01T00:00:02.000Z",
+      commandId: null,
+      causationEventId: null,
+      correlationId: null,
+      metadata: {},
+      type: "thread.activity-appended",
+      payload: {
+        threadId: ThreadId.make("thread-projection"),
+        activity,
+      },
+    } satisfies Extract<OrchestrationEvent, { type: "thread.activity-appended" }>;
+
+    const projected = projectActivityEvent(event);
+    expect(
+      projected.type === "thread.activity-appended" ? projected.payload.activity : undefined,
+    ).toEqual(activity);
+  });
+});
