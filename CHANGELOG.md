@@ -1,3 +1,15 @@
+## 3.5.31 - 2026-08-02 (Patch)
+
+Release impact: Patch because this reduces websocket payload size and bounds reconnect replay work on the server, with no schema or storage changes. One RPC contract member is removed, but no shipped client ever called it and client and server ship together.
+
+- Thread subscriptions and snapshots send far less data over the websocket. Tool activities carried the provider's full raw item data on every event and in every snapshot: Codex aggregated command output and file-change patches, Claude tool result blocks, and OpenCode content duplicates, none of which the app reads. The server now prunes those fields from the wire while keeping everything the app renders, including the full tool input and output shown in the expanded tool call view, command previews, exit codes, changed file lists, and complete MCP call data. The full payloads stay in the database.
+- Thread snapshots no longer ship every historical context-window row. Long threads accumulate thousands of these rows and the usage meter only reads the newest value. Each turn keeps its latest valid row so the meter still resolves after a revert discards newer turns. Live updates are unchanged.
+- A client that reconnects with a stale cursor no longer triggers an unbounded replay. The server replayed the entire global event range after the cursor and decoded every intervening event's payload only to discard almost all of it, a pattern upstream reports has OOM-killed servers on large databases. Catch-up replay for both thread and shell subscriptions is now bounded to the head captured at subscribe time and capped at a 1000 event gap. A client further behind, or holding a cursor ahead of the server's state, receives a fresh snapshot and converges from there.
+- The orchestration snapshot HTTP route and the offline project CLI serve a lightweight read model with empty thread bodies instead of hydrating every message and activity in the database. The only consumer of both reads the project list.
+- Removed the unused orchestration.replayEvents RPC and its contract schemas. No client in this repository called it, so the only skew risk is an out-of-tree caller of a newer server.
+
+These changes reduce data on the wire and bound server work on reconnect. They do not by themselves confirm or resolve the reported websocket disconnect loop, which remains under investigation.
+
 ## 3.5.30 - 2026-08-02 (Patch)
 
 Release impact: Patch because this bounds telemetry retry work and log output when the telemetry endpoint is unreachable, with no contract, schema or storage changes.
