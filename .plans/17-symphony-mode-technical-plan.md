@@ -1205,12 +1205,25 @@ Three things this reference settles that the plan had left vague:
 The panel is a surface over `PullRequestEvidence`; it renders whatever the host provided and
 degrades per 10.1. It is tabbed and closable like the reference, so several PRs can be open at once.
 
-**Work Mode also wants this, and that is outside the Symphony PRD.** The reference app exposes
-"Pull requests" as a top-level nav item, listing PRs for the repository independent of any run. That
-is a genuinely useful Work Mode feature and the panel component would be shared, but the Symphony
-PRD covers Symphony Mode only, so it is recorded here as a candidate rather than smuggled into this
-scope. Building the panel against `PullRequestEvidence` rather than against Symphony run state keeps
-it reusable if Work Mode adopts it later. See open decision 13.
+**The panel ships in both modes (resolves open decision 13).** The reference app exposes "Pull
+requests" as a top-level nav item listing PRs for the repository independent of any run, and that is
+wanted in Work Mode as well as Symphony. This is a deliberate widening beyond the Symphony PRD,
+which covers Symphony Mode only.
+
+Design consequences, which is why this decision had to be made before the panel was built rather
+than after:
+
+- The panel is a **shared component** under `apps/web/src/components/pullRequest/`, not under
+  `components/symphony/`. It renders `PullRequestEvidence` and takes no Symphony run state.
+- Symphony's run-detail Pull Request tab and a new Work Mode "Pull requests" nav section are two
+  mounts of the same component with different data sources: a Symphony run's PR, versus PRs listed
+  for the repository.
+- Listing PRs for a repository in Work Mode needs `listChangeRequests`, which already exists on
+  `SourceControlProvider` for all four hosts, so the list view costs little.
+- The per-host enrichment in 10.1 becomes **load-bearing for Work Mode too**, not Symphony-only.
+  That raises its priority: an unenriched panel in Work Mode shows a PR with no CI status and no
+  reviewers, which is a visibly poor experience in a surface users hit constantly. Enrichment for
+  GitHub should land alongside the Work Mode mount rather than waiting for Phase 5.
 - Workflows: editor with form view, source view, YAML validation, schema errors, prompt preview,
   resolved-config preview, env validation, dry-run validation, workflow diff, save confirmation,
   version-control status (PRD 12.3).
@@ -1486,13 +1499,11 @@ Deliberately **not** written, and why:
     Rust port is mechanical (pure domain, isolated IO).
 12. Work Mode threads are not migrated into the unified work-item model in this effort; the
     unified `WorkItem` type exists and cross-mode handoff maps between them.
-13. **Open: a Work Mode pull-request view.** The Codex desktop app exposes "Pull requests" as a
-    top-level nav item with the panel described in 15.3.1, independent of any agent run. This is
-    outside the Symphony PRD but the operator has flagged it as wanted in both modes. Deciding it
-    now matters because it changes where the panel component lives and how much of the per-host
-    enrichment in 10.1 becomes load-bearing for Work Mode rather than Symphony-only. Recommendation:
-    build the panel in Symphony first against `PullRequestEvidence`, keep it free of Symphony run
-    state, and lift it into Work Mode as a follow-up once the enrichment exists for at least GitHub.
+13. ~~Work Mode pull-request view~~ **RESOLVED: the PR panel ships in both Work and Symphony
+    modes.** It lives in `components/pullRequest/` as a shared component over `PullRequestEvidence`,
+    with a Work Mode "Pull requests" nav section and a Symphony run-detail tab as its two mounts.
+    This pulls GitHub PR enrichment forward out of Phase 5, because an unenriched panel is a poor
+    experience in a Work Mode surface users hit constantly (15.3.1).
 
 ## 21. File map (new files)
 
