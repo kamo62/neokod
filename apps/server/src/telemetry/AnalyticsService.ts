@@ -79,34 +79,39 @@ interface SendFailureReport {
   readonly batchSize: number;
 }
 
-const telemetryEnv = <A>(
-  name: string,
-  legacyName: string,
-  read: (key: string) => Config.Config<A>,
-) => read(name).pipe(Config.orElse(() => read(legacyName)));
+// The `T3CODE_*` fallbacks that used to sit alongside each `NEOKOD_*` name are
+// gone. They were inherited from upstream and, for the key and host in
+// particular, were a live path back to upstream's PostHog project: setting
+// `T3CODE_POSTHOG_KEY` would have redirected this fork's telemetry there.
+// Neokod never touches that instance, so the fallbacks are removed rather than
+// deprecated.
 
 const TelemetryEnvConfig = Config.all({
-  posthogKey: telemetryEnv("NEOKOD_POSTHOG_KEY", "T3CODE_POSTHOG_KEY", Config.string).pipe(
-    Config.withDefault("phc_XOWci4oZP4VvLiEyrFqkFjP4CZn55mjYYBMREK5Wd6m"),
+  /**
+   * Neokod's own PostHog project key, on the EU cloud.
+   *
+   * This previously defaulted to the upstream T3 Code project key, inherited
+   * verbatim when the fork rebranded the env var names, so every install
+   * reported into upstream's analytics. Replaced with Neokod's own project.
+   *
+   * `phc_` keys are PostHog public project keys, designed to be shipped in
+   * client code, so hardcoding one here is not a secret leak.
+   */
+  posthogKey: Config.string("NEOKOD_POSTHOG_KEY").pipe(
+    Config.withDefault("phc_ChMMKsYfCWTbG48KrKYZVvAeBPEGYBBX7fKUVBRvGAaE"),
   ),
-  posthogHost: telemetryEnv("NEOKOD_POSTHOG_HOST", "T3CODE_POSTHOG_HOST", Config.string).pipe(
-    Config.withDefault("https://us.i.posthog.com"),
+  /** EU cloud, matching the project the key above belongs to. */
+  posthogHost: Config.string("NEOKOD_POSTHOG_HOST").pipe(
+    Config.withDefault("https://eu.i.posthog.com"),
   ),
-  enabled: telemetryEnv(
-    "NEOKOD_TELEMETRY_ENABLED",
-    "T3CODE_TELEMETRY_ENABLED",
-    Config.boolean,
-  ).pipe(Config.withDefault(true)),
-  flushBatchSize: telemetryEnv(
-    "NEOKOD_TELEMETRY_FLUSH_BATCH_SIZE",
-    "T3CODE_TELEMETRY_FLUSH_BATCH_SIZE",
-    Config.number,
-  ).pipe(Config.withDefault(20)),
-  maxBufferedEvents: telemetryEnv(
-    "NEOKOD_TELEMETRY_MAX_BUFFERED_EVENTS",
-    "T3CODE_TELEMETRY_MAX_BUFFERED_EVENTS",
-    Config.number,
-  ).pipe(Config.withDefault(1_000)),
+  /**
+   * Opt-in, per PRD section 21 ("Telemetry must be opt-in unless required for
+   * local product diagnostics"). This defaulted to `true`, which contradicted
+   * that requirement and shipped data without consent.
+   */
+  enabled: Config.boolean("NEOKOD_TELEMETRY_ENABLED").pipe(Config.withDefault(false)),
+  flushBatchSize: Config.number("NEOKOD_TELEMETRY_FLUSH_BATCH_SIZE").pipe(Config.withDefault(20)),
+  maxBufferedEvents: Config.number("NEOKOD_TELEMETRY_MAX_BUFFERED_EVENTS").pipe(Config.withDefault(1_000)),
   wslDistroName: Config.string("WSL_DISTRO_NAME").pipe(Config.option),
 });
 
