@@ -54,6 +54,28 @@ produced 36 findings, 6 of them blockers. Substantive changes:
   concurrency, poll-interval bounds, approval policy classes, `waitTimeoutMs`.
 - Missing RPCs added for queue overrides, repository pause, review actions and user-input responses.
 
+**Revision 2 (4 August 2026).** A second review pass produced 8 findings, 3 blockers:
+
+- The claim transition targeted `claimed`, which is not a value in the lifecycle union. It targets
+  `preparing`. Owner fencing columns move into `036` and the liveness problem is solved with a
+  single orchestrator advisory lock rather than unsupported cross-process language (section 4).
+- Live-request settlement was defined only for shutdown, leaving cancellation, `turn/interrupt` and
+  unexpected process exit able to strand a blocked child. One idempotent `settleAll` now covers
+  every exit path, and the timeout is renamed `liveRequests.waitTimeoutMs` so agent questions are
+  bounded too (8.3.1).
+- The workspace-ownership guard sat in the callers, but deletion actually happens in a generic
+  `vcs.removeWorktree` RPC that checks nothing. It moves into a shared server-side removal gateway
+  (16.0).
+- The five tracker adapters are not independent after only an interface freeze; they share the error
+  algebra, normalization and registry. WS-F splits into a serialized WS-F0 plus five leaf adapters.
+- Codex review mode investigated and scoped: it emits model-authored free text, not structured
+  findings, so it lands in a provenance-bearing `modelReview` artefact that can raise warnings but
+  cannot satisfy evidence or upgrade readiness. It is orthogonal to per-host PR enrichment (10.2).
+- `initialize` is spelled out as request, response, then `initialized` notification (8.1).
+- WS-A2 joins the transport integration lane; WS-J2 routes through the contracts and web owners.
+- Pull-request panel specified from the Codex app reference (15.3.1); Work Mode PR view logged as
+  open decision 13.
+
 ## 1. Current state assessment
 
 ### 1.1 What already exists that Symphony can build on
@@ -348,9 +370,13 @@ are the dispatch authority: claiming an issue is a conditional `UPDATE ... WHERE
 (eligible, queued, retry_scheduled)` returning rowcount.
 
 The precise guarantee, stated no more strongly than the storage layer supports: for a given row, at
-most one concurrent claimant can successfully move an eligible lifecycle to claimed. Other
-claimants observe either zero changed rows or a retriable `SQLITE_BUSY` error. Stale claims and
-orphaned workers are handled by recovery plus an owner/generation token, not by the update alone.
+most one concurrent claimant can successfully move the lifecycle from `eligible | queued |
+retry_scheduled` to **`preparing`**. Other claimants observe either zero changed rows or a retriable
+`SQLITE_BUSY` error. Stale claims and orphaned workers are handled by recovery plus owner fencing,
+not by the update alone.
+
+(There is no `claimed` lifecycle value. The claim transition targets `preparing`, which is the state
+the PRD 11.3 union actually defines. "Claimed" is orchestration vocabulary, not a persisted state.)
 
 Runtime SQLite already enables WAL and foreign keys (`persistence/Layers/Sqlite.ts:33-38`) but does
 not set `busy_timeout`, and the Node client opens a single `DatabaseSync` connection guarded by a
@@ -363,8 +389,18 @@ lock. Required work:
 - Combine claim and run-attempt creation in one transaction.
 - Use `BEGIN IMMEDIATE` only where a transaction reads before writing or must reserve the writer
   across several statements.
-- Persist an `owner_token` + `generation` on the work-item row so a restarted orchestrator can
-  distinguish its own stale claims from a live claim.
+- **Owner fencing fields live in `036`, not in a later migration.** These migrations are unshipped,
+  so they are edited in place rather than patched: `owner_token`, `generation`, `owner_pid`,
+  `owner_started_at`, `lease_expires_at`. Recovery (9.7) reads `owner_pid` + `owner_started_at` to
+  tell a live worker from a recycled PID; without those columns declared, the recovery step the plan
+  describes cannot be written.
+- An owner token and generation alone do **not** distinguish a live owner from a stale one. That
+  needs either a lease with a heartbeat, or a single server-wide orchestrator lock. Given the app
+  runs one server process, **take the orchestrator lock**: a single advisory lock row acquired at
+  startup, released on clean shutdown, and reclaimable when its lease expires. This is materially
+  simpler than per-work-item heartbeats and matches the actual deployment. Per-row `generation` is
+  still carried so that every subsequent state transition and side effect can assert
+  `WHERE owner_token = ? AND generation = ?` and a resurrected zombie worker cannot write.
 
 This is the persistence-side twin of the in-memory `claimed` set and, with recovery, satisfies PRD
 quality metric 18.3 (fewer than 5% double dispatch). Note the app runs one server process today;
@@ -602,7 +638,9 @@ Startup sequence, corrected against the generated protocol schema: `V2ThreadStar
 neither a prompt nor a title (`packages/effect-codex-app-server/src/_generated/schema.gen.ts:41807-41823`),
 so the prompt cannot ride on `thread/start`. The real sequence is:
 
-1. `initialize` handshake.
+1. Send `initialize`, **await its response, then send the `initialized` notification.** Naming this
+   step "the initialize handshake" is ambiguous enough that a fresh runtime would skip the
+   notification; the existing runtime does send it (`CodexSessionRuntime.ts:1217-1235`).
 2. `thread/start` with the workspace absolute path as the thread working directory and the
    workflow's approval/sandbox policy in thread config.
 3. Persist the returned provider thread ID.
@@ -658,8 +696,21 @@ the orchestrator process and dies with it. Symphony therefore needs both halves:
 
 - `Runner/LiveRequests.ts`: an in-memory registry keyed by `(workItemId, runAttemptId, requestId)`
   holding the Deferred for each outstanding approval or input request. Exposes
-  `respondToApproval(requestId, decision)` and `respondToUserInput(requestId, text)`, plus expiry,
-  per-request timeout, and shutdown settlement so no child process is left blocked.
+  `respondToApproval(requestId, decision)` and `respondToUserInput(requestId, text)`.
+
+**Settlement is one idempotent operation, invoked on every exit path.** The existing runtime settles
+pending requests only in `close`; `interruptTurn` just sends `turn/interrupt`
+(`CodexSessionRuntime.ts:1190-1212`) and the unexpected-exit watcher only flips session state
+(`:815-838`). Saying "shutdown settlement" is therefore not enough, because run cancellation and
+process death are not shutdown. `settleAll(runAttemptId, reason)` must be called on: user
+cancellation, tracker cancellation, timeout, stall, `turn/interrupt`, unexpected process exit,
+startup failure, takeover, and normal close. Each path maps to a named durable terminal state so a
+row is never left `open` with no Deferred behind it. The operation is idempotent because several of
+those paths can fire together.
+
+Timeout naming: the setting is `liveRequests.waitTimeoutMs`, covering approvals **and** user-input
+requests. Revision 1 put the timeout under `approvals.waitTimeoutMs`, which left agent questions
+with no bound even though section 8.3 requires them to be bounded.
 - `041_SymphonyApprovals` / `040_SymphonyAttentionItems`: the durable record of the request and the
   decision, for history, audit, and UI. Durable rows never resolve a Deferred.
 
@@ -824,6 +875,47 @@ failed validation, or changes-requested resolution):
   never satisfy a required evidence field.
 - `testsChanged`, `commits`: derived host-side from the branch range and the workflow's test path
   patterns, so they cannot be overstated by the agent.
+- `modelReview?: ModelReviewArtefact` — optional, and carefully fenced. See 10.2.
+
+### 10.2 Codex review mode (optional, model-derived)
+
+Codex exposes a review capability, investigated against the generated schema rather than assumed:
+
+- `review/start` returns `{reviewThreadId, turn}`; the review surfaces as ordinary
+  `agentMessage.text` thread items bracketed by `enteredReviewMode` / `exitedReviewMode` markers
+  (`schema.gen.ts:39196-39222`, `:22475-22510`, `meta.gen.ts:434-446`).
+- **It produces model-authored free text, not structured findings.** There is no schema for
+  severity, file, line, confidence or disposition, and `ReviewStartParams` has no `outputSchema`.
+- Four targets exist, not three: `baseBranch`, `commit`, `custom`, and `uncommittedChanges`
+  (`schema.gen.ts:6059-6104`). `baseBranch` is the right one for a committed Symphony work branch.
+- `gitDiffToRemote({cwd})` returns only `{sha, diff}` as a raw unified diff, with no documented
+  baseline selection. It is **not** a better source for `changedFiles` than the existing VCS path,
+  which gives an explicit base/head comparison and per-file counts via
+  `parseTurnDiffFilesFromUnifiedDiff` (`checkpointing/Diffs.ts:3-28`). `turn/diff/updated` is only
+  the latest aggregated diff for one turn, not branch-range evidence.
+
+Symphony may run review mode against `baseBranch` in a dedicated read-only thread, since the
+protocol does not promise review mode is side-effect free. The result lands in a distinct field with
+its provenance attached, never folded into `risks` or `unresolved`:
+
+```ts
+ModelReviewArtefact = {
+  provenance: "model";            // literal, always
+  provider: string; model: string;
+  target: "baseBranch"; baseSha: string; headSha: string;
+  reviewThreadId: string; turnId: string;
+  status: "completed" | "failed" | "interrupted";
+  reviewedAt: Instant; text: string;
+}
+```
+
+It may raise warnings or attention items. It must not populate host-derived `changedFiles`,
+`commits`, validation, CI, review state, mergeability or unresolved PR comments; must not fill a
+missing implementation summary; must not upgrade `overallAssessment`; and "no findings" is never
+evidence that a change is safe.
+
+**This is orthogonal to the 10.1 per-host enrichment and reduces none of it.** Codex reviews a diff;
+it does not supply host CI status, reviewer decisions, mergeability, or unresolved-comment state.
 - `pullRequest`: PR number, title, branch, base, status, CI status, review state, mergeability,
   unresolved comments, latest commit (PRD FR-101). **Only the first six of those exist today.** See
   10.1.
@@ -1152,13 +1244,24 @@ so it will happily remove a worktree that a live Symphony run owns.
 Handoff therefore requires a persisted ownership record before anything else:
 
 - New table `045_SymphonyWorkspaceOwnership`: `workspace_path` PK, `owner` (`symphony` | `work`),
-  `work_item_id`, `thread_id`, `lease_expires_at`, `updated_at`.
+  `work_item_id`, `thread_id`, `generation`, `lease_expires_at`, `updated_at`.
 - **Take over** must: stop the Symphony worker, settle every outstanding protocol request via the
   8.3.1 registry, wait for process exit, validate canonical repository / worktree / branch identity,
   then transfer ownership to `work`.
 - **Resume** must: require the Work provider session and any Work terminals on that path to be idle,
   then transfer ownership back to `symphony`.
-- Both cleanup paths, Work-mode and Symphony, must consult this record before removing a worktree.
+- Acquire, transfer, renew and release are each conditional transactions carrying a fencing
+  `generation`, so a stale holder cannot reclaim a workspace that moved on without it.
+
+**The guard belongs in a shared server-side removal gateway, not in the callers.** Saying "both
+cleanup paths consult the record" is too narrow and would produce a guard that Work and Symphony
+callers respect while the real deletion path ignores it. Work-mode cleanup is *initiated* in the web
+client (`apps/web/src/worktreeCleanup.ts:10-32`, `hooks/useThreadActions.ts:289-300`) but the
+deletion is *performed* by a generic `vcs.removeWorktree` RPC (`ws.ts:1380-1384`) reaching
+`GitWorkflowService.removeWorktree` (`git/GitWorkflowService.ts:310-313`), which accepts any path
+with no ownership check at all. Every removal must funnel through one gateway that checks ownership,
+covering: terminal-issue cleanup, startup sweep, partial-creation rollback, explicit
+`vcs.removeWorktree`, Work thread deletion, takeover, and resume.
 
 Without this, the two modes can edit and delete the same worktree concurrently. Treat it as part of
 the Phase 4 definition of done, not a follow-up.
@@ -1227,7 +1330,8 @@ each is reviewable and green on `vp check` / `vp run typecheck` / `vp test` befo
 - WS-B: `packages/contracts/src/symphony.ts` domain schemas; WS method schemas; server module
   skeleton with `Services/` tags and layer assembly. **Owns shared contracts; freezes interfaces
   before C/D/F start.**
-- WS-C: Persistence migrations `035` to `045` and repositories.
+- WS-C: Persistence migrations `035` to `045` and repositories, including the claim-owner fencing
+  columns in `036` and the orchestrator advisory lock.
 - WS-D: Workflow loader, config resolution, validation, prompt renderer, dynamic reload,
   starter-template scaffolding for repositories with no `WORKFLOW.md` (PRD 15.1, 27.4).
 - WS-E: Mode switch, Symphony route layout, navigation shell, empty states, per-mode view-state
@@ -1236,9 +1340,15 @@ each is reviewable and green on `vp check` / `vp run typecheck` / `vp test` befo
   dispatch.
 
 ### Phase 1: Observe
-- WS-F: `TrackerAdapter` interface shaped against upstream `tracker.ex`, normalization, error
-  mapping. Five adapters in order **GitHub, Jira, Linear, GitLab, Asana**, each with a profile doc
-  under `docs/integrations/`. Vendor `.repos/symphony` first.
+- WS-F0 (**serialized, blocks the rest of F**): `TrackerAdapter` interface shaped against upstream
+  `tracker.ex`, the error algebra, `Normalize.ts` primitives, tracker configuration schemas,
+  registry wiring, and health/profile behaviour. Vendor `.repos/symphony` first.
+- WS-F1..F5: the five adapters in order **GitHub, Jira, Linear, GitLab, Asana**, each with a profile
+  doc under `docs/integrations/`. These parallelise only after F0 freezes, and shared-core changes
+  route through one integration owner. Revision 1 claimed the five were independent leaf modules
+  once the interface froze; that was wrong, because they also share the error algebra,
+  normalization primitives, config shape and registry, and Jira or Linear mapping work is exactly
+  what tends to expose gaps in those.
 - WS-G: Poll loop, eligibility calculation, queue projection, tracker checkpoints, queue overrides
   (exclude / local priority, FR-022).
 - WS-H: Queue view, tracker health for five credential paths, workflow visualization, overview shell.
@@ -1288,8 +1398,9 @@ implementation agents can run at once.
 - WS-C and WS-D after WS-B freezes contracts, provided WS-D does not touch shared contracts or
   integration files.
 - WS-F tracker leaf code alongside WS-I workspace leaf code, after WS-D.
-- The five adapters within WS-F are mutually independent leaf modules once the interface is frozen,
-  so they parallelise cleanly. This is what makes the five-tracker scope affordable.
+- The five adapters parallelise **after WS-F0 freezes the shared core**, not merely after the
+  interface is named. That is what makes the five-tracker scope affordable, but F0 is a real
+  serialization point, not a formality.
 - WS-I and WS-J leaf implementations after interfaces freeze; integration still serializes I before J.
 - WS-H web views alongside server-only I/J work, after API contracts freeze.
 - L/M/N leaf modules only while they avoid lifecycle, repositories, RPC/contracts, orchestrator,
@@ -1297,10 +1408,17 @@ implementation agents can run at once.
 
 **Must serialize, or route through one integration owner:**
 
-- WS-A and WS-B both need `server.ts` and `ws.ts`.
-- WS-B before C, D and F.
-- C + D + F before G. G before H and K integration.
-- I before J integration; WS-J2 before the Phase 2 exit; J before K.
+- **WS-A, WS-A2 and WS-B share one transport-integration lane.** WS-A2 is not just a desktop
+  bootstrap change: it touches transport routing, `server.ts`/`ws.ts` integration, client connection
+  resolution, desktop bootstrap and CLI config. It serializes with A and B, not alongside them.
+- WS-B before C, D and F0.
+- WS-F0 before F1..F5. C + D + F before G. G before H and K integration.
+- I before J integration; J before K.
+- **WS-J and WS-J2 define their shared interfaces first, then serialize runner integration.** J2
+  shares runner lifecycle and live-request code with J, contracts and RPCs with B, and web state and
+  routes with K and N. Its RPC changes route through the contracts owner and its minimal UI through
+  the web integration owner. "J2 before the Phase 2 exit" is a necessary condition, not a
+  sufficient one.
 - Backend L/M/N integration. M's retry and recovery transitions land before L/N add terminal ones.
 - E/H/N/O/P whenever they touch routes, `routeTree.gen.ts`, navigation, or `state/symphony.ts`.
 - O after M and the approval infrastructure. P after L/M/N, serialized with O wherever lifecycle,
@@ -1383,14 +1501,15 @@ packages/contracts/src/symphony.ts                  domain + RPC schemas
 packages/contracts/src/rpc.ts                       WS method groups (add)
 apps/server/src/symphony/Domain/*                   pure domain types, keys, lifecycle
 apps/server/src/symphony/Workflow/*                 loader, config, validation, prompt, watch
-apps/server/src/symphony/Trackers/*                 adapter, GitHub issues, normalize
+apps/server/src/symphony/Trackers/*                 adapter core (WS-F0) + five adapters:
+                                                    GitHub, Jira, Linear, GitLab, Asana
 apps/server/src/symphony/Workspaces/*               manager, hooks
 apps/server/src/symphony/Runner/*                   agent runtime, codex client wiring, policy
 apps/server/src/symphony/Validation/Runner.ts
 apps/server/src/symphony/Evidence/*                 service, PR evidence
 apps/server/src/symphony/Attention/*                attention, approvals
 apps/server/src/symphony/Orchestrator/*             orchestrator, retry, reconcile, recovery
-apps/server/src/symphony/Persistence/Migrations/*   035..044
+apps/server/src/symphony/Persistence/Migrations/*   035..045 (036 carries claim-owner fencing)
 apps/server/src/symphony/Persistence/Services/*
 apps/server/src/symphony/Services/*  Layers/*       Context tags + live impls + assembly
 apps/server/src/symphony/rpc.ts                      WS handlers
@@ -1404,6 +1523,12 @@ apps/web/src/state/symphony.ts                      atoms + commands
 apps/web/src/routes/_symphony*.tsx                  routes
 apps/web/src/components/symphony/*                  views
 apps/web/src/notifications/SymphonyNotificationCoordinator.tsx
-apps/desktop/src/backend/DesktopBackendManager.ts   per-launch credential (Phase 0 WS-A)
-docs/integrations/symphony-github.md                adapter profile
+apps/desktop/src/backend/DesktopBackendManager.ts   per-launch credential (WS-A2)
+packages/client-runtime/src/connection/resolver.ts  credential transport selection (WS-A2)
+apps/server/src/cli/config.ts                       serve token plumbing (WS-A2)
+docs/integrations/symphony-github.md                adapter profiles, one per tracker
+docs/integrations/symphony-jira.md                  incl. Jira issues + GitHub PRs combination
+docs/integrations/symphony-linear.md
+docs/integrations/symphony-gitlab.md
+docs/integrations/symphony-asana.md
 ```
