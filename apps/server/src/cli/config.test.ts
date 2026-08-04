@@ -28,6 +28,8 @@ const emptyFlags: CliServerFlags = {
   bootstrapFd: Option.none(),
   autoBootstrapProjectFromCwd: Option.none(),
   logWebSocketEvents: Option.none(),
+  publicHost: Option.none(),
+  publicOrigin: Option.none(),
 };
 
 it.layer(NodeServices.layer)("cli config resolution", (it) => {

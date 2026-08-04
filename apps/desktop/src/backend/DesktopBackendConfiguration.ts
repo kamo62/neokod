@@ -320,7 +320,9 @@ const buildObservabilityFragment = (observabilitySettings: BackendObservabilityS
 
 const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolvePrimary")(
   function* (
-    input: SharedBootstrapInput,
+    input: SharedBootstrapInput & {
+      readonly loopbackAuthToken: string;
+    },
   ): Effect.fn.Return<
     DesktopBackendManager.DesktopBackendStartConfig,
     never,
@@ -337,6 +339,7 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
       neokodHome: environment.baseDir,
       transport: "loopback" as const,
       host: backendConfig.bindHost,
+      loopbackAuthToken: input.loopbackAuthToken,
       ...buildObservabilityFragment(input.observabilitySettings),
     };
 
@@ -586,7 +589,10 @@ export const make = Effect.gen(function* () {
 
   const buildWindowsPrimaryConfig = Effect.gen(function* () {
     const shared = yield* sharedInputs;
-    return yield* resolvePrimaryStartConfig(shared).pipe(
+    return yield* resolvePrimaryStartConfig({
+      ...shared,
+      loopbackAuthToken: yield* makeWslBearerToken,
+    }).pipe(
       Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),
       Effect.provideService(DesktopLocalServer.DesktopLocalServer, localServer),
     );

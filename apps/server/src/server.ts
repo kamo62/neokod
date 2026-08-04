@@ -1,7 +1,12 @@
 import { EnvironmentHttpApi } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { FetchHttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
+import {
+  FetchHttpClient,
+  HttpRouter,
+  HttpServer,
+  HttpServerRespondable,
+} from "effect/unstable/http";
 import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 
 import * as ServerConfig from "./config.ts";
@@ -47,6 +52,7 @@ import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import { OrchestrationReactorLive } from "./orchestration/Layers/OrchestrationReactor.ts";
 import { RuntimeReceiptBusLive } from "./orchestration/Layers/RuntimeReceiptBus.ts";
 import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRuntimeIngestion.ts";
+import { SymphonyLayerObserve } from "./symphony/Layers/SymphonyLayer.ts";
 import { ProviderCommandReactorLive } from "./orchestration/Layers/ProviderCommandReactor.ts";
 import { CheckpointReactorLive } from "./orchestration/Layers/CheckpointReactor.ts";
 import { ThreadDeletionReactorLive } from "./orchestration/Layers/ThreadDeletionReactor.ts";
@@ -73,6 +79,7 @@ import { ObservabilityLive } from "./observability/Layers/Observability.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as ServerSecretStore from "./secrets/ServerSecretStore.ts";
 import * as WslBearerAuth from "./transport/WslBearerAuth.ts";
+import * as LocalTransportAuth from "./transport/LocalTransportAuth.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
@@ -298,6 +305,7 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(RepositoryIdentityResolver.layer),
   Layer.provideMerge(ServerEnvironment.layer),
   Layer.provideMerge(WslBearerAuth.layer),
+  Layer.provideMerge(LocalTransportAuth.layer),
   Layer.provideMerge(ServerSecretStore.layer),
 );
 
@@ -368,6 +376,11 @@ export const makeServerLayer = Layer.unwrap(
     const serverApplicationLayer = Layer.mergeAll(
       HttpRouter.serve(makeRoutesLayer, {
         disableLogger: !config.logWebSocketEvents,
+        middleware: (effect) =>
+          Effect.gen(function* () {
+            const auth = yield* LocalTransportAuth.LocalTransportAuth;
+            return yield* auth.middleware(effect);
+          }).pipe(Effect.catchTag("TransportOriginInvalidError", HttpServerRespondable.toResponse)),
       }),
       httpListeningLayer,
       runtimeStateLayer,
@@ -380,6 +393,21 @@ export const makeServerLayer = Layer.unwrap(
       Layer.provideMerge(FetchHttpClient.layer),
       Layer.provideMerge(VcsProcess.layer),
       Layer.provideMerge(PlatformServicesLive),
+      // Symphony Observe: provide its runtime requirements from the services
+      // already in this chain so the launch boundary stays as documented
+      // (only ServerConfig leaks to the CLI).
+      Layer.provideMerge(
+        SymphonyLayerObserve.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              PersistenceLayerLive,
+              ServerSettings.layer.pipe(Layer.provide(ServerSecretStore.layer)),
+              NetService.layer,
+              VcsProcess.layer,
+            ).pipe(Layer.provideMerge(PlatformServicesLive)),
+          ),
+        ),
+      ),
     );
   }),
 );

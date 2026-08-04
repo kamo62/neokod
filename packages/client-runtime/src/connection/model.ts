@@ -82,13 +82,27 @@ export interface PreparedWslBearerAuthorization {
   readonly token: string;
 }
 
+export interface PreparedLoopbackAuthorization {
+  readonly _tag: "LoopbackBearer";
+  readonly token: string;
+}
+
+export type PreparedAuthorization = PreparedWslBearerAuthorization | PreparedLoopbackAuthorization;
+
 export interface PreparedConnection {
   readonly environmentId: EnvironmentId;
   readonly label: string;
   readonly httpBaseUrl: string;
   readonly socketUrl: string;
   readonly wslBearerAuthorization: PreparedWslBearerAuthorization | null;
+  readonly loopbackAuthorization?: PreparedLoopbackAuthorization | null;
   readonly target: ConnectionTarget;
+}
+
+export function effectiveAuthorization(
+  connection: PreparedConnection,
+): PreparedWslBearerAuthorization | PreparedLoopbackAuthorization | null {
+  return connection.loopbackAuthorization ?? connection.wslBearerAuthorization;
 }
 
 export type SupervisorConnectionPhase =

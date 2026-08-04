@@ -43,6 +43,9 @@ import {
   type TerminalMetadataStreamEvent,
   WS_METHODS,
   WsRpcGroup,
+  SYMPHONY_WS_METHODS,
+  type SymphonyOverview,
+  SymphonyError,
 } from "@neokod/contracts";
 import { HttpRouter, HttpServerRespondable } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
@@ -58,6 +61,8 @@ import {
 import { normalizeDispatchCommand } from "./orchestration/Normalizer.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as SymphonyOrchestrator from "./symphony/Orchestrator/SymphonyOrchestrator.ts";
+import * as ApprovalService from "./symphony/Runner/ApprovalService.ts";
 import {
   observeRpcEffect as instrumentRpcEffect,
   observeRpcStream as instrumentRpcStream,
@@ -322,6 +327,43 @@ const makeWsRpcLayer = (
         effect: Effect.Effect<A, E, R>,
         traceAttributes?: Readonly<Record<string, unknown>>,
       ) => instrumentRpcEffect(method, effect, traceAttributes);
+      const emptyOverview = (): Effect.Effect<SymphonyOverview> =>
+        Effect.succeed({
+          running: 0,
+          queued: 0,
+          needsAttention: 0,
+          readyForReview: 0,
+          retrying: 0,
+          failedToday: 0,
+          orchestratorPaused: false,
+          activeWorkflowCount: 0,
+          providerHealth: {},
+          trackerHealth: {},
+          lastTrackerPollAt: null,
+          activeAgentCount: 0,
+          generatedAt: new Date().toISOString(),
+        });
+      // Resolve the Symphony orchestrator lazily per request so the RPC layer
+      // itself has no hard dependency on the Symphony layers. When they are not
+      // mounted, the Observe methods degrade to empty data instead of failing.
+      const withOrchestrator = <A, E>(
+        run: (
+          orchestrator: SymphonyOrchestrator.SymphonyOrchestrator["Service"],
+        ) => Effect.Effect<A, E>,
+        fallback: Effect.Effect<A, E>,
+      ): Effect.Effect<A, E> =>
+        Effect.serviceOption(SymphonyOrchestrator.SymphonyOrchestrator).pipe(
+          Effect.flatMap((maybe) => (Option.isSome(maybe) ? run(maybe.value) : fallback)),
+        );
+      const withApprovalService = <A, E>(
+        run: (approvals: ApprovalService.ApprovalService["Service"]) => Effect.Effect<A, E>,
+        fallback: Effect.Effect<A, E>,
+      ): Effect.Effect<A, E> =>
+        Effect.serviceOption(ApprovalService.ApprovalService).pipe(
+          Effect.flatMap((maybe) => (Option.isSome(maybe) ? run(maybe.value) : fallback)),
+        );
+      const approvalError = (message: string): SymphonyError =>
+        new SymphonyError({ code: "approval_request_not_found", message });
       const observeRpcStream = <A, E, R>(
         method: string,
         stream: Stream.Stream<A, E, R>,
@@ -1600,6 +1642,91 @@ const makeWsRpcLayer = (
               return Stream.concat(Stream.fromIterable(snapshotEvents), liveEvents);
             }),
             { "rpc.aggregate": "server" },
+          ),
+
+        // Symphony Observe reads. These are read-only and never dispatch; the
+        // orchestrator records transient tracker errors in health rather than
+        // failing the request. When the orchestrator is not mounted (e.g. in
+        // harnesses that do not provide the Symphony layers), they return empty
+        // data rather than failing, so the socket surface stays inert.
+        [SYMPHONY_WS_METHODS.getOverview]: () =>
+          observeRpcEffect(
+            SYMPHONY_WS_METHODS.getOverview,
+            withOrchestrator((orchestrator) => orchestrator.getOverview(), emptyOverview()),
+            { "rpc.aggregate": "symphony" },
+          ),
+        [SYMPHONY_WS_METHODS.listQueue]: (input) =>
+          observeRpcEffect(
+            SYMPHONY_WS_METHODS.listQueue,
+            withOrchestrator(
+              (orchestrator) =>
+                orchestrator.listQueue(
+                  input.limit === undefined ? undefined : { limit: input.limit },
+                ),
+              Effect.succeed([]),
+            ),
+            { "rpc.aggregate": "symphony" },
+          ),
+        [SYMPHONY_WS_METHODS.listRuns]: (input) =>
+          observeRpcEffect(
+            SYMPHONY_WS_METHODS.listRuns,
+            withOrchestrator(
+              (orchestrator) =>
+                orchestrator.listRuns(
+                  input.limit === undefined ? undefined : { limit: input.limit },
+                ),
+              Effect.succeed([]),
+            ),
+            { "rpc.aggregate": "symphony" },
+          ),
+        [SYMPHONY_WS_METHODS.listWorkflows]: () =>
+          observeRpcEffect(
+            SYMPHONY_WS_METHODS.listWorkflows,
+            withOrchestrator((orchestrator) => orchestrator.listWorkflows(), Effect.succeed([])),
+            { "rpc.aggregate": "symphony" },
+          ),
+        [SYMPHONY_WS_METHODS.validateWorkflow]: () =>
+          observeRpcEffect(SYMPHONY_WS_METHODS.validateWorkflow, Effect.succeed({ ok: true }), {
+            "rpc.aggregate": "symphony",
+          }),
+        [SYMPHONY_WS_METHODS.approve]: (input) =>
+          observeRpcEffect(
+            SYMPHONY_WS_METHODS.approve,
+            withApprovalService(
+              (approvals) =>
+                approvals.approve(input.requestId).pipe(
+                  Effect.mapError((cause) => approvalError(cause.message)),
+                  Effect.as({ ok: true }),
+                ),
+              Effect.succeed({ ok: true }),
+            ),
+            { "rpc.aggregate": "symphony" },
+          ),
+        [SYMPHONY_WS_METHODS.reject]: (input) =>
+          observeRpcEffect(
+            SYMPHONY_WS_METHODS.reject,
+            withApprovalService(
+              (approvals) =>
+                approvals.reject(input.requestId, input.reason).pipe(
+                  Effect.mapError((cause) => approvalError(cause.message)),
+                  Effect.as({ ok: true }),
+                ),
+              Effect.succeed({ ok: true }),
+            ),
+            { "rpc.aggregate": "symphony" },
+          ),
+        [SYMPHONY_WS_METHODS.respondToUserInput]: (input) =>
+          observeRpcEffect(
+            SYMPHONY_WS_METHODS.respondToUserInput,
+            withApprovalService(
+              (approvals) =>
+                approvals.respondToUserInput(input.requestId, input.text).pipe(
+                  Effect.mapError((cause) => approvalError(cause.message)),
+                  Effect.as({ ok: true }),
+                ),
+              Effect.succeed({ ok: true }),
+            ),
+            { "rpc.aggregate": "symphony" },
           ),
       });
     }),

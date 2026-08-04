@@ -273,6 +273,13 @@ export type DesktopEnvironmentBootstrap =
       readonly transport: "loopback";
       readonly httpBaseUrl: string;
       readonly wsBaseUrl: string;
+      /**
+       * Per-launch loopback credential (PRD 17.1, plan WS-A2). Present when the
+       * desktop minted one for this launch; the client attaches it as a bearer
+       * on HTTP and as a WebSocket ticket for `/ws`. Absent means the legacy
+       * loopback trust model is in effect.
+       */
+      readonly loopbackAuthToken?: string;
     }
   | {
       readonly id: string;
@@ -291,6 +298,7 @@ export const DesktopEnvironmentBootstrapSchema = Schema.Union([
     transport: Schema.Literal("loopback"),
     httpBaseUrl: Schema.String,
     wsBaseUrl: Schema.String,
+    loopbackAuthToken: Schema.optional(TrimmedNonEmptyString),
   }),
   Schema.Struct({
     id: WslDesktopEnvironmentId,
