@@ -30,6 +30,29 @@ export const EnvironmentWslBearerInvalidReason = Schema.Literals([
 ]);
 export type EnvironmentWslBearerInvalidReason = typeof EnvironmentWslBearerInvalidReason.Type;
 
+/**
+ * Transport-level Host/Origin rejection (PRD 17.1, plan 13.2). The router-wide
+ * middleware rejects requests with an unexpected Host or Origin before route
+ * dispatch, so a DNS-rebinding or cross-site page cannot reach any route.
+ */
+export const TransportOriginInvalidReason = Schema.Literals(["invalid_host", "invalid_origin"]);
+export type TransportOriginInvalidReason = typeof TransportOriginInvalidReason.Type;
+
+export class TransportOriginInvalidError extends Schema.TaggedErrorClass<TransportOriginInvalidError>()(
+  "TransportOriginInvalidError",
+  {
+    code: Schema.Literal("transport_origin_invalid"),
+    reason: TransportOriginInvalidReason,
+    expected: Schema.String,
+    received: Schema.String,
+  },
+  { httpApiStatus: 403 },
+) {
+  [HttpServerRespondable.symbol]() {
+    return HttpServerResponse.schemaJson(TransportOriginInvalidError)(this, { status: 403 });
+  }
+}
+
 export const EnvironmentInternalErrorReason = Schema.Literals([
   "orchestration_snapshot_failed",
   "orchestration_thread_snapshot_failed",

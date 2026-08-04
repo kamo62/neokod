@@ -83,17 +83,17 @@ const wakeupsLayer = Wakeups.layer({
   ),
 });
 
-const descriptorFor = (httpBaseUrl: string, wslBearerToken?: string) => {
+const descriptorFor = (httpBaseUrl: string, bearerToken?: string) => {
   const baseLayer = remoteHttpClientLayer(globalThis.fetch);
   const clientLayer =
-    wslBearerToken === undefined
+    bearerToken === undefined
       ? baseLayer
       : Layer.effect(
           HttpClient.HttpClient,
           Effect.map(HttpClient.HttpClient, (client) =>
             client.pipe(
               HttpClient.mapRequest((request) =>
-                HttpClientRequest.bearerToken(request, wslBearerToken),
+                HttpClientRequest.bearerToken(request, bearerToken),
               ),
             ),
           ),
@@ -107,9 +107,11 @@ const descriptorFor = (httpBaseUrl: string, wslBearerToken?: string) => {
 const loadPrimaryConnectionRegistration = Effect.fn(
   "web.connectionPlatform.loadPrimaryConnectionRegistration",
 )(function* (resolved: PrimaryEnvironmentTarget) {
+  const loopbackAuthToken =
+    resolved.transport._tag === "Loopback" ? resolved.transport.loopbackAuthToken : undefined;
   const descriptor = yield* descriptorFor(
     resolved.target.httpBaseUrl,
-    resolved.transport._tag === "WslBearer" ? resolved.transport.token : undefined,
+    resolved.transport._tag === "WslBearer" ? resolved.transport.token : loopbackAuthToken,
   );
   if (resolved.transport._tag === "Loopback") {
     return new PrimaryConnectionRegistration({
@@ -118,6 +120,9 @@ const loadPrimaryConnectionRegistration = Effect.fn(
         label: descriptor.label,
         ...resolved.target,
       }),
+      ...(resolved.transport.loopbackAuthToken !== undefined
+        ? { loopbackAuthToken: resolved.transport.loopbackAuthToken }
+        : {}),
     });
   }
   const connectionId = desktopLocalConnectionId(PRIMARY_LOCAL_ENVIRONMENT_ID);

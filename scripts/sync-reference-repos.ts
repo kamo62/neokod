@@ -168,7 +168,7 @@ export const resolveReferenceRepoRef = Effect.fn("resolveReferenceRepoRef")(func
   rootDir: string,
   latest: boolean,
 ) {
-  if (latest) {
+  if (latest || repo.versionSourcePath === undefined) {
     return repo.latestRef;
   }
 

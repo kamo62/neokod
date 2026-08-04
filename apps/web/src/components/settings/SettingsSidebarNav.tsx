@@ -3,6 +3,7 @@ import {
   ArchiveIcon,
   ArrowLeftIcon,
   BotIcon,
+  CheckSquareIcon,
   GitBranchIcon,
   KeyboardIcon,
   Link2Icon,
@@ -26,6 +27,7 @@ export type SettingsSectionPath =
   | "/settings/keybindings"
   | "/settings/providers"
   | "/settings/source-control"
+  | "/settings/tracking"
   | "/settings/connections"
   | "/settings/archived";
 
@@ -38,6 +40,7 @@ export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
   { label: "Keybindings", to: "/settings/keybindings", icon: KeyboardIcon },
   { label: "Providers", to: "/settings/providers", icon: BotIcon },
   { label: "Source Control", to: "/settings/source-control", icon: GitBranchIcon },
+  { label: "Tracking", to: "/settings/tracking", icon: CheckSquareIcon },
   { label: "Connections", to: "/settings/connections", icon: Link2Icon },
   { label: "Archive", to: "/settings/archived", icon: ArchiveIcon },
 ];
