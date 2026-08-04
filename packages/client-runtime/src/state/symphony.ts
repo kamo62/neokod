@@ -1,16 +1,18 @@
 import { SYMPHONY_WS_METHODS } from "@neokod/contracts";
 import { Atom } from "effect/unstable/reactivity";
 
-import { createEnvironmentRpcQueryAtomFamily } from "./runtime.ts";
+import { createEnvironmentRpcCommand, createEnvironmentRpcQueryAtomFamily } from "./runtime.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 
 /**
  * Symphony Observe state atoms.
  *
  * Query atoms for the read-only Observe surface: overview, queue, runs,
- * workflows, and tracker health. Live subscriptions (queue/runs updates) are
- * added when the subscription RPCs are mounted; for now the views refresh on
- * mount and on an explicit refresh interval.
+ * workflows, and tracker health. Command atoms for the FR-022 queue overrides
+ * (exclude / include / local priority), which persist server-side and survive
+ * restart. Live subscriptions (queue/runs updates) are added when the
+ * subscription RPCs are mounted; for now the views refresh on mount and on an
+ * explicit refresh interval.
  */
 export function createSymphonyEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
@@ -39,6 +41,18 @@ export function createSymphonyEnvironmentAtoms<R, E>(
       tag: SYMPHONY_WS_METHODS.listWorkflows,
       staleTimeMs: 10_000,
       refreshIntervalMs: 30_000,
+    }),
+    excludeWorkItem: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:symphony:excludeWorkItem",
+      tag: SYMPHONY_WS_METHODS.excludeWorkItem,
+    }),
+    includeWorkItem: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:symphony:includeWorkItem",
+      tag: SYMPHONY_WS_METHODS.includeWorkItem,
+    }),
+    setLocalPriority: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:symphony:setLocalPriority",
+      tag: SYMPHONY_WS_METHODS.setLocalPriority,
     }),
   };
 }

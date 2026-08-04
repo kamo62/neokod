@@ -1728,6 +1728,40 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "symphony" },
           ),
+        [SYMPHONY_WS_METHODS.excludeWorkItem]: (input) =>
+          observeRpcEffect(
+            SYMPHONY_WS_METHODS.excludeWorkItem,
+            withOrchestrator(
+              (orchestrator) =>
+                orchestrator
+                  .excludeWorkItem(input.workItemId, input.exclude)
+                  .pipe(Effect.as({ ok: true })),
+              Effect.succeed({ ok: true }),
+            ),
+            { "rpc.aggregate": "symphony" },
+          ),
+        [SYMPHONY_WS_METHODS.includeWorkItem]: (input) =>
+          observeRpcEffect(
+            SYMPHONY_WS_METHODS.includeWorkItem,
+            withOrchestrator(
+              (orchestrator) =>
+                orchestrator.includeWorkItem(input.workItemId).pipe(Effect.as({ ok: true })),
+              Effect.succeed({ ok: true }),
+            ),
+            { "rpc.aggregate": "symphony" },
+          ),
+        [SYMPHONY_WS_METHODS.setLocalPriority]: (input) =>
+          observeRpcEffect(
+            SYMPHONY_WS_METHODS.setLocalPriority,
+            withOrchestrator(
+              (orchestrator) =>
+                orchestrator
+                  .setLocalPriority(input.workItemId, input.priority)
+                  .pipe(Effect.as({ ok: true })),
+              Effect.succeed({ ok: true }),
+            ),
+            { "rpc.aggregate": "symphony" },
+          ),
       });
     }),
   );

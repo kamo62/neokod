@@ -1,8 +1,9 @@
 import { ListTodoIcon, RefreshCwIcon } from "lucide-react";
 
-import type { QueueItem } from "@neokod/contracts";
+import type { EnvironmentId, QueueItem } from "@neokod/contracts";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { symphonyEnvironment } from "../../state/symphony";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -20,9 +21,36 @@ const LIFECYCLE_BADGE: Record<string, "default" | "secondary" | "success" | "war
   eligible: "secondary",
 };
 
-function QueueRow({ item }: { readonly item: QueueItem }) {
+function QueueRow({
+  item,
+  environmentId,
+}: {
+  readonly item: QueueItem;
+  readonly environmentId: EnvironmentId;
+}) {
   const lifecycleLabel = LIFECYCLE_LABELS[item.lifecycle] ?? item.lifecycle;
   const badgeVariant = LIFECYCLE_BADGE[item.lifecycle] ?? "secondary";
+
+  const excludeWorkItem = useAtomCommand(symphonyEnvironment.excludeWorkItem);
+  const includeWorkItem = useAtomCommand(symphonyEnvironment.includeWorkItem);
+  const setLocalPriority = useAtomCommand(symphonyEnvironment.setLocalPriority);
+
+  const toggleExcluded = () => {
+    const target = { environmentId, input: { workItemId: item.workItemId } };
+    if (item.excluded) {
+      void includeWorkItem(target);
+    } else {
+      void excludeWorkItem({ ...target, input: { workItemId: item.workItemId, exclude: true } });
+    }
+  };
+
+  const cyclePriority = () => {
+    const next = item.priority === undefined || item.priority >= 4 ? 0 : item.priority + 1;
+    void setLocalPriority({
+      environmentId,
+      input: { workItemId: item.workItemId, priority: next },
+    });
+  };
 
   return (
     <div className="border-t border-border/60 px-4 py-3.5 first:border-t-0 sm:px-5">
@@ -58,6 +86,28 @@ function QueueRow({ item }: { readonly item: QueueItem }) {
           <Badge variant={item.blocked ? "warning" : "success"} size="sm">
             {item.blocked ? "Blocked" : "Dispatchable"}
           </Badge>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-[11px]"
+            onClick={cyclePriority}
+            aria-label="Cycle local priority"
+            title="Cycle local priority (0-4); persisted and survives restart"
+          >
+            P{item.priority ?? "–"}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-[11px]"
+            onClick={toggleExcluded}
+            aria-label={item.excluded ? "Include in queue" : "Exclude from queue"}
+            title={
+              item.excluded ? "Include this item again" : "Exclude this item; survives restart"
+            }
+          >
+            {item.excluded ? "Include" : "Exclude"}
+          </Button>
         </div>
       </div>
     </div>
@@ -86,7 +136,6 @@ export function SymphonyQueueView() {
     environmentId === null ? null : symphonyEnvironment.queue({ environmentId, input: {} }),
   );
   const items = queue.data ?? [];
-
   return (
     <div className="flex flex-1 flex-col">
       <div className="flex items-center justify-between px-6 pb-2 pt-6 sm:px-8">
@@ -129,9 +178,11 @@ export function SymphonyQueueView() {
           </Empty>
         ) : (
           <div className="rounded-2xl border bg-card">
-            {items.map((item) => (
-              <QueueRow key={item.workItemId} item={item} />
-            ))}
+            {environmentId === null
+              ? null
+              : items.map((item) => (
+                  <QueueRow key={item.workItemId} item={item} environmentId={environmentId} />
+                ))}
           </div>
         )}
       </div>

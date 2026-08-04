@@ -1,6 +1,12 @@
 import * as Schema from "effect/Schema";
 
-import { IsoDateTime, NonNegativeInt, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  IsoDateTime,
+  NonNegativeInt,
+  PositiveInt,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 import { ProviderInstanceRef } from "./providerInstance.ts";
 
 /**
@@ -837,6 +843,9 @@ export const SymphonyExcludeWorkItemInput = Schema.Struct({
   workItemId: WorkItemId,
   exclude: Schema.Boolean,
 });
+export const SymphonyIncludeWorkItemInput = Schema.Struct({
+  workItemId: WorkItemId,
+});
 export const SymphonySetLocalPriorityInput = Schema.Struct({
   workItemId: WorkItemId,
   priority: Schema.Int,
@@ -874,6 +883,25 @@ export const SymphonyApproveMergeInput = Schema.Struct({
 });
 export const SymphonyTakeOverInput = Schema.Struct({
   runAttemptId: RunAttemptId,
+});
+
+/**
+ * Delegate a Work Mode thread into a Symphony work item (PRD FR-110/111,
+ * plan 12). Carries the thread identity plus the fields a new work item needs:
+ * objective, repository, current branch, relevant files, conversation summary,
+ * acceptance criteria, and the selected provider where appropriate.
+ */
+export const SymphonyDelegateFromThreadInput = Schema.Struct({
+  threadId: ThreadId,
+  objective: TrimmedNonEmptyString,
+  repositoryPath: Schema.optional(TrimmedNonEmptyString),
+  branch: Schema.optional(TrimmedNonEmptyString),
+  relevantFiles: Schema.optional(Schema.Array(Schema.String)),
+  summary: Schema.optional(Schema.String),
+  acceptanceCriteria: Schema.optional(Schema.Array(Schema.String)),
+});
+export const SymphonyDelegateFromThreadResult = Schema.Struct({
+  workItemId: WorkItemId,
 });
 export const SymphonyExportDiagnosticsInput = Schema.Struct({
   includeRepositorySource: Schema.optionalKey(Schema.Boolean),

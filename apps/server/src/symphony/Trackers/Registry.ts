@@ -7,6 +7,8 @@ import type { TrackerAdapter } from "./Adapter.ts";
 import { TrackerAdapterError, unsupportedTrackerKind } from "./Errors.ts";
 import { GitHubIssuesCli, GitHubIssuesCliLive } from "./GitHubIssuesCli.ts";
 import { makeGitHubIssuesAdapter } from "./GitHubIssuesAdapter.ts";
+import { makeJiraAdapter } from "./JiraAdapter.ts";
+import * as HttpClient from "effect/unstable/http/HttpClient";
 
 /**
  * Adapter factory keyed by tracker kind. Leaf adapters (F1-F5) register here
@@ -69,14 +71,23 @@ export const TrackerRegistryEmptyLive = Layer.succeed(TrackerAdapterRegistry, {
 export const TrackerRegistryWithFactories = (factories: AdapterFactories) =>
   Layer.succeed(TrackerAdapterRegistry, makeTrackerRegistry(factories));
 
-/** Registry wiring the GitHub Issues adapter on top of the `gh` CLI. */
+/** Registry wiring the GitHub Issues adapter on top of the `gh` CLI and the
+ *  Jira Cloud adapter on the shared HttpClient. */
 export const TrackerRegistryGitHubLive = Effect.gen(function* () {
   const cli = yield* GitHubIssuesCli;
+  const httpClient = yield* HttpClient.HttpClient;
   const githubFactory: AdapterFactory = ({ repositoryPath, provider, env }) =>
     makeGitHubIssuesAdapter({ cwd: repositoryPath, provider, env, cli });
+  const jiraFactory: AdapterFactory = ({ provider, env }) =>
+    makeJiraAdapter({ provider, env, httpClient });
   return Layer.succeed(
     TrackerAdapterRegistry,
-    makeTrackerRegistry(new Map([["github", githubFactory]])),
+    makeTrackerRegistry(
+      new Map([
+        ["github", githubFactory],
+        ["jira", jiraFactory],
+      ]),
+    ),
   );
 }).pipe(Effect.provide(GitHubIssuesCliLive), Layer.unwrap);
 

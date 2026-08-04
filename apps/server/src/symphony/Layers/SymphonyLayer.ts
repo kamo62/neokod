@@ -1,4 +1,5 @@
 import * as Layer from "effect/Layer";
+import { FetchHttpClient } from "effect/unstable/http";
 
 import { WorkflowRepositoryLive } from "../Persistence/Layers/WorkflowRepository.ts";
 import { WorkItemRepositoryLive } from "../Persistence/Layers/WorkItemRepository.ts";
@@ -14,12 +15,11 @@ import { ApprovalServiceLive } from "../Runner/ApprovalService.ts";
  * Symphony layer assembly for the Observe phase.
  *
  * Wires the orchestrator live with its persistence repositories, the GitHub
- * Issues tracker adapter (host-side `gh`), and the tracker-enablement gate.
- * The repositories share the runtime's SQLite client, the tracker gate reads
- * `ServerSettings.trackers`, and the GitHub adapter uses `VcsProcess`. These
- * are provided by the runtime assembly that mounts this layer, mirroring how
- * `OrchestrationLayerLive` is wired (the runtime mounts it with its
- * providers already in the environment).
+ * Issues and Jira tracker adapters, and the tracker-enablement gate. The
+ * repositories share the runtime's SQLite client, the tracker gate reads
+ * `ServerSettings.trackers`, the GitHub adapter uses `VcsProcess`, and the
+ * Jira adapter uses the shared `HttpClient` (provided internally so the
+ * requirement does not leak into the launch boundary).
  */
 export const SymphonyLayerObserve = Layer.merge(
   SymphonyOrchestratorLive.pipe(
@@ -28,7 +28,7 @@ export const SymphonyLayerObserve = Layer.merge(
         WorkflowRepositoryLive,
         WorkItemRepositoryLive,
         OrchestratorStateRepositoryLive,
-        TrackerRegistryGitHubLive,
+        TrackerRegistryGitHubLive.pipe(Layer.provide(FetchHttpClient.layer)),
         TrackerEnablementLive,
       ),
     ),

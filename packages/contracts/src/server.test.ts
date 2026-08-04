@@ -131,7 +131,6 @@ describe("ServerProvider", () => {
 
     expect(parsed.continuation?.groupKey).toBe("codex:home:/Users/julius/.codex");
   });
-
 });
 
 describe("server config forward compatibility", () => {

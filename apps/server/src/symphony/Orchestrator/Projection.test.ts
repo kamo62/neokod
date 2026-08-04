@@ -45,38 +45,44 @@ const makeIssue = (overrides: Partial<NormalizedIssue> = {}): NormalizedIssue =>
 const eligibility = { reasons: [] } as never;
 
 const project = (issue: NormalizedIssue, config: EffectiveWorkflowConfig = makeConfig()) =>
-  Effect.runSync(projectWorkItem(issue, config, eligibility, "2026-08-04T00:00:00Z"));
+  projectWorkItem(issue, config, eligibility, "2026-08-04T00:00:00Z");
 
 describe("projectWorkItem", () => {
-  it("accumulates description, branch, priority, and blocked onto one row", () => {
-    const run = project(makeIssue());
-    expect(run.baseBranch).toBe("fix-login");
-    expect(run.priority).toBe(0);
-    expect(run.blocked).toBe(true);
-    expect(run.description).toBe("The login form rejects valid passwords.");
-  });
+  it.effect("accumulates description, branch, priority, and blocked onto one row", () =>
+    Effect.gen(function* () {
+      const run = yield* project(makeIssue());
+      expect(run.baseBranch).toBe("fix-login");
+      expect(run.priority).toBe(0);
+      expect(run.blocked).toBe(true);
+      expect(run.description).toBe("The login form rejects valid passwords.");
+    }),
+  );
 
-  it("keeps branch and priority when a description is present (no short-circuit)", () => {
-    const run = project(makeIssue({ description: "Body only." }));
-    expect(run.baseBranch).toBe("fix-login");
-    expect(run.priority).toBe(0);
-    expect(run.blocked).toBe(true);
-  });
+  it.effect("keeps branch and priority when a description is present (no short-circuit)", () =>
+    Effect.gen(function* () {
+      const run = yield* project(makeIssue({ description: "Body only." }));
+      expect(run.baseBranch).toBe("fix-login");
+      expect(run.priority).toBe(0);
+      expect(run.blocked).toBe(true);
+    }),
+  );
 
-  it("omits absent fields", () => {
-    const run = project(
-      makeIssue({
-        description: null,
-        branchName: null,
-        priority: null,
-        blockedBy: [],
-      }),
-    );
-    expect(run.baseBranch).toBeUndefined();
-    expect(run.priority).toBeUndefined();
-    expect(run.blocked).toBeUndefined();
-    expect(run.description).toBeUndefined();
-  });
+  it.effect("omits absent fields", () =>
+    Effect.gen(function* () {
+      const run = yield* project(
+        makeIssue({
+          description: null,
+          branchName: null,
+          priority: null,
+          blockedBy: [],
+        }),
+      );
+      expect(run.baseBranch).toBeUndefined();
+      expect(run.priority).toBeUndefined();
+      expect(run.blocked).toBeUndefined();
+      expect(run.description).toBeUndefined();
+    }),
+  );
 
   it("derives a deterministic work-item id from tracker kind and issue id", () => {
     expect(workItemIdForIssue("github", "1")).toBe("github:1");

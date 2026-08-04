@@ -8,6 +8,7 @@ import type {
   WorkflowRecord,
   WorkItem,
 } from "@neokod/contracts";
+import { WorkItemId } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
@@ -241,6 +242,21 @@ const makeOrchestrator = Effect.gen(function* () {
   const isPaused: SymphonyOrchestratorShape["isPaused"] = () =>
     orchestratorState.isGlobalPaused().pipe(Effect.catch(() => Effect.succeed(false)));
 
+  const excludeWorkItem: SymphonyOrchestratorShape["excludeWorkItem"] = (workItemId, exclude) =>
+    workItems
+      .writeOverrides(WorkItemId.make(workItemId), { excluded: exclude })
+      .pipe(Effect.catch(() => Effect.void));
+
+  const includeWorkItem: SymphonyOrchestratorShape["includeWorkItem"] = (workItemId) =>
+    workItems
+      .writeOverrides(WorkItemId.make(workItemId), { excluded: false })
+      .pipe(Effect.catch(() => Effect.void));
+
+  const setLocalPriority: SymphonyOrchestratorShape["setLocalPriority"] = (workItemId, priority) =>
+    workItems
+      .writeOverrides(WorkItemId.make(workItemId), { localPriority: priority })
+      .pipe(Effect.catch(() => Effect.void));
+
   return {
     refreshNow,
     getOverview,
@@ -249,6 +265,9 @@ const makeOrchestrator = Effect.gen(function* () {
     listWorkflows,
     listTrackerHealth,
     isPaused,
+    excludeWorkItem,
+    includeWorkItem,
+    setLocalPriority,
   } satisfies SymphonyOrchestratorShape;
 });
 

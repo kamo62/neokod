@@ -111,7 +111,9 @@ const TelemetryEnvConfig = Config.all({
    */
   enabled: Config.boolean("NEOKOD_TELEMETRY_ENABLED").pipe(Config.withDefault(false)),
   flushBatchSize: Config.number("NEOKOD_TELEMETRY_FLUSH_BATCH_SIZE").pipe(Config.withDefault(20)),
-  maxBufferedEvents: Config.number("NEOKOD_TELEMETRY_MAX_BUFFERED_EVENTS").pipe(Config.withDefault(1_000)),
+  maxBufferedEvents: Config.number("NEOKOD_TELEMETRY_MAX_BUFFERED_EVENTS").pipe(
+    Config.withDefault(1_000),
+  ),
   wslDistroName: Config.string("WSL_DISTRO_NAME").pipe(Config.option),
 });
 

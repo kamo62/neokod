@@ -35,6 +35,13 @@ export interface SymphonyOrchestratorShape {
   readonly listWorkflows: () => Effect.Effect<WorkflowRecord[]>;
   readonly listTrackerHealth: () => Effect.Effect<TrackerHealth[]>;
   readonly isPaused: () => Effect.Effect<boolean>;
+
+  // Queue overrides (FR-022): persisted per work-item, survive restart, and are
+  // re-applied after every tracker refresh so a poll cannot resurrect an
+  // excluded item or reset a local priority.
+  readonly excludeWorkItem: (workItemId: string, exclude: boolean) => Effect.Effect<void>;
+  readonly includeWorkItem: (workItemId: string) => Effect.Effect<void>;
+  readonly setLocalPriority: (workItemId: string, priority: number) => Effect.Effect<void>;
 }
 
 export class SymphonyOrchestrator extends Context.Service<
