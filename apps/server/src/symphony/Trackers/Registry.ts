@@ -1,0 +1,83 @@
+import type { TrackerKind } from "@neokod/contracts";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+
+import { TrackerAdapterRegistry } from "./Adapter.ts";
+import type { TrackerAdapter } from "./Adapter.ts";
+import { TrackerAdapterError, unsupportedTrackerKind } from "./Errors.ts";
+import { GitHubIssuesCli, GitHubIssuesCliLive } from "./GitHubIssuesCli.ts";
+import { makeGitHubIssuesAdapter } from "./GitHubIssuesAdapter.ts";
+
+/**
+ * Adapter factory keyed by tracker kind. Leaf adapters (F1-F5) register here
+ * in their own layers. The registry resolves a `TrackerKind` plus its
+ * `tracker.provider` config into a constructed adapter bound to that
+ * configuration; a kind with no registered factory resolves to
+ * `unsupported_tracker_kind`.
+ */
+export type AdapterFactory = (options: {
+  readonly repositoryPath: string;
+  readonly provider: Readonly<Record<string, unknown>>;
+  readonly env: Readonly<Record<string, string | undefined>>;
+}) => Effect.Effect<TrackerAdapter, TrackerAdapterError>;
+
+export type AdapterFactories = ReadonlyMap<TrackerKind, AdapterFactory>;
+
+export const makeTrackerRegistry = (factories: AdapterFactories) => {
+  const resolve = (
+    kind: TrackerKind,
+    provider: Readonly<Record<string, unknown>>,
+    options?: {
+      readonly repositoryPath?: string;
+      readonly env?: Readonly<Record<string, string | undefined>>;
+    },
+  ): Effect.Effect<TrackerAdapter, TrackerAdapterError> => {
+    const factory = factories.get(kind);
+    if (factory === undefined) {
+      return Effect.fail(unsupportedTrackerKind(kind));
+    }
+    if (options?.repositoryPath === undefined) {
+      return Effect.fail(
+        new TrackerAdapterError({
+          code: "invalid_tracker_config",
+          message: "tracker resolution requires a repositoryPath",
+        }),
+      );
+    }
+    return factory({
+      repositoryPath: options.repositoryPath,
+      provider,
+      env: options.env ?? {},
+    });
+  };
+
+  const listKinds = (): ReadonlyArray<TrackerKind> => Array.from(factories.keys());
+
+  return {
+    resolve,
+    listKinds,
+  } satisfies TrackerAdapterRegistry["Service"];
+};
+
+/** Registry with no leaf adapters registered. Before F1-F5 land, every real kind resolves to unsupported. */
+export const TrackerRegistryEmptyLive = Layer.succeed(TrackerAdapterRegistry, {
+  resolve: (kind) => Effect.fail(unsupportedTrackerKind(kind)),
+  listKinds: () => [],
+});
+
+/** Registry accepting externally-provided adapter factories. */
+export const TrackerRegistryWithFactories = (factories: AdapterFactories) =>
+  Layer.succeed(TrackerAdapterRegistry, makeTrackerRegistry(factories));
+
+/** Registry wiring the GitHub Issues adapter on top of the `gh` CLI. */
+export const TrackerRegistryGitHubLive = Effect.gen(function* () {
+  const cli = yield* GitHubIssuesCli;
+  const githubFactory: AdapterFactory = ({ repositoryPath, provider, env }) =>
+    makeGitHubIssuesAdapter({ cwd: repositoryPath, provider, env, cli });
+  return Layer.succeed(
+    TrackerAdapterRegistry,
+    makeTrackerRegistry(new Map([["github", githubFactory]])),
+  );
+}).pipe(Effect.provide(GitHubIssuesCliLive), Layer.unwrap);
+
+export type { TrackerKind };

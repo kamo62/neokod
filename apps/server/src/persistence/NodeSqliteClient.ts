@@ -26,6 +26,13 @@ import * as Statement from "effect/unstable/sql/Statement";
 
 const ATTR_DB_SYSTEM_NAME = "db.system.name";
 
+/**
+ * Bound the time SQLite waits on a locked database. Symphony claim transitions
+ * rely on this so a concurrent claimant surfaces as a bounded, retriable busy
+ * error rather than an immediate failure or an unbounded stall.
+ */
+const BUSY_TIMEOUT_MS = 5_000;
+
 export const TypeId: TypeId = "~local/sqlite-node/SqliteClient";
 
 export type TypeId = "~local/sqlite-node/SqliteClient";
@@ -127,6 +134,20 @@ const makeWithDatabase = Effect.fn("makeWithDatabase")(function* (
           }),
       }).pipe(Effect.orDie),
     );
+
+    // Bound the time SQLite waits for a locked database so concurrent
+    // Symphony claim transitions surface as bounded, retriable busy errors
+    // instead of immediate failures or unbounded stalls.
+    yield* Effect.try({
+      try: () => db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`),
+      catch: (cause) =>
+        new SqlError({
+          reason: classifySqliteError(cause, {
+            message: "Failed to set busy_timeout",
+            operation: "pragma",
+          }),
+        }),
+    });
 
     const statementReaderCache = new WeakMap<NodeSqlite.StatementSync, boolean>();
     const hasRows = (statement: NodeSqlite.StatementSync): boolean => {

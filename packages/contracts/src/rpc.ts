@@ -126,6 +126,53 @@ import {
 } from "./server.ts";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
 import {
+  SYMPHONY_WS_METHODS,
+  SymphonyActivateWorkflowInput,
+  SymphonyApproveInput,
+  SymphonyApproveMergeInput,
+  SymphonyAttentionStreamEvent,
+  SymphonyCancelRunInput,
+  SymphonyDispatchWorkItemInput,
+  SymphonyEmptyResult,
+  SymphonyError,
+  SymphonyExcludeWorkItemInput,
+  SymphonyExportDiagnosticsInput,
+  SymphonyExportDiagnosticsResult,
+  SymphonyGetOverviewInput,
+  SymphonyGetRunInput,
+  SymphonyGetWorkflowInput,
+  SymphonyListHistoryInput,
+  SymphonyListQueueInput,
+  SymphonyListRunsInput,
+  SymphonyListTrackersInput,
+  SymphonyListWorkflowsInput,
+  SymphonyOverviewSchema,
+  SymphonyOverviewStreamEvent,
+  SymphonyPauseGlobalInput,
+  SymphonyPauseRepositoryInput,
+  SymphonyPauseWorkflowInput,
+  QueueItemSchema,
+  RunSummarySchema,
+  SymphonyQueueStreamEvent,
+  SymphonyRejectInput,
+  SymphonyRequestChangesInput,
+  SymphonyResolveAttentionInput,
+  SymphonyRespondToUserInputInput,
+  SymphonyResumeAutonomousInput,
+  SymphonyResumeGlobalInput,
+  SymphonyResumeRepositoryInput,
+  SymphonyResumeWorkflowInput,
+  SymphonyRunsStreamEvent,
+  SymphonyRunEventsStreamEvent,
+  SymphonySetLocalPriorityInput,
+  SymphonyStopAllRunsInput,
+  SymphonyTakeOverInput,
+  SymphonyValidateWorkflowInput,
+  SymphonyWorkItemResult,
+  WorkflowRecordSchema,
+  WorkModeHandoffSchema,
+} from "./symphony.ts";
+import {
   SourceControlCloneRepositoryInput,
   SourceControlCloneRepositoryResult,
   SourceControlDiscoveryResult,
@@ -664,6 +711,231 @@ export const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServer
   stream: true,
 });
 
+// ---------------------------------------------------------------------------
+// Symphony Mode RPC
+// ---------------------------------------------------------------------------
+
+export const WsSymphonyGetOverviewRpc = Rpc.make(SYMPHONY_WS_METHODS.getOverview, {
+  payload: SymphonyGetOverviewInput,
+  success: SymphonyOverviewSchema,
+  error: SymphonyError,
+});
+
+export const WsSymphonyListQueueRpc = Rpc.make(SYMPHONY_WS_METHODS.listQueue, {
+  payload: SymphonyListQueueInput,
+  success: Schema.Array(QueueItemSchema),
+  error: SymphonyError,
+});
+
+export const WsSymphonyListRunsRpc = Rpc.make(SYMPHONY_WS_METHODS.listRuns, {
+  payload: SymphonyListRunsInput,
+  success: Schema.Array(RunSummarySchema),
+  error: SymphonyError,
+});
+
+export const WsSymphonyGetRunRpc = Rpc.make(SYMPHONY_WS_METHODS.getRun, {
+  payload: SymphonyGetRunInput,
+  success: SymphonyRunEventsStreamEvent,
+  error: SymphonyError,
+});
+
+export const WsSymphonyListWorkflowsRpc = Rpc.make(SYMPHONY_WS_METHODS.listWorkflows, {
+  payload: SymphonyListWorkflowsInput,
+  success: Schema.Array(WorkflowRecordSchema),
+  error: SymphonyError,
+});
+
+export const WsSymphonyGetWorkflowRpc = Rpc.make(SYMPHONY_WS_METHODS.getWorkflow, {
+  payload: SymphonyGetWorkflowInput,
+  success: WorkflowRecordSchema,
+  error: SymphonyError,
+});
+
+export const WsSymphonyValidateWorkflowRpc = Rpc.make(SYMPHONY_WS_METHODS.validateWorkflow, {
+  payload: SymphonyValidateWorkflowInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyListTrackersRpc = Rpc.make(SYMPHONY_WS_METHODS.listTrackers, {
+  payload: SymphonyListTrackersInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyListHistoryRpc = Rpc.make(SYMPHONY_WS_METHODS.listHistory, {
+  payload: SymphonyListHistoryInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyActivateWorkflowRpc = Rpc.make(SYMPHONY_WS_METHODS.activateWorkflow, {
+  payload: SymphonyActivateWorkflowInput,
+  success: SymphonyWorkItemResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyPauseWorkflowRpc = Rpc.make(SYMPHONY_WS_METHODS.pauseWorkflow, {
+  payload: SymphonyPauseWorkflowInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyResumeWorkflowRpc = Rpc.make(SYMPHONY_WS_METHODS.resumeWorkflow, {
+  payload: SymphonyResumeWorkflowInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyPauseRepositoryRpc = Rpc.make(SYMPHONY_WS_METHODS.pauseRepository, {
+  payload: SymphonyPauseRepositoryInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyResumeRepositoryRpc = Rpc.make(SYMPHONY_WS_METHODS.resumeRepository, {
+  payload: SymphonyResumeRepositoryInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyPauseGlobalRpc = Rpc.make(SYMPHONY_WS_METHODS.pauseGlobal, {
+  payload: SymphonyPauseGlobalInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyResumeGlobalRpc = Rpc.make(SYMPHONY_WS_METHODS.resumeGlobal, {
+  payload: SymphonyResumeGlobalInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyDispatchWorkItemRpc = Rpc.make(SYMPHONY_WS_METHODS.dispatchWorkItem, {
+  payload: SymphonyDispatchWorkItemInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyExcludeWorkItemRpc = Rpc.make(SYMPHONY_WS_METHODS.excludeWorkItem, {
+  payload: SymphonyExcludeWorkItemInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonySetLocalPriorityRpc = Rpc.make(SYMPHONY_WS_METHODS.setLocalPriority, {
+  payload: SymphonySetLocalPriorityInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyCancelRunRpc = Rpc.make(SYMPHONY_WS_METHODS.cancelRun, {
+  payload: SymphonyCancelRunInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyStopAllRunsRpc = Rpc.make(SYMPHONY_WS_METHODS.stopAllRuns, {
+  payload: SymphonyStopAllRunsInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyResumeAutonomousRpc = Rpc.make(SYMPHONY_WS_METHODS.resumeAutonomous, {
+  payload: SymphonyResumeAutonomousInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyApproveRpc = Rpc.make(SYMPHONY_WS_METHODS.approve, {
+  payload: SymphonyApproveInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyRejectRpc = Rpc.make(SYMPHONY_WS_METHODS.reject, {
+  payload: SymphonyRejectInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyRespondToUserInputRpc = Rpc.make(SYMPHONY_WS_METHODS.respondToUserInput, {
+  payload: SymphonyRespondToUserInputInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyResolveAttentionRpc = Rpc.make(SYMPHONY_WS_METHODS.resolveAttention, {
+  payload: SymphonyResolveAttentionInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyRequestChangesRpc = Rpc.make(SYMPHONY_WS_METHODS.requestChanges, {
+  payload: SymphonyRequestChangesInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyApproveMergeRpc = Rpc.make(SYMPHONY_WS_METHODS.approveMerge, {
+  payload: SymphonyApproveMergeInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyTakeOverRpc = Rpc.make(SYMPHONY_WS_METHODS.takeOver, {
+  payload: SymphonyTakeOverInput,
+  success: WorkModeHandoffSchema,
+  error: SymphonyError,
+});
+
+export const WsSymphonyDelegateFromThreadRpc = Rpc.make(SYMPHONY_WS_METHODS.delegateFromThread, {
+  payload: SymphonyGetOverviewInput,
+  success: SymphonyWorkItemResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyExportDiagnosticsRpc = Rpc.make(SYMPHONY_WS_METHODS.exportDiagnostics, {
+  payload: SymphonyExportDiagnosticsInput,
+  success: SymphonyExportDiagnosticsResult,
+  error: SymphonyError,
+});
+
+export const WsSubscribeSymphonyOverviewRpc = Rpc.make(SYMPHONY_WS_METHODS.subscribeOverview, {
+  payload: SymphonyGetOverviewInput,
+  success: SymphonyOverviewStreamEvent,
+  error: SymphonyError,
+  stream: true,
+});
+
+export const WsSubscribeSymphonyRunsRpc = Rpc.make(SYMPHONY_WS_METHODS.subscribeRuns, {
+  payload: SymphonyListRunsInput,
+  success: SymphonyRunsStreamEvent,
+  error: SymphonyError,
+  stream: true,
+});
+
+export const WsSubscribeSymphonyQueueRpc = Rpc.make(SYMPHONY_WS_METHODS.subscribeQueue, {
+  payload: SymphonyListQueueInput,
+  success: SymphonyQueueStreamEvent,
+  error: SymphonyError,
+  stream: true,
+});
+
+export const WsSubscribeSymphonyAttentionRpc = Rpc.make(SYMPHONY_WS_METHODS.subscribeAttention, {
+  payload: SymphonyGetOverviewInput,
+  success: SymphonyAttentionStreamEvent,
+  error: SymphonyError,
+  stream: true,
+});
+
+export const WsSubscribeSymphonyRunEventsRpc = Rpc.make(SYMPHONY_WS_METHODS.subscribeRunEvents, {
+  payload: SymphonyGetRunInput,
+  success: SymphonyRunEventsStreamEvent,
+  error: SymphonyError,
+  stream: true,
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
@@ -733,4 +1005,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationGetArchivedShellSnapshotRpc,
   WsOrchestrationSubscribeShellRpc,
   WsOrchestrationSubscribeThreadRpc,
+  WsSymphonyGetOverviewRpc,
+  WsSymphonyListQueueRpc,
+  WsSymphonyListRunsRpc,
+  WsSymphonyListWorkflowsRpc,
+  WsSymphonyValidateWorkflowRpc,
+  WsSymphonyApproveRpc,
+  WsSymphonyRejectRpc,
+  WsSymphonyRespondToUserInputRpc,
 );

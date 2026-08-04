@@ -1,0 +1,944 @@
+import * as Schema from "effect/Schema";
+
+import { IsoDateTime, NonNegativeInt, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ProviderInstanceRef } from "./providerInstance.ts";
+
+/**
+ * Symphony Mode contracts.
+ *
+ * Symphony is the second top-level operating mode of Neokod: workflow-led,
+ * tracker-driven autonomous execution of repository work. Work Mode remains
+ * interactive and developer-led; both modes share the same underlying
+ * providers, repositories, workspaces, git services and evidence model.
+ *
+ * This module defines the canonical domain model (normalized issue, work
+ * item, run attempt, evidence bundle, attention, approvals), the workflow
+ * contract (`WORKFLOW.md`), and the WebSocket RPC surface. It is schema-only;
+ * all runtime behaviour lives in `apps/server/src/symphony/`.
+ *
+ * @module symphony
+ */
+
+export const SYMPHONY_WS_METHODS = {
+  // Overview / reads
+  getOverview: "symphony.getOverview",
+  listQueue: "symphony.listQueue",
+  listRuns: "symphony.listRuns",
+  getRun: "symphony.getRun",
+  listWorkflows: "symphony.listWorkflows",
+  getWorkflow: "symphony.getWorkflow",
+  validateWorkflow: "symphony.validateWorkflow",
+  listTrackers: "symphony.listTrackers",
+  listHistory: "symphony.listHistory",
+
+  // Workflow controls
+  activateWorkflow: "symphony.activateWorkflow",
+  pauseWorkflow: "symphony.pauseWorkflow",
+  resumeWorkflow: "symphony.resumeWorkflow",
+  pauseRepository: "symphony.pauseRepository",
+  resumeRepository: "symphony.resumeRepository",
+  pauseGlobal: "symphony.pauseGlobal",
+  resumeGlobal: "symphony.resumeGlobal",
+
+  // Dispatch / run controls
+  dispatchWorkItem: "symphony.dispatchWorkItem",
+  excludeWorkItem: "symphony.excludeWorkItem",
+  includeWorkItem: "symphony.includeWorkItem",
+  setLocalPriority: "symphony.setLocalPriority",
+  cancelRun: "symphony.cancelRun",
+  stopAllRuns: "symphony.stopAllRuns",
+  resumeAutonomous: "symphony.resumeAutonomous",
+
+  // Review / attention
+  approve: "symphony.approve",
+  reject: "symphony.reject",
+  respondToUserInput: "symphony.respondToUserInput",
+  resolveAttention: "symphony.resolveAttention",
+  requestChanges: "symphony.requestChanges",
+  approveMerge: "symphony.approveMerge",
+
+  // Cross-mode handoff
+  takeOver: "symphony.takeOver",
+  delegateFromThread: "symphony.delegateFromThread",
+
+  // Diagnostics
+  exportDiagnostics: "symphony.exportDiagnostics",
+
+  // Streaming subscriptions
+  subscribeOverview: "subscribeSymphonyOverview",
+  subscribeRuns: "subscribeSymphonyRuns",
+  subscribeQueue: "subscribeSymphonyQueue",
+  subscribeAttention: "subscribeSymphonyAttention",
+  subscribeRunEvents: "subscribeSymphonyRunEvents",
+} as const;
+
+// ---------------------------------------------------------------------------
+// Identifiers
+// ---------------------------------------------------------------------------
+
+const makeEntityId = <Brand extends string>(brand: Brand) =>
+  TrimmedNonEmptyString.pipe(Schema.brand(brand));
+
+export const WorkflowId = makeEntityId("SymphonyWorkflowId");
+export type WorkflowId = typeof WorkflowId.Type;
+export const WorkItemId = makeEntityId("SymphonyWorkItemId");
+export type WorkItemId = typeof WorkItemId.Type;
+export const RunAttemptId = makeEntityId("SymphonyRunAttemptId");
+export type RunAttemptId = typeof RunAttemptId.Type;
+export const AttentionItemId = makeEntityId("SymphonyAttentionItemId");
+export type AttentionItemId = typeof AttentionItemId.Type;
+export const SymphonyApprovalRequestId = makeEntityId("SymphonyApprovalRequestId");
+export type SymphonyApprovalRequestId = typeof SymphonyApprovalRequestId.Type;
+export const RunEventSequence = NonNegativeInt;
+export type RunEventSequence = typeof RunEventSequence.Type;
+
+/**
+ * Sanitized, collision-resistant workspace directory name derived from an
+ * issue identifier (SPEC 4.2). Only `[A-Za-z0-9._-]` characters.
+ */
+export const WorkspaceKey = TrimmedNonEmptyString.check(Schema.isPattern(/^[A-Za-z0-9._-]+$/));
+export type WorkspaceKey = typeof WorkspaceKey.Type;
+
+// ---------------------------------------------------------------------------
+// Normalized tracker issue (SPEC 4.1.1)
+// ---------------------------------------------------------------------------
+
+export const BlockerRefSchema = Schema.Struct({
+  id: Schema.NullOr(Schema.String),
+  identifier: Schema.NullOr(Schema.String),
+  state: Schema.NullOr(Schema.String),
+});
+export type BlockerRef = typeof BlockerRefSchema.Type;
+
+/**
+ * Best-effort, non-secret provider identifiers preserved for provider-native
+ * agent tools and prompt context. Never used as a map key; never contains
+ * credentials (SPEC 4.1.1, 11.3).
+ */
+export const NativeRefSchema = Schema.Record(Schema.String, Schema.Unknown);
+export type NativeRef = typeof NativeRefSchema.Type;
+
+export const NormalizedIssueSchema = Schema.Struct({
+  id: Schema.NonEmptyString,
+  nativeRef: Schema.NullOr(NativeRefSchema),
+  identifier: Schema.NonEmptyString,
+  title: Schema.NonEmptyString,
+  description: Schema.NullOr(Schema.String),
+  priority: Schema.NullOr(Schema.Int),
+  state: Schema.NonEmptyString,
+  branchName: Schema.NullOr(Schema.String),
+  url: Schema.NullOr(Schema.String),
+  assigneeId: Schema.NullOr(Schema.String),
+  labels: Schema.Array(Schema.String),
+  blockedBy: Schema.Array(BlockerRefSchema),
+  dispatchable: Schema.Boolean,
+  createdAt: Schema.NullOr(IsoDateTime),
+  updatedAt: Schema.NullOr(IsoDateTime),
+});
+export type NormalizedIssue = typeof NormalizedIssueSchema.Type;
+
+// ---------------------------------------------------------------------------
+// Work source and lifecycle (PRD 11.2, 11.3)
+// ---------------------------------------------------------------------------
+
+export const WorkSourceSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("manual") }),
+  Schema.Struct({
+    kind: Schema.Literal("github"),
+    externalId: Schema.String,
+    externalUrl: Schema.String,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("linear"),
+    externalId: Schema.String,
+    externalUrl: Schema.String,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("jira"),
+    externalId: Schema.String,
+    externalUrl: Schema.String,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("azure_boards"),
+    externalId: Schema.String,
+    externalUrl: Schema.String,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("gitlab"),
+    externalId: Schema.String,
+    externalUrl: Schema.String,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("asana"),
+    externalId: Schema.String,
+    externalUrl: Schema.String,
+  }),
+]);
+export type WorkSource = typeof WorkSourceSchema.Type;
+
+export const WorkLifecycleSchema = Schema.Literals([
+  "draft",
+  "eligible",
+  "queued",
+  "preparing",
+  "running",
+  "blocked",
+  "waiting_for_approval",
+  "retry_scheduled",
+  "validation_failed",
+  "ready_for_review",
+  "changes_requested",
+  "ready_to_merge",
+  "completed",
+  "cancelled",
+  "failed",
+]);
+export type WorkLifecycle = typeof WorkLifecycleSchema.Type;
+
+// ---------------------------------------------------------------------------
+// Run attempt (PRD 11.4, SPEC 7.2)
+// ---------------------------------------------------------------------------
+
+export const RunAttemptStatusSchema = Schema.Literals([
+  "preparing_workspace",
+  "building_prompt",
+  "launching_agent",
+  "initializing_session",
+  "streaming_turn",
+  "finishing",
+  "succeeded",
+  "failed",
+  "timed_out",
+  "stalled",
+  "canceled_by_reconciliation",
+  "user_cancelled",
+  "tracker_cancelled",
+  "process_failed",
+  "validation_failed",
+  "workflow_error",
+  "provider_error",
+  "interrupted",
+  "retries_exhausted",
+]);
+export type RunAttemptStatus = typeof RunAttemptStatusSchema.Type;
+
+export const TokenUsageSchema = Schema.Struct({
+  inputTokens: Schema.optional(NonNegativeInt),
+  outputTokens: Schema.optional(NonNegativeInt),
+  totalTokens: Schema.optional(NonNegativeInt),
+});
+export type TokenUsage = typeof TokenUsageSchema.Type;
+
+export const RunErrorSchema = Schema.Struct({
+  category: TrimmedNonEmptyString,
+  message: Schema.String,
+  attemptNumber: Schema.optional(NonNegativeInt),
+});
+export type RunError = typeof RunErrorSchema.Type;
+
+export const RunEventSchema = Schema.Struct({
+  sequence: RunEventSequence,
+  runAttemptId: RunAttemptId,
+  eventType: TrimmedNonEmptyString,
+  occurredAt: IsoDateTime,
+  payload: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+});
+export type RunEvent = typeof RunEventSchema.Type;
+
+export const RunAttemptSchema = Schema.Struct({
+  id: RunAttemptId,
+  workItemId: WorkItemId,
+  attemptNumber: NonNegativeInt,
+  workspacePath: Schema.String,
+  provider: ProviderInstanceRef,
+  model: Schema.optional(TrimmedNonEmptyString),
+  status: RunAttemptStatusSchema,
+  currentStage: Schema.optional(TrimmedNonEmptyString),
+  startedAt: IsoDateTime,
+  finishedAt: Schema.NullOr(IsoDateTime),
+  error: Schema.NullOr(RunErrorSchema),
+  tokenUsage: Schema.optional(TokenUsageSchema),
+  sessionId: Schema.optional(TrimmedNonEmptyString),
+  threadId: Schema.optional(TrimmedNonEmptyString),
+});
+export type RunAttempt = typeof RunAttemptSchema.Type;
+
+// ---------------------------------------------------------------------------
+// Evidence (PRD 11.5, 14.10)
+// ---------------------------------------------------------------------------
+
+export const ChangedFileEvidenceSchema = Schema.Struct({
+  path: TrimmedNonEmptyString,
+  additions: Schema.optional(NonNegativeInt),
+  deletions: Schema.optional(NonNegativeInt),
+  status: Schema.optional(Schema.Literals(["added", "modified", "deleted", "renamed"])),
+});
+export type ChangedFileEvidence = typeof ChangedFileEvidenceSchema.Type;
+
+export const ValidationStatusSchema = Schema.Literals([
+  "passed",
+  "failed",
+  "skipped",
+  "unavailable",
+  "warning",
+]);
+export type ValidationStatus = typeof ValidationStatusSchema.Type;
+
+export const ValidationResultSchema = Schema.Struct({
+  command: TrimmedNonEmptyString,
+  status: ValidationStatusSchema,
+  exitCode: Schema.optional(Schema.Int),
+  durationMs: Schema.optional(NonNegativeInt),
+  outputPath: Schema.optional(TrimmedNonEmptyString),
+  executedAt: Schema.optional(IsoDateTime),
+});
+export type ValidationResult = typeof ValidationResultSchema.Type;
+
+export const EvidenceItemSchema = Schema.Struct({
+  text: TrimmedNonEmptyString,
+  source: Schema.optional(Schema.Literals(["agent", "host", "model"])),
+});
+export type EvidenceItem = typeof EvidenceItemSchema.Type;
+
+export const RiskEvidenceSchema = Schema.Struct({
+  severity: Schema.Literals(["low", "medium", "high"]),
+  text: TrimmedNonEmptyString,
+  source: Schema.optional(Schema.Literals(["agent", "host", "model"])),
+});
+export type RiskEvidence = typeof RiskEvidenceSchema.Type;
+
+export const EvidenceArtefactSchema = Schema.Struct({
+  kind: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  path: Schema.optional(TrimmedNonEmptyString),
+  url: Schema.optional(TrimmedNonEmptyString),
+});
+export type EvidenceArtefact = typeof EvidenceArtefactSchema.Type;
+
+export const CommitEvidenceSchema = Schema.Struct({
+  sha: TrimmedNonEmptyString,
+  message: Schema.String,
+  authoredAt: IsoDateTime,
+});
+export type CommitEvidence = typeof CommitEvidenceSchema.Type;
+
+export const PullRequestEvidenceSchema = Schema.Struct({
+  number: NonNegativeInt,
+  title: Schema.String,
+  branch: Schema.String,
+  baseBranch: Schema.String,
+  url: Schema.optional(Schema.String),
+  status: Schema.optional(Schema.Literals(["open", "draft", "merged", "closed"])),
+  ciStatus: Schema.optional(Schema.Literals(["pending", "success", "failure", "unknown"])),
+  reviewState: Schema.optional(
+    Schema.Literals(["none", "approved", "changes_requested", "review_required"]),
+  ),
+  mergeable: Schema.optional(Schema.Boolean),
+  unresolvedComments: Schema.optional(NonNegativeInt),
+  latestCommit: Schema.optional(TrimmedNonEmptyString),
+  additions: Schema.optional(NonNegativeInt),
+  deletions: Schema.optional(NonNegativeInt),
+  reviewers: Schema.optional(Schema.Array(Schema.String)),
+});
+export type PullRequestEvidence = typeof PullRequestEvidenceSchema.Type;
+
+/**
+ * Model-authored review artefact (section 10.2). Codex review mode emits free
+ * text, not structured findings; this field exists to hold that prose with its
+ * provenance attached. It can raise warnings but cannot satisfy a required
+ * evidence field or upgrade `overallAssessment`.
+ */
+export const ModelReviewArtefactSchema = Schema.Struct({
+  provenance: Schema.Literal("model"),
+  provider: TrimmedNonEmptyString,
+  model: TrimmedNonEmptyString,
+  target: Schema.Literal("baseBranch"),
+  baseSha: TrimmedNonEmptyString,
+  headSha: TrimmedNonEmptyString,
+  reviewThreadId: Schema.String,
+  turnId: Schema.String,
+  status: Schema.Literals(["completed", "failed", "interrupted"]),
+  reviewedAt: IsoDateTime,
+  text: Schema.String,
+});
+export type ModelReviewArtefact = typeof ModelReviewArtefactSchema.Type;
+
+export const OverallAssessmentSchema = Schema.Literals([
+  "insufficient",
+  "failed",
+  "ready_with_warnings",
+  "ready_for_review",
+  "ready_to_merge",
+]);
+export type OverallAssessment = typeof OverallAssessmentSchema.Type;
+
+export const EvidenceBundleSchema = Schema.Struct({
+  objective: Schema.optional(Schema.String),
+  implementationSummary: Schema.optional(Schema.String),
+  changedFiles: Schema.Array(ChangedFileEvidenceSchema),
+  testsChanged: Schema.Array(ChangedFileEvidenceSchema),
+  commits: Schema.Array(CommitEvidenceSchema),
+  validationResults: Schema.Array(ValidationResultSchema),
+  assumptions: Schema.Array(EvidenceItemSchema),
+  risks: Schema.Array(RiskEvidenceSchema),
+  unresolved: Schema.Array(EvidenceItemSchema),
+  artefacts: Schema.Array(EvidenceArtefactSchema),
+  pullRequest: Schema.NullOr(PullRequestEvidenceSchema),
+  modelReview: Schema.NullOr(ModelReviewArtefactSchema),
+  overallAssessment: OverallAssessmentSchema,
+  workflowVersion: Schema.optional(TrimmedNonEmptyString),
+  agent: Schema.optional(TrimmedNonEmptyString),
+  model: Schema.optional(TrimmedNonEmptyString),
+  totalDurationMs: Schema.optional(NonNegativeInt),
+  tokenUsage: Schema.optional(TokenUsageSchema),
+  createdAt: IsoDateTime,
+});
+export type EvidenceBundle = typeof EvidenceBundleSchema.Type;
+
+// ---------------------------------------------------------------------------
+// Work item (PRD 11.1)
+// ---------------------------------------------------------------------------
+
+export const WorkItemSchema = Schema.Struct({
+  id: WorkItemId,
+  mode: Schema.Literals(["work", "symphony"]),
+  repositoryId: Schema.optional(TrimmedNonEmptyString),
+  repositoryPath: Schema.optional(TrimmedNonEmptyString),
+  workflowId: Schema.optional(WorkflowId),
+  objective: Schema.String,
+  description: Schema.optional(Schema.String),
+  acceptanceCriteria: Schema.Array(Schema.String),
+  source: WorkSourceSchema,
+  workspaceKey: Schema.optional(WorkspaceKey),
+  workspacePath: Schema.optional(Schema.String),
+  baseBranch: Schema.optional(Schema.String),
+  provider: Schema.optional(ProviderInstanceRef),
+  lifecycle: WorkLifecycleSchema,
+  trackerIssueId: Schema.optional(Schema.String),
+  trackerIdentifier: Schema.optional(Schema.String),
+  priority: Schema.optional(Schema.Int),
+  localPriority: Schema.optional(Schema.Int),
+  excluded: Schema.optionalKey(Schema.Boolean),
+  blocked: Schema.optionalKey(Schema.Boolean),
+  eligibilityReasons: Schema.Array(TrimmedNonEmptyString),
+  evidence: Schema.NullOr(EvidenceBundleSchema),
+  createdAt: IsoDateTime,
+  updatedAt: IsoDateTime,
+});
+export type WorkItem = typeof WorkItemSchema.Type;
+
+// ---------------------------------------------------------------------------
+// Attention and approvals (PRD 14.8, 14.9)
+// ---------------------------------------------------------------------------
+
+export const AttentionItemKindSchema = Schema.Literals([
+  "agent_question",
+  "command_approval",
+  "protected_path_change",
+  "tracker_credential_failure",
+  "workflow_invalid",
+  "repeated_validation_failure",
+  "merge_conflict",
+  "run_duration_exceeded",
+  "agent_stall",
+  "merge_approval",
+  "run_interrupted",
+  "unknown",
+]);
+export type AttentionItemKind = typeof AttentionItemKindSchema.Type;
+
+export const AttentionSeveritySchema = Schema.Literals(["low", "medium", "high", "critical"]);
+export type AttentionSeverity = typeof AttentionSeveritySchema.Type;
+
+export const AttentionItemStateSchema = Schema.Literals(["open", "resolved", "dismissed"]);
+export type AttentionItemState = typeof AttentionItemStateSchema.Type;
+
+export const AttentionItemSchema = Schema.Struct({
+  id: AttentionItemId,
+  workItemId: WorkItemId,
+  runAttemptId: Schema.optional(RunAttemptId),
+  kind: AttentionItemKindSchema,
+  severity: AttentionSeveritySchema,
+  state: AttentionItemStateSchema,
+  whatHappened: Schema.String,
+  whyHuman: Schema.String,
+  recommendedResponse: Schema.optional(Schema.String),
+  availableActions: Schema.Array(TrimmedNonEmptyString),
+  consequences: Schema.optional(Schema.String),
+  filter: Schema.optional(
+    Schema.Struct({
+      repository: Schema.optional(Schema.String),
+      workflow: Schema.optional(Schema.String),
+      provider: Schema.optional(Schema.String),
+    }),
+  ),
+  createdAt: IsoDateTime,
+  resolvedAt: Schema.NullOr(IsoDateTime),
+  resolution: Schema.optional(Schema.String),
+});
+export type AttentionItem = typeof AttentionItemSchema.Type;
+
+export const ApprovalScopeSchema = Schema.Literals(["once", "current_run", "repository"]);
+export type ApprovalScope = typeof ApprovalScopeSchema.Type;
+
+export const ApprovalActionSchema = Schema.Literals([
+  "command_execution",
+  "network_access",
+  "dependency_installation",
+  "protected_file_change",
+  "push",
+  "pull_request",
+  "merge",
+  "tracker_write",
+]);
+export type ApprovalAction = typeof ApprovalActionSchema.Type;
+
+export const ApprovalRequestStateSchema = Schema.Literals([
+  "pending",
+  "approved",
+  "rejected",
+  "expired",
+  "interrupted",
+]);
+export type ApprovalRequestState = typeof ApprovalRequestStateSchema.Type;
+
+export const ApprovalRequestSchema = Schema.Struct({
+  id: SymphonyApprovalRequestId,
+  requestId: TrimmedNonEmptyString,
+  workItemId: WorkItemId,
+  runAttemptId: Schema.optional(RunAttemptId),
+  action: ApprovalActionSchema,
+  scope: ApprovalScopeSchema,
+  state: ApprovalRequestStateSchema,
+  command: Schema.optional(Schema.String),
+  workingDirectory: Schema.optional(Schema.String),
+  reason: Schema.optional(Schema.String),
+  expectedImpact: Schema.optional(Schema.String),
+  affectedFiles: Schema.Array(Schema.String),
+  reversibility: Schema.optional(Schema.String),
+  policySource: Schema.optional(Schema.String),
+  createdAt: IsoDateTime,
+  decidedAt: Schema.NullOr(IsoDateTime),
+  decision: Schema.optional(Schema.Literals(["approved", "rejected", "expired"])),
+});
+export type ApprovalRequest = typeof ApprovalRequestSchema.Type;
+
+// ---------------------------------------------------------------------------
+// Workflow contract (SPEC 5, PRD 12)
+// ---------------------------------------------------------------------------
+
+export const WorkflowDefinitionSchema = Schema.Struct({
+  config: Schema.Record(Schema.String, Schema.Unknown),
+  promptTemplate: Schema.String,
+});
+export type WorkflowDefinition = typeof WorkflowDefinitionSchema.Type;
+
+export const TrackerKindSchema = Schema.Literals(["github", "jira", "linear", "gitlab", "asana"]);
+export type TrackerKind = typeof TrackerKindSchema.Type;
+
+export const AutonomyLevelSchema = Schema.Literals(["observe", "prepare", "execute", "deliver"]);
+export type AutonomyLevel = typeof AutonomyLevelSchema.Type;
+
+export const ApprovalPolicyClassSchema = Schema.Struct({
+  action: ApprovalActionSchema,
+  mode: Schema.Literals(["auto", "human", "auto_if_required"]),
+  scope: ApprovalScopeSchema,
+});
+export type ApprovalPolicyClass = typeof ApprovalPolicyClassSchema.Type;
+
+/**
+ * Typed runtime view of `WORKFLOW.md` front matter plus defaults and `$VAR`
+ * resolution (SPEC 6.4, PRD 12). `config` on `WorkflowDefinition` is the raw
+ * map; this is the coerced, validated view the orchestrator runs against.
+ */
+export const EffectiveWorkflowConfigSchema = Schema.Struct({
+  repositoryPath: TrimmedNonEmptyString,
+  workflowPath: TrimmedNonEmptyString,
+  trackerKind: TrackerKindSchema,
+  trackerRequiredLabels: Schema.Array(Schema.String),
+  trackerActiveStates: Schema.Array(Schema.String),
+  trackerTerminalStates: Schema.Array(Schema.String),
+  trackerProvider: Schema.Record(Schema.String, Schema.Unknown),
+  pollIntervalMs: Schema.optional(NonNegativeInt),
+  workspaceRoot: Schema.String,
+  autonomy: AutonomyLevelSchema,
+  agentProvider: ProviderInstanceRef,
+  agentModel: Schema.optional(TrimmedNonEmptyString),
+  maxConcurrentAgents: Schema.optional(PositiveInt),
+  maxTurns: Schema.optional(PositiveInt),
+  maxAttempts: Schema.optional(PositiveInt),
+  initialRetryDelayMs: Schema.optional(NonNegativeInt),
+  maxRetryBackoffMs: Schema.optional(NonNegativeInt),
+  maxRunDurationMs: Schema.optional(NonNegativeInt),
+  codexCommand: Schema.optional(Schema.String),
+  codexApprovalPolicy: Schema.optional(
+    Schema.Literals(["untrusted", "on-failure", "on-request", "never"]),
+  ),
+  codexThreadSandbox: Schema.optional(
+    Schema.Literals(["read-only", "workspace-write", "danger-full-access"]),
+  ),
+  codexTurnSandboxPolicy: Schema.optional(
+    Schema.Literals(["readOnly", "workspaceWrite", "dangerFullAccess"]),
+  ),
+  codexTurnTimeoutMs: Schema.optional(NonNegativeInt),
+  codexReadTimeoutMs: Schema.optional(NonNegativeInt),
+  codexStallTimeoutMs: Schema.optional(Schema.Int),
+  validationRequired: Schema.Array(Schema.String),
+  validationTestPathPatterns: Schema.Array(Schema.String),
+  approvalsBeforePush: Schema.optional(Schema.Boolean),
+  approvalsBeforePullRequest: Schema.optional(Schema.Boolean),
+  approvalsBeforeMerge: Schema.optional(Schema.Boolean),
+  approvalsProtectedPaths: Schema.Array(Schema.String),
+  approvalsWaitTimeoutMs: Schema.optional(NonNegativeInt),
+  approvalsPolicies: Schema.Array(ApprovalPolicyClassSchema),
+  concurrencyGlobal: Schema.optional(NonNegativeInt),
+  concurrencyRepository: Schema.optional(NonNegativeInt),
+  concurrencyProvider: Schema.optional(NonNegativeInt),
+  concurrencyWorkflow: Schema.optional(NonNegativeInt),
+  hooksAfterCreate: Schema.optional(Schema.String),
+  hooksBeforeRun: Schema.optional(Schema.String),
+  hooksAfterRun: Schema.optional(Schema.String),
+  hooksBeforeRemove: Schema.optional(Schema.String),
+  hooksTimeoutMs: Schema.optional(NonNegativeInt),
+  liveRequestsWaitTimeoutMs: Schema.optional(NonNegativeInt),
+  handoffState: Schema.optional(TrimmedNonEmptyString),
+});
+export type EffectiveWorkflowConfig = typeof EffectiveWorkflowConfigSchema.Type;
+
+export const WorkflowStatusSchema = Schema.Literals(["active", "paused", "invalid", "draft"]);
+export type WorkflowStatus = typeof WorkflowStatusSchema.Type;
+
+export const WorkflowRecordSchema = Schema.Struct({
+  id: WorkflowId,
+  repositoryPath: TrimmedNonEmptyString,
+  workflowPath: TrimmedNonEmptyString,
+  status: WorkflowStatusSchema,
+  autonomy: AutonomyLevelSchema,
+  validationError: Schema.NullOr(Schema.String),
+  definition: WorkflowDefinitionSchema,
+  effectiveConfig: Schema.NullOr(EffectiveWorkflowConfigSchema),
+  enabledAt: Schema.NullOr(IsoDateTime),
+  createdAt: IsoDateTime,
+  updatedAt: IsoDateTime,
+});
+export type WorkflowRecord = typeof WorkflowRecordSchema.Type;
+
+export const WorkflowValidationField = Schema.Struct({
+  field: TrimmedNonEmptyString,
+  message: Schema.String,
+});
+export type WorkflowValidationField = typeof WorkflowValidationField.Type;
+
+export const WorkflowValidationResultSchema = Schema.Struct({
+  ok: Schema.Boolean,
+  errors: Schema.Array(WorkflowValidationField),
+});
+export type WorkflowValidationResult = typeof WorkflowValidationResultSchema.Type;
+
+// ---------------------------------------------------------------------------
+// Overview / queue / run summaries (PRD 16, 25.1)
+// ---------------------------------------------------------------------------
+
+export const SymphonyOverviewSchema = Schema.Struct({
+  running: NonNegativeInt,
+  queued: NonNegativeInt,
+  needsAttention: NonNegativeInt,
+  readyForReview: NonNegativeInt,
+  retrying: NonNegativeInt,
+  failedToday: NonNegativeInt,
+  orchestratorPaused: Schema.Boolean,
+  activeWorkflowCount: NonNegativeInt,
+  providerHealth: Schema.Record(Schema.String, Schema.Struct({ available: Schema.Boolean })),
+  trackerHealth: Schema.Record(
+    Schema.String,
+    Schema.Struct({ ok: Schema.Boolean, lastPollAt: Schema.NullOr(IsoDateTime) }),
+  ),
+  lastTrackerPollAt: Schema.NullOr(IsoDateTime),
+  activeAgentCount: NonNegativeInt,
+  tokenUsage: Schema.optional(TokenUsageSchema),
+  generatedAt: IsoDateTime,
+});
+export type SymphonyOverview = typeof SymphonyOverviewSchema.Type;
+
+export const QueueItemSchema = Schema.Struct({
+  workItemId: WorkItemId,
+  trackerIdentifier: Schema.optional(Schema.String),
+  title: Schema.String,
+  repositoryPath: Schema.optional(Schema.String),
+  workflowId: Schema.optional(WorkflowId),
+  state: Schema.String,
+  lifecycle: WorkLifecycleSchema,
+  priority: Schema.optional(Schema.Int),
+  blocked: Schema.Boolean,
+  blockers: Schema.Array(BlockerRefSchema),
+  eligible: Schema.Boolean,
+  ineligibilityReasons: Schema.Array(TrimmedNonEmptyString),
+  excluded: Schema.Boolean,
+  estimatedReadiness: Schema.NullOr(IsoDateTime),
+  createdAt: IsoDateTime,
+});
+export type QueueItem = typeof QueueItemSchema.Type;
+
+export const RunSummarySchema = Schema.Struct({
+  runAttemptId: RunAttemptId,
+  workItemId: WorkItemId,
+  trackerIdentifier: Schema.optional(Schema.String),
+  issueTitle: Schema.optional(Schema.String),
+  repositoryPath: Schema.optional(Schema.String),
+  workflowId: Schema.optional(WorkflowId),
+  provider: Schema.optional(ProviderInstanceRef),
+  model: Schema.optional(Schema.String),
+  status: RunAttemptStatusSchema,
+  currentStage: Schema.optional(TrimmedNonEmptyString),
+  attemptNumber: NonNegativeInt,
+  retryCount: NonNegativeInt,
+  startedAt: IsoDateTime,
+  elapsedMs: Schema.optional(NonNegativeInt),
+  tokenUsage: Schema.optional(TokenUsageSchema),
+  latestEvent: Schema.optional(TrimmedNonEmptyString),
+  workspacePath: Schema.optional(Schema.String),
+  lifecycle: WorkLifecycleSchema,
+});
+export type RunSummary = typeof RunSummarySchema.Type;
+
+export const RunDetailsSchema = Schema.Struct({
+  workItem: WorkItemSchema,
+  runAttempt: RunAttemptSchema,
+  timeline: Schema.Array(RunEventSchema),
+  attentionItems: Schema.Array(AttentionItemSchema),
+  approvalRequests: Schema.Array(ApprovalRequestSchema),
+});
+export type RunDetails = typeof RunDetailsSchema.Type;
+
+export const RunHistoryEntrySchema = Schema.Struct({
+  workItemId: WorkItemId,
+  trackerIdentifier: Schema.optional(Schema.String),
+  issueTitle: Schema.optional(Schema.String),
+  repositoryPath: Schema.optional(Schema.String),
+  lifecycle: WorkLifecycleSchema,
+  overallAssessment: Schema.optional(OverallAssessmentSchema),
+  startedAt: IsoDateTime,
+  finishedAt: Schema.NullOr(IsoDateTime),
+  durationMs: Schema.optional(NonNegativeInt),
+  provider: Schema.optional(ProviderInstanceRef),
+  pullRequest: Schema.NullOr(PullRequestEvidenceSchema),
+});
+export type RunHistoryEntry = typeof RunHistoryEntrySchema.Type;
+
+export const TrackerHealthSchema = Schema.Struct({
+  kind: TrackerKindSchema,
+  ok: Schema.Boolean,
+  error: Schema.NullOr(Schema.String),
+  lastPollAt: Schema.NullOr(IsoDateTime),
+  profile: Schema.Record(Schema.String, Schema.Unknown),
+});
+export type TrackerHealth = typeof TrackerHealthSchema.Type;
+
+// ---------------------------------------------------------------------------
+// Handoff (PRD 14.12, 16)
+// ---------------------------------------------------------------------------
+
+export const WorkModeHandoffSchema = Schema.Struct({
+  threadId: TrimmedNonEmptyString,
+  workspacePath: TrimmedNonEmptyString,
+  branch: Schema.String,
+  workItemId: WorkItemId,
+});
+export type WorkModeHandoff = typeof WorkModeHandoffSchema.Type;
+
+export const DelegateFromThreadInputSchema = Schema.Struct({
+  threadId: TrimmedNonEmptyString,
+  workflowId: Schema.optional(WorkflowId),
+  autonomy: Schema.optional(AutonomyLevelSchema),
+  objective: Schema.optional(Schema.String),
+  acceptanceCriteria: Schema.optional(Schema.Array(Schema.String)),
+});
+export type DelegateFromThreadInput = typeof DelegateFromThreadInputSchema.Type;
+
+export const DelegateFromThreadResultSchema = Schema.Struct({
+  workItemId: WorkItemId,
+});
+export type DelegateFromThreadResult = typeof DelegateFromThreadResultSchema.Type;
+
+// ---------------------------------------------------------------------------
+// Errors
+// ---------------------------------------------------------------------------
+
+export class SymphonyError extends Schema.TaggedErrorClass<SymphonyError>()("SymphonyError", {
+  code: TrimmedNonEmptyString,
+  message: Schema.String,
+  workItemId: Schema.optional(WorkItemId),
+  runAttemptId: Schema.optional(RunAttemptId),
+}) {
+  override get message(): string {
+    return `${this.code}: ${this.message}`;
+  }
+}
+
+export const SymphonyRpcErrorSchema = Schema.Union([
+  SymphonyError,
+  Schema.Struct({ _tag: Schema.Literal("UnknownSymphonyError"), message: Schema.String }),
+]);
+
+// ---------------------------------------------------------------------------
+// RPC inputs / outputs
+// ---------------------------------------------------------------------------
+
+export const SymphonyGetOverviewInput = Schema.Struct({});
+export const SymphonyListQueueInput = Schema.Struct({
+  workflowId: Schema.optional(WorkflowId),
+  repositoryPath: Schema.optional(Schema.String),
+  lifecycle: Schema.optional(WorkLifecycleSchema),
+  limit: Schema.optional(PositiveInt),
+});
+export const SymphonyListRunsInput = Schema.Struct({
+  workflowId: Schema.optional(WorkflowId),
+  repositoryPath: Schema.optional(Schema.String),
+  status: Schema.optional(RunAttemptStatusSchema),
+  lifecycle: Schema.optional(WorkLifecycleSchema),
+  limit: Schema.optional(PositiveInt),
+});
+export const SymphonyGetRunInput = Schema.Struct({
+  runAttemptId: RunAttemptId,
+});
+export const SymphonyListWorkflowsInput = Schema.Struct({
+  repositoryPath: Schema.optional(Schema.String),
+});
+export const SymphonyGetWorkflowInput = Schema.Struct({
+  workflowId: WorkflowId,
+});
+export const SymphonyValidateWorkflowInput = Schema.Struct({
+  repositoryPath: TrimmedNonEmptyString,
+  workflowPath: Schema.optional(Schema.String),
+});
+export const SymphonyListTrackersInput = Schema.Struct({});
+export const SymphonyListHistoryInput = Schema.Struct({
+  limit: Schema.optional(PositiveInt),
+});
+export const SymphonyActivateWorkflowInput = Schema.Struct({
+  repositoryPath: TrimmedNonEmptyString,
+  workflowPath: Schema.optional(Schema.String),
+  autonomy: Schema.optional(AutonomyLevelSchema),
+});
+export const SymphonyPauseWorkflowInput = Schema.Struct({ workflowId: WorkflowId });
+export const SymphonyResumeWorkflowInput = Schema.Struct({ workflowId: WorkflowId });
+export const SymphonyPauseRepositoryInput = Schema.Struct({
+  repositoryPath: TrimmedNonEmptyString,
+});
+export const SymphonyResumeRepositoryInput = Schema.Struct({
+  repositoryPath: TrimmedNonEmptyString,
+});
+export const SymphonyPauseGlobalInput = Schema.Struct({});
+export const SymphonyResumeGlobalInput = Schema.Struct({});
+export const SymphonyDispatchWorkItemInput = Schema.Struct({
+  workItemId: WorkItemId,
+});
+export const SymphonyExcludeWorkItemInput = Schema.Struct({
+  workItemId: WorkItemId,
+  exclude: Schema.Boolean,
+});
+export const SymphonySetLocalPriorityInput = Schema.Struct({
+  workItemId: WorkItemId,
+  priority: Schema.Int,
+});
+export const SymphonyCancelRunInput = Schema.Struct({
+  runAttemptId: RunAttemptId,
+});
+export const SymphonyStopAllRunsInput = Schema.Struct({
+  confirm: Schema.Literal("stop-all-runs"),
+});
+export const SymphonyResumeAutonomousInput = Schema.Struct({
+  workItemId: WorkItemId,
+});
+export const SymphonyApproveInput = Schema.Struct({
+  requestId: TrimmedNonEmptyString,
+  scope: ApprovalScopeSchema,
+});
+export const SymphonyRejectInput = Schema.Struct({
+  requestId: TrimmedNonEmptyString,
+  reason: Schema.optional(Schema.String),
+});
+export const SymphonyRespondToUserInputInput = Schema.Struct({
+  requestId: TrimmedNonEmptyString,
+  text: Schema.String,
+});
+export const SymphonyResolveAttentionInput = Schema.Struct({
+  attentionItemId: AttentionItemId,
+});
+export const SymphonyRequestChangesInput = Schema.Struct({
+  workItemId: WorkItemId,
+  reason: Schema.optional(Schema.String),
+});
+export const SymphonyApproveMergeInput = Schema.Struct({
+  workItemId: WorkItemId,
+});
+export const SymphonyTakeOverInput = Schema.Struct({
+  runAttemptId: RunAttemptId,
+});
+export const SymphonyExportDiagnosticsInput = Schema.Struct({
+  includeRepositorySource: Schema.optionalKey(Schema.Boolean),
+});
+export const SymphonyExportDiagnosticsResult = Schema.Struct({
+  bundlePath: TrimmedNonEmptyString,
+});
+
+// Stream payloads. Discriminated on `type` following the `ServerConfigStreamEvent`
+// convention so client-side narrowing is structural rather than tag-keyed.
+export const SymphonyOverviewStreamEvent = Schema.Union([
+  Schema.Struct({
+    version: Schema.Literal(1),
+    type: Schema.Literal("overview"),
+    overview: SymphonyOverviewSchema,
+  }),
+]);
+
+export const SymphonyRunEventsStreamEvent = Schema.Union([
+  RunEventSchema,
+  Schema.Struct({
+    version: Schema.Literal(1),
+    type: Schema.Literal("runEvent"),
+    runEvent: RunEventSchema,
+  }),
+]);
+
+export const SymphonyQueueStreamEvent = Schema.Union([
+  Schema.Struct({
+    version: Schema.Literal(1),
+    type: Schema.Literal("queue"),
+    items: Schema.Array(QueueItemSchema),
+  }),
+  Schema.Struct({
+    version: Schema.Literal(1),
+    type: Schema.Literal("queueItemChanged"),
+    item: QueueItemSchema,
+  }),
+]);
+
+export const SymphonyRunsStreamEvent = Schema.Union([
+  Schema.Struct({
+    version: Schema.Literal(1),
+    type: Schema.Literal("runs"),
+    runs: Schema.Array(RunSummarySchema),
+  }),
+  Schema.Struct({
+    version: Schema.Literal(1),
+    type: Schema.Literal("runChanged"),
+    run: RunSummarySchema,
+  }),
+]);
+
+export const SymphonyAttentionStreamEvent = Schema.Union([
+  Schema.Struct({
+    version: Schema.Literal(1),
+    type: Schema.Literal("attention"),
+    items: Schema.Array(AttentionItemSchema),
+  }),
+  Schema.Struct({
+    version: Schema.Literal(1),
+    type: Schema.Literal("attentionItemChanged"),
+    item: AttentionItemSchema,
+  }),
+]);
+
+export const SymphonyEmptyResult = Schema.Struct({ ok: Schema.Boolean });
+export const SymphonyWorkItemResult = Schema.Struct({ workItemId: WorkItemId });

@@ -18,7 +18,27 @@ const LEGACY_PERSISTED_STATE_KEYS = [
   "codething:renderer-state:v1",
 ] as const;
 
+export type OperatingMode = "work" | "symphony";
+
+export interface ModeViewSnapshot {
+  route: string;
+  selection: string | null;
+  filters: Record<string, string>;
+  panelState: Record<string, boolean>;
+}
+
+export type ModeViewSnapshots = Record<OperatingMode, ModeViewSnapshot>;
+
+export interface PersistedModeViewSnapshot {
+  route?: string;
+  selection?: string | null;
+  filters?: Record<string, string>;
+  panelState?: Record<string, boolean>;
+}
+
 export interface PersistedUiState {
+  operatingMode?: OperatingMode;
+  viewSnapshotsByMode?: Partial<Record<OperatingMode, PersistedModeViewSnapshot>>;
   sidebarView?: "threads" | "workspace";
   sidebarViewMigratedToWorkspace?: boolean;
   myWorkCollapsed?: boolean;
@@ -44,6 +64,11 @@ export interface UiThreadState {
 }
 
 export interface UiState extends UiProjectState, UiThreadState {
+  // Optional here so pure-store callers can continue constructing the legacy
+  // state shape while persisted reads and the Zustand store always fill these
+  // fields with defaults.
+  operatingMode?: OperatingMode;
+  viewSnapshotsByMode?: ModeViewSnapshots;
   sidebarView: "threads" | "workspace";
   sidebarViewMigratedToWorkspace: true;
   myWorkCollapsed: boolean;
@@ -56,6 +81,21 @@ export interface UiState extends UiProjectState, UiThreadState {
 }
 
 const initialState: UiState = {
+  operatingMode: "work",
+  viewSnapshotsByMode: {
+    work: {
+      route: "/",
+      selection: null,
+      filters: {},
+      panelState: {},
+    },
+    symphony: {
+      route: "/symphony",
+      selection: null,
+      filters: {},
+      panelState: {},
+    },
+  },
   sidebarView: "workspace",
   sidebarViewMigratedToWorkspace: true,
   myWorkCollapsed: false,
@@ -71,6 +111,23 @@ const initialState: UiState = {
 const LEGACY_PROJECT_CWD_PREFERENCE_PREFIX = "legacy-project-cwd:";
 const LEGACY_PROJECT_EXPANSION_DEFAULT_KEY = "legacy-project-expansion-default";
 let legacyKeysCleanedUp = false;
+
+function createDefaultModeViewSnapshots(): ModeViewSnapshots {
+  return {
+    work: {
+      route: "/",
+      selection: null,
+      filters: {},
+      panelState: {},
+    },
+    symphony: {
+      route: "/symphony",
+      selection: null,
+      filters: {},
+      panelState: {},
+    },
+  };
+}
 
 export function legacyProjectCwdPreferenceKey(cwd: string): string {
   return `${LEGACY_PROJECT_CWD_PREFERENCE_PREFIX}${normalizeProjectPathForComparison(cwd)}`;
@@ -94,6 +151,18 @@ function sanitizeBooleanRecord(value: unknown): Record<string, boolean> {
   return Object.fromEntries(
     Object.entries(value).filter(
       (entry): entry is [string, boolean] => entry[0].length > 0 && typeof entry[1] === "boolean",
+    ),
+  );
+}
+
+function sanitizeStringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string] =>
+        entry[0].length > 0 && typeof entry[1] === "string" && entry[1].length > 0,
     ),
   );
 }
@@ -125,6 +194,51 @@ function sanitizeMyWorkDismissed(value: unknown): Record<string, string> {
   );
 }
 
+function isSymphonyRoutePath(route: string): boolean {
+  const pathname = route.split(/[?#]/, 1)[0] ?? route;
+  return pathname === "/symphony" || pathname.startsWith("/symphony/");
+}
+
+function sanitizeModeViewSnapshot(
+  value: unknown,
+  fallback: ModeViewSnapshot,
+): ModeViewSnapshot {
+  if (!value || typeof value !== "object") {
+    return fallback;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const route = candidate.route;
+  const selection = candidate.selection;
+  return {
+    route:
+      typeof route === "string" && route.startsWith("/") && route.length > 0
+        ? route
+        : fallback.route,
+    selection:
+      selection === null
+        ? null
+        : typeof selection === "string" && selection.length > 0
+          ? selection
+          : fallback.selection,
+    filters: sanitizeStringRecord(candidate.filters),
+    panelState: sanitizeBooleanRecord(candidate.panelState),
+  };
+}
+
+function sanitizeModeViewSnapshots(value: unknown): ModeViewSnapshots {
+  const defaults = createDefaultModeViewSnapshots();
+  if (!value || typeof value !== "object") {
+    return defaults;
+  }
+
+  const candidates = value as Record<string, unknown>;
+  return {
+    work: sanitizeModeViewSnapshot(candidates.work, defaults.work),
+    symphony: sanitizeModeViewSnapshot(candidates.symphony, defaults.symphony),
+  };
+}
+
 export function parsePersistedState(parsed: PersistedUiState): UiState {
   const projectExpandedById =
     parsed.projectExpandedById === undefined
@@ -148,8 +262,11 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
     parsed.projectOrder === undefined
       ? sanitizeStringArray(parsed.projectOrderCwds).map(legacyProjectCwdPreferenceKey)
       : sanitizeStringArray(parsed.projectOrder);
+  const viewSnapshotsByMode = sanitizeModeViewSnapshots(parsed.viewSnapshotsByMode);
 
   return {
+    operatingMode: parsed.operatingMode === "symphony" ? "symphony" : "work",
+    viewSnapshotsByMode,
     // Earlier releases persisted the former default ("threads") for every
     // user. Move that stale default once, while retaining choices made after
     // this migration.
@@ -247,9 +364,12 @@ export function persistState(state: UiState): void {
         return Object.keys(nextTurns).length > 0 ? [[threadId, nextTurns]] : [];
       }),
     );
+    const viewSnapshotsByMode = state.viewSnapshotsByMode ?? createDefaultModeViewSnapshots();
     window.localStorage.setItem(
       PERSISTED_STATE_KEY,
       JSON.stringify({
+        operatingMode: state.operatingMode ?? "work",
+        viewSnapshotsByMode,
         sidebarView: state.sidebarView,
         sidebarViewMigratedToWorkspace: state.sidebarViewMigratedToWorkspace,
         myWorkCollapsed: state.myWorkCollapsed,
@@ -408,6 +528,73 @@ export function setSidebarView(state: UiState, sidebarView: UiState["sidebarView
   return state.sidebarView === sidebarView ? state : { ...state, sidebarView };
 }
 
+export function setOperatingMode(state: UiState, operatingMode: OperatingMode): UiState {
+  return state.operatingMode === operatingMode ? state : { ...state, operatingMode };
+}
+
+function recordsEqual<T extends string | boolean>(
+  left: Readonly<Record<string, T>>,
+  right: Readonly<Record<string, T>>,
+): boolean {
+  const leftEntries = Object.entries(left);
+  const rightEntries = Object.entries(right);
+  if (leftEntries.length !== rightEntries.length) {
+    return false;
+  }
+  return leftEntries.every(([key, value]) => right[key] === value);
+}
+
+export function setModeViewSnapshot(
+  state: UiState,
+  mode: OperatingMode,
+  snapshot: Partial<ModeViewSnapshot>,
+): UiState {
+  const currentSnapshots = state.viewSnapshotsByMode ?? createDefaultModeViewSnapshots();
+  const currentSnapshot = currentSnapshots[mode];
+  const nextSnapshot: ModeViewSnapshot = {
+    route:
+      typeof snapshot.route === "string" && snapshot.route.startsWith("/")
+        ? snapshot.route
+        : currentSnapshot.route,
+    selection:
+      snapshot.selection !== undefined ? snapshot.selection : currentSnapshot.selection,
+    filters: snapshot.filters ?? currentSnapshot.filters,
+    panelState: snapshot.panelState ?? currentSnapshot.panelState,
+  };
+
+  if (
+    currentSnapshot.route === nextSnapshot.route &&
+    currentSnapshot.selection === nextSnapshot.selection &&
+    recordsEqual(currentSnapshot.filters, nextSnapshot.filters) &&
+    recordsEqual(currentSnapshot.panelState, nextSnapshot.panelState)
+  ) {
+    return state;
+  }
+
+  return {
+    ...state,
+    viewSnapshotsByMode: {
+      ...currentSnapshots,
+      [mode]: nextSnapshot,
+    },
+  };
+}
+
+export function resolveOperatingModeRoute(
+  mode: OperatingMode,
+  snapshot: ModeViewSnapshot,
+): string {
+  const isValidRoute = mode === "symphony" ? isSymphonyRoutePath(snapshot.route) : !isSymphonyRoutePath(snapshot.route);
+  if (isValidRoute) {
+    return snapshot.route;
+  }
+  return mode === "symphony" ? "/symphony" : "/";
+}
+
+export function isSymphonyRoute(route: string): boolean {
+  return isSymphonyRoutePath(route);
+}
+
 export function toggleMyWorkCollapsed(state: UiState): UiState {
   return { ...state, myWorkCollapsed: !state.myWorkCollapsed };
 }
@@ -517,7 +704,11 @@ export function reorderProjects(
 }
 
 interface UiStateStore extends UiState {
+  operatingMode: OperatingMode;
+  viewSnapshotsByMode: ModeViewSnapshots;
   setSidebarView: (sidebarView: UiState["sidebarView"]) => void;
+  setOperatingMode: (operatingMode: OperatingMode) => void;
+  setModeViewSnapshot: (mode: OperatingMode, snapshot: Partial<ModeViewSnapshot>) => void;
   toggleMyWorkCollapsed: () => void;
   dismissMyWorkThread: (threadKey: string, signature: string) => void;
   dismissMyWorkThreads: (dismissed: Readonly<Record<string, string>>) => void;
@@ -536,9 +727,16 @@ interface UiStateStore extends UiState {
   ) => void;
 }
 
+const persistedState = readPersistedState();
+
 export const useUiStateStore = create<UiStateStore>((set) => ({
-  ...readPersistedState(),
+  ...persistedState,
+  operatingMode: persistedState.operatingMode ?? "work",
+  viewSnapshotsByMode: persistedState.viewSnapshotsByMode ?? createDefaultModeViewSnapshots(),
   setSidebarView: (sidebarView) => set((state) => setSidebarView(state, sidebarView)),
+  setOperatingMode: (operatingMode) => set((state) => setOperatingMode(state, operatingMode)),
+  setModeViewSnapshot: (mode, snapshot) =>
+    set((state) => setModeViewSnapshot(state, mode, snapshot)),
   toggleMyWorkCollapsed: () => set(toggleMyWorkCollapsed),
   dismissMyWorkThread: (threadKey, signature) =>
     set((state) => dismissMyWorkThread(state, threadKey, signature)),
