@@ -50,17 +50,16 @@ export const projectWorkItem = Effect.fn("projectWorkItem")(function* (
     updatedAt: now,
   };
 
-  if (issue.description !== null) {
-    return { ...workItem, description: issue.description };
-  }
-  if (issue.branchName !== null) {
-    return { ...workItem, baseBranch: issue.branchName };
-  }
-  if (issue.priority !== null) {
-    return { ...workItem, priority: issue.priority };
-  }
-  if (issue.blockedBy.length > 0) {
-    return { ...workItem, blocked: true };
-  }
-  return workItem;
+  // Fold every present field into the projected row: an issue commonly has a
+  // description AND a branch AND a priority AND blockers, and each is
+  // independently meaningful to the Queue view. These must accumulate, not
+  // short-circuit (the previous exclusive `if (…) return` dropped baseBranch,
+  // priority, and blocked for any issue with a description).
+  return {
+    ...workItem,
+    ...(issue.description !== null ? { description: issue.description } : {}),
+    ...(issue.branchName !== null ? { baseBranch: issue.branchName } : {}),
+    ...(issue.priority !== null ? { priority: issue.priority } : {}),
+    ...(issue.blockedBy.length > 0 ? { blocked: true } : {}),
+  };
 });
