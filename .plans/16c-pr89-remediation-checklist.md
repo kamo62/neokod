@@ -2,6 +2,12 @@
 
 _Last updated: 2026-02-26_
 
+Note: `apps/server/src/wsServer.ts` and `apps/web/src/wsTransport.ts` no longer exist. Both were
+replaced by later architecture rewrites (`apps/server/src/ws.ts` under the Effect RPC/layer
+startup migration; `packages/client-runtime/src/rpc/` under the client connection rewrite). File
+references below point to the current successor; line numbers predate those rewrites and may not
+correspond to the original finding's exact location anymore.
+
 This is the working checklist for remediation execution.
 
 Status values:
@@ -32,7 +38,7 @@ Counts: active `51` (`valid=33`, `partially-valid=18`), closed-invalid `6`
   - Verdict: `valid`
   - Severity: `High`
   - Area: `WebSocket robustness`
-  - File: `apps/server/src/wsServer.ts:75`
+  - File: `apps/server/src/ws.ts`
   - Threads: PRRT_kwDORLtfbc5v-cf4
   - Audit note: Upgrade reject writes then destroys socket without defensive error listener.
 
@@ -68,7 +74,7 @@ Counts: active `51` (`valid=33`, `partially-valid=18`), closed-invalid `6`
   - Verdict: `valid`
   - Severity: `Medium`
   - Area: `WebSocket robustness`
-  - File: `apps/server/src/wsServer.ts:545`
+  - File: `apps/server/src/ws.ts`
   - Threads: PRRT_kwDORLtfbc5wj4cE
   - Audit note: runPromise result still not caught; rejection can surface unhandled.
 
@@ -77,7 +83,7 @@ Counts: active `51` (`valid=33`, `partially-valid=18`), closed-invalid `6`
   - Verdict: `valid`
   - Severity: `Medium`
   - Area: `Runtime resilience and failure handling`
-  - File: `apps/server/src/wsServer.ts:545`
+  - File: `apps/server/src/ws.ts`
   - Threads: PRRT_kwDORLtfbc5wyTaW, PRRT_kwDORLtfbc5wzli3 (+1 duplicate thread(s))
   - Audit note: Same unhandled rejection path remains in WS message handler.
 
@@ -131,7 +137,7 @@ Counts: active `51` (`valid=33`, `partially-valid=18`), closed-invalid `6`
   - Verdict: `valid`
   - Severity: `Low`
   - Area: `WebSocket robustness`
-  - File: `apps/server/src/wsServer.ts:83`
+  - File: `apps/server/src/ws.ts`
   - Threads: PRRT_kwDORLtfbc5v-WPD
   - Audit note: Still uses write+destroy rather than end() for rejection response.
 
@@ -140,7 +146,7 @@ Counts: active `51` (`valid=33`, `partially-valid=18`), closed-invalid `6`
   - Verdict: `valid`
   - Severity: `Low`
   - Area: `WebSocket robustness`
-  - File: `apps/server/src/wsServer.ts:104`
+  - File: `apps/server/src/ws.ts`
   - Threads: PRRT_kwDORLtfbc5whtrR
   - Audit note: Array chunk UTF-8 decode remains vulnerable to split multibyte corruption.
 
@@ -149,7 +155,7 @@ Counts: active `51` (`valid=33`, `partially-valid=18`), closed-invalid `6`
   - Verdict: `partially-valid`
   - Severity: `Low`
   - Area: `WebSocket robustness`
-  - File: `apps/web/src/wsTransport.ts:59`
+  - File: `packages/client-runtime/src/rpc/client.ts` (successor architecture; requests are now schema-typed via `WsRpcProtocolClient` rather than a manually spread body, so this exact vulnerability class may no longer apply — not re-verified)
   - Threads: PRRT_kwDORLtfbc5whtrN
   - Audit note: Transport \_tag override risk exists but current callsites are constrained.
 
@@ -198,7 +204,7 @@ Counts: active `51` (`valid=33`, `partially-valid=18`), closed-invalid `6`
   - Verdict: `partially-valid`
   - Severity: `Medium`
   - Area: `Checkpointing correctness`
-  - File: `apps/server/src/checkpointing/Layers/CheckpointStore.ts:94`
+  - File: `apps/server/src/checkpointing/CheckpointStore.ts:94`
   - Threads: PRRT*kwDORLtfbc5widJw, PRRT_kwDORLtfbc5wnWv*, PRRT_kwDORLtfbc5w0_g7, PRRT_kwDORLtfbc5w1C36 (+3 duplicate thread(s))
   - Audit note: Edge schema strategy is in place across contracts/consumers (trim/normalize via schemas and decode at boundaries); CheckpointStore remains an internal repository boundary.
 
@@ -256,7 +262,7 @@ Counts: active `51` (`valid=33`, `partially-valid=18`), closed-invalid `6`
   - Verdict: `valid`
   - Severity: `Medium`
   - Area: `Edge-case parsing/platform behavior`
-  - File: `apps/server/src/git/Layers/GitCore.ts:41`
+  - File: `apps/server/src/vcs/GitVcsDriverCore.ts:160` (`parseNumstatEntries`)
   - Threads: PRRT_kwDORLtfbc5w1CxT
   - Audit note: Braced rename parsing still breaks paths like src/{old => new}/file.ts.
 
@@ -274,7 +280,7 @@ Counts: active `51` (`valid=33`, `partially-valid=18`), closed-invalid `6`
   - Verdict: `valid`
   - Severity: `Medium`
   - Area: `Edge-case parsing/platform behavior`
-  - File: `apps/server/src/os-jank.ts:10`
+  - File: `packages/shared/src/shell.ts` (PATH-hydration logic moved out of `os-jank.ts` into this shared package; no fish handling found there)
   - Threads: PRRT_kwDORLtfbc5wkRZM
   - Audit note: fish PATH formatting risk still exists in os-jank path recovery.
 
@@ -283,7 +289,7 @@ Counts: active `51` (`valid=33`, `partially-valid=18`), closed-invalid `6`
   - Verdict: `valid`
   - Severity: `Medium`
   - Area: `Edge-case parsing/platform behavior`
-  - File: `apps/server/src/os-jank.ts:10`
+  - File: `packages/shared/src/shell.ts:314` (`-ilc` invocation; moved out of `os-jank.ts`)
   - Threads: PRRT_kwDORLtfbc5wj4cM
   - Audit note: -ilc shell invocation can pollute captured PATH output.
 
@@ -310,7 +316,7 @@ Counts: active `51` (`valid=33`, `partially-valid=18`), closed-invalid `6`
   - Verdict: `valid`
   - Severity: `Low`
   - Area: `Edge-case parsing/platform behavior`
-  - File: `apps/server/src/git/Layers/CodexTextGeneration.ts:136`
+  - File: `apps/server/src/textGeneration/CodexTextGeneration.ts` (moved from `git/`; current code uses `Stream.decodeText()`, which decodes safely across chunk boundaries — this finding may already be moot, not re-verified)
   - Threads: PRRT_kwDORLtfbc5w1GPo
   - Audit note: Chunk-by-chunk UTF-8 decode can still corrupt split multibyte characters.
 
@@ -393,7 +399,7 @@ Counts: active `51` (`valid=33`, `partially-valid=18`), closed-invalid `6`
   - Verdict: `valid`
   - Severity: `Low`
   - Area: `Other`
-  - File: `apps/server/src/terminal/Layers/BunPTY.ts:97`
+  - File: `apps/server/src/terminal/BunPtyAdapter.ts` (around line 129)
   - Threads: PRRT_kwDORLtfbc5w1CxE
   - Audit note: Data callback may race before processHandle assignment.
 
@@ -411,7 +417,7 @@ Counts: active `51` (`valid=33`, `partially-valid=18`), closed-invalid `6`
   - Verdict: `valid`
   - Severity: `Low`
   - Area: `Other`
-  - File: `apps/web/src/routes/_chat.$threadId.tsx:105`
+  - File: `apps/web/src/routes/_chat.$environmentId.$threadId.tsx` (renamed; line not re-verified)
   - Threads: PRRT_kwDORLtfbc5wyWz4
   - Audit note: Resizable object recreation still retriggers effect/storage reads.
 
@@ -420,7 +426,7 @@ Counts: active `51` (`valid=33`, `partially-valid=18`), closed-invalid `6`
   - Verdict: `valid`
   - Severity: `Low`
   - Area: `Other`
-  - File: `apps/web/src/routes/_chat.$threadId.tsx:122`
+  - File: `apps/web/src/routes/_chat.$environmentId.$threadId.tsx` (renamed; line not re-verified)
   - Threads: PRRT_kwDORLtfbc5wnVsX
   - Audit note: Number(null) -> 0 path still forces min width on initial load.
 
@@ -429,7 +435,7 @@ Counts: active `51` (`valid=33`, `partially-valid=18`), closed-invalid `6`
   - Verdict: `valid`
   - Severity: `Low`
   - Area: `Other`
-  - File: `packages/contracts/src/orchestration.ts:253`
+  - File: `packages/contracts/src/orchestration.ts:525` (field is now named `defaultModelSelection`; `ProjectMetaUpdateCommand` already declares it as `Schema.optional(Schema.NullOr(ModelSelection))`, which is the shape this finding asked for — status kept as `TODO` here since re-verifying the fix is out of scope for this pass, but worth a re-check)
   - Threads: PRRT_kwDORLtfbc5whxJC
   - Audit note: Schema still cannot express null clear for defaultModel patch.
 
@@ -452,7 +458,7 @@ Counts: active `51` (`valid=33`, `partially-valid=18`), closed-invalid `6`
 - [x] `C025` Duplicated checkpoint ref computation across two files
   - Status: `CLOSED_INVALID`
   - Severity: `Medium`
-  - File: `apps/server/src/wsServer.ts:128`
+  - File: `apps/server/src/ws.ts`
   - Threads: PRRT_kwDORLtfbc5wvwag
   - Rationale: No longer duplicated; checkpoint ref helper now centralized.
 
@@ -466,13 +472,13 @@ Counts: active `51` (`valid=33`, `partially-valid=18`), closed-invalid `6`
 - [x] `C036` Duplicate `checkpointRefForThreadTurn` function in two production files
   - Status: `CLOSED_INVALID`
   - Severity: `Low`
-  - File: `apps/server/src/checkpointing/Layers/CheckpointStore.ts:284`
+  - File: `apps/server/src/checkpointing/CheckpointStore.ts:284`
   - Threads: PRRT_kwDORLtfbc5wiqFX
-  - Rationale: No longer duplicated; single production source via Refs.ts.
+  - Rationale: No longer duplicated; single production source via `checkpointing/Utils.ts` (there is no `Refs.ts` in this repo).
 
 - [x] `C055` Duplicate `checkpointRefForThreadTurn` function across files
   - Status: `CLOSED_INVALID`
   - Severity: `Low`
-  - File: `apps/server/src/wsServer.ts:128`
+  - File: `apps/server/src/ws.ts`
   - Threads: PRRT_kwDORLtfbc5wkPaG
   - Rationale: No longer duplicated; helper is centralized.
