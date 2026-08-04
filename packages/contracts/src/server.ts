@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { ExecutionEnvironmentDescriptor } from "./environment.ts";
 import {
+  ForwardCompatibleArray,
   IsoDateTime,
   NonNegativeInt,
   NonNegativeNumber,
@@ -38,7 +39,7 @@ export const ServerConfigIssue = Schema.Union([
 ]);
 export type ServerConfigIssue = typeof ServerConfigIssue.Type;
 
-const ServerConfigIssues = Schema.Array(ServerConfigIssue);
+const ServerConfigIssues = ForwardCompatibleArray(ServerConfigIssue);
 
 export const ServerProviderState = Schema.Literals(["ready", "warning", "error", "disabled"]);
 export type ServerProviderState = typeof ServerProviderState.Type;
@@ -434,7 +435,7 @@ export const ServerConfig = Schema.Struct({
   keybindings: ResolvedKeybindingsConfig,
   issues: ServerConfigIssues,
   providers: ServerProviders,
-  availableEditors: Schema.Array(EditorId),
+  availableEditors: ForwardCompatibleArray(EditorId),
   observability: ServerObservability,
   settings: ServerSettings,
 });

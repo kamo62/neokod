@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { TrimmedString } from "./baseSchemas.ts";
+import { ForwardCompatibleArray, TrimmedString } from "./baseSchemas.ts";
 
 export const MAX_KEYBINDING_VALUE_LENGTH = 64;
 export const MAX_KEYBINDING_WHEN_LENGTH = 256;
@@ -152,7 +152,7 @@ export const ResolvedKeybindingRule = Schema.Struct({
 }).annotate({ parseOptions: { onExcessProperty: "ignore" } });
 export type ResolvedKeybindingRule = typeof ResolvedKeybindingRule.Type;
 
-export const ResolvedKeybindingsConfig = Schema.Array(ResolvedKeybindingRule).check(
+export const ResolvedKeybindingsConfig = ForwardCompatibleArray(ResolvedKeybindingRule).check(
   Schema.isMaxLength(MAX_KEYBINDINGS_COUNT),
 );
 export type ResolvedKeybindingsConfig = typeof ResolvedKeybindingsConfig.Type;
