@@ -1075,6 +1075,50 @@ handling comes free from `SubscriptionRef.changes(supervisor.session)`.
 - Run detail: tabs for Summary, Timeline, Agent, Terminal, Files, Diff, Validation, Evidence,
   Issue, Pull Request, Logs (PRD FR-051), built on the existing right-panel surface model and
   `DiffPanel` (mode prop), `PlanSidebar`, `FileBrowserPanel`, `ThreadTerminalDrawer`.
+
+### 15.3.1 Pull Request panel
+
+The Codex desktop app's PR viewer is the reference design for this panel, and it is a closer match
+to FR-101 than anything currently in Neokod. Its layout, which this panel adopts:
+
+```text
+PR #<n>                                         [host icon]
+<title>
+
+Branch      <head> → <base>        +<adds> -<dels>
+Reviewers   <list | "No reviewers">
+Comments    <count | "No comments">
+Checks      <ci summary | "No CI checks">
+Status      <open | draft | merged | closed>
+
+Description  (collapsible)
+  Summary / Why / Impact
+
+[ Leave a comment ]
+```
+
+Three things this reference settles that the plan had left vague:
+
+1. **The diff stat (`+adds -dels`) is part of PR evidence.** FR-101 does not name it and the earlier
+   draft omitted it, but it is the single most useful signal for judging review size, and it is
+   cheap: it comes from the same branch range already computed for `changedFiles`.
+2. **Absent data renders as an explicit state, not a blank.** "No CI checks" and "No reviewers" are
+   real answers. This is exactly the honest-degradation requirement in 10.1: where a host has no
+   enrichment yet, the panel says so rather than implying a clean bill of health. A blank row and a
+   passing row must never look alike.
+3. **The description is structured, not free prose.** Summary / Why / Impact is a better shape for
+   the `SYMPHONY_EVIDENCE.md` handoff schema (section 10) than an unstructured summary field, and
+   it maps onto PR body generation directly.
+
+The panel is a surface over `PullRequestEvidence`; it renders whatever the host provided and
+degrades per 10.1. It is tabbed and closable like the reference, so several PRs can be open at once.
+
+**Work Mode also wants this, and that is outside the Symphony PRD.** The reference app exposes
+"Pull requests" as a top-level nav item, listing PRs for the repository independent of any run. That
+is a genuinely useful Work Mode feature and the panel component would be shared, but the Symphony
+PRD covers Symphony Mode only, so it is recorded here as a candidate rather than smuggled into this
+scope. Building the panel against `PullRequestEvidence` rather than against Symphony run state keeps
+it reusable if Work Mode adopts it later. See open decision 13.
 - Workflows: editor with form view, source view, YAML validation, schema errors, prompt preview,
   resolved-config preview, env validation, dry-run validation, workflow diff, save confirmation,
   version-control status (PRD 12.3).
@@ -1324,6 +1368,13 @@ Deliberately **not** written, and why:
     Rust port is mechanical (pure domain, isolated IO).
 12. Work Mode threads are not migrated into the unified work-item model in this effort; the
     unified `WorkItem` type exists and cross-mode handoff maps between them.
+13. **Open: a Work Mode pull-request view.** The Codex desktop app exposes "Pull requests" as a
+    top-level nav item with the panel described in 15.3.1, independent of any agent run. This is
+    outside the Symphony PRD but the operator has flagged it as wanted in both modes. Deciding it
+    now matters because it changes where the panel component lives and how much of the per-host
+    enrichment in 10.1 becomes load-bearing for Work Mode rather than Symphony-only. Recommendation:
+    build the panel in Symphony first against `PullRequestEvidence`, keep it free of Symphony run
+    state, and lift it into Work Mode as a follow-up once the enrichment exists for at least GitHub.
 
 ## 21. File map (new files)
 
