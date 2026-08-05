@@ -186,6 +186,18 @@ const makeRepository = Effect.gen(function* () {
       Effect.map(Option.match({ onNone: () => null, onSome: rowToAttempt })),
     );
 
+  const listRecent: RunAttemptRepositoryShape["listRecent"] = (options) =>
+    sql<Schema.Schema.Type<typeof RunAttemptRowSchema>>`
+      SELECT ${cols}
+      FROM symphony_run_attempts
+      ${options?.status === undefined ? sql`` : sql`WHERE status = ${options.status}`}
+      ORDER BY started_at DESC
+      ${options?.limit === undefined ? sql`` : sql`LIMIT ${options.limit}`}
+    `.pipe(
+      Effect.mapError(toSqlError("RunAttemptRepository.listRecent")),
+      Effect.map((rows) => rows.map(rowToAttempt)),
+    );
+
   const updateStatus: RunAttemptRepositoryShape["updateStatus"] = (id, status, options) =>
     Effect.gen(function* () {
       const existing = yield* selectById(id).pipe(
@@ -234,6 +246,7 @@ const makeRepository = Effect.gen(function* () {
     getById,
     listByWorkItem,
     latestForWorkItem,
+    listRecent,
     updateStatus,
   } satisfies RunAttemptRepositoryShape;
 });

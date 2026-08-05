@@ -34,6 +34,7 @@ function QueueRow({
   const excludeWorkItem = useAtomCommand(symphonyEnvironment.excludeWorkItem);
   const includeWorkItem = useAtomCommand(symphonyEnvironment.includeWorkItem);
   const setLocalPriority = useAtomCommand(symphonyEnvironment.setLocalPriority);
+  const dispatchWorkItem = useAtomCommand(symphonyEnvironment.dispatchWorkItem);
 
   const toggleExcluded = () => {
     const target = { environmentId, input: { workItemId: item.workItemId } };
@@ -107,6 +108,19 @@ function QueueRow({
             }
           >
             {item.excluded ? "Include" : "Exclude"}
+          </Button>
+          <Button
+            size="sm"
+            variant="default"
+            className="h-7 px-2 text-[11px]"
+            disabled={item.blocked || item.excluded}
+            onClick={() =>
+              void dispatchWorkItem({ environmentId, input: { workItemId: item.workItemId } })
+            }
+            aria-label="Dispatch this item now"
+            title="Claim, prepare the workspace, and run the agent for this item"
+          >
+            Dispatch
           </Button>
         </div>
       </div>

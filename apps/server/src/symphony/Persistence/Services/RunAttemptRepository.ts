@@ -23,6 +23,11 @@ export interface RunAttemptRepositoryShape {
   readonly latestForWorkItem: (
     workItemId: WorkItemId,
   ) => Effect.Effect<RunAttempt | null, SymphonyPersistenceError>;
+  /** Most recent attempts across all work items, newest first. */
+  readonly listRecent: (options?: {
+    readonly limit?: number;
+    readonly status?: RunAttemptStatus;
+  }) => Effect.Effect<RunAttempt[], SymphonyPersistenceError>;
   readonly updateStatus: (
     id: RunAttemptId,
     status: RunAttemptStatus,

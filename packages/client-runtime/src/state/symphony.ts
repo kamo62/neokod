@@ -36,6 +36,18 @@ export function createSymphonyEnvironmentAtoms<R, E>(
       staleTimeMs: 10_000,
       refreshIntervalMs: 30_000,
     }),
+    getRun: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:symphony:getRun",
+      tag: SYMPHONY_WS_METHODS.getRun,
+      staleTimeMs: 5_000,
+      refreshIntervalMs: 10_000,
+    }),
+    attention: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:symphony:attention",
+      tag: SYMPHONY_WS_METHODS.listAttention,
+      staleTimeMs: 5_000,
+      refreshIntervalMs: 15_000,
+    }),
     workflows: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:symphony:workflows",
       tag: SYMPHONY_WS_METHODS.listWorkflows,
@@ -61,6 +73,14 @@ export function createSymphonyEnvironmentAtoms<R, E>(
     cancelRun: createEnvironmentRpcCommand(runtime, {
       label: "environment-command:symphony:cancelRun",
       tag: SYMPHONY_WS_METHODS.cancelRun,
+    }),
+    approve: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:symphony:approve",
+      tag: SYMPHONY_WS_METHODS.approve,
+    }),
+    reject: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:symphony:reject",
+      tag: SYMPHONY_WS_METHODS.reject,
     }),
   };
 }

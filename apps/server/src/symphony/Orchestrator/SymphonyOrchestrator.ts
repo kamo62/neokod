@@ -1,5 +1,7 @@
 import type {
+  AttentionItem,
   QueueItem,
+  RunDetails,
   RunSummary,
   SymphonyOverview,
   TrackerHealth,
@@ -33,6 +35,10 @@ export interface SymphonyOrchestratorShape {
     readonly workflowId?: string;
     readonly limit?: number;
   }) => Effect.Effect<RunSummary[]>;
+  /** Full run details: work item, attempt, timeline, attention items. */
+  readonly getRun: (runAttemptId: string) => Effect.Effect<RunDetails | null>;
+  /** Open attention items: pending approvals and input requests. */
+  readonly listAttention: (limit?: number) => Effect.Effect<AttentionItem[]>;
   readonly listWorkflows: () => Effect.Effect<WorkflowRecord[]>;
   readonly listTrackerHealth: () => Effect.Effect<TrackerHealth[]>;
   readonly isPaused: () => Effect.Effect<boolean>;

@@ -127,6 +127,7 @@ import {
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
 import {
   SYMPHONY_WS_METHODS,
+  AttentionItemSchema,
   SymphonyActivateWorkflowInput,
   SymphonyApproveInput,
   SymphonyApproveMergeInput,
@@ -145,6 +146,7 @@ import {
   SymphonyDelegateFromThreadInput,
   SymphonyDelegateFromThreadResult,
   SymphonyListHistoryInput,
+  SymphonyListAttentionInput,
   SymphonyListQueueInput,
   SymphonyListRunsInput,
   SymphonyListTrackersInput,
@@ -738,7 +740,7 @@ export const WsSymphonyListRunsRpc = Rpc.make(SYMPHONY_WS_METHODS.listRuns, {
 
 export const WsSymphonyGetRunRpc = Rpc.make(SYMPHONY_WS_METHODS.getRun, {
   payload: SymphonyGetRunInput,
-  success: RunDetailsSchema,
+  success: Schema.NullOr(RunDetailsSchema),
   error: SymphonyError,
 });
 
@@ -871,6 +873,12 @@ export const WsSymphonyRejectRpc = Rpc.make(SYMPHONY_WS_METHODS.reject, {
 export const WsSymphonyRespondToUserInputRpc = Rpc.make(SYMPHONY_WS_METHODS.respondToUserInput, {
   payload: SymphonyRespondToUserInputInput,
   success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
+export const WsSymphonyListAttentionRpc = Rpc.make(SYMPHONY_WS_METHODS.listAttention, {
+  payload: SymphonyListAttentionInput,
+  success: Schema.Array(AttentionItemSchema),
   error: SymphonyError,
 });
 
@@ -1017,11 +1025,13 @@ export const WsRpcGroup = RpcGroup.make(
   WsSymphonyGetOverviewRpc,
   WsSymphonyListQueueRpc,
   WsSymphonyListRunsRpc,
+  WsSymphonyGetRunRpc,
   WsSymphonyListWorkflowsRpc,
   WsSymphonyValidateWorkflowRpc,
   WsSymphonyApproveRpc,
   WsSymphonyRejectRpc,
   WsSymphonyRespondToUserInputRpc,
+  WsSymphonyListAttentionRpc,
   WsSymphonyExcludeWorkItemRpc,
   WsSymphonyIncludeWorkItemRpc,
   WsSymphonySetLocalPriorityRpc,

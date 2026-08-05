@@ -14,7 +14,14 @@ import { SqlitePersistenceMemory } from "../../../persistence/Layers/Sqlite.ts";
 import { WorkflowRepository } from "../../Persistence/Services/WorkflowRepository.ts";
 import { WorkflowRepositoryLive } from "../../Persistence/Layers/WorkflowRepository.ts";
 import { WorkItemRepositoryLive } from "../../Persistence/Layers/WorkItemRepository.ts";
+import { RunAttemptRepository } from "../../Persistence/Services/RunAttemptRepository.ts";
+import { RunAttemptRepositoryLive } from "../../Persistence/Layers/RunAttemptRepository.ts";
+import { RunEventRepository } from "../../Persistence/Services/RunEventRepository.ts";
+import { RunEventRepositoryLive } from "../../Persistence/Layers/RunEventRepository.ts";
 import { OrchestratorStateRepositoryLive } from "../../Persistence/Layers/OrchestratorStateRepository.ts";
+import { ApprovalService } from "../../Runner/ApprovalService.ts";
+import { ApprovalRepository } from "../../Persistence/Services/ApprovalRepository.ts";
+import { ApprovalRepositoryLive } from "../../Persistence/Layers/ApprovalRepository.ts";
 import { TrackerRegistryWithFactories } from "../../Trackers/Registry.ts";
 import { makeMemoryTrackerAdapter } from "../../Trackers/MemoryAdapter.ts";
 import { TrackerEnablementLive } from "../TrackerEnablement.ts";
@@ -79,14 +86,40 @@ const mockDispatcherLayer = Layer.succeed(RunDispatcher, {
   cancelRun: () => Effect.void,
 } as RunDispatcher["Service"]);
 
+const mockApprovalsLayer = Layer.effect(
+  ApprovalService,
+  Effect.gen(function* () {
+    const repository = yield* ApprovalRepository;
+    return {
+      recordPending: (input) =>
+        repository.create({
+          ...input,
+          id: `sym-${input.requestId}`,
+          workItemId: String(input.workItemId),
+        }),
+      approve: () => Effect.void,
+      reject: () => Effect.void,
+      respondToUserInput: () => Effect.void,
+      listPending: (options) =>
+        repository.listPending(options).pipe(Effect.orElseSucceed(() => [])),
+      listForRun: (runAttemptId) =>
+        repository.listForRun(runAttemptId).pipe(Effect.orElseSucceed(() => [])),
+    } satisfies ApprovalService["Service"];
+  }),
+);
+
 const layer = it.layer(
   SymphonyOrchestratorLive.pipe(
     Layer.provideMerge(WorkItemRepositoryLive),
     Layer.provideMerge(WorkflowRepositoryLive),
+    Layer.provideMerge(RunAttemptRepositoryLive),
+    Layer.provideMerge(RunEventRepositoryLive),
     Layer.provideMerge(OrchestratorStateRepositoryLive),
     Layer.provideMerge(registryLayer),
     Layer.provideMerge(TrackerEnablementLive),
     Layer.provideMerge(mockDispatcherLayer),
+    Layer.provideMerge(mockApprovalsLayer),
+    Layer.provideMerge(ApprovalRepositoryLive),
     Layer.provideMerge(serverSettingsTestLayer({ trackers: { github: { enabled: true } } })),
     Layer.provideMerge(SqlitePersistenceMemory),
   ),
@@ -153,6 +186,142 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* orchestrator.refreshNow();
       const overview = yield* orchestrator.getOverview();
       expect(overview.activeWorkflowCount).toBeGreaterThanOrEqual(1);
+    }),
+  );
+
+  it.effect("listRuns returns seeded attempts newest first with latest event", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-runs-1", "/repo/runs");
+      yield* orchestrator.refreshNow();
+      const queue = yield* orchestrator.listQueue();
+      const eligible = queue.find((item) => item.eligible === true && item.excluded === false);
+      if (eligible === undefined) {
+        return;
+      }
+
+      const runAttempts = yield* RunAttemptRepository;
+      const runEvents = yield* RunEventRepository;
+      const firstId = RunAttemptId.make(`run-${eligible.workItemId}-1`);
+      const secondId = RunAttemptId.make(`run-${eligible.workItemId}-2`);
+      yield* runAttempts.create({
+        id: firstId,
+        workItemId: eligible.workItemId,
+        attemptNumber: 1,
+        workspacePath: "/ws/run-1",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "succeeded",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        finishedAt: "2026-01-01T00:05:00.000Z",
+        error: null,
+      });
+      yield* runAttempts.create({
+        id: secondId,
+        workItemId: eligible.workItemId,
+        attemptNumber: 2,
+        workspacePath: "/ws/run-2",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "streaming_turn",
+        startedAt: "2026-01-02T00:00:00.000Z",
+        finishedAt: null,
+        error: null,
+      });
+      yield* runEvents.append(secondId, "turn_started");
+
+      const runs = yield* orchestrator.listRuns({ limit: 10 });
+      const matches = runs.filter((run) =>
+        run.workItemId.toString().startsWith(eligible.workItemId.toString().slice(0, 6)),
+      );
+      const matchingIds = matches.map((run) => run.runAttemptId);
+      expect(matchingIds).toContain(secondId);
+      expect(matchingIds).toContain(firstId);
+      const latest = matches.find((run) => run.runAttemptId === secondId);
+      expect(latest?.status).toBe("streaming_turn");
+      expect(latest?.latestEvent).toBe("turn_started");
+      expect(latest?.lifecycle).toBe("running");
+    }),
+  );
+
+  it.effect("getRun returns details with timeline and null for unknown runs", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-run-detail-1", "/repo/run-detail");
+      yield* orchestrator.refreshNow();
+      const queue = yield* orchestrator.listQueue();
+      const eligible = queue.find((item) => item.eligible === true && item.excluded === false);
+      if (eligible === undefined) {
+        return;
+      }
+
+      const runAttempts = yield* RunAttemptRepository;
+      const runEvents = yield* RunEventRepository;
+      const runId = RunAttemptId.make(`run-${eligible.workItemId}-detail`);
+      yield* runAttempts.create({
+        id: runId,
+        workItemId: eligible.workItemId,
+        attemptNumber: 3,
+        workspacePath: "/ws/run-detail",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "streaming_turn",
+        startedAt: "2026-01-03T00:00:00.000Z",
+        finishedAt: null,
+        error: null,
+      });
+      yield* runEvents.append(runId, "turn_started");
+      yield* runEvents.append(runId, "tool_call", { tool: "edit" });
+
+      const details = yield* orchestrator.getRun(runId.toString());
+      expect(details).not.toBeNull();
+      expect(details?.runAttempt.id).toEqual(runId);
+      expect(details?.timeline.map((event) => event.eventType)).toEqual([
+        "turn_started",
+        "tool_call",
+      ]);
+      expect(details?.workItem.objective).toBe(eligible.title);
+
+      const unknown = yield* orchestrator.getRun("run-does-not-exist");
+      expect(unknown).toBeNull();
+    }),
+  );
+
+  it.effect("listAttention maps pending approval requests to attention items", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-attention-1", "/repo/attention");
+      yield* orchestrator.refreshNow();
+      const queue = yield* orchestrator.listQueue();
+      const eligible = queue.find((item) => item.eligible === true && item.excluded === false);
+      if (eligible === undefined) {
+        return;
+      }
+
+      const approvals = yield* ApprovalService;
+      yield* approvals.recordPending({
+        id: "attn-1",
+        workItemId: eligible.workItemId,
+        runAttemptId: RunAttemptId.make(`run-${eligible.workItemId}-attn`),
+        requestId: "attn-1",
+        action: "command_execution",
+        scope: "once",
+        command: "npm run build",
+        workingDirectory: "/ws/run",
+        reason: "builds the workspace",
+      });
+
+      const attention = yield* orchestrator.listAttention();
+      const item = attention.find((a) => a.id.toString().endsWith("attn-1"));
+      expect(item).toBeDefined();
+      expect(item?.kind).toBe("command_approval");
+      expect(item?.availableActions).toEqual(["approve", "reject"]);
     }),
   );
 });

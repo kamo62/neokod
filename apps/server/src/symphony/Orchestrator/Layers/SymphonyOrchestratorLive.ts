@@ -1,7 +1,10 @@
 import type {
+  AttentionItem,
   EffectiveWorkflowConfig,
   NormalizedIssue,
   QueueItem,
+  RunAttempt,
+  RunDetails,
   RunSummary,
   SymphonyOverview,
   TrackerHealth,
@@ -18,6 +21,9 @@ import { nowIso } from "../../Domain/Time.ts";
 import { WorkflowRepository } from "../../Persistence/Services/WorkflowRepository.ts";
 import { WorkItemRepository } from "../../Persistence/Services/WorkItemRepository.ts";
 import { OrchestratorStateRepository } from "../../Persistence/Services/OrchestratorStateRepository.ts";
+import { RunAttemptRepository } from "../../Persistence/Services/RunAttemptRepository.ts";
+import { RunEventRepository } from "../../Persistence/Services/RunEventRepository.ts";
+import { ApprovalService } from "../../Runner/ApprovalService.ts";
 import { RunDispatcher } from "../../Runner/Dispatcher.ts";
 import { TrackerAdapterRegistry } from "../../Trackers/Adapter.ts";
 import { TrackerEnablement } from "../TrackerEnablement.ts";
@@ -64,6 +70,104 @@ const buildQueueItem = (workItem: WorkItem): QueueItem => ({
   excluded: workItem.excluded ?? false,
   estimatedReadiness: null,
   createdAt: workItem.createdAt,
+});
+
+const RUN_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
+  "succeeded",
+  "failed",
+  "timed_out",
+  "stalled",
+  "canceled_by_reconciliation",
+  "user_cancelled",
+  "tracker_cancelled",
+  "process_failed",
+  "validation_failed",
+  "workflow_error",
+  "provider_error",
+  "interrupted",
+  "retries_exhausted",
+]);
+
+const lifecycleForRun = (
+  attemptStatus: string,
+  workItem: WorkItem | null,
+): WorkItem["lifecycle"] => {
+  if (attemptStatus === "succeeded") {
+    return "ready_for_review";
+  }
+  if (RUN_TERMINAL_STATUSES.has(attemptStatus)) {
+    return "failed";
+  }
+  if (
+    workItem !== null &&
+    (workItem.lifecycle === "waiting_for_approval" ||
+      workItem.lifecycle === "blocked" ||
+      workItem.lifecycle === "cancelled" ||
+      workItem.lifecycle === "changes_requested")
+  ) {
+    return workItem.lifecycle;
+  }
+  return "running";
+};
+
+const buildRunSummary = (input: {
+  readonly attempt: RunAttempt;
+  readonly workItem: WorkItem | null;
+  readonly latestEvent: string | null;
+}): RunSummary => {
+  const { attempt, workItem, latestEvent } = input;
+  const started = Date.parse(attempt.startedAt);
+  const finished = attempt.finishedAt === null ? null : Date.parse(attempt.finishedAt);
+  const elapsedMs =
+    finished === null ? Math.max(0, Date.now() - started) : Math.max(0, finished - started);
+  return {
+    runAttemptId: RunAttemptId.make(attempt.id),
+    workItemId: WorkItemId.make(attempt.workItemId),
+    ...(workItem?.trackerIdentifier !== undefined
+      ? { trackerIdentifier: workItem.trackerIdentifier }
+      : {}),
+    ...(workItem !== null ? { issueTitle: workItem.objective } : {}),
+    ...(workItem?.repositoryPath !== undefined ? { repositoryPath: workItem.repositoryPath } : {}),
+    ...(workItem?.workflowId !== undefined ? { workflowId: workItem.workflowId } : {}),
+    provider: attempt.provider as RunSummary["provider"],
+    ...(attempt.model !== undefined ? { model: attempt.model } : {}),
+    status: attempt.status as RunSummary["status"],
+    ...(attempt.currentStage !== undefined ? { currentStage: attempt.currentStage } : {}),
+    attemptNumber: attempt.attemptNumber,
+    retryCount: 0,
+    startedAt: attempt.startedAt,
+    ...(elapsedMs !== undefined ? { elapsedMs } : {}),
+    ...(attempt.tokenUsage !== undefined && attempt.tokenUsage.totalTokens !== undefined
+      ? { tokenUsage: attempt.tokenUsage as RunSummary["tokenUsage"] }
+      : {}),
+    ...(latestEvent !== null ? { latestEvent } : {}),
+    ...(workItem !== null ? { workspacePath: workItem.baseBranch ?? undefined } : {}),
+    lifecycle: lifecycleForRun(attempt.status, workItem),
+  };
+};
+
+const approvalToAttentionItem = (request: {
+  readonly id: string;
+  readonly workItemId: string;
+  readonly runAttemptId?: string | undefined;
+  readonly action: string;
+  readonly command?: string | undefined;
+  readonly createdAt: string;
+}): AttentionItem => ({
+  id: request.id as AttentionItem["id"],
+  workItemId: WorkItemId.make(request.workItemId),
+  ...(request.runAttemptId !== undefined
+    ? { runAttemptId: RunAttemptId.make(request.runAttemptId) }
+    : {}),
+  kind: "command_approval",
+  severity: "high",
+  state: "open",
+  whatHappened: request.command ?? `The agent requests ${request.action}.`,
+  whyHuman: "This action is gated by the workflow approval policy.",
+  ...(request.command !== undefined ? { recommendedResponse: "Approve or reject." } : {}),
+  availableActions: ["approve", "reject"],
+  createdAt: request.createdAt,
+  resolvedAt: null,
 });
 
 const recordTrackerHealth = (
@@ -155,6 +259,9 @@ const makeOrchestrator = Effect.gen(function* () {
   const enablement = yield* TrackerEnablement;
   const orchestratorState = yield* OrchestratorStateRepository;
   const dispatcher = yield* RunDispatcher;
+  const runAttempts = yield* RunAttemptRepository;
+  const runEvents = yield* RunEventRepository;
+  const approvals = yield* ApprovalService;
 
   const stateRef = yield* Ref.make<OrchestratorRuntimeState>(EMPTY_STATE);
 
@@ -230,7 +337,78 @@ const makeOrchestrator = Effect.gen(function* () {
       return items.map(buildQueueItem);
     });
 
-  const listRuns: SymphonyOrchestratorShape["listRuns"] = () => Effect.succeed([] as RunSummary[]);
+  const listRuns: SymphonyOrchestratorShape["listRuns"] = (filter) =>
+    Effect.gen(function* () {
+      const attempts = yield* runAttempts
+        .listRecent({ limit: filter?.limit ?? 50 })
+        .pipe(Effect.catch(() => Effect.succeed([])));
+      const workItemIds = Array.from(
+        new Set(attempts.map((attempt) => String(attempt.workItemId))),
+      );
+      const workItemsById = new Map<string, WorkItem | null>();
+      for (const id of workItemIds) {
+        const item = yield* workItems
+          .getById(WorkItemId.make(id))
+          .pipe(Effect.catch(() => Effect.succeed(null)));
+        workItemsById.set(id, item);
+      }
+      const summaries: RunSummary[] = [];
+      for (const attempt of attempts) {
+        const latest = yield* runEvents.listForAttempt(attempt.id).pipe(
+          Effect.catch(() => Effect.succeed([])),
+          Effect.map((events) => events.at(-1)?.eventType ?? null),
+        );
+        summaries.push(
+          buildRunSummary({
+            attempt,
+            workItem: workItemsById.get(String(attempt.workItemId)) ?? null,
+            latestEvent: latest,
+          }),
+        );
+      }
+      return summaries;
+    });
+
+  const getRun: SymphonyOrchestratorShape["getRun"] = (runAttemptId) =>
+    Effect.gen(function* () {
+      const attempt = yield* runAttempts
+        .getById(RunAttemptId.make(runAttemptId))
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (attempt === null) {
+        return null;
+      }
+      const workItem = yield* workItems
+        .getById(attempt.workItemId)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (workItem === null) {
+        return null;
+      }
+      const timeline = yield* runEvents
+        .listForAttempt(attempt.id)
+        .pipe(Effect.catch(() => Effect.succeed([])));
+      const approvalRequests = yield* approvals
+        .listForRun(attempt.id)
+        .pipe(Effect.catch(() => Effect.succeed([])));
+      return {
+        workItem,
+        runAttempt: attempt,
+        timeline,
+        attentionItems: [],
+        approvalRequests,
+      } satisfies RunDetails;
+    });
+
+  const listAttention: SymphonyOrchestratorShape["listAttention"] = (limit) =>
+    Effect.gen(function* () {
+      const durable = yield* approvals
+        .listPending({ limit: limit ?? 100 })
+        .pipe(Effect.catch(() => Effect.succeed([])));
+      const attention: AttentionItem[] = [];
+      for (const request of durable) {
+        attention.push(approvalToAttentionItem(request));
+      }
+      return attention;
+    });
 
   const listWorkflows: SymphonyOrchestratorShape["listWorkflows"] = () =>
     workflows.list().pipe(Effect.catch(() => Effect.succeed([])));
@@ -305,6 +483,8 @@ const makeOrchestrator = Effect.gen(function* () {
     getOverview,
     listQueue,
     listRuns,
+    getRun,
+    listAttention,
     listWorkflows,
     listTrackerHealth,
     isPaused,

@@ -1679,6 +1679,25 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "symphony" },
           ),
+        [SYMPHONY_WS_METHODS.getRun]: (input) =>
+          observeRpcEffect(
+            SYMPHONY_WS_METHODS.getRun,
+            withOrchestrator(
+              (orchestrator) => orchestrator.getRun(input.runAttemptId),
+              Effect.succeed(null),
+            ),
+            { "rpc.aggregate": "symphony" },
+          ),
+        [SYMPHONY_WS_METHODS.listAttention]: (input) =>
+          observeRpcEffect(
+            SYMPHONY_WS_METHODS.listAttention,
+            withOrchestrator(
+              (orchestrator) =>
+                orchestrator.listAttention(input.limit === undefined ? undefined : input.limit),
+              Effect.succeed([]),
+            ),
+            { "rpc.aggregate": "symphony" },
+          ),
         [SYMPHONY_WS_METHODS.listWorkflows]: () =>
           observeRpcEffect(
             SYMPHONY_WS_METHODS.listWorkflows,

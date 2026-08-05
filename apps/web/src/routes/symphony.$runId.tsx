@@ -1,17 +1,10 @@
-import { PlayCircleIcon } from "lucide-react";
 import { createFileRoute } from "@tanstack/react-router";
 
-import { SymphonyEmptyState } from "../components/symphony/SymphonyEmptyState";
+import { SymphonyRunDetailView } from "../components/symphony/SymphonyRunDetailView";
 
 function SymphonyRunDetailRoute() {
   const { runId } = Route.useParams();
-  return (
-    <SymphonyEmptyState
-      icon={PlayCircleIcon}
-      title="Run details are not ready"
-      description={`Run ${runId} will have a detail view when Symphony execution is connected.`}
-    />
-  );
+  return <SymphonyRunDetailView runId={runId} />;
 }
 
 export const Route = createFileRoute("/symphony/$runId")({

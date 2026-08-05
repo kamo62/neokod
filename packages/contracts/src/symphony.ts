@@ -59,6 +59,7 @@ export const SYMPHONY_WS_METHODS = {
   approve: "symphony.approve",
   reject: "symphony.reject",
   respondToUserInput: "symphony.respondToUserInput",
+  listAttention: "symphony.listAttention",
   resolveAttention: "symphony.resolveAttention",
   requestChanges: "symphony.requestChanges",
   approveMerge: "symphony.approveMerge",
@@ -873,6 +874,9 @@ export const SymphonyRespondToUserInputInput = Schema.Struct({
 });
 export const SymphonyResolveAttentionInput = Schema.Struct({
   attentionItemId: AttentionItemId,
+});
+export const SymphonyListAttentionInput = Schema.Struct({
+  limit: Schema.optional(PositiveInt),
 });
 export const SymphonyRequestChangesInput = Schema.Struct({
   workItemId: WorkItemId,

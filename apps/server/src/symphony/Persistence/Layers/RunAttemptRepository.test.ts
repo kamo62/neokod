@@ -105,4 +105,35 @@ layer("RunAttemptRepository", (it) => {
       expect(missing).toBeNull();
     }),
   );
+
+  it.effect("listRecent returns newest first with optional status filter", () =>
+    Effect.gen(function* () {
+      const repo = yield* RunAttemptRepository;
+      yield* seedWorkItem("wi-3");
+      yield* seedWorkItem("wi-4");
+      const older = yield* makeAttempt("run-3a", "wi-3", 1);
+      const newer = yield* makeAttempt("run-3b", "wi-3", 2);
+      const other = yield* makeAttempt("run-4a", "wi-4", 1);
+      yield* repo.create({ ...older, startedAt: "2026-01-01T00:00:00.000Z" });
+      yield* repo.create({ ...newer, startedAt: "2026-01-02T00:00:00.000Z" });
+      yield* repo.create({ ...other, startedAt: "2026-01-03T00:00:00.000Z" });
+      yield* repo.updateStatus(RunAttemptId.make("run-3a"), "succeeded", {
+        finishedAt: newer.startedAt,
+      });
+
+      const recent = yield* repo.listRecent();
+      expect(
+        recent
+          .filter((attempt) => ["run-3a", "run-3b", "run-4a"].includes(String(attempt.id)))
+          .map((attempt) => attempt.id),
+      ).toEqual(["run-4a", "run-3b", "run-3a"]);
+
+      const succeeded = yield* repo.listRecent({ status: "succeeded" });
+      expect(succeeded.map((attempt) => attempt.id)).toContain("run-3a");
+      expect(succeeded.map((attempt) => attempt.id)).not.toContain("run-4a");
+
+      const limited = yield* repo.listRecent({ limit: 2 });
+      expect(limited).toHaveLength(2);
+    }),
+  );
 });

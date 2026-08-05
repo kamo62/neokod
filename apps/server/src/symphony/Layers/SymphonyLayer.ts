@@ -34,9 +34,14 @@ export const SymphonyLayerObserve = Layer.merge(
       Layer.mergeAll(
         WorkflowRepositoryLive,
         WorkItemRepositoryLive,
+        RunAttemptRepositoryLive,
+        RunEventRepositoryLive,
         OrchestratorStateRepositoryLive,
         TrackerRegistryGitHubLive.pipe(Layer.provide(FetchHttpClient.layer)),
         TrackerEnablementLive,
+        ApprovalServiceLive.pipe(
+          Layer.provide(Layer.mergeAll(ApprovalRepositoryLive, LiveRequestsLive)),
+        ),
       ).pipe(
         Layer.provideMerge(
           RunDispatcherLive.pipe(
@@ -53,6 +58,11 @@ export const SymphonyLayerObserve = Layer.merge(
                 AgentRuntimeFactoryLive.pipe(
                   Layer.provideMerge(NodeServices.layer),
                   Layer.provideMerge(LiveRequestsLive),
+                  Layer.provideMerge(
+                    ApprovalServiceLive.pipe(
+                      Layer.provide(Layer.mergeAll(ApprovalRepositoryLive, LiveRequestsLive)),
+                    ),
+                  ),
                 ),
                 LiveRequestsLive,
               ),

@@ -9,6 +9,7 @@ import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
@@ -18,6 +19,7 @@ import { RunAttemptRepository } from "../Persistence/Services/RunAttemptReposito
 import { WorkItemRepository } from "../Persistence/Services/WorkItemRepository.ts";
 import { WorkspaceManager, type SymphonyWorkspace } from "../Workspaces/Manager.ts";
 import type { AgentRuntimeService } from "./AgentRuntime.ts";
+import { LiveRequests } from "./LiveRequests.ts";
 import { resolveRunnerPolicy, requiresApprovalBeforeEdit } from "./Policy.ts";
 
 /**
@@ -85,6 +87,11 @@ export const makeRunDispatcher = Effect.gen(function* () {
   const runEvents = yield* RunEventRepository;
   const workspaces = yield* WorkspaceManager;
   const factory = yield* AgentRuntimeFactory;
+  const liveRequests = yield* LiveRequests;
+
+  // Live agents per run attempt so cancellation can interrupt the active turn
+  // and settle its outstanding approval/input requests (plan 8.3.1).
+  const activeAgents = yield* Ref.make<Map<string, AgentRuntimeService>>(new Map());
 
   const makeRunAttemptId = () =>
     crypto.randomUUIDv4.pipe(
@@ -102,6 +109,48 @@ export const makeRunDispatcher = Effect.gen(function* () {
     workItems
       .transition(workItemId, "queued", { ownerToken, generation })
       .pipe(Effect.catch(() => Effect.void));
+
+  const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
+    "succeeded",
+    "failed",
+    "timed_out",
+    "stalled",
+    "canceled_by_reconciliation",
+    "user_cancelled",
+    "tracker_cancelled",
+    "process_failed",
+    "validation_failed",
+    "workflow_error",
+    "provider_error",
+    "interrupted",
+    "retries_exhausted",
+  ]);
+
+  // Mark the attempt failed unless cancellation already recorded a terminal
+  // status (cancelRun wins over the interrupted turn path), then release the
+  // claim so the item can be retried or re-dispatched.
+  const markFailed = (
+    runAttemptId: RunAttemptId,
+    workItemId: WorkItemId,
+    ownerToken: string,
+    generation: number,
+    error: { readonly category: string; readonly message: string },
+  ) =>
+    Effect.gen(function* () {
+      const attempt = yield* runAttempts
+        .getById(runAttemptId)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      const alreadyTerminal = attempt !== null && TERMINAL_STATUSES.has(attempt.status);
+      if (!alreadyTerminal) {
+        yield* runAttempts
+          .updateStatus(runAttemptId, "failed", {
+            finishedAt: yield* nowIso,
+            error,
+          })
+          .pipe(Effect.catch(() => Effect.void));
+      }
+      yield* releaseClaim(workItemId, ownerToken, generation);
+    });
 
   const dispatchWorkItem: RunDispatcherService["dispatchWorkItem"] = (input) =>
     Effect.gen(function* () {
@@ -151,13 +200,57 @@ export const makeRunDispatcher = Effect.gen(function* () {
       const policy = resolveRunnerPolicy(config);
       // The agent runtime is per-config; build it in the dispatch scope.
       const agent = yield* factory.make(config);
+      yield* Ref.update(activeAgents, (map) => new Map(map).set(String(runAttemptId), agent));
 
-      // 4. Prepare mode: produce a plan only; sandbox is read-only so no code
-      //    can be modified, satisfying "no code modified without approval".
-      if (policy.threadSandbox === "read-only") {
+      const runDispatch = Effect.gen(function* () {
+        // 4. Prepare mode: produce a plan only; sandbox is read-only so no code
+        //    can be modified, satisfying "no code modified without approval".
+        if (policy.threadSandbox === "read-only") {
+          yield* runAttempts
+            .updateStatus(runAttemptId, "building_prompt")
+            .pipe(Effect.catch(() => Effect.void));
+          const result = yield* agent
+            .runTurn({
+              issue,
+              config,
+              workspacePath: workspace.path,
+              branch: workspace.branch,
+              runAttemptId,
+              workItemId,
+            })
+            .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
+
+          if (result.completed) {
+            yield* runAttempts
+              .updateStatus(runAttemptId, "succeeded", { finishedAt: yield* nowIso })
+              .pipe(Effect.catch(() => Effect.void));
+            yield* appendEvent(runAttemptId, "plan_produced", { branch: workspace.branch });
+            yield* workItems
+              .transition(workItemId, "ready_for_review", {
+                ownerToken,
+                generation: claimed.generation,
+              })
+              .pipe(Effect.catch(() => Effect.void));
+          } else {
+            yield* markFailed(runAttemptId, workItemId, ownerToken, claimed.generation, {
+              category: "agent",
+              message: "plan turn did not complete",
+            });
+          }
+          return runAttemptId;
+        }
+
+        // 5. Execute/deliver: edits allowed subject to the approval policy.
+        if (requiresApprovalBeforeEdit(config)) {
+          yield* runAttempts
+            .updateStatus(runAttemptId, "launching_agent")
+            .pipe(Effect.catch(() => Effect.void));
+        }
         yield* runAttempts
-          .updateStatus(runAttemptId, "building_prompt")
+          .updateStatus(runAttemptId, "streaming_turn")
           .pipe(Effect.catch(() => Effect.void));
+        yield* appendEvent(runAttemptId, "agent_started", { branch: workspace.branch });
+
         const result = yield* agent
           .runTurn({
             issue,
@@ -165,6 +258,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
             workspacePath: workspace.path,
             branch: workspace.branch,
             runAttemptId,
+            workItemId,
           })
           .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
 
@@ -172,7 +266,6 @@ export const makeRunDispatcher = Effect.gen(function* () {
           yield* runAttempts
             .updateStatus(runAttemptId, "succeeded", { finishedAt: yield* nowIso })
             .pipe(Effect.catch(() => Effect.void));
-          yield* appendEvent(runAttemptId, "plan_produced", { branch: workspace.branch });
           yield* workItems
             .transition(workItemId, "ready_for_review", {
               ownerToken,
@@ -180,72 +273,65 @@ export const makeRunDispatcher = Effect.gen(function* () {
             })
             .pipe(Effect.catch(() => Effect.void));
         } else {
-          yield* runAttempts
-            .updateStatus(runAttemptId, "failed", {
-              finishedAt: yield* nowIso,
-              error: { category: "agent", message: "plan turn did not complete" },
-            })
-            .pipe(Effect.catch(() => Effect.void));
-          yield* releaseClaim(workItemId, ownerToken, claimed.generation);
+          yield* markFailed(runAttemptId, workItemId, ownerToken, claimed.generation, {
+            category: "agent",
+            message: "turn did not complete",
+          });
         }
+
         return runAttemptId;
-      }
+      });
 
-      // 5. Execute/deliver: edits allowed subject to the approval policy.
-      if (requiresApprovalBeforeEdit(config)) {
-        yield* runAttempts
-          .updateStatus(runAttemptId, "launching_agent")
-          .pipe(Effect.catch(() => Effect.void));
-      }
-      yield* runAttempts
-        .updateStatus(runAttemptId, "streaming_turn")
-        .pipe(Effect.catch(() => Effect.void));
-      yield* appendEvent(runAttemptId, "agent_started", { branch: workspace.branch });
-
-      const result = yield* agent
-        .runTurn({
-          issue,
-          config,
-          workspacePath: workspace.path,
-          branch: workspace.branch,
-          runAttemptId,
-        })
-        .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
-
-      if (result.completed) {
-        yield* runAttempts
-          .updateStatus(runAttemptId, "succeeded", { finishedAt: yield* nowIso })
-          .pipe(Effect.catch(() => Effect.void));
-        yield* workItems
-          .transition(workItemId, "ready_for_review", {
-            ownerToken,
-            generation: claimed.generation,
-          })
-          .pipe(Effect.catch(() => Effect.void));
-      } else {
-        yield* runAttempts
-          .updateStatus(runAttemptId, "failed", {
-            finishedAt: yield* nowIso,
-            error: { category: "agent", message: "turn did not complete" },
-          })
-          .pipe(Effect.catch(() => Effect.void));
-        yield* releaseClaim(workItemId, ownerToken, claimed.generation);
-      }
-
-      return runAttemptId;
+      // Unregister the agent when the dispatch finishes or is interrupted, then
+      // settle any outstanding live requests so no Deferred is left dangling.
+      return yield* runDispatch.pipe(
+        Effect.ensuring(
+          Effect.gen(function* () {
+            yield* Ref.update(activeAgents, (map) => {
+              const next = new Map(map);
+              next.delete(String(runAttemptId));
+              return next;
+            });
+            yield* liveRequests
+              .settleRun(runAttemptId, "run finished")
+              .pipe(Effect.catch(() => Effect.void));
+          }),
+        ),
+      );
     });
 
   const cancelRun: RunDispatcherService["cancelRun"] = (runAttemptId) =>
     Effect.gen(function* () {
-      // Interrupting the agent requires tracking the active per-attempt agent
-      // instance; the minimal slice just records the cancellation. A follow-up
-      // (WS-K/WS-M) can hold the active agent and send turn/interrupt here.
+      // Interrupt the active turn so the agent stops, settle the run's
+      // outstanding approval/input requests (idempotent), and record the
+      // durable cancellation. The claim is released by the interrupted
+      // dispatch path via markFailed, which keeps the work item queued.
+      const agent = yield* Ref.get(activeAgents).pipe(
+        Effect.map((map) => map.get(String(runAttemptId))),
+      );
+      if (agent !== undefined) {
+        yield* agent.interrupt().pipe(Effect.catch(() => Effect.void));
+      }
+      yield* liveRequests
+        .settleRun(runAttemptId, "user cancelled")
+        .pipe(Effect.catch(() => Effect.void));
       yield* runAttempts
         .updateStatus(runAttemptId, "user_cancelled", { finishedAt: yield* nowIso })
         .pipe(Effect.catch(() => Effect.void));
+      yield* appendEvent(runAttemptId, "user_cancelled", {});
     });
 
   return { dispatchWorkItem, cancelRun };
 });
 
-export const RunDispatcherLive = Layer.effect(RunDispatcher, makeRunDispatcher);
+export const RunDispatcherLive: Layer.Layer<
+  RunDispatcher,
+  never,
+  | Crypto.Crypto
+  | LiveRequests
+  | RunEventRepository
+  | RunAttemptRepository
+  | WorkItemRepository
+  | WorkspaceManager
+  | AgentRuntimeFactory
+> = Layer.effect(RunDispatcher, makeRunDispatcher);

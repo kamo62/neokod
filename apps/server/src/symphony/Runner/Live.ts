@@ -5,6 +5,7 @@ import * as Scope from "effect/Scope";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
 import { makeCodexAgentRuntime } from "./AgentRuntime.ts";
+import { ApprovalService } from "./ApprovalService.ts";
 import { LiveRequests } from "./LiveRequests.ts";
 import { AgentRuntimeFactory } from "./Dispatcher.ts";
 
@@ -14,10 +15,12 @@ import { AgentRuntimeFactory } from "./Dispatcher.ts";
  * Constructs the Codex agent runtime per workflow config: codex command from
  * the workflow, CODEX_HOME unset so Codex uses its own home, the server's
  * process environment, and the shared live-request registry. The dispatcher
- * builds one per dispatch inside a scope.
+ * builds one per dispatch inside a scope. Approval requests are recorded
+ * durably through the ApprovalService (WS-J2) as well as answered live.
  */
 const makeAgentRuntimeFactory = Effect.gen(function* () {
   const liveRequests = yield* LiveRequests;
+  const approvalService = yield* ApprovalService;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const make = (config: EffectiveWorkflowConfig) =>
     makeCodexAgentRuntime({
@@ -25,6 +28,21 @@ const makeAgentRuntimeFactory = Effect.gen(function* () {
       codexHomePath: undefined,
       env: process.env,
       liveRequests,
+      recordRequest: (input) =>
+        approvalService
+          .recordPending({
+            id: input.requestId,
+            requestId: input.requestId,
+            workItemId: input.workItemId,
+            runAttemptId: input.runAttemptId,
+            action: input.action,
+            scope: "once",
+            ...(input.command !== undefined ? { command: input.command } : {}),
+          })
+          .pipe(
+            Effect.asVoid,
+            Effect.catch(() => Effect.void),
+          ),
     }).pipe(
       Effect.mapError(() => Effect.never as never),
       // Resolve the spawner at factory construction so the dispatcher's public
@@ -37,5 +55,5 @@ const makeAgentRuntimeFactory = Effect.gen(function* () {
 export const AgentRuntimeFactoryLive: Layer.Layer<
   AgentRuntimeFactory,
   never,
-  LiveRequests | ChildProcessSpawner.ChildProcessSpawner | Scope.Scope
+  LiveRequests | ApprovalService | ChildProcessSpawner.ChildProcessSpawner | Scope.Scope
 > = Layer.effect(AgentRuntimeFactory, makeAgentRuntimeFactory);

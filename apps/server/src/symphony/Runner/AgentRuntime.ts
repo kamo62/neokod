@@ -1,4 +1,9 @@
-import type { EffectiveWorkflowConfig, NormalizedIssue, RunAttemptId } from "@neokod/contracts";
+import type {
+  EffectiveWorkflowConfig,
+  NormalizedIssue,
+  RunAttemptId,
+  WorkItemId,
+} from "@neokod/contracts";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -54,6 +59,7 @@ export interface AgentRuntimeService {
     readonly workspacePath: string;
     readonly branch: string;
     readonly runAttemptId: RunAttemptId;
+    readonly workItemId: WorkItemId;
     readonly prompt?: string;
     readonly continuation?: boolean;
   }) => Effect.Effect<AgentTurnResult, AgentRuntimeSpawnError, Scope.Scope>;
@@ -70,6 +76,14 @@ export interface AgentRuntimeDeps {
   readonly codexHomePath: string | undefined;
   readonly env: NodeJS.ProcessEnv;
   readonly liveRequests: LiveRequestsService;
+  /** Durable request record (WS-J2); best-effort, never blocks the agent. */
+  readonly recordRequest?: (input: {
+    readonly requestId: string;
+    readonly workItemId: WorkItemId;
+    readonly runAttemptId: RunAttemptId;
+    readonly action: string;
+    readonly command?: string;
+  }) => Effect.Effect<void>;
 }
 
 export const makeCodexAgentRuntime = (
@@ -82,7 +96,7 @@ export const makeCodexAgentRuntime = (
   Effect.gen(function* () {
     const scope = yield* Scope.Scope;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const { liveRequests } = deps;
+    const { liveRequests, recordRequest } = deps;
 
     let activeClient: CodexClientService | undefined;
     let threadId: string | undefined;
@@ -169,7 +183,14 @@ export const makeCodexAgentRuntime = (
         turnId = (turn as { readonly turn: { readonly id: string } }).turn.id;
 
         yield* Effect.forkScoped(
-          consumeIncoming(client, input.runAttemptId, liveRequests, input.config),
+          consumeIncoming(
+            client,
+            input.runAttemptId,
+            input.workItemId,
+            liveRequests,
+            recordRequest,
+            input.config,
+          ),
         );
 
         const completed = yield* waitForTurnCompletion(client, input.config);
@@ -202,12 +223,14 @@ const isUserInputRequest = (method: string): boolean => method.endsWith("/reques
 const consumeIncoming = (
   client: CodexClientService,
   runAttemptId: RunAttemptId,
+  workItemId: WorkItemId,
   liveRequests: LiveRequestsService,
+  recordRequest: AgentRuntimeDeps["recordRequest"],
   config: EffectiveWorkflowConfig,
 ): Effect.Effect<void, never, never> =>
   Stream.runDrain(
     Stream.map(client.raw.requests, (request) =>
-      handleRequest(client, request, runAttemptId, liveRequests, config),
+      handleRequest(client, request, runAttemptId, workItemId, liveRequests, recordRequest, config),
     ),
   ).pipe(
     Effect.catch(() => Effect.void),
@@ -218,7 +241,9 @@ const handleRequest = (
   client: CodexClientService,
   request: IncomingRequest,
   runAttemptId: RunAttemptId,
+  workItemId: WorkItemId,
   liveRequests: LiveRequestsService,
+  recordRequest: AgentRuntimeDeps["recordRequest"],
   config: EffectiveWorkflowConfig,
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
@@ -228,10 +253,19 @@ const handleRequest = (
       const requestId = String(params.requestId ?? params.approvalId ?? request.id);
       const action = String(params.kind ?? request.method.split("/").at(-2) ?? "action");
       const command = typeof params.command === "string" ? params.command : undefined;
+      yield* (
+        recordRequest?.({
+          requestId,
+          workItemId,
+          runAttemptId,
+          action,
+          ...(command !== undefined ? { command } : {}),
+        }).pipe(Effect.catch(() => Effect.void)) ?? Effect.void
+      );
       const deferred = yield* liveRequests
         .registerApproval({
           requestId,
-          workItemId: "" as never,
+          workItemId,
           runAttemptId,
           action,
           prompt: command ?? `The agent requests approval for ${request.method}.`,
@@ -249,10 +283,18 @@ const handleRequest = (
         typeof params.prompt === "string"
           ? params.prompt
           : `The agent needs your input for ${request.method}.`;
+      yield* (
+        recordRequest?.({
+          requestId,
+          workItemId,
+          runAttemptId,
+          action: "user_input",
+        }).pipe(Effect.catch(() => Effect.void)) ?? Effect.void
+      );
       const deferred = yield* liveRequests
         .registerUserInput({
           requestId,
-          workItemId: "" as never,
+          workItemId,
           runAttemptId,
           prompt: promptText,
         })

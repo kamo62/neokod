@@ -5,6 +5,10 @@ import * as Layer from "effect/Layer";
 import * as Crypto from "effect/Crypto";
 
 import { ApprovalRepository } from "../Persistence/Services/ApprovalRepository.ts";
+import {
+  type SymphonyPersistenceError,
+  SymphonyPersistenceSqlError,
+} from "../Persistence/Errors.ts";
 import { LiveRequests, type ApprovalDecision } from "./LiveRequests.ts";
 
 /**
@@ -41,7 +45,7 @@ export interface ApprovalServiceShape {
     readonly reason?: string;
     readonly affectedFiles?: ReadonlyArray<string>;
     readonly policySource?: string;
-  }) => Effect.Effect<ApprovalRequest, Error | unknown>;
+  }) => Effect.Effect<ApprovalRequest, SymphonyPersistenceError>;
 
   /**
    * Approve a pending live request: answer the Deferred (so the agent
@@ -83,7 +87,13 @@ export const makeApprovalService = Effect.gen(function* () {
   const makeId = () =>
     crypto.randomUUIDv4.pipe(
       Effect.map((value) => `sym-${value}`),
-      Effect.mapError(() => new Error("failed to generate approval id")),
+      Effect.mapError(
+        (cause) =>
+          new SymphonyPersistenceSqlError({
+            operation: "ApprovalService.makeId",
+            detail: String(cause),
+          }),
+      ),
     );
 
   const recordPending: ApprovalServiceShape["recordPending"] = (input) =>
