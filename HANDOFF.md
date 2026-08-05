@@ -1,61 +1,60 @@
 # Handoff
 
-Updated: 2026-08-05 12:30 on Kamogelos-MBP
+Updated: 2026-08-05 15:10 on Kamogelos-MBP
 
 ## State
 
 - Branch: `feat/symphony-mode-impl`
-- HEAD: `8833ed5f2` feat(symphony): wire Phase 2 dispatch (claim -> workspace -> run turn)
-- Pushed: branch is local-only, no upstream tracking branch; 5 commits ahead of `9a8b222fa`
-  (Phase 1 completion handoff). Push after the next commit.
-- Dirty: `Neokod Symphony Mode Product Requirements.pdf`, `PLAN-exec-demo.md`, `demo.md` (user
-  files, never stage). Everything else is committed.
+- HEAD: `a29195c79` feat(symphony): Phase 2 completion + Linear/GitLab/Asana trackers with profile docs
+- Pushed: branch is local-only, no upstream tracking branch; 6 commits ahead of `9a8b222fa`.
+  Push after the next commit.
+- Dirty: `Neokod Symphony Mode Product Requirements.pdf`, `PLAN-exec-demo.md`, `demo.md`,
+  `apps/server/src/__probe/` (user files, never stage). Everything else is committed.
 
 ## Done
 
-- `8833ed5f2` **Phase 2 dispatch spine**: `Dispatcher.ts` claim -> workspace -> run attempt ->
-  agent turn (prepare/read-only mode produces a plan, marks `ready_for_review`, releases the
-  claim on failure); `cancelRun` interrupts the active agent, settles live requests, records
-  durable `user_cancelled`. `SymphonyOrchestrator` + live impl gained `dispatchWorkItem` /
-  `cancelRun`; WS RPCs (`WsSymphonyDispatchWorkItemRpc`, `WsSymphonyCancelRunRpc`) and ws.ts
-  handlers; client-runtime `dispatchWorkItem`/`cancelRun` atoms. Dispatch gated: observe autonomy
-  never dispatches.
-- **Orchestrator read APIs** (`SymphonyOrchestratorLive.ts`): `listRuns` (newest-first + latest
-  event type), `getRun` (attempt + timeline + approvals, nullable via `WsSymphonyGetRunRpc`
-  `NullOr(RunDetailsSchema)`), `listAttention` (pending approvals -> attention items via
-  `approvalToAttentionItem`). `SymphonyLayer.ts` orchestrator chain now provides
-  `RunAttemptRepositoryLive`, `RunEventRepositoryLive`, `ApprovalServiceLive` (+
-  `ApprovalRepositoryLive` + `LiveRequestsLive`).
-- **Web slice**: `SymphonyAttentionView` (approve/reject via `symphonyEnvironment.approve` /
-  `reject`), `SymphonyRunningView` (run list + Cancel), `SymphonyRunDetailView` (status,
-  attempts, approvals, timeline via `getRun`); routes `symphony.attention.tsx`,
-  `symphony.running.tsx`, `symphony.$runId.tsx` rewired; `SymphonyQueueView` gained a Dispatch
-  button (disabled when blocked/excluded). Client atoms `getRun` + `attention` queries,
-  `approve`/`reject` commands.
-- **Dispatcher tests** (`Dispatcher.test.ts`): real SQLite repos + fake WorkspaceManager + fake
-  AgentRuntimeFactory. Covers prepare happy path (attempt `succeeded`, item `ready_for_review`,
-  event sequence issue_claimed/workspace_created/plan_produced), failed turn (attempt `failed`,
-  claim released -> `queued`), and cancel (durable `user_cancelled`, event appended, claim stays
-  held until lease reconciliation — documented behaviour).
-- Earlier on branch: Phase 1 gap fixes `963e10143` (Jira tracker, queue overrides, workflows
-  route) + Phase 1 handoff `9a8b222fa`; upstream ports `cc72fc4f9` and earlier.
+- `a29195c79` **Phase 2 completion + Phase 1 tracker debt**:
+  - **Reconciliation** (`Orchestrator/Reconciler.ts`): terminal-claim release + stale claims
+    moved to `stalled`; reconciler tests green. Lease expiry integrated into
+    `SymphonyOrchestratorLive`; `ApprovalService.expire` rewrite + orchestrator
+    `sweepExpiredApprovals`; `WorkItemRepository` conflict key `(tracker_kind, tracker_issue_id)`.
+  - **WS RPC API tests** (`ws-symphony.test.ts`): dispatch/cancel/getRun/listAttention over the
+    wire via `makeSymphonyRpcHandlers()` in `ws.ts`; Dispatcher tests extended with `queued`
+    cancel asserts.
+  - **Linear adapter** (`Trackers/LinearApiClient.ts` + `LinearAdapter.ts` + 13 tests): GraphQL,
+    cursor pagination 50/page, ID refresh in 50-ID batches returned in requested order, `blocks`
+    blocker extraction from `inverseRelations`, viewer query for `assignee: "me"`, secrets =
+    LINEAR_API_KEY + `$VAR`.
+  - **GitLab adapter** (`Trackers/GitLabApiClient.ts` + `GitLabAdapter.ts` + 13 tests): REST API
+    v4, `PRIVATE-TOKEN` header, iid-as-id (`GL-<iid>`), nativeRef `{id, iid, project_id,
+project_path}`, states restricted to opened/closed, 404 omission on refresh, env fallbacks
+    `GITLAB_API_URL` / `GITLAB_PROJECT_PATH` / `GITLAB_PAT`.
+  - **Asana adapter** (`Trackers/AsanaApiClient.ts` + `AsanaAdapter.ts` + 13 tests): Bearer auth,
+    project GID scope, section name = state, `dispatchable = completed === false && resource_subtype
+!== "section"`, offset pagination, active/terminal optional (null -> all states), 404 +
+    outside-project omission on refresh.
+  - **Registry** now maps all five kinds: github, jira, linear, gitlab, asana.
+  - **Profile docs**: `docs/integrations/symphony-linear.md`, `symphony-gitlab.md`,
+    `symphony-asana.md` (mirror `symphony-jira.md`).
+- Earlier on branch: `2508a98e9` handoff, `bb8116d70` Phase 2 dispatch spine + web slice,
+  `963e10143` Phase 1 gap fixes, `9a8b222fa` Phase 1 handoff, upstream ports.
 
 ## Verified vs unverified
 
-- **Verified: full server test suite green.** `cd apps/server && ../../node_modules/.bin/vp test run -- src/`
-  -> 1751 passed / 7 skipped (194 files). Includes new Dispatcher (3) and orchestrator read-API
-  (4) tests.
-- **Verified: web typecheck clean.** `cd apps/web && ../../node_modules/.bin/tsgo --noEmit` -> 0 errors.
-- **Verified: client-runtime + contracts typecheck clean.**
+- **Verified: full server test suite green.** `cd apps/server && ../../node_modules/.bin/vp test
+run -- src/` -> 1799 passed / 7 skipped (197 files), ~165s. Includes Reconciler (2),
+  ws-symphony (13), Dispatcher (3), orchestrator read-API (4) tests.
+- **Verified: isolated adapter test files pass.** Direct vitest binary run on each of
+  LinearAdapter.test.ts / GitLabAdapter.test.ts / AsanaAdapter.test.ts -> 13 passed each in
+  ~600ms. (Note: `vp test run -- <file>` runs the whole suite, not one file.)
 - **Verified: server typecheck clean** after filtering pre-existing noise (JSON.parse,
   preferSchemaOverJson, globalDate, OrchestratorStateRepository, WorkflowRepository.test,
-  globalErrorInEffect, instanceOfSchema, deterministicKeys, LocalTransportAuth).
-- **Verified: `vp check --fix` passes.** 0 errors; only pre-existing warnings.
+  globalErrorInEffect, instanceOfSchema, deterministicKeys, LocalTransportAuth, \_\_probe,
+  bin\.test).
+- **Verified: `vp check --fix` passes.** 0 errors; only pre-existing warnings (27).
 - **Unverified: `vp run typecheck`** still fails 2 packages — `@neokod/scripts`
-  (sync-reference-repos) and `effect-codex-app-server` (exit 137). Both pre-existing on a clean
-  checkout of `9a8b222fa`; unrelated to this work.
+  (sync-reference-repos) and `effect-codex-app-server` (exit 137). Both pre-existing.
 - **Unverified: live dispatch against a real Codex app-server.** Manual smoke test only.
-- **Unverified: WS RPC API test** for dispatch/cancel/getRun/listAttention over the wire.
 
 ## Resume
 
@@ -76,21 +75,28 @@ Background jobs still running: none.
 ## Blockers
 
 - **Effect 4.0.0-beta.78 API drift**: `Effect.fork`/`fiber.join`/`Effect.catchAll` do not exist;
-  use `Effect.forkScoped` + `Fiber.join(fiber)` + `Effect.catch`. `it.effect` runs on a
-  TestClock, so `Effect.sleep`/`Effect.timeout` never fire without `TestClock.adjust`.
+  use `Effect.forkScoped` + `Fiber.join(fiber)` + `Effect.catch`. `Effect.either` is v3 — use
+  `Effect.result` (Result `Success` carries `.success`, `Failure` carries `.failure`).
+  `Schema.decodeUnknownEffect` returns an Effect — chain `.pipe(Effect.mapError(...))`;
+  nullable fields use `Schema.NullOr`. `it.effect` runs on a TestClock, so
+  `Effect.sleep`/`Effect.timeout` never fire without `TestClock.adjust`.
+- **Test-fake URL params**: `HttpClientRequest.setUrlParam` stores params in `request.urlParams`,
+  NOT `request.url`. Fakes must read `UrlParams.getAll(request.urlParams, key)[0]`
+  (`UrlParams.getFirst` returns an Option). Missing this caused an infinite pagination loop ->
+  vitest worker OOM at 4GB heap in the GitLab test fake; fixed. Real code was correct.
 - **Cancel path leaves the claim held** (`preparing`) until lease expiry/reconciliation —
   documented in Dispatcher tests; `markFailed` is not reached on interruption because
-  interruption bypasses typed errors. Confirm reconciliation picks this up before Phase 3.
+  interruption bypasses typed errors. Reconciliation picks this up (verified in Reconciler tests).
 - **Known beta quirks**: `it.effect(...)` required (plain `it` silently skips); use
   `Effect.orElseSucceed` over catch+succeed; `exactOptionalPropertyTypes` needs explicit
   `| undefined` in param/struct types; registering an RPC without a ws.ts handler silently
   degrades the group's requirements to `any` (TS377030 cascade).
 
-## Next moves (Phase 3)
+## Next moves
 
 1. Push this branch (`git push -u origin feat/symphony-mode-impl`).
-2. Queue reconcile/lease-expiry path: confirm `stalled` / `canceled_by_reconciliation` statuses
-   release claims (plan 8.3.1).
-3. WS RPC API tests for dispatch/cancel/getRun/listAttention over the RPC layer.
-4. Live smoke test of `dispatchWorkItem` against a real Codex app-server.
-5. Attention UX: wire command approvals surfaced from live agents; then review/merge phase.
+2. Phase 2 → review/merge with upstream `pingdotgg/t3code` divergence check (local-first filters
+   from AGENTS.md).
+3. Live smoke test of `dispatchWorkItem` against a real Codex app-server (manual).
+4. Attention UX: wire command approvals surfaced from live agents.
+5. Plan Phases 3-6 (profile/execution depth) with Kamogelo.
