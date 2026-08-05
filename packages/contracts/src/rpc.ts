@@ -1037,4 +1037,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsSymphonySetLocalPriorityRpc,
   WsSymphonyDispatchWorkItemRpc,
   WsSymphonyCancelRunRpc,
+  WsSymphonyRequestChangesRpc,
+  WsSymphonyApproveMergeRpc,
+  WsSymphonyTakeOverRpc,
+  WsSymphonyResumeAutonomousRpc,
+  WsSymphonyDelegateFromThreadRpc,
 );
