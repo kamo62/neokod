@@ -257,3 +257,52 @@ the three missing adapters plus their profile docs.
   12, Phase 1 exit in section 18).
 - Adapter profiles: `docs/integrations/symphony-github.md`, `docs/integrations/symphony-jira.md`.
 - Prior review: `REVIEW.md` at repo root (gitignored, does not travel).
+
+---
+
+## Session journal: Phase 2 dispatcher wiring (dispatch = claim -> workspace -> run turn)
+
+### What changed
+
+1. **`RunDispatcher` live implementation** (`apps/server/src/symphony/Runner/`):
+   - `Dispatcher.ts`: `RunDispatcher` Context service, `AgentRuntimeFactory` Context service,
+     `RunAttemptId` brand, `RunDispatchError` (claim-failed / runtime-failed), `MockDispatcher`
+     test double (used by orchestrator tests).
+   - `Live.ts`: `AgentRuntimeFactoryLive` — per-config `makeCodexAgentRuntime` (codex command from
+     workflow config, CODEX_HOME unset, server process env, shared `LiveRequests`).
+   - `AgentRuntime.ts`: `makeCodexAgentRuntime` wrapping `codexAppServerClient` protocol.
+   - `DispatcherLive.ts`: claim -> workspace prepare -> agent run turn, run attempt persisted via
+     `RunAttemptRepository`, cancel support.
+2. **Orchestrator dispatch wiring** (`SymphonyOrchestrator.ts`, `SymphonyOrchestratorLive.ts`):
+   `dispatchWorkItem` (claims the item, projects it, dispatches) and `cancelRun` added to the shape
+   and live impl. Dispatch gated: observe autonomy never dispatches.
+3. **RPC + client wiring**: `WsSymphonyDispatchWorkItemRpc` / `WsSymphonyCancelRunRpc` in
+   `packages/contracts/src/rpc.ts`; `ws.ts` handlers; client-runtime atoms
+   `dispatchWorkItem`/`cancelRun` in `packages/client-runtime/src/state/symphony.ts`.
+4. **Orchestrator tests use the mock dispatcher**: `SymphonyOrchestratorLive.test.ts` no longer
+   constructs the real dispatcher (which required NodeServices), so `Layer.provideMerge` no longer
+   leaks ChildProcessSpawner into the launch boundary in tests.
+
+### Spawner requirement resolution
+
+`dispatchWorkItem` returns `Effect<void, never, Scope.Scope>` (was `Scope | ChildProcessSpawner`).
+The factory resolves the spawner at construction (`AgentRuntimeFactoryLive` provides
+`ChildProcessSpawner` inside `make`), so the orchestrator and RPC handlers only see `Scope`, which
+the RPC framework provides. `withOrchestrator` in `ws.ts` was widened to propagate `R`.
+
+### Test counts
+
+- Server: 1744 passed / 7 skipped (unchanged from Phase 1; orchestrator tests re-run green with
+  mock dispatcher).
+- `vp check`: clean after `--fix` (3 formatter drift files).
+- `vp run typecheck`: 2 failing packages (`@neokod/scripts` sync-reference-repos, and
+  `effect-codex-app-server` exit 137) — both confirmed pre-existing on clean checkout of
+  `9a8b222fa` via `git stash`, not this work. Server typecheck clean.
+
+### Next moves (Phase 2 continuation)
+
+1. `Dispatcher.test.ts` with a fake `AgentRuntimeFactory` (assert claim -> workspace -> run turn
+   sequence + run attempt persisted).
+2. Live smoke test of `dispatchWorkItem` against a real Codex app-server (needs running server +
+   tracker; manual).
+3. WS handler API test for dispatch/cancel over the RPC layer.

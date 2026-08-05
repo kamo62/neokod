@@ -54,5 +54,13 @@ export function createSymphonyEnvironmentAtoms<R, E>(
       label: "environment-command:symphony:setLocalPriority",
       tag: SYMPHONY_WS_METHODS.setLocalPriority,
     }),
+    dispatchWorkItem: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:symphony:dispatchWorkItem",
+      tag: SYMPHONY_WS_METHODS.dispatchWorkItem,
+    }),
+    cancelRun: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:symphony:cancelRun",
+      tag: SYMPHONY_WS_METHODS.cancelRun,
+    }),
   };
 }

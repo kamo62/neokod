@@ -199,10 +199,7 @@ function isSymphonyRoutePath(route: string): boolean {
   return pathname === "/symphony" || pathname.startsWith("/symphony/");
 }
 
-function sanitizeModeViewSnapshot(
-  value: unknown,
-  fallback: ModeViewSnapshot,
-): ModeViewSnapshot {
+function sanitizeModeViewSnapshot(value: unknown, fallback: ModeViewSnapshot): ModeViewSnapshot {
   if (!value || typeof value !== "object") {
     return fallback;
   }
@@ -556,8 +553,7 @@ export function setModeViewSnapshot(
       typeof snapshot.route === "string" && snapshot.route.startsWith("/")
         ? snapshot.route
         : currentSnapshot.route,
-    selection:
-      snapshot.selection !== undefined ? snapshot.selection : currentSnapshot.selection,
+    selection: snapshot.selection !== undefined ? snapshot.selection : currentSnapshot.selection,
     filters: snapshot.filters ?? currentSnapshot.filters,
     panelState: snapshot.panelState ?? currentSnapshot.panelState,
   };
@@ -580,11 +576,11 @@ export function setModeViewSnapshot(
   };
 }
 
-export function resolveOperatingModeRoute(
-  mode: OperatingMode,
-  snapshot: ModeViewSnapshot,
-): string {
-  const isValidRoute = mode === "symphony" ? isSymphonyRoutePath(snapshot.route) : !isSymphonyRoutePath(snapshot.route);
+export function resolveOperatingModeRoute(mode: OperatingMode, snapshot: ModeViewSnapshot): string {
+  const isValidRoute =
+    mode === "symphony"
+      ? isSymphonyRoutePath(snapshot.route)
+      : !isSymphonyRoutePath(snapshot.route);
   if (isValidRoute) {
     return snapshot.route;
   }

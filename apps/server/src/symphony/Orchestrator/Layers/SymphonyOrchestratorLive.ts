@@ -8,7 +8,7 @@ import type {
   WorkflowRecord,
   WorkItem,
 } from "@neokod/contracts";
-import { WorkItemId } from "@neokod/contracts";
+import { RunAttemptId, WorkItemId } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
@@ -18,6 +18,7 @@ import { nowIso } from "../../Domain/Time.ts";
 import { WorkflowRepository } from "../../Persistence/Services/WorkflowRepository.ts";
 import { WorkItemRepository } from "../../Persistence/Services/WorkItemRepository.ts";
 import { OrchestratorStateRepository } from "../../Persistence/Services/OrchestratorStateRepository.ts";
+import { RunDispatcher } from "../../Runner/Dispatcher.ts";
 import { TrackerAdapterRegistry } from "../../Trackers/Adapter.ts";
 import { TrackerEnablement } from "../TrackerEnablement.ts";
 import { evaluateEligibility } from "../Eligibility.ts";
@@ -153,6 +154,7 @@ const makeOrchestrator = Effect.gen(function* () {
   const registry = yield* TrackerAdapterRegistry;
   const enablement = yield* TrackerEnablement;
   const orchestratorState = yield* OrchestratorStateRepository;
+  const dispatcher = yield* RunDispatcher;
 
   const stateRef = yield* Ref.make<OrchestratorRuntimeState>(EMPTY_STATE);
 
@@ -257,6 +259,47 @@ const makeOrchestrator = Effect.gen(function* () {
       .writeOverrides(WorkItemId.make(workItemId), { localPriority: priority })
       .pipe(Effect.catch(() => Effect.void));
 
+  const dispatchWorkItem: SymphonyOrchestratorShape["dispatchWorkItem"] = (workItemId) =>
+    Effect.gen(function* () {
+      const item = yield* workItems
+        .getById(WorkItemId.make(workItemId))
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (item === null || item.lifecycle === "preparing" || item.lifecycle === "running") {
+        return;
+      }
+      const workflow = yield* workflows
+        .list()
+        .pipe(Effect.map((all) => all.find((w) => w.id === item.workflowId)))
+        .pipe(Effect.catch(() => Effect.succeed(undefined)));
+      const config = workflow?.effectiveConfig;
+      if (config === null || config === undefined || config.autonomy === "observe") {
+        return;
+      }
+      const issue: NormalizedIssue = {
+        id: item.trackerIssueId ?? item.id,
+        nativeRef: null,
+        identifier: item.trackerIdentifier ?? item.objective,
+        title: item.objective,
+        description: item.description ?? null,
+        priority: item.priority ?? null,
+        state: "queued",
+        branchName: item.baseBranch ?? null,
+        url: null,
+        assigneeId: null,
+        labels: [],
+        blockedBy: [],
+        dispatchable: true,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      };
+      yield* dispatcher
+        .dispatchWorkItem({ workItem: item, issue, config })
+        .pipe(Effect.catch(() => Effect.void));
+    });
+
+  const cancelRun: SymphonyOrchestratorShape["cancelRun"] = (runAttemptId) =>
+    dispatcher.cancelRun(RunAttemptId.make(runAttemptId)).pipe(Effect.catch(() => Effect.void));
+
   return {
     refreshNow,
     getOverview,
@@ -268,6 +311,8 @@ const makeOrchestrator = Effect.gen(function* () {
     excludeWorkItem,
     includeWorkItem,
     setLocalPriority,
+    dispatchWorkItem,
+    cancelRun,
   } satisfies SymphonyOrchestratorShape;
 });
 

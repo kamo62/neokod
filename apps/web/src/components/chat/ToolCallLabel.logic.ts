@@ -190,7 +190,7 @@ function shellLabel(command: string): ToolCallLabel {
     return query
       ? {
           verb: "Searched",
-          target: `\"${truncate(query.replace(/[\"']/g, ""))}\"`,
+          target: `"${truncate(query.replace(/["']/g, ""))}"`,
           iconKind: "search",
         }
       : { verb: "Ran", target: verb, iconKind: "terminal" };
@@ -223,7 +223,7 @@ export function deriveToolCallLabel(input: ToolCallLabelInput): ToolCallLabel {
   if (action === "search") {
     const query = structuredValue(input.input, ["query", "pattern", "searchTerm", "term"]);
     return query
-      ? { verb: "Searched", target: `\"${truncate(query)}\"`, iconKind: "search" }
+      ? { verb: "Searched", target: `"${truncate(query)}"`, iconKind: "search" }
       : { verb: "Searched", iconKind: "search" };
   }
   return {

@@ -1025,4 +1025,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsSymphonyExcludeWorkItemRpc,
   WsSymphonyIncludeWorkItemRpc,
   WsSymphonySetLocalPriorityRpc,
+  WsSymphonyDispatchWorkItemRpc,
+  WsSymphonyCancelRunRpc,
 );

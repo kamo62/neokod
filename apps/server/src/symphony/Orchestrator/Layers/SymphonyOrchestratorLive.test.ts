@@ -1,5 +1,10 @@
 import type { EffectiveWorkflowConfig, NormalizedIssue } from "@neokod/contracts";
-import { WorkflowId, ProviderInstanceId, ProviderDriverKind } from "@neokod/contracts";
+import {
+  WorkflowId,
+  ProviderInstanceId,
+  ProviderDriverKind,
+  RunAttemptId,
+} from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -15,6 +20,7 @@ import { makeMemoryTrackerAdapter } from "../../Trackers/MemoryAdapter.ts";
 import { TrackerEnablementLive } from "../TrackerEnablement.ts";
 import { SymphonyOrchestrator } from "../SymphonyOrchestrator.ts";
 import { SymphonyOrchestratorLive } from "./SymphonyOrchestratorLive.ts";
+import { RunDispatcher } from "../../Runner/Dispatcher.ts";
 import { layerTest as serverSettingsTestLayer } from "../../../serverSettings.ts";
 
 const makeConfig = (repositoryPath: string): EffectiveWorkflowConfig => ({
@@ -68,6 +74,11 @@ const memoryFactory = (_provider: Readonly<Record<string, unknown>>) =>
 
 const registryLayer = TrackerRegistryWithFactories(new Map([["github", memoryFactory]]));
 
+const mockDispatcherLayer = Layer.succeed(RunDispatcher, {
+  dispatchWorkItem: () => Effect.succeed("run-mock" as RunAttemptId),
+  cancelRun: () => Effect.void,
+} as RunDispatcher["Service"]);
+
 const layer = it.layer(
   SymphonyOrchestratorLive.pipe(
     Layer.provideMerge(WorkItemRepositoryLive),
@@ -75,6 +86,7 @@ const layer = it.layer(
     Layer.provideMerge(OrchestratorStateRepositoryLive),
     Layer.provideMerge(registryLayer),
     Layer.provideMerge(TrackerEnablementLive),
+    Layer.provideMerge(mockDispatcherLayer),
     Layer.provideMerge(serverSettingsTestLayer({ trackers: { github: { enabled: true } } })),
     Layer.provideMerge(SqlitePersistenceMemory),
   ),

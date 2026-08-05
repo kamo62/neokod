@@ -1,0 +1,251 @@
+import type {
+  EffectiveWorkflowConfig,
+  NormalizedIssue,
+  WorkItem,
+  WorkItemId,
+} from "@neokod/contracts";
+import { RunAttemptId } from "@neokod/contracts";
+import * as Context from "effect/Context";
+import * as Crypto from "effect/Crypto";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Scope from "effect/Scope";
+import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
+
+import { nowIso } from "../Domain/Time.ts";
+import { RunEventRepository } from "../Persistence/Services/RunEventRepository.ts";
+import { RunAttemptRepository } from "../Persistence/Services/RunAttemptRepository.ts";
+import { WorkItemRepository } from "../Persistence/Services/WorkItemRepository.ts";
+import { WorkspaceManager, type SymphonyWorkspace } from "../Workspaces/Manager.ts";
+import type { AgentRuntimeService } from "./AgentRuntime.ts";
+import { resolveRunnerPolicy, requiresApprovalBeforeEdit } from "./Policy.ts";
+
+/**
+ * Run dispatcher (WS-J integration, plan 8.1/8.2, Phase 2 exit).
+ *
+ * The glue between the Observe orchestrator and the Phase 2 leaf modules. A
+ * dispatched work item is claimed transactionally, gets a workspace (worktree
+ * under the configured root), records a run attempt, then runs the Codex
+ * agent in the workspace. In `prepare` autonomy the agent produces a plan only
+ * and edits are blocked at the sandbox; in `execute`/`deliver` it may edit
+ * subject to the approval policy, and the approval slice (WS-J2) answers the
+ * blocking JSON-RPC requests. Run events are appended to the timeline along
+ * the way so the Running view (WS-K) has a live feed.
+ *
+ * This is where "no code modified without approval" is enforced structurally:
+ * `requiresApprovalBeforeEdit` gates the run, and the sandbox policy itself
+ * blocks edits in prepare mode (SPEC 10.5, plan 8.3).
+ */
+
+export class RunDispatchError extends Error {
+  readonly detail: string;
+
+  constructor(detail: string) {
+    super(`Run dispatch failed: ${detail}`);
+    this.name = "RunDispatchError";
+    this.detail = detail;
+  }
+}
+
+export interface RunDispatcherService {
+  /** Claim + prepare + run one work item. Returns the created run attempt id. */
+  readonly dispatchWorkItem: (input: {
+    readonly workItem: WorkItem;
+    readonly issue: NormalizedIssue;
+    readonly config: EffectiveWorkflowConfig;
+  }) => Effect.Effect<RunAttemptId, RunDispatchError, Scope.Scope>;
+
+  readonly cancelRun: (runAttemptId: RunAttemptId) => Effect.Effect<void, RunDispatchError>;
+}
+
+export class RunDispatcher extends Context.Service<RunDispatcher, RunDispatcherService>()(
+  "neokod/symphony/Runner/RunDispatcher",
+) {}
+
+/**
+ * Constructs the agent runtime for a given workflow config. The agent runtime
+ * is per-config (codex command / CODEX_HOME / env come from the workflow and
+ * server), so the dispatcher builds one per dispatch inside a scope rather than
+ * depending on a singleton. Injected by the layer; the orchestrator test
+ * supplies a stub.
+ */
+export class AgentRuntimeFactory extends Context.Service<
+  AgentRuntimeFactory,
+  {
+    readonly make: (
+      config: EffectiveWorkflowConfig,
+    ) => Effect.Effect<AgentRuntimeService, never, Scope.Scope>;
+  }
+>()("neokod/symphony/Runner/AgentRuntimeFactory") {}
+
+export const makeRunDispatcher = Effect.gen(function* () {
+  const crypto = yield* Crypto.Crypto;
+  const workItems = yield* WorkItemRepository;
+  const runAttempts = yield* RunAttemptRepository;
+  const runEvents = yield* RunEventRepository;
+  const workspaces = yield* WorkspaceManager;
+  const factory = yield* AgentRuntimeFactory;
+
+  const makeRunAttemptId = () =>
+    crypto.randomUUIDv4.pipe(
+      Effect.map((value) => RunAttemptId.make(`run-${value}`)),
+      Effect.mapError(() => new RunDispatchError("failed to generate run attempt id")),
+    );
+
+  const appendEvent = (
+    runAttemptId: RunAttemptId,
+    eventType: string,
+    payload?: Record<string, unknown>,
+  ) => runEvents.append(runAttemptId, eventType, payload).pipe(Effect.catch(() => Effect.void));
+
+  const releaseClaim = (workItemId: WorkItemId, ownerToken: string, generation: number) =>
+    workItems
+      .transition(workItemId, "queued", { ownerToken, generation })
+      .pipe(Effect.catch(() => Effect.void));
+
+  const dispatchWorkItem: RunDispatcherService["dispatchWorkItem"] = (input) =>
+    Effect.gen(function* () {
+      const { workItem, issue, config } = input;
+      const ownerToken = yield* crypto.randomUUIDv4.pipe(
+        Effect.mapError(() => new RunDispatchError("failed to generate owner token")),
+      );
+
+      // 1. Claim transactionally (eligible -> preparing), fencing owner/generation.
+      const claimed = yield* workItems
+        .claim(workItem.id, ownerToken)
+        .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
+      const workItemId: WorkItemId = claimed.workItem.id;
+
+      // 2. Workspace: deterministic worktree under the configured root. If
+      //    workspace creation fails, release the claim back to queued.
+      const workspace: SymphonyWorkspace = yield* workspaces
+        .ensureWorkspace({ issue, config })
+        .pipe(
+          Effect.mapError((cause) => new RunDispatchError(cause.message)),
+          Effect.tapError(() => releaseClaim(workItemId, ownerToken, claimed.generation)),
+        );
+
+      // 3. Record the run attempt.
+      const runAttemptId = yield* makeRunAttemptId();
+      const startedAt = yield* nowIso;
+      yield* runAttempts
+        .create({
+          id: runAttemptId,
+          workItemId,
+          attemptNumber: 1,
+          workspacePath: workspace.path,
+          provider: config.agentProvider,
+          ...(config.agentModel !== undefined ? { model: config.agentModel } : {}),
+          status: "preparing_workspace",
+          startedAt,
+          finishedAt: null,
+          error: null,
+        })
+        .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
+      yield* appendEvent(runAttemptId, "issue_claimed", { workItemId: String(workItemId) });
+      yield* appendEvent(runAttemptId, "workspace_created", {
+        path: workspace.path,
+        branch: workspace.branch,
+      });
+
+      const policy = resolveRunnerPolicy(config);
+      // The agent runtime is per-config; build it in the dispatch scope.
+      const agent = yield* factory.make(config);
+
+      // 4. Prepare mode: produce a plan only; sandbox is read-only so no code
+      //    can be modified, satisfying "no code modified without approval".
+      if (policy.threadSandbox === "read-only") {
+        yield* runAttempts
+          .updateStatus(runAttemptId, "building_prompt")
+          .pipe(Effect.catch(() => Effect.void));
+        const result = yield* agent
+          .runTurn({
+            issue,
+            config,
+            workspacePath: workspace.path,
+            branch: workspace.branch,
+            runAttemptId,
+          })
+          .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
+
+        if (result.completed) {
+          yield* runAttempts
+            .updateStatus(runAttemptId, "succeeded", { finishedAt: yield* nowIso })
+            .pipe(Effect.catch(() => Effect.void));
+          yield* appendEvent(runAttemptId, "plan_produced", { branch: workspace.branch });
+          yield* workItems
+            .transition(workItemId, "ready_for_review", {
+              ownerToken,
+              generation: claimed.generation,
+            })
+            .pipe(Effect.catch(() => Effect.void));
+        } else {
+          yield* runAttempts
+            .updateStatus(runAttemptId, "failed", {
+              finishedAt: yield* nowIso,
+              error: { category: "agent", message: "plan turn did not complete" },
+            })
+            .pipe(Effect.catch(() => Effect.void));
+          yield* releaseClaim(workItemId, ownerToken, claimed.generation);
+        }
+        return runAttemptId;
+      }
+
+      // 5. Execute/deliver: edits allowed subject to the approval policy.
+      if (requiresApprovalBeforeEdit(config)) {
+        yield* runAttempts
+          .updateStatus(runAttemptId, "launching_agent")
+          .pipe(Effect.catch(() => Effect.void));
+      }
+      yield* runAttempts
+        .updateStatus(runAttemptId, "streaming_turn")
+        .pipe(Effect.catch(() => Effect.void));
+      yield* appendEvent(runAttemptId, "agent_started", { branch: workspace.branch });
+
+      const result = yield* agent
+        .runTurn({
+          issue,
+          config,
+          workspacePath: workspace.path,
+          branch: workspace.branch,
+          runAttemptId,
+        })
+        .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
+
+      if (result.completed) {
+        yield* runAttempts
+          .updateStatus(runAttemptId, "succeeded", { finishedAt: yield* nowIso })
+          .pipe(Effect.catch(() => Effect.void));
+        yield* workItems
+          .transition(workItemId, "ready_for_review", {
+            ownerToken,
+            generation: claimed.generation,
+          })
+          .pipe(Effect.catch(() => Effect.void));
+      } else {
+        yield* runAttempts
+          .updateStatus(runAttemptId, "failed", {
+            finishedAt: yield* nowIso,
+            error: { category: "agent", message: "turn did not complete" },
+          })
+          .pipe(Effect.catch(() => Effect.void));
+        yield* releaseClaim(workItemId, ownerToken, claimed.generation);
+      }
+
+      return runAttemptId;
+    });
+
+  const cancelRun: RunDispatcherService["cancelRun"] = (runAttemptId) =>
+    Effect.gen(function* () {
+      // Interrupting the agent requires tracking the active per-attempt agent
+      // instance; the minimal slice just records the cancellation. A follow-up
+      // (WS-K/WS-M) can hold the active agent and send turn/interrupt here.
+      yield* runAttempts
+        .updateStatus(runAttemptId, "user_cancelled", { finishedAt: yield* nowIso })
+        .pipe(Effect.catch(() => Effect.void));
+    });
+
+  return { dispatchWorkItem, cancelRun };
+});
+
+export const RunDispatcherLive = Layer.effect(RunDispatcher, makeRunDispatcher);

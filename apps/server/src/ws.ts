@@ -346,12 +346,12 @@ const makeWsRpcLayer = (
       // Resolve the Symphony orchestrator lazily per request so the RPC layer
       // itself has no hard dependency on the Symphony layers. When they are not
       // mounted, the Observe methods degrade to empty data instead of failing.
-      const withOrchestrator = <A, E>(
+      const withOrchestrator = <A, E, R>(
         run: (
           orchestrator: SymphonyOrchestrator.SymphonyOrchestrator["Service"],
-        ) => Effect.Effect<A, E>,
-        fallback: Effect.Effect<A, E>,
-      ): Effect.Effect<A, E> =>
+        ) => Effect.Effect<A, E, R>,
+        fallback: Effect.Effect<A, E, R>,
+      ): Effect.Effect<A, E, R> =>
         Effect.serviceOption(SymphonyOrchestrator.SymphonyOrchestrator).pipe(
           Effect.flatMap((maybe) => (Option.isSome(maybe) ? run(maybe.value) : fallback)),
         );
@@ -1758,6 +1758,26 @@ const makeWsRpcLayer = (
                 orchestrator
                   .setLocalPriority(input.workItemId, input.priority)
                   .pipe(Effect.as({ ok: true })),
+              Effect.succeed({ ok: true }),
+            ),
+            { "rpc.aggregate": "symphony" },
+          ),
+        [SYMPHONY_WS_METHODS.dispatchWorkItem]: (input) =>
+          observeRpcEffect(
+            SYMPHONY_WS_METHODS.dispatchWorkItem,
+            withOrchestrator(
+              (orchestrator) =>
+                orchestrator.dispatchWorkItem(input.workItemId).pipe(Effect.as({ ok: true })),
+              Effect.succeed({ ok: true }),
+            ),
+            { "rpc.aggregate": "symphony" },
+          ),
+        [SYMPHONY_WS_METHODS.cancelRun]: (input) =>
+          observeRpcEffect(
+            SYMPHONY_WS_METHODS.cancelRun,
+            withOrchestrator(
+              (orchestrator) =>
+                orchestrator.cancelRun(input.runAttemptId).pipe(Effect.as({ ok: true })),
               Effect.succeed({ ok: true }),
             ),
             { "rpc.aggregate": "symphony" },

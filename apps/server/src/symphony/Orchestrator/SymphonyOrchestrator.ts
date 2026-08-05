@@ -7,6 +7,7 @@ import type {
 } from "@neokod/contracts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
+import type * as Scope from "effect/Scope";
 
 /**
  * SymphonyOrchestrator - single-authority orchestrator for Symphony Mode.
@@ -42,6 +43,11 @@ export interface SymphonyOrchestratorShape {
   readonly excludeWorkItem: (workItemId: string, exclude: boolean) => Effect.Effect<void>;
   readonly includeWorkItem: (workItemId: string) => Effect.Effect<void>;
   readonly setLocalPriority: (workItemId: string, priority: number) => Effect.Effect<void>;
+
+  // Dispatch (Phase 2): claim -> workspace -> run turn. Only active when the
+  // workflow autonomy is prepare/execute/deliver; observe never dispatches.
+  readonly dispatchWorkItem: (workItemId: string) => Effect.Effect<void, never, Scope.Scope>;
+  readonly cancelRun: (runAttemptId: string) => Effect.Effect<void, never, Scope.Scope>;
 }
 
 export class SymphonyOrchestrator extends Context.Service<
