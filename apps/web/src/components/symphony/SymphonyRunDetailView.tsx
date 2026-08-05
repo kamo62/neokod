@@ -1,6 +1,6 @@
-import { ActivityIcon, RefreshCwIcon, SquareIcon } from "lucide-react";
+import { ActivityIcon, RefreshCwIcon, SquareIcon, ExternalLinkIcon } from "lucide-react";
 
-import { RunAttemptId, type RunDetails } from "@neokod/contracts";
+import { RunAttemptId, type EvidenceBundle, type RunDetails } from "@neokod/contracts";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -49,6 +49,99 @@ function Timeline({ details }: { readonly details: RunDetails }) {
           ))}
         </ol>
       )}
+    </div>
+  );
+}
+
+function EvidencePanel({ evidence }: { readonly evidence: EvidenceBundle }) {
+  const assessmentVariant =
+    evidence.overallAssessment === "ready_for_review"
+      ? "success"
+      : evidence.overallAssessment === "ready_with_warnings"
+        ? "warning"
+        : evidence.overallAssessment === "failed"
+          ? "error"
+          : "secondary";
+  return (
+    <div className="rounded-2xl border bg-card px-4 py-4">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <h2 className="text-[12px] font-semibold text-foreground">Evidence</h2>
+        <Badge variant={assessmentVariant} size="sm">
+          {evidence.overallAssessment}
+        </Badge>
+        {evidence.pullRequest !== null ? (
+          <a
+            href={evidence.pullRequest.url ?? `#run-${evidence.pullRequest.number}`}
+            target="_blank"
+            rel="noreferrer"
+            className="ml-auto inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+          >
+            PR #{evidence.pullRequest.number} <ExternalLinkIcon className="size-3" />
+          </a>
+        ) : null}
+      </div>
+
+      {evidence.implementationSummary !== undefined ? (
+        <p className="mb-3 whitespace-pre-wrap text-[12px] leading-relaxed text-foreground">
+          {evidence.implementationSummary}
+        </p>
+      ) : null}
+
+      {evidence.changedFiles.length > 0 ? (
+        <div className="mb-3">
+          <h3 className="mb-1.5 text-[11px] font-medium text-muted-foreground">Changed files</h3>
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="border-b border-border/60 text-left text-muted-foreground">
+                <th className="py-1 pr-3 font-medium">Path</th>
+                <th className="py-1 pr-3 text-right font-medium">+</th>
+                <th className="py-1 text-right font-medium">-</th>
+              </tr>
+            </thead>
+            <tbody>
+              {evidence.changedFiles.map((file) => (
+                <tr key={file.path} className="border-b border-border/40 last:border-0">
+                  <td className="py-1 pr-3 font-mono text-foreground">{file.path}</td>
+                  <td className="py-1 pr-3 text-right text-emerald-600">{file.additions ?? 0}</td>
+                  <td className="py-1 text-right text-red-500">{file.deletions ?? 0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      {evidence.validationResults.length > 0 ? (
+        <div>
+          <h3 className="mb-1.5 text-[11px] font-medium text-muted-foreground">Validation</h3>
+          <ul className="space-y-1">
+            {evidence.validationResults.map((result) => (
+              <li key={result.command} className="flex items-center gap-2">
+                <Badge
+                  variant={
+                    result.status === "passed"
+                      ? "success"
+                      : result.status === "failed"
+                        ? "error"
+                        : "secondary"
+                  }
+                  size="sm"
+                >
+                  {result.status}
+                </Badge>
+                <code className="truncate font-mono text-[11px] text-muted-foreground">
+                  {result.command}
+                </code>
+                {result.durationMs !== undefined ? (
+                  <span className="ml-auto text-[10px] text-muted-foreground">
+                    {(result.durationMs / 1000).toFixed(1)}s
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -144,6 +237,9 @@ export function SymphonyRunDetailView({ runId }: { readonly runId: string }) {
                 {details.runAttempt.workspacePath}
               </span>
             </div>
+            {details.workItem.evidence !== null && details.workItem.evidence !== undefined ? (
+              <EvidencePanel evidence={details.workItem.evidence} />
+            ) : null}
             {details.approvalRequests.length > 0 ? (
               <div className="rounded-2xl border bg-card px-4 py-3">
                 <h2 className="mb-2 text-[12px] font-semibold text-foreground">Approvals</h2>
