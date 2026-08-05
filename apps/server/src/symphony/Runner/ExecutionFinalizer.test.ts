@@ -64,6 +64,7 @@ const seedWorkItem = (id: string, ownerToken: string) =>
       description: "Seeded for finalizer tests",
       acceptanceCriteria: [],
       source: { kind: "manual" },
+      trackerIssueId: `manual-${id}`,
       lifecycle: "queued",
       priority: 1,
       eligibilityReasons: [],
@@ -99,7 +100,6 @@ const seedAttempt = (workItemId: string, attemptNumber = 1) =>
     });
     return id;
   });
-
 const makeIssue = (id: string): NormalizedIssue => ({
   id,
   nativeRef: null,
@@ -223,7 +223,7 @@ layer(["passed"], makePullRequest())("ExecutionFinalizer review-ready path", (it
 });
 
 layer(["failed"], makePullRequest())("ExecutionFinalizer validation failure path", (it) => {
-  it.effect("marks the attempt validation_failed and lands the item in validation_failed", () =>
+  it.effect("marks the attempt validation_failed and re-schedules the item for retry", () =>
     Effect.gen(function* () {
       const workItem = yield* seedWorkItem("2", "owner-2");
       const runAttemptId = yield* seedAttempt("2");
@@ -248,13 +248,40 @@ layer(["failed"], makePullRequest())("ExecutionFinalizer validation failure path
       expect(attempt?.status).toBe("validation_failed");
       expect(attempt?.error?.category).toBe("validation_failed");
 
+      // Attempt 1 of 5: retryable, so the item is re-scheduled (plan 9.5).
       const workItems = yield* WorkItemRepository;
       const after = yield* workItems.getById(workItem.id);
-      expect(after?.lifecycle).toBe("validation_failed");
+      expect(after?.lifecycle).toBe("retry_scheduled");
 
       const runEvents = yield* RunEventRepository;
       const events = yield* runEvents.listForAttempt(runAttemptId);
       expect(events.map((e) => e.eventType)).toContain("validation_failed");
+    }),
+  );
+
+  it.effect("lands validation_failed when attempts are exhausted", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("5", "owner-5");
+      const runAttemptId = yield* seedAttempt("5", 5);
+      const finalizer = yield* ExecutionFinalizer;
+
+      const outcome = yield* finalizer.finalize({
+        workItem,
+        issue: makeIssue("5"),
+        runAttemptId,
+        config: makeConfig({ maxAttempts: 5 }),
+        workspacePath: "/ws/5",
+        branch: "symphony/issue-5",
+        baseBranch: "main",
+        ownerToken: "owner-5",
+        generation: 1,
+      });
+
+      expect(outcome).toBe("validation_failed");
+
+      const workItems = yield* WorkItemRepository;
+      const after = yield* workItems.getById(workItem.id);
+      expect(after?.lifecycle).toBe("validation_failed");
     }),
   );
 });

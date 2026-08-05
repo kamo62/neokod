@@ -141,12 +141,26 @@ export const makeExecutionFinalizer = Effect.gen(function* () {
         yield* evidenceRepository
           .upsert(input.workItem.id, evidence)
           .pipe(Effect.catch(() => Effect.void));
-        yield* workItems
-          .transition(input.workItem.id, "validation_failed", {
-            ownerToken: input.ownerToken,
-            generation: input.generation,
-          })
-          .pipe(Effect.catch(() => Effect.void));
+        // Validation failure is retryable (plan 9.5): re-schedule while
+        // attempts remain, otherwise land the item in validation_failed where
+        // it can only be re-dispatched manually.
+        const attemptNumber = attempt?.attemptNumber ?? 1;
+        const maxAttempts = input.config.maxAttempts ?? 5;
+        if (attemptNumber < maxAttempts) {
+          yield* workItems
+            .transition(input.workItem.id, "retry_scheduled", {
+              ownerToken: input.ownerToken,
+              generation: input.generation,
+            })
+            .pipe(Effect.catch(() => Effect.void));
+        } else {
+          yield* workItems
+            .transition(input.workItem.id, "validation_failed", {
+              ownerToken: input.ownerToken,
+              generation: input.generation,
+            })
+            .pipe(Effect.catch(() => Effect.void));
+        }
         yield* appendEvent(input.runAttemptId, "validation_failed", {
           results: validationResults.map((result) => ({
             command: result.command,

@@ -31,7 +31,7 @@ import { makeMemoryTrackerAdapter } from "../../Trackers/MemoryAdapter.ts";
 import { TrackerEnablementLive } from "../TrackerEnablement.ts";
 import { SymphonyOrchestrator } from "../SymphonyOrchestrator.ts";
 import { SymphonyOrchestratorLive } from "./SymphonyOrchestratorLive.ts";
-import { RunDispatcher } from "../../Runner/Dispatcher.ts";
+import { RunDispatcher, RunDispatchError } from "../../Runner/Dispatcher.ts";
 import { layerTest as serverSettingsTestLayer } from "../../../serverSettings.ts";
 
 const makeConfig = (repositoryPath: string): EffectiveWorkflowConfig => ({
@@ -85,11 +85,26 @@ const memoryFactory = (_provider: Readonly<Record<string, unknown>>) =>
 
 const registryLayer = TrackerRegistryWithFactories(new Map([["github", memoryFactory]]));
 
-const mockDispatcherLayer = Layer.succeed(RunDispatcher, {
-  dispatchWorkItem: () => Effect.succeed("run-mock" as RunAttemptId),
-  cancelRun: () => Effect.void,
-  isAgentActive: () => Effect.succeed(false),
-} as RunDispatcher["Service"]);
+const dispatchedIds: string[] = [];
+
+const mockDispatcherLayer = Layer.effect(
+  RunDispatcher,
+  Effect.gen(function* () {
+    const workItems = yield* WorkItemRepository;
+    return {
+      dispatchWorkItem: (input: { workItem: { id: WorkItemId } }) =>
+        Effect.sync(() => {
+          dispatchedIds.push(String(input.workItem.id));
+        }).pipe(
+          Effect.flatMap(() => workItems.claim(input.workItem.id, "mock-owner")),
+          Effect.mapError((cause) => new RunDispatchError(cause.message)),
+          Effect.as("run-mock" as RunAttemptId),
+        ),
+      cancelRun: () => Effect.void,
+      isAgentActive: () => Effect.succeed(false),
+    } satisfies RunDispatcher["Service"];
+  }),
+);
 
 const mockApprovalsLayer = Layer.effect(
   ApprovalService,
@@ -124,7 +139,7 @@ const layer = it.layer(
     Layer.provideMerge(OrchestratorStateRepositoryLive),
     Layer.provideMerge(registryLayer),
     Layer.provideMerge(TrackerEnablementLive),
-    Layer.provideMerge(mockDispatcherLayer),
+    Layer.provideMerge(mockDispatcherLayer.pipe(Layer.provide(WorkItemRepositoryLive))),
     Layer.provideMerge(mockApprovalsLayer),
     Layer.provideMerge(ApprovalRepositoryLive),
     Layer.provideMerge(EvidenceRepositoryLive),
@@ -413,6 +428,81 @@ layer("SymphonyOrchestrator Observe", (it) => {
       const repository = yield* ApprovalRepository;
       const request = yield* repository.getById("sym-ap-1");
       expect(request?.state).toBe("expired");
+    }),
+  );
+
+  it.effect("re-dispatches a retry_scheduled item once its backoff elapses", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-retry-1", "/repo/retry");
+      const workflows = yield* WorkflowRepository;
+      yield* workflows.upsert({
+        id: WorkflowId.make("wf-retry-1"),
+        repositoryPath: "/repo/retry",
+        workflowPath: "/repo/retry/WORKFLOW.md",
+        status: "active",
+        autonomy: "execute",
+        validationError: null,
+        definition: { config: {}, promptTemplate: "Implement." },
+        effectiveConfig: {
+          ...makeConfig("/repo/retry"),
+          autonomy: "execute",
+          maxRetryBackoffMs: 30_000,
+        },
+        enabledAt: "2026-08-05T00:00:00.000Z",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const workItemId = WorkItemId.make("retry-1");
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        objective: "Retry target",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "retry-1",
+        workflowId: WorkflowId.make("wf-retry-1"),
+        lifecycle: "retry_scheduled",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const runAttempts = yield* RunAttemptRepository;
+      const recent = yield* nowIso;
+      yield* runAttempts.create({
+        id: RunAttemptId.make("run-retry-1"),
+        workItemId,
+        attemptNumber: 1,
+        workspacePath: "/ws/retry",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "failed",
+        startedAt: recent,
+        finishedAt: recent,
+        error: { category: "agent", message: "turn failed" },
+      });
+
+      // Backoff window: finished now + 10s; before advancing the clock the
+      // item must stay scheduled. Advance just past the window (11s) so the
+      // forked poll loop (30s cadence) does not fire extra ticks.
+      yield* orchestrator.refreshNow();
+      const before = yield* workItems.getById(workItemId);
+      expect(before?.lifecycle).toBe("retry_scheduled");
+      expect(dispatchedIds).toEqual([]);
+
+      yield* TestClock.adjust("11 seconds");
+      yield* orchestrator.refreshNow();
+      const after = yield* workItems.getById(workItemId);
+      // The mock dispatcher claims from retry_scheduled -> preparing.
+      expect(after?.lifecycle).toBe("preparing");
+      expect(dispatchedIds).toContain("retry-1");
     }),
   );
 });

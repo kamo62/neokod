@@ -32,6 +32,8 @@ import { TrackerEnablement } from "../TrackerEnablement.ts";
 import { evaluateEligibility } from "../Eligibility.ts";
 import { projectWorkItem } from "../Projection.ts";
 import { nowMs, reconcileStaleClaims } from "../Reconciler.ts";
+import { retryDueAtMs } from "../Retry.ts";
+import { runStartupRecovery } from "../Recovery.ts";
 import { SymphonyOrchestrator, type SymphonyOrchestratorShape } from "../SymphonyOrchestrator.ts";
 
 /**
@@ -280,11 +282,58 @@ const makeOrchestrator = Effect.gen(function* () {
         Effect.catch(() => Effect.void),
       );
     }
-    // Best-effort housekeeping: release orphaned claims and expire approval
-    // requests whose wait window elapsed. Runs on the same cadence as polling.
+    // Best-effort housekeeping: release orphaned claims, fire due retries and
+    // expire approval requests whose wait window elapsed. Runs on the same
+    // cadence as polling.
     yield* reconcileStaleClaims({ workItems, runAttempts, runEvents, workflows, dispatcher });
+    yield* retrySweep();
     yield* sweepExpiredApprovals(now);
     yield* Ref.update(stateRef, (state) => ({ ...state, lastPollAt: now }));
+  });
+
+  // Retry sweep (plan 9.5, WS-M): for each item in `retry_scheduled` whose
+  // backoff window elapsed, re-dispatch if it is still eligible. Poll-based
+  // so the state survives restarts in the DB row; the retry timer is the
+  // poll cadence, which is acceptable because the sweep is idempotent.
+  const retrySweep = Effect.fn("symphonyOrchestrator.retrySweep")(function* () {
+    const now = yield* nowIso;
+    const scheduled = yield* workItems
+      .listByLifecycle(["retry_scheduled"])
+      .pipe(Effect.catch(() => Effect.succeed([] as WorkItem[])));
+    for (const item of scheduled) {
+      const attempt = yield* runAttempts
+        .latestForWorkItem(item.id)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (attempt === null || attempt.finishedAt === null) {
+        continue;
+      }
+      const workflow =
+        item.workflowId === undefined
+          ? undefined
+          : yield* workflows.list().pipe(
+              Effect.map((all) => all.find((w) => w.id === item.workflowId)),
+              Effect.catch(() => Effect.succeed(undefined)),
+            );
+      const maxBackoffMs =
+        workflow?.effectiveConfig?.maxRetryBackoffMs ?? WORKFLOW_DEFAULTS.maxRetryBackoffMs;
+      const dueAt = retryDueAtMs({
+        finishedAt: attempt.finishedAt,
+        attemptNumber: attempt.attemptNumber,
+        maxRetryBackoffMs: maxBackoffMs,
+      });
+      if (dueAt === null || nowMs(now) < dueAt) {
+        continue;
+      }
+      const itemNow = yield* workItems
+        .getById(item.id)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (itemNow === null || itemNow.lifecycle !== "retry_scheduled") {
+        continue;
+      }
+      // Re-dispatch claims the item (claim accepts retry_scheduled) and the
+      // dispatcher creates the next attempt; failure releases it back here.
+      yield* dispatchWorkItem(String(item.id)).pipe(Effect.catch(() => Effect.void));
+    }
   });
 
   const sweepExpiredApprovals = (now: string) =>
@@ -329,6 +378,11 @@ const makeOrchestrator = Effect.gen(function* () {
     });
 
   const scheduler = Effect.gen(function* () {
+    // Startup recovery (plan 9.7, WS-M): mark interrupted runs from a prior
+    // crash/restart, release stale claims, and re-queue retryable work.
+    yield* runStartupRecovery({ workItems, runAttempts, runEvents, workflows, dispatcher }).pipe(
+      Effect.catch(() => Effect.void),
+    );
     yield* runTick();
     yield* Effect.repeat(runTick(), Schedule.fixed(POLL_INTERVAL));
   });
@@ -336,7 +390,7 @@ const makeOrchestrator = Effect.gen(function* () {
   // Fork the poll loop into the surrounding scope so it stops on layer teardown.
   yield* Effect.forkScoped(scheduler);
 
-  const refreshNow: SymphonyOrchestratorShape["refreshNow"] = () => runTick();
+  const refreshNow: SymphonyOrchestratorShape["refreshNow"] = () => runTick().pipe(Effect.scoped);
 
   const getOverview = (): Effect.Effect<SymphonyOverview, never> =>
     Effect.gen(function* () {

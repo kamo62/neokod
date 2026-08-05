@@ -217,25 +217,30 @@ layer(scriptedFactory(scriptedAgent(true)))("Dispatcher prepare mode", (it) => {
 });
 
 layer(scriptedFactory(scriptedAgent(false)))("Dispatcher prepare mode failure", (it) => {
-  it.effect("marks the attempt failed and releases the claim when the turn does not complete", () =>
-    Effect.gen(function* () {
-      const workItem = yield* seedWorkItem("1002");
-      const dispatcher = yield* RunDispatcher;
-      const runAttemptId = yield* dispatcher.dispatchWorkItem({
-        workItem,
-        issue: makeIssue("1002"),
-        config: makeConfig("/repo"),
-      });
+  it.effect(
+    "marks the attempt failed and re-schedules the item when the turn does not complete",
+    () =>
+      Effect.gen(function* () {
+        const workItem = yield* seedWorkItem("1002");
+        const dispatcher = yield* RunDispatcher;
+        const runAttemptId = yield* dispatcher.dispatchWorkItem({
+          workItem,
+          issue: makeIssue("1002"),
+          config: makeConfig("/repo"),
+        });
 
-      const attempts = yield* RunAttemptRepository;
-      const attempt = yield* attempts.getById(runAttemptId).pipe(Effect.flatMap(required));
-      expect(attempt.status).toBe("failed");
-      expect(attempt.error?.category).toBe("agent");
+        const attempts = yield* RunAttemptRepository;
+        const attempt = yield* attempts.getById(runAttemptId).pipe(Effect.flatMap(required));
+        expect(attempt.status).toBe("failed");
+        expect(attempt.error?.category).toBe("agent");
+        expect(attempt.attemptNumber).toBe(1);
 
-      const workItems = yield* WorkItemRepository;
-      const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
-      expect(after.lifecycle).toBe("queued");
-    }),
+        // The agent-turn failure is retryable (plan 9.5), so the item is
+        // re-scheduled for the backoff window instead of released to queued.
+        const workItems = yield* WorkItemRepository;
+        const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+        expect(after.lifecycle).toBe("retry_scheduled");
+      }),
   );
 });
 

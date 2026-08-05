@@ -22,6 +22,7 @@ import type { AgentRuntimeService } from "./AgentRuntime.ts";
 import { ExecutionFinalizer } from "./ExecutionFinalizer.ts";
 import { LiveRequests } from "./LiveRequests.ts";
 import { resolveRunnerPolicy, requiresApprovalBeforeEdit } from "./Policy.ts";
+import { isRetryableCategory } from "../Orchestrator/Retry.ts";
 
 /**
  * Run dispatcher (WS-J integration, plan 8.1/8.2, Phase 2 exit).
@@ -98,6 +99,13 @@ export const makeRunDispatcher = Effect.gen(function* () {
   // and settle its outstanding approval/input requests (plan 8.3.1).
   const activeAgents = yield* Ref.make<Map<string, AgentRuntimeService>>(new Map());
 
+  // Retry cap from the workflow (plan 9.5): after maxAttempts failures the
+  // item is released to queued instead of being re-scheduled.
+  let maxAttempts = 5;
+  const setMaxAttempts = (config: EffectiveWorkflowConfig) => {
+    maxAttempts = config.maxAttempts ?? 5;
+  };
+
   const makeRunAttemptId = () =>
     crypto.randomUUIDv4.pipe(
       Effect.map((value) => RunAttemptId.make(`run-${value}`)),
@@ -133,7 +141,9 @@ export const makeRunDispatcher = Effect.gen(function* () {
 
   // Mark the attempt failed unless cancellation already recorded a terminal
   // status (cancelRun wins over the interrupted turn path), then release the
-  // claim so the item can be retried or re-dispatched.
+  // claim: to `retry_scheduled` when the failure is retryable and attempts
+  // remain (plan 9.5, WS-M), otherwise to `queued` so a manual re-dispatch
+  // stays possible.
   const markFailed = (
     runAttemptId: RunAttemptId,
     workItemId: WorkItemId,
@@ -146,6 +156,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
         .getById(runAttemptId)
         .pipe(Effect.catch(() => Effect.succeed(null)));
       const alreadyTerminal = attempt !== null && TERMINAL_STATUSES.has(attempt.status);
+      const attemptNumber = attempt?.attemptNumber ?? 1;
       if (!alreadyTerminal) {
         yield* runAttempts
           .updateStatus(runAttemptId, "failed", {
@@ -154,12 +165,27 @@ export const makeRunDispatcher = Effect.gen(function* () {
           })
           .pipe(Effect.catch(() => Effect.void));
       }
-      yield* releaseClaim(workItemId, ownerToken, generation);
+      const retryable = isRetryableCategory(error.category) && attemptNumber < maxAttempts;
+      if (retryable) {
+        yield* workItems
+          .transition(workItemId, "retry_scheduled", { ownerToken, generation })
+          .pipe(Effect.catch(() => Effect.void));
+        yield* runEvents
+          .append(runAttemptId, "retry_scheduled", {
+            workItemId: String(workItemId),
+            attemptNumber,
+            maxAttempts,
+          })
+          .pipe(Effect.catch(() => Effect.void));
+      } else {
+        yield* releaseClaim(workItemId, ownerToken, generation);
+      }
     });
 
   const dispatchWorkItem: RunDispatcherService["dispatchWorkItem"] = (input) =>
     Effect.gen(function* () {
       const { workItem, issue, config } = input;
+      setMaxAttempts(config);
       const ownerToken = yield* crypto.randomUUIDv4.pipe(
         Effect.mapError(() => new RunDispatchError("failed to generate owner token")),
       );
@@ -179,14 +205,19 @@ export const makeRunDispatcher = Effect.gen(function* () {
           Effect.tapError(() => releaseClaim(workItemId, ownerToken, claimed.generation)),
         );
 
-      // 3. Record the run attempt.
+      // 3. Record the run attempt. Retries continue the attempt sequence so
+      //    the backoff and the max-attempts cap read the right number.
       const runAttemptId = yield* makeRunAttemptId();
       const startedAt = yield* nowIso;
+      const latestAttempt = yield* runAttempts
+        .latestForWorkItem(workItemId)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      const attemptNumber = (latestAttempt?.attemptNumber ?? 0) + 1;
       yield* runAttempts
         .create({
           id: runAttemptId,
           workItemId,
-          attemptNumber: 1,
+          attemptNumber,
           workspacePath: workspace.path,
           provider: config.agentProvider,
           ...(config.agentModel !== undefined ? { model: config.agentModel } : {}),
