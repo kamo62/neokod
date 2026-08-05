@@ -4,10 +4,13 @@ import * as Layer from "effect/Layer";
 
 import { TrackerAdapterRegistry } from "./Adapter.ts";
 import type { TrackerAdapter } from "./Adapter.ts";
+import { makeAsanaAdapter } from "./AsanaAdapter.ts";
 import { TrackerAdapterError, unsupportedTrackerKind } from "./Errors.ts";
 import { GitHubIssuesCli, GitHubIssuesCliLive } from "./GitHubIssuesCli.ts";
 import { makeGitHubIssuesAdapter } from "./GitHubIssuesAdapter.ts";
+import { makeGitLabAdapter } from "./GitLabAdapter.ts";
 import { makeJiraAdapter } from "./JiraAdapter.ts";
+import { makeLinearAdapter } from "./LinearAdapter.ts";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 
 /**
@@ -80,12 +83,21 @@ export const TrackerRegistryGitHubLive = Effect.gen(function* () {
     makeGitHubIssuesAdapter({ cwd: repositoryPath, provider, env, cli });
   const jiraFactory: AdapterFactory = ({ provider, env }) =>
     makeJiraAdapter({ provider, env, httpClient });
+  const linearFactory: AdapterFactory = ({ provider, env }) =>
+    makeLinearAdapter({ provider, env, httpClient });
+  const gitlabFactory: AdapterFactory = ({ provider, env }) =>
+    makeGitLabAdapter({ provider, env, httpClient });
+  const asanaFactory: AdapterFactory = ({ provider, env }) =>
+    makeAsanaAdapter({ provider, env, httpClient });
   return Layer.succeed(
     TrackerAdapterRegistry,
     makeTrackerRegistry(
       new Map([
         ["github", githubFactory],
         ["jira", jiraFactory],
+        ["linear", linearFactory],
+        ["gitlab", gitlabFactory],
+        ["asana", asanaFactory],
       ]),
     ),
   );

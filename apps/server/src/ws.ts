@@ -46,6 +46,18 @@ import {
   SYMPHONY_WS_METHODS,
   type SymphonyOverview,
   SymphonyError,
+  SymphonyApproveInput,
+  SymphonyCancelRunInput,
+  SymphonyDispatchWorkItemInput,
+  SymphonyExcludeWorkItemInput,
+  SymphonyGetRunInput,
+  SymphonyIncludeWorkItemInput,
+  SymphonyListAttentionInput,
+  SymphonyListQueueInput,
+  SymphonyListRunsInput,
+  SymphonyRejectInput,
+  SymphonyRespondToUserInputInput,
+  SymphonySetLocalPriorityInput,
 } from "@neokod/contracts";
 import { HttpRouter, HttpServerRespondable } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
@@ -281,6 +293,208 @@ const SHELL_RESUME_MAX_GAP = 1_000;
 // databases. Past this gap the client is reset with a fresh thread snapshot.
 const THREAD_RESUME_MAX_GAP = 1_000;
 
+// Symphony Observe reads. These are read-only and never dispatch; the
+// orchestrator records transient tracker errors in health rather than
+// failing the request. When the orchestrator is not mounted (e.g. in
+// harnesses that do not provide the Symphony layers), they return empty
+// data rather than failing, so the socket surface stays inert.
+const observeRpcEffect = <A, E, R>(
+  method: string,
+  effect: Effect.Effect<A, E, R>,
+  traceAttributes?: Readonly<Record<string, unknown>>,
+) => instrumentRpcEffect(method, effect, traceAttributes);
+
+const emptyOverview = (): Effect.Effect<SymphonyOverview> =>
+  Effect.succeed({
+    running: 0,
+    queued: 0,
+    needsAttention: 0,
+    readyForReview: 0,
+    retrying: 0,
+    failedToday: 0,
+    orchestratorPaused: false,
+    activeWorkflowCount: 0,
+    providerHealth: {},
+    trackerHealth: {},
+    lastTrackerPollAt: null,
+    activeAgentCount: 0,
+    generatedAt: new Date().toISOString(),
+  });
+
+// Resolve the Symphony orchestrator lazily per request so the RPC layer
+// itself has no hard dependency on the Symphony layers. When they are not
+// mounted, the Observe methods degrade to empty data instead of failing.
+const withOrchestrator = <A, E, R>(
+  run: (
+    orchestrator: SymphonyOrchestrator.SymphonyOrchestrator["Service"],
+  ) => Effect.Effect<A, E, R>,
+  fallback: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> =>
+  Effect.serviceOption(SymphonyOrchestrator.SymphonyOrchestrator).pipe(
+    Effect.flatMap((maybe) => (Option.isSome(maybe) ? run(maybe.value) : fallback)),
+  );
+const withApprovalService = <A, E>(
+  run: (approvals: ApprovalService.ApprovalService["Service"]) => Effect.Effect<A, E>,
+  fallback: Effect.Effect<A, E>,
+): Effect.Effect<A, E> =>
+  Effect.serviceOption(ApprovalService.ApprovalService).pipe(
+    Effect.flatMap((maybe) => (Option.isSome(maybe) ? run(maybe.value) : fallback)),
+  );
+const approvalError = (message: string): SymphonyError =>
+  new SymphonyError({ code: "approval_request_not_found", message });
+
+export const makeSymphonyRpcHandlers = () => ({
+  [SYMPHONY_WS_METHODS.getOverview]: () =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.getOverview,
+      withOrchestrator((orchestrator) => orchestrator.getOverview(), emptyOverview()),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.listQueue]: (input: (typeof SymphonyListQueueInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.listQueue,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator.listQueue(input.limit === undefined ? undefined : { limit: input.limit }),
+        Effect.succeed([]),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.listRuns]: (input: (typeof SymphonyListRunsInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.listRuns,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator.listRuns(input.limit === undefined ? undefined : { limit: input.limit }),
+        Effect.succeed([]),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.getRun]: (input: (typeof SymphonyGetRunInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.getRun,
+      withOrchestrator(
+        (orchestrator) => orchestrator.getRun(input.runAttemptId),
+        Effect.succeed(null),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.listAttention]: (input: (typeof SymphonyListAttentionInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.listAttention,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator.listAttention(input.limit === undefined ? undefined : input.limit),
+        Effect.succeed([]),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.listWorkflows]: () =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.listWorkflows,
+      withOrchestrator((orchestrator) => orchestrator.listWorkflows(), Effect.succeed([])),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.validateWorkflow]: () =>
+    observeRpcEffect(SYMPHONY_WS_METHODS.validateWorkflow, Effect.succeed({ ok: true }), {
+      "rpc.aggregate": "symphony",
+    }),
+  [SYMPHONY_WS_METHODS.approve]: (input: (typeof SymphonyApproveInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.approve,
+      withApprovalService(
+        (approvals) =>
+          approvals.approve(input.requestId).pipe(
+            Effect.mapError((cause) => approvalError(cause.message)),
+            Effect.as({ ok: true }),
+          ),
+        Effect.succeed({ ok: true }),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.reject]: (input: (typeof SymphonyRejectInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.reject,
+      withApprovalService(
+        (approvals) =>
+          approvals.reject(input.requestId, input.reason).pipe(
+            Effect.mapError((cause) => approvalError(cause.message)),
+            Effect.as({ ok: true }),
+          ),
+        Effect.succeed({ ok: true }),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.respondToUserInput]: (
+    input: (typeof SymphonyRespondToUserInputInput)["Type"],
+  ) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.respondToUserInput,
+      withApprovalService(
+        (approvals) =>
+          approvals.respondToUserInput(input.requestId, input.text).pipe(
+            Effect.mapError((cause) => approvalError(cause.message)),
+            Effect.as({ ok: true }),
+          ),
+        Effect.succeed({ ok: true }),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.excludeWorkItem]: (input: (typeof SymphonyExcludeWorkItemInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.excludeWorkItem,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator
+            .excludeWorkItem(input.workItemId, input.exclude)
+            .pipe(Effect.as({ ok: true })),
+        Effect.succeed({ ok: true }),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.includeWorkItem]: (input: (typeof SymphonyIncludeWorkItemInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.includeWorkItem,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator.includeWorkItem(input.workItemId).pipe(Effect.as({ ok: true })),
+        Effect.succeed({ ok: true }),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.setLocalPriority]: (input: (typeof SymphonySetLocalPriorityInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.setLocalPriority,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator
+            .setLocalPriority(input.workItemId, input.priority)
+            .pipe(Effect.as({ ok: true })),
+        Effect.succeed({ ok: true }),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.dispatchWorkItem]: (input: (typeof SymphonyDispatchWorkItemInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.dispatchWorkItem,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator.dispatchWorkItem(input.workItemId).pipe(Effect.as({ ok: true })),
+        Effect.succeed({ ok: true }),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.cancelRun]: (input: (typeof SymphonyCancelRunInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.cancelRun,
+      withOrchestrator(
+        (orchestrator) => orchestrator.cancelRun(input.runAttemptId).pipe(Effect.as({ ok: true })),
+        Effect.succeed({ ok: true }),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+});
+
 const makeWsRpcLayer = (
   previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
 ) =>
@@ -327,43 +541,6 @@ const makeWsRpcLayer = (
         effect: Effect.Effect<A, E, R>,
         traceAttributes?: Readonly<Record<string, unknown>>,
       ) => instrumentRpcEffect(method, effect, traceAttributes);
-      const emptyOverview = (): Effect.Effect<SymphonyOverview> =>
-        Effect.succeed({
-          running: 0,
-          queued: 0,
-          needsAttention: 0,
-          readyForReview: 0,
-          retrying: 0,
-          failedToday: 0,
-          orchestratorPaused: false,
-          activeWorkflowCount: 0,
-          providerHealth: {},
-          trackerHealth: {},
-          lastTrackerPollAt: null,
-          activeAgentCount: 0,
-          generatedAt: new Date().toISOString(),
-        });
-      // Resolve the Symphony orchestrator lazily per request so the RPC layer
-      // itself has no hard dependency on the Symphony layers. When they are not
-      // mounted, the Observe methods degrade to empty data instead of failing.
-      const withOrchestrator = <A, E, R>(
-        run: (
-          orchestrator: SymphonyOrchestrator.SymphonyOrchestrator["Service"],
-        ) => Effect.Effect<A, E, R>,
-        fallback: Effect.Effect<A, E, R>,
-      ): Effect.Effect<A, E, R> =>
-        Effect.serviceOption(SymphonyOrchestrator.SymphonyOrchestrator).pipe(
-          Effect.flatMap((maybe) => (Option.isSome(maybe) ? run(maybe.value) : fallback)),
-        );
-      const withApprovalService = <A, E>(
-        run: (approvals: ApprovalService.ApprovalService["Service"]) => Effect.Effect<A, E>,
-        fallback: Effect.Effect<A, E>,
-      ): Effect.Effect<A, E> =>
-        Effect.serviceOption(ApprovalService.ApprovalService).pipe(
-          Effect.flatMap((maybe) => (Option.isSome(maybe) ? run(maybe.value) : fallback)),
-        );
-      const approvalError = (message: string): SymphonyError =>
-        new SymphonyError({ code: "approval_request_not_found", message });
       const observeRpcStream = <A, E, R>(
         method: string,
         stream: Stream.Stream<A, E, R>,
@@ -1644,163 +1821,7 @@ const makeWsRpcLayer = (
             { "rpc.aggregate": "server" },
           ),
 
-        // Symphony Observe reads. These are read-only and never dispatch; the
-        // orchestrator records transient tracker errors in health rather than
-        // failing the request. When the orchestrator is not mounted (e.g. in
-        // harnesses that do not provide the Symphony layers), they return empty
-        // data rather than failing, so the socket surface stays inert.
-        [SYMPHONY_WS_METHODS.getOverview]: () =>
-          observeRpcEffect(
-            SYMPHONY_WS_METHODS.getOverview,
-            withOrchestrator((orchestrator) => orchestrator.getOverview(), emptyOverview()),
-            { "rpc.aggregate": "symphony" },
-          ),
-        [SYMPHONY_WS_METHODS.listQueue]: (input) =>
-          observeRpcEffect(
-            SYMPHONY_WS_METHODS.listQueue,
-            withOrchestrator(
-              (orchestrator) =>
-                orchestrator.listQueue(
-                  input.limit === undefined ? undefined : { limit: input.limit },
-                ),
-              Effect.succeed([]),
-            ),
-            { "rpc.aggregate": "symphony" },
-          ),
-        [SYMPHONY_WS_METHODS.listRuns]: (input) =>
-          observeRpcEffect(
-            SYMPHONY_WS_METHODS.listRuns,
-            withOrchestrator(
-              (orchestrator) =>
-                orchestrator.listRuns(
-                  input.limit === undefined ? undefined : { limit: input.limit },
-                ),
-              Effect.succeed([]),
-            ),
-            { "rpc.aggregate": "symphony" },
-          ),
-        [SYMPHONY_WS_METHODS.getRun]: (input) =>
-          observeRpcEffect(
-            SYMPHONY_WS_METHODS.getRun,
-            withOrchestrator(
-              (orchestrator) => orchestrator.getRun(input.runAttemptId),
-              Effect.succeed(null),
-            ),
-            { "rpc.aggregate": "symphony" },
-          ),
-        [SYMPHONY_WS_METHODS.listAttention]: (input) =>
-          observeRpcEffect(
-            SYMPHONY_WS_METHODS.listAttention,
-            withOrchestrator(
-              (orchestrator) =>
-                orchestrator.listAttention(input.limit === undefined ? undefined : input.limit),
-              Effect.succeed([]),
-            ),
-            { "rpc.aggregate": "symphony" },
-          ),
-        [SYMPHONY_WS_METHODS.listWorkflows]: () =>
-          observeRpcEffect(
-            SYMPHONY_WS_METHODS.listWorkflows,
-            withOrchestrator((orchestrator) => orchestrator.listWorkflows(), Effect.succeed([])),
-            { "rpc.aggregate": "symphony" },
-          ),
-        [SYMPHONY_WS_METHODS.validateWorkflow]: () =>
-          observeRpcEffect(SYMPHONY_WS_METHODS.validateWorkflow, Effect.succeed({ ok: true }), {
-            "rpc.aggregate": "symphony",
-          }),
-        [SYMPHONY_WS_METHODS.approve]: (input) =>
-          observeRpcEffect(
-            SYMPHONY_WS_METHODS.approve,
-            withApprovalService(
-              (approvals) =>
-                approvals.approve(input.requestId).pipe(
-                  Effect.mapError((cause) => approvalError(cause.message)),
-                  Effect.as({ ok: true }),
-                ),
-              Effect.succeed({ ok: true }),
-            ),
-            { "rpc.aggregate": "symphony" },
-          ),
-        [SYMPHONY_WS_METHODS.reject]: (input) =>
-          observeRpcEffect(
-            SYMPHONY_WS_METHODS.reject,
-            withApprovalService(
-              (approvals) =>
-                approvals.reject(input.requestId, input.reason).pipe(
-                  Effect.mapError((cause) => approvalError(cause.message)),
-                  Effect.as({ ok: true }),
-                ),
-              Effect.succeed({ ok: true }),
-            ),
-            { "rpc.aggregate": "symphony" },
-          ),
-        [SYMPHONY_WS_METHODS.respondToUserInput]: (input) =>
-          observeRpcEffect(
-            SYMPHONY_WS_METHODS.respondToUserInput,
-            withApprovalService(
-              (approvals) =>
-                approvals.respondToUserInput(input.requestId, input.text).pipe(
-                  Effect.mapError((cause) => approvalError(cause.message)),
-                  Effect.as({ ok: true }),
-                ),
-              Effect.succeed({ ok: true }),
-            ),
-            { "rpc.aggregate": "symphony" },
-          ),
-        [SYMPHONY_WS_METHODS.excludeWorkItem]: (input) =>
-          observeRpcEffect(
-            SYMPHONY_WS_METHODS.excludeWorkItem,
-            withOrchestrator(
-              (orchestrator) =>
-                orchestrator
-                  .excludeWorkItem(input.workItemId, input.exclude)
-                  .pipe(Effect.as({ ok: true })),
-              Effect.succeed({ ok: true }),
-            ),
-            { "rpc.aggregate": "symphony" },
-          ),
-        [SYMPHONY_WS_METHODS.includeWorkItem]: (input) =>
-          observeRpcEffect(
-            SYMPHONY_WS_METHODS.includeWorkItem,
-            withOrchestrator(
-              (orchestrator) =>
-                orchestrator.includeWorkItem(input.workItemId).pipe(Effect.as({ ok: true })),
-              Effect.succeed({ ok: true }),
-            ),
-            { "rpc.aggregate": "symphony" },
-          ),
-        [SYMPHONY_WS_METHODS.setLocalPriority]: (input) =>
-          observeRpcEffect(
-            SYMPHONY_WS_METHODS.setLocalPriority,
-            withOrchestrator(
-              (orchestrator) =>
-                orchestrator
-                  .setLocalPriority(input.workItemId, input.priority)
-                  .pipe(Effect.as({ ok: true })),
-              Effect.succeed({ ok: true }),
-            ),
-            { "rpc.aggregate": "symphony" },
-          ),
-        [SYMPHONY_WS_METHODS.dispatchWorkItem]: (input) =>
-          observeRpcEffect(
-            SYMPHONY_WS_METHODS.dispatchWorkItem,
-            withOrchestrator(
-              (orchestrator) =>
-                orchestrator.dispatchWorkItem(input.workItemId).pipe(Effect.as({ ok: true })),
-              Effect.succeed({ ok: true }),
-            ),
-            { "rpc.aggregate": "symphony" },
-          ),
-        [SYMPHONY_WS_METHODS.cancelRun]: (input) =>
-          observeRpcEffect(
-            SYMPHONY_WS_METHODS.cancelRun,
-            withOrchestrator(
-              (orchestrator) =>
-                orchestrator.cancelRun(input.runAttemptId).pipe(Effect.as({ ok: true })),
-              Effect.succeed({ ok: true }),
-            ),
-            { "rpc.aggregate": "symphony" },
-          ),
+        ...makeSymphonyRpcHandlers(),
       });
     }),
   );

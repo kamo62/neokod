@@ -376,6 +376,25 @@ const makeRepository = Effect.gen(function* () {
       return Option.isSome(row);
     });
 
+  const releaseClaim: WorkItemRepositoryShape["releaseClaim"] = (id, to) =>
+    Effect.gen(function* () {
+      const now = yield* nowIso;
+      const row = yield* sql<Schema.Schema.Type<typeof WorkItemRowSchema>>`
+        UPDATE symphony_work_items SET
+          lifecycle = ${to},
+          owner_token = NULL,
+          owner_pid = NULL,
+          owner_started_at = NULL,
+          lease_expires_at = NULL,
+          generation = generation + 1,
+          updated_at = ${now}
+        WHERE id = ${id}
+          AND lifecycle IN ('preparing', 'running')
+        RETURNING ${cols}
+      `.pipe(Effect.mapError(toBusyOrSqlError("WorkItemRepository.releaseClaim")));
+      return row.length > 0;
+    });
+
   const writeOverrides: WorkItemRepositoryShape["writeOverrides"] = (id, overrides) =>
     Effect.gen(function* () {
       const now = yield* nowIso;
@@ -412,6 +431,7 @@ const makeRepository = Effect.gen(function* () {
     listByLifecycle,
     claim,
     transition,
+    releaseClaim,
     writeOverrides,
     refreshTrackerSnapshot,
   } satisfies WorkItemRepositoryShape;

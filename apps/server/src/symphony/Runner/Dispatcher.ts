@@ -58,6 +58,9 @@ export interface RunDispatcherService {
   }) => Effect.Effect<RunAttemptId, RunDispatchError, Scope.Scope>;
 
   readonly cancelRun: (runAttemptId: RunAttemptId) => Effect.Effect<void, RunDispatchError>;
+
+  /** True while a live agent is registered for the run (reconciliation input). */
+  readonly isAgentActive: (runAttemptId: RunAttemptId) => Effect.Effect<boolean>;
 }
 
 export class RunDispatcher extends Context.Service<RunDispatcher, RunDispatcherService>()(
@@ -284,6 +287,11 @@ export const makeRunDispatcher = Effect.gen(function* () {
 
       // Unregister the agent when the dispatch finishes or is interrupted, then
       // settle any outstanding live requests so no Deferred is left dangling.
+      // Interrupted dispatch paths (cancellation, fatal interruption) never
+      // reach markFailed: interruption bypasses typed errors. Release the claim
+      // here instead, recording `interrupted` when no terminal status already
+      // stands (cancelRun's `user_cancelled` wins over this path). The release
+      // is lifecycle-guarded, so a finished item is never downgraded.
       return yield* runDispatch.pipe(
         Effect.ensuring(
           Effect.gen(function* () {
@@ -295,6 +303,25 @@ export const makeRunDispatcher = Effect.gen(function* () {
             yield* liveRequests
               .settleRun(runAttemptId, "run finished")
               .pipe(Effect.catch(() => Effect.void));
+            const attempt = yield* runAttempts
+              .getById(runAttemptId)
+              .pipe(Effect.catch(() => Effect.succeed(null)));
+            const alreadyTerminal = attempt !== null && TERMINAL_STATUSES.has(attempt.status);
+            if (!alreadyTerminal) {
+              yield* runAttempts
+                .updateStatus(runAttemptId, "interrupted", {
+                  finishedAt: yield* nowIso,
+                  error: {
+                    category: "interrupted",
+                    message: "run ended without a terminal status",
+                  },
+                })
+                .pipe(Effect.catch(() => Effect.void));
+              yield* appendEvent(runAttemptId, "interrupted", {});
+            }
+            yield* workItems
+              .releaseClaim(workItemId, "queued")
+              .pipe(Effect.catch(() => Effect.void));
           }),
         ),
       );
@@ -305,7 +332,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
       // Interrupt the active turn so the agent stops, settle the run's
       // outstanding approval/input requests (idempotent), and record the
       // durable cancellation. The claim is released by the interrupted
-      // dispatch path via markFailed, which keeps the work item queued.
+      // dispatch path's ensuring block, which keeps the work item queued.
       const agent = yield* Ref.get(activeAgents).pipe(
         Effect.map((map) => map.get(String(runAttemptId))),
       );
@@ -321,7 +348,10 @@ export const makeRunDispatcher = Effect.gen(function* () {
       yield* appendEvent(runAttemptId, "user_cancelled", {});
     });
 
-  return { dispatchWorkItem, cancelRun };
+  const isAgentActive: RunDispatcherService["isAgentActive"] = (runAttemptId) =>
+    Ref.get(activeAgents).pipe(Effect.map((map) => map.has(String(runAttemptId))));
+
+  return { dispatchWorkItem, cancelRun, isAgentActive };
 });
 
 export const RunDispatcherLive: Layer.Layer<

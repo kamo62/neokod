@@ -93,6 +93,12 @@ export interface LiveRequestsService {
    * exit path; safe to call multiple times.
    */
   readonly settleRun: (runAttemptId: RunAttemptId, reason: string) => Effect.Effect<void>;
+
+  /**
+   * Fail one outstanding request (approval timeout sweep). No-op when the
+   * request is already settled.
+   */
+  readonly settleRequest: (requestId: string, reason: string) => Effect.Effect<void>;
 }
 
 export class LiveRequests extends Context.Service<LiveRequests, LiveRequestsService>()(
@@ -217,6 +223,19 @@ export const makeLiveRequests = Effect.gen(function* () {
       });
     });
 
+  const settleRequest: LiveRequestsService["settleRequest"] = (requestId, reason) =>
+    Effect.gen(function* () {
+      const current = yield* Ref.get(store);
+      const entry = Object.values(current).find((value) => value.requestId === requestId);
+      if (entry !== undefined) {
+        yield* Deferred.fail(
+          entry.deferred as unknown as Deferred.Deferred<unknown, Error>,
+          new Error(`Request settled: ${reason}`),
+        ).pipe(Effect.catch(() => Effect.void));
+        yield* removeByRequestId(requestId);
+      }
+    });
+
   return {
     registerApproval,
     registerUserInput,
@@ -224,6 +243,7 @@ export const makeLiveRequests = Effect.gen(function* () {
     respondToUserInput,
     listPending,
     settleRun,
+    settleRequest,
   };
 });
 

@@ -53,6 +53,17 @@ export interface WorkItemRepositoryShape {
     options?: { readonly ownerToken?: string; readonly generation?: number },
   ) => Effect.Effect<boolean, SymphonyPersistenceError>;
 
+  /**
+   * Release a claim without the owner fence (reconciliation, plan 9.4/9.7).
+   * Only matches rows still in `preparing` or `running`, so an already-finished
+   * item can never be downgraded; bumps `generation` so any in-flight worker's
+   * fences stop matching. Returns true when a claim was actually released.
+   */
+  readonly releaseClaim: (
+    id: WorkItemId,
+    to: "queued" | "retry_scheduled",
+  ) => Effect.Effect<boolean, SymphonyPersistenceError>;
+
   /** Write queue overrides (exclude / local priority) that survive restart. */
   readonly writeOverrides: (
     id: WorkItemId,

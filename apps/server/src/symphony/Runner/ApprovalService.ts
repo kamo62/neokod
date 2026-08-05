@@ -73,6 +73,15 @@ export interface ApprovalServiceShape {
 
   /** List durable requests for a run. */
   readonly listForRun: (runAttemptId: RunAttemptId) => Effect.Effect<ApprovalRequest[]>;
+
+  /**
+   * Expire a request whose wait window elapsed (plan 8.3.1 timeout): settle
+   * the live Deferred so the agent stops waiting, and persist the durable
+   * `expired` decision. Keyed by the durable record id; the live request id
+   * is read off the record so both id spaces are covered. Idempotent; a
+   * request already decided is untouched.
+   */
+  readonly expire: (id: string) => Effect.Effect<void>;
 }
 
 export class ApprovalService extends Context.Service<ApprovalService, ApprovalServiceShape>()(
@@ -152,6 +161,14 @@ export const makeApprovalService = Effect.gen(function* () {
   const listForRun: ApprovalServiceShape["listForRun"] = (runAttemptId) =>
     repository.listForRun(runAttemptId).pipe(Effect.catch(() => Effect.succeed([])));
 
+  const expire: ApprovalServiceShape["expire"] = (id) =>
+    Effect.gen(function* () {
+      const record = yield* repository.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
+      const liveId = record === null ? id : record.requestId;
+      yield* liveRequests.settleRequest(liveId, "approval wait timed out");
+      yield* repository.decide(id, "expired").pipe(Effect.catch(() => Effect.void));
+    });
+
   return {
     recordPending,
     approve,
@@ -159,6 +176,7 @@ export const makeApprovalService = Effect.gen(function* () {
     respondToUserInput,
     listPending,
     listForRun,
+    expire,
   };
 });
 

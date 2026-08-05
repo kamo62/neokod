@@ -25,10 +25,12 @@ import { RunAttemptRepository } from "../../Persistence/Services/RunAttemptRepos
 import { RunEventRepository } from "../../Persistence/Services/RunEventRepository.ts";
 import { ApprovalService } from "../../Runner/ApprovalService.ts";
 import { RunDispatcher } from "../../Runner/Dispatcher.ts";
+import { WORKFLOW_DEFAULTS } from "../../Workflow/Config.ts";
 import { TrackerAdapterRegistry } from "../../Trackers/Adapter.ts";
 import { TrackerEnablement } from "../TrackerEnablement.ts";
 import { evaluateEligibility } from "../Eligibility.ts";
 import { projectWorkItem } from "../Projection.ts";
+import { nowMs, reconcileStaleClaims } from "../Reconciler.ts";
 import { SymphonyOrchestrator, type SymphonyOrchestratorShape } from "../SymphonyOrchestrator.ts";
 
 /**
@@ -134,14 +136,14 @@ const buildRunSummary = (input: {
     status: attempt.status as RunSummary["status"],
     ...(attempt.currentStage !== undefined ? { currentStage: attempt.currentStage } : {}),
     attemptNumber: attempt.attemptNumber,
-    retryCount: 0,
+    retryCount: Math.max(0, attempt.attemptNumber - 1),
     startedAt: attempt.startedAt,
     ...(elapsedMs !== undefined ? { elapsedMs } : {}),
     ...(attempt.tokenUsage !== undefined && attempt.tokenUsage.totalTokens !== undefined
       ? { tokenUsage: attempt.tokenUsage as RunSummary["tokenUsage"] }
       : {}),
     ...(latestEvent !== null ? { latestEvent } : {}),
-    ...(workItem !== null ? { workspacePath: workItem.baseBranch ?? undefined } : {}),
+    ...(attempt.workspacePath !== undefined ? { workspacePath: attempt.workspacePath } : {}),
     lifecycle: lifecycleForRun(attempt.status, workItem),
   };
 };
@@ -276,8 +278,53 @@ const makeOrchestrator = Effect.gen(function* () {
         Effect.catch(() => Effect.void),
       );
     }
+    // Best-effort housekeeping: release orphaned claims and expire approval
+    // requests whose wait window elapsed. Runs on the same cadence as polling.
+    yield* reconcileStaleClaims({ workItems, runAttempts, runEvents, workflows, dispatcher });
+    yield* sweepExpiredApprovals(now);
     yield* Ref.update(stateRef, (state) => ({ ...state, lastPollAt: now }));
   });
+
+  const sweepExpiredApprovals = (now: string) =>
+    Effect.gen(function* () {
+      const pending = yield* approvals.listPending().pipe(Effect.catch(() => Effect.succeed([])));
+      if (pending.length === 0) {
+        return;
+      }
+      const workflowTimeoutMs = new Map<string, number>();
+      for (const request of pending) {
+        const workItem = yield* workItems
+          .getById(request.workItemId)
+          .pipe(Effect.catch(() => Effect.succeed(null)));
+        if (workItem === null) {
+          continue;
+        }
+        const workflowId = workItem.workflowId === undefined ? null : String(workItem.workflowId);
+        let timeoutMs = 0;
+        if (workflowId !== null) {
+          const cached = workflowTimeoutMs.get(workflowId);
+          if (cached !== undefined) {
+            timeoutMs = cached;
+          } else {
+            const workflow = yield* workflows.list().pipe(
+              Effect.map((all) => all.find((w) => w.id === workItem.workflowId)),
+              Effect.catch(() => Effect.succeed(undefined)),
+            );
+            timeoutMs =
+              workflow?.effectiveConfig?.approvalsWaitTimeoutMs ??
+              WORKFLOW_DEFAULTS.approvalsWaitTimeoutMs;
+            workflowTimeoutMs.set(workflowId, timeoutMs);
+          }
+        }
+        if (timeoutMs <= 0) {
+          continue;
+        }
+        const createdAt = Date.parse(request.createdAt);
+        if (!Number.isNaN(createdAt) && nowMs(now) - createdAt > timeoutMs) {
+          yield* approvals.expire(request.id).pipe(Effect.catch(() => Effect.void));
+        }
+      }
+    });
 
   const scheduler = Effect.gen(function* () {
     yield* runTick();

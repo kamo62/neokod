@@ -279,7 +279,7 @@ layer(blockableFactory)("Dispatcher cancel", (it) => {
 
       const workItems = yield* WorkItemRepository;
       const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
-      expect(after.lifecycle).toBe("preparing");
+      expect(after.lifecycle).toBe("queued");
     }),
   );
 });

@@ -1,6 +1,7 @@
 import type { EffectiveWorkflowConfig, NormalizedIssue } from "@neokod/contracts";
 import {
   WorkflowId,
+  WorkItemId,
   ProviderInstanceId,
   ProviderDriverKind,
   RunAttemptId,
@@ -8,11 +9,13 @@ import {
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as TestClock from "effect/testing/TestClock";
 
 import { nowIso } from "../../Domain/Time.ts";
 import { SqlitePersistenceMemory } from "../../../persistence/Layers/Sqlite.ts";
 import { WorkflowRepository } from "../../Persistence/Services/WorkflowRepository.ts";
 import { WorkflowRepositoryLive } from "../../Persistence/Layers/WorkflowRepository.ts";
+import { WorkItemRepository } from "../../Persistence/Services/WorkItemRepository.ts";
 import { WorkItemRepositoryLive } from "../../Persistence/Layers/WorkItemRepository.ts";
 import { RunAttemptRepository } from "../../Persistence/Services/RunAttemptRepository.ts";
 import { RunAttemptRepositoryLive } from "../../Persistence/Layers/RunAttemptRepository.ts";
@@ -84,6 +87,7 @@ const registryLayer = TrackerRegistryWithFactories(new Map([["github", memoryFac
 const mockDispatcherLayer = Layer.succeed(RunDispatcher, {
   dispatchWorkItem: () => Effect.succeed("run-mock" as RunAttemptId),
   cancelRun: () => Effect.void,
+  isAgentActive: () => Effect.succeed(false),
 } as RunDispatcher["Service"]);
 
 const mockApprovalsLayer = Layer.effect(
@@ -104,6 +108,8 @@ const mockApprovalsLayer = Layer.effect(
         repository.listPending(options).pipe(Effect.orElseSucceed(() => [])),
       listForRun: (runAttemptId) =>
         repository.listForRun(runAttemptId).pipe(Effect.orElseSucceed(() => [])),
+      expire: (requestId) =>
+        repository.decide(requestId, "expired").pipe(Effect.catch(() => Effect.void)),
     } satisfies ApprovalService["Service"];
   }),
 );
@@ -322,6 +328,89 @@ layer("SymphonyOrchestrator Observe", (it) => {
       expect(item).toBeDefined();
       expect(item?.kind).toBe("command_approval");
       expect(item?.availableActions).toEqual(["approve", "reject"]);
+    }),
+  );
+
+  it.effect("expires approval requests past the workflow timeout on tick", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-approve-1", "/repo/approve");
+      const workflows = yield* WorkflowRepository;
+      yield* workflows.upsert({
+        id: WorkflowId.make("wf-approve-1"),
+        repositoryPath: "/repo/approve",
+        workflowPath: "/repo/approve/WORKFLOW.md",
+        status: "active",
+        autonomy: "observe",
+        validationError: null,
+        definition: { config: {}, promptTemplate: "Implement." },
+        effectiveConfig: {
+          ...makeConfig("/repo/approve"),
+          approvalsWaitTimeoutMs: 5_000,
+        },
+        enabledAt: "2026-08-05T00:00:00.000Z",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      yield* orchestrator.refreshNow();
+      const queue = yield* orchestrator.listQueue();
+      const eligible = queue.find((item) => item.eligible === true && item.excluded === false);
+      if (eligible === undefined) {
+        return;
+      }
+
+      const workItemRepository = yield* WorkItemRepository;
+      yield* workItemRepository.upsert({
+        id: WorkItemId.make(`sweep-${eligible.workItemId}`),
+        mode: "symphony",
+        objective: "Sweep target",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: `sweep-${eligible.workItemId}`,
+        workflowId: WorkflowId.make("wf-approve-1"),
+        lifecycle: "running",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      const runAttempts = yield* RunAttemptRepository;
+      const runId = RunAttemptId.make(`run-sweep-${eligible.workItemId}`);
+      yield* runAttempts.create({
+        id: runId,
+        workItemId: WorkItemId.make(`sweep-${eligible.workItemId}`),
+        attemptNumber: 1,
+        workspacePath: "/ws/sweep",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "streaming_turn",
+        startedAt: "1970-01-01T00:00:00.000Z",
+        finishedAt: null,
+        error: null,
+      });
+
+      const approvals = yield* ApprovalService;
+      yield* approvals.recordPending({
+        id: "ap-1",
+        workItemId: WorkItemId.make(`sweep-${eligible.workItemId}`),
+        runAttemptId: runId,
+        requestId: "ap-1",
+        action: "command_execution",
+        scope: "once",
+        command: "npm run build",
+        workingDirectory: "/ws/sweep",
+        reason: "builds the workspace",
+      });
+
+      yield* TestClock.adjust("600000 millis");
+      yield* orchestrator.refreshNow();
+
+      const repository = yield* ApprovalRepository;
+      const request = yield* repository.getById("sym-ap-1");
+      expect(request?.state).toBe("expired");
     }),
   );
 });
