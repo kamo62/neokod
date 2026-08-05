@@ -26,12 +26,14 @@ import { ApprovalService } from "../../Runner/ApprovalService.ts";
 import { ApprovalRepository } from "../../Persistence/Services/ApprovalRepository.ts";
 import { ApprovalRepositoryLive } from "../../Persistence/Layers/ApprovalRepository.ts";
 import { EvidenceRepositoryLive } from "../../Persistence/Layers/EvidenceRepository.ts";
+import { EvidenceRepository } from "../../Persistence/Services/EvidenceRepository.ts";
 import { TrackerRegistryWithFactories } from "../../Trackers/Registry.ts";
 import { makeMemoryTrackerAdapter } from "../../Trackers/MemoryAdapter.ts";
 import { TrackerEnablementLive } from "../TrackerEnablement.ts";
 import { SymphonyOrchestrator } from "../SymphonyOrchestrator.ts";
 import { SymphonyOrchestratorLive } from "./SymphonyOrchestratorLive.ts";
 import { RunDispatcher, RunDispatchError } from "../../Runner/Dispatcher.ts";
+import { PullRequestService } from "../../Evidence/PullRequest.ts";
 import { layerTest as serverSettingsTestLayer } from "../../../serverSettings.ts";
 
 const makeConfig = (repositoryPath: string): EffectiveWorkflowConfig => ({
@@ -143,6 +145,12 @@ const layer = it.layer(
     Layer.provideMerge(mockApprovalsLayer),
     Layer.provideMerge(ApprovalRepositoryLive),
     Layer.provideMerge(EvidenceRepositoryLive),
+    Layer.provideMerge(
+      Layer.succeed(PullRequestService, {
+        create: () => Effect.succeed(null as never),
+        refresh: () => Effect.succeed(null),
+      } satisfies PullRequestService["Service"]),
+    ),
     Layer.provideMerge(serverSettingsTestLayer({ trackers: { github: { enabled: true } } })),
     Layer.provideMerge(SqlitePersistenceMemory),
   ),
@@ -503,6 +511,145 @@ layer("SymphonyOrchestrator Observe", (it) => {
       // The mock dispatcher claims from retry_scheduled -> preparing.
       expect(after?.lifecycle).toBe("preparing");
       expect(dispatchedIds).toContain("retry-1");
+    }),
+  );
+
+  it.effect("requestChanges moves a review-ready item to changes_requested", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItemId = WorkItemId.make("review-1");
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        objective: "Review target",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "review-1",
+        lifecycle: "ready_for_review",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const changed = yield* orchestrator.requestChanges("review-1", "fix the tests");
+      expect(changed).toBe(true);
+      const after = yield* workItems.getById(workItemId);
+      expect(after?.lifecycle).toBe("changes_requested");
+    }),
+  );
+
+  it.effect("requestChanges refuses items that are not review-ready", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItemId = WorkItemId.make("review-2");
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        objective: "Not ready",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "review-2",
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const changed = yield* orchestrator.requestChanges("review-2");
+      expect(changed).toBe(false);
+      const after = yield* workItems.getById(workItemId);
+      expect(after?.lifecycle).toBe("queued");
+    }),
+  );
+
+  it.effect("approveMerge gates on evidence assessment and clean review state", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItemId = WorkItemId.make("merge-1");
+      const workItems = yield* WorkItemRepository;
+      const evidence = {
+        changedFiles: [],
+        testsChanged: [],
+        commits: [],
+        validationResults: [],
+        assumptions: [],
+        risks: [],
+        unresolved: [],
+        artefacts: [],
+        pullRequest: { number: 1, title: "t", branch: "b", baseBranch: "m", status: "open" },
+        modelReview: null,
+        overallAssessment: "ready_for_review",
+        createdAt: "2026-08-05T00:00:00.000Z",
+      } as const;
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        objective: "Merge target",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "merge-1",
+        lifecycle: "ready_for_review",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      const evidenceRepo = yield* EvidenceRepository;
+      yield* evidenceRepo.upsert(workItemId, evidence);
+
+      const merged = yield* orchestrator.approveMerge("merge-1");
+      expect(merged).toBe(true);
+      const after = yield* workItems.getById(workItemId);
+      expect(after?.lifecycle).toBe("ready_to_merge");
+    }),
+  );
+
+  it.effect("approveMerge refuses items with failed evidence", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItemId = WorkItemId.make("merge-2");
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        objective: "Broken",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "merge-2",
+        lifecycle: "ready_for_review",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      const evidenceRepo = yield* EvidenceRepository;
+      yield* evidenceRepo.upsert(workItemId, {
+        changedFiles: [],
+        testsChanged: [],
+        commits: [],
+        validationResults: [{ command: "npm test", status: "failed" }],
+        assumptions: [],
+        risks: [],
+        unresolved: [],
+        artefacts: [],
+        pullRequest: null,
+        modelReview: null,
+        overallAssessment: "failed",
+        createdAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const merged = yield* orchestrator.approveMerge("merge-2");
+      expect(merged).toBe(false);
+      const after = yield* workItems.getById(workItemId);
+      expect(after?.lifecycle).toBe("ready_for_review");
     }),
   );
 });

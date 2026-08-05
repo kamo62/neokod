@@ -257,6 +257,63 @@ it.effect("fails when the provider cannot be resolved", () =>
   }),
 );
 
+it.effect("refresh re-fetches the open PR for the branch", () =>
+  Effect.gen(function* () {
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: {
+                createChangeRequest: () => Effect.void,
+                listChangeRequests: (_input: { headSelector: string }) =>
+                  Effect.succeed([makeChangeRequest()]),
+              },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+      }),
+    );
+    const refreshed = yield* service.refresh({
+      config: makeConfig(),
+      branch: "symphony/issue-42",
+      baseBranch: "main",
+      title: "Implement issue 42",
+    });
+    expect(refreshed).toMatchObject({
+      number: 17,
+      url: "https://github.com/owner/repo/pull/17",
+      status: "open",
+    });
+  }),
+);
+
+it.effect("refresh returns null when no open PR exists for the branch", () =>
+  Effect.gen(function* () {
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: {
+                createChangeRequest: () => Effect.void,
+                listChangeRequests: () => Effect.succeed([]),
+              },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+      }),
+    );
+    const refreshed = yield* service.refresh({
+      config: makeConfig(),
+      branch: "symphony/issue-42",
+      baseBranch: "main",
+      title: "Implement issue 42",
+    });
+    expect(refreshed).toBeNull();
+  }),
+);
+
 it("exposes the service tag through the class", () => {
   expect(PullRequestService.key).toContain("Evidence/PullRequest");
 });

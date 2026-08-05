@@ -161,6 +161,7 @@ const fakeEvidenceService = Layer.succeed(EvidenceService, {
 const fakePullRequestService = (pr: PullRequestEvidence | null) =>
   Layer.succeed(PullRequestService, {
     create: () => Effect.succeed(pr as PullRequestEvidence),
+    refresh: () => Effect.succeed(null),
   });
 
 const layer = (validationStatuses: ReadonlyArray<string>, pr: PullRequestEvidence | null) =>

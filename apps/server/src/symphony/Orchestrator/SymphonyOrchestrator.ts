@@ -54,6 +54,15 @@ export interface SymphonyOrchestratorShape {
   // workflow autonomy is prepare/execute/deliver; observe never dispatches.
   readonly dispatchWorkItem: (workItemId: string) => Effect.Effect<void, never, Scope.Scope>;
   readonly cancelRun: (runAttemptId: string) => Effect.Effect<void, never, Scope.Scope>;
+
+  // Review lifecycle (Phase 5, plan 14): review actions with their own
+  // lifecycle transitions and confirmations.
+  readonly requestChanges: (workItemId: string, reason?: string) => Effect.Effect<boolean, never>;
+  readonly approveMerge: (workItemId: string) => Effect.Effect<boolean, never>;
+
+  /** Re-fetch the open PR for a review-ready item and update its evidence
+   * bundle (plan 10.1: host enrichment; keeps the review panel current). */
+  readonly refreshPullRequest: (workItemId: string) => Effect.Effect<boolean, never>;
 }
 
 export class SymphonyOrchestrator extends Context.Service<

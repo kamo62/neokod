@@ -26,6 +26,7 @@ import { RunEventRepository } from "../../Persistence/Services/RunEventRepositor
 import { ApprovalService } from "../../Runner/ApprovalService.ts";
 import { RunDispatcher } from "../../Runner/Dispatcher.ts";
 import { EvidenceRepository } from "../../Persistence/Services/EvidenceRepository.ts";
+import { PullRequestService } from "../../Evidence/PullRequest.ts";
 import { WORKFLOW_DEFAULTS } from "../../Workflow/Config.ts";
 import { TrackerAdapterRegistry } from "../../Trackers/Adapter.ts";
 import { TrackerEnablement } from "../TrackerEnablement.ts";
@@ -34,6 +35,7 @@ import { projectWorkItem } from "../Projection.ts";
 import { nowMs, reconcileStaleClaims } from "../Reconciler.ts";
 import { retryDueAtMs } from "../Retry.ts";
 import { runStartupRecovery } from "../Recovery.ts";
+import { deriveWorkingBranch } from "../../Domain/Keys.ts";
 import { SymphonyOrchestrator, type SymphonyOrchestratorShape } from "../SymphonyOrchestrator.ts";
 
 /**
@@ -268,6 +270,7 @@ const makeOrchestrator = Effect.gen(function* () {
   const runEvents = yield* RunEventRepository;
   const approvals = yield* ApprovalService;
   const evidenceRepository = yield* EvidenceRepository;
+  const pullRequestService = yield* PullRequestService;
 
   const stateRef = yield* Ref.make<OrchestratorRuntimeState>(EMPTY_STATE);
 
@@ -587,6 +590,124 @@ const makeOrchestrator = Effect.gen(function* () {
   const cancelRun: SymphonyOrchestratorShape["cancelRun"] = (runAttemptId) =>
     dispatcher.cancelRun(RunAttemptId.make(runAttemptId)).pipe(Effect.catch(() => Effect.void));
 
+  const refreshPullRequest: SymphonyOrchestratorShape["refreshPullRequest"] = (workItemId) =>
+    Effect.gen(function* () {
+      const id = WorkItemId.make(workItemId);
+      const item = yield* workItems.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
+      if (item === null) {
+        return false;
+      }
+      const workflow =
+        item.workflowId === undefined
+          ? undefined
+          : yield* workflows.list().pipe(
+              Effect.map((all) => all.find((w) => w.id === item.workflowId)),
+              Effect.catch(() => Effect.succeed(undefined)),
+            );
+      const config = workflow?.effectiveConfig;
+      const workspaceKey = item.workspaceKey;
+      const baseBranch = item.baseBranch;
+      if (
+        config === null ||
+        config === undefined ||
+        workspaceKey === undefined ||
+        baseBranch === undefined
+      ) {
+        return false;
+      }
+      const branch = deriveWorkingBranch(workspaceKey);
+      const refreshed = yield* pullRequestService
+        .refresh({
+          config,
+          branch,
+          baseBranch,
+          title: item.objective,
+        })
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (refreshed === null) {
+        return false;
+      }
+      const bundle = yield* evidenceRepository
+        .getByWorkItem(id)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (bundle === null) {
+        return false;
+      }
+      yield* evidenceRepository
+        .upsert(id, { ...bundle, pullRequest: refreshed })
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+      return true;
+    });
+
+  const requestChanges: SymphonyOrchestratorShape["requestChanges"] = (workItemId, reason) =>
+    Effect.gen(function* () {
+      const id = WorkItemId.make(workItemId);
+      const item = yield* workItems.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
+      if (item === null || item.lifecycle !== "ready_for_review") {
+        return false;
+      }
+      const changed = yield* workItems
+        .transition(id, "changes_requested", {})
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+      if (changed) {
+        const attempt = yield* runAttempts
+          .latestForWorkItem(id)
+          .pipe(Effect.catch(() => Effect.succeed(null)));
+        if (attempt !== null) {
+          yield* runEvents
+            .append(attempt.id, "changes_requested", {
+              workItemId: String(id),
+              ...(reason !== undefined ? { reason } : {}),
+            })
+            .pipe(Effect.catch(() => Effect.void));
+        }
+      }
+      return changed;
+    });
+
+  const approveMerge: SymphonyOrchestratorShape["approveMerge"] = (workItemId) =>
+    Effect.gen(function* () {
+      const id = WorkItemId.make(workItemId);
+      const item = yield* workItems.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
+      if (item === null || item.lifecycle !== "ready_for_review") {
+        return false;
+      }
+      // Merge policy (plan 14): required checks must pass; unresolved review
+      // comments block merge; automatic merge is never performed here. A run
+      // is only merge-ready when its evidence assessment is at least
+      // ready_for_review and no failed validation stands. The bundle lives in
+      // the EvidenceRepository (the work item row does not carry it).
+      const evidence = yield* evidenceRepository
+        .getByWorkItem(id)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (evidence === null) {
+        return false;
+      }
+      if (
+        evidence.overallAssessment === "failed" ||
+        evidence.overallAssessment === "insufficient"
+      ) {
+        return false;
+      }
+      if (evidence.pullRequest !== null && (evidence.pullRequest.unresolvedComments ?? 0) > 0) {
+        return false;
+      }
+      const changed = yield* workItems
+        .transition(id, "ready_to_merge", {})
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+      if (changed) {
+        const attempt = yield* runAttempts
+          .latestForWorkItem(id)
+          .pipe(Effect.catch(() => Effect.succeed(null)));
+        if (attempt !== null) {
+          yield* runEvents
+            .append(attempt.id, "merge_approved", { workItemId: String(id) })
+            .pipe(Effect.catch(() => Effect.void));
+        }
+      }
+      return changed;
+    });
+
   return {
     refreshNow,
     getOverview,
@@ -602,6 +723,9 @@ const makeOrchestrator = Effect.gen(function* () {
     setLocalPriority,
     dispatchWorkItem,
     cancelRun,
+    requestChanges,
+    approveMerge,
+    refreshPullRequest,
   } satisfies SymphonyOrchestratorShape;
 });
 

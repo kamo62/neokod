@@ -47,6 +47,7 @@ import {
   type SymphonyOverview,
   SymphonyError,
   SymphonyApproveInput,
+  SymphonyApproveMergeInput,
   SymphonyCancelRunInput,
   SymphonyDelegateFromThreadInput,
   SymphonyDispatchWorkItemInput,
@@ -57,6 +58,7 @@ import {
   SymphonyListQueueInput,
   SymphonyListRunsInput,
   SymphonyRejectInput,
+  SymphonyRequestChangesInput,
   SymphonyRespondToUserInputInput,
   SymphonyResumeAutonomousInput,
   SymphonySetLocalPriorityInput,
@@ -504,6 +506,25 @@ export const makeSymphonyRpcHandlers = () => ({
       SYMPHONY_WS_METHODS.cancelRun,
       withOrchestrator(
         (orchestrator) => orchestrator.cancelRun(input.runAttemptId).pipe(Effect.as({ ok: true })),
+        Effect.succeed({ ok: true }),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.requestChanges]: (input: (typeof SymphonyRequestChangesInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.requestChanges,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator.requestChanges(input.workItemId, input.reason).pipe(Effect.as({ ok: true })),
+        Effect.succeed({ ok: true }),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.approveMerge]: (input: (typeof SymphonyApproveMergeInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.approveMerge,
+      withOrchestrator(
+        (orchestrator) => orchestrator.approveMerge(input.workItemId).pipe(Effect.as({ ok: true })),
         Effect.succeed({ ok: true }),
       ),
       { "rpc.aggregate": "symphony" },

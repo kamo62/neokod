@@ -58,6 +58,20 @@ export class PullRequestService extends Context.Service<
     readonly create: (
       input: CreatePullRequestInput,
     ) => Effect.Effect<PullRequestEvidence, PullRequestCreationError>;
+
+    /**
+     * Re-fetch the open PR for a branch via the provider abstraction and
+     * return refreshed evidence (plan 10.1: status, review state and
+     * mergeability are enriched host-by-host in Phase 5; the provider shape
+     * today carries number/title/url/base/head/state, which is what this
+     * refresh propagates).
+     */
+    readonly refresh: (input: {
+      readonly config: EffectiveWorkflowConfig;
+      readonly branch: string;
+      readonly baseBranch: string;
+      readonly title: string;
+    }) => Effect.Effect<PullRequestEvidence | null, PullRequestCreationError>;
   }
 >()("neokod/symphony/Evidence/PullRequest/PullRequestService") {}
 
@@ -178,7 +192,38 @@ export const makePullRequestService = (
       } satisfies PullRequestEvidence;
     });
 
-  return { create };
+  const refresh: PullRequestService["Service"]["refresh"] = (input) =>
+    Effect.gen(function* () {
+      const handle = yield* deps.providers
+        .resolveHandle({ cwd: input.config.repositoryPath })
+        .pipe(Effect.mapError((cause) => new PullRequestCreationError(cause.message)));
+      const open = yield* handle.provider
+        .listChangeRequests({
+          cwd: input.config.repositoryPath,
+          ...(handle.context !== null ? { context: handle.context } : {}),
+          headSelector: input.branch,
+          state: "open",
+          limit: 10,
+        })
+        .pipe(
+          Effect.mapError((cause) => new PullRequestCreationError(cause.message)),
+          Effect.orElseSucceed(() => []),
+        );
+      const found = open.find((pullRequest) => pullRequest.headRefName === input.branch);
+      if (found === undefined) {
+        return null;
+      }
+      return {
+        number: found.number,
+        title: found.title,
+        branch: input.branch,
+        baseBranch: input.baseBranch,
+        url: found.url,
+        status: found.state === "merged" ? "merged" : found.state === "closed" ? "closed" : "open",
+      } satisfies PullRequestEvidence;
+    });
+
+  return { create, refresh };
 };
 
 export const PullRequestServiceLive: Layer.Layer<
