@@ -171,7 +171,10 @@ export const resolveEffectiveConfig = (
     const tracker = getObject(rawConfig, "tracker") ?? {};
     const trackerKind = asString(tracker.kind);
     if (trackerKind === undefined || !isTrackerKind(trackerKind)) {
-      addError("tracker.kind", "tracker.kind must be one of github, jira, linear, gitlab, asana");
+      addError(
+        "tracker.kind",
+        "tracker.kind must be one of github, jira, linear, gitlab, asana, azure_boards, github_projects",
+      );
     }
     const effectiveTrackerKind: TrackerKind =
       trackerKind !== undefined && isTrackerKind(trackerKind) ? trackerKind : "github";

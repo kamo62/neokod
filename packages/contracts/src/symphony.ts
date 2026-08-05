@@ -180,6 +180,11 @@ export const WorkSourceSchema = Schema.Union([
     externalId: Schema.String,
     externalUrl: Schema.String,
   }),
+  Schema.Struct({
+    kind: Schema.Literal("github_projects"),
+    externalId: Schema.String,
+    externalUrl: Schema.String,
+  }),
 ]);
 export type WorkSource = typeof WorkSourceSchema.Type;
 
@@ -540,7 +545,15 @@ export const WorkflowDefinitionSchema = Schema.Struct({
 });
 export type WorkflowDefinition = typeof WorkflowDefinitionSchema.Type;
 
-export const TrackerKindSchema = Schema.Literals(["github", "jira", "linear", "gitlab", "asana"]);
+export const TrackerKindSchema = Schema.Literals([
+  "github",
+  "jira",
+  "linear",
+  "gitlab",
+  "asana",
+  "azure_boards",
+  "github_projects",
+]);
 export type TrackerKind = typeof TrackerKindSchema.Type;
 
 export const AutonomyLevelSchema = Schema.Literals(["observe", "prepare", "execute", "deliver"]);
