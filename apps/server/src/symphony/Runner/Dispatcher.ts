@@ -19,6 +19,7 @@ import { RunAttemptRepository } from "../Persistence/Services/RunAttemptReposito
 import { WorkItemRepository } from "../Persistence/Services/WorkItemRepository.ts";
 import { WorkspaceManager, type SymphonyWorkspace } from "../Workspaces/Manager.ts";
 import type { AgentRuntimeService } from "./AgentRuntime.ts";
+import { ExecutionFinalizer } from "./ExecutionFinalizer.ts";
 import { LiveRequests } from "./LiveRequests.ts";
 import { resolveRunnerPolicy, requiresApprovalBeforeEdit } from "./Policy.ts";
 
@@ -91,6 +92,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
   const workspaces = yield* WorkspaceManager;
   const factory = yield* AgentRuntimeFactory;
   const liveRequests = yield* LiveRequests;
+  const finalizer = yield* ExecutionFinalizer;
 
   // Live agents per run attempt so cancellation can interrupt the active turn
   // and settle its outstanding approval/input requests (plan 8.3.1).
@@ -266,11 +268,17 @@ export const makeRunDispatcher = Effect.gen(function* () {
           .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
 
         if (result.completed) {
-          yield* runAttempts
-            .updateStatus(runAttemptId, "succeeded", { finishedAt: yield* nowIso })
-            .pipe(Effect.catch(() => Effect.void));
-          yield* workItems
-            .transition(workItemId, "ready_for_review", {
+          // Execute/deliver exit (plan 10, WS-L): validate, assemble
+          // evidence, create the PR, and land the item in a stopping state.
+          yield* finalizer
+            .finalize({
+              workItem,
+              issue,
+              runAttemptId,
+              config,
+              workspacePath: workspace.path,
+              branch: workspace.branch,
+              baseBranch: workspace.baseBranch,
               ownerToken,
               generation: claimed.generation,
             })
@@ -364,4 +372,5 @@ export const RunDispatcherLive: Layer.Layer<
   | WorkItemRepository
   | WorkspaceManager
   | AgentRuntimeFactory
+  | ExecutionFinalizer
 > = Layer.effect(RunDispatcher, makeRunDispatcher);

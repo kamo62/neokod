@@ -25,6 +25,7 @@ import { RunAttemptRepository } from "../../Persistence/Services/RunAttemptRepos
 import { RunEventRepository } from "../../Persistence/Services/RunEventRepository.ts";
 import { ApprovalService } from "../../Runner/ApprovalService.ts";
 import { RunDispatcher } from "../../Runner/Dispatcher.ts";
+import { EvidenceRepository } from "../../Persistence/Services/EvidenceRepository.ts";
 import { WORKFLOW_DEFAULTS } from "../../Workflow/Config.ts";
 import { TrackerAdapterRegistry } from "../../Trackers/Adapter.ts";
 import { TrackerEnablement } from "../TrackerEnablement.ts";
@@ -264,6 +265,7 @@ const makeOrchestrator = Effect.gen(function* () {
   const runAttempts = yield* RunAttemptRepository;
   const runEvents = yield* RunEventRepository;
   const approvals = yield* ApprovalService;
+  const evidenceRepository = yield* EvidenceRepository;
 
   const stateRef = yield* Ref.make<OrchestratorRuntimeState>(EMPTY_STATE);
 
@@ -430,6 +432,12 @@ const makeOrchestrator = Effect.gen(function* () {
       if (workItem === null) {
         return null;
       }
+      // Surface the assembled evidence bundle (plan 10) on the run detail so
+      // the review UI can render changed files, validation and the PR.
+      const evidence = yield* evidenceRepository
+        .getByWorkItem(workItem.id)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      const evidenceWorkItem = evidence === null ? workItem : { ...workItem, evidence };
       const timeline = yield* runEvents
         .listForAttempt(attempt.id)
         .pipe(Effect.catch(() => Effect.succeed([])));
@@ -437,7 +445,7 @@ const makeOrchestrator = Effect.gen(function* () {
         .listForRun(attempt.id)
         .pipe(Effect.catch(() => Effect.succeed([])));
       return {
-        workItem,
+        workItem: evidenceWorkItem,
         runAttempt: attempt,
         timeline,
         attentionItems: [],

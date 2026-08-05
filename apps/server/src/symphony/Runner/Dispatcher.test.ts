@@ -28,6 +28,7 @@ import { ApprovalRepositoryLive } from "../Persistence/Layers/ApprovalRepository
 import { WorkspaceManager } from "../Workspaces/Manager.ts";
 import { LiveRequestsLive } from "./LiveRequests.ts";
 import { AgentRuntimeFactory, RunDispatcher, RunDispatcherLive } from "./Dispatcher.ts";
+import { ExecutionFinalizer } from "./ExecutionFinalizer.ts";
 import { AgentRuntimeSpawnError, type AgentRuntimeService } from "./AgentRuntime.ts";
 
 const makeConfig = (repositoryPath: string): EffectiveWorkflowConfig => ({
@@ -159,6 +160,10 @@ const fakeWorkspaceManager = Layer.succeed(WorkspaceManager, {
   resolvePath: () => "/ws",
 });
 
+const fakeFinalizer = Layer.succeed(ExecutionFinalizer, {
+  finalize: () => Effect.succeed("review_ready"),
+});
+
 const layer = (factory: Layer.Layer<AgentRuntimeFactory>) =>
   it.layer(
     RunDispatcherLive.pipe(
@@ -168,6 +173,7 @@ const layer = (factory: Layer.Layer<AgentRuntimeFactory>) =>
       Layer.provideMerge(ApprovalRepositoryLive),
       Layer.provideMerge(LiveRequestsLive),
       Layer.provideMerge(fakeWorkspaceManager),
+      Layer.provideMerge(fakeFinalizer),
       Layer.provideMerge(factory),
       Layer.provideMerge(SqlitePersistenceMemory),
       Layer.provideMerge(NodeServices.layer),

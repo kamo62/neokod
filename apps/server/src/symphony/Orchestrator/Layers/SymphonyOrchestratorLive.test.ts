@@ -25,6 +25,7 @@ import { OrchestratorStateRepositoryLive } from "../../Persistence/Layers/Orches
 import { ApprovalService } from "../../Runner/ApprovalService.ts";
 import { ApprovalRepository } from "../../Persistence/Services/ApprovalRepository.ts";
 import { ApprovalRepositoryLive } from "../../Persistence/Layers/ApprovalRepository.ts";
+import { EvidenceRepositoryLive } from "../../Persistence/Layers/EvidenceRepository.ts";
 import { TrackerRegistryWithFactories } from "../../Trackers/Registry.ts";
 import { makeMemoryTrackerAdapter } from "../../Trackers/MemoryAdapter.ts";
 import { TrackerEnablementLive } from "../TrackerEnablement.ts";
@@ -126,6 +127,7 @@ const layer = it.layer(
     Layer.provideMerge(mockDispatcherLayer),
     Layer.provideMerge(mockApprovalsLayer),
     Layer.provideMerge(ApprovalRepositoryLive),
+    Layer.provideMerge(EvidenceRepositoryLive),
     Layer.provideMerge(serverSettingsTestLayer({ trackers: { github: { enabled: true } } })),
     Layer.provideMerge(SqlitePersistenceMemory),
   ),
