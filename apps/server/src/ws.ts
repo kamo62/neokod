@@ -48,6 +48,7 @@ import {
   SymphonyError,
   SymphonyApproveInput,
   SymphonyCancelRunInput,
+  SymphonyDelegateFromThreadInput,
   SymphonyDispatchWorkItemInput,
   SymphonyExcludeWorkItemInput,
   SymphonyGetRunInput,
@@ -57,7 +58,10 @@ import {
   SymphonyListRunsInput,
   SymphonyRejectInput,
   SymphonyRespondToUserInputInput,
+  SymphonyResumeAutonomousInput,
   SymphonySetLocalPriorityInput,
+  SymphonyTakeOverInput,
+  WorkItemId,
 } from "@neokod/contracts";
 import { HttpRouter, HttpServerRespondable } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
@@ -75,6 +79,7 @@ import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngi
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as SymphonyOrchestrator from "./symphony/Orchestrator/SymphonyOrchestrator.ts";
 import * as ApprovalService from "./symphony/Runner/ApprovalService.ts";
+import * as HandoffService from "./symphony/HandoffService.ts";
 import {
   observeRpcEffect as instrumentRpcEffect,
   observeRpcStream as instrumentRpcStream,
@@ -343,6 +348,16 @@ const withApprovalService = <A, E>(
 const approvalError = (message: string): SymphonyError =>
   new SymphonyError({ code: "approval_request_not_found", message });
 
+const withHandoffService = <A, E>(
+  run: (handoff: HandoffService.HandoffService["Service"]) => Effect.Effect<A, E>,
+  fallback: Effect.Effect<A, E>,
+): Effect.Effect<A, E> =>
+  Effect.serviceOption(HandoffService.HandoffService).pipe(
+    Effect.flatMap((maybe) => (Option.isSome(maybe) ? run(maybe.value) : fallback)),
+  );
+const handoffError = (message: string): SymphonyError =>
+  new SymphonyError({ code: "symphony_handoff_failed", message });
+
 export const makeSymphonyRpcHandlers = () => ({
   [SYMPHONY_WS_METHODS.getOverview]: () =>
     observeRpcEffect(
@@ -490,6 +505,64 @@ export const makeSymphonyRpcHandlers = () => ({
       withOrchestrator(
         (orchestrator) => orchestrator.cancelRun(input.runAttemptId).pipe(Effect.as({ ok: true })),
         Effect.succeed({ ok: true }),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.takeOver]: (input: (typeof SymphonyTakeOverInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.takeOver,
+      withHandoffService(
+        (handoff) =>
+          handoff
+            .takeOver({ runAttemptId: input.runAttemptId })
+            .pipe(Effect.mapError((cause) => handoffError(cause.message))),
+        Effect.succeed({
+          threadId: "",
+          workspacePath: "",
+          branch: "",
+          workItemId: WorkItemId.make(""),
+        }),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.resumeAutonomous]: (input: (typeof SymphonyResumeAutonomousInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.resumeAutonomous,
+      withHandoffService(
+        (handoff) =>
+          handoff.resumeAutonomous({ workItemId: input.workItemId }).pipe(
+            Effect.mapError((cause) => handoffError(cause.message)),
+            Effect.as({ ok: true }),
+          ),
+        Effect.succeed({ ok: true }),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.delegateFromThread]: (
+    input: (typeof SymphonyDelegateFromThreadInput)["Type"],
+  ) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.delegateFromThread,
+      withHandoffService(
+        (handoff) =>
+          handoff
+            .delegateFromThread({
+              threadId: input.threadId,
+              objective: input.objective,
+              ...(input.repositoryPath !== undefined
+                ? { repositoryPath: input.repositoryPath }
+                : {}),
+              ...(input.branch !== undefined ? { branch: input.branch } : {}),
+              ...(input.summary !== undefined ? { summary: input.summary } : {}),
+              ...(input.acceptanceCriteria !== undefined
+                ? { acceptanceCriteria: input.acceptanceCriteria }
+                : {}),
+            })
+            .pipe(
+              Effect.map((workItemId) => ({ workItemId })),
+              Effect.mapError((cause) => handoffError(cause.message)),
+            ),
+        Effect.succeed({ workItemId: WorkItemId.make("") }),
       ),
       { "rpc.aggregate": "symphony" },
     ),

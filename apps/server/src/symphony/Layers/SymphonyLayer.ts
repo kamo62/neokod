@@ -23,6 +23,8 @@ import { WorkspaceManagerLive } from "../Workspaces/Live.ts";
 import { ValidationRunnerLive } from "../Validation/Runner.ts";
 import { EvidenceServiceLive } from "../Evidence/Service.ts";
 import { PullRequestServiceLive } from "../Evidence/PullRequest.ts";
+import { HandoffServiceLive } from "../HandoffService.ts";
+import { WorkspaceOwnershipRepositoryLive } from "../Persistence/Layers/WorkspaceOwnershipRepository.ts";
 import { layer as SourceControlProviderRegistryLayer } from "../../sourceControl/SourceControlProviderRegistry.ts";
 import { layer as AzureDevOpsCliLayer } from "../../sourceControl/AzureDevOpsCli.ts";
 import { layer as BitbucketApiLayer } from "../../sourceControl/BitbucketApi.ts";
@@ -75,6 +77,46 @@ const ExecutionFinalizerSlice = ExecutionFinalizerLive.pipe(
   ),
 );
 
+// Cross-mode handoff (plan 16, Phase 4). Exposed separately so the WS RPC
+// layer can resolve it via `serviceOption` alongside the orchestrator.
+const HandoffServiceSlice = HandoffServiceLive.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      WorkItemRepositoryLive,
+      RunAttemptRepositoryLive,
+      RunEventRepositoryLive,
+      WorkflowRepositoryLive,
+      WorkspaceOwnershipRepositoryLive,
+      RunDispatcherLive.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            WorkItemRepositoryLive,
+            RunAttemptRepositoryLive,
+            RunEventRepositoryLive,
+            WorkspaceManagerLive.pipe(
+              Layer.provideMerge(NodeServices.layer),
+              Layer.provideMerge(GitVcsDriverLayer),
+              Layer.provideMerge(ProcessRunnerLayer),
+            ),
+            AgentRuntimeFactoryLive.pipe(
+              Layer.provideMerge(NodeServices.layer),
+              Layer.provideMerge(LiveRequestsLive),
+              Layer.provideMerge(
+                ApprovalServiceLive.pipe(
+                  Layer.provide(Layer.mergeAll(ApprovalRepositoryLive, LiveRequestsLive)),
+                ),
+              ),
+            ),
+            LiveRequestsLive,
+            ExecutionFinalizerSlice,
+          ),
+        ),
+      ),
+      LiveRequestsLive,
+    ).pipe(Layer.provideMerge(NodeServices.layer)),
+  ),
+);
+
 export const SymphonyLayerObserve = Layer.merge(
   SymphonyOrchestratorLive.pipe(
     Layer.provide(
@@ -121,5 +163,10 @@ export const SymphonyLayerObserve = Layer.merge(
       ),
     ),
   ),
-  ApprovalServiceLive.pipe(Layer.provide(Layer.mergeAll(ApprovalRepositoryLive, LiveRequestsLive))),
+  Layer.merge(
+    ApprovalServiceLive.pipe(
+      Layer.provide(Layer.mergeAll(ApprovalRepositoryLive, LiveRequestsLive)),
+    ),
+    HandoffServiceSlice,
+  ),
 );
