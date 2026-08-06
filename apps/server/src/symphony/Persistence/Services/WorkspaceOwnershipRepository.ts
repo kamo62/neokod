@@ -1,6 +1,6 @@
 import type { WorkItemId } from "@neokod/contracts";
 import * as Context from "effect/Context";
-import type * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect";
 
 import type { SymphonyPersistenceError } from "../Errors.ts";
 
@@ -75,3 +75,71 @@ export class WorkspaceOwnershipRepository extends Context.Service<
   WorkspaceOwnershipRepository,
   WorkspaceOwnershipRepositoryShape
 >()("neokod/symphony/Persistence/Services/WorkspaceOwnershipRepository") {}
+
+/**
+ * Cross-mode removal guard (plan 16.0, Phase 4 definition of done).
+ *
+ * Every worktree removal funnels through a single gateway that checks the
+ * ownership record: a workspace held by a live Symphony lease must not be
+ * removed by Work-mode cleanup (and vice versa). The guard is optional — when
+ * the Symphony persistence layer is not mounted (Work mode alone), it allows
+ * removal, so the two modes are independent when Symphony is absent.
+ *
+ * Removal is refused only while the OTHER owner holds a live lease. The owner
+ * itself may always remove (its own cleanup paths), and `force` bypasses the
+ * guard for explicit user intent.
+ */
+export class WorkspaceRemovalBlockedError extends Error {
+  readonly workspacePath: string;
+  readonly owner: string;
+
+  constructor(workspacePath: string, owner: string) {
+    super(`Cannot remove workspace ${workspacePath}: held by a live ${owner} lease`);
+    this.name = "WorkspaceRemovalBlockedError";
+    this.workspacePath = workspacePath;
+    this.owner = owner;
+  }
+}
+
+export interface WorkspaceRemovalGuardShape {
+  readonly assertRemovable: (input: {
+    readonly workspacePath: string;
+    readonly force?: boolean;
+    readonly removingOwner: WorkspaceOwner;
+  }) => Effect.Effect<void, WorkspaceRemovalBlockedError>;
+}
+
+export class WorkspaceRemovalGuard extends Context.Service<
+  WorkspaceRemovalGuard,
+  WorkspaceRemovalGuardShape
+>()("neokod/symphony/Persistence/Services/WorkspaceOwnershipRepository/WorkspaceRemovalGuard") {}
+
+export const makeWorkspaceRemovalGuard = (
+  repository: WorkspaceOwnershipRepositoryShape,
+): WorkspaceRemovalGuardShape => {
+  const assertRemovable: WorkspaceRemovalGuardShape["assertRemovable"] = (input) =>
+    Effect.gen(function* () {
+      if (input.force === true) {
+        return;
+      }
+      const record = yield* repository
+        .getByWorkspacePath(input.workspacePath)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (record === null) {
+        return;
+      }
+      if (record.owner === input.removingOwner) {
+        return;
+      }
+      // A NULL lease means held indefinitely (never reclaimable by another
+      // owner); an expired lease is reclaimable.
+      const expired =
+        record.leaseExpiresAt !== null && Date.parse(record.leaseExpiresAt) < Date.now();
+      if (!expired) {
+        return yield* Effect.fail(
+          new WorkspaceRemovalBlockedError(input.workspacePath, record.owner),
+        );
+      }
+    });
+  return { assertRemovable };
+};

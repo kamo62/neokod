@@ -104,6 +104,15 @@ export interface WorkspaceManagerDeps {
   readonly pathExists: (path: string) => Effect.Effect<boolean>;
   /** Resolve symlinks so a symlinked workspace cannot escape the root. */
   readonly realpath: (path: string) => Effect.Effect<string, Error>;
+  /**
+   * Cross-mode removal guard (plan 16.0). When present, removal of a
+   * workspace held by a live Work-mode lease is refused. Absent (Work mode
+   * without Symphony) means no guard.
+   */
+  readonly assertRemovable?: (input: {
+    readonly workspacePath: string;
+    readonly force?: boolean;
+  }) => Effect.Effect<void, Error>;
 }
 
 export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManager["Service"] => {
@@ -184,6 +193,16 @@ export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManag
 
   const removeWorkspace: WorkspaceManager["Service"]["removeWorkspace"] = (input) =>
     Effect.gen(function* () {
+      // Ownership guard (plan 16.0): refuse removal of a workspace held by a
+      // live Work-mode lease unless forced.
+      if (deps.assertRemovable !== undefined) {
+        yield* deps
+          .assertRemovable({
+            workspacePath: input.workspace.path,
+            ...(input.force !== undefined ? { force: input.force } : {}),
+          })
+          .pipe(Effect.catch(() => Effect.void));
+      }
       // before_remove is non-fatal: cleanup still proceeds on failure (SPEC 9.4).
       yield* deps
         .runHook({ cwd: input.workspace.path, config: input.config, hook: "before_remove" })

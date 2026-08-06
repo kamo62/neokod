@@ -24,7 +24,10 @@ import { ValidationRunnerLive } from "../Validation/Runner.ts";
 import { EvidenceServiceLive } from "../Evidence/Service.ts";
 import { PullRequestServiceLive } from "../Evidence/PullRequest.ts";
 import { HandoffServiceLive } from "../HandoffService.ts";
-import { WorkspaceOwnershipRepositoryLive } from "../Persistence/Layers/WorkspaceOwnershipRepository.ts";
+import {
+  WorkspaceOwnershipRepositoryLive,
+  WorkspaceRemovalGuardLive,
+} from "../Persistence/Layers/WorkspaceOwnershipRepository.ts";
 import { layer as SourceControlProviderRegistryLayer } from "../../sourceControl/SourceControlProviderRegistry.ts";
 import { layer as AzureDevOpsCliLayer } from "../../sourceControl/AzureDevOpsCli.ts";
 import { layer as BitbucketApiLayer } from "../../sourceControl/BitbucketApi.ts";
@@ -168,9 +171,12 @@ export const SymphonyLayerObserve = Layer.merge(
     ),
   ),
   Layer.merge(
-    ApprovalServiceLive.pipe(
-      Layer.provide(Layer.mergeAll(ApprovalRepositoryLive, LiveRequestsLive)),
+    Layer.merge(
+      ApprovalServiceLive.pipe(
+        Layer.provide(Layer.mergeAll(ApprovalRepositoryLive, LiveRequestsLive)),
+      ),
+      HandoffServiceSlice,
     ),
-    HandoffServiceSlice,
+    WorkspaceRemovalGuardLive.pipe(Layer.provide(WorkspaceOwnershipRepositoryLive)),
   ),
 );

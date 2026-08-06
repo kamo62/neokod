@@ -8,6 +8,8 @@ import { nowIso } from "../../Domain/Time.ts";
 import { SymphonyPersistenceSqlError } from "../Errors.ts";
 import {
   WorkspaceOwnershipRepository,
+  WorkspaceRemovalGuard,
+  makeWorkspaceRemovalGuard,
   type WorkspaceOwnershipRecord,
   type WorkspaceOwnershipRepositoryShape,
   type WorkspaceOwner,
@@ -211,4 +213,16 @@ const makeRepository = Effect.gen(function* () {
 export const WorkspaceOwnershipRepositoryLive = Layer.effect(
   WorkspaceOwnershipRepository,
   makeRepository,
+);
+
+export const WorkspaceRemovalGuardLive: Layer.Layer<
+  WorkspaceRemovalGuard,
+  never,
+  WorkspaceOwnershipRepository
+> = Layer.effect(
+  WorkspaceRemovalGuard,
+  Effect.gen(function* () {
+    const repository = yield* WorkspaceOwnershipRepository;
+    return makeWorkspaceRemovalGuard(repository);
+  }),
 );

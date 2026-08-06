@@ -1,9 +1,19 @@
 import type { WorkItem, WorkItemId, WorkflowRecord } from "@neokod/contracts";
-import { RunAttemptId, WorkItemId as WorkItemIdBrand } from "@neokod/contracts";
+import {
+  CommandId,
+  DEFAULT_MODEL,
+  DEFAULT_PROVIDER_INTERACTION_MODE,
+  ProviderInstanceId,
+  ProjectId,
+  RunAttemptId,
+  ThreadId,
+  WorkItemId as WorkItemIdBrand,
+} from "@neokod/contracts";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 
 import { nowIso } from "./Domain/Time.ts";
 import { WorkItemRepository } from "./Persistence/Services/WorkItemRepository.ts";
@@ -13,6 +23,8 @@ import { WorkflowRepository } from "./Persistence/Services/WorkflowRepository.ts
 import { WorkspaceOwnershipRepository } from "./Persistence/Services/WorkspaceOwnershipRepository.ts";
 import { RunDispatcher } from "./Runner/Dispatcher.ts";
 import { LiveRequests } from "./Runner/LiveRequests.ts";
+import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
+import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 
 /**
  * Cross-mode handoff service (plan 16, Phase 4; PRD FR-110 to FR-115).
@@ -85,12 +97,105 @@ export const makeHandoffService = Effect.gen(function* () {
   const ownership = yield* WorkspaceOwnershipRepository;
   const dispatcher = yield* RunDispatcher;
   const liveRequests = yield* LiveRequests;
+  // Optional orchestration services (serviceOption): when the Work-mode
+  // orchestration stack is mounted, takeOver binds a real Work thread to the
+  // workspace. Without it, takeOver degrades to ownership transfer only.
+  const maybeEngine = yield* Effect.serviceOption(OrchestrationEngine.OrchestrationEngineService);
+  const maybeProjection = yield* Effect.serviceOption(
+    ProjectionSnapshotQuery.ProjectionSnapshotQuery,
+  );
 
   const appendEvent = (
     runAttemptId: RunAttemptId,
     eventType: string,
     payload?: Record<string, unknown>,
   ) => runEvents.append(runAttemptId, eventType, payload).pipe(Effect.catch(() => Effect.void));
+
+  /** Create (or reuse) a Work-mode thread bound to the workspace (FR-112/113,
+   *  FR-115). The thread's worktreePath is the Symphony workspace, so the
+   *  environment panel, terminal, files and diff all point at the same
+   *  filesystem. */
+  const bindWorkThread = (input: {
+    readonly runAttemptId: RunAttemptId;
+    readonly workspacePath: string;
+    readonly branch: string;
+    readonly title: string;
+    readonly callerThreadId?: string;
+  }): Effect.Effect<string, HandoffError> =>
+    Effect.gen(function* () {
+      // Reuse an existing thread when the caller bound one.
+      if (input.callerThreadId !== undefined && input.callerThreadId.length > 0) {
+        return input.callerThreadId;
+      }
+      const engine = Option.getOrNull(maybeEngine);
+      const projection = Option.getOrNull(maybeProjection);
+      if (engine === null || projection === null) {
+        // No orchestration stack: generate a placeholder thread id; the
+        // ownership record still carries it for resume.
+        return yield* crypto.randomUUIDv4.pipe(
+          Effect.map((value) => `work-thread-${value}`),
+          Effect.mapError((cause) => new HandoffError(cause.message)),
+        );
+      }
+
+      // Resolve (or lazily create) the project for the workspace root.
+      const existing = yield* projection
+        .getActiveProjectByWorkspaceRoot(input.workspacePath)
+        .pipe(Effect.catch(() => Effect.succeed(Option.none())));
+      let projectId: ProjectId;
+      if (Option.isSome(existing)) {
+        projectId = existing.value.id;
+      } else {
+        projectId = yield* crypto.randomUUIDv4.pipe(
+          Effect.map((value) => ProjectId.make(value)),
+          Effect.mapError((cause) => new HandoffError(cause.message)),
+        );
+        yield* engine
+          .dispatch({
+            type: "project.create",
+            commandId: yield* crypto.randomUUIDv4.pipe(
+              Effect.map((value) => CommandId.make(value)),
+              Effect.mapError((cause) => new HandoffError(cause.message)),
+            ),
+            projectId,
+            title: input.title,
+            workspaceRoot: input.workspacePath,
+            defaultModelSelection: {
+              instanceId: ProviderInstanceId.make("codex"),
+              model: DEFAULT_MODEL,
+            },
+            createdAt: yield* nowIso,
+          })
+          .pipe(Effect.mapError((cause) => new HandoffError(cause.message)));
+      }
+
+      const threadId = yield* crypto.randomUUIDv4.pipe(
+        Effect.map((value) => ThreadId.make(value)),
+        Effect.mapError((cause) => new HandoffError(cause.message)),
+      );
+      yield* engine
+        .dispatch({
+          type: "thread.create",
+          commandId: yield* crypto.randomUUIDv4.pipe(
+            Effect.map((value) => CommandId.make(value)),
+            Effect.mapError((cause) => new HandoffError(cause.message)),
+          ),
+          threadId,
+          projectId,
+          title: input.title,
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("codex"),
+            model: DEFAULT_MODEL,
+          },
+          runtimeMode: "full-access",
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          branch: input.branch,
+          worktreePath: input.workspacePath,
+          createdAt: yield* nowIso,
+        })
+        .pipe(Effect.mapError((cause) => new HandoffError(cause.message)));
+      return String(threadId);
+    });
 
   const takeOver: HandoffService["Service"]["takeOver"] = (input) =>
     Effect.gen(function* () {
@@ -111,16 +216,22 @@ export const makeHandoffService = Effect.gen(function* () {
         .settleRun(runAttemptId, "handed over to work mode")
         .pipe(Effect.catch(() => Effect.void));
 
-      // 2. Derive the Work thread identity. The caller may bind an existing
-      //    thread (threadId provided); otherwise a placeholder is generated
-      //    and the projection-thread binding is left to the caller.
-      const threadId =
-        input.threadId === undefined || input.threadId.length === 0
-          ? yield* crypto.randomUUIDv4.pipe(
-              Effect.map((value) => `work-thread-${value}`),
-              Effect.mapError((cause) => new HandoffError(cause.message)),
-            )
-          : input.threadId;
+      // 2. Bind (or reuse) the Work thread for this workspace. The thread's
+      //    worktreePath is the Symphony workspace, so the same filesystem is
+      //    visible in Work mode (FR-112/113, FR-115).
+      const workItem = yield* workItems
+        .getById(attempt.workItemId)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      const branch = deriveThreadBranch(attempt.workspacePath, workItem?.workspaceKey);
+      const threadId = yield* bindWorkThread({
+        runAttemptId,
+        workspacePath: attempt.workspacePath,
+        branch,
+        title: workItem?.objective ?? `Symphony run ${String(runAttemptId)}`,
+        ...(input.threadId !== undefined && input.threadId.length > 0
+          ? { callerThreadId: input.threadId }
+          : {}),
+      });
 
       // 3. Transfer workspace ownership to work. Fenced by generation when a
       //    record exists; otherwise acquire (only when no live other owner).
@@ -169,7 +280,7 @@ export const makeHandoffService = Effect.gen(function* () {
       return {
         threadId,
         workspacePath: attempt.workspacePath,
-        branch: "",
+        branch,
         workItemId: attempt.workItemId,
       } satisfies TakeOverResult;
     });
@@ -310,6 +421,20 @@ export const makeHandoffService = Effect.gen(function* () {
 
   return { takeOver, resumeAutonomous, delegateFromThread };
 });
+
+/**
+ * The Work thread branch for a Symphony workspace. Reuses the stored
+ * workspace key when present (the workspace manager derives the branch from
+ * it); falls back to the directory name of the workspace path.
+ */
+const deriveThreadBranch = (workspacePath: string, workspaceKey: string | undefined): string => {
+  if (workspaceKey !== undefined && workspaceKey.length > 0) {
+    return `symphony/${workspaceKey}`;
+  }
+  const segments = workspacePath.split("/").filter((segment) => segment.length > 0);
+  const leaf = segments[segments.length - 1] ?? "workspace";
+  return `symphony/${leaf}`;
+};
 
 export const HandoffServiceLive: Layer.Layer<
   HandoffService,

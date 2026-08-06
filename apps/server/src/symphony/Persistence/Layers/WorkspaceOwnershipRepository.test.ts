@@ -4,11 +4,28 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { SqlitePersistenceMemory } from "../../../persistence/Layers/Sqlite.ts";
-import { WorkspaceOwnershipRepository } from "../Services/WorkspaceOwnershipRepository.ts";
-import { WorkspaceOwnershipRepositoryLive } from "./WorkspaceOwnershipRepository.ts";
+import {
+  WorkspaceOwnershipRepository,
+  WorkspaceRemovalGuard,
+  WorkspaceRemovalBlockedError,
+} from "../Services/WorkspaceOwnershipRepository.ts";
+import {
+  WorkspaceOwnershipRepositoryLive,
+  WorkspaceRemovalGuardLive,
+} from "./WorkspaceOwnershipRepository.ts";
 
 const layer = it.layer(
   WorkspaceOwnershipRepositoryLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)),
+);
+
+const guardLayer = it.layer(
+  Layer.mergeAll(
+    WorkspaceOwnershipRepositoryLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)),
+    WorkspaceRemovalGuardLive.pipe(
+      Layer.provide(WorkspaceOwnershipRepositoryLive),
+      Layer.provideMerge(SqlitePersistenceMemory),
+    ),
+  ),
 );
 
 layer("Workspace ownership", (it) => {
@@ -124,6 +141,94 @@ layer("Workspace ownership", (it) => {
       // A fresh acquire starts a new generation.
       const reacquired = yield* repo.acquire({ workspacePath: "/ws/f", owner: "symphony" });
       expect(reacquired?.generation).toBe(1);
+    }),
+  );
+});
+
+guardLayer("Workspace removal guard", (it) => {
+  it.effect("allows removal when no ownership record exists", () =>
+    Effect.gen(function* () {
+      const guard = yield* WorkspaceRemovalGuard;
+      const result = yield* Effect.result(
+        guard.assertRemovable({ workspacePath: "/ws/unknown", removingOwner: "work" }),
+      );
+      expect(result._tag).toBe("Success");
+    }),
+  );
+
+  it.effect("allows the owning mode to remove its own workspace", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkspaceOwnershipRepository;
+      yield* repo.acquire({ workspacePath: "/ws/own", owner: "work", threadId: "th-1" });
+      const guard = yield* WorkspaceRemovalGuard;
+      const result = yield* Effect.result(
+        guard.assertRemovable({ workspacePath: "/ws/own", removingOwner: "work" }),
+      );
+      expect(result._tag).toBe("Success");
+    }),
+  );
+
+  it.effect("blocks the other mode from removing a live lease", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkspaceOwnershipRepository;
+      yield* repo.acquire({ workspacePath: "/ws/held", owner: "symphony" });
+      const guard = yield* WorkspaceRemovalGuard;
+      const result = yield* Effect.result(
+        guard.assertRemovable({ workspacePath: "/ws/held", removingOwner: "work" }),
+      );
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure).toBeInstanceOf(WorkspaceRemovalBlockedError);
+      }
+    }),
+  );
+
+  it.effect("blocks even with an unexpired lease", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkspaceOwnershipRepository;
+      // TestClock starts at epoch; 2099 is far in the future.
+      yield* repo.acquire({
+        workspacePath: "/ws/future",
+        owner: "symphony",
+        leaseExpiresAt: "2099-01-01T00:00:00.000Z",
+      });
+      const guard = yield* WorkspaceRemovalGuard;
+      const result = yield* Effect.result(
+        guard.assertRemovable({ workspacePath: "/ws/future", removingOwner: "work" }),
+      );
+      expect(result._tag).toBe("Failure");
+    }),
+  );
+
+  it.effect("allows removal of an expired lease", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkspaceOwnershipRepository;
+      yield* repo.acquire({
+        workspacePath: "/ws/expired",
+        owner: "symphony",
+        leaseExpiresAt: "1969-01-01T00:00:00.000Z",
+      });
+      const guard = yield* WorkspaceRemovalGuard;
+      const result = yield* Effect.result(
+        guard.assertRemovable({ workspacePath: "/ws/expired", removingOwner: "work" }),
+      );
+      expect(result._tag).toBe("Success");
+    }),
+  );
+
+  it.effect("force bypasses a live lease", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkspaceOwnershipRepository;
+      yield* repo.acquire({ workspacePath: "/ws/forced", owner: "symphony" });
+      const guard = yield* WorkspaceRemovalGuard;
+      const result = yield* Effect.result(
+        guard.assertRemovable({
+          workspacePath: "/ws/forced",
+          removingOwner: "work",
+          force: true,
+        }),
+      );
+      expect(result._tag).toBe("Success");
     }),
   );
 });

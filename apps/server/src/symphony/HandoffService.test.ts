@@ -27,6 +27,9 @@ import { RunDispatcher } from "./Runner/Dispatcher.ts";
 import { LiveRequestsLive } from "./Runner/LiveRequests.ts";
 import { HandoffService, HandoffServiceLive } from "./HandoffService.ts";
 import type { WorkspaceOwnershipRecord } from "./Persistence/Services/WorkspaceOwnershipRepository.ts";
+import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
+import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as Option from "effect/Option";
 
 const makeAttempt = (id: string, workItemId: string, workspacePath = "/ws/wi-1"): RunAttempt => ({
   id: RunAttemptId.make(id),
@@ -108,6 +111,38 @@ const layer = it.layer(
   ),
 );
 
+const dispatchedCommands: Array<{ readonly type: string; readonly worktreePath: unknown }> = [];
+
+const fakeEngineLayer = Layer.succeed(OrchestrationEngine.OrchestrationEngineService, {
+  dispatch: (command: { readonly type: string; readonly worktreePath?: unknown }) =>
+    Effect.sync(() => {
+      dispatchedCommands.push({
+        type: command.type,
+        worktreePath: command.worktreePath,
+      });
+    }),
+} as OrchestrationEngine.OrchestrationEngineService["Service"]);
+
+const fakeProjectionLayer = Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
+  getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
+} as ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]);
+
+const bindingLayer = it.layer(
+  HandoffServiceLive.pipe(
+    Layer.provideMerge(WorkItemRepositoryLive),
+    Layer.provideMerge(RunAttemptRepositoryLive),
+    Layer.provideMerge(RunEventRepositoryLive),
+    Layer.provideMerge(WorkflowRepositoryLive),
+    Layer.provideMerge(WorkspaceOwnershipRepositoryLive),
+    Layer.provideMerge(fakeDispatcher.pipe(Layer.provide(RunAttemptRepositoryLive))),
+    Layer.provideMerge(LiveRequestsLive),
+    Layer.provideMerge(fakeEngineLayer),
+    Layer.provideMerge(fakeProjectionLayer),
+    Layer.provideMerge(SqlitePersistenceMemory),
+    Layer.provideMerge(NodeServices.layer),
+  ),
+);
+
 layer("HandoffService takeOver", (it) => {
   it.effect("stops the run, transfers ownership to work and parks the item", () =>
     Effect.gen(function* () {
@@ -162,6 +197,65 @@ layer("HandoffService takeOver", (it) => {
         handoff.takeOver({ runAttemptId: "run-2", threadId: "th-2" }),
       );
       expect(result._tag).toBe("Failure");
+    }),
+  );
+});
+
+bindingLayer("HandoffService takeOver thread binding", (it) => {
+  it.effect("creates a Work thread bound to the workspace when no thread id is given", () =>
+    Effect.gen(function* () {
+      dispatchedCommands.length = 0;
+      const workItem = makeWorkItem("wi-6");
+      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
+      const attempts = yield* RunAttemptRepository;
+      yield* attempts.create(makeAttempt("run-6", "wi-6", "/ws/wi-6"));
+      const ownership = yield* WorkspaceOwnershipRepository;
+      yield* ownership.acquire({
+        workspacePath: "/ws/wi-6",
+        owner: "symphony",
+        workItemId: WorkItemId.make("wi-6"),
+      });
+
+      const handoff = yield* HandoffService;
+      const result = yield* handoff.takeOver({ runAttemptId: "run-6" });
+
+      // A project and a thread were dispatched; the thread carries the
+      // workspace path and the derived branch.
+      const types = dispatchedCommands.map((command) => command.type);
+      expect(types).toContain("project.create");
+      expect(types).toContain("thread.create");
+      const threadCreate = dispatchedCommands.find((command) => command.type === "thread.create");
+      expect(threadCreate?.worktreePath).toBe("/ws/wi-6");
+
+      expect(result.threadId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(result.workspacePath).toBe("/ws/wi-6");
+      expect(result.branch).toBe("symphony/wi-6");
+
+      const record = yield* ownership.getByWorkspacePath("/ws/wi-6");
+      expect(record?.owner).toBe("work");
+      expect(record?.threadId).toBe(result.threadId);
+    }),
+  );
+
+  it.effect("reuses the caller-provided thread id without dispatching", () =>
+    Effect.gen(function* () {
+      dispatchedCommands.length = 0;
+      const workItem = makeWorkItem("wi-7");
+      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
+      const attempts = yield* RunAttemptRepository;
+      yield* attempts.create(makeAttempt("run-7", "wi-7", "/ws/wi-7"));
+      const ownership = yield* WorkspaceOwnershipRepository;
+      yield* ownership.acquire({
+        workspacePath: "/ws/wi-7",
+        owner: "symphony",
+        workItemId: WorkItemId.make("wi-7"),
+      });
+
+      const handoff = yield* HandoffService;
+      const result = yield* handoff.takeOver({ runAttemptId: "run-7", threadId: "th-existing" });
+
+      expect(dispatchedCommands).toEqual([]);
+      expect(result.threadId).toBe("th-existing");
     }),
   );
 });
