@@ -1,17 +1,17 @@
 # Handoff
 
-Updated: 2026-08-06 18:20 on MacBookPro
+Updated: 2026-08-06 22:00 on MacBookPro
 
 ## State
 
 - Branch: `feat/symphony-mode-impl`
-- HEAD: `38df58a20` fix(symphony): address REVIEW.md P0/P1 findings — cancel fiber, FR-095 gates, removal gateway, PR body file, evidence rules
-- Pushed: local-only; 12 commits ahead of origin. Push after the next commit.
+- HEAD: `6f1c978ab` fix(server): port 0ad91b6e7 — follow worktree branch drift, canonicalized per RECONCILE
+- Pushed: yes — the RECONCILE ports are committed but NOT yet pushed. Push after the next commit.
 - Dirty: `Neokod Symphony Mode Product Requirements.pdf`, `PLAN-exec-demo.md`, `demo.md`,
   `apps/server/src/__probe/probe.ts` (user files, never stage). Also dirty (NOT mine, do not
   commit): `apps/server/src/provider/copilot/*`, `apps/server/src/telemetry/*`,
-  `apps/server/src/serverSettings.test.ts` — Kamogelo's in-progress telemetry session, which
-  currently breaks the `bin.ts` typecheck (ServerSettingsService leak).
+  `apps/server/src/serverSettings.ts` + `.test.ts` — Kamogelo's in-progress telemetry session,
+  which currently breaks the `bin.ts` typecheck (ServerSettingsService leak).
 
 ## Done
 
@@ -69,6 +69,55 @@ Filtered server typecheck clean (same noise filter as before).
   `RpcServer.toHttpEffectWebsocket` reject the handler map and every WS upgrade return 500
   (44 server.test.ts failures). Registered the 5 RPCs; also replaced an eager
   `WorkItemId.make("")` fallback (throws on empty) with `WorkItemId.make("none")`.
+- `8168d7582` **Second REVIEW pass** (independent Codex gpt-5.6-sol review, 15 P1 + 4 P2, all
+  closed):
+  - GitHub Projects v2 client: per-item fetch now uses `node(id:)` (was invalid `items(itemId:)`
+    connection arg, P1 #12); `pageInfo` decoded and the list paginates until `hasNextPage` is
+    false (was capped at 100, P1 #13); status comes from `fieldValueByName(name: "Status")`, not
+    the first single-select field (was Priority winning over Status, P1 #14).
+  - `maxAttempts` is per-dispatch, not shared mutable dispatcher state (P2 #2).
+  - A claim that fails at attempt-create releases the claim (P1 #10: `preparing` forever);
+    Recovery also releases claims older than 5 min with no attempt row.
+  - `requestChanges`/`approveMerge` transitions carry `from` restrictions so a concurrent pair
+    cannot double-write (P1 #4); `changes_requested` items can be re-dispatched (was stranded
+    forever, P1 #5).
+  - WS `requestChanges`/`approveMerge` now report the gate outcome as `ok` instead of always
+    `{ok:true}` (P2 #3).
+  - Symphony workspace creation acquires an ownership record (P1 #1: the removal guard never
+    saw Symphony workspaces before).
+  - `ValidationRunnerLive` supplies directory creation + file writing in production (P2 #1).
+  - `takeOver` verifies the attempt is the current one for its work item before cancelling
+    (P1 #2); Recovery lands a succeeded-but-untransited run at `ready_for_review` instead of
+    re-dispatching a completed agent (P1 #11).
+- `6639737c8` **RPC gate outcome** (the ws.ts half of P2 #3, split for hook hygiene).
+- `65e6e1c5b` **RECONCILE pick: 501ce27b8** — clear stale active turn on live
+  `session.state.changed` to an inactive state (closed the live stale-turn gap our startup-only
+  reconcilers left open).
+- `e05bbc9ac` **RECONCILE pick: 376c149ea** — PR status lookup cache (2 min success / 20 s
+  failure TTL), sticky last-known-PR fallback fenced by cwd/branch/remote identity, gh decode
+  tolerance for `nameWithOwner` omission (gh < 2.47), `VcsStatusBroadcaster.refreshStatus` full
+  invalidation. Server files only; `GitVcsDriverCore` conflict resolved to `@neokod` +
+  `normalizeGitRemoteUrl` from `@neokod/shared/git`.
+- `0a0eca202` **RECONCILE pick: 9a0a07167** — remote-URL resolution failures count as unknown,
+  not as a remote change, so the sticky PR fallback survives hiccups.
+- `62d2a27d9` **RECONCILE pick: 2d31cb022 (server)** — `matchesBranchHeadContext` applies
+  head-repository/owner equality in all cases (cross-repository PRs match from fork checkouts).
+  Web UI excluded per AGENTS.md.
+- `6f1c978ab` **RECONCILE pick: 0ad91b6e7** — `CheckpointReactor` follows worktree branch drift:
+  after a completed turn, adopt the checked-out branch via `thread.meta.update` with
+  `expectedBranch` CAS, only for a thread-exclusive dedicated worktree. Path identity is
+  canonicalized via `FileSystem.realPath` per the RECONCILE binding constraint. Test fixtures
+  rebranded `t3code/` → `neokod/` (our `isTemporaryWorktreeBranch` pattern).
+
+### RECONCILE standing decisions (2026-08-06)
+
+- approveMerge demands a FRESH host query (`pullRequestService.refresh`) and bypasses all
+  caches; stored/cached PR data is display-only.
+- `PullRequestService.create` consumes the branch returned by `pushCurrentBranch` and uses it
+  for headSelector/lookup/evidence (authoritative branch identity).
+- Deferred to own lanes: `38a6e3ce6` ref-storm rework; `32c6012da` settlement lifecycle
+  backend + `491219bf1` (only with a settled UX); fleet-stop (`a2ca89aa1` stopTask) — backlog.
+- Skipped: `571a8b44b` (mobile-motivated), `edc503a7a` (covered by `cf0ebebc4`).
 - `38df58a20` **REVIEW.md Phase 3-6 findings** (35 total: 8 P0, 16 P1, 11 P2), the three named
   clusters closed:
   - **Removal gateway now works on every path**: `WorkspaceManagerLive` resolves the guard per
@@ -113,7 +162,9 @@ Filtered server typecheck clean (same noise filter as before).
 ## Verified vs unverified
 
 - **Verified: full server suite green.** `cd apps/server && ../../node_modules/.bin/vp test run`
-  -> 208 files passed / 2 skipped, 1905 passed / 7 skipped.
+  -> 210 files, 1918 passed / 7 skipped (only failures are Kamogelo's uncommitted
+  telemetry WIP: AnalyticsService.test.ts, serverSettings.test.ts — both red before and after
+  this work).
 - **Verified: `vp check --fix` passes.** 0 errors; 27 warnings, all pre-existing.
 - **Verified: server typecheck clean** after the same filter as before (JSON.parse,
   preferSchemaOverJson, globalDate, OrchestratorStateRepository, WorkflowRepository.test,
@@ -184,7 +235,12 @@ Background jobs still running: none.
 1. Push this branch (`git push -u origin feat/symphony-mode-impl`).
 2. Run the manual live smoke procedure above (real Codex app-server, real repo, real PR + CI) —
    now expected to pass step 3 (PR creation) for the first time.
-3. Review/merge pass with upstream `pingdotgg/t3code` divergence filters (AGENTS.md).
+3. Dedicated lane: `38a6e3ce6` ref-storm rework (RECONCILE deferral, sol's porting
+   constraints: keep broadcaster backoff, add ref snapshot + coalescing + generation fencing,
+   no mobile persistence).
 4. Optional Phase 5 follow-up: enrichment for GitLab, Bitbucket and Azure DevOps hosts
    (currently null; merge readiness caps at `ready_for_review` for them).
-5. Kamogelo: land the uncommitted copilot/telemetry session (fixes the `bin.ts` typecheck leak).
+5. Conditional/backlog: `32c6012da` settlement backend + `491219bf1` (only with a settled UX);
+   fleet-stop (`a2ca89aa1` stopTask) optional backlog.
+6. Kamogelo: land the uncommitted copilot/telemetry session (fixes the `bin.ts` typecheck leak
+   and the two red test files).
