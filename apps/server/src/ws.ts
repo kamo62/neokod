@@ -517,8 +517,12 @@ export const makeSymphonyRpcHandlers = () => ({
     observeRpcEffect(
       SYMPHONY_WS_METHODS.requestChanges,
       withOrchestrator(
+        // The boolean result is the gate outcome: report it as `ok` rather
+        // than always claiming success (REVIEW P2 #3).
         (orchestrator) =>
-          orchestrator.requestChanges(input.workItemId, input.reason).pipe(Effect.as({ ok: true })),
+          orchestrator
+            .requestChanges(input.workItemId, input.reason)
+            .pipe(Effect.map((changed) => ({ ok: changed }))),
         Effect.fail(orchestratorUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
@@ -527,7 +531,10 @@ export const makeSymphonyRpcHandlers = () => ({
     observeRpcEffect(
       SYMPHONY_WS_METHODS.approveMerge,
       withOrchestrator(
-        (orchestrator) => orchestrator.approveMerge(input.workItemId).pipe(Effect.as({ ok: true })),
+        (orchestrator) =>
+          orchestrator
+            .approveMerge(input.workItemId)
+            .pipe(Effect.map((changed) => ({ ok: changed }))),
         Effect.fail(orchestratorUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
