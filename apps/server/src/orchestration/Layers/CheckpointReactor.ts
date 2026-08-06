@@ -8,16 +8,19 @@ import {
   TurnId,
   type OrchestrationEvent,
   type ProviderRuntimeEvent,
+  type VcsStatusLocalResult,
 } from "@neokod/contracts";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import type * as PlatformError from "effect/PlatformError";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@neokod/shared/DrainableWorker";
+import { isTemporaryWorktreeBranch } from "@neokod/shared/git";
 
 import { parseTurnDiffFilesFromUnifiedDiff } from "../../checkpointing/Diffs.ts";
 import {
@@ -82,6 +85,7 @@ const make = Effect.gen(function* () {
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const providerService = yield* ProviderService;
   const checkpointStore = yield* CheckpointStore.CheckpointStore;
+  const fileSystem = yield* FileSystem.FileSystem;
   const receiptBus = yield* RuntimeReceiptBus;
   const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
   const vcsStatusBroadcaster = yield* VcsStatusBroadcaster;
@@ -534,15 +538,116 @@ const make = Effect.gen(function* () {
       return;
     }
 
-    yield* vcsStatusBroadcaster.refreshLocalStatus(sessionRuntime.value.cwd).pipe(
+    const local = yield* vcsStatusBroadcaster.refreshLocalStatus(sessionRuntime.value.cwd).pipe(
       Effect.catch((error) =>
         Effect.logWarning("failed to refresh local git status after turn completion", {
           threadId: event.threadId,
           turnId: event.turnId ?? null,
           cwd: sessionRuntime.value.cwd,
           detail: error.message,
-        }),
+        }).pipe(Effect.as(null)),
       ),
+    );
+    if (local !== null) {
+      yield* followWorktreeBranchDrift({
+        threadId: event.threadId,
+        cwd: sessionRuntime.value.cwd,
+        local,
+      });
+    }
+  });
+
+  // A `git checkout` run inside a thread's dedicated worktree (by an agent or
+  // the user) bypasses T3's commands, so the thread's recorded branch goes
+  // stale. Since #4460 the client only attributes PR state to a thread when
+  // the checked-out branch equals the recorded one, so stale metadata silently
+  // orphans the thread's PR. Follow the drift here: adopt the checked-out
+  // branch as the thread's branch, but only when the worktree belongs to
+  // exactly this thread — for shared cwds the strict matching is the point.
+  const followWorktreeBranchDrift = Effect.fn("followWorktreeBranchDrift")(function* (input: {
+    readonly threadId: ThreadId;
+    readonly cwd: string;
+    readonly local: VcsStatusLocalResult;
+  }) {
+    // Detached HEAD has no branch to adopt; a temporary placeholder checkout
+    // means the first-turn auto-rename is still in flight — don't race it.
+    const checkedOutBranch = input.local.refName;
+    if (checkedOutBranch === null || isTemporaryWorktreeBranch(checkedOutBranch)) {
+      return;
+    }
+
+    yield* Effect.gen(function* () {
+      const thread = yield* projectionSnapshotQuery
+        .getThreadShellById(input.threadId)
+        .pipe(Effect.map(Option.getOrUndefined));
+      if (
+        !thread ||
+        thread.branch === null ||
+        thread.branch === checkedOutBranch ||
+        thread.worktreePath === null ||
+        isTemporaryWorktreeBranch(thread.branch)
+      ) {
+        return;
+      }
+
+      // Canonicalize both sides of the worktree identity so a symlinked
+      // workspace matches its thread (RECONCILE binding constraint: raw
+      // path equality collides with the canonical-path fix).
+      const canonicalCwd = yield* fileSystem
+        .realPath(input.cwd)
+        .pipe(Effect.catch(() => Effect.succeed(input.cwd)));
+      const canonicalWorktree = yield* fileSystem
+        .realPath(thread.worktreePath)
+        .pipe(Effect.catch(() => Effect.succeed(thread.worktreePath)));
+      if (canonicalWorktree !== canonicalCwd) {
+        return;
+      }
+
+      const shell = yield* projectionSnapshotQuery.getShellSnapshot();
+      const worktreeIsShared = yield* Effect.all(
+        shell.threads
+          .flatMap((other): { readonly worktreePath: string }[] => {
+            const path = other.worktreePath;
+            return other.id !== thread.id && path !== null && path !== undefined
+              ? [{ worktreePath: path }]
+              : [];
+          })
+          .map((other) =>
+            fileSystem
+              .realPath(other.worktreePath)
+              .pipe(Effect.catch(() => Effect.succeed(other.worktreePath))),
+          ),
+        { concurrency: "unbounded" },
+      ).pipe(Effect.map((paths) => paths.some((path) => path === canonicalWorktree)));
+      if (worktreeIsShared) {
+        return;
+      }
+
+      // expectedBranch makes this a compare-and-swap in the decider: if the
+      // recorded branch moved between our read and the dispatch (rename,
+      // concurrent drift-follow), the stale update is dropped.
+      yield* orchestrationEngine.dispatch({
+        type: "thread.meta.update",
+        commandId: yield* serverCommandId("worktree-branch-drift"),
+        threadId: thread.id,
+        branch: checkedOutBranch,
+        expectedBranch: thread.branch,
+      });
+      yield* Effect.logInfo("thread branch followed worktree checkout", {
+        threadId: thread.id,
+        previousBranch: thread.branch,
+        branch: checkedOutBranch,
+      });
+    }).pipe(
+      Effect.catchCause((cause) => {
+        if (Cause.hasInterruptsOnly(cause)) {
+          return Effect.failCause(cause);
+        }
+        return Effect.logWarning("failed to follow worktree branch drift", {
+          threadId: input.threadId,
+          cause: Cause.pretty(cause),
+        });
+      }),
     );
   });
 
