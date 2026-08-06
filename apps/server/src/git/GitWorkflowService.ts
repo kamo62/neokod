@@ -32,10 +32,7 @@ import {
 import * as GitManager from "./GitManager.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
-import {
-  WorkspaceRemovalGuard,
-  WorkspaceRemovalBlockedError,
-} from "../symphony/Persistence/Services/WorkspaceOwnershipRepository.ts";
+import { WorkspaceRemovalGuard } from "../symphony/Persistence/Services/WorkspaceOwnershipRepository.ts";
 
 export class GitWorkflowService extends Context.Service<
   GitWorkflowService,

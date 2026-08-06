@@ -121,11 +121,11 @@ const fakeEngineLayer = Layer.succeed(OrchestrationEngine.OrchestrationEngineSer
         worktreePath: command.worktreePath,
       });
     }),
-} as OrchestrationEngine.OrchestrationEngineService["Service"]);
+} as unknown as OrchestrationEngine.OrchestrationEngineService["Service"]);
 
 const fakeProjectionLayer = Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
   getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
-} as ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]);
+} as unknown as ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]);
 
 const bindingLayer = it.layer(
   HandoffServiceLive.pipe(
