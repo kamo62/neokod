@@ -1,17 +1,20 @@
 # Handoff
 
-Updated: 2026-08-06 22:00 on MacBookPro
+Updated: 2026-08-06 22:45 on MacBookPro
 
 ## State
 
 - Branch: `feat/symphony-mode-impl`
-- HEAD: `6f1c978ab` fix(server): port 0ad91b6e7 — follow worktree branch drift, canonicalized per RECONCILE
-- Pushed: yes — the RECONCILE ports are committed but NOT yet pushed. Push after the next commit.
+- HEAD: `764d7c43b` fix(symphony): fix-lane review — PR body dir wiring, ownership exposure, reviewThreads variables, terminal-guarded status, legality table, cancel race
+- Pushed: the fix-lane commit is committed but NOT yet pushed. Push after the next commit.
 - Dirty: `Neokod Symphony Mode Product Requirements.pdf`, `PLAN-exec-demo.md`, `demo.md`,
   `apps/server/src/__probe/probe.ts` (user files, never stage). Also dirty (NOT mine, do not
   commit): `apps/server/src/provider/copilot/*`, `apps/server/src/telemetry/*`,
-  `apps/server/src/serverSettings.ts` + `.test.ts` — Kamogelo's in-progress telemetry session,
-  which currently breaks the `bin.ts` typecheck (ServerSettingsService leak).
+  `apps/server/src/serverSettings.ts` + `.test.ts`, `packages/contracts/src/keybindings.ts`,
+  `packages/shared/src/keybindings.ts`, `apps/web/src/keybindings.ts` + test, and ~31 `apps/web`
+  files — Kamogelo's concurrent session (telemetry + keybindings `thread.reopenLastArchived` +
+  operating-mode UI). The keybindings WIP currently fails `keybindings.test.ts`
+  (`mod+shift+t` collision), which is why the last full suite shows 1 red file.
 
 ## Done
 
@@ -118,6 +121,34 @@ Filtered server typecheck clean (same noise filter as before).
 - Deferred to own lanes: `38a6e3ce6` ref-storm rework; `32c6012da` settlement lifecycle
   backend + `491219bf1` (only with a settled UX); fleet-stop (`a2ca89aa1` stopTask) — backlog.
 - Skipped: `571a8b44b` (mobile-motivated), `edc503a7a` (covered by `cf0ebebc4`).
+- `764d7c43b` **Fix-lane review** (Fable, against REVIEW.md checklist — 3 send-backs + 5
+  residuals, all closed):
+  - **PR body file (send-back 1)**: `PullRequestServiceLive` now supplies a recursive
+    `makeBodyFileDir` + typed `writeBodyFile` (no more catch-to-void); `create()` fails typed if
+    the dir is empty or the writer is unwired. A first-live-run ENOENT can no longer reach
+    `ready_for_review` with no PR.
+  - **Ownership lease wiring (send-back 2)**: `WorkspaceOwnershipRepositoryLive` was hidden
+    inside `Layer.provide` sub-graphs, so `acquireOwnership` in `Workspaces/Live` resolved None
+    on every production path and no Symphony lease was ever recorded. Exposed it in
+    `SymphonyLayer`'s top-level merge; `acquireOwnership` resolves per-call like the guard.
+  - **reviewThreads query (send-back 3)**: the GraphQL follow-up sent
+    `repository(owner: "", name: "")` (real GitHub returns null → fabricated 0). Now uses gh's
+    `-F owner=:owner -F name=:repo` magic variables; test pins the query string.
+  - **Terminal-status guard (residual 5)**: `RunAttemptRepository.updateStatus` refuses writes
+    over a terminal status (late `cancelRun` can't clobber `succeeded`); a cancel status may
+    supersede the `interrupted` fallback. Test added.
+  - **Cancel race (residual 6)**: `cancelRun` interrupts the dispatch fiber BEFORE the agent
+    (raw `interruptUnsafe`, no await — awaiting surfaces the pure interruption), so `markFailed`
+    can't land `retry_scheduled` mid-cancel. Cancel-during-failure test added.
+  - **approveMerge pinning (residual 8)**: the test layer's refresh is now a Ref the tests set;
+    added the stored-enriched + fresh-unenriched → refused case.
+  - **Legality table (residual 14)**: transitions without `from` are bounded by
+    `DEFAULT_TRANSITION_SOURCES` (any-to-any no longer possible); terminal lifecycles never
+    appear as sources so terminal immutability is default. `transition` gained
+    `requireUnclaimed`; takeOver's park uses it (owner-fenced).
+  - **Real thread binding (residual 7)**: `OrchestrationLayerLive` is now in the
+    `HandoffServiceSlice` provide list (memoized with the Work-mode instance), so takeOver binds
+    a real thread in production instead of the placeholder path.
 - `38df58a20` **REVIEW.md Phase 3-6 findings** (35 total: 8 P0, 16 P1, 11 P2), the three named
   clusters closed:
   - **Removal gateway now works on every path**: `WorkspaceManagerLive` resolves the guard per
@@ -162,9 +193,8 @@ Filtered server typecheck clean (same noise filter as before).
 ## Verified vs unverified
 
 - **Verified: full server suite green.** `cd apps/server && ../../node_modules/.bin/vp test run`
-  -> 210 files, 1918 passed / 7 skipped (only failures are Kamogelo's uncommitted
-  telemetry WIP: AnalyticsService.test.ts, serverSettings.test.ts — both red before and after
-  this work).
+  -> 210 files, 1934 passed / 7 skipped (the only red file is Kamogelo's uncommitted
+  keybindings WIP — `mod+shift+t` collision in keybindings.test.ts; telemetry tests now pass).
 - **Verified: `vp check --fix` passes.** 0 errors; 27 warnings, all pre-existing.
 - **Verified: server typecheck clean** after the same filter as before (JSON.parse,
   preferSchemaOverJson, globalDate, OrchestratorStateRepository, WorkflowRepository.test,
@@ -242,5 +272,5 @@ Background jobs still running: none.
    (currently null; merge readiness caps at `ready_for_review` for them).
 5. Conditional/backlog: `32c6012da` settlement backend + `491219bf1` (only with a settled UX);
    fleet-stop (`a2ca89aa1` stopTask) optional backlog.
-6. Kamogelo: land the uncommitted copilot/telemetry session (fixes the `bin.ts` typecheck leak
-   and the two red test files).
+6. Kamogelo: land the uncommitted copilot/telemetry/keybindings/web sessions (fixes the
+   `bin.ts` typecheck leak, the keybindings.test.ts collision, and the dirty web surface).
