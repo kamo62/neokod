@@ -32,6 +32,11 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     myWorkCollapsed: false,
     myWorkDismissed: {},
     myWorkLastDismissed: null,
+    operatingMode: "work",
+    viewSnapshotsByMode: {
+      symphony: { filters: {}, panelState: {}, route: "/symphony", selection: null },
+      work: { filters: {}, panelState: {}, route: "/", selection: null },
+    },
     pinnedThreadKeys: [],
     projectExpandedById: {},
     projectOrder: [],
@@ -214,6 +219,11 @@ describe("parsePersistedState", () => {
       myWorkCollapsed: false,
       myWorkDismissed: {},
       myWorkLastDismissed: null,
+      operatingMode: "work",
+      viewSnapshotsByMode: {
+        symphony: { filters: {}, panelState: {}, route: "/symphony", selection: null },
+        work: { filters: {}, panelState: {}, route: "/", selection: null },
+      },
       pinnedThreadKeys: [],
       projectExpandedById: {
         logical: false,
@@ -360,6 +370,11 @@ describe("uiStateStore persistence", () => {
       myWorkCollapsed: true,
       myWorkDismissed: {
         "environment:thread-1": "turn-1",
+      },
+      operatingMode: "work",
+      viewSnapshotsByMode: {
+        symphony: { filters: {}, panelState: {}, route: "/symphony", selection: null },
+        work: { filters: {}, panelState: {}, route: "/", selection: null },
       },
       pinnedThreadKeys: [],
       projectExpandedById: {
