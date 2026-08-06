@@ -265,11 +265,21 @@ const EMPTY_DISMISSED_SUBAGENTS: ReadonlySet<string> = new Set();
 const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
-const PreviewPanel = lazy(() =>
-  import("./preview/PreviewPanel").then((module) => ({ default: module.PreviewPanel })),
-);
-const DiffPanel = lazy(() => import("./DiffPanel"));
-const FilePreviewPanel = lazy(() => import("./files/FilePreviewPanel"));
+const loadPreviewPanel = () =>
+  import("./preview/PreviewPanel").then((module) => ({ default: module.PreviewPanel }));
+const loadDiffPanel = () => import("./DiffPanel");
+const loadFilePreviewPanel = () => import("./files/FilePreviewPanel");
+const PreviewPanel = lazy(loadPreviewPanel);
+const DiffPanel = lazy(loadDiffPanel);
+const FilePreviewPanel = lazy(loadFilePreviewPanel);
+
+type RightPanelPreloadSurface = "preview" | "diff" | "files";
+
+function preloadRightPanel(surface: RightPanelPreloadSurface): void {
+  if (surface === "preview") void loadPreviewPanel();
+  if (surface === "diff") void loadDiffPanel();
+  if (surface === "files") void loadFilePreviewPanel();
+}
 const EMPTY_PENDING_FILE_SURFACE_IDS: ReadonlySet<string> = new Set();
 const TYPE_TO_FOCUS_EDITABLE_SELECTOR = [
   "input",
@@ -5433,6 +5443,7 @@ function ChatViewContent(props: ChatViewProps) {
           onAddTerminal={addTerminalSurface}
           onAddDiff={addDiffSurface}
           onAddFiles={addFilesSurface}
+          onPreloadSurface={preloadRightPanel}
           browserAvailable={isPreviewSupportedInRuntime()}
           diffAvailable={isServerThread && isGitRepo}
           filesAvailable={activeProject !== null}
@@ -5460,6 +5471,7 @@ function ChatViewContent(props: ChatViewProps) {
             onAddTerminal={addTerminalSurface}
             onAddDiff={addDiffSurface}
             onAddFiles={addFilesSurface}
+            onPreloadSurface={preloadRightPanel}
             browserAvailable={isPreviewSupportedInRuntime()}
             diffAvailable={isServerThread && isGitRepo}
             filesAvailable={activeProject !== null}

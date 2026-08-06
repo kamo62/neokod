@@ -1,4 +1,4 @@
-import { RefreshCwIcon, WorkflowIcon } from "lucide-react";
+import { RefreshCwIcon, TriangleAlertIcon, WorkflowIcon } from "lucide-react";
 import { createFileRoute } from "@tanstack/react-router";
 
 import { usePrimaryEnvironmentId } from "../state/environments";
@@ -15,6 +15,7 @@ import {
 } from "../components/ui/empty";
 import { Skeleton } from "../components/ui/skeleton";
 import { cn } from "../lib/utils";
+import { SymphonyEmptyState } from "../components/symphony/SymphonyEmptyState";
 
 const STATUS_BADGE: Record<string, "default" | "secondary" | "success" | "warning" | "info"> = {
   active: "success",
@@ -71,8 +72,27 @@ function SymphonyWorkflowsRoute() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 sm:p-8">
-        {workflowsQuery.isPending && workflows.length === 0 ? (
+        {workflowsQuery.isPending && workflowsQuery.data === null ? (
           <WorkflowSkeleton />
+        ) : workflowsQuery.error && workflowsQuery.data === null ? (
+          <SymphonyEmptyState
+            icon={TriangleAlertIcon}
+            title="Could not load workflows"
+            description={workflowsQuery.error}
+            action={
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={workflowsQuery.refresh}
+                disabled={workflowsQuery.isPending}
+              >
+                <RefreshCwIcon
+                  className={cn("size-3.5", workflowsQuery.isPending && "animate-spin")}
+                />
+                Retry
+              </Button>
+            }
+          />
         ) : workflows.length === 0 ? (
           <Empty className="min-h-88 rounded-2xl border bg-card">
             <EmptyMedia variant="icon">

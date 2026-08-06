@@ -1,4 +1,4 @@
-import { ListTodoIcon, RefreshCwIcon } from "lucide-react";
+import { ListTodoIcon, RefreshCwIcon, TriangleAlertIcon } from "lucide-react";
 
 import type { EnvironmentId, QueueItem } from "@neokod/contracts";
 import { usePrimaryEnvironmentId } from "../../state/environments";
@@ -10,6 +10,7 @@ import { Badge } from "../ui/badge";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import { Skeleton } from "../ui/skeleton";
 import { cn } from "../../lib/utils";
+import { SymphonyEmptyState } from "./SymphonyEmptyState";
 
 const LIFECYCLE_LABELS: Record<string, string> = {
   queued: "Queued",
@@ -173,10 +174,27 @@ export function SymphonyQueueView() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 sm:p-8">
-        {queue.isPending && items.length === 0 ? (
+        {queue.isPending && queue.data === null ? (
           <div className="rounded-2xl border bg-card">
             <QueueSkeleton />
           </div>
+        ) : queue.error && queue.data === null ? (
+          <SymphonyEmptyState
+            icon={TriangleAlertIcon}
+            title="Could not load queue"
+            description={queue.error}
+            action={
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={queue.refresh}
+                disabled={queue.isPending}
+              >
+                <RefreshCwIcon className={cn("size-3.5", queue.isPending && "animate-spin")} />
+                Retry
+              </Button>
+            }
+          />
         ) : items.length === 0 ? (
           <Empty className="min-h-88 rounded-2xl border bg-card">
             <EmptyMedia variant="icon">

@@ -19,7 +19,7 @@ function AlertDialogBackdrop({ className, ...props }: AlertDialogPrimitive.Backd
     <AlertDialogPrimitive.Backdrop
       forceRender
       className={cn(
-        "fixed inset-0 z-50 bg-background/60 backdrop-blur-xs transition-all duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0",
+        "fixed inset-0 z-50 bg-background/60 backdrop-blur-xs transition-[opacity] duration-(--duration-standard) ease-(--ease-standard) data-ending-style:opacity-0 data-starting-style:opacity-0",
         className,
       )}
       data-slot="alert-dialog-backdrop"

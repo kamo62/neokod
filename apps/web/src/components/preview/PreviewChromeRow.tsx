@@ -279,7 +279,7 @@ export function PreviewChromeRow({
       {loadProgress > 0 ? (
         <div
           aria-hidden
-          className="pointer-events-none absolute bottom-0 left-0 z-10 h-0.5 rounded-r-full bg-primary transition-all duration-150 ease-out"
+          className="pointer-events-none absolute bottom-0 left-0 z-10 h-0.5 rounded-r-full bg-primary transition-[width] duration-(--duration-basic) ease-(--ease-out)"
           style={{
             width: `${loadProgress}%`,
             boxShadow: "0 0 6px 1px var(--color-ring)",

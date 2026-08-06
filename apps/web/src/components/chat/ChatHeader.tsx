@@ -7,8 +7,10 @@ import {
 } from "@neokod/contracts";
 import { scopeThreadRef } from "@neokod/client-runtime/environment";
 import { memo } from "react";
+import { EllipsisIcon } from "lucide-react";
 import GitActionsControl from "../GitActionsControl";
 import { type DraftId } from "~/composerDraftStore";
+import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import ProjectScriptsControl, {
   type NewProjectScriptInput,
@@ -19,6 +21,15 @@ import { GoalChip } from "./GoalChip";
 import { ThreadWorkspaceRail } from "./ThreadWorkspaceRail";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { cn } from "~/lib/utils";
+import {
+  Menu,
+  MenuPopup,
+  MenuSeparator,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
+  MenuTrigger,
+} from "../ui/menu";
 
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
@@ -78,6 +89,9 @@ export const ChatHeader = memo(function ChatHeader({
     activeThreadEnvironmentId,
     primaryEnvironmentId,
   });
+  const hasOverflowActions = Boolean(
+    activeProjectScripts || showOpenInPicker || (activeProjectName && gitCwd),
+  );
   return (
     <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden sm:gap-2">
@@ -108,32 +122,63 @@ export const ChatHeader = memo(function ChatHeader({
           threadId={activeThreadId}
           activeProjectName={activeProjectName}
         />
-        {activeProjectScripts && (
-          <ProjectScriptsControl
-            scripts={activeProjectScripts}
-            keybindings={keybindings}
-            preferredScriptId={preferredScriptId}
-            onRunScript={onRunProjectScript}
-            onAddScript={onAddProjectScript}
-            onUpdateScript={onUpdateProjectScript}
-            onDeleteScript={onDeleteProjectScript}
-          />
-        )}
-        {showOpenInPicker && (
-          <OpenInPicker
-            environmentId={activeThreadEnvironmentId}
-            keybindings={keybindings}
-            availableEditors={availableEditors}
-            openInCwd={openInCwd}
-          />
-        )}
-        {activeProjectName && (
-          <GitActionsControl
-            gitCwd={gitCwd}
-            activeThreadRef={scopeThreadRef(activeThreadEnvironmentId, activeThreadId)}
-            {...(draftId ? { draftId } : {})}
-          />
-        )}
+        {hasOverflowActions ? (
+          <Menu>
+            <MenuTrigger
+              render={<Button size="icon-xs" variant="ghost" aria-label="More thread actions" />}
+            >
+              <EllipsisIcon aria-hidden="true" className="size-4" />
+            </MenuTrigger>
+            <MenuPopup align="end">
+              {activeProjectScripts ? (
+                <MenuSub>
+                  <MenuSubTrigger>Project scripts</MenuSubTrigger>
+                  <MenuSubPopup className="w-72">
+                    <ProjectScriptsControl
+                      scripts={activeProjectScripts}
+                      keybindings={keybindings}
+                      preferredScriptId={preferredScriptId}
+                      onRunScript={onRunProjectScript}
+                      onAddScript={onAddProjectScript}
+                      onUpdateScript={onUpdateProjectScript}
+                      onDeleteScript={onDeleteProjectScript}
+                    />
+                  </MenuSubPopup>
+                </MenuSub>
+              ) : null}
+              {activeProjectScripts && (showOpenInPicker || (activeProjectName && gitCwd)) ? (
+                <MenuSeparator />
+              ) : null}
+              {showOpenInPicker ? (
+                <MenuSub>
+                  <MenuSubTrigger>Open in</MenuSubTrigger>
+                  <MenuSubPopup className="w-72">
+                    <OpenInPicker
+                      environmentId={activeThreadEnvironmentId}
+                      keybindings={keybindings}
+                      availableEditors={availableEditors}
+                      openInCwd={openInCwd}
+                      compact
+                    />
+                  </MenuSubPopup>
+                </MenuSub>
+              ) : null}
+              {showOpenInPicker && activeProjectName && gitCwd ? <MenuSeparator /> : null}
+              {activeProjectName && gitCwd ? (
+                <MenuSub>
+                  <MenuSubTrigger>Git</MenuSubTrigger>
+                  <MenuSubPopup className="w-72">
+                    <GitActionsControl
+                      gitCwd={gitCwd}
+                      activeThreadRef={scopeThreadRef(activeThreadEnvironmentId, activeThreadId)}
+                      {...(draftId ? { draftId } : {})}
+                    />
+                  </MenuSubPopup>
+                </MenuSub>
+              ) : null}
+            </MenuPopup>
+          </Menu>
+        ) : null}
       </div>
     </div>
   );

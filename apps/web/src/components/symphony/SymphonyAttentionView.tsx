@@ -10,6 +10,7 @@ import { Badge } from "../ui/badge";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import { Skeleton } from "../ui/skeleton";
 import { cn } from "../../lib/utils";
+import { SymphonyEmptyState } from "./SymphonyEmptyState";
 
 const SEVERITY_BADGE: Record<string, "default" | "secondary" | "success" | "warning" | "info"> = {
   critical: "warning",
@@ -135,10 +136,27 @@ export function SymphonyAttentionView() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 sm:p-8">
-        {attention.isPending && items.length === 0 ? (
+        {attention.isPending && attention.data === null ? (
           <div className="rounded-2xl border bg-card">
             <AttentionSkeleton />
           </div>
+        ) : attention.error && attention.data === null ? (
+          <SymphonyEmptyState
+            icon={TriangleAlertIcon}
+            title="Could not load attention items"
+            description={attention.error}
+            action={
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={attention.refresh}
+                disabled={attention.isPending}
+              >
+                <RefreshCwIcon className={cn("size-3.5", attention.isPending && "animate-spin")} />
+                Retry
+              </Button>
+            }
+          />
         ) : items.length === 0 ? (
           <Empty className="min-h-88 rounded-2xl border bg-card">
             <EmptyMedia variant="icon">

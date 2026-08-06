@@ -107,6 +107,7 @@ import {
   resolveShortcutCommand,
   shortcutLabelForCommand,
   shouldShowThreadJumpHintsForModifiers,
+  THREAD_REOPEN_LAST_ARCHIVED_COMMAND,
   threadJumpCommandForIndex,
   threadJumpIndexFromCommand,
   threadTraversalDirectionFromCommand,
@@ -3444,7 +3445,7 @@ export default function Sidebar() {
   const updateSettings = useUpdateClientSettings();
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
-  const { archiveThread, deleteThread } = useThreadActions();
+  const { archiveThread, deleteThread, reopenLastArchivedThread } = useThreadActions();
   const { isMobile, setOpenMobile } = useSidebar();
   const routeThreadRef = useParams({
     strict: false,
@@ -3874,6 +3875,12 @@ export default function Sidebar() {
         platform,
         context: shortcutContext,
       });
+      if (command === THREAD_REOPEN_LAST_ARCHIVED_COMMAND) {
+        event.preventDefault();
+        event.stopPropagation();
+        void reopenLastArchivedThread();
+        return;
+      }
       const traversalDirection = threadTraversalDirectionFromCommand(command);
       if (traversalDirection !== null) {
         const targetThreadKey = resolveAdjacentThreadId({
@@ -3925,6 +3932,7 @@ export default function Sidebar() {
     navigateToThread,
     orderedSidebarThreadKeys,
     platform,
+    reopenLastArchivedThread,
     routeThreadKey,
     sidebarThreadByKey,
     threadJumpThreadKeys,

@@ -1,4 +1,9 @@
-import { GitPullRequestIcon, ArrowUpRightIcon } from "lucide-react";
+import {
+  ArrowUpRightIcon,
+  GitPullRequestIcon,
+  RefreshCwIcon,
+  TriangleAlertIcon,
+} from "lucide-react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 
 import { type RunSummary } from "@neokod/contracts";
@@ -7,7 +12,9 @@ import { useEnvironmentQuery } from "../state/query";
 import { symphonyEnvironment } from "../state/symphony";
 import { SymphonyEmptyState } from "../components/symphony/SymphonyEmptyState";
 import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
+import { cn } from "../lib/utils";
 
 function AssessmentBadge({ assessment }: { readonly assessment: string }) {
   const variant =
@@ -36,7 +43,7 @@ function SymphonyReviewsRoute() {
     (run) => run.lifecycle === "ready_for_review" || run.lifecycle === "validation_failed",
   );
 
-  if (runs.isPending && summaries.length === 0) {
+  if (runs.isPending && runs.data === null) {
     return (
       <div className="space-y-3 p-6 sm:p-8">
         {[0, 1, 2].map((index) => (
@@ -46,6 +53,22 @@ function SymphonyReviewsRoute() {
           </div>
         ))}
       </div>
+    );
+  }
+
+  if (runs.error && runs.data === null) {
+    return (
+      <SymphonyEmptyState
+        icon={TriangleAlertIcon}
+        title="Could not load reviews"
+        description={runs.error}
+        action={
+          <Button size="sm" variant="outline" onClick={runs.refresh} disabled={runs.isPending}>
+            <RefreshCwIcon className={cn("size-3.5", runs.isPending && "animate-spin")} />
+            Retry
+          </Button>
+        }
+      />
     );
   }
 

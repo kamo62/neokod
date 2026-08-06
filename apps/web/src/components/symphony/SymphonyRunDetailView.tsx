@@ -10,6 +10,7 @@ import { Badge } from "../ui/badge";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import { Skeleton } from "../ui/skeleton";
 import { cn } from "../../lib/utils";
+import { SymphonyEmptyState } from "./SymphonyEmptyState";
 
 const RUNNING_STATUSES = new Set([
   "preparing_workspace",
@@ -212,6 +213,23 @@ export function SymphonyRunDetailView({ runId }: { readonly runId: string }) {
             <Skeleton className="h-4 w-1/3 rounded-full" />
             <Skeleton className="mt-3 h-3 w-1/2 rounded-full" />
           </div>
+        ) : detail.error && detail.data === null ? (
+          <SymphonyEmptyState
+            icon={ActivityIcon}
+            title="Could not load run"
+            description={detail.error}
+            action={
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={detail.refresh}
+                disabled={detail.isPending}
+              >
+                <RefreshCwIcon className={cn("size-3.5", detail.isPending && "animate-spin")} />
+                Retry
+              </Button>
+            }
+          />
         ) : details === null ? (
           <Empty className="min-h-88 rounded-2xl border bg-card">
             <EmptyMedia variant="icon">

@@ -1,4 +1,4 @@
-import { PlayCircleIcon, RefreshCwIcon, SquareIcon } from "lucide-react";
+import { PlayCircleIcon, RefreshCwIcon, SquareIcon, TriangleAlertIcon } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 import type { EnvironmentId, RunSummary } from "@neokod/contracts";
@@ -11,6 +11,7 @@ import { Badge } from "../ui/badge";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import { Skeleton } from "../ui/skeleton";
 import { cn } from "../../lib/utils";
+import { SymphonyEmptyState } from "./SymphonyEmptyState";
 
 const STATUS_BADGE: Record<string, "default" | "secondary" | "success" | "warning" | "info"> = {
   running: "success",
@@ -126,10 +127,22 @@ export function SymphonyRunningView() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 sm:p-8">
-        {runs.isPending && items.length === 0 ? (
+        {runs.isPending && runs.data === null ? (
           <div className="rounded-2xl border bg-card">
             <RunningSkeleton />
           </div>
+        ) : runs.error && runs.data === null ? (
+          <SymphonyEmptyState
+            icon={TriangleAlertIcon}
+            title="Could not load running threads"
+            description={runs.error}
+            action={
+              <Button size="sm" variant="outline" onClick={runs.refresh} disabled={runs.isPending}>
+                <RefreshCwIcon className={cn("size-3.5", runs.isPending && "animate-spin")} />
+                Retry
+              </Button>
+            }
+          />
         ) : items.length === 0 ? (
           <Empty className="min-h-88 rounded-2xl border bg-card">
             <EmptyMedia variant="icon">
