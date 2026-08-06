@@ -7,6 +7,7 @@ import type {
 } from "@neokod/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
@@ -57,7 +58,7 @@ export class PullRequestService extends Context.Service<
   {
     readonly create: (
       input: CreatePullRequestInput,
-    ) => Effect.Effect<PullRequestEvidence, PullRequestCreationError>;
+    ) => Effect.Effect<PullRequestEvidence | null, PullRequestCreationError>;
 
     /**
      * Re-fetch the open PR for a branch via the provider abstraction and
@@ -80,6 +81,8 @@ export interface PullRequestServiceDeps {
   readonly providers: SourceControlProviderRegistry["Service"];
   readonly writeBodyFile?: (path: string, content: string) => Effect.Effect<void>;
   readonly nowIsoEffect?: () => Effect.Effect<string>;
+  /** Resolve the default PR-body directory when the caller supplies none. */
+  readonly resolveBodyFileDir?: () => string;
 }
 
 const buildPullRequestBody = (evidence: EvidenceBundle): string => {
@@ -132,10 +135,15 @@ export const makePullRequestService = (
         ),
       );
 
-      // 2. Write the body file.
+      // 2. Write the body file. `bodyFileDir` falls back to the live layer's
+      //    default so the file always lands somewhere writable (REVIEW P0:
+      //    an empty dir produced `/pr-...md` at the filesystem root and the
+      //    PR creation failed silently).
       const now = yield* deps.nowIsoEffect?.() ?? nowIso;
       const safeRunId = String(input.runAttemptId).replace(/[^a-zA-Z0-9._-]/g, "_");
-      const bodyFilePath = `${input.bodyFileDir}/pr-${safeRunId}-${now.replace(/[^0-9]/g, "")}.md`;
+      const bodyFileDir =
+        input.bodyFileDir.length > 0 ? input.bodyFileDir : (deps.resolveBodyFileDir?.() ?? "");
+      const bodyFilePath = `${bodyFileDir}/pr-${safeRunId}-${now.replace(/[^0-9]/g, "")}.md`;
       const body = buildPullRequestBody(input.evidence);
       yield* (
         deps.writeBodyFile?.(bodyFilePath, body).pipe(Effect.catch(() => Effect.void)) ??
@@ -173,13 +181,10 @@ export const makePullRequestService = (
       const found = open.find((pullRequest) => pullRequest.headRefName === input.branch);
 
       if (found === undefined) {
-        return {
-          number: 0,
-          title: input.workItem.objective,
-          branch: input.branch,
-          baseBranch: input.baseBranch,
-          status: "open",
-        } satisfies PullRequestEvidence;
+        // The created PR could not be located: that is the absence of
+        // evidence, not evidence (REVIEW P2: a fabricated number:0 record
+        // later passed merge gating). The caller records the failure.
+        return null;
       }
 
       return {
@@ -202,7 +207,10 @@ export const makePullRequestService = (
           cwd: input.config.repositoryPath,
           ...(handle.context !== null ? { context: handle.context } : {}),
           headSelector: input.branch,
-          state: "open",
+          // Query all states so a merged/closed PR is reflected in evidence
+          // (REVIEW P2: filtering on "open" froze the status at "open"
+          // forever after merge).
+          state: "all",
           limit: 10,
         })
         .pipe(
@@ -248,12 +256,21 @@ export const makePullRequestService = (
 export const PullRequestServiceLive: Layer.Layer<
   PullRequestService,
   never,
-  GitVcsDriver | SourceControlProviderRegistry
+  GitVcsDriver | SourceControlProviderRegistry | FileSystem.FileSystem
 > = Layer.effect(
   PullRequestService,
   Effect.gen(function* () {
     const git = yield* GitVcsDriver;
     const providers = yield* SourceControlProviderRegistry;
-    return makePullRequestService({ git, providers });
+    const fileSystem = yield* FileSystem.FileSystem;
+    return makePullRequestService({
+      git,
+      providers,
+      // The PR body file must be written by the production wiring (plan 10:
+      // deterministic host-derived body). A missing write would make
+      // `gh pr create --body-file` fail on the first live run.
+      writeBodyFile: (path, content) =>
+        fileSystem.writeFileString(path, content).pipe(Effect.catch(() => Effect.void)),
+    });
   }),
 );

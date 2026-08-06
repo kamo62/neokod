@@ -363,6 +363,11 @@ export function useSettingsRestore(onRestored?: () => void) {
       DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks
         ? ["Provider update checks"]
         : []),
+      ...(settings.analytics.enabled !== DEFAULT_UNIFIED_SETTINGS.analytics.enabled ||
+      settings.analytics.posthogApiKey !== DEFAULT_UNIFIED_SETTINGS.analytics.posthogApiKey ||
+      settings.analytics.posthogHost !== DEFAULT_UNIFIED_SETTINGS.analytics.posthogHost
+        ? ["Analytics"]
+        : []),
       ...(Duration.toMillis(settings.automaticGitFetchInterval) !==
       Duration.toMillis(DEFAULT_UNIFIED_SETTINGS.automaticGitFetchInterval)
         ? ["Automatic Git fetch interval"]
@@ -399,6 +404,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.automaticGitFetchInterval,
       settings.enableAssistantStreaming,
       settings.enableProviderUpdateChecks,
+      settings.analytics,
       settings.sidebarThreadPreviewCount,
       settings.timestampFormat,
       settings.wordWrap,
@@ -427,6 +433,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       webActivityNotificationsEnabled: DEFAULT_UNIFIED_SETTINGS.webActivityNotificationsEnabled,
       enableAssistantStreaming: DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming,
       enableProviderUpdateChecks: DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks,
+      analytics: DEFAULT_UNIFIED_SETTINGS.analytics,
       automaticGitFetchInterval: DEFAULT_UNIFIED_SETTINGS.automaticGitFetchInterval,
       defaultThreadEnvMode: DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode,
       newWorktreesStartFromOrigin: DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin,

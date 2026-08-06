@@ -179,7 +179,10 @@ export const makeAzureBoardsAdapter = (options: {
           .map(normalizeLabel)
           .filter((label) => label.length > 0),
         blockedBy: [],
-        dispatchable: true,
+        // Dispatchable only while the state is not terminal (REVIEW P2: this
+        // was hardcoded true, so a closed item in an active-state query was
+        // reported dispatchable).
+        dispatchable: !terminalStates.includes((field(raw, "System.State") ?? "Active").trim()),
         createdAt: field(raw, "System.CreatedDate"),
         updatedAt: field(raw, "System.ChangedDate"),
       });

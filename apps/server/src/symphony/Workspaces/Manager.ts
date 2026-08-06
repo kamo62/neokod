@@ -48,6 +48,19 @@ export class WorkspacePopulationError extends Error {
   }
 }
 
+/** Removal refused by the cross-mode ownership guard (plan 16.0). */
+export class WorkspaceRemovalBlocked extends Error {
+  readonly workspacePath: string;
+  readonly owner: string;
+
+  constructor(workspacePath: string, owner: string) {
+    super(`Cannot remove workspace ${workspacePath}: held by a live ${owner} lease`);
+    this.name = "WorkspaceRemovalBlocked";
+    this.workspacePath = workspacePath;
+    this.owner = owner;
+  }
+}
+
 /**
  * Pure containment check (SPEC 9.5 invariant 2). Requires the workspace path to
  * be a strict descendant of the root after normalizing trailing slashes. The
@@ -79,12 +92,15 @@ export class WorkspaceManager extends Context.Service<
       readonly trackerBranch?: string;
     }) => Effect.Effect<SymphonyWorkspace, WorkspaceOutsideRootError | WorkspacePopulationError>;
 
-    /** Remove the workspace and its worktree when terminal (SPEC 8.6, 8.5). */
+    /** Remove the workspace and its worktree when terminal (SPEC 8.6, 8.5).
+     * Fails with {@link WorkspaceRemovalBlocked} when the cross-mode ownership
+     * guard refuses the removal (plan 16.0); callers that treat cleanup as
+     * best-effort catch it themselves. */
     readonly removeWorkspace: (input: {
       readonly workspace: SymphonyWorkspace;
       readonly config: EffectiveWorkflowConfig;
       readonly force?: boolean;
-    }) => Effect.Effect<void>;
+    }) => Effect.Effect<void, WorkspaceRemovalBlocked>;
 
     /** Resolve the absolute workspace path for a key under the configured root. */
     readonly resolvePath: (key: WorkspaceKey, config: EffectiveWorkflowConfig) => string;
@@ -194,14 +210,18 @@ export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManag
   const removeWorkspace: WorkspaceManager["Service"]["removeWorkspace"] = (input) =>
     Effect.gen(function* () {
       // Ownership guard (plan 16.0): refuse removal of a workspace held by a
-      // live Work-mode lease unless forced.
+      // live Work-mode lease. The guard failure propagates — a blocked
+      // removal must not silently proceed (REVIEW P0: the error was swallowed
+      // and the worktree deleted anyway).
       if (deps.assertRemovable !== undefined) {
         yield* deps
           .assertRemovable({
             workspacePath: input.workspace.path,
             ...(input.force !== undefined ? { force: input.force } : {}),
           })
-          .pipe(Effect.catch(() => Effect.void));
+          .pipe(
+            Effect.mapError((_cause) => new WorkspaceRemovalBlocked(input.workspace.path, "work")),
+          );
       }
       // before_remove is non-fatal: cleanup still proceeds on failure (SPEC 9.4).
       yield* deps

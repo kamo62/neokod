@@ -568,7 +568,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
     }),
   );
 
-  it.effect("approveMerge gates on evidence assessment and clean review state", () =>
+  it.effect("approveMerge requires positive host-enriched evidence (FR-095)", () =>
     Effect.gen(function* () {
       const orchestrator = yield* SymphonyOrchestrator;
       const workItemId = WorkItemId.make("merge-1");
@@ -582,7 +582,17 @@ layer("SymphonyOrchestrator Observe", (it) => {
         risks: [],
         unresolved: [],
         artefacts: [],
-        pullRequest: { number: 1, title: "t", branch: "b", baseBranch: "m", status: "open" },
+        pullRequest: {
+          number: 1,
+          title: "t",
+          branch: "b",
+          baseBranch: "m",
+          status: "open",
+          ciStatus: "success",
+          reviewState: "approved",
+          mergeable: true,
+          unresolvedComments: 0,
+        },
         modelReview: null,
         overallAssessment: "ready_for_review",
         createdAt: "2026-08-05T00:00:00.000Z",
@@ -608,6 +618,92 @@ layer("SymphonyOrchestrator Observe", (it) => {
       expect(merged).toBe(true);
       const after = yield* workItems.getById(workItemId);
       expect(after?.lifecycle).toBe("ready_to_merge");
+    }),
+  );
+
+  it.effect("approveMerge refuses a PR without host enrichment (FR-095)", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItemId = WorkItemId.make("merge-3");
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        objective: "Merge target 3",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "merge-3",
+        lifecycle: "ready_for_review",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      const evidenceRepo = yield* EvidenceRepository;
+      // A PR exists but carries no ciStatus/reviewState/mergeable (host
+      // without enrichment): merge readiness must stay capped.
+      yield* evidenceRepo.upsert(workItemId, {
+        changedFiles: [],
+        testsChanged: [],
+        commits: [],
+        validationResults: [],
+        assumptions: [],
+        risks: [],
+        unresolved: [],
+        artefacts: [],
+        pullRequest: { number: 1, title: "t", branch: "b", baseBranch: "m", status: "open" },
+        modelReview: null,
+        overallAssessment: "ready_for_review",
+        createdAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const merged = yield* orchestrator.approveMerge("merge-3");
+      expect(merged).toBe(false);
+      const after = yield* workItems.getById(workItemId);
+      expect(after?.lifecycle).toBe("ready_for_review");
+    }),
+  );
+
+  it.effect("approveMerge refuses when there is no PR at all", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItemId = WorkItemId.make("merge-4");
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        objective: "Merge target 4",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "merge-4",
+        lifecycle: "ready_for_review",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      const evidenceRepo = yield* EvidenceRepository;
+      yield* evidenceRepo.upsert(workItemId, {
+        changedFiles: [],
+        testsChanged: [],
+        commits: [],
+        validationResults: [],
+        assumptions: [],
+        risks: [],
+        unresolved: [],
+        artefacts: [],
+        pullRequest: null,
+        modelReview: null,
+        overallAssessment: "ready_for_review",
+        createdAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const merged = yield* orchestrator.approveMerge("merge-4");
+      expect(merged).toBe(false);
+      const after = yield* workItems.getById(workItemId);
+      expect(after?.lifecycle).toBe("ready_for_review");
     }),
   );
 

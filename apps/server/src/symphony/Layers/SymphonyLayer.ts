@@ -133,6 +133,7 @@ export const SymphonyLayerObserve = Layer.merge(
         PullRequestServiceLive.pipe(
           Layer.provideMerge(GitVcsDriverLayer),
           Layer.provideMerge(SourceControlProviderRegistryLive),
+          Layer.provideMerge(NodeServices.layer),
         ),
         TrackerRegistryGitHubLive.pipe(Layer.provide(FetchHttpClient.layer)),
         TrackerEnablementLive,

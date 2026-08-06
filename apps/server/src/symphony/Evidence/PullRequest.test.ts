@@ -203,7 +203,7 @@ it.effect("writes a deterministic evidence-based body file", () =>
   }),
 );
 
-it.effect("falls back to a zero-number record when the PR is not found", () =>
+it.effect("returns null when the created PR cannot be located", () =>
   Effect.gen(function* () {
     const service = makePullRequestService(
       makeDeps({
@@ -230,8 +230,7 @@ it.effect("falls back to a zero-number record when the PR is not found", () =>
       evidence: makeEvidence(),
       bodyFileDir: "/tmp/neokod",
     });
-    expect(evidence.number).toBe(0);
-    expect(evidence.url).toBeUndefined();
+    expect(evidence).toBeNull();
   }),
 );
 

@@ -104,13 +104,15 @@ function ReviewCard({ run }: { readonly run: RunSummary }) {
         </div>
       </div>
       <div className="flex items-center gap-3">
-        {run.lifecycle === "ready_for_review" ? (
-          <AssessmentBadge assessment="ready_for_review" />
-        ) : (
+        {/* Real assessment from the run summary (REVIEW P1: a fabricated
+            green ready_for_review badge hid insufficient evidence). */}
+        {run.overallAssessment !== undefined ? (
+          <AssessmentBadge assessment={run.overallAssessment} />
+        ) : run.lifecycle === "validation_failed" ? (
           <Badge variant="error" size="sm">
             validation failed
           </Badge>
-        )}
+        ) : null}
         <ArrowUpRightIcon className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
       </div>
     </Link>

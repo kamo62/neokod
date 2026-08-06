@@ -93,29 +93,31 @@ export const makeExecutionFinalizer = Effect.gen(function* () {
         .readFileString(`${input.workspacePath}/${EVIDENCE_FILE_NAME}`)
         .pipe(Effect.catch(() => Effect.succeed(null)));
 
-      // 3. Mark the attempt succeeded so the bundle carries the real duration.
-      yield* runAttempts
-        .updateStatus(input.runAttemptId, "succeeded", { finishedAt: now })
-        .pipe(Effect.catch(() => Effect.void));
+      // 3. Read the current attempt WITHOUT mutating it: the terminal status
+      //    must be written once, after the validation verdict is known
+      //    (REVIEW P1: `succeeded` was written first, so a crash between the
+      //    write and the verdict left a failed run recorded as succeeded).
       const attempt = yield* runAttempts
         .getById(input.runAttemptId)
         .pipe(Effect.catch(() => Effect.succeed(null)));
 
-      // 4. Assemble the bundle.
+      // 4. Assemble the bundle against a synthetic finished attempt so the
+      //    duration is real without a durable status write.
+      const assembledAttempt = attempt ?? {
+        id: input.runAttemptId,
+        workItemId: input.workItem.id,
+        attemptNumber: 1,
+        workspacePath: input.workspacePath,
+        provider: input.config.agentProvider,
+        status: "streaming_turn" as const,
+        startedAt: input.workItem.updatedAt,
+        finishedAt: now,
+        error: null,
+      };
       let evidence: EvidenceBundle = yield* evidenceService.assemble({
         workItem: input.workItem,
         issue: input.issue,
-        runAttempt: attempt ?? {
-          id: input.runAttemptId,
-          workItemId: input.workItem.id,
-          attemptNumber: 1,
-          workspacePath: input.workspacePath,
-          provider: input.config.agentProvider,
-          status: "succeeded",
-          startedAt: input.workItem.updatedAt,
-          finishedAt: now,
-          error: null,
-        },
+        runAttempt: assembledAttempt,
         config: input.config,
         workspacePath: input.workspacePath,
         baseBranch: input.baseBranch,
@@ -188,6 +190,10 @@ export const makeExecutionFinalizer = Effect.gen(function* () {
       if (pullRequest !== null) {
         evidence = { ...evidence, pullRequest };
       }
+      // The terminal status is written exactly once, after the verdict.
+      yield* runAttempts
+        .updateStatus(input.runAttemptId, "succeeded", { finishedAt: now })
+        .pipe(Effect.catch(() => Effect.void));
       yield* evidenceRepository
         .upsert(input.workItem.id, evidence)
         .pipe(Effect.catch(() => Effect.void));

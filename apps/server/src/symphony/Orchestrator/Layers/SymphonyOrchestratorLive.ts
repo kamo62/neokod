@@ -14,6 +14,7 @@ import type {
 import { RunAttemptId, WorkItemId } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 
@@ -36,6 +37,7 @@ import { nowMs, reconcileStaleClaims } from "../Reconciler.ts";
 import { retryDueAtMs } from "../Retry.ts";
 import { runStartupRecovery } from "../Recovery.ts";
 import { deriveWorkingBranch } from "../../Domain/Keys.ts";
+import { WorkspaceOwnershipRepository } from "../../Persistence/Services/WorkspaceOwnershipRepository.ts";
 import { SymphonyOrchestrator, type SymphonyOrchestratorShape } from "../SymphonyOrchestrator.ts";
 
 /**
@@ -99,20 +101,33 @@ const lifecycleForRun = (
   attemptStatus: string,
   workItem: WorkItem | null,
 ): WorkItem["lifecycle"] => {
+  // The work item's lifecycle is authoritative for review states: after
+  // requestChanges/approveMerge/takeOver, the item has moved past
+  // `ready_for_review` while the attempt stays `succeeded`. Check it first so
+  // the Phase 5 review lifecycle is visible in the runs/reviews lists
+  // (REVIEW P1: the succeeded short-circuit made every review-ready run
+  // report ready_for_review forever).
+  if (workItem !== null) {
+    const reviewLifecycles: ReadonlySet<WorkItem["lifecycle"]> = new Set([
+      "waiting_for_approval",
+      "blocked",
+      "cancelled",
+      "changes_requested",
+      "ready_for_review",
+      "ready_to_merge",
+      "validation_failed",
+      "retry_scheduled",
+      "failed",
+    ]);
+    if (reviewLifecycles.has(workItem.lifecycle)) {
+      return workItem.lifecycle;
+    }
+  }
   if (attemptStatus === "succeeded") {
     return "ready_for_review";
   }
   if (RUN_TERMINAL_STATUSES.has(attemptStatus)) {
     return "failed";
-  }
-  if (
-    workItem !== null &&
-    (workItem.lifecycle === "waiting_for_approval" ||
-      workItem.lifecycle === "blocked" ||
-      workItem.lifecycle === "cancelled" ||
-      workItem.lifecycle === "changes_requested")
-  ) {
-    return workItem.lifecycle;
   }
   return "running";
 };
@@ -121,6 +136,7 @@ const buildRunSummary = (input: {
   readonly attempt: RunAttempt;
   readonly workItem: WorkItem | null;
   readonly latestEvent: string | null;
+  readonly overallAssessment?: RunSummary["overallAssessment"];
 }): RunSummary => {
   const { attempt, workItem, latestEvent } = input;
   const started = Date.parse(attempt.startedAt);
@@ -150,6 +166,9 @@ const buildRunSummary = (input: {
     ...(latestEvent !== null ? { latestEvent } : {}),
     ...(attempt.workspacePath !== undefined ? { workspacePath: attempt.workspacePath } : {}),
     lifecycle: lifecycleForRun(attempt.status, workItem),
+    ...(input.overallAssessment !== undefined
+      ? { overallAssessment: input.overallAssessment }
+      : {}),
   };
 };
 
@@ -383,11 +402,20 @@ const makeOrchestrator = Effect.gen(function* () {
   const scheduler = Effect.gen(function* () {
     // Startup recovery (plan 9.7, WS-M): mark interrupted runs from a prior
     // crash/restart, release stale claims, and re-queue retryable work.
-    yield* runStartupRecovery({ workItems, runAttempts, runEvents, workflows, dispatcher }).pipe(
-      Effect.catch(() => Effect.void),
-    );
-    yield* runTick();
-    yield* Effect.repeat(runTick(), Schedule.fixed(POLL_INTERVAL));
+    const maybeOwnership = yield* Effect.serviceOption(WorkspaceOwnershipRepository);
+    yield* runStartupRecovery({
+      workItems,
+      runAttempts,
+      runEvents,
+      workflows,
+      dispatcher,
+      ...(Option.isSome(maybeOwnership) ? { ownership: maybeOwnership.value } : {}),
+    }).pipe(Effect.catch(() => Effect.void));
+    // Each tick runs in its own scope so retry-sweep dispatches release
+    // their agent-runtime resources when the run ends instead of holding
+    // them on the layer scope until server shutdown (REVIEW P1).
+    yield* runTick().pipe(Effect.scoped);
+    yield* Effect.repeat(runTick().pipe(Effect.scoped), Schedule.fixed(POLL_INTERVAL));
   });
 
   // Fork the poll loop into the surrounding scope so it stops on layer teardown.
@@ -410,13 +438,55 @@ const makeOrchestrator = Effect.gen(function* () {
         .listByLifecycle(["eligible", "queued"])
         .pipe(Effect.catch(() => Effect.succeed([])));
       const queued = queue.filter((item) => item.lifecycle === "queued").length;
+      // Live counters (REVIEW P1: these were hardcoded zero, so the dashboard
+      // looked authoritative while runs were executing).
+      const running = yield* workItems
+        .listByLifecycle(["preparing", "running", "waiting_for_approval"])
+        .pipe(
+          Effect.map((items) => items.length),
+          Effect.catch(() => Effect.succeed(0)),
+        );
+      const readyForReview = yield* workItems
+        .listByLifecycle(["ready_for_review", "ready_to_merge"])
+        .pipe(
+          Effect.map((items) => items.length),
+          Effect.catch(() => Effect.succeed(0)),
+        );
+      const retrying = yield* workItems.listByLifecycle(["retry_scheduled"]).pipe(
+        Effect.map((items) => items.length),
+        Effect.catch(() => Effect.succeed(0)),
+      );
+      const failedToday = yield* runAttempts.listRecent({ limit: 500 }).pipe(
+        Effect.map(
+          (attempts) =>
+            attempts.filter((attempt) => {
+              const started = Date.parse(attempt.startedAt);
+              const today = new Date();
+              const startOfDay = new Date(
+                today.getFullYear(),
+                today.getMonth(),
+                today.getDate(),
+              ).getTime();
+              return (
+                !Number.isNaN(started) &&
+                started >= startOfDay &&
+                (attempt.status === "failed" || attempt.status === "validation_failed")
+              );
+            }).length,
+        ),
+        Effect.catch(() => Effect.succeed(0)),
+      );
+      const needsAttention = yield* approvals.listPending().pipe(
+        Effect.map((requests) => requests.length),
+        Effect.catch(() => Effect.succeed(0)),
+      );
       return {
-        running: 0,
+        running,
         queued,
-        needsAttention: 0,
-        readyForReview: 0,
-        retrying: 0,
-        failedToday: 0,
+        needsAttention,
+        readyForReview,
+        retrying,
+        failedToday,
         orchestratorPaused: paused,
         activeWorkflowCount: activeWorkflows,
         providerHealth: {},
@@ -427,6 +497,8 @@ const makeOrchestrator = Effect.gen(function* () {
           ]),
         ),
         lastTrackerPollAt: state.lastPollAt,
+        // The dispatcher's live agent count is not exposed to the
+        // orchestrator; the running counter covers it.
         activeAgentCount: 0,
         generatedAt: now,
       };
@@ -452,11 +524,20 @@ const makeOrchestrator = Effect.gen(function* () {
         new Set(attempts.map((attempt) => String(attempt.workItemId))),
       );
       const workItemsById = new Map<string, WorkItem | null>();
+      const assessmentsById = new Map<string, RunSummary["overallAssessment"]>();
       for (const id of workItemIds) {
         const item = yield* workItems
           .getById(WorkItemId.make(id))
           .pipe(Effect.catch(() => Effect.succeed(null)));
         workItemsById.set(id, item);
+        if (item !== null) {
+          const evidence = yield* evidenceRepository
+            .getByWorkItem(item.id)
+            .pipe(Effect.catch(() => Effect.succeed(null)));
+          if (evidence !== null) {
+            assessmentsById.set(id, evidence.overallAssessment);
+          }
+        }
       }
       const summaries: RunSummary[] = [];
       for (const attempt of attempts) {
@@ -464,11 +545,13 @@ const makeOrchestrator = Effect.gen(function* () {
           Effect.catch(() => Effect.succeed([])),
           Effect.map((events) => events.at(-1)?.eventType ?? null),
         );
+        const assessment = assessmentsById.get(String(attempt.workItemId));
         summaries.push(
           buildRunSummary({
             attempt,
             workItem: workItemsById.get(String(attempt.workItemId)) ?? null,
             latestEvent: latest,
+            ...(assessment !== undefined ? { overallAssessment: assessment } : {}),
           }),
         );
       }
@@ -557,12 +640,35 @@ const makeOrchestrator = Effect.gen(function* () {
       if (item === null || item.lifecycle === "preparing" || item.lifecycle === "running") {
         return;
       }
+      // Global pause blocks new dispatches, including the retry sweep
+      // (plan 9.6, REVIEW P1: pause did not stop the sweep).
+      const paused = yield* orchestratorState
+        .isGlobalPaused()
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+      if (paused) {
+        return;
+      }
+      // Excluded items are never re-dispatched (REVIEW P1).
+      if (item.excluded === true) {
+        return;
+      }
       const workflow = yield* workflows
         .list()
         .pipe(Effect.map((all) => all.find((w) => w.id === item.workflowId)))
         .pipe(Effect.catch(() => Effect.succeed(undefined)));
       const config = workflow?.effectiveConfig;
       if (config === null || config === undefined || config.autonomy === "observe") {
+        return;
+      }
+      // Concurrency slots (plan 9.3): global cap counts in-flight runs.
+      const inFlight = yield* workItems
+        .listByLifecycle(["preparing", "running", "waiting_for_approval"])
+        .pipe(
+          Effect.map((items) => items.length),
+          Effect.catch(() => Effect.succeed(0)),
+        );
+      const globalCap = config.concurrencyGlobal ?? WORKFLOW_DEFAULTS.concurrencyGlobal;
+      if (globalCap > 0 && inFlight >= globalCap) {
         return;
       }
       const issue: NormalizedIssue = {
@@ -689,26 +795,30 @@ const makeOrchestrator = Effect.gen(function* () {
       ) {
         return false;
       }
-      // Host-enriched merge gates (plan 14, FR-095): failed CI, a
-      // changes-requested review, a non-mergeable PR, or unresolved review
-      // comments all block merge readiness. When the host provides no
-      // enrichment (ciStatus absent), the gate is skipped so a host without
-      // Phase 5 enrichment still caps honestly at ready_for_review — the
-      // absence of the fields is the signal, not a pass.
+      // Host-enriched merge gates (plan 14, FR-095; REVIEW P0 "approveMerge
+      // inverts FR-095"). Merge readiness requires POSITIVE host evidence:
+      // a real PR, a success CI status, a review decision that is present and
+      // not changes-requested, and a mergeable PR. Absent enrichment (hosts
+      // without Phase 5 enrichment) or a missing PR caps at ready_for_review
+      // — a run is never promoted on the absence of a signal.
       const pullRequest = evidence.pullRequest;
-      if (pullRequest !== null) {
-        if ((pullRequest.unresolvedComments ?? 0) > 0) {
-          return false;
-        }
-        if (pullRequest.ciStatus === "failure") {
-          return false;
-        }
-        if (pullRequest.reviewState === "changes_requested") {
-          return false;
-        }
-        if (pullRequest.mergeable === false) {
-          return false;
-        }
+      if (pullRequest === null) {
+        return false;
+      }
+      if (pullRequest.ciStatus !== "success") {
+        return false;
+      }
+      if (
+        pullRequest.reviewState === undefined ||
+        pullRequest.reviewState === "changes_requested"
+      ) {
+        return false;
+      }
+      if (pullRequest.mergeable !== true) {
+        return false;
+      }
+      if ((pullRequest.unresolvedComments ?? 0) > 0) {
+        return false;
       }
       const changed = yield* workItems
         .transition(id, "ready_to_merge", {})

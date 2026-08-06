@@ -183,7 +183,10 @@ export const makeGitHubProjectsAdapter = (options: {
         assigneeId: content.assignees?.nodes?.[0]?.login ?? null,
         labels: (content.labels?.nodes ?? []).map((label) => normalizeLabel(label.name)),
         blockedBy: [],
-        dispatchable: true,
+        // Dispatchable only while the underlying issue is not closed
+        // (REVIEW P2: this was hardcoded true, so a closed issue in an
+        // active status column was reported dispatchable).
+        dispatchable: content.state.toUpperCase() !== "CLOSED",
         createdAt: content.createdAt ?? null,
         updatedAt: content.updatedAt ?? null,
       });

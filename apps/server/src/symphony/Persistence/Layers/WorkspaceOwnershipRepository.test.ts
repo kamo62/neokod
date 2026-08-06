@@ -216,7 +216,7 @@ guardLayer("Workspace removal guard", (it) => {
     }),
   );
 
-  it.effect("force bypasses a live lease", () =>
+  it.effect("force does not bypass a live lease (git force != ownership override)", () =>
     Effect.gen(function* () {
       const repo = yield* WorkspaceOwnershipRepository;
       yield* repo.acquire({ workspacePath: "/ws/forced", owner: "symphony" });
@@ -228,7 +228,7 @@ guardLayer("Workspace removal guard", (it) => {
           force: true,
         }),
       );
-      expect(result._tag).toBe("Success");
+      expect(result._tag).toBe("Failure");
     }),
   );
 });

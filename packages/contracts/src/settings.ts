@@ -551,6 +551,17 @@ export const OpenCodeSettings = makeProviderSettingsSchema(
 );
 export type OpenCodeSettings = typeof OpenCodeSettings.Type;
 
+export const AnalyticsSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  posthogApiKey: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  posthogHost: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+});
+export type AnalyticsSettings = typeof AnalyticsSettings.Type;
+
+export const DEFAULT_ANALYTICS_SETTINGS: AnalyticsSettings = Schema.decodeSync(AnalyticsSettings)(
+  {},
+);
+
 export const ObservabilitySettings = Schema.Struct({
   otlpTracesUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   otlpMetricsUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
@@ -641,6 +652,7 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
   trackers: TrackersSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  analytics: AnalyticsSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 });
 export type ServerSettings = typeof ServerSettings.Type;
@@ -756,6 +768,13 @@ export const ServerSettingsPatch = Schema.Struct({
   newWorktreesStartFromOrigin: Schema.optionalKey(Schema.Boolean),
   addProjectBaseDirectory: Schema.optionalKey(TrimmedString),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),
+  analytics: Schema.optionalKey(
+    Schema.Struct({
+      enabled: Schema.optionalKey(Schema.Boolean),
+      posthogApiKey: Schema.optionalKey(TrimmedString),
+      posthogHost: Schema.optionalKey(TrimmedString),
+    }),
+  ),
   observability: Schema.optionalKey(
     Schema.Struct({
       otlpTracesUrl: Schema.optionalKey(TrimmedString),

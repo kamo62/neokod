@@ -38,6 +38,11 @@ const makeFakeClient = (options: {
         ),
       );
     }
+    if (/\/_apis\/projects\//.test(url.pathname)) {
+      return Effect.succeed(
+        HttpClientResponse.fromWeb(request, Response.json({ id: "proj", name: "proj" })),
+      );
+    }
     const byId = /\/_apis\/wit\/workitems\/(\d+)/.exec(url.pathname);
     if (byId !== null) {
       const result = options.byId?.(byId[1] ?? "");

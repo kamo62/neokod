@@ -63,7 +63,6 @@ import {
   SymphonyResumeAutonomousInput,
   SymphonySetLocalPriorityInput,
   SymphonyTakeOverInput,
-  WorkItemId,
 } from "@neokod/contracts";
 import { HttpRouter, HttpServerRespondable } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
@@ -350,6 +349,10 @@ const withApprovalService = <A, E>(
 const approvalError = (message: string): SymphonyError =>
   new SymphonyError({ code: "approval_request_not_found", message });
 
+/** Actions must not report success when the Symphony layer is absent. */
+const orchestratorUnavailable = (): SymphonyError =>
+  new SymphonyError({ code: "symphony_unavailable", message: "symphony layer is not mounted" });
+
 const withHandoffService = <A, E>(
   run: (handoff: HandoffService.HandoffService["Service"]) => Effect.Effect<A, E>,
   fallback: Effect.Effect<A, E>,
@@ -497,7 +500,7 @@ export const makeSymphonyRpcHandlers = () => ({
       withOrchestrator(
         (orchestrator) =>
           orchestrator.dispatchWorkItem(input.workItemId).pipe(Effect.as({ ok: true })),
-        Effect.succeed({ ok: true }),
+        Effect.fail(orchestratorUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
     ),
@@ -506,7 +509,7 @@ export const makeSymphonyRpcHandlers = () => ({
       SYMPHONY_WS_METHODS.cancelRun,
       withOrchestrator(
         (orchestrator) => orchestrator.cancelRun(input.runAttemptId).pipe(Effect.as({ ok: true })),
-        Effect.succeed({ ok: true }),
+        Effect.fail(orchestratorUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
     ),
@@ -516,7 +519,7 @@ export const makeSymphonyRpcHandlers = () => ({
       withOrchestrator(
         (orchestrator) =>
           orchestrator.requestChanges(input.workItemId, input.reason).pipe(Effect.as({ ok: true })),
-        Effect.succeed({ ok: true }),
+        Effect.fail(orchestratorUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
     ),
@@ -525,7 +528,7 @@ export const makeSymphonyRpcHandlers = () => ({
       SYMPHONY_WS_METHODS.approveMerge,
       withOrchestrator(
         (orchestrator) => orchestrator.approveMerge(input.workItemId).pipe(Effect.as({ ok: true })),
-        Effect.succeed({ ok: true }),
+        Effect.fail(orchestratorUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
     ),
@@ -537,12 +540,9 @@ export const makeSymphonyRpcHandlers = () => ({
           handoff
             .takeOver({ runAttemptId: input.runAttemptId })
             .pipe(Effect.mapError((cause) => handoffError(cause.message))),
-        Effect.succeed({
-          threadId: "",
-          workspacePath: "",
-          branch: "",
-          workItemId: WorkItemId.make("none"),
-        }),
+        // The Symphony layer is not mounted: report unavailable rather than
+        // a fabricated success (REVIEW P2).
+        Effect.fail(handoffError("symphony layer is not mounted")),
       ),
       { "rpc.aggregate": "symphony" },
     ),
@@ -555,7 +555,7 @@ export const makeSymphonyRpcHandlers = () => ({
             Effect.mapError((cause) => handoffError(cause.message)),
             Effect.as({ ok: true }),
           ),
-        Effect.succeed({ ok: true }),
+        Effect.fail(handoffError("symphony layer is not mounted")),
       ),
       { "rpc.aggregate": "symphony" },
     ),
@@ -583,7 +583,7 @@ export const makeSymphonyRpcHandlers = () => ({
               Effect.map((workItemId) => ({ workItemId })),
               Effect.mapError((cause) => handoffError(cause.message)),
             ),
-        Effect.succeed({ workItemId: WorkItemId.make("none") }),
+        Effect.fail(handoffError("symphony layer is not mounted")),
       ),
       { "rpc.aggregate": "symphony" },
     ),
@@ -1437,6 +1437,7 @@ const makeWsRpcLayer = (
               Effect.flatMap((settings) =>
                 testManagedClientEvidenceConnection(
                   settings.providers.githubCopilot.managedClientEvidence,
+                  settings.analytics,
                 ),
               ),
             ),

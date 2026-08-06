@@ -175,13 +175,17 @@ const makeRepository = Effect.gen(function* () {
 
   const release: WorkspaceOwnershipRepositoryShape["release"] = (input) =>
     Effect.gen(function* () {
-      yield* sql`
+      // RETURNING makes the fence observable: a stale generation (reclaimed
+      // or transferred out from under the caller) deletes nothing and returns
+      // false (REVIEW P1: release returned true unconditionally).
+      const rows = yield* sql<Schema.Schema.Type<typeof OwnershipRowSchema>>`
         DELETE FROM symphony_workspace_ownership
         WHERE workspace_path = ${input.workspacePath}
           AND owner = ${input.owner}
           AND generation = ${input.generation}
+        RETURNING workspace_path
       `.pipe(Effect.mapError(toSqlError("WorkspaceOwnershipRepository.release")));
-      return true;
+      return rows.length > 0;
     });
 
   const getByWorkspacePath: WorkspaceOwnershipRepositoryShape["getByWorkspacePath"] = (

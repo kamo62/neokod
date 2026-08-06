@@ -46,11 +46,23 @@ export interface WorkItemRepositoryShape {
    * Transition a work item's lifecycle under the owner fence. Side-effect-free
    * state writes pass here; side-effecting transitions must check the returned
    * rowcount before running any external effect.
+   *
+   * `from` restricts the source lifecycle (plan section 19 suite 6: lifecycle
+   * legality). When `from` is given the write only matches rows currently in
+   * one of those lifecycles; a terminal item can never be moved back by an
+   * unfenced caller. `overrideFence` bypasses the owner fence for deliberate
+   * cross-claim transitions (e.g. takeOver parking a run) — use only where
+   * the caller is a trusted authority, never for routine state writes.
    */
   readonly transition: (
     id: WorkItemId,
     lifecycle: WorkLifecycle,
-    options?: { readonly ownerToken?: string; readonly generation?: number },
+    options?: {
+      readonly ownerToken?: string;
+      readonly generation?: number;
+      readonly from?: ReadonlyArray<WorkLifecycle>;
+      readonly overrideFence?: boolean;
+    },
   ) => Effect.Effect<boolean, SymphonyPersistenceError>;
 
   /**

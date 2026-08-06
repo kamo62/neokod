@@ -232,6 +232,44 @@ it.effect("assesses insufficient when the handoff file is missing", () =>
   }),
 );
 
+it.effect("assesses insufficient when the handoff file exists but is empty", () =>
+  Effect.gen(function* () {
+    // `touch SYMPHONY_EVIDENCE.md` must not satisfy the evidence gate
+    // (plan 10: missing OR incomplete => insufficient; REVIEW P1).
+    const bundle = yield* makeEvidenceService(makeDeps()).assemble({
+      workItem: makeWorkItem(),
+      issue: makeIssue(),
+      runAttempt: makeRunAttempt(),
+      config: makeConfig(),
+      workspacePath: "/ws/key-1",
+      baseBranch: "main",
+      branch: "symphony/issue-1",
+      validationResults: [{ command: "npm test", status: "passed", exitCode: 0 }],
+      evidenceFileContent: "",
+    });
+    expect(bundle.overallAssessment).toBe("insufficient");
+    expect(bundle.implementationSummary).toBeUndefined();
+  }),
+);
+
+it.effect("a skipped required check degrades the assessment to failed", () =>
+  Effect.gen(function* () {
+    // A `skipped` required validation is not a pass (plan section 19 suite 7).
+    const bundle = yield* makeEvidenceService(makeDeps()).assemble({
+      workItem: makeWorkItem(),
+      issue: makeIssue(),
+      runAttempt: makeRunAttempt(),
+      config: makeConfig(),
+      workspacePath: "/ws/key-1",
+      baseBranch: "main",
+      branch: "symphony/issue-1",
+      validationResults: [{ command: "npm test", status: "skipped" }],
+      evidenceFileContent: EVIDENCE_FILE,
+    });
+    expect(bundle.overallAssessment).toBe("failed");
+  }),
+);
+
 it.effect("assesses ready_for_review when clean", () =>
   Effect.gen(function* () {
     const bundle = yield* makeEvidenceService(makeDeps()).assemble({

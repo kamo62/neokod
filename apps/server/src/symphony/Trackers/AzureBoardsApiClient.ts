@@ -155,26 +155,34 @@ export const makeAzureBoardsApiClient = (input: {
       if (ids.length === 0) {
         return [];
       }
-      const url = `${baseUrl}/_apis/wit/workitems?ids=${ids.join(",")}&fields=System.Id,System.Title,System.Description,System.State,System.Tags,System.AssignedTo,System.CreatedDate,System.ChangedDate,System.WorkItemType&api-version=${apiVersion}`;
-      const body = yield* execute(
-        "AzureBoards.fetchWorkItemsByIds",
-        HttpClientRequest.get(url),
-        (response) =>
-          Effect.gen(function* () {
-            const json = yield* response.json.pipe(
-              Effect.mapError((cause) =>
-                trackerResponseError(cause instanceof Error ? cause.message : String(cause)),
-              ),
-            );
-            const decoded = yield* decodeWorkItemList(json).pipe(
-              Effect.mapError((cause) =>
-                trackerResponseError(cause instanceof Error ? cause.message : String(cause)),
-              ),
-            );
-            return decoded.value;
-          }),
-      );
-      return body as ReadonlyArray<AzureBoardsWorkItem>;
+      // The Azure DevOps REST endpoint rejects more than 200 ids per request
+      // (HTTP 400). Chunk so a real board over 200 active items does not fail
+      // the whole poll (REVIEW P1).
+      const all: AzureBoardsWorkItem[] = [];
+      for (let offset = 0; offset < ids.length; offset += 200) {
+        const chunk = ids.slice(offset, offset + 200);
+        const url = `${baseUrl}/_apis/wit/workitems?ids=${chunk.join(",")}&fields=System.Id,System.Title,System.Description,System.State,System.Tags,System.AssignedTo,System.CreatedDate,System.ChangedDate,System.WorkItemType&api-version=${apiVersion}`;
+        const body = yield* execute(
+          "AzureBoards.fetchWorkItemsByIds",
+          HttpClientRequest.get(url),
+          (response) =>
+            Effect.gen(function* () {
+              const json = yield* response.json.pipe(
+                Effect.mapError((cause) =>
+                  trackerResponseError(cause instanceof Error ? cause.message : String(cause)),
+                ),
+              );
+              const decoded = yield* decodeWorkItemList(json).pipe(
+                Effect.mapError((cause) =>
+                  trackerResponseError(cause instanceof Error ? cause.message : String(cause)),
+                ),
+              );
+              return decoded.value;
+            }),
+        );
+        all.push(...(body as ReadonlyArray<AzureBoardsWorkItem>));
+      }
+      return all;
     });
 
   const fetchWorkItem: AzureBoardsApiClientShape["fetchWorkItem"] = (id) =>
@@ -203,7 +211,10 @@ export const makeAzureBoardsApiClient = (input: {
 
   const validateCredentials: AzureBoardsApiClientShape["validateCredentials"] = () =>
     Effect.gen(function* () {
-      const url = `${baseUrl}/_apis/wit/workitems?ids=1&api-version=${apiVersion}`;
+      // Probe the project resource, which exists for any valid credential;
+      // probing work item id 1 reported valid credentials as invalid on real
+      // boards (REVIEW P2).
+      const url = `${baseUrl}/_apis/projects/${credentials.project}?api-version=${apiVersion}`;
       yield* execute(
         "AzureBoards.validateCredentials",
         HttpClientRequest.get(url),

@@ -17,6 +17,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { deriveWorkspaceKey } from "../Domain/Keys.ts";
 import { nowIso } from "../Domain/Time.ts";
 import type { SymphonyPersistenceError } from "../Persistence/Errors.ts";
+import { ServerConfig } from "../../config.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
 import { WorkItemRepository } from "../Persistence/Services/WorkItemRepository.ts";
 import { WorkItemRepositoryLive } from "../Persistence/Layers/WorkItemRepository.ts";
@@ -175,6 +176,11 @@ const layer = (factory: Layer.Layer<AgentRuntimeFactory>) =>
       Layer.provideMerge(fakeWorkspaceManager),
       Layer.provideMerge(fakeFinalizer),
       Layer.provideMerge(factory),
+      Layer.provideMerge(
+        Layer.succeed(ServerConfig, {
+          symphonyLogsDir: "/logs/symphony",
+        } as ServerConfig["Service"]),
+      ),
       Layer.provideMerge(SqlitePersistenceMemory),
       Layer.provideMerge(NodeServices.layer),
     ),

@@ -718,6 +718,9 @@ export const RunSummarySchema = Schema.Struct({
   latestEvent: Schema.optional(TrimmedNonEmptyString),
   workspacePath: Schema.optional(Schema.String),
   lifecycle: WorkLifecycleSchema,
+  /** Evidence assessment for the run (REVIEW P1: the reviews list rendered a
+   * fabricated green badge because the summary did not carry it). */
+  overallAssessment: Schema.optional(OverallAssessmentSchema),
 });
 export type RunSummary = typeof RunSummarySchema.Type;
 

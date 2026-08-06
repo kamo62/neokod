@@ -123,12 +123,33 @@ export const makeHandoffService = Effect.gen(function* () {
     readonly callerThreadId?: string;
   }): Effect.Effect<string, HandoffError> =>
     Effect.gen(function* () {
-      // Reuse an existing thread when the caller bound one.
-      if (input.callerThreadId !== undefined && input.callerThreadId.length > 0) {
-        return input.callerThreadId;
-      }
       const engine = Option.getOrNull(maybeEngine);
       const projection = Option.getOrNull(maybeProjection);
+      // Reuse an existing thread when the caller bound one — but only when we
+      // can verify it (REVIEW P1: an unvalidated caller threadId produced a
+      // phantom `work` owner that held the workspace forever). When the
+      // projection is unavailable the caller thread cannot be verified, so it
+      // is ignored rather than trusted.
+      if (input.callerThreadId !== undefined && input.callerThreadId.length > 0) {
+        if (projection === null) {
+          return yield* Effect.fail(
+            new HandoffError(
+              "caller-supplied threadId cannot be verified without the projection layer",
+            ),
+          );
+        }
+        const shell = yield* projection
+          .getThreadShellById(ThreadId.make(input.callerThreadId))
+          .pipe(Effect.catch(() => Effect.succeed(Option.none())));
+        if (Option.isSome(shell) && shell.value.worktreePath === input.workspacePath) {
+          return input.callerThreadId;
+        }
+        return yield* Effect.fail(
+          new HandoffError(
+            `caller-supplied thread ${input.callerThreadId} does not exist or is not bound to ${input.workspacePath}`,
+          ),
+        );
+      }
       if (engine === null || projection === null) {
         // No orchestration stack: generate a placeholder thread id; the
         // ownership record still carries it for resume.
@@ -233,7 +254,34 @@ export const makeHandoffService = Effect.gen(function* () {
           : {}),
       });
 
-      // 3. Transfer workspace ownership to work. Fenced by generation when a
+      // 3. Park the work item BEFORE ownership moves (REVIEW P0: the park was
+      //    last, unfenced and swallowed, so the still-running dispatch fiber
+      //    could overwrite `blocked` and re-dispatch into a Work-owned
+      //    workspace). Source-restricted to non-terminal lifecycles (cancelRun
+      //    releases the claim to queued first), and the boolean result is
+      //    checked — a terminal item can never be parked back into the pool.
+      const parked = yield* workItems
+        .transition(attempt.workItemId, "blocked", {
+          from: [
+            "draft",
+            "eligible",
+            "queued",
+            "preparing",
+            "running",
+            "waiting_for_approval",
+            "retry_scheduled",
+          ],
+        })
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+      if (!parked) {
+        return yield* Effect.fail(
+          new HandoffError(
+            "work item is in a terminal lifecycle; takeover aborted before ownership transfer",
+          ),
+        );
+      }
+
+      // 4. Transfer workspace ownership to work. Fenced by generation when a
       //    record exists; otherwise acquire (only when no live other owner).
       const held = yield* ownership
         .getByWorkspacePath(attempt.workspacePath)
@@ -267,11 +315,6 @@ export const makeHandoffService = Effect.gen(function* () {
         return yield* Effect.fail(new HandoffError("workspace is held by another owner"));
       }
 
-      // 4. Park the work item so the orchestrator does not re-dispatch it
-      //    while Work mode owns the workspace.
-      yield* workItems
-        .transition(attempt.workItemId, "blocked", {})
-        .pipe(Effect.catch(() => Effect.void));
       yield* appendEvent(runAttemptId, "handed_over_to_work", {
         threadId,
         workspacePath: attempt.workspacePath,
@@ -296,18 +339,25 @@ export const makeHandoffService = Effect.gen(function* () {
 
       // Resolve the workspace from the ownership record (source of truth);
       // a work item without any recorded workspace cannot resume a run.
+      // Prefer the record matching the item's stored workspacePath so a
+      // workspace key change across attempts does not transfer the wrong
+      // workspace (REVIEW P2: records[0] depended on row order).
       const records = yield* ownershipListByWorkItem(workItem.id).pipe(
         Effect.catch(() => Effect.succeed([])),
       );
-      const held = records[0] ?? null;
+      const held =
+        records.find((record) => record.workspacePath === workItem.workspacePath) ??
+        records[0] ??
+        null;
       if (held === null) {
         return yield* Effect.fail(
           new HandoffError("no workspace ownership record for the work item"),
         );
       }
 
-      // Transfer ownership back to symphony. The orchestrator's workspace
-      // manager reuses the existing worktree on re-dispatch.
+      // Transfer ownership back to symphony, preserving the Work thread
+      // binding so a later takeOver reuses it instead of creating a duplicate
+      // (REVIEW P2: the transfer omitted threadId and wiped the binding).
       if (held.owner === "work") {
         const transferred = yield* ownership
           .transfer({
@@ -315,6 +365,7 @@ export const makeHandoffService = Effect.gen(function* () {
             owner: "symphony",
             workItemId: workItem.id,
             generation: held.generation,
+            ...(held.threadId !== null ? { threadId: held.threadId } : {}),
           })
           .pipe(Effect.mapError((cause) => new HandoffError(cause.message)));
         if (transferred === null) {
@@ -324,7 +375,24 @@ export const makeHandoffService = Effect.gen(function* () {
         }
       }
 
-      yield* workItems.transition(workItem.id, "queued", {}).pipe(Effect.catch(() => Effect.void));
+      const requeued = yield* workItems
+        .transition(workItem.id, "queued", {
+          from: [
+            "blocked",
+            "ready_for_review",
+            "retry_scheduled",
+            "waiting_for_approval",
+            "running",
+          ],
+        })
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+      if (!requeued) {
+        return yield* Effect.fail(
+          new HandoffError(
+            "work item is not in a resumable lifecycle; ownership stayed with symphony but the item was not re-queued",
+          ),
+        );
+      }
       const latest = yield* runAttempts
         .latestForWorkItem(workItem.id)
         .pipe(Effect.catch(() => Effect.succeed(null)));
@@ -337,6 +405,19 @@ export const makeHandoffService = Effect.gen(function* () {
 
   const delegateFromThread: HandoffService["Service"]["delegateFromThread"] = (input) =>
     Effect.gen(function* () {
+      // Validate the source thread exists when the projection is available;
+      // an unverifiable thread is rejected rather than trusted (REVIEW P2:
+      // threadId was accepted and then ignored).
+      const projection = Option.getOrNull(maybeProjection);
+      if (projection !== null) {
+        const shell = yield* projection
+          .getThreadShellById(ThreadId.make(input.threadId))
+          .pipe(Effect.catch(() => Effect.succeed(Option.none())));
+        if (Option.isNone(shell)) {
+          return yield* Effect.fail(new HandoffError(`thread ${input.threadId} does not exist`));
+        }
+      }
+
       const id = yield* crypto.randomUUIDv4.pipe(
         Effect.map((value) => WorkItemIdBrand.make(`wi-${value}`)),
         Effect.mapError((cause) => new HandoffError(cause.message)),
@@ -352,6 +433,12 @@ export const makeHandoffService = Effect.gen(function* () {
         ...(workflow !== null ? { workflowId: workflow.id } : {}),
         objective: input.objective,
         ...(input.summary !== undefined ? { description: input.summary } : {}),
+        ...(input.relevantFiles !== undefined && input.relevantFiles.length > 0
+          ? {
+              description:
+                `${input.summary ?? ""}\n\nRelevant files:\n${input.relevantFiles.map((file) => `- ${file}`).join("\n")}`.trim(),
+            }
+          : {}),
         acceptanceCriteria: input.acceptanceCriteria ?? [],
         source: { kind: "manual" },
         trackerIssueId: `delegated-${id}`,
@@ -371,7 +458,12 @@ export const makeHandoffService = Effect.gen(function* () {
   const ownershipListByWorkItem = (
     workItemId: WorkItemId,
   ): Effect.Effect<
-    ReadonlyArray<{ workspacePath: string; owner: "symphony" | "work"; generation: number }>,
+    ReadonlyArray<{
+      workspacePath: string;
+      owner: "symphony" | "work";
+      generation: number;
+      threadId: string | null;
+    }>,
     never
   > =>
     // The ownership table is keyed by workspace path; resolve through the
@@ -389,6 +481,7 @@ export const makeHandoffService = Effect.gen(function* () {
         workspacePath: string;
         owner: "symphony" | "work";
         generation: number;
+        threadId: string | null;
       }> = [];
       for (const workspacePath of paths) {
         const record = yield* ownership
@@ -399,6 +492,7 @@ export const makeHandoffService = Effect.gen(function* () {
             workspacePath: record.workspacePath,
             owner: record.owner,
             generation: record.generation,
+            threadId: record.threadId,
           });
         }
       }

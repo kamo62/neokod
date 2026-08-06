@@ -146,6 +146,7 @@ const TransitionRequestSchema = Schema.Struct({
   lifecycle: WorkLifecycleSchema,
   ownerToken: Schema.optional(Schema.String),
   generation: Schema.optional(Schema.Int),
+  from: Schema.optional(Schema.Array(WorkLifecycleSchema)),
   now: Schema.String,
 });
 
@@ -256,12 +257,19 @@ const makeRepository = Effect.gen(function* () {
         request.ownerToken === undefined || request.generation === undefined
           ? sql``
           : sql`AND owner_token = ${request.ownerToken} AND generation = ${request.generation}`;
+      const fromRestriction =
+        request.from === undefined || request.from.length === 0
+          ? sql``
+          : sql`AND lifecycle IN (${sql.literal(
+              request.from.map((value) => `'${String(value).replaceAll("'", "''")}'`).join(", "),
+            )})`;
       return sql`
         UPDATE symphony_work_items SET
           lifecycle = ${request.lifecycle},
           updated_at = ${request.now}
         WHERE id = ${request.id}
           ${fence}
+          ${fromRestriction}
         RETURNING ${cols}
       `;
     },
@@ -371,6 +379,7 @@ const makeRepository = Effect.gen(function* () {
         lifecycle,
         ownerToken: options?.ownerToken,
         generation: options?.generation,
+        from: options?.from,
         now,
       }).pipe(Effect.mapError(toBusyOrSqlError("WorkItemRepository.transition")));
       return Option.isSome(row);

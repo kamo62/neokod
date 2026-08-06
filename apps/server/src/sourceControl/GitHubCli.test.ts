@@ -333,11 +333,24 @@ describe("GitHubCli.layer", () => {
                 { status: "COMPLETED", conclusion: "SUCCESS" },
               ],
               reviews: [{ state: "CHANGES_REQUESTED" }],
-              comments: [
-                { isResolved: false, line: 12 },
-                { isResolved: false, line: null },
-                { isResolved: true, line: 3 },
-              ],
+            }),
+          ),
+        ),
+      );
+      // GraphQL reviewThreads follow-up: 1 unresolved thread.
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            JSON.stringify({
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      nodes: [{ isResolved: false }, { isResolved: true }],
+                    },
+                  },
+                },
+              },
             }),
           ),
         ),
@@ -369,7 +382,15 @@ describe("GitHubCli.layer", () => {
                 { status: "COMPLETED", conclusion: "SUCCESS" },
               ],
               reviews: [{ state: "APPROVED" }],
-              comments: [],
+            }),
+          ),
+        ),
+      );
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            JSON.stringify({
+              data: { repository: { pullRequest: { reviewThreads: { nodes: [] } } } },
             }),
           ),
         ),
@@ -397,7 +418,15 @@ describe("GitHubCli.layer", () => {
               mergeable: "UNKNOWN",
               statusCheckRollup: [],
               reviews: [],
-              comments: [],
+            }),
+          ),
+        ),
+      );
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            JSON.stringify({
+              data: { repository: { pullRequest: { reviewThreads: { nodes: [] } } } },
             }),
           ),
         ),

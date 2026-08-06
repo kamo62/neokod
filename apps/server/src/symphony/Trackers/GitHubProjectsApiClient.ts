@@ -92,7 +92,7 @@ export interface GitHubProjectsApiClientShape {
 const ITEM_FRAGMENT = `
   fragment ItemFields on ProjectV2Item {
     id
-    fieldValues(first: 20) {
+    fieldValues(first: 100) {
       nodes {
         __typename
         ... on ProjectV2ItemFieldSingleSelectValue {
@@ -109,8 +109,8 @@ const ITEM_FRAGMENT = `
         body
         url
         state
-        labels(first: 20) { nodes { name } }
-        assignees(first: 20) { nodes { login } }
+        labels(first: 100) { nodes { name } }
+        assignees(first: 100) { nodes { login } }
         createdAt
         updatedAt
       }

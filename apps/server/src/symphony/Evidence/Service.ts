@@ -85,12 +85,22 @@ export const makeEvidenceService = (deps: EvidenceServiceDeps): EvidenceService[
         Effect.orElseSucceed(() => [] as CommitEvidence[]),
       );
 
+      // A `skipped` required check is not a pass: it must degrade the
+      // assessment like an unavailable check (plan section 19 suite 7,
+      // REVIEW P1). And an empty handoff file is incomplete evidence, not
+      // sufficient evidence (REVIEW P1: `touch SYMPHONY_EVIDENCE.md` moved
+      // the assessment to ready_for_review).
       const hasFailedValidation = input.validationResults.some(
-        (result) => result.status === "failed" || result.status === "unavailable",
+        (result) =>
+          result.status === "failed" ||
+          result.status === "unavailable" ||
+          result.status === "skipped",
       );
+      const hasSubstantiveEvidence =
+        parsed !== null && parsed.implementationSummary.trim().length > 0;
       const overallAssessment = assess({
         hasFailedValidation,
-        hasEvidenceFile: parsed !== null,
+        hasSubstantiveEvidence,
         hasRisks: (parsed?.risks.length ?? 0) > 0,
       });
 
@@ -186,13 +196,13 @@ const computeDurationMs = (runAttempt: RunAttempt): number | undefined => {
 
 const assess = (input: {
   readonly hasFailedValidation: boolean;
-  readonly hasEvidenceFile: boolean;
+  readonly hasSubstantiveEvidence: boolean;
   readonly hasRisks: boolean;
 }): OverallAssessment => {
   if (input.hasFailedValidation) {
     return "failed";
   }
-  if (!input.hasEvidenceFile) {
+  if (!input.hasSubstantiveEvidence) {
     return "insufficient";
   }
   return input.hasRisks ? "ready_with_warnings" : "ready_for_review";

@@ -12,6 +12,7 @@ import { RunAttemptRepository } from "../Persistence/Services/RunAttemptReposito
 import { RunEventRepository } from "../Persistence/Services/RunEventRepository.ts";
 import { WorkflowRepository } from "../Persistence/Services/WorkflowRepository.ts";
 import { RunDispatcher } from "../Runner/Dispatcher.ts";
+import type { WorkspaceOwnershipRepositoryShape } from "../Persistence/Services/WorkspaceOwnershipRepository.ts";
 import { isRetryableCategory } from "./Retry.ts";
 
 /**
@@ -40,6 +41,7 @@ export interface RecoveryDeps {
   readonly runEvents: RunEventRepository["Service"];
   readonly workflows: WorkflowRepository["Service"];
   readonly dispatcher: RunDispatcher["Service"];
+  readonly ownership?: WorkspaceOwnershipRepositoryShape;
 }
 
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
@@ -122,6 +124,24 @@ const recoverItem = (
     yield* deps.runEvents
       .append(attempt.id, "interrupted", { workItemId: String(item.id) })
       .pipe(Effect.catch(() => Effect.void));
+
+    // Release any Symphony lease on the workspace so a crash during
+    // takeOver cannot leave the workspace permanently blocked
+    // (plan 9.7: "workspace leases whose owner is gone are released").
+    if (deps.ownership !== undefined) {
+      const held = yield* deps.ownership
+        .getByWorkspacePath(attempt.workspacePath)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (held !== null && held.owner === "symphony") {
+        yield* deps.ownership
+          .release({
+            workspacePath: attempt.workspacePath,
+            owner: "symphony",
+            generation: held.generation,
+          })
+          .pipe(Effect.catch(() => Effect.void));
+      }
+    }
 
     const retryable =
       isRetryableCategory("interrupted") && attempt.attemptNumber < maxAttemptsFor(workflows, item);

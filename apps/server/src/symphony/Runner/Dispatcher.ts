@@ -8,11 +8,14 @@ import { RunAttemptId } from "@neokod/contracts";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
+import { ServerConfig } from "../../config.ts";
 import { nowIso } from "../Domain/Time.ts";
 import { RunEventRepository } from "../Persistence/Services/RunEventRepository.ts";
 import { RunAttemptRepository } from "../Persistence/Services/RunAttemptRepository.ts";
@@ -95,9 +98,15 @@ export const makeRunDispatcher = Effect.gen(function* () {
   const liveRequests = yield* LiveRequests;
   const finalizer = yield* ExecutionFinalizer;
 
-  // Live agents per run attempt so cancellation can interrupt the active turn
-  // and settle its outstanding approval/input requests (plan 8.3.1).
-  const activeAgents = yield* Ref.make<Map<string, AgentRuntimeService>>(new Map());
+  // Live agents per run attempt plus the dispatch fiber, so cancellation can
+  // interrupt the active turn AND the fiber driving it (plan 8.3.1; REVIEW P0
+  // "cancelRun never stops the dispatch fiber").
+  const activeAgents = yield* Ref.make<
+    Map<
+      string,
+      { readonly agent: AgentRuntimeService; readonly fiber: Fiber.Fiber<unknown, unknown> }
+    >
+  >(new Map());
 
   // Retry cap from the workflow (plan 9.5): after maxAttempts failures the
   // item is released to queued instead of being re-scheduled.
@@ -139,6 +148,25 @@ export const makeRunDispatcher = Effect.gen(function* () {
     "retries_exhausted",
   ]);
 
+  /**
+   * The retry decision must honor the recorded terminal status, not just the
+   * error category (REVIEW P0: a user-cancelled run was retried because
+   * markFailed used the hard-coded "agent" category). Plan 9.5: user
+   * cancellation and tracker cancellation are never retryable.
+   */
+  const retryableFromAttempt = (
+    attempt: { readonly status: string; readonly attemptNumber: number } | null,
+    errorCategory: string,
+  ): boolean => {
+    if (attempt === null) {
+      return isRetryableCategory(errorCategory) && 1 < maxAttempts;
+    }
+    if (attempt.status === "user_cancelled" || attempt.status === "tracker_cancelled") {
+      return false;
+    }
+    return isRetryableCategory(errorCategory) && attempt.attemptNumber < maxAttempts;
+  };
+
   // Mark the attempt failed unless cancellation already recorded a terminal
   // status (cancelRun wins over the interrupted turn path), then release the
   // claim: to `retry_scheduled` when the failure is retryable and attempts
@@ -165,7 +193,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
           })
           .pipe(Effect.catch(() => Effect.void));
       }
-      const retryable = isRetryableCategory(error.category) && attemptNumber < maxAttempts;
+      const retryable = retryableFromAttempt(attempt, error.category);
       if (retryable) {
         yield* workItems
           .transition(workItemId, "retry_scheduled", { ownerToken, generation })
@@ -236,7 +264,13 @@ export const makeRunDispatcher = Effect.gen(function* () {
       const policy = resolveRunnerPolicy(config);
       // The agent runtime is per-config; build it in the dispatch scope.
       const agent = yield* factory.make(config);
-      yield* Ref.update(activeAgents, (map) => new Map(map).set(String(runAttemptId), agent));
+      // PR body files land under the server's symphony logs dir when
+      // available; otherwise the system temp dir (REVIEW P0: the body file
+      // was never written and the path resolved to the filesystem root).
+      const maybeConfig = yield* Effect.serviceOption(ServerConfig);
+      const bodyFileDir = Option.isSome(maybeConfig)
+        ? `${maybeConfig.value.symphonyLogsDir}/pr-bodies`
+        : require("node:os").tmpdir();
 
       const runDispatch = Effect.gen(function* () {
         // 4. Prepare mode: produce a plan only; sandbox is read-only so no code
@@ -299,6 +333,16 @@ export const makeRunDispatcher = Effect.gen(function* () {
           .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
 
         if (result.completed) {
+          // If cancellation (or any terminal write) landed while the turn was
+          // in flight, the run is over: do not validate, open a PR or record
+          // success (REVIEW P0). The release below keeps the item queued.
+          const terminalNow = yield* runAttempts
+            .getById(runAttemptId)
+            .pipe(Effect.catch(() => Effect.succeed(null)));
+          if (terminalNow !== null && TERMINAL_STATUSES.has(terminalNow.status)) {
+            yield* releaseClaim(workItemId, ownerToken, claimed.generation);
+            return runAttemptId;
+          }
           // Execute/deliver exit (plan 10, WS-L): validate, assemble
           // evidence, create the PR, and land the item in a stopping state.
           yield* finalizer
@@ -312,6 +356,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
               baseBranch: workspace.baseBranch,
               ownerToken,
               generation: claimed.generation,
+              bodyFileDir,
             })
             .pipe(Effect.catch(() => Effect.void));
         } else {
@@ -324,59 +369,68 @@ export const makeRunDispatcher = Effect.gen(function* () {
         return runAttemptId;
       });
 
-      // Unregister the agent when the dispatch finishes or is interrupted, then
-      // settle any outstanding live requests so no Deferred is left dangling.
-      // Interrupted dispatch paths (cancellation, fatal interruption) never
-      // reach markFailed: interruption bypasses typed errors. Release the claim
-      // here instead, recording `interrupted` when no terminal status already
-      // stands (cancelRun's `user_cancelled` wins over this path). The release
-      // is lifecycle-guarded, so a finished item is never downgraded.
-      return yield* runDispatch.pipe(
-        Effect.ensuring(
-          Effect.gen(function* () {
-            yield* Ref.update(activeAgents, (map) => {
-              const next = new Map(map);
-              next.delete(String(runAttemptId));
-              return next;
-            });
-            yield* liveRequests
-              .settleRun(runAttemptId, "run finished")
-              .pipe(Effect.catch(() => Effect.void));
-            const attempt = yield* runAttempts
-              .getById(runAttemptId)
-              .pipe(Effect.catch(() => Effect.succeed(null)));
-            const alreadyTerminal = attempt !== null && TERMINAL_STATUSES.has(attempt.status);
-            if (!alreadyTerminal) {
-              yield* runAttempts
-                .updateStatus(runAttemptId, "interrupted", {
-                  finishedAt: yield* nowIso,
-                  error: {
-                    category: "interrupted",
-                    message: "run ended without a terminal status",
-                  },
-                })
+      // The dispatch runs as a tracked fiber so cancelRun can interrupt it
+      // (REVIEW P0: cancelRun only interrupted the turn, so a cancelled run
+      // still validated, opened a PR and overwrote its own status). The
+      // ensuring block unregisters the agent, settles live requests and
+      // releases the claim when the fiber ends (completion or interruption).
+      const fiber = yield* Effect.forkScoped(
+        runDispatch.pipe(
+          Effect.ensuring(
+            Effect.gen(function* () {
+              yield* Ref.update(activeAgents, (map) => {
+                const next = new Map(map);
+                next.delete(String(runAttemptId));
+                return next;
+              });
+              yield* liveRequests
+                .settleRun(runAttemptId, "run finished")
                 .pipe(Effect.catch(() => Effect.void));
-              yield* appendEvent(runAttemptId, "interrupted", {});
-            }
-            yield* workItems
-              .releaseClaim(workItemId, "queued")
-              .pipe(Effect.catch(() => Effect.void));
-          }),
+              const attempt = yield* runAttempts
+                .getById(runAttemptId)
+                .pipe(Effect.catch(() => Effect.succeed(null)));
+              const alreadyTerminal = attempt !== null && TERMINAL_STATUSES.has(attempt.status);
+              if (!alreadyTerminal) {
+                yield* runAttempts
+                  .updateStatus(runAttemptId, "interrupted", {
+                    finishedAt: yield* nowIso,
+                    error: {
+                      category: "interrupted",
+                      message: "run ended without a terminal status",
+                    },
+                  })
+                  .pipe(Effect.catch(() => Effect.void));
+                yield* appendEvent(runAttemptId, "interrupted", {});
+              }
+              yield* workItems
+                .releaseClaim(workItemId, "queued")
+                .pipe(Effect.catch(() => Effect.void));
+            }),
+          ),
         ),
       );
+      yield* Ref.update(activeAgents, (map) =>
+        new Map(map).set(String(runAttemptId), { agent, fiber }),
+      );
+      // Join the fiber; interruption (cancelRun) surfaces as an Exit, which
+      // we fold back to the run id so the caller sees a settled dispatch.
+      return yield* Fiber.join(fiber).pipe(Effect.catch(() => Effect.succeed(runAttemptId)));
     });
 
   const cancelRun: RunDispatcherService["cancelRun"] = (runAttemptId) =>
     Effect.gen(function* () {
-      // Interrupt the active turn so the agent stops, settle the run's
-      // outstanding approval/input requests (idempotent), and record the
-      // durable cancellation. The claim is released by the interrupted
-      // dispatch path's ensuring block, which keeps the work item queued.
-      const agent = yield* Ref.get(activeAgents).pipe(
+      // Interrupt the active turn AND the dispatch fiber driving it, settle
+      // the run's outstanding approval/input requests (idempotent), and
+      // record the durable cancellation. The claim is released by the
+      // interrupted dispatch path's ensuring block, which keeps the work item
+      // queued (REVIEW P0: without the fiber interrupt, a cancelled run still
+      // validated, opened a PR and overwrote its own status).
+      const registered = yield* Ref.get(activeAgents).pipe(
         Effect.map((map) => map.get(String(runAttemptId))),
       );
-      if (agent !== undefined) {
-        yield* agent.interrupt().pipe(Effect.catch(() => Effect.void));
+      if (registered !== undefined) {
+        yield* registered.agent.interrupt().pipe(Effect.catch(() => Effect.void));
+        yield* Fiber.interrupt(registered.fiber).pipe(Effect.catch(() => Effect.void));
       }
       yield* liveRequests
         .settleRun(runAttemptId, "user cancelled")

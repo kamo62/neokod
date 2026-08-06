@@ -25,10 +25,25 @@ export const WorkspaceManagerLive = Layer.effect(
     const git = yield* GitVcsDriver;
     const processRunner = yield* ProcessRunner;
     const fileSystem = yield* FileSystem.FileSystem;
-    // Optional guard (serviceOption): Symphony-owned removals are allowed;
-    // Work-owned live leases are refused. When the ownership layer is not
-    // mounted (Work mode without Symphony), removal proceeds unguarded.
-    const maybeGuard = yield* Effect.serviceOption(WorkspaceRemovalGuard);
+
+    const assertRemovable: WorkspaceManagerDeps["assertRemovable"] = (input) =>
+      // Resolved per call (not at construction): the guard lives in the merged
+      // server runtime, so reading it inside the layer constructor would
+      // return None for the Symphony sub-graph and silently disarm the guard
+      // (REVIEW P0 "Symphony arm of the removal gateway is never installed").
+      Effect.serviceOption(WorkspaceRemovalGuard).pipe(
+        Effect.flatMap((maybeGuard) =>
+          Option.isSome(maybeGuard)
+            ? maybeGuard.value
+                .assertRemovable({
+                  workspacePath: input.workspacePath,
+                  ...(input.force !== undefined ? { force: input.force } : {}),
+                  removingOwner: "symphony",
+                })
+                .pipe(Effect.mapError((cause) => new Error(cause.message)))
+            : Effect.void,
+        ),
+      );
 
     const defaultBranch = (cwd: string) =>
       git.listRefs({ cwd, refKind: "local", limit: 100 }).pipe(
@@ -73,21 +88,7 @@ export const WorkspaceManagerLive = Layer.effect(
           try: () => require("node:fs").realpathSync(p),
           catch: (cause) => new Error(cause instanceof Error ? cause.message : "realpath failed"),
         }),
-      ...(Option.isSome(maybeGuard)
-        ? {
-            assertRemovable: (input: {
-              readonly workspacePath: string;
-              readonly force?: boolean;
-            }) =>
-              maybeGuard.value
-                .assertRemovable({
-                  workspacePath: input.workspacePath,
-                  ...(input.force !== undefined ? { force: input.force } : {}),
-                  removingOwner: "symphony",
-                })
-                .pipe(Effect.mapError((cause) => new Error(cause.message))),
-          }
-        : {}),
+      assertRemovable,
     };
 
     return makeWorkspaceManager(deps);

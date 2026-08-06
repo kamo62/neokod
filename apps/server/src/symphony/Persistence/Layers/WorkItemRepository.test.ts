@@ -127,3 +127,59 @@ layer("WorkItemRepository claim authority", (it) => {
     }),
   );
 });
+
+layer("WorkItemRepository lifecycle legality (plan section 19 suite 6)", (it) => {
+  it.effect("a from-restricted transition succeeds from a matching lifecycle", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("lifecycle-1", "61", "running");
+
+      const changed = yield* repo.transition(id, "blocked", { from: ["running"] });
+      expect(changed).toBe(true);
+      const row = yield* repo.getById(id);
+      expect(row?.lifecycle).toBe("blocked");
+    }),
+  );
+
+  it.effect("a from-restricted transition is refused from a non-matching lifecycle", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("lifecycle-2", "62", "queued");
+
+      const changed = yield* repo.transition(id, "blocked", { from: ["running"] });
+      expect(changed).toBe(false);
+      const row = yield* repo.getById(id);
+      expect(row?.lifecycle).toBe("queued");
+    }),
+  );
+
+  it.effect("a from-restricted transition only matches the stated source", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("lifecycle-3", "63", "completed");
+
+      // A transition whose from-restriction excludes the current lifecycle
+      // is refused; the caller is responsible for not passing a terminal
+      // source (the takeover park in HandoffService passes only
+      // non-terminal lifecycles).
+      const changed = yield* repo.transition(id, "queued", { from: ["running"] });
+      expect(changed).toBe(false);
+      const row = yield* repo.getById(id);
+      expect(row?.lifecycle).toBe("completed");
+    }),
+  );
+
+  it.effect("an unfenced transition still respects a from restriction", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("lifecycle-4", "64", "ready_for_review");
+
+      // Unfenced + from-restricted: allowed source -> blocked is a legal
+      // takeover park, but ready_to_merge must not be the source here.
+      const changed = yield* repo.transition(id, "changes_requested", {
+        from: ["ready_for_review"],
+      });
+      expect(changed).toBe(true);
+    }),
+  );
+});

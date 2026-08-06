@@ -125,6 +125,8 @@ const fakeEngineLayer = Layer.succeed(OrchestrationEngine.OrchestrationEngineSer
 
 const fakeProjectionLayer = Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
   getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
+  getThreadShellById: (threadId: string) =>
+    Effect.succeed(threadId === "th-1" ? Option.some({ worktreePath: "/ws/wi-1" }) : Option.none()),
 } as unknown as ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]);
 
 const bindingLayer = it.layer(
@@ -144,6 +146,25 @@ const bindingLayer = it.layer(
 );
 
 layer("HandoffService takeOver", (it) => {
+  it.effect("fails when the workspace is held by another owner", () =>
+    Effect.gen(function* () {
+      const workItem = makeWorkItem("wi-2");
+      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
+      const attempts = yield* RunAttemptRepository;
+      yield* attempts.create(makeAttempt("run-2", "wi-2", "/ws/wi-2"));
+      const ownership = yield* WorkspaceOwnershipRepository;
+      yield* ownership.acquire({ workspacePath: "/ws/wi-2", owner: "work", threadId: "th-other" });
+
+      const handoff = yield* HandoffService;
+      const result = yield* Effect.result(
+        handoff.takeOver({ runAttemptId: "run-2", threadId: "th-2" }),
+      );
+      expect(result._tag).toBe("Failure");
+    }),
+  );
+});
+
+bindingLayer("HandoffService takeOver thread binding", (it) => {
   it.effect("stops the run, transfers ownership to work and parks the item", () =>
     Effect.gen(function* () {
       const workItem = makeWorkItem("wi-1");
@@ -183,25 +204,6 @@ layer("HandoffService takeOver", (it) => {
     }),
   );
 
-  it.effect("fails when the workspace is held by another owner", () =>
-    Effect.gen(function* () {
-      const workItem = makeWorkItem("wi-2");
-      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
-      const attempts = yield* RunAttemptRepository;
-      yield* attempts.create(makeAttempt("run-2", "wi-2", "/ws/wi-2"));
-      const ownership = yield* WorkspaceOwnershipRepository;
-      yield* ownership.acquire({ workspacePath: "/ws/wi-2", owner: "work", threadId: "th-other" });
-
-      const handoff = yield* HandoffService;
-      const result = yield* Effect.result(
-        handoff.takeOver({ runAttemptId: "run-2", threadId: "th-2" }),
-      );
-      expect(result._tag).toBe("Failure");
-    }),
-  );
-});
-
-bindingLayer("HandoffService takeOver thread binding", (it) => {
   it.effect("creates a Work thread bound to the workspace when no thread id is given", () =>
     Effect.gen(function* () {
       dispatchedCommands.length = 0;
@@ -237,7 +239,7 @@ bindingLayer("HandoffService takeOver thread binding", (it) => {
     }),
   );
 
-  it.effect("reuses the caller-provided thread id without dispatching", () =>
+  it.effect("rejects a caller-provided thread id that is not bound to the workspace", () =>
     Effect.gen(function* () {
       dispatchedCommands.length = 0;
       const workItem = makeWorkItem("wi-7");
@@ -252,10 +254,13 @@ bindingLayer("HandoffService takeOver thread binding", (it) => {
       });
 
       const handoff = yield* HandoffService;
-      const result = yield* handoff.takeOver({ runAttemptId: "run-7", threadId: "th-existing" });
-
-      expect(dispatchedCommands).toEqual([]);
-      expect(result.threadId).toBe("th-existing");
+      const result = yield* Effect.result(
+        handoff.takeOver({ runAttemptId: "run-7", threadId: "th-existing" }),
+      );
+      expect(result._tag).toBe("Failure");
+      // Ownership must not have moved.
+      const record = yield* ownership.getByWorkspacePath("/ws/wi-7");
+      expect(record?.owner).toBe("symphony");
     }),
   );
 });

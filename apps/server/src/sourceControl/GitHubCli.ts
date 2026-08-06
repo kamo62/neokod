@@ -300,17 +300,11 @@ const RawGitHubChangeRequestStatusSchema = Schema.Struct({
     ),
   ),
   reviewDecision: Schema.optional(Schema.NullOr(Schema.String)),
-  comments: Schema.optional(
-    Schema.Array(
-      Schema.Struct({
-        isResolved: Schema.optional(Schema.Boolean),
-        line: Schema.optional(Schema.NullOr(Schema.Int)),
-      }),
-    ),
-  ),
 });
 
-const decodeRawChangeRequestStatus = Schema.decodeUnknownEffect(RawGitHubChangeRequestStatusSchema);
+const decodeRawGitHubChangeRequestStatus = Schema.decodeEffect(
+  Schema.fromJsonString(RawGitHubChangeRequestStatusSchema),
+);
 
 const normalizeChangeRequestStatus = (
   raw: Schema.Schema.Type<typeof RawGitHubChangeRequestStatusSchema>,
@@ -340,15 +334,13 @@ const normalizeChangeRequestStatus = (
           ? "review_required"
           : "none";
 
-  const unresolvedComments = (raw.comments ?? []).filter(
-    (comment) => comment.isResolved === false && comment.line !== null,
-  ).length;
-
+  // Unresolved comments are filled by the follow-up reviewThreads GraphQL
+  // query in getChangeRequestStatus; the base view JSON cannot source them.
   return {
     ciStatus,
     reviewState,
     mergeable: raw.mergeable === "MERGEABLE",
-    unresolvedComments,
+    unresolvedComments: 0,
   };
 };
 
@@ -494,12 +486,14 @@ export const make = Effect.gen(function* () {
           "view",
           input.reference,
           "--json",
-          "mergeable,statusCheckRollup,reviews,reviewDecision,comments",
+          "mergeable,statusCheckRollup,reviews,reviewDecision",
         ],
       }).pipe(
         Effect.map((result) => result.stdout.trim()),
         Effect.flatMap((raw) =>
-          decodeRawChangeRequestStatus(JSON.parse(raw) as unknown).pipe(
+          // Schema.fromJsonString folds a parse failure into the typed error
+          // channel; a bare JSON.parse would escape as a defect (REVIEW P1).
+          decodeRawGitHubChangeRequestStatus(raw).pipe(
             Effect.map(normalizeChangeRequestStatus),
             Effect.mapError(
               (cause) =>
@@ -510,6 +504,46 @@ export const make = Effect.gen(function* () {
                 }),
             ),
           ),
+        ),
+        // Unresolved review-thread count comes from GraphQL; `gh pr view
+        // --json comments` returns conversation comments without
+        // isResolved/line, so the field was always 0 against real GitHub
+        // (REVIEW P1). Query reviewThreads and merge the count in.
+        Effect.flatMap((status) =>
+          execute({
+            cwd: input.cwd,
+            args: [
+              "api",
+              "graphql",
+              "-f",
+              'query=query($pr: Int!) { repository(owner: "", name: "") { pullRequest(number: $pr) { reviewThreads(first: 100) { nodes { isResolved } } } } }',
+              "-F",
+              `pr=${input.reference.replace(/^#/, "")}`,
+            ],
+          })
+            .pipe(
+              Effect.map((result) => {
+                try {
+                  const json = JSON.parse(result.stdout) as {
+                    data?: {
+                      repository?: {
+                        pullRequest?: {
+                          reviewThreads?: {
+                            nodes?: ReadonlyArray<{ isResolved?: boolean | null }>;
+                          };
+                        };
+                      };
+                    };
+                  };
+                  const threads = json.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
+                  return threads.filter((thread) => thread.isResolved !== true).length;
+                } catch {
+                  return 0;
+                }
+              }),
+              Effect.orElseSucceed(() => 0),
+            )
+            .pipe(Effect.map((unresolved) => ({ ...status, unresolvedComments: unresolved }))),
         ),
       ),
     getRepositoryCloneUrls: (input) =>

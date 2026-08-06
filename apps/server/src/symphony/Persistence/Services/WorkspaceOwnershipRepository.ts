@@ -101,12 +101,25 @@ export class WorkspaceRemovalBlockedError extends Error {
   }
 }
 
+/** The ownership table could not be read; removal must fail closed. */
+export class WorkspaceRemovalUnavailableError extends Error {
+  readonly workspacePath: string;
+  readonly underlying: unknown;
+
+  constructor(workspacePath: string, underlying: unknown) {
+    super(`Cannot determine ownership of ${workspacePath}; removal refused`);
+    this.name = "WorkspaceRemovalUnavailableError";
+    this.workspacePath = workspacePath;
+    this.underlying = underlying;
+  }
+}
+
 export interface WorkspaceRemovalGuardShape {
   readonly assertRemovable: (input: {
     readonly workspacePath: string;
     readonly force?: boolean;
     readonly removingOwner: WorkspaceOwner;
-  }) => Effect.Effect<void, WorkspaceRemovalBlockedError>;
+  }) => Effect.Effect<void, WorkspaceRemovalBlockedError | WorkspaceRemovalUnavailableError>;
 }
 
 export class WorkspaceRemovalGuard extends Context.Service<
@@ -119,12 +132,18 @@ export const makeWorkspaceRemovalGuard = (
 ): WorkspaceRemovalGuardShape => {
   const assertRemovable: WorkspaceRemovalGuardShape["assertRemovable"] = (input) =>
     Effect.gen(function* () {
-      if (input.force === true) {
-        return;
-      }
+      // `force` here is git's "remove despite dirty tree"; it is NOT an
+      // ownership override (REVIEW P0: Work thread deletion always sends
+      // force:true, which would bypass the guard). Only the owning mode may
+      // remove its own workspace; a live lease held by the other mode always
+      // blocks, unless the lease has expired.
       const record = yield* repository
         .getByWorkspacePath(input.workspacePath)
-        .pipe(Effect.catch(() => Effect.succeed(null)));
+        .pipe(
+          Effect.mapError(
+            (underlying) => new WorkspaceRemovalUnavailableError(input.workspacePath, underlying),
+          ),
+        );
       if (record === null) {
         return;
       }
