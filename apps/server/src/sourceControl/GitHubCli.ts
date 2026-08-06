@@ -7,6 +7,7 @@ import * as Schema from "effect/Schema";
 
 import {
   TrimmedNonEmptyString,
+  type ChangeRequestStatus,
   type SourceControlRepositoryVisibility,
   type VcsError,
 } from "@neokod/contracts";
@@ -122,6 +123,19 @@ export class GitHubPullRequestDecodeError extends Schema.TaggedErrorClass<GitHub
   }
 }
 
+export class GitHubChangeRequestStatusDecodeError extends Schema.TaggedErrorClass<GitHubChangeRequestStatusDecodeError>()(
+  "GitHubChangeRequestStatusDecodeError",
+  gitHubCliDecodeFields,
+) {
+  get detail(): string {
+    return "GitHub CLI returned invalid change-request status JSON.";
+  }
+
+  override get message(): string {
+    return `GitHub CLI failed in getChangeRequestStatus: ${this.detail}`;
+  }
+}
+
 export class GitHubRepositoryDecodeError extends Schema.TaggedErrorClass<GitHubRepositoryDecodeError>()(
   "GitHubRepositoryDecodeError",
   gitHubCliDecodeFields,
@@ -143,6 +157,7 @@ export const GitHubCliError = Schema.Union([
   GitHubPullRequestListDecodeError,
   GitHubChangeRequestListDecodeError,
   GitHubPullRequestDecodeError,
+  GitHubChangeRequestStatusDecodeError,
   GitHubRepositoryDecodeError,
 ]);
 export type GitHubCliError = typeof GitHubCliError.Type;
@@ -216,6 +231,11 @@ export class GitHubCli extends Context.Service<
       readonly reference: string;
     }) => Effect.Effect<GitHubPullRequestSummary, GitHubCliError>;
 
+    readonly getChangeRequestStatus: (input: {
+      readonly cwd: string;
+      readonly reference: string;
+    }) => Effect.Effect<ChangeRequestStatus, GitHubCliError>;
+
     readonly getRepositoryCloneUrls: (input: {
       readonly cwd: string;
       readonly repository: string;
@@ -255,6 +275,82 @@ const RawGitHubRepositoryCloneUrlsSchema = Schema.Struct({
 const decodeRawGitHubRepositoryCloneUrls = Schema.decodeEffect(
   Schema.fromJsonString(RawGitHubRepositoryCloneUrlsSchema),
 );
+
+/**
+ * Raw `gh pr view --json statusCheckRollup,reviews,mergeable,comments`
+ * payload for host-enriched change-request status (plan 10.1).
+ */
+const RawGitHubChangeRequestStatusSchema = Schema.Struct({
+  mergeable: Schema.optional(
+    Schema.NullOr(Schema.Literals(["MERGEABLE", "CONFLICTING", "UNKNOWN"])),
+  ),
+  statusCheckRollup: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        status: Schema.optional(Schema.String),
+        conclusion: Schema.optional(Schema.NullOr(Schema.String)),
+      }),
+    ),
+  ),
+  reviews: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        state: Schema.optional(Schema.String),
+      }),
+    ),
+  ),
+  reviewDecision: Schema.optional(Schema.NullOr(Schema.String)),
+  comments: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        isResolved: Schema.optional(Schema.Boolean),
+        line: Schema.optional(Schema.NullOr(Schema.Int)),
+      }),
+    ),
+  ),
+});
+
+const decodeRawChangeRequestStatus = Schema.decodeUnknownEffect(RawGitHubChangeRequestStatusSchema);
+
+const normalizeChangeRequestStatus = (
+  raw: Schema.Schema.Type<typeof RawGitHubChangeRequestStatusSchema>,
+): ChangeRequestStatus => {
+  const checks = raw.statusCheckRollup ?? [];
+  const hasPending = checks.some(
+    (check) =>
+      check.status === "IN_PROGRESS" || check.status === "QUEUED" || check.status === "PENDING",
+  );
+  const hasFailed = checks.some(
+    (check) =>
+      check.conclusion === "FAILURE" ||
+      check.conclusion === "TIMED_OUT" ||
+      check.conclusion === "ACTION_REQUIRED",
+  );
+  const ciStatus =
+    checks.length === 0 ? "unknown" : hasFailed ? "failure" : hasPending ? "pending" : "success";
+
+  const reviews = (raw.reviews ?? []).map((review) => review.state ?? "").filter(Boolean);
+  const latestDecision = reviews.length > 0 ? (reviews[reviews.length - 1] ?? "") : "";
+  const reviewState: ChangeRequestStatus["reviewState"] =
+    raw.reviewDecision === "APPROVED" || latestDecision === "APPROVED"
+      ? "approved"
+      : raw.reviewDecision === "CHANGES_REQUESTED" || latestDecision === "CHANGES_REQUESTED"
+        ? "changes_requested"
+        : raw.reviewDecision === "REVIEW_REQUIRED" || latestDecision === "REVIEW_REQUIRED"
+          ? "review_required"
+          : "none";
+
+  const unresolvedComments = (raw.comments ?? []).filter(
+    (comment) => comment.isResolved === false && comment.line !== null,
+  ).length;
+
+  return {
+    ciStatus,
+    reviewState,
+    mergeable: raw.mergeable === "MERGEABLE",
+    unresolvedComments,
+  };
+};
 
 function normalizeRepositoryCloneUrls(
   raw: Schema.Schema.Type<typeof RawGitHubRepositoryCloneUrlsSchema>,
@@ -387,6 +483,32 @@ export const make = Effect.gen(function* () {
                 (({ updatedAt: _updatedAt, ...summary }) => summary)(decoded.success),
               );
             }),
+          ),
+        ),
+      ),
+    getChangeRequestStatus: (input) =>
+      execute({
+        cwd: input.cwd,
+        args: [
+          "pr",
+          "view",
+          input.reference,
+          "--json",
+          "mergeable,statusCheckRollup,reviews,reviewDecision,comments",
+        ],
+      }).pipe(
+        Effect.map((result) => result.stdout.trim()),
+        Effect.flatMap((raw) =>
+          decodeRawChangeRequestStatus(JSON.parse(raw) as unknown).pipe(
+            Effect.map(normalizeChangeRequestStatus),
+            Effect.mapError(
+              (cause) =>
+                new GitHubChangeRequestStatusDecodeError({
+                  command: "gh",
+                  cwd: input.cwd,
+                  cause,
+                }),
+            ),
           ),
         ),
       ),

@@ -100,6 +100,7 @@ const makeDeps = (overrides: Partial<PullRequestServiceDeps> = {}): PullRequestS
       Effect.succeed({
         provider: {
           createChangeRequest: () => Effect.void,
+          getChangeRequestStatus: () => Effect.succeed(null),
           listChangeRequests: (_input: { headSelector: string }) =>
             Effect.succeed([makeChangeRequest()]),
         },
@@ -140,6 +141,7 @@ it.effect("pushes the branch then creates the change request via the provider", 
                       headSelector: input.headSelector,
                     });
                   }),
+                getChangeRequestStatus: () => Effect.succeed(null),
                 listChangeRequests: () => Effect.succeed([makeChangeRequest()]),
               },
               context: null,
@@ -210,6 +212,7 @@ it.effect("falls back to a zero-number record when the PR is not found", () =>
             Effect.succeed({
               provider: {
                 createChangeRequest: () => Effect.void,
+                getChangeRequestStatus: () => Effect.succeed(null),
                 listChangeRequests: () => Effect.succeed([]),
               },
               context: null,
@@ -266,6 +269,7 @@ it.effect("refresh re-fetches the open PR for the branch", () =>
             Effect.succeed({
               provider: {
                 createChangeRequest: () => Effect.void,
+                getChangeRequestStatus: () => Effect.succeed(null),
                 listChangeRequests: (_input: { headSelector: string }) =>
                   Effect.succeed([makeChangeRequest()]),
               },
@@ -297,6 +301,7 @@ it.effect("refresh returns null when no open PR exists for the branch", () =>
             Effect.succeed({
               provider: {
                 createChangeRequest: () => Effect.void,
+                getChangeRequestStatus: () => Effect.succeed(null),
                 listChangeRequests: () => Effect.succeed([]),
               },
               context: null,
@@ -311,6 +316,45 @@ it.effect("refresh returns null when no open PR exists for the branch", () =>
       title: "Implement issue 42",
     });
     expect(refreshed).toBeNull();
+  }),
+);
+
+it.effect("refresh carries host-enriched status when the provider supports it", () =>
+  Effect.gen(function* () {
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: {
+                createChangeRequest: () => Effect.void,
+                getChangeRequestStatus: () =>
+                  Effect.succeed({
+                    ciStatus: "success",
+                    reviewState: "approved",
+                    mergeable: true,
+                    unresolvedComments: 0,
+                  }),
+                listChangeRequests: () => Effect.succeed([makeChangeRequest()]),
+              },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+      }),
+    );
+    const refreshed = yield* service.refresh({
+      config: makeConfig(),
+      branch: "symphony/issue-42",
+      baseBranch: "main",
+      title: "Implement issue 42",
+    });
+    expect(refreshed).toMatchObject({
+      number: 17,
+      ciStatus: "success",
+      reviewState: "approved",
+      mergeable: true,
+      unresolvedComments: 0,
+    });
   }),
 );
 

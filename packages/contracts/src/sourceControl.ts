@@ -36,6 +36,34 @@ export const ChangeRequest = Schema.Struct({
 });
 export type ChangeRequest = typeof ChangeRequest.Type;
 
+export const ChangeRequestCiStatus = Schema.Literals(["pending", "success", "failure", "unknown"]);
+export type ChangeRequestCiStatus = typeof ChangeRequestCiStatus.Type;
+
+export const ChangeRequestReviewState = Schema.Literals([
+  "none",
+  "approved",
+  "changes_requested",
+  "review_required",
+]);
+export type ChangeRequestReviewState = typeof ChangeRequestReviewState.Type;
+
+/**
+ * Host-enriched change-request status (plan 10.1, Phase 5).
+ *
+ * The base `ChangeRequest` shape carries number/title/url/base/head/state
+ * only; merge readiness (FR-095) needs CI status, review decision,
+ * mergeability and unresolved-comment counts. Per-host enrichment lands
+ * host by host; a host without enrichment returns null.
+ */
+export const ChangeRequestStatus = Schema.Struct({
+  ciStatus: ChangeRequestCiStatus,
+  reviewState: ChangeRequestReviewState,
+  mergeable: Schema.Boolean,
+  unresolvedComments: PositiveInt,
+  latestCommit: Schema.optional(TrimmedNonEmptyString),
+});
+export type ChangeRequestStatus = typeof ChangeRequestStatus.Type;
+
 export const SourceControlRepositoryCloneUrls = Schema.Struct({
   nameWithOwner: TrimmedNonEmptyString,
   url: TrimmedNonEmptyString,

@@ -213,6 +213,16 @@ export const makePullRequestService = (
       if (found === undefined) {
         return null;
       }
+      // Host-enriched status (plan 10.1, Phase 5): CI status, review state,
+      // mergeability and unresolved-comment count. Hosts without enrichment
+      // return null, leaving these fields absent.
+      const status = yield* handle.provider
+        .getChangeRequestStatus({
+          cwd: input.config.repositoryPath,
+          ...(handle.context !== null ? { context: handle.context } : {}),
+          reference: String(found.number),
+        })
+        .pipe(Effect.catch(() => Effect.succeed(null)));
       return {
         number: found.number,
         title: found.title,
@@ -220,6 +230,15 @@ export const makePullRequestService = (
         baseBranch: input.baseBranch,
         url: found.url,
         status: found.state === "merged" ? "merged" : found.state === "closed" ? "closed" : "open",
+        ...(status !== null
+          ? {
+              ciStatus: status.ciStatus,
+              reviewState: status.reviewState,
+              mergeable: status.mergeable,
+              unresolvedComments: status.unresolvedComments,
+              ...(status.latestCommit !== undefined ? { latestCommit: status.latestCommit } : {}),
+            }
+          : {}),
       } satisfies PullRequestEvidence;
     });
 

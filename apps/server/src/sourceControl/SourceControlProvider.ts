@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import type {
   ChangeRequest,
   ChangeRequestState,
+  ChangeRequestStatus,
   SourceControlProviderError,
   SourceControlProviderInfo,
   SourceControlProviderKind,
@@ -96,6 +97,17 @@ export class SourceControlProvider extends Context.Service<
       readonly context?: SourceControlProviderContext;
       readonly reference: string;
     }) => Effect.Effect<ChangeRequest, SourceControlProviderError>;
+    /**
+     * Host-enriched status for a change request (plan 10.1, Phase 5):
+     * CI status, review decision, mergeability and unresolved-comment count.
+     * `null` when the host has no enrichment implemented yet — merge
+     * readiness must then cap at `ready_for_review` (FR-095).
+     */
+    readonly getChangeRequestStatus: (input: {
+      readonly cwd: string;
+      readonly context?: SourceControlProviderContext;
+      readonly reference: string;
+    }) => Effect.Effect<ChangeRequestStatus | null, SourceControlProviderError>;
     readonly createChangeRequest: (input: {
       readonly cwd: string;
       readonly context?: SourceControlProviderContext;

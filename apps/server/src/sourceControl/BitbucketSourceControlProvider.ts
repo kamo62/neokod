@@ -80,6 +80,8 @@ export const make = Effect.gen(function* () {
             }),
         ),
       ),
+    // Bitbucket enrichment is not implemented yet (plan 10.1).
+    getChangeRequestStatus: () => Effect.succeed(null),
     createChangeRequest: (input) => {
       const source = SourceControlProvider.sourceControlRefFromInput(input);
       return bitbucket

@@ -194,6 +194,8 @@ export const make = Effect.gen(function* () {
             }),
         ),
       ),
+    // Azure DevOps enrichment is not implemented yet (plan 10.1).
+    getChangeRequestStatus: () => Effect.succeed(null),
     createChangeRequest: (input) => {
       const source = SourceControlProvider.sourceControlRefFromInput(input);
       return azure

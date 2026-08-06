@@ -581,6 +581,13 @@ function createGitHubCliWithFakeGh(scenario: FakeGhScenario = {}): {
         }).pipe(
           Effect.map((result) => JSON.parse(result.stdout) as GitHubCli.GitHubPullRequestSummary),
         ),
+      getChangeRequestStatus: () =>
+        Effect.succeed({
+          ciStatus: "unknown",
+          reviewState: "none",
+          mergeable: true,
+          unresolvedComments: 0,
+        }),
       getRepositoryCloneUrls: (input) =>
         execute({
           cwd: input.cwd,

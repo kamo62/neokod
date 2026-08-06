@@ -318,4 +318,100 @@ describe("GitHubCli.layer", () => {
       assert.equal(error.message.includes(cause.detail), false);
     }).pipe(Effect.provide(layer)),
   );
+
+  it.effect("parses change request status with failing CI and changes requested", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({
+              mergeable: "MERGEABLE",
+              reviewDecision: "CHANGES_REQUESTED",
+              statusCheckRollup: [
+                { status: "COMPLETED", conclusion: "FAILURE" },
+                { status: "COMPLETED", conclusion: "SUCCESS" },
+              ],
+              reviews: [{ state: "CHANGES_REQUESTED" }],
+              comments: [
+                { isResolved: false, line: 12 },
+                { isResolved: false, line: null },
+                { isResolved: true, line: 3 },
+              ],
+            }),
+          ),
+        ),
+      );
+
+      const gh = yield* GitHubCli.GitHubCli;
+      const result = yield* gh.getChangeRequestStatus({ cwd: "/repo", reference: "#42" });
+
+      assert.deepStrictEqual(result, {
+        ciStatus: "failure",
+        reviewState: "changes_requested",
+        mergeable: true,
+        unresolvedComments: 1,
+      });
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("parses change request status with approved review and pending CI", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({
+              mergeable: "MERGEABLE",
+              reviewDecision: "APPROVED",
+              statusCheckRollup: [
+                { status: "IN_PROGRESS", conclusion: null },
+                { status: "COMPLETED", conclusion: "SUCCESS" },
+              ],
+              reviews: [{ state: "APPROVED" }],
+              comments: [],
+            }),
+          ),
+        ),
+      );
+
+      const gh = yield* GitHubCli.GitHubCli;
+      const result = yield* gh.getChangeRequestStatus({ cwd: "/repo", reference: "#42" });
+
+      assert.deepStrictEqual(result, {
+        ciStatus: "pending",
+        reviewState: "approved",
+        mergeable: true,
+        unresolvedComments: 0,
+      });
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("maps no checks and no reviews to unknown/none", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({
+              mergeable: "UNKNOWN",
+              statusCheckRollup: [],
+              reviews: [],
+              comments: [],
+            }),
+          ),
+        ),
+      );
+
+      const gh = yield* GitHubCli.GitHubCli;
+      const result = yield* gh.getChangeRequestStatus({ cwd: "/repo", reference: "#42" });
+
+      assert.deepStrictEqual(result, {
+        ciStatus: "unknown",
+        reviewState: "none",
+        mergeable: false,
+        unresolvedComments: 0,
+      });
+    }).pipe(Effect.provide(layer)),
+  );
 });

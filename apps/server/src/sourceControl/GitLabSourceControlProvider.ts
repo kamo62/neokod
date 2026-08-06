@@ -151,6 +151,9 @@ export const make = Effect.gen(function* () {
             }),
         ),
       ),
+    // GitLab enrichment is not implemented yet (plan 10.1 sequences hosts:
+    // GitHub first). Returning null caps merge readiness at ready_for_review.
+    getChangeRequestStatus: () => Effect.succeed(null),
     createChangeRequest: (input) => {
       const source = SourceControlProvider.sourceControlRefFromInput(input);
       return gitlab

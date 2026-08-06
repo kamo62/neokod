@@ -689,8 +689,26 @@ const makeOrchestrator = Effect.gen(function* () {
       ) {
         return false;
       }
-      if (evidence.pullRequest !== null && (evidence.pullRequest.unresolvedComments ?? 0) > 0) {
-        return false;
+      // Host-enriched merge gates (plan 14, FR-095): failed CI, a
+      // changes-requested review, a non-mergeable PR, or unresolved review
+      // comments all block merge readiness. When the host provides no
+      // enrichment (ciStatus absent), the gate is skipped so a host without
+      // Phase 5 enrichment still caps honestly at ready_for_review — the
+      // absence of the fields is the signal, not a pass.
+      const pullRequest = evidence.pullRequest;
+      if (pullRequest !== null) {
+        if ((pullRequest.unresolvedComments ?? 0) > 0) {
+          return false;
+        }
+        if (pullRequest.ciStatus === "failure") {
+          return false;
+        }
+        if (pullRequest.reviewState === "changes_requested") {
+          return false;
+        }
+        if (pullRequest.mergeable === false) {
+          return false;
+        }
       }
       const changed = yield* workItems
         .transition(id, "ready_to_merge", {})
