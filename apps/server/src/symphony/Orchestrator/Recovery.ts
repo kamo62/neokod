@@ -44,6 +44,10 @@ export interface RecoveryDeps {
   readonly ownership?: WorkspaceOwnershipRepositoryShape;
 }
 
+/** A claim with no attempt row older than this is a crash orphan, not an
+ * in-flight dispatch (REVIEW P1 #10). */
+const STALL_WINDOW_MS = 5 * 60_000;
+
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   "succeeded",
   "failed",
@@ -96,7 +100,21 @@ const recoverItem = (
       .latestForWorkItem(item.id)
       .pipe(Effect.catch(() => Effect.succeed(null)));
     if (attempt === null) {
-      // Claim without an attempt is an in-flight dispatch window; leave it.
+      // A claim without any attempt is normally an in-flight dispatch
+      // window; leave it alone to avoid racing the dispatcher. But a claim
+      // that predates this server start by more than the stall window is a
+      // crash between claim and attempt-create: release it so the item is not
+      // stuck in `preparing` forever (REVIEW P1 #10).
+      const claimedAtValue = item.claimedAt;
+      const claimedAt =
+        claimedAtValue === undefined || claimedAtValue === null ? null : Date.parse(claimedAtValue);
+      if (
+        claimedAt !== null &&
+        !Number.isNaN(claimedAt) &&
+        Date.now() - claimedAt > STALL_WINDOW_MS
+      ) {
+        yield* deps.workItems.releaseClaim(item.id, "queued").pipe(Effect.catch(() => Effect.void));
+      }
       return;
     }
 
@@ -106,6 +124,16 @@ const recoverItem = (
     }
 
     if (TERMINAL_STATUSES.has(attempt.status)) {
+      // A `succeeded` attempt on a held item means finalization finished the
+      // run but the ready_for_review transition never landed (crash in the
+      // window). Re-running the agent would repeat edits, pushes and PR
+      // creation (REVIEW P1 #11). Land the item in its review state instead.
+      if (attempt.status === "succeeded") {
+        yield* deps.workItems
+          .transition(item.id, "ready_for_review", { from: ["preparing", "running"] })
+          .pipe(Effect.catch(() => Effect.void));
+        return;
+      }
       yield* deps.workItems.releaseClaim(item.id, "queued").pipe(Effect.catch(() => Effect.void));
       return;
     }

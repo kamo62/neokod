@@ -128,12 +128,16 @@ export const makePullRequestService = (
   const create: PullRequestService["Service"]["create"] = (input) =>
     Effect.gen(function* () {
       // 1. Push the work branch so the provider can open a PR for it.
-      yield* deps.git.pushCurrentBranch(input.workspacePath, input.branch).pipe(
+      //    Consume the pushed branch so evidence, headSelector and lookup all
+      //    use the branch the agent actually checked out (RECONCILE binding
+      //    constraint: Symphony branch identity must be authoritative).
+      const pushed = yield* deps.git.pushCurrentBranch(input.workspacePath, input.branch).pipe(
         Effect.mapError((cause) => new PullRequestCreationError(cause.message)),
         Effect.tapError((error) =>
           Effect.logWarning(`Symphony PR: branch push failed: ${error.message}`),
         ),
       );
+      const effectiveBranch = pushed.branch.length > 0 ? pushed.branch : input.branch;
 
       // 2. Write the body file. `bodyFileDir` falls back to the live layer's
       //    default so the file always lands somewhere writable (REVIEW P0:
@@ -159,18 +163,19 @@ export const makePullRequestService = (
           cwd: input.config.repositoryPath,
           ...(handle.context !== null ? { context: handle.context } : {}),
           baseRefName: input.baseBranch,
-          headSelector: input.branch,
+          headSelector: effectiveBranch,
           title: input.workItem.objective,
           bodyFile: bodyFilePath,
         })
         .pipe(Effect.mapError((cause) => new PullRequestCreationError(cause.message)));
 
-      // 4. Look up the created PR to record number/url.
+      // 4. Look up the created PR to record number/url, matching on the
+      //    effective (pushed) branch.
       const open = yield* handle.provider
         .listChangeRequests({
           cwd: input.config.repositoryPath,
           ...(handle.context !== null ? { context: handle.context } : {}),
-          headSelector: input.branch,
+          headSelector: effectiveBranch,
           state: "open",
           limit: 10,
         })
@@ -178,7 +183,7 @@ export const makePullRequestService = (
           Effect.mapError((cause) => new PullRequestCreationError(cause.message)),
           Effect.orElseSucceed(() => []),
         );
-      const found = open.find((pullRequest) => pullRequest.headRefName === input.branch);
+      const found = open.find((pullRequest) => pullRequest.headRefName === effectiveBranch);
 
       if (found === undefined) {
         // The created PR could not be located: that is the absence of
@@ -190,7 +195,7 @@ export const makePullRequestService = (
       return {
         number: found.number,
         title: found.title,
-        branch: input.branch,
+        branch: effectiveBranch,
         baseBranch: input.baseBranch,
         url: found.url,
         status: "open",

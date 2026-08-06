@@ -2,6 +2,7 @@ import type { EffectiveWorkflowConfig, RunAttemptId, ValidationResult } from "@n
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 
 import { ServerConfig } from "../../config.ts";
@@ -154,15 +155,23 @@ export const makeValidationRunner = (deps: ValidationRunnerDeps): ValidationRunn
 export const ValidationRunnerLive: Layer.Layer<
   ValidationRunner,
   never,
-  ProcessRunner | ServerConfig
+  ProcessRunner | ServerConfig | FileSystem.FileSystem
 > = Layer.effect(
   ValidationRunner,
   Effect.gen(function* () {
     const processRunner = yield* ProcessRunner;
     const config = yield* ServerConfig;
+    const fileSystem = yield* FileSystem.FileSystem;
     return makeValidationRunner({
       processRunner,
       symphonyLogsDir: config.symphonyLogsDir,
+      // Production wiring must actually write the output the evidence
+      // references (REVIEW P2 #1: non-empty output advertised a file that
+      // was never created).
+      writeFile: (path, content) =>
+        fileSystem.writeFileString(path, content).pipe(Effect.catch(() => Effect.void)),
+      makeDirectory: (dir) =>
+        fileSystem.makeDirectory(dir, { recursive: true }).pipe(Effect.catch(() => Effect.void)),
     });
   }),
 );

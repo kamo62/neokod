@@ -7,6 +7,7 @@ import { makeGitHubProjectsAdapter } from "./GitHubProjectsAdapter.ts";
 
 const rawItem = (overrides: Record<string, unknown> = {}) => ({
   id: "item-1",
+  statusField: { __typename: "ProjectV2ItemFieldSingleSelectValue", name: "Open" },
   fieldValues: {
     nodes: [{ __typename: "ProjectV2ItemFieldSingleSelectValue", name: "Open" }],
   },
@@ -28,6 +29,11 @@ const rawItem = (overrides: Record<string, unknown> = {}) => ({
 
 const makeFakeClient = (options: {
   readonly items?: ReadonlyArray<unknown>;
+  readonly pages?: ReadonlyArray<{
+    readonly nodes: ReadonlyArray<unknown>;
+    readonly hasNextPage: boolean;
+    readonly endCursor: string | null;
+  }>;
   readonly byItemId?: (id: string) => unknown | null;
   readonly errors?: boolean;
 }) =>
@@ -60,21 +66,38 @@ const makeFakeClient = (options: {
         HttpClientResponse.fromWeb(request, Response.json({ errors: [{ message: "boom" }] })),
       );
     }
+    if (payload.query.includes("node(id:")) {
+      const idMatch = /node\(id: "([^"]+)"\)/.exec(payload.query);
+      const item = idMatch === null ? null : (options.byItemId?.(idMatch[1] ?? "") ?? null);
+      return Effect.succeed(
+        HttpClientResponse.fromWeb(request, Response.json({ data: { node: item } })),
+      );
+    }
     if (payload.query.includes("viewer")) {
       return Effect.succeed(
         HttpClientResponse.fromWeb(request, Response.json({ data: { viewer: { login: "me" } } })),
       );
     }
-    const itemId = /itemId: "([^"]+)"/.exec(payload.query)?.[1];
-    if (itemId !== undefined) {
-      const item = options.byItemId?.(itemId) ?? null;
-      const nodes = item === null ? [] : [item];
+    if (options.pages !== undefined) {
+      const cursor = payload.variables?.cursor;
+      const pageIndex = typeof cursor === "string" ? Number(cursor) : 0;
+      const page = options.pages[pageIndex] ?? options.pages[options.pages.length - 1];
       return Effect.succeed(
         HttpClientResponse.fromWeb(
           request,
           Response.json({
             data: {
-              owner: { projectV2: { items: { nodes } } },
+              owner: {
+                projectV2: {
+                  items: {
+                    nodes: page?.nodes ?? [],
+                    pageInfo: {
+                      hasNextPage: page?.hasNextPage ?? false,
+                      endCursor: page?.endCursor ?? null,
+                    },
+                  },
+                },
+              },
             },
           }),
         ),
@@ -85,7 +108,14 @@ const makeFakeClient = (options: {
         request,
         Response.json({
           data: {
-            owner: { projectV2: { items: { nodes: options.items ?? [] } } },
+            owner: {
+              projectV2: {
+                items: {
+                  nodes: options.items ?? [],
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                },
+              },
+            },
           },
         }),
       ),
@@ -160,9 +190,7 @@ describe("makeGitHubProjectsAdapter", () => {
             rawItem(),
             rawItem({
               id: "item-2",
-              fieldValues: {
-                nodes: [{ __typename: "ProjectV2ItemFieldSingleSelectValue", name: "Done" }],
-              },
+              statusField: { __typename: "ProjectV2ItemFieldSingleSelectValue", name: "Done" },
             }),
           ],
         }),
@@ -222,6 +250,21 @@ describe("makeGitHubProjectsAdapter", () => {
       const names = adapter.secretEnvironmentNames();
       expect(names).toContain("GH_TOKEN");
       expect(names).toContain("GITHUB_PAT");
+    }),
+  );
+
+  it.effect("paginates past the first 100 items", () =>
+    Effect.gen(function* () {
+      const adapter = yield* makeAdapter({
+        httpClient: makeFakeClient({
+          pages: [
+            { nodes: [rawItem({ id: "item-1" })], hasNextPage: true, endCursor: "1" },
+            { nodes: [rawItem({ id: "item-2" })], hasNextPage: false, endCursor: null },
+          ],
+        }),
+      });
+      const issues = yield* adapter.listCandidateIssues();
+      expect(issues.map((issue) => issue.id)).toEqual(["item-1", "item-2"]);
     }),
   );
 

@@ -9,7 +9,10 @@ import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
 import { ProcessRunner } from "../../processRunner.ts";
 import { makeWorkspaceManager, WorkspaceManager, type WorkspaceManagerDeps } from "./Manager.ts";
 import type { HookRunner } from "./Hooks.ts";
-import { WorkspaceRemovalGuard } from "../Persistence/Services/WorkspaceOwnershipRepository.ts";
+import {
+  WorkspaceOwnershipRepository,
+  WorkspaceRemovalGuard,
+} from "../Persistence/Services/WorkspaceOwnershipRepository.ts";
 
 /**
  * Live workspace manager wiring.
@@ -41,6 +44,25 @@ export const WorkspaceManagerLive = Layer.effect(
                   removingOwner: "symphony",
                 })
                 .pipe(Effect.mapError((cause) => new Error(cause.message)))
+            : Effect.void,
+        ),
+      );
+
+    const acquireOwnership: WorkspaceManagerDeps["acquireOwnership"] = (workspacePath) =>
+      // Also per-call: record a Symphony lease so the removal guard sees the
+      // workspace (REVIEW P1 #1).
+      Effect.serviceOption(WorkspaceOwnershipRepository).pipe(
+        Effect.flatMap((maybeRepo) =>
+          Option.isSome(maybeRepo)
+            ? maybeRepo.value
+                .acquire({
+                  workspacePath,
+                  owner: "symphony",
+                })
+                .pipe(
+                  Effect.mapError((cause) => new Error(cause.message)),
+                  Effect.asVoid,
+                )
             : Effect.void,
         ),
       );
@@ -89,6 +111,7 @@ export const WorkspaceManagerLive = Layer.effect(
           catch: (cause) => new Error(cause instanceof Error ? cause.message : "realpath failed"),
         }),
       assertRemovable,
+      acquireOwnership,
     };
 
     return makeWorkspaceManager(deps);

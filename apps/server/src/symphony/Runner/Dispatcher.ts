@@ -108,13 +108,6 @@ export const makeRunDispatcher = Effect.gen(function* () {
     >
   >(new Map());
 
-  // Retry cap from the workflow (plan 9.5): after maxAttempts failures the
-  // item is released to queued instead of being re-scheduled.
-  let maxAttempts = 5;
-  const setMaxAttempts = (config: EffectiveWorkflowConfig) => {
-    maxAttempts = config.maxAttempts ?? 5;
-  };
-
   const makeRunAttemptId = () =>
     crypto.randomUUIDv4.pipe(
       Effect.map((value) => RunAttemptId.make(`run-${value}`)),
@@ -152,11 +145,14 @@ export const makeRunDispatcher = Effect.gen(function* () {
    * The retry decision must honor the recorded terminal status, not just the
    * error category (REVIEW P0: a user-cancelled run was retried because
    * markFailed used the hard-coded "agent" category). Plan 9.5: user
-   * cancellation and tracker cancellation are never retryable.
+   * cancellation and tracker cancellation are never retryable. `maxAttempts`
+   * is per-dispatch (REVIEW P2 #2: shared mutable state let one workflow's
+   * cap leak into another's retries).
    */
   const retryableFromAttempt = (
     attempt: { readonly status: string; readonly attemptNumber: number } | null,
     errorCategory: string,
+    maxAttempts: number,
   ): boolean => {
     if (attempt === null) {
       return isRetryableCategory(errorCategory) && 1 < maxAttempts;
@@ -178,6 +174,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
     ownerToken: string,
     generation: number,
     error: { readonly category: string; readonly message: string },
+    maxAttempts: number,
   ) =>
     Effect.gen(function* () {
       const attempt = yield* runAttempts
@@ -193,7 +190,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
           })
           .pipe(Effect.catch(() => Effect.void));
       }
-      const retryable = retryableFromAttempt(attempt, error.category);
+      const retryable = retryableFromAttempt(attempt, error.category, maxAttempts);
       if (retryable) {
         yield* workItems
           .transition(workItemId, "retry_scheduled", { ownerToken, generation })
@@ -213,7 +210,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
   const dispatchWorkItem: RunDispatcherService["dispatchWorkItem"] = (input) =>
     Effect.gen(function* () {
       const { workItem, issue, config } = input;
-      setMaxAttempts(config);
+      const maxAttempts = config.maxAttempts ?? 5;
       const ownerToken = yield* crypto.randomUUIDv4.pipe(
         Effect.mapError(() => new RunDispatchError("failed to generate owner token")),
       );
@@ -254,7 +251,14 @@ export const makeRunDispatcher = Effect.gen(function* () {
           finishedAt: null,
           error: null,
         })
-        .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
+        .pipe(
+          Effect.mapError((cause) => new RunDispatchError(cause.message)),
+          // A failure after claiming but before the first attempt row exists
+          // leaves the item in `preparing` with no attempt for recovery to
+          // see (REVIEW P1 #10). Release the claim so the item can be
+          // re-dispatched.
+          Effect.tapError(() => releaseClaim(workItemId, ownerToken, claimed.generation)),
+        );
       yield* appendEvent(runAttemptId, "issue_claimed", { workItemId: String(workItemId) });
       yield* appendEvent(runAttemptId, "workspace_created", {
         path: workspace.path,
@@ -302,10 +306,17 @@ export const makeRunDispatcher = Effect.gen(function* () {
               })
               .pipe(Effect.catch(() => Effect.void));
           } else {
-            yield* markFailed(runAttemptId, workItemId, ownerToken, claimed.generation, {
-              category: "agent",
-              message: "plan turn did not complete",
-            });
+            yield* markFailed(
+              runAttemptId,
+              workItemId,
+              ownerToken,
+              claimed.generation,
+              {
+                category: "agent",
+                message: "plan turn did not complete",
+              },
+              maxAttempts,
+            );
           }
           return runAttemptId;
         }
@@ -360,10 +371,17 @@ export const makeRunDispatcher = Effect.gen(function* () {
             })
             .pipe(Effect.catch(() => Effect.void));
         } else {
-          yield* markFailed(runAttemptId, workItemId, ownerToken, claimed.generation, {
-            category: "agent",
-            message: "turn did not complete",
-          });
+          yield* markFailed(
+            runAttemptId,
+            workItemId,
+            ownerToken,
+            claimed.generation,
+            {
+              category: "agent",
+              message: "turn did not complete",
+            },
+            maxAttempts,
+          );
         }
 
         return runAttemptId;

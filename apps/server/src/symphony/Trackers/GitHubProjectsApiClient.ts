@@ -29,6 +29,12 @@ const DEFAULT_API_URL = "https://api.github.com/graphql";
 
 export const GitHubProjectItemSchema = Schema.Struct({
   id: Schema.String,
+  statusField: Schema.optional(
+    Schema.Struct({
+      __typename: Schema.optional(Schema.String),
+      name: Schema.optional(Schema.String),
+    }),
+  ),
   fieldValues: Schema.optional(
     Schema.Struct({
       nodes: Schema.optional(
@@ -92,6 +98,12 @@ export interface GitHubProjectsApiClientShape {
 const ITEM_FRAGMENT = `
   fragment ItemFields on ProjectV2Item {
     id
+    statusField: fieldValueByName(name: "Status") {
+      __typename
+      ... on ProjectV2ItemFieldSingleSelectValue {
+        name
+      }
+    }
     fieldValues(first: 100) {
       nodes {
         __typename
@@ -125,12 +137,12 @@ export const makeGitHubProjectsApiClient = (input: {
   const { credentials, httpClient } = input;
   const apiUrl = credentials.apiUrl ?? DEFAULT_API_URL;
 
-  const executeGraphql = (
+  const executeGraphql = <A>(
     operation: string,
     query: string,
     variables: Record<string, unknown>,
-    onStatus: (json: unknown) => Effect.Effect<unknown, TrackerAdapterError>,
-  ) =>
+    onStatus: (json: unknown) => Effect.Effect<A, TrackerAdapterError>,
+  ): Effect.Effect<A, TrackerAdapterError> =>
     Effect.gen(function* () {
       const request = HttpClientRequest.setBody(
         HttpClientRequest.post(apiUrl),
@@ -176,27 +188,40 @@ export const makeGitHubProjectsApiClient = (input: {
       return yield* onStatus(json);
     });
 
-  const projectQuery = (itemIdFilter?: string) => {
-    const item = itemIdFilter === undefined ? "" : `(itemId: "${itemIdFilter}")`;
-    return `
-      query($cursor: String) {
-        owner: repositoryOwner(login: "${credentials.owner}") {
-          projectV2(number: ${credentials.projectNumber}) {
-            items${item}(first: 100, after: $cursor) {
-              nodes { ...ItemFields }
-              pageInfo { hasNextPage endCursor }
-            }
+  const projectQuery = () => `
+    query($cursor: String) {
+      owner: repositoryOwner(login: "${credentials.owner}") {
+        projectV2(number: ${credentials.projectNumber}) {
+          items(first: 100, after: $cursor) {
+            nodes { ...ItemFields }
+            pageInfo { hasNextPage endCursor }
           }
         }
       }
-      ${ITEM_FRAGMENT}
-    `;
-  };
+    }
+    ${ITEM_FRAGMENT}
+  `;
 
-  const decodeItems = (
+  const itemQuery = (itemId: string) => `
+    query {
+      node(id: "${itemId}") {
+        ...ItemFields
+      }
+    }
+    ${ITEM_FRAGMENT}
+  `;
+
+  const decodePage = (
     json: unknown,
     operation: string,
-  ): Effect.Effect<ReadonlyArray<GitHubProjectItem>, TrackerAdapterError> => {
+  ): Effect.Effect<
+    {
+      readonly items: ReadonlyArray<GitHubProjectItem>;
+      readonly hasNextPage: boolean;
+      readonly endCursor: string | null;
+    },
+    TrackerAdapterError
+  > => {
     const shape = Schema.Struct({
       data: Schema.Struct({
         owner: Schema.Struct({
@@ -204,6 +229,10 @@ export const makeGitHubProjectsApiClient = (input: {
             Schema.Struct({
               items: Schema.Struct({
                 nodes: Schema.optional(Schema.Array(GitHubProjectItemSchema)),
+                pageInfo: Schema.Struct({
+                  hasNextPage: Schema.Boolean,
+                  endCursor: Schema.NullOr(Schema.String),
+                }),
               }),
             }),
           ),
@@ -219,8 +248,29 @@ export const makeGitHubProjectsApiClient = (input: {
         if (project === null) {
           return Effect.fail(trackerNotFoundError(operation));
         }
-        return Effect.succeed(project.items.nodes ?? []);
+        return Effect.succeed({
+          items: project.items.nodes ?? [],
+          hasNextPage: project.items.pageInfo.hasNextPage,
+          endCursor: project.items.pageInfo.endCursor ?? null,
+        });
       }),
+    );
+  };
+
+  const decodeNodeItem = (
+    json: unknown,
+    _operation: string,
+  ): Effect.Effect<GitHubProjectItem | null, TrackerAdapterError> => {
+    const shape = Schema.Struct({
+      data: Schema.Struct({
+        node: Schema.NullOr(GitHubProjectItemSchema),
+      }),
+    });
+    return Schema.decodeUnknownEffect(shape)(json).pipe(
+      Effect.mapError((cause) =>
+        trackerResponseError(cause instanceof Error ? cause.message : String(cause)),
+      ),
+      Effect.map((decoded) => decoded.data.node),
     );
   };
 
@@ -229,34 +279,36 @@ export const makeGitHubProjectsApiClient = (input: {
       const all: GitHubProjectItem[] = [];
       let cursor: string | null = null;
       for (;;) {
-        const body = yield* executeGraphql(
+        const page: {
+          readonly items: ReadonlyArray<GitHubProjectItem>;
+          readonly hasNextPage: boolean;
+          readonly endCursor: string | null;
+        } = yield* executeGraphql(
           "GitHubProjects.listProjectItems",
-          projectQuery(undefined),
+          projectQuery(),
           { cursor },
-          (json) => decodeItems(json, "GitHubProjects.listProjectItems"),
+          (json) => decodePage(json, "GitHubProjects.listProjectItems"),
         );
-        const items = body as ReadonlyArray<GitHubProjectItem>;
-        all.push(...items);
-        if (items.length < 100) {
+        all.push(...page.items);
+        if (!page.hasNextPage || page.endCursor === null) {
           break;
         }
-        cursor = null;
-        break;
+        cursor = page.endCursor;
       }
       return all;
     });
 
   const fetchItem: GitHubProjectsApiClientShape["fetchItem"] = (itemId) =>
     Effect.gen(function* () {
-      const body = yield* executeGraphql(
+      // `items(itemId:)` is not a valid argument for the ProjectV2Item
+      // connection (REVIEW P1 #12); fetch by node id instead.
+      const item = yield* executeGraphql(
         "GitHubProjects.fetchItem",
-        projectQuery(itemId),
+        itemQuery(itemId),
         {},
-        (json) => decodeItems(json, "GitHubProjects.fetchItem"),
+        (json) => decodeNodeItem(json, "GitHubProjects.fetchItem"),
       );
-      const items = body as ReadonlyArray<GitHubProjectItem>;
-      const item = items[0];
-      if (item === undefined) {
+      if (item === null) {
         return yield* Effect.fail(trackerNotFoundError(`GitHub project item ${itemId} not found`));
       }
       return item;

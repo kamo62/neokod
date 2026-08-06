@@ -436,6 +436,8 @@ export const WorkItemSchema = Schema.Struct({
   evidence: Schema.NullOr(EvidenceBundleSchema),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
+  /** When the claim was taken (REVIEW P1 #10: orphan claims are detectable). */
+  claimedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
 });
 export type WorkItem = typeof WorkItemSchema.Type;
 

@@ -85,6 +85,12 @@ const isSingleSelectValue = (value: unknown): value is SingleSelectValue =>
   (value as { readonly __typename?: unknown }).__typename === "ProjectV2ItemFieldSingleSelectValue";
 
 const itemStatus = (raw: GitHubProjectItem): string | null => {
+  // The Status field is authoritative (REVIEW P1 #14: the first single-select
+  // field may be Priority, whose value would become the issue state).
+  const statusField = raw.statusField;
+  if (statusField !== undefined && isSingleSelectValue(statusField)) {
+    return statusField.name ?? null;
+  }
   const values = raw.fieldValues?.nodes ?? [];
   for (const value of values) {
     if (isSingleSelectValue(value)) {

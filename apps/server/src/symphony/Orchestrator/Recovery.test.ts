@@ -133,7 +133,7 @@ const runRecovery = () =>
   });
 
 layer("Recovery startup", (it) => {
-  it.effect("releases a claim whose run is already terminal", () =>
+  it.effect("lands a succeeded-but-untransited run in ready_for_review, not a re-dispatch", () =>
     Effect.gen(function* () {
       yield* seedWorkflow("/repo");
       const workItem = makeWorkItem("3001", "running");
@@ -151,7 +151,9 @@ layer("Recovery startup", (it) => {
       const after = yield* WorkItemRepository.pipe(
         Effect.flatMap((repo) => repo.getById(workItem.id)),
       );
-      expect(after?.lifecycle).toBe("queued");
+      // REVIEW P1 #11: a completed agent must not be re-run; the item lands
+      // in its review state instead of being re-dispatched.
+      expect(after?.lifecycle).toBe("ready_for_review");
     }),
   );
 

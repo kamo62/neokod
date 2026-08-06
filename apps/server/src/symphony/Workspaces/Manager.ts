@@ -129,6 +129,9 @@ export interface WorkspaceManagerDeps {
     readonly workspacePath: string;
     readonly force?: boolean;
   }) => Effect.Effect<void, Error>;
+  /** Record a Symphony ownership lease for a newly created workspace
+   * (plan 16.0; REVIEW P1 #1). */
+  readonly acquireOwnership?: (workspacePath: string) => Effect.Effect<void, Error>;
 }
 
 export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManager["Service"] => {
@@ -203,6 +206,14 @@ export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManag
               new WorkspacePopulationError(key, `after_create hook failed: ${cause.message}`),
           ),
         );
+
+      // Record Symphony ownership so Work-mode removal of a live Symphony
+      // workspace is refused (plan 16.0; REVIEW P1 #1: without a record the
+      // guard never saw the workspace). Best-effort — the record is advisory
+      // for cleanup ordering, not a creation gate.
+      if (deps.acquireOwnership !== undefined) {
+        yield* deps.acquireOwnership(resolvedPath).pipe(Effect.catch(() => Effect.void));
+      }
 
       return { key, path: resolvedPath, branch, baseBranch, createdNow: true };
     });

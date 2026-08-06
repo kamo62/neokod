@@ -74,6 +74,7 @@ const rowToWorkItem = (row: Schema.Schema.Type<typeof WorkItemRowSchema>): WorkI
   evidence: null,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
+  ...(row.claimedAt === null ? {} : { claimedAt: row.claimedAt }),
 });
 
 const workItemToRow = (workItem: WorkItem): Schema.Schema.Type<typeof WorkItemRowSchema> => ({

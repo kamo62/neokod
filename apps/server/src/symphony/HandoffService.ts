@@ -228,6 +228,20 @@ export const makeHandoffService = Effect.gen(function* () {
         return yield* Effect.fail(new HandoffError("run attempt not found"));
       }
 
+      // Only the CURRENT attempt may be taken over: cancelling an older
+      // attempt while a newer one is active would stop the wrong run
+      // (REVIEW P1 #2).
+      const latest = yield* runAttempts
+        .latestForWorkItem(attempt.workItemId)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (latest === null || latest.id !== attempt.id) {
+        return yield* Effect.fail(
+          new HandoffError(
+            "run attempt is not the current attempt for its work item; takeover aborted",
+          ),
+        );
+      }
+
       // 1. Stop the worker: cancel the run (interrupts the turn, settles the
       //    run's live requests, records the durable status).
       yield* dispatcher

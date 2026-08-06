@@ -148,7 +148,20 @@ const layer = it.layer(
     Layer.provideMerge(
       Layer.succeed(PullRequestService, {
         create: () => Effect.succeed(null as never),
-        refresh: () => Effect.succeed(null),
+        // ApproveMerge now demands a fresh host query (RECONCILE binding
+        // constraint). The enriched PR the gate needs comes from refresh.
+        refresh: () =>
+          Effect.succeed({
+            number: 1,
+            title: "t",
+            branch: "b",
+            baseBranch: "m",
+            status: "open",
+            ciStatus: "success",
+            reviewState: "approved",
+            mergeable: true,
+            unresolvedComments: 0,
+          }),
       } satisfies PullRequestService["Service"]),
     ),
     Layer.provideMerge(serverSettingsTestLayer({ trackers: { github: { enabled: true } } })),
@@ -573,6 +586,22 @@ layer("SymphonyOrchestrator Observe", (it) => {
       const orchestrator = yield* SymphonyOrchestrator;
       const workItemId = WorkItemId.make("merge-1");
       const workItems = yield* WorkItemRepository;
+      // The fresh host query needs the workflow's effective config.
+      yield* seedWorkflow("wf-merge-1", "/repo/merge");
+      const workflows = yield* WorkflowRepository;
+      yield* workflows.upsert({
+        id: WorkflowId.make("wf-merge-1"),
+        repositoryPath: "/repo/merge",
+        workflowPath: "/repo/merge/WORKFLOW.md",
+        status: "active",
+        autonomy: "execute",
+        validationError: null,
+        definition: { config: {}, promptTemplate: "Implement." },
+        effectiveConfig: { ...makeConfig("/repo/merge"), autonomy: "execute" },
+        enabledAt: "2026-08-05T00:00:00.000Z",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
       const evidence = {
         changedFiles: [],
         testsChanged: [],
@@ -604,10 +633,13 @@ layer("SymphonyOrchestrator Observe", (it) => {
         acceptanceCriteria: [],
         source: { kind: "manual" },
         trackerIssueId: "merge-1",
+        workflowId: WorkflowId.make("wf-merge-1"),
         lifecycle: "ready_for_review",
         priority: 1,
         eligibilityReasons: [],
         evidence: null,
+        workspaceKey: "issue-merge-1",
+        baseBranch: "main",
         createdAt: "2026-08-05T00:00:00.000Z",
         updatedAt: "2026-08-05T00:00:00.000Z",
       });
@@ -637,27 +669,14 @@ layer("SymphonyOrchestrator Observe", (it) => {
         priority: 1,
         eligibilityReasons: [],
         evidence: null,
+        workspaceKey: "issue-merge-3",
+        baseBranch: "main",
         createdAt: "2026-08-05T00:00:00.000Z",
         updatedAt: "2026-08-05T00:00:00.000Z",
       });
-      const evidenceRepo = yield* EvidenceRepository;
-      // A PR exists but carries no ciStatus/reviewState/mergeable (host
-      // without enrichment): merge readiness must stay capped.
-      yield* evidenceRepo.upsert(workItemId, {
-        changedFiles: [],
-        testsChanged: [],
-        commits: [],
-        validationResults: [],
-        assumptions: [],
-        risks: [],
-        unresolved: [],
-        artefacts: [],
-        pullRequest: { number: 1, title: "t", branch: "b", baseBranch: "m", status: "open" },
-        modelReview: null,
-        overallAssessment: "ready_for_review",
-        createdAt: "2026-08-05T00:00:00.000Z",
-      });
-
+      // No stored evidence at all: the assessment gate cannot pass, so the
+      // item stays at ready_for_review even though the fresh host refresh
+      // would return an enriched PR.
       const merged = yield* orchestrator.approveMerge("merge-3");
       expect(merged).toBe(false);
       const after = yield* workItems.getById(workItemId);
@@ -681,25 +700,13 @@ layer("SymphonyOrchestrator Observe", (it) => {
         priority: 1,
         eligibilityReasons: [],
         evidence: null,
+        workspaceKey: "issue-merge-4",
+        baseBranch: "main",
         createdAt: "2026-08-05T00:00:00.000Z",
         updatedAt: "2026-08-05T00:00:00.000Z",
       });
-      const evidenceRepo = yield* EvidenceRepository;
-      yield* evidenceRepo.upsert(workItemId, {
-        changedFiles: [],
-        testsChanged: [],
-        commits: [],
-        validationResults: [],
-        assumptions: [],
-        risks: [],
-        unresolved: [],
-        artefacts: [],
-        pullRequest: null,
-        modelReview: null,
-        overallAssessment: "ready_for_review",
-        createdAt: "2026-08-05T00:00:00.000Z",
-      });
-
+      // No workspace identity: the fresh host query cannot be issued, so the
+      // gate refuses (stored PR evidence is not enough).
       const merged = yield* orchestrator.approveMerge("merge-4");
       expect(merged).toBe(false);
       const after = yield* workItems.getById(workItemId);
@@ -723,6 +730,8 @@ layer("SymphonyOrchestrator Observe", (it) => {
         priority: 1,
         eligibilityReasons: [],
         evidence: null,
+        workspaceKey: "issue-merge-2",
+        baseBranch: "main",
         createdAt: "2026-08-05T00:00:00.000Z",
         updatedAt: "2026-08-05T00:00:00.000Z",
       });

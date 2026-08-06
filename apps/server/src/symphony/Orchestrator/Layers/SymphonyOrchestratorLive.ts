@@ -640,6 +640,17 @@ const makeOrchestrator = Effect.gen(function* () {
       if (item === null || item.lifecycle === "preparing" || item.lifecycle === "running") {
         return;
       }
+      // A review that requested changes can be re-dispatched: claims accept
+      // only eligible/queued/retry_scheduled, so move it back to queued first
+      // (REVIEW P1 #5: changes_requested was stranded forever).
+      if (item.lifecycle === "changes_requested") {
+        const requeued = yield* workItems
+          .transition(item.id, "queued", { from: ["changes_requested"] })
+          .pipe(Effect.catch(() => Effect.succeed(false)));
+        if (!requeued) {
+          return;
+        }
+      }
       // Global pause blocks new dispatches, including the retry sweep
       // (plan 9.6, REVIEW P1: pause did not stop the sweep).
       const paused = yield* orchestratorState
@@ -748,12 +759,11 @@ const makeOrchestrator = Effect.gen(function* () {
   const requestChanges: SymphonyOrchestratorShape["requestChanges"] = (workItemId, reason) =>
     Effect.gen(function* () {
       const id = WorkItemId.make(workItemId);
-      const item = yield* workItems.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
-      if (item === null || item.lifecycle !== "ready_for_review") {
-        return false;
-      }
+      // The transition carries the expected lifecycle so a concurrent
+      // approveMerge cannot double-write (REVIEW P1 #4: read-then-update was
+      // non-atomic and one could overwrite the other).
       const changed = yield* workItems
-        .transition(id, "changes_requested", {})
+        .transition(id, "changes_requested", { from: ["ready_for_review"] })
         .pipe(Effect.catch(() => Effect.succeed(false)));
       if (changed) {
         const attempt = yield* runAttempts
@@ -775,17 +785,65 @@ const makeOrchestrator = Effect.gen(function* () {
     Effect.gen(function* () {
       const id = WorkItemId.make(workItemId);
       const item = yield* workItems.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
-      if (item === null || item.lifecycle !== "ready_for_review") {
+      if (item === null) {
         return false;
+      }
+      // The transition carries the expected lifecycle so a concurrent
+      // requestChanges cannot double-write (REVIEW P1 #4). The merge-gate
+      // evidence must be current: re-read it after the item check, and
+      // transition only from ready_for_review.
+      if (item.lifecycle !== "ready_for_review") {
+        return false;
+      }
+      // Merge gate evidence must be FRESH: a stored or cached PR status is
+      // display data, not proof of readiness (RECONCILE binding constraint;
+      // plan 10.1/FR-095). Re-query the host before gating.
+      const workflow =
+        item.workflowId === undefined
+          ? undefined
+          : yield* workflows.list().pipe(
+              Effect.map((all) => all.find((w) => w.id === item.workflowId)),
+              Effect.catch(() => Effect.succeed(undefined)),
+            );
+      const config = workflow?.effectiveConfig;
+      const workspaceKey = item.workspaceKey;
+      const baseBranch = item.baseBranch;
+      if (
+        config === null ||
+        config === undefined ||
+        workspaceKey === undefined ||
+        baseBranch === undefined
+      ) {
+        return false;
+      }
+      const branch = deriveWorkingBranch(workspaceKey);
+      const freshPullRequest = yield* pullRequestService
+        .refresh({
+          config,
+          branch,
+          baseBranch,
+          title: item.objective,
+        })
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (freshPullRequest === null) {
+        return false;
+      }
+      // Persist the refreshed evidence so the review panel shows what the
+      // gate decided on.
+      const storedEvidence = yield* evidenceRepository
+        .getByWorkItem(id)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (storedEvidence !== null) {
+        yield* evidenceRepository
+          .upsert(id, { ...storedEvidence, pullRequest: freshPullRequest })
+          .pipe(Effect.catch(() => Effect.void));
       }
       // Merge policy (plan 14): required checks must pass; unresolved review
       // comments block merge; automatic merge is never performed here. A run
       // is only merge-ready when its evidence assessment is at least
       // ready_for_review and no failed validation stands. The bundle lives in
       // the EvidenceRepository (the work item row does not carry it).
-      const evidence = yield* evidenceRepository
-        .getByWorkItem(id)
-        .pipe(Effect.catch(() => Effect.succeed(null)));
+      const evidence = storedEvidence;
       if (evidence === null) {
         return false;
       }
@@ -801,7 +859,7 @@ const makeOrchestrator = Effect.gen(function* () {
       // not changes-requested, and a mergeable PR. Absent enrichment (hosts
       // without Phase 5 enrichment) or a missing PR caps at ready_for_review
       // — a run is never promoted on the absence of a signal.
-      const pullRequest = evidence.pullRequest;
+      const pullRequest = freshPullRequest;
       if (pullRequest === null) {
         return false;
       }
@@ -821,7 +879,7 @@ const makeOrchestrator = Effect.gen(function* () {
         return false;
       }
       const changed = yield* workItems
-        .transition(id, "ready_to_merge", {})
+        .transition(id, "ready_to_merge", { from: ["ready_for_review"] })
         .pipe(Effect.catch(() => Effect.succeed(false)));
       if (changed) {
         const attempt = yield* runAttempts
