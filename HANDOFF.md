@@ -1,19 +1,23 @@
 # Handoff
 
-Updated: 2026-08-06 12:10 on MacBookPro
+Updated: 2026-08-06 18:20 on MacBookPro
 
 ## State
 
 - Branch: `feat/symphony-mode-impl`
-- HEAD: `3f2e8dbdc` feat(symphony): Phase 5 completion — GitHub PR status enrichment and host-backed merge gates
-- Pushed: local-only; 11 commits ahead of origin. Push after the next commit.
+- HEAD: `38df58a20` fix(symphony): address REVIEW.md P0/P1 findings — cancel fiber, FR-095 gates, removal gateway, PR body file, evidence rules
+- Pushed: local-only; 12 commits ahead of origin. Push after the next commit.
 - Dirty: `Neokod Symphony Mode Product Requirements.pdf`, `PLAN-exec-demo.md`, `demo.md`,
-  `apps/server/src/__probe/probe.ts` (user files, never stage). Everything else is committed.
+  `apps/server/src/__probe/probe.ts` (user files, never stage). Also dirty (NOT mine, do not
+  commit): `apps/server/src/provider/copilot/*`, `apps/server/src/telemetry/*`,
+  `apps/server/src/serverSettings.test.ts` — Kamogelo's in-progress telemetry session, which
+  currently breaks the `bin.ts` typecheck (ServerSettingsService leak).
 
 ## Done
 
-Phase 3, 4, 5 and 6 all landed in committed, tested slices. Full server suite: 208 files passed /
-2 skipped, 1880 tests passed / 7 skipped (~160-220s). `vp check` 0 errors / 26 warnings.
+Phase 3, 4, 5 and 6 all landed in committed, tested slices, and the REVIEW.md Phase 3-6 findings
+(35 total: 8 P0, 16 P1, 11 P2) are addressed. Full server suite: 208 files passed / 2 skipped,
+1905 tests passed / 7 skipped (~180s). `vp check` 0 errors / 27 warnings (baseline).
 Filtered server typecheck clean (same noise filter as before).
 
 - `8d7e24c22` **Phase 3 WS-L**: `Validation/Runner.ts` (runs `validation.required` via
@@ -65,17 +69,60 @@ Filtered server typecheck clean (same noise filter as before).
   `RpcServer.toHttpEffectWebsocket` reject the handler map and every WS upgrade return 500
   (44 server.test.ts failures). Registered the 5 RPCs; also replaced an eager
   `WorkItemId.make("")` fallback (throws on empty) with `WorkItemId.make("none")`.
+- `38df58a20` **REVIEW.md Phase 3-6 findings** (35 total: 8 P0, 16 P1, 11 P2), the three named
+  clusters closed:
+  - **Removal gateway now works on every path**: `WorkspaceManagerLive` resolves the guard per
+    call (was construction-time None, disarming the Symphony arm); `removeWorkspace` gained an
+    error channel (blocked removal propagates as `WorkspaceRemovalBlocked`); the guard no longer
+    treats `force` as an ownership override (Work thread deletion sends git-force, not
+    ownership-force); guard fails closed on ownership-table read errors.
+  - **Cancellation stops a run**: `cancelRun` interrupts the dispatch fiber (tracked in
+    `activeAgents` alongside the agent); the completed branch refuses to finalize/PR when the
+    attempt is already terminal; `markFailed` derives retryability from the recorded status
+    (user_cancelled/tracker_cancelled never retried); `updateStatus` still guards terminal
+    transitions via the new `from`-restricted transition.
+  - **approveMerge inverts FR-095 fixed**: positive assertions only — requires non-null PR,
+    `ciStatus === "success"`, present non-changes-requested reviewState, `mergeable === true`,
+    zero unresolved comments. A run with no PR or no host enrichment stays `ready_for_review`.
+    The test that encoded the old violation was replaced with correct FR-095 tests.
+  - **PR creation works in production**: `PullRequestServiceLive` writes the body file via
+    FileSystem; the Dispatcher resolves the body dir (symphony logs dir via serviceOption, temp
+    dir fallback). `create` returns `null` when the PR cannot be located (was a fabricated
+    number:0 that passed merge gating). `refresh` queries all states so merged/closed PRs
+    reflect.
+  - **Evidence rules (suite 7)**: `skipped` validation degrades to failed; an empty
+    `SYMPHONY_EVIDENCE.md` is `insufficient`, not `ready_for_review`.
+  - **Lifecycle legality (suite 6)**: `WorkItemRepository.transition` gained a `from` source
+    restriction; takeover park and resume re-queue are source-restricted and their results
+    checked. Test file added.
+  - **Other**: `lifecycleForRun` checks the work item first (review lifecycle visible in lists);
+    `RunSummary` carries `overallAssessment` (reviews badge no longer fabricated); overview
+    counters live (running/needsAttention/readyForReview/retrying/failedToday); Recovery
+    releases Symphony workspace leases; GitHubCli status decode via Schema.fromJsonString (no
+    defect escape) + unresolved review threads from GraphQL `reviewThreads` (was always 0);
+    ExecutionFinalizer writes the terminal status once after the verdict; Azure Boards batch
+    fetch chunks at 200 + credential probe hits the project resource; GitHub Projects nested
+    page sizes 100; both new adapters derive `dispatchable` from the record; takeOver parks
+    before ownership transfer and validates caller threadIds against the projection;
+    resumeAutonomous picks the matching workspace record and preserves the thread binding;
+    delegateFromThread validates the source thread and carries relevantFiles; Symphony RPC
+    action fallbacks fail with `symphony_unavailable` instead of reporting success when the
+    layer is absent; retry-sweep dispatches run in per-tick scopes; dispatch honours global
+    pause, exclusion and the global concurrency cap.
 
 ## Verified vs unverified
 
 - **Verified: full server suite green.** `cd apps/server && ../../node_modules/.bin/vp test run`
-  -> 208 files passed / 2 skipped, 1892 passed / 7 skipped.
+  -> 208 files passed / 2 skipped, 1905 passed / 7 skipped.
 - **Verified: `vp check --fix` passes.** 0 errors; 27 warnings, all pre-existing.
 - **Verified: server typecheck clean** after the same filter as before (JSON.parse,
   preferSchemaOverJson, globalDate, OrchestratorStateRepository, WorkflowRepository.test,
   globalErrorInEffect, instanceOfSchema, deterministicKeys, LocalTransportAuth, \_\_probe,
   bin\.test, layerMergeAllWithDependencies, suggestions).
 - **Verified: contracts + web typecheck clean.**
+- **Note: the unfiltered `bin.ts` typecheck is currently red** because of Kamogelo's uncommitted
+  copilot/telemetry session (ServerSettingsService leak into the launch boundary) — NOT the
+  Symphony work. Stash those files to verify.
 - **Unverified: live dispatch against a real Codex app-server.** Manual smoke test only (procedure
   below).
 - **Unverified: real Azure Boards / GitHub Projects credential flows.** Adapter tests use fake
@@ -125,6 +172,9 @@ Background jobs still running: none.
   literal or `Effect.sync`.
 - **WorkItem evidence**: the work item row hardcodes `evidence: null`; evidence lives in
   `EvidenceRepository` (symphony_evidence). getRun merges it; approveMerge reads it there.
+- **sql.in inside a template**: `sql.in("col", values)` produces a quoted fragment that fails
+  nested inside another `sql\`...\``expression on SQLite — build it as a standalone fragment
+(the`from`restriction in WorkItemRepository uses`sql.literal` for the IN list).
 - **Known beta quirks** (from earlier phases): `it.effect` required (plain `it` silently skips);
   `exactOptionalPropertyTypes` needs explicit `| undefined`; http body fakes must handle both
   `Uint8Array` and `{body: Uint8Array}` request shapes.
@@ -132,7 +182,9 @@ Background jobs still running: none.
 ## Next moves
 
 1. Push this branch (`git push -u origin feat/symphony-mode-impl`).
-2. Run the manual live smoke procedure above (real Codex app-server, real repo, real PR + CI).
+2. Run the manual live smoke procedure above (real Codex app-server, real repo, real PR + CI) —
+   now expected to pass step 3 (PR creation) for the first time.
 3. Review/merge pass with upstream `pingdotgg/t3code` divergence filters (AGENTS.md).
 4. Optional Phase 5 follow-up: enrichment for GitLab, Bitbucket and Azure DevOps hosts
    (currently null; merge readiness caps at `ready_for_review` for them).
+5. Kamogelo: land the uncommitted copilot/telemetry session (fixes the `bin.ts` typecheck leak).
