@@ -14,6 +14,7 @@ import {
   buildPostHogIdentifyEvent,
   evidenceEventToPostHogEvent,
   makePostHogSink,
+  resolvePostHogSinkSettings,
 } from "./PostHogSink.ts";
 
 const decoder = new TextDecoder();
@@ -145,6 +146,92 @@ describe("buildPostHogBatchBody", () => {
   });
 });
 
+describe("resolvePostHogSinkSettings", () => {
+  it("uses the evidence-card destination when both destinations are configured", () => {
+    NodeAssert.deepEqual(
+      resolvePostHogSinkSettings({
+        analytics: {
+          enabled: true,
+          posthogApiKey: "phc_custom",
+          posthogHost: "https://custom.example",
+        },
+        fallback: {
+          posthogApiKey: "phc_fallback",
+          posthogHost: "https://fallback.example",
+        },
+      }),
+      {
+        enabled: true,
+        posthogApiKey: "phc_fallback",
+        posthogHost: "https://fallback.example",
+      },
+    );
+  });
+
+  it("uses the evidence-card destination when the global API key is incomplete", () => {
+    NodeAssert.deepEqual(
+      resolvePostHogSinkSettings({
+        analytics: {
+          enabled: true,
+          posthogApiKey: "phc_custom",
+          posthogHost: "",
+        },
+        fallback: {
+          posthogApiKey: "phc_fallback",
+          posthogHost: "https://fallback.example",
+        },
+      }),
+      {
+        enabled: true,
+        posthogApiKey: "phc_fallback",
+        posthogHost: "https://fallback.example",
+      },
+    );
+  });
+
+  it("uses the evidence-card destination when the global host is incomplete", () => {
+    NodeAssert.deepEqual(
+      resolvePostHogSinkSettings({
+        analytics: {
+          enabled: true,
+          posthogApiKey: "",
+          posthogHost: "https://custom.example",
+        },
+        fallback: {
+          posthogApiKey: "phc_fallback",
+          posthogHost: "https://fallback.example",
+        },
+      }),
+      {
+        enabled: true,
+        posthogApiKey: "phc_fallback",
+        posthogHost: "https://fallback.example",
+      },
+    );
+  });
+
+  it("uses the global analytics destination when the evidence-card destination is empty", () => {
+    NodeAssert.deepEqual(
+      resolvePostHogSinkSettings({
+        analytics: {
+          enabled: true,
+          posthogApiKey: "phc_global",
+          posthogHost: "https://global.example",
+        },
+        fallback: {
+          posthogApiKey: "",
+          posthogHost: "",
+        },
+      }),
+      {
+        enabled: true,
+        posthogApiKey: "phc_global",
+        posthogHost: "https://global.example",
+      },
+    );
+  });
+});
+
 interface CapturedPost {
   readonly url: string;
   readonly body: {
@@ -171,6 +258,7 @@ it.layer(NodeServices.layer)("PostHogSink", (it) => {
       );
 
       const sink = yield* makePostHogSink({
+        enabled: true,
         posthogHost: "https://us.i.posthog.com",
         posthogApiKey: "phc_test",
       });
@@ -210,6 +298,7 @@ it.layer(NodeServices.layer)("PostHogSink", (it) => {
         );
 
         const sink = yield* makePostHogSink({
+          enabled: true,
           posthogHost: "https://us.i.posthog.com",
           posthogApiKey: "phc_test",
         });
@@ -252,7 +341,11 @@ it.layer(NodeServices.layer)("PostHogSink", (it) => {
           }),
         );
 
-      const settings = { posthogHost: "https://us.i.posthog.com", posthogApiKey: "phc_test" };
+      const settings = {
+        enabled: true,
+        posthogHost: "https://us.i.posthog.com",
+        posthogApiKey: "phc_test",
+      };
 
       const posts1 = yield* Queue.unbounded<CapturedPost>();
       const sink1 = yield* makePostHogSink(settings);
@@ -266,5 +359,26 @@ it.layer(NodeServices.layer)("PostHogSink", (it) => {
 
       NodeAssert.equal(firstDistinctId, secondDistinctId);
     }).pipe(Effect.provide(makeTestLayer("neokod-posthog-sink-persistence-test-"))),
+  );
+
+  it.effect("does not send any request when the analytics gate is off", () =>
+    Effect.gen(function* () {
+      let attempts = 0;
+      const httpLayer = Layer.succeed(
+        HttpClient.HttpClient,
+        HttpClient.make((request) => {
+          attempts += 1;
+          return Effect.succeed(HttpClientResponse.fromWeb(request, Response.json({ ok: true })));
+        }),
+      );
+      const sink = yield* makePostHogSink({
+        enabled: false,
+        posthogHost: "https://us.i.posthog.com",
+        posthogApiKey: "phc_test",
+      });
+
+      yield* sink.send([promptEvent], identity).pipe(Effect.provide(httpLayer));
+      NodeAssert.equal(attempts, 0);
+    }).pipe(Effect.provide(makeTestLayer("neokod-posthog-sink-disabled-test-"))),
   );
 });

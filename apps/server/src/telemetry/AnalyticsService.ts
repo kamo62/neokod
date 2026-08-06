@@ -14,17 +14,23 @@
 import { HostProcessArchitecture, HostProcessPlatform } from "@neokod/shared/hostProcess";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
+import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
+import * as Stream from "effect/Stream";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 
 import packageJson from "../../package.json" with { type: "json" };
 import * as ServerConfig from "../config.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
+import { DEFAULT_ANALYTICS_SETTINGS, type AnalyticsSettings } from "@neokod/contracts";
 import { getTelemetryIdentifier } from "./Identify.ts";
 
 interface BufferedAnalyticsEvent {
@@ -104,18 +110,39 @@ const TelemetryEnvConfig = Config.all({
   posthogHost: Config.string("NEOKOD_POSTHOG_HOST").pipe(
     Config.withDefault("https://eu.i.posthog.com"),
   ),
-  /**
-   * Opt-in, per PRD section 21 ("Telemetry must be opt-in unless required for
-   * local product diagnostics"). This defaulted to `true`, which contradicted
-   * that requirement and shipped data without consent.
-   */
-  enabled: Config.boolean("NEOKOD_TELEMETRY_ENABLED").pipe(Config.withDefault(false)),
+  // Default-on with first-run disclosure per product decision 2026-08-06; PRD section 21 amendment pending.
+  enabled: Config.boolean("NEOKOD_TELEMETRY_ENABLED").pipe(Config.withDefault(true)),
   flushBatchSize: Config.number("NEOKOD_TELEMETRY_FLUSH_BATCH_SIZE").pipe(Config.withDefault(20)),
   maxBufferedEvents: Config.number("NEOKOD_TELEMETRY_MAX_BUFFERED_EVENTS").pipe(
     Config.withDefault(1_000),
   ),
   wslDistroName: Config.string("WSL_DISTRO_NAME").pipe(Config.option),
 });
+
+interface AnalyticsRuntimeConfig {
+  readonly enabled: boolean;
+  readonly posthogKey: string;
+  readonly posthogHost: string;
+}
+
+interface TelemetryEnvironmentConfig {
+  readonly enabled: boolean;
+  readonly posthogKey: string;
+  readonly posthogHost: string;
+}
+
+function resolveAnalyticsRuntimeConfig(input: {
+  readonly environment: TelemetryEnvironmentConfig;
+  readonly settings: AnalyticsSettings;
+}): AnalyticsRuntimeConfig {
+  const hasCustomPostHog =
+    input.settings.posthogApiKey.length > 0 && input.settings.posthogHost.length > 0;
+  return {
+    enabled: input.environment.enabled && input.settings.enabled,
+    posthogKey: hasCustomPostHog ? input.settings.posthogApiKey : input.environment.posthogKey,
+    posthogHost: hasCustomPostHog ? input.settings.posthogHost : input.environment.posthogHost,
+  };
+}
 
 export class AnalyticsService extends Context.Service<
   AnalyticsService,
@@ -144,11 +171,48 @@ export const make = Effect.gen(function* () {
   const telemetryConfig = yield* TelemetryEnvConfig;
   const httpClient = yield* HttpClient.HttpClient;
   const serverConfig = yield* ServerConfig.ServerConfig;
-  const identifier = yield* getTelemetryIdentifier;
+  const serverSettings = yield* ServerSettingsService;
+  const fileSystem = yield* FileSystem.FileSystem;
+  const pathService = yield* Path.Path;
+  const crypto = yield* Crypto.Crypto;
+  const initialAnalyticsSettings = yield* serverSettings.getSettings.pipe(
+    Effect.map((settings) => settings.analytics),
+    Effect.orElseSucceed(() => ({ ...DEFAULT_ANALYTICS_SETTINGS, enabled: false })),
+  );
+  const initialDestination = resolveAnalyticsRuntimeConfig({
+    environment: telemetryConfig,
+    settings: initialAnalyticsSettings,
+  });
+  const initialIdentifier = initialDestination.enabled ? yield* getTelemetryIdentifier : null;
   const bufferRef = yield* Ref.make<ReadonlyArray<BufferedAnalyticsEvent>>([]);
+  const analyticsSettingsRef = yield* Ref.make<AnalyticsSettings>(initialAnalyticsSettings);
+  const identifierRef = yield* Ref.make<string | null>(initialIdentifier);
   const clientType = serverConfig.mode === "desktop" ? "desktop-app" : "cli-web-client";
   const hostPlatform = yield* HostProcessPlatform;
   const hostArchitecture = yield* HostProcessArchitecture;
+
+  const resolveIdentifier = Effect.gen(function* () {
+    const current = yield* Ref.get(identifierRef);
+    if (current !== null) return current;
+
+    const analyticsSettings = yield* Ref.get(analyticsSettingsRef);
+    const destination = resolveAnalyticsRuntimeConfig({
+      environment: telemetryConfig,
+      settings: analyticsSettings,
+    });
+    if (!destination.enabled) return null;
+
+    const next = yield* getTelemetryIdentifier;
+    if (next !== null) {
+      yield* Ref.set(identifierRef, next);
+    }
+    return next;
+  }).pipe(
+    Effect.provideService(Crypto.Crypto, crypto),
+    Effect.provideService(FileSystem.FileSystem, fileSystem),
+    Effect.provideService(Path.Path, pathService),
+    Effect.provideService(ServerConfig.ServerConfig, serverConfig),
+  );
 
   const enqueueBufferedEvent = (event: string, properties?: Readonly<Record<string, unknown>>) =>
     Effect.flatMap(DateTime.now, (now) =>
@@ -180,10 +244,16 @@ export const make = Effect.gen(function* () {
   const sendBatch = Effect.fn("AnalyticsService.sendBatch")(function* (
     events: ReadonlyArray<BufferedAnalyticsEvent>,
   ) {
-    if (!telemetryConfig.enabled || !identifier) return;
+    const analyticsSettings = yield* Ref.get(analyticsSettingsRef);
+    const destination = resolveAnalyticsRuntimeConfig({
+      environment: telemetryConfig,
+      settings: analyticsSettings,
+    });
+    const identifier = destination.enabled ? yield* resolveIdentifier : null;
+    if (!destination.enabled || !identifier) return;
 
     const payload = {
-      api_key: telemetryConfig.posthogKey,
+      api_key: destination.posthogKey,
       batch: events.map((event) => ({
         event: event.event,
         distinct_id: identifier,
@@ -200,7 +270,7 @@ export const make = Effect.gen(function* () {
       })),
     };
 
-    yield* HttpClientRequest.post(`${telemetryConfig.posthogHost}/batch/`).pipe(
+    yield* HttpClientRequest.post(`${destination.posthogHost}/batch/`).pipe(
       HttpClientRequest.bodyJson(payload),
       Effect.flatMap(httpClient.execute),
       Effect.flatMap(HttpClientResponse.filterStatusOk),
@@ -296,7 +366,13 @@ export const make = Effect.gen(function* () {
 
   const record: AnalyticsService["Service"]["record"] = Effect.fn("AnalyticsService.record")(
     function* (event, properties) {
-      if (!telemetryConfig.enabled || !identifier) return;
+      const analyticsSettings = yield* Ref.get(analyticsSettingsRef);
+      const destination = resolveAnalyticsRuntimeConfig({
+        environment: telemetryConfig,
+        settings: analyticsSettings,
+      });
+      const identifier = destination.enabled ? yield* resolveIdentifier : null;
+      if (!destination.enabled || !identifier) return;
 
       const enqueueResult = yield* enqueueBufferedEvent(event, properties);
       if (enqueueResult.dropped) {
@@ -316,9 +392,32 @@ export const make = Effect.gen(function* () {
     yield* flush;
   });
 
+  const applyAnalyticsSettings = (settings: AnalyticsSettings) =>
+    Effect.gen(function* () {
+      yield* Ref.set(analyticsSettingsRef, settings);
+      if (!settings.enabled) {
+        yield* Ref.set(bufferRef, []);
+      }
+    });
+
   yield* Effect.forever(scheduledFlush, {
     disableYield: true,
   }).pipe(Effect.forkScoped);
+
+  yield* serverSettings.streamChanges.pipe(
+    Stream.map((settings) => settings.analytics),
+    Stream.runForEach(applyAnalyticsSettings),
+    Effect.forkScoped,
+  );
+  yield* Effect.yieldNow;
+
+  // Re-read after the stream subscription is live so a change between the
+  // initial read and stream startup cannot remain unseen.
+  yield* serverSettings.getSettings.pipe(
+    Effect.map((settings) => settings.analytics),
+    Effect.flatMap(applyAnalyticsSettings),
+    Effect.catch(() => Effect.void),
+  );
 
   yield* Effect.addFinalizer(() => flush);
 

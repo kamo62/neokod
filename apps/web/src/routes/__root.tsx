@@ -13,6 +13,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { APP_BASE_NAME, APP_DISPLAY_NAME, APP_STAGE_LABEL } from "../branding";
 import { resolveServerBackedAppDisplayName } from "../branding.logic";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
+import { AnalyticsFirstRunNotice } from "../components/AnalyticsFirstRunNotice";
 import { CommandPalette } from "../components/CommandPalette";
 import { MissionControlHost } from "../components/MissionControl";
 import { ProviderUpdateLaunchNotification } from "../components/ProviderUpdateLaunchNotification";
@@ -85,6 +86,7 @@ function RootRouteView() {
         <TracingBootstrap />
         <SlowRpcRequestToastCoordinator />
         <ActivityNotificationCoordinator />
+        <AnalyticsFirstRunNotice />
         <EventRouter />
         <ProviderUpdateLaunchNotification />
         <MissionControlHost />

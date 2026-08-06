@@ -1,4 +1,4 @@
-import type { CopilotManagedClientEvidenceSettings } from "@neokod/contracts";
+import type { AnalyticsSettings, CopilotManagedClientEvidenceSettings } from "@neokod/contracts";
 import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -24,7 +24,7 @@ import {
 } from "./ManagedClientEvidence.ts";
 import { getKnownGithubLogin } from "./ManagedClientIdentityRegistry.ts";
 import { makeOtlpSink } from "./OtlpSink.ts";
-import { makePostHogSink } from "./PostHogSink.ts";
+import { makePostHogSink, resolvePostHogSinkSettings } from "./PostHogSink.ts";
 
 const DEFAULT_QUEUE_CAPACITY = 1_000;
 const DEFAULT_FLUSH_WITHIN = "2 seconds";
@@ -57,11 +57,20 @@ interface NormalizedManagedClientEvidenceForwarderOptions {
  * populated before the forwarder starts a run (mirroring the pre-slice-2
  * ai-orch-only check below).
  */
-function isEnabled(settings: CopilotManagedClientEvidenceSettings): boolean {
+function isEnabled(
+  settings: CopilotManagedClientEvidenceSettings,
+  analytics: AnalyticsSettings,
+): boolean {
+  if (!analytics.enabled) return false;
   if (!settings.enabled) return false;
   switch (settings.backend) {
-    case "posthog":
-      return settings.posthogHost.length > 0 && settings.posthogApiKey.length > 0;
+    case "posthog": {
+      const posthog = resolvePostHogSinkSettings({
+        analytics,
+        fallback: settings,
+      });
+      return posthog.enabled && posthog.posthogHost.length > 0 && posthog.posthogApiKey.length > 0;
+    }
     case "otlp":
       return settings.otlpEndpoint.length > 0;
     case "ai-orch":
@@ -80,13 +89,18 @@ function nextBackoffMs(currentMs: number, maxMs: number): number {
  * requirement reaches the forwarder — inferred directly rather than spelled
  * out, since the three branches don't share a requirement type worth naming.
  */
-const resolveEvidenceSink = (settings: CopilotManagedClientEvidenceSettings) => {
+const resolveEvidenceSink = (
+  settings: CopilotManagedClientEvidenceSettings,
+  analytics: AnalyticsSettings,
+) => {
   switch (settings.backend) {
     case "posthog":
-      return makePostHogSink({
-        posthogHost: settings.posthogHost,
-        posthogApiKey: settings.posthogApiKey,
-      });
+      return makePostHogSink(
+        resolvePostHogSinkSettings({
+          analytics,
+          fallback: settings,
+        }),
+      );
     case "otlp":
       return Effect.succeed(
         makeOtlpSink({ otlpEndpoint: settings.otlpEndpoint, otlpHeaders: settings.otlpHeaders }),
@@ -143,13 +157,14 @@ const postWithBackoff = (
 
 const runForwarder = (
   settings: CopilotManagedClientEvidenceSettings,
+  analytics: AnalyticsSettings,
   options: NormalizedManagedClientEvidenceForwarderOptions,
 ) =>
   Effect.gen(function* () {
     const provider = yield* ProviderService;
     const orchestration = yield* OrchestrationEngineService;
     const platform = yield* HostProcessPlatform;
-    const sink = yield* resolveEvidenceSink(settings);
+    const sink = yield* resolveEvidenceSink(settings, analytics);
     const queue = yield* Queue.sliding<ManagedClientEvidenceEvent>(options.queueCapacity);
     const dropped = yield* Ref.make(0);
 
@@ -218,9 +233,15 @@ export const ManagedClientEvidenceForwarderLive = (
       const options = normalizeOptions(inputOptions);
       const settings = yield* ServerSettingsService;
       const active = yield* Ref.make<Fiber.Fiber<never, never> | null>(null);
-      const last = yield* Ref.make<CopilotManagedClientEvidenceSettings | null>(null);
+      const last = yield* Ref.make<{
+        readonly evidence: CopilotManagedClientEvidenceSettings;
+        readonly analytics: AnalyticsSettings;
+      } | null>(null);
 
-      const applySettings = (next: CopilotManagedClientEvidenceSettings) =>
+      const applySettings = (next: {
+        readonly evidence: CopilotManagedClientEvidenceSettings;
+        readonly analytics: AnalyticsSettings;
+      }) =>
         Effect.gen(function* () {
           const previous = yield* Ref.get(last);
           if (previous && Equal.equals(previous, next)) {
@@ -232,24 +253,28 @@ export const ManagedClientEvidenceForwarderLive = (
             yield* FiberRuntime.interrupt(current);
             yield* Ref.set(active, null);
           }
-          if (!isEnabled(next)) {
+          if (!isEnabled(next.evidence, next.analytics)) {
             return;
           }
-          const fiber = yield* Effect.forkScoped(runForwarder(next, options));
+          const fiber = yield* Effect.forkScoped(
+            runForwarder(next.evidence, next.analytics, options),
+          );
           yield* Ref.set(active, fiber);
         });
 
-      const readManagedClientEvidenceSettings = settings.getSettings.pipe(
-        Effect.map(
-          (serverSettings) => serverSettings.providers.githubCopilot.managedClientEvidence,
-        ),
+      const readSettings = settings.getSettings.pipe(
+        Effect.map((serverSettings) => ({
+          evidence: serverSettings.providers.githubCopilot.managedClientEvidence,
+          analytics: serverSettings.analytics,
+        })),
       );
 
-      yield* readManagedClientEvidenceSettings.pipe(Effect.flatMap(applySettings));
+      yield* readSettings.pipe(Effect.flatMap(applySettings));
       yield* settings.streamChanges.pipe(
-        Stream.map(
-          (serverSettings) => serverSettings.providers.githubCopilot.managedClientEvidence,
-        ),
+        Stream.map((serverSettings) => ({
+          evidence: serverSettings.providers.githubCopilot.managedClientEvidence,
+          analytics: serverSettings.analytics,
+        })),
         Stream.runForEach(applySettings),
         Effect.forkScoped,
       );

@@ -27,14 +27,36 @@ import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
+import { DEFAULT_ANALYTICS_SETTINGS, type AnalyticsSettings } from "@neokod/contracts";
 
 import * as ServerConfig from "../../config.ts";
 import type { ManagedClientEvidenceEvent, ManagedClientIdentity } from "./ManagedClientEvidence.ts";
 import { classifyEvidenceResponse, type EvidenceSink } from "./EvidenceSink.ts";
 
 export interface PostHogSinkSettings {
+  readonly enabled: boolean;
   readonly posthogHost: string;
   readonly posthogApiKey: string;
+}
+
+export function resolvePostHogSinkSettings(input: {
+  readonly analytics?: AnalyticsSettings | undefined;
+  readonly fallback: {
+    readonly posthogHost: string;
+    readonly posthogApiKey: string;
+  };
+}): PostHogSinkSettings {
+  const analytics = input.analytics ?? DEFAULT_ANALYTICS_SETTINGS;
+  const hasEvidenceCardPostHog =
+    input.fallback.posthogApiKey.length > 0 && input.fallback.posthogHost.length > 0;
+  const hasAnalyticsPostHog =
+    analytics.posthogApiKey.length > 0 && analytics.posthogHost.length > 0;
+  const destination = !hasEvidenceCardPostHog && hasAnalyticsPostHog ? analytics : input.fallback;
+  return {
+    enabled: analytics.enabled,
+    posthogHost: destination.posthogHost,
+    posthogApiKey: destination.posthogApiKey,
+  };
 }
 
 export interface PostHogEventPayload {
@@ -212,7 +234,9 @@ export const makePostHogSink = (
 > =>
   Effect.gen(function* () {
     const endpoint = resolvePostHogBatchUrl(settings.posthogHost);
-    const anonymousId = yield* readOrCreatePostHogAnonymousId;
+    const anonymousId = settings.enabled
+      ? yield* readOrCreatePostHogAnonymousId
+      : POSTHOG_ANONYMOUS_ID_FALLBACK;
     let identifiedOnce = false;
 
     const resolveDistinctId = (identity: ManagedClientIdentity | undefined): string =>
@@ -223,6 +247,8 @@ export const makePostHogSink = (
       identity: ManagedClientIdentity | undefined,
     ) =>
       Effect.gen(function* () {
+        if (!settings.enabled) return;
+
         const httpClient = yield* HttpClient.HttpClient;
         const distinctId = resolveDistinctId(identity);
         const shouldIdentify = identity !== undefined && !identifiedOnce;

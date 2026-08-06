@@ -90,6 +90,27 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(settingsLayer));
   });
 
+  it.effect(
+    "disables analytics when settings.json is corrupt without changing other defaults",
+    () =>
+      Effect.gen(function* () {
+        const serverConfig = yield* ServerConfig.ServerConfig;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+
+        yield* fileSystem.writeFileString(serverConfig.settingsPath, "{not valid json");
+
+        const settings = yield* serverSettings.getSettings;
+        assert.deepEqual(settings, {
+          ...DEFAULT_SERVER_SETTINGS,
+          analytics: {
+            ...DEFAULT_SERVER_SETTINGS.analytics,
+            enabled: false,
+          },
+        });
+      }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
   it.effect("decodes nested settings patches", () =>
     Effect.gen(function* () {
       assert.deepEqual(
@@ -472,6 +493,27 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         otlpTracesUrl: "http://localhost:4318/v1/traces",
         otlpMetricsUrl: "http://localhost:4318/v1/metrics",
       });
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("trims and applies analytics settings without restarting the server", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+
+      const next = yield* serverSettings.updateSettings({
+        analytics: {
+          enabled: false,
+          posthogApiKey: "  phc_custom  ",
+          posthogHost: "  https://posthog.example  ",
+        },
+      });
+
+      assert.deepEqual(next.analytics, {
+        enabled: false,
+        posthogApiKey: "phc_custom",
+        posthogHost: "https://posthog.example",
+      });
+      assert.deepEqual(yield* serverSettings.getSettings, next);
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 

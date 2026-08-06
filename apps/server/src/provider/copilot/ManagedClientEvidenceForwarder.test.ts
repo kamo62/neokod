@@ -290,6 +290,42 @@ it("forwards enabled managed-client evidence in capped batches", () =>
     });
   }));
 
+it("does not start or send managed-client evidence when analytics is disabled", () =>
+  Effect.gen(function* () {
+    const providerEvents = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+    const posts = yield* Queue.unbounded<CapturedPost>();
+    let subscribed = false;
+
+    const layer = ManagedClientEvidenceForwarderLive({ flushWithin: "10 millis" }).pipe(
+      Layer.provideMerge(makeProviderLayer(providerEvents, () => (subscribed = true))),
+      Layer.provideMerge(makeOrchestrationLayer()),
+      Layer.provideMerge(
+        ServerSettingsService.layerTest({
+          analytics: { enabled: false },
+          providers: {
+            githubCopilot: {
+              managedClientEvidence: {
+                enabled: true,
+                governanceUrl: "https://orch.example",
+                credential: "air_test",
+              },
+            },
+          },
+        }),
+      ),
+      Layer.provideMerge(makePostCaptureHttpLayer(posts)),
+    );
+
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(layer, scope);
+    yield* PubSub.publish(providerEvents, sessionStarted(0));
+    yield* flushEffects;
+    yield* Scope.close(scope, Exit.void);
+
+    NodeAssert.equal(subscribed, false);
+    NodeAssert.equal(yield* Queue.size(posts), 0);
+  }));
+
 it("retries a failed batch with the same event ids", () =>
   Effect.gen(function* () {
     const providerEvents = yield* PubSub.unbounded<ProviderRuntimeEvent>();

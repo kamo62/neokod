@@ -2,8 +2,8 @@ import { useCallback, type ComponentType } from "react";
 import {
   ArchiveIcon,
   ArrowLeftIcon,
-  BotIcon,
   BarChart3Icon,
+  BotIcon,
   CheckSquareIcon,
   GitBranchIcon,
   KeyboardIcon,
