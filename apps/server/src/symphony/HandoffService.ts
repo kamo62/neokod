@@ -274,6 +274,9 @@ export const makeHandoffService = Effect.gen(function* () {
       //    workspace). Source-restricted to non-terminal lifecycles (cancelRun
       //    releases the claim to queued first), and the boolean result is
       //    checked — a terminal item can never be parked back into the pool.
+      //    requireUnclaimed fences against a concurrent re-claim racing the
+      //    park (fix-lane item 7): the park only lands on an item with no
+      //    live Symphony owner.
       const parked = yield* workItems
         .transition(attempt.workItemId, "blocked", {
           from: [
@@ -285,6 +288,7 @@ export const makeHandoffService = Effect.gen(function* () {
             "waiting_for_approval",
             "retry_scheduled",
           ],
+          requireUnclaimed: true,
         })
         .pipe(Effect.catch(() => Effect.succeed(false)));
       if (!parked) {

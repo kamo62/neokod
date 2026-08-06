@@ -28,7 +28,12 @@ import { RunEventRepositoryLive } from "../Persistence/Layers/RunEventRepository
 import { ApprovalRepositoryLive } from "../Persistence/Layers/ApprovalRepository.ts";
 import { WorkspaceManager } from "../Workspaces/Manager.ts";
 import { LiveRequestsLive } from "./LiveRequests.ts";
-import { AgentRuntimeFactory, RunDispatcher, RunDispatcherLive } from "./Dispatcher.ts";
+import {
+  AgentRuntimeFactory,
+  RunDispatchError,
+  RunDispatcher,
+  RunDispatcherLive,
+} from "./Dispatcher.ts";
 import { ExecutionFinalizer } from "./ExecutionFinalizer.ts";
 import { AgentRuntimeSpawnError, type AgentRuntimeService } from "./AgentRuntime.ts";
 
@@ -281,7 +286,10 @@ layer(blockableFactory)("Dispatcher cancel", (it) => {
 
         const id = yield* waitForAttempt(100);
         yield* dispatcher.cancelRun(id);
-        yield* Fiber.join(fiber).pipe(Effect.catch(() => Effect.void));
+        // await (not join): the dispatch fiber is now pure-interrupted, and
+        // joining an interrupted fiber propagates the interruption into this
+        // test fiber. await returns the Exit without that.
+        yield* Fiber.await(fiber).pipe(Effect.catch(() => Effect.void));
         return id;
       });
 
@@ -296,6 +304,79 @@ layer(blockableFactory)("Dispatcher cancel", (it) => {
 
       const workItems = yield* WorkItemRepository;
       const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      expect(after.lifecycle).toBe("queued");
+    }),
+  );
+});
+
+// Agent whose turn FAILS (retryable agent error) instead of blocking forever:
+// cancelRun must win the race against markFailed (fix-lane item 6).
+const failingCancelFactory = Layer.effect(
+  AgentRuntimeFactory,
+  Effect.gen(function* () {
+    const releaseRef = yield* Ref.make<(() => Effect.Effect<void>) | null>(null);
+    return {
+      make: () =>
+        Effect.gen(function* () {
+          const d = yield* Deferred.make<void, AgentRuntimeSpawnError>();
+          yield* Ref.set(releaseRef, () =>
+            Deferred.fail(d, new AgentRuntimeSpawnError("interrupted")).pipe(Effect.asVoid),
+          );
+          return {
+            runTurn: () =>
+              Deferred.await(d).pipe(
+                Effect.interruptible,
+                Effect.flatMap(() => Effect.fail(new RunDispatchError("agent turn failed"))),
+              ),
+            interrupt: () =>
+              Ref.get(releaseRef).pipe(
+                Effect.flatMap((release) =>
+                  release === null
+                    ? Effect.void
+                    : release().pipe(Effect.orElseSucceed(() => undefined)),
+                ),
+              ),
+          } satisfies AgentRuntimeService;
+        }),
+    };
+  }),
+);
+
+layer(failingCancelFactory)("Dispatcher cancel race", (it) => {
+  it.effect("a failing turn cancelled in flight never lands retry_scheduled", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("1004");
+      const dispatcher = yield* RunDispatcher;
+
+      yield* Effect.gen(function* () {
+        const fiber = yield* Effect.forkScoped(
+          dispatcher.dispatchWorkItem({
+            workItem,
+            issue: makeIssue("1004"),
+            config: makeConfig("/repo"),
+          }),
+        );
+        // Wait for the turn to be in flight, then cancel: the failure path
+        // would normally land retry_scheduled; cancel must win.
+        const attempts = yield* RunAttemptRepository;
+        let id: RunAttemptId | null = null;
+        for (let i = 0; i < 100; i++) {
+          const list = yield* attempts.listByWorkItem(workItem.id);
+          if (list[0] !== undefined) {
+            id = list[0].id;
+            break;
+          }
+          yield* TestClock.adjust("10 millis");
+        }
+        if (id !== null) {
+          yield* dispatcher.cancelRun(id);
+        }
+        yield* Fiber.await(fiber).pipe(Effect.catch(() => Effect.void));
+      });
+
+      const workItems = yield* WorkItemRepository;
+      const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      expect(after.lifecycle).not.toBe("retry_scheduled");
       expect(after.lifecycle).toBe("queued");
     }),
   );

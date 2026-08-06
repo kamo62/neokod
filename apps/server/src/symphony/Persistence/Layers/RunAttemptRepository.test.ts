@@ -98,6 +98,35 @@ layer("RunAttemptRepository", (it) => {
     }),
   );
 
+  it.effect("does not overwrite a terminal status with a later one", () =>
+    Effect.gen(function* () {
+      const repo = yield* RunAttemptRepository;
+      yield* seedWorkItem("wi-5");
+      const attempt = yield* makeAttempt("run-5", "wi-5", 1);
+      yield* repo.create(attempt);
+
+      yield* repo.updateStatus(RunAttemptId.make("run-5"), "succeeded", {
+        finishedAt: attempt.startedAt,
+      });
+      // A late cancelRun arriving after success must not clobber it
+      // (fix-lane item 5).
+      yield* repo.updateStatus(RunAttemptId.make("run-5"), "user_cancelled", {
+        finishedAt: attempt.startedAt,
+      });
+
+      const loaded = yield* repo.getById(RunAttemptId.make("run-5"));
+      expect(loaded?.status).toBe("succeeded");
+
+      // Re-writing the same terminal status is allowed (idempotent
+      // finalizer path).
+      yield* repo.updateStatus(RunAttemptId.make("run-5"), "succeeded", {
+        finishedAt: attempt.startedAt,
+      });
+      const stillSucceeded = yield* repo.getById(RunAttemptId.make("run-5"));
+      expect(stillSucceeded?.status).toBe("succeeded");
+    }),
+  );
+
   it.effect("returns null for a missing attempt", () =>
     Effect.gen(function* () {
       const repo = yield* RunAttemptRepository;

@@ -104,6 +104,32 @@ layer("WorkItemRepository claim authority", (it) => {
     }),
   );
 
+  it.effect("a transition without from is bounded by the legality table", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      // eligible -> running is not a legal default source pair.
+      const illegal = yield* repo.transition(WorkItemId.make("workitem-claim-3"), "running");
+      expect(illegal).toBe(false);
+      const row = yield* repo.getById(WorkItemId.make("workitem-claim-3"));
+      expect(row?.lifecycle).toBe("cancelled");
+    }),
+  );
+
+  it.effect("a terminal lifecycle is immutable by default", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("workitem-claim-4", "45");
+      yield* repo.transition(id, "cancelled");
+      // completed/cancelled/failed never appear in the default sources:
+      // leaving a terminal lifecycle must be refused without an explicit
+      // `from` opt-in.
+      const blocked = yield* repo.transition(id, "blocked");
+      expect(blocked).toBe(false);
+      const row = yield* repo.getById(id);
+      expect(row?.lifecycle).toBe("cancelled");
+    }),
+  );
+
   it.effect("a terminal item cannot be claimed again", () =>
     Effect.gen(function* () {
       const repo = yield* WorkItemRepository;

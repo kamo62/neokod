@@ -1,4 +1,8 @@
-import type { EffectiveWorkflowConfig, NormalizedIssue } from "@neokod/contracts";
+import type {
+  EffectiveWorkflowConfig,
+  NormalizedIssue,
+  PullRequestEvidence,
+} from "@neokod/contracts";
 import {
   WorkflowId,
   WorkItemId,
@@ -9,6 +13,7 @@ import {
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";
 
 import { nowIso } from "../../Domain/Time.ts";
@@ -132,6 +137,17 @@ const mockApprovalsLayer = Layer.effect(
   }),
 );
 
+// Fresh host query result for approveMerge (fix-lane item 8): tests set
+// this to control what the gate sees, so the gate cannot be proven by a
+// stub that always passes.
+let pullRequestRefreshRef: Ref.Ref<PullRequestEvidence | null> | null = null;
+const setPullRequestRefresh = (value: PullRequestEvidence | null) =>
+  Effect.gen(function* () {
+    if (pullRequestRefreshRef !== null) {
+      yield* Ref.set(pullRequestRefreshRef, value);
+    }
+  });
+
 const layer = it.layer(
   SymphonyOrchestratorLive.pipe(
     Layer.provideMerge(WorkItemRepositoryLive),
@@ -146,12 +162,12 @@ const layer = it.layer(
     Layer.provideMerge(ApprovalRepositoryLive),
     Layer.provideMerge(EvidenceRepositoryLive),
     Layer.provideMerge(
-      Layer.succeed(PullRequestService, {
-        create: () => Effect.succeed(null as never),
-        // ApproveMerge now demands a fresh host query (RECONCILE binding
-        // constraint). The enriched PR the gate needs comes from refresh.
-        refresh: () =>
-          Effect.succeed({
+      Layer.effect(
+        PullRequestService,
+        Effect.gen(function* () {
+          // Per-test control of the fresh host query (fix-lane item 8: the
+          // gate must not be proven by a stub that always passes).
+          pullRequestRefreshRef = yield* Ref.make<PullRequestEvidence | null>({
             number: 1,
             title: "t",
             branch: "b",
@@ -161,8 +177,13 @@ const layer = it.layer(
             reviewState: "approved",
             mergeable: true,
             unresolvedComments: 0,
-          }),
-      } satisfies PullRequestService["Service"]),
+          });
+          return {
+            create: () => Effect.succeed(null as never),
+            refresh: () => Ref.get(pullRequestRefreshRef as Ref.Ref<PullRequestEvidence | null>),
+          } satisfies PullRequestService["Service"];
+        }),
+      ),
     ),
     Layer.provideMerge(serverSettingsTestLayer({ trackers: { github: { enabled: true } } })),
     Layer.provideMerge(SqlitePersistenceMemory),
@@ -752,6 +773,90 @@ layer("SymphonyOrchestrator Observe", (it) => {
       });
 
       const merged = yield* orchestrator.approveMerge("merge-2");
+      expect(merged).toBe(false);
+      const after = yield* workItems.getById(workItemId);
+      expect(after?.lifecycle).toBe("ready_for_review");
+    }),
+  );
+
+  it.effect("approveMerge refuses when the fresh host query comes back unenriched", () =>
+    Effect.gen(function* () {
+      // Stored evidence is fully enriched (a stale happy record), but the
+      // fresh refresh returns a PR without reviewState: the gate must refuse
+      // (fix-lane item 8 — the gate reads the FRESH query, not the stored
+      // record).
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItemId = WorkItemId.make("merge-5");
+      const workItems = yield* WorkItemRepository;
+      yield* seedWorkflow("wf-merge-5", "/repo/merge-5");
+      const workflows = yield* WorkflowRepository;
+      yield* workflows.upsert({
+        id: WorkflowId.make("wf-merge-5"),
+        repositoryPath: "/repo/merge-5",
+        workflowPath: "/repo/merge-5/WORKFLOW.md",
+        status: "active",
+        autonomy: "execute",
+        validationError: null,
+        definition: { config: {}, promptTemplate: "Implement." },
+        effectiveConfig: { ...makeConfig("/repo/merge-5"), autonomy: "execute" },
+        enabledAt: "2026-08-05T00:00:00.000Z",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        objective: "Merge target 5",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "merge-5",
+        workflowId: WorkflowId.make("wf-merge-5"),
+        lifecycle: "ready_for_review",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        workspaceKey: "issue-merge-5",
+        baseBranch: "main",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      const evidenceRepo = yield* EvidenceRepository;
+      yield* evidenceRepo.upsert(workItemId, {
+        changedFiles: [],
+        testsChanged: [],
+        commits: [],
+        validationResults: [],
+        assumptions: [],
+        risks: [],
+        unresolved: [],
+        artefacts: [],
+        pullRequest: {
+          number: 1,
+          title: "t",
+          branch: "b",
+          baseBranch: "m",
+          status: "open",
+          ciStatus: "success",
+          reviewState: "approved",
+          mergeable: true,
+          unresolvedComments: 0,
+        },
+        modelReview: null,
+        overallAssessment: "ready_for_review",
+        createdAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      // The fresh host query returns a PR with no reviewState: refuse.
+      yield* setPullRequestRefresh({
+        number: 1,
+        title: "t",
+        branch: "b",
+        baseBranch: "m",
+        status: "open",
+        ciStatus: "success",
+      });
+
+      const merged = yield* orchestrator.approveMerge("merge-5");
       expect(merged).toBe(false);
       const after = yield* workItems.getById(workItemId);
       expect(after?.lifecycle).toBe("ready_for_review");

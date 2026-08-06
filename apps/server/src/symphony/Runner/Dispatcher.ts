@@ -447,8 +447,13 @@ export const makeRunDispatcher = Effect.gen(function* () {
         Effect.map((map) => map.get(String(runAttemptId))),
       );
       if (registered !== undefined) {
+        // Interrupt the dispatch fiber FIRST (fix-lane item 6): awaiting
+        // agent.interrupt() before the fiber interrupt gave markFailed a
+        // window to land retry_scheduled mid-cancel. Use the raw interrupt
+        // (no await): awaiting an interrupted fiber surfaces its pure
+        // interruption cause as an error.
+        registered.fiber.interruptUnsafe();
         yield* registered.agent.interrupt().pipe(Effect.catch(() => Effect.void));
-        yield* Fiber.interrupt(registered.fiber).pipe(Effect.catch(() => Effect.void));
       }
       yield* liveRequests
         .settleRun(runAttemptId, "user cancelled")

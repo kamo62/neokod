@@ -19,6 +19,7 @@ import { ApprovalServiceLive } from "../Runner/ApprovalService.ts";
 import { RunDispatcherLive } from "../Runner/Dispatcher.ts";
 import { ExecutionFinalizerLive } from "../Runner/ExecutionFinalizer.ts";
 import { AgentRuntimeFactoryLive } from "../Runner/Live.ts";
+import { OrchestrationLayerLive } from "../../orchestration/runtimeLayer.ts";
 import { WorkspaceManagerLive } from "../Workspaces/Live.ts";
 import { ValidationRunnerLive } from "../Validation/Runner.ts";
 import { EvidenceServiceLive } from "../Evidence/Service.ts";
@@ -90,6 +91,11 @@ const HandoffServiceSlice = HandoffServiceLive.pipe(
       RunEventRepositoryLive,
       WorkflowRepositoryLive,
       WorkspaceOwnershipRepositoryLive,
+      // The orchestration stack (memoized with the Work-mode instance, so
+      // takeOver binds a REAL thread in production instead of taking the
+      // placeholder path — fix-lane item 7: the engine was absent from this
+      // sub-graph's context).
+      OrchestrationLayerLive,
       RunDispatcherLive.pipe(
         Layer.provide(
           Layer.mergeAll(
@@ -171,13 +177,17 @@ export const SymphonyLayerObserve = Layer.merge(
       ),
     ),
   ),
-  Layer.merge(
-    Layer.merge(
-      ApprovalServiceLive.pipe(
-        Layer.provide(Layer.mergeAll(ApprovalRepositoryLive, LiveRequestsLive)),
-      ),
-      HandoffServiceSlice,
+  Layer.mergeAll(
+    ApprovalServiceLive.pipe(
+      Layer.provide(Layer.mergeAll(ApprovalRepositoryLive, LiveRequestsLive)),
     ),
+    HandoffServiceSlice,
+    // WorkspaceRemovalGuard needs its own repo instance; WorkspaceOwnership
+    // is ALSO exposed here so `serviceOption` in the Workspaces live layer
+    // resolves it on production paths (fix-lane item 2: hiding it in
+    // sub-graphs left acquireOwnership a no-op and the plan 16.0 lease
+    // unrecorded).
     WorkspaceRemovalGuardLive.pipe(Layer.provide(WorkspaceOwnershipRepositoryLive)),
+    WorkspaceOwnershipRepositoryLive,
   ),
 );

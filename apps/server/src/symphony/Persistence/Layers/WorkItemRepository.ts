@@ -50,6 +50,56 @@ const WorkItemRowSchema = Schema.Struct({
   claimedAt: Schema.NullOr(Schema.String),
 });
 
+/**
+ * Legality table (fix-lane item 14 / plan §19). Transitions WITHOUT an
+ * explicit `from` are bounded by these sources, so a bare transition cannot
+ * move an item any-to-any. Terminal lifecycles (completed/cancelled/failed)
+ * never appear as sources, which makes terminal immutability the default; a
+ * move FROM a terminal state requires an explicit `from` opt-in.
+ */
+const DEFAULT_TRANSITION_SOURCES: Readonly<Record<string, ReadonlyArray<string>>> = {
+  draft: ["eligible"],
+  eligible: ["draft", "queued"],
+  queued: [
+    "eligible",
+    "preparing",
+    "running",
+    "blocked",
+    "retry_scheduled",
+    "waiting_for_approval",
+    "changes_requested",
+    "ready_for_review",
+    "validation_failed",
+  ],
+  preparing: ["eligible", "queued"],
+  running: ["preparing"],
+  blocked: ["preparing", "running", "waiting_for_approval", "retry_scheduled"],
+  waiting_for_approval: ["running"],
+  retry_scheduled: ["preparing", "running", "waiting_for_approval", "validation_failed"],
+  validation_failed: ["preparing", "running", "retry_scheduled"],
+  ready_for_review: [
+    "preparing",
+    "running",
+    "changes_requested",
+    "retry_scheduled",
+    "validation_failed",
+  ],
+  changes_requested: ["ready_for_review"],
+  ready_to_merge: ["ready_for_review"],
+  completed: ["ready_to_merge"],
+  cancelled: [
+    "draft",
+    "eligible",
+    "queued",
+    "preparing",
+    "blocked",
+    "running",
+    "waiting_for_approval",
+    "retry_scheduled",
+  ],
+  failed: ["running", "retry_scheduled", "validation_failed"],
+};
+
 const rowToWorkItem = (row: Schema.Schema.Type<typeof WorkItemRowSchema>): WorkItem => ({
   id: row.id,
   mode: "symphony",
@@ -148,6 +198,7 @@ const TransitionRequestSchema = Schema.Struct({
   ownerToken: Schema.optional(Schema.String),
   generation: Schema.optional(Schema.Int),
   from: Schema.optional(Schema.Array(WorkLifecycleSchema)),
+  requireUnclaimed: Schema.optional(Schema.Boolean),
   now: Schema.String,
 });
 
@@ -258,9 +309,21 @@ const makeRepository = Effect.gen(function* () {
         request.ownerToken === undefined || request.generation === undefined
           ? sql``
           : sql`AND owner_token = ${request.ownerToken} AND generation = ${request.generation}`;
+      const unclaimedFence =
+        request.requireUnclaimed === true ? sql`AND owner_token IS NULL` : sql``;
+      // Legality table (fix-lane item 14 / plan §19): transitions WITHOUT an
+      // explicit `from` are bounded by the default sources below, so a bare
+      // transition can never move an item any-to-any. Terminal lifecycles
+      // (completed/cancelled/failed) never appear as sources, which makes
+      // terminal immutability the default; callers that need a move from a
+      // terminal state must opt in via an explicit `from`.
       const fromRestriction =
         request.from === undefined || request.from.length === 0
-          ? sql``
+          ? sql`AND lifecycle IN (${sql.literal(
+              (DEFAULT_TRANSITION_SOURCES[request.lifecycle] ?? [])
+                .map((value) => `'${String(value).replaceAll("'", "''")}'`)
+                .join(", "),
+            )})`
           : sql`AND lifecycle IN (${sql.literal(
               request.from.map((value) => `'${String(value).replaceAll("'", "''")}'`).join(", "),
             )})`;
@@ -270,6 +333,7 @@ const makeRepository = Effect.gen(function* () {
           updated_at = ${request.now}
         WHERE id = ${request.id}
           ${fence}
+          ${unclaimedFence}
           ${fromRestriction}
         RETURNING ${cols}
       `;
@@ -381,6 +445,7 @@ const makeRepository = Effect.gen(function* () {
         ownerToken: options?.ownerToken,
         generation: options?.generation,
         from: options?.from,
+        ...(options?.requireUnclaimed === true ? { requireUnclaimed: true } : {}),
         now,
       }).pipe(Effect.mapError(toBusyOrSqlError("WorkItemRepository.transition")));
       return Option.isSome(row);

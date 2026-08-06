@@ -79,7 +79,8 @@ export class PullRequestService extends Context.Service<
 export interface PullRequestServiceDeps {
   readonly git: GitVcsDriver["Service"];
   readonly providers: SourceControlProviderRegistry["Service"];
-  readonly writeBodyFile?: (path: string, content: string) => Effect.Effect<void>;
+  readonly writeBodyFile?: (path: string, content: string) => Effect.Effect<void, Error>;
+  readonly makeBodyFileDir?: (dir: string) => Effect.Effect<void, Error>;
   readonly nowIsoEffect?: () => Effect.Effect<string>;
   /** Resolve the default PR-body directory when the caller supplies none. */
   readonly resolveBodyFileDir?: () => string;
@@ -147,12 +148,25 @@ export const makePullRequestService = (
       const safeRunId = String(input.runAttemptId).replace(/[^a-zA-Z0-9._-]/g, "_");
       const bodyFileDir =
         input.bodyFileDir.length > 0 ? input.bodyFileDir : (deps.resolveBodyFileDir?.() ?? "");
+      if (bodyFileDir.length === 0) {
+        return yield* Effect.fail(new PullRequestCreationError("no PR body directory configured"));
+      }
+      if (deps.writeBodyFile === undefined) {
+        return yield* Effect.fail(new PullRequestCreationError("PR body file writer is not wired"));
+      }
       const bodyFilePath = `${bodyFileDir}/pr-${safeRunId}-${now.replace(/[^0-9]/g, "")}.md`;
       const body = buildPullRequestBody(input.evidence);
-      yield* (
-        deps.writeBodyFile?.(bodyFilePath, body).pipe(Effect.catch(() => Effect.void)) ??
-          Effect.void
-      );
+      // The write is typed and mandatory (REVIEW fix-lane item 1): a missing
+      // directory must fail create() so the run cannot reach ready_for_review
+      // with no PR and the failure swallowed.
+      if (deps.makeBodyFileDir !== undefined) {
+        yield* deps
+          .makeBodyFileDir(bodyFileDir)
+          .pipe(Effect.mapError((cause) => new PullRequestCreationError(cause.message)));
+      }
+      yield* deps
+        .writeBodyFile(bodyFilePath, body)
+        .pipe(Effect.mapError((cause) => new PullRequestCreationError(cause.message)));
 
       // 3. Create the change request through the provider abstraction.
       const handle = yield* deps.providers
@@ -273,9 +287,16 @@ export const PullRequestServiceLive: Layer.Layer<
       providers,
       // The PR body file must be written by the production wiring (plan 10:
       // deterministic host-derived body). A missing write would make
-      // `gh pr create --body-file` fail on the first live run.
+      // `gh pr create --body-file` fail on the first live run. Failures are
+      // typed, not swallowed (fix-lane item 1: ENOENT must fail create()).
       writeBodyFile: (path, content) =>
-        fileSystem.writeFileString(path, content).pipe(Effect.catch(() => Effect.void)),
+        fileSystem
+          .writeFileString(path, content)
+          .pipe(Effect.mapError((cause) => new PullRequestCreationError(cause.message))),
+      makeBodyFileDir: (dir) =>
+        fileSystem
+          .makeDirectory(dir, { recursive: true })
+          .pipe(Effect.mapError((cause) => new PullRequestCreationError(cause.message))),
     });
   }),
 );

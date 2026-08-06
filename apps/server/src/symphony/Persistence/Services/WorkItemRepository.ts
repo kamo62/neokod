@@ -62,6 +62,7 @@ export interface WorkItemRepositoryShape {
       readonly generation?: number;
       readonly from?: ReadonlyArray<WorkLifecycle>;
       readonly overrideFence?: boolean;
+      readonly requireUnclaimed?: boolean;
     },
   ) => Effect.Effect<boolean, SymphonyPersistenceError>;
 

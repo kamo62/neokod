@@ -198,6 +198,28 @@ const makeRepository = Effect.gen(function* () {
       Effect.map((rows) => rows.map(rowToAttempt)),
     );
 
+  // Terminal statuses are immutable (fix-lane item 5): a late cancelRun
+  // must not overwrite a succeeded/failed attempt. Re-writing the same
+  // terminal status is allowed (idempotent finalizer paths). The one
+  // exception: a cancel status (user_cancelled/tracker_cancelled) supersedes
+  // `interrupted`, which is the fallback the dispatch ensuring-block writes
+  // when a run ends without a terminal status — the cancel is the real one.
+  const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
+    "succeeded",
+    "failed",
+    "timed_out",
+    "stalled",
+    "canceled_by_reconciliation",
+    "user_cancelled",
+    "tracker_cancelled",
+    "process_failed",
+    "validation_failed",
+    "workflow_error",
+    "provider_error",
+    "interrupted",
+    "retries_exhausted",
+  ]);
+  const CANCEL_STATUSES: ReadonlySet<string> = new Set(["user_cancelled", "tracker_cancelled"]);
   const updateStatus: RunAttemptRepositoryShape["updateStatus"] = (id, status, options) =>
     Effect.gen(function* () {
       const existing = yield* selectById(id).pipe(
@@ -205,6 +227,15 @@ const makeRepository = Effect.gen(function* () {
       );
       const row = Option.getOrNull(existing);
       if (row === null) {
+        return;
+      }
+      const cancelSupersedesFallback = row.status === "interrupted" && CANCEL_STATUSES.has(status);
+      if (TERMINAL_STATUSES.has(row.status) && row.status !== status && !cancelSupersedesFallback) {
+        yield* Effect.logDebug("Ignored attempt status update over a terminal status", {
+          runAttemptId: id,
+          current: row.status,
+          requested: status,
+        });
         return;
       }
       const next: Schema.Schema.Type<typeof RunAttemptRowSchema> = {

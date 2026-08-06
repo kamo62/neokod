@@ -423,6 +423,45 @@ describe("GitHubCli.layer", () => {
     }).pipe(Effect.provide(layer)),
   );
 
+  it.effect("queries reviewThreads with real owner/name variables, not empty literals", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({ mergeable: "MERGEABLE", statusCheckRollup: [], reviews: [] }),
+          ),
+        ),
+      );
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            JSON.stringify({
+              data: { repository: { pullRequest: { reviewThreads: { nodes: [] } } } },
+            }),
+          ),
+        ),
+      );
+
+      const gh = yield* GitHubCli.GitHubCli;
+      yield* gh.getChangeRequestStatus({ cwd: "/repo", reference: "#42" });
+
+      // Fix-lane item 11: the GraphQL query must not hard-code empty
+      // owner/name (real GitHub returns null and the gate becomes a dead 0),
+      // and gh's :owner/:repo magic variables must be passed through.
+      const graphqlCall = mockRun.mock.calls[1]?.[0];
+      assert.equal(graphqlCall?.args[0], "api");
+      assert.equal(graphqlCall?.args[1], "graphql");
+      const query = String(graphqlCall?.args[3] ?? "");
+      assert.equal(query.includes('repository(owner: "", name: "")'), false);
+      assert.equal(query.includes("$owner: String!, $name: String!"), true);
+      const args = (graphqlCall?.args ?? []).join(" ");
+      assert.equal(args.includes("-F owner=:owner"), true);
+      assert.equal(args.includes("-F name=:repo"), true);
+      assert.equal(args.includes("-F pr=42"), true);
+    }).pipe(Effect.provide(layer)),
+  );
+
   it.effect("parses change request status with approved review and pending CI", () =>
     Effect.gen(function* () {
       mockRun.mockReturnValueOnce(

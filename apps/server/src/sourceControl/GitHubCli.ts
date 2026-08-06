@@ -508,7 +508,11 @@ export const make = Effect.gen(function* () {
         // Unresolved review-thread count comes from GraphQL; `gh pr view
         // --json comments` returns conversation comments without
         // isResolved/line, so the field was always 0 against real GitHub
-        // (REVIEW P1). Query reviewThreads and merge the count in.
+        // (REVIEW P1). Query reviewThreads and merge the count in. The
+        // owner/name come from gh's :owner/:repo magic variables, which gh
+        // expands from the cwd repository (fix-lane item 11: a literal
+        // repository(owner: "", name: "") made real GitHub return null and
+        // the gate a dead 0).
         Effect.flatMap((status) =>
           execute({
             cwd: input.cwd,
@@ -516,9 +520,13 @@ export const make = Effect.gen(function* () {
               "api",
               "graphql",
               "-f",
-              'query=query($pr: Int!) { repository(owner: "", name: "") { pullRequest(number: $pr) { reviewThreads(first: 100) { nodes { isResolved } } } } }',
+              "query=query($pr: Int!, $owner: String!, $name: String!) { repository(owner: $owner, name: $name) { pullRequest(number: $pr) { reviewThreads(first: 100) { nodes { isResolved } } } } }",
               "-F",
               `pr=${input.reference.replace(/^#/, "")}`,
+              "-F",
+              "owner=:owner",
+              "-F",
+              "name=:repo",
             ],
           })
             .pipe(
