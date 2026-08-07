@@ -1,12 +1,19 @@
 # Handoff
 
-Updated: 2026-08-07 11:55 on MacBookPro
+Updated: 2026-08-07 13:30 on MacBookPro
 
 ## State
 
 - Branch: `feat/symphony-mode-impl`
 - HEAD: `6fd9a5c48` feat(symphony): close plan-gap lanes — pause/resume/stopAll RPCs, subscriptions, notifications, audit writer, env scrubbing, continuation turns, tracker residuals, advisory lock
-- Pushed: NOT yet — push after the next commit.
+- Pushed: yes, everything through the handoff commit is on origin.
+- INDEPENDENTLY VALIDATED (Fable, 13:20): live boot probe clean at 6fd9a5c48 (reaper starts,
+  startup URL minted, no Service-not-found — the new AuditRepository/TrackerCheckpoint/
+  NotificationCoordinator layers are wired correctly); full server suite 211 files,
+  1954 passed / 7 skipped; env scrubbing consumes secretEnvironmentNames with scrubEnvironment
+  applied at spawn; all 16 new RPC/subscription registrations present in WsRpcGroup; advisory
+  lock acquired at orchestrator startup with a lease; continuation-turn loop bounded by
+  maxTurns; vp check 0 errors.
 - CRITICAL note on `2e6fb9abe`: it did NOT boot as committed (WorkflowLoaderLive merged bare;
   constructor yields WorkflowRepository + FileSystem — fourth instance of the layer-construction
   trap, invisible to suites on fakes). Fixed in `c163e58d9`, verified by live boot probe (reaper
