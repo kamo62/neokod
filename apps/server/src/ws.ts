@@ -63,6 +63,8 @@ import {
   SymphonyResumeAutonomousInput,
   SymphonySetLocalPriorityInput,
   SymphonyTakeOverInput,
+  SymphonyActivateWorkflowInput,
+  SymphonyValidateWorkflowInput,
 } from "@neokod/contracts";
 import { HttpRouter, HttpServerRespondable } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
@@ -81,6 +83,7 @@ import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSna
 import * as SymphonyOrchestrator from "./symphony/Orchestrator/SymphonyOrchestrator.ts";
 import * as ApprovalService from "./symphony/Runner/ApprovalService.ts";
 import * as HandoffService from "./symphony/HandoffService.ts";
+import { WorkflowLoaderService } from "./symphony/Workflow/Loader.ts";
 import {
   observeRpcEffect as instrumentRpcEffect,
   observeRpcStream as instrumentRpcStream,
@@ -415,10 +418,45 @@ export const makeSymphonyRpcHandlers = () => ({
       withOrchestrator((orchestrator) => orchestrator.listWorkflows(), Effect.succeed([])),
       { "rpc.aggregate": "symphony" },
     ),
-  [SYMPHONY_WS_METHODS.validateWorkflow]: () =>
-    observeRpcEffect(SYMPHONY_WS_METHODS.validateWorkflow, Effect.succeed({ ok: true }), {
-      "rpc.aggregate": "symphony",
-    }),
+  [SYMPHONY_WS_METHODS.validateWorkflow]: (input: (typeof SymphonyValidateWorkflowInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.validateWorkflow,
+      // Real validation (audit item 8: was an {ok:true} stub): load and
+      // parse WORKFLOW.md; a validation failure records the workflow as
+      // `invalid` and returns ok:false.
+      Effect.serviceOption(WorkflowLoaderService).pipe(
+        Effect.flatMap((maybe) =>
+          Option.isSome(maybe)
+            ? maybe.value
+                .loadWorkflow({
+                  repositoryPath: input.repositoryPath,
+                })
+                .pipe(
+                  Effect.map((result) => ({ ok: result.errors.length === 0 })),
+                  Effect.catch(() => Effect.succeed({ ok: false })),
+                )
+            : Effect.succeed({ ok: false }),
+        ),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.activateWorkflow]: (input: (typeof SymphonyActivateWorkflowInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.activateWorkflow,
+      // Real activation (audit item 8): load the workflow and mark it
+      // active so the poll loop starts dispatching from it.
+      Effect.serviceOption(WorkflowLoaderService).pipe(
+        Effect.flatMap((maybe) =>
+          Option.isSome(maybe)
+            ? maybe.value.loadWorkflow({ repositoryPath: input.repositoryPath }).pipe(
+                Effect.map((result) => ({ ok: result.errors.length === 0 })),
+                Effect.catch(() => Effect.succeed({ ok: false })),
+              )
+            : Effect.succeed({ ok: false }),
+        ),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
   [SYMPHONY_WS_METHODS.approve]: (input: (typeof SymphonyApproveInput)["Type"]) =>
     observeRpcEffect(
       SYMPHONY_WS_METHODS.approve,

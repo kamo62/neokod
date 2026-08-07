@@ -24,6 +24,7 @@ import { WorkflowRepositoryLive } from "./Persistence/Layers/WorkflowRepository.
 import { WorkspaceOwnershipRepository } from "./Persistence/Services/WorkspaceOwnershipRepository.ts";
 import { WorkspaceOwnershipRepositoryLive } from "./Persistence/Layers/WorkspaceOwnershipRepository.ts";
 import { RunDispatcher } from "./Runner/Dispatcher.ts";
+import { GitVcsDriver } from "../vcs/GitVcsDriver.ts";
 import { LiveRequestsLive } from "./Runner/LiveRequests.ts";
 import { HandoffService, HandoffServiceLive } from "./HandoffService.ts";
 import type { WorkspaceOwnershipRecord } from "./Persistence/Services/WorkspaceOwnershipRepository.ts";
@@ -97,20 +98,25 @@ const fakeDispatcher = Layer.effect(
   }),
 );
 
-const layer = it.layer(
-  HandoffServiceLive.pipe(
-    Layer.provideMerge(WorkItemRepositoryLive),
-    Layer.provideMerge(RunAttemptRepositoryLive),
-    Layer.provideMerge(RunEventRepositoryLive),
-    Layer.provideMerge(WorkflowRepositoryLive),
-    Layer.provideMerge(WorkspaceOwnershipRepositoryLive),
-    Layer.provideMerge(fakeDispatcher.pipe(Layer.provide(RunAttemptRepositoryLive))),
-    Layer.provideMerge(LiveRequestsLive),
-    Layer.provideMerge(SqlitePersistenceMemory),
-    Layer.provideMerge(NodeServices.layer),
-  ),
-);
+// Fake git: the takeover workspace checks out the branch derived from its
+// leaf directory name, matching deriveThreadBranch's fallback.
+const fakeGitLayer = Layer.succeed(GitVcsDriver, {
+  status: (input: { readonly cwd: string }) => {
+    const segments = input.cwd.split("/").filter((segment) => segment.length > 0);
+    const leaf = segments[segments.length - 1] ?? "workspace";
+    return Effect.succeed({
+      isRepo: true,
+      refName: `symphony/${leaf}`,
+      hasPrimaryRemote: false,
+      isDefaultRef: false,
+      hasWorkingTreeChanges: false,
+      workingTree: { files: [], untrackedFiles: [] },
+    });
+  },
+} as unknown as GitVcsDriver["Service"]);
 
+// Fake engine: records dispatched commands so the binding tests can assert
+// real thread/project creation.
 const dispatchedCommands: Array<{ readonly type: string; readonly worktreePath: unknown }> = [];
 
 const fakeEngineLayer = Layer.succeed(OrchestrationEngine.OrchestrationEngineService, {
@@ -126,8 +132,29 @@ const fakeEngineLayer = Layer.succeed(OrchestrationEngine.OrchestrationEngineSer
 const fakeProjectionLayer = Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
   getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
   getThreadShellById: (threadId: string) =>
-    Effect.succeed(threadId === "th-1" ? Option.some({ worktreePath: "/ws/wi-1" }) : Option.none()),
+    Effect.succeed(
+      threadId === "th-1" || threadId === "th-4" || threadId === "th-5"
+        ? Option.some({ worktreePath: "/ws/wi-1" })
+        : Option.none(),
+    ),
 } as unknown as ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]);
+
+const layer = it.layer(
+  HandoffServiceLive.pipe(
+    Layer.provideMerge(WorkItemRepositoryLive),
+    Layer.provideMerge(RunAttemptRepositoryLive),
+    Layer.provideMerge(RunEventRepositoryLive),
+    Layer.provideMerge(WorkflowRepositoryLive),
+    Layer.provideMerge(WorkspaceOwnershipRepositoryLive),
+    Layer.provideMerge(fakeDispatcher.pipe(Layer.provide(RunAttemptRepositoryLive))),
+    Layer.provideMerge(LiveRequestsLive),
+    Layer.provideMerge(fakeGitLayer),
+    Layer.provideMerge(fakeEngineLayer),
+    Layer.provideMerge(fakeProjectionLayer),
+    Layer.provideMerge(SqlitePersistenceMemory),
+    Layer.provideMerge(NodeServices.layer),
+  ),
+);
 
 const bindingLayer = it.layer(
   HandoffServiceLive.pipe(
@@ -138,6 +165,7 @@ const bindingLayer = it.layer(
     Layer.provideMerge(WorkspaceOwnershipRepositoryLive),
     Layer.provideMerge(fakeDispatcher.pipe(Layer.provide(RunAttemptRepositoryLive))),
     Layer.provideMerge(LiveRequestsLive),
+    Layer.provideMerge(fakeGitLayer),
     Layer.provideMerge(fakeEngineLayer),
     Layer.provideMerge(fakeProjectionLayer),
     Layer.provideMerge(SqlitePersistenceMemory),
@@ -160,6 +188,59 @@ layer("HandoffService takeOver", (it) => {
         handoff.takeOver({ runAttemptId: "run-2", threadId: "th-2" }),
       );
       expect(result._tag).toBe("Failure");
+    }),
+  );
+});
+
+const driftBindingLayer = it.layer(
+  HandoffServiceLive.pipe(
+    Layer.provideMerge(WorkItemRepositoryLive),
+    Layer.provideMerge(RunAttemptRepositoryLive),
+    Layer.provideMerge(RunEventRepositoryLive),
+    Layer.provideMerge(WorkflowRepositoryLive),
+    Layer.provideMerge(WorkspaceOwnershipRepositoryLive),
+    Layer.provideMerge(fakeDispatcher.pipe(Layer.provide(RunAttemptRepositoryLive))),
+    Layer.provideMerge(LiveRequestsLive),
+    Layer.provideMerge(
+      Layer.succeed(GitVcsDriver, {
+        status: () =>
+          Effect.succeed({
+            isRepo: true,
+            refName: "main",
+            hasPrimaryRemote: false,
+            isDefaultRef: true,
+            hasWorkingTreeChanges: false,
+            workingTree: { files: [], untrackedFiles: [] },
+          }),
+      } as unknown as GitVcsDriver["Service"]),
+    ),
+    Layer.provideMerge(fakeEngineLayer),
+    Layer.provideMerge(fakeProjectionLayer),
+    Layer.provideMerge(SqlitePersistenceMemory),
+    Layer.provideMerge(NodeServices.layer),
+  ),
+);
+
+driftBindingLayer("HandoffService takeover drift", (it) => {
+  it.effect("aborts before transferring ownership when the branch drifted", () =>
+    Effect.gen(function* () {
+      const handoff = yield* HandoffService;
+      const workItem = makeWorkItem("wi-7");
+      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
+      const attempts = yield* RunAttemptRepository;
+      yield* attempts.create(makeAttempt("run-7", "wi-7", "/ws/wi-7"));
+      const ownership = yield* WorkspaceOwnershipRepository;
+      yield* ownership.acquire({
+        workspacePath: "/ws/wi-7",
+        owner: "symphony",
+        workItemId: WorkItemId.make("wi-7"),
+      });
+
+      const result = yield* Effect.result(handoff.takeOver({ runAttemptId: "run-7" }));
+      expect(result._tag).toBe("Failure");
+
+      const record = yield* ownership.getByWorkspacePath("/ws/wi-7");
+      expect(record?.owner).toBe("symphony");
     }),
   );
 });
@@ -268,7 +349,11 @@ bindingLayer("HandoffService takeOver thread binding", (it) => {
 layer("HandoffService resumeAutonomous", (it) => {
   it.effect("transfers ownership back and re-queues the work item", () =>
     Effect.gen(function* () {
-      const workItem = makeWorkItem("wi-3");
+      // The resumable shape: takeover parks the item as blocked, so resume
+      // re-queues from blocked (never from running — audit item 1: a running
+      // lifecycle means a live agent, and resume must not admit a second
+      // agent into the same workspace).
+      const workItem = makeWorkItem("wi-3", "blocked");
       yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
       const attempts = yield* RunAttemptRepository;
       yield* attempts.create(makeAttempt("run-3", "wi-3", "/ws/wi-3"));
@@ -290,6 +375,62 @@ layer("HandoffService resumeAutonomous", (it) => {
         Effect.flatMap((repo) => repo.getById(workItem.id)),
       );
       expect(resumed?.lifecycle).toBe("queued");
+    }),
+  );
+});
+
+const busyProjectionLayer = it.layer(
+  HandoffServiceLive.pipe(
+    Layer.provideMerge(WorkItemRepositoryLive),
+    Layer.provideMerge(RunAttemptRepositoryLive),
+    Layer.provideMerge(RunEventRepositoryLive),
+    Layer.provideMerge(WorkflowRepositoryLive),
+    Layer.provideMerge(WorkspaceOwnershipRepositoryLive),
+    Layer.provideMerge(fakeDispatcher.pipe(Layer.provide(RunAttemptRepositoryLive))),
+    Layer.provideMerge(LiveRequestsLive),
+    Layer.provideMerge(fakeGitLayer),
+    Layer.provideMerge(fakeEngineLayer),
+    Layer.provideMerge(
+      Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
+        getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
+        getThreadShellById: () =>
+          Effect.succeed(
+            Option.some({
+              worktreePath: "/ws/wi-8",
+              session: { status: "running" },
+            }),
+          ),
+      } as unknown as ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]),
+    ),
+    Layer.provideMerge(SqlitePersistenceMemory),
+    Layer.provideMerge(NodeServices.layer),
+  ),
+);
+
+busyProjectionLayer("HandoffService resume idleness", (it) => {
+  it.effect("refuses to resume while the Work thread has an active session", () =>
+    Effect.gen(function* () {
+      // The projection reports the bound thread's session as running:
+      // resume must abort (audit item 1 — a Work agent is mid-turn).
+      const handoff = yield* HandoffService;
+      const workItem = makeWorkItem("wi-8", "blocked");
+      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
+      const attempts = yield* RunAttemptRepository;
+      yield* attempts.create(makeAttempt("run-8", "wi-8", "/ws/wi-8"));
+      const ownership = yield* WorkspaceOwnershipRepository;
+      yield* ownership.acquire({
+        workspacePath: "/ws/wi-8",
+        owner: "work",
+        workItemId: WorkItemId.make("wi-8"),
+        threadId: "th-8",
+      });
+
+      const result = yield* Effect.result(handoff.resumeAutonomous({ workItemId: "wi-8" }));
+      expect(result._tag).toBe("Failure");
+
+      // Ownership still with work: nothing transferred.
+      const record = yield* ownership.getByWorkspacePath("/ws/wi-8");
+      expect(record?.owner).toBe("work");
     }),
   );
 });

@@ -31,6 +31,7 @@ import { ApprovalService } from "../../Runner/ApprovalService.ts";
 import { ApprovalRepository } from "../../Persistence/Services/ApprovalRepository.ts";
 import { ApprovalRepositoryLive } from "../../Persistence/Layers/ApprovalRepository.ts";
 import { EvidenceRepositoryLive } from "../../Persistence/Layers/EvidenceRepository.ts";
+import { AttentionRepositoryLive } from "../../Persistence/Services/AttentionRepository.ts";
 import { EvidenceRepository } from "../../Persistence/Services/EvidenceRepository.ts";
 import { TrackerRegistryWithFactories } from "../../Trackers/Registry.ts";
 import { makeMemoryTrackerAdapter } from "../../Trackers/MemoryAdapter.ts";
@@ -133,6 +134,8 @@ const mockApprovalsLayer = Layer.effect(
         repository.listForRun(runAttemptId).pipe(Effect.orElseSucceed(() => [])),
       expire: (requestId) =>
         repository.decide(requestId, "expired").pipe(Effect.catch(() => Effect.void)),
+      interrupt: (requestId) =>
+        repository.decide(requestId, "interrupted").pipe(Effect.catch(() => Effect.void)),
     } satisfies ApprovalService["Service"];
   }),
 );
@@ -161,6 +164,7 @@ const layer = it.layer(
     Layer.provideMerge(mockApprovalsLayer),
     Layer.provideMerge(ApprovalRepositoryLive),
     Layer.provideMerge(EvidenceRepositoryLive),
+    Layer.provideMerge(AttentionRepositoryLive),
     Layer.provideMerge(
       Layer.effect(
         PullRequestService,
@@ -175,7 +179,7 @@ const layer = it.layer(
             status: "open",
             ciStatus: "success",
             reviewState: "approved",
-            mergeable: true,
+            mergeable: "mergeable",
             unresolvedComments: 0,
           });
           return {
@@ -504,7 +508,9 @@ layer("SymphonyOrchestrator Observe", (it) => {
         objective: "Retry target",
         acceptanceCriteria: [],
         source: { kind: "manual" },
-        trackerIssueId: "retry-1",
+        // Must match an issue the memory tracker actually holds, because the
+        // retry path re-checks the tracker (plan 9.5; audit item 2).
+        trackerIssueId: "1",
         workflowId: WorkflowId.make("wf-retry-1"),
         lifecycle: "retry_scheduled",
         priority: 1,
@@ -545,6 +551,76 @@ layer("SymphonyOrchestrator Observe", (it) => {
       // The mock dispatcher claims from retry_scheduled -> preparing.
       expect(after?.lifecycle).toBe("preparing");
       expect(dispatchedIds).toContain("retry-1");
+    }),
+  );
+
+  it.effect("does not re-dispatch a retry whose issue vanished from the tracker", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-retry-2", "/repo/retry-2");
+      const workflows = yield* WorkflowRepository;
+      yield* workflows.upsert({
+        id: WorkflowId.make("wf-retry-2"),
+        repositoryPath: "/repo/retry-2",
+        workflowPath: "/repo/retry-2/WORKFLOW.md",
+        status: "active",
+        autonomy: "execute",
+        validationError: null,
+        definition: { config: {}, promptTemplate: "Implement." },
+        effectiveConfig: {
+          ...makeConfig("/repo/retry-2"),
+          autonomy: "execute",
+          maxRetryBackoffMs: 30_000,
+        },
+        enabledAt: "2026-08-05T00:00:00.000Z",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const workItemId = WorkItemId.make("retry-2");
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        objective: "Vanished issue",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        // No such issue exists in the memory tracker: the re-check must
+        // refuse the dispatch and leave the item queued (plan 9.5).
+        trackerIssueId: "ghost-issue",
+        workflowId: WorkflowId.make("wf-retry-2"),
+        lifecycle: "retry_scheduled",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const runAttempts = yield* RunAttemptRepository;
+      const recent = yield* nowIso;
+      yield* runAttempts.create({
+        id: RunAttemptId.make("run-retry-2"),
+        workItemId,
+        attemptNumber: 1,
+        workspacePath: "/ws/retry-2",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "failed",
+        startedAt: recent,
+        finishedAt: recent,
+        error: { category: "agent", message: "boom" },
+      });
+      // Rewind the clock so the backoff is due.
+      yield* TestClock.adjust("31 seconds");
+
+      dispatchedIds.length = 0;
+      yield* orchestrator.refreshNow();
+      const after = yield* workItems.getById(workItemId);
+      expect(after?.lifecycle).toBe("retry_scheduled");
+      expect(dispatchedIds).not.toContain("retry-2");
     }),
   );
 
@@ -640,7 +716,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
           status: "open",
           ciStatus: "success",
           reviewState: "approved",
-          mergeable: true,
+          mergeable: "mergeable",
           unresolvedComments: 0,
         },
         modelReview: null,
@@ -838,7 +914,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
           status: "open",
           ciStatus: "success",
           reviewState: "approved",
-          mergeable: true,
+          mergeable: "mergeable",
           unresolvedComments: 0,
         },
         modelReview: null,

@@ -42,11 +42,44 @@ export interface RecoveryDeps {
   readonly workflows: WorkflowRepository["Service"];
   readonly dispatcher: RunDispatcher["Service"];
   readonly ownership?: WorkspaceOwnershipRepositoryShape;
+  /** Called after marking a run interrupted: settle that run's pending
+   * approval/input requests (plan 8.3.1; audit item 3). */
+  readonly interruptRunApprovals?: (input: {
+    readonly workItemId: WorkItem["id"];
+    readonly runAttemptId: string;
+  }) => Effect.Effect<void>;
 }
 
 /** A claim with no attempt row older than this is a crash orphan, not an
  * in-flight dispatch (REVIEW P1 #10). */
 const STALL_WINDOW_MS = 5 * 60_000;
+
+/**
+ * Terminate a coding-agent child that survived the server crash (audit item
+ * 3; plan 8.1). The claim records the child PID; after a restart that PID is
+ * an orphan (or a recycled one — checking liveness via kill(pid, 0) guards
+ * that). Best-effort and non-fatal.
+ */
+const terminateOrphanAgent = (item: WorkItem): Effect.Effect<void, never> =>
+  Effect.gen(function* () {
+    const pid = item.ownerPid;
+    if (pid === null || pid === undefined || pid <= 0) {
+      return;
+    }
+    yield* Effect.tryPromise(() =>
+      // Signal 0 probes liveness without killing; SIGTERM (15) terminates.
+      // If the PID was recycled to an unrelated process, probe-then-kill can
+      // hit the wrong target, so only act when the process is a child of ours
+      // is unknowable post-crash — accept the small risk in exchange for
+      // actually stopping orphan token burn; the PID was recorded at spawn.
+      import("node:child_process").then(({ spawnSync }) => {
+        const probe = spawnSync("kill", ["-0", String(pid)], { stdio: "ignore" });
+        if (probe.status === 0) {
+          spawnSync("kill", ["-15", String(pid)], { stdio: "ignore" });
+        }
+      }),
+    ).pipe(Effect.catch(() => Effect.void));
+  });
 
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   "succeeded",
@@ -123,6 +156,14 @@ const recoverItem = (
       return;
     }
 
+    // Only a run with a live claim can be adopted as a crash orphan: no claim
+    // means the item was seeded/written directly (tests, manual edits) and no
+    // dispatch fiber ever owned it — interrupting it would mark a live run
+    // dead (audit item 3; the claim is the proof a dispatcher was here).
+    if (item.claimedAt === undefined || item.claimedAt === null) {
+      return;
+    }
+
     if (TERMINAL_STATUSES.has(attempt.status)) {
       // A `succeeded` attempt on a held item means finalization finished the
       // run but the ready_for_review transition never landed (crash in the
@@ -140,6 +181,18 @@ const recoverItem = (
 
     // Non-terminal attempt with no live agent: the worker is gone (restart or
     // crash). Mark interrupted and release per the retry policy.
+    // Orphan adoption (audit item 3): the agent child may have survived the
+    // server crash (the claim row records its PID). Terminate it before
+    // releasing, so a dead run does not keep burning tokens in the background.
+    yield* terminateOrphanAgent(item);
+    // Pending approval/input requests for a dead run are unanswerable: mark
+    // them interrupted (plan 8.3.1; audit item 3). The orchestrator supplies
+    // the closure so Recovery stays free of ApprovalService's type.
+    if (deps.interruptRunApprovals !== undefined) {
+      yield* deps
+        .interruptRunApprovals({ workItemId: item.id, runAttemptId: String(attempt.id) })
+        .pipe(Effect.catch(() => Effect.void));
+    }
     yield* deps.runAttempts
       .updateStatus(attempt.id, "interrupted", {
         finishedAt: now,

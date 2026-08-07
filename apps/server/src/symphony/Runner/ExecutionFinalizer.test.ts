@@ -25,6 +25,10 @@ import { RunEventRepository } from "../Persistence/Services/RunEventRepository.t
 import { RunEventRepositoryLive } from "../Persistence/Layers/RunEventRepository.ts";
 import { EvidenceRepository } from "../Persistence/Services/EvidenceRepository.ts";
 import { EvidenceRepositoryLive } from "../Persistence/Layers/EvidenceRepository.ts";
+import {
+  AttentionRepository,
+  AttentionRepositoryLive,
+} from "../Persistence/Services/AttentionRepository.ts";
 import { EvidenceService } from "../Evidence/Service.ts";
 import { PullRequestCreationError, PullRequestService } from "../Evidence/PullRequest.ts";
 import { ValidationRunner } from "../Validation/Runner.ts";
@@ -179,6 +183,7 @@ const layer = (validationStatuses: ReadonlyArray<string>, pr: PullRequestEvidenc
       Layer.provideMerge(fakeValidationRunner(validationStatuses)),
       Layer.provideMerge(fakeEvidenceService),
       Layer.provideMerge(fakePullRequestService(pr)),
+      Layer.provideMerge(AttentionRepositoryLive),
       Layer.provideMerge(SqlitePersistenceMemory),
       Layer.provideMerge(NodeServices.layer),
     ),
@@ -329,6 +334,7 @@ it.layer(
     Layer.provideMerge(fakeValidationRunner(["passed"])),
     Layer.provideMerge(fakeEvidenceService),
     Layer.provideMerge(failingPullRequestService),
+    Layer.provideMerge(AttentionRepositoryLive),
     Layer.provideMerge(SqlitePersistenceMemory),
     Layer.provideMerge(NodeServices.layer),
   ),
@@ -363,6 +369,16 @@ it.layer(
       expect(failureEvent).toBeDefined();
       const payload = failureEvent?.payload as { message?: string } | undefined;
       expect(payload?.message).toContain("not authenticated");
+
+      // A durable attention item is raised so the failure surfaces in the
+      // attention list (audit item 7), not just the run log.
+      const attention = yield* AttentionRepository;
+      const open = yield* attention.listOpen();
+      expect(open.length).toBeGreaterThan(0);
+      const raised = open.find((item) => item.workItemId === workItem.id);
+      expect(raised).toBeDefined();
+      expect(raised?.kind).toBe("merge_conflict");
+      expect(raised?.state).toBe("open");
     }),
   );
 });

@@ -388,6 +388,7 @@ describe("GitHubCli.layer", () => {
                 { status: "COMPLETED", conclusion: "SUCCESS" },
               ],
               reviews: [{ state: "CHANGES_REQUESTED" }],
+              latestCommit: { oid: "deadbeef0001" },
             }),
           ),
         ),
@@ -417,8 +418,9 @@ describe("GitHubCli.layer", () => {
       assert.deepStrictEqual(result, {
         ciStatus: "failure",
         reviewState: "changes_requested",
-        mergeable: true,
+        mergeable: "mergeable",
         unresolvedComments: 1,
+        latestCommit: "deadbeef0001",
       });
     }).pipe(Effect.provide(layer)),
   );
@@ -496,7 +498,7 @@ describe("GitHubCli.layer", () => {
       assert.deepStrictEqual(result, {
         ciStatus: "pending",
         reviewState: "approved",
-        mergeable: true,
+        mergeable: "mergeable",
         unresolvedComments: 0,
       });
     }).pipe(Effect.provide(layer)),
@@ -532,9 +534,37 @@ describe("GitHubCli.layer", () => {
       assert.deepStrictEqual(result, {
         ciStatus: "unknown",
         reviewState: "none",
-        mergeable: false,
+        mergeable: "unknown",
         unresolvedComments: 0,
       });
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("records latestCommit and fails when the reviewThreads query fails", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({
+              mergeable: "MERGEABLE",
+              statusCheckRollup: [],
+              reviews: [],
+              latestCommit: { oid: "abc123def456" },
+            }),
+          ),
+        ),
+      );
+      // The follow-up GraphQL query fails: the whole status read must fail
+      // (audit item 5 — an unknown thread count must not pass the merge gate
+      // as 0).
+      mockRun.mockReturnValueOnce(Effect.fail(new Error("gh api graphql failed") as never));
+
+      const gh = yield* GitHubCli.GitHubCli;
+      const result = yield* Effect.result(
+        gh.getChangeRequestStatus({ cwd: "/repo", reference: "#42" }),
+      );
+      expect(result._tag).toBe("Failure");
     }).pipe(Effect.provide(layer)),
   );
 });

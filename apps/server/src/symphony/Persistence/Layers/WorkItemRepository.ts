@@ -125,6 +125,7 @@ const rowToWorkItem = (row: Schema.Schema.Type<typeof WorkItemRowSchema>): WorkI
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
   ...(row.claimedAt === null ? {} : { claimedAt: row.claimedAt }),
+  ...(row.ownerPid === null ? {} : { ownerPid: row.ownerPid }),
 });
 
 const workItemToRow = (workItem: WorkItem): Schema.Schema.Type<typeof WorkItemRowSchema> => ({
@@ -156,13 +157,13 @@ const workItemToRow = (workItem: WorkItem): Schema.Schema.Type<typeof WorkItemRo
   ownerPid: null,
   ownerStartedAt: null,
   leaseExpiresAt: null,
+  claimedAt: workItem.claimedAt ?? null,
   excluded: workItem.excluded === true ? 1 : 0,
   localPriority: workItem.localPriority ?? null,
   eligibilityReasonsJson: JSON.stringify(workItem.eligibilityReasons ?? []),
   createdAt: workItem.createdAt,
   updatedAt: workItem.updatedAt,
   lastSeenAt: workItem.updatedAt,
-  claimedAt: null,
 });
 
 // The verbose RETURNING / SELECT column list is written once and interpolated
@@ -235,7 +236,7 @@ const makeRepository = Effect.gen(function* () {
           assignee_id, blockers_json, branch_name, issue_url, lifecycle,
           workspace_key, workspace_path, base_branch, source_json,
           acceptance_criteria_json, eligibility_reasons_json,
-          created_at, updated_at, last_seen_at
+          created_at, updated_at, last_seen_at, claimed_at
         )
         VALUES (
           ${row.id}, ${row.workflowId}, ${row.trackerKind}, ${row.trackerIssueId},
@@ -244,7 +245,7 @@ const makeRepository = Effect.gen(function* () {
           ${row.assigneeId}, ${row.blockersJson}, ${row.branchName}, ${row.issueUrl},
           ${row.lifecycle}, ${row.workspaceKey}, ${row.workspacePath}, ${row.baseBranch},
           ${row.sourceJson}, ${row.acceptanceCriteriaJson}, ${row.eligibilityReasonsJson},
-          ${row.createdAt}, ${row.updatedAt}, ${row.lastSeenAt}
+          ${row.createdAt}, ${row.updatedAt}, ${row.lastSeenAt}, ${row.claimedAt}
         )
         ON CONFLICT(tracker_kind, tracker_issue_id) DO NOTHING
         RETURNING ${cols}
@@ -436,6 +437,27 @@ const makeRepository = Effect.gen(function* () {
       });
     });
 
+  const setClaimOwnerPid: WorkItemRepositoryShape["setClaimOwnerPid"] = (
+    id,
+    ownerToken,
+    generation,
+    pid,
+  ) =>
+    Effect.gen(function* () {
+      const now = yield* nowIso;
+      const row = yield* sql<Schema.Schema.Type<typeof WorkItemRowSchema>>`
+        UPDATE symphony_work_items SET
+          owner_pid = ${pid},
+          updated_at = ${now}
+        WHERE id = ${id}
+          AND owner_token = ${ownerToken}
+          AND generation = ${generation}
+          AND lifecycle IN ('preparing', 'running')
+        RETURNING ${cols}
+      `.pipe(Effect.mapError(toBusyOrSqlError("WorkItemRepository.setClaimOwnerPid")));
+      return row.length > 0;
+    });
+
   const transition: WorkItemRepositoryShape["transition"] = (id, lifecycle, options) =>
     Effect.gen(function* () {
       const now = yield* nowIso;
@@ -505,6 +527,7 @@ const makeRepository = Effect.gen(function* () {
     getByTrackerIssue,
     listByLifecycle,
     claim,
+    setClaimOwnerPid,
     transition,
     releaseClaim,
     writeOverrides,

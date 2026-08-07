@@ -56,6 +56,9 @@ const makeWorkItem = (id: string, lifecycle: WorkItem["lifecycle"]): WorkItem =>
   priority: 1,
   eligibilityReasons: [],
   evidence: null,
+  // A crash orphan has a live claim (audit item 3): recovery only adopts
+  // runs a dispatcher actually owned.
+  claimedAt: "2026-08-05T00:00:00.000Z",
   createdAt: "2026-08-05T00:00:00.000Z",
   updatedAt: "2026-08-05T00:00:00.000Z",
 });

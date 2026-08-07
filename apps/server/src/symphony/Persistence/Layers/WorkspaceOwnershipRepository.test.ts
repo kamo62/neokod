@@ -2,6 +2,7 @@ import { WorkItemId } from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 
 import { SqlitePersistenceMemory } from "../../../persistence/Layers/Sqlite.ts";
 import {
@@ -15,15 +16,22 @@ import {
 } from "./WorkspaceOwnershipRepository.ts";
 
 const layer = it.layer(
-  WorkspaceOwnershipRepositoryLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)),
+  WorkspaceOwnershipRepositoryLive.pipe(
+    Layer.provideMerge(SqlitePersistenceMemory),
+    Layer.provideMerge(NodeServices.layer),
+  ),
 );
 
 const guardLayer = it.layer(
   Layer.mergeAll(
-    WorkspaceOwnershipRepositoryLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)),
+    WorkspaceOwnershipRepositoryLive.pipe(
+      Layer.provideMerge(SqlitePersistenceMemory),
+      Layer.provideMerge(NodeServices.layer),
+    ),
     WorkspaceRemovalGuardLive.pipe(
       Layer.provide(WorkspaceOwnershipRepositoryLive),
       Layer.provideMerge(SqlitePersistenceMemory),
+      Layer.provideMerge(NodeServices.layer),
     ),
   ),
 );

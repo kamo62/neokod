@@ -588,7 +588,7 @@ function createGitHubCliWithFakeGh(scenario: FakeGhScenario = {}): {
         Effect.succeed({
           ciStatus: "unknown",
           reviewState: "none",
-          mergeable: true,
+          mergeable: "mergeable",
           unresolvedComments: 0,
         }),
       getRepositoryCloneUrls: (input) =>

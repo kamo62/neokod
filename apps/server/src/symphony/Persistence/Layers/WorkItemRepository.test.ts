@@ -1,14 +1,21 @@
 import { WorkItemId } from "@neokod/contracts";
 import type { WorkItem, WorkLifecycle } from "@neokod/contracts";
-import { expect, it } from "@effect/vitest";
+import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
+import * as Random from "effect/Random";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 
 import { nowIso } from "../../Domain/Time.ts";
 import { SymphonyClaimLost } from "../Errors.ts";
 import { WorkItemRepository } from "../Services/WorkItemRepository.ts";
 import { WorkItemRepositoryLive } from "./WorkItemRepository.ts";
-import { SqlitePersistenceMemory } from "../../../persistence/Layers/Sqlite.ts";
+import {
+  makeSqlitePersistenceLive,
+  SqlitePersistenceMemory,
+} from "../../../persistence/Layers/Sqlite.ts";
 
 const layer = it.layer(WorkItemRepositoryLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
 
@@ -207,5 +214,58 @@ layer("WorkItemRepository lifecycle legality (plan section 19 suite 6)", (it) =>
       });
       expect(changed).toBe(true);
     }),
+  );
+});
+
+describe("WorkItemRepository two-connection contention", () => {
+  it.effect("exactly one claim wins across two independent connections", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        // Two truly independent SQLite connections over the same file (plan
+        // section 19 suite 1; audit item 6): the loser must see the winner's
+        // claim, not a stale snapshot.
+        const os = yield* Effect.promise(() => import("node:os"));
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const nonce = yield* Random.nextIntBetween(1_000_000, 9_999_999);
+        const dir = path.join(os.tmpdir(), `symphony-contend-${nonce}`);
+        const dbPath = path.join(dir, "contention.db");
+        yield* fs.makeDirectory(dir, { recursive: true });
+
+        const scope = yield* Effect.scope;
+        const memoMap = yield* Layer.makeMemoMap;
+        const layerA = WorkItemRepositoryLive.pipe(
+          Layer.provideMerge(makeSqlitePersistenceLive(dbPath)),
+          Layer.provideMerge(NodeServices.layer),
+        );
+        const layerB = WorkItemRepositoryLive.pipe(
+          Layer.provideMerge(makeSqlitePersistenceLive(dbPath)),
+          Layer.provideMerge(NodeServices.layer),
+        );
+        const contextA = yield* Layer.buildWithMemoMap(layerA, memoMap, scope);
+        const contextB = yield* Layer.buildWithMemoMap(layerB, memoMap, scope);
+
+        const repoA = yield* Effect.service(WorkItemRepository).pipe(Effect.provide(contextA));
+        const repoB = yield* Effect.service(WorkItemRepository).pipe(Effect.provide(contextB));
+
+        const item = yield* makeWorkItem("contend-1", "contend-1");
+        yield* repoA.upsert(item);
+
+        const [resultA, resultB] = yield* Effect.all(
+          [
+            repoB.claim(WorkItemId.make("contend-1"), "owner-b").pipe(Effect.result),
+            repoA.claim(WorkItemId.make("contend-1"), "owner-a").pipe(Effect.result),
+          ],
+          { concurrency: "unbounded" },
+        );
+
+        const successes = [resultA, resultB].filter((result) => result._tag === "Success");
+        expect(successes).toHaveLength(1);
+        const failures = [resultA, resultB].filter((result) => result._tag === "Failure");
+        expect(failures).toHaveLength(1);
+
+        yield* fs.remove(dir, { recursive: true }).pipe(Effect.catch(() => Effect.void));
+      }),
+    ).pipe(Effect.provide(NodeServices.layer)),
   );
 });

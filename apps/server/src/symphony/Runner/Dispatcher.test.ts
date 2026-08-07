@@ -115,6 +115,7 @@ const required = <A>(value: A | null): Effect.Effect<A, TestAssertionError> =>
 const scriptedAgent = (completed: boolean): AgentRuntimeService => ({
   runTurn: () => Effect.succeed({ turnId: "t1", threadId: "th1", completed }),
   interrupt: () => Effect.void,
+  pid: () => Effect.succeed(null),
 });
 
 /**
@@ -147,6 +148,7 @@ const blockableFactory = Layer.effect(
                     : release().pipe(Effect.orElseSucceed(() => undefined)),
                 ),
               ),
+            pid: () => Effect.succeed(null),
           } satisfies AgentRuntimeService;
         }),
     };
@@ -336,6 +338,7 @@ const failingCancelFactory = Layer.effect(
                     : release().pipe(Effect.orElseSucceed(() => undefined)),
                 ),
               ),
+            pid: () => Effect.succeed(null),
           } satisfies AgentRuntimeService;
         }),
     };

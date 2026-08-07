@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import * as FileSystem from "effect/FileSystem";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 import * as Effect from "effect/Effect";
@@ -52,10 +53,19 @@ const toSqlError =
 const makeRepository = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const cols = sql.literal(SELECT_COLUMNS);
+  const fileSystem = yield* FileSystem.FileSystem;
+
+  // Canonicalize a workspace path at the repository/guard boundary
+  // (RECONCILE binding constraint; audit item 4): a symlinked workspace must
+  // resolve to the same row as its real path, or the removal guard would
+  // miss the lease held under the other spelling.
+  const canonicalize = (workspacePath: string): Effect.Effect<string, never> =>
+    fileSystem.realPath(workspacePath).pipe(Effect.catch(() => Effect.succeed(workspacePath)));
 
   const acquire: WorkspaceOwnershipRepositoryShape["acquire"] = (input) =>
     Effect.gen(function* () {
       const now = yield* nowIso;
+      const workspacePath = yield* canonicalize(input.workspacePath);
       const row = yield* SqlSchema.findOneOption({
         Request: Schema.Struct({
           workspacePath: Schema.String,
@@ -92,7 +102,7 @@ const makeRepository = Effect.gen(function* () {
             RETURNING ${cols}
           `,
       })({
-        workspacePath: input.workspacePath,
+        workspacePath,
         owner: input.owner,
         workItemId: input.workItemId === undefined ? null : String(input.workItemId),
         threadId: input.threadId ?? null,
@@ -105,6 +115,7 @@ const makeRepository = Effect.gen(function* () {
   const transfer: WorkspaceOwnershipRepositoryShape["transfer"] = (input) =>
     Effect.gen(function* () {
       const now = yield* nowIso;
+      const workspacePath = yield* canonicalize(input.workspacePath);
       const row = yield* SqlSchema.findOneOption({
         Request: Schema.Struct({
           workspacePath: Schema.String,
@@ -130,7 +141,7 @@ const makeRepository = Effect.gen(function* () {
             RETURNING ${cols}
           `,
       })({
-        workspacePath: input.workspacePath,
+        workspacePath,
         owner: input.owner,
         workItemId: input.workItemId === undefined ? null : String(input.workItemId),
         threadId: input.threadId === undefined ? null : input.threadId,
@@ -144,6 +155,7 @@ const makeRepository = Effect.gen(function* () {
   const renew: WorkspaceOwnershipRepositoryShape["renew"] = (input) =>
     Effect.gen(function* () {
       const now = yield* nowIso;
+      const workspacePath = yield* canonicalize(input.workspacePath);
       const row = yield* SqlSchema.findOneOption({
         Request: Schema.Struct({
           workspacePath: Schema.String,
@@ -164,7 +176,7 @@ const makeRepository = Effect.gen(function* () {
             RETURNING ${cols}
           `,
       })({
-        workspacePath: input.workspacePath,
+        workspacePath,
         owner: input.owner,
         generation: input.generation,
         leaseExpiresAt: input.leaseExpiresAt,
@@ -175,12 +187,13 @@ const makeRepository = Effect.gen(function* () {
 
   const release: WorkspaceOwnershipRepositoryShape["release"] = (input) =>
     Effect.gen(function* () {
+      const workspacePath = yield* canonicalize(input.workspacePath);
       // RETURNING makes the fence observable: a stale generation (reclaimed
       // or transferred out from under the caller) deletes nothing and returns
       // false (REVIEW P1: release returned true unconditionally).
       const rows = yield* sql<Schema.Schema.Type<typeof OwnershipRowSchema>>`
         DELETE FROM symphony_workspace_ownership
-        WHERE workspace_path = ${input.workspacePath}
+        WHERE workspace_path = ${workspacePath}
           AND owner = ${input.owner}
           AND generation = ${input.generation}
         RETURNING workspace_path
@@ -189,21 +202,25 @@ const makeRepository = Effect.gen(function* () {
     });
 
   const getByWorkspacePath: WorkspaceOwnershipRepositoryShape["getByWorkspacePath"] = (
-    workspacePath,
+    rawWorkspacePath,
   ) =>
-    SqlSchema.findOneOption({
-      Request: Schema.Struct({ workspacePath: Schema.String }),
-      Result: OwnershipRowSchema,
-      execute: (request) =>
-        sql`
-          SELECT ${cols}
-          FROM symphony_workspace_ownership
-          WHERE workspace_path = ${request.workspacePath}
-        `,
-    })({ workspacePath }).pipe(
-      Effect.mapError(toSqlError("WorkspaceOwnershipRepository.getByWorkspacePath")),
-      Effect.map((row) => (row._tag === "None" ? null : rowToRecord(row.value))),
-    );
+    Effect.gen(function* () {
+      const workspacePath = yield* canonicalize(rawWorkspacePath);
+      const row = yield* SqlSchema.findOneOption({
+        Request: Schema.Struct({ workspacePath: Schema.String }),
+        Result: OwnershipRowSchema,
+        execute: (request) =>
+          sql`
+            SELECT ${cols}
+            FROM symphony_workspace_ownership
+            WHERE workspace_path = ${request.workspacePath}
+          `,
+      })({ workspacePath }).pipe(
+        Effect.mapError(toSqlError("WorkspaceOwnershipRepository.getByWorkspacePath")),
+        Effect.map((row) => (row._tag === "None" ? null : rowToRecord(row.value))),
+      );
+      return row;
+    });
 
   return {
     acquire,

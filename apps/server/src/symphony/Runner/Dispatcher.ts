@@ -268,6 +268,20 @@ export const makeRunDispatcher = Effect.gen(function* () {
       const policy = resolveRunnerPolicy(config);
       // The agent runtime is per-config; build it in the dispatch scope.
       const agent = yield* factory.make(config);
+      // Record the agent child PID on the claim so recovery can terminate a
+      // surviving orphan after a crash (audit item 3; plan 8.1). Best-effort:
+      // the PID may not exist yet (lazy spawn) and the fence may have moved.
+      yield* agent
+        .pid()
+        .pipe(
+          Effect.flatMap((pid) =>
+            pid === null
+              ? Effect.void
+              : workItems
+                  .setClaimOwnerPid(workItemId, ownerToken, claimed.generation, pid)
+                  .pipe(Effect.catch(() => Effect.void)),
+          ),
+        );
       // PR body files land under the server's symphony logs dir when
       // available; otherwise the system temp dir (REVIEW P0: the body file
       // was never written and the path resolved to the filesystem root).

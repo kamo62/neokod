@@ -300,6 +300,9 @@ const RawGitHubChangeRequestStatusSchema = Schema.Struct({
     ),
   ),
   reviewDecision: Schema.optional(Schema.NullOr(Schema.String)),
+  latestCommit: Schema.optional(
+    Schema.NullOr(Schema.Struct({ oid: Schema.optional(Schema.String) })),
+  ),
 });
 
 const decodeRawGitHubChangeRequestStatus = Schema.decodeEffect(
@@ -336,10 +339,21 @@ const normalizeChangeRequestStatus = (
 
   // Unresolved comments are filled by the follow-up reviewThreads GraphQL
   // query in getChangeRequestStatus; the base view JSON cannot source them.
+  const mergeable: ChangeRequestStatus["mergeable"] =
+    raw.mergeable === "MERGEABLE"
+      ? "mergeable"
+      : raw.mergeable === "CONFLICTING"
+        ? "conflicting"
+        : "unknown";
   return {
     ciStatus,
     reviewState,
-    mergeable: raw.mergeable === "MERGEABLE",
+    mergeable,
+    // Audit item 5: record the head commit so merge gating and the UI can
+    // tell "checked this commit" from "checked something older".
+    ...(raw.latestCommit?.oid !== undefined && raw.latestCommit.oid.length > 0
+      ? { latestCommit: raw.latestCommit.oid }
+      : {}),
     unresolvedComments: 0,
   };
 };
@@ -486,7 +500,7 @@ export const make = Effect.gen(function* () {
           "view",
           input.reference,
           "--json",
-          "mergeable,statusCheckRollup,reviews,reviewDecision",
+          "mergeable,statusCheckRollup,reviews,reviewDecision,latestCommit",
         ],
       }).pipe(
         Effect.map((result) => result.stdout.trim()),
@@ -530,26 +544,32 @@ export const make = Effect.gen(function* () {
             ],
           })
             .pipe(
+              // Audit item 5: a failed reviewThreads query must NOT coerce
+              // to 0 — an unknown thread count would let the approveMerge
+              // gate pass an unresolved review. Fail the whole status read.
               Effect.map((result) => {
-                try {
-                  const json = JSON.parse(result.stdout) as {
-                    data?: {
-                      repository?: {
-                        pullRequest?: {
-                          reviewThreads?: {
-                            nodes?: ReadonlyArray<{ isResolved?: boolean | null }>;
-                          };
+                const json = JSON.parse(result.stdout) as {
+                  data?: {
+                    repository?: {
+                      pullRequest?: {
+                        reviewThreads?: {
+                          nodes?: ReadonlyArray<{ isResolved?: boolean | null }>;
                         };
                       };
                     };
                   };
-                  const threads = json.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
-                  return threads.filter((thread) => thread.isResolved !== true).length;
-                } catch {
-                  return 0;
-                }
+                };
+                const threads = json.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
+                return threads.filter((thread) => thread.isResolved !== true).length;
               }),
-              Effect.orElseSucceed(() => 0),
+              Effect.mapError(
+                (cause) =>
+                  new GitHubChangeRequestStatusDecodeError({
+                    command: "gh",
+                    cwd: input.cwd,
+                    cause,
+                  }),
+              ),
             )
             .pipe(Effect.map((unresolved) => ({ ...status, unresolvedComments: unresolved }))),
         ),

@@ -36,6 +36,8 @@ import { projectWorkItem } from "../Projection.ts";
 import { nowMs, reconcileStaleClaims } from "../Reconciler.ts";
 import { retryDueAtMs } from "../Retry.ts";
 import { runStartupRecovery } from "../Recovery.ts";
+import { WorkflowLoaderService } from "../../Workflow/Loader.ts";
+import { AttentionRepository } from "../../Persistence/Services/AttentionRepository.ts";
 import { deriveWorkingBranch } from "../../Domain/Keys.ts";
 import { WorkspaceOwnershipRepository } from "../../Persistence/Services/WorkspaceOwnershipRepository.ts";
 import { SymphonyOrchestrator, type SymphonyOrchestratorShape } from "../SymphonyOrchestrator.ts";
@@ -52,6 +54,55 @@ import { SymphonyOrchestrator, type SymphonyOrchestratorShape } from "../Symphon
  */
 
 const POLL_INTERVAL = "30 seconds";
+
+/**
+ * Plan 9.5 re-check (audit item 2): a retry must re-read the issue from the
+ * tracker instead of re-dispatching a fabricated snapshot from the stored
+ * row — the tracker state may have moved (closed, renamed, re-assigned)
+ * since the item was queued. Returns null when the issue is gone, so the
+ * item is left queued for a manual decision rather than dispatched as a
+ * phantom.
+ */
+const refreshIssueSnapshot = (
+  item: WorkItem,
+  config: EffectiveWorkflowConfig,
+  registry: TrackerAdapterRegistry["Service"],
+): Effect.Effect<NormalizedIssue | null, never> =>
+  Effect.gen(function* () {
+    if (item.trackerIssueId !== undefined && item.trackerIssueId.length > 0) {
+      const trackerIssueId: string = item.trackerIssueId;
+      const refreshed = yield* registry
+        .resolve(config.trackerKind, config.trackerProvider, {
+          repositoryPath: config.repositoryPath,
+        })
+        .pipe(
+          Effect.flatMap((adapter) => adapter.refreshIssues([trackerIssueId])),
+          Effect.catch(() => Effect.succeed([])),
+        );
+      const fresh = refreshed.find((candidate) => candidate.id === trackerIssueId);
+      if (fresh !== undefined) {
+        return fresh;
+      }
+      return null;
+    }
+    return {
+      id: item.trackerIssueId ?? item.id,
+      nativeRef: null,
+      identifier: item.trackerIdentifier ?? item.objective,
+      title: item.objective,
+      description: item.description ?? null,
+      priority: item.priority ?? null,
+      state: "queued",
+      branchName: item.baseBranch ?? null,
+      url: null,
+      assigneeId: null,
+      labels: [],
+      blockedBy: [],
+      dispatchable: true,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+    };
+  });
 
 interface OrchestratorRuntimeState {
   readonly lastPollAt: string | null;
@@ -281,6 +332,7 @@ const pollWorkflow = (deps: {
 const makeOrchestrator = Effect.gen(function* () {
   const workflows = yield* WorkflowRepository;
   const workItems = yield* WorkItemRepository;
+  const attentionRepository = yield* AttentionRepository;
   const registry = yield* TrackerAdapterRegistry;
   const enablement = yield* TrackerEnablement;
   const orchestratorState = yield* OrchestratorStateRepository;
@@ -409,8 +461,37 @@ const makeOrchestrator = Effect.gen(function* () {
       runEvents,
       workflows,
       dispatcher,
+      interruptRunApprovals: (input) =>
+        approvals.listPending().pipe(
+          Effect.flatMap((pending) =>
+            Effect.all(
+              pending
+                .filter(
+                  (request) =>
+                    request.workItemId === input.workItemId &&
+                    (request.runAttemptId === undefined ||
+                      request.runAttemptId === input.runAttemptId),
+                )
+                .map((request) => approvals.interrupt(request.id)),
+              { concurrency: "unbounded" },
+            ),
+          ),
+          Effect.asVoid,
+          Effect.catch(() => Effect.void),
+        ),
       ...(Option.isSome(maybeOwnership) ? { ownership: maybeOwnership.value } : {}),
     }).pipe(Effect.catch(() => Effect.void));
+    // Dynamic WORKFLOW.md reload (plan 6.4; audit item 8): a changed file
+    // re-loads and re-validates on the next tick.
+    const maybeLoader = yield* Effect.serviceOption(WorkflowLoaderService);
+    if (Option.isSome(maybeLoader)) {
+      const workflowsNow = yield* workflows.list().pipe(Effect.catch(() => Effect.succeed([])));
+      for (const workflow of workflowsNow) {
+        yield* maybeLoader.value
+          .reloadChanged({ repositoryPath: workflow.repositoryPath })
+          .pipe(Effect.catch(() => Effect.void));
+      }
+    }
     // Each tick runs in its own scope so retry-sweep dispatches release
     // their agent-runtime resources when the run ends instead of holding
     // them on the layer scope until server shutdown (REVIEW P1).
@@ -602,6 +683,14 @@ const makeOrchestrator = Effect.gen(function* () {
       for (const request of durable) {
         attention.push(approvalToAttentionItem(request));
       }
+      // Direct attention items (audit item 7: pr_creation_failed raises a
+      // durable record; attention is no longer approval-derived only).
+      const raised = yield* attentionRepository
+        .listOpen({ limit: limit ?? 100 })
+        .pipe(Effect.catch(() => Effect.succeed([])));
+      for (const item of raised) {
+        attention.push(item);
+      }
       return attention;
     });
 
@@ -682,23 +771,42 @@ const makeOrchestrator = Effect.gen(function* () {
       if (globalCap > 0 && inFlight >= globalCap) {
         return;
       }
-      const issue: NormalizedIssue = {
-        id: item.trackerIssueId ?? item.id,
-        nativeRef: null,
-        identifier: item.trackerIdentifier ?? item.objective,
-        title: item.objective,
-        description: item.description ?? null,
-        priority: item.priority ?? null,
-        state: "queued",
-        branchName: item.baseBranch ?? null,
-        url: null,
-        assigneeId: null,
-        labels: [],
-        blockedBy: [],
-        dispatchable: true,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt,
-      };
+      // Per-repository and per-workflow slots (audit item 2): the global cap
+      // alone let one repo's runs starve another's. Both caps default off
+      // when unset (0 = unlimited), mirroring the global semantics.
+      const repoCap = config.concurrencyRepository ?? 0;
+      if (repoCap > 0) {
+        const inRepo = yield* workItems
+          .listByLifecycle(["preparing", "running", "waiting_for_approval"])
+          .pipe(
+            Effect.map(
+              (items) =>
+                items.filter((other) => other.repositoryPath === item.repositoryPath).length,
+            ),
+            Effect.catch(() => Effect.succeed(0)),
+          );
+        if (inRepo >= repoCap) {
+          return;
+        }
+      }
+      const workflowCap = config.concurrencyWorkflow ?? 0;
+      if (workflowCap > 0 && item.workflowId !== undefined) {
+        const inWorkflow = yield* workItems
+          .listByLifecycle(["preparing", "running", "waiting_for_approval"])
+          .pipe(
+            Effect.map(
+              (items) => items.filter((other) => other.workflowId === item.workflowId).length,
+            ),
+            Effect.catch(() => Effect.succeed(0)),
+          );
+        if (inWorkflow >= workflowCap) {
+          return;
+        }
+      }
+      const issue: NormalizedIssue | null = yield* refreshIssueSnapshot(item, config, registry);
+      if (issue === null) {
+        return;
+      }
       yield* dispatcher
         .dispatchWorkItem({ workItem: item, issue, config })
         .pipe(Effect.catch(() => Effect.void));
@@ -872,7 +980,9 @@ const makeOrchestrator = Effect.gen(function* () {
       ) {
         return false;
       }
-      if (pullRequest.mergeable !== true) {
+      // Tri-state mergeability (audit item 5): only a confirmed mergeable
+      // PR passes; conflicting and unknown both refuse.
+      if (pullRequest.mergeable !== "mergeable") {
         return false;
       }
       if ((pullRequest.unresolvedComments ?? 0) > 0) {

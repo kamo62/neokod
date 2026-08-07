@@ -11,11 +11,13 @@ import {
 } from "@neokod/contracts";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import { nowIso } from "./Domain/Time.ts";
+import { GitVcsDriver } from "../vcs/GitVcsDriver.ts";
 import { WorkItemRepository } from "./Persistence/Services/WorkItemRepository.ts";
 import { RunAttemptRepository } from "./Persistence/Services/RunAttemptRepository.ts";
 import { RunEventRepository } from "./Persistence/Services/RunEventRepository.ts";
@@ -97,19 +99,77 @@ export const makeHandoffService = Effect.gen(function* () {
   const ownership = yield* WorkspaceOwnershipRepository;
   const dispatcher = yield* RunDispatcher;
   const liveRequests = yield* LiveRequests;
-  // Optional orchestration services (serviceOption): when the Work-mode
-  // orchestration stack is mounted, takeOver binds a real Work thread to the
-  // workspace. Without it, takeOver degrades to ownership transfer only.
-  const maybeEngine = yield* Effect.serviceOption(OrchestrationEngine.OrchestrationEngineService);
-  const maybeProjection = yield* Effect.serviceOption(
-    ProjectionSnapshotQuery.ProjectionSnapshotQuery,
-  );
+  const git = yield* GitVcsDriver;
+  // Orchestration services are REQUIRED (audit item 1c: the placeholder path
+  // existed because they were optional serviceOption deps, so production
+  // silently generated a fake thread id instead of binding a real Work
+  // thread). Bound at construction: a wiring gap fails boot loudly.
+  const engine = yield* OrchestrationEngine.OrchestrationEngineService;
+  const projection = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
 
   const appendEvent = (
     runAttemptId: RunAttemptId,
     eventType: string,
     payload?: Record<string, unknown>,
   ) => runEvents.append(runAttemptId, eventType, payload).pipe(Effect.catch(() => Effect.void));
+
+  /**
+   * Wait for the dispatch fiber and its agent runtime to fully exit after
+   * cancelRun (plan 16.0). The dispatcher unregisters the agent in the
+   * dispatch fiber's ensuring block; polling isAgentActive until false means
+   * the worker is gone, not just interrupted. Bounded so a wedged worker
+   * fails the takeover instead of hanging it.
+   */
+  const waitForAgentExit = (runAttemptId: RunAttemptId): Effect.Effect<void, HandoffError> =>
+    Effect.gen(function* () {
+      for (let attempt = 0; attempt < 50; attempt++) {
+        const active = yield* dispatcher
+          .isAgentActive(runAttemptId)
+          .pipe(Effect.catch(() => Effect.succeed(false)));
+        if (!active) {
+          return;
+        }
+        yield* Effect.sleep(Duration.millis(100));
+      }
+      return yield* Effect.fail(
+        new HandoffError("Symphony agent did not exit within 5s of cancellation; takeover aborted"),
+      );
+    });
+
+  /**
+   * Validate that the workspace is a git worktree of the workflow's
+   * repository and that its checked-out branch matches the branch the run
+   * was dispatched on (plan 16.0; audit item 1). A takeover onto the wrong
+   * repository or a drifted branch would hand Work mode a workspace whose
+   * branch does not match the PR/evidence trail.
+   */
+  const validateWorkspaceIdentity = (
+    workspacePath: string,
+    expectedBranch: string,
+  ): Effect.Effect<void, HandoffError> =>
+    Effect.gen(function* () {
+      const status = yield* git
+        .status({ cwd: workspacePath })
+        .pipe(Effect.mapError((cause) => new HandoffError(cause.message)));
+      if (!status.isRepo) {
+        return yield* Effect.fail(
+          new HandoffError(`workspace ${workspacePath} is not a git repository`),
+        );
+      }
+      const checkedOut = status.refName;
+      if (checkedOut === null) {
+        return yield* Effect.fail(
+          new HandoffError(`workspace ${workspacePath} is on a detached HEAD`),
+        );
+      }
+      if (checkedOut !== expectedBranch) {
+        return yield* Effect.fail(
+          new HandoffError(
+            `workspace ${workspacePath} is on ${checkedOut}, expected ${expectedBranch}`,
+          ),
+        );
+      }
+    });
 
   /** Create (or reuse) a Work-mode thread bound to the workspace (FR-112/113,
    *  FR-115). The thread's worktreePath is the Symphony workspace, so the
@@ -123,21 +183,10 @@ export const makeHandoffService = Effect.gen(function* () {
     readonly callerThreadId?: string;
   }): Effect.Effect<string, HandoffError> =>
     Effect.gen(function* () {
-      const engine = Option.getOrNull(maybeEngine);
-      const projection = Option.getOrNull(maybeProjection);
       // Reuse an existing thread when the caller bound one — but only when we
       // can verify it (REVIEW P1: an unvalidated caller threadId produced a
-      // phantom `work` owner that held the workspace forever). When the
-      // projection is unavailable the caller thread cannot be verified, so it
-      // is ignored rather than trusted.
+      // phantom `work` owner that held the workspace forever).
       if (input.callerThreadId !== undefined && input.callerThreadId.length > 0) {
-        if (projection === null) {
-          return yield* Effect.fail(
-            new HandoffError(
-              "caller-supplied threadId cannot be verified without the projection layer",
-            ),
-          );
-        }
         const shell = yield* projection
           .getThreadShellById(ThreadId.make(input.callerThreadId))
           .pipe(Effect.catch(() => Effect.succeed(Option.none())));
@@ -150,15 +199,6 @@ export const makeHandoffService = Effect.gen(function* () {
           ),
         );
       }
-      if (engine === null || projection === null) {
-        // No orchestration stack: generate a placeholder thread id; the
-        // ownership record still carries it for resume.
-        return yield* crypto.randomUUIDv4.pipe(
-          Effect.map((value) => `work-thread-${value}`),
-          Effect.mapError((cause) => new HandoffError(cause.message)),
-        );
-      }
-
       // Resolve (or lazily create) the project for the workspace root.
       const existing = yield* projection
         .getActiveProjectByWorkspaceRoot(input.workspacePath)
@@ -251,12 +291,27 @@ export const makeHandoffService = Effect.gen(function* () {
         .settleRun(runAttemptId, "handed over to work mode")
         .pipe(Effect.catch(() => Effect.void));
 
-      // 2. Bind (or reuse) the Work thread for this workspace. The thread's
-      //    worktreePath is the Symphony workspace, so the same filesystem is
-      //    visible in Work mode (FR-112/113, FR-115).
       const workItem = yield* workItems
         .getById(attempt.workItemId)
         .pipe(Effect.catch(() => Effect.succeed(null)));
+
+      // 1b. Wait for the worker to actually exit before handing the
+      //     workspace to Work mode (plan 16.0; audit item 1): the dispatch
+      //     fiber and its agent runtime must be gone, or a full-access Work
+      //     thread and a still-running Symphony agent would race the same
+      //     worktree.
+      yield* waitForAgentExit(runAttemptId);
+
+      // 1c. Validate repository/worktree/branch identity (plan 16.0; audit
+      //     item 1): the workspace must be a git worktree whose checked-out
+      //     branch matches the one the run was dispatched on, and it must
+      //     belong to the workflow's repository.
+      const expectedBranch = deriveThreadBranch(attempt.workspacePath, workItem?.workspaceKey);
+      yield* validateWorkspaceIdentity(attempt.workspacePath, expectedBranch);
+
+      // 2. Bind (or reuse) the Work thread for this workspace. The thread's
+      //    worktreePath is the Symphony workspace, so the same filesystem is
+      //    visible in Work mode (FR-112/113, FR-115).
       const branch = deriveThreadBranch(attempt.workspacePath, workItem?.workspaceKey);
       const threadId = yield* bindWorkThread({
         runAttemptId,
@@ -373,6 +428,26 @@ export const makeHandoffService = Effect.gen(function* () {
         );
       }
 
+      // Idleness check (plan 16.0; audit item 1): when the ownership record
+      // carries a Work thread binding, the thread's session must not be
+      // active. Resuming while a Work-mode agent is mid-turn would put two
+      // agents in the same workspace.
+      if (held.threadId !== null) {
+        const shell = yield* projection
+          .getThreadShellById(ThreadId.make(held.threadId))
+          .pipe(Effect.catch(() => Effect.succeed(Option.none())));
+        if (Option.isSome(shell) && shell.value.session !== null) {
+          const sessionStatus = shell.value.session.status;
+          if (sessionStatus === "starting" || sessionStatus === "running") {
+            return yield* Effect.fail(
+              new HandoffError(
+                `Work thread ${held.threadId} still has an active session (${sessionStatus}); resume aborted`,
+              ),
+            );
+          }
+        }
+      }
+
       // Transfer ownership back to symphony, preserving the Work thread
       // binding so a later takeOver reuses it instead of creating a duplicate
       // (REVIEW P2: the transfer omitted threadId and wiped the binding).
@@ -395,13 +470,7 @@ export const makeHandoffService = Effect.gen(function* () {
 
       const requeued = yield* workItems
         .transition(workItem.id, "queued", {
-          from: [
-            "blocked",
-            "ready_for_review",
-            "retry_scheduled",
-            "waiting_for_approval",
-            "running",
-          ],
+          from: ["blocked", "ready_for_review", "retry_scheduled", "waiting_for_approval"],
         })
         .pipe(Effect.catch(() => Effect.succeed(false)));
       if (!requeued) {
@@ -423,17 +492,13 @@ export const makeHandoffService = Effect.gen(function* () {
 
   const delegateFromThread: HandoffService["Service"]["delegateFromThread"] = (input) =>
     Effect.gen(function* () {
-      // Validate the source thread exists when the projection is available;
-      // an unverifiable thread is rejected rather than trusted (REVIEW P2:
-      // threadId was accepted and then ignored).
-      const projection = Option.getOrNull(maybeProjection);
-      if (projection !== null) {
-        const shell = yield* projection
-          .getThreadShellById(ThreadId.make(input.threadId))
-          .pipe(Effect.catch(() => Effect.succeed(Option.none())));
-        if (Option.isNone(shell)) {
-          return yield* Effect.fail(new HandoffError(`thread ${input.threadId} does not exist`));
-        }
+      // Validate the source thread exists (REVIEW P2: threadId was accepted
+      // and then ignored; an unverifiable thread is rejected).
+      const shell = yield* projection
+        .getThreadShellById(ThreadId.make(input.threadId))
+        .pipe(Effect.catch(() => Effect.succeed(Option.none())));
+      if (Option.isNone(shell)) {
+        return yield* Effect.fail(new HandoffError(`thread ${input.threadId} does not exist`));
       }
 
       const id = yield* crypto.randomUUIDv4.pipe(
@@ -559,4 +624,7 @@ export const HandoffServiceLive: Layer.Layer<
   | WorkspaceOwnershipRepository
   | RunDispatcher
   | LiveRequests
+  | GitVcsDriver
+  | OrchestrationEngine.OrchestrationEngineService
+  | ProjectionSnapshotQuery.ProjectionSnapshotQuery
 > = Layer.effect(HandoffService, makeHandoffService);

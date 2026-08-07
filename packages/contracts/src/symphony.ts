@@ -345,7 +345,7 @@ export const PullRequestEvidenceSchema = Schema.Struct({
   reviewState: Schema.optional(
     Schema.Literals(["none", "approved", "changes_requested", "review_required"]),
   ),
-  mergeable: Schema.optional(Schema.Boolean),
+  mergeable: Schema.optional(Schema.Literals(["mergeable", "conflicting", "unknown"])),
   unresolvedComments: Schema.optional(NonNegativeInt),
   latestCommit: Schema.optional(TrimmedNonEmptyString),
   additions: Schema.optional(NonNegativeInt),
@@ -438,6 +438,9 @@ export const WorkItemSchema = Schema.Struct({
   updatedAt: IsoDateTime,
   /** When the claim was taken (REVIEW P1 #10: orphan claims are detectable). */
   claimedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
+  /** The coding-agent child PID recorded on the claim (audit item 3: orphan
+   * termination after a crash needs it; null when never recorded). */
+  ownerPid: Schema.optional(Schema.NullOr(Schema.Int)),
 });
 export type WorkItem = typeof WorkItemSchema.Type;
 

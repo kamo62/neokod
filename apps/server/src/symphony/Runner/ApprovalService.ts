@@ -82,6 +82,13 @@ export interface ApprovalServiceShape {
    * request already decided is untouched.
    */
   readonly expire: (id: string) => Effect.Effect<void>;
+
+  /**
+   * Interrupt a request whose run died (recovery, plan 8.3.1; audit item 3):
+   * same settle-and-persist as expire, with the durable `interrupted`
+   * decision so the UI distinguishes a dead run from a timed-out wait.
+   */
+  readonly interrupt: (id: string) => Effect.Effect<void>;
 }
 
 export class ApprovalService extends Context.Service<ApprovalService, ApprovalServiceShape>()(
@@ -169,6 +176,14 @@ export const makeApprovalService = Effect.gen(function* () {
       yield* repository.decide(id, "expired").pipe(Effect.catch(() => Effect.void));
     });
 
+  const interrupt: ApprovalServiceShape["interrupt"] = (id) =>
+    Effect.gen(function* () {
+      const record = yield* repository.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
+      const liveId = record === null ? id : record.requestId;
+      yield* liveRequests.settleRequest(liveId, "run interrupted; approval unanswered");
+      yield* repository.decide(id, "interrupted").pipe(Effect.catch(() => Effect.void));
+    });
+
   return {
     recordPending,
     approve,
@@ -177,6 +192,7 @@ export const makeApprovalService = Effect.gen(function* () {
     listPending,
     listForRun,
     expire,
+    interrupt,
   };
 });
 

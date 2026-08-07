@@ -65,6 +65,9 @@ export interface AgentRuntimeService {
   }) => Effect.Effect<AgentTurnResult, AgentRuntimeSpawnError, Scope.Scope>;
 
   readonly interrupt: () => Effect.Effect<void, never, never>;
+
+  /** The spawned app-server child PID, or null before the process is up. */
+  readonly pid: () => Effect.Effect<number | null, never, never>;
 }
 
 export class AgentRuntime extends Context.Service<AgentRuntime, AgentRuntimeService>()(
@@ -101,6 +104,7 @@ export const makeCodexAgentRuntime = (
     let activeClient: CodexClientService | undefined;
     let threadId: string | undefined;
     let turnId: string | undefined;
+    let activePid: number | null = null;
 
     const spawnAppServer = Effect.gen(function* () {
       const env = {
@@ -125,6 +129,7 @@ export const makeCodexAgentRuntime = (
           Effect.provideService(Scope.Scope, scope),
           Effect.mapError((cause) => new AgentRuntimeSpawnError(String(cause))),
         );
+      activePid = Number(child.pid);
       const clientContext = yield* CodexClient.layerChildProcess(child).pipe(
         Layer.build,
         Effect.provideService(Scope.Scope, scope),
@@ -207,7 +212,9 @@ export const makeCodexAgentRuntime = (
         }
       });
 
-    return { runTurn, interrupt };
+    const pid: AgentRuntimeService["pid"] = () => Effect.sync(() => activePid);
+
+    return { runTurn, interrupt, pid };
   });
 
 interface IncomingRequest {

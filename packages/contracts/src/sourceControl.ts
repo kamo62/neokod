@@ -58,7 +58,9 @@ export type ChangeRequestReviewState = typeof ChangeRequestReviewState.Type;
 export const ChangeRequestStatus = Schema.Struct({
   ciStatus: ChangeRequestCiStatus,
   reviewState: ChangeRequestReviewState,
-  mergeable: Schema.Boolean,
+  /** Tri-state mergeability (audit item 5): unknown is distinct from a
+   * confirmed conflict, so UIs can show "checking" instead of "blocked". */
+  mergeable: Schema.Literals(["mergeable", "conflicting", "unknown"]),
   unresolvedComments: PositiveInt,
   latestCommit: Schema.optional(TrimmedNonEmptyString),
 });

@@ -5,6 +5,7 @@ import type {
   RunAttemptId,
   WorkItem,
 } from "@neokod/contracts";
+import { AttentionItemId } from "@neokod/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -14,6 +15,7 @@ import { EvidenceRepository } from "../Persistence/Services/EvidenceRepository.t
 import { RunAttemptRepository } from "../Persistence/Services/RunAttemptRepository.ts";
 import { RunEventRepository } from "../Persistence/Services/RunEventRepository.ts";
 import { WorkItemRepository } from "../Persistence/Services/WorkItemRepository.ts";
+import { AttentionRepository } from "../Persistence/Services/AttentionRepository.ts";
 import { nowIso } from "../Domain/Time.ts";
 import { EvidenceService } from "../Evidence/Service.ts";
 import { PullRequestService } from "../Evidence/PullRequest.ts";
@@ -70,6 +72,7 @@ export const makeExecutionFinalizer = Effect.gen(function* () {
   const runEvents = yield* RunEventRepository;
   const workItems = yield* WorkItemRepository;
   const fileSystem = yield* FileSystem.FileSystem;
+  const attention = yield* AttentionRepository;
 
   const appendEvent = (
     runAttemptId: RunAttemptId,
@@ -196,6 +199,26 @@ export const makeExecutionFinalizer = Effect.gen(function* () {
           `symphony PR creation failed for ${input.workItem.id} (attempt ${input.runAttemptId}): ${message}`,
         );
         yield* appendEvent(input.runAttemptId, "pr_creation_failed", { message });
+        // Raise a durable attention item (audit item 7): the run cannot be
+        // reviewed without a PR, so a human must look at why creation failed.
+        // The attention table existed (migration 037) with no writers.
+        yield* attention
+          .create({
+            id: AttentionItemId.make(
+              `pr-failed-${String(input.runAttemptId).replace(/[^a-zA-Z0-9._-]/g, "_")}`,
+            ),
+            workItemId: input.workItem.id,
+            runAttemptId: String(input.runAttemptId),
+            kind: "merge_conflict",
+            severity: "high",
+            whatHappened: `PR creation failed for ${input.workItem.objective}: ${message}`,
+            whyHuman:
+              "Without a PR the run cannot be reviewed or merged; the failure needs a human decision (retry, fix the branch, or abandon).",
+            recommendedResponse:
+              "Inspect the workspace branch and the host error, then re-dispatch or take over.",
+            availableActions: ["re-dispatch", "take-over", "abandon"],
+          })
+          .pipe(Effect.catch(() => Effect.void));
       }
 
       if (pullRequest !== null) {
@@ -240,4 +263,5 @@ export const ExecutionFinalizerLive: Layer.Layer<
   | RunEventRepository
   | WorkItemRepository
   | FileSystem.FileSystem
+  | AttentionRepository
 > = Layer.effect(ExecutionFinalizer, makeExecutionFinalizer);

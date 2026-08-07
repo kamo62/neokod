@@ -67,6 +67,19 @@ export interface WorkItemRepositoryShape {
   ) => Effect.Effect<boolean, SymphonyPersistenceError>;
 
   /**
+   * Record the coding-agent child PID on a live claim (audit item 3): the
+   * claim row starts with the server PID, but orphan adoption after a crash
+   * needs the agent child's PID to terminate a surviving orphan. Only matches
+   * rows still owned by `ownerToken` at `generation`.
+   */
+  readonly setClaimOwnerPid: (
+    id: WorkItemId,
+    ownerToken: string,
+    generation: number,
+    pid: number,
+  ) => Effect.Effect<boolean, SymphonyPersistenceError>;
+
+  /**
    * Release a claim without the owner fence (reconciliation, plan 9.4/9.7).
    * Only matches rows still in `preparing` or `running`, so an already-finished
    * item can never be downgraded; bumps `generation` so any in-flight worker's

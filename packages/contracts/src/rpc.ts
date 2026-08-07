@@ -1028,6 +1028,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSymphonyGetRunRpc,
   WsSymphonyListWorkflowsRpc,
   WsSymphonyValidateWorkflowRpc,
+  WsSymphonyActivateWorkflowRpc,
   WsSymphonyApproveRpc,
   WsSymphonyRejectRpc,
   WsSymphonyRespondToUserInputRpc,

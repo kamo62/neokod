@@ -11,8 +11,10 @@ import { RunEventRepositoryLive } from "../Persistence/Layers/RunEventRepository
 import { OrchestratorStateRepositoryLive } from "../Persistence/Layers/OrchestratorStateRepository.ts";
 import { ApprovalRepositoryLive } from "../Persistence/Layers/ApprovalRepository.ts";
 import { EvidenceRepositoryLive } from "../Persistence/Layers/EvidenceRepository.ts";
+import { AttentionRepositoryLive } from "../Persistence/Services/AttentionRepository.ts";
 import { TrackerRegistryGitHubLive } from "../Trackers/Registry.ts";
 import { TrackerEnablementLive } from "../Orchestrator/TrackerEnablement.ts";
+import { WorkflowLoaderLive } from "../Workflow/Loader.ts";
 import { SymphonyOrchestratorLive } from "../Orchestrator/Layers/SymphonyOrchestratorLive.ts";
 import { LiveRequestsLive } from "../Runner/LiveRequests.ts";
 import { ApprovalServiceLive } from "../Runner/ApprovalService.ts";
@@ -77,6 +79,7 @@ const ExecutionFinalizerSlice = ExecutionFinalizerLive.pipe(
       RunAttemptRepositoryLive,
       RunEventRepositoryLive,
       WorkItemRepositoryLive,
+      AttentionRepositoryLive,
     ).pipe(Layer.provideMerge(NodeServices.layer)),
   ),
 );
@@ -139,6 +142,7 @@ export const SymphonyLayerObserve = Layer.merge(
         RunEventRepositoryLive,
         OrchestratorStateRepositoryLive,
         EvidenceRepositoryLive,
+        AttentionRepositoryLive,
         PullRequestServiceLive.pipe(
           Layer.provideMerge(GitVcsDriverLayer),
           Layer.provideMerge(SourceControlProviderRegistryLive),
@@ -188,6 +192,7 @@ export const SymphonyLayerObserve = Layer.merge(
       Layer.provide(Layer.mergeAll(ApprovalRepositoryLive, LiveRequestsLive)),
     ),
     HandoffServiceSlice,
+    WorkflowLoaderLive,
     // WorkspaceRemovalGuard needs its own repo instance; WorkspaceOwnership
     // is ALSO exposed here so `serviceOption` in the Workspaces live layer
     // resolves it on production paths (fix-lane item 2: hiding it in
