@@ -1,4 +1,10 @@
-import type { AttentionItem, RunAttemptId, RunDetails, SymphonyOverview } from "@neokod/contracts";
+import type {
+  AttentionItem,
+  OrchestrationProject,
+  RunAttemptId,
+  RunDetails,
+  SymphonyOverview,
+} from "@neokod/contracts";
 import {
   SYMPHONY_WS_METHODS,
   RunAttemptId as RunAttemptIdValue,
@@ -7,11 +13,16 @@ import {
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 
 import * as SymphonyOrchestratorModule from "./symphony/Orchestrator/SymphonyOrchestrator.ts";
 const SymphonyOrchestrator = SymphonyOrchestratorModule.SymphonyOrchestrator;
 import * as ApprovalServiceModule from "./symphony/Runner/ApprovalService.ts";
 const ApprovalService = ApprovalServiceModule.ApprovalService;
+import * as ProjectionSnapshotQueryModule from "./orchestration/Services/ProjectionSnapshotQuery.ts";
+const ProjectionSnapshotQuery = ProjectionSnapshotQueryModule.ProjectionSnapshotQuery;
+import * as WorkflowLoaderModule from "./symphony/Workflow/Loader.ts";
+const WorkflowLoaderService = WorkflowLoaderModule.WorkflowLoaderService;
 import { makeSymphonyRpcHandlers } from "./ws.ts";
 
 const overview = (): SymphonyOverview => ({
@@ -157,6 +168,73 @@ it.layer(fakeOrchestratorLayer.pipe(Layer.provideMerge(fakeApprovalsLayer)))(
         expect(handler).toBeDefined();
         const attention = yield* Effect.scoped(handler({}));
         expect(attention.map((item) => item.id)).toEqual(["attn-1", "attn-2"]);
+      }),
+    );
+  },
+);
+
+// createWorkflow: repositoryPath is client-supplied (unlike every other
+// workflow RPC, which resolves paths from a persisted WorkflowRecord), so
+// it needs a fake ProjectionSnapshotQuery standing in for "the projects the
+// server knows about" to prove untracked paths are refused before the
+// WorkflowLoaderService is ever reached.
+const TRACKED_REPOSITORY_PATH = "/tracked/repo";
+
+const fakeProjectionSnapshotQueryLayer = Layer.succeed(ProjectionSnapshotQuery, {
+  getActiveProjectByWorkspaceRoot: (workspaceRoot: string) =>
+    Effect.succeed(
+      workspaceRoot === TRACKED_REPOSITORY_PATH
+        ? Option.some({ workspaceRoot } as unknown as OrchestrationProject)
+        : Option.none(),
+    ),
+} as unknown as (typeof ProjectionSnapshotQuery)["Service"]);
+
+const fakeWorkflowLoaderLayer = Layer.succeed(WorkflowLoaderService, {
+  createWorkflow: (input: { repositoryPath: string; content: string }) =>
+    Effect.succeed(
+      input.content === "invalid"
+        ? { workflowId: "wf-created", validationError: "tracker.kind: unsupported tracker" }
+        : { workflowId: "wf-created" },
+    ),
+} as unknown as (typeof WorkflowLoaderService)["Service"]);
+
+it.layer(fakeProjectionSnapshotQueryLayer.pipe(Layer.provideMerge(fakeWorkflowLoaderLayer)))(
+  "Symphony WS RPC handlers - createWorkflow",
+  (it) => {
+    it.effect("refuses a repositoryPath that is not a tracked project", () =>
+      Effect.gen(function* () {
+        const handlers = makeSymphonyRpcHandlers();
+        const handler = handlers[SYMPHONY_WS_METHODS.createWorkflow];
+        const outcome = yield* Effect.result(
+          Effect.scoped(handler({ repositoryPath: "/untracked/repo", content: "content" })),
+        );
+        expect(outcome._tag).toBe("Failure");
+      }),
+    );
+
+    it.effect("creates the workflow when repositoryPath is a tracked project", () =>
+      Effect.gen(function* () {
+        const handlers = makeSymphonyRpcHandlers();
+        const handler = handlers[SYMPHONY_WS_METHODS.createWorkflow];
+        const result = yield* Effect.scoped(
+          handler({ repositoryPath: TRACKED_REPOSITORY_PATH, content: "ok" }),
+        );
+        expect(result).toEqual({ ok: true, workflowId: "wf-created" });
+      }),
+    );
+
+    it.effect("surfaces validationError inline instead of failing the RPC", () =>
+      Effect.gen(function* () {
+        const handlers = makeSymphonyRpcHandlers();
+        const handler = handlers[SYMPHONY_WS_METHODS.createWorkflow];
+        const result = yield* Effect.scoped(
+          handler({ repositoryPath: TRACKED_REPOSITORY_PATH, content: "invalid" }),
+        );
+        expect(result).toEqual({
+          ok: true,
+          workflowId: "wf-created",
+          validationError: "tracker.kind: unsupported tracker",
+        });
       }),
     );
   },

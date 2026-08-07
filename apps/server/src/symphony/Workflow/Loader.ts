@@ -34,6 +34,11 @@ export interface WorkflowSaveResult {
   readonly validationError?: string;
 }
 
+export interface WorkflowCreateResult {
+  readonly workflowId: WorkflowId;
+  readonly validationError?: string;
+}
+
 export interface WorkflowLoader {
   /**
    * Load WORKFLOW.md from a repository path, parse it, resolve the effective
@@ -77,6 +82,22 @@ export interface WorkflowLoader {
     workflowId: WorkflowId,
     content: string,
   ) => Effect.Effect<WorkflowSaveResult, WorkflowLoadError>;
+
+  /**
+   * Create a brand-new WORKFLOW.md for `repositoryPath` and load it (in-app
+   * "New workflow" dialog). Refuses when a WORKFLOW.md already exists at
+   * that path — never a silent overwrite. Callers are responsible for
+   * confirming `repositoryPath` is a known tracked project root before
+   * calling this; it only guards the filesystem write. Content is
+   * re-parsed through `loadWorkflow` exactly like `saveWorkflowContent`:
+   * invalid content still creates the file and record, landing it as
+   * `invalid` with `validationError` set rather than being silently
+   * dropped.
+   */
+  readonly createWorkflow: (input: {
+    readonly repositoryPath: string;
+    readonly content: string;
+  }) => Effect.Effect<WorkflowCreateResult, WorkflowLoadError>;
 }
 
 export class WorkflowLoadError extends Schema.TaggedErrorClass<WorkflowLoadError>()(
@@ -221,7 +242,51 @@ export const makeWorkflowLoader = (deps: {
         : { ok: true, validationError: summarizeErrors(result.errors) };
     });
 
-  return { loadWorkflow, reloadChanged, getWorkflowContent, saveWorkflowContent };
+  const createWorkflow: WorkflowLoader["createWorkflow"] = (input) =>
+    Effect.gen(function* () {
+      const workflowPath = path.join(input.repositoryPath, "WORKFLOW.md");
+
+      yield* fileSystem
+        .makeDirectory(input.repositoryPath, { recursive: true })
+        .pipe(Effect.mapError((cause) => new WorkflowLoadError({ message: cause.message })));
+
+      // Atomic create-if-absent: write the full content to a temp file
+      // beside the target, then `link` it into place instead of `rename`.
+      // `link` fails with `AlreadyExists` when the destination is already
+      // there, so a WORKFLOW.md that appears between the caller's check and
+      // this write is never silently overwritten — `rename` would just
+      // replace it on POSIX. This mirrors the rename-based atomic write in
+      // `saveWorkflowContent` above, swapping the final step for the one
+      // that also gives this call its refuse-if-exists guarantee.
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const tempDirectory = yield* fileSystem.makeTempDirectoryScoped({
+            directory: input.repositoryPath,
+            prefix: "WORKFLOW.md.",
+          });
+          const tempPath = path.join(tempDirectory, "contents.tmp");
+          yield* fileSystem.writeFileString(tempPath, input.content);
+          yield* fileSystem.link(tempPath, workflowPath);
+        }),
+      ).pipe(
+        Effect.mapError(
+          (cause) =>
+            new WorkflowLoadError({
+              message:
+                cause.reason._tag === "AlreadyExists"
+                  ? `WORKFLOW.md already exists at ${workflowPath}`
+                  : cause.message,
+            }),
+        ),
+      );
+
+      const result = yield* loadWorkflow({ repositoryPath: input.repositoryPath });
+      return result.errors.length === 0
+        ? { workflowId: result.workflow.id }
+        : { workflowId: result.workflow.id, validationError: summarizeErrors(result.errors) };
+    });
+
+  return { loadWorkflow, reloadChanged, getWorkflowContent, saveWorkflowContent, createWorkflow };
 };
 
 const summarizeErrors = (errors: ReadonlyArray<WorkflowValidationField>): string =>

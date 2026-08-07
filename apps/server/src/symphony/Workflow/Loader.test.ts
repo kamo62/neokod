@@ -92,4 +92,74 @@ Do it.
       expect(stored?.status).toBe("invalid");
     }),
   );
+
+  it.effect("createWorkflow writes WORKFLOW.md and loads it into an active workflow record", () =>
+    Effect.gen(function* () {
+      const { repo } = yield* freshRepo("wf-create");
+      const loader = yield* WorkflowLoaderService;
+      const result = yield* loader.createWorkflow({
+        repositoryPath: repo,
+        content: `---
+tracker:
+  kind: github
+  active_states: ["open"]
+  terminal_states: ["closed"]
+---
+Implement the change.
+`,
+      });
+      expect(result.validationError).toBeUndefined();
+
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const written = yield* fs.readFileString(path.join(repo, "WORKFLOW.md"));
+      expect(written).toContain("Implement the change.");
+
+      const workflows = yield* WorkflowRepository;
+      const stored = yield* workflows.getById(result.workflowId);
+      expect(stored?.status).toBe("active");
+    }),
+  );
+
+  it.effect(
+    "createWorkflow with invalid content still writes the file and records it as invalid",
+    () =>
+      Effect.gen(function* () {
+        const { repo } = yield* freshRepo("wf-create-bad");
+        const loader = yield* WorkflowLoaderService;
+        const result = yield* loader.createWorkflow({
+          repositoryPath: repo,
+          content: `---
+tracker:
+  kind: not-a-tracker
+---
+Do it.
+`,
+        });
+        expect(result.validationError).toBeDefined();
+
+        const workflows = yield* WorkflowRepository;
+        const stored = yield* workflows.getById(result.workflowId);
+        expect(stored?.status).toBe("invalid");
+      }),
+  );
+
+  it.effect(
+    "createWorkflow refuses when a WORKFLOW.md already exists, without overwriting it",
+    () =>
+      Effect.gen(function* () {
+        const { repo } = yield* freshRepo("wf-create-exists");
+        yield* writeWorkflow(repo, "original content\n");
+        const loader = yield* WorkflowLoaderService;
+        const outcome = yield* Effect.result(
+          loader.createWorkflow({ repositoryPath: repo, content: "new content\n" }),
+        );
+        expect(outcome._tag).toBe("Failure");
+
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const stillThere = yield* fs.readFileString(path.join(repo, "WORKFLOW.md"));
+        expect(stillThere).toBe("original content\n");
+      }),
+  );
 });

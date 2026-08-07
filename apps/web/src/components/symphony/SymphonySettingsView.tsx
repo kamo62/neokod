@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   PauseIcon,
   PlayIcon,
+  PlusIcon,
   RefreshCwIcon,
   SquareIcon,
   TriangleAlertIcon,
@@ -9,7 +10,12 @@ import {
 } from "lucide-react";
 
 import type { EnvironmentId, TrackerKind, WorkflowRecord } from "@neokod/contracts";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@neokod/client-runtime/state/runtime";
 import { usePrimaryEnvironmentId } from "../../state/environments";
+import { useProjects } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { symphonyEnvironment } from "../../state/symphony";
@@ -25,7 +31,25 @@ import {
 } from "../ui/alert-dialog";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "../ui/dialog";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../ui/empty";
+import { Label } from "../ui/label";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
 import { cn } from "../../lib/utils";
@@ -60,6 +84,219 @@ const TRACKER_KIND_ICONS: Record<TrackerKind, Icon> = {
 
 type WorkflowAction = "validate" | "activate" | "pause" | "resume";
 type GlobalAction = "pause" | "resume" | "stop";
+
+const NEW_WORKFLOW_TEMPLATE = `---
+tracker:
+  kind: github
+  provider:
+    repo: owner/name
+  required_labels:
+    - symphony
+autonomy: execute
+validation:
+  required:
+    - node -e "process.exit(0)"
+agent:
+  max_turns: 3
+---
+
+Implement the selected issue. Keep the change minimal and write
+SYMPHONY_EVIDENCE.md summarizing what you did, the files you changed,
+and how you validated it.
+`;
+
+interface RepositoryOption {
+  readonly id: string;
+  readonly title: string;
+  readonly workspaceRoot: string;
+}
+
+/**
+ * "New workflow" dialog: creates a brand-new WORKFLOW.md for a tracked
+ * repository via `symphony.createWorkflow`, pre-filled with a starter
+ * template so most projects only need to fill in the tracker repo. The
+ * server always creates the file once the repository check passes — an
+ * invalid starting template still lands as a workflow record (status
+ * `invalid`), so a `validationError` on the response means "created, but
+ * needs fixing" rather than "nothing happened." That state is shown as a
+ * dead end here (Close only): a second create attempt would just hit the
+ * file that already exists, so the fix belongs in the row's own inline
+ * editor once the dialog closes and the list refreshes.
+ */
+function NewWorkflowDialog({
+  open,
+  onOpenChange,
+  environmentId,
+  repositories,
+  onCreated,
+}: {
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly environmentId: EnvironmentId | null;
+  readonly repositories: ReadonlyArray<RepositoryOption>;
+  readonly onCreated: () => void;
+}) {
+  const createWorkflow = useAtomCommand(symphonyExtras.createWorkflow);
+
+  const [repositoryPath, setRepositoryPath] = useState<string | null>(null);
+  const [content, setContent] = useState(NEW_WORKFLOW_TEMPLATE);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  const selectedRepositoryPath = repositoryPath ?? repositories[0]?.workspaceRoot ?? null;
+
+  const resetDraft = () => {
+    setRepositoryPath(null);
+    setContent(NEW_WORKFLOW_TEMPLATE);
+    setError(null);
+    setValidationError(null);
+  };
+
+  const handleCreate = async () => {
+    if (environmentId === null || selectedRepositoryPath === null) return;
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      const result = await createWorkflow({
+        environmentId,
+        input: { repositoryPath: selectedRepositoryPath, content },
+      });
+      if (result._tag === "Failure") {
+        if (!isAtomCommandInterrupted(result)) {
+          const cause = squashAtomCommandFailure(result);
+          setError(cause instanceof Error ? cause.message : "Could not create the workflow.");
+        }
+        return;
+      }
+      onCreated();
+      if (result.value.validationError !== undefined) {
+        setValidationError(result.value.validationError);
+        return;
+      }
+      onOpenChange(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) resetDraft();
+      }}
+    >
+      <DialogPopup className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>New workflow</DialogTitle>
+          <DialogDescription>
+            Create a WORKFLOW.md for a tracked repository. It appears in the list below as soon as
+            it is created, even if it still needs fixing.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogPanel>
+          {validationError !== null ? (
+            <div className="space-y-3">
+              <p className="text-sm text-foreground">
+                WORKFLOW.md was created at{" "}
+                <code className="text-xs text-muted-foreground">
+                  {selectedRepositoryPath}/WORKFLOW.md
+                </code>
+                , but it does not validate yet.
+              </p>
+              <p className="text-[11px] text-warning">{validationError}</p>
+              <p className="text-xs text-muted-foreground">
+                Use Edit on its row in the workflow list below to fix it.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="new-workflow-repository">Repository</Label>
+                {repositories.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No tracked repositories yet. Add a project first.
+                  </p>
+                ) : (
+                  <Select
+                    value={selectedRepositoryPath ?? undefined}
+                    onValueChange={(value) => setRepositoryPath(value)}
+                    items={repositories.map((repository) => ({
+                      value: repository.workspaceRoot,
+                      label: repository.title,
+                    }))}
+                  >
+                    <SelectTrigger id="new-workflow-repository" aria-label="Repository">
+                      <SelectValue placeholder="Choose a repository" />
+                    </SelectTrigger>
+                    <SelectPopup>
+                      {repositories.map((repository) => (
+                        <SelectItem key={repository.id} value={repository.workspaceRoot}>
+                          <span className="flex min-w-0 flex-col">
+                            <span className="truncate">{repository.title}</span>
+                            <span className="truncate text-[11px] text-muted-foreground/80">
+                              {repository.workspaceRoot}
+                            </span>
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectPopup>
+                  </Select>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="new-workflow-content">WORKFLOW.md</Label>
+                <textarea
+                  id="new-workflow-content"
+                  className="h-64 w-full resize-y rounded-lg border border-input bg-background p-3 font-mono text-[12px] leading-relaxed text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+                  value={content}
+                  onChange={(event) => setContent(event.target.value)}
+                  spellCheck={false}
+                />
+              </div>
+              {error !== null ? (
+                <p className="text-[11px] text-destructive-foreground">{error}</p>
+              ) : null}
+            </div>
+          )}
+        </DialogPanel>
+        <DialogFooter>
+          {validationError !== null ? (
+            <Button size="sm" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+          ) : (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => void handleCreate()}
+                disabled={
+                  isSubmitting ||
+                  environmentId === null ||
+                  selectedRepositoryPath === null ||
+                  content.trim().length === 0
+                }
+              >
+                {isSubmitting ? <Spinner className="size-3.5" /> : null}
+                Create
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogPopup>
+    </Dialog>
+  );
+}
 
 /**
  * Inline WORKFLOW.md editor (PRD 12.3, pragmatic v1). Fetches the raw file
@@ -356,6 +593,21 @@ export function SymphonySettingsView() {
   const resumeGlobal = useAtomCommand(symphonyExtras.resumeGlobal);
   const stopAllRuns = useAtomCommand(symphonyExtras.stopAllRuns);
 
+  const allProjects = useProjects();
+  const repositories = useMemo<ReadonlyArray<RepositoryOption>>(
+    () =>
+      environmentId === null
+        ? []
+        : allProjects
+            .filter((project) => project.environmentId === environmentId)
+            .map((project) => ({
+              id: project.id,
+              title: project.title,
+              workspaceRoot: project.workspaceRoot,
+            })),
+    [allProjects, environmentId],
+  );
+
   const [pendingWorkflow, setPendingWorkflow] = useState<{
     workflowId: string;
     action: WorkflowAction;
@@ -363,6 +615,7 @@ export function SymphonySettingsView() {
   const [pendingGlobal, setPendingGlobal] = useState<GlobalAction | null>(null);
   const [stopConfirmOpen, setStopConfirmOpen] = useState(false);
   const [editingWorkflowId, setEditingWorkflowId] = useState<string | null>(null);
+  const [newWorkflowOpen, setNewWorkflowOpen] = useState(false);
 
   const runWorkflowAction = async (
     workflow: WorkflowRecord,
@@ -566,9 +819,22 @@ export function SymphonySettingsView() {
             </section>
 
             <section className="space-y-2.5">
-              <h2 className="px-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground/50">
-                Workflows
-              </h2>
+              <div className="flex items-center justify-between px-1">
+                <h2 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground/50">
+                  Workflows
+                </h2>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1.5 px-2 text-[11px]"
+                  onClick={() => setNewWorkflowOpen(true)}
+                  disabled={environmentId === null}
+                  aria-label="New workflow"
+                >
+                  <PlusIcon className="size-3" />
+                  New workflow
+                </Button>
+              </div>
               {workflows.length === 0 ? (
                 <Empty className="min-h-64 rounded-2xl border bg-card">
                   <EmptyMedia variant="icon">
@@ -577,10 +843,21 @@ export function SymphonySettingsView() {
                   <EmptyHeader>
                     <EmptyTitle>No workflows configured</EmptyTitle>
                     <EmptyDescription>
-                      Add a WORKFLOW.md to a tracked repository to define a Symphony workflow. It
-                      appears here once the server discovers it.
+                      Add a WORKFLOW.md to a tracked repository to define a Symphony workflow, or
+                      create one below. It appears here once the server discovers it.
                     </EmptyDescription>
                   </EmptyHeader>
+                  <EmptyContent>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setNewWorkflowOpen(true)}
+                      disabled={environmentId === null}
+                    >
+                      <PlusIcon className="size-3.5" />
+                      New workflow
+                    </Button>
+                  </EmptyContent>
                 </Empty>
               ) : (
                 <div className="rounded-2xl border bg-card">
@@ -654,6 +931,14 @@ export function SymphonySettingsView() {
           </AlertDialogFooter>
         </AlertDialogPopup>
       </AlertDialog>
+
+      <NewWorkflowDialog
+        open={newWorkflowOpen}
+        onOpenChange={setNewWorkflowOpen}
+        environmentId={environmentId}
+        repositories={repositories}
+        onCreated={() => workflowsQuery.refresh()}
+      />
     </div>
   );
 }

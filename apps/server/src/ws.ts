@@ -75,6 +75,7 @@ import {
   SymphonyGetWorkflowInput,
   SymphonyGetWorkflowContentInput,
   SymphonySaveWorkflowContentInput,
+  SymphonyCreateWorkflowInput,
   SymphonyListHistoryInput,
   SymphonyResolveAttentionInput,
 } from "@neokod/contracts";
@@ -630,6 +631,49 @@ export const makeSymphonyRpcHandlers = () => ({
             : Effect.fail(orchestratorUnavailable()),
         ),
       ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  // "New workflow" dialog: `repositoryPath` is client-supplied, so unlike
+  // every other workflow RPC above it is never trusted directly. It is
+  // checked against ProjectionSnapshotQuery — the same read model the
+  // client's own project list is built from — before any filesystem write
+  // happens; an unrecognised path is refused rather than treated as a
+  // filesystem location.
+  [SYMPHONY_WS_METHODS.createWorkflow]: (input: (typeof SymphonyCreateWorkflowInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.createWorkflow,
+      Effect.gen(function* () {
+        const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+        const project = yield* projectionSnapshotQuery
+          .getActiveProjectByWorkspaceRoot(input.repositoryPath)
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new SymphonyError({ code: "workflow_create_failed", message: cause.message }),
+            ),
+          );
+        if (Option.isNone(project)) {
+          return yield* Effect.fail(
+            new SymphonyError({
+              code: "workflow_create_invalid_repository",
+              message: `Not a tracked project root: ${input.repositoryPath}`,
+            }),
+          );
+        }
+        const maybeLoader = yield* Effect.serviceOption(WorkflowLoaderService);
+        if (Option.isNone(maybeLoader)) {
+          return yield* Effect.fail(orchestratorUnavailable());
+        }
+        const result = yield* maybeLoader.value
+          .createWorkflow({ repositoryPath: input.repositoryPath, content: input.content })
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new SymphonyError({ code: "workflow_create_failed", message: cause.message }),
+            ),
+          );
+        return { ok: true, ...result };
+      }),
       { "rpc.aggregate": "symphony" },
     ),
   [SYMPHONY_WS_METHODS.activateWorkflow]: (input: (typeof SymphonyActivateWorkflowInput)["Type"]) =>

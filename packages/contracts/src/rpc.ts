@@ -148,6 +148,8 @@ import {
   SymphonyGetWorkflowContentResult,
   SymphonySaveWorkflowContentInput,
   SymphonySaveWorkflowContentResult,
+  SymphonyCreateWorkflowInput,
+  SymphonyCreateWorkflowResult,
   SymphonyDelegateFromThreadInput,
   SymphonyDelegateFromThreadResult,
   SymphonyListHistoryInput,
@@ -780,6 +782,12 @@ export const WsSymphonySaveWorkflowContentRpc = Rpc.make(SYMPHONY_WS_METHODS.sav
   error: SymphonyError,
 });
 
+export const WsSymphonyCreateWorkflowRpc = Rpc.make(SYMPHONY_WS_METHODS.createWorkflow, {
+  payload: SymphonyCreateWorkflowInput,
+  success: SymphonyCreateWorkflowResult,
+  error: SymphonyError,
+});
+
 export const WsSymphonyListTrackersRpc = Rpc.make(SYMPHONY_WS_METHODS.listTrackers, {
   payload: SymphonyListTrackersInput,
   success: Schema.Array(TrackerHealthSchema),
@@ -1055,6 +1063,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSymphonyValidateWorkflowRpc,
   WsSymphonyGetWorkflowContentRpc,
   WsSymphonySaveWorkflowContentRpc,
+  WsSymphonyCreateWorkflowRpc,
   WsSymphonyActivateWorkflowRpc,
   WsSymphonyListTrackersRpc,
   WsSymphonyListHistoryRpc,

@@ -36,6 +36,7 @@ export const SYMPHONY_WS_METHODS = {
   validateWorkflow: "symphony.validateWorkflow",
   getWorkflowContent: "symphony.getWorkflowContent",
   saveWorkflowContent: "symphony.saveWorkflowContent",
+  createWorkflow: "symphony.createWorkflow",
   listTrackers: "symphony.listTrackers",
   listHistory: "symphony.listHistory",
 
@@ -876,6 +877,25 @@ export const SymphonySaveWorkflowContentInput = Schema.Struct({
 });
 export const SymphonySaveWorkflowContentResult = Schema.Struct({
   ok: Schema.Boolean,
+  validationError: Schema.optional(Schema.String),
+});
+/**
+ * Create a brand-new WORKFLOW.md for a tracked project from the in-app "New
+ * workflow" dialog. `repositoryPath` is validated server-side against the
+ * projects the server already knows about — never trusted as an arbitrary
+ * filesystem path. The file always lands at `<repositoryPath>/WORKFLOW.md`;
+ * an existing file there is refused rather than overwritten. Content is
+ * re-parsed through the workflow loader exactly like `saveWorkflowContent`,
+ * so invalid content still creates the file and record, surfacing
+ * `validationError` instead of being silently dropped.
+ */
+export const SymphonyCreateWorkflowInput = Schema.Struct({
+  repositoryPath: TrimmedNonEmptyString,
+  content: Schema.String,
+});
+export const SymphonyCreateWorkflowResult = Schema.Struct({
+  ok: Schema.Boolean,
+  workflowId: Schema.optional(WorkflowId),
   validationError: Schema.optional(Schema.String),
 });
 export const SymphonyListTrackersInput = Schema.Struct({});
