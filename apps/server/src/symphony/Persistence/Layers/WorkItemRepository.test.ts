@@ -1,4 +1,4 @@
-import { WorkItemId } from "@neokod/contracts";
+import { WorkflowId, WorkItemId } from "@neokod/contracts";
 import type { WorkItem, WorkLifecycle } from "@neokod/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -157,6 +157,25 @@ layer("WorkItemRepository claim authority", (it) => {
       expect(afterUpsert.id).toBe(id);
       const byIssue = yield* repo.getByTrackerIssue("github", "46");
       expect(byIssue?.id).toBe(id);
+    }),
+  );
+
+  it.effect("tracker re-discovery updates metadata without resetting an active lifecycle", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("workitem-claim-6", "47");
+      yield* repo.claim(id, "owner-a");
+
+      const rediscovered = yield* makeWorkItem("workitem-claim-6", "47", "queued");
+      const afterUpsert = yield* repo.upsert({
+        ...rediscovered,
+        workflowId: WorkflowId.make("wf-47"),
+        objective: "Updated tracker title",
+      });
+
+      expect(afterUpsert.lifecycle).toBe("preparing");
+      expect(afterUpsert.workflowId).toBe(WorkflowId.make("wf-47"));
+      expect(afterUpsert.objective).toBe("Updated tracker title");
     }),
   );
 });

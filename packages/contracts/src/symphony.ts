@@ -359,23 +359,54 @@ export const PullRequestEvidenceSchema = Schema.Struct({
 export type PullRequestEvidence = typeof PullRequestEvidenceSchema.Type;
 
 /**
- * Model-authored review artefact (section 10.2). Codex review mode emits free
- * text, not structured findings; this field exists to hold that prose with its
- * provenance attached. It can raise warnings but cannot satisfy a required
- * evidence field or upgrade `overallAssessment`.
+ * Model-authored review evidence (section 10.2, issue #108). Reviewer findings
+ * may add warnings or block a configured merge gate, but they never upgrade
+ * host-derived evidence or satisfy required validation.
  */
-export const ModelReviewArtefactSchema = Schema.Struct({
+export const ModelReviewRequirementSchema = Schema.Literals([
+  "all-approve",
+  "any-approve",
+  "advisory",
+]);
+export type ModelReviewRequirement = typeof ModelReviewRequirementSchema.Type;
+
+export const ModelReviewVerdictSchema = Schema.Literals(["approve", "request_changes"]);
+export type ModelReviewVerdict = typeof ModelReviewVerdictSchema.Type;
+
+export const ModelReviewFindingSchema = Schema.Struct({
+  severity: Schema.Literals(["info", "warning", "blocking"]),
+  title: TrimmedNonEmptyString,
+  detail: TrimmedNonEmptyString,
+  path: Schema.optional(TrimmedNonEmptyString),
+});
+export type ModelReviewFinding = typeof ModelReviewFindingSchema.Type;
+
+export const ModelReviewerResultSchema = Schema.Struct({
   provenance: Schema.Literal("model"),
   provider: TrimmedNonEmptyString,
   model: TrimmedNonEmptyString,
-  target: Schema.Literal("baseBranch"),
-  baseSha: TrimmedNonEmptyString,
-  headSha: TrimmedNonEmptyString,
-  reviewThreadId: Schema.String,
-  turnId: Schema.String,
   status: Schema.Literals(["completed", "failed", "interrupted"]),
+  verdict: Schema.optional(ModelReviewVerdictSchema),
+  summary: Schema.String,
+  findings: Schema.Array(ModelReviewFindingSchema),
+  error: Schema.optional(Schema.String),
   reviewedAt: IsoDateTime,
-  text: Schema.String,
+});
+export type ModelReviewerResult = typeof ModelReviewerResultSchema.Type;
+
+export const ModelReviewArtefactSchema = Schema.Struct({
+  provenance: Schema.Literal("model"),
+  target: Schema.Literal("baseBranch"),
+  baseRef: TrimmedNonEmptyString,
+  headRef: TrimmedNonEmptyString,
+  baseSha: Schema.optional(TrimmedNonEmptyString),
+  headSha: Schema.optional(TrimmedNonEmptyString),
+  sourceHashes: Schema.Array(TrimmedNonEmptyString),
+  require: ModelReviewRequirementSchema,
+  verdict: Schema.Literals(["approve", "request_changes", "advisory"]),
+  passed: Schema.Boolean,
+  reviewers: Schema.Array(ModelReviewerResultSchema),
+  reviewedAt: IsoDateTime,
 });
 export type ModelReviewArtefact = typeof ModelReviewArtefactSchema.Type;
 
@@ -593,6 +624,8 @@ export const EffectiveWorkflowConfigSchema = Schema.Struct({
   autonomy: AutonomyLevelSchema,
   agentProvider: ProviderInstanceRef,
   agentModel: Schema.optional(TrimmedNonEmptyString),
+  reviewAgents: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  reviewRequirement: Schema.optional(ModelReviewRequirementSchema),
   maxConcurrentAgents: Schema.optional(PositiveInt),
   maxTurns: Schema.optional(PositiveInt),
   maxAttempts: Schema.optional(PositiveInt),

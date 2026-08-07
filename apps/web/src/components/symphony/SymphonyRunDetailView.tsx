@@ -258,6 +258,7 @@ export function SymphonyRunDetailView({ runId }: { readonly runId: string }) {
                 workItemId={details.workItem.id}
                 lifecycle={details.workItem.lifecycle}
                 pullRequest={details.workItem.evidence.pullRequest}
+                modelReview={details.workItem.evidence.modelReview}
                 onRefresh={detail.refresh}
                 isRefreshing={detail.isPending}
               />

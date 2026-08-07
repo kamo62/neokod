@@ -20,6 +20,7 @@ import * as ServerConfig from "../config.ts";
 import { resolveAttachmentPath } from "../attachmentStore.ts";
 import {
   buildBranchNamePrompt,
+  buildCodeReviewPrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
@@ -37,6 +38,7 @@ const OPENCODE_TEXT_GENERATION_IDLE_TTL = "30 seconds";
 const OpenCodeTextGenerationOperation = Schema.Literals([
   "generateCommitMessage",
   "generatePrContent",
+  "generateCodeReview",
   "generateBranchName",
   "generateThreadTitle",
 ]);
@@ -252,6 +254,7 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
     readonly operation:
       | "generateCommitMessage"
       | "generatePrContent"
+      | "generateCodeReview"
       | "generateBranchName"
       | "generateThreadTitle";
   }) =>
@@ -571,6 +574,24 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       };
     });
 
+  const generateCodeReview: TextGeneration.TextGeneration["Service"]["generateCodeReview"] =
+    Effect.fn("OpenCodeTextGeneration.generateCodeReview")(function* (input) {
+      const { prompt, outputSchema } = buildCodeReviewPrompt({
+        objective: input.objective,
+        acceptanceCriteria: input.acceptanceCriteria,
+        baseRef: input.baseRef,
+        headRef: input.headRef,
+        diffPatch: input.diffPatch,
+      });
+      return yield* runOpenCodeJson({
+        operation: "generateCodeReview",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+    });
+
   const generateBranchName: TextGeneration.TextGeneration["Service"]["generateBranchName"] =
     Effect.fn("OpenCodeTextGeneration.generateBranchName")(function* (input) {
       const { prompt, outputSchema } = buildBranchNamePrompt({
@@ -614,6 +635,7 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
   return {
     generateCommitMessage,
     generatePrContent,
+    generateCodeReview,
     generateBranchName,
     generateThreadTitle,
   } satisfies TextGeneration.TextGeneration["Service"];

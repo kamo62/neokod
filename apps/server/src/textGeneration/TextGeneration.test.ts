@@ -19,6 +19,7 @@ const makeStubTextGeneration = (
     generateCommitMessage: () =>
       Effect.die("generateCommitMessage stub not configured for this test"),
     generatePrContent: () => Effect.die("generatePrContent stub not configured for this test"),
+    generateCodeReview: () => Effect.die("generateCodeReview stub not configured for this test"),
     generateBranchName: () => Effect.die("generateBranchName stub not configured for this test"),
     generateThreadTitle: () => Effect.die("generateThreadTitle stub not configured for this test"),
     ...overrides,
@@ -92,6 +93,40 @@ describe("makeTextGenerationFromRegistry", () => {
 
       expect(result.branch).toBe("personal-branch");
       expect(personalCalls).toEqual(["Refactor the routing layer"]);
+    }),
+  );
+
+  it.effect("routes code reviews to the selected provider instance", () =>
+    Effect.gen(function* () {
+      const claudeId = ProviderInstanceId.make("claude_review");
+      const calls: string[] = [];
+      const claude = makeStubInstance(
+        claudeId,
+        makeStubTextGeneration({
+          generateCodeReview: (input) => {
+            calls.push(`${input.modelSelection.model}:${input.baseRef}..${input.headRef}`);
+            return Effect.succeed({
+              verdict: "approve",
+              summary: "No blocking findings.",
+              findings: [],
+            });
+          },
+        }),
+      );
+      const tg = TextGeneration.makeTextGenerationFromRegistry(makeStubRegistry([claude]));
+
+      const result = yield* tg.generateCodeReview({
+        cwd: process.cwd(),
+        objective: "Review provider fan-out",
+        acceptanceCriteria: ["Use the selected reviewer model"],
+        baseRef: "main",
+        headRef: "HEAD",
+        diffPatch: "diff --git a/a.ts b/a.ts",
+        modelSelection: createModelSelection(claudeId, "claude-fable-5"),
+      });
+
+      expect(result.verdict).toBe("approve");
+      expect(calls).toEqual(["claude-fable-5:main..HEAD"]);
     }),
   );
 

@@ -1,6 +1,7 @@
 import type {
   AttentionItem,
   EffectiveWorkflowConfig,
+  EvidenceBundle,
   NormalizedIssue,
   PullRequestEvidence,
   QueueItem,
@@ -13,11 +14,15 @@ import type {
   WorkItem,
 } from "@neokod/contracts";
 import { AttentionItemId, RunAttemptId, WorkflowId, WorkItemId } from "@neokod/contracts";
+import * as Clock from "effect/Clock";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
+import * as Scope from "effect/Scope";
 
 import { nowIso } from "../../Domain/Time.ts";
 import { WorkflowRepository } from "../../Persistence/Services/WorkflowRepository.ts";
@@ -48,17 +53,17 @@ import type { ReviewFeedbackContext } from "../../Runner/Prompt.ts";
 import { SymphonyOrchestrator, type SymphonyOrchestratorShape } from "../SymphonyOrchestrator.ts";
 
 /**
- * Live orchestrator. At Observe autonomy it polls each active workflow,
- * validates the tracker is enabled, fetches candidate issues, evaluates
- * eligibility, and upserts the queue projection. It never dispatches: there is
- * no claim, no workspace creation, and no agent launch until a later phase.
+ * Live orchestrator. Active workflows are reloaded and polled independently,
+ * eligible work is projected into the durable queue, and one queued item is
+ * admitted per scheduler scan through the same pause/concurrency/eligibility
+ * gate used by manual dispatch.
  *
- * The poll loop is a daemon fiber forked into the layer's scope; it ticks on a
- * fixed cadence and `refreshNow()` forces an immediate cycle for the Observe
- * RPC surface.
+ * The scheduler scans at the minimum supported workflow interval. Per-workflow
+ * due times prevent a fast workflow from over-polling slower workflows, while
+ * still detecting WORKFLOW.md changes promptly.
  */
 
-const POLL_INTERVAL = "30 seconds";
+const SCHEDULER_SCAN_INTERVAL = "5 seconds";
 
 /**
  * Plan 9.5 re-check (audit item 2): a retry must re-read the issue from the
@@ -114,6 +119,14 @@ interface OrchestratorRuntimeState {
   readonly trackerHealth: ReadonlyArray<TrackerHealth>;
 }
 
+interface PreparedDispatch {
+  readonly item: WorkItem;
+  readonly issue: NormalizedIssue;
+  readonly config: EffectiveWorkflowConfig;
+  readonly reviewFeedback?: ReviewFeedbackContext;
+  readonly workflowInstructions?: string;
+}
+
 const EMPTY_STATE: OrchestratorRuntimeState = {
   lastPollAt: null,
   trackerHealth: [],
@@ -136,6 +149,34 @@ const buildQueueItem = (workItem: WorkItem): QueueItem => ({
   estimatedReadiness: null,
   createdAt: workItem.createdAt,
 });
+
+const modelReviewAllowsMerge = (
+  config: EffectiveWorkflowConfig,
+  evidence: EvidenceBundle,
+  pullRequest: PullRequestEvidence,
+): boolean => {
+  const configuredModels = [...(config.reviewAgents ?? [])].sort();
+  const requirement = config.reviewRequirement ?? "advisory";
+  if (configuredModels.length === 0 || requirement === "advisory") {
+    return true;
+  }
+  const review = evidence.modelReview;
+  if (review === null || review.require !== requirement || !review.passed) {
+    return false;
+  }
+  const reviewedModels = review.reviewers.map((reviewer) => reviewer.model).sort();
+  if (
+    reviewedModels.length !== configuredModels.length ||
+    reviewedModels.some((model, index) => model !== configuredModels[index])
+  ) {
+    return false;
+  }
+  return (
+    review.headSha !== undefined &&
+    pullRequest.latestCommit !== undefined &&
+    review.headSha === pullRequest.latestCommit
+  );
+};
 
 const RUN_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   "succeeded",
@@ -207,6 +248,7 @@ const buildRunSummary = (input: {
   readonly attempt: RunAttempt;
   readonly workItem: WorkItem | null;
   readonly latestEvent: string | null;
+  readonly nowMs: number;
   readonly overallAssessment?: RunSummary["overallAssessment"];
   readonly pullRequest?: RunSummary["pullRequest"];
 }): RunSummary => {
@@ -214,7 +256,7 @@ const buildRunSummary = (input: {
   const started = Date.parse(attempt.startedAt);
   const finished = attempt.finishedAt === null ? null : Date.parse(attempt.finishedAt);
   const elapsedMs =
-    finished === null ? Math.max(0, Date.now() - started) : Math.max(0, finished - started);
+    finished === null ? Math.max(0, input.nowMs - started) : Math.max(0, finished - started);
   return {
     runAttemptId: RunAttemptId.make(attempt.id),
     workItemId: WorkItemId.make(attempt.workItemId),
@@ -359,7 +401,8 @@ const pollWorkflow = (deps: {
         claimedIssueIds: new Set<string>(),
         dispatchPaused: false,
       });
-      const workItem = yield* projectWorkItem(issue, config, eligibility, now);
+      const projected = yield* projectWorkItem(issue, config, eligibility, now);
+      const workItem = { ...projected, workflowId: workflow.id };
       yield* deps.workItems.upsert(workItem).pipe(Effect.catch(() => Effect.void));
     }
   });
@@ -382,14 +425,45 @@ const makeOrchestrator = Effect.gen(function* () {
   const notifications = yield* NotificationCoordinator;
 
   const stateRef = yield* Ref.make<OrchestratorRuntimeState>(EMPTY_STATE);
+  const lastPollByWorkflowRef = yield* Ref.make<ReadonlyMap<string, number>>(new Map());
+  const dispatchScope = yield* Scope.make();
+  yield* Effect.addFinalizer(() => Scope.close(dispatchScope, Exit.void));
+  const workflowLoader = yield* Effect.serviceOption(WorkflowLoaderService);
 
-  const runTick = Effect.fn("symphonyOrchestrator.tick")(function* () {
+  const reloadWorkflowFiles = Effect.fn("symphonyOrchestrator.reloadWorkflowFiles")(function* () {
+    if (Option.isNone(workflowLoader)) {
+      return;
+    }
+    const records = yield* workflows.list().pipe(Effect.catch(() => Effect.succeed([])));
+    for (const workflow of records) {
+      yield* workflowLoader.value
+        .reloadChanged({ repositoryPath: workflow.repositoryPath })
+        .pipe(Effect.catch(() => Effect.void));
+    }
+  });
+
+  const runTick = Effect.fn("symphonyOrchestrator.tick")(function* (
+    forcePoll = false,
+    allowDispatch = true,
+  ) {
+    yield* reloadWorkflowFiles();
     const now = yield* nowIso;
     const active = yield* workflows
       .list()
       .pipe(Effect.map((all) => all.filter((w) => w.status === "active")))
       .pipe(Effect.catch(() => Effect.succeed([] as WorkflowRecord[])));
+    const nowEpochMs = nowMs(now);
     for (const workflow of active) {
+      const config = workflow.effectiveConfig;
+      if (config === null) {
+        continue;
+      }
+      const lastPollByWorkflow = yield* Ref.get(lastPollByWorkflowRef);
+      const lastPollAt = lastPollByWorkflow.get(String(workflow.id));
+      const pollIntervalMs = config.pollIntervalMs ?? WORKFLOW_DEFAULTS.pollIntervalMs;
+      if (!forcePoll && lastPollAt !== undefined && nowEpochMs - lastPollAt < pollIntervalMs) {
+        continue;
+      }
       yield* pollWorkflow({
         workItems,
         registry,
@@ -397,12 +471,20 @@ const makeOrchestrator = Effect.gen(function* () {
         stateRef,
         checkpoints: checkpointRepository,
       })(workflow, now).pipe(Effect.catch(() => Effect.void));
+      yield* Ref.update(lastPollByWorkflowRef, (current) => {
+        const next = new Map(current);
+        next.set(String(workflow.id), nowEpochMs);
+        return next;
+      });
     }
     // Best-effort housekeeping: release orphaned claims, fire due retries and
     // expire approval requests whose wait window elapsed. Runs on the same
     // cadence as polling.
     yield* reconcileStaleClaims({ workItems, runAttempts, runEvents, workflows, dispatcher });
     yield* retrySweep();
+    if (allowDispatch) {
+      yield* launchNextQueuedWork();
+    }
     yield* sweepExpiredApprovals(now);
     yield* Ref.update(stateRef, (state) => ({ ...state, lastPollAt: now }));
   });
@@ -523,22 +605,15 @@ const makeOrchestrator = Effect.gen(function* () {
         ),
       ...(Option.isSome(maybeOwnership) ? { ownership: maybeOwnership.value } : {}),
     }).pipe(Effect.catch(() => Effect.void));
-    // Dynamic WORKFLOW.md reload (plan 6.4; audit item 8): a changed file
-    // re-loads and re-validates on the next tick.
-    const maybeLoader = yield* Effect.serviceOption(WorkflowLoaderService);
-    if (Option.isSome(maybeLoader)) {
-      const workflowsNow = yield* workflows.list().pipe(Effect.catch(() => Effect.succeed([])));
-      for (const workflow of workflowsNow) {
-        yield* maybeLoader.value
-          .reloadChanged({ repositoryPath: workflow.repositoryPath })
-          .pipe(Effect.catch(() => Effect.void));
-      }
-    }
     // Each tick runs in its own scope so retry-sweep dispatches release
     // their agent-runtime resources when the run ends instead of holding
-    // them on the layer scope until server shutdown (REVIEW P1).
-    yield* runTick().pipe(Effect.scoped);
-    yield* Effect.repeat(runTick().pipe(Effect.scoped), Schedule.fixed(POLL_INTERVAL));
+    // them on the layer scope until server shutdown. The first tick polls all
+    // workflows immediately; later scans honor each workflow's interval.
+    yield* runTick(true).pipe(Effect.scoped);
+    yield* Effect.repeat(
+      runTick(false).pipe(Effect.scoped),
+      Schedule.fixed(SCHEDULER_SCAN_INTERVAL),
+    );
   });
 
   // Startup advisory lock (audit item 8 lane I; plan section 4): one server
@@ -546,40 +621,21 @@ const makeOrchestrator = Effect.gen(function* () {
   // lease, renewed on every tick, released on teardown. A second server that
   // fails to acquire degrades to read-only observe (no dispatch) rather than
   // refusing to boot.
-  const lockToken = `symphony-${process.pid}-${Date.now()}`;
+  const lockAcquiredAtMs = yield* Clock.currentTimeMillis;
+  const lockToken = `symphony-${process.pid}-${lockAcquiredAtMs}`;
   const lockLeaseMs = 90_000;
   const acquiredLock = yield* orchestratorState
     .acquireLock({ ownerToken: lockToken, leaseMs: lockLeaseMs })
     .pipe(Effect.catch(() => Effect.succeed(false)));
 
-  // Fork the poll loop into the surrounding scope so it stops on layer teardown.
-  yield* Effect.forkScoped(
-    Effect.gen(function* () {
-      if (acquiredLock) {
-        yield* Effect.acquireRelease(Effect.void, () =>
-          orchestratorState.releaseLock(lockToken).pipe(Effect.catch(() => Effect.void)),
-        );
-      }
-      // Renew the lease while we hold it, and run the scheduler (poll ticks,
-      // recovery, retry sweep, workflow reload) regardless of lock ownership —
-      // a follower still observes and reloads, it just never dispatches.
-      yield* Effect.forkScoped(
-        Effect.repeat(
-          orchestratorState
-            .renewLock({ ownerToken: lockToken, leaseMs: lockLeaseMs })
-            .pipe(Effect.catch(() => Effect.void)),
-          Schedule.spaced("30 seconds"),
-        ),
-      );
-      yield* scheduler;
-    }),
-  );
-
-  const refreshNow: SymphonyOrchestratorShape["refreshNow"] = () => runTick().pipe(Effect.scoped);
+  const refreshNow: SymphonyOrchestratorShape["refreshNow"] = () =>
+    runTick(true, false).pipe(Effect.scoped);
 
   const getOverview = (): Effect.Effect<SymphonyOverview, never> =>
     Effect.gen(function* () {
       const now = yield* nowIso;
+      const nowInCurrentZone = DateTime.setZone(yield* DateTime.now, DateTime.zoneMakeLocal());
+      const startOfTodayMs = DateTime.toEpochMillis(DateTime.startOf(nowInCurrentZone, "day"));
       const state = yield* Ref.get(stateRef);
       const paused = yield* orchestratorState
         .isGlobalPaused()
@@ -615,15 +671,9 @@ const makeOrchestrator = Effect.gen(function* () {
           (attempts) =>
             attempts.filter((attempt) => {
               const started = Date.parse(attempt.startedAt);
-              const today = new Date();
-              const startOfDay = new Date(
-                today.getFullYear(),
-                today.getMonth(),
-                today.getDate(),
-              ).getTime();
               return (
                 !Number.isNaN(started) &&
-                started >= startOfDay &&
+                started >= startOfTodayMs &&
                 (attempt.status === "failed" || attempt.status === "validation_failed")
               );
             }).length,
@@ -671,6 +721,7 @@ const makeOrchestrator = Effect.gen(function* () {
 
   const listRuns: SymphonyOrchestratorShape["listRuns"] = (filter) =>
     Effect.gen(function* () {
+      const currentTimeMs = yield* Clock.currentTimeMillis;
       const attempts = yield* runAttempts
         .listRecent({ limit: filter?.limit ?? 50 })
         .pipe(Effect.catch(() => Effect.succeed([])));
@@ -715,6 +766,7 @@ const makeOrchestrator = Effect.gen(function* () {
             attempt,
             workItem: workItemsById.get(String(attempt.workItemId)) ?? null,
             latestEvent: latest,
+            nowMs: currentTimeMs,
             ...(assessment !== undefined ? { overallAssessment: assessment } : {}),
             ...(pullRequest !== undefined ? { pullRequest } : {}),
           }),
@@ -896,139 +948,157 @@ const makeOrchestrator = Effect.gen(function* () {
       } satisfies ReviewFeedbackContext;
     });
 
-  const dispatchWorkItem: SymphonyOrchestratorShape["dispatchWorkItem"] = (workItemId) =>
-    Effect.gen(function* () {
-      // Advisory-lock gate (audit item 8 lane I): only the server holding the
-      // orchestrator lock dispatches. A follower may observe the queue but
-      // never claims or runs.
-      if (!acquiredLock) {
-        return;
-      }
-      const item = yield* workItems
-        .getById(WorkItemId.make(workItemId))
-        .pipe(Effect.catch(() => Effect.succeed(null)));
-      if (item === null || item.lifecycle === "preparing" || item.lifecycle === "running") {
-        return;
-      }
-      // A review that requested changes can be re-dispatched: claims accept
-      // only eligible/queued/retry_scheduled, so move it back to queued first
-      // (REVIEW P1 #5: changes_requested was stranded forever).
-      if (item.lifecycle === "changes_requested") {
-        const requeued = yield* workItems
-          .transition(item.id, "queued", { from: ["changes_requested"] })
-          .pipe(Effect.catch(() => Effect.succeed(false)));
-        if (!requeued) {
-          return;
-        }
-      }
-      // Global pause blocks new dispatches, including the retry sweep
-      // (plan 9.6, REVIEW P1: pause did not stop the sweep).
-      const paused = yield* orchestratorState
-        .isGlobalPaused()
+  const prepareDispatch = Effect.fn("symphonyOrchestrator.prepareDispatch")(function* (
+    workItemId: string,
+  ): Effect.fn.Return<PreparedDispatch | null> {
+    // Advisory-lock gate: followers observe but never claim or run work.
+    if (!acquiredLock) {
+      return null;
+    }
+    const item = yield* workItems
+      .getById(WorkItemId.make(workItemId))
+      .pipe(Effect.catch(() => Effect.succeed(null)));
+    if (item === null || item.lifecycle === "preparing" || item.lifecycle === "running") {
+      return null;
+    }
+    if (item.lifecycle === "changes_requested") {
+      const requeued = yield* workItems
+        .transition(item.id, "queued", { from: ["changes_requested"] })
         .pipe(Effect.catch(() => Effect.succeed(false)));
-      if (paused) {
-        return;
+      if (!requeued) {
+        return null;
       }
-      // Per-scope pause (FR-130-132): a paused workflow or repository gates
-      // its own dispatches.
-      if (item.workflowId !== undefined) {
-        const workflowPaused = yield* orchestratorState
-          .isWorkflowPaused(String(item.workflowId))
-          .pipe(Effect.catch(() => Effect.succeed(false)));
-        if (workflowPaused) {
-          return;
-        }
+    }
+
+    const paused = yield* orchestratorState
+      .isGlobalPaused()
+      .pipe(Effect.catch(() => Effect.succeed(false)));
+    if (paused) {
+      return null;
+    }
+    if (item.workflowId !== undefined) {
+      const workflowPaused = yield* orchestratorState
+        .isWorkflowPaused(String(item.workflowId))
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+      if (workflowPaused) {
+        return null;
       }
-      if (item.repositoryPath !== undefined) {
-        const repositoryPaused = yield* orchestratorState
-          .isRepositoryPaused(item.repositoryPath)
-          .pipe(Effect.catch(() => Effect.succeed(false)));
-        if (repositoryPaused) {
-          return;
-        }
+    }
+    if (item.repositoryPath !== undefined) {
+      const repositoryPaused = yield* orchestratorState
+        .isRepositoryPaused(item.repositoryPath)
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+      if (repositoryPaused) {
+        return null;
       }
-      // Excluded items are never re-dispatched (REVIEW P1).
-      if (item.excluded === true) {
-        return;
-      }
-      const workflow = yield* workflows
-        .list()
-        .pipe(Effect.map((all) => all.find((w) => w.id === item.workflowId)))
-        .pipe(Effect.catch(() => Effect.succeed(undefined)));
-      const config = workflow?.effectiveConfig;
-      if (config === null || config === undefined || config.autonomy === "observe") {
-        return;
-      }
-      // Concurrency slots (plan 9.3): global cap counts in-flight runs.
-      const inFlight = yield* workItems
-        .listByLifecycle(["preparing", "running", "waiting_for_approval"])
-        .pipe(
-          Effect.map((items) => items.length),
-          Effect.catch(() => Effect.succeed(0)),
-        );
-      const globalCap = config.concurrencyGlobal ?? WORKFLOW_DEFAULTS.concurrencyGlobal;
-      if (globalCap > 0 && inFlight >= globalCap) {
-        return;
-      }
-      // Per-repository and per-workflow slots (audit item 2): the global cap
-      // alone let one repo's runs starve another's. Both caps default off
-      // when unset (0 = unlimited), mirroring the global semantics.
-      const repoCap = config.concurrencyRepository ?? 0;
-      if (repoCap > 0) {
-        const inRepo = yield* workItems
-          .listByLifecycle(["preparing", "running", "waiting_for_approval"])
-          .pipe(
-            Effect.map(
-              (items) =>
-                items.filter((other) => other.repositoryPath === item.repositoryPath).length,
-            ),
-            Effect.catch(() => Effect.succeed(0)),
-          );
-        if (inRepo >= repoCap) {
-          return;
-        }
-      }
-      const workflowCap = config.concurrencyWorkflow ?? 0;
-      if (workflowCap > 0 && item.workflowId !== undefined) {
-        const inWorkflow = yield* workItems
-          .listByLifecycle(["preparing", "running", "waiting_for_approval"])
-          .pipe(
-            Effect.map(
-              (items) => items.filter((other) => other.workflowId === item.workflowId).length,
-            ),
-            Effect.catch(() => Effect.succeed(0)),
-          );
-        if (inWorkflow >= workflowCap) {
-          return;
-        }
-      }
-      const issue: NormalizedIssue | null = yield* refreshIssueSnapshot(item, config, registry);
-      if (issue === null) {
-        return;
-      }
-      // FR-102-104: when this item still carries stored PR evidence showing
-      // outstanding review feedback (the reason it came back through
-      // changes_requested -> queued rather than a fresh claim), attach that
-      // context to the continuation dispatch's first turn.
-      const reviewFeedback = yield* buildReviewFeedback(item, config);
+    }
+    if (item.excluded === true || item.eligibilityReasons.length > 0) {
+      return null;
+    }
+
+    const workflow = yield* workflows
+      .list()
+      .pipe(Effect.map((all) => all.find((record) => record.id === item.workflowId)))
+      .pipe(Effect.catch(() => Effect.succeed(undefined)));
+    const config = workflow?.effectiveConfig;
+    if (
+      workflow === undefined ||
+      config === null ||
+      config === undefined ||
+      config.autonomy === "observe"
+    ) {
+      return null;
+    }
+
+    const inFlightItems = yield* workItems
+      .listByLifecycle(["preparing", "running", "waiting_for_approval"])
+      .pipe(Effect.catch(() => Effect.succeed([] as WorkItem[])));
+    const globalCap = config.concurrencyGlobal ?? WORKFLOW_DEFAULTS.concurrencyGlobal;
+    if (globalCap > 0 && inFlightItems.length >= globalCap) {
+      return null;
+    }
+    const repoCap = config.concurrencyRepository ?? 0;
+    if (
+      repoCap > 0 &&
+      inFlightItems.filter((other) => other.repositoryPath === item.repositoryPath).length >=
+        repoCap
+    ) {
+      return null;
+    }
+    const workflowCap = config.concurrencyWorkflow ?? 0;
+    if (
+      workflowCap > 0 &&
+      item.workflowId !== undefined &&
+      inFlightItems.filter((other) => other.workflowId === item.workflowId).length >= workflowCap
+    ) {
+      return null;
+    }
+
+    const issue = yield* refreshIssueSnapshot(item, config, registry);
+    if (issue === null) {
+      return null;
+    }
+    const reviewFeedback = yield* buildReviewFeedback(item, config);
+    const workflowInstructions = workflow.definition.promptTemplate.trim();
+    return {
+      item,
+      issue,
+      config,
+      ...(workflowInstructions.length > 0 ? { workflowInstructions } : {}),
+      ...(reviewFeedback !== undefined ? { reviewFeedback } : {}),
+    };
+  });
+
+  const executePreparedDispatch = Effect.fn("symphonyOrchestrator.executePreparedDispatch")(
+    function* (prepared: PreparedDispatch) {
       yield* dispatcher
         .dispatchWorkItem({
-          workItem: item,
-          issue,
-          config,
-          ...(reviewFeedback !== undefined ? { reviewFeedback } : {}),
+          workItem: prepared.item,
+          issue: prepared.issue,
+          config: prepared.config,
+          ...(prepared.workflowInstructions !== undefined
+            ? { workflowInstructions: prepared.workflowInstructions }
+            : {}),
+          ...(prepared.reviewFeedback !== undefined
+            ? { reviewFeedback: prepared.reviewFeedback }
+            : {}),
         })
         .pipe(Effect.catch(() => Effect.void));
-      // Audit trail (plan 13.4; audit item 8 lane E).
       yield* auditRepository
         .record({
           actor: "symphony",
           eventType: "work_item_dispatched",
-          workItemId: String(item.id),
-          payload: { objective: item.objective },
+          workItemId: String(prepared.item.id),
+          payload: { objective: prepared.item.objective },
         })
         .pipe(Effect.catch(() => Effect.void));
-    });
+    },
+  );
+
+  const launchNextQueuedWork = Effect.fn("symphonyOrchestrator.launchNextQueuedWork")(function* () {
+    const candidates = yield* workItems
+      .listByLifecycle(["queued"], { limit: 100 })
+      .pipe(Effect.catch(() => Effect.succeed([] as WorkItem[])));
+    for (const candidate of candidates) {
+      const prepared = yield* prepareDispatch(String(candidate.id));
+      if (prepared === null) {
+        continue;
+      }
+      yield* executePreparedDispatch(prepared).pipe(
+        Effect.scoped,
+        Effect.forkIn(dispatchScope),
+        Effect.asVoid,
+      );
+      return;
+    }
+  });
+
+  const dispatchWorkItem: SymphonyOrchestratorShape["dispatchWorkItem"] = (workItemId) =>
+    prepareDispatch(workItemId).pipe(
+      Effect.flatMap((prepared) =>
+        prepared === null ? Effect.void : executePreparedDispatch(prepared),
+      ),
+    );
 
   const cancelRun: SymphonyOrchestratorShape["cancelRun"] = (runAttemptId) =>
     Effect.gen(function* () {
@@ -1269,6 +1339,9 @@ const makeOrchestrator = Effect.gen(function* () {
       ) {
         return false;
       }
+      if (!modelReviewAllowsMerge(config, evidence, freshPullRequest)) {
+        return false;
+      }
       // Host-enriched merge gates (plan 14, FR-095; REVIEW P0 "approveMerge
       // inverts FR-095"). Merge readiness requires POSITIVE host evidence:
       // a real PR, a success CI status, a review decision that is present and
@@ -1328,6 +1401,27 @@ const makeOrchestrator = Effect.gen(function* () {
       return changed;
     });
 
+  // Start background work only after every scheduler callback has been
+  // initialized. This avoids a construction-time race with the first tick.
+  yield* Effect.forkScoped(
+    Effect.gen(function* () {
+      if (acquiredLock) {
+        yield* Effect.acquireRelease(Effect.void, () =>
+          orchestratorState.releaseLock(lockToken).pipe(Effect.catch(() => Effect.void)),
+        );
+      }
+      yield* Effect.forkScoped(
+        Effect.repeat(
+          orchestratorState
+            .renewLock({ ownerToken: lockToken, leaseMs: lockLeaseMs })
+            .pipe(Effect.catch(() => Effect.void)),
+          Schedule.spaced("30 seconds"),
+        ),
+      );
+      yield* scheduler;
+    }),
+  );
+
   return {
     refreshNow,
     getOverview,
@@ -1362,4 +1456,4 @@ const makeOrchestrator = Effect.gen(function* () {
 
 export const SymphonyOrchestratorLive = Layer.effect(SymphonyOrchestrator, makeOrchestrator);
 
-export { pollWorkflow, buildQueueItem };
+export { pollWorkflow, buildQueueItem, modelReviewAllowsMerge };

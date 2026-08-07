@@ -86,6 +86,9 @@ interface FakeGitTextGeneration {
     diffPatch: string;
     modelSelection: ModelSelection;
   }) => Effect.Effect<{ title: string; body: string }, TextGenerationError>;
+  generateCodeReview: (
+    input: TextGeneration.CodeReviewGenerationInput,
+  ) => Effect.Effect<TextGeneration.CodeReviewGenerationResult, TextGenerationError>;
   generateBranchName: (input: {
     cwd: string;
     message: string;
@@ -314,6 +317,7 @@ function createTextGeneration(
         title: "Add stacked git actions",
         body: "## Summary\n- Add stacked git workflow\n\n## Testing\n- Not run",
       }),
+    generateCodeReview: () => Effect.die("generateCodeReview is unused in GitManager tests"),
     generateBranchName: () =>
       Effect.succeed({
         branch: "update-workflow",
@@ -348,6 +352,7 @@ function createTextGeneration(
             }),
         ),
       ),
+    generateCodeReview: (input) => implementation.generateCodeReview(input),
     generateBranchName: (input) =>
       implementation.generateBranchName(input).pipe(
         Effect.mapError(
@@ -1353,7 +1358,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
 
   it.effect("status keeps the last known PR when a later lookup fails", () =>
     Effect.gen(function* () {
-      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
       yield* initRepo(repoDir);
       yield* runGit(repoDir, ["checkout", "-b", "feature/pr-sticky"]);
       const remoteDir = yield* createBareRemote();
@@ -1396,7 +1401,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     "status does not reuse a stale PR after the branch is retargeted to a different upstream",
     () =>
       Effect.gen(function* () {
-        const repoDir = yield* makeTempDir("t3code-git-manager-");
+        const repoDir = yield* makeTempDir("neokod-git-manager-");
         yield* initRepo(repoDir);
         yield* runGit(repoDir, ["checkout", "-b", "feature/pr-retarget"]);
 
@@ -1447,7 +1452,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
 
   it.effect("status keeps the last known PR when the branch gains its first upstream", () =>
     Effect.gen(function* () {
-      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
       yield* initRepo(repoDir);
       yield* runGit(repoDir, ["checkout", "-b", "feature/pr-sticky-first-push"]);
       const remoteDir = yield* createBareRemote();
@@ -1486,7 +1491,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
 
   it.effect("status drops the last known PR when the tracked remote is repointed", () =>
     Effect.gen(function* () {
-      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
       yield* initRepo(repoDir);
       yield* runGit(repoDir, ["checkout", "-b", "feature/pr-repointed"]);
       const originalRemoteDir = yield* createBareRemote();
@@ -1529,7 +1534,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
 
   it.effect("status keeps the last known PR when the current remote URL can't be resolved", () =>
     Effect.gen(function* () {
-      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
       yield* initRepo(repoDir);
       yield* runGit(repoDir, ["checkout", "-b", "feature/pr-config-hiccup"]);
       const remoteDir = yield* createBareRemote();
@@ -2430,7 +2435,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     "does not reuse a cross-repo PR when GitHub omits head identity metadata",
     () =>
       Effect.gen(function* () {
-        const repoDir = yield* makeTempDir("t3code-git-manager-");
+        const repoDir = yield* makeTempDir("neokod-git-manager-");
         yield* initRepo(repoDir);
         yield* runGit(repoDir, ["checkout", "-b", "statemachine"]);
         const forkDir = yield* createBareRemote();

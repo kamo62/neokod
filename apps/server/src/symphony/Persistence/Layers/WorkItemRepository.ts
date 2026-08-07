@@ -269,7 +269,10 @@ const makeRepository = Effect.gen(function* () {
           blockers_json = ${row.blockersJson},
           branch_name = ${row.branchName},
           issue_url = ${row.issueUrl},
-          lifecycle = ${row.lifecycle},
+          lifecycle = CASE
+            WHEN lifecycle IN ('draft', 'eligible', 'queued') THEN ${row.lifecycle}
+            ELSE lifecycle
+          END,
           workspace_key = ${row.workspaceKey},
           workspace_path = ${row.workspacePath},
           base_branch = ${row.baseBranch},

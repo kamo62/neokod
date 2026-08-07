@@ -1,5 +1,8 @@
 import {
+  AlertTriangleIcon,
+  BotIcon,
   CheckCircle2Icon,
+  ChevronDownIcon,
   CircleHelpIcon,
   ClockIcon,
   ExternalLinkIcon,
@@ -19,6 +22,8 @@ import { createEnvironmentRpcCommand } from "@neokod/client-runtime/state/runtim
 import {
   SYMPHONY_WS_METHODS,
   type EnvironmentId,
+  type ModelReviewArtefact,
+  type ModelReviewerResult,
   type PullRequestEvidence,
   type WorkItem,
   type WorkItemId,
@@ -146,6 +151,7 @@ function hasEnrichment(pullRequest: PullRequestEvidence): boolean {
 function approveMergeBlockers(
   pullRequest: PullRequestEvidence,
   lifecycle: WorkItem["lifecycle"],
+  modelReview: ModelReviewArtefact | null,
 ): string[] {
   const reasons: string[] = [];
   if (lifecycle !== "ready_for_review") {
@@ -175,6 +181,18 @@ function approveMergeBlockers(
   if ((pullRequest.unresolvedComments ?? 0) > 0) {
     const count = pullRequest.unresolvedComments ?? 0;
     reasons.push(`${count} unresolved comment${count === 1 ? "" : "s"}`);
+  }
+  if (modelReview !== null && modelReview.require !== "advisory") {
+    if (!modelReview.passed) {
+      reasons.push(`model review did not satisfy ${modelReview.require.replaceAll("-", " ")}`);
+    }
+    if (
+      modelReview.headSha === undefined ||
+      pullRequest.latestCommit === undefined ||
+      modelReview.headSha !== pullRequest.latestCommit
+    ) {
+      reasons.push("model review is not current for the latest commit");
+    }
   }
   return reasons;
 }
@@ -242,11 +260,172 @@ function GatedAction({
   );
 }
 
+function reviewerPresentation(reviewer: ModelReviewerResult): StatusPresentation {
+  if (reviewer.status !== "completed") {
+    return {
+      label: reviewer.status === "interrupted" ? "Interrupted" : "Failed",
+      variant: "warning",
+      Icon: AlertTriangleIcon,
+    };
+  }
+  return reviewer.verdict === "approve"
+    ? { label: "Approve", variant: "success", Icon: CheckCircle2Icon }
+    : { label: "Changes", variant: "error", Icon: XCircleIcon };
+}
+
+function aggregateReviewPresentation(modelReview: ModelReviewArtefact): StatusPresentation {
+  if (modelReview.require === "advisory") {
+    return { label: "Advisory", variant: "info", Icon: CircleHelpIcon };
+  }
+  return modelReview.passed
+    ? { label: "Review passed", variant: "success", Icon: CheckCircle2Icon }
+    : { label: "Review blocked", variant: "error", Icon: XCircleIcon };
+}
+
+export function ModelReviewStrip({ modelReview }: { readonly modelReview: ModelReviewArtefact }) {
+  const [expandedReviewer, setExpandedReviewer] = useState<string | null>(null);
+  const presentation = aggregateReviewPresentation(modelReview);
+  const approvals = modelReview.reviewers.filter(
+    (reviewer) => reviewer.status === "completed" && reviewer.verdict === "approve",
+  ).length;
+
+  return (
+    <section className="mt-3 border-t border-border/60 pt-3" aria-labelledby="model-review-title">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <BotIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <h3 id="model-review-title" className="text-[11px] font-semibold text-foreground">
+            Model review
+          </h3>
+          <span className="text-[10px] text-muted-foreground">
+            {modelReview.require.replaceAll("-", " ")}
+          </span>
+        </div>
+        <Badge variant={presentation.variant} size="sm">
+          <presentation.Icon />
+          {presentation.label} · {approvals} of {modelReview.reviewers.length} approve
+        </Badge>
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Reviewer verdicts">
+        {modelReview.reviewers.map((reviewer, index) => {
+          const key = `${reviewer.provider}:${reviewer.model}:${index}`;
+          const reviewerStatus = reviewerPresentation(reviewer);
+          const ReviewerIcon = reviewerStatus.Icon;
+          const expanded = expandedReviewer === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md border border-border/70 px-2 py-1",
+                "text-[11px] font-medium text-foreground transition-colors hover:bg-muted/60",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                expanded && "bg-muted/60",
+              )}
+              aria-expanded={expanded}
+              aria-controls={`model-review-${index}`}
+              aria-label={`${reviewer.model}: ${reviewerStatus.label}`}
+              onClick={() => setExpandedReviewer(expanded ? null : key)}
+            >
+              <ReviewerIcon
+                className={cn(
+                  "size-3",
+                  reviewerStatus.variant === "success" && "text-success-foreground",
+                  reviewerStatus.variant === "error" && "text-destructive-foreground",
+                  reviewerStatus.variant === "warning" && "text-warning-foreground",
+                )}
+                aria-hidden="true"
+              />
+              <span>{reviewer.model}</span>
+              <span className="text-muted-foreground">· {reviewerStatus.label}</span>
+              <ChevronDownIcon
+                className={cn(
+                  "size-3 text-muted-foreground transition-transform",
+                  expanded && "rotate-180",
+                )}
+                aria-hidden="true"
+              />
+            </button>
+          );
+        })}
+      </div>
+
+      {modelReview.reviewers.map((reviewer, index) => {
+        const key = `${reviewer.provider}:${reviewer.model}:${index}`;
+        if (expandedReviewer !== key) {
+          return null;
+        }
+        return (
+          <div
+            key={key}
+            id={`model-review-${index}`}
+            className="mt-2 rounded-lg border border-border/60 bg-muted/30 p-3"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] font-medium text-foreground">{reviewer.model}</p>
+              <span className="text-[10px] text-muted-foreground">{reviewer.provider}</span>
+            </div>
+            {reviewer.summary.length > 0 ? (
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                {reviewer.summary}
+              </p>
+            ) : null}
+            {reviewer.error !== undefined ? (
+              <p className="mt-2 flex items-start gap-1.5 text-[11px] text-warning-foreground">
+                <AlertTriangleIcon className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+                {reviewer.error}
+              </p>
+            ) : null}
+            {reviewer.findings.length > 0 ? (
+              <ul className="mt-2 space-y-2">
+                {reviewer.findings.map((finding, findingIndex) => (
+                  <li
+                    key={`${finding.title}:${findingIndex}`}
+                    className="border-t border-border/50 pt-2 first:border-0 first:pt-0"
+                  >
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge
+                        variant={
+                          finding.severity === "blocking"
+                            ? "error"
+                            : finding.severity === "warning"
+                              ? "warning"
+                              : "secondary"
+                        }
+                        size="sm"
+                      >
+                        {finding.severity}
+                      </Badge>
+                      <span className="text-[11px] font-medium text-foreground">
+                        {finding.title}
+                      </span>
+                      {finding.path !== undefined ? (
+                        <code className="text-[10px] text-muted-foreground">{finding.path}</code>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                      {finding.detail}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : reviewer.status === "completed" ? (
+              <p className="mt-2 text-[11px] text-muted-foreground">No actionable findings.</p>
+            ) : null}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
 export interface PullRequestPanelProps {
   readonly environmentId: EnvironmentId;
   readonly workItemId: WorkItemId;
   readonly lifecycle: WorkItem["lifecycle"];
   readonly pullRequest: PullRequestEvidence;
+  readonly modelReview: ModelReviewArtefact | null;
   readonly onRefresh: () => void;
   readonly isRefreshing: boolean;
 }
@@ -256,6 +435,7 @@ export function PullRequestPanel({
   workItemId,
   lifecycle,
   pullRequest,
+  modelReview,
   onRefresh,
   isRefreshing,
 }: PullRequestPanelProps) {
@@ -277,7 +457,7 @@ export function PullRequestPanel({
 
   const enriched = hasEnrichment(pullRequest);
   const statusPresentation = prStatusPresentation(pullRequest.status);
-  const approveBlockers = approveMergeBlockers(pullRequest, lifecycle);
+  const approveBlockers = approveMergeBlockers(pullRequest, lifecycle, modelReview);
   const requestBlockers = requestChangesBlockers(lifecycle);
 
   const applyGateOutcome = (ok: boolean) => {
@@ -390,6 +570,8 @@ export function PullRequestPanel({
           Host enrichment unavailable — merge readiness caps at ready for review.
         </p>
       )}
+
+      {modelReview !== null ? <ModelReviewStrip modelReview={modelReview} /> : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
         <Button

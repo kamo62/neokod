@@ -1,5 +1,6 @@
 import type {
   EffectiveWorkflowConfig,
+  EvidenceBundle,
   NormalizedIssue,
   PullRequestEvidence,
 } from "@neokod/contracts";
@@ -40,10 +41,11 @@ import { TrackerRegistryWithFactories } from "../../Trackers/Registry.ts";
 import { makeMemoryTrackerAdapter } from "../../Trackers/MemoryAdapter.ts";
 import { TrackerEnablementLive } from "../TrackerEnablement.ts";
 import { SymphonyOrchestrator } from "../SymphonyOrchestrator.ts";
-import { SymphonyOrchestratorLive } from "./SymphonyOrchestratorLive.ts";
+import { SymphonyOrchestratorLive, modelReviewAllowsMerge } from "./SymphonyOrchestratorLive.ts";
 import { RunDispatcher, RunDispatchError } from "../../Runner/Dispatcher.ts";
 import { PullRequestService } from "../../Evidence/PullRequest.ts";
 import { buildRunPrompt, type ReviewFeedbackContext } from "../../Runner/Prompt.ts";
+import { WorkflowLoaderService, type WorkflowLoader } from "../../Workflow/Loader.ts";
 import { layerTest as serverSettingsTestLayer } from "../../../serverSettings.ts";
 
 const makeConfig = (repositoryPath: string): EffectiveWorkflowConfig => ({
@@ -64,6 +66,88 @@ const makeConfig = (repositoryPath: string): EffectiveWorkflowConfig => ({
   validationTestPathPatterns: [],
   approvalsProtectedPaths: [],
   approvalsPolicies: [],
+  // The layer is shared across this suite and the mock dispatcher deliberately
+  // leaves claimed items in `preparing`. Keep fixture bookkeeping from
+  // exhausting the production default cap and obscuring the behavior under
+  // test; dedicated concurrency tests override this value explicitly.
+  concurrencyGlobal: 10_000,
+});
+
+const makeModelReviewEvidence = (
+  overrides: Partial<NonNullable<EvidenceBundle["modelReview"]>> = {},
+): EvidenceBundle => ({
+  changedFiles: [],
+  testsChanged: [],
+  commits: [],
+  validationResults: [],
+  assumptions: [],
+  risks: [],
+  unresolved: [],
+  artefacts: [],
+  pullRequest: null,
+  modelReview: {
+    provenance: "model",
+    target: "baseBranch",
+    baseRef: "main",
+    headRef: "HEAD",
+    baseSha: "base-sha",
+    headSha: "head-sha",
+    sourceHashes: ["diff-hash"],
+    require: "all-approve",
+    verdict: "approve",
+    passed: true,
+    reviewers: [
+      {
+        provenance: "model",
+        provider: "claude_review",
+        model: "claude-fable-5",
+        status: "completed",
+        verdict: "approve",
+        summary: "Looks good.",
+        findings: [],
+        reviewedAt: "2026-08-07T12:00:00.000Z",
+      },
+    ],
+    reviewedAt: "2026-08-07T12:00:00.000Z",
+    ...overrides,
+  },
+  overallAssessment: "ready_for_review",
+  createdAt: "2026-08-07T12:00:00.000Z",
+});
+
+it("gates enforced model review on verdict, configuration, and reviewed head", () => {
+  const config: EffectiveWorkflowConfig = {
+    ...makeConfig("/repo/review-gate"),
+    reviewAgents: ["claude-fable-5"],
+    reviewRequirement: "all-approve",
+  };
+  const currentPr = { latestCommit: "head-sha" } as PullRequestEvidence;
+
+  expect(modelReviewAllowsMerge(config, makeModelReviewEvidence(), currentPr)).toBe(true);
+  expect(
+    modelReviewAllowsMerge(config, makeModelReviewEvidence({ headSha: "stale-sha" }), currentPr),
+  ).toBe(false);
+  expect(
+    modelReviewAllowsMerge(
+      config,
+      makeModelReviewEvidence({ passed: false, verdict: "request_changes" }),
+      currentPr,
+    ),
+  ).toBe(false);
+  expect(
+    modelReviewAllowsMerge(
+      { ...config, reviewAgents: ["different-model"] },
+      makeModelReviewEvidence(),
+      currentPr,
+    ),
+  ).toBe(false);
+  expect(
+    modelReviewAllowsMerge(
+      { ...config, reviewRequirement: "advisory" },
+      makeModelReviewEvidence({ passed: false, verdict: "advisory" }),
+      {} as PullRequestEvidence,
+    ),
+  ).toBe(true);
 });
 
 const makeIssue = (
@@ -88,12 +172,24 @@ const makeIssue = (
   updatedAt: null,
 });
 
-const memoryFactory = (_provider: Readonly<Record<string, unknown>>) =>
+const pollCountsByRepository = new Map<string, number>();
+const memoryFactory = (options: { readonly repositoryPath: string }) =>
   makeMemoryTrackerAdapter({
     issues: [makeIssue("1"), makeIssue("2", "closed"), makeIssue("3", "open", [])],
     activeStates: ["open"],
     terminalStates: ["closed"],
-  });
+  }).pipe(
+    Effect.map((adapter) => ({
+      ...adapter,
+      listCandidateIssues: () =>
+        Effect.sync(() => {
+          pollCountsByRepository.set(
+            options.repositoryPath,
+            (pollCountsByRepository.get(options.repositoryPath) ?? 0) + 1,
+          );
+        }).pipe(Effect.flatMap(() => adapter.listCandidateIssues())),
+    })),
+  );
 
 const registryLayer = TrackerRegistryWithFactories(new Map([["github", memoryFactory]]));
 
@@ -103,6 +199,7 @@ const dispatchedIds: string[] = [];
 const dispatchedInputs: Array<{
   readonly workItemId: string;
   readonly reviewFeedback?: ReviewFeedbackContext;
+  readonly workflowInstructions?: string;
 }> = [];
 
 const mockDispatcherLayer = Layer.effect(
@@ -113,15 +210,23 @@ const mockDispatcherLayer = Layer.effect(
       dispatchWorkItem: (input: {
         readonly workItem: { readonly id: WorkItemId };
         readonly reviewFeedback?: ReviewFeedbackContext;
+        readonly workflowInstructions?: string;
       }) =>
-        Effect.sync(() => {
-          dispatchedIds.push(String(input.workItem.id));
-          dispatchedInputs.push({
-            workItemId: String(input.workItem.id),
-            ...(input.reviewFeedback !== undefined ? { reviewFeedback: input.reviewFeedback } : {}),
-          });
-        }).pipe(
-          Effect.flatMap(() => workItems.claim(input.workItem.id, "mock-owner")),
+        workItems.claim(input.workItem.id, "mock-owner").pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              dispatchedIds.push(String(input.workItem.id));
+              dispatchedInputs.push({
+                workItemId: String(input.workItem.id),
+                ...(input.reviewFeedback !== undefined
+                  ? { reviewFeedback: input.reviewFeedback }
+                  : {}),
+                ...(input.workflowInstructions !== undefined
+                  ? { workflowInstructions: input.workflowInstructions }
+                  : {}),
+              });
+            }),
+          ),
           Effect.mapError((cause) => new RunDispatchError(cause.message)),
           Effect.as("run-mock" as RunAttemptId),
         ),
@@ -184,6 +289,19 @@ const setPullRequestComments = (
     }
   });
 
+const workflowReloadCalls: string[] = [];
+const mockWorkflowLoaderLayer = Layer.succeed(WorkflowLoaderService, {
+  loadWorkflow: () => Effect.die(new Error("not used in orchestrator tests")),
+  reloadChanged: ({ repositoryPath }) =>
+    Effect.sync(() => {
+      workflowReloadCalls.push(repositoryPath);
+      return false;
+    }),
+  getWorkflowContent: () => Effect.die(new Error("not used in orchestrator tests")),
+  saveWorkflowContent: () => Effect.die(new Error("not used in orchestrator tests")),
+  createWorkflow: () => Effect.die(new Error("not used in orchestrator tests")),
+} satisfies WorkflowLoader);
+
 const layer = it.layer(
   SymphonyOrchestratorLive.pipe(
     Layer.provideMerge(WorkItemRepositoryLive),
@@ -192,6 +310,7 @@ const layer = it.layer(
     Layer.provideMerge(RunEventRepositoryLive),
     Layer.provideMerge(OrchestratorStateRepositoryLive),
     Layer.provideMerge(registryLayer),
+    Layer.provideMerge(mockWorkflowLoaderLayer),
     Layer.provideMerge(TrackerEnablementLive),
     Layer.provideMerge(mockDispatcherLayer.pipe(Layer.provide(WorkItemRepositoryLive))),
     Layer.provideMerge(mockApprovalsLayer),
@@ -241,19 +360,24 @@ const layer = it.layer(
   ),
 );
 
-const seedWorkflow = (id: string, repositoryPath: string) =>
+const seedWorkflow = (
+  id: string,
+  repositoryPath: string,
+  overrides: Partial<EffectiveWorkflowConfig> = {},
+) =>
   Effect.gen(function* () {
     const workflows = yield* WorkflowRepository;
     const now = yield* nowIso;
+    const effectiveConfig = { ...makeConfig(repositoryPath), ...overrides };
     yield* workflows.upsert({
       id: WorkflowId.make(id),
       repositoryPath,
       workflowPath: `${repositoryPath}/WORKFLOW.md`,
       status: "active",
-      autonomy: "observe",
+      autonomy: effectiveConfig.autonomy,
       validationError: null,
       definition: { config: {}, promptTemplate: "Implement." },
-      effectiveConfig: makeConfig(repositoryPath),
+      effectiveConfig,
       enabledAt: now,
       createdAt: now,
       updatedAt: now,
@@ -261,8 +385,9 @@ const seedWorkflow = (id: string, repositoryPath: string) =>
   });
 
 layer("SymphonyOrchestrator Observe", (it) => {
-  it.effect("polls an active workflow and projects an eligible queue without dispatching", () =>
+  it.effect("polls an Observe workflow and projects an eligible queue without dispatching", () =>
     Effect.gen(function* () {
+      dispatchedIds.length = 0;
       const orchestrator = yield* SymphonyOrchestrator;
       yield* seedWorkflow("wf-observe-1", "/repo/observe");
       yield* orchestrator.refreshNow();
@@ -280,6 +405,55 @@ layer("SymphonyOrchestrator Observe", (it) => {
         byTitle.get("Issue 3")?.ineligibilityReasons.some((r) => r.startsWith("missing_label")),
       ).toBe(true);
       expect(byTitle.get("Issue 2")).toBeUndefined();
+      expect(dispatchedIds).toEqual([]);
+    }),
+  );
+
+  it.effect("automatically dispatches newly queued execute work with workflow instructions", () =>
+    Effect.gen(function* () {
+      dispatchedIds.length = 0;
+      dispatchedInputs.length = 0;
+      yield* seedWorkflow("wf-execute-1", "/repo/execute", { autonomy: "execute" });
+
+      yield* TestClock.adjust("5 seconds");
+      yield* Effect.yieldNow;
+
+      expect(dispatchedIds).toHaveLength(1);
+      expect(dispatchedInputs[0]?.workflowInstructions).toBe("Implement.");
+      const workItems = yield* WorkItemRepository;
+      const dispatched = yield* workItems.getById(WorkItemId.make(dispatchedIds[0] ?? "missing"));
+      expect(dispatched?.lifecycle).toBe("preparing");
+    }),
+  );
+
+  it.effect("reloads active WORKFLOW.md files on every explicit tick", () =>
+    Effect.gen(function* () {
+      workflowReloadCalls.length = 0;
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-reload-1", "/repo/reload");
+
+      yield* orchestrator.refreshNow();
+      yield* orchestrator.refreshNow();
+
+      expect(workflowReloadCalls.filter((path) => path === "/repo/reload")).toHaveLength(2);
+    }),
+  );
+
+  it.effect("honors each workflow poll interval across scheduler scans", () =>
+    Effect.gen(function* () {
+      pollCountsByRepository.clear();
+      yield* seedWorkflow("wf-cadence-1", "/repo/cadence", {
+        pollIntervalMs: 15_000,
+      });
+
+      yield* TestClock.adjust("5 seconds");
+      expect(pollCountsByRepository.get("/repo/cadence")).toBe(1);
+
+      yield* TestClock.adjust("5 seconds");
+      expect(pollCountsByRepository.get("/repo/cadence")).toBe(1);
+
+      yield* TestClock.adjust("10 seconds");
+      expect(pollCountsByRepository.get("/repo/cadence")).toBe(2);
     }),
   );
 
@@ -526,6 +700,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
 
   it.effect("re-dispatches a retry_scheduled item once its backoff elapses", () =>
     Effect.gen(function* () {
+      dispatchedIds.length = 0;
       const orchestrator = yield* SymphonyOrchestrator;
       yield* seedWorkflow("wf-retry-1", "/repo/retry");
       const workflows = yield* WorkflowRepository;
@@ -592,10 +767,13 @@ layer("SymphonyOrchestrator Observe", (it) => {
       expect(before?.lifecycle).toBe("retry_scheduled");
       expect(dispatchedIds).toEqual([]);
 
+      // Let the 5-second scheduler scans carry the retry across its 10-second
+      // backoff boundary. The scan at 10s performs the dispatch; do not force
+      // a later explicit tick, because this intentionally minimal mock does
+      // not create the new run-attempt row that production dispatch records.
       yield* TestClock.adjust("11 seconds");
-      yield* orchestrator.refreshNow();
+      yield* Effect.yieldNow;
       const after = yield* workItems.getById(workItemId);
-      // The mock dispatcher claims from retry_scheduled -> preparing.
       expect(after?.lifecycle).toBe("preparing");
       expect(dispatchedIds).toContain("retry-1");
     }),

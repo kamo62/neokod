@@ -18,6 +18,7 @@ import { TextGenerationError } from "@neokod/contracts";
 import * as TextGeneration from "./TextGeneration.ts";
 import {
   buildBranchNamePrompt,
+  buildCodeReviewPrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
@@ -96,6 +97,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     operation:
       | "generateCommitMessage"
       | "generatePrContent"
+      | "generateCodeReview"
       | "generateBranchName"
       | "generateThreadTitle",
     value: unknown,
@@ -115,6 +117,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     _operation:
       | "generateCommitMessage"
       | "generatePrContent"
+      | "generateCodeReview"
       | "generateBranchName"
       | "generateThreadTitle",
     attachments: TextGeneration.BranchNameGenerationInput["attachments"],
@@ -157,6 +160,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     operation:
       | "generateCommitMessage"
       | "generatePrContent"
+      | "generateCodeReview"
       | "generateBranchName"
       | "generateThreadTitle";
     cwd: string;
@@ -345,6 +349,25 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       };
     });
 
+  const generateCodeReview: TextGeneration.TextGeneration["Service"]["generateCodeReview"] =
+    Effect.fn("CodexTextGeneration.generateCodeReview")(function* (input) {
+      const { prompt, outputSchema } = buildCodeReviewPrompt({
+        objective: input.objective,
+        acceptanceCriteria: input.acceptanceCriteria,
+        baseRef: input.baseRef,
+        headRef: input.headRef,
+        diffPatch: input.diffPatch,
+      });
+
+      return yield* runCodexJson({
+        operation: "generateCodeReview",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+    });
+
   const generateBranchName: TextGeneration.TextGeneration["Service"]["generateBranchName"] =
     Effect.fn("CodexTextGeneration.generateBranchName")(function* (input) {
       const { imagePaths } = yield* materializeImageAttachments(
@@ -398,6 +421,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
   return {
     generateCommitMessage,
     generatePrContent,
+    generateCodeReview,
     generateBranchName,
     generateThreadTitle,
   } satisfies TextGeneration.TextGeneration["Service"];

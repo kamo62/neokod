@@ -29,6 +29,7 @@ import { WorkspaceManagerLive } from "../Workspaces/Live.ts";
 import { ValidationRunnerLive } from "../Validation/Runner.ts";
 import { EvidenceServiceLive } from "../Evidence/Service.ts";
 import { PullRequestServiceLive } from "../Evidence/PullRequest.ts";
+import { SymphonyModelReviewerLive } from "../Review/ModelReviewer.ts";
 import { HandoffServiceLive } from "../HandoffService.ts";
 import {
   WorkspaceOwnershipRepositoryLive,
@@ -74,6 +75,7 @@ const ExecutionFinalizerSlice = ExecutionFinalizerLive.pipe(
     Layer.mergeAll(
       ValidationRunnerLive.pipe(Layer.provideMerge(ProcessRunnerLayer)),
       EvidenceServiceLive.pipe(Layer.provideMerge(GitVcsDriverLayer)),
+      SymphonyModelReviewerLive.pipe(Layer.provideMerge(GitVcsDriverLayer)),
       PullRequestServiceLive.pipe(
         Layer.provideMerge(GitVcsDriverLayer),
         Layer.provideMerge(SourceControlProviderRegistryLive),

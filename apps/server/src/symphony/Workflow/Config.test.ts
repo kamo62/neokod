@@ -158,4 +158,63 @@ describe("resolveEnvIndirection / resolveEffectiveConfig", () => {
     expect(errors).toEqual([]);
     expect(config?.liveRequestsWaitTimeoutMs).toBe(WORKFLOW_DEFAULTS.liveRequestsWaitTimeoutMs);
   });
+
+  it("defaults model review to an empty advisory set", () => {
+    const { config, errors } = resolve({
+      tracker: { kind: "github", active_states: ["Ready"], terminal_states: ["Done"] },
+    });
+    expect(errors).toEqual([]);
+    expect(config?.reviewAgents).toEqual([]);
+    expect(config?.reviewRequirement).toBe("advisory");
+  });
+
+  it("parses per-role reviewer models and an all-approve gate", () => {
+    const { config, errors } = resolve({
+      tracker: { kind: "github", active_states: ["Ready"], terminal_states: ["Done"] },
+      agent: { model: "gpt-5.6-luna" },
+      review: {
+        agents: ["gpt-5.6-sol", "claude-fable-5"],
+        require: "all-approve",
+      },
+    });
+    expect(errors).toEqual([]);
+    expect(config?.agentModel).toBe("gpt-5.6-luna");
+    expect(config?.reviewAgents).toEqual(["gpt-5.6-sol", "claude-fable-5"]);
+    expect(config?.reviewRequirement).toBe("all-approve");
+  });
+
+  it("rejects malformed, empty, and duplicate reviewer model entries", () => {
+    const malformed = resolve({
+      tracker: { kind: "github", active_states: ["Ready"], terminal_states: ["Done"] },
+      review: { agents: "gpt-5.6-sol" },
+    });
+    expect(malformed.config).toBeNull();
+    expect(malformed.errors.some((error) => error.field === "review.agents")).toBe(true);
+
+    const invalidEntries = resolve({
+      tracker: { kind: "github", active_states: ["Ready"], terminal_states: ["Done"] },
+      review: { agents: ["gpt-5.6-sol", " ", "gpt-5.6-sol"] },
+    });
+    expect(invalidEntries.config).toBeNull();
+    expect(invalidEntries.errors.map((error) => error.field)).toEqual([
+      "review.agents.1",
+      "review.agents.2",
+    ]);
+  });
+
+  it("rejects unsupported or unsatisfiable reviewer gate policies", () => {
+    const unsupported = resolve({
+      tracker: { kind: "github", active_states: ["Ready"], terminal_states: ["Done"] },
+      review: { agents: ["gpt-5.6-sol"], require: "majority" },
+    });
+    expect(unsupported.config).toBeNull();
+    expect(unsupported.errors.some((error) => error.field === "review.require")).toBe(true);
+
+    const noReviewers = resolve({
+      tracker: { kind: "github", active_states: ["Ready"], terminal_states: ["Done"] },
+      review: { require: "any-approve" },
+    });
+    expect(noReviewers.config).toBeNull();
+    expect(noReviewers.errors.some((error) => error.field === "review.agents")).toBe(true);
+  });
 });

@@ -31,6 +31,7 @@ import {
 } from "../Persistence/Services/AttentionRepository.ts";
 import { EvidenceService } from "../Evidence/Service.ts";
 import { PullRequestCreationError, PullRequestService } from "../Evidence/PullRequest.ts";
+import { SymphonyModelReviewer } from "../Review/ModelReviewer.ts";
 import { ValidationRunner } from "../Validation/Runner.ts";
 import { ExecutionFinalizer, ExecutionFinalizerLive } from "./ExecutionFinalizer.ts";
 import type { EvidenceBundle } from "@neokod/contracts";
@@ -162,6 +163,11 @@ const fakeEvidenceService = Layer.succeed(EvidenceService, {
   assemble: () => Effect.succeed(makeEvidence()),
 });
 
+const fakeModelReviewer = (modelReview: EvidenceBundle["modelReview"] = null) =>
+  Layer.succeed(SymphonyModelReviewer, {
+    review: () => Effect.succeed(modelReview),
+  });
+
 const fakePullRequestService = (pr: PullRequestEvidence | null) =>
   Layer.succeed(PullRequestService, {
     create: () => Effect.succeed(pr as PullRequestEvidence),
@@ -175,7 +181,11 @@ const failingPullRequestService = Layer.succeed(PullRequestService, {
   listUnresolvedComments: () => Effect.succeed(null),
 });
 
-const layer = (validationStatuses: ReadonlyArray<string>, pr: PullRequestEvidence | null) =>
+const layer = (
+  validationStatuses: ReadonlyArray<string>,
+  pr: PullRequestEvidence | null,
+  modelReview: EvidenceBundle["modelReview"] = null,
+) =>
   it.layer(
     ExecutionFinalizerLive.pipe(
       Layer.provideMerge(WorkItemRepositoryLive),
@@ -184,6 +194,7 @@ const layer = (validationStatuses: ReadonlyArray<string>, pr: PullRequestEvidenc
       Layer.provideMerge(EvidenceRepositoryLive),
       Layer.provideMerge(fakeValidationRunner(validationStatuses)),
       Layer.provideMerge(fakeEvidenceService),
+      Layer.provideMerge(fakeModelReviewer(modelReview)),
       Layer.provideMerge(fakePullRequestService(pr)),
       Layer.provideMerge(AttentionRepositoryLive),
       Layer.provideMerge(SqlitePersistenceMemory),
@@ -231,6 +242,72 @@ layer(["passed"], makePullRequest())("ExecutionFinalizer review-ready path", (it
       const events = yield* runEvents.listForAttempt(runAttemptId);
       expect(events.map((e) => e.eventType)).toContain("pull_request_opened");
       expect(events.map((e) => e.eventType)).toContain("evidence_assembled");
+    }),
+  );
+});
+
+layer(["passed"], makePullRequest(), {
+  provenance: "model",
+  target: "baseBranch",
+  baseRef: "main",
+  headRef: "HEAD",
+  baseSha: "base-sha",
+  headSha: "head-sha",
+  sourceHashes: ["hash-review"],
+  require: "all-approve",
+  verdict: "request_changes",
+  passed: false,
+  reviewers: [
+    {
+      provenance: "model",
+      provider: "claude_review",
+      model: "claude-fable-5",
+      status: "completed",
+      verdict: "request_changes",
+      summary: "A blocking issue remains.",
+      findings: [
+        {
+          severity: "blocking",
+          title: "Guard the fallback",
+          detail: "The fallback bypasses the merge gate.",
+          path: "src/gate.ts",
+        },
+      ],
+      reviewedAt: "2026-08-07T12:00:00.000Z",
+    },
+  ],
+  reviewedAt: "2026-08-07T12:00:00.000Z",
+})("ExecutionFinalizer model review evidence", (it) => {
+  it.effect("persists reviewer verdicts and downgrades readiness to warnings", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("reviewed", "owner-reviewed");
+      const runAttemptId = yield* seedAttempt("reviewed");
+      const finalizer = yield* ExecutionFinalizer;
+
+      yield* finalizer.finalize({
+        workItem,
+        issue: makeIssue("reviewed"),
+        runAttemptId,
+        config: makeConfig({
+          reviewAgents: ["claude-fable-5"],
+          reviewRequirement: "all-approve",
+        }),
+        workspacePath: "/ws/reviewed",
+        branch: "symphony/issue-reviewed",
+        baseBranch: "main",
+        ownerToken: "owner-reviewed",
+        generation: 1,
+      });
+
+      const evidenceRepo = yield* EvidenceRepository;
+      const stored = yield* evidenceRepo.getByWorkItem(workItem.id);
+      expect(stored?.modelReview?.passed).toBe(false);
+      expect(stored?.modelReview?.reviewers[0]?.model).toBe("claude-fable-5");
+      expect(stored?.overallAssessment).toBe("ready_with_warnings");
+
+      const runEvents = yield* RunEventRepository;
+      const events = yield* runEvents.listForAttempt(runAttemptId);
+      expect(events.map((event) => event.eventType)).toContain("model_review_completed");
     }),
   );
 });
@@ -335,6 +412,7 @@ it.layer(
     Layer.provideMerge(EvidenceRepositoryLive),
     Layer.provideMerge(fakeValidationRunner(["passed"])),
     Layer.provideMerge(fakeEvidenceService),
+    Layer.provideMerge(fakeModelReviewer()),
     Layer.provideMerge(failingPullRequestService),
     Layer.provideMerge(AttentionRepositoryLive),
     Layer.provideMerge(SqlitePersistenceMemory),

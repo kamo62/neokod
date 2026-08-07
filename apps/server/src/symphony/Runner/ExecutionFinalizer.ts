@@ -19,6 +19,7 @@ import { AttentionRepository } from "../Persistence/Services/AttentionRepository
 import { nowIso } from "../Domain/Time.ts";
 import { EvidenceService } from "../Evidence/Service.ts";
 import { PullRequestService } from "../Evidence/PullRequest.ts";
+import { SymphonyModelReviewer } from "../Review/ModelReviewer.ts";
 import { ValidationRunner } from "../Validation/Runner.ts";
 
 /**
@@ -66,6 +67,7 @@ const EVIDENCE_FILE_NAME = "SYMPHONY_EVIDENCE.md";
 export const makeExecutionFinalizer = Effect.gen(function* () {
   const validationRunner = yield* ValidationRunner;
   const evidenceService = yield* EvidenceService;
+  const modelReviewer = yield* SymphonyModelReviewer;
   const pullRequestService = yield* PullRequestService;
   const evidenceRepository = yield* EvidenceRepository;
   const runAttempts = yield* RunAttemptRepository;
@@ -175,7 +177,39 @@ export const makeExecutionFinalizer = Effect.gen(function* () {
         return "validation_failed" as const;
       }
 
-      // 5. Review-ready: create the PR and persist the bundle. The evidence
+      // 5. Model review runs only after host validation succeeds. Its evidence
+      //    may downgrade readiness or block the later merge gate, but can
+      //    never upgrade host-derived assessment.
+      const modelReview = yield* modelReviewer.review({
+        config: input.config,
+        workItem: input.workItem,
+        workspacePath: input.workspacePath,
+        baseRef: input.baseBranch,
+        headRef: "HEAD",
+      });
+      if (modelReview !== null) {
+        const hasReviewWarnings = modelReview.reviewers.some(
+          (reviewer) => reviewer.status !== "completed" || reviewer.verdict === "request_changes",
+        );
+        const overallAssessment: EvidenceBundle["overallAssessment"] =
+          hasReviewWarnings && evidence.overallAssessment === "ready_for_review"
+            ? "ready_with_warnings"
+            : evidence.overallAssessment;
+        evidence = { ...evidence, modelReview, overallAssessment };
+        yield* appendEvent(input.runAttemptId, "model_review_completed", {
+          requirement: modelReview.require,
+          verdict: modelReview.verdict,
+          passed: modelReview.passed,
+          reviewers: modelReview.reviewers.map((reviewer) => ({
+            provider: reviewer.provider,
+            model: reviewer.model,
+            status: reviewer.status,
+            ...(reviewer.verdict !== undefined ? { verdict: reviewer.verdict } : {}),
+          })),
+        });
+      }
+
+      // 6. Review-ready: create the PR and persist the bundle. The evidence
       //    survives a provider failure, but the failure itself must be
       //    durably recorded — a run without a PR and without a recorded
       //    reason is indistinguishable from success in review.
@@ -257,6 +291,7 @@ export const ExecutionFinalizerLive: Layer.Layer<
   never,
   | ValidationRunner
   | EvidenceService
+  | SymphonyModelReviewer
   | PullRequestService
   | EvidenceRepository
   | RunAttemptRepository

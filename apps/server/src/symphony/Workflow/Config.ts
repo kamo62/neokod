@@ -138,6 +138,11 @@ const asApprovalMode = (value: unknown): "auto" | "human" | "auto_if_required" |
 const asApprovalScope = (value: unknown): "once" | "current_run" | "repository" | undefined =>
   value === "once" || value === "current_run" || value === "repository" ? value : undefined;
 
+const asReviewRequirement = (
+  value: unknown,
+): "all-approve" | "any-approve" | "advisory" | undefined =>
+  value === "all-approve" || value === "any-approve" || value === "advisory" ? value : undefined;
+
 /**
  * Resolve a raw front-matter config map into a typed, validated effective
  * config. `workflowDir` is the directory containing `WORKFLOW.md`; relative
@@ -266,6 +271,38 @@ export const resolveEffectiveConfig = (
     const agentModel = asString(agent.model) ?? undefined;
     const provider = options.providerResolver(agentModel);
 
+    const review = getObject(rawConfig, "review") ?? {};
+    const reviewAgents: string[] = [];
+    if (review.agents !== undefined) {
+      if (!Array.isArray(review.agents)) {
+        addError("review.agents", "review.agents must be a list of model names");
+      } else {
+        const seen = new Set<string>();
+        review.agents.forEach((entry, index) => {
+          const model = typeof entry === "string" ? entry.trim() : "";
+          if (model.length === 0) {
+            addError(`review.agents.${index}`, "reviewer model names must be non-empty strings");
+          } else if (seen.has(model)) {
+            addError(`review.agents.${index}`, `duplicate reviewer model '${model}'`);
+          } else {
+            seen.add(model);
+            reviewAgents.push(model);
+          }
+        });
+      }
+    }
+    const parsedReviewRequirement = asReviewRequirement(review.require);
+    if (review.require !== undefined && parsedReviewRequirement === undefined) {
+      addError(
+        "review.require",
+        "review.require must be one of all-approve, any-approve, advisory",
+      );
+    }
+    const reviewRequirement = parsedReviewRequirement ?? "advisory";
+    if (reviewRequirement !== "advisory" && reviewAgents.length === 0) {
+      addError("review.agents", `${reviewRequirement} requires at least one reviewer model`);
+    }
+
     const config = EffectiveWorkflowConfigSchema.make({
       repositoryPath: options.repositoryPath,
       workflowPath: options.workflowPath,
@@ -279,6 +316,8 @@ export const resolveEffectiveConfig = (
       autonomy,
       agentProvider: provider,
       agentModel,
+      reviewAgents,
+      reviewRequirement,
       maxConcurrentAgents,
       maxTurns,
       maxAttempts,
