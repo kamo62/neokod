@@ -1,12 +1,34 @@
 # Handoff
 
-Updated: 2026-08-07 16:50 on MacBookPro
+Updated: 2026-08-07 17:55 on MacBookPro
 
 ## State
 
 - Branch: `feat/symphony-mode-impl`
-- HEAD: `3a69bccf9` feat(web): Symphony threadspace — mode-aware sidebar rail
-- Pushed: yes, everything is on origin. Tracked tree clean.
+- HEAD: `504aafaea` feat(web): agent provider marks on sidebar thread rows (diri adoption)
+- Pushed: yes. Tracked tree clean.
+
+## Evening session: reference-app adoption round
+
+- `200e3ff9e` brand icons for Jira/Linear/Asana/GitHub-Projects across tracker surfaces.
+- `1ffa713bb` master-knob tokens (--ui-scale, clamped --radius-base) + Appearance settings pane
+  (the local-studio flagship, Phase 3 item 16).
+- `504aafaea` agent provider marks on every sidebar thread row (the diri pattern Kamogelo
+  pointed at) — verified live in the browser: OpenAI mark on Codex threads, Copilot mark on
+  Copilot threads, My Work + project tree both.
+- Reference apps RUN live: local-studio serves at :3199 (status dashboard + setup wizard
+  captured; its agent pane needs its bun controller service); diri built from source with cargo
+  and is running natively on this machine (screen capture blocked pending the user granting
+  Screen Recording permission to the terminal).
+- Upstream re-check: NO cross-provider agent conversation exists in the nightly. a2ca89aa1 is
+  observability for provider-NATIVE subagents (Codex collabAgent/\* events, Claude subagents,
+  ~6,900 lines) + a collaborative-browser MCP toolkit — flagged as a lane-sized port candidate
+  in RECONCILE terms, not a Codex→Claude bridge.
+- Combined verification: web typecheck clean, full web suite 163 files / 1506 green.
+
+Still user-gated: `gh repo create` for the live Symphony smoke (permission classifier blocks
+external repo creation; one `! gh repo create neokod-symphony-smoke --private --clone` from
+Kamogelo unblocks the finale), Screen Recording permission for diri captures, PRD section 21.
 
 ## UI COMPLETE (late-afternoon session)
 
