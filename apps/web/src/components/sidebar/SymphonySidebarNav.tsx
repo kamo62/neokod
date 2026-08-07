@@ -160,10 +160,10 @@ export function SymphonySidebarNav({ pathname }: { pathname: string }) {
                 finishNavigation();
                 void navigate({ to: "/" });
               }}
-              aria-label="Back to Work mode"
+              aria-label="Back to Code mode"
             >
               <ArrowLeftIcon aria-hidden="true" className="size-4 shrink-0" />
-              <span className="min-w-0 flex-1 truncate">Back to Work</span>
+              <span className="min-w-0 flex-1 truncate">Back to Code</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

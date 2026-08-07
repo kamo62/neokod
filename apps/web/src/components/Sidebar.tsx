@@ -2915,8 +2915,8 @@ const OPERATING_MODES: ReadonlyArray<{
   label: string;
   description: string;
 }> = [
-  { mode: "work", label: "Work", description: "Build, debug, and ship" },
-  { mode: "symphony", label: "Symphony", description: "Autonomous work from your tracker" },
+  { mode: "work", label: "Code", description: "Working directly with your code" },
+  { mode: "symphony", label: "Symphony", description: "Agent-led development" },
 ];
 
 function SidebarBrand() {
