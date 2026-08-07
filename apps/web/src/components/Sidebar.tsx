@@ -137,6 +137,7 @@ import {
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
+import { SymphonySidebarNav } from "./sidebar/SymphonySidebarNav";
 import { Kbd } from "./ui/kbd";
 import {
   getArm64IntelBuildWarningDescription,
@@ -2989,15 +2990,21 @@ function NeokodWordmark() {
   );
 }
 
-const SidebarChromeFooter = memo(function SidebarChromeFooter() {
+const SidebarChromeFooter = memo(function SidebarChromeFooter({
+  isOnSymphony = false,
+}: {
+  isOnSymphony?: boolean;
+}) {
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
   const handleSettingsClick = useCallback(() => {
     if (isMobile) {
       setOpenMobile(false);
     }
-    void navigate({ to: "/settings" });
-  }, [isMobile, navigate, setOpenMobile]);
+    // Symphony has its own settings surface, separate from the app settings
+    // pages, so this button follows whichever mode the sidebar is in.
+    void navigate({ to: isOnSymphony ? "/symphony/settings" : "/settings" });
+  }, [isMobile, isOnSymphony, navigate, setOpenMobile]);
 
   return (
     <SidebarFooter className="p-2">
@@ -3011,7 +3018,7 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
             onClick={handleSettingsClick}
           >
             <SettingsIcon className="size-3.5" />
-            <span className="text-ui">Settings</span>
+            <span className="text-ui">{isOnSymphony ? "Symphony settings" : "Settings"}</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
@@ -3484,6 +3491,7 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const pathname = useLocation({ select: (loc) => loc.pathname });
   const isOnSettings = pathname.startsWith("/settings");
+  const isOnSymphony = pathname === "/symphony" || pathname.startsWith("/symphony/");
   const sidebarThreadSortOrder = useClientSettings((s) => s.sidebarThreadSortOrder);
   const sidebarProjectSortOrder = useClientSettings((s) => s.sidebarProjectSortOrder);
   const sidebarProjectGroupingMode = useClientSettings((s) => s.sidebarProjectGroupingMode);
@@ -4111,6 +4119,12 @@ export default function Sidebar() {
 
       {isOnSettings ? (
         <SettingsSidebarNav pathname={pathname} />
+      ) : isOnSymphony ? (
+        <>
+          <SymphonySidebarNav pathname={pathname} />
+          <SidebarSeparator />
+          <SidebarChromeFooter isOnSymphony />
+        </>
       ) : (
         <>
           <SidebarViewTabs sidebarView={sidebarView} setSidebarView={setSidebarView} />
