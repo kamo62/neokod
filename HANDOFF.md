@@ -1,11 +1,45 @@
 # Handoff
 
-Updated: 2026-08-07 13:30 on MacBookPro
+Updated: 2026-08-07 14:45 on MacBookPro
 
 ## State
 
 - Branch: `feat/symphony-mode-impl`
-- HEAD: `6fd9a5c48` feat(symphony): close plan-gap lanes — pause/resume/stopAll RPCs, subscriptions, notifications, audit writer, env scrubbing, continuation turns, tracker residuals, advisory lock
+- HEAD: `af223db97` feat(symphony): register refreshPullRequest as a WS RPC; panel Refresh does a fresh host query
+- Pushed: yes, everything through af223db97 plus the handoff commit is on origin.
+- Tracked tree clean; only the standing user files are untracked.
+
+## FINAL BURN-DOWN (afternoon session, four delegate lanes + follow-up, all verified)
+
+- `81f4db18c` symphony settings/trackers/history routes are REAL (workflow list with
+  validate/activate/pause/resume, global pause/resume/stop-all with confirm, tracker health,
+  terminal-run history) riding the new RPCs.
+- `1b8913345` PR panel (plan 15.3.1) on run detail: enrichment grid, tri-state mergeable
+  rendered honestly, Approve gated in the UI exactly as the server gates, FR-095 honesty note
+  for unenriched hosts.
+- `5addcd344` session-expired banner (keyed on the connection supervisor's
+  blocked/authentication state — LIVE-VERIFIED by rotating the token under an open tab),
+  ctrl+tab MRU thread switcher (diri semantics, 33 unit tests), renderer + chunk crash
+  self-recovery, status-token cleanup with contrast-verified merged/terminal-active tokens.
+- `7ec954b41` FR-102-104: review feedback ingested into continuation dispatches — idempotent
+  against repeated refreshes (from-guard, pinned by test), comment bodies via a new GitHubCli
+  reviewThreads method, honest counts-only degradation elsewhere, feedback rides only turn 1.
+- `af223db97` refreshPullRequest registered as a real WS RPC; the panel's Refresh performs a
+  fresh host query before re-reading the run.
+- Verification (all independent): server suite 211 files / 1970 green; web 163 / 1506 green;
+  desktop 285 green; contracts+shared green; live boot probes at every layer-touching step
+  (three total, all clean); browser pass over settings/trackers/history/banner at final HEAD.
+
+## Remaining (short list)
+
+1. Workflow editor (PRD 12.3) — the settings pane manages lifecycle; editing WORKFLOW.md
+   content in-app is not built.
+2. Reviews-list PR badges would need PR data threaded into RunSummary (contracts+server).
+3. Second ACP provider (Cursor/Grok, WS-Q post-complete scope); richer templates.
+4. Live Symphony smoke: needs a designated target repository with real issues (user-gated).
+   Everything it depends on now exists.
+5. Kamogelo: PRD section 21 amendment for default-on analytics.
+
 - Pushed: yes, everything through the handoff commit is on origin.
 - INDEPENDENTLY VALIDATED (Fable, 13:20): live boot probe clean at 6fd9a5c48 (reaper starts,
   startup URL minted, no Service-not-found — the new AuditRepository/TrackerCheckpoint/
