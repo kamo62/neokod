@@ -1,15 +1,62 @@
 # Handoff
 
-Updated: 2026-08-07 04:40 on MacBookPro
+Updated: 2026-08-07 10:35 on MacBookPro
 
 ## State
 
 - Branch: `feat/symphony-mode-impl`
-- HEAD: `759bd11cd` fix(symphony): guarantee ownership lease on every dispatch path; surface PR creation failures
-- Pushed: push pending (this commit set). Run `git push` if this handoff arrived without it.
-- Dirty: only the standing user files (PDF, PLAN-exec-demo.md, demo.md, `__probe/`). REVIEW.md
-  and the audit record are GITIGNORED local files — they do not travel; the closure summary
-  below is the durable copy.
+- HEAD: `2e6fb9abe` fix(symphony): close audit open items — takeover identity/exit, resume idleness, retry re-check, orphan adoption, canonicalization, tri-state mergeable, attention raises, WORKFLOW.md wiring
+- Pushed: this commit set is NOT yet pushed. Run `git push` after the next commit.
+- Dirty: only the standing user files (PDF, PLAN-exec-demo.md, demo.md, `__probe/`,
+  `apps/server/scratch-neokod-symphony-layer-probe.ts`). REVIEW.md and the audit record are
+  GITIGNORED local files — they do not travel; the closure summary below is the durable copy.
+- Kamogelo's parallel session work (telemetry, keybindings, web UI) was committed upstream of
+  this session (5be8ce051 etc.) — the working tree is clean of it.
+
+## Done (this session: closed the audit's open items 1-8-first-entry)
+
+- `2e6fb9abe` closed the completion-audit "still open" list:
+  - **Item 1 (plan 16.0 residuals)**: takeOver now waits for the dispatch fiber/agent to exit
+    (bounded 5s poll of isAgentActive) and validates repository/worktree/branch identity via
+    `git.status` — a drifted checkout or detached HEAD aborts before any ownership transfer
+    (tests: drift-abort + success paths). resumeAutonomous drops `running` from its from-list
+    (no second-agent admission) and refuses when the bound Work thread's session is
+    starting/running (idleness check; test with a busy projection). bindWorkThread now binds a
+    REAL thread in production: engine+projection are REQUIRED deps of HandoffServiceLive
+    (bound at construction, no placeholder; the earlier slice-provide fix didn't resolve in
+    the sub-graph). takeOver park uses `requireUnclaimed` (owner-fenced).
+  - **Item 2 (retry re-check)**: dispatchWorkItem re-reads the issue from the tracker via
+    `refreshIssues` before re-dispatching (plan 9.5) — a vanished issue refuses dispatch and
+    leaves the item queued (test). Per-repository and per-workflow concurrency caps enforced
+    (config fields already existed; global-only before).
+  - **Item 3 (recovery)**: the agent child PID is recorded on the claim
+    (`AgentRuntime.pid()` + `setClaimOwnerPid`); recovery terminates a surviving orphan
+    (probe + SIGTERM) before releasing. Pending approvals for a dead run are marked
+    `interrupted` (new ApprovalService.interrupt; recovery only adopts runs with a live
+    claim).
+  - **Item 4 (canonicalization)**: WorkspaceOwnershipRepository canonicalizes paths via
+    `FileSystem.realPath` at acquire/transfer/renew/release/getByWorkspacePath.
+  - **Item 5 (GitHubCli)**: mergeable is now tri-state (`mergeable`/`conflicting`/`unknown`);
+    `latestCommit` is queried and recorded; a failed reviewThreads query FAILS the status read
+    instead of coercing to 0 (an unknown thread count can no longer pass the merge gate).
+  - **Item 6**: real two-connection claim-dedup contention test (two independent SQLite
+    connections over one file; exactly one claim wins).
+  - **Item 7**: `AttentionRepository` (table from migration 037 had zero writers) — the
+    finalizer raises a durable `merge_conflict`-kind attention item on pr_creation_failed;
+    listAttention merges raised items with approvals.
+  - **Item 8 first entry (WORKFLOW.md production wiring)**: new `Workflow/Loader.ts` — reads
+    WORKFLOW.md, parses, resolves effective config, upserts the record (invalid → status
+    `invalid` with validationError). `validateWorkflow` RPC is real (was {ok:true} stub);
+    `activateWorkflow` RPC registered + real; the poll tick calls `reloadChanged` for dynamic
+    reload (plan 6.4). Loader tests cover valid + invalid.
+
+## Verified
+
+- Full server suite: 211 files, **1946 passed / 7 skipped** green (was 1934 before this
+  session's ~12 new tests).
+- Web suite: 160 files / 1474 green.
+- Filtered server typecheck clean; `vp check` 0 errors / 29 warnings (baseline 27 + 2 new
+  pre-existing-class warnings from new files, none failing).
 
 ## Done (overnight session, goal: complete HANDOFF items + serve/test + confirm REVIEW closure)
 
@@ -38,26 +85,20 @@ Updated: 2026-08-07 04:40 on MacBookPro
   (watched restart cycle), scoped suites and both full suites green, `vp check` 0 errors.
 - Unverified: none of the closed items — but see Open items for what remains open by audit.
 
-## Open items (the definitive remaining list)
+## Open items (remaining after this session)
 
-1. Plan 16.0 residuals: takeOver lacks process-exit wait and repo/worktree/branch identity
-   validation; resumeAutonomous lacks an idleness check and admits re-queue from `running`;
-   bindWorkThread placeholder path in production; park not owner-fenced.
-2. Retry dispatch fabricates the issue instead of plan 9.5 `refreshIssues` re-check; only a
-   global concurrency cap exists.
-3. Recovery: no orphan-process termination/adoption; `isAgentActive` empty after restart;
-   approval rows not marked interrupted (8.3.1).
-4. Workspace-path canonicalization at the repository/guard boundary (RECONCILE constraint).
-5. GitHubCli mergeable tri-state + latestCommit (fails closed today; UX not safety);
-   reviewThreads query failure still coerces unresolvedComments to 0.
-6. Section 19 suite 1 two-connection claim-contention test unwritten.
-7. Archive Undo toast never renders (UI Phase 1 item 9 residual; the mod+shift+t recovery path
-   works). Attention item on pr_creation_failed deferred with FR-071-073.
-8. Unimplemented plan sections (gaps, not regressions): WORKFLOW.md production
-   loading/activation/reload (blocks the live Symphony smoke — nothing can activate a tracker),
-   13 unregistered RPCs incl. pause/stop-all, subscriptions, notifications coordinator,
-   observability/audit writers, agent child env scrubbing (SPEC 15.3), mode-switch UI,
-   continuation turns, FR-102-104.
+1. Unimplemented plan sections (gaps, not regressions): 13 defined-but-unregistered RPCs
+   (pause/stop-all safety controls, subscriptions, listTrackers/listHistory, resolveAttention),
+   notifications coordinator (15.4), observability/audit writers (section 17 — table exists,
+   zero writers), agent child env scrubbing (SPEC 15.3 — secretEnvironmentNames never consumed),
+   continuation turns (plan 8.2 — flag exists, no caller), FR-102-104 review-comment ingestion,
+   UI stubs (settings/trackers/history routes, workflow editor, PR panel), tracker residuals
+   (checkpoints table unused, localPriority sort, GitLabAdapter dispatchable), startup advisory
+   lock, second ACP provider. WORKFLOW.md wiring (load/activate/reload) is DONE; the live smoke
+   is now unblocked on the tracker-activation side.
+2. WORKFLOW.md: activateWorkflow/validateWorkflow RPCs registered; pause/resume/stopAll need
+   handlers before their RPCs join WsRpcGroup.
+3. Kamogelo: PRD section 21 amendment for default-on analytics (still pending).
 
 ## Resume
 
@@ -94,7 +135,12 @@ unwanted.
 
 ## Next moves
 
-1. Work the Open items top-down; 1 through 3 are the audit's shortest path to declaring plan
-   16.0 and the review fully closed.
-2. WORKFLOW.md production wiring (open item 8, first entry) unblocks the live Symphony smoke.
-3. Kamogelo: PRD section 21 amendment for default-on analytics (still pending).
+1. Push this branch (`git push`).
+2. Run the manual live smoke procedure (real Codex app-server, real repo, real PR + CI) — now
+   unblocked: WORKFLOW.md can be activated, retries re-check the tracker, takeover validates
+   identity, PR-creation failures surface as attention items.
+3. Implement the pause/resume/stopAll RPC handlers (orchestratorState needs per-workflow and
+   per-repo pause columns), then register those RPCs in WsRpcGroup.
+4. Dedicated lanes: observability/audit writers (section 17), notifications coordinator,
+   agent child env scrubbing (SPEC 15.3), continuation turns.
+5. Kamogelo: PRD section 21 amendment for default-on analytics (still pending).
