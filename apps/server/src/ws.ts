@@ -6,6 +6,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
+import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import {
@@ -65,6 +66,14 @@ import {
   SymphonyTakeOverInput,
   SymphonyActivateWorkflowInput,
   SymphonyValidateWorkflowInput,
+  SymphonyPauseWorkflowInput,
+  SymphonyResumeWorkflowInput,
+  SymphonyPauseRepositoryInput,
+  SymphonyResumeRepositoryInput,
+  SymphonyStopAllRunsInput,
+  SymphonyGetWorkflowInput,
+  SymphonyListHistoryInput,
+  SymphonyResolveAttentionInput,
 } from "@neokod/contracts";
 import { HttpRouter, HttpServerRespondable } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
@@ -313,6 +322,12 @@ const observeRpcEffect = <A, E, R>(
   traceAttributes?: Readonly<Record<string, unknown>>,
 ) => instrumentRpcEffect(method, effect, traceAttributes);
 
+const observeRpcStream = <A, E, R>(
+  method: string,
+  stream: Stream.Stream<A, E, R>,
+  traceAttributes?: Readonly<Record<string, unknown>>,
+) => instrumentRpcStream(method, stream, traceAttributes);
+
 const emptyOverview = (): Effect.Effect<SymphonyOverview> =>
   Effect.succeed({
     running: 0,
@@ -342,6 +357,22 @@ const withOrchestrator = <A, E, R>(
   Effect.serviceOption(SymphonyOrchestrator.SymphonyOrchestrator).pipe(
     Effect.flatMap((maybe) => (Option.isSome(maybe) ? run(maybe.value) : fallback)),
   );
+
+const withOrchestratorStream = <A, E, R>(
+  run: (
+    orchestrator: SymphonyOrchestrator.SymphonyOrchestrator["Service"],
+  ) => Stream.Stream<A, E, R>,
+  fallback: Stream.Stream<A, E, R>,
+): Stream.Stream<A, E, R> =>
+  Stream.fromEffect(
+    Effect.serviceOption(SymphonyOrchestrator.SymphonyOrchestrator).pipe(
+      Effect.map((maybe) =>
+        Option.isSome(maybe)
+          ? (maybe.value as SymphonyOrchestrator.SymphonyOrchestrator["Service"])
+          : null,
+      ),
+    ),
+  ).pipe(Stream.flatMap((orchestrator) => (orchestrator === null ? fallback : run(orchestrator))));
 const withApprovalService = <A, E>(
   run: (approvals: ApprovalService.ApprovalService["Service"]) => Effect.Effect<A, E>,
   fallback: Effect.Effect<A, E>,
@@ -367,6 +398,85 @@ const handoffError = (message: string): SymphonyError =>
   new SymphonyError({ code: "symphony_handoff_failed", message });
 
 export const makeSymphonyRpcHandlers = () => ({
+  [SYMPHONY_WS_METHODS.subscribeOverview]: () =>
+    observeRpcStream(
+      SYMPHONY_WS_METHODS.subscribeOverview,
+      withOrchestratorStream(
+        (orchestrator) =>
+          Stream.fromEffect(
+            orchestrator
+              .getOverview()
+              .pipe(
+                Effect.map((overview) => ({ version: 1, type: "overview", overview }) as const),
+              ),
+          ).pipe(Stream.repeat(Schedule.fixed("2 seconds"))),
+        Stream.empty,
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.subscribeRuns]: () =>
+    observeRpcStream(
+      SYMPHONY_WS_METHODS.subscribeRuns,
+      withOrchestratorStream(
+        (orchestrator) =>
+          Stream.fromEffect(
+            orchestrator
+              .listRuns({})
+              .pipe(Effect.map((runs) => ({ version: 1, type: "runs", runs }) as const)),
+          ).pipe(Stream.repeat(Schedule.fixed("2 seconds"))),
+        Stream.empty,
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.subscribeQueue]: () =>
+    observeRpcStream(
+      SYMPHONY_WS_METHODS.subscribeQueue,
+      withOrchestratorStream(
+        (orchestrator) =>
+          Stream.fromEffect(
+            orchestrator
+              .listQueue({})
+              .pipe(Effect.map((items) => ({ version: 1, type: "queue", items }) as const)),
+          ).pipe(Stream.repeat(Schedule.fixed("2 seconds"))),
+        Stream.empty,
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.subscribeAttention]: () =>
+    observeRpcStream(
+      SYMPHONY_WS_METHODS.subscribeAttention,
+      withOrchestratorStream(
+        (orchestrator) =>
+          Stream.fromEffect(
+            orchestrator
+              .listAttention()
+              .pipe(Effect.map((items) => ({ version: 1, type: "attention", items }) as const)),
+          ).pipe(Stream.repeat(Schedule.fixed("2 seconds"))),
+        Stream.empty,
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.subscribeRunEvents]: (input: (typeof SymphonyGetRunInput)["Type"]) =>
+    observeRpcStream(
+      SYMPHONY_WS_METHODS.subscribeRunEvents,
+      withOrchestratorStream(
+        (orchestrator) =>
+          Stream.fromEffect(
+            orchestrator
+              .listRunEvents(input.runAttemptId)
+              .pipe(
+                Effect.map((events) =>
+                  events.map((runEvent) => ({ version: 1, type: "runEvent", runEvent }) as const),
+                ),
+              ),
+          ).pipe(
+            Stream.flatMap((events) => Stream.fromIterable(events)),
+            Stream.repeat(Schedule.fixed("2 seconds")),
+          ),
+        Stream.empty,
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
   [SYMPHONY_WS_METHODS.getOverview]: () =>
     observeRpcEffect(
       SYMPHONY_WS_METHODS.getOverview,
@@ -416,6 +526,39 @@ export const makeSymphonyRpcHandlers = () => ({
     observeRpcEffect(
       SYMPHONY_WS_METHODS.listWorkflows,
       withOrchestrator((orchestrator) => orchestrator.listWorkflows(), Effect.succeed([])),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.getWorkflow]: (input: (typeof SymphonyGetWorkflowInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.getWorkflow,
+      withOrchestrator(
+        (orchestrator) => orchestrator.getWorkflow(String(input.workflowId)),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.listTrackers]: () =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.listTrackers,
+      withOrchestrator((orchestrator) => orchestrator.listTrackers(), Effect.succeed([])),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.listHistory]: (input: (typeof SymphonyListHistoryInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.listHistory,
+      withOrchestrator((orchestrator) => orchestrator.listHistory(input.limit), Effect.succeed([])),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.resolveAttention]: (input: (typeof SymphonyResolveAttentionInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.resolveAttention,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator
+            .resolveAttention(String(input.attentionItemId), "resolved via RPC")
+            .pipe(Effect.map((resolved) => ({ ok: resolved }))),
+        Effect.fail(orchestratorUnavailable()),
+      ),
       { "rpc.aggregate": "symphony" },
     ),
   [SYMPHONY_WS_METHODS.validateWorkflow]: (input: (typeof SymphonyValidateWorkflowInput)["Type"]) =>
@@ -549,6 +692,87 @@ export const makeSymphonyRpcHandlers = () => ({
         (orchestrator) => orchestrator.cancelRun(input.runAttemptId).pipe(Effect.as({ ok: true })),
         Effect.fail(orchestratorUnavailable()),
       ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.pauseWorkflow]: (input: (typeof SymphonyPauseWorkflowInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.pauseWorkflow,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator
+            .setWorkflowPaused(String(input.workflowId), true)
+            .pipe(Effect.as({ ok: true })),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.resumeWorkflow]: (input: (typeof SymphonyResumeWorkflowInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.resumeWorkflow,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator
+            .setWorkflowPaused(String(input.workflowId), false)
+            .pipe(Effect.as({ ok: true })),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.pauseRepository]: (input: (typeof SymphonyPauseRepositoryInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.pauseRepository,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator
+            .setRepositoryPaused(input.repositoryPath, true)
+            .pipe(Effect.as({ ok: true })),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.resumeRepository]: (input: (typeof SymphonyResumeRepositoryInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.resumeRepository,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator
+            .setRepositoryPaused(input.repositoryPath, false)
+            .pipe(Effect.as({ ok: true })),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.pauseGlobal]: () =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.pauseGlobal,
+      withOrchestrator(
+        (orchestrator) => orchestrator.setGlobalPaused(true).pipe(Effect.as({ ok: true })),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.resumeGlobal]: () =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.resumeGlobal,
+      withOrchestrator(
+        (orchestrator) => orchestrator.setGlobalPaused(false).pipe(Effect.as({ ok: true })),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.stopAllRuns]: (input: (typeof SymphonyStopAllRunsInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.stopAllRuns,
+      // FR-134: the confirm literal is required at the RPC boundary.
+      input.confirm === "stop-all-runs"
+        ? withOrchestrator(
+            (orchestrator) =>
+              orchestrator.stopAllRuns().pipe(Effect.map((stopped) => ({ ok: stopped > 0 }))),
+            Effect.fail(orchestratorUnavailable()),
+          )
+        : Effect.fail(
+            new SymphonyError({ code: "symphony_handoff_failed", message: "confirm required" }),
+          ),
       { "rpc.aggregate": "symphony" },
     ),
   [SYMPHONY_WS_METHODS.requestChanges]: (input: (typeof SymphonyRequestChangesInput)["Type"]) =>

@@ -17,6 +17,7 @@ import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawne
 
 import { ServerConfig } from "../../config.ts";
 import { nowIso } from "../Domain/Time.ts";
+import { WORKFLOW_DEFAULTS } from "../Workflow/Config.ts";
 import { RunEventRepository } from "../Persistence/Services/RunEventRepository.ts";
 import { RunAttemptRepository } from "../Persistence/Services/RunAttemptRepository.ts";
 import { WorkItemRepository } from "../Persistence/Services/WorkItemRepository.ts";
@@ -66,6 +67,9 @@ export interface RunDispatcherService {
 
   /** True while a live agent is registered for the run (reconciliation input). */
   readonly isAgentActive: (runAttemptId: RunAttemptId) => Effect.Effect<boolean>;
+
+  /** Cancel every live run and return how many were interrupted (FR-134). */
+  readonly stopAllRuns: () => Effect.Effect<number, RunDispatchError>;
 }
 
 export class RunDispatcher extends Context.Service<RunDispatcher, RunDispatcherService>()(
@@ -346,7 +350,12 @@ export const makeRunDispatcher = Effect.gen(function* () {
           .pipe(Effect.catch(() => Effect.void));
         yield* appendEvent(runAttemptId, "agent_started", { branch: workspace.branch });
 
-        const result = yield* agent
+        // Continuation turns (plan 8.2; audit item 8 lane G): the first turn
+        // runs with the full prompt; each continuation turn is a focused
+        // follow-up (e.g. fix validation failures, implement review
+        // comments), bounded by the workflow's maxTurns.
+        const maxTurns = Math.max(1, config.maxTurns ?? WORKFLOW_DEFAULTS.maxTurns);
+        let result = yield* agent
           .runTurn({
             issue,
             config,
@@ -356,6 +365,23 @@ export const makeRunDispatcher = Effect.gen(function* () {
             workItemId,
           })
           .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
+        for (let turn = 2; turn <= maxTurns && !result.completed; turn++) {
+          yield* runAttempts
+            .updateStatus(runAttemptId, "streaming_turn")
+            .pipe(Effect.catch(() => Effect.void));
+          yield* appendEvent(runAttemptId, "continuation_turn", { turn });
+          result = yield* agent
+            .runTurn({
+              issue,
+              config,
+              workspacePath: workspace.path,
+              branch: workspace.branch,
+              runAttemptId,
+              workItemId,
+              continuation: true,
+            })
+            .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
+        }
 
         if (result.completed) {
           // If cancellation (or any terminal write) landed while the turn was
@@ -481,7 +507,30 @@ export const makeRunDispatcher = Effect.gen(function* () {
   const isAgentActive: RunDispatcherService["isAgentActive"] = (runAttemptId) =>
     Ref.get(activeAgents).pipe(Effect.map((map) => map.has(String(runAttemptId))));
 
-  return { dispatchWorkItem, cancelRun, isAgentActive };
+  const stopAllRuns: RunDispatcherService["stopAllRuns"] = () =>
+    Effect.gen(function* () {
+      const map = yield* Ref.get(activeAgents);
+      let stopped = 0;
+      for (const [attemptId, registered] of map) {
+        registered.fiber.interruptUnsafe();
+        yield* registered.agent.interrupt().pipe(Effect.catch(() => Effect.void));
+        yield* liveRequests
+          .settleRun(RunAttemptId.make(attemptId), "stopped by stop-all")
+          .pipe(Effect.catch(() => Effect.void));
+        yield* runAttempts
+          .updateStatus(RunAttemptId.make(attemptId), "user_cancelled", {
+            finishedAt: yield* nowIso,
+          })
+          .pipe(Effect.catch(() => Effect.void));
+        yield* appendEvent(RunAttemptId.make(attemptId), "user_cancelled", {
+          reason: "stop_all_runs",
+        });
+        stopped += 1;
+      }
+      return stopped;
+    });
+
+  return { dispatchWorkItem, cancelRun, isAgentActive, stopAllRuns };
 });
 
 export const RunDispatcherLive: Layer.Layer<

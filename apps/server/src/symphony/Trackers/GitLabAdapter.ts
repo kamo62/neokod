@@ -179,7 +179,9 @@ export const makeGitLabAdapter = (options: {
         assigneeId: extractAssigneeId(raw),
         labels: (raw.labels ?? []).map(normalizeLabel),
         blockedBy: [],
-        dispatchable: true,
+        // Audit item 8 lane H: dispatchable was hardcoded true; only opened
+        // issues may dispatch (GitLab states are opened/closed).
+        dispatchable: normalizeState(raw.state) === "opened",
         createdAt: parseDatetime(raw.created_at),
         updatedAt: parseDatetime(raw.updated_at),
       });

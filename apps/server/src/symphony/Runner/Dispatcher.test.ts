@@ -37,7 +37,10 @@ import {
 import { ExecutionFinalizer } from "./ExecutionFinalizer.ts";
 import { AgentRuntimeSpawnError, type AgentRuntimeService } from "./AgentRuntime.ts";
 
-const makeConfig = (repositoryPath: string): EffectiveWorkflowConfig => ({
+const makeConfig = (
+  repositoryPath: string,
+  overrides: Partial<Pick<EffectiveWorkflowConfig, "autonomy" | "maxTurns">> = {},
+): EffectiveWorkflowConfig => ({
   repositoryPath,
   workflowPath: `${repositoryPath}/WORKFLOW.md`,
   trackerKind: "github",
@@ -55,6 +58,7 @@ const makeConfig = (repositoryPath: string): EffectiveWorkflowConfig => ({
   validationTestPathPatterns: [],
   approvalsProtectedPaths: [],
   approvalsPolicies: [],
+  ...overrides,
 });
 
 const makeIssue = (id: string): NormalizedIssue => ({
@@ -117,6 +121,26 @@ const scriptedAgent = (completed: boolean): AgentRuntimeService => ({
   interrupt: () => Effect.void,
   pid: () => Effect.succeed(null),
 });
+
+/**
+ * Agent that never completes a turn and records how many turns ran, so the
+ * maxTurns continuation loop (plan 8.2) is observable.
+ */
+const countingIncompleteAgent = () => {
+  let turns = 0;
+  return {
+    agent: {
+      runTurn: () =>
+        Effect.sync(() => {
+          turns += 1;
+          return { turnId: `t${turns}`, threadId: "th1", completed: false };
+        }),
+      interrupt: () => Effect.void,
+      pid: () => Effect.succeed(null),
+    } satisfies AgentRuntimeService,
+    count: () => turns,
+  };
+};
 
 /**
  * Factory for an agent whose turn blocks until `interrupt()` fails it, like a
@@ -254,6 +278,26 @@ layer(scriptedFactory(scriptedAgent(false)))("Dispatcher prepare mode failure", 
         const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
         expect(after.lifecycle).toBe("retry_scheduled");
       }),
+  );
+});
+
+layer(scriptedFactory(countingIncompleteAgent().agent))("Dispatcher continuation turns", (it) => {
+  it.effect("runs continuation turns up to maxTurns when the turn never completes", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("1005");
+      const dispatcher = yield* RunDispatcher;
+      const runAttemptId = yield* dispatcher.dispatchWorkItem({
+        workItem,
+        issue: makeIssue("1005"),
+        config: makeConfig("/repo", { autonomy: "execute", maxTurns: 3 }),
+      });
+
+      const runEvents = yield* RunEventRepository;
+      const list = yield* runEvents.listForAttempt(runAttemptId);
+      const continuationEvents = list.filter((event) => event.eventType === "continuation_turn");
+      // First turn + 2 continuation turns (maxTurns 3), then the failure path.
+      expect(continuationEvents.length).toBe(2);
+    }),
   );
 });
 

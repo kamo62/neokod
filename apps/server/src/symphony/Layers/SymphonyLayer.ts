@@ -12,6 +12,9 @@ import { OrchestratorStateRepositoryLive } from "../Persistence/Layers/Orchestra
 import { ApprovalRepositoryLive } from "../Persistence/Layers/ApprovalRepository.ts";
 import { EvidenceRepositoryLive } from "../Persistence/Layers/EvidenceRepository.ts";
 import { AttentionRepositoryLive } from "../Persistence/Services/AttentionRepository.ts";
+import { TrackerCheckpointRepositoryLive } from "../Persistence/Services/TrackerCheckpointRepository.ts";
+import { AuditRepositoryLive } from "../Persistence/Services/AuditRepository.ts";
+import { NotificationCoordinatorLive } from "../NotificationCoordinator.ts";
 import { TrackerRegistryGitHubLive } from "../Trackers/Registry.ts";
 import { TrackerEnablementLive } from "../Orchestrator/TrackerEnablement.ts";
 import { WorkflowLoaderLive } from "../Workflow/Loader.ts";
@@ -117,6 +120,9 @@ const HandoffServiceSlice = HandoffServiceLive.pipe(
               Layer.provideMerge(NodeServices.layer),
               Layer.provideMerge(LiveRequestsLive),
               Layer.provideMerge(
+                TrackerRegistryGitHubLive.pipe(Layer.provide(FetchHttpClient.layer)),
+              ),
+              Layer.provideMerge(
                 ApprovalServiceLive.pipe(
                   Layer.provide(Layer.mergeAll(ApprovalRepositoryLive, LiveRequestsLive)),
                 ),
@@ -143,6 +149,9 @@ export const SymphonyLayerObserve = Layer.merge(
         OrchestratorStateRepositoryLive,
         EvidenceRepositoryLive,
         AttentionRepositoryLive,
+        TrackerCheckpointRepositoryLive,
+        AuditRepositoryLive,
+        NotificationCoordinatorLive,
         PullRequestServiceLive.pipe(
           Layer.provideMerge(GitVcsDriverLayer),
           Layer.provideMerge(SourceControlProviderRegistryLive),
@@ -172,6 +181,9 @@ export const SymphonyLayerObserve = Layer.merge(
                 AgentRuntimeFactoryLive.pipe(
                   Layer.provideMerge(NodeServices.layer),
                   Layer.provideMerge(LiveRequestsLive),
+                  Layer.provideMerge(
+                    TrackerRegistryGitHubLive.pipe(Layer.provide(FetchHttpClient.layer)),
+                  ),
                   Layer.provideMerge(
                     ApprovalServiceLive.pipe(
                       Layer.provide(Layer.mergeAll(ApprovalRepositoryLive, LiveRequestsLive)),

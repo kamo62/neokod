@@ -11,7 +11,7 @@ import type {
   WorkflowRecord,
   WorkItem,
 } from "@neokod/contracts";
-import { RunAttemptId, WorkItemId } from "@neokod/contracts";
+import { AttentionItemId, RunAttemptId, WorkflowId, WorkItemId } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -38,6 +38,9 @@ import { retryDueAtMs } from "../Retry.ts";
 import { runStartupRecovery } from "../Recovery.ts";
 import { WorkflowLoaderService } from "../../Workflow/Loader.ts";
 import { AttentionRepository } from "../../Persistence/Services/AttentionRepository.ts";
+import { TrackerCheckpointRepository } from "../../Persistence/Services/TrackerCheckpointRepository.ts";
+import { AuditRepository } from "../../Persistence/Services/AuditRepository.ts";
+import { NotificationCoordinator } from "../../NotificationCoordinator.ts";
 import { deriveWorkingBranch } from "../../Domain/Keys.ts";
 import { WorkspaceOwnershipRepository } from "../../Persistence/Services/WorkspaceOwnershipRepository.ts";
 import { SymphonyOrchestrator, type SymphonyOrchestratorShape } from "../SymphonyOrchestrator.ts";
@@ -273,6 +276,7 @@ const pollWorkflow = (deps: {
   readonly registry: TrackerAdapterRegistry["Service"];
   readonly enablement: TrackerEnablement["Service"];
   readonly stateRef: Ref.Ref<OrchestratorRuntimeState>;
+  readonly checkpoints?: TrackerCheckpointRepository["Service"];
 }) =>
   Effect.fn("pollWorkflow")(function* (workflow: WorkflowRecord, now: string) {
     const config = workflow.effectiveConfig;
@@ -317,6 +321,18 @@ const pollWorkflow = (deps: {
       );
     yield* recordTrackerHealth(deps.stateRef, config, true, null);
 
+    // Tracker checkpoint (audit item 8 lane H): record when the poll last
+    // succeeded so resume/recovery can tell a healthy poll from a silent one,
+    // and future cursor-based adapters have a place to persist page cursors.
+    if (deps.checkpoints !== undefined) {
+      yield* deps.checkpoints
+        .upsertCheckpoint({
+          trackerKind: config.trackerKind,
+          scopeKey: config.repositoryPath,
+        })
+        .pipe(Effect.catch(() => Effect.void));
+    }
+
     for (const issue of issues) {
       const eligibility = evaluateEligibility({
         config,
@@ -342,6 +358,9 @@ const makeOrchestrator = Effect.gen(function* () {
   const approvals = yield* ApprovalService;
   const evidenceRepository = yield* EvidenceRepository;
   const pullRequestService = yield* PullRequestService;
+  const checkpointRepository = yield* TrackerCheckpointRepository;
+  const auditRepository = yield* AuditRepository;
+  const notifications = yield* NotificationCoordinator;
 
   const stateRef = yield* Ref.make<OrchestratorRuntimeState>(EMPTY_STATE);
 
@@ -352,9 +371,13 @@ const makeOrchestrator = Effect.gen(function* () {
       .pipe(Effect.map((all) => all.filter((w) => w.status === "active")))
       .pipe(Effect.catch(() => Effect.succeed([] as WorkflowRecord[])));
     for (const workflow of active) {
-      yield* pollWorkflow({ workItems, registry, enablement, stateRef })(workflow, now).pipe(
-        Effect.catch(() => Effect.void),
-      );
+      yield* pollWorkflow({
+        workItems,
+        registry,
+        enablement,
+        stateRef,
+        checkpoints: checkpointRepository,
+      })(workflow, now).pipe(Effect.catch(() => Effect.void));
     }
     // Best-effort housekeeping: release orphaned claims, fire due retries and
     // expire approval requests whose wait window elapsed. Runs on the same
@@ -499,8 +522,39 @@ const makeOrchestrator = Effect.gen(function* () {
     yield* Effect.repeat(runTick().pipe(Effect.scoped), Schedule.fixed(POLL_INTERVAL));
   });
 
+  // Startup advisory lock (audit item 8 lane I; plan section 4): one server
+  // process orchestrates at a time. Acquired with a per-launch token and a
+  // lease, renewed on every tick, released on teardown. A second server that
+  // fails to acquire degrades to read-only observe (no dispatch) rather than
+  // refusing to boot.
+  const lockToken = `symphony-${process.pid}-${Date.now()}`;
+  const lockLeaseMs = 90_000;
+  const acquiredLock = yield* orchestratorState
+    .acquireLock({ ownerToken: lockToken, leaseMs: lockLeaseMs })
+    .pipe(Effect.catch(() => Effect.succeed(false)));
+
   // Fork the poll loop into the surrounding scope so it stops on layer teardown.
-  yield* Effect.forkScoped(scheduler);
+  yield* Effect.forkScoped(
+    Effect.gen(function* () {
+      if (acquiredLock) {
+        yield* Effect.acquireRelease(Effect.void, () =>
+          orchestratorState.releaseLock(lockToken).pipe(Effect.catch(() => Effect.void)),
+        );
+      }
+      // Renew the lease while we hold it, and run the scheduler (poll ticks,
+      // recovery, retry sweep, workflow reload) regardless of lock ownership —
+      // a follower still observes and reloads, it just never dispatches.
+      yield* Effect.forkScoped(
+        Effect.repeat(
+          orchestratorState
+            .renewLock({ ownerToken: lockToken, leaseMs: lockLeaseMs })
+            .pipe(Effect.catch(() => Effect.void)),
+          Schedule.spaced("30 seconds"),
+        ),
+      );
+      yield* scheduler;
+    }),
+  );
 
   const refreshNow: SymphonyOrchestratorShape["refreshNow"] = () => runTick().pipe(Effect.scoped);
 
@@ -674,6 +728,11 @@ const makeOrchestrator = Effect.gen(function* () {
       } satisfies RunDetails;
     });
 
+  const listRunEvents: SymphonyOrchestratorShape["listRunEvents"] = (runAttemptId) =>
+    runEvents
+      .listForAttempt(RunAttemptId.make(runAttemptId))
+      .pipe(Effect.catch(() => Effect.succeed([])));
+
   const listAttention: SymphonyOrchestratorShape["listAttention"] = (limit) =>
     Effect.gen(function* () {
       const durable = yield* approvals
@@ -706,6 +765,51 @@ const makeOrchestrator = Effect.gen(function* () {
   const isPaused: SymphonyOrchestratorShape["isPaused"] = () =>
     orchestratorState.isGlobalPaused().pipe(Effect.catch(() => Effect.succeed(false)));
 
+  const getWorkflow: SymphonyOrchestratorShape["getWorkflow"] = (workflowId) =>
+    workflows.getById(WorkflowId.make(workflowId)).pipe(Effect.catch(() => Effect.succeed(null)));
+
+  const listTrackers: SymphonyOrchestratorShape["listTrackers"] = () =>
+    Effect.gen(function* () {
+      const state = yield* Ref.get(stateRef);
+      return [...state.trackerHealth];
+    });
+
+  const listHistory: SymphonyOrchestratorShape["listHistory"] = (limit) =>
+    listRuns(limit === undefined ? {} : { limit }).pipe(Effect.catch(() => Effect.succeed([])));
+
+  const resolveAttention: SymphonyOrchestratorShape["resolveAttention"] = (
+    attentionItemId,
+    resolution,
+  ) =>
+    attentionRepository
+      .resolve(AttentionItemId.make(attentionItemId), resolution)
+      .pipe(Effect.catch(() => Effect.succeed(false)));
+
+  const isWorkflowPaused: SymphonyOrchestratorShape["isWorkflowPaused"] = (workflowId) =>
+    orchestratorState.isWorkflowPaused(workflowId).pipe(Effect.catch(() => Effect.succeed(false)));
+
+  const setWorkflowPaused: SymphonyOrchestratorShape["setWorkflowPaused"] = (workflowId, paused) =>
+    orchestratorState.setWorkflowPaused(workflowId, paused).pipe(Effect.catch(() => Effect.void));
+
+  const isRepositoryPaused: SymphonyOrchestratorShape["isRepositoryPaused"] = (repositoryPath) =>
+    orchestratorState
+      .isRepositoryPaused(repositoryPath)
+      .pipe(Effect.catch(() => Effect.succeed(false)));
+
+  const setRepositoryPaused: SymphonyOrchestratorShape["setRepositoryPaused"] = (
+    repositoryPath,
+    paused,
+  ) =>
+    orchestratorState
+      .setRepositoryPaused(repositoryPath, paused)
+      .pipe(Effect.catch(() => Effect.void));
+
+  const setGlobalPaused: SymphonyOrchestratorShape["setGlobalPaused"] = (paused) =>
+    orchestratorState.setGlobalPaused(paused).pipe(Effect.catch(() => Effect.void));
+
+  const stopAllRuns: SymphonyOrchestratorShape["stopAllRuns"] = () =>
+    dispatcher.stopAllRuns().pipe(Effect.catch(() => Effect.succeed(0)));
+
   const excludeWorkItem: SymphonyOrchestratorShape["excludeWorkItem"] = (workItemId, exclude) =>
     workItems
       .writeOverrides(WorkItemId.make(workItemId), { excluded: exclude })
@@ -723,6 +827,12 @@ const makeOrchestrator = Effect.gen(function* () {
 
   const dispatchWorkItem: SymphonyOrchestratorShape["dispatchWorkItem"] = (workItemId) =>
     Effect.gen(function* () {
+      // Advisory-lock gate (audit item 8 lane I): only the server holding the
+      // orchestrator lock dispatches. A follower may observe the queue but
+      // never claims or runs.
+      if (!acquiredLock) {
+        return;
+      }
       const item = yield* workItems
         .getById(WorkItemId.make(workItemId))
         .pipe(Effect.catch(() => Effect.succeed(null)));
@@ -747,6 +857,24 @@ const makeOrchestrator = Effect.gen(function* () {
         .pipe(Effect.catch(() => Effect.succeed(false)));
       if (paused) {
         return;
+      }
+      // Per-scope pause (FR-130-132): a paused workflow or repository gates
+      // its own dispatches.
+      if (item.workflowId !== undefined) {
+        const workflowPaused = yield* orchestratorState
+          .isWorkflowPaused(String(item.workflowId))
+          .pipe(Effect.catch(() => Effect.succeed(false)));
+        if (workflowPaused) {
+          return;
+        }
+      }
+      if (item.repositoryPath !== undefined) {
+        const repositoryPaused = yield* orchestratorState
+          .isRepositoryPaused(item.repositoryPath)
+          .pipe(Effect.catch(() => Effect.succeed(false)));
+        if (repositoryPaused) {
+          return;
+        }
       }
       // Excluded items are never re-dispatched (REVIEW P1).
       if (item.excluded === true) {
@@ -810,10 +938,39 @@ const makeOrchestrator = Effect.gen(function* () {
       yield* dispatcher
         .dispatchWorkItem({ workItem: item, issue, config })
         .pipe(Effect.catch(() => Effect.void));
+      // Audit trail (plan 13.4; audit item 8 lane E).
+      yield* auditRepository
+        .record({
+          actor: "symphony",
+          eventType: "work_item_dispatched",
+          workItemId: String(item.id),
+          payload: { objective: item.objective },
+        })
+        .pipe(Effect.catch(() => Effect.void));
     });
 
   const cancelRun: SymphonyOrchestratorShape["cancelRun"] = (runAttemptId) =>
-    dispatcher.cancelRun(RunAttemptId.make(runAttemptId)).pipe(Effect.catch(() => Effect.void));
+    Effect.gen(function* () {
+      yield* dispatcher
+        .cancelRun(RunAttemptId.make(runAttemptId))
+        .pipe(Effect.catch(() => Effect.void));
+      yield* auditRepository
+        .record({
+          actor: "symphony",
+          eventType: "run_cancelled",
+          runAttemptId,
+        })
+        .pipe(Effect.catch(() => Effect.void));
+      yield* notifications
+        .publish({
+          kind: "run_failed",
+          title: "Run cancelled",
+          message: `Run ${runAttemptId} was cancelled.`,
+          runAttemptId,
+          createdAt: yield* nowIso,
+        })
+        .pipe(Effect.catch(() => Effect.void));
+    });
 
   const refreshPullRequest: SymphonyOrchestratorShape["refreshPullRequest"] = (workItemId) =>
     Effect.gen(function* () {
@@ -1000,6 +1157,22 @@ const makeOrchestrator = Effect.gen(function* () {
             .append(attempt.id, "merge_approved", { workItemId: String(id) })
             .pipe(Effect.catch(() => Effect.void));
         }
+        yield* auditRepository
+          .record({
+            actor: "symphony",
+            eventType: "merge_approved",
+            workItemId: String(id),
+          })
+          .pipe(Effect.catch(() => Effect.void));
+        yield* notifications
+          .publish({
+            kind: "merge_approved",
+            title: "Merge approved",
+            message: `Work item ${String(id)} approved for merge.`,
+            workItemId: String(id),
+            createdAt: yield* nowIso,
+          })
+          .pipe(Effect.catch(() => Effect.void));
       }
       return changed;
     });
@@ -1010,10 +1183,21 @@ const makeOrchestrator = Effect.gen(function* () {
     listQueue,
     listRuns,
     getRun,
+    listRunEvents,
     listAttention,
     listWorkflows,
     listTrackerHealth,
     isPaused,
+    getWorkflow,
+    listTrackers,
+    listHistory,
+    resolveAttention,
+    isWorkflowPaused,
+    setWorkflowPaused,
+    isRepositoryPaused,
+    setRepositoryPaused,
+    setGlobalPaused,
+    stopAllRuns,
     excludeWorkItem,
     includeWorkItem,
     setLocalPriority,

@@ -14,6 +14,22 @@ import type { SymphonyPersistenceError } from "../Errors.ts";
 export interface OrchestratorStateRepositoryShape {
   readonly isGlobalPaused: () => Effect.Effect<boolean, SymphonyPersistenceError>;
   readonly setGlobalPaused: (paused: boolean) => Effect.Effect<void, SymphonyPersistenceError>;
+  /** Whether a workflow is paused (plan 9.6, FR-130-134 safety controls). */
+  readonly isWorkflowPaused: (
+    workflowId: string,
+  ) => Effect.Effect<boolean, SymphonyPersistenceError>;
+  readonly setWorkflowPaused: (
+    workflowId: string,
+    paused: boolean,
+  ) => Effect.Effect<void, SymphonyPersistenceError>;
+  /** Whether a repository is paused. */
+  readonly isRepositoryPaused: (
+    repositoryPath: string,
+  ) => Effect.Effect<boolean, SymphonyPersistenceError>;
+  readonly setRepositoryPaused: (
+    repositoryPath: string,
+    paused: boolean,
+  ) => Effect.Effect<void, SymphonyPersistenceError>;
   /** Acquire the orchestrator lock; fails if held by a live owner. */
   readonly acquireLock: (options: {
     readonly ownerToken: string;

@@ -94,6 +94,7 @@ const fakeDispatcher = Layer.effect(
           })
           .pipe(Effect.catch(() => Effect.void)),
       isAgentActive: () => Effect.succeed(false),
+      stopAllRuns: () => Effect.succeed(0),
     } satisfies RunDispatcher["Service"];
   }),
 );

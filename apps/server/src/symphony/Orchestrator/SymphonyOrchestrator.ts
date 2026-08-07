@@ -2,6 +2,7 @@ import type {
   AttentionItem,
   QueueItem,
   RunDetails,
+  RunEvent,
   RunSummary,
   SymphonyOverview,
   TrackerHealth,
@@ -37,11 +38,34 @@ export interface SymphonyOrchestratorShape {
   }) => Effect.Effect<RunSummary[]>;
   /** Full run details: work item, attempt, timeline, attention items. */
   readonly getRun: (runAttemptId: string) => Effect.Effect<RunDetails | null>;
+  /** The run's event timeline (subscribeRunEvents stream). */
+  readonly listRunEvents: (runAttemptId: string) => Effect.Effect<RunEvent[]>;
   /** Open attention items: pending approvals and input requests. */
   readonly listAttention: (limit?: number) => Effect.Effect<AttentionItem[]>;
   readonly listWorkflows: () => Effect.Effect<WorkflowRecord[]>;
   readonly listTrackerHealth: () => Effect.Effect<TrackerHealth[]>;
+  /** Single workflow record (getWorkflow RPC; audit item 8 lane B). */
+  readonly getWorkflow: (workflowId: string) => Effect.Effect<WorkflowRecord | null>;
+  /** Tracker health/profiles for the UI (listTrackers RPC). */
+  readonly listTrackers: () => Effect.Effect<TrackerHealth[]>;
+  /** Terminal runs, newest first (listHistory RPC). */
+  readonly listHistory: (limit?: number) => Effect.Effect<RunSummary[]>;
+  /** Resolve a raised attention item (resolveAttention RPC). */
+  readonly resolveAttention: (
+    attentionItemId: string,
+    resolution: string,
+  ) => Effect.Effect<boolean>;
   readonly isPaused: () => Effect.Effect<boolean>;
+
+  // Pause/resume safety controls (plan 9.6, FR-130-134): per-scope pause
+  // gates dispatch; global pause is the top-level kill switch.
+  readonly isWorkflowPaused: (workflowId: string) => Effect.Effect<boolean>;
+  readonly setWorkflowPaused: (workflowId: string, paused: boolean) => Effect.Effect<void>;
+  readonly isRepositoryPaused: (repositoryPath: string) => Effect.Effect<boolean>;
+  readonly setRepositoryPaused: (repositoryPath: string, paused: boolean) => Effect.Effect<void>;
+  readonly setGlobalPaused: (paused: boolean) => Effect.Effect<void>;
+  /** Cancel every live run (FR-134): confirm required at the RPC boundary. */
+  readonly stopAllRuns: () => Effect.Effect<number, never, Scope.Scope>;
 
   // Queue overrides (FR-022): persisted per work-item, survive restart, and are
   // re-applied after every tracker refresh so a poll cannot resurrect an

@@ -413,7 +413,10 @@ const makeRepository = Effect.gen(function* () {
       FROM symphony_work_items
       WHERE ${lifecycleFilter}
         ${workflowFilter}
-      ORDER BY (priority BETWEEN 1 AND 4) DESC, priority ASC, created_at ASC
+      ORDER BY
+        (COALESCE(local_priority, priority) BETWEEN 1 AND 4) DESC,
+        COALESCE(local_priority, priority) ASC,
+        created_at ASC
       LIMIT ${options?.limit ?? 500}
     `.pipe(
       Effect.mapError(toSqlError("WorkItemRepository.listByLifecycle")),

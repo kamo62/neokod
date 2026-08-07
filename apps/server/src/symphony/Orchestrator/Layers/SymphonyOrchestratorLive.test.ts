@@ -32,6 +32,9 @@ import { ApprovalRepository } from "../../Persistence/Services/ApprovalRepositor
 import { ApprovalRepositoryLive } from "../../Persistence/Layers/ApprovalRepository.ts";
 import { EvidenceRepositoryLive } from "../../Persistence/Layers/EvidenceRepository.ts";
 import { AttentionRepositoryLive } from "../../Persistence/Services/AttentionRepository.ts";
+import { TrackerCheckpointRepositoryLive } from "../../Persistence/Services/TrackerCheckpointRepository.ts";
+import { AuditRepositoryLive } from "../../Persistence/Services/AuditRepository.ts";
+import { NotificationCoordinatorLive } from "../../NotificationCoordinator.ts";
 import { EvidenceRepository } from "../../Persistence/Services/EvidenceRepository.ts";
 import { TrackerRegistryWithFactories } from "../../Trackers/Registry.ts";
 import { makeMemoryTrackerAdapter } from "../../Trackers/MemoryAdapter.ts";
@@ -110,6 +113,7 @@ const mockDispatcherLayer = Layer.effect(
         ),
       cancelRun: () => Effect.void,
       isAgentActive: () => Effect.succeed(false),
+      stopAllRuns: () => Effect.succeed(0),
     } satisfies RunDispatcher["Service"];
   }),
 );
@@ -165,6 +169,9 @@ const layer = it.layer(
     Layer.provideMerge(ApprovalRepositoryLive),
     Layer.provideMerge(EvidenceRepositoryLive),
     Layer.provideMerge(AttentionRepositoryLive),
+    Layer.provideMerge(TrackerCheckpointRepositoryLive),
+    Layer.provideMerge(AuditRepositoryLive),
+    Layer.provideMerge(NotificationCoordinatorLive),
     Layer.provideMerge(
       Layer.effect(
         PullRequestService,
@@ -621,6 +628,101 @@ layer("SymphonyOrchestrator Observe", (it) => {
       const after = yield* workItems.getById(workItemId);
       expect(after?.lifecycle).toBe("retry_scheduled");
       expect(dispatchedIds).not.toContain("retry-2");
+    }),
+  );
+
+  it.effect("per-scope pause gates dispatch for the paused workflow", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-pause-1", "/repo/pause");
+      const workflows = yield* WorkflowRepository;
+      yield* workflows.upsert({
+        id: WorkflowId.make("wf-pause-1"),
+        repositoryPath: "/repo/pause",
+        workflowPath: "/repo/pause/WORKFLOW.md",
+        status: "active",
+        autonomy: "execute",
+        validationError: null,
+        definition: { config: {}, promptTemplate: "Implement." },
+        effectiveConfig: { ...makeConfig("/repo/pause"), autonomy: "execute" },
+        enabledAt: "2026-08-05T00:00:00.000Z",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      const workItemId = WorkItemId.make("pause-1");
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        objective: "Paused target",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "3",
+        workflowId: WorkflowId.make("wf-pause-1"),
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      yield* orchestrator.setWorkflowPaused("wf-pause-1", true);
+      dispatchedIds.length = 0;
+      yield* orchestrator.dispatchWorkItem("pause-1");
+      expect(dispatchedIds).not.toContain("pause-1");
+
+      yield* orchestrator.setWorkflowPaused("wf-pause-1", false);
+      yield* orchestrator.dispatchWorkItem("pause-1");
+      expect(dispatchedIds).toContain("pause-1");
+    }),
+  );
+
+  it.effect("global pause blocks dispatch and stopAllRuns reports stopped runs", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-pause-2", "/repo/pause-2");
+      const workflows = yield* WorkflowRepository;
+      yield* workflows.upsert({
+        id: WorkflowId.make("wf-pause-2"),
+        repositoryPath: "/repo/pause-2",
+        workflowPath: "/repo/pause-2/WORKFLOW.md",
+        status: "active",
+        autonomy: "execute",
+        validationError: null,
+        definition: { config: {}, promptTemplate: "Implement." },
+        effectiveConfig: { ...makeConfig("/repo/pause-2"), autonomy: "execute" },
+        enabledAt: "2026-08-05T00:00:00.000Z",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      const workItemId = WorkItemId.make("pause-2");
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        objective: "Global pause target",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        workflowId: WorkflowId.make("wf-pause-2"),
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      yield* orchestrator.setGlobalPaused(true);
+      const pausedNow = yield* orchestrator.isPaused();
+      expect(pausedNow).toBe(true);
+      dispatchedIds.length = 0;
+      yield* orchestrator.dispatchWorkItem("pause-2");
+      expect(dispatchedIds).not.toContain("pause-2");
+      yield* orchestrator.setGlobalPaused(false);
+
+      const stopped = yield* orchestrator.stopAllRuns();
+      expect(stopped).toBe(0);
     }),
   );
 

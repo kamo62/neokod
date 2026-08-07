@@ -159,6 +159,7 @@ import {
   QueueItemSchema,
   RunDetailsSchema,
   RunSummarySchema,
+  TrackerHealthSchema,
   SymphonyQueueStreamEvent,
   SymphonyRejectInput,
   SymphonyRequestChangesInput,
@@ -752,7 +753,7 @@ export const WsSymphonyListWorkflowsRpc = Rpc.make(SYMPHONY_WS_METHODS.listWorkf
 
 export const WsSymphonyGetWorkflowRpc = Rpc.make(SYMPHONY_WS_METHODS.getWorkflow, {
   payload: SymphonyGetWorkflowInput,
-  success: WorkflowRecordSchema,
+  success: Schema.NullOr(WorkflowRecordSchema),
   error: SymphonyError,
 });
 
@@ -764,13 +765,13 @@ export const WsSymphonyValidateWorkflowRpc = Rpc.make(SYMPHONY_WS_METHODS.valida
 
 export const WsSymphonyListTrackersRpc = Rpc.make(SYMPHONY_WS_METHODS.listTrackers, {
   payload: SymphonyListTrackersInput,
-  success: SymphonyEmptyResult,
+  success: Schema.Array(TrackerHealthSchema),
   error: SymphonyError,
 });
 
 export const WsSymphonyListHistoryRpc = Rpc.make(SYMPHONY_WS_METHODS.listHistory, {
   payload: SymphonyListHistoryInput,
-  success: SymphonyEmptyResult,
+  success: Schema.Array(RunSummarySchema),
   error: SymphonyError,
 });
 
@@ -1027,8 +1028,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsSymphonyListRunsRpc,
   WsSymphonyGetRunRpc,
   WsSymphonyListWorkflowsRpc,
+  WsSymphonyGetWorkflowRpc,
   WsSymphonyValidateWorkflowRpc,
   WsSymphonyActivateWorkflowRpc,
+  WsSymphonyListTrackersRpc,
+  WsSymphonyListHistoryRpc,
+  WsSymphonyResolveAttentionRpc,
   WsSymphonyApproveRpc,
   WsSymphonyRejectRpc,
   WsSymphonyRespondToUserInputRpc,
@@ -1043,4 +1048,16 @@ export const WsRpcGroup = RpcGroup.make(
   WsSymphonyTakeOverRpc,
   WsSymphonyResumeAutonomousRpc,
   WsSymphonyDelegateFromThreadRpc,
+  WsSymphonyPauseWorkflowRpc,
+  WsSymphonyResumeWorkflowRpc,
+  WsSymphonyPauseRepositoryRpc,
+  WsSymphonyResumeRepositoryRpc,
+  WsSymphonyPauseGlobalRpc,
+  WsSymphonyResumeGlobalRpc,
+  WsSymphonyStopAllRunsRpc,
+  WsSubscribeSymphonyOverviewRpc,
+  WsSubscribeSymphonyRunsRpc,
+  WsSubscribeSymphonyQueueRpc,
+  WsSubscribeSymphonyAttentionRpc,
+  WsSubscribeSymphonyRunEventsRpc,
 );

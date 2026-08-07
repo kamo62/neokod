@@ -109,12 +109,14 @@ const fakeDispatcherActive = Layer.succeed(RunDispatcher, {
   dispatchWorkItem: () => Effect.never,
   cancelRun: () => Effect.void,
   isAgentActive: () => Effect.succeed(true),
+  stopAllRuns: () => Effect.succeed(0),
 } as RunDispatcher["Service"]);
 
 const fakeDispatcherIdle = Layer.succeed(RunDispatcher, {
   dispatchWorkItem: () => Effect.never,
   cancelRun: () => Effect.void,
   isAgentActive: () => Effect.succeed(false),
+  stopAllRuns: () => Effect.succeed(0),
 } as RunDispatcher["Service"]);
 
 const layer = (dispatcher: Layer.Layer<RunDispatcher>) =>

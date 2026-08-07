@@ -74,10 +74,32 @@ export class AgentRuntime extends Context.Service<AgentRuntime, AgentRuntimeServ
   "neokod/symphony/Runner/AgentRuntime",
 ) {}
 
+/**
+ * SPEC 15.3 env scrubbing (audit item 8 lane F): strip the tracker/credential
+ * secret names from the inherited environment before it reaches the agent
+ * child. Exported for tests.
+ */
+export const scrubEnvironment = (
+  env: NodeJS.ProcessEnv,
+  secretNames: ReadonlyArray<string>,
+): NodeJS.ProcessEnv => {
+  const secrets = new Set(secretNames);
+  const scrubbed: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (!secrets.has(key)) {
+      scrubbed[key] = value;
+    }
+  }
+  return scrubbed;
+};
+
 export interface AgentRuntimeDeps {
   readonly codexCommand: string;
   readonly codexHomePath: string | undefined;
   readonly env: NodeJS.ProcessEnv;
+  /** Environment names that MUST NOT reach the agent child (SPEC 15.3;
+   * audit item 8 lane F — tracker secrets used to flow wholesale). */
+  readonly secretEnvironmentNames?: ReadonlyArray<string>;
   readonly liveRequests: LiveRequestsService;
   /** Durable request record (WS-J2); best-effort, never blocks the agent. */
   readonly recordRequest?: (input: {
@@ -107,8 +129,12 @@ export const makeCodexAgentRuntime = (
     let activePid: number | null = null;
 
     const spawnAppServer = Effect.gen(function* () {
+      // SPEC 15.3 env scrubbing (audit item 8 lane F): the agent child must
+      // not see tracker/credential secrets. Remove every name the adapters
+      // flagged from the inherited environment.
+      const scrubbed = scrubEnvironment(deps.env, deps.secretEnvironmentNames ?? []);
       const env = {
-        ...deps.env,
+        ...scrubbed,
         ...(deps.codexHomePath ? { CODEX_HOME: expandHomePath(deps.codexHomePath) } : {}),
       };
       const spawnCommand = yield* resolveSpawnCommand(deps.codexCommand, ["app-server"], {
