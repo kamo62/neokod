@@ -62,6 +62,9 @@ export interface AgentRuntimeService {
     readonly workItemId: WorkItemId;
     readonly prompt?: string;
     readonly continuation?: boolean;
+    /** Agent-facing Markdown body from WORKFLOW.md. Sent on the first turn of
+     * each dispatch and omitted from continuation turns in the same thread. */
+    readonly workflowInstructions?: string;
     /** Review context for a post-review continuation dispatch (plan
      * FR-102-104). Only meaningful on the first turn of a dispatch — it
      * rides in the rendered prompt, so it is never re-sent on later
@@ -204,7 +207,11 @@ export const makeCodexAgentRuntime = (
           buildRunPrompt({
             issue: input.issue,
             config: input.config,
+            branch: input.branch,
             ...(input.continuation !== undefined ? { continuation: input.continuation } : {}),
+            ...(input.workflowInstructions !== undefined
+              ? { workflowInstructions: input.workflowInstructions }
+              : {}),
             ...(input.reviewFeedback !== undefined ? { reviewFeedback: input.reviewFeedback } : {}),
           });
         const turn = yield* client

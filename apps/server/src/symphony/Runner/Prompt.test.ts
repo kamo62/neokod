@@ -15,6 +15,7 @@ const makeConfig = (overrides: Partial<EffectiveWorkflowConfig> = {}): Effective
     trackerProvider: {},
     workspaceRoot: "/ws",
     autonomy: "prepare",
+    validationRequired: [],
     agentProvider: {
       instanceId: ProviderInstanceId.make("codex_default"),
       driver: ProviderDriverKind.make("codex"),
@@ -82,14 +83,54 @@ describe("buildRunPrompt", () => {
     expect(prompt).not.toContain("Do NOT modify any files");
   });
 
-  it("uses continuation wording when continuation is set", () => {
+  it("renders the effective WORKFLOW contract on the first execution turn", () => {
+    const prompt = buildRunPrompt({
+      issue: makeIssue(),
+      config: makeConfig({
+        autonomy: "execute",
+        validationRequired: ["vp check", "vp run typecheck"],
+        codexApprovalPolicy: "never",
+        codexThreadSandbox: "danger-full-access",
+      }),
+      branch: "symphony/issue-1",
+      workflowInstructions: "Follow the repository contribution policy.",
+    });
+
+    expect(prompt).toContain("### WORKFLOW contract");
+    expect(prompt).toContain("existing branch symphony/issue-1");
+    expect(prompt).toContain("Autonomy level: execute");
+    expect(prompt).toContain("Effective approval policy: never");
+    expect(prompt).toContain("Effective sandbox: danger-full-access");
+    expect(prompt).toContain("- vp check");
+    expect(prompt).toContain("- vp run typecheck");
+    expect(prompt).toContain("Write SYMPHONY_EVIDENCE.md");
+    expect(prompt).toContain("Follow the repository contribution policy.");
+  });
+
+  it("does not require delivery artifacts in plan-only runs", () => {
+    const prompt = buildRunPrompt({
+      issue: makeIssue(),
+      config: makeConfig({ validationRequired: ["vp check"] }),
+      workflowInstructions: "Investigate before editing.",
+    });
+
+    expect(prompt).toContain("Investigate before editing.");
+    expect(prompt).toContain("Do NOT modify any files");
+    expect(prompt).not.toContain("Write SYMPHONY_EVIDENCE.md");
+    expect(prompt).not.toContain("Stage and commit");
+  });
+
+  it("uses continuation wording without re-sending the WORKFLOW contract", () => {
     const prompt = buildRunPrompt({
       issue: makeIssue(),
       config: makeConfig(),
       continuation: true,
+      workflowInstructions: "This must only appear on the first turn.",
     });
     expect(prompt).toContain("Symphony continuation");
     expect(prompt).toContain("Continue the in-progress work");
+    expect(prompt).not.toContain("### WORKFLOW contract");
+    expect(prompt).not.toContain("This must only appear on the first turn.");
   });
 
   it("omits the review feedback section when none is given", () => {

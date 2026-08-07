@@ -1,5 +1,7 @@
 import type { EffectiveWorkflowConfig, NormalizedIssue } from "@neokod/contracts";
 
+import { resolveRunnerPolicy } from "./Policy.ts";
+
 /**
  * Prompt building for Symphony runs (plan 8.1, SPEC 7.1).
  *
@@ -117,7 +119,47 @@ export interface RunPromptInput {
   readonly continuation?: boolean;
   readonly planOnly?: boolean;
   readonly reviewFeedback?: ReviewFeedbackContext;
+  /** Agent-facing Markdown body from WORKFLOW.md. Front matter is deliberately
+   * excluded so tracker credentials and host-only configuration never enter
+   * the model prompt. */
+  readonly workflowInstructions?: string;
 }
+
+const buildWorkflowContractSection = (input: RunPromptInput): string => {
+  const { config } = input;
+  const branch = input.branch ?? deriveBranchLabel(config);
+  const policy = resolveRunnerPolicy(config);
+  const planOnly = input.planOnly || config.autonomy === "prepare" || config.autonomy === "observe";
+  const lines = [
+    `Work ONLY in the provided workspace on the existing branch ${branch}.`,
+    "Do not create or switch branches, create another worktree, or edit files outside the provided workspace.",
+    `- Autonomy level: ${config.autonomy}`,
+    `- Effective approval policy: ${policy.approvalPolicy}`,
+    `- Effective sandbox: ${policy.threadSandbox}`,
+    "",
+    "Configured validation commands:",
+    ...(config.validationRequired.length > 0
+      ? config.validationRequired.map((command) => `- ${command}`)
+      : ["- No workflow validation commands are configured."]),
+  ];
+
+  if (!planOnly) {
+    lines.push(
+      "",
+      "Before finishing:",
+      "- Run the configured validation commands and resolve any failures.",
+      "- Stage and commit the intended changes on the existing branch so Symphony can deliver them.",
+      "- Write SYMPHONY_EVIDENCE.md with these headings: Implementation Summary, Assumptions, Risks, and Unresolved. Summarize the change, files touched, and validation performed.",
+    );
+  }
+
+  const workflowInstructions = input.workflowInstructions?.trim();
+  if (workflowInstructions) {
+    lines.push("", "Repository workflow instructions:", workflowInstructions);
+  }
+
+  return lines.join("\n");
+};
 
 export const buildRunPrompt = (input: RunPromptInput): string => {
   const { issue, config } = input;
@@ -139,6 +181,10 @@ export const buildRunPrompt = (input: RunPromptInput): string => {
 
   if (issue.labels.length > 0) {
     sections.push(`### Labels\n\n${issue.labels.join(", ")}`);
+  }
+
+  if (!input.continuation) {
+    sections.push(`### WORKFLOW contract\n\n${buildWorkflowContractSection(input)}`);
   }
 
   const policyNote =

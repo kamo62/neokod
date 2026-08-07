@@ -62,6 +62,9 @@ export interface RunDispatcherService {
     readonly workItem: WorkItem;
     readonly issue: NormalizedIssue;
     readonly config: EffectiveWorkflowConfig;
+    /** Agent-facing Markdown body from WORKFLOW.md. Raw front matter remains
+     * host-only and is never included in the model prompt. */
+    readonly workflowInstructions?: string;
     /** Review context for a continuation dispatch after PR review feedback
      * (plan FR-102-104): rendered into the FIRST turn's prompt only — the
      * turn-2..N continuation loop below never re-sends it, matching how the
@@ -219,7 +222,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
 
   const dispatchWorkItem: RunDispatcherService["dispatchWorkItem"] = (input) =>
     Effect.gen(function* () {
-      const { workItem, issue, config, reviewFeedback } = input;
+      const { workItem, issue, config, reviewFeedback, workflowInstructions } = input;
       const maxAttempts = config.maxAttempts ?? 5;
       const ownerToken = yield* crypto.randomUUIDv4.pipe(
         Effect.mapError(() => new RunDispatchError("failed to generate owner token")),
@@ -315,6 +318,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
               branch: workspace.branch,
               runAttemptId,
               workItemId,
+              ...(workflowInstructions !== undefined ? { workflowInstructions } : {}),
               ...(reviewFeedback !== undefined ? { reviewFeedback } : {}),
             })
             .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));

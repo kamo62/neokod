@@ -87,16 +87,27 @@ type GlobalAction = "pause" | "resume" | "stop";
 
 const NEW_WORKFLOW_TEMPLATE = `---
 tracker:
+  # Tracker adapter used to discover work items.
   kind: github
+  # Issue states that are eligible for polling and terminal reconciliation.
+  active_states:
+    - open
+  terminal_states:
+    - closed
   provider:
+    # GitHub repository containing the issues, in owner/name form.
     repo: owner/name
+  # Every required label must be present before an issue enters the queue.
   required_labels:
     - symphony
+# execute allows the agent to edit the isolated workspace under the configured approval policy.
 autonomy: execute
 validation:
+  # Commands Symphony runs in the workspace before assembling evidence and opening a PR.
   required:
     - node -e "process.exit(0)"
 agent:
+  # Maximum turns available to complete one run attempt.
   max_turns: 3
 ---
 
