@@ -1,64 +1,63 @@
 # Handoff
 
-Updated: 2026-08-06 23:20 on MacBookPro
+Updated: 2026-08-07 04:40 on MacBookPro
 
 ## State
 
 - Branch: `feat/symphony-mode-impl`
-- HEAD: `78c70e301` feat(analytics): add settings.analytics route file missed from the feature commit
-- Pushed: yes, up to date with origin
-- Dirty: only the standing user files (`Neokod Symphony Mode Product Requirements.pdf`,
-  `PLAN-exec-demo.md`, `demo.md`, `apps/server/src/__probe/`). Never stage these.
+- HEAD: `759bd11cd` fix(symphony): guarantee ownership lease on every dispatch path; surface PR creation failures
+- Pushed: push pending (this commit set). Run `git push` if this handoff arrived without it.
+- Dirty: only the standing user files (PDF, PLAN-exec-demo.md, demo.md, `__probe/`). REVIEW.md
+  and the audit record are GITIGNORED local files — they do not travel; the closure summary
+  below is the durable copy.
 
-## Done
+## Done (overnight session, goal: complete HANDOFF items + serve/test + confirm REVIEW closure)
 
-Three workstreams landed today, two writers (this session + a parallel OpenCode session run by
-Kamogelo — coordinate via REVIEW.md, not by guessing). The 22:45 handoff's note about a
-`mod+shift+t` keybindings collision is resolved; the full web suite is green post-merge of both
-lanes.
-
-**Symphony review fixes (OpenCode lane).** Two review passes (Opus + sol high, both in REVIEW.md)
-found 8 P0 / 16+ P1. A 14-item fix checklist landed in `38df58a20`, `8168d7582`, `6639737c8`; a
-Fable status review of those fixes (REVIEW.md, "Fix-lane status review") sent three items back
-(pr-bodies dir never created, ownership repo not exposed to the server runtime, reviewThreads
-query with empty owner/name) plus residuals; `764d7c43b` claims to close all send-backs and
-residuals (terminal-guarded updateStatus, legality table, cancel race).
-
-**Upstream reconciliation (both lanes).** Two independent judges (Fable + sol, RECONCILE.md) ruled
-on upstream overlap; final adjudication in the same file. All four consensus Area B ports landed:
-`e05bbc9ac` (376c149ea), `0a0eca202` (9a0a07167), `62d2a27d9` (2d31cb022 server), `6f1c978ab`
-(0ad91b6e7). Area A port `501ce27b8` (stale active turn on live session.state.changed) NOT yet
-done. KiroCrew pattern notes (finalization checkpoints, headless deny-by-default, failure lessons)
-are at the end of RECONCILE.md.
-
-**Analytics + UI Phase 1 (this session).** `f77184008` + `78c70e301`: PostHog opt-out gating every
-capture path, BYO key/host (evidence-card wins), fail-closed on unreadable/invalid settings,
-first-run disclosure (product decisions 2026-08-06: default-on + notice; PRD section 21 amendment
-still pending on Kamogelo). Fable-reviewed (2 P1 / 5 P2, all resolved or signed off).
-`b96d688b9`: UI Phase 1 items 1-9 per REVIEW-UI.md final plan. `dee3ee587`: stale uiStateStore
-test expectations (operatingMode/viewSnapshotsByMode from earlier symphony commits).
-`0424a4510`: REVIEW-UI.md + RECONCILE.md committed.
+- `0c1fef4e3` server boot + browser auth: the symphony sub-graph left RuntimeServicesLive without
+  FetchHttpClient (boot died on the analytics batch sender), and
+  `resolveConfiguredPrimaryTarget` dropped the `loopbackAuthToken`, so the browser WS-A2 flow
+  401'd forever. Both found only by actually serving the app.
+- `91a7394a1` + `dee3ee587` test debt: 501ce27b8 regression test (the port itself was already in
+  `65e6e1c5b`), keybindings fixture collision with the new `thread.reopenLastArchived` default,
+  stale uiStateStore expectations. Full server suite 210 files / 1942 tests green; web
+  160 / 1474 green.
+- `759bd11cd` completion-audit top fixes: ownership lease bound at layer construction (wiring
+  gap now fails boot loudly — proven live against the running server), lease on create AND
+  reuse, typed `WorkspaceLeaseError` on failure; ExecutionFinalizer logs + records a durable
+  `pr_creation_failed` run event instead of swallowing PR-creation errors.
+- Full Chrome DevTools pass on the served app: authenticated loopback flow end to end, first-run
+  analytics notice (correct copy, dismissal persists), analytics toggle live both directions,
+  reopen-last-archived restores an archived thread, Symphony overview live, UI Phase 1
+  typography/header/elevation verified on real content, both themes clean.
+- Completion audit (Fable, per-finding, file:line): ~40 of ~50 REVIEW findings verified closed;
+  the two most severe open items were fixed above.
 
 ## Verified vs unverified
 
-- Verified: analytics scoped server tests 82/82, contracts settings 25/25 —
-  `cd apps/server && ../../node_modules/.bin/vp test run src/telemetry/AnalyticsService.test.ts
-src/provider/copilot/PostHogSink.test.ts src/provider/copilot/ManagedClientEvidenceTestConnection.test.ts
-src/provider/copilot/ManagedClientEvidenceForwarder.test.ts src/serverSettings.test.ts`.
-- Verified: full web suite 160 files / 1474 tests green (includes keybindings.test.ts); web +
-  shared typecheck clean; `vp check` 0 errors / 27 pre-existing warnings.
-- Unverified: UI Phase 1 visually. Typecheck and tests only prove it compiles. Needs the running
-  app and human eyes (chat prose 16px, header overflow menu, neutral fills, static Ultrathink,
-  shadows, undo-archive toast, mod+shift+t).
-- Unverified: `764d7c43b` actually closes the three send-backs. The Fable status review predates
-  it. Re-verify item 1 (pr-bodies dir created + write failure fails create), item 2 (ownership
-  repo resolvable from server runtime, lease actually recorded), item 11 (reviewThreads query
-  carries real owner/name) before calling the checklist done.
-- Unverified: full server suite after today's symphony commits (only affected files were run).
-  ~4 min: `cd apps/server && ../../node_modules/.bin/vp test run`.
-- Unverified: first-run notice persistence in a real browser profile (flag logic unit-tested only).
-- Unverified: live smoke procedure (real Codex app-server, real repo/PR/CI) — see the procedure in
-  git history of this file (`git show 74998e41b:HANDOFF.md`).
+- Verified: everything in Done names its command or a live observation; server boots and serves
+  (watched restart cycle), scoped suites and both full suites green, `vp check` 0 errors.
+- Unverified: none of the closed items — but see Open items for what remains open by audit.
+
+## Open items (the definitive remaining list)
+
+1. Plan 16.0 residuals: takeOver lacks process-exit wait and repo/worktree/branch identity
+   validation; resumeAutonomous lacks an idleness check and admits re-queue from `running`;
+   bindWorkThread placeholder path in production; park not owner-fenced.
+2. Retry dispatch fabricates the issue instead of plan 9.5 `refreshIssues` re-check; only a
+   global concurrency cap exists.
+3. Recovery: no orphan-process termination/adoption; `isAgentActive` empty after restart;
+   approval rows not marked interrupted (8.3.1).
+4. Workspace-path canonicalization at the repository/guard boundary (RECONCILE constraint).
+5. GitHubCli mergeable tri-state + latestCommit (fails closed today; UX not safety);
+   reviewThreads query failure still coerces unresolvedComments to 0.
+6. Section 19 suite 1 two-connection claim-contention test unwritten.
+7. Archive Undo toast never renders (UI Phase 1 item 9 residual; the mod+shift+t recovery path
+   works). Attention item on pr_creation_failed deferred with FR-071-073.
+8. Unimplemented plan sections (gaps, not regressions): WORKFLOW.md production
+   loading/activation/reload (blocks the live Symphony smoke — nothing can activate a tracker),
+   13 unregistered RPCs incl. pause/stop-all, subscriptions, notifications coordinator,
+   observability/audit writers, agent child env scrubbing (SPEC 15.3), mode-switch UI,
+   continuation turns, FR-102-104.
 
 ## Resume
 
@@ -67,35 +66,35 @@ cd /Users/kamogelo/Code/t3code
 git pull
 git checkout feat/symphony-mode-impl
 pnpm install
-cd apps/server && ../../node_modules/.bin/vp test run   # full-suite check first
+PATH="$PWD/node_modules/.bin:$PATH" node scripts/dev-runner.ts dev   # serve; needs vp on PATH
+# browser: use the startupUrl WITH ?loopbackAuthToken=... printed in the dev log; token is
+# per-launch and never persisted, keep it in the URL across navigations.
 ```
 
 Setup required first: none beyond `pnpm install` (corrupt `@github/copilot-darwin-arm64` fix:
 remove from `.pnpm`, re-run `CI=true pnpm install`).
 
-Machine-specific: the Codex plugin script
-`~/.claude/plugins/cache/openai-codex/codex/1.0.6/scripts/codex-companion.mjs` is patched locally
-on MacBookPro (VALID_REASONING_EFFORTS now includes "max"/"ultra", ~line 71). The codex binary
-supports them; the plugin allowlist is stale. Re-patch after any plugin update, and patch other
-machines before running luna at max. Kamogelo runs a parallel OpenCode session in this repo —
-check for its processes before assuming exclusive tree access.
+Machine-specific: codex-companion.mjs patched for max/ultra efforts on MacBookPro (re-patch
+after plugin updates). NOTE: the Codex backend went into degraded mode ("no available accounts")
+at the end of this session — delegation may be unavailable until it recovers; the last fixes
+were implemented directly. Kamogelo runs a parallel OpenCode session in this repo at times.
 
-Background jobs still running: none.
+Background jobs still running: the dev stack may still be serving under the dev-runner
+(node --watch restarts on edits). Kill the `node scripts/dev-runner.ts` process tree if
+unwanted.
 
 ## Blockers
 
-- Effect 4.0.0-beta.78 drift (carried): `Effect.result` not `Effect.either`; `it.effect` or tests
-  silently skip; `exactOptionalPropertyTypes` needs `| undefined`; TestClock at epoch.
-- Codex sandbox cannot bind 0.0.0.0: one serverSettings HTTP-fixture test fails inside Codex jobs
-  only; it passes in a real shell. Do not chase it.
-- Root `vp run typecheck` blocked by pre-existing `scripts/sync-reference-repos*` errors,
-  unrelated to today's work.
+- Effect 4.0.0-beta.78 drift (carried): Effect.result not Effect.either; it.effect required;
+  exactOptionalPropertyTypes | undefined; TestClock at epoch; services hidden in Layer.provide
+  sub-graphs resolve None via serviceOption — bind at construction when the dependency is
+  mandatory (that trap caused both the removal-gateway hole and tonight's boot failures).
+- Root `vp run typecheck` blocked by pre-existing scripts/sync-reference-repos errors.
+- Codex sandbox cannot bind 0.0.0.0 (one serverSettings fixture test fails only there).
 
 ## Next moves
 
-1. Visual sign-off of UI Phase 1 in the running app; iterate, then decide Phase 2.
-2. Re-verify the three send-backs in `764d7c43b` (see Unverified).
-3. Full server suite re-run before any merge.
-4. Port 501ce27b8 (the one remaining consensus reconciliation item).
-5. Live smoke procedure once send-backs re-verify clean.
-6. Kamogelo: PRD section 21 amendment for default-on analytics.
+1. Work the Open items top-down; 1 through 3 are the audit's shortest path to declaring plan
+   16.0 and the review fully closed.
+2. WORKFLOW.md production wiring (open item 8, first entry) unblocks the live Symphony smoke.
+3. Kamogelo: PRD section 21 amendment for default-on analytics (still pending).
