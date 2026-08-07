@@ -3,6 +3,7 @@ import { memo } from "react";
 import { CheckIcon, StarIcon } from "lucide-react";
 import {
   getDisplayModelName,
+  getModelVersionTag,
   getTriggerDisplayModelLabel,
   type ModelEsque,
   PROVIDER_ICON_BY_PROVIDER,
@@ -41,6 +42,13 @@ export const ModelListRow = memo(function ModelListRow(props: {
   const providerLabel = props.model.subProvider
     ? `${props.providerDisplayName} · ${props.model.subProvider}`
     : props.providerDisplayName;
+  const displayName = props.useTriggerLabel
+    ? getTriggerDisplayModelLabel(props.model)
+    : getDisplayModelName(
+        props.model,
+        props.preferShortName ? { preferShortName: true } : undefined,
+      );
+  const versionTag = getModelVersionTag(props.model, displayName);
 
   const row = (
     <ComboboxItem
@@ -58,14 +66,15 @@ export const ModelListRow = memo(function ModelListRow(props: {
     >
       <div className="min-w-0 flex-1 text-left">
         <div className="flex min-w-0 items-center gap-2">
-          <div className="min-w-0 truncate text-xs font-medium leading-snug">
-            {props.useTriggerLabel
-              ? getTriggerDisplayModelLabel(props.model)
-              : getDisplayModelName(
-                  props.model,
-                  props.preferShortName ? { preferShortName: true } : undefined,
-                )}
-          </div>
+          <div className="min-w-0 truncate text-xs font-medium leading-snug">{displayName}</div>
+          {versionTag ? (
+            <span
+              className="max-w-24 shrink-0 truncate text-meta text-text-tertiary"
+              title={versionTag}
+            >
+              {versionTag}
+            </span>
+          ) : null}
           {props.isSelected ? <CheckIcon className="size-3.5 shrink-0 text-blue-400" /> : null}
           {props.showNewBadge ? (
             <span
