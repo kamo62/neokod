@@ -1,4 +1,4 @@
-import { ActivityIcon, RefreshCwIcon, SquareIcon, ExternalLinkIcon } from "lucide-react";
+import { ActivityIcon, RefreshCwIcon, SquareIcon } from "lucide-react";
 
 import { RunAttemptId, type EvidenceBundle, type RunDetails } from "@neokod/contracts";
 import { usePrimaryEnvironmentId } from "../../state/environments";
@@ -10,6 +10,7 @@ import { Badge } from "../ui/badge";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import { Skeleton } from "../ui/skeleton";
 import { cn } from "../../lib/utils";
+import { PullRequestPanel } from "./PullRequestPanel";
 import { SymphonyEmptyState } from "./SymphonyEmptyState";
 
 const RUNNING_STATUSES = new Set([
@@ -70,16 +71,6 @@ function EvidencePanel({ evidence }: { readonly evidence: EvidenceBundle }) {
         <Badge variant={assessmentVariant} size="sm">
           {evidence.overallAssessment}
         </Badge>
-        {evidence.pullRequest !== null ? (
-          <a
-            href={evidence.pullRequest.url ?? `#run-${evidence.pullRequest.number}`}
-            target="_blank"
-            rel="noreferrer"
-            className="ml-auto inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
-          >
-            PR #{evidence.pullRequest.number} <ExternalLinkIcon className="size-3" />
-          </a>
-        ) : null}
       </div>
 
       {evidence.implementationSummary !== undefined ? (
@@ -257,6 +248,19 @@ export function SymphonyRunDetailView({ runId }: { readonly runId: string }) {
             </div>
             {details.workItem.evidence !== null && details.workItem.evidence !== undefined ? (
               <EvidencePanel evidence={details.workItem.evidence} />
+            ) : null}
+            {environmentId !== null &&
+            details.workItem.evidence !== null &&
+            details.workItem.evidence !== undefined &&
+            details.workItem.evidence.pullRequest !== null ? (
+              <PullRequestPanel
+                environmentId={environmentId}
+                workItemId={details.workItem.id}
+                lifecycle={details.workItem.lifecycle}
+                pullRequest={details.workItem.evidence.pullRequest}
+                onRefresh={detail.refresh}
+                isRefreshing={detail.isPending}
+              />
             ) : null}
             {details.approvalRequests.length > 0 ? (
               <div className="rounded-2xl border bg-card px-4 py-3">
