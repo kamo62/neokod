@@ -1,5 +1,6 @@
 import { useCallback, type ComponentType } from "react";
 import {
+  ArrowLeftIcon,
   GitPullRequestIcon,
   HistoryIcon,
   LayoutDashboardIcon,
@@ -146,6 +147,27 @@ export function SymphonySidebarNav({ pathname }: { pathname: string }) {
 
   return (
     <SidebarContent className="overflow-x-hidden">
+      <SidebarGroup className="px-2 pt-3 pb-0">
+        <SidebarMenu>
+          {/* Explicit way back: the brand menu also switches modes, but a
+              visible row is the discoverable path (user report: symphony
+              felt like a one-way door). */}
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="sm"
+              className="gap-2.5 px-2.5 py-2 text-left text-[13px] text-muted-foreground/70 hover:text-foreground/80"
+              onClick={() => {
+                finishNavigation();
+                void navigate({ to: "/" });
+              }}
+              aria-label="Back to Work mode"
+            >
+              <ArrowLeftIcon aria-hidden="true" className="size-4 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">Back to Work</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarGroup>
       <SidebarGroup className="px-2 py-3">
         <SidebarMenu>
           {SYMPHONY_NAV_ITEMS.map((item) => {

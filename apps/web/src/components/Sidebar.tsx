@@ -1,5 +1,4 @@
 import {
-  ActivityIcon,
   ArchiveIcon,
   ArrowUpDownIcon,
   CheckIcon,
@@ -196,7 +195,6 @@ import {
 } from "./ui/sidebar";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { useOpenAddProjectCommandPalette } from "../commandPaletteContext";
-import { useMissionControlUiStore } from "../missionControlUiStore";
 import {
   formatBulkThreadDeleteSummary,
   getSidebarThreadIdsToPrewarm,
@@ -3039,7 +3037,6 @@ function SidebarPrimaryNav({
 }) {
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
-  const openMissionControl = useMissionControlUiStore((state) => state.setOpen);
   const finishNavigation = useCallback(() => {
     if (isMobile) setOpenMobile(false);
   }, [isMobile, setOpenMobile]);
@@ -3096,19 +3093,6 @@ function SidebarPrimaryNav({
           >
             <HouseIcon className="size-3.5" />
             <span className="text-ui">Home</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            size="sm"
-            className="gap-2 px-2 py-1.5 text-ui text-text-secondary hover:bg-accent hover:text-foreground"
-            onClick={() => {
-              finishNavigation();
-              openMissionControl(true);
-            }}
-          >
-            <ActivityIcon className="size-3.5" />
-            <span className="text-ui">Mission Control</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
