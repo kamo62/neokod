@@ -24,6 +24,16 @@ export interface WorkflowLoadResult {
   readonly errors: ReadonlyArray<WorkflowValidationField>;
 }
 
+export interface WorkflowContentResult {
+  readonly path: string;
+  readonly content: string;
+}
+
+export interface WorkflowSaveResult {
+  readonly ok: boolean;
+  readonly validationError?: string;
+}
+
 export interface WorkflowLoader {
   /**
    * Load WORKFLOW.md from a repository path, parse it, resolve the effective
@@ -45,6 +55,28 @@ export interface WorkflowLoader {
     readonly repositoryPath: string;
     readonly providerResolver?: (model?: string) => ProviderInstanceRef;
   }) => Effect.Effect<boolean, WorkflowLoadError>;
+
+  /**
+   * Read the raw WORKFLOW.md text for the in-app editor (PRD 12.3). The
+   * file path always comes from the persisted `WorkflowRecord`, never from
+   * client input.
+   */
+  readonly getWorkflowContent: (
+    workflowId: WorkflowId,
+  ) => Effect.Effect<WorkflowContentResult, WorkflowLoadError>;
+
+  /**
+   * Write new WORKFLOW.md content atomically, then re-parse it through
+   * `loadWorkflow` so the record's status/validationError reflect the new
+   * content. The write always lands even when the new content is invalid —
+   * the record just moves to `invalid` and the result carries
+   * `validationError` (the loader already records that; this just surfaces
+   * it to the RPC caller instead of swallowing it).
+   */
+  readonly saveWorkflowContent: (
+    workflowId: WorkflowId,
+    content: string,
+  ) => Effect.Effect<WorkflowSaveResult, WorkflowLoadError>;
 }
 
 export class WorkflowLoadError extends Schema.TaggedErrorClass<WorkflowLoadError>()(
@@ -131,7 +163,65 @@ export const makeWorkflowLoader = (deps: {
       return true;
     });
 
-  return { loadWorkflow, reloadChanged };
+  const getWorkflowContent: WorkflowLoader["getWorkflowContent"] = (workflowId) =>
+    Effect.gen(function* () {
+      const record = yield* workflows
+        .getById(workflowId)
+        .pipe(Effect.mapError((cause) => new WorkflowLoadError({ message: cause.message })));
+      if (record === null) {
+        return yield* Effect.fail(
+          new WorkflowLoadError({ message: `Workflow not found: ${workflowId}` }),
+        );
+      }
+      const content = yield* fileSystem
+        .readFileString(record.workflowPath)
+        .pipe(Effect.mapError((cause) => new WorkflowLoadError({ message: cause.message })));
+      return { path: record.workflowPath, content };
+    });
+
+  const saveWorkflowContent: WorkflowLoader["saveWorkflowContent"] = (workflowId, content) =>
+    Effect.gen(function* () {
+      const record = yield* workflows
+        .getById(workflowId)
+        .pipe(Effect.mapError((cause) => new WorkflowLoadError({ message: cause.message })));
+      if (record === null) {
+        return yield* Effect.fail(
+          new WorkflowLoadError({ message: `Workflow not found: ${workflowId}` }),
+        );
+      }
+
+      // Atomic write: temp file in a scoped temp directory beside the
+      // target, then rename (rename is atomic on the same filesystem — no
+      // reader ever observes a partially written WORKFLOW.md). Mirrors
+      // atomicWrite.ts's approach; inlined here since this closure holds
+      // plain `fileSystem`/`path` values rather than yielding them from
+      // Effect context.
+      const targetDirectory = path.dirname(record.workflowPath);
+      yield* fileSystem
+        .makeDirectory(targetDirectory, { recursive: true })
+        .pipe(Effect.mapError((cause) => new WorkflowLoadError({ message: cause.message })));
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const tempDirectory = yield* fileSystem.makeTempDirectoryScoped({
+            directory: targetDirectory,
+            prefix: `${path.basename(record.workflowPath)}.`,
+          });
+          const tempPath = path.join(tempDirectory, "contents.tmp");
+          yield* fileSystem.writeFileString(tempPath, content);
+          yield* fileSystem.rename(tempPath, record.workflowPath);
+        }),
+      ).pipe(Effect.mapError((cause) => new WorkflowLoadError({ message: cause.message })));
+
+      // Re-parse through the normal loader path: a broken file lands as
+      // `invalid` with `validationError` set (existing behaviour), it is
+      // never dropped or left un-upserted.
+      const result = yield* loadWorkflow({ repositoryPath: record.repositoryPath });
+      return result.errors.length === 0
+        ? { ok: true }
+        : { ok: true, validationError: summarizeErrors(result.errors) };
+    });
+
+  return { loadWorkflow, reloadChanged, getWorkflowContent, saveWorkflowContent };
 };
 
 const summarizeErrors = (errors: ReadonlyArray<WorkflowValidationField>): string =>

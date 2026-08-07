@@ -34,6 +34,8 @@ export const SYMPHONY_WS_METHODS = {
   listWorkflows: "symphony.listWorkflows",
   getWorkflow: "symphony.getWorkflow",
   validateWorkflow: "symphony.validateWorkflow",
+  getWorkflowContent: "symphony.getWorkflowContent",
+  saveWorkflowContent: "symphony.saveWorkflowContent",
   listTrackers: "symphony.listTrackers",
   listHistory: "symphony.listHistory",
 
@@ -705,6 +707,19 @@ export const QueueItemSchema = Schema.Struct({
 });
 export type QueueItem = typeof QueueItemSchema.Type;
 
+/**
+ * Compact PR reference carried on `RunSummary` (reviews-list PR badges): just
+ * enough to render a linked, tone-coloured badge without pulling the full
+ * evidence bundle. Optional so old persisted/streamed `RunSummary` payloads
+ * still decode.
+ */
+export const RunSummaryPullRequestSchema = Schema.Struct({
+  number: NonNegativeInt,
+  url: Schema.optional(Schema.String),
+  status: Schema.optional(Schema.Literals(["open", "draft", "merged", "closed"])),
+});
+export type RunSummaryPullRequest = typeof RunSummaryPullRequestSchema.Type;
+
 export const RunSummarySchema = Schema.Struct({
   runAttemptId: RunAttemptId,
   workItemId: WorkItemId,
@@ -727,6 +742,8 @@ export const RunSummarySchema = Schema.Struct({
   /** Evidence assessment for the run (REVIEW P1: the reviews list rendered a
    * fabricated green badge because the summary did not carry it). */
   overallAssessment: Schema.optional(OverallAssessmentSchema),
+  /** Compact PR reference for the reviews-list and history-view badges. */
+  pullRequest: Schema.optional(RunSummaryPullRequestSchema),
 });
 export type RunSummary = typeof RunSummarySchema.Type;
 
@@ -839,6 +856,27 @@ export const SymphonyGetWorkflowInput = Schema.Struct({
 export const SymphonyValidateWorkflowInput = Schema.Struct({
   repositoryPath: TrimmedNonEmptyString,
   workflowPath: Schema.optional(Schema.String),
+});
+/**
+ * In-app workflow editor (PRD 12.3, pragmatic v1). `getWorkflowContent`
+ * reads the raw WORKFLOW.md text; `saveWorkflowContent` writes it and
+ * re-parses through the workflow loader. Both resolve the file path from
+ * the persisted `WorkflowRecord` server-side, never from client input.
+ */
+export const SymphonyGetWorkflowContentInput = Schema.Struct({
+  workflowId: WorkflowId,
+});
+export const SymphonyGetWorkflowContentResult = Schema.Struct({
+  path: Schema.String,
+  content: Schema.String,
+});
+export const SymphonySaveWorkflowContentInput = Schema.Struct({
+  workflowId: WorkflowId,
+  content: Schema.String,
+});
+export const SymphonySaveWorkflowContentResult = Schema.Struct({
+  ok: Schema.Boolean,
+  validationError: Schema.optional(Schema.String),
 });
 export const SymphonyListTrackersInput = Schema.Struct({});
 export const SymphonyListHistoryInput = Schema.Struct({

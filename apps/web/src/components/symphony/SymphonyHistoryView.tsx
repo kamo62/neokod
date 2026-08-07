@@ -1,4 +1,4 @@
-import { HistoryIcon, RefreshCwIcon, TriangleAlertIcon } from "lucide-react";
+import { GitPullRequestIcon, HistoryIcon, RefreshCwIcon, TriangleAlertIcon } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 import type { RunSummary } from "@neokod/contracts";
@@ -53,6 +53,47 @@ const OUTCOME_BADGE: Record<
   retries_exhausted: "error",
 };
 
+// Mirrors symphony.reviews.tsx's PrBadge rendering so the same pullRequest
+// value reads identically wherever a run summary appears.
+function PrBadge({
+  pullRequest,
+}: {
+  readonly pullRequest: NonNullable<RunSummary["pullRequest"]>;
+}) {
+  const { number, url, status } = pullRequest;
+  const variant =
+    status === "open"
+      ? "success"
+      : status === "merged"
+        ? "info"
+        : status === "closed"
+          ? "error"
+          : "secondary";
+  return (
+    <Badge
+      variant={variant}
+      size="sm"
+      render={
+        url === undefined ? (
+          <span />
+        ) : (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              window.open(url, "_blank", "noopener,noreferrer");
+            }}
+            aria-label={`Open PR #${number}`}
+          />
+        )
+      }
+    >
+      <GitPullRequestIcon />#{number}
+    </Badge>
+  );
+}
+
 // Mirrors symphony.reviews.tsx's AssessmentBadge rendering so the same
 // overallAssessment value reads identically wherever a run summary appears.
 function AssessmentBadge({ assessment }: { readonly assessment: string }) {
@@ -97,6 +138,7 @@ function HistoryCard({ run }: { readonly run: RunSummary }) {
           <Badge variant={OUTCOME_BADGE[run.status] ?? "secondary"} size="sm">
             {run.status}
           </Badge>
+          {run.pullRequest !== undefined ? <PrBadge pullRequest={run.pullRequest} /> : null}
         </div>
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
           {run.repositoryPath !== undefined ? <span>{run.repositoryPath}</span> : null}

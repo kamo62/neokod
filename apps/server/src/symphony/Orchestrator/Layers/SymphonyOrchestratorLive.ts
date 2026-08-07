@@ -188,11 +188,27 @@ const lifecycleForRun = (
   return "running";
 };
 
+/** Project the compact PR reference carried on `RunSummary` (reviews-list
+ * and history-view badges) from the full evidence bundle's `pullRequest`. */
+const projectRunSummaryPullRequest = (
+  pullRequest: PullRequestEvidence | null | undefined,
+): RunSummary["pullRequest"] => {
+  if (pullRequest === null || pullRequest === undefined) {
+    return undefined;
+  }
+  return {
+    number: pullRequest.number,
+    ...(pullRequest.url !== undefined ? { url: pullRequest.url } : {}),
+    ...(pullRequest.status !== undefined ? { status: pullRequest.status } : {}),
+  };
+};
+
 const buildRunSummary = (input: {
   readonly attempt: RunAttempt;
   readonly workItem: WorkItem | null;
   readonly latestEvent: string | null;
   readonly overallAssessment?: RunSummary["overallAssessment"];
+  readonly pullRequest?: RunSummary["pullRequest"];
 }): RunSummary => {
   const { attempt, workItem, latestEvent } = input;
   const started = Date.parse(attempt.startedAt);
@@ -225,6 +241,7 @@ const buildRunSummary = (input: {
     ...(input.overallAssessment !== undefined
       ? { overallAssessment: input.overallAssessment }
       : {}),
+    ...(input.pullRequest !== undefined ? { pullRequest: input.pullRequest } : {}),
   };
 };
 
@@ -662,6 +679,11 @@ const makeOrchestrator = Effect.gen(function* () {
       );
       const workItemsById = new Map<string, WorkItem | null>();
       const assessmentsById = new Map<string, RunSummary["overallAssessment"]>();
+      // Compact PR reference for the reviews-list/history badges (plan 12,
+      // reviews-list PR badges): projected from the same per-item evidence
+      // read as the assessment above, so no extra N+1 query is added — the
+      // repository has no batch read, and the run list is small.
+      const pullRequestById = new Map<string, RunSummary["pullRequest"]>();
       for (const id of workItemIds) {
         const item = yield* workItems
           .getById(WorkItemId.make(id))
@@ -673,6 +695,10 @@ const makeOrchestrator = Effect.gen(function* () {
             .pipe(Effect.catch(() => Effect.succeed(null)));
           if (evidence !== null) {
             assessmentsById.set(id, evidence.overallAssessment);
+            const pullRequest = projectRunSummaryPullRequest(evidence.pullRequest);
+            if (pullRequest !== undefined) {
+              pullRequestById.set(id, pullRequest);
+            }
           }
         }
       }
@@ -683,12 +709,14 @@ const makeOrchestrator = Effect.gen(function* () {
           Effect.map((events) => events.at(-1)?.eventType ?? null),
         );
         const assessment = assessmentsById.get(String(attempt.workItemId));
+        const pullRequest = pullRequestById.get(String(attempt.workItemId));
         summaries.push(
           buildRunSummary({
             attempt,
             workItem: workItemsById.get(String(attempt.workItemId)) ?? null,
             latestEvent: latest,
             ...(assessment !== undefined ? { overallAssessment: assessment } : {}),
+            ...(pullRequest !== undefined ? { pullRequest } : {}),
           }),
         );
       }

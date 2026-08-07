@@ -9,8 +9,9 @@ import { connectionAtomRuntime } from "../connection/runtime";
 /**
  * View-local Symphony atoms for RPCs that are not yet mounted on
  * `@neokod/client-runtime`'s `createSymphonyEnvironmentAtoms` (tracker
- * health, run history, workflow validate/activate/pause/resume, and the
- * global pause/resume/stop-all controls). Built the same way
+ * health, run history, workflow validate/activate/pause/resume, the
+ * in-app WORKFLOW.md editor's read/save RPCs, and the global
+ * pause/resume/stop-all controls). Built the same way
  * `state/symphony.ts` builds the rest of the Symphony atoms: thin wrappers
  * over the shared `createEnvironmentRpc*` helpers, keyed to environment and
  * RPC input.
@@ -31,6 +32,15 @@ export const symphonyExtras = {
   validateWorkflow: createEnvironmentRpcCommand(connectionAtomRuntime, {
     label: "environment-command:symphony:validateWorkflow",
     tag: SYMPHONY_WS_METHODS.validateWorkflow,
+  }),
+  getWorkflowContent: createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
+    label: "environment-data:symphony:workflowContent",
+    tag: SYMPHONY_WS_METHODS.getWorkflowContent,
+    staleTimeMs: 5_000,
+  }),
+  saveWorkflowContent: createEnvironmentRpcCommand(connectionAtomRuntime, {
+    label: "environment-command:symphony:saveWorkflowContent",
+    tag: SYMPHONY_WS_METHODS.saveWorkflowContent,
   }),
   activateWorkflow: createEnvironmentRpcCommand(connectionAtomRuntime, {
     label: "environment-command:symphony:activateWorkflow",

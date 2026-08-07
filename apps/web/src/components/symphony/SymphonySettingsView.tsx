@@ -41,95 +41,257 @@ const STATUS_BADGE: Record<string, "default" | "secondary" | "success" | "warnin
 type WorkflowAction = "validate" | "activate" | "pause" | "resume";
 type GlobalAction = "pause" | "resume" | "stop";
 
-function WorkflowRow({
+/**
+ * Inline WORKFLOW.md editor (PRD 12.3, pragmatic v1). Fetches the raw file
+ * text on mount (only mounted while its row is expanded), tracks a local
+ * dirty draft, and reuses the row's existing Validate action so the
+ * on-disk validation result is the same code path either way. Save is a
+ * new RPC: the write always lands, an invalid result comes back as
+ * `{ ok: true, validationError }` rather than a failure (server already
+ * marks the workflow record `invalid` in that case), so this surfaces the
+ * message inline instead of treating it as a request failure.
+ */
+function WorkflowEditorPanel({
+  environmentId,
   workflow,
-  pendingAction,
+  validatePending,
   onValidate,
-  onActivate,
-  onPause,
-  onResume,
+  onCancel,
+  onSaved,
 }: {
+  readonly environmentId: EnvironmentId;
   readonly workflow: WorkflowRecord;
-  readonly pendingAction: WorkflowAction | null;
+  readonly validatePending: boolean;
   readonly onValidate: () => void;
-  readonly onActivate: () => void;
-  readonly onPause: () => void;
-  readonly onResume: () => void;
+  readonly onCancel: () => void;
+  readonly onSaved: () => void;
 }) {
-  const isPending = pendingAction !== null;
+  const contentQuery = useEnvironmentQuery(
+    symphonyExtras.getWorkflowContent({ environmentId, input: { workflowId: workflow.id } }),
+  );
+  const saveWorkflowContent = useAtomCommand(symphonyExtras.saveWorkflowContent);
+
+  const [draft, setDraft] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveValidationError, setSaveValidationError] = useState<string | null>(null);
+
+  const original = contentQuery.data?.content ?? null;
+  const value = draft ?? original ?? "";
+  const isDirty = draft !== null && original !== null && draft !== original;
+
+  const handleSave = async () => {
+    if (draft === null) return;
+    setIsSaving(true);
+    setSaveError(null);
+    setSaveValidationError(null);
+    try {
+      const result = await saveWorkflowContent({
+        environmentId,
+        input: { workflowId: workflow.id, content: draft },
+      });
+      if (result._tag === "Success") {
+        setSaveValidationError(result.value.validationError ?? null);
+        setDraft(null);
+        contentQuery.refresh();
+        onSaved();
+      } else {
+        setSaveError("Save failed. Try again.");
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
-    <div className="border-t border-border/60 px-4 py-3.5 first:border-t-0 sm:px-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0 flex-1 space-y-1">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <code className="truncate text-[13px] font-semibold tracking-[-0.01em] text-foreground">
-              {workflow.workflowPath}
+    <div className="border-t border-border/60 bg-muted/20 px-4 py-3.5 sm:px-5">
+      {contentQuery.isPending && contentQuery.data === null ? (
+        <Skeleton className="h-40 w-full rounded-lg" />
+      ) : contentQuery.error && contentQuery.data === null ? (
+        <p className="text-[11px] text-destructive-foreground">
+          Could not load {workflow.workflowPath}: {contentQuery.error}
+        </p>
+      ) : (
+        <div className="space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <code className="truncate text-[11px] text-muted-foreground/80">
+              {contentQuery.data?.path ?? workflow.workflowPath}
             </code>
-            <Badge variant={STATUS_BADGE[workflow.status] ?? "secondary"} size="sm">
-              {workflow.status}
-            </Badge>
-            <Badge variant="outline" size="sm">
-              {workflow.autonomy}
-            </Badge>
+            {isDirty ? (
+              <span className="text-[11px] font-medium text-warning">Unsaved changes</span>
+            ) : null}
           </div>
-          <p className="truncate text-xs text-muted-foreground/80">{workflow.repositoryPath}</p>
-          {workflow.validationError !== null ? (
-            <p className="text-[11px] text-warning">{workflow.validationError}</p>
+          <textarea
+            className="h-72 w-full resize-y rounded-lg border border-input bg-background p-3 font-mono text-[12px] leading-relaxed text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+            value={value}
+            onChange={(event) => setDraft(event.target.value)}
+            spellCheck={false}
+            aria-label={`Edit ${workflow.workflowPath}`}
+          />
+          {saveValidationError !== null ? (
+            <p className="text-[11px] text-warning">{saveValidationError}</p>
           ) : null}
-        </div>
-        <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 gap-1 px-2 text-[11px]"
-            onClick={onValidate}
-            disabled={isPending}
-            aria-label="Validate workflow"
-          >
-            {pendingAction === "validate" ? <Spinner className="size-3" /> : null}
-            Validate
-          </Button>
-          {workflow.status === "draft" || workflow.status === "invalid" ? (
-            <Button
-              size="sm"
-              variant="default"
-              className="h-7 gap-1 px-2 text-[11px]"
-              onClick={onActivate}
-              disabled={isPending}
-              aria-label="Activate workflow"
-            >
-              {pendingAction === "activate" ? <Spinner className="size-3" /> : null}
-              Activate
-            </Button>
+          {saveError !== null ? (
+            <p className="text-[11px] text-destructive-foreground">{saveError}</p>
           ) : null}
-          {workflow.status === "active" ? (
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
               variant="outline"
               className="h-7 gap-1 px-2 text-[11px]"
-              onClick={onPause}
-              disabled={isPending}
-              aria-label="Pause workflow"
+              onClick={onValidate}
+              disabled={validatePending}
+              aria-label="Validate workflow"
             >
-              {pendingAction === "pause" ? <Spinner className="size-3" /> : null}
-              Pause
+              {validatePending ? <Spinner className="size-3" /> : null}
+              Validate
             </Button>
-          ) : null}
-          {workflow.status === "paused" ? (
             <Button
               size="sm"
               variant="default"
               className="h-7 gap-1 px-2 text-[11px]"
-              onClick={onResume}
-              disabled={isPending}
-              aria-label="Resume workflow"
+              onClick={() => void handleSave()}
+              disabled={isSaving || !isDirty}
+              aria-label="Save workflow"
             >
-              {pendingAction === "resume" ? <Spinner className="size-3" /> : null}
-              Resume
+              {isSaving ? <Spinner className="size-3" /> : null}
+              Save
             </Button>
-          ) : null}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-[11px]"
+              onClick={onCancel}
+              disabled={isSaving}
+              aria-label="Cancel editing workflow"
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorkflowRow({
+  workflow,
+  pendingAction,
+  isEditing,
+  environmentId,
+  onValidate,
+  onActivate,
+  onPause,
+  onResume,
+  onToggleEdit,
+  onSaved,
+}: {
+  readonly workflow: WorkflowRecord;
+  readonly pendingAction: WorkflowAction | null;
+  readonly isEditing: boolean;
+  readonly environmentId: EnvironmentId;
+  readonly onValidate: () => void;
+  readonly onActivate: () => void;
+  readonly onPause: () => void;
+  readonly onResume: () => void;
+  readonly onToggleEdit: () => void;
+  readonly onSaved: () => void;
+}) {
+  const isPending = pendingAction !== null;
+  return (
+    <div className="border-t border-border/60 first:border-t-0">
+      <div className="px-4 py-3.5 sm:px-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <code className="truncate text-[13px] font-semibold tracking-[-0.01em] text-foreground">
+                {workflow.workflowPath}
+              </code>
+              <Badge variant={STATUS_BADGE[workflow.status] ?? "secondary"} size="sm">
+                {workflow.status}
+              </Badge>
+              <Badge variant="outline" size="sm">
+                {workflow.autonomy}
+              </Badge>
+            </div>
+            <p className="truncate text-xs text-muted-foreground/80">{workflow.repositoryPath}</p>
+            {workflow.validationError !== null ? (
+              <p className="text-[11px] text-warning">{workflow.validationError}</p>
+            ) : null}
+          </div>
+          <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+            <Button
+              size="sm"
+              variant={isEditing ? "secondary" : "ghost"}
+              className="h-7 gap-1 px-2 text-[11px]"
+              onClick={onToggleEdit}
+              aria-label={isEditing ? "Close workflow editor" : "Edit workflow"}
+            >
+              {isEditing ? "Close" : "Edit"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 gap-1 px-2 text-[11px]"
+              onClick={onValidate}
+              disabled={isPending}
+              aria-label="Validate workflow"
+            >
+              {pendingAction === "validate" ? <Spinner className="size-3" /> : null}
+              Validate
+            </Button>
+            {workflow.status === "draft" || workflow.status === "invalid" ? (
+              <Button
+                size="sm"
+                variant="default"
+                className="h-7 gap-1 px-2 text-[11px]"
+                onClick={onActivate}
+                disabled={isPending}
+                aria-label="Activate workflow"
+              >
+                {pendingAction === "activate" ? <Spinner className="size-3" /> : null}
+                Activate
+              </Button>
+            ) : null}
+            {workflow.status === "active" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1 px-2 text-[11px]"
+                onClick={onPause}
+                disabled={isPending}
+                aria-label="Pause workflow"
+              >
+                {pendingAction === "pause" ? <Spinner className="size-3" /> : null}
+                Pause
+              </Button>
+            ) : null}
+            {workflow.status === "paused" ? (
+              <Button
+                size="sm"
+                variant="default"
+                className="h-7 gap-1 px-2 text-[11px]"
+                onClick={onResume}
+                disabled={isPending}
+                aria-label="Resume workflow"
+              >
+                {pendingAction === "resume" ? <Spinner className="size-3" /> : null}
+                Resume
+              </Button>
+            ) : null}
+          </div>
         </div>
       </div>
+      {isEditing ? (
+        <WorkflowEditorPanel
+          environmentId={environmentId}
+          workflow={workflow}
+          validatePending={pendingAction === "validate"}
+          onValidate={onValidate}
+          onCancel={onToggleEdit}
+          onSaved={onSaved}
+        />
+      ) : null}
     </div>
   );
 }
@@ -175,6 +337,7 @@ export function SymphonySettingsView() {
   } | null>(null);
   const [pendingGlobal, setPendingGlobal] = useState<GlobalAction | null>(null);
   const [stopConfirmOpen, setStopConfirmOpen] = useState(false);
+  const [editingWorkflowId, setEditingWorkflowId] = useState<string | null>(null);
 
   const runWorkflowAction = async (
     workflow: WorkflowRecord,
@@ -402,11 +565,13 @@ export function SymphonySettingsView() {
                         <WorkflowRow
                           key={workflow.id}
                           workflow={workflow}
+                          environmentId={environmentId}
                           pendingAction={
                             pendingWorkflow?.workflowId === workflow.id
                               ? pendingWorkflow.action
                               : null
                           }
+                          isEditing={editingWorkflowId === workflow.id}
                           onValidate={() =>
                             void runWorkflowAction(workflow, environmentId, "validate")
                           }
@@ -415,6 +580,12 @@ export function SymphonySettingsView() {
                           }
                           onPause={() => void runWorkflowAction(workflow, environmentId, "pause")}
                           onResume={() => void runWorkflowAction(workflow, environmentId, "resume")}
+                          onToggleEdit={() =>
+                            setEditingWorkflowId((current) =>
+                              current === workflow.id ? null : workflow.id,
+                            )
+                          }
+                          onSaved={() => workflowsQuery.refresh()}
                         />
                       ))}
                 </div>

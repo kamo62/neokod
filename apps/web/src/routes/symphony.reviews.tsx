@@ -16,6 +16,47 @@ import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import { cn } from "../lib/utils";
 
+/** Tone mapping mirrors `PullRequestPanel`'s `prStatusPresentation`, kept
+ * to a single number+tone badge for the compact row context. */
+function PrBadge({
+  pullRequest,
+}: {
+  readonly pullRequest: NonNullable<RunSummary["pullRequest"]>;
+}) {
+  const { number, url, status } = pullRequest;
+  const variant =
+    status === "open"
+      ? "success"
+      : status === "merged"
+        ? "info"
+        : status === "closed"
+          ? "error"
+          : "secondary";
+  return (
+    <Badge
+      variant={variant}
+      size="sm"
+      render={
+        url === undefined ? (
+          <span />
+        ) : (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              window.open(url, "_blank", "noopener,noreferrer");
+            }}
+            aria-label={`Open PR #${number}`}
+          />
+        )
+      }
+    >
+      <GitPullRequestIcon />#{number}
+    </Badge>
+  );
+}
+
 function AssessmentBadge({ assessment }: { readonly assessment: string }) {
   const variant =
     assessment === "ready_for_review"
@@ -119,6 +160,7 @@ function ReviewCard({ run }: { readonly run: RunSummary }) {
           <Badge variant={run.lifecycle === "ready_for_review" ? "default" : "error"} size="sm">
             {run.lifecycle}
           </Badge>
+          {run.pullRequest !== undefined ? <PrBadge pullRequest={run.pullRequest} /> : null}
         </div>
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
           {run.workspacePath !== undefined ? <span>{run.workspacePath}</span> : null}

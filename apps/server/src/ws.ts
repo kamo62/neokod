@@ -73,6 +73,8 @@ import {
   SymphonyResumeRepositoryInput,
   SymphonyStopAllRunsInput,
   SymphonyGetWorkflowInput,
+  SymphonyGetWorkflowContentInput,
+  SymphonySaveWorkflowContentInput,
   SymphonyListHistoryInput,
   SymphonyResolveAttentionInput,
 } from "@neokod/contracts";
@@ -580,6 +582,52 @@ export const makeSymphonyRpcHandlers = () => ({
                   Effect.catch(() => Effect.succeed({ ok: false })),
                 )
             : Effect.succeed({ ok: false }),
+        ),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  // In-app workflow editor (PRD 12.3, pragmatic v1). Both resolve the file
+  // path from the persisted WorkflowRecord inside WorkflowLoaderService,
+  // never from client input.
+  [SYMPHONY_WS_METHODS.getWorkflowContent]: (
+    input: (typeof SymphonyGetWorkflowContentInput)["Type"],
+  ) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.getWorkflowContent,
+      Effect.serviceOption(WorkflowLoaderService).pipe(
+        Effect.flatMap((maybe) =>
+          Option.isSome(maybe)
+            ? maybe.value.getWorkflowContent(input.workflowId).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new SymphonyError({
+                      code: "workflow_content_unavailable",
+                      message: cause.message,
+                    }),
+                ),
+              )
+            : Effect.fail(orchestratorUnavailable()),
+        ),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.saveWorkflowContent]: (
+    input: (typeof SymphonySaveWorkflowContentInput)["Type"],
+  ) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.saveWorkflowContent,
+      Effect.serviceOption(WorkflowLoaderService).pipe(
+        Effect.flatMap((maybe) =>
+          Option.isSome(maybe)
+            ? maybe.value
+                .saveWorkflowContent(input.workflowId, input.content)
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new SymphonyError({ code: "workflow_save_failed", message: cause.message }),
+                  ),
+                )
+            : Effect.fail(orchestratorUnavailable()),
         ),
       ),
       { "rpc.aggregate": "symphony" },
