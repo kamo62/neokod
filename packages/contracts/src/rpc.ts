@@ -131,6 +131,7 @@ import {
   SymphonyActivateWorkflowInput,
   SymphonyApproveInput,
   SymphonyApproveMergeInput,
+  SymphonyRefreshPullRequestInput,
   SymphonyAttentionStreamEvent,
   SymphonyCancelRunInput,
   SymphonyDispatchWorkItemInput,
@@ -901,6 +902,12 @@ export const WsSymphonyApproveMergeRpc = Rpc.make(SYMPHONY_WS_METHODS.approveMer
   error: SymphonyError,
 });
 
+export const WsSymphonyRefreshPullRequestRpc = Rpc.make(SYMPHONY_WS_METHODS.refreshPullRequest, {
+  payload: SymphonyRefreshPullRequestInput,
+  success: SymphonyEmptyResult,
+  error: SymphonyError,
+});
+
 export const WsSymphonyTakeOverRpc = Rpc.make(SYMPHONY_WS_METHODS.takeOver, {
   payload: SymphonyTakeOverInput,
   success: WorkModeHandoffSchema,
@@ -1045,6 +1052,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSymphonyCancelRunRpc,
   WsSymphonyRequestChangesRpc,
   WsSymphonyApproveMergeRpc,
+  WsSymphonyRefreshPullRequestRpc,
   WsSymphonyTakeOverRpc,
   WsSymphonyResumeAutonomousRpc,
   WsSymphonyDelegateFromThreadRpc,

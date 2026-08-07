@@ -48,6 +48,10 @@ const approveMergeCommand = createEnvironmentRpcCommand(connectionAtomRuntime, {
   label: "environment-command:symphony:approveMerge",
   tag: SYMPHONY_WS_METHODS.approveMerge,
 });
+const refreshPullRequestCommand = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "environment-command:symphony:refreshPullRequest",
+  tag: SYMPHONY_WS_METHODS.refreshPullRequest,
+});
 
 interface StatusPresentation {
   readonly label: string;
@@ -256,6 +260,15 @@ export function PullRequestPanel({
   isRefreshing,
 }: PullRequestPanelProps) {
   const requestChanges = useAtomCommand(requestChangesCommand);
+  const refreshPullRequest = useAtomCommand(refreshPullRequestCommand);
+
+  const handleRefresh = async () => {
+    // Fresh host query first (best-effort: an unenriched host or transient
+    // failure still falls through to re-syncing the stored evidence), then
+    // re-read the run so the panel shows what the server now holds.
+    await refreshPullRequest({ environmentId, input: { workItemId } }).catch(() => null);
+    onRefresh();
+  };
   const approveMerge = useAtomCommand(approveMergeCommand);
   const [pendingAction, setPendingAction] = useState<"requestChanges" | "approveMerge" | null>(
     null,
@@ -383,7 +396,7 @@ export function PullRequestPanel({
           size="sm"
           variant="ghost"
           className="h-7 gap-1.5 px-2 text-[11px]"
-          onClick={onRefresh}
+          onClick={() => void handleRefresh()}
           disabled={isRefreshing}
           aria-label="Refresh pull request"
         >

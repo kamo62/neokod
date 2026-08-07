@@ -63,6 +63,7 @@ export const SYMPHONY_WS_METHODS = {
   resolveAttention: "symphony.resolveAttention",
   requestChanges: "symphony.requestChanges",
   approveMerge: "symphony.approveMerge",
+  refreshPullRequest: "symphony.refreshPullRequest",
 
   // Cross-mode handoff
   takeOver: "symphony.takeOver",
@@ -904,6 +905,9 @@ export const SymphonyRequestChangesInput = Schema.Struct({
   reason: Schema.optional(Schema.String),
 });
 export const SymphonyApproveMergeInput = Schema.Struct({
+  workItemId: WorkItemId,
+});
+export const SymphonyRefreshPullRequestInput = Schema.Struct({
   workItemId: WorkItemId,
 });
 export const SymphonyTakeOverInput = Schema.Struct({

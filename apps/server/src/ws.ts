@@ -49,6 +49,7 @@ import {
   SymphonyError,
   SymphonyApproveInput,
   SymphonyApproveMergeInput,
+  SymphonyRefreshPullRequestInput,
   SymphonyCancelRunInput,
   SymphonyDelegateFromThreadInput,
   SymphonyDispatchWorkItemInput,
@@ -784,6 +785,22 @@ export const makeSymphonyRpcHandlers = () => ({
         (orchestrator) =>
           orchestrator
             .requestChanges(input.workItemId, input.reason)
+            .pipe(Effect.map((changed) => ({ ok: changed }))),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.refreshPullRequest]: (
+    input: (typeof SymphonyRefreshPullRequestInput)["Type"],
+  ) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.refreshPullRequest,
+      withOrchestrator(
+        // Boolean result = whether stored evidence changed; report it as ok
+        // so the client can distinguish refreshed from no-op.
+        (orchestrator) =>
+          orchestrator
+            .refreshPullRequest(input.workItemId)
             .pipe(Effect.map((changed) => ({ ok: changed }))),
         Effect.fail(orchestratorUnavailable()),
       ),
