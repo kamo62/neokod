@@ -26,6 +26,7 @@ import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { getTelemetryIdentifier } from "./Identify.ts";
+import { drainAnalyticsErrorEvents, publishAnalyticsErrorEvent } from "./errorEvents.ts";
 import * as AnalyticsService from "./AnalyticsService.ts";
 
 interface RecordedBatchRequest {
@@ -36,6 +37,8 @@ interface RecordedBatchRequest {
       readonly properties?: {
         readonly index?: number;
         readonly clientType?: string;
+        readonly errorName?: string;
+        readonly level?: string;
       };
     }>;
   } | null;
@@ -178,6 +181,79 @@ it.layer(NodeServices.layer)("AnalyticsService test", (it) => {
       assert.equal(
         batchRequests.every((request) =>
           request.body.batch.every((event) => event.properties?.clientType === "cli-web-client"),
+        ),
+        true,
+      );
+    }),
+  );
+
+  it.effect("drains logged errors into privacy-safe server.error events with a per-name cap", () =>
+    Effect.gen(function* () {
+      drainAnalyticsErrorEvents();
+      const capturedRequests: Array<RecordedBatchRequest> = [];
+      const serverConfigLayer = ServerConfig.ServerConfig.layerTest(process.cwd(), {
+        prefix: "neokod-telemetry-errors-",
+      });
+      const telemetryLayer = AnalyticsService.layer.pipe(
+        Layer.provideMerge(serverConfigLayer),
+        Layer.provideMerge(ServerSettings.ServerSettingsService.layerTest()),
+      );
+      const configLayer = ConfigProvider.layer(
+        ConfigProvider.fromUnknown({
+          NEOKOD_TELEMETRY_ENABLED: true,
+          NEOKOD_POSTHOG_KEY: "phc_test_key",
+          NEOKOD_POSTHOG_HOST: "",
+          NEOKOD_TELEMETRY_FLUSH_BATCH_SIZE: 100,
+        }),
+      );
+      const batchServerLayer = HttpServer.serve(
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          if (request.method !== "POST") {
+            return HttpServerResponse.empty({ status: 404 });
+          }
+          const payload = yield* request.json.pipe(
+            Effect.map((body) => body as RecordedBatchRequest["body"]),
+            Effect.orElseSucceed(() => null),
+          );
+          capturedRequests.push({ path: request.url, body: payload });
+          return HttpServerResponse.jsonUnsafe({});
+        }),
+      );
+      const runtimeLayer = telemetryLayer.pipe(
+        Layer.provide(configLayer),
+        Layer.provideMerge(NodeHttpServer.layerTest),
+      );
+
+      yield* Effect.gen(function* () {
+        yield* Layer.launch(batchServerLayer).pipe(Effect.forkScoped);
+        const analytics = yield* AnalyticsService.AnalyticsService;
+
+        publishAnalyticsErrorEvent({ errorName: "GitCommandError", level: "Error" });
+        publishAnalyticsErrorEvent({ errorName: "GitCommandError", level: "Error" });
+        for (let index = 0; index < 40; index += 1) {
+          publishAnalyticsErrorEvent({ errorName: "FloodError", level: "Error" });
+        }
+        yield* analytics.flush;
+      }).pipe(Effect.provide(runtimeLayer));
+
+      const deliveredEvents = capturedRequests.flatMap((request) => request.body?.batch ?? []);
+      const errorEvents = deliveredEvents.filter((event) => event.event === "server.error");
+      const gitErrors = errorEvents.filter(
+        (event) => event.properties?.errorName === "GitCommandError",
+      );
+      const floodErrors = errorEvents.filter(
+        (event) => event.properties?.errorName === "FloodError",
+      );
+      assert.equal(gitErrors.length, 2);
+      // The per-name window cap holds back the flood.
+      assert.equal(floodErrors.length, 25);
+      assert.equal(gitErrors[0]?.properties?.level, "Error");
+      // Privacy: only the class name and level travel, never a message.
+      assert.equal(
+        errorEvents.every(
+          (event) =>
+            !("message" in (event.properties ?? {})) && !("stack" in (event.properties ?? {})),
         ),
         true,
       );

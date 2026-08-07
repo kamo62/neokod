@@ -32,6 +32,12 @@ import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { DEFAULT_ANALYTICS_SETTINGS, type AnalyticsSettings } from "@neokod/contracts";
 import { getTelemetryIdentifier } from "./Identify.ts";
+import { drainAnalyticsErrorEvents } from "./errorEvents.ts";
+
+/** Per-error-name delivery cap: at most this many `server.error` events per
+ * name within one window, so an error loop cannot flood PostHog. */
+const ERROR_EVENT_WINDOW_MILLIS = 3_600_000;
+const MAX_ERROR_EVENTS_PER_NAME_PER_WINDOW = 25;
 
 interface BufferedAnalyticsEvent {
   readonly event: string;
@@ -329,7 +335,34 @@ export const make = Effect.gen(function* () {
       }
     });
 
+  // Error-level log entries published by the logger tap (serverLogger.ts via
+  // telemetry/errorEvents.ts). Drained at flush time so the logger stays free
+  // of service dependencies; `record` applies the enabled gate as usual.
+  const errorEventWindows = new Map<string, { count: number; windowStartMillis: number }>();
+  const drainLoggedErrors = Effect.gen(function* () {
+    const drained = drainAnalyticsErrorEvents();
+    if (drained.length === 0) return;
+    const nowMillis = DateTime.toEpochMillis(yield* DateTime.now);
+    for (const errorEvent of drained) {
+      const window = errorEventWindows.get(errorEvent.errorName);
+      if (
+        window !== undefined &&
+        nowMillis - window.windowStartMillis < ERROR_EVENT_WINDOW_MILLIS
+      ) {
+        if (window.count >= MAX_ERROR_EVENTS_PER_NAME_PER_WINDOW) continue;
+        window.count += 1;
+      } else {
+        errorEventWindows.set(errorEvent.errorName, { count: 1, windowStartMillis: nowMillis });
+      }
+      yield* record("server.error", {
+        errorName: errorEvent.errorName,
+        level: errorEvent.level,
+      });
+    }
+  });
+
   const flush: AnalyticsService["Service"]["flush"] = Effect.gen(function* () {
+    yield* drainLoggedErrors;
     while (true) {
       const batch = yield* Ref.modify(bufferRef, (current) => {
         if (current.length === 0) {
