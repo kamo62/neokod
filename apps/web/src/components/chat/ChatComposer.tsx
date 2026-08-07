@@ -130,7 +130,6 @@ import { searchProviderSkills } from "../../providerSkillSearch";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { useTerminalUiStateStore } from "../../terminalUiStateStore";
 import { useWorkspaceRailUiStore } from "../../workspaceRailUiStore";
-import { useMissionControlUiStore } from "../../missionControlUiStore";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
 
@@ -1041,13 +1040,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           description: "Open this thread's subagent activity",
         },
         {
-          id: "slash:mission",
-          type: "slash-command",
-          command: "mission",
-          label: "/mission",
-          description: "Open cross-project agent activity",
-        },
-        {
           id: "slash:goal",
           type: "slash-command",
           command: "goal",
@@ -1695,8 +1687,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         }
         if (action.kind === "open-terminal") {
           setTerminalOpen(routeThreadRef, true);
-        } else if (action.kind === "open-mission-control") {
-          useMissionControlUiStore.getState().setOpen(true);
         } else if (action.kind === "open-right-panel") {
           openRightPanel(routeThreadRef, action.panel);
         } else if (action.kind === "open-rail-popover") {

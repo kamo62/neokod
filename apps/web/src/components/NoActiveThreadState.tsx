@@ -13,10 +13,10 @@ import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 import { useProjects, useThreadShells } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
 import {
-  formatMissionControlRelativeTime,
-  resolveMissionControlThreadStatusPill,
-  selectMissionControlDashboardGroups,
-} from "./MissionControl.logic";
+  formatRelativeTime,
+  resolveThreadStatusPill,
+  selectDashboardGroups,
+} from "./threadDashboard.logic";
 
 const HOME_DASHBOARD_RECENT_CAP = 8;
 
@@ -29,7 +29,7 @@ function HomeDashboardThreadRow({
   project: EnvironmentProject;
   onOpen: (thread: EnvironmentThreadShell) => void;
 }) {
-  const status = resolveMissionControlThreadStatusPill(thread);
+  const status = resolveThreadStatusPill(thread);
   return (
     <button
       type="button"
@@ -52,7 +52,7 @@ function HomeDashboardThreadRow({
         </span>
       </span>
       <span className="pt-0.5 text-xs text-muted-foreground">
-        {formatMissionControlRelativeTime(thread.updatedAt)}
+        {formatRelativeTime(thread.updatedAt)}
       </span>
     </button>
   );
@@ -103,7 +103,7 @@ export function HomeDashboard() {
   const navigate = useNavigate();
   const projects = useProjects();
   const threads = useThreadShells();
-  const groups = selectMissionControlDashboardGroups(threads, projects, HOME_DASHBOARD_RECENT_CAP);
+  const groups = selectDashboardGroups(threads, projects, HOME_DASHBOARD_RECENT_CAP);
   const projectsByKey = new Map(
     projects.map((project) => [`${project.environmentId}:${project.id}`, project]),
   );

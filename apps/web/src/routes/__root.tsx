@@ -16,7 +16,6 @@ import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { isChunkLoadError, recoverByReload } from "../chunkLoadRecovery";
 import { AnalyticsFirstRunNotice } from "../components/AnalyticsFirstRunNotice";
 import { CommandPalette } from "../components/CommandPalette";
-import { MissionControlHost } from "../components/MissionControl";
 import { ProviderUpdateLaunchNotification } from "../components/ProviderUpdateLaunchNotification";
 import { SessionExpiredBanner } from "../components/SessionExpiredBanner";
 import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToastCoordinator";
@@ -94,7 +93,6 @@ function RootRouteView() {
         <AnalyticsFirstRunNotice />
         <EventRouter />
         <ProviderUpdateLaunchNotification />
-        <MissionControlHost />
         {appShell}
       </AnchoredToastProvider>
     </ToastProvider>

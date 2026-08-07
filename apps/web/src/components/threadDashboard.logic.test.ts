@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   EnvironmentId,
-  EventId,
   ProjectId,
   ProviderInstanceId,
   ThreadId,
   TurnId,
-  type OrchestrationThreadActivity,
   type OrchestrationLatestTurn,
   type OrchestrationSession,
 } from "@neokod/contracts";
@@ -14,12 +12,7 @@ import type {
   EnvironmentProject,
   EnvironmentThreadShell,
 } from "@neokod/client-runtime/state/shell";
-import {
-  deriveMissionControlRowView,
-  groupMissionControlThreads,
-  selectMissionControlDashboardGroups,
-  selectMissionControlThreads,
-} from "./MissionControl.logic";
+import { selectDashboardGroups, selectDashboardThreads } from "./threadDashboard.logic";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
 
@@ -91,10 +84,10 @@ function thread(
   };
 }
 
-describe("Mission Control helpers", () => {
+describe("thread dashboard helpers", () => {
   it("selects known activity threads, puts running work first, and applies the cap", () => {
     const projects = [project("project-a")];
-    const selected = selectMissionControlThreads(
+    const selected = selectDashboardThreads(
       [
         thread("idle-new", { updatedAt: "2026-07-10T12:00:00.000Z" }),
         thread("running-old", {
@@ -114,8 +107,8 @@ describe("Mission Control helpers", () => {
     expect(selected.map((candidate) => candidate.id)).toEqual(["running-new", "running-old"]);
   });
 
-  it("excludes archived threads from Mission Control selections", () => {
-    const selected = selectMissionControlThreads(
+  it("excludes archived threads from dashboard selections", () => {
+    const selected = selectDashboardThreads(
       [thread("active"), thread("archived", { archivedAt: "2026-07-10T12:00:00.000Z" })],
       [project("project-a")],
       5,
@@ -125,7 +118,7 @@ describe("Mission Control helpers", () => {
   });
 
   it("keeps settled threads with user activity after their active turn is cleared", () => {
-    const selected = selectMissionControlThreads(
+    const selected = selectDashboardThreads(
       [
         thread("settled", {
           latestTurn: null,
@@ -140,93 +133,8 @@ describe("Mission Control helpers", () => {
     expect(selected.map((candidate) => candidate.id)).toEqual([ThreadId.make("settled")]);
   });
 
-  it("groups selected threads by project and orders sections by their most recent thread", () => {
-    const projects = [project("project-a", "A"), project("project-b", "B")];
-    const sections = groupMissionControlThreads(
-      [
-        thread("a-old", { updatedAt: "2026-07-10T09:00:00.000Z" }),
-        thread("b-new", {
-          projectId: ProjectId.make("project-b"),
-          updatedAt: "2026-07-10T12:00:00.000Z",
-        }),
-        thread("a-new", { updatedAt: "2026-07-10T11:00:00.000Z" }),
-      ],
-      projects,
-    );
-
-    expect(sections.map((section) => section.project.title)).toEqual(["B", "A"]);
-    expect(sections[1]?.threads.map((candidate) => candidate.id)).toEqual(["a-new", "a-old"]);
-  });
-
-  it("keeps running work first within a project even when idle work is newer", () => {
-    const sections = groupMissionControlThreads(
-      [
-        thread("idle-new", { updatedAt: "2026-07-10T12:00:00.000Z" }),
-        thread("running-old", {
-          latestTurn: latestTurn("running"),
-          updatedAt: "2026-07-10T09:00:00.000Z",
-        }),
-      ],
-      [project("project-a")],
-    );
-
-    expect(sections[0]?.threads.map((candidate) => candidate.id)).toEqual([
-      "running-old",
-      "idle-new",
-    ]);
-  });
-
-  it("derives a shell-only row view without workers or activity timestamps", () => {
-    const row = deriveMissionControlRowView(
-      thread("idle", {
-        updatedAt: "2026-07-10T10:00:00.000Z",
-        goal: "Ship demo",
-        goalStatus: "done",
-        worktreePath: "/tmp/demo",
-      }),
-      null,
-    );
-
-    expect(row).toMatchObject({
-      isRunning: false,
-      workerCount: 0,
-      lastActivityAt: "2026-07-10T10:00:00.000Z",
-      goalLabel: "Done: Ship demo",
-      workspaceLabel: "/tmp/demo",
-    });
-  });
-
-  it("derives live workers and last activity from running-thread activities", () => {
-    const row = deriveMissionControlRowView(
-      thread("running", {
-        latestTurn: latestTurn("running"),
-        updatedAt: "2026-07-10T10:00:00.000Z",
-        branch: "demo",
-      }),
-      [
-        {
-          id: EventId.make("activity-1"),
-          tone: "info",
-          kind: "task.started",
-          summary: "Worker started",
-          createdAt: "2026-07-10T11:00:00.000Z",
-          turnId: TurnId.make("turn-1"),
-          sequence: 1,
-          payload: { taskId: "worker" },
-        },
-      ] satisfies ReadonlyArray<OrchestrationThreadActivity>,
-    );
-
-    expect(row).toMatchObject({
-      isRunning: true,
-      workerCount: 1,
-      lastActivityAt: "2026-07-10T11:00:00.000Z",
-      workspaceLabel: "demo",
-    });
-  });
-
   it("uses the sidebar status contract to group dashboard threads without duplicates", () => {
-    const groups = selectMissionControlDashboardGroups(
+    const groups = selectDashboardGroups(
       [
         thread("running", { session: session("running") }),
         thread("approval", { hasPendingApprovals: true }),
@@ -253,7 +161,7 @@ describe("Mission Control helpers", () => {
   });
 
   it("excludes archived dashboard threads and caps recent results", () => {
-    const groups = selectMissionControlDashboardGroups(
+    const groups = selectDashboardGroups(
       [
         thread("archived", {
           archivedAt: "2026-07-10T12:00:00.000Z",

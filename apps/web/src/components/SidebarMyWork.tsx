@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { useUiStateStore } from "../uiStateStore";
 import { cn } from "~/lib/utils";
-import { selectMissionControlDashboardGroups } from "./MissionControl.logic";
+import { selectDashboardGroups } from "./threadDashboard.logic";
 import { ProviderMark } from "./sidebar/ProviderMark";
 import {
   computeThreadSignature,
@@ -105,7 +105,7 @@ export function SidebarMyWork({
   const undoDismiss = useUiStateStore((state) => state.undoMyWorkDismissal);
   const [now, setNow] = useState(Date.now);
   const dashboardGroups = useMemo(
-    () => selectMissionControlDashboardGroups(threads, projects, MY_WORK_RECENT_CAP),
+    () => selectDashboardGroups(threads, projects, MY_WORK_RECENT_CAP),
     [projects, threads],
   );
   const groups = useMemo(

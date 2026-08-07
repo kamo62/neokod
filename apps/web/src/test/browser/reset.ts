@@ -5,7 +5,6 @@ import { useBrowserPointerStore } from "~/browser/browserPointerStore";
 import { useBrowserSurfaceStore } from "~/browser/browserSurfaceStore";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useDiffPanelStore } from "~/diffPanelStore";
-import { useMissionControlUiStore } from "~/missionControlUiStore";
 import { resetAppAtomRegistryForTests } from "~/rpc/atomRegistry";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { useSubagentUiStore } from "~/subagentUiStore";
@@ -62,7 +61,6 @@ export async function resetBrowserAppHarness(input: {
   resetStore(useThreadSelectionStore);
   resetStore(useBrowserPointerStore);
   resetStore(useBrowserSurfaceStore);
-  resetStore(useMissionControlUiStore);
   resetStore(useWorkspaceRailUiStore);
 
   localStorage.clear();
