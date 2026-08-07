@@ -2,6 +2,8 @@ import {
   ActivityIcon,
   ArchiveIcon,
   ArrowUpDownIcon,
+  CheckIcon,
+  ChevronDownIcon,
   ChevronRightIcon,
   CloudIcon,
   ContainerIcon,
@@ -102,6 +104,7 @@ import {
   legacyProjectCwdPreferenceKey,
   resolveProjectExpanded,
   useUiStateStore,
+  type OperatingMode,
 } from "../uiStateStore";
 import {
   resolveShortcutCommand,
@@ -159,6 +162,7 @@ import { Input } from "./ui/input";
 import {
   Menu,
   MenuGroup,
+  MenuItem,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
@@ -2905,22 +2909,65 @@ const SidebarChromeHeader = memo(function SidebarChromeHeader({
   );
 });
 
+const OPERATING_MODES: ReadonlyArray<{
+  mode: OperatingMode;
+  label: string;
+  description: string;
+}> = [
+  { mode: "work", label: "Work", description: "Build, debug, and ship" },
+  { mode: "symphony", label: "Symphony", description: "Autonomous work from your tracker" },
+];
+
 function SidebarBrand() {
   const stageLabel = useSidebarStageLabel();
+  const navigate = useNavigate();
+  const operatingMode = useUiStateStore((state) => state.operatingMode ?? "work");
+  const viewSnapshotsByMode = useUiStateStore((state) => state.viewSnapshotsByMode);
+
+  const switchMode = useCallback(
+    (mode: OperatingMode) => {
+      // Restore the mode's last view (persisted per-mode snapshot); the route
+      // entry effects own setting `operatingMode`, so navigation is the whole
+      // switch.
+      const fallbackRoute = mode === "symphony" ? "/symphony" : "/";
+      const route = viewSnapshotsByMode?.[mode]?.route ?? fallbackRoute;
+      void navigate({ to: route as "/" });
+    },
+    [navigate, viewSnapshotsByMode],
+  );
 
   return (
-    <Link
-      aria-label="Go to threads"
-      className="sidebar-brand ml-[var(--workspace-titlebar-content-left)] h-7 w-fit min-w-0 shrink-0 items-center gap-1 overflow-hidden rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2"
-      to="/"
-    >
-      <NeokodWordmark />
-      {stageLabel ? (
-        <span className="sidebar-brand-stage shrink-0 items-center whitespace-nowrap rounded-full bg-muted/50 px-1.5 py-0.5 text-meta font-medium uppercase tracking-[0.18em] text-text-tertiary">
-          {stageLabel}
-        </span>
-      ) : null}
-    </Link>
+    <Menu>
+      <MenuTrigger
+        aria-label="Switch mode"
+        className="sidebar-brand ml-[var(--workspace-titlebar-content-left)] flex h-7 w-fit min-w-0 shrink-0 items-center gap-1 overflow-hidden rounded-md px-1 text-foreground outline-hidden ring-ring hover:bg-surface-hover focus-visible:ring-2"
+      >
+        <NeokodWordmark />
+        {stageLabel ? (
+          <span className="sidebar-brand-stage shrink-0 items-center whitespace-nowrap rounded-full bg-muted/50 px-1.5 py-0.5 text-meta font-medium uppercase tracking-[0.18em] text-text-tertiary">
+            {stageLabel}
+          </span>
+        ) : null}
+        <ChevronDownIcon aria-hidden="true" className="size-3 shrink-0 text-text-tertiary" />
+      </MenuTrigger>
+      <MenuPopup align="start" className="w-64">
+        {OPERATING_MODES.map((entry) => (
+          <MenuItem
+            key={entry.mode}
+            aria-label={`Switch to ${entry.label}`}
+            onClick={() => switchMode(entry.mode)}
+          >
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="text-foreground font-medium">{entry.label}</span>
+              <span className="text-text-tertiary truncate">{entry.description}</span>
+            </span>
+            {operatingMode === entry.mode ? (
+              <CheckIcon aria-hidden="true" className="size-4 shrink-0" />
+            ) : null}
+          </MenuItem>
+        ))}
+      </MenuPopup>
+    </Menu>
   );
 }
 
