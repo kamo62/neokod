@@ -1,259 +1,108 @@
 # Handoff
 
-Updated: 2026-08-07 17:55 on MacBookPro
+Updated: 2026-08-07 18:20 on MacBookPro
 
 ## State
 
 - Branch: `feat/symphony-mode-impl`
-- HEAD: `504aafaea` feat(web): agent provider marks on sidebar thread rows (diri adoption)
-- Pushed: yes. Tracked tree clean.
+- HEAD: `acd4d07eb` refactor(web): remove Mission Control; relocate shared dashboard selectors
+- Tracked tree: CLEAN. Only standing user files untracked (PDF, PLAN-exec-demo.md, demo.md,
+  \_\_probe/, scratch-neokod-symphony-layer-probe.ts).
 
-## Evening session: reference-app adoption round
+## CRITICAL — git remote is misconfigured (fix first next session)
 
-- `200e3ff9e` brand icons for Jira/Linear/Asana/GitHub-Projects across tracker surfaces.
-- `1ffa713bb` master-knob tokens (--ui-scale, clamped --radius-base) + Appearance settings pane
-  (the local-studio flagship, Phase 3 item 16).
-- `504aafaea` agent provider marks on every sidebar thread row (the diri pattern Kamogelo
-  pointed at) — verified live in the browser: OpenAI mark on Codex threads, Copilot mark on
-  Copilot threads, My Work + project tree both.
-- Reference apps RUN live: local-studio serves at :3199 (status dashboard + setup wizard
-  captured; its agent pane needs its bun controller service); diri built from source with cargo
-  and is running natively on this machine (screen capture blocked pending the user granting
-  Screen Recording permission to the terminal).
-- Upstream re-check: NO cross-provider agent conversation exists in the nightly. a2ca89aa1 is
-  observability for provider-NATIVE subagents (Codex collabAgent/\* events, Claude subagents,
-  ~6,900 lines) + a collaborative-browser MCP toolkit — flagged as a lane-sized port candidate
-  in RECONCILE terms, not a Codex→Claude bridge.
-- Combined verification: web typecheck clean, full web suite 163 files / 1506 green.
+- `origin` points at **kamo62/t3code** (a leftover from the unfinished fork/rename). EVERY push
+  this session went there. origin/t3code is current at `acd4d07eb`.
+- `neokod` remote = **kamo62/neokod** (the canonical repo) is ~60 commits BEHIND at `8833ed5f2` —
+  none of this session's work is on it.
+- The `git push neokod feat/symphony-mode-impl` is BLOCKED by the Claude Code permission
+  classifier (pushing to a non-tracked remote is gated). Kamogelo must either run it himself
+  (`! git push neokod feat/symphony-mode-impl`) or add a Bash permission rule.
+- Sequence to fix: (1) push branch to neokod, (2) `git remote set-url origin <neokod url>` +
+  `git branch --set-upstream-to=neokod/feat/symphony-mode-impl`, (3) verify neokod at
+  `acd4d07eb`, (4) ONLY THEN delete kamo62/t3code (Kamogelo wants it gone; hold until neokod is
+  confirmed — it is currently the only remote with the work).
+- Stray issue already cleaned: closed kamo62/t3code#1 and removed its `symphony` label. The live
+  smoke will seed a fresh issue on kamo62/neokod.
 
-Still user-gated: `gh repo create` for the live Symphony smoke (permission classifier blocks
-external repo creation; one `! gh repo create neokod-symphony-smoke --private --clone` from
-Kamogelo unblocks the finale), Screen Recording permission for diri captures, PRD section 21.
+## This session's commits (all pushed to origin/t3code, verified)
 
-## UI COMPLETE (late-afternoon session)
+- `26b8f41d3` create-workflow affordance (symphony.createWorkflow RPC, path-validated, atomic
+  create, settings dialog with starter template). Boot-probe clean, 12 new server tests.
+- `0234f7c6a` Claude model version shown in the picker (Sonnet claude-sonnet-5) + Neokod splash
+  and favicons replacing the old blueprint/T3 art from assets/prod.
+- `acd4d07eb` Mission Control removed entirely (overlay, store, palette entry, composer action,
+  root mount, tests); shared dashboard selectors relocated to threadDashboard.logic.ts so Home +
+  My Work keep working. Zero mission-control refs remain in apps/web/src.
+- Batch verified independently: web 163 files / 1501 tests green, live boot probe clean
+  (reaper.started, no Service-not-found), vp check 0 errors.
+- Also this session: reverted crash-corrupted apps/server/src/provider/Layers/ClaudeProvider.ts
+  (a CMUX crash left a half-deleted parseClaudeSupportedModels; the model-version feature it was
+  attempting is done cleanly in the web layer instead).
 
-- `87f901071` in-app workflow editor (PRD 12.3 v1: content RPCs with record-resolved paths,
-  atomic save, loader re-parse, inline editor in Symphony settings) + PR badges on reviews and
-  history rows (optional compact pullRequest on RunSummary, evidence-joined in listRuns).
-  Lane died twice to infra AFTER implementing; verification completed independently: 75/75
-  touched server tests, WS-group integrity, live boot probe clean, both typechecks, web 1506.
-- `3a69bccf9` Symphony threadspace: mode-aware sidebar rail on /symphony routes (settings-swap
-  precedent) — eight nav rows, live count badges from the cached overview atom, active-runs
-  section, symphony-aware footer Settings. Work tree no longer renders in symphony mode.
+## NEXT SESSION LEAD TASK — remove all "T3Code" references (except LICENSE)
 
-Every UI item from every list is now built. Remaining project-wide: second ACP provider and
-richer templates (plan post-complete scope), the live Symphony smoke (user must designate a
-target repository — everything it needs exists), PRD section 21 amendment (user).
+Kamogelo wants every T3Code reference gone from the codebase except the license. This is a
+53-file refactor and is NOT a blind find-replace — several `t3code` refs are LOAD-BEARING
+backward-compat that a sweep would break:
 
-## FINAL BURN-DOWN (afternoon session, four delegate lanes + follow-up, all verified)
+- **localStorage migration**: `LocalStorage.ts` reads legacy `t3code.` keys and rewrites to
+  `neokod.` (`key.replace(/^neokod\./, "t3code...")`). Preserve the migration path; do not delete.
+- **`t3code://` URL scheme** (~13 refs): OS-registered deep-link scheme. `neokod://app` is only
+  partially migrated. Renaming needs coordinated desktop scheme registration + migration, not a
+  string swap.
+- **`T3CODE_` env vars** (~87 refs): mixed — some are intentional compat fallbacks, some dead
+  leftovers. Triage individually. (Note: the T3CODE*POSTHOG*\* fallbacks were already removed
+  earlier because they pointed at upstream's analytics.)
+- Safe/cosmetic refs (comments, display strings, docs, non-compat) can be renamed freely.
+  Do it as a careful lane with `vp check` + web/server typecheck + a LIVE BOOT PROBE after each
+  group. Grep target: `grep -rIi "t3code\|t3tools" apps packages scripts docs` (exclude LICENSE,
+  node_modules).
 
-- `81f4db18c` symphony settings/trackers/history routes are REAL (workflow list with
-  validate/activate/pause/resume, global pause/resume/stop-all with confirm, tracker health,
-  terminal-run history) riding the new RPCs.
-- `1b8913345` PR panel (plan 15.3.1) on run detail: enrichment grid, tri-state mergeable
-  rendered honestly, Approve gated in the UI exactly as the server gates, FR-095 honesty note
-  for unenriched hosts.
-- `5addcd344` session-expired banner (keyed on the connection supervisor's
-  blocked/authentication state — LIVE-VERIFIED by rotating the token under an open tab),
-  ctrl+tab MRU thread switcher (diri semantics, 33 unit tests), renderer + chunk crash
-  self-recovery, status-token cleanup with contrast-verified merged/terminal-active tokens.
-- `7ec954b41` FR-102-104: review feedback ingested into continuation dispatches — idempotent
-  against repeated refreshes (from-guard, pinned by test), comment bodies via a new GitHubCli
-  reviewThreads method, honest counts-only degradation elsewhere, feedback rides only turn 1.
-- `af223db97` refreshPullRequest registered as a real WS RPC; the panel's Refresh performs a
-  fresh host query before re-reading the run.
-- Verification (all independent): server suite 211 files / 1970 green; web 163 / 1506 green;
-  desktop 285 green; contracts+shared green; live boot probes at every layer-touching step
-  (three total, all clean); browser pass over settings/trackers/history/banner at final HEAD.
+## Other open UI/product items
 
-## Remaining (short list)
+- Rename mode "Work" → "Code" in the switcher + the "Back to Work" row → "Back to Code", with
+  subtitles: Code = "Working directly with your code", Symphony = "Agent-led development".
+  Lives in Sidebar.tsx (SidebarBrand OPERATING_MODES + SymphonySidebarNav back row). Small; was
+  deferred only because lanes were editing Sidebar.tsx concurrently — tree is clean now.
+- Per-role agents in WORKFLOW.md (BIG, Kamogelo wants it): today only ONE impl agent via
+  `agent.model`. No reviewer-agent config, no multi-agent review fan-out; `modelReview` evidence
+  slot exists but is always null. Proposed schema: a `review.agents: [gpt-5.6-sol, claude-fable-5]`
+  block + `review.require: all-approve|any-approve|advisory`, orchestrator runs reviewers after
+  implementation and writes modelReview, merge gate consults verdicts. New lane: schema +
+  orchestrator + evidence wiring + UI.
+- Live Symphony smoke: everything it needs now exists (WORKFLOW.md load/activate, create-workflow
+  UI, tracker adapters). Needs a seeded issue on kamo62/neokod with the `symphony` label + a
+  WORKFLOW.md pointing at it. User-gated on repo access.
+- PRD section 21 amendment for default-on analytics (Kamogelo).
 
-1. Workflow editor (PRD 12.3) — the settings pane manages lifecycle; editing WORKFLOW.md
-   content in-app is not built.
-2. Reviews-list PR badges would need PR data threaded into RunSummary (contracts+server).
-3. Second ACP provider (Cursor/Grok, WS-Q post-complete scope); richer templates.
-4. Live Symphony smoke: needs a designated target repository with real issues (user-gated).
-   Everything it depends on now exists.
-5. Kamogelo: PRD section 21 amendment for default-on analytics.
+## Reference apps (running for design comparison)
 
-- Pushed: yes, everything through the handoff commit is on origin.
-- INDEPENDENTLY VALIDATED (Fable, 13:20): live boot probe clean at 6fd9a5c48 (reaper starts,
-  startup URL minted, no Service-not-found — the new AuditRepository/TrackerCheckpoint/
-  NotificationCoordinator layers are wired correctly); full server suite 211 files,
-  1954 passed / 7 skipped; env scrubbing consumes secretEnvironmentNames with scrubEnvironment
-  applied at spawn; all 16 new RPC/subscription registrations present in WsRpcGroup; advisory
-  lock acquired at orchestrator startup with a lease; continuation-turn loop bounded by
-  maxTurns; vp check 0 errors.
-- CRITICAL note on `2e6fb9abe`: it did NOT boot as committed (WorkflowLoaderLive merged bare;
-  constructor yields WorkflowRepository + FileSystem — fourth instance of the layer-construction
-  trap, invisible to suites on fakes). Fixed in `c163e58d9`, verified by live boot probe (reaper
-  starts, startup URL minted). Booting the real server after ANY layer change is now the
-  non-negotiable check. The same trap applies to this session's new layers (AuditRepository,
-  TrackerCheckpointRepository, NotificationCoordinator) — all are wired into the same
-  `Layer.provide` lists that the live boot probe validates.
-- Dirty: only the standing user files (PDF, PLAN-exec-demo.md, demo.md, `__probe/`,
-  `apps/server/scratch-neokod-symphony-layer-probe.ts`). REVIEW.md and the audit record are
-  GITIGNORED local files — they do not travel; the closure summary below is the durable copy.
-- Kamogelo's parallel session work (telemetry, keybindings, web UI) was committed upstream of
-  this session (5be8ce051 etc.) — the working tree is clean of it.
-
-## Done (this session: closed the audit's open items 1-8-first-entry)
-
-- `2e6fb9abe` closed the completion-audit "still open" list:
-  - **Item 1 (plan 16.0 residuals)**: takeOver now waits for the dispatch fiber/agent to exit
-    (bounded 5s poll of isAgentActive) and validates repository/worktree/branch identity via
-    `git.status` — a drifted checkout or detached HEAD aborts before any ownership transfer
-    (tests: drift-abort + success paths). resumeAutonomous drops `running` from its from-list
-    (no second-agent admission) and refuses when the bound Work thread's session is
-    starting/running (idleness check; test with a busy projection). bindWorkThread now binds a
-    REAL thread in production: engine+projection are REQUIRED deps of HandoffServiceLive
-    (bound at construction, no placeholder; the earlier slice-provide fix didn't resolve in
-    the sub-graph). takeOver park uses `requireUnclaimed` (owner-fenced).
-  - **Item 2 (retry re-check)**: dispatchWorkItem re-reads the issue from the tracker via
-    `refreshIssues` before re-dispatching (plan 9.5) — a vanished issue refuses dispatch and
-    leaves the item queued (test). Per-repository and per-workflow concurrency caps enforced
-    (config fields already existed; global-only before).
-  - **Item 3 (recovery)**: the agent child PID is recorded on the claim
-    (`AgentRuntime.pid()` + `setClaimOwnerPid`); recovery terminates a surviving orphan
-    (probe + SIGTERM) before releasing. Pending approvals for a dead run are marked
-    `interrupted` (new ApprovalService.interrupt; recovery only adopts runs with a live
-    claim).
-  - **Item 4 (canonicalization)**: WorkspaceOwnershipRepository canonicalizes paths via
-    `FileSystem.realPath` at acquire/transfer/renew/release/getByWorkspacePath.
-  - **Item 5 (GitHubCli)**: mergeable is now tri-state (`mergeable`/`conflicting`/`unknown`);
-    `latestCommit` is queried and recorded; a failed reviewThreads query FAILS the status read
-    instead of coercing to 0 (an unknown thread count can no longer pass the merge gate).
-  - **Item 6**: real two-connection claim-dedup contention test (two independent SQLite
-    connections over one file; exactly one claim wins).
-  - **Item 7**: `AttentionRepository` (table from migration 037 had zero writers) — the
-    finalizer raises a durable `merge_conflict`-kind attention item on pr_creation_failed;
-    listAttention merges raised items with approvals.
-  - **Item 8 first entry (WORKFLOW.md production wiring)**: new `Workflow/Loader.ts` — reads
-    WORKFLOW.md, parses, resolves effective config, upserts the record (invalid → status
-    `invalid` with validationError). `validateWorkflow` RPC is real (was {ok:true} stub);
-    `activateWorkflow` RPC registered + real; the poll tick calls `reloadChanged` for dynamic
-    reload (plan 6.4). Loader tests cover valid + invalid.
-
-## Verified
-
-- Full server suite: 211 files, **1946 passed / 7 skipped** green (was 1934 before this
-  session's ~12 new tests).
-- Web suite: 160 files / 1474 green.
-- Filtered server typecheck clean; `vp check` 0 errors / 29 warnings (baseline 27 + 2 new
-  pre-existing-class warnings from new files, none failing).
-
-## Done (overnight session, goal: complete HANDOFF items + serve/test + confirm REVIEW closure)
-
-- `0c1fef4e3` server boot + browser auth: the symphony sub-graph left RuntimeServicesLive without
-  FetchHttpClient (boot died on the analytics batch sender), and
-  `resolveConfiguredPrimaryTarget` dropped the `loopbackAuthToken`, so the browser WS-A2 flow
-  401'd forever. Both found only by actually serving the app.
-- `91a7394a1` + `dee3ee587` test debt: 501ce27b8 regression test (the port itself was already in
-  `65e6e1c5b`), keybindings fixture collision with the new `thread.reopenLastArchived` default,
-  stale uiStateStore expectations. Full server suite 210 files / 1942 tests green; web
-  160 / 1474 green.
-- `759bd11cd` completion-audit top fixes: ownership lease bound at layer construction (wiring
-  gap now fails boot loudly — proven live against the running server), lease on create AND
-  reuse, typed `WorkspaceLeaseError` on failure; ExecutionFinalizer logs + records a durable
-  `pr_creation_failed` run event instead of swallowing PR-creation errors.
-- Full Chrome DevTools pass on the served app: authenticated loopback flow end to end, first-run
-  analytics notice (correct copy, dismissal persists), analytics toggle live both directions,
-  reopen-last-archived restores an archived thread, Symphony overview live, UI Phase 1
-  typography/header/elevation verified on real content, both themes clean.
-- Completion audit (Fable, per-finding, file:line): ~40 of ~50 REVIEW findings verified closed;
-  the two most severe open items were fixed above.
-
-## Verified vs unverified
-
-- Verified: everything in Done names its command or a live observation; server boots and serves
-  (watched restart cycle), scoped suites and both full suites green, `vp check` 0 errors.
-- Unverified: none of the closed items — but see Open items for what remains open by audit.
-
-## Open items (remaining after this session)
-
-1. Unimplemented plan sections (gaps, not regressions): 13 defined-but-unregistered RPCs
-   (pause/stop-all safety controls, subscriptions, listTrackers/listHistory, resolveAttention),
-   notifications coordinator (15.4), observability/audit writers (section 17 — table exists,
-   zero writers), agent child env scrubbing (SPEC 15.3 — secretEnvironmentNames never consumed),
-   continuation turns (plan 8.2 — flag exists, no caller), FR-102-104 review-comment ingestion,
-   UI stubs (settings/trackers/history routes, workflow editor, PR panel), tracker residuals
-   (checkpoints table unused, localPriority sort, GitLabAdapter dispatchable), startup advisory
-   lock, second ACP provider. WORKFLOW.md wiring (load/activate/reload) is DONE; the live smoke
-   is now unblocked on the tracker-activation side.
-2. WORKFLOW.md: activateWorkflow/validateWorkflow RPCs registered; pause/resume/stopAll need
-   handlers before their RPCs join WsRpcGroup.
-3. Kamogelo: PRD section 21 amendment for default-on analytics (still pending).
-
-## Plan-gap lanes closed (6fd9a5c48, this session)
-
-- Pause/resume/stopAll RPCs: migration 039 (paused_workflows/paused_repositories columns),
-  repo methods, orchestrator methods, ws handlers, WsRpcGroup registration. Per-scope pause
-  gates dispatch; global pause is the top-level kill switch; stopAllRuns requires the
-  `stop-all-runs` confirm literal. getWorkflow/listTrackers/listHistory/resolveAttention also
-  real + registered (their success schemas were EmptyResult stubs).
-- Subscriptions: all 5 subscribeSymphony\* streams implemented as 2s snapshot streams
-  (overview/runs/queue/attention/runEvents) + registered. The old "views poll" gap is gone.
-- Notifications coordinator (15.4): pub/sub NotificationCoordinator; publishes on cancel +
-  merge-approve; tested.
-- Audit writer (13.4): AuditRepository writes symphony_audit_events (dispatch/cancel/merge);
-  the table finally has writers.
-- Env scrubbing (SPEC 15.3): tracker secretEnvironmentNames resolved per config and stripped
-  from the agent child env (scrubEnvironment, 3 tests).
-- Continuation turns (8.2): dispatcher loops runTurn up to maxTurns with continuation:true.
-- Tracker residuals: localPriority feeds queue sort (COALESCE local_priority, priority);
-  GitLabAdapter dispatchable = state opened; TrackerCheckpointRepository records last_poll_at.
-- Advisory lock: acquired at startup (per-launch token), renewed 30s, released on teardown,
-  dispatch gated when not held. (Note: the first wiring orphaned the scheduler — fixed; the
-  poll loop runs under the lock fork.)
-
-## Verified (this session)
-
-- Full server suite: 1954 passed / 7 skipped (was 1946). Web suite: 160 files / 1474 green.
-- Filtered server typecheck clean; `vp check` 0 errors / 30 warnings (2 new pre-existing-class:
-  unused vars in user's `__probe/probe.ts` and the tracker DEFAULT\_\* consts — none failing).
-- The live boot probe must be re-run (server.ts layer graph changed) before relying on this
-  commit set.
+- local-studio: `cd <scratch>/local-studio/frontend && npx next dev -p 3199` (deps installed
+  across frontend/controller/shared/services with --legacy-peer-deps).
+- diri: built from source via cargo; runs natively. Screen capture blocked pending Screen
+  Recording permission for the terminal.
 
 ## Resume
 
 ```bash
 cd /Users/kamogelo/Code/t3code
-git pull
 git checkout feat/symphony-mode-impl
 pnpm install
-PATH="$PWD/node_modules/.bin:$PATH" node scripts/dev-runner.ts dev   # serve; needs vp on PATH
-# browser: use the startupUrl WITH ?loopbackAuthToken=... printed in the dev log; token is
-# per-launch and never persisted, keep it in the URL across navigations.
+# FIRST: fix the remote (see CRITICAL section) so work lands on kamo62/neokod
+PATH="$PWD/node_modules/.bin:$PATH" NEOKOD_NO_BROWSER=true node scripts/dev-runner.ts dev
+# browser: use the ?loopbackAuthToken=... from the dev log; server listens on 13773, web on 5733
 ```
 
-Setup required first: none beyond `pnpm install` (corrupt `@github/copilot-darwin-arm64` fix:
-remove from `.pnpm`, re-run `CI=true pnpm install`).
-
-Machine-specific: codex-companion.mjs patched for max/ultra efforts on MacBookPro (re-patch
-after plugin updates). NOTE: the Codex backend went into degraded mode ("no available accounts")
-at the end of this session — delegation may be unavailable until it recovers; the last fixes
-were implemented directly. Kamogelo runs a parallel OpenCode session in this repo at times.
-
-Background jobs still running: the dev stack may still be serving under the dev-runner
-(node --watch restarts on edits). Kill the `node scripts/dev-runner.ts` process tree if
-unwanted.
+Machine-specific: codex-companion.mjs patched for max/ultra efforts (re-patch after plugin
+updates). CMUX has crashed repeatedly this session — commit early and often; verify tree
+integrity (typecheck + boot probe) after any crash before trusting uncommitted work.
 
 ## Blockers
 
-- Effect 4.0.0-beta.78 drift (carried): Effect.result not Effect.either; it.effect required;
-  exactOptionalPropertyTypes | undefined; TestClock at epoch; services hidden in Layer.provide
-  sub-graphs resolve None via serviceOption — bind at construction when the dependency is
-  mandatory (that trap caused both the removal-gateway hole and tonight's boot failures).
-- Root `vp run typecheck` blocked by pre-existing scripts/sync-reference-repos errors.
-- Codex sandbox cannot bind 0.0.0.0 (one serverSettings fixture test fails only there).
-
-## Next moves
-
-1. Push this branch (`git push`).
-2. Re-run the live boot probe (server.ts layer graph changed with the 3 new repos/coordinator).
-3. Run the manual live smoke procedure (real Codex app-server, real repo, real PR + CI) — all
-   plan-gap lanes that blocked it are closed.
-4. Remaining plan gaps (UI-scoped, lower priority): settings/trackers/history route stubs,
-   workflow editor (PRD 12.3), PR panel (15.3.1), FR-093 five attention buckets, FR-102-104
-   review-comment ingestion, observability gauges (section 17 metrics), second ACP provider.
-5. Kamogelo: PRD section 21 amendment for default-on analytics (still pending).
+- `git push neokod` blocked by permission classifier — needs user or a Bash permission rule.
+- Effect 4.0.0-beta.78 layer-construction trap: services yielded at construction must be provided
+  in the SymphonyLayer.ts sub-graphs or the real server dies at boot while suites stay green.
+  ALWAYS live-boot-probe after any layer change.
+- Root `vp run typecheck` has pre-existing debt outside touched files (Orchestrator/**,
+  Persistence/**, Trackers/\*\*, bin.test.ts); judge only touched-file diagnostics.
