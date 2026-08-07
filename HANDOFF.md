@@ -1,13 +1,27 @@
 # Handoff
 
-Updated: 2026-08-07 14:45 on MacBookPro
+Updated: 2026-08-07 16:50 on MacBookPro
 
 ## State
 
 - Branch: `feat/symphony-mode-impl`
-- HEAD: `af223db97` feat(symphony): register refreshPullRequest as a WS RPC; panel Refresh does a fresh host query
-- Pushed: yes, everything through af223db97 plus the handoff commit is on origin.
-- Tracked tree clean; only the standing user files are untracked.
+- HEAD: `3a69bccf9` feat(web): Symphony threadspace — mode-aware sidebar rail
+- Pushed: yes, everything is on origin. Tracked tree clean.
+
+## UI COMPLETE (late-afternoon session)
+
+- `87f901071` in-app workflow editor (PRD 12.3 v1: content RPCs with record-resolved paths,
+  atomic save, loader re-parse, inline editor in Symphony settings) + PR badges on reviews and
+  history rows (optional compact pullRequest on RunSummary, evidence-joined in listRuns).
+  Lane died twice to infra AFTER implementing; verification completed independently: 75/75
+  touched server tests, WS-group integrity, live boot probe clean, both typechecks, web 1506.
+- `3a69bccf9` Symphony threadspace: mode-aware sidebar rail on /symphony routes (settings-swap
+  precedent) — eight nav rows, live count badges from the cached overview atom, active-runs
+  section, symphony-aware footer Settings. Work tree no longer renders in symphony mode.
+
+Every UI item from every list is now built. Remaining project-wide: second ACP provider and
+richer templates (plan post-complete scope), the live Symphony smoke (user must designate a
+target repository — everything it needs exists), PRD section 21 amendment (user).
 
 ## FINAL BURN-DOWN (afternoon session, four delegate lanes + follow-up, all verified)
 
