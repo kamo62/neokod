@@ -26,7 +26,7 @@ import { RunEventRepositoryLive } from "../Persistence/Layers/RunEventRepository
 import { EvidenceRepository } from "../Persistence/Services/EvidenceRepository.ts";
 import { EvidenceRepositoryLive } from "../Persistence/Layers/EvidenceRepository.ts";
 import { EvidenceService } from "../Evidence/Service.ts";
-import { PullRequestService } from "../Evidence/PullRequest.ts";
+import { PullRequestCreationError, PullRequestService } from "../Evidence/PullRequest.ts";
 import { ValidationRunner } from "../Validation/Runner.ts";
 import { ExecutionFinalizer, ExecutionFinalizerLive } from "./ExecutionFinalizer.ts";
 import type { EvidenceBundle } from "@neokod/contracts";
@@ -163,6 +163,11 @@ const fakePullRequestService = (pr: PullRequestEvidence | null) =>
     create: () => Effect.succeed(pr as PullRequestEvidence),
     refresh: () => Effect.succeed(null),
   });
+
+const failingPullRequestService = Layer.succeed(PullRequestService, {
+  create: () => Effect.fail(new PullRequestCreationError("gh: not authenticated")),
+  refresh: () => Effect.succeed(null),
+});
 
 const layer = (validationStatuses: ReadonlyArray<string>, pr: PullRequestEvidence | null) =>
   it.layer(
@@ -311,6 +316,53 @@ layer(["passed"], null)("ExecutionFinalizer without PR", (it) => {
       const evidenceRepo = yield* EvidenceRepository;
       const stored = yield* evidenceRepo.getByWorkItem(workItem.id);
       expect(stored?.pullRequest).toBeNull();
+    }),
+  );
+});
+
+it.layer(
+  ExecutionFinalizerLive.pipe(
+    Layer.provideMerge(WorkItemRepositoryLive),
+    Layer.provideMerge(RunAttemptRepositoryLive),
+    Layer.provideMerge(RunEventRepositoryLive),
+    Layer.provideMerge(EvidenceRepositoryLive),
+    Layer.provideMerge(fakeValidationRunner(["passed"])),
+    Layer.provideMerge(fakeEvidenceService),
+    Layer.provideMerge(failingPullRequestService),
+    Layer.provideMerge(SqlitePersistenceMemory),
+    Layer.provideMerge(NodeServices.layer),
+  ),
+)("ExecutionFinalizer PR creation failure", (it) => {
+  it.effect("records a pr_creation_failed run event instead of failing silently", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("9", "owner-9");
+      const runAttemptId = yield* seedAttempt("9");
+      const finalizer = yield* ExecutionFinalizer;
+
+      const outcome = yield* finalizer.finalize({
+        workItem,
+        issue: makeIssue("9"),
+        runAttemptId,
+        config: makeConfig(),
+        workspacePath: "/ws/9",
+        branch: "symphony/issue-9",
+        baseBranch: "main",
+        ownerToken: "owner-9",
+        generation: 1,
+      });
+
+      expect(outcome).toBe("review_ready");
+
+      const evidenceRepo = yield* EvidenceRepository;
+      const stored = yield* evidenceRepo.getByWorkItem(workItem.id);
+      expect(stored?.pullRequest).toBeNull();
+
+      const runEvents = yield* RunEventRepository;
+      const events = yield* runEvents.listForAttempt(runAttemptId);
+      const failureEvent = events.find((event) => event.eventType === "pr_creation_failed");
+      expect(failureEvent).toBeDefined();
+      const payload = failureEvent?.payload as { message?: string } | undefined;
+      expect(payload?.message).toContain("not authenticated");
     }),
   );
 });

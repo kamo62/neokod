@@ -172,10 +172,12 @@ export const makeExecutionFinalizer = Effect.gen(function* () {
         return "validation_failed" as const;
       }
 
-      // 5. Review-ready: create the PR (best-effort; the evidence survives a
-      //    provider failure) and persist the bundle.
-      const pullRequest = yield* pullRequestService
-        .create({
+      // 5. Review-ready: create the PR and persist the bundle. The evidence
+      //    survives a provider failure, but the failure itself must be
+      //    durably recorded — a run without a PR and without a recorded
+      //    reason is indistinguishable from success in review.
+      const pullRequestResult = yield* Effect.result(
+        pullRequestService.create({
           workItem: input.workItem,
           config: input.config,
           runAttemptId: input.runAttemptId,
@@ -184,8 +186,17 @@ export const makeExecutionFinalizer = Effect.gen(function* () {
           baseBranch: input.baseBranch,
           evidence,
           bodyFileDir: input.bodyFileDir ?? "",
-        })
-        .pipe(Effect.catch(() => Effect.succeed(null)));
+        }),
+      );
+      const pullRequest = pullRequestResult._tag === "Success" ? pullRequestResult.success : null;
+      if (pullRequestResult._tag === "Failure") {
+        const failure = pullRequestResult.failure;
+        const message = failure instanceof Error ? failure.message : String(failure);
+        yield* Effect.logError(
+          `symphony PR creation failed for ${input.workItem.id} (attempt ${input.runAttemptId}): ${message}`,
+        );
+        yield* appendEvent(input.runAttemptId, "pr_creation_failed", { message });
+      }
 
       if (pullRequest !== null) {
         evidence = { ...evidence, pullRequest };

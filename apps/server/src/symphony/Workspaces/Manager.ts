@@ -61,6 +61,19 @@ export class WorkspaceRemovalBlocked extends Error {
   }
 }
 
+/** Recording the Symphony ownership lease failed. The workspace would be
+ * unprotected against cross-mode removal (plan 16.0), so dispatch must not
+ * proceed into it. */
+export class WorkspaceLeaseError extends Error {
+  readonly workspacePath: string;
+
+  constructor(workspacePath: string, message: string) {
+    super(`Cannot lease workspace ${workspacePath}: ${message}`);
+    this.name = "WorkspaceLeaseError";
+    this.workspacePath = workspacePath;
+  }
+}
+
 /**
  * Pure containment check (SPEC 9.5 invariant 2). Requires the workspace path to
  * be a strict descendant of the root after normalizing trailing slashes. The
@@ -90,7 +103,10 @@ export class WorkspaceManager extends Context.Service<
       readonly issue: NormalizedIssue;
       readonly config: EffectiveWorkflowConfig;
       readonly trackerBranch?: string;
-    }) => Effect.Effect<SymphonyWorkspace, WorkspaceOutsideRootError | WorkspacePopulationError>;
+    }) => Effect.Effect<
+      SymphonyWorkspace,
+      WorkspaceOutsideRootError | WorkspacePopulationError | WorkspaceLeaseError
+    >;
 
     /** Remove the workspace and its worktree when terminal (SPEC 8.6, 8.5).
      * Fails with {@link WorkspaceRemovalBlocked} when the cross-mode ownership
@@ -170,7 +186,15 @@ export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManag
         .pipe(Effect.catch(() => Effect.succeed(false)));
 
       if (exists) {
-        // Reuse the workspace across retries (PRD FR-032).
+        // Reuse the workspace across retries (PRD FR-032). The lease must be
+        // (re)recorded here too: a restart clears nothing durable, but a
+        // released or never-recorded lease would leave the reused workspace
+        // unprotected (completion audit, send-back 2).
+        if (deps.acquireOwnership !== undefined) {
+          yield* deps
+            .acquireOwnership(resolvedPath)
+            .pipe(Effect.mapError((cause) => new WorkspaceLeaseError(resolvedPath, cause.message)));
+        }
         return { key, path: resolvedPath, branch, baseBranch, createdNow: false };
       }
 
@@ -208,11 +232,13 @@ export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManag
         );
 
       // Record Symphony ownership so Work-mode removal of a live Symphony
-      // workspace is refused (plan 16.0; REVIEW P1 #1: without a record the
-      // guard never saw the workspace). Best-effort — the record is advisory
-      // for cleanup ordering, not a creation gate.
+      // workspace is refused (plan 16.0). A failed lease fails the dispatch:
+      // an unleased workspace is unprotected, so proceeding silently would
+      // recreate the removal-gateway hole (completion audit, send-back 2).
       if (deps.acquireOwnership !== undefined) {
-        yield* deps.acquireOwnership(resolvedPath).pipe(Effect.catch(() => Effect.void));
+        yield* deps
+          .acquireOwnership(resolvedPath)
+          .pipe(Effect.mapError((cause) => new WorkspaceLeaseError(resolvedPath, cause.message)));
       }
 
       return { key, path: resolvedPath, branch, baseBranch, createdNow: true };

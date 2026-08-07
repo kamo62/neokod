@@ -106,6 +106,9 @@ const HandoffServiceSlice = HandoffServiceLive.pipe(
               Layer.provideMerge(NodeServices.layer),
               Layer.provideMerge(GitVcsDriverLayer),
               Layer.provideMerge(ProcessRunnerLayer),
+              // Required at construction: every dispatch path records a
+              // Symphony lease (plan 16.0; completion audit, send-back 2).
+              Layer.provideMerge(WorkspaceOwnershipRepositoryLive),
             ),
             AgentRuntimeFactoryLive.pipe(
               Layer.provideMerge(NodeServices.layer),
@@ -158,6 +161,9 @@ export const SymphonyLayerObserve = Layer.merge(
                   Layer.provideMerge(NodeServices.layer),
                   Layer.provideMerge(GitVcsDriverLayer),
                   Layer.provideMerge(ProcessRunnerLayer),
+                  // Required at construction: every dispatch path records a
+                  // Symphony lease (plan 16.0; completion audit, send-back 2).
+                  Layer.provideMerge(WorkspaceOwnershipRepositoryLive),
                 ),
                 AgentRuntimeFactoryLive.pipe(
                   Layer.provideMerge(NodeServices.layer),

@@ -8,6 +8,7 @@ import { deriveWorkspaceKey, deriveWorkingBranch } from "../Domain/Keys.ts";
 import {
   isPathInsideRoot,
   makeWorkspaceManager,
+  WorkspaceLeaseError,
   WorkspaceOutsideRootError,
   WorkspacePopulationError,
   type WorkspaceManagerDeps,
@@ -123,6 +124,47 @@ describe("WorkspaceManager", () => {
       });
       expect(ws.createdNow).toBe(false);
       expect(ws.path).toBe(`/ws/${key}`);
+    }),
+  );
+
+  it.effect("records an ownership lease on creation and again on reuse", () =>
+    Effect.gen(function* () {
+      const leased: Array<string> = [];
+      const acquireOwnership = (path: string) =>
+        Effect.sync(() => {
+          leased.push(path);
+        });
+      const created = makeWorkspaceManager(makeDeps({ acquireOwnership }));
+      yield* created.ensureWorkspace({
+        issue: makeIssue({ identifier: "issue-1" }),
+        config: makeConfig(),
+      });
+      const reused = makeWorkspaceManager(
+        makeDeps({ acquireOwnership, pathExists: () => Effect.succeed(true) }),
+      );
+      yield* reused.ensureWorkspace({
+        issue: makeIssue({ identifier: "issue-1" }),
+        config: makeConfig(),
+      });
+      expect(leased).toEqual([`/ws/${key}`, `/ws/${key}`]);
+    }),
+  );
+
+  it.effect("fails typed when the ownership lease cannot be recorded", () =>
+    Effect.gen(function* () {
+      const manager = makeWorkspaceManager(
+        makeDeps({ acquireOwnership: () => Effect.fail(new Error("db locked")) }),
+      );
+      const result = yield* Effect.result(
+        manager.ensureWorkspace({
+          issue: makeIssue({ identifier: "issue-1" }),
+          config: makeConfig(),
+        }),
+      );
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure).toBeInstanceOf(WorkspaceLeaseError);
+      }
     }),
   );
 

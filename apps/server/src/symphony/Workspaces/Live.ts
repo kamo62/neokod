@@ -48,23 +48,17 @@ export const WorkspaceManagerLive = Layer.effect(
         ),
       );
 
+    const ownershipRepository = yield* WorkspaceOwnershipRepository;
+
     const acquireOwnership: WorkspaceManagerDeps["acquireOwnership"] = (workspacePath) =>
-      // Also per-call: record a Symphony lease so the removal guard sees the
-      // workspace (REVIEW P1 #1).
-      Effect.serviceOption(WorkspaceOwnershipRepository).pipe(
-        Effect.flatMap((maybeRepo) =>
-          Option.isSome(maybeRepo)
-            ? maybeRepo.value
-                .acquire({
-                  workspacePath,
-                  owner: "symphony",
-                })
-                .pipe(
-                  Effect.mapError((cause) => new Error(cause.message)),
-                  Effect.asVoid,
-                )
-            : Effect.void,
-        ),
+      // Bound at construction, not via serviceOption: a Symphony workspace
+      // must always record a lease before an agent runs in it, and a wiring
+      // gap must fail layer construction loudly. serviceOption resolved None
+      // on scheduler-forked fibers, so retry-sweep dispatches ran leaseless
+      // (completion audit, send-back 2).
+      ownershipRepository.acquire({ workspacePath, owner: "symphony" }).pipe(
+        Effect.mapError((cause) => new Error(cause.message)),
+        Effect.asVoid,
       );
 
     const defaultBranch = (cwd: string) =>
