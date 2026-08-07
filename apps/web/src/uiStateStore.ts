@@ -20,6 +20,21 @@ const LEGACY_PERSISTED_STATE_KEYS = [
 
 export type OperatingMode = "work" | "symphony";
 
+// Chat typography: bounds and defaults for the General-settings reading
+// controls that drive index.css's --font-size-chat/--line-height-chat and
+// the chat column's --chat-max-width.
+export const CHAT_FONT_SIZE_MIN = 13;
+export const CHAT_FONT_SIZE_MAX = 20;
+export const DEFAULT_CHAT_FONT_SIZE = 16;
+
+export const CHAT_LINE_HEIGHT_MIN = 1.3;
+export const CHAT_LINE_HEIGHT_MAX = 1.8;
+export const DEFAULT_CHAT_LINE_HEIGHT = 1.5;
+
+export const CHAT_COLUMN_WIDTH_MIN = 40;
+export const CHAT_COLUMN_WIDTH_MAX = 64;
+export const DEFAULT_CHAT_COLUMN_WIDTH = 48;
+
 export interface ModeViewSnapshot {
   route: string;
   selection: string | null;
@@ -39,6 +54,9 @@ export interface PersistedModeViewSnapshot {
 export interface PersistedUiState {
   operatingMode?: OperatingMode;
   viewSnapshotsByMode?: Partial<Record<OperatingMode, PersistedModeViewSnapshot>>;
+  chatFontSize?: number;
+  chatLineHeight?: number;
+  chatColumnWidth?: number;
   sidebarView?: "threads" | "workspace";
   sidebarViewMigratedToWorkspace?: boolean;
   myWorkCollapsed?: boolean;
@@ -69,6 +87,9 @@ export interface UiState extends UiProjectState, UiThreadState {
   // fields with defaults.
   operatingMode?: OperatingMode;
   viewSnapshotsByMode?: ModeViewSnapshots;
+  chatFontSize?: number;
+  chatLineHeight?: number;
+  chatColumnWidth?: number;
   sidebarView: "threads" | "workspace";
   sidebarViewMigratedToWorkspace: true;
   myWorkCollapsed: boolean;
@@ -96,6 +117,9 @@ const initialState: UiState = {
       panelState: {},
     },
   },
+  chatFontSize: DEFAULT_CHAT_FONT_SIZE,
+  chatLineHeight: DEFAULT_CHAT_LINE_HEIGHT,
+  chatColumnWidth: DEFAULT_CHAT_COLUMN_WIDTH,
   sidebarView: "workspace",
   sidebarViewMigratedToWorkspace: true,
   myWorkCollapsed: false,
@@ -194,6 +218,16 @@ function sanitizeMyWorkDismissed(value: unknown): Record<string, string> {
   );
 }
 
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function sanitizeBoundedNumber(value: unknown, min: number, max: number, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? clampNumber(value, min, max)
+    : fallback;
+}
+
 function isSymphonyRoutePath(route: string): boolean {
   const pathname = route.split(/[?#]/, 1)[0] ?? route;
   return pathname === "/symphony" || pathname.startsWith("/symphony/");
@@ -264,6 +298,24 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
   return {
     operatingMode: parsed.operatingMode === "symphony" ? "symphony" : "work",
     viewSnapshotsByMode,
+    chatFontSize: sanitizeBoundedNumber(
+      parsed.chatFontSize,
+      CHAT_FONT_SIZE_MIN,
+      CHAT_FONT_SIZE_MAX,
+      DEFAULT_CHAT_FONT_SIZE,
+    ),
+    chatLineHeight: sanitizeBoundedNumber(
+      parsed.chatLineHeight,
+      CHAT_LINE_HEIGHT_MIN,
+      CHAT_LINE_HEIGHT_MAX,
+      DEFAULT_CHAT_LINE_HEIGHT,
+    ),
+    chatColumnWidth: sanitizeBoundedNumber(
+      parsed.chatColumnWidth,
+      CHAT_COLUMN_WIDTH_MIN,
+      CHAT_COLUMN_WIDTH_MAX,
+      DEFAULT_CHAT_COLUMN_WIDTH,
+    ),
     // Earlier releases persisted the former default ("threads") for every
     // user. Move that stale default once, while retaining choices made after
     // this migration.
@@ -367,6 +419,9 @@ export function persistState(state: UiState): void {
       JSON.stringify({
         operatingMode: state.operatingMode ?? "work",
         viewSnapshotsByMode,
+        chatFontSize: state.chatFontSize ?? DEFAULT_CHAT_FONT_SIZE,
+        chatLineHeight: state.chatLineHeight ?? DEFAULT_CHAT_LINE_HEIGHT,
+        chatColumnWidth: state.chatColumnWidth ?? DEFAULT_CHAT_COLUMN_WIDTH,
         sidebarView: state.sidebarView,
         sidebarViewMigratedToWorkspace: state.sidebarViewMigratedToWorkspace,
         myWorkCollapsed: state.myWorkCollapsed,
@@ -527,6 +582,21 @@ export function setSidebarView(state: UiState, sidebarView: UiState["sidebarView
 
 export function setOperatingMode(state: UiState, operatingMode: OperatingMode): UiState {
   return state.operatingMode === operatingMode ? state : { ...state, operatingMode };
+}
+
+export function setChatFontSize(state: UiState, chatFontSize: number): UiState {
+  const next = clampNumber(chatFontSize, CHAT_FONT_SIZE_MIN, CHAT_FONT_SIZE_MAX);
+  return state.chatFontSize === next ? state : { ...state, chatFontSize: next };
+}
+
+export function setChatLineHeight(state: UiState, chatLineHeight: number): UiState {
+  const next = clampNumber(chatLineHeight, CHAT_LINE_HEIGHT_MIN, CHAT_LINE_HEIGHT_MAX);
+  return state.chatLineHeight === next ? state : { ...state, chatLineHeight: next };
+}
+
+export function setChatColumnWidth(state: UiState, chatColumnWidth: number): UiState {
+  const next = clampNumber(chatColumnWidth, CHAT_COLUMN_WIDTH_MIN, CHAT_COLUMN_WIDTH_MAX);
+  return state.chatColumnWidth === next ? state : { ...state, chatColumnWidth: next };
 }
 
 function recordsEqual<T extends string | boolean>(
@@ -702,9 +772,15 @@ export function reorderProjects(
 interface UiStateStore extends UiState {
   operatingMode: OperatingMode;
   viewSnapshotsByMode: ModeViewSnapshots;
+  chatFontSize: number;
+  chatLineHeight: number;
+  chatColumnWidth: number;
   setSidebarView: (sidebarView: UiState["sidebarView"]) => void;
   setOperatingMode: (operatingMode: OperatingMode) => void;
   setModeViewSnapshot: (mode: OperatingMode, snapshot: Partial<ModeViewSnapshot>) => void;
+  setChatFontSize: (chatFontSize: number) => void;
+  setChatLineHeight: (chatLineHeight: number) => void;
+  setChatColumnWidth: (chatColumnWidth: number) => void;
   toggleMyWorkCollapsed: () => void;
   dismissMyWorkThread: (threadKey: string, signature: string) => void;
   dismissMyWorkThreads: (dismissed: Readonly<Record<string, string>>) => void;
@@ -729,10 +805,17 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
   ...persistedState,
   operatingMode: persistedState.operatingMode ?? "work",
   viewSnapshotsByMode: persistedState.viewSnapshotsByMode ?? createDefaultModeViewSnapshots(),
+  chatFontSize: persistedState.chatFontSize ?? DEFAULT_CHAT_FONT_SIZE,
+  chatLineHeight: persistedState.chatLineHeight ?? DEFAULT_CHAT_LINE_HEIGHT,
+  chatColumnWidth: persistedState.chatColumnWidth ?? DEFAULT_CHAT_COLUMN_WIDTH,
   setSidebarView: (sidebarView) => set((state) => setSidebarView(state, sidebarView)),
   setOperatingMode: (operatingMode) => set((state) => setOperatingMode(state, operatingMode)),
   setModeViewSnapshot: (mode, snapshot) =>
     set((state) => setModeViewSnapshot(state, mode, snapshot)),
+  setChatFontSize: (chatFontSize) => set((state) => setChatFontSize(state, chatFontSize)),
+  setChatLineHeight: (chatLineHeight) => set((state) => setChatLineHeight(state, chatLineHeight)),
+  setChatColumnWidth: (chatColumnWidth) =>
+    set((state) => setChatColumnWidth(state, chatColumnWidth)),
   toggleMyWorkCollapsed: () => set(toggleMyWorkCollapsed),
   dismissMyWorkThread: (threadKey, signature) =>
     set((state) => dismissMyWorkThread(state, threadKey, signature)),

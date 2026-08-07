@@ -43,6 +43,18 @@ import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSet
 import { useThreadActions } from "../../hooks/useThreadActions";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
 import {
+  CHAT_COLUMN_WIDTH_MAX,
+  CHAT_COLUMN_WIDTH_MIN,
+  CHAT_FONT_SIZE_MAX,
+  CHAT_FONT_SIZE_MIN,
+  CHAT_LINE_HEIGHT_MAX,
+  CHAT_LINE_HEIGHT_MIN,
+  DEFAULT_CHAT_COLUMN_WIDTH,
+  DEFAULT_CHAT_FONT_SIZE,
+  DEFAULT_CHAT_LINE_HEIGHT,
+  useUiStateStore,
+} from "../../uiStateStore";
+import {
   getCustomModelOptionsByInstance,
   resolveAppModelSelectionState,
 } from "../../modelSelection";
@@ -63,6 +75,13 @@ import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
 import { formatRelativeTime, formatRelativeTimeLabel } from "../../timestampFormat";
 import { Button } from "../ui/button";
 import { DraftInput } from "../ui/draft-input";
+import {
+  NumberField,
+  NumberFieldDecrement,
+  NumberFieldGroup,
+  NumberFieldIncrement,
+  NumberFieldInput,
+} from "../ui/number-field";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { stackedThreadToast, toastManager } from "../ui/toast";
@@ -455,6 +474,12 @@ export function GeneralSettingsPanel() {
   const { theme, setTheme } = useTheme();
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
+  const chatFontSize = useUiStateStore((store) => store.chatFontSize);
+  const setChatFontSize = useUiStateStore((store) => store.setChatFontSize);
+  const chatLineHeight = useUiStateStore((store) => store.chatLineHeight);
+  const setChatLineHeight = useUiStateStore((store) => store.setChatLineHeight);
+  const chatColumnWidth = useUiStateStore((store) => store.chatColumnWidth);
+  const setChatColumnWidth = useUiStateStore((store) => store.setChatColumnWidth);
   const observability = useAtomValue(primaryServerObservabilityAtom);
   const serverProviders = useAtomValue(primaryServerProvidersAtom);
   const diagnosticsDescription = formatDiagnosticsDescription({
@@ -544,6 +569,108 @@ export function GeneralSettingsPanel() {
                 ))}
               </SelectPopup>
             </Select>
+          }
+        />
+
+        <SettingsRow
+          title="Chat text size"
+          description="Font size for messages and the composer."
+          resetAction={
+            chatFontSize !== DEFAULT_CHAT_FONT_SIZE ? (
+              <SettingResetButton
+                label="chat text size"
+                onClick={() => setChatFontSize(DEFAULT_CHAT_FONT_SIZE)}
+              />
+            ) : null
+          }
+          control={
+            <div className="flex items-center gap-2">
+              <NumberField
+                value={chatFontSize}
+                min={CHAT_FONT_SIZE_MIN}
+                max={CHAT_FONT_SIZE_MAX}
+                step={1}
+                size="sm"
+                className="w-28"
+                onValueChange={(value) => {
+                  if (value !== null) setChatFontSize(value);
+                }}
+              >
+                <NumberFieldGroup>
+                  <NumberFieldDecrement aria-label="Decrease chat text size" />
+                  <NumberFieldInput aria-label="Chat text size in pixels" />
+                  <NumberFieldIncrement aria-label="Increase chat text size" />
+                </NumberFieldGroup>
+              </NumberField>
+              <span className="text-xs text-muted-foreground">px</span>
+            </div>
+          }
+        />
+
+        <SettingsRow
+          title="Chat line height"
+          description="Vertical spacing between lines of chat text."
+          resetAction={
+            chatLineHeight !== DEFAULT_CHAT_LINE_HEIGHT ? (
+              <SettingResetButton
+                label="chat line height"
+                onClick={() => setChatLineHeight(DEFAULT_CHAT_LINE_HEIGHT)}
+              />
+            ) : null
+          }
+          control={
+            <NumberField
+              value={chatLineHeight}
+              min={CHAT_LINE_HEIGHT_MIN}
+              max={CHAT_LINE_HEIGHT_MAX}
+              step={0.05}
+              size="sm"
+              className="w-28"
+              onValueChange={(value) => {
+                if (value !== null) setChatLineHeight(value);
+              }}
+            >
+              <NumberFieldGroup>
+                <NumberFieldDecrement aria-label="Decrease chat line height" />
+                <NumberFieldInput aria-label="Chat line height" />
+                <NumberFieldIncrement aria-label="Increase chat line height" />
+              </NumberFieldGroup>
+            </NumberField>
+          }
+        />
+
+        <SettingsRow
+          title="Chat column width"
+          description="Maximum width of the message thread and composer."
+          resetAction={
+            chatColumnWidth !== DEFAULT_CHAT_COLUMN_WIDTH ? (
+              <SettingResetButton
+                label="chat column width"
+                onClick={() => setChatColumnWidth(DEFAULT_CHAT_COLUMN_WIDTH)}
+              />
+            ) : null
+          }
+          control={
+            <div className="flex items-center gap-2">
+              <NumberField
+                value={chatColumnWidth}
+                min={CHAT_COLUMN_WIDTH_MIN}
+                max={CHAT_COLUMN_WIDTH_MAX}
+                step={1}
+                size="sm"
+                className="w-28"
+                onValueChange={(value) => {
+                  if (value !== null) setChatColumnWidth(value);
+                }}
+              >
+                <NumberFieldGroup>
+                  <NumberFieldDecrement aria-label="Decrease chat column width" />
+                  <NumberFieldInput aria-label="Chat column width in rem" />
+                  <NumberFieldIncrement aria-label="Increase chat column width" />
+                </NumberFieldGroup>
+              </NumberField>
+              <span className="text-xs text-muted-foreground">rem</span>
+            </div>
           }
         />
 

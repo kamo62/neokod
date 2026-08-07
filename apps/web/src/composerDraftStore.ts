@@ -57,6 +57,7 @@ import { createDebouncedStorage, createMemoryStorage } from "./lib/storage";
 import { getDefaultServerModel } from "./providerModels";
 import { UnifiedSettings } from "@neokod/contracts/settings";
 import { ReviewCommentContextSchema, type ReviewCommentContext } from "./reviewCommentContext";
+import { randomUUID } from "./lib/utils";
 const isRuntimeMode = Schema.is(RuntimeMode);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 const isReviewCommentContext = Schema.is(ReviewCommentContextSchema);
@@ -95,6 +96,25 @@ export type PersistedComposerImageAttachment = typeof PersistedComposerImageAtta
 export interface ComposerImageAttachment extends Omit<ChatImageAttachment, "previewUrl"> {
   previewUrl: string;
   file: File;
+}
+
+/**
+ * A follow-up message submitted while a turn is running. Queued messages
+ * dispatch automatically, oldest first, once the turn they were queued
+ * behind settles: see `ChatView.tsx`'s queue-drain effect.
+ */
+export const PersistedQueuedComposerMessage = Schema.Struct({
+  id: Schema.String,
+  text: Schema.String,
+  createdAt: Schema.String,
+});
+export type PersistedQueuedComposerMessage = typeof PersistedQueuedComposerMessage.Type;
+const isPersistedQueuedComposerMessage = Schema.is(PersistedQueuedComposerMessage);
+
+export interface QueuedComposerMessage {
+  id: string;
+  text: string;
+  createdAt: string;
 }
 
 const PersistedTerminalContextDraft = Schema.Struct({
@@ -137,6 +157,7 @@ const PersistedComposerThreadDraftState = Schema.Struct({
   elementContexts: Schema.optionalKey(Schema.Array(PersistedElementContextDraft)),
   previewAnnotations: Schema.optionalKey(Schema.Array(PreviewAnnotationPayloadSchema)),
   reviewComments: Schema.optionalKey(Schema.Array(ReviewCommentContextSchema)),
+  queuedMessages: Schema.optionalKey(Schema.Array(PersistedQueuedComposerMessage)),
   // Keyed by `ProviderInstanceId` (open branded slug) so custom provider
   // instances (e.g. `codex_personal`) round-trip alongside the built-in
   // `codex` / `claudeAgent` / ... entries. Every prior `ProviderDriverKind`
@@ -267,6 +288,8 @@ export interface ComposerThreadDraftState {
   elementContexts: ElementContextDraft[];
   previewAnnotations: PreviewAnnotationPayload[];
   reviewComments: ReviewCommentContext[];
+  /** Follow-ups submitted while a turn was running, oldest first. */
+  queuedMessages: QueuedComposerMessage[];
   /**
    * Per-instance model selection. Keyed by `ProviderInstanceId` (open
    * branded slug) so a default `codex` instance and a user-authored
@@ -485,6 +508,9 @@ interface ComposerDraftStoreState {
     comments: ReadonlyArray<ReviewCommentContext>,
   ) => void;
   removeReviewComment: (threadRef: ComposerThreadTarget, commentId: string) => void;
+  /** Appends a follow-up to the queue and returns its generated id. */
+  addQueuedMessage: (threadRef: ComposerThreadTarget, text: string) => string | null;
+  removeQueuedMessage: (threadRef: ComposerThreadTarget, queuedMessageId: string) => void;
   clearPersistedAttachments: (threadRef: ComposerThreadTarget) => void;
   syncPersistedAttachments: (
     threadRef: ComposerThreadTarget,
@@ -563,12 +589,14 @@ const EMPTY_TERMINAL_CONTEXTS: TerminalContextDraft[] = [];
 const EMPTY_ELEMENT_CONTEXTS: ElementContextDraft[] = [];
 const EMPTY_PREVIEW_ANNOTATIONS: PreviewAnnotationPayload[] = [];
 const EMPTY_REVIEW_COMMENTS: ReviewCommentContext[] = [];
+export const EMPTY_QUEUED_MESSAGES: QueuedComposerMessage[] = [];
 Object.freeze(EMPTY_IMAGES);
 Object.freeze(EMPTY_IDS);
 Object.freeze(EMPTY_PERSISTED_ATTACHMENTS);
 Object.freeze(EMPTY_ELEMENT_CONTEXTS);
 Object.freeze(EMPTY_PREVIEW_ANNOTATIONS);
 Object.freeze(EMPTY_REVIEW_COMMENTS);
+Object.freeze(EMPTY_QUEUED_MESSAGES);
 const EMPTY_MODEL_SELECTION_BY_PROVIDER: Partial<Record<ProviderDriverKind, ModelSelection>> =
   Object.freeze({});
 const EMPTY_COMPOSER_DRAFT_MODEL_STATE = Object.freeze<ComposerDraftModelState>({
@@ -585,6 +613,7 @@ const EMPTY_THREAD_DRAFT = Object.freeze<ComposerThreadDraftState>({
   elementContexts: EMPTY_ELEMENT_CONTEXTS,
   previewAnnotations: EMPTY_PREVIEW_ANNOTATIONS,
   reviewComments: EMPTY_REVIEW_COMMENTS,
+  queuedMessages: EMPTY_QUEUED_MESSAGES,
   modelSelectionByProvider: EMPTY_MODEL_SELECTION_BY_PROVIDER,
   activeProvider: null,
   runtimeMode: null,
@@ -607,6 +636,7 @@ export function createEmptyThreadDraft(): ComposerThreadDraftState {
     elementContexts: [],
     previewAnnotations: [],
     reviewComments: [],
+    queuedMessages: [],
     modelSelectionByProvider: {},
     activeProvider: null,
     runtimeMode: null,
@@ -680,6 +710,7 @@ function shouldRemoveDraft(draft: ComposerThreadDraftState): boolean {
     draft.elementContexts.length === 0 &&
     draft.previewAnnotations.length === 0 &&
     draft.reviewComments.length === 0 &&
+    draft.queuedMessages.length === 0 &&
     Object.keys(draft.modelSelectionByProvider).length === 0 &&
     draft.activeProvider === null &&
     draft.runtimeMode === null &&
@@ -1674,6 +1705,9 @@ function normalizePersistedDraftsByThreadId(
     const reviewComments = Array.isArray(draftCandidate.reviewComments)
       ? draftCandidate.reviewComments.filter(isReviewCommentContext)
       : [];
+    const queuedMessages = Array.isArray(draftCandidate.queuedMessages)
+      ? draftCandidate.queuedMessages.filter(isPersistedQueuedComposerMessage)
+      : [];
     // An absent override means "inherit the thread mode", which is the normal
     // case. A present but unrecognised one, e.g. after rolling back from a
     // newer build, must not fall through to inheritance: the thread can be more
@@ -1747,6 +1781,7 @@ function normalizePersistedDraftsByThreadId(
       terminalContexts.length === 0 &&
       elementContexts.length === 0 &&
       reviewComments.length === 0 &&
+      queuedMessages.length === 0 &&
       !hasModelData &&
       !runtimeMode &&
       !interactionMode
@@ -1771,6 +1806,7 @@ function normalizePersistedDraftsByThreadId(
       ...(terminalContexts.length > 0 ? { terminalContexts } : {}),
       ...(elementContexts.length > 0 ? { elementContexts } : {}),
       ...(reviewComments.length > 0 ? { reviewComments } : {}),
+      ...(queuedMessages.length > 0 ? { queuedMessages } : {}),
       ...(hasModelData
         ? {
             modelSelectionByProvider: compactModelSelectionByProvider(modelSelectionByProvider),
@@ -1856,6 +1892,7 @@ function partializeComposerDraftStoreState(
       draft.elementContexts.length === 0 &&
       draft.previewAnnotations.length === 0 &&
       draft.reviewComments.length === 0 &&
+      draft.queuedMessages.length === 0 &&
       !hasModelData &&
       draft.runtimeMode === null &&
       draft.interactionMode === null
@@ -1905,6 +1942,11 @@ function partializeComposerDraftStoreState(
       ...(draft.reviewComments.length > 0
         ? {
             reviewComments: draft.reviewComments.map((comment) => ({ ...comment })),
+          }
+        : {}),
+      ...(draft.queuedMessages.length > 0
+        ? {
+            queuedMessages: draft.queuedMessages.map((message) => ({ ...message })),
           }
         : {}),
       ...(hasModelData
@@ -2150,6 +2192,7 @@ function toHydratedThreadDraft(
     previewAnnotations:
       persistedDraft.previewAnnotations?.map((annotation) => ({ ...annotation })) ?? [],
     reviewComments: persistedDraft.reviewComments?.map((comment) => ({ ...comment })) ?? [],
+    queuedMessages: persistedDraft.queuedMessages?.map((message) => ({ ...message })) ?? [],
     modelSelectionByProvider,
     activeProvider,
     runtimeMode: persistedDraft.runtimeMode ?? null,
@@ -3267,6 +3310,46 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             const reviewComments = current.reviewComments.filter((entry) => entry.id !== commentId);
             if (reviewComments.length === current.reviewComments.length) return state;
             const nextDraft = { ...current, reviewComments };
+            const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
+            if (shouldRemoveDraft(nextDraft)) delete nextDraftsByThreadKey[threadKey];
+            else nextDraftsByThreadKey[threadKey] = nextDraft;
+            return { draftsByThreadKey: nextDraftsByThreadKey };
+          });
+        },
+        addQueuedMessage: (threadRef, text) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef);
+          const trimmed = text.trim();
+          if (!threadKey || trimmed.length === 0) return null;
+          const queuedMessage: QueuedComposerMessage = {
+            id: randomUUID(),
+            text: trimmed,
+            createdAt: new Date().toISOString(),
+          };
+          set((state) => {
+            const existing = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();
+            return {
+              draftsByThreadKey: {
+                ...state.draftsByThreadKey,
+                [threadKey]: {
+                  ...existing,
+                  queuedMessages: [...existing.queuedMessages, queuedMessage],
+                },
+              },
+            };
+          });
+          return queuedMessage.id;
+        },
+        removeQueuedMessage: (threadRef, queuedMessageId) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef);
+          if (!threadKey || !queuedMessageId) return;
+          set((state) => {
+            const current = state.draftsByThreadKey[threadKey];
+            if (!current) return state;
+            const queuedMessages = current.queuedMessages.filter(
+              (entry) => entry.id !== queuedMessageId,
+            );
+            if (queuedMessages.length === current.queuedMessages.length) return state;
+            const nextDraft = { ...current, queuedMessages };
             const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
             if (shouldRemoveDraft(nextDraft)) delete nextDraftsByThreadKey[threadKey];
             else nextDraftsByThreadKey[threadKey] = nextDraft;
