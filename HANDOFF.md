@@ -1,12 +1,18 @@
 # Handoff
 
-Updated: 2026-08-07 10:35 on MacBookPro
+Updated: 2026-08-07 10:45 on MacBookPro
 
 ## State
 
 - Branch: `feat/symphony-mode-impl`
-- HEAD: `2e6fb9abe` fix(symphony): close audit open items — takeover identity/exit, resume idleness, retry re-check, orphan adoption, canonicalization, tri-state mergeable, attention raises, WORKFLOW.md wiring
-- Pushed: this commit set is NOT yet pushed. Run `git push` after the next commit.
+- HEAD: `c163e58d9` fix(symphony): provide WorkflowLoader construction deps — HEAD did not boot
+- Pushed: yes, everything through `c163e58d9` is on origin.
+- CRITICAL note on `2e6fb9abe`: it did NOT boot as committed (WorkflowLoaderLive merged bare;
+  constructor yields WorkflowRepository + FileSystem — fourth instance of the layer-construction
+  trap, invisible to suites on fakes). Fixed in `c163e58d9`, verified by live boot probe (reaper
+  starts, startup URL minted). Its 1946-green suite claim was independently re-run and confirmed
+  (1946 passed / 7 skipped). Booting the real server after ANY layer change is now the
+  non-negotiable check.
 - Dirty: only the standing user files (PDF, PLAN-exec-demo.md, demo.md, `__probe/`,
   `apps/server/scratch-neokod-symphony-layer-probe.ts`). REVIEW.md and the audit record are
   GITIGNORED local files — they do not travel; the closure summary below is the durable copy.
