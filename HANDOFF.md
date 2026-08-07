@@ -1,18 +1,19 @@
 # Handoff
 
-Updated: 2026-08-07 10:45 on MacBookPro
+Updated: 2026-08-07 11:55 on MacBookPro
 
 ## State
 
 - Branch: `feat/symphony-mode-impl`
-- HEAD: `c163e58d9` fix(symphony): provide WorkflowLoader construction deps — HEAD did not boot
-- Pushed: yes, everything through `c163e58d9` is on origin.
+- HEAD: `6fd9a5c48` feat(symphony): close plan-gap lanes — pause/resume/stopAll RPCs, subscriptions, notifications, audit writer, env scrubbing, continuation turns, tracker residuals, advisory lock
+- Pushed: NOT yet — push after the next commit.
 - CRITICAL note on `2e6fb9abe`: it did NOT boot as committed (WorkflowLoaderLive merged bare;
   constructor yields WorkflowRepository + FileSystem — fourth instance of the layer-construction
   trap, invisible to suites on fakes). Fixed in `c163e58d9`, verified by live boot probe (reaper
-  starts, startup URL minted). Its 1946-green suite claim was independently re-run and confirmed
-  (1946 passed / 7 skipped). Booting the real server after ANY layer change is now the
-  non-negotiable check.
+  starts, startup URL minted). Booting the real server after ANY layer change is now the
+  non-negotiable check. The same trap applies to this session's new layers (AuditRepository,
+  TrackerCheckpointRepository, NotificationCoordinator) — all are wired into the same
+  `Layer.provide` lists that the live boot probe validates.
 - Dirty: only the standing user files (PDF, PLAN-exec-demo.md, demo.md, `__probe/`,
   `apps/server/scratch-neokod-symphony-layer-probe.ts`). REVIEW.md and the audit record are
   GITIGNORED local files — they do not travel; the closure summary below is the durable copy.
@@ -106,6 +107,36 @@ Updated: 2026-08-07 10:45 on MacBookPro
    handlers before their RPCs join WsRpcGroup.
 3. Kamogelo: PRD section 21 amendment for default-on analytics (still pending).
 
+## Plan-gap lanes closed (6fd9a5c48, this session)
+
+- Pause/resume/stopAll RPCs: migration 039 (paused_workflows/paused_repositories columns),
+  repo methods, orchestrator methods, ws handlers, WsRpcGroup registration. Per-scope pause
+  gates dispatch; global pause is the top-level kill switch; stopAllRuns requires the
+  `stop-all-runs` confirm literal. getWorkflow/listTrackers/listHistory/resolveAttention also
+  real + registered (their success schemas were EmptyResult stubs).
+- Subscriptions: all 5 subscribeSymphony\* streams implemented as 2s snapshot streams
+  (overview/runs/queue/attention/runEvents) + registered. The old "views poll" gap is gone.
+- Notifications coordinator (15.4): pub/sub NotificationCoordinator; publishes on cancel +
+  merge-approve; tested.
+- Audit writer (13.4): AuditRepository writes symphony_audit_events (dispatch/cancel/merge);
+  the table finally has writers.
+- Env scrubbing (SPEC 15.3): tracker secretEnvironmentNames resolved per config and stripped
+  from the agent child env (scrubEnvironment, 3 tests).
+- Continuation turns (8.2): dispatcher loops runTurn up to maxTurns with continuation:true.
+- Tracker residuals: localPriority feeds queue sort (COALESCE local_priority, priority);
+  GitLabAdapter dispatchable = state opened; TrackerCheckpointRepository records last_poll_at.
+- Advisory lock: acquired at startup (per-launch token), renewed 30s, released on teardown,
+  dispatch gated when not held. (Note: the first wiring orphaned the scheduler — fixed; the
+  poll loop runs under the lock fork.)
+
+## Verified (this session)
+
+- Full server suite: 1954 passed / 7 skipped (was 1946). Web suite: 160 files / 1474 green.
+- Filtered server typecheck clean; `vp check` 0 errors / 30 warnings (2 new pre-existing-class:
+  unused vars in user's `__probe/probe.ts` and the tracker DEFAULT\_\* consts — none failing).
+- The live boot probe must be re-run (server.ts layer graph changed) before relying on this
+  commit set.
+
 ## Resume
 
 ```bash
@@ -142,11 +173,10 @@ unwanted.
 ## Next moves
 
 1. Push this branch (`git push`).
-2. Run the manual live smoke procedure (real Codex app-server, real repo, real PR + CI) — now
-   unblocked: WORKFLOW.md can be activated, retries re-check the tracker, takeover validates
-   identity, PR-creation failures surface as attention items.
-3. Implement the pause/resume/stopAll RPC handlers (orchestratorState needs per-workflow and
-   per-repo pause columns), then register those RPCs in WsRpcGroup.
-4. Dedicated lanes: observability/audit writers (section 17), notifications coordinator,
-   agent child env scrubbing (SPEC 15.3), continuation turns.
+2. Re-run the live boot probe (server.ts layer graph changed with the 3 new repos/coordinator).
+3. Run the manual live smoke procedure (real Codex app-server, real repo, real PR + CI) — all
+   plan-gap lanes that blocked it are closed.
+4. Remaining plan gaps (UI-scoped, lower priority): settings/trackers/history route stubs,
+   workflow editor (PRD 12.3), PR panel (15.3.1), FR-093 five attention buckets, FR-102-104
+   review-comment ingestion, observability gauges (section 17 metrics), second ACP provider.
 5. Kamogelo: PRD section 21 amendment for default-on analytics (still pending).
