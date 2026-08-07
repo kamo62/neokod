@@ -13,6 +13,8 @@ import { isMacPlatform } from "./lib/utils";
 export const THREAD_REOPEN_LAST_ARCHIVED_COMMAND =
   "thread.reopenLastArchived" satisfies KeybindingCommand;
 
+export const THREAD_SWITCHER_COMMAND = "thread.switcher" satisfies KeybindingCommand;
+
 export interface ShortcutEventLike {
   type?: string;
   code?: string;

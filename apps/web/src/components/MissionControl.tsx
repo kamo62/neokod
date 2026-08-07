@@ -57,7 +57,7 @@ function MissionControlThreadRowView(props: {
           <CircleIcon
             className={cn(
               "size-2 shrink-0 fill-current",
-              props.row.isRunning ? "text-emerald-500" : "text-muted-foreground/50",
+              props.row.isRunning ? "text-success" : "text-muted-foreground/50",
             )}
           />
           <span className="truncate">{props.thread.title}</span>

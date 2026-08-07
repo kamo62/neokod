@@ -82,6 +82,10 @@
   --color-success: var(--success);
   --color-info-foreground: var(--info-foreground);
   --color-info: var(--info);
+  --color-merged-foreground: var(--merged-foreground);
+  --color-merged: var(--merged);
+  --color-terminal-active-foreground: var(--terminal-active-foreground);
+  --color-terminal-active: var(--terminal-active);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-ring: var(--ring);
   --color-input: var(--input);
@@ -442,6 +446,16 @@
   --success-foreground: #007331;
   --warning: var(--color-amber-500);
   --warning-foreground: var(--color-amber-700);
+  /* Merged (purple) and running-terminal (teal) are their own hues, not
+     folded into success/warning/info: a merged PR/thread and a live
+     terminal process are distinct states, not "passing" or "caution".
+     -foreground is the text-safe shade: violet-700 is 7.29:1 on the white
+     canvas, teal-700 is 5.39:1 on white — both clear the WCAG AA 4.5:1 floor
+     for normal text (the base -500 tones are for dots/icons, not text). */
+  --merged: var(--color-violet-500);
+  --merged-foreground: var(--color-violet-700);
+  --terminal-active: var(--color-teal-500);
+  --terminal-active-foreground: var(--color-teal-700);
   --sidebar: var(--surface-sidebar);
   --sidebar-foreground: var(--text-primary);
   --sidebar-primary: var(--brand);
@@ -502,6 +516,13 @@
     --success-foreground: #72dda2;
     --warning: var(--color-amber-500);
     --warning-foreground: var(--color-amber-400);
+    /* Same reasoning as the light-theme comment above. -foreground clears AA
+       with a wide margin here: violet-300 is 9.55:1 on #181818, teal-300 is
+       12.07:1 on #181818. */
+    --merged: var(--color-violet-500);
+    --merged-foreground: var(--color-violet-300);
+    --terminal-active: var(--color-teal-500);
+    --terminal-active-foreground: var(--color-teal-300);
     --sidebar: var(--surface-sidebar);
     --sidebar-foreground: var(--text-primary);
     --sidebar-primary: var(--brand);

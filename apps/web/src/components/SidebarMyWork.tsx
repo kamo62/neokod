@@ -59,7 +59,7 @@ function MyWorkRow({
             aria-label={status?.label}
             className={cn(
               "mt-1.5 size-1.5 shrink-0 rounded-full",
-              needsAttention ? "bg-amber-500 dark:bg-amber-300/90" : status?.dotClass,
+              needsAttention ? "bg-warning" : status?.dotClass,
               status?.pulse && "animate-pulse",
             )}
           />

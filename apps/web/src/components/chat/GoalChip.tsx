@@ -124,7 +124,7 @@ export function GoalChip({ environmentId, threadId }: GoalChipProps) {
                     "flex size-4 shrink-0 items-center justify-center rounded-full border",
                     "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
                     isDone
-                      ? "border-emerald-500 bg-emerald-500/15 text-emerald-500"
+                      ? "border-success bg-success/15 text-success"
                       : "border-muted-foreground/40 text-muted-foreground",
                   )}
                 />

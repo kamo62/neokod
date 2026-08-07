@@ -763,7 +763,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
             )}
             {selectedPatchError && !renderablePatch && (
               <div className="px-3">
-                <p className="mb-2 text-[11px] text-red-500/80">{selectedPatchError}</p>
+                <p className="mb-2 text-[11px] text-destructive">{selectedPatchError}</p>
               </div>
             )}
             {!renderablePatch ? (

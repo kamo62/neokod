@@ -122,21 +122,21 @@ export function HomeDashboard() {
       <div className="grid gap-4 lg:grid-cols-2">
         <HomeDashboardGroup
           title="Running"
-          icon={<ActivityIcon className="size-4 text-emerald-600 dark:text-emerald-300" />}
+          icon={<ActivityIcon className="size-4 text-success-foreground" />}
           threads={groups.running}
           projectsByKey={projectsByKey}
           onOpen={openThread}
         />
         <HomeDashboardGroup
           title="Needs attention"
-          icon={<TriangleAlertIcon className="size-4 text-amber-600 dark:text-amber-300" />}
+          icon={<TriangleAlertIcon className="size-4 text-warning-foreground" />}
           threads={groups.needsAttention}
           projectsByKey={projectsByKey}
           onOpen={openThread}
         />
         <HomeDashboardGroup
           title="Plan ready"
-          icon={<LightbulbIcon className="size-4 text-violet-600 dark:text-violet-300" />}
+          icon={<LightbulbIcon className="size-4 text-info-foreground" />}
           threads={groups.planReady}
           projectsByKey={projectsByKey}
           onOpen={openThread}
