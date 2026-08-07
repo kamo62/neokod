@@ -11,6 +11,7 @@ import { buildThreadRouteParams } from "../threadRoutes";
 import { useUiStateStore } from "../uiStateStore";
 import { cn } from "~/lib/utils";
 import { selectMissionControlDashboardGroups } from "./MissionControl.logic";
+import { ProviderMark } from "./sidebar/ProviderMark";
 import {
   computeThreadSignature,
   countMyWorkThreads,
@@ -49,6 +50,7 @@ function MyWorkRow({
         className="flex w-full min-w-0 items-start gap-2 rounded-md px-2 py-1 pr-7 text-left text-ui text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         onClick={onOpen}
       >
+        <ProviderMark thread={thread} className="mt-0.5" />
         {done ? (
           <CheckIcon
             className="mt-0.5 size-3 shrink-0 text-muted-foreground/45"

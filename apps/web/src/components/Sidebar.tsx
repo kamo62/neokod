@@ -239,6 +239,7 @@ import {
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
 import { SidebarProviderUpdatePill } from "./sidebar/SidebarProviderUpdatePill";
+import { ProviderMark } from "./sidebar/ProviderMark";
 import { SidebarMyWork } from "./SidebarMyWork";
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: "Last user message",
@@ -724,6 +725,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
       >
         <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
           <div className="flex min-w-0 items-center gap-1.5">
+            <ProviderMark thread={thread} />
             {prStatus && (
               <Tooltip>
                 <TooltipTrigger
