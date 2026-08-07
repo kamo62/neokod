@@ -392,10 +392,12 @@ function resolveConfiguredPrimaryTarget(): PrimaryEnvironmentTarget | null {
       ? swapBaseUrlProtocol(configuredHttpBaseUrl, "wss:", "http-base-url")
       : swapBaseUrlProtocol(configuredHttpBaseUrl!, "ws:", "http-base-url"));
 
+  const loopbackAuthToken = readLoopbackAuthTokenFromWindow();
   return validateTargetUrls({
     source: "configured",
     httpBaseUrl: normalizeBaseUrl(resolvedHttpBaseUrl, "configured", "http-base-url"),
     wsBaseUrl: normalizeBaseUrl(resolvedWsBaseUrl, "configured", "websocket-base-url"),
+    ...(loopbackAuthToken !== undefined ? { loopbackAuthToken } : {}),
   });
 }
 

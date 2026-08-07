@@ -314,7 +314,7 @@ const RuntimeDependenciesLive = RuntimeCoreDependenciesLive.pipe(
   Layer.provideMerge(ProcessDiagnostics.layer),
   Layer.provideMerge(ProcessResourceMonitor.layer),
   Layer.provideMerge(TraceDiagnostics.layer),
-  Layer.provideMerge(AnalyticsService.layer),
+  Layer.provideMerge(AnalyticsService.layer.pipe(Layer.provide(FetchHttpClient.layer))),
   Layer.provideMerge(ExternalLauncher.layer),
   Layer.provideMerge(ServerLifecycleEvents.layer),
   Layer.provide(NetService.layer),
@@ -387,7 +387,6 @@ export const makeServerLayer = Layer.unwrap(
     );
 
     return serverApplicationLayer.pipe(
-      Layer.provideMerge(RuntimeServicesLive),
       Layer.provideMerge(HttpServerLive),
       Layer.provide(ObservabilityLive),
       Layer.provideMerge(FetchHttpClient.layer),
@@ -398,12 +397,14 @@ export const makeServerLayer = Layer.unwrap(
       // (only ServerConfig leaks to the CLI).
       Layer.provideMerge(
         SymphonyLayerObserve.pipe(
+          Layer.provideMerge(RuntimeServicesLive),
           Layer.provide(
             Layer.mergeAll(
               PersistenceLayerLive,
               ServerSettings.layer.pipe(Layer.provide(ServerSecretStore.layer)),
               NetService.layer,
               VcsProcess.layer,
+              FetchHttpClient.layer,
             ).pipe(Layer.provideMerge(PlatformServicesLive)),
           ),
         ),
