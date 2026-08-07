@@ -12,7 +12,9 @@ import * as Layer from "effect/Layer";
 
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
 import { SourceControlProviderRegistry } from "../../sourceControl/SourceControlProviderRegistry.ts";
+import { GitHubCli } from "../../sourceControl/GitHubCli.ts";
 import { nowIso } from "../Domain/Time.ts";
+import type { ReviewFeedbackComment } from "../Runner/Prompt.ts";
 
 /**
  * Orchestrator-owned PR creation (plan D4, 10.1; WS-L).
@@ -73,12 +75,29 @@ export class PullRequestService extends Context.Service<
       readonly baseBranch: string;
       readonly title: string;
     }) => Effect.Effect<PullRequestEvidence | null, PullRequestCreationError>;
+
+    /**
+     * Unresolved review-thread comment bodies for a continuation dispatch
+     * (plan FR-102-104). GitHub only, since the SourceControlProvider
+     * abstraction has no cross-host comment-body method yet — `null` means
+     * the host cannot supply comment bodies (non-GitHub, an unresolvable
+     * handle, or the enrichment call itself failed), and callers fall back
+     * to counts-only review context rather than silently implying there are
+     * no comments.
+     */
+    readonly listUnresolvedComments: (input: {
+      readonly config: EffectiveWorkflowConfig;
+      readonly pullRequestNumber: number;
+    }) => Effect.Effect<ReadonlyArray<ReviewFeedbackComment> | null>;
   }
 >()("neokod/symphony/Evidence/PullRequest/PullRequestService") {}
 
 export interface PullRequestServiceDeps {
   readonly git: GitVcsDriver["Service"];
   readonly providers: SourceControlProviderRegistry["Service"];
+  /** Optional: absent in tests that never exercise `listUnresolvedComments`,
+   * which degrades to `null` (counts-only) without it. */
+  readonly githubCli?: GitHubCli["Service"];
   readonly writeBodyFile?: (path: string, content: string) => Effect.Effect<void, Error>;
   readonly makeBodyFileDir?: (dir: string) => Effect.Effect<void, Error>;
   readonly nowIsoEffect?: () => Effect.Effect<string>;
@@ -269,22 +288,48 @@ export const makePullRequestService = (
       } satisfies PullRequestEvidence;
     });
 
-  return { create, refresh };
+  const listUnresolvedComments: PullRequestService["Service"]["listUnresolvedComments"] = (input) =>
+    Effect.gen(function* () {
+      const githubCli = deps.githubCli;
+      if (githubCli === undefined || githubCli.listUnresolvedReviewComments === undefined) {
+        return null;
+      }
+      const handle = yield* deps.providers
+        .resolveHandle({ cwd: input.config.repositoryPath })
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      // Honest degradation (plan 10.1, FR-102-104): only GitHub has
+      // comment-body enrichment today. Other hosts — and a handle that
+      // cannot be resolved — fall back to counts-only review context rather
+      // than a fabricated empty list.
+      if (handle === null || handle.provider.kind !== "github") {
+        return null;
+      }
+      return yield* githubCli
+        .listUnresolvedReviewComments({
+          cwd: input.config.repositoryPath,
+          reference: String(input.pullRequestNumber),
+        })
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+    });
+
+  return { create, refresh, listUnresolvedComments };
 };
 
 export const PullRequestServiceLive: Layer.Layer<
   PullRequestService,
   never,
-  GitVcsDriver | SourceControlProviderRegistry | FileSystem.FileSystem
+  GitVcsDriver | SourceControlProviderRegistry | FileSystem.FileSystem | GitHubCli
 > = Layer.effect(
   PullRequestService,
   Effect.gen(function* () {
     const git = yield* GitVcsDriver;
     const providers = yield* SourceControlProviderRegistry;
     const fileSystem = yield* FileSystem.FileSystem;
+    const githubCli = yield* GitHubCli;
     return makePullRequestService({
       git,
       providers,
+      githubCli,
       // The PR body file must be written by the production wiring (plan 10:
       // deterministic host-derived body). A missing write would make
       // `gh pr create --body-file` fail on the first live run. Failures are

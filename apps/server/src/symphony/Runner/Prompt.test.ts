@@ -91,4 +91,69 @@ describe("buildRunPrompt", () => {
     expect(prompt).toContain("Symphony continuation");
     expect(prompt).toContain("Continue the in-progress work");
   });
+
+  it("omits the review feedback section when none is given", () => {
+    const prompt = buildRunPrompt({ issue: makeIssue(), config: makeConfig() });
+    expect(prompt).not.toContain("Review feedback");
+  });
+
+  it("carries review context and instructs working on the existing branch/workspace", () => {
+    const prompt = buildRunPrompt({
+      issue: makeIssue(),
+      config: makeConfig({ autonomy: "execute" }),
+      branch: "symphony/issue-1",
+      reviewFeedback: {
+        unresolvedCommentCount: 2,
+        reviewState: "changes_requested",
+        latestCommit: "deadbeef0001",
+        comments: [
+          { body: "Please add a null check here.", author: "reviewer1" },
+          { body: "This function needs a test." },
+        ],
+      },
+    });
+    expect(prompt).toContain("### Review feedback");
+    expect(prompt).toContain("EXISTING branch symphony/issue-1");
+    expect(prompt).toContain("EXISTING workspace");
+    expect(prompt).toContain("Review state: changes_requested");
+    expect(prompt).toContain("Unresolved comments: 2");
+    expect(prompt).toContain("Latest reviewed commit: deadbeef0001");
+    expect(prompt).toContain("1. reviewer1: Please add a null check here.");
+    expect(prompt).toContain("2. This function needs a test.");
+  });
+
+  it("degrades honestly to counts-only when comment bodies are unavailable", () => {
+    const prompt = buildRunPrompt({
+      issue: makeIssue(),
+      config: makeConfig({ autonomy: "execute" }),
+      reviewFeedback: {
+        unresolvedCommentCount: 3,
+        reviewState: "changes_requested",
+      },
+    });
+    expect(prompt).toContain("Unresolved comments: 3");
+    expect(prompt).toContain(
+      "Comment bodies are not available for this host; only the counts above are known.",
+    );
+    expect(prompt).not.toContain("Unresolved review comments:");
+  });
+
+  it("bounds comments to the first ~20 and truncates long bodies", () => {
+    const comments = Array.from({ length: 25 }, (_unused, index) => ({
+      body: index === 0 ? "x".repeat(600) : `comment ${index}`,
+    }));
+    const prompt = buildRunPrompt({
+      issue: makeIssue(),
+      config: makeConfig({ autonomy: "execute" }),
+      reviewFeedback: {
+        unresolvedCommentCount: 25,
+        reviewState: "changes_requested",
+        comments,
+      },
+    });
+    expect(prompt).toContain("20. comment 19");
+    expect(prompt).not.toContain("21. comment 20");
+    expect(prompt).not.toContain("x".repeat(600));
+    expect(prompt).toContain(`${"x".repeat(500)}…`);
+  });
 });

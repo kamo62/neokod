@@ -166,11 +166,13 @@ const fakePullRequestService = (pr: PullRequestEvidence | null) =>
   Layer.succeed(PullRequestService, {
     create: () => Effect.succeed(pr as PullRequestEvidence),
     refresh: () => Effect.succeed(null),
+    listUnresolvedComments: () => Effect.succeed(null),
   });
 
 const failingPullRequestService = Layer.succeed(PullRequestService, {
   create: () => Effect.fail(new PullRequestCreationError("gh: not authenticated")),
   refresh: () => Effect.succeed(null),
+  listUnresolvedComments: () => Effect.succeed(null),
 });
 
 const layer = (validationStatuses: ReadonlyArray<string>, pr: PullRequestEvidence | null) =>

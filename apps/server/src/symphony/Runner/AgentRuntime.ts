@@ -19,7 +19,7 @@ import * as CodexClient from "effect-codex-app-server/client";
 import { resolveSpawnCommand } from "@neokod/shared/shell";
 import { expandHomePath } from "../../pathExpansion.ts";
 import { buildCodexInitializeParams } from "../../provider/Layers/CodexProvider.ts";
-import { buildRunPrompt } from "./Prompt.ts";
+import { buildRunPrompt, type ReviewFeedbackContext } from "./Prompt.ts";
 import { resolveRunnerPolicy } from "./Policy.ts";
 import { type ApprovalDecision, type LiveRequestsService } from "./LiveRequests.ts";
 
@@ -62,6 +62,11 @@ export interface AgentRuntimeService {
     readonly workItemId: WorkItemId;
     readonly prompt?: string;
     readonly continuation?: boolean;
+    /** Review context for a post-review continuation dispatch (plan
+     * FR-102-104). Only meaningful on the first turn of a dispatch — it
+     * rides in the rendered prompt, so it is never re-sent on later
+     * continuation turns within the same live thread (SPEC 8.2). */
+    readonly reviewFeedback?: ReviewFeedbackContext;
   }) => Effect.Effect<AgentTurnResult, AgentRuntimeSpawnError, Scope.Scope>;
 
   readonly interrupt: () => Effect.Effect<void, never, never>;
@@ -200,6 +205,7 @@ export const makeCodexAgentRuntime = (
             issue: input.issue,
             config: input.config,
             ...(input.continuation !== undefined ? { continuation: input.continuation } : {}),
+            ...(input.reviewFeedback !== undefined ? { reviewFeedback: input.reviewFeedback } : {}),
           });
         const turn = yield* client
           .request("turn/start", {

@@ -25,6 +25,7 @@ import { WorkspaceManager, type SymphonyWorkspace } from "../Workspaces/Manager.
 import type { AgentRuntimeService } from "./AgentRuntime.ts";
 import { ExecutionFinalizer } from "./ExecutionFinalizer.ts";
 import { LiveRequests } from "./LiveRequests.ts";
+import type { ReviewFeedbackContext } from "./Prompt.ts";
 import { resolveRunnerPolicy, requiresApprovalBeforeEdit } from "./Policy.ts";
 import { isRetryableCategory } from "../Orchestrator/Retry.ts";
 
@@ -61,6 +62,11 @@ export interface RunDispatcherService {
     readonly workItem: WorkItem;
     readonly issue: NormalizedIssue;
     readonly config: EffectiveWorkflowConfig;
+    /** Review context for a continuation dispatch after PR review feedback
+     * (plan FR-102-104): rendered into the FIRST turn's prompt only — the
+     * turn-2..N continuation loop below never re-sends it, matching how the
+     * original prompt itself is never re-sent (SPEC 8.2). */
+    readonly reviewFeedback?: ReviewFeedbackContext;
   }) => Effect.Effect<RunAttemptId, RunDispatchError, Scope.Scope>;
 
   readonly cancelRun: (runAttemptId: RunAttemptId) => Effect.Effect<void, RunDispatchError>;
@@ -213,7 +219,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
 
   const dispatchWorkItem: RunDispatcherService["dispatchWorkItem"] = (input) =>
     Effect.gen(function* () {
-      const { workItem, issue, config } = input;
+      const { workItem, issue, config, reviewFeedback } = input;
       const maxAttempts = config.maxAttempts ?? 5;
       const ownerToken = yield* crypto.randomUUIDv4.pipe(
         Effect.mapError(() => new RunDispatchError("failed to generate owner token")),
@@ -309,6 +315,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
               branch: workspace.branch,
               runAttemptId,
               workItemId,
+              ...(reviewFeedback !== undefined ? { reviewFeedback } : {}),
             })
             .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
 
@@ -363,6 +370,7 @@ export const makeRunDispatcher = Effect.gen(function* () {
             branch: workspace.branch,
             runAttemptId,
             workItemId,
+            ...(reviewFeedback !== undefined ? { reviewFeedback } : {}),
           })
           .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
         for (let turn = 2; turn <= maxTurns && !result.completed; turn++) {

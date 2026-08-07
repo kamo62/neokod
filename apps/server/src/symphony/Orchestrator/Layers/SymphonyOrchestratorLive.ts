@@ -2,6 +2,7 @@ import type {
   AttentionItem,
   EffectiveWorkflowConfig,
   NormalizedIssue,
+  PullRequestEvidence,
   QueueItem,
   RunAttempt,
   RunDetails,
@@ -43,6 +44,7 @@ import { AuditRepository } from "../../Persistence/Services/AuditRepository.ts";
 import { NotificationCoordinator } from "../../NotificationCoordinator.ts";
 import { deriveWorkingBranch } from "../../Domain/Keys.ts";
 import { WorkspaceOwnershipRepository } from "../../Persistence/Services/WorkspaceOwnershipRepository.ts";
+import type { ReviewFeedbackContext } from "../../Runner/Prompt.ts";
 import { SymphonyOrchestrator, type SymphonyOrchestratorShape } from "../SymphonyOrchestrator.ts";
 
 /**
@@ -825,6 +827,47 @@ const makeOrchestrator = Effect.gen(function* () {
       .writeOverrides(WorkItemId.make(workItemId), { localPriority: priority })
       .pipe(Effect.catch(() => Effect.void));
 
+  /**
+   * Review context for a continuation dispatch (plan FR-102-104, section 14).
+   * The item's stored PR evidence is the source of truth here — it was just
+   * refreshed by `refreshPullRequest`, which is what pulled the item out of
+   * ready_for_review in the first place when it detected feedback. Returns
+   * `undefined` when there is no outstanding feedback to report (the common
+   * case for a normal first dispatch), so callers can spread it in without an
+   * explicit `| undefined` on the wire.
+   */
+  const buildReviewFeedback = (
+    item: WorkItem,
+    config: EffectiveWorkflowConfig,
+  ): Effect.Effect<ReviewFeedbackContext | undefined> =>
+    Effect.gen(function* () {
+      const bundle = yield* evidenceRepository
+        .getByWorkItem(item.id)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      const pullRequest = bundle?.pullRequest ?? null;
+      if (pullRequest === null) {
+        return undefined;
+      }
+      const unresolvedCommentCount = pullRequest.unresolvedComments ?? 0;
+      if (pullRequest.reviewState !== "changes_requested" && unresolvedCommentCount === 0) {
+        return undefined;
+      }
+      // Comment bodies are GitHub-only (plan 10.1); other hosts (and a
+      // failed fetch) degrade to counts-only rather than fabricating an
+      // empty list that would read as "no comments".
+      const comments = yield* pullRequestService
+        .listUnresolvedComments({ config, pullRequestNumber: pullRequest.number })
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      return {
+        unresolvedCommentCount,
+        reviewState: pullRequest.reviewState ?? "none",
+        ...(pullRequest.latestCommit !== undefined
+          ? { latestCommit: pullRequest.latestCommit }
+          : {}),
+        ...(comments !== null ? { comments } : {}),
+      } satisfies ReviewFeedbackContext;
+    });
+
   const dispatchWorkItem: SymphonyOrchestratorShape["dispatchWorkItem"] = (workItemId) =>
     Effect.gen(function* () {
       // Advisory-lock gate (audit item 8 lane I): only the server holding the
@@ -935,8 +978,18 @@ const makeOrchestrator = Effect.gen(function* () {
       if (issue === null) {
         return;
       }
+      // FR-102-104: when this item still carries stored PR evidence showing
+      // outstanding review feedback (the reason it came back through
+      // changes_requested -> queued rather than a fresh claim), attach that
+      // context to the continuation dispatch's first turn.
+      const reviewFeedback = yield* buildReviewFeedback(item, config);
       yield* dispatcher
-        .dispatchWorkItem({ workItem: item, issue, config })
+        .dispatchWorkItem({
+          workItem: item,
+          issue,
+          config,
+          ...(reviewFeedback !== undefined ? { reviewFeedback } : {}),
+        })
         .pipe(Effect.catch(() => Effect.void));
       // Audit trail (plan 13.4; audit item 8 lane E).
       yield* auditRepository
@@ -968,6 +1021,68 @@ const makeOrchestrator = Effect.gen(function* () {
           message: `Run ${runAttemptId} was cancelled.`,
           runAttemptId,
           createdAt: yield* nowIso,
+        })
+        .pipe(Effect.catch(() => Effect.void));
+    });
+
+  /**
+   * FR-102-104: pull a review-ready item back out of ready_for_review when a
+   * fresh PR refresh shows a reviewer requested changes, or unresolved
+   * comments that were NOT present in the last stored snapshot. Reuses the
+   * exact requestChanges transition (ready_for_review -> changes_requested),
+   * so the item becomes claimable again the same way a human-initiated
+   * request does — `dispatchWorkItem` already requeues changes_requested
+   * items on the next claim (REVIEW P1 #5).
+   *
+   * The comparison is always against the STORED snapshot passed in as
+   * `previous`, never merely "is the fresh count > 0": otherwise every
+   * refresh on an already-flagged PR would re-trigger the same transition on
+   * every poll. Once the item leaves ready_for_review the `from` guard on
+   * the transition makes every later call here a no-op regardless of what
+   * the host reports, which is the idempotency this exists to guarantee.
+   */
+  const ingestReviewFeedback = (
+    id: WorkItemId,
+    previous: PullRequestEvidence | null,
+    fresh: PullRequestEvidence,
+  ): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      const previousUnresolved = previous?.unresolvedComments ?? 0;
+      const freshUnresolved = fresh.unresolvedComments ?? 0;
+      const newChangesRequested =
+        fresh.reviewState === "changes_requested" && previous?.reviewState !== "changes_requested";
+      const newUnresolvedComments = freshUnresolved > previousUnresolved;
+      if (!newChangesRequested && !newUnresolvedComments) {
+        return;
+      }
+      const changed = yield* workItems
+        .transition(id, "changes_requested", { from: ["ready_for_review"] })
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+      if (!changed) {
+        return;
+      }
+      const attempt = yield* runAttempts
+        .latestForWorkItem(id)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (attempt !== null) {
+        yield* runEvents
+          .append(attempt.id, "changes_requested", {
+            workItemId: String(id),
+            reason: "review feedback detected",
+            reviewState: fresh.reviewState,
+            unresolvedComments: freshUnresolved,
+          })
+          .pipe(Effect.catch(() => Effect.void));
+      }
+      yield* auditRepository
+        .record({
+          actor: "symphony",
+          eventType: "review_feedback_detected",
+          workItemId: String(id),
+          payload: {
+            reviewState: fresh.reviewState ?? "none",
+            unresolvedComments: freshUnresolved,
+          },
         })
         .pipe(Effect.catch(() => Effect.void));
     });
@@ -1015,9 +1130,17 @@ const makeOrchestrator = Effect.gen(function* () {
       if (bundle === null) {
         return false;
       }
+      // Snapshot the PR evidence as it stood BEFORE this refresh (plan
+      // FR-102-104): the ingestion decision compares against this snapshot,
+      // not just the freshly-fetched status, which is what keeps repeated
+      // refreshes with no new signal from re-dispatching in a loop.
+      const previousPullRequest = bundle.pullRequest;
       yield* evidenceRepository
         .upsert(id, { ...bundle, pullRequest: refreshed })
         .pipe(Effect.catch(() => Effect.succeed(false)));
+
+      yield* ingestReviewFeedback(id, previousPullRequest, refreshed);
+
       return true;
     });
 

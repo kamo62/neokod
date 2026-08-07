@@ -123,6 +123,34 @@ const scriptedAgent = (completed: boolean): AgentRuntimeService => ({
 });
 
 /**
+ * Agent that records the `reviewFeedback` it received on every `runTurn`
+ * call (plan FR-102-104), completing on the second turn so both the first
+ * turn and one continuation turn are observed.
+ */
+const reviewFeedbackCapturingAgent = () => {
+  const calls: Array<{ readonly continuation: boolean; readonly hasReviewFeedback: boolean }> = [];
+  return {
+    agent: {
+      runTurn: (input: { readonly continuation?: boolean; readonly reviewFeedback?: unknown }) =>
+        Effect.sync(() => {
+          calls.push({
+            continuation: input.continuation === true,
+            hasReviewFeedback: input.reviewFeedback !== undefined,
+          });
+          return {
+            turnId: `t${calls.length}`,
+            threadId: "th1",
+            completed: calls.length >= 2,
+          };
+        }),
+      interrupt: () => Effect.void,
+      pid: () => Effect.succeed(null),
+    } satisfies AgentRuntimeService,
+    calls,
+  };
+};
+
+/**
  * Agent that never completes a turn and records how many turns ran, so the
  * maxTurns continuation loop (plan 8.2) is observable.
  */
@@ -298,6 +326,33 @@ layer(scriptedFactory(countingIncompleteAgent().agent))("Dispatcher continuation
       // First turn + 2 continuation turns (maxTurns 3), then the failure path.
       expect(continuationEvents.length).toBe(2);
     }),
+  );
+});
+
+const reviewFeedbackCapture = reviewFeedbackCapturingAgent();
+
+layer(scriptedFactory(reviewFeedbackCapture.agent))("Dispatcher review feedback", (it) => {
+  it.effect(
+    "carries reviewFeedback on the first turn only, never on continuation turns (SPEC 8.2)",
+    () =>
+      Effect.gen(function* () {
+        const workItem = yield* seedWorkItem("1006");
+        const dispatcher = yield* RunDispatcher;
+        yield* dispatcher.dispatchWorkItem({
+          workItem,
+          issue: makeIssue("1006"),
+          config: makeConfig("/repo", { autonomy: "execute", maxTurns: 3 }),
+          reviewFeedback: {
+            unresolvedCommentCount: 2,
+            reviewState: "changes_requested",
+          },
+        });
+
+        expect(reviewFeedbackCapture.calls).toEqual([
+          { continuation: false, hasReviewFeedback: true },
+          { continuation: true, hasReviewFeedback: false },
+        ]);
+      }),
   );
 });
 

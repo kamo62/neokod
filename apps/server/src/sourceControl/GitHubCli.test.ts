@@ -26,6 +26,24 @@ const layer = GitHubCli.layer.pipe(
   ),
 );
 
+/**
+ * `listUnresolvedReviewComments` is optional on the `GitHubCli["Service"]`
+ * interface (fakes elsewhere don't need to implement it), but the real
+ * `GitHubCli.layer` under test here always provides it. This helper keeps
+ * the tests below type-safe without a non-null assertion at every call site.
+ */
+const listUnresolvedReviewComments = (
+  input: Parameters<NonNullable<GitHubCli.GitHubCli["Service"]["listUnresolvedReviewComments"]>>[0],
+) =>
+  Effect.gen(function* () {
+    const gh = yield* GitHubCli.GitHubCli;
+    const method = gh.listUnresolvedReviewComments;
+    if (method === undefined) {
+      return yield* Effect.die("listUnresolvedReviewComments not implemented");
+    }
+    return yield* method(input);
+  });
+
 afterEach(() => {
   mockRun.mockReset();
 });
@@ -537,6 +555,128 @@ describe("GitHubCli.layer", () => {
         mergeable: "unknown",
         unresolvedComments: 0,
       });
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("lists the opening comment of each unresolved review thread", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      nodes: [
+                        {
+                          isResolved: false,
+                          comments: {
+                            nodes: [
+                              { body: "Please add a null check.", author: { login: "rev1" } },
+                            ],
+                          },
+                        },
+                        {
+                          isResolved: true,
+                          comments: {
+                            nodes: [{ body: "Already fixed.", author: { login: "rev2" } }],
+                          },
+                        },
+                        {
+                          isResolved: false,
+                          comments: { nodes: [{ body: "This needs a test." }] },
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        ),
+      );
+
+      const result = yield* listUnresolvedReviewComments({ cwd: "/repo", reference: "#42" });
+
+      assert.deepStrictEqual(result, [
+        { body: "Please add a null check.", author: "rev1" },
+        { body: "This needs a test." },
+      ]);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("bounds the unresolved comment list to the given limit", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      nodes: Array.from({ length: 5 }, (_unused, index) => ({
+                        isResolved: false,
+                        comments: { nodes: [{ body: `comment ${index}` }] },
+                      })),
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        ),
+      );
+
+      const result = yield* listUnresolvedReviewComments({
+        cwd: "/repo",
+        reference: "#42",
+        limit: 2,
+      });
+
+      assert.deepStrictEqual(result, [{ body: "comment 0" }, { body: "comment 1" }]);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("queries unresolved comments with real owner/name variables, not empty literals", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({
+              data: { repository: { pullRequest: { reviewThreads: { nodes: [] } } } },
+            }),
+          ),
+        ),
+      );
+
+      yield* listUnresolvedReviewComments({ cwd: "/repo", reference: "#42" });
+
+      const graphqlCall = mockRun.mock.calls[0]?.[0];
+      assert.equal(graphqlCall?.args[0], "api");
+      assert.equal(graphqlCall?.args[1], "graphql");
+      const query = String(graphqlCall?.args[3] ?? "");
+      assert.equal(query.includes('repository(owner: "", name: "")'), false);
+      assert.equal(query.includes("$owner: String!, $name: String!"), true);
+      const args = (graphqlCall?.args ?? []).join(" ");
+      assert.equal(args.includes("-F owner=:owner"), true);
+      assert.equal(args.includes("-F name=:repo"), true);
+      assert.equal(args.includes("-F pr=42"), true);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("fails with a typed error when the reviewThreads query fails", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(Effect.fail(new Error("gh api graphql failed") as never));
+
+      const result = yield* Effect.result(
+        listUnresolvedReviewComments({ cwd: "/repo", reference: "#42" }),
+      );
+      expect(result._tag).toBe("Failure");
     }).pipe(Effect.provide(layer)),
   );
 

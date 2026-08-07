@@ -43,6 +43,7 @@ import { SymphonyOrchestrator } from "../SymphonyOrchestrator.ts";
 import { SymphonyOrchestratorLive } from "./SymphonyOrchestratorLive.ts";
 import { RunDispatcher, RunDispatchError } from "../../Runner/Dispatcher.ts";
 import { PullRequestService } from "../../Evidence/PullRequest.ts";
+import { buildRunPrompt, type ReviewFeedbackContext } from "../../Runner/Prompt.ts";
 import { layerTest as serverSettingsTestLayer } from "../../../serverSettings.ts";
 
 const makeConfig = (repositoryPath: string): EffectiveWorkflowConfig => ({
@@ -97,15 +98,28 @@ const memoryFactory = (_provider: Readonly<Record<string, unknown>>) =>
 const registryLayer = TrackerRegistryWithFactories(new Map([["github", memoryFactory]]));
 
 const dispatchedIds: string[] = [];
+// Captures the full dispatch input (plan FR-102-104: proves reviewFeedback
+// actually reaches the dispatcher, not just that a dispatch happened).
+const dispatchedInputs: Array<{
+  readonly workItemId: string;
+  readonly reviewFeedback?: ReviewFeedbackContext;
+}> = [];
 
 const mockDispatcherLayer = Layer.effect(
   RunDispatcher,
   Effect.gen(function* () {
     const workItems = yield* WorkItemRepository;
     return {
-      dispatchWorkItem: (input: { workItem: { id: WorkItemId } }) =>
+      dispatchWorkItem: (input: {
+        readonly workItem: { readonly id: WorkItemId };
+        readonly reviewFeedback?: ReviewFeedbackContext;
+      }) =>
         Effect.sync(() => {
           dispatchedIds.push(String(input.workItem.id));
+          dispatchedInputs.push({
+            workItemId: String(input.workItem.id),
+            ...(input.reviewFeedback !== undefined ? { reviewFeedback: input.reviewFeedback } : {}),
+          });
         }).pipe(
           Effect.flatMap(() => workItems.claim(input.workItem.id, "mock-owner")),
           Effect.mapError((cause) => new RunDispatchError(cause.message)),
@@ -155,6 +169,21 @@ const setPullRequestRefresh = (value: PullRequestEvidence | null) =>
     }
   });
 
+// Comment-body enrichment for FR-102-104 tests: `null` (the default) is the
+// honest-degradation case — no GitHub comment enrichment, counts-only.
+let pullRequestCommentsRef: Ref.Ref<ReadonlyArray<{
+  readonly body: string;
+  readonly author?: string;
+}> | null> | null = null;
+const setPullRequestComments = (
+  value: ReadonlyArray<{ readonly body: string; readonly author?: string }> | null,
+) =>
+  Effect.gen(function* () {
+    if (pullRequestCommentsRef !== null) {
+      yield* Ref.set(pullRequestCommentsRef, value);
+    }
+  });
+
 const layer = it.layer(
   SymphonyOrchestratorLive.pipe(
     Layer.provideMerge(WorkItemRepositoryLive),
@@ -189,9 +218,20 @@ const layer = it.layer(
             mergeable: "mergeable",
             unresolvedComments: 0,
           });
+          pullRequestCommentsRef = yield* Ref.make<ReadonlyArray<{
+            readonly body: string;
+            readonly author?: string;
+          }> | null>(null);
           return {
             create: () => Effect.succeed(null as never),
             refresh: () => Ref.get(pullRequestRefreshRef as Ref.Ref<PullRequestEvidence | null>),
+            listUnresolvedComments: () =>
+              Ref.get(
+                pullRequestCommentsRef as Ref.Ref<ReadonlyArray<{
+                  readonly body: string;
+                  readonly author?: string;
+                }> | null>,
+              ),
           } satisfies PullRequestService["Service"];
         }),
       ),
@@ -1039,5 +1079,282 @@ layer("SymphonyOrchestrator Observe", (it) => {
       const after = yield* workItems.getById(workItemId);
       expect(after?.lifecycle).toBe("ready_for_review");
     }),
+  );
+
+  // FR-102-104: automatic review-comment ingestion into a continuation turn.
+  const seedReviewItem = (input: {
+    readonly workItemId: string;
+    readonly workflowId: string;
+    readonly repositoryPath: string;
+    readonly storedPullRequest: PullRequestEvidence;
+    // A distinct WorkSource kind per item (plan detail, not product logic):
+    // omitting trackerIssueId stores an empty tracker_issue_id, and the
+    // work-item table's uniqueness is (tracker_kind, tracker_issue_id) —
+    // sharing "manual" across every item in this suite with no
+    // trackerIssueId would collide on that empty-string pair with the
+    // existing "global pause" test fixture.
+    readonly sourceKind: "linear" | "jira" | "azure_boards";
+  }) =>
+    Effect.gen(function* () {
+      yield* seedWorkflow(input.workflowId, input.repositoryPath);
+      const workflows = yield* WorkflowRepository;
+      yield* workflows.upsert({
+        id: WorkflowId.make(input.workflowId),
+        repositoryPath: input.repositoryPath,
+        workflowPath: `${input.repositoryPath}/WORKFLOW.md`,
+        status: "active",
+        autonomy: "execute",
+        validationError: null,
+        definition: { config: {}, promptTemplate: "Implement." },
+        effectiveConfig: { ...makeConfig(input.repositoryPath), autonomy: "execute" },
+        enabledAt: "2026-08-05T00:00:00.000Z",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      const workItems = yield* WorkItemRepository;
+      const workItemId = WorkItemId.make(input.workItemId);
+      // No trackerIssueId: the fallback path in refreshIssueSnapshot always
+      // succeeds without a tracker round-trip (mirrors the existing
+      // "global pause" test's item shape).
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        objective: "Review feedback target",
+        acceptanceCriteria: [],
+        source: { kind: input.sourceKind, externalId: "", externalUrl: "" },
+        workflowId: WorkflowId.make(input.workflowId),
+        lifecycle: "ready_for_review",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        workspaceKey: `issue-${input.workItemId}`,
+        baseBranch: "main",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      const evidenceRepo = yield* EvidenceRepository;
+      yield* evidenceRepo.upsert(workItemId, {
+        changedFiles: [],
+        testsChanged: [],
+        commits: [],
+        validationResults: [],
+        assumptions: [],
+        risks: [],
+        unresolved: [],
+        artefacts: [],
+        pullRequest: input.storedPullRequest,
+        modelReview: null,
+        overallAssessment: "ready_for_review",
+        createdAt: "2026-08-05T00:00:00.000Z",
+      });
+      return workItemId;
+    });
+
+  it.effect(
+    "refreshPullRequest requeues on new review feedback and the continuation prompt carries it",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* SymphonyOrchestrator;
+        const workItems = yield* WorkItemRepository;
+        const workItemId = yield* seedReviewItem({
+          workItemId: "review-fr-1",
+          workflowId: "wf-review-fr-1",
+          repositoryPath: "/repo/review-fr-1",
+          sourceKind: "linear",
+          storedPullRequest: {
+            number: 7,
+            title: "t",
+            branch: "symphony/review-fr-1",
+            baseBranch: "main",
+            status: "open",
+            ciStatus: "success",
+            reviewState: "approved",
+            mergeable: "mergeable",
+            unresolvedComments: 0,
+          },
+        });
+
+        // Fresh host query: the reviewer requested changes with 2 unresolved
+        // comments — new signal versus the stored snapshot above.
+        yield* setPullRequestRefresh({
+          number: 7,
+          title: "t",
+          branch: "symphony/review-fr-1",
+          baseBranch: "main",
+          status: "open",
+          ciStatus: "failure",
+          reviewState: "changes_requested",
+          mergeable: "mergeable",
+          unresolvedComments: 2,
+          latestCommit: "deadbeef",
+        });
+        yield* setPullRequestComments([
+          { body: "Please add a null check here.", author: "reviewer1" },
+          { body: "This function needs a test." },
+        ]);
+
+        const refreshed = yield* orchestrator.refreshPullRequest("review-fr-1");
+        expect(refreshed).toBe(true);
+
+        // Transitioned out of ready_for_review (existing changes_requested
+        // path) instead of staying parked.
+        const afterRefresh = yield* workItems.getById(workItemId);
+        expect(afterRefresh?.lifecycle).toBe("changes_requested");
+
+        dispatchedIds.length = 0;
+        dispatchedInputs.length = 0;
+        yield* orchestrator.dispatchWorkItem("review-fr-1");
+
+        // Claimable again: dispatchWorkItem's existing changes_requested ->
+        // queued requeue let the mock dispatcher claim it straight through
+        // to preparing.
+        const afterDispatch = yield* workItems.getById(workItemId);
+        expect(afterDispatch?.lifecycle).toBe("preparing");
+        expect(dispatchedIds).toContain("review-fr-1");
+
+        const captured = dispatchedInputs.find((entry) => entry.workItemId === "review-fr-1");
+        const reviewFeedback = captured?.reviewFeedback;
+        expect(reviewFeedback).toBeDefined();
+        expect(reviewFeedback?.unresolvedCommentCount).toBe(2);
+        expect(reviewFeedback?.reviewState).toBe("changes_requested");
+        expect(reviewFeedback?.latestCommit).toBe("deadbeef");
+        expect(reviewFeedback?.comments?.length).toBe(2);
+
+        // The built prompt (the REAL Prompt.ts builder, not a re-implementation)
+        // carries the review context and the existing-branch/workspace
+        // instruction.
+        const prompt = buildRunPrompt({
+          issue: makeIssue("review-fr-1"),
+          config: makeConfig("/repo/review-fr-1"),
+          branch: "symphony/review-fr-1",
+          reviewFeedback: reviewFeedback as ReviewFeedbackContext,
+        });
+        expect(prompt).toContain("Review state: changes_requested");
+        expect(prompt).toContain("Unresolved comments: 2");
+        expect(prompt).toContain("deadbeef");
+        expect(prompt).toContain("Please add a null check here.");
+        expect(prompt).toContain("EXISTING branch symphony/review-fr-1");
+        expect(prompt).toContain("EXISTING workspace");
+      }),
+  );
+
+  it.effect(
+    "refreshPullRequest degrades honestly to counts-only when comment bodies are unavailable",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* SymphonyOrchestrator;
+        yield* seedReviewItem({
+          workItemId: "review-fr-2",
+          workflowId: "wf-review-fr-2",
+          repositoryPath: "/repo/review-fr-2",
+          sourceKind: "jira",
+          storedPullRequest: {
+            number: 8,
+            title: "t",
+            branch: "symphony/review-fr-2",
+            baseBranch: "main",
+            status: "open",
+            ciStatus: "success",
+            reviewState: "approved",
+            mergeable: "mergeable",
+            unresolvedComments: 0,
+          },
+        });
+
+        yield* setPullRequestRefresh({
+          number: 8,
+          title: "t",
+          branch: "symphony/review-fr-2",
+          baseBranch: "main",
+          status: "open",
+          ciStatus: "success",
+          reviewState: "review_required",
+          mergeable: "mergeable",
+          unresolvedComments: 1,
+        });
+        // Explicit: no comment-body enrichment (non-GitHub host, or the
+        // GitHub fetch failed) — counts-only is the only honest answer.
+        yield* setPullRequestComments(null);
+
+        yield* orchestrator.refreshPullRequest("review-fr-2");
+
+        dispatchedIds.length = 0;
+        dispatchedInputs.length = 0;
+        yield* orchestrator.dispatchWorkItem("review-fr-2");
+
+        const captured = dispatchedInputs.find((entry) => entry.workItemId === "review-fr-2");
+        const reviewFeedback = captured?.reviewFeedback;
+        expect(reviewFeedback).toBeDefined();
+        expect(reviewFeedback?.unresolvedCommentCount).toBe(1);
+        expect(reviewFeedback?.comments).toBeUndefined();
+
+        const prompt = buildRunPrompt({
+          issue: makeIssue("review-fr-2"),
+          config: makeConfig("/repo/review-fr-2"),
+          reviewFeedback: reviewFeedback as ReviewFeedbackContext,
+        });
+        expect(prompt).toContain("Unresolved comments: 1");
+        expect(prompt).toContain(
+          "Comment bodies are not available for this host; only the counts above are known.",
+        );
+      }),
+  );
+
+  it.effect(
+    "refreshPullRequest never re-dispatches when repeated refreshes carry no new signal (idempotency)",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* SymphonyOrchestrator;
+        const workItems = yield* WorkItemRepository;
+        // Stored snapshot ALREADY shows changes_requested with 2 unresolved
+        // comments — the item sits at ready_for_review anyway (set up
+        // directly, as the other lifecycle tests in this file do), so this
+        // exercises the delta-vs-snapshot comparison itself rather than only
+        // the transition's `from` guard.
+        const workItemId = yield* seedReviewItem({
+          workItemId: "review-fr-3",
+          workflowId: "wf-review-fr-3",
+          repositoryPath: "/repo/review-fr-3",
+          sourceKind: "azure_boards",
+          storedPullRequest: {
+            number: 9,
+            title: "t",
+            branch: "symphony/review-fr-3",
+            baseBranch: "main",
+            status: "open",
+            ciStatus: "failure",
+            reviewState: "changes_requested",
+            mergeable: "mergeable",
+            unresolvedComments: 2,
+          },
+        });
+
+        // Fresh host query returns the EXACT SAME reviewState/count: no new
+        // signal versus the stored snapshot.
+        yield* setPullRequestRefresh({
+          number: 9,
+          title: "t",
+          branch: "symphony/review-fr-3",
+          baseBranch: "main",
+          status: "open",
+          ciStatus: "failure",
+          reviewState: "changes_requested",
+          mergeable: "mergeable",
+          unresolvedComments: 2,
+        });
+
+        dispatchedIds.length = 0;
+        yield* orchestrator.refreshPullRequest("review-fr-3");
+        let after = yield* workItems.getById(workItemId);
+        expect(after?.lifecycle).toBe("ready_for_review");
+
+        // Repeat several more times: still nothing new, so still no
+        // transition and no dispatch — the dangerous re-dispatch-loop case.
+        yield* orchestrator.refreshPullRequest("review-fr-3");
+        yield* orchestrator.refreshPullRequest("review-fr-3");
+        after = yield* workItems.getById(workItemId);
+        expect(after?.lifecycle).toBe("ready_for_review");
+        expect(dispatchedIds).toEqual([]);
+      }),
   );
 });

@@ -77,6 +77,13 @@ const ExecutionFinalizerSlice = ExecutionFinalizerLive.pipe(
       PullRequestServiceLive.pipe(
         Layer.provideMerge(GitVcsDriverLayer),
         Layer.provideMerge(SourceControlProviderRegistryLive),
+        // Review-comment ingestion (plan FR-102-104): listUnresolvedComments
+        // needs GitHubCli directly, since the SourceControlProvider
+        // abstraction has no cross-host comment-body method. THE TRAP: this
+        // must be wired here or the real server dies at boot with
+        // "Service not found" even though every suite that supplies its own
+        // PullRequestService mock stays green.
+        Layer.provideMerge(GitHubCliLayer),
       ),
       EvidenceRepositoryLive,
       RunAttemptRepositoryLive,
@@ -155,6 +162,10 @@ export const SymphonyLayerObserve = Layer.merge(
         PullRequestServiceLive.pipe(
           Layer.provideMerge(GitVcsDriverLayer),
           Layer.provideMerge(SourceControlProviderRegistryLive),
+          // Same GitHubCli wiring as the ExecutionFinalizer slice above
+          // (plan FR-102-104): refreshPullRequest's review-comment ingestion
+          // runs through this instance of PullRequestService.
+          Layer.provideMerge(GitHubCliLayer),
           Layer.provideMerge(NodeServices.layer),
         ),
         TrackerRegistryGitHubLive.pipe(Layer.provide(FetchHttpClient.layer)),

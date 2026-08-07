@@ -357,6 +357,98 @@ it.effect("refresh carries host-enriched status when the provider supports it", 
   }),
 );
 
+it.effect("listUnresolvedComments returns comment bodies for a github handle", () =>
+  Effect.gen(function* () {
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: { kind: "github" },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+        githubCli: {
+          listUnresolvedReviewComments: (input: { reference: string }) =>
+            Effect.succeed(input.reference === "17" ? [{ body: "Please add a null check." }] : []),
+        } as unknown as NonNullable<PullRequestServiceDeps["githubCli"]>,
+      }),
+    );
+    const comments = yield* service.listUnresolvedComments({
+      config: makeConfig(),
+      pullRequestNumber: 17,
+    });
+    expect(comments).toEqual([{ body: "Please add a null check." }]);
+  }),
+);
+
+it.effect("listUnresolvedComments degrades to null for a non-github handle", () =>
+  Effect.gen(function* () {
+    const calls: string[] = [];
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: { kind: "gitlab" },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+        githubCli: {
+          listUnresolvedReviewComments: () =>
+            Effect.sync(() => {
+              calls.push("called");
+              return [];
+            }),
+        } as unknown as NonNullable<PullRequestServiceDeps["githubCli"]>,
+      }),
+    );
+    const comments = yield* service.listUnresolvedComments({
+      config: makeConfig(),
+      pullRequestNumber: 17,
+    });
+    expect(comments).toBeNull();
+    // Honest degradation means the host is never even queried for a
+    // non-GitHub handle.
+    expect(calls).toEqual([]);
+  }),
+);
+
+it.effect("listUnresolvedComments degrades to null when GitHubCli is not wired", () =>
+  Effect.gen(function* () {
+    const service = makePullRequestService(makeDeps());
+    const comments = yield* service.listUnresolvedComments({
+      config: makeConfig(),
+      pullRequestNumber: 17,
+    });
+    expect(comments).toBeNull();
+  }),
+);
+
+it.effect("listUnresolvedComments degrades to null when the host call fails", () =>
+  Effect.gen(function* () {
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: { kind: "github" },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+        githubCli: {
+          listUnresolvedReviewComments: () => Effect.fail(new Error("gh failed") as never),
+        } as unknown as NonNullable<PullRequestServiceDeps["githubCli"]>,
+      }),
+    );
+    const comments = yield* service.listUnresolvedComments({
+      config: makeConfig(),
+      pullRequestNumber: 17,
+    });
+    expect(comments).toBeNull();
+  }),
+);
+
 it("exposes the service tag through the class", () => {
   expect(PullRequestService.key).toContain("Evidence/PullRequest");
 });

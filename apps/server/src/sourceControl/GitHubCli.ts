@@ -149,6 +149,19 @@ export class GitHubRepositoryDecodeError extends Schema.TaggedErrorClass<GitHubR
   }
 }
 
+export class GitHubReviewCommentsDecodeError extends Schema.TaggedErrorClass<GitHubReviewCommentsDecodeError>()(
+  "GitHubReviewCommentsDecodeError",
+  gitHubCliDecodeFields,
+) {
+  get detail(): string {
+    return "GitHub CLI returned invalid review-thread comments JSON.";
+  }
+
+  override get message(): string {
+    return `GitHub CLI failed in listUnresolvedReviewComments: ${this.detail}`;
+  }
+}
+
 export const GitHubCliError = Schema.Union([
   GitHubCliUnavailableError,
   GitHubCliAuthenticationError,
@@ -159,6 +172,7 @@ export const GitHubCliError = Schema.Union([
   GitHubPullRequestDecodeError,
   GitHubChangeRequestStatusDecodeError,
   GitHubRepositoryDecodeError,
+  GitHubReviewCommentsDecodeError,
 ]);
 export type GitHubCliError = typeof GitHubCliError.Type;
 
@@ -211,6 +225,17 @@ export interface GitHubRepositoryCloneUrls {
   readonly sshUrl: string;
 }
 
+/**
+ * One unresolved review-thread comment (plan FR-102-104): the opening
+ * comment of a thread the reviewer has not marked resolved. Bodies are
+ * returned raw here; bounding the count and truncating each body is the
+ * prompt-building layer's job (`Runner/Prompt.ts`), not this client's.
+ */
+export interface GitHubReviewComment {
+  readonly body: string;
+  readonly author?: string;
+}
+
 export class GitHubCli extends Context.Service<
   GitHubCli,
   {
@@ -235,6 +260,27 @@ export class GitHubCli extends Context.Service<
       readonly cwd: string;
       readonly reference: string;
     }) => Effect.Effect<ChangeRequestStatus, GitHubCliError>;
+
+    /**
+     * Comment bodies for unresolved review threads (plan FR-102-104): a
+     * continuation dispatch needs the actual feedback text, not just the
+     * count `getChangeRequestStatus` returns. Same reviewThreads GraphQL
+     * shape and `$owner`/`$name` variable pattern as `getChangeRequestStatus`
+     * — the `:owner`/`:repo` magic variables are gh's own repo resolution
+     * from `cwd`, not literal empty strings (fix-lane item 11 applies here
+     * too). `limit` bounds how many unresolved threads are read (default 20);
+     * one comment — the thread's opening comment — is returned per thread.
+     *
+     * Optional on the interface (not every `GitHubCli["Service"]` fake needs
+     * it wired) — callers that need honest degradation when it is absent
+     * treat a missing method the same as a host with no comment-body
+     * enrichment.
+     */
+    readonly listUnresolvedReviewComments?: (input: {
+      readonly cwd: string;
+      readonly reference: string;
+      readonly limit?: number;
+    }) => Effect.Effect<ReadonlyArray<GitHubReviewComment>, GitHubCliError>;
 
     readonly getRepositoryCloneUrls: (input: {
       readonly cwd: string;
@@ -572,6 +618,73 @@ export const make = Effect.gen(function* () {
               ),
             )
             .pipe(Effect.map((unresolved) => ({ ...status, unresolvedComments: unresolved }))),
+        ),
+      ),
+    listUnresolvedReviewComments: (input) =>
+      execute({
+        cwd: input.cwd,
+        args: [
+          "api",
+          "graphql",
+          "-f",
+          "query=query($pr: Int!, $owner: String!, $name: String!) { repository(owner: $owner, name: $name) { pullRequest(number: $pr) { reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { body author { login } } } } } } } }",
+          "-F",
+          `pr=${input.reference.replace(/^#/, "")}`,
+          "-F",
+          "owner=:owner",
+          "-F",
+          "name=:repo",
+        ],
+      }).pipe(
+        Effect.map((result) => {
+          const json = JSON.parse(result.stdout) as {
+            data?: {
+              repository?: {
+                pullRequest?: {
+                  reviewThreads?: {
+                    nodes?: ReadonlyArray<{
+                      isResolved?: boolean | null;
+                      comments?: {
+                        nodes?: ReadonlyArray<{
+                          body?: string;
+                          author?: { login?: string } | null;
+                        }>;
+                      };
+                    }>;
+                  };
+                };
+              };
+            };
+          };
+          const threads = json.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
+          const limit = input.limit ?? 20;
+          const comments: GitHubReviewComment[] = [];
+          for (const thread of threads) {
+            if (thread.isResolved === true) {
+              continue;
+            }
+            const node = thread.comments?.nodes?.[0];
+            if (node?.body === undefined) {
+              continue;
+            }
+            const login = node.author?.login;
+            comments.push({
+              body: node.body,
+              ...(login !== undefined ? { author: login } : {}),
+            });
+            if (comments.length >= limit) {
+              break;
+            }
+          }
+          return comments;
+        }),
+        Effect.mapError(
+          (cause) =>
+            new GitHubReviewCommentsDecodeError({
+              command: "gh",
+              cwd: input.cwd,
+              cause,
+            }),
         ),
       ),
     getRepositoryCloneUrls: (input) =>
