@@ -1,6 +1,6 @@
 import { RefreshCwIcon, TagsIcon, TriangleAlertIcon } from "lucide-react";
 
-import type { TrackerHealth } from "@neokod/contracts";
+import type { TrackerHealth, TrackerKind } from "@neokod/contracts";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { symphonyExtras } from "../../state/symphonyExtras";
@@ -9,9 +9,30 @@ import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import { Skeleton } from "../ui/skeleton";
 import { cn } from "../../lib/utils";
+import {
+  AsanaIcon,
+  AzureDevOpsIcon,
+  GitHubIcon,
+  GitHubProjectsIcon,
+  GitLabIcon,
+  JiraIcon,
+  LinearIcon,
+  type Icon,
+} from "../Icons";
 import { SymphonyEmptyState } from "./SymphonyEmptyState";
 
+const TRACKER_KIND_ICONS: Record<TrackerKind, Icon> = {
+  github: GitHubIcon,
+  jira: JiraIcon,
+  linear: LinearIcon,
+  gitlab: GitLabIcon,
+  azure_boards: AzureDevOpsIcon,
+  asana: AsanaIcon,
+  github_projects: GitHubProjectsIcon,
+};
+
 function TrackerRow({ tracker }: { readonly tracker: TrackerHealth }) {
+  const KindIcon = TRACKER_KIND_ICONS[tracker.kind];
   return (
     <div className="border-t border-border/60 px-4 py-3.5 first:border-t-0 sm:px-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -21,6 +42,7 @@ function TrackerRow({ tracker }: { readonly tracker: TrackerHealth }) {
               className={cn("size-2 rounded-full", tracker.ok ? "bg-success" : "bg-warning")}
               aria-hidden
             />
+            <KindIcon className="size-4 text-foreground/80" />
             <span className="truncate text-[13px] font-semibold tracking-[-0.01em] text-foreground capitalize">
               {tracker.kind.replace(/_/g, " ")}
             </span>

@@ -8,7 +8,7 @@ import {
   WorkflowIcon,
 } from "lucide-react";
 
-import type { EnvironmentId, WorkflowRecord } from "@neokod/contracts";
+import type { EnvironmentId, TrackerKind, WorkflowRecord } from "@neokod/contracts";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -29,6 +29,16 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "..
 import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
 import { cn } from "../../lib/utils";
+import {
+  AsanaIcon,
+  AzureDevOpsIcon,
+  GitHubIcon,
+  GitHubProjectsIcon,
+  GitLabIcon,
+  JiraIcon,
+  LinearIcon,
+  type Icon,
+} from "../Icons";
 import { SymphonyEmptyState } from "./SymphonyEmptyState";
 
 const STATUS_BADGE: Record<string, "default" | "secondary" | "success" | "warning" | "info"> = {
@@ -36,6 +46,16 @@ const STATUS_BADGE: Record<string, "default" | "secondary" | "success" | "warnin
   paused: "warning",
   invalid: "secondary",
   draft: "secondary",
+};
+
+const TRACKER_KIND_ICONS: Record<TrackerKind, Icon> = {
+  github: GitHubIcon,
+  jira: JiraIcon,
+  linear: LinearIcon,
+  gitlab: GitLabIcon,
+  azure_boards: AzureDevOpsIcon,
+  asana: AsanaIcon,
+  github_projects: GitHubProjectsIcon,
 };
 
 type WorkflowAction = "validate" | "activate" | "pause" | "resume";
@@ -198,12 +218,17 @@ function WorkflowRow({
   readonly onSaved: () => void;
 }) {
   const isPending = pendingAction !== null;
+  const trackerKind = workflow.effectiveConfig?.trackerKind ?? null;
+  const TrackerKindIcon = trackerKind !== null ? TRACKER_KIND_ICONS[trackerKind] : null;
   return (
     <div className="border-t border-border/60 first:border-t-0">
       <div className="px-4 py-3.5 sm:px-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 flex-1 space-y-1">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
+              {TrackerKindIcon !== null ? (
+                <TrackerKindIcon className="size-4 shrink-0 text-foreground/80" />
+              ) : null}
               <code className="truncate text-[13px] font-semibold tracking-[-0.01em] text-foreground">
                 {workflow.workflowPath}
               </code>

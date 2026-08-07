@@ -1,8 +1,6 @@
-import { CheckSquareIcon, ListTodoIcon, type LucideIcon } from "lucide-react";
-
 import type { TrackerKindLiteral, TrackerProviderSettings } from "@neokod/contracts";
 import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
-import { GitHubIcon, GitLabIcon, type Icon } from "../Icons";
+import { AsanaIcon, GitHubIcon, GitLabIcon, JiraIcon, LinearIcon, type Icon } from "../Icons";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { Switch } from "../ui/switch";
 import { Input } from "../ui/input";
@@ -22,7 +20,7 @@ type TrackerDefinition = {
   readonly kind: TrackerKindLiteral;
   readonly label: string;
   readonly description: string;
-  readonly icon: Icon | LucideIcon;
+  readonly icon: Icon;
   readonly scopePlaceholder: string;
 };
 
@@ -38,14 +36,14 @@ const TRACKERS: ReadonlyArray<TrackerDefinition> = [
     kind: "jira",
     label: "Jira",
     description: "Pull issues from a Jira project or board.",
-    icon: ListTodoIcon,
+    icon: JiraIcon,
     scopePlaceholder: "project key",
   },
   {
     kind: "linear",
     label: "Linear",
     description: "Pull issues from a Linear team or board.",
-    icon: CheckSquareIcon,
+    icon: LinearIcon,
     scopePlaceholder: "team key",
   },
   {
@@ -59,7 +57,7 @@ const TRACKERS: ReadonlyArray<TrackerDefinition> = [
     kind: "asana",
     label: "Asana",
     description: "Pull tasks from an Asana project.",
-    icon: ListTodoIcon,
+    icon: AsanaIcon,
     scopePlaceholder: "project id",
   },
 ];
