@@ -192,7 +192,14 @@ export const SymphonyLayerObserve = Layer.merge(
       Layer.provide(Layer.mergeAll(ApprovalRepositoryLive, LiveRequestsLive)),
     ),
     HandoffServiceSlice,
-    WorkflowLoaderLive,
+    // Construction deps must be provided here: the loader yields the
+    // repository and FileSystem at build time, and a bare merge would fail
+    // the whole server boot with Service-not-found (same trap as the
+    // ownership repository before it).
+    WorkflowLoaderLive.pipe(
+      Layer.provide(WorkflowRepositoryLive),
+      Layer.provideMerge(NodeServices.layer),
+    ),
     // WorkspaceRemovalGuard needs its own repo instance; WorkspaceOwnership
     // is ALSO exposed here so `serviceOption` in the Workspaces live layer
     // resolves it on production paths (fix-lane item 2: hiding it in
