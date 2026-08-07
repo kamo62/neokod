@@ -40,6 +40,8 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     chatFontSize: 16,
     chatLineHeight: 1.5,
     chatColumnWidth: 48,
+    uiScale: 1,
+    radiusBase: 10,
     pinnedThreadKeys: [],
     projectExpandedById: {},
     projectOrder: [],
@@ -230,6 +232,8 @@ describe("parsePersistedState", () => {
       chatFontSize: 16,
       chatLineHeight: 1.5,
       chatColumnWidth: 48,
+      uiScale: 1,
+      radiusBase: 10,
       pinnedThreadKeys: [],
       projectExpandedById: {
         logical: false,
@@ -385,6 +389,8 @@ describe("uiStateStore persistence", () => {
       chatFontSize: 16,
       chatLineHeight: 1.5,
       chatColumnWidth: 48,
+      uiScale: 1,
+      radiusBase: 10,
       pinnedThreadKeys: [],
       projectExpandedById: {
         logical: false,

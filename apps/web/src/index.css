@@ -105,8 +105,12 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  /* Subtractive steps clamp to 0: --radius derives from the --radius-base
+     master knob (Appearance settings, 0-14px), and a 0px base must not push
+     these negative — they are calc(var(--radius) - Npx). The additive steps
+     below can't go negative on their own, so they stay unclamped. */
+  --radius-sm: max(0px, calc(var(--radius) - 4px));
+  --radius-md: max(0px, calc(var(--radius) - 2px));
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --radius-2xl: calc(var(--radius) + 8px);
@@ -366,7 +370,18 @@
 
 :root {
   color-scheme: light;
-  --radius: 0.625rem;
+  /* Master knobs: the Appearance settings pane writes these two, and every
+     token that reads them below updates through calc() — one slider each,
+     app-wide effect. --ui-scale multiplies the CHROME type ramp only (nav
+     labels, meta text, control text); chat prose keeps its own
+     user-controlled tokens (--font-size-chat/--line-height-chat, set from
+     General settings in ChatView) and is deliberately excluded so reading
+     preferences and chrome density stay independent. --radius-base replaces
+     the old --radius literal; see the --radius-sm/--radius-md clamp above
+     for why the subtractive steps can't just multiply it. */
+  --ui-scale: 1;
+  --radius-base: 10px;
+  --radius: var(--radius-base);
   --surface-canvas: #ffffff;
   --surface-sidebar: #f7f7f7;
   --surface-panel: #f7f7f7;
@@ -390,12 +405,15 @@
   --brand: #339cff;
   --brand-foreground: #0a1a2a;
   --skill: #924ff7;
-  --font-size-ui: 12px;
-  --font-size-ui-sm: 11px;
-  --font-size-meta: 10px;
+  /* CHROME type ramp, multiplied by --ui-scale above. --font-size-chat is
+     not part of this ramp — it stays a literal, driven independently by the
+     chat reading controls in General settings. */
+  --font-size-ui: calc(12px * var(--ui-scale));
+  --font-size-ui-sm: calc(11px * var(--ui-scale));
+  --font-size-meta: calc(10px * var(--ui-scale));
   --font-size-chat: 16px;
-  --font-size-ui-lg: 14px;
-  --font-size-title: 24px;
+  --font-size-ui-lg: calc(14px * var(--ui-scale));
+  --font-size-title: calc(24px * var(--ui-scale));
   --line-height-chat: 1.5;
   --chat-max-width: 48rem;
   --tracking-tight: -0.15px;

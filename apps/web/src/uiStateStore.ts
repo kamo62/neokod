@@ -35,6 +35,18 @@ export const CHAT_COLUMN_WIDTH_MIN = 40;
 export const CHAT_COLUMN_WIDTH_MAX = 64;
 export const DEFAULT_CHAT_COLUMN_WIDTH = 48;
 
+// Appearance master knobs: bounds and defaults for the Appearance-settings
+// UI scale and corner radius controls that drive index.css's --ui-scale and
+// --radius-base. Independent of the chat typography knobs above — this pair
+// scales chrome density, not chat reading text.
+export const UI_SCALE_MIN = 0.9;
+export const UI_SCALE_MAX = 1.25;
+export const DEFAULT_UI_SCALE = 1;
+
+export const RADIUS_BASE_MIN = 0;
+export const RADIUS_BASE_MAX = 14;
+export const DEFAULT_RADIUS_BASE = 10;
+
 export interface ModeViewSnapshot {
   route: string;
   selection: string | null;
@@ -57,6 +69,8 @@ export interface PersistedUiState {
   chatFontSize?: number;
   chatLineHeight?: number;
   chatColumnWidth?: number;
+  uiScale?: number;
+  radiusBase?: number;
   sidebarView?: "threads" | "workspace";
   sidebarViewMigratedToWorkspace?: boolean;
   myWorkCollapsed?: boolean;
@@ -90,6 +104,8 @@ export interface UiState extends UiProjectState, UiThreadState {
   chatFontSize?: number;
   chatLineHeight?: number;
   chatColumnWidth?: number;
+  uiScale?: number;
+  radiusBase?: number;
   sidebarView: "threads" | "workspace";
   sidebarViewMigratedToWorkspace: true;
   myWorkCollapsed: boolean;
@@ -120,6 +136,8 @@ const initialState: UiState = {
   chatFontSize: DEFAULT_CHAT_FONT_SIZE,
   chatLineHeight: DEFAULT_CHAT_LINE_HEIGHT,
   chatColumnWidth: DEFAULT_CHAT_COLUMN_WIDTH,
+  uiScale: DEFAULT_UI_SCALE,
+  radiusBase: DEFAULT_RADIUS_BASE,
   sidebarView: "workspace",
   sidebarViewMigratedToWorkspace: true,
   myWorkCollapsed: false,
@@ -316,6 +334,13 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
       CHAT_COLUMN_WIDTH_MAX,
       DEFAULT_CHAT_COLUMN_WIDTH,
     ),
+    uiScale: sanitizeBoundedNumber(parsed.uiScale, UI_SCALE_MIN, UI_SCALE_MAX, DEFAULT_UI_SCALE),
+    radiusBase: sanitizeBoundedNumber(
+      parsed.radiusBase,
+      RADIUS_BASE_MIN,
+      RADIUS_BASE_MAX,
+      DEFAULT_RADIUS_BASE,
+    ),
     // Earlier releases persisted the former default ("threads") for every
     // user. Move that stale default once, while retaining choices made after
     // this migration.
@@ -422,6 +447,8 @@ export function persistState(state: UiState): void {
         chatFontSize: state.chatFontSize ?? DEFAULT_CHAT_FONT_SIZE,
         chatLineHeight: state.chatLineHeight ?? DEFAULT_CHAT_LINE_HEIGHT,
         chatColumnWidth: state.chatColumnWidth ?? DEFAULT_CHAT_COLUMN_WIDTH,
+        uiScale: state.uiScale ?? DEFAULT_UI_SCALE,
+        radiusBase: state.radiusBase ?? DEFAULT_RADIUS_BASE,
         sidebarView: state.sidebarView,
         sidebarViewMigratedToWorkspace: state.sidebarViewMigratedToWorkspace,
         myWorkCollapsed: state.myWorkCollapsed,
@@ -597,6 +624,16 @@ export function setChatLineHeight(state: UiState, chatLineHeight: number): UiSta
 export function setChatColumnWidth(state: UiState, chatColumnWidth: number): UiState {
   const next = clampNumber(chatColumnWidth, CHAT_COLUMN_WIDTH_MIN, CHAT_COLUMN_WIDTH_MAX);
   return state.chatColumnWidth === next ? state : { ...state, chatColumnWidth: next };
+}
+
+export function setUiScale(state: UiState, uiScale: number): UiState {
+  const next = clampNumber(uiScale, UI_SCALE_MIN, UI_SCALE_MAX);
+  return state.uiScale === next ? state : { ...state, uiScale: next };
+}
+
+export function setRadiusBase(state: UiState, radiusBase: number): UiState {
+  const next = clampNumber(radiusBase, RADIUS_BASE_MIN, RADIUS_BASE_MAX);
+  return state.radiusBase === next ? state : { ...state, radiusBase: next };
 }
 
 function recordsEqual<T extends string | boolean>(
@@ -775,12 +812,16 @@ interface UiStateStore extends UiState {
   chatFontSize: number;
   chatLineHeight: number;
   chatColumnWidth: number;
+  uiScale: number;
+  radiusBase: number;
   setSidebarView: (sidebarView: UiState["sidebarView"]) => void;
   setOperatingMode: (operatingMode: OperatingMode) => void;
   setModeViewSnapshot: (mode: OperatingMode, snapshot: Partial<ModeViewSnapshot>) => void;
   setChatFontSize: (chatFontSize: number) => void;
   setChatLineHeight: (chatLineHeight: number) => void;
   setChatColumnWidth: (chatColumnWidth: number) => void;
+  setUiScale: (uiScale: number) => void;
+  setRadiusBase: (radiusBase: number) => void;
   toggleMyWorkCollapsed: () => void;
   dismissMyWorkThread: (threadKey: string, signature: string) => void;
   dismissMyWorkThreads: (dismissed: Readonly<Record<string, string>>) => void;
@@ -808,6 +849,8 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
   chatFontSize: persistedState.chatFontSize ?? DEFAULT_CHAT_FONT_SIZE,
   chatLineHeight: persistedState.chatLineHeight ?? DEFAULT_CHAT_LINE_HEIGHT,
   chatColumnWidth: persistedState.chatColumnWidth ?? DEFAULT_CHAT_COLUMN_WIDTH,
+  uiScale: persistedState.uiScale ?? DEFAULT_UI_SCALE,
+  radiusBase: persistedState.radiusBase ?? DEFAULT_RADIUS_BASE,
   setSidebarView: (sidebarView) => set((state) => setSidebarView(state, sidebarView)),
   setOperatingMode: (operatingMode) => set((state) => setOperatingMode(state, operatingMode)),
   setModeViewSnapshot: (mode, snapshot) =>
@@ -816,6 +859,8 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
   setChatLineHeight: (chatLineHeight) => set((state) => setChatLineHeight(state, chatLineHeight)),
   setChatColumnWidth: (chatColumnWidth) =>
     set((state) => setChatColumnWidth(state, chatColumnWidth)),
+  setUiScale: (uiScale) => set((state) => setUiScale(state, uiScale)),
+  setRadiusBase: (radiusBase) => set((state) => setRadiusBase(state, radiusBase)),
   toggleMyWorkCollapsed: () => set(toggleMyWorkCollapsed),
   dismissMyWorkThread: (threadKey, signature) =>
     set((state) => dismissMyWorkThread(state, threadKey, signature)),
