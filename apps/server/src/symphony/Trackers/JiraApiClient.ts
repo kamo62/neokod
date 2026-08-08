@@ -30,6 +30,7 @@ import {
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const PAGE_SIZE = 100;
+const isTrackerAdapterError = Schema.is(TrackerAdapterError);
 
 export interface JiraRawIssue {
   readonly id: string;
@@ -160,7 +161,7 @@ export const makeJiraApiClient = (options: JiraApiClientOptions): JiraApiClientS
         ),
       ),
       Effect.mapError((cause) =>
-        cause instanceof TrackerAdapterError
+        isTrackerAdapterError(cause)
           ? cause
           : trackerRequestError(`Jira API ${path}: ${messageOf(cause)}`),
       ),

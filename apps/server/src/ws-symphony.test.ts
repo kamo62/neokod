@@ -25,19 +25,21 @@ import * as WorkflowLoaderModule from "./symphony/Workflow/Loader.ts";
 const WorkflowLoaderService = WorkflowLoaderModule.WorkflowLoaderService;
 import { makeSymphonyRpcHandlers } from "./ws.ts";
 
+const knownMetric = (value: number): SymphonyOverview["running"] => ({ state: "known", value });
+
 const overview = (): SymphonyOverview => ({
-  running: 0,
-  queued: 0,
-  needsAttention: 0,
-  readyForReview: 0,
-  retrying: 0,
-  failedToday: 0,
+  running: knownMetric(0),
+  queued: knownMetric(0),
+  needsAttention: knownMetric(0),
+  readyForReview: knownMetric(0),
+  retrying: knownMetric(0),
+  failedToday: knownMetric(0),
   orchestratorPaused: false,
-  activeWorkflowCount: 0,
+  activeWorkflowCount: knownMetric(0),
   providerHealth: {},
   trackerHealth: {},
   lastTrackerPollAt: null,
-  activeAgentCount: 0,
+  activeAgentCount: knownMetric(0),
   generatedAt: "2026-08-05T00:00:00.000Z",
 });
 

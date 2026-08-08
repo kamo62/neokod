@@ -4,6 +4,7 @@ import type {
   WorkItem,
   WorkflowRecord,
 } from "@neokod/contracts";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 
 import { nowIso } from "../Domain/Time.ts";
@@ -98,22 +99,22 @@ const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
 ]);
 
 export const runStartupRecovery = (deps: RecoveryDeps) =>
-  Effect.fn("symphonyRecovery.runStartupRecovery")(function* (input: RecoveryDeps) {
-    const held = yield* input.workItems
+  Effect.gen(function* () {
+    const held = yield* deps.workItems
       .listByLifecycle(["preparing", "running"])
       .pipe(Effect.catch(() => Effect.succeed([] as WorkItem[])));
     if (held.length === 0) {
       return;
     }
     const now = yield* nowIso;
-    const workflows = yield* input.workflows
+    const workflows = yield* deps.workflows
       .list()
       .pipe(Effect.catch(() => Effect.succeed([] as WorkflowRecord[])));
 
     for (const item of held) {
-      yield* recoverItem(input, item, workflows, now).pipe(Effect.catch(() => Effect.void));
+      yield* recoverItem(deps, item, workflows, now).pipe(Effect.catch(() => Effect.void));
     }
-  })(deps);
+  }).pipe(Effect.withSpan("symphonyRecovery.runStartupRecovery"));
 
 const maxAttemptsFor = (workflows: ReadonlyArray<WorkflowRecord>, item: WorkItem): number => {
   const workflow =
@@ -144,7 +145,7 @@ const recoverItem = (
       if (
         claimedAt !== null &&
         !Number.isNaN(claimedAt) &&
-        Date.now() - claimedAt > STALL_WINDOW_MS
+        (yield* Clock.currentTimeMillis) - claimedAt > STALL_WINDOW_MS
       ) {
         yield* deps.workItems.releaseClaim(item.id, "queued").pipe(Effect.catch(() => Effect.void));
       }

@@ -172,7 +172,7 @@ export const makeGitHubIssuesAdapter = (options: {
           ...(cliEnv === undefined ? {} : { env: cliEnv }),
           args: ["auth", "status"],
         });
-        return Effect.void;
+        return;
       });
 
     const listCandidateIssues = () =>

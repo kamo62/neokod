@@ -394,7 +394,6 @@ export const makeServerLayer = Layer.unwrap(
     );
 
     return serverApplicationLayer.pipe(
-      Layer.provideMerge(HttpServerLive),
       Layer.provide(ObservabilityLive),
       Layer.provideMerge(FetchHttpClient.layer),
       Layer.provideMerge(VcsProcess.layer),
@@ -416,6 +415,7 @@ export const makeServerLayer = Layer.unwrap(
           ),
         ),
       ),
+      Layer.provide(HttpServerLive),
     );
   }),
 );

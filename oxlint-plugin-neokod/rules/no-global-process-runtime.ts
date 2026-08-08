@@ -7,7 +7,8 @@ const RUNTIME_PROPERTIES = new Set(["platform", "arch"]);
 const HOST_PROCESS_REFERENCE_FILE = "packages/shared/src/hostProcess.ts";
 const NODE_OS_MODULES = new Set(["node:os", "os"]);
 
-const normalizePath = (path: string) => path.replaceAll("\\", "/");
+const normalizePath = (path: string) =>
+  path.replaceAll("\\", "/").replace(/^\/private(?=\/(?:tmp|var)(?:\/|$))/u, "");
 
 const toRepoPath = (filename: string, cwd: string) => {
   const normalizedFilename = normalizePath(filename);

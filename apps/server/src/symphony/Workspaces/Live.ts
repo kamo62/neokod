@@ -1,18 +1,25 @@
 import type { EffectiveWorkflowConfig } from "@neokod/contracts";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
-import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
 import { ProcessRunner } from "../../processRunner.ts";
-import { makeWorkspaceManager, WorkspaceManager, type WorkspaceManagerDeps } from "./Manager.ts";
-import type { HookRunner } from "./Hooks.ts";
+import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
 import {
   WorkspaceOwnershipRepository,
   WorkspaceRemovalGuard,
+  WorkspaceRemovalBlockedError,
 } from "../Persistence/Services/WorkspaceOwnershipRepository.ts";
+import {
+  makeWorkspaceManager,
+  WorkspaceLeaseError,
+  WorkspaceManager,
+  type WorkspaceManagerDeps,
+  WorkspacePopulationError,
+  WorkspaceRemovalBlocked,
+} from "./Manager.ts";
 
 /**
  * Live workspace manager wiring.
@@ -43,7 +50,15 @@ export const WorkspaceManagerLive = Layer.effect(
                   ...(input.force !== undefined ? { force: input.force } : {}),
                   removingOwner: "symphony",
                 })
-                .pipe(Effect.mapError((cause) => new Error(cause.message)))
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new WorkspaceRemovalBlocked(
+                        input.workspacePath,
+                        cause instanceof WorkspaceRemovalBlockedError ? cause.owner : "unknown",
+                      ),
+                  ),
+                )
             : Effect.void,
         ),
       );
@@ -57,7 +72,7 @@ export const WorkspaceManagerLive = Layer.effect(
       // on scheduler-forked fibers, so retry-sweep dispatches ran leaseless
       // (completion audit, send-back 2).
       ownershipRepository.acquire({ workspacePath, owner: "symphony" }).pipe(
-        Effect.mapError((cause) => new Error(cause.message)),
+        Effect.mapError((cause) => new WorkspaceLeaseError(workspacePath, cause.message)),
         Effect.asVoid,
       );
 
@@ -67,10 +82,14 @@ export const WorkspaceManagerLive = Layer.effect(
           const def = result.refs.find((ref) => ref.isDefault);
           return def?.name ?? result.refs[0]?.name ?? "main";
         }),
-        Effect.mapError((cause) => new Error(cause.message)),
+        Effect.mapError((cause) => new WorkspacePopulationError(cwd, cause.message)),
       );
 
-    const runHookEffect: HookRunner["run"] = (input) =>
+    const runHookEffect = (input: {
+      readonly cwd: string;
+      readonly config: EffectiveWorkflowConfig;
+      readonly hook: "after_create" | "before_run" | "after_run" | "before_remove";
+    }) =>
       processRunner
         .run({
           command: "sh",
@@ -80,30 +99,33 @@ export const WorkspaceManagerLive = Layer.effect(
           timeoutBehavior: "error",
         })
         .pipe(
+          Effect.mapError((cause) => new WorkspacePopulationError(input.cwd, cause.message)),
           Effect.flatMap((result) => {
             if (result.code !== 0) {
               return Effect.fail(
-                new Error(
+                new WorkspacePopulationError(
+                  input.cwd,
                   `Hook ${input.hook} exited ${String(result.code)}: ${result.stderr.trim()}`,
                 ),
               );
             }
             return Effect.void;
           }),
-          Effect.mapError((cause) => new Error(cause.message)),
         );
 
     const deps: WorkspaceManagerDeps = {
       git,
       defaultBranch,
       runHook: runHookEffect,
-      ensureDir: (dirPath) => fileSystem.makeDirectory(dirPath, { recursive: true }),
+      ensureDir: (dirPath) =>
+        fileSystem
+          .makeDirectory(dirPath, { recursive: true })
+          .pipe(Effect.mapError((cause) => new WorkspacePopulationError(dirPath, cause.message))),
       pathExists: (p) => fileSystem.exists(p).pipe(Effect.catch(() => Effect.succeed(false))),
       realpath: (p) =>
-        Effect.try({
-          try: () => require("node:fs").realpathSync(p),
-          catch: (cause) => new Error(cause instanceof Error ? cause.message : "realpath failed"),
-        }),
+        fileSystem
+          .realPath(p)
+          .pipe(Effect.mapError((cause) => new WorkspacePopulationError(p, cause.message))),
       assertRemovable,
       acquireOwnership,
     };

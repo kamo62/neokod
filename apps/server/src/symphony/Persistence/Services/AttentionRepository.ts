@@ -9,11 +9,11 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
-import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 import * as Schema from "effect/Schema";
 
 import { nowIso } from "../../Domain/Time.ts";
 import { SymphonyPersistenceSqlError } from "../Errors.ts";
+import { decodeJson, encodeJson } from "../Json.ts";
 
 const AttentionRowSchema = Schema.Struct({
   id: AttentionItemId,
@@ -30,7 +30,7 @@ const AttentionRowSchema = Schema.Struct({
 });
 
 const rowToAttentionItem = (row: Schema.Schema.Type<typeof AttentionRowSchema>): AttentionItem => {
-  const payload = JSON.parse(row.payloadJson) as {
+  const payload = decodeJson(row.payloadJson) as {
     whatHappened: string;
     whyHuman: string;
     recommendedResponse?: string;
@@ -121,7 +121,7 @@ const makeRepository = Effect.gen(function* () {
         VALUES (
           ${String(input.id)}, ${String(input.workItemId)}, ${input.runAttemptId ?? null},
           ${input.kind}, ${input.severity}, 'open',
-          ${JSON.stringify(payload)}, ${input.recommendedResponse ?? null}, ${now}
+          ${encodeJson(payload)}, ${input.recommendedResponse ?? null}, ${now}
         )
       `.pipe(Effect.mapError(toSqlError("AttentionRepository.create")));
     });

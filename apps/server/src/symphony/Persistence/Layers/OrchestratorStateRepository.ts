@@ -1,4 +1,6 @@
 import { Schema } from "effect";
+import * as Clock from "effect/Clock";
+import * as DateTime from "effect/DateTime";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 import * as Effect from "effect/Effect";
@@ -7,6 +9,7 @@ import * as Option from "effect/Option";
 
 import { nowIso } from "../../Domain/Time.ts";
 import { SymphonyPersistenceSqlError } from "../Errors.ts";
+import { decodeJson, encodeJson } from "../Json.ts";
 import {
   OrchestratorStateRepository,
   type OrchestratorStateRepositoryShape,
@@ -33,7 +36,6 @@ const toSqlError =
 
 const makeRepository = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const now = () => new Date().getTime();
 
   const ensureSingleton = SqlSchema.findOne({
     Request: Schema.Struct({ id: Schema.String, nowIso: Schema.String }),
@@ -115,7 +117,7 @@ const makeRepository = Effect.gen(function* () {
         Effect.mapError(toSqlError("OrchestratorStateRepository.toggleInList:read")),
         Effect.map((rows) => rows[0]?.current ?? "[]"),
       );
-      const current = JSON.parse(row) as string[];
+      const current = decodeJson(row) as string[];
       const next = paused
         ? current.includes(value)
           ? current
@@ -123,7 +125,7 @@ const makeRepository = Effect.gen(function* () {
         : current.filter((entry) => entry !== value);
       yield* sql`
         UPDATE symphony_orchestrator_state
-        SET ${column} = ${JSON.stringify(next)}, updated_at = ${timestamp}
+        SET ${column} = ${encodeJson(next)}, updated_at = ${timestamp}
         WHERE id = ${SINGLETON_ID}
       `.pipe(Effect.mapError(toSqlError("OrchestratorStateRepository.toggleInList")));
     });
@@ -144,7 +146,7 @@ const makeRepository = Effect.gen(function* () {
         Effect.mapError(toSqlError("OrchestratorStateRepository.isInList")),
         Effect.map((rows) => rows[0]?.current ?? "[]"),
       );
-      const current = JSON.parse(row) as string[];
+      const current = decodeJson(row) as string[];
       return current.includes(value);
     });
 
@@ -168,8 +170,8 @@ const makeRepository = Effect.gen(function* () {
   const acquireLock: OrchestratorStateRepositoryShape["acquireLock"] = ({ ownerToken, leaseMs }) =>
     Effect.gen(function* () {
       const timestamp = yield* nowIso;
-      const nowMs = now();
-      const expiresAt = new Date(nowMs + leaseMs).toISOString();
+      const nowMs = yield* Clock.currentTimeMillis;
+      const expiresAt = DateTime.formatIso(DateTime.makeUnsafe(nowMs + leaseMs));
       yield* ensureSingleton({ id: SINGLETON_ID, nowIso: timestamp }).pipe(
         Effect.mapError(toSqlError("OrchestratorStateRepository.acquireLock:ensure")),
         Effect.asVoid,
@@ -194,7 +196,8 @@ const makeRepository = Effect.gen(function* () {
   const renewLock: OrchestratorStateRepositoryShape["renewLock"] = ({ ownerToken, leaseMs }) =>
     Effect.gen(function* () {
       const timestamp = yield* nowIso;
-      const expiresAt = new Date(now() + leaseMs).toISOString();
+      const nowMs = yield* Clock.currentTimeMillis;
+      const expiresAt = DateTime.formatIso(DateTime.makeUnsafe(nowMs + leaseMs));
       const updated = yield* sql`
         UPDATE symphony_orchestrator_state
         SET lock_expires_at = ${expiresAt}, updated_at = ${timestamp}

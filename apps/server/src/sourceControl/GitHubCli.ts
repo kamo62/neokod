@@ -162,6 +162,19 @@ export class GitHubReviewCommentsDecodeError extends Schema.TaggedErrorClass<Git
   }
 }
 
+export class GitHubReviewThreadsDecodeError extends Schema.TaggedErrorClass<GitHubReviewThreadsDecodeError>()(
+  "GitHubReviewThreadsDecodeError",
+  gitHubCliDecodeFields,
+) {
+  get detail(): string {
+    return "GitHub CLI returned invalid review-thread JSON.";
+  }
+
+  override get message(): string {
+    return `GitHub CLI failed while reading review threads: ${this.detail}`;
+  }
+}
+
 export const GitHubCliError = Schema.Union([
   GitHubCliUnavailableError,
   GitHubCliAuthenticationError,
@@ -173,6 +186,7 @@ export const GitHubCliError = Schema.Union([
   GitHubChangeRequestStatusDecodeError,
   GitHubRepositoryDecodeError,
   GitHubReviewCommentsDecodeError,
+  GitHubReviewThreadsDecodeError,
 ]);
 export type GitHubCliError = typeof GitHubCliError.Type;
 
@@ -437,6 +451,7 @@ const normalizeChangeRequestStatus = (
     ciStatus,
     reviewState,
     mergeable,
+    unresolvedComments: 0,
     // Audit item 5: record the head commit so merge gating and the UI can
     // tell "checked this commit" from "checked something older".
     ...(raw.latestCommit?.oid !== undefined && raw.latestCommit.oid.length > 0
@@ -510,7 +525,7 @@ export const make = Effect.gen(function* () {
     readonly cwd: string;
     readonly reference: string;
     readonly includeComments: boolean;
-  }): Effect.Effect<readonly RawGitHubReviewThread[], unknown> => {
+  }): Effect.Effect<readonly RawGitHubReviewThread[], GitHubCliError> => {
     const query = input.includeComments
       ? "query=query($pr: Int!, $owner: String!, $name: String!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $pr) { reviewThreads(first: 100, after: $cursor) { nodes { isResolved comments(first: 1) { nodes { body author { login } } } } pageInfo { hasNextPage endCursor } } } } }"
       : "query=query($pr: Int!, $owner: String!, $name: String!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $pr) { reviewThreads(first: 100, after: $cursor) { nodes { isResolved } pageInfo { hasNextPage endCursor } } } } }";
@@ -518,7 +533,7 @@ export const make = Effect.gen(function* () {
     const loadPage = (
       cursor: string | undefined,
       accumulated: readonly RawGitHubReviewThread[],
-    ): Effect.Effect<readonly RawGitHubReviewThread[], unknown> =>
+    ): Effect.Effect<readonly RawGitHubReviewThread[], GitHubCliError> =>
       execute({
         cwd: input.cwd,
         args: [
@@ -536,7 +551,14 @@ export const make = Effect.gen(function* () {
         ],
       }).pipe(
         Effect.map((result) => result.stdout.trim()),
-        Effect.flatMap(decodeRawGitHubReviewThreadsPage),
+        Effect.flatMap((raw) =>
+          decodeRawGitHubReviewThreadsPage(raw).pipe(
+            Effect.mapError(
+              (cause) =>
+                new GitHubReviewThreadsDecodeError({ command: "gh", cwd: input.cwd, cause }),
+            ),
+          ),
+        ),
         Effect.flatMap((page) => {
           const connection = page.data.repository.pullRequest.reviewThreads;
           const nodes = [...accumulated, ...connection.nodes];
@@ -545,7 +567,11 @@ export const make = Effect.gen(function* () {
           }
           if (connection.pageInfo.endCursor === null) {
             return Effect.fail(
-              new Error("GitHub reviewThreads page hasNextPage without an endCursor"),
+              new GitHubReviewThreadsDecodeError({
+                command: "gh",
+                cwd: input.cwd,
+                cause: "page hasNextPage without an endCursor",
+              }),
             );
           }
           return loadPage(connection.pageInfo.endCursor, nodes);

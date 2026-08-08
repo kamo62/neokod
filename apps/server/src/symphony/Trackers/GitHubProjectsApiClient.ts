@@ -4,6 +4,7 @@ import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import * as Schema from "effect/Schema";
 
+import { encodeJson } from "../Persistence/Json.ts";
 import { trackerNotFoundError, trackerRateLimitedError, trackerResponseError } from "./Errors.ts";
 import type { TrackerAdapterError } from "./Errors.ts";
 
@@ -182,7 +183,7 @@ export const makeGitHubProjectsApiClient = (input: {
       );
       if ((decoded.errors?.length ?? 0) > 0) {
         return yield* Effect.fail(
-          trackerResponseError(`GitHub GraphQL error: ${JSON.stringify(decoded.errors?.[0])}`),
+          trackerResponseError(`GitHub GraphQL error: ${encodeJson(decoded.errors?.[0])}`),
         );
       }
       return yield* onStatus(json);

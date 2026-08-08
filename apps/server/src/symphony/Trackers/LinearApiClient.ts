@@ -27,6 +27,7 @@ import {
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 export const LINEAR_PAGE_SIZE = 50;
+const isTrackerAdapterError = Schema.is(TrackerAdapterError);
 
 export interface LinearRawIssue {
   readonly id: string;
@@ -216,7 +217,7 @@ export const makeLinearApiClient = (options: {
         ),
       ),
       Effect.mapError((cause) =>
-        cause instanceof TrackerAdapterError
+        isTrackerAdapterError(cause)
           ? cause
           : trackerRequestError(`Linear GraphQL request: ${messageOf(cause)}`),
       ),

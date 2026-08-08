@@ -8,6 +8,7 @@ import * as Layer from "effect/Layer";
 
 import { nowIso } from "../../Domain/Time.ts";
 import { SymphonyPersistenceSqlError } from "../Errors.ts";
+import { decodeJson, encodeJson } from "../Json.ts";
 import {
   ApprovalRepository,
   type ApprovalRepositoryShape,
@@ -32,7 +33,7 @@ const rowToApproval = (row: Schema.Schema.Type<typeof ApprovalRowSchema>): Appro
   const payload =
     row.payloadJson === null
       ? ({} as Record<string, unknown>)
-      : (JSON.parse(row.payloadJson) as Record<string, unknown>);
+      : (decodeJson(row.payloadJson) as Record<string, unknown>);
   const affectedFiles = Array.isArray(payload.affectedFiles)
     ? (payload.affectedFiles as string[]).map(String)
     : [];
@@ -78,7 +79,7 @@ const makeRepository = Effect.gen(function* () {
   const create: ApprovalRepositoryShape["create"] = (input) =>
     Effect.gen(function* () {
       const createdAt = yield* nowIso;
-      const payload = JSON.stringify({
+      const payload = encodeJson({
         ...(input.command !== undefined ? { command: input.command } : {}),
         ...(input.workingDirectory !== undefined
           ? { workingDirectory: input.workingDirectory }

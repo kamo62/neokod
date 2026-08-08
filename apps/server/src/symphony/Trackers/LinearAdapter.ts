@@ -341,7 +341,7 @@ export const makeLinearAdapter = (options: {
           }
           yield* client.validateCredentials();
           yield* resolveAssigneeFilter();
-          return Effect.void;
+          return;
         }),
       listCandidateIssues,
       refreshIssues,

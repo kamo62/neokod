@@ -1,4 +1,5 @@
 import type { WorkItemId } from "@neokod/contracts";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 
@@ -153,7 +154,8 @@ export const makeWorkspaceRemovalGuard = (
       // A NULL lease means held indefinitely (never reclaimable by another
       // owner); an expired lease is reclaimable.
       const expired =
-        record.leaseExpiresAt !== null && Date.parse(record.leaseExpiresAt) < Date.now();
+        record.leaseExpiresAt !== null &&
+        Date.parse(record.leaseExpiresAt) < (yield* Clock.currentTimeMillis);
       if (!expired) {
         return yield* Effect.fail(
           new WorkspaceRemovalBlockedError(input.workspacePath, record.owner),

@@ -126,7 +126,7 @@ const HandoffServiceSlice = HandoffServiceLive.pipe(
               Layer.provideMerge(WorkspaceOwnershipRepositoryLive),
             ),
             AgentRuntimeFactoryLive.pipe(
-              Layer.provideMerge(NodeServices.layer),
+              Layer.provide(NodeServices.layer),
               Layer.provideMerge(LiveRequestsLive),
               Layer.provideMerge(
                 TrackerRegistryGitHubLive.pipe(Layer.provide(FetchHttpClient.layer)),
@@ -168,7 +168,7 @@ export const SymphonyLayerObserve = Layer.merge(
           // (plan FR-102-104): refreshPullRequest's review-comment ingestion
           // runs through this instance of PullRequestService.
           Layer.provideMerge(GitHubCliLayer),
-          Layer.provideMerge(NodeServices.layer),
+          Layer.provide(NodeServices.layer),
         ),
         TrackerRegistryGitHubLive.pipe(Layer.provide(FetchHttpClient.layer)),
         TrackerEnablementLive,
@@ -192,7 +192,7 @@ export const SymphonyLayerObserve = Layer.merge(
                   Layer.provideMerge(WorkspaceOwnershipRepositoryLive),
                 ),
                 AgentRuntimeFactoryLive.pipe(
-                  Layer.provideMerge(NodeServices.layer),
+                  Layer.provide(NodeServices.layer),
                   Layer.provideMerge(LiveRequestsLive),
                   Layer.provideMerge(
                     TrackerRegistryGitHubLive.pipe(Layer.provide(FetchHttpClient.layer)),
@@ -223,7 +223,7 @@ export const SymphonyLayerObserve = Layer.merge(
     // ownership repository before it).
     WorkflowLoaderLive.pipe(
       Layer.provide(WorkflowRepositoryLive),
-      Layer.provideMerge(NodeServices.layer),
+      Layer.provide(NodeServices.layer),
     ),
     // WorkspaceRemovalGuard needs its own repo instance; WorkspaceOwnership
     // is ALSO exposed here so `serviceOption` in the Workspaces live layer

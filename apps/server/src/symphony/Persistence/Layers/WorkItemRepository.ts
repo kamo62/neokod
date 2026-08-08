@@ -9,6 +9,7 @@ import * as Option from "effect/Option";
 
 import { nowIso } from "../../Domain/Time.ts";
 import { SymphonyBusy, SymphonyClaimLost, SymphonyPersistenceSqlError } from "../Errors.ts";
+import { decodeJson, encodeJson } from "../Json.ts";
 import {
   WorkItemRepository,
   type WorkItemRepositoryShape,
@@ -107,8 +108,8 @@ const rowToWorkItem = (row: Schema.Schema.Type<typeof WorkItemRowSchema>): WorkI
   workflowId: row.workflowId === null ? undefined : (row.workflowId as WorkItem["workflowId"]),
   objective: row.objective,
   description: row.description ?? undefined,
-  acceptanceCriteria: JSON.parse(row.acceptanceCriteriaJson) as string[],
-  source: JSON.parse(row.sourceJson) as WorkItem["source"],
+  acceptanceCriteria: decodeJson(row.acceptanceCriteriaJson) as string[],
+  source: decodeJson(row.sourceJson) as WorkItem["source"],
   workspaceKey:
     row.workspaceKey === null ? undefined : (row.workspaceKey as WorkItem["workspaceKey"]),
   workspacePath: row.workspacePath ?? undefined,
@@ -120,7 +121,7 @@ const rowToWorkItem = (row: Schema.Schema.Type<typeof WorkItemRowSchema>): WorkI
   localPriority: row.localPriority ?? undefined,
   excluded: row.excluded === 1,
   blocked: false,
-  eligibilityReasons: JSON.parse(row.eligibilityReasonsJson) as string[],
+  eligibilityReasons: decodeJson(row.eligibilityReasonsJson) as string[],
   evidence: null,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
@@ -150,8 +151,8 @@ const workItemToRow = (workItem: WorkItem): Schema.Schema.Type<typeof WorkItemRo
   workspaceKey: workItem.workspaceKey ?? null,
   workspacePath: workItem.workspacePath ?? null,
   baseBranch: workItem.baseBranch ?? null,
-  sourceJson: JSON.stringify(workItem.source),
-  acceptanceCriteriaJson: JSON.stringify(workItem.acceptanceCriteria ?? []),
+  sourceJson: encodeJson(workItem.source),
+  acceptanceCriteriaJson: encodeJson(workItem.acceptanceCriteria ?? []),
   ownerToken: null,
   generation: 0,
   ownerPid: null,
@@ -160,7 +161,7 @@ const workItemToRow = (workItem: WorkItem): Schema.Schema.Type<typeof WorkItemRo
   claimedAt: workItem.claimedAt ?? null,
   excluded: workItem.excluded === true ? 1 : 0,
   localPriority: workItem.localPriority ?? null,
-  eligibilityReasonsJson: JSON.stringify(workItem.eligibilityReasons ?? []),
+  eligibilityReasonsJson: encodeJson(workItem.eligibilityReasons ?? []),
   createdAt: workItem.createdAt,
   updatedAt: workItem.updatedAt,
   lastSeenAt: workItem.updatedAt,
@@ -519,7 +520,7 @@ const makeRepository = Effect.gen(function* () {
       yield* sql`
         UPDATE symphony_work_items SET
           state = COALESCE(${snapshot.state}, state),
-          labels_json = ${JSON.stringify(snapshot.labels ?? [])},
+          labels_json = ${encodeJson(snapshot.labels ?? [])},
           priority = ${snapshot.priority ?? null},
           last_seen_at = ${snapshot.lastSeenAt ?? now},
           updated_at = ${now}

@@ -2,6 +2,7 @@ import { assert, it, afterEach, describe, expect, vi } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
+import * as Schema from "effect/Schema";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { VcsProcessExitError, VcsProcessSpawnError } from "@neokod/contracts";
 
@@ -17,6 +18,7 @@ const processOutput = (stdout: string): VcsProcess.VcsProcessOutput => ({
 });
 
 const mockRun = vi.fn<VcsProcess.VcsProcess["Service"]["run"]>();
+const encodeJson = Schema.encodeSync(Schema.UnknownFromJsonString);
 
 const layer = GitHubCli.layer.pipe(
   Layer.provide(
@@ -75,8 +77,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
+            encodeJson({
               number: 42,
               title: "Add PR thread creation",
               url: "https://github.com/pingdotgg/codething-mvp/pull/42",
@@ -134,8 +135,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
+            encodeJson({
               number: 42,
               title: "  Add PR thread creation  \n",
               url: " https://github.com/pingdotgg/codething-mvp/pull/42 ",
@@ -180,8 +180,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify([
+            encodeJson([
               {
                 number: 0,
                 title: "invalid",
@@ -234,8 +233,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify([
+            encodeJson([
               {
                 number: 2829,
                 title: "Codex turn mapping",
@@ -286,8 +284,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
+            encodeJson({
               nameWithOwner: "octocat/codething-mvp",
               url: "https://github.com/octocat/codething-mvp",
               sshUrl: "git@github.com:octocat/codething-mvp.git",
@@ -397,8 +394,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
+            encodeJson({
               mergeable: "MERGEABLE",
               reviewDecision: "CHANGES_REQUESTED",
               statusCheckRollup: [
@@ -415,7 +411,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            JSON.stringify({
+            encodeJson({
               data: {
                 repository: {
                   pullRequest: {
@@ -448,16 +444,13 @@ describe("GitHubCli.layer", () => {
     Effect.gen(function* () {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
-          processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({ mergeable: "MERGEABLE", statusCheckRollup: [], reviews: [] }),
-          ),
+          processOutput(encodeJson({ mergeable: "MERGEABLE", statusCheckRollup: [], reviews: [] })),
         ),
       );
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            JSON.stringify({
+            encodeJson({
               data: {
                 repository: {
                   pullRequest: {
@@ -497,8 +490,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
+            encodeJson({
               mergeable: "MERGEABLE",
               reviewDecision: "APPROVED",
               statusCheckRollup: [
@@ -513,7 +505,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            JSON.stringify({
+            encodeJson({
               data: {
                 repository: {
                   pullRequest: {
@@ -546,8 +538,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
+            encodeJson({
               mergeable: "UNKNOWN",
               statusCheckRollup: [],
               reviews: [],
@@ -558,7 +549,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            JSON.stringify({
+            encodeJson({
               data: {
                 repository: {
                   pullRequest: {
@@ -591,8 +582,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
+            encodeJson({
               data: {
                 repository: {
                   pullRequest: {
@@ -641,8 +631,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
+            encodeJson({
               data: {
                 repository: {
                   pullRequest: {
@@ -676,8 +665,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
+            encodeJson({
               data: {
                 repository: {
                   pullRequest: {
@@ -712,15 +700,13 @@ describe("GitHubCli.layer", () => {
     Effect.gen(function* () {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
-          processOutput(
-            JSON.stringify({ mergeable: "MERGEABLE", statusCheckRollup: [], reviews: [] }),
-          ),
+          processOutput(encodeJson({ mergeable: "MERGEABLE", statusCheckRollup: [], reviews: [] })),
         ),
       );
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            JSON.stringify({
+            encodeJson({
               data: {
                 repository: {
                   pullRequest: {
@@ -738,7 +724,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            JSON.stringify({
+            encodeJson({
               data: {
                 repository: {
                   pullRequest: {
@@ -766,15 +752,13 @@ describe("GitHubCli.layer", () => {
     Effect.gen(function* () {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
-          processOutput(
-            JSON.stringify({ mergeable: "MERGEABLE", statusCheckRollup: [], reviews: [] }),
-          ),
+          processOutput(encodeJson({ mergeable: "MERGEABLE", statusCheckRollup: [], reviews: [] })),
         ),
       );
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            JSON.stringify({
+            encodeJson({
               data: {
                 repository: {
                   pullRequest: {
@@ -813,8 +797,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
+            encodeJson({
               mergeable: "MERGEABLE",
               statusCheckRollup: [],
               reviews: [],

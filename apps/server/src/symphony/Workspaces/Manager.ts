@@ -121,21 +121,21 @@ export class WorkspaceManager extends Context.Service<
     /** Resolve the absolute workspace path for a key under the configured root. */
     readonly resolvePath: (key: WorkspaceKey, config: EffectiveWorkflowConfig) => string;
   }
->()("neokod/symphony/Workspaces/WorkspaceManager") {}
+>()("neokod/symphony/Workspaces/Manager/WorkspaceManager") {}
 
 export interface WorkspaceManagerDeps {
   readonly git: GitVcsDriver["Service"];
   /** Resolve the repository's default base branch. */
-  readonly defaultBranch: (cwd: string) => Effect.Effect<string, Error>;
+  readonly defaultBranch: (cwd: string) => Effect.Effect<string, WorkspacePopulationError>;
   readonly runHook: (input: {
     readonly cwd: string;
     readonly config: EffectiveWorkflowConfig;
     readonly hook: HookName;
-  }) => Effect.Effect<void, Error>;
-  readonly ensureDir: (path: string) => Effect.Effect<void, Error>;
+  }) => Effect.Effect<void, WorkspacePopulationError>;
+  readonly ensureDir: (path: string) => Effect.Effect<void, WorkspacePopulationError>;
   readonly pathExists: (path: string) => Effect.Effect<boolean>;
   /** Resolve symlinks so a symlinked workspace cannot escape the root. */
-  readonly realpath: (path: string) => Effect.Effect<string, Error>;
+  readonly realpath: (path: string) => Effect.Effect<string, WorkspacePopulationError>;
   /**
    * Cross-mode removal guard (plan 16.0). When present, removal of a
    * workspace held by a live Work-mode lease is refused. Absent (Work mode
@@ -144,10 +144,10 @@ export interface WorkspaceManagerDeps {
   readonly assertRemovable?: (input: {
     readonly workspacePath: string;
     readonly force?: boolean;
-  }) => Effect.Effect<void, Error>;
+  }) => Effect.Effect<void, WorkspaceRemovalBlocked>;
   /** Record a Symphony ownership lease for a newly created workspace
    * (plan 16.0; REVIEW P1 #1). */
-  readonly acquireOwnership?: (workspacePath: string) => Effect.Effect<void, Error>;
+  readonly acquireOwnership?: (workspacePath: string) => Effect.Effect<void, WorkspaceLeaseError>;
 }
 
 export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManager["Service"] => {
@@ -191,9 +191,7 @@ export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManag
         // released or never-recorded lease would leave the reused workspace
         // unprotected (completion audit, send-back 2).
         if (deps.acquireOwnership !== undefined) {
-          yield* deps
-            .acquireOwnership(resolvedPath)
-            .pipe(Effect.mapError((cause) => new WorkspaceLeaseError(resolvedPath, cause.message)));
+          yield* deps.acquireOwnership(resolvedPath);
         }
         return { key, path: resolvedPath, branch, baseBranch, createdNow: false };
       }
@@ -203,7 +201,7 @@ export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManag
         .pipe(
           Effect.mapError(
             (cause) =>
-              new WorkspacePopulationError(key, `Failed to create directory: ${cause.message}`),
+              new WorkspacePopulationError(key, `Failed to create directory: ${cause.detail}`),
           ),
         );
 
@@ -227,7 +225,7 @@ export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManag
         .pipe(
           Effect.mapError(
             (cause) =>
-              new WorkspacePopulationError(key, `after_create hook failed: ${cause.message}`),
+              new WorkspacePopulationError(key, `after_create hook failed: ${cause.detail}`),
           ),
         );
 
@@ -236,9 +234,7 @@ export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManag
       // an unleased workspace is unprotected, so proceeding silently would
       // recreate the removal-gateway hole (completion audit, send-back 2).
       if (deps.acquireOwnership !== undefined) {
-        yield* deps
-          .acquireOwnership(resolvedPath)
-          .pipe(Effect.mapError((cause) => new WorkspaceLeaseError(resolvedPath, cause.message)));
+        yield* deps.acquireOwnership(resolvedPath);
       }
 
       return { key, path: resolvedPath, branch, baseBranch, createdNow: true };
@@ -251,14 +247,10 @@ export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManag
       // removal must not silently proceed (REVIEW P0: the error was swallowed
       // and the worktree deleted anyway).
       if (deps.assertRemovable !== undefined) {
-        yield* deps
-          .assertRemovable({
-            workspacePath: input.workspace.path,
-            ...(input.force !== undefined ? { force: input.force } : {}),
-          })
-          .pipe(
-            Effect.mapError((_cause) => new WorkspaceRemovalBlocked(input.workspace.path, "work")),
-          );
+        yield* deps.assertRemovable({
+          workspacePath: input.workspace.path,
+          ...(input.force !== undefined ? { force: input.force } : {}),
+        });
       }
       // before_remove is non-fatal: cleanup still proceeds on failure (SPEC 9.4).
       yield* deps

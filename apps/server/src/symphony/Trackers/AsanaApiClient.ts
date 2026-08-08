@@ -29,6 +29,7 @@ import {
 const DEFAULT_ENDPOINT = "https://app.asana.com/api/1.0";
 const DEFAULT_TIMEOUT_MS = 30_000;
 const PAGE_SIZE = 100;
+const isTrackerAdapterError = Schema.is(TrackerAdapterError);
 
 const TASK_FIELDS = [
   "gid",
@@ -177,7 +178,7 @@ export const makeAsanaApiClient = (options: AsanaApiClientOptions): AsanaApiClie
         );
       }),
       Effect.mapError((cause) =>
-        cause instanceof TrackerAdapterError
+        isTrackerAdapterError(cause)
           ? cause
           : trackerRequestError(`Asana API ${path}: ${messageOf(cause)}`),
       ),
