@@ -1,78 +1,59 @@
 # Handoff
 
-Updated: 2026-08-07 22:52 on MacBookPro
+Updated: 2026-08-08 09:26 on MacBookPro
 
 ## State
 
 - Branch: `feat/symphony-mode-impl`
-- HEAD: `d8f4ab769` chore: enforce a legacy-branding allowlist and document retained T3Code surfaces
-- Pushed: local-only at write time, 6 commits ahead of `origin/feat/symphony-mode-impl`; push
-  runs immediately after this file is committed. `origin` and `neokod` both point at
-  kamo62/neokod; the old kamo62/t3code repo is deleted.
+- HEAD: `e36e5d438` chore(deps): take Claude, Copilot, and OpenCode SDK updates ahead of cooldown
+- Pushed: push runs immediately after this file is committed; `origin` = kamo62/neokod.
+- PR #110 (branch -> main) is OPEN and MERGEABLE; CodeRabbit skipped it (494 files > its
+  100-file cap), so review-by-bot happens on the small follow-up PRs instead.
 - Dirty (this machine only, intentionally uncommitted): `.kiro/` (Kiro settings),
-  `Neokod Symphony Mode Product Requirements.pdf` (NOW CARRIES the page-47 amendment, see #109),
-  `PLAN-exec-demo.md`, `SYMPHONY_EVIDENCE.md` (stale agent evidence, claims predate final state),
-  `demo.md`, `apps/server/scratch-neokod-symphony-layer-probe.ts` (intentionally stale, see
-  Blockers), `apps/server/src/__probe/`.
+  `Neokod Symphony Mode Product Requirements.pdf` (carries the page-47 #109 amendment, pending
+  Kamogelo's review; pre-amendment backup at
+  /tmp/neokod-symphony-prd-before-section-21-amendment.pdf, lost on reboot),
+  `PLAN-exec-demo.md`, `SYMPHONY_EVIDENCE.md` (stale), `demo.md`,
+  `apps/server/scratch-neokod-symphony-layer-probe.ts` (intentionally stale, see Blockers),
+  `apps/server/src/__probe/`.
 
-## Done
+## Done since the 2026-08-07 milestone
 
-Issues #102-#109 batch, implemented by a Kiro Crew lane (`kiro-cli acp --agent kirocrew`
-running against this tree), reviewed and verified by Fable, committed in 6 commits:
-
-- `9956b6192` formatRelativeDuration in packages/shared with tests (closes #104 on merge).
-- `00dd0390f` SMOKE.md describing the Symphony live smoke (closes #103).
-- `686c2aadf` Work mode renamed to Code with subtitles; internal ids unchanged (closes #106).
-- `775aecc6d` WORKFLOW contract on the first agent turn (workspace/branch constraints,
-  autonomy, effective approval policy + sandbox, validation commands, SYMPHONY_EVIDENCE.md
-  requirement; front matter never enters the prompt; continuation turns never re-send) +
-  annotated starter template with active/terminal states (closes #102, #105).
-- `37a36a589` Per-role model reviewers (#108): `review.agents` + `review.require`
-  (all-approve/any-approve/advisory) in WORKFLOW.md; provider-neutral generateCodeReview on all
-  six providers; SymphonyModelReviewer with fail-closed aggregation (blocking finding forces
-  request_changes, reviewer failure counts against all-approve); finalizer persists
-  evidence.modelReview + model_review_completed event, downgrades ready_for_review to
-  ready_with_warnings, never upgrades; approveMerge requires passing aggregate under the
-  CURRENT requirement + exact CURRENT model set + review.headSha == PR latestCommit; PR panel
-  mirrors the same gate with per-reviewer chips. Also in this commit: tracker sync can no
-  longer overwrite in-flight lifecycles (upsert CASE guard), and retries re-read the issue
-  from the tracker (plan 9.5, audit item 2) instead of dispatching a fabricated snapshot.
-- `d8f4ab769` #107 groundwork: docs/reference/legacy-t3code-compatibility.md (every retained
-  compat surface + retirement rules), scripts/check-legacy-branding.mjs + root
-  `check:legacy-branding` (allowlist scanner over apps/packages/scripts/docs), composer editor
-  namespace renamed to neokod, sync-reference-repos test expects the symphony repo.
-
-#109: the PRD PDF itself now carries a page-47 amendment superseding section 21's opt-in
-sentence with default-on + first-run disclosure; privacy sentence retained verbatim.
-UNCOMMITTED (the PDF is a standing untracked file) and pending Kamogelo's review; backup of
-the pre-amendment PDF at /tmp/neokod-symphony-prd-before-section-21-amendment.pdf (lost on
-reboot — copy it somewhere durable if the amendment is rejected).
-
-Issue hygiene: all nine issues (#101-#109) are still OPEN on kamo62/neokod. #103-#106, #102,
-#108 close automatically when this branch merges (commit messages carry Closes). #107 is
-partially done (guard + doc + cosmetic renames; the remaining ~T3CODE\_ env triage is now
-enumerable via the checker's allowlist). #101 (Kiro epic) and #109 (issue closure itself)
-remain open.
+- `13dd68d7e` ACP upgraded v0.11.3 -> stable schema-v1.20.0 (Kiro-lane work, Fable-verified):
+  262 schemas regenerated deterministically (SHA-256-matched repeat run); standard
+  elicitation/create+complete and session/set_mode; session/set_model retained as explicit
+  Grok/Cursor compat extension; model discovery via the typed `model` session config option.
+  Groundwork for #101.
+- `e36e5d438` SDK updates taken ahead of cooldown with Kamogelo's explicit approval:
+  claude-agent-sdk 0.3.226, copilot-sdk 1.0.9 (+ @github/copilot 1.0.78), opencode 1.18.15.
+  Version-pinned exemptions in minimumReleaseAgeExclude (plus a name-pattern for the
+  claude-agent-sdk-\* platform binaries — pnpm rejects pattern+version combined; REMOVE the
+  whole block once 0.3.226 clears cooldown ~2026-08-12). fetchTimeout 600000 /
+  networkConcurrency 4 added: SDK platform tarballs exceed the 60s default on slow links.
+- Yesterday's milestone (7 commits, `9956b6192`..`a11f328ff`): issues #102-#106 + #108 + #107
+  groundwork; see PR #110's description for the full inventory.
+- Kiro research (in `.kiro` crew workspace, cycle_004): recommendation is Kiro as a third ACP
+  provider (Cursor/Grok recipe) with Crew held out of managed sessions until stop semantics,
+  workspace containment, and permission routing exist. Fable gap review delivered in-session.
+- Codebase audit research artifact ("neokod-codebase-audit-performance-and-competitor-research"):
+  doc cleanup + benchmark-harness-first modernization plan. Fable assessment: sound method;
+  its HANDOFF/PLAN/REVIEW-UI archive recommendations conflict with the working-file workflow
+  and should be rejected; ci.md fix and benchmark harness are the actionable subset and good
+  smoke seeds.
 
 ## Verified vs unverified
 
-- Verified: server suite green — `vp test run` in apps/server: 212 files / 1994 passed,
-  2 files / 7 tests skipped (22:43, pre-commit tree fingerprint ddc6e6ce0845).
-- Verified: web suite green — `vp test run` in apps/web: 165 files / 1504 passed (22:46).
-- Verified: live boot clean — real dev server (`dev-runner.ts dev`) logged
-  provider.session.reaper.started with zero Service-not-found (22:47); this is the
-  authoritative layer probe for the SymphonyModelReviewerLive wiring.
-- Verified: server typecheck 0 errors in all touched files (tsgo, filtered per the known-debt
-  rule); legacy-branding checker passes.
-- Verified (by the Kiro lane, evidence in its report): repo-wide vp test 515 files / 4609
-  passed; web production build; vp pack; production boot smoke HTTP 200; Chromium
-  verdict-strip interaction 1/1 with screenshots at /tmp/neokod-model-review-rest.png and
-  /tmp/neokod-model-review-expanded.png (lost on reboot).
-- Unverified: the live end-to-end Symphony smoke (real tracker issue -> workspace -> agent ->
-  validation -> PR on kamo62/neokod). Needs a disposable labelled issue + a WORKFLOW.md in a
-  target repo; SMOKE.md defines the pass criteria. This remains the next session's opener.
-- Unverified: model review against a real provider (all ModelReviewer coverage uses fakes;
-  the first live run will exercise generateCodeReview for real).
+- Verified: effect-acp 30/30; ACP+Grok/Cursor providers 88 passed / 6 skipped; full provider +
+  textGeneration suites on the NEW SDKs 718 passed / 6 skipped (09:22); live dev boot clean
+  (reaper.started, no Service-not-found) after both the ACP migration and the SDK bump;
+  server typecheck 0 errors in touched areas; legacy-branding checker passes.
+- Verified (Kiro lane, its own report): repo-wide 515 files / 4609 tests; server bundle +
+  serve smoke HTTP 200; desktop build + desktop smoke; release:smoke (under Node 26.5.0,
+  outside the supported ^24.13.1 — engine-exact rerun still environment-gated).
+- Unverified: live end-to-end Symphony smoke (needs a disposable `symphony`-labelled issue and
+  push/PR permission; SMOKE.md defines pass criteria); generateCodeReview against a real
+  provider; Copilot/OpenCode/Claude SDK behavior under real provider sessions (suites and boot
+  are green; no live turn was run on the new SDKs yet).
 
 ## Resume
 
@@ -85,26 +66,22 @@ PATH="$PWD/node_modules/.bin:$PATH" NEOKOD_NO_BROWSER=true node scripts/dev-runn
 # browser: use the ?loopbackAuthToken=... from the dev log; server 13773, web 5733
 ```
 
-Setup required first: none beyond pnpm install (if it fails on a corrupt
-@github/copilot-darwin-arm64, rm its .pnpm entry and rerun with CI=true).
+Setup required first: none beyond pnpm install.
 Machine-specific: codex-companion.mjs patched for max/ultra efforts (re-patch after plugin
-updates). A persistent Kiro Crew agent (`kiro-cli acp --agent kirocrew`, sidecar
-`kiro-cli-chat`) may still be running against this tree — check `pgrep -f "kiro-cli acp"`
-BEFORE editing or committing; it survives CMUX kills and writes directly to the working tree.
-Background jobs still running: the kiro-cli pair (idle since ~22:25); no monitors.
+updates). A persistent Kiro Crew agent (`kiro-cli acp --agent kirocrew` + `kiro-cli-chat`)
+runs against this tree and survives CMUX kills — check `pgrep -f "kiro-cli acp"` and recent
+mtimes BEFORE editing or committing; 20+ minutes of quiet tree is the settle signal.
+Background jobs still running: the kiro-cli pair (idle since ~08:31).
 
 ## Blockers
 
-- Live smoke is user-gated: needs a seeded disposable issue with the `symphony` label on the
-  target repo and permission to push/PR from a run.
-- The scratch layer probe (apps/server/scratch-neokod-symphony-layer-probe.ts) is intentionally
-  stale: it does not provide ProviderInstanceRegistry/ReviewService, which the model reviewer
-  now requires, so it reports Service-not-found. The REAL composed server boots clean (verified
-  above). Either resync the probe's dependency graph or rely on the dev-server boot as the
-  layer check.
-- Root `vp run typecheck` still stops on pre-existing debt outside touched files
-  (Orchestrator/**, Persistence/**, Trackers/\*_, bin.test.ts, sync-reference-repos strictness);
-  `vp check` fails only on `.kiro/settings/_.json` (untracked, preserve). Judge touched files
-  only.
-- Effect 4.0.0-beta.78 layer trap still applies: ALWAYS live-boot after any layer change;
-  suites stay green while the composed graph dies.
+- Live smoke is user-gated (disposable issue + push/PR permission). Suggested seeds: the
+  audit's docs/operations/ci.md correction, session-expired surface, tracker checkpoint
+  cursor persistence — small, real, and CodeRabbit will review the resulting small PRs.
+- Merge decision on PR #110 is Kamogelo's; merging first keeps the smoke agent's base
+  (main) carrying the WORKFLOW contract and reviewer pipeline it exercises.
+- The scratch layer probe is intentionally stale (no ProviderInstanceRegistry/ReviewService);
+  the real dev-server boot is the authoritative layer check.
+- Root `vp run typecheck` has pre-existing debt outside touched files; `vp check` fails only
+  on `.kiro/settings/*.json` (untracked, preserve). Judge touched files only.
+- Effect 4.0.0-beta.78 layer trap: ALWAYS live-boot after any layer change.
