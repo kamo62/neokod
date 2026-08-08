@@ -17,6 +17,12 @@ packages:
 # far wider than the hours-old exposure window this protects against.
 minimumReleaseAge: 5760
 
+# Provider SDK platform binaries are >100MB tarballs; the default 60s
+# per-fetch cap aborts them on slower connections. 10 minutes per fetch,
+# fewer parallel downloads so each one gets the bandwidth to finish.
+fetchTimeout: 600000
+networkConcurrency: 4
+
 # Fail resolution rather than silently installing a too-new version when no
 # version satisfies the age constraint. This is the default once
 # minimumReleaseAge is set explicitly, stated here so it survives edits.
@@ -33,7 +39,16 @@ minimumReleaseAgeIgnoreMissingTime: false
 # Exempt specific packages from the cooldown when you genuinely need a fresh
 # release (security patch, blocking bugfix). Supports names, `@scope/*`
 # patterns, and pinned versions such as `pkg@1.2.3`.
-minimumReleaseAgeExclude: []
+# 2026-08-08: Kamogelo approved taking these three SDK releases ahead of the
+# 4-day window. Pinned versions so the exemption dies with the upgrade.
+minimumReleaseAgeExclude:
+  - "@github/copilot-sdk@1.0.9"
+  - "@opencode-ai/sdk@1.18.15"
+  - "@anthropic-ai/claude-agent-sdk@0.3.226"
+  # The SDK's per-platform binary packages ship the same version in lockstep;
+  # pnpm rejects pattern+version combined, so this family is name-matched only.
+  # Remove together with the pinned entries above once 0.3.226 clears cooldown.
+  - "@anthropic-ai/claude-agent-sdk-*"
 
 # Successor to onlyBuiltDependencies/ignoredBuiltDependencies (pnpm 11).
 # true = allowed to run build scripts; false mirrors the pnpm 10 behavior
