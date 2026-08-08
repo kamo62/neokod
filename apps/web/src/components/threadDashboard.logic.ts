@@ -4,6 +4,7 @@ import type {
 } from "@neokod/client-runtime/state/shell";
 
 import {
+  deriveSidebarThreadLifecycle,
   resolveThreadStatusPill as resolveSidebarThreadStatusPill,
   type ThreadStatusPill,
 } from "./Sidebar.logic";
@@ -56,12 +57,15 @@ export function selectDashboardGroups(
   const recent: EnvironmentThreadShell[] = [];
 
   for (const thread of eligible) {
-    const status = resolveThreadStatusPill(thread)?.label;
-    if (status === "Working" || status === "Connecting") {
+    const lifecycle = deriveSidebarThreadLifecycle(thread);
+    if (lifecycle.phase === "working" || lifecycle.phase === "connecting") {
       running.push(thread);
-    } else if (status === "Pending Approval" || status === "Awaiting Input") {
+    } else if (
+      lifecycle.phase === "awaiting" ||
+      (lifecycle.phase === "terminal" && lifecycle.outcome === "failed")
+    ) {
       needsAttention.push(thread);
-    } else if (status === "Plan Ready") {
+    } else if (lifecycle.phase === "plan-ready") {
       planReady.push(thread);
     } else if (recent.length < recentCap) {
       recent.push(thread);
@@ -71,8 +75,8 @@ export function selectDashboardGroups(
   return { running, needsAttention, planReady, recent };
 }
 
-export function formatRelativeTime(value: string): string {
-  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
+export function formatRelativeTime(value: string, nowMs: number): string {
+  const seconds = Math.max(0, Math.floor((nowMs - new Date(value).getTime()) / 1000));
   if (seconds < 60) return "now";
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;

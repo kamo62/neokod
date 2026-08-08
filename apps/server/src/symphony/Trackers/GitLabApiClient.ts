@@ -30,6 +30,7 @@ import {
 const DEFAULT_API_URL = "https://gitlab.com/api/v4";
 const DEFAULT_TIMEOUT_MS = 30_000;
 const PAGE_SIZE = 100;
+const isTrackerAdapterError = Schema.is(TrackerAdapterError);
 
 export interface GitLabCredentials {
   readonly apiUrl: string;
@@ -201,7 +202,7 @@ export const makeGitLabApiClient = (options: GitLabApiClientOptions): GitLabApiC
         );
       }),
       Effect.mapError((cause) =>
-        cause instanceof TrackerAdapterError
+        isTrackerAdapterError(cause)
           ? cause
           : trackerRequestError(`GitLab API ${path}: ${messageOf(cause)}`),
       ),

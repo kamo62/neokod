@@ -13,7 +13,6 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
-import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
 import { ServerConfig } from "../../config.ts";
 import { nowIso } from "../Domain/Time.ts";
@@ -82,7 +81,7 @@ export interface RunDispatcherService {
 }
 
 export class RunDispatcher extends Context.Service<RunDispatcher, RunDispatcherService>()(
-  "neokod/symphony/Runner/RunDispatcher",
+  "neokod/symphony/Runner/Dispatcher/RunDispatcher",
 ) {}
 
 /**
@@ -99,7 +98,7 @@ export class AgentRuntimeFactory extends Context.Service<
       config: EffectiveWorkflowConfig,
     ) => Effect.Effect<AgentRuntimeService, never, Scope.Scope>;
   }
->()("neokod/symphony/Runner/AgentRuntimeFactory") {}
+>()("neokod/symphony/Runner/Dispatcher/AgentRuntimeFactory") {}
 
 export const makeRunDispatcher = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;

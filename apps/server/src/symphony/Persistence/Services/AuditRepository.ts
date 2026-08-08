@@ -6,6 +6,7 @@ import * as Schema from "effect/Schema";
 
 import { nowIso } from "../../Domain/Time.ts";
 import { SymphonyPersistenceSqlError } from "../Errors.ts";
+import { decodeJson, encodeJson } from "../Json.ts";
 
 const toSqlError =
   (operation: string) =>
@@ -54,7 +55,7 @@ const makeRepository = Effect.gen(function* () {
         VALUES (
           ${occurredAt}, ${input.actor}, ${input.eventType},
           ${input.workItemId ?? null}, ${input.runAttemptId ?? null},
-          ${input.payload === undefined ? null : JSON.stringify(input.payload)}
+          ${input.payload === undefined ? null : encodeJson(input.payload)}
         )
       `.pipe(Effect.mapError(toSqlError("AuditRepository.record")));
     });
@@ -75,7 +76,7 @@ const makeRepository = Effect.gen(function* () {
           eventType: row.eventType,
           workItemId: row.workItemId,
           runAttemptId: row.runAttemptId,
-          payload: row.payloadJson === null ? null : (JSON.parse(row.payloadJson) as unknown),
+          payload: row.payloadJson === null ? null : decodeJson(row.payloadJson),
         })),
       ),
     );

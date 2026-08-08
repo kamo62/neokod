@@ -129,7 +129,7 @@ function decodeVersionSource(
   content: string,
 ): Effect.Effect<unknown, ReferenceRepoSyncError> {
   const decode =
-    repo.versionSourcePath.endsWith(".yaml") || repo.versionSourcePath.endsWith(".yml")
+    sourcePath.endsWith(".yaml") || sourcePath.endsWith(".yml")
       ? decodeYamlSource
       : decodeJsonSource;
   return decode(content).pipe(
@@ -168,13 +168,14 @@ export const resolveReferenceRepoRef = Effect.fn("resolveReferenceRepoRef")(func
   rootDir: string,
   latest: boolean,
 ) {
-  if (latest || repo.versionSourcePath === undefined) {
+  const { versionSourcePath: versionSourceRelPath, packageVersionPath } = repo;
+  if (latest || versionSourceRelPath === undefined || packageVersionPath === undefined) {
     return repo.latestRef;
   }
 
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const versionSourcePath = path.join(rootDir, repo.versionSourcePath);
+  const versionSourcePath = path.join(rootDir, versionSourceRelPath);
   const versionSourceContent = yield* fs.readFileString(versionSourcePath).pipe(
     Effect.mapError(
       (cause) =>
@@ -187,13 +188,13 @@ export const resolveReferenceRepoRef = Effect.fn("resolveReferenceRepoRef")(func
     ),
   );
   const versionSource = yield* decodeVersionSource(repo, versionSourcePath, versionSourceContent);
-  const version = readNestedString(versionSource, repo.packageVersionPath);
+  const version = readNestedString(versionSource, packageVersionPath);
 
   if (!version) {
     return yield* new ReferenceRepoVersionResolutionError({
       repoId: repo.id,
       sourcePath: versionSourcePath,
-      packageVersionPath: repo.packageVersionPath,
+      packageVersionPath,
     });
   }
 

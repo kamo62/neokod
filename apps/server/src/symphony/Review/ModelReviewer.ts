@@ -217,7 +217,7 @@ export const makeSymphonyModelReviewer = (
           requirement,
           baseRef: input.baseRef,
           headRef: input.headRef,
-          ...(revisions ?? {}),
+          ...revisions,
           sourceHashes,
           reviewers,
           reviewedAt,

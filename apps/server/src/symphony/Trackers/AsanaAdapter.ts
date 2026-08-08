@@ -304,7 +304,7 @@ export const makeAsanaAdapter = (options: {
             );
           }
           yield* client.validateCredentials();
-          return Effect.void;
+          return;
         }),
       listCandidateIssues,
       refreshIssues,

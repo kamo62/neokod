@@ -295,7 +295,7 @@ const summarizeErrors = (errors: ReadonlyArray<WorkflowValidationField>): string
 export type EffectiveWorkflowConfigType = EffectiveWorkflowConfig;
 
 export class WorkflowLoaderService extends Context.Service<WorkflowLoaderService, WorkflowLoader>()(
-  "neokod/symphony/Workflow/WorkflowLoader",
+  "neokod/symphony/Workflow/Loader/WorkflowLoaderService",
 ) {}
 
 export const WorkflowLoaderLive: Layer.Layer<

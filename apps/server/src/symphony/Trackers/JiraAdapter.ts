@@ -399,7 +399,7 @@ export const makeJiraAdapter = (options: {
             );
           }
           yield* client.validateCredentials();
-          return Effect.void;
+          return;
         }),
       listCandidateIssues,
       refreshIssues,

@@ -9,6 +9,7 @@ import * as Stream from "effect/Stream";
 
 import { nowIso } from "../../Domain/Time.ts";
 import { SymphonyPersistenceSqlError } from "../Errors.ts";
+import { decodeJson, encodeJson } from "../Json.ts";
 import {
   RunEventRepository,
   type RunEventRepositoryShape,
@@ -30,7 +31,7 @@ const rowToEvent = (row: Schema.Schema.Type<typeof RunEventRowSchema>): RunEvent
   occurredAt: row.occurredAt,
   ...(row.payloadJson === null
     ? {}
-    : { payload: JSON.parse(row.payloadJson) as Record<string, unknown> }),
+    : { payload: decodeJson(row.payloadJson) as Record<string, unknown> }),
 });
 
 const SELECT_COLUMNS = `
@@ -82,7 +83,7 @@ const makeRepository = Effect.gen(function* () {
         runAttemptId,
         eventType,
         occurredAt,
-        payloadJson: payload === undefined ? null : JSON.stringify(payload),
+        payloadJson: payload === undefined ? null : encodeJson(payload),
       }).pipe(Effect.mapError(toSqlError("RunEventRepository.append")));
       return rowToEvent(row);
     });

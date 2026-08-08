@@ -7,6 +7,7 @@ import * as Schema from "effect/Schema";
 
 import { nowIso } from "../../Domain/Time.ts";
 import { SymphonyPersistenceSqlError } from "../Errors.ts";
+import { decodeJson, encodeJson } from "../Json.ts";
 
 const CheckpointRowSchema = Schema.Struct({
   trackerKind: Schema.String,
@@ -61,10 +62,7 @@ const makeRepository = Effect.gen(function* () {
           ? null
           : {
               lastPollAt: row.value.lastPollAt,
-              cursor:
-                row.value.cursorJson === null
-                  ? null
-                  : (JSON.parse(row.value.cursorJson) as unknown),
+              cursor: row.value.cursorJson === null ? null : decodeJson(row.value.cursorJson),
             },
       ),
     );
@@ -75,10 +73,10 @@ const makeRepository = Effect.gen(function* () {
       yield* sql`
         INSERT INTO symphony_tracker_checkpoints (tracker_kind, scope_key, last_poll_at, cursor_json)
         VALUES (${input.trackerKind}, ${input.scopeKey}, ${timestamp},
-          ${input.cursor === undefined ? null : JSON.stringify(input.cursor)})
+          ${input.cursor === undefined ? null : encodeJson(input.cursor)})
         ON CONFLICT(tracker_kind, scope_key) DO UPDATE SET
           last_poll_at = ${timestamp},
-          cursor_json = ${input.cursor === undefined ? null : JSON.stringify(input.cursor)}
+          cursor_json = ${input.cursor === undefined ? null : encodeJson(input.cursor)}
       `.pipe(Effect.mapError(toSqlError("TrackerCheckpointRepository.upsertCheckpoint")));
     });
 

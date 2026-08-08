@@ -12,7 +12,11 @@ import type {
   EnvironmentProject,
   EnvironmentThreadShell,
 } from "@neokod/client-runtime/state/shell";
-import { selectDashboardGroups, selectDashboardThreads } from "./threadDashboard.logic";
+import {
+  formatRelativeTime,
+  selectDashboardGroups,
+  selectDashboardThreads,
+} from "./threadDashboard.logic";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
 
@@ -160,6 +164,21 @@ describe("thread dashboard helpers", () => {
     expect(groups.recent.map((candidate) => candidate.id)).toEqual(["recent"]);
   });
 
+  it("groups from semantic lifecycle rather than sidebar presentation labels", () => {
+    const groups = selectDashboardGroups(
+      [
+        thread("turn-only-running", { latestTurn: latestTurn("running"), session: null }),
+        thread("failed", { latestTurn: latestTurn("error"), session: session("error") }),
+      ],
+      [project("project-a")],
+      5,
+    );
+
+    expect(groups.running.map((candidate) => candidate.id)).toEqual(["turn-only-running"]);
+    expect(groups.needsAttention.map((candidate) => candidate.id)).toEqual(["failed"]);
+    expect(groups.recent).toEqual([]);
+  });
+
   it("excludes archived dashboard threads and caps recent results", () => {
     const groups = selectDashboardGroups(
       [
@@ -179,5 +198,15 @@ describe("thread dashboard helpers", () => {
       ThreadId.make("recent-new"),
       ThreadId.make("recent-middle"),
     ]);
+  });
+});
+
+describe("formatRelativeTime", () => {
+  it("uses the supplied clock rather than ambient time", () => {
+    const value = "2026-07-10T10:00:00.000Z";
+
+    expect(formatRelativeTime(value, Date.parse("2026-07-10T10:00:30.000Z"))).toBe("now");
+    expect(formatRelativeTime(value, Date.parse("2026-07-10T10:05:00.000Z"))).toBe("5m");
+    expect(formatRelativeTime(value, Date.parse("2026-07-10T12:00:00.000Z"))).toBe("2h");
   });
 });

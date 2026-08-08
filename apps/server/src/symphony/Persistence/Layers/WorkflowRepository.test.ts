@@ -8,6 +8,7 @@ import { WorkflowRepositoryLive } from "./WorkflowRepository.ts";
 import { SqlitePersistenceMemory } from "../../../persistence/Layers/Sqlite.ts";
 
 const layer = it.layer(WorkflowRepositoryLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
+const FIXTURE_AT = "2026-08-05T00:00:00.000Z";
 
 const makeWorkflow = (id: string, repositoryPath: string): WorkflowRecord => ({
   id: WorkflowId.make(id),
@@ -22,8 +23,8 @@ const makeWorkflow = (id: string, repositoryPath: string): WorkflowRecord => ({
   },
   effectiveConfig: null,
   enabledAt: null,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
+  createdAt: FIXTURE_AT,
+  updatedAt: FIXTURE_AT,
 });
 
 layer("WorkflowRepository", (it) => {

@@ -9,6 +9,7 @@ import * as Option from "effect/Option";
 
 import { nowIso } from "../../Domain/Time.ts";
 import { SymphonyPersistenceSqlError } from "../Errors.ts";
+import { decodeJson, encodeJson } from "../Json.ts";
 import {
   RunAttemptRepository,
   type RunAttemptRepositoryShape,
@@ -36,17 +37,17 @@ const rowToAttempt = (row: Schema.Schema.Type<typeof RunAttemptRowSchema>): RunA
   workItemId: row.workItemId,
   attemptNumber: row.attemptNumber,
   workspacePath: row.workspacePath,
-  provider: JSON.parse(row.provider) as RunAttempt["provider"],
+  provider: decodeJson(row.provider) as RunAttempt["provider"],
   model: row.model ?? undefined,
   status: row.status as RunAttemptStatus,
   currentStage: row.currentStage ?? undefined,
   startedAt: row.startedAt,
   finishedAt: row.finishedAt === null ? null : row.finishedAt,
-  error: row.errorJson === null ? null : (JSON.parse(row.errorJson) as RunAttempt["error"]),
+  error: row.errorJson === null ? null : (decodeJson(row.errorJson) as RunAttempt["error"]),
   tokenUsage:
     row.tokenUsageJson === null
       ? undefined
-      : (JSON.parse(row.tokenUsageJson) as RunAttempt["tokenUsage"]),
+      : (decodeJson(row.tokenUsageJson) as RunAttempt["tokenUsage"]),
   sessionId: row.sessionId ?? undefined,
   threadId: row.threadId ?? undefined,
 });
@@ -55,7 +56,7 @@ const attemptToRow = (attempt: RunAttempt): Schema.Schema.Type<typeof RunAttempt
   id: attempt.id,
   workItemId: attempt.workItemId,
   attemptNumber: attempt.attemptNumber,
-  provider: JSON.stringify(attempt.provider),
+  provider: encodeJson(attempt.provider),
   model: attempt.model ?? null,
   status: attempt.status,
   currentStage: attempt.currentStage ?? null,
@@ -63,8 +64,8 @@ const attemptToRow = (attempt: RunAttempt): Schema.Schema.Type<typeof RunAttempt
   startedAt: attempt.startedAt,
   finishedAt: attempt.finishedAt ?? null,
   errorJson:
-    attempt.error === null || attempt.error === undefined ? null : JSON.stringify(attempt.error),
-  tokenUsageJson: attempt.tokenUsage === undefined ? null : JSON.stringify(attempt.tokenUsage),
+    attempt.error === null || attempt.error === undefined ? null : encodeJson(attempt.error),
+  tokenUsageJson: attempt.tokenUsage === undefined ? null : encodeJson(attempt.tokenUsage),
   sessionId: attempt.sessionId ?? null,
   threadId: attempt.threadId ?? null,
 });
@@ -248,13 +249,13 @@ const makeRepository = Effect.gen(function* () {
             ? row.errorJson
             : options.error === null
               ? null
-              : JSON.stringify(options.error),
+              : encodeJson(options.error),
         tokenUsageJson:
           options?.tokenUsage === undefined
             ? row.tokenUsageJson
             : options.tokenUsage === undefined
               ? row.tokenUsageJson
-              : JSON.stringify(options.tokenUsage),
+              : encodeJson(options.tokenUsage),
       };
       const now = yield* nowIso;
       yield* sql`

@@ -178,7 +178,7 @@ layer(fakeDispatcherIdle)("Reconciler claim release", (it) => {
         .getById(workItem.id)
         .pipe(
           Effect.flatMap((value) =>
-            value === null ? Effect.fail(new Error("missing")) : Effect.succeed(value),
+            value === null ? Effect.die("missing") : Effect.succeed(value),
           ),
         );
       expect(after.lifecycle).toBe("queued");
@@ -188,7 +188,7 @@ layer(fakeDispatcherIdle)("Reconciler claim release", (it) => {
         .latestForWorkItem(workItem.id)
         .pipe(
           Effect.flatMap((value) =>
-            value === null ? Effect.fail(new Error("missing")) : Effect.succeed(value),
+            value === null ? Effect.die("missing") : Effect.succeed(value),
           ),
         );
       expect(attempt.status).toBe("stalled");
@@ -214,7 +214,7 @@ layer(fakeDispatcherIdle)("Reconciler claim release", (it) => {
         .getById(workItem.id)
         .pipe(
           Effect.flatMap((value) =>
-            value === null ? Effect.fail(new Error("missing")) : Effect.succeed(value),
+            value === null ? Effect.die("missing") : Effect.succeed(value),
           ),
         );
       expect(after.lifecycle).toBe("running");
@@ -237,7 +237,7 @@ layer(fakeDispatcherActive)("Reconciler live agent", (it) => {
         .getById(workItem.id)
         .pipe(
           Effect.flatMap((value) =>
-            value === null ? Effect.fail(new Error("missing")) : Effect.succeed(value),
+            value === null ? Effect.die("missing") : Effect.succeed(value),
           ),
         );
       expect(after.lifecycle).toBe("running");

@@ -148,7 +148,7 @@ function hasEnrichment(pullRequest: PullRequestEvidence): boolean {
  * apps/server/src/symphony/Orchestrator/Layers/SymphonyOrchestratorLive.ts)
  * so the UI never enables an action the server will refuse. Order matches
  * the server: lifecycle, CI, review, mergeability, unresolved comments. */
-function approveMergeBlockers(
+export function approveMergeBlockers(
   pullRequest: PullRequestEvidence,
   lifecycle: WorkItem["lifecycle"],
   modelReview: ModelReviewArtefact | null,
@@ -178,8 +178,10 @@ function approveMergeBlockers(
         : "mergeability is unknown",
     );
   }
-  if ((pullRequest.unresolvedComments ?? 0) > 0) {
-    const count = pullRequest.unresolvedComments ?? 0;
+  if (pullRequest.unresolvedComments === undefined) {
+    reasons.push("unresolved comment count is not reported");
+  } else if (pullRequest.unresolvedComments > 0) {
+    const count = pullRequest.unresolvedComments;
     reasons.push(`${count} unresolved comment${count === 1 ? "" : "s"}`);
   }
   if (modelReview !== null && modelReview.require !== "advisory") {

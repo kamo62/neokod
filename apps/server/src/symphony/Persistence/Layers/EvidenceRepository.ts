@@ -8,6 +8,7 @@ import * as Layer from "effect/Layer";
 
 import { nowIso } from "../../Domain/Time.ts";
 import { SymphonyPersistenceSqlError } from "../Errors.ts";
+import { decodeJson, encodeJson } from "../Json.ts";
 import {
   EvidenceRepository,
   type EvidenceRepositoryShape,
@@ -20,7 +21,7 @@ const EvidenceRowSchema = Schema.Struct({
 });
 
 const rowToBundle = (row: Schema.Schema.Type<typeof EvidenceRowSchema>): EvidenceBundle =>
-  JSON.parse(row.bundleJson) as EvidenceBundle;
+  decodeJson(row.bundleJson) as EvidenceBundle;
 
 const SELECT_COLUMNS = `
   work_item_id AS "workItemId", bundle_json AS "bundleJson", created_at AS "createdAt"
@@ -54,7 +55,7 @@ const makeRepository = Effect.gen(function* () {
               created_at = ${request.createdAt}
             RETURNING ${cols}
           `,
-      })({ workItemId, bundleJson: JSON.stringify(bundle), createdAt }).pipe(
+      })({ workItemId, bundleJson: encodeJson(bundle), createdAt }).pipe(
         Effect.mapError(toSqlError("EvidenceRepository.upsert")),
       );
       return rowToBundle(row);

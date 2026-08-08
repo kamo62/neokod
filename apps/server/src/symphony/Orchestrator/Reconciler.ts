@@ -44,6 +44,8 @@ const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   "retries_exhausted",
 ]);
 
+export const nowMs = (iso: string): number => Date.parse(iso);
+
 export interface ReconcilerDeps {
   readonly workItems: WorkItemRepository["Service"];
   readonly runAttempts: RunAttemptRepository["Service"];
@@ -66,22 +68,22 @@ const workflowById = (
   id === undefined ? undefined : workflows.find((workflow) => workflow.id === id);
 
 export const reconcileStaleClaims = (deps: ReconcilerDeps) =>
-  Effect.fn("symphonyReconciler.reconcileStaleClaims")(function* (input: ReconcilerDeps) {
-    const held = yield* input.workItems
+  Effect.gen(function* () {
+    const held = yield* deps.workItems
       .listByLifecycle(["preparing", "running"])
       .pipe(Effect.catch(() => Effect.succeed([] as WorkItem[])));
     if (held.length === 0) {
       return;
     }
     const now = yield* nowIso;
-    const workflows = yield* input.workflows
+    const workflows = yield* deps.workflows
       .list()
       .pipe(Effect.catch(() => Effect.succeed([] as WorkflowRecord[])));
 
     for (const item of held) {
-      yield* reconcileItem(input, item, workflows, now).pipe(Effect.catch(() => Effect.void));
+      yield* reconcileItem(deps, item, workflows, now).pipe(Effect.catch(() => Effect.void));
     }
-  })(deps);
+  }).pipe(Effect.withSpan("symphonyReconciler.reconcileStaleClaims"));
 
 const reconcileItem = (
   deps: ReconcilerDeps,
@@ -119,7 +121,12 @@ const reconcileItem = (
       return;
     }
     const startedAt = Date.parse(attempt.startedAt);
-    if (Number.isNaN(startedAt) || nowMs(now) - startedAt < stallTimeoutMs) {
+    const observedAt = Date.parse(now);
+    if (
+      Number.isNaN(startedAt) ||
+      Number.isNaN(observedAt) ||
+      observedAt - startedAt < stallTimeoutMs
+    ) {
       return;
     }
     yield* deps.runAttempts
@@ -133,8 +140,3 @@ const reconcileItem = (
       .pipe(Effect.catch(() => Effect.void));
     yield* deps.workItems.releaseClaim(item.id, "queued").pipe(Effect.catch(() => Effect.void));
   });
-
-export const nowMs = (iso: string): number => {
-  const parsed = Date.parse(iso);
-  return Number.isNaN(parsed) ? Date.now() : parsed;
-};

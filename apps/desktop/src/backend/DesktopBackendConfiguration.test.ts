@@ -141,11 +141,17 @@ describe("DesktopBackendConfiguration", () => {
         assert.equal(first.bootstrap.noBrowser, true);
         assert.equal(first.bootstrap.port, 4888);
         assert.equal(first.bootstrap.transport, "loopback");
+        if (first.bootstrap.transport !== "loopback" || second.bootstrap.transport !== "loopback") {
+          throw new Error("expected loopback bootstraps");
+        }
         assert.equal(first.bootstrap.host, "127.0.0.1");
         assert.equal(first.bootstrap.neokodHome, environment.baseDir);
         assert.notProperty(first.bootstrap, "wslBearerToken");
-        assert.typeOf(first.bootstrap.loopbackAuthToken, "string");
-        assert.equal(first.bootstrap.loopbackAuthToken.length > 0, true);
+        const firstToken = first.bootstrap.loopbackAuthToken;
+        if (firstToken === undefined) {
+          throw new Error("expected a loopback auth token");
+        }
+        assert.equal(firstToken.length > 0, true);
         // A fresh per-launch token is minted on each resolve (plan WS-A2).
         assert.notEqual(second.bootstrap.loopbackAuthToken, first.bootstrap.loopbackAuthToken);
       }),

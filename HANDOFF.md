@@ -1,14 +1,22 @@
 # Handoff
 
-Updated: 2026-08-08 09:26 on MacBookPro
+Updated: 2026-08-08 09:55 on MacBookPro
 
 ## State
 
 - Branch: `feat/symphony-mode-impl`
-- HEAD: `e36e5d438` chore(deps): take Claude, Copilot, and OpenCode SDK updates ahead of cooldown
-- Pushed: push runs immediately after this file is committed; `origin` = kamo62/neokod.
-- PR #110 (branch -> main) is OPEN and MERGEABLE; CodeRabbit skipped it (494 files > its
-  100-file cap), so review-by-bot happens on the small follow-up PRs instead.
+- HEAD: `21d3eab10` fix(settings): tracker toggles were silently dropped by the settings patch
+  schema (the fix behind the Tracking page bug; verified live in the browser).
+- **PR #110 MERGED to main 2026-08-08 07:51Z** (merge commit, history preserved). Issues
+  #102-#106 and #108 auto-closed. Remaining open: #101 (Kiro epic), #107 (T3Code residue),
+  #109 (PRD amendment, user), #111-#113 (subagent-panel fixes from the design review;
+  #113 carries the `smoke` label as the designated live-smoke target).
+- The KIRO LANE IS ACTIVE again as of ~09:50 writing provider files (ClaudeDriver,
+  CodexDriver, contracts/providerInstance, .plans/README.md) — likely #101 phase 1. Its work
+  is uncommitted; do not switch branches or start dev servers in this tree until it settles
+  (20+ min quiet).
+- Next after settle: live Symphony smoke against issue #113 (WORKFLOW.md with
+  required_labels [symphony, smoke], tracker settings now functional after 21d3eab10).
 - Dirty (this machine only, intentionally uncommitted): `.kiro/` (Kiro settings),
   `Neokod Symphony Mode Product Requirements.pdf` (carries the page-47 #109 amendment, pending
   Kamogelo's review; pre-amendment backup at

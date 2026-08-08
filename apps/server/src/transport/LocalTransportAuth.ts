@@ -28,6 +28,7 @@ import { isLoopbackHostname } from "../http.ts";
 
 const DESKTOP_RENDERER_ORIGINS = new Set(["neokod://app", "neokod-dev://app"]);
 
+/** @effect-expect-leaking HttpServerRequest */
 export class LocalTransportAuth extends Context.Service<
   LocalTransportAuth,
   {

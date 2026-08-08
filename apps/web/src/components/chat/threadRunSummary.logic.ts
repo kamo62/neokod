@@ -1,4 +1,10 @@
+import type { OrchestrationSessionStatus } from "@neokod/contracts";
 import type { ActivePlanState } from "../../session-logic";
+import {
+  deriveThreadLifecycle,
+  isTerminalThreadLifecycle,
+  type ThreadLifecycle,
+} from "../threadLifecycle.logic";
 
 type RunThread = {
   readonly title: string;
@@ -9,7 +15,7 @@ type RunThread = {
     readonly startedAt: string | null;
     readonly completedAt: string | null;
   } | null;
-  readonly session: { readonly status: string } | null;
+  readonly session: { readonly status: OrchestrationSessionStatus } | null;
 };
 
 export type ThreadRunStatus =
@@ -19,7 +25,9 @@ export type ThreadRunStatus =
   | "awaiting-input"
   | "completed"
   | "stopped"
-  | "failed";
+  | "failed"
+  | "plan-ready"
+  | "unknown";
 
 export interface ThreadRunSummary {
   readonly title: string;
@@ -58,16 +66,18 @@ export function deriveThreadRunSummary(input: ThreadRunSummaryInput): ThreadRunS
     : input.hasPendingUserInput
       ? "input"
       : null;
-  const status = resolveStatus({
-    attention,
-    latestTurn,
-    sessionStatus: thread.session?.status,
+  const lifecycle = deriveThreadLifecycle({
+    hasPendingApprovals: input.hasPendingApprovals,
+    hasPendingUserInput: input.hasPendingUserInput,
     isWorking: input.isWorking,
+    latestTurnState: latestTurn?.state,
+    sessionStatus: thread.session?.status,
   });
+  const status = runStatusFromLifecycle(lifecycle);
   const totalSteps = input.activePlan?.steps.length ?? 0;
   const completedSteps =
     input.activePlan?.steps.filter((step) => step.status === "completed").length ?? 0;
-  const endedAt = input.isWorking ? null : (latestTurn?.completedAt ?? null);
+  const endedAt = isTerminalThreadLifecycle(lifecycle) ? (latestTurn?.completedAt ?? null) : null;
 
   return {
     title: thread.goal ?? thread.title,
@@ -83,31 +93,22 @@ export function deriveThreadRunSummary(input: ThreadRunSummaryInput): ThreadRunS
   };
 }
 
-function resolveStatus(input: {
-  readonly attention: ThreadRunSummary["attention"];
-  readonly latestTurn: RunThread["latestTurn"];
-  readonly sessionStatus: string | undefined;
-  readonly isWorking: boolean;
-}): ThreadRunStatus {
-  if (input.attention === "approval") return "awaiting-approval";
-  if (input.attention === "input") return "awaiting-input";
-  if (input.sessionStatus === "starting") return "connecting";
-  if (
-    input.isWorking ||
-    input.sessionStatus === "running" ||
-    input.latestTurn?.state === "running"
-  ) {
-    return "working";
-  }
-  switch (input.latestTurn?.state) {
-    case "interrupted":
-      return "stopped";
-    case "error":
-      return "failed";
-    case "completed":
-      return "completed";
-    default:
+function runStatusFromLifecycle(lifecycle: ThreadLifecycle): ThreadRunStatus {
+  switch (lifecycle.phase) {
+    case "awaiting":
+      return lifecycle.reason === "approval" ? "awaiting-approval" : "awaiting-input";
+    case "connecting":
+      return "connecting";
+    case "working":
       return "working";
+    case "plan-ready":
+      return "plan-ready";
+    case "terminal":
+      return lifecycle.outcome;
+    case "unknown":
+      return "unknown";
+    default:
+      return lifecycle satisfies never;
   }
 }
 
@@ -125,6 +126,10 @@ function statusLabel(status: ThreadRunStatus, activeToolLabel: string | undefine
       return "Stopped";
     case "failed":
       return "Failed";
+    case "plan-ready":
+      return "Plan ready";
+    case "unknown":
+      return "Status unavailable";
     default:
       return activeToolLabel ? `Working · ${activeToolLabel}` : "Working";
   }

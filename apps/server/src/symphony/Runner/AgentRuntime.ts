@@ -388,12 +388,12 @@ const waitForTurnCompletion = (
 const waitWithTimeout = <A>(
   deferred: Deferred.Deferred<A>,
   duration: Duration.Duration,
-): Effect.Effect<A, Error> =>
+): Effect.Effect<A, AgentRuntimeSpawnError> =>
   Deferred.await(deferred).pipe(
     Effect.timeoutOption(duration),
     Effect.flatMap((result) =>
       Option.match(result, {
-        onNone: () => Effect.fail(new Error("request timed out")),
+        onNone: () => Effect.fail(new AgentRuntimeSpawnError("request timed out")),
         onSome: (value) => Effect.succeed(value),
       }),
     ),

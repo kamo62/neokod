@@ -1,4 +1,4 @@
-import * as NodeFS from "node:fs/promises";
+import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 
 const ROOTS = ["apps", "packages", "scripts", "docs"];
@@ -28,6 +28,13 @@ const ALLOW_RULES = [
     reason: "disposable local scratch probe",
     path: /^apps\/server\/scratch-[^/]+\.ts$/,
     line: LEGACY_PATTERN,
+  },
+  {
+    // The child-env scrubber must recognize legacy T3CODE_* prefixed secrets
+    // (documented retained surface); its test needs the literal prefix.
+    reason: "fixture proving legacy-prefix secret scrubbing",
+    path: /^packages\/shared\/src\/providerChildEnv\.test\.ts$/,
+    line: /T3CODE_LEGACY/,
   },
   {
     reason: "central compatibility documentation",
@@ -82,7 +89,7 @@ const ALLOW_RULES = [
 ];
 
 const listFiles = async (directory) => {
-  const entries = await NodeFS.readdir(directory, { withFileTypes: true });
+  const entries = await NodeFSP.readdir(directory, { withFileTypes: true });
   const files = [];
   for (const entry of entries) {
     if (entry.name.startsWith(".") || EXCLUDED_DIRECTORIES.has(entry.name)) {
@@ -103,7 +110,7 @@ for (const root of ROOTS) {
   const files = await listFiles(root);
   for (const file of files) {
     const relativePath = file.split(NodePath.sep).join("/");
-    const lines = (await NodeFS.readFile(file, "utf8")).split("\n");
+    const lines = (await NodeFSP.readFile(file, "utf8")).split("\n");
     lines.forEach((line, index) => {
       if (!LEGACY_PATTERN.test(line)) {
         return;

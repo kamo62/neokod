@@ -9,6 +9,7 @@ import * as Option from "effect/Option";
 
 import { nowIso } from "../../Domain/Time.ts";
 import { SymphonyPersistenceSqlError } from "../Errors.ts";
+import { decodeJson, encodeJson } from "../Json.ts";
 import {
   WorkflowRepository,
   type WorkflowRepositoryShape,
@@ -35,11 +36,11 @@ const rowToWorkflow = (row: Schema.Schema.Type<typeof WorkflowRowSchema>): Workf
   status: row.status,
   autonomy: (row.autonomyLevel as WorkflowRecord["autonomy"]) ?? "execute",
   validationError: row.validationError,
-  definition: JSON.parse(row.definitionJson) as WorkflowRecord["definition"],
+  definition: decodeJson(row.definitionJson) as WorkflowRecord["definition"],
   effectiveConfig:
     row.effectiveConfigJson === null
       ? null
-      : (JSON.parse(row.effectiveConfigJson) as EffectiveWorkflowConfig),
+      : (decodeJson(row.effectiveConfigJson) as EffectiveWorkflowConfig),
   enabledAt: row.enabledAt === null ? null : row.enabledAt,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
@@ -51,9 +52,9 @@ const workflowToRow = (workflow: WorkflowRecord): Schema.Schema.Type<typeof Work
   workflowPath: workflow.workflowPath,
   status: workflow.status,
   autonomyLevel: workflow.autonomy,
-  definitionJson: JSON.stringify(workflow.definition),
+  definitionJson: encodeJson(workflow.definition),
   effectiveConfigJson:
-    workflow.effectiveConfig === null ? null : JSON.stringify(workflow.effectiveConfig),
+    workflow.effectiveConfig === null ? null : encodeJson(workflow.effectiveConfig),
   validationError: workflow.validationError,
   enabledAt: workflow.enabledAt ?? null,
   createdAt: workflow.createdAt,
@@ -199,7 +200,7 @@ const makeRepository = Effect.gen(function* () {
         UPDATE symphony_workflows SET
           status = ${status},
           validation_error = ${validationError},
-          effective_config_json = ${effectiveConfig === null ? null : JSON.stringify(effectiveConfig)},
+          effective_config_json = ${effectiveConfig === null ? null : encodeJson(effectiveConfig)},
           updated_at = ${timestamp}
         WHERE id = ${id}
       `.pipe(Effect.mapError(toSqlError("WorkflowRepository.setStatus")));

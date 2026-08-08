@@ -2,6 +2,7 @@ import { assert, it, afterEach, describe, expect, vi } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
+import * as Schema from "effect/Schema";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { VcsProcessExitError, VcsProcessSpawnError } from "@neokod/contracts";
 
@@ -17,6 +18,7 @@ const processOutput = (stdout: string): VcsProcess.VcsProcessOutput => ({
 });
 
 const mockRun = vi.fn<VcsProcess.VcsProcess["Service"]["run"]>();
+const encodeJson = Schema.encodeSync(Schema.UnknownFromJsonString);
 
 const layer = GitHubCli.layer.pipe(
   Layer.provide(
@@ -75,8 +77,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
+            encodeJson({
               number: 42,
               title: "Add PR thread creation",
               url: "https://github.com/pingdotgg/codething-mvp/pull/42",
@@ -134,8 +135,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
+            encodeJson({
               number: 42,
               title: "  Add PR thread creation  \n",
               url: " https://github.com/pingdotgg/codething-mvp/pull/42 ",
@@ -180,8 +180,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify([
+            encodeJson([
               {
                 number: 0,
                 title: "invalid",
@@ -234,8 +233,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify([
+            encodeJson([
               {
                 number: 2829,
                 title: "Codex turn mapping",
@@ -286,8 +284,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
+            encodeJson({
               nameWithOwner: "octocat/codething-mvp",
               url: "https://github.com/octocat/codething-mvp",
               sshUrl: "git@github.com:octocat/codething-mvp.git",
@@ -397,8 +394,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
+            encodeJson({
               mergeable: "MERGEABLE",
               reviewDecision: "CHANGES_REQUESTED",
               statusCheckRollup: [
@@ -415,12 +411,13 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            JSON.stringify({
+            encodeJson({
               data: {
                 repository: {
                   pullRequest: {
                     reviewThreads: {
                       nodes: [{ isResolved: false }, { isResolved: true }],
+                      pageInfo: { hasNextPage: false, endCursor: null },
                     },
                   },
                 },
@@ -447,17 +444,23 @@ describe("GitHubCli.layer", () => {
     Effect.gen(function* () {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
-          processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({ mergeable: "MERGEABLE", statusCheckRollup: [], reviews: [] }),
-          ),
+          processOutput(encodeJson({ mergeable: "MERGEABLE", statusCheckRollup: [], reviews: [] })),
         ),
       );
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            JSON.stringify({
-              data: { repository: { pullRequest: { reviewThreads: { nodes: [] } } } },
+            encodeJson({
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      nodes: [],
+                      pageInfo: { hasNextPage: false, endCursor: null },
+                    },
+                  },
+                },
+              },
             }),
           ),
         ),
@@ -487,8 +490,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
+            encodeJson({
               mergeable: "MERGEABLE",
               reviewDecision: "APPROVED",
               statusCheckRollup: [
@@ -503,8 +505,17 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            JSON.stringify({
-              data: { repository: { pullRequest: { reviewThreads: { nodes: [] } } } },
+            encodeJson({
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      nodes: [],
+                      pageInfo: { hasNextPage: false, endCursor: null },
+                    },
+                  },
+                },
+              },
             }),
           ),
         ),
@@ -527,8 +538,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
+            encodeJson({
               mergeable: "UNKNOWN",
               statusCheckRollup: [],
               reviews: [],
@@ -539,8 +549,17 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            JSON.stringify({
-              data: { repository: { pullRequest: { reviewThreads: { nodes: [] } } } },
+            encodeJson({
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      nodes: [],
+                      pageInfo: { hasNextPage: false, endCursor: null },
+                    },
+                  },
+                },
+              },
             }),
           ),
         ),
@@ -563,8 +582,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
+            encodeJson({
               data: {
                 repository: {
                   pullRequest: {
@@ -589,6 +607,7 @@ describe("GitHubCli.layer", () => {
                           comments: { nodes: [{ body: "This needs a test." }] },
                         },
                       ],
+                      pageInfo: { hasNextPage: false, endCursor: null },
                     },
                   },
                 },
@@ -612,8 +631,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
+            encodeJson({
               data: {
                 repository: {
                   pullRequest: {
@@ -622,6 +640,7 @@ describe("GitHubCli.layer", () => {
                         isResolved: false,
                         comments: { nodes: [{ body: `comment ${index}` }] },
                       })),
+                      pageInfo: { hasNextPage: false, endCursor: null },
                     },
                   },
                 },
@@ -646,9 +665,17 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
-              data: { repository: { pullRequest: { reviewThreads: { nodes: [] } } } },
+            encodeJson({
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      nodes: [],
+                      pageInfo: { hasNextPage: false, endCursor: null },
+                    },
+                  },
+                },
+              },
             }),
           ),
         ),
@@ -669,6 +696,91 @@ describe("GitHubCli.layer", () => {
     }).pipe(Effect.provide(layer)),
   );
 
+  it.effect("paginates reviewThreads before reporting the unresolved count", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(encodeJson({ mergeable: "MERGEABLE", statusCheckRollup: [], reviews: [] })),
+        ),
+      );
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            encodeJson({
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      nodes: [{ isResolved: true }],
+                      pageInfo: { hasNextPage: true, endCursor: "cursor-1" },
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        ),
+      );
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            encodeJson({
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      nodes: [{ isResolved: false }],
+                      pageInfo: { hasNextPage: false, endCursor: null },
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        ),
+      );
+
+      const gh = yield* GitHubCli.GitHubCli;
+      const status = yield* gh.getChangeRequestStatus({ cwd: "/repo", reference: "#42" });
+
+      expect(status.unresolvedComments).toBe(1);
+      expect((mockRun.mock.calls[2]?.[0].args ?? []).join(" ")).toContain("-F cursor=cursor-1");
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("fails closed when reviewThreads nodes are missing", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(encodeJson({ mergeable: "MERGEABLE", statusCheckRollup: [], reviews: [] })),
+        ),
+      );
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            encodeJson({
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      pageInfo: { hasNextPage: false, endCursor: null },
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        ),
+      );
+
+      const gh = yield* GitHubCli.GitHubCli;
+      const result = yield* Effect.result(
+        gh.getChangeRequestStatus({ cwd: "/repo", reference: "#42" }),
+      );
+      expect(result._tag).toBe("Failure");
+    }).pipe(Effect.provide(layer)),
+  );
+
   it.effect("fails with a typed error when the reviewThreads query fails", () =>
     Effect.gen(function* () {
       mockRun.mockReturnValueOnce(Effect.fail(new Error("gh api graphql failed") as never));
@@ -685,8 +797,7 @@ describe("GitHubCli.layer", () => {
       mockRun.mockReturnValueOnce(
         Effect.succeed(
           processOutput(
-            // @effect-diagnostics-next-line preferSchemaOverJson:off
-            JSON.stringify({
+            encodeJson({
               mergeable: "MERGEABLE",
               statusCheckRollup: [],
               reviews: [],

@@ -162,6 +162,19 @@ export class GitHubReviewCommentsDecodeError extends Schema.TaggedErrorClass<Git
   }
 }
 
+export class GitHubReviewThreadsDecodeError extends Schema.TaggedErrorClass<GitHubReviewThreadsDecodeError>()(
+  "GitHubReviewThreadsDecodeError",
+  gitHubCliDecodeFields,
+) {
+  get detail(): string {
+    return "GitHub CLI returned invalid review-thread JSON.";
+  }
+
+  override get message(): string {
+    return `GitHub CLI failed while reading review threads: ${this.detail}`;
+  }
+}
+
 export const GitHubCliError = Schema.Union([
   GitHubCliUnavailableError,
   GitHubCliAuthenticationError,
@@ -173,6 +186,7 @@ export const GitHubCliError = Schema.Union([
   GitHubChangeRequestStatusDecodeError,
   GitHubRepositoryDecodeError,
   GitHubReviewCommentsDecodeError,
+  GitHubReviewThreadsDecodeError,
 ]);
 export type GitHubCliError = typeof GitHubCliError.Type;
 
@@ -355,6 +369,48 @@ const decodeRawGitHubChangeRequestStatus = Schema.decodeEffect(
   Schema.fromJsonString(RawGitHubChangeRequestStatusSchema),
 );
 
+const RawGitHubReviewThreadSchema = Schema.Struct({
+  isResolved: Schema.Boolean,
+  comments: Schema.optionalKey(
+    Schema.Struct({
+      nodes: Schema.Array(
+        Schema.Struct({
+          body: Schema.String,
+          author: Schema.optionalKey(
+            Schema.NullOr(
+              Schema.Struct({
+                login: Schema.String,
+              }),
+            ),
+          ),
+        }),
+      ),
+    }),
+  ),
+});
+
+const RawGitHubReviewThreadsPageSchema = Schema.Struct({
+  data: Schema.Struct({
+    repository: Schema.Struct({
+      pullRequest: Schema.Struct({
+        reviewThreads: Schema.Struct({
+          nodes: Schema.Array(RawGitHubReviewThreadSchema),
+          pageInfo: Schema.Struct({
+            hasNextPage: Schema.Boolean,
+            endCursor: Schema.NullOr(Schema.String),
+          }),
+        }),
+      }),
+    }),
+  }),
+});
+
+type RawGitHubReviewThread = typeof RawGitHubReviewThreadSchema.Type;
+
+const decodeRawGitHubReviewThreadsPage = Schema.decodeEffect(
+  Schema.fromJsonString(RawGitHubReviewThreadsPageSchema),
+);
+
 const normalizeChangeRequestStatus = (
   raw: Schema.Schema.Type<typeof RawGitHubChangeRequestStatusSchema>,
 ): ChangeRequestStatus => {
@@ -395,12 +451,12 @@ const normalizeChangeRequestStatus = (
     ciStatus,
     reviewState,
     mergeable,
+    unresolvedComments: 0,
     // Audit item 5: record the head commit so merge gating and the UI can
     // tell "checked this commit" from "checked something older".
     ...(raw.latestCommit?.oid !== undefined && raw.latestCommit.oid.length > 0
       ? { latestCommit: raw.latestCommit.oid }
       : {}),
-    unresolvedComments: 0,
   };
 };
 
@@ -464,6 +520,66 @@ export const make = Effect.gen(function* () {
         timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       })
       .pipe(Effect.mapError((error) => fromVcsError({ command: "gh", cwd: input.cwd }, error)));
+
+  const loadReviewThreads = (input: {
+    readonly cwd: string;
+    readonly reference: string;
+    readonly includeComments: boolean;
+  }): Effect.Effect<readonly RawGitHubReviewThread[], GitHubCliError> => {
+    const query = input.includeComments
+      ? "query=query($pr: Int!, $owner: String!, $name: String!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $pr) { reviewThreads(first: 100, after: $cursor) { nodes { isResolved comments(first: 1) { nodes { body author { login } } } } pageInfo { hasNextPage endCursor } } } } }"
+      : "query=query($pr: Int!, $owner: String!, $name: String!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $pr) { reviewThreads(first: 100, after: $cursor) { nodes { isResolved } pageInfo { hasNextPage endCursor } } } } }";
+
+    const loadPage = (
+      cursor: string | undefined,
+      accumulated: readonly RawGitHubReviewThread[],
+    ): Effect.Effect<readonly RawGitHubReviewThread[], GitHubCliError> =>
+      execute({
+        cwd: input.cwd,
+        args: [
+          "api",
+          "graphql",
+          "-f",
+          query,
+          "-F",
+          `pr=${input.reference.replace(/^#/, "")}`,
+          "-F",
+          "owner=:owner",
+          "-F",
+          "name=:repo",
+          ...(cursor === undefined ? [] : ["-F", `cursor=${cursor}`]),
+        ],
+      }).pipe(
+        Effect.map((result) => result.stdout.trim()),
+        Effect.flatMap((raw) =>
+          decodeRawGitHubReviewThreadsPage(raw).pipe(
+            Effect.mapError(
+              (cause) =>
+                new GitHubReviewThreadsDecodeError({ command: "gh", cwd: input.cwd, cause }),
+            ),
+          ),
+        ),
+        Effect.flatMap((page) => {
+          const connection = page.data.repository.pullRequest.reviewThreads;
+          const nodes = [...accumulated, ...connection.nodes];
+          if (!connection.pageInfo.hasNextPage) {
+            return Effect.succeed(nodes);
+          }
+          if (connection.pageInfo.endCursor === null) {
+            return Effect.fail(
+              new GitHubReviewThreadsDecodeError({
+                command: "gh",
+                cwd: input.cwd,
+                cause: "page hasNextPage without an endCursor",
+              }),
+            );
+          }
+          return loadPage(connection.pageInfo.endCursor, nodes);
+        }),
+      );
+
+    return loadPage(undefined, []);
+  };
 
   return GitHubCli.of({
     execute,
@@ -574,97 +690,39 @@ export const make = Effect.gen(function* () {
         // repository(owner: "", name: "") made real GitHub return null and
         // the gate a dead 0).
         Effect.flatMap((status) =>
-          execute({
+          loadReviewThreads({
             cwd: input.cwd,
-            args: [
-              "api",
-              "graphql",
-              "-f",
-              "query=query($pr: Int!, $owner: String!, $name: String!) { repository(owner: $owner, name: $name) { pullRequest(number: $pr) { reviewThreads(first: 100) { nodes { isResolved } } } } }",
-              "-F",
-              `pr=${input.reference.replace(/^#/, "")}`,
-              "-F",
-              "owner=:owner",
-              "-F",
-              "name=:repo",
-            ],
-          })
-            .pipe(
-              // Audit item 5: a failed reviewThreads query must NOT coerce
-              // to 0 — an unknown thread count would let the approveMerge
-              // gate pass an unresolved review. Fail the whole status read.
-              Effect.map((result) => {
-                const json = JSON.parse(result.stdout) as {
-                  data?: {
-                    repository?: {
-                      pullRequest?: {
-                        reviewThreads?: {
-                          nodes?: ReadonlyArray<{ isResolved?: boolean | null }>;
-                        };
-                      };
-                    };
-                  };
-                };
-                const threads = json.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
-                return threads.filter((thread) => thread.isResolved !== true).length;
-              }),
-              Effect.mapError(
-                (cause) =>
-                  new GitHubChangeRequestStatusDecodeError({
-                    command: "gh",
-                    cwd: input.cwd,
-                    cause,
-                  }),
-              ),
-            )
-            .pipe(Effect.map((unresolved) => ({ ...status, unresolvedComments: unresolved }))),
+            reference: input.reference,
+            includeComments: false,
+          }).pipe(
+            Effect.map((threads) => threads.filter((thread) => thread.isResolved !== true).length),
+            Effect.mapError(
+              (cause) =>
+                new GitHubChangeRequestStatusDecodeError({
+                  command: "gh",
+                  cwd: input.cwd,
+                  cause,
+                }),
+            ),
+            Effect.map((unresolved) => ({ ...status, unresolvedComments: unresolved })),
+          ),
         ),
       ),
     listUnresolvedReviewComments: (input) =>
-      execute({
+      loadReviewThreads({
         cwd: input.cwd,
-        args: [
-          "api",
-          "graphql",
-          "-f",
-          "query=query($pr: Int!, $owner: String!, $name: String!) { repository(owner: $owner, name: $name) { pullRequest(number: $pr) { reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { body author { login } } } } } } } }",
-          "-F",
-          `pr=${input.reference.replace(/^#/, "")}`,
-          "-F",
-          "owner=:owner",
-          "-F",
-          "name=:repo",
-        ],
+        reference: input.reference,
+        includeComments: true,
       }).pipe(
-        Effect.map((result) => {
-          const json = JSON.parse(result.stdout) as {
-            data?: {
-              repository?: {
-                pullRequest?: {
-                  reviewThreads?: {
-                    nodes?: ReadonlyArray<{
-                      isResolved?: boolean | null;
-                      comments?: {
-                        nodes?: ReadonlyArray<{
-                          body?: string;
-                          author?: { login?: string } | null;
-                        }>;
-                      };
-                    }>;
-                  };
-                };
-              };
-            };
-          };
-          const threads = json.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
+        Effect.map((threads) => {
           const limit = input.limit ?? 20;
           const comments: GitHubReviewComment[] = [];
           for (const thread of threads) {
-            if (thread.isResolved === true) {
+            if (thread.isResolved) {
               continue;
             }
-            const node = thread.comments?.nodes?.[0];
-            if (node?.body === undefined) {
+            const node = thread.comments?.nodes[0];
+            if (node === undefined) {
               continue;
             }
             const login = node.author?.login;

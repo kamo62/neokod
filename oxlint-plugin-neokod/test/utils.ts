@@ -91,7 +91,8 @@ export const createOxlintRuleHarness = (
     const path = yield* Path.Path;
     const fixtureDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-oxlint-" });
     const configPath = path.join(fixtureDir, ".oxlintrc.json");
-    const sourcePath = path.join(fixtureDir, options.filename ?? "fixture.ts");
+    const fixtureFilename = options.filename ?? "fixture.ts";
+    const sourcePath = path.join(fixtureDir, fixtureFilename);
     const repoRoot = path.join(import.meta.dirname, "..", "..");
     const oxlintBin = path.join(
       repoRoot,
@@ -110,10 +111,11 @@ export const createOxlintRuleHarness = (
         rules: { [ruleName]: "error" },
       }),
     );
+    yield* fs.makeDirectory(path.dirname(sourcePath), { recursive: true });
     yield* fs.writeFileString(sourcePath, source);
 
     const output = yield* spawnAndCollectOutput(
-      ChildProcess.make(oxlintBin, ["--config", configPath, sourcePath], { cwd: repoRoot }),
+      ChildProcess.make(oxlintBin, ["--config", configPath, sourcePath], { cwd: fixtureDir }),
     );
 
     if (output.exitCode !== 0) {

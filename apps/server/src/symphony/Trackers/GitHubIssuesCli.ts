@@ -24,6 +24,7 @@ import {
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const PAGE_SIZE = 100;
+const isTrackerAdapterError = Schema.is(TrackerAdapterError);
 
 export interface GitHubIssueRaw {
   readonly number: number;
@@ -83,7 +84,7 @@ export class GitHubIssuesCli extends Context.Service<
 const toTrackerError =
   (operation: string) =>
   (cause: unknown): TrackerAdapterError => {
-    if (cause instanceof TrackerAdapterError) {
+    if (isTrackerAdapterError(cause)) {
       return cause;
     }
     return trackerRequestError(`GitHub CLI failed in ${operation}: ${messageOf(cause)}`);

@@ -153,7 +153,9 @@ describe("WorkspaceManager", () => {
   it.effect("fails typed when the ownership lease cannot be recorded", () =>
     Effect.gen(function* () {
       const manager = makeWorkspaceManager(
-        makeDeps({ acquireOwnership: () => Effect.fail(new Error("db locked")) }),
+        makeDeps({
+          acquireOwnership: () => Effect.fail(new WorkspaceLeaseError("/ws/issue-1", "db locked")),
+        }),
       );
       const result = yield* Effect.result(
         manager.ensureWorkspace({
@@ -191,7 +193,7 @@ describe("WorkspaceManager", () => {
     Effect.gen(function* () {
       const manager = makeWorkspaceManager(
         makeDeps({
-          runHook: () => Effect.fail(new Error("hook boom")),
+          runHook: () => Effect.fail(new WorkspacePopulationError("issue-1", "hook boom")),
         }),
       );
       const result = yield* Effect.result(
@@ -256,7 +258,9 @@ describe("WorkspaceManager", () => {
         makeDeps({
           git,
           runHook: (input) =>
-            input.hook === "before_remove" ? Effect.fail(new Error("cleanup boom")) : Effect.void,
+            input.hook === "before_remove"
+              ? Effect.fail(new WorkspacePopulationError("issue-1", "cleanup boom"))
+              : Effect.void,
         }),
       );
       const ws = yield* manager.ensureWorkspace({

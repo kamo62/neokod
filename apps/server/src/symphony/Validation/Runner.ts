@@ -1,9 +1,11 @@
 import type { EffectiveWorkflowConfig, RunAttemptId, ValidationResult } from "@neokod/contracts";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 
 import { ServerConfig } from "../../config.ts";
 import { ProcessRunner, ProcessSpawnError, ProcessTimeoutError } from "../../processRunner.ts";
@@ -34,6 +36,8 @@ export class ValidationRunner extends Context.Service<
 >()("neokod/symphony/Validation/Runner/ValidationRunner") {}
 
 const DEFAULT_VALIDATION_TIMEOUT = Duration.minutes(10);
+const isProcessSpawnError = Schema.is(ProcessSpawnError);
+const isProcessTimeoutError = Schema.is(ProcessTimeoutError);
 
 const toSafeFileName = (command: string, index: number): string => {
   const stem = command
@@ -85,7 +89,7 @@ export const makeValidationRunner = (deps: ValidationRunnerDeps): ValidationRunn
   }): Effect.Effect<ValidationResult, never> =>
     Effect.gen(function* () {
       const executedAt = yield* deps.nowIsoEffect?.() ?? nowIso;
-      const startedAt = Date.now();
+      const startedAt = yield* Clock.currentTimeMillis;
       const result = yield* Effect.result(
         deps.processRunner.run({
           command: "sh",
@@ -96,7 +100,7 @@ export const makeValidationRunner = (deps: ValidationRunnerDeps): ValidationRunn
           maxOutputBytes: 4 * 1024 * 1024,
         }),
       );
-      const durationMs = Math.max(0, Date.now() - startedAt);
+      const durationMs = Math.max(0, (yield* Clock.currentTimeMillis) - startedAt);
 
       if (result._tag === "Success") {
         const output = `${result.success.stdout}\n${result.success.stderr}`.trimEnd();
@@ -117,12 +121,11 @@ export const makeValidationRunner = (deps: ValidationRunnerDeps): ValidationRunn
       }
 
       const failure = result.failure;
-      const status =
-        failure instanceof ProcessTimeoutError
-          ? "failed"
-          : failure instanceof ProcessSpawnError
-            ? "unavailable"
-            : "failed";
+      const status = isProcessTimeoutError(failure)
+        ? "failed"
+        : isProcessSpawnError(failure)
+          ? "unavailable"
+          : "failed";
       return {
         command: input.command,
         status,
