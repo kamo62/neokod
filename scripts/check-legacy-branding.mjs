@@ -1,4 +1,4 @@
-import * as NodeFS from "node:fs/promises";
+import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 
 const ROOTS = ["apps", "packages", "scripts", "docs"];
@@ -82,7 +82,7 @@ const ALLOW_RULES = [
 ];
 
 const listFiles = async (directory) => {
-  const entries = await NodeFS.readdir(directory, { withFileTypes: true });
+  const entries = await NodeFSP.readdir(directory, { withFileTypes: true });
   const files = [];
   for (const entry of entries) {
     if (entry.name.startsWith(".") || EXCLUDED_DIRECTORIES.has(entry.name)) {
@@ -103,7 +103,7 @@ for (const root of ROOTS) {
   const files = await listFiles(root);
   for (const file of files) {
     const relativePath = file.split(NodePath.sep).join("/");
-    const lines = (await NodeFS.readFile(file, "utf8")).split("\n");
+    const lines = (await NodeFSP.readFile(file, "utf8")).split("\n");
     lines.forEach((line, index) => {
       if (!LEGACY_PATTERN.test(line)) {
         return;
