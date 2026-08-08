@@ -104,8 +104,8 @@ export class AcpSessionRuntime extends Context.Service<
      */
     readonly handleRequestPermission: EffectAcpClient.AcpClient["Service"]["handleRequestPermission"];
     /**
-     * Registers a handler for `session/elicitation`.
-     * @see https://agentclientprotocol.com/protocol/schema#session/elicitation
+     * Registers a handler for `elicitation/create`.
+     * @see https://agentclientprotocol.com/protocol/schema#elicitation/create
      */
     readonly handleElicitation: EffectAcpClient.AcpClient["Service"]["handleElicitation"];
     /**
@@ -149,8 +149,8 @@ export class AcpSessionRuntime extends Context.Service<
      */
     readonly handleSessionUpdate: EffectAcpClient.AcpClient["Service"]["handleSessionUpdate"];
     /**
-     * Registers a handler for `session/elicitation/complete`.
-     * @see https://agentclientprotocol.com/protocol/schema#session/elicitation/complete
+     * Registers a handler for `elicitation/complete`.
+     * @see https://agentclientprotocol.com/protocol/schema#elicitation/complete
      */
     readonly handleElicitationComplete: EffectAcpClient.AcpClient["Service"]["handleElicitationComplete"];
     /**

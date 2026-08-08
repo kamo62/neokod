@@ -174,9 +174,7 @@ export const ThreadWorkspaceRail = memo(function ThreadWorkspaceRail({
               />
             }
           >
-            <span
-              className={`size-[7px] rounded-full bg-current ${view.terminal.pulse ? "animate-pulse" : ""}`}
-            />
+            <span className="size-[7px] rounded-full bg-current" />
           </TooltipTrigger>
           <TooltipPopup side="top">{view.terminal.label}</TooltipPopup>
         </Tooltip>

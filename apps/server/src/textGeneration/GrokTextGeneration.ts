@@ -13,6 +13,7 @@ import { TextGenerationError } from "@neokod/contracts";
 import * as TextGeneration from "./TextGeneration.ts";
 import {
   buildBranchNamePrompt,
+  buildCodeReviewPrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
@@ -49,6 +50,7 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
     operation:
       | "generateCommitMessage"
       | "generatePrContent"
+      | "generateCodeReview"
       | "generateBranchName"
       | "generateThreadTitle";
     cwd: string;
@@ -205,6 +207,25 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
       };
     });
 
+  const generateCodeReview: TextGeneration.TextGeneration["Service"]["generateCodeReview"] =
+    Effect.fn("GrokTextGeneration.generateCodeReview")(function* (input) {
+      const { prompt, outputSchema } = buildCodeReviewPrompt({
+        objective: input.objective,
+        acceptanceCriteria: input.acceptanceCriteria,
+        baseRef: input.baseRef,
+        headRef: input.headRef,
+        diffPatch: input.diffPatch,
+      });
+
+      return yield* runGrokJson({
+        operation: "generateCodeReview",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+    });
+
   const generateBranchName: TextGeneration.TextGeneration["Service"]["generateBranchName"] =
     Effect.fn("GrokTextGeneration.generateBranchName")(function* (input) {
       const { prompt, outputSchema } = buildBranchNamePrompt({
@@ -248,6 +269,7 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
   return {
     generateCommitMessage,
     generatePrContent,
+    generateCodeReview,
     generateBranchName,
     generateThreadTitle,
   } satisfies TextGeneration.TextGeneration["Service"];

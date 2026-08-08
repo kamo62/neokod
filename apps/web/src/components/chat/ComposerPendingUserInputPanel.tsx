@@ -178,7 +178,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
             (!customAnswerActive && progress.selectedOptionLabels.includes(option.label));
           const shortcutKey = index < 9 ? index + 1 : null;
           const className = cn(
-            "group flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left outline-none transition-all duration-150 focus-visible:border-primary/40 focus-visible:ring-1 focus-visible:ring-primary/25",
+            "group flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left outline-none transition-[background-color,border-color,box-shadow,color,opacity] duration-(--duration-basic) ease-(--ease-basic) focus-visible:border-primary/40 focus-visible:ring-1 focus-visible:ring-primary/25",
             isSelected
               ? "border-primary/30 bg-primary/8 text-foreground"
               : "border-transparent bg-muted/22 text-foreground/85 hover:border-border/45 hover:bg-muted/34",

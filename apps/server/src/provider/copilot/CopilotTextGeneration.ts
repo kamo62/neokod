@@ -23,6 +23,7 @@ import * as Schema from "effect/Schema";
 import * as TextGeneration from "../../textGeneration/TextGeneration.ts";
 import {
   buildBranchNamePrompt,
+  buildCodeReviewPrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
@@ -43,6 +44,7 @@ const declineAllPermissions = (): PermissionRequestResult => ({
 type CopilotTextGenerationOperation =
   | "generateCommitMessage"
   | "generatePrContent"
+  | "generateCodeReview"
   | "generateBranchName"
   | "generateThreadTitle";
 
@@ -159,6 +161,25 @@ export const makeCopilotTextGeneration = Effect.fn("makeCopilotTextGeneration")(
       };
     });
 
+  const generateCodeReview: TextGeneration.TextGeneration["Service"]["generateCodeReview"] =
+    Effect.fn("CopilotTextGeneration.generateCodeReview")(function* (input) {
+      const { prompt, outputSchema } = buildCodeReviewPrompt({
+        objective: input.objective,
+        acceptanceCriteria: input.acceptanceCriteria,
+        baseRef: input.baseRef,
+        headRef: input.headRef,
+        diffPatch: input.diffPatch,
+      });
+
+      return yield* runCopilotJson({
+        operation: "generateCodeReview",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+    });
+
   const generateBranchName: TextGeneration.TextGeneration["Service"]["generateBranchName"] =
     Effect.fn("CopilotTextGeneration.generateBranchName")(function* (input) {
       const { prompt, outputSchema } = buildBranchNamePrompt({
@@ -202,6 +223,7 @@ export const makeCopilotTextGeneration = Effect.fn("makeCopilotTextGeneration")(
   return {
     generateCommitMessage,
     generatePrContent,
+    generateCodeReview,
     generateBranchName,
     generateThreadTitle,
   } satisfies TextGeneration.TextGeneration["Service"];

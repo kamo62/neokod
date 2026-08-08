@@ -220,6 +220,8 @@ function configOptions(): ReadonlyArray<AcpSchema.SessionConfigOption> {
         { value: "composer-2", name: "Composer 2" },
         { value: "composer-2[fast=true]", name: "Composer 2 Fast" },
         { value: "gpt-5.3-codex[reasoning=medium,fast=false]", name: "Codex 5.3" },
+        { value: "grok-build", name: "Grok Build" },
+        { value: "grok-mock-alt", name: "Grok Mock Alt" },
       ],
     },
   ];
@@ -279,20 +281,7 @@ function modeState(): AcpSchema.SessionModeState {
   };
 }
 
-const grokAcpModels: ReadonlyArray<AcpSchema.ModelInfo> = [
-  { modelId: "grok-build", name: "Grok Build" },
-  { modelId: "grok-mock-alt", name: "Grok Mock Alt" },
-];
-
-function modelState(): AcpSchema.SessionModelState {
-  const modelId = grokAcpModels.some((model) => model.modelId === currentModelId)
-    ? currentModelId
-    : "grok-build";
-  return {
-    currentModelId: modelId,
-    availableModels: grokAcpModels,
-  };
-}
+const grokAcpModels = ["grok-build", "grok-mock-alt"] as const;
 
 const program = Effect.gen(function* () {
   const agent = yield* EffectAcpAgent.AcpAgent;
@@ -314,7 +303,6 @@ const program = Effect.gen(function* () {
     Effect.succeed({
       sessionId,
       modes: modeState(),
-      models: modelState(),
       configOptions: configOptions(),
     }),
   );
@@ -359,7 +347,6 @@ const program = Effect.gen(function* () {
         yield* Effect.sleep(loadSessionDelayMs);
         return {
           modes: modeState(),
-          models: modelState(),
           configOptions: configOptions(),
         };
       }
@@ -375,7 +362,6 @@ const program = Effect.gen(function* () {
       });
       return {
         modes: modeState(),
-        models: modelState(),
         configOptions: configOptions(),
       };
     }),
@@ -383,7 +369,7 @@ const program = Effect.gen(function* () {
 
   yield* agent.handleSetSessionModel((request) =>
     Effect.gen(function* () {
-      if (!grokAcpModels.some((model) => model.modelId === request.modelId)) {
+      if (!grokAcpModels.some((modelId) => modelId === request.modelId)) {
         return yield* AcpError.AcpRequestError.invalidParams(
           `Unknown mock model id: ${request.modelId}`,
           {

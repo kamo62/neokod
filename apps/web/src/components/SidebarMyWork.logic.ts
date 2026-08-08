@@ -1,11 +1,11 @@
 import type { EnvironmentThreadShell } from "@neokod/client-runtime/state/shell";
 
-import type { MissionControlDashboardGroups } from "./MissionControl.logic";
+import type { DashboardGroups } from "./threadDashboard.logic";
 import { resolveThreadStatusPill } from "./Sidebar.logic";
 
 export type MyWorkGroupKey = "running" | "needsAttention" | "recent";
 
-export type MyWorkGroups = Pick<MissionControlDashboardGroups, MyWorkGroupKey>;
+export type MyWorkGroups = Pick<DashboardGroups, MyWorkGroupKey>;
 
 export function computeThreadSignature(thread: EnvironmentThreadShell): string {
   const status = resolveThreadStatusPill({ thread })?.label ?? "";
@@ -20,7 +20,7 @@ export function computeThreadSignature(thread: EnvironmentThreadShell): string {
 }
 
 export function resolveVisibleMyWork(
-  dashboardGroups: MissionControlDashboardGroups,
+  dashboardGroups: DashboardGroups,
   dismissedSignatures: Readonly<Record<string, string>>,
 ): MyWorkGroups {
   const visible = (threads: ReadonlyArray<EnvironmentThreadShell>) =>

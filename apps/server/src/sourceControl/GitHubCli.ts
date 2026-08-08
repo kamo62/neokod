@@ -7,6 +7,7 @@ import * as Schema from "effect/Schema";
 
 import {
   TrimmedNonEmptyString,
+  type ChangeRequestStatus,
   type SourceControlRepositoryVisibility,
   type VcsError,
 } from "@neokod/contracts";
@@ -122,6 +123,19 @@ export class GitHubPullRequestDecodeError extends Schema.TaggedErrorClass<GitHub
   }
 }
 
+export class GitHubChangeRequestStatusDecodeError extends Schema.TaggedErrorClass<GitHubChangeRequestStatusDecodeError>()(
+  "GitHubChangeRequestStatusDecodeError",
+  gitHubCliDecodeFields,
+) {
+  get detail(): string {
+    return "GitHub CLI returned invalid change-request status JSON.";
+  }
+
+  override get message(): string {
+    return `GitHub CLI failed in getChangeRequestStatus: ${this.detail}`;
+  }
+}
+
 export class GitHubRepositoryDecodeError extends Schema.TaggedErrorClass<GitHubRepositoryDecodeError>()(
   "GitHubRepositoryDecodeError",
   gitHubCliDecodeFields,
@@ -135,6 +149,19 @@ export class GitHubRepositoryDecodeError extends Schema.TaggedErrorClass<GitHubR
   }
 }
 
+export class GitHubReviewCommentsDecodeError extends Schema.TaggedErrorClass<GitHubReviewCommentsDecodeError>()(
+  "GitHubReviewCommentsDecodeError",
+  gitHubCliDecodeFields,
+) {
+  get detail(): string {
+    return "GitHub CLI returned invalid review-thread comments JSON.";
+  }
+
+  override get message(): string {
+    return `GitHub CLI failed in listUnresolvedReviewComments: ${this.detail}`;
+  }
+}
+
 export const GitHubCliError = Schema.Union([
   GitHubCliUnavailableError,
   GitHubCliAuthenticationError,
@@ -143,7 +170,9 @@ export const GitHubCliError = Schema.Union([
   GitHubPullRequestListDecodeError,
   GitHubChangeRequestListDecodeError,
   GitHubPullRequestDecodeError,
+  GitHubChangeRequestStatusDecodeError,
   GitHubRepositoryDecodeError,
+  GitHubReviewCommentsDecodeError,
 ]);
 export type GitHubCliError = typeof GitHubCliError.Type;
 
@@ -196,6 +225,17 @@ export interface GitHubRepositoryCloneUrls {
   readonly sshUrl: string;
 }
 
+/**
+ * One unresolved review-thread comment (plan FR-102-104): the opening
+ * comment of a thread the reviewer has not marked resolved. Bodies are
+ * returned raw here; bounding the count and truncating each body is the
+ * prompt-building layer's job (`Runner/Prompt.ts`), not this client's.
+ */
+export interface GitHubReviewComment {
+  readonly body: string;
+  readonly author?: string;
+}
+
 export class GitHubCli extends Context.Service<
   GitHubCli,
   {
@@ -215,6 +255,32 @@ export class GitHubCli extends Context.Service<
       readonly cwd: string;
       readonly reference: string;
     }) => Effect.Effect<GitHubPullRequestSummary, GitHubCliError>;
+
+    readonly getChangeRequestStatus: (input: {
+      readonly cwd: string;
+      readonly reference: string;
+    }) => Effect.Effect<ChangeRequestStatus, GitHubCliError>;
+
+    /**
+     * Comment bodies for unresolved review threads (plan FR-102-104): a
+     * continuation dispatch needs the actual feedback text, not just the
+     * count `getChangeRequestStatus` returns. Same reviewThreads GraphQL
+     * shape and `$owner`/`$name` variable pattern as `getChangeRequestStatus`
+     * — the `:owner`/`:repo` magic variables are gh's own repo resolution
+     * from `cwd`, not literal empty strings (fix-lane item 11 applies here
+     * too). `limit` bounds how many unresolved threads are read (default 20);
+     * one comment — the thread's opening comment — is returned per thread.
+     *
+     * Optional on the interface (not every `GitHubCli["Service"]` fake needs
+     * it wired) — callers that need honest degradation when it is absent
+     * treat a missing method the same as a host with no comment-body
+     * enrichment.
+     */
+    readonly listUnresolvedReviewComments?: (input: {
+      readonly cwd: string;
+      readonly reference: string;
+      readonly limit?: number;
+    }) => Effect.Effect<ReadonlyArray<GitHubReviewComment>, GitHubCliError>;
 
     readonly getRepositoryCloneUrls: (input: {
       readonly cwd: string;
@@ -255,6 +321,88 @@ const RawGitHubRepositoryCloneUrlsSchema = Schema.Struct({
 const decodeRawGitHubRepositoryCloneUrls = Schema.decodeEffect(
   Schema.fromJsonString(RawGitHubRepositoryCloneUrlsSchema),
 );
+
+/**
+ * Raw `gh pr view --json statusCheckRollup,reviews,mergeable,comments`
+ * payload for host-enriched change-request status (plan 10.1).
+ */
+const RawGitHubChangeRequestStatusSchema = Schema.Struct({
+  mergeable: Schema.optional(
+    Schema.NullOr(Schema.Literals(["MERGEABLE", "CONFLICTING", "UNKNOWN"])),
+  ),
+  statusCheckRollup: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        status: Schema.optional(Schema.String),
+        conclusion: Schema.optional(Schema.NullOr(Schema.String)),
+      }),
+    ),
+  ),
+  reviews: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        state: Schema.optional(Schema.String),
+      }),
+    ),
+  ),
+  reviewDecision: Schema.optional(Schema.NullOr(Schema.String)),
+  latestCommit: Schema.optional(
+    Schema.NullOr(Schema.Struct({ oid: Schema.optional(Schema.String) })),
+  ),
+});
+
+const decodeRawGitHubChangeRequestStatus = Schema.decodeEffect(
+  Schema.fromJsonString(RawGitHubChangeRequestStatusSchema),
+);
+
+const normalizeChangeRequestStatus = (
+  raw: Schema.Schema.Type<typeof RawGitHubChangeRequestStatusSchema>,
+): ChangeRequestStatus => {
+  const checks = raw.statusCheckRollup ?? [];
+  const hasPending = checks.some(
+    (check) =>
+      check.status === "IN_PROGRESS" || check.status === "QUEUED" || check.status === "PENDING",
+  );
+  const hasFailed = checks.some(
+    (check) =>
+      check.conclusion === "FAILURE" ||
+      check.conclusion === "TIMED_OUT" ||
+      check.conclusion === "ACTION_REQUIRED",
+  );
+  const ciStatus =
+    checks.length === 0 ? "unknown" : hasFailed ? "failure" : hasPending ? "pending" : "success";
+
+  const reviews = (raw.reviews ?? []).map((review) => review.state ?? "").filter(Boolean);
+  const latestDecision = reviews.length > 0 ? (reviews[reviews.length - 1] ?? "") : "";
+  const reviewState: ChangeRequestStatus["reviewState"] =
+    raw.reviewDecision === "APPROVED" || latestDecision === "APPROVED"
+      ? "approved"
+      : raw.reviewDecision === "CHANGES_REQUESTED" || latestDecision === "CHANGES_REQUESTED"
+        ? "changes_requested"
+        : raw.reviewDecision === "REVIEW_REQUIRED" || latestDecision === "REVIEW_REQUIRED"
+          ? "review_required"
+          : "none";
+
+  // Unresolved comments are filled by the follow-up reviewThreads GraphQL
+  // query in getChangeRequestStatus; the base view JSON cannot source them.
+  const mergeable: ChangeRequestStatus["mergeable"] =
+    raw.mergeable === "MERGEABLE"
+      ? "mergeable"
+      : raw.mergeable === "CONFLICTING"
+        ? "conflicting"
+        : "unknown";
+  return {
+    ciStatus,
+    reviewState,
+    mergeable,
+    // Audit item 5: record the head commit so merge gating and the UI can
+    // tell "checked this commit" from "checked something older".
+    ...(raw.latestCommit?.oid !== undefined && raw.latestCommit.oid.length > 0
+      ? { latestCommit: raw.latestCommit.oid }
+      : {}),
+    unresolvedComments: 0,
+  };
+};
 
 function normalizeRepositoryCloneUrls(
   raw: Schema.Schema.Type<typeof RawGitHubRepositoryCloneUrlsSchema>,
@@ -388,6 +536,155 @@ export const make = Effect.gen(function* () {
               );
             }),
           ),
+        ),
+      ),
+    getChangeRequestStatus: (input) =>
+      execute({
+        cwd: input.cwd,
+        args: [
+          "pr",
+          "view",
+          input.reference,
+          "--json",
+          "mergeable,statusCheckRollup,reviews,reviewDecision,latestCommit",
+        ],
+      }).pipe(
+        Effect.map((result) => result.stdout.trim()),
+        Effect.flatMap((raw) =>
+          // Schema.fromJsonString folds a parse failure into the typed error
+          // channel; a bare JSON.parse would escape as a defect (REVIEW P1).
+          decodeRawGitHubChangeRequestStatus(raw).pipe(
+            Effect.map(normalizeChangeRequestStatus),
+            Effect.mapError(
+              (cause) =>
+                new GitHubChangeRequestStatusDecodeError({
+                  command: "gh",
+                  cwd: input.cwd,
+                  cause,
+                }),
+            ),
+          ),
+        ),
+        // Unresolved review-thread count comes from GraphQL; `gh pr view
+        // --json comments` returns conversation comments without
+        // isResolved/line, so the field was always 0 against real GitHub
+        // (REVIEW P1). Query reviewThreads and merge the count in. The
+        // owner/name come from gh's :owner/:repo magic variables, which gh
+        // expands from the cwd repository (fix-lane item 11: a literal
+        // repository(owner: "", name: "") made real GitHub return null and
+        // the gate a dead 0).
+        Effect.flatMap((status) =>
+          execute({
+            cwd: input.cwd,
+            args: [
+              "api",
+              "graphql",
+              "-f",
+              "query=query($pr: Int!, $owner: String!, $name: String!) { repository(owner: $owner, name: $name) { pullRequest(number: $pr) { reviewThreads(first: 100) { nodes { isResolved } } } } }",
+              "-F",
+              `pr=${input.reference.replace(/^#/, "")}`,
+              "-F",
+              "owner=:owner",
+              "-F",
+              "name=:repo",
+            ],
+          })
+            .pipe(
+              // Audit item 5: a failed reviewThreads query must NOT coerce
+              // to 0 — an unknown thread count would let the approveMerge
+              // gate pass an unresolved review. Fail the whole status read.
+              Effect.map((result) => {
+                const json = JSON.parse(result.stdout) as {
+                  data?: {
+                    repository?: {
+                      pullRequest?: {
+                        reviewThreads?: {
+                          nodes?: ReadonlyArray<{ isResolved?: boolean | null }>;
+                        };
+                      };
+                    };
+                  };
+                };
+                const threads = json.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
+                return threads.filter((thread) => thread.isResolved !== true).length;
+              }),
+              Effect.mapError(
+                (cause) =>
+                  new GitHubChangeRequestStatusDecodeError({
+                    command: "gh",
+                    cwd: input.cwd,
+                    cause,
+                  }),
+              ),
+            )
+            .pipe(Effect.map((unresolved) => ({ ...status, unresolvedComments: unresolved }))),
+        ),
+      ),
+    listUnresolvedReviewComments: (input) =>
+      execute({
+        cwd: input.cwd,
+        args: [
+          "api",
+          "graphql",
+          "-f",
+          "query=query($pr: Int!, $owner: String!, $name: String!) { repository(owner: $owner, name: $name) { pullRequest(number: $pr) { reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { body author { login } } } } } } } }",
+          "-F",
+          `pr=${input.reference.replace(/^#/, "")}`,
+          "-F",
+          "owner=:owner",
+          "-F",
+          "name=:repo",
+        ],
+      }).pipe(
+        Effect.map((result) => {
+          const json = JSON.parse(result.stdout) as {
+            data?: {
+              repository?: {
+                pullRequest?: {
+                  reviewThreads?: {
+                    nodes?: ReadonlyArray<{
+                      isResolved?: boolean | null;
+                      comments?: {
+                        nodes?: ReadonlyArray<{
+                          body?: string;
+                          author?: { login?: string } | null;
+                        }>;
+                      };
+                    }>;
+                  };
+                };
+              };
+            };
+          };
+          const threads = json.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
+          const limit = input.limit ?? 20;
+          const comments: GitHubReviewComment[] = [];
+          for (const thread of threads) {
+            if (thread.isResolved === true) {
+              continue;
+            }
+            const node = thread.comments?.nodes?.[0];
+            if (node?.body === undefined) {
+              continue;
+            }
+            const login = node.author?.login;
+            comments.push({
+              body: node.body,
+              ...(login !== undefined ? { author: login } : {}),
+            });
+            if (comments.length >= limit) {
+              break;
+            }
+          }
+          return comments;
+        }),
+        Effect.mapError(
+          (cause) =>
+            new GitHubReviewCommentsDecodeError({
+              command: "gh",
+              cwd: input.cwd,
+              cause,
+            }),
         ),
       ),
     getRepositoryCloneUrls: (input) =>

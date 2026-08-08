@@ -12,7 +12,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { it, assert } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 
-import * as AcpSchema from "./_generated/schema.gen.ts";
+import * as AcpSchema from "./schema.ts";
 import * as AcpProtocol from "./protocol.ts";
 import {
   encodeJsonl,
@@ -31,8 +31,8 @@ const SessionUpdateNotification = jsonRpcNotification(
   AcpSchema.SessionNotification,
 );
 const ElicitationCompleteNotification = jsonRpcNotification(
-  "session/elicitation/complete",
-  AcpSchema.ElicitationCompleteNotification,
+  "elicitation/complete",
+  AcpSchema.CompleteElicitationNotification,
 );
 const RequestPermissionRequest = jsonRpcRequest(
   "session/request_permission",
@@ -121,7 +121,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
           input,
           yield* encodeJsonl(ElicitationCompleteNotification, {
             jsonrpc: "2.0",
-            method: "session/elicitation/complete",
+            method: "elicitation/complete",
             params: {
               elicitationId: "elicitation-1",
             },

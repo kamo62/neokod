@@ -6,10 +6,11 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import { HttpClient } from "effect/unstable/http";
 
+import { effectiveAuthorization } from "../connection/model.ts";
 import type { PreparedConnection } from "../connection/model.ts";
 import { environmentEndpointUrl } from "../environment/endpoint.ts";
 import { executeEnvironmentHttpRequest, makeEnvironmentHttpApiClient } from "../rpc/http.ts";
-import { buildWslAuthorizationHeaders } from "./wslHttpAuthorization.ts";
+import { buildAuthorizationHeaders } from "./wslHttpAuthorization.ts";
 
 // Bounded so a pathologically slow endpoint cannot block the (cheaper) socket
 // fallback for long. The cached shell renders while this runs.
@@ -26,7 +27,7 @@ export const fetchEnvironmentShellSnapshot = Effect.fn(
 )(function* (input: { readonly prepared: PreparedConnection; readonly timeoutMs?: number }) {
   const requestUrl = environmentEndpointUrl(input.prepared.httpBaseUrl, "/api/orchestration/shell");
   const client = yield* makeEnvironmentHttpApiClient(input.prepared.httpBaseUrl);
-  const headers = yield* buildWslAuthorizationHeaders(input.prepared.wslBearerAuthorization);
+  const headers = yield* buildAuthorizationHeaders(effectiveAuthorization(input.prepared));
   return yield* executeEnvironmentHttpRequest(
     requestUrl,
     input.timeoutMs ?? DEFAULT_SHELL_SNAPSHOT_TIMEOUT_MS,

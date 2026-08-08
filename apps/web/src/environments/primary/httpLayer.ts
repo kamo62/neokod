@@ -10,8 +10,11 @@ export function makePrimaryEnvironmentHttpLayer() {
     Effect.sync(() => {
       const baseLayer = remoteHttpClientLayer(globalThis.fetch);
       const resolved = readPrimaryEnvironmentTarget();
-      if (resolved.transport._tag === "Loopback") return baseLayer;
-      const bearerToken = resolved.transport.token;
+      const bearerToken =
+        resolved.transport._tag === "Loopback"
+          ? resolved.transport.loopbackAuthToken
+          : resolved.transport.token;
+      if (bearerToken === undefined) return baseLayer;
       return Layer.effect(
         HttpClient.HttpClient,
         Effect.map(HttpClient.HttpClient, (client) =>

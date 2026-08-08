@@ -54,6 +54,7 @@ interface RightPanelTabsProps {
   onAddTerminal: () => void;
   onAddDiff: () => void;
   onAddFiles: () => void;
+  onPreloadSurface: (surface: "preview" | "diff" | "files") => void;
   browserAvailable: boolean;
   diffAvailable: boolean;
   filesAvailable: boolean;
@@ -81,12 +82,15 @@ function SurfaceMenuItem(props: {
   available: boolean;
   disabledReason?: string;
   onClick: () => void;
+  onIntent?: (() => void) | undefined;
   children: ReactNode;
 }) {
   const item = (
     <MenuItem
       className={!props.available ? "data-disabled:pointer-events-auto" : undefined}
       onClick={props.onClick}
+      onPointerEnter={props.onIntent}
+      onFocus={props.onIntent}
       disabled={!props.available}
     >
       {props.children}
@@ -101,6 +105,7 @@ function RightPanelEmptyState(props: {
   onAddTerminal: () => void;
   onAddDiff: () => void;
   onAddFiles: () => void;
+  onPreloadSurface: (surface: "preview" | "diff" | "files") => void;
   browserAvailable: boolean;
   diffAvailable: boolean;
   filesAvailable: boolean;
@@ -113,6 +118,7 @@ function RightPanelEmptyState(props: {
       available: props.browserAvailable,
       disabledReason: SURFACE_DISABLED_REASONS.browser,
       onClick: props.onAddBrowser,
+      onIntent: props.browserAvailable ? () => props.onPreloadSurface("preview") : undefined,
     },
     {
       label: "Terminal",
@@ -121,6 +127,7 @@ function RightPanelEmptyState(props: {
       available: true,
       disabledReason: null,
       onClick: props.onAddTerminal,
+      onIntent: undefined,
     },
     {
       label: "Files",
@@ -129,6 +136,7 @@ function RightPanelEmptyState(props: {
       available: props.filesAvailable,
       disabledReason: SURFACE_DISABLED_REASONS.files,
       onClick: props.onAddFiles,
+      onIntent: props.filesAvailable ? () => props.onPreloadSurface("files") : undefined,
     },
     {
       label: "Diff",
@@ -137,6 +145,7 @@ function RightPanelEmptyState(props: {
       available: props.diffAvailable,
       disabledReason: SURFACE_DISABLED_REASONS.diff,
       onClick: props.onAddDiff,
+      onIntent: props.diffAvailable ? () => props.onPreloadSurface("diff") : undefined,
     },
   ] as const;
 
@@ -167,6 +176,8 @@ function RightPanelEmptyState(props: {
                   key={action.label}
                   type="button"
                   onClick={action.onClick}
+                  onPointerEnter={action.onIntent}
+                  onFocus={action.onIntent}
                   className="flex min-h-28 w-full flex-col items-start rounded-lg border border-border/80 bg-card/40 p-4 text-left transition hover:border-border hover:bg-accent/60"
                 >
                   {content}
@@ -467,6 +478,9 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                     available={props.browserAvailable}
                     disabledReason={SURFACE_DISABLED_REASONS.browser}
                     onClick={props.onAddBrowser}
+                    onIntent={
+                      props.browserAvailable ? () => props.onPreloadSurface("preview") : undefined
+                    }
                   >
                     <Globe2 />
                     Browser
@@ -479,6 +493,9 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                     available={props.filesAvailable}
                     disabledReason={SURFACE_DISABLED_REASONS.files}
                     onClick={props.onAddFiles}
+                    onIntent={
+                      props.filesAvailable ? () => props.onPreloadSurface("files") : undefined
+                    }
                   >
                     <Files />
                     Files
@@ -487,6 +504,9 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                     available={props.diffAvailable}
                     disabledReason={SURFACE_DISABLED_REASONS.diff}
                     onClick={props.onAddDiff}
+                    onIntent={
+                      props.diffAvailable ? () => props.onPreloadSurface("diff") : undefined
+                    }
                   >
                     <FileDiff />
                     Diff
@@ -505,6 +525,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddTerminal={props.onAddTerminal}
             onAddDiff={props.onAddDiff}
             onAddFiles={props.onAddFiles}
+            onPreloadSurface={props.onPreloadSurface}
             browserAvailable={props.browserAvailable}
             diffAvailable={props.diffAvailable}
             filesAvailable={props.filesAvailable}

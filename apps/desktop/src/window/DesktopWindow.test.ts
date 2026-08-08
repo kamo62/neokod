@@ -360,6 +360,42 @@ describe("DesktopWindow", () => {
     }),
   );
 
+  it.effect("reloads once after a renderer crash, but not on a clean exit or a repeat crash", () =>
+    Effect.gen(function* () {
+      const fakeWindow = makeFakeBrowserWindow();
+      const createCount = yield* Ref.make(0);
+      const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+      const layer = makeTestLayer({
+        window: fakeWindow.window,
+        createCount,
+        mainWindow,
+      });
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+
+        const renderProcessGone = fakeWindow.webContentsListeners.get("render-process-gone");
+        if (!renderProcessGone) {
+          return yield* Effect.die("render-process-gone listener was not registered");
+        }
+
+        // A clean exit (explicit close/quit) needs no recovery.
+        renderProcessGone({}, { reason: "clean-exit", exitCode: 0 });
+        assert.equal(fakeWindow.reload.mock.calls.length, 0);
+
+        // A real crash reloads once.
+        renderProcessGone({}, { reason: "crashed", exitCode: 1 });
+        assert.equal(fakeWindow.reload.mock.calls.length, 1);
+
+        // The loop guard stops a second crash (e.g. the reloaded renderer
+        // crashing again) from reloading forever.
+        renderProcessGone({}, { reason: "crashed", exitCode: 1 });
+        assert.equal(fakeWindow.reload.mock.calls.length, 1);
+      }).pipe(Effect.provide(layer));
+    }),
+  );
+
   it("retries only transient failures for the development renderer", () => {
     assert.isTrue(
       DesktopWindow.isRetryableDevelopmentRendererLoadFailure({

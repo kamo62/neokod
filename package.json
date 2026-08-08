@@ -20,6 +20,7 @@
     "test:desktop-smoke": "vp run --filter @neokod/desktop smoke-test",
     "fmt": "vp fmt",
     "fmt:check": "vp fmt --check",
+    "check:legacy-branding": "node scripts/check-legacy-branding.mjs",
     "build:contracts": "vp run --filter @neokod/contracts build",
     "dist:desktop:artifact": "node scripts/build-desktop-artifact.ts",
     "dist:desktop:dmg": "node scripts/build-desktop-artifact.ts --platform mac --target dmg",

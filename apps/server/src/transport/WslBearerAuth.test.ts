@@ -5,7 +5,10 @@ import * as TestClock from "effect/testing/TestClock";
 import * as ServerConfig from "../config.ts";
 import * as WslBearerAuth from "./WslBearerAuth.ts";
 
-const makeAuth = (transport: "loopback" | "wsl-bearer" = "wsl-bearer") =>
+const makeAuth = (
+  transport: "loopback" | "wsl-bearer" = "wsl-bearer",
+  loopbackAuthToken?: string,
+) =>
   WslBearerAuth.make.pipe(
     Effect.provideService(
       ServerConfig.ServerConfig,
@@ -13,6 +16,7 @@ const makeAuth = (transport: "loopback" | "wsl-bearer" = "wsl-bearer") =>
         transport,
         host: transport === "loopback" ? "127.0.0.1" : "0.0.0.0",
         wslBearerToken: transport === "wsl-bearer" ? "desktop-wsl-bearer" : undefined,
+        loopbackAuthToken: transport === "loopback" ? loopbackAuthToken : undefined,
       } as ServerConfig.ServerConfig["Service"]),
     ),
   );
@@ -23,6 +27,33 @@ describe("WslBearerAuth", () => {
       const auth = yield* makeAuth("loopback");
       yield* auth.authorizeBearerHeader(undefined);
       yield* auth.consumeWebSocketTicket(null);
+    }),
+  );
+
+  it.effect("rejects missing and incorrect loopback bearer headers when a token is set", () =>
+    Effect.gen(function* () {
+      const auth = yield* makeAuth("loopback", "launch-token");
+      expect(yield* auth.authorizeBearerHeader(undefined).pipe(Effect.flip)).toMatchObject({
+        reason: "missing_credential",
+      });
+      expect(yield* auth.authorizeBearerHeader("Bearer wrong").pipe(Effect.flip)).toMatchObject({
+        reason: "invalid_credential",
+      });
+      yield* auth.authorizeBearerHeader("Bearer launch-token");
+    }),
+  );
+
+  it.effect("requires a WebSocket ticket on the authenticated loopback transport", () =>
+    Effect.gen(function* () {
+      const auth = yield* makeAuth("loopback", "launch-token");
+      expect(yield* auth.consumeWebSocketTicket(null).pipe(Effect.flip)).toMatchObject({
+        reason: "missing_websocket_ticket",
+      });
+      const issued = yield* auth.issueWebSocketTicket;
+      yield* auth.consumeWebSocketTicket(issued.ticket);
+      expect(yield* auth.consumeWebSocketTicket(issued.ticket).pipe(Effect.flip)).toMatchObject({
+        reason: "invalid_websocket_ticket",
+      });
     }),
   );
 

@@ -2,7 +2,11 @@ import * as NodeAssert from "node:assert/strict";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, it } from "vite-plus/test";
 
-import type { CopilotManagedClientEvidenceSettings } from "@neokod/contracts";
+import {
+  DEFAULT_ANALYTICS_SETTINGS,
+  type AnalyticsSettings,
+  type CopilotManagedClientEvidenceSettings,
+} from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
@@ -50,6 +54,11 @@ const makeSettings = (
   ...overrides,
 });
 
+const testConnection = (
+  settings: CopilotManagedClientEvidenceSettings,
+  analytics: AnalyticsSettings = DEFAULT_ANALYTICS_SETTINGS,
+) => testManagedClientEvidenceConnection(settings, analytics);
+
 const makeHttpLayer = (response: Response | ((post: CapturedPost) => Response)) => {
   const posts: Array<CapturedPost> = [];
   const layer = Layer.succeed(
@@ -77,7 +86,7 @@ describe("testManagedClientEvidenceConnection", () => {
   it("reports a typed failure without making a request when settings are incomplete", () =>
     Effect.gen(function* () {
       const { layer, posts } = makeHttpLayer(Response.json({ ok: true }));
-      const result = yield* testManagedClientEvidenceConnection(
+      const result = yield* testConnection(
         makeSettings({ governanceUrl: "", credential: "" }),
       ).pipe(Effect.provide(layer));
 
@@ -89,12 +98,54 @@ describe("testManagedClientEvidenceConnection", () => {
       NodeAssert.equal(posts.length, 0);
     }));
 
+  it("does not make a request for any backend when analytics is disabled", () =>
+    Effect.gen(function* () {
+      const posts: unknown[] = [];
+      const layer = Layer.succeed(
+        HttpClient.HttpClient,
+        HttpClient.make((request) => {
+          posts.push(request.url);
+          return Effect.succeed(
+            HttpClientResponse.fromWeb(request, Response.json({ status: "Ok" })),
+          );
+        }),
+      );
+      const analytics = { ...DEFAULT_ANALYTICS_SETTINGS, enabled: false };
+      const settings = [
+        makeSettings(),
+        makeSettings({
+          backend: "otlp",
+          governanceUrl: "",
+          credential: "",
+          otlpEndpoint: "https://otel.example.com",
+        }),
+        makeSettings({
+          backend: "posthog",
+          governanceUrl: "",
+          credential: "",
+          posthogHost: "https://us.i.posthog.com",
+          posthogApiKey: "phc_test",
+        }),
+      ] as const;
+
+      for (const setting of settings) {
+        const result = yield* testConnection(setting, analytics).pipe(
+          Effect.provide(Layer.mergeAll(layer, NodeServices.layer)),
+        );
+        NodeAssert.deepEqual(result, {
+          ok: false,
+          status: null,
+          message: "Analytics is disabled.",
+        });
+      }
+
+      NodeAssert.equal(posts.length, 0);
+    }));
+
   it("posts a synthetic session_start/session_end pair and reports success", () =>
     Effect.gen(function* () {
       const { layer, posts } = makeHttpLayer(Response.json({ ok: true }));
-      const result = yield* testManagedClientEvidenceConnection(makeSettings()).pipe(
-        Effect.provide(layer),
-      );
+      const result = yield* testConnection(makeSettings()).pipe(Effect.provide(layer));
 
       NodeAssert.equal(result.ok, true);
       NodeAssert.equal(result.status, 200);
@@ -121,9 +172,7 @@ describe("testManagedClientEvidenceConnection", () => {
   it("generates a fresh session id and event ids on every call", () =>
     Effect.gen(function* () {
       const { layer, posts } = makeHttpLayer(Response.json({ ok: true }));
-      const effect = testManagedClientEvidenceConnection(makeSettings()).pipe(
-        Effect.provide(layer),
-      );
+      const effect = testConnection(makeSettings()).pipe(Effect.provide(layer));
       yield* effect;
       yield* effect;
 
@@ -140,9 +189,7 @@ describe("testManagedClientEvidenceConnection", () => {
   it("reports a typed failure with the HTTP status on a non-2xx response", () =>
     Effect.gen(function* () {
       const { layer } = makeHttpLayer(new Response(null, { status: 401 }));
-      const result = yield* testManagedClientEvidenceConnection(makeSettings()).pipe(
-        Effect.provide(layer),
-      );
+      const result = yield* testConnection(makeSettings()).pipe(Effect.provide(layer));
 
       NodeAssert.deepEqual(result, {
         ok: false,
@@ -154,9 +201,7 @@ describe("testManagedClientEvidenceConnection", () => {
   it("never includes the credential in the result", () =>
     Effect.gen(function* () {
       const { layer } = makeHttpLayer(Response.json({ ok: true }));
-      const result = yield* testManagedClientEvidenceConnection(makeSettings()).pipe(
-        Effect.provide(layer),
-      );
+      const result = yield* testConnection(makeSettings()).pipe(Effect.provide(layer));
 
       NodeAssert.equal(result.message.includes("air_test"), false);
     }));
@@ -165,7 +210,7 @@ describe("testManagedClientEvidenceConnection", () => {
     Effect.gen(function* () {
       setKnownGithubLogin(undefined);
       const { layer, posts } = makeHttpLayer(Response.json({ ok: true }));
-      yield* testManagedClientEvidenceConnection(makeSettings()).pipe(Effect.provide(layer));
+      yield* testConnection(makeSettings()).pipe(Effect.provide(layer));
 
       NodeAssert.equal(posts.length, 1);
       const identity = posts[0]!.clientIdentity;
@@ -180,7 +225,7 @@ describe("testManagedClientEvidenceConnection", () => {
     Effect.gen(function* () {
       setKnownGithubLogin("octocat");
       const { layer, posts } = makeHttpLayer(Response.json({ ok: true }));
-      yield* testManagedClientEvidenceConnection(makeSettings()).pipe(Effect.provide(layer));
+      yield* testConnection(makeSettings()).pipe(Effect.provide(layer));
       setKnownGithubLogin(undefined);
 
       NodeAssert.equal(posts[0]!.clientIdentity?.github_login, "octocat");
@@ -194,9 +239,7 @@ describe("testManagedClientEvidenceConnection", () => {
           recorded_identity: { os_username: "jdoe", github_login: "jdoe-gh" },
         }),
       );
-      const result = yield* testManagedClientEvidenceConnection(makeSettings()).pipe(
-        Effect.provide(layer),
-      );
+      const result = yield* testConnection(makeSettings()).pipe(Effect.provide(layer));
 
       NodeAssert.deepEqual(result.recordedIdentity, {
         osUsername: "jdoe",
@@ -207,9 +250,7 @@ describe("testManagedClientEvidenceConnection", () => {
   it("omits recordedIdentity when the response body has no recorded_identity", () =>
     Effect.gen(function* () {
       const { layer } = makeHttpLayer(Response.json({ ok: true }));
-      const result = yield* testManagedClientEvidenceConnection(makeSettings()).pipe(
-        Effect.provide(layer),
-      );
+      const result = yield* testConnection(makeSettings()).pipe(Effect.provide(layer));
 
       NodeAssert.equal("recordedIdentity" in result, false);
     }));
@@ -224,9 +265,7 @@ describe("testManagedClientEvidenceConnection", () => {
           ),
         ),
       );
-      const result = yield* testManagedClientEvidenceConnection(makeSettings()).pipe(
-        Effect.provide(layer),
-      );
+      const result = yield* testConnection(makeSettings()).pipe(Effect.provide(layer));
 
       NodeAssert.equal(result.ok, true);
       NodeAssert.equal(result.recordedIdentity, undefined);
@@ -258,14 +297,39 @@ describe("testManagedClientEvidenceConnection (posthog backend)", () => {
           );
         }),
       );
-      const result = yield* testManagedClientEvidenceConnection(
-        makePostHogSettings({ posthogApiKey: "" }),
-      ).pipe(Effect.provide(Layer.mergeAll(layer, NodeServices.layer)));
+      const result = yield* testConnection(makePostHogSettings({ posthogApiKey: "" })).pipe(
+        Effect.provide(Layer.mergeAll(layer, NodeServices.layer)),
+      );
 
       NodeAssert.deepEqual(result, {
         ok: false,
         status: null,
         message: "Set a PostHog host and API key before testing.",
+      });
+      NodeAssert.equal(posts.length, 0);
+    }));
+
+  it("reports a typed failure without making a request when analytics is disabled", () =>
+    Effect.gen(function* () {
+      const posts: unknown[] = [];
+      const layer = Layer.succeed(
+        HttpClient.HttpClient,
+        HttpClient.make((request) => {
+          posts.push(request.url);
+          return Effect.succeed(
+            HttpClientResponse.fromWeb(request, Response.json({ status: "Ok" })),
+          );
+        }),
+      );
+      const result = yield* testConnection(makePostHogSettings(), {
+        ...DEFAULT_ANALYTICS_SETTINGS,
+        enabled: false,
+      }).pipe(Effect.provide(Layer.mergeAll(layer, NodeServices.layer)));
+
+      NodeAssert.deepEqual(result, {
+        ok: false,
+        status: null,
+        message: "Analytics is disabled.",
       });
       NodeAssert.equal(posts.length, 0);
     }));
@@ -284,7 +348,7 @@ describe("testManagedClientEvidenceConnection (posthog backend)", () => {
           );
         }),
       );
-      const result = yield* testManagedClientEvidenceConnection(makePostHogSettings()).pipe(
+      const result = yield* testConnection(makePostHogSettings()).pipe(
         Effect.provide(
           Layer.mergeAll(
             layer,
@@ -313,7 +377,7 @@ describe("testManagedClientEvidenceConnection (posthog backend)", () => {
           Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 401 }))),
         ),
       );
-      const result = yield* testManagedClientEvidenceConnection(makePostHogSettings()).pipe(
+      const result = yield* testConnection(makePostHogSettings()).pipe(
         Effect.provide(
           Layer.mergeAll(
             layer,
@@ -357,9 +421,9 @@ describe("testManagedClientEvidenceConnection (otlp backend)", () => {
           );
         }),
       );
-      const result = yield* testManagedClientEvidenceConnection(
-        makeOtlpSettings({ otlpEndpoint: "" }),
-      ).pipe(Effect.provide(layer));
+      const result = yield* testConnection(makeOtlpSettings({ otlpEndpoint: "" })).pipe(
+        Effect.provide(layer),
+      );
 
       NodeAssert.deepEqual(result, {
         ok: false,
@@ -387,9 +451,7 @@ describe("testManagedClientEvidenceConnection (otlp backend)", () => {
           );
         }),
       );
-      const result = yield* testManagedClientEvidenceConnection(makeOtlpSettings()).pipe(
-        Effect.provide(layer),
-      );
+      const result = yield* testConnection(makeOtlpSettings()).pipe(Effect.provide(layer));
 
       NodeAssert.equal(result.ok, true);
       NodeAssert.equal(result.status, 200);
@@ -419,9 +481,7 @@ describe("testManagedClientEvidenceConnection (otlp backend)", () => {
           Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 500 }))),
         ),
       );
-      const result = yield* testManagedClientEvidenceConnection(makeOtlpSettings()).pipe(
-        Effect.provide(layer),
-      );
+      const result = yield* testConnection(makeOtlpSettings()).pipe(Effect.provide(layer));
 
       NodeAssert.deepEqual(result, {
         ok: false,

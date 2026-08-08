@@ -26,6 +26,24 @@ const layer = GitHubCli.layer.pipe(
   ),
 );
 
+/**
+ * `listUnresolvedReviewComments` is optional on the `GitHubCli["Service"]`
+ * interface (fakes elsewhere don't need to implement it), but the real
+ * `GitHubCli.layer` under test here always provides it. This helper keeps
+ * the tests below type-safe without a non-null assertion at every call site.
+ */
+const listUnresolvedReviewComments = (
+  input: Parameters<NonNullable<GitHubCli.GitHubCli["Service"]["listUnresolvedReviewComments"]>>[0],
+) =>
+  Effect.gen(function* () {
+    const gh = yield* GitHubCli.GitHubCli;
+    const method = gh.listUnresolvedReviewComments;
+    if (method === undefined) {
+      return yield* Effect.die("listUnresolvedReviewComments not implemented");
+    }
+    return yield* method(input);
+  });
+
 afterEach(() => {
   mockRun.mockReset();
 });
@@ -208,6 +226,61 @@ describe("GitHubCli.layer", () => {
     }).pipe(Effect.provide(layer)),
   );
 
+  it.effect("keeps pull requests from gh versions without headRepository.nameWithOwner", () =>
+    // gh < 2.47 (e.g. Ubuntu-packaged 2.46) exports headRepository as
+    // {id, name} only. These entries must decode instead of being dropped,
+    // with nameWithOwner rebuilt from the owner login.
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify([
+              {
+                number: 2829,
+                title: "Codex turn mapping",
+                url: "https://github.com/pingdotgg/codething-mvp/pull/2829",
+                baseRefName: "main",
+                headRefName: "t3code/codex-turn-mapping",
+                state: "OPEN",
+                mergedAt: null,
+                isCrossRepository: false,
+                headRepository: {
+                  id: "R_kgDORLtfbQ",
+                  name: "codething-mvp",
+                },
+                headRepositoryOwner: {
+                  id: "MDEyOk9yZ2FuaXphdGlvbjg5MTkxNzI3",
+                  login: "pingdotgg",
+                },
+              },
+            ]),
+          ),
+        ),
+      );
+
+      const gh = yield* GitHubCli.GitHubCli;
+      const result = yield* gh.listOpenPullRequests({
+        cwd: "/repo",
+        headSelector: "t3code/codex-turn-mapping",
+      });
+
+      assert.deepStrictEqual(result, [
+        {
+          number: 2829,
+          title: "Codex turn mapping",
+          url: "https://github.com/pingdotgg/codething-mvp/pull/2829",
+          baseRefName: "main",
+          headRefName: "t3code/codex-turn-mapping",
+          state: "open",
+          isCrossRepository: false,
+          headRepositoryNameWithOwner: "pingdotgg/codething-mvp",
+          headRepositoryOwnerLogin: "pingdotgg",
+        },
+      ]);
+    }).pipe(Effect.provide(layer)),
+  );
+
   it.effect("reads repository clone URLs", () =>
     Effect.gen(function* () {
       mockRun.mockReturnValueOnce(
@@ -316,6 +389,322 @@ describe("GitHubCli.layer", () => {
       assert.strictEqual(error.cwd, "/repo");
       assert.strictEqual(error.cause, cause);
       assert.equal(error.message.includes(cause.detail), false);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("parses change request status with failing CI and changes requested", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({
+              mergeable: "MERGEABLE",
+              reviewDecision: "CHANGES_REQUESTED",
+              statusCheckRollup: [
+                { status: "COMPLETED", conclusion: "FAILURE" },
+                { status: "COMPLETED", conclusion: "SUCCESS" },
+              ],
+              reviews: [{ state: "CHANGES_REQUESTED" }],
+              latestCommit: { oid: "deadbeef0001" },
+            }),
+          ),
+        ),
+      );
+      // GraphQL reviewThreads follow-up: 1 unresolved thread.
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            JSON.stringify({
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      nodes: [{ isResolved: false }, { isResolved: true }],
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        ),
+      );
+
+      const gh = yield* GitHubCli.GitHubCli;
+      const result = yield* gh.getChangeRequestStatus({ cwd: "/repo", reference: "#42" });
+
+      assert.deepStrictEqual(result, {
+        ciStatus: "failure",
+        reviewState: "changes_requested",
+        mergeable: "mergeable",
+        unresolvedComments: 1,
+        latestCommit: "deadbeef0001",
+      });
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("queries reviewThreads with real owner/name variables, not empty literals", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({ mergeable: "MERGEABLE", statusCheckRollup: [], reviews: [] }),
+          ),
+        ),
+      );
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            JSON.stringify({
+              data: { repository: { pullRequest: { reviewThreads: { nodes: [] } } } },
+            }),
+          ),
+        ),
+      );
+
+      const gh = yield* GitHubCli.GitHubCli;
+      yield* gh.getChangeRequestStatus({ cwd: "/repo", reference: "#42" });
+
+      // Fix-lane item 11: the GraphQL query must not hard-code empty
+      // owner/name (real GitHub returns null and the gate becomes a dead 0),
+      // and gh's :owner/:repo magic variables must be passed through.
+      const graphqlCall = mockRun.mock.calls[1]?.[0];
+      assert.equal(graphqlCall?.args[0], "api");
+      assert.equal(graphqlCall?.args[1], "graphql");
+      const query = String(graphqlCall?.args[3] ?? "");
+      assert.equal(query.includes('repository(owner: "", name: "")'), false);
+      assert.equal(query.includes("$owner: String!, $name: String!"), true);
+      const args = (graphqlCall?.args ?? []).join(" ");
+      assert.equal(args.includes("-F owner=:owner"), true);
+      assert.equal(args.includes("-F name=:repo"), true);
+      assert.equal(args.includes("-F pr=42"), true);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("parses change request status with approved review and pending CI", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({
+              mergeable: "MERGEABLE",
+              reviewDecision: "APPROVED",
+              statusCheckRollup: [
+                { status: "IN_PROGRESS", conclusion: null },
+                { status: "COMPLETED", conclusion: "SUCCESS" },
+              ],
+              reviews: [{ state: "APPROVED" }],
+            }),
+          ),
+        ),
+      );
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            JSON.stringify({
+              data: { repository: { pullRequest: { reviewThreads: { nodes: [] } } } },
+            }),
+          ),
+        ),
+      );
+
+      const gh = yield* GitHubCli.GitHubCli;
+      const result = yield* gh.getChangeRequestStatus({ cwd: "/repo", reference: "#42" });
+
+      assert.deepStrictEqual(result, {
+        ciStatus: "pending",
+        reviewState: "approved",
+        mergeable: "mergeable",
+        unresolvedComments: 0,
+      });
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("maps no checks and no reviews to unknown/none", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({
+              mergeable: "UNKNOWN",
+              statusCheckRollup: [],
+              reviews: [],
+            }),
+          ),
+        ),
+      );
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            JSON.stringify({
+              data: { repository: { pullRequest: { reviewThreads: { nodes: [] } } } },
+            }),
+          ),
+        ),
+      );
+
+      const gh = yield* GitHubCli.GitHubCli;
+      const result = yield* gh.getChangeRequestStatus({ cwd: "/repo", reference: "#42" });
+
+      assert.deepStrictEqual(result, {
+        ciStatus: "unknown",
+        reviewState: "none",
+        mergeable: "unknown",
+        unresolvedComments: 0,
+      });
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("lists the opening comment of each unresolved review thread", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      nodes: [
+                        {
+                          isResolved: false,
+                          comments: {
+                            nodes: [
+                              { body: "Please add a null check.", author: { login: "rev1" } },
+                            ],
+                          },
+                        },
+                        {
+                          isResolved: true,
+                          comments: {
+                            nodes: [{ body: "Already fixed.", author: { login: "rev2" } }],
+                          },
+                        },
+                        {
+                          isResolved: false,
+                          comments: { nodes: [{ body: "This needs a test." }] },
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        ),
+      );
+
+      const result = yield* listUnresolvedReviewComments({ cwd: "/repo", reference: "#42" });
+
+      assert.deepStrictEqual(result, [
+        { body: "Please add a null check.", author: "rev1" },
+        { body: "This needs a test." },
+      ]);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("bounds the unresolved comment list to the given limit", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      nodes: Array.from({ length: 5 }, (_unused, index) => ({
+                        isResolved: false,
+                        comments: { nodes: [{ body: `comment ${index}` }] },
+                      })),
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        ),
+      );
+
+      const result = yield* listUnresolvedReviewComments({
+        cwd: "/repo",
+        reference: "#42",
+        limit: 2,
+      });
+
+      assert.deepStrictEqual(result, [{ body: "comment 0" }, { body: "comment 1" }]);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("queries unresolved comments with real owner/name variables, not empty literals", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({
+              data: { repository: { pullRequest: { reviewThreads: { nodes: [] } } } },
+            }),
+          ),
+        ),
+      );
+
+      yield* listUnresolvedReviewComments({ cwd: "/repo", reference: "#42" });
+
+      const graphqlCall = mockRun.mock.calls[0]?.[0];
+      assert.equal(graphqlCall?.args[0], "api");
+      assert.equal(graphqlCall?.args[1], "graphql");
+      const query = String(graphqlCall?.args[3] ?? "");
+      assert.equal(query.includes('repository(owner: "", name: "")'), false);
+      assert.equal(query.includes("$owner: String!, $name: String!"), true);
+      const args = (graphqlCall?.args ?? []).join(" ");
+      assert.equal(args.includes("-F owner=:owner"), true);
+      assert.equal(args.includes("-F name=:repo"), true);
+      assert.equal(args.includes("-F pr=42"), true);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("fails with a typed error when the reviewThreads query fails", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(Effect.fail(new Error("gh api graphql failed") as never));
+
+      const result = yield* Effect.result(
+        listUnresolvedReviewComments({ cwd: "/repo", reference: "#42" }),
+      );
+      expect(result._tag).toBe("Failure");
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("records latestCommit and fails when the reviewThreads query fails", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({
+              mergeable: "MERGEABLE",
+              statusCheckRollup: [],
+              reviews: [],
+              latestCommit: { oid: "abc123def456" },
+            }),
+          ),
+        ),
+      );
+      // The follow-up GraphQL query fails: the whole status read must fail
+      // (audit item 5 — an unknown thread count must not pass the merge gate
+      // as 0).
+      mockRun.mockReturnValueOnce(Effect.fail(new Error("gh api graphql failed") as never));
+
+      const gh = yield* GitHubCli.GitHubCli;
+      const result = yield* Effect.result(
+        gh.getChangeRequestStatus({ cwd: "/repo", reference: "#42" }),
+      );
+      expect(result._tag).toBe("Failure");
     }).pipe(Effect.provide(layer)),
   );
 });

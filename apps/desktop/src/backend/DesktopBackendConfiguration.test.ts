@@ -116,7 +116,7 @@ const withHarness = <A, E, R>(
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
 
 describe("DesktopBackendConfiguration", () => {
-  it.effect("resolvePrimary produces an unauthenticated loopback bootstrap", () =>
+  it.effect("resolvePrimary produces an authenticated loopback bootstrap", () =>
     withHarness(
       Effect.gen(function* () {
         const environment = yield* DesktopEnvironment.DesktopEnvironment;
@@ -144,7 +144,10 @@ describe("DesktopBackendConfiguration", () => {
         assert.equal(first.bootstrap.host, "127.0.0.1");
         assert.equal(first.bootstrap.neokodHome, environment.baseDir);
         assert.notProperty(first.bootstrap, "wslBearerToken");
-        assert.deepEqual(second.bootstrap, first.bootstrap);
+        assert.typeOf(first.bootstrap.loopbackAuthToken, "string");
+        assert.equal(first.bootstrap.loopbackAuthToken.length > 0, true);
+        // A fresh per-launch token is minted on each resolve (plan WS-A2).
+        assert.notEqual(second.bootstrap.loopbackAuthToken, first.bootstrap.loopbackAuthToken);
       }),
     ),
   );

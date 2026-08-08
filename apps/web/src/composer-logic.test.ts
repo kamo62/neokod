@@ -380,10 +380,6 @@ describe("resolveSlashCommandAction", () => {
     });
   });
 
-  it("opens Mission Control for /mission", () => {
-    expect(resolveSlashCommandAction("mission")).toEqual({ kind: "open-mission-control" });
-  });
-
   it("opens the goal rail popover for /goal", () => {
     expect(resolveSlashCommandAction("goal")).toEqual({
       kind: "open-rail-popover",

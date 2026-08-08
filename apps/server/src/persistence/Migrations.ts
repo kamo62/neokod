@@ -47,6 +47,11 @@ import Migration0031 from "./Migrations/031_AuthAuthorizationScopes.ts";
 import Migration0032 from "./Migrations/032_AuthPairingProofKeyThumbprint.ts";
 import Migration0033 from "./Migrations/033_ProjectionThreadsGoal.ts";
 import Migration0034 from "./Migrations/034_ProjectionThreadsWorkerCount.ts";
+import Migration0035 from "./Migrations/035_SymphonyWorkItems.ts";
+import Migration0036 from "./Migrations/036_SymphonyRunsAndEvidence.ts";
+import Migration0037 from "./Migrations/037_SymphonyAttentionAndState.ts";
+import Migration0038 from "./Migrations/038_SymphonyWorkspaceOwnership.ts";
+import Migration0039 from "./Migrations/039_SymphonyPauseScopes.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -93,6 +98,11 @@ export const migrationEntries = [
   [32, "AuthPairingProofKeyThumbprint", Migration0032],
   [33, "ProjectionThreadsGoal", Migration0033],
   [34, "ProjectionThreadsWorkerCount", Migration0034],
+  [35, "SymphonyWorkItems", Migration0035],
+  [36, "SymphonyRunsAndEvidence", Migration0036],
+  [37, "SymphonyAttentionAndState", Migration0037],
+  [38, "SymphonyWorkspaceOwnership", Migration0038],
+  [39, "SymphonyPauseScopes", Migration0039],
 ] as const;
 
 export const makeMigrationLoader = (throughId?: number) =>

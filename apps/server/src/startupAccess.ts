@@ -7,6 +7,7 @@ import { ServerConfig } from "./config.ts";
 
 export interface HeadlessServeAccessInfo {
   readonly connectionString: string;
+  readonly loopbackAuthToken: string | undefined;
 }
 
 type NetworkInterfacesMap = ReturnType<typeof NodeOS.networkInterfaces>;
@@ -85,8 +86,17 @@ export const resolveListeningPort = (address: unknown, fallbackPort: number): nu
   return fallbackPort;
 };
 
-export const formatHeadlessServeOutput = (accessInfo: HeadlessServeAccessInfo): string =>
-  ["Neokod server is ready.", `Local URL: ${accessInfo.connectionString}`, ""].join("\n");
+export const formatHeadlessServeOutput = (accessInfo: HeadlessServeAccessInfo): string => {
+  const lines = ["Neokod server is ready.", `Local URL: ${accessInfo.connectionString}`];
+  if (accessInfo.loopbackAuthToken !== undefined) {
+    lines.push(`Launch token: ${accessInfo.loopbackAuthToken}`);
+    lines.push(
+      "The web client authenticates with this token for this launch; it is not persisted.",
+    );
+  }
+  lines.push("");
+  return lines.join("\n");
+};
 
 export const issueHeadlessServeAccessInfo = Effect.fn("issueHeadlessServeAccessInfo")(function* () {
   const serverConfig = yield* ServerConfig;
@@ -95,5 +105,8 @@ export const issueHeadlessServeAccessInfo = Effect.fn("issueHeadlessServeAccessI
     serverConfig.host,
     resolveListeningPort(httpServer.address, serverConfig.port),
   );
-  return { connectionString } satisfies HeadlessServeAccessInfo;
+  return {
+    connectionString,
+    loopbackAuthToken: serverConfig.loopbackAuthToken,
+  } satisfies HeadlessServeAccessInfo;
 });

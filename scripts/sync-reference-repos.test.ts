@@ -233,7 +233,7 @@ it.layer(NodeServices.layer)("sync-reference-repos", (it) => {
         assert.fail(`Unexpected error: ${error._tag}`);
       }
       assert.equal(error.repoId, "missing");
-      assert.deepStrictEqual(error.expectedRepoIds, ["effect-smol"]);
+      assert.deepStrictEqual(error.expectedRepoIds, ["effect-smol", "symphony"]);
       assert.ok(!("cause" in error));
     }),
   );

@@ -13,10 +13,13 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { APP_BASE_NAME, APP_DISPLAY_NAME, APP_STAGE_LABEL } from "../branding";
 import { resolveServerBackedAppDisplayName } from "../branding.logic";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
+import { isChunkLoadError, recoverByReload } from "../chunkLoadRecovery";
+import { AnalyticsFirstRunNotice } from "../components/AnalyticsFirstRunNotice";
 import { CommandPalette } from "../components/CommandPalette";
-import { MissionControlHost } from "../components/MissionControl";
 import { ProviderUpdateLaunchNotification } from "../components/ProviderUpdateLaunchNotification";
+import { SessionExpiredBanner } from "../components/SessionExpiredBanner";
 import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToastCoordinator";
+import { ThreadSwitcherOverlay } from "../components/ThreadSwitcherOverlay";
 import { ActivityNotificationCoordinator } from "../notifications/ActivityNotificationCoordinator";
 import { Button } from "../components/ui/button";
 import {
@@ -83,11 +86,13 @@ function RootRouteView() {
       <AnchoredToastProvider>
         <DocumentTitleSync />
         <TracingBootstrap />
+        <SessionExpiredBanner />
+        <ThreadSwitcherOverlay />
         <SlowRpcRequestToastCoordinator />
         <ActivityNotificationCoordinator />
+        <AnalyticsFirstRunNotice />
         <EventRouter />
         <ProviderUpdateLaunchNotification />
-        <MissionControlHost />
         {appShell}
       </AnchoredToastProvider>
     </ToastProvider>
@@ -114,6 +119,27 @@ function DocumentTitleSync() {
 function RootRouteErrorView({ error, reset }: ErrorComponentProps) {
   const message = errorMessage(error);
   const details = errorDetails(error);
+  const chunkLoadFailure = error instanceof Error && isChunkLoadError(error);
+  const [recoveringFromChunkLoadFailure, setRecoveringFromChunkLoadFailure] =
+    useState(chunkLoadFailure);
+
+  useEffect(() => {
+    if (!chunkLoadFailure) return;
+    if (!recoverByReload()) {
+      // Already tried once this session and the error persists (a genuinely
+      // broken deploy, not a stale chunk) — fall through to the normal error
+      // UI below instead of leaving the user on "Updating..." forever.
+      setRecoveringFromChunkLoadFailure(false);
+    }
+  }, [chunkLoadFailure]);
+
+  if (recoveringFromChunkLoadFailure) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
+        <p className="text-sm text-muted-foreground">Updating to the latest version…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10 text-foreground sm:px-6">

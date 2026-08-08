@@ -18,7 +18,59 @@ const LEGACY_PERSISTED_STATE_KEYS = [
   "codething:renderer-state:v1",
 ] as const;
 
+export type OperatingMode = "work" | "symphony";
+
+// Chat typography: bounds and defaults for the General-settings reading
+// controls that drive index.css's --font-size-chat/--line-height-chat and
+// the chat column's --chat-max-width.
+export const CHAT_FONT_SIZE_MIN = 13;
+export const CHAT_FONT_SIZE_MAX = 20;
+export const DEFAULT_CHAT_FONT_SIZE = 16;
+
+export const CHAT_LINE_HEIGHT_MIN = 1.3;
+export const CHAT_LINE_HEIGHT_MAX = 1.8;
+export const DEFAULT_CHAT_LINE_HEIGHT = 1.5;
+
+export const CHAT_COLUMN_WIDTH_MIN = 40;
+export const CHAT_COLUMN_WIDTH_MAX = 64;
+export const DEFAULT_CHAT_COLUMN_WIDTH = 48;
+
+// Appearance master knobs: bounds and defaults for the Appearance-settings
+// UI scale and corner radius controls that drive index.css's --ui-scale and
+// --radius-base. Independent of the chat typography knobs above — this pair
+// scales chrome density, not chat reading text.
+export const UI_SCALE_MIN = 0.9;
+export const UI_SCALE_MAX = 1.25;
+export const DEFAULT_UI_SCALE = 1;
+
+export const RADIUS_BASE_MIN = 0;
+export const RADIUS_BASE_MAX = 14;
+export const DEFAULT_RADIUS_BASE = 10;
+
+export interface ModeViewSnapshot {
+  route: string;
+  selection: string | null;
+  filters: Record<string, string>;
+  panelState: Record<string, boolean>;
+}
+
+export type ModeViewSnapshots = Record<OperatingMode, ModeViewSnapshot>;
+
+export interface PersistedModeViewSnapshot {
+  route?: string;
+  selection?: string | null;
+  filters?: Record<string, string>;
+  panelState?: Record<string, boolean>;
+}
+
 export interface PersistedUiState {
+  operatingMode?: OperatingMode;
+  viewSnapshotsByMode?: Partial<Record<OperatingMode, PersistedModeViewSnapshot>>;
+  chatFontSize?: number;
+  chatLineHeight?: number;
+  chatColumnWidth?: number;
+  uiScale?: number;
+  radiusBase?: number;
   sidebarView?: "threads" | "workspace";
   sidebarViewMigratedToWorkspace?: boolean;
   myWorkCollapsed?: boolean;
@@ -44,6 +96,16 @@ export interface UiThreadState {
 }
 
 export interface UiState extends UiProjectState, UiThreadState {
+  // Optional here so pure-store callers can continue constructing the legacy
+  // state shape while persisted reads and the Zustand store always fill these
+  // fields with defaults.
+  operatingMode?: OperatingMode;
+  viewSnapshotsByMode?: ModeViewSnapshots;
+  chatFontSize?: number;
+  chatLineHeight?: number;
+  chatColumnWidth?: number;
+  uiScale?: number;
+  radiusBase?: number;
   sidebarView: "threads" | "workspace";
   sidebarViewMigratedToWorkspace: true;
   myWorkCollapsed: boolean;
@@ -56,6 +118,26 @@ export interface UiState extends UiProjectState, UiThreadState {
 }
 
 const initialState: UiState = {
+  operatingMode: "work",
+  viewSnapshotsByMode: {
+    work: {
+      route: "/",
+      selection: null,
+      filters: {},
+      panelState: {},
+    },
+    symphony: {
+      route: "/symphony",
+      selection: null,
+      filters: {},
+      panelState: {},
+    },
+  },
+  chatFontSize: DEFAULT_CHAT_FONT_SIZE,
+  chatLineHeight: DEFAULT_CHAT_LINE_HEIGHT,
+  chatColumnWidth: DEFAULT_CHAT_COLUMN_WIDTH,
+  uiScale: DEFAULT_UI_SCALE,
+  radiusBase: DEFAULT_RADIUS_BASE,
   sidebarView: "workspace",
   sidebarViewMigratedToWorkspace: true,
   myWorkCollapsed: false,
@@ -71,6 +153,23 @@ const initialState: UiState = {
 const LEGACY_PROJECT_CWD_PREFERENCE_PREFIX = "legacy-project-cwd:";
 const LEGACY_PROJECT_EXPANSION_DEFAULT_KEY = "legacy-project-expansion-default";
 let legacyKeysCleanedUp = false;
+
+function createDefaultModeViewSnapshots(): ModeViewSnapshots {
+  return {
+    work: {
+      route: "/",
+      selection: null,
+      filters: {},
+      panelState: {},
+    },
+    symphony: {
+      route: "/symphony",
+      selection: null,
+      filters: {},
+      panelState: {},
+    },
+  };
+}
 
 export function legacyProjectCwdPreferenceKey(cwd: string): string {
   return `${LEGACY_PROJECT_CWD_PREFERENCE_PREFIX}${normalizeProjectPathForComparison(cwd)}`;
@@ -94,6 +193,18 @@ function sanitizeBooleanRecord(value: unknown): Record<string, boolean> {
   return Object.fromEntries(
     Object.entries(value).filter(
       (entry): entry is [string, boolean] => entry[0].length > 0 && typeof entry[1] === "boolean",
+    ),
+  );
+}
+
+function sanitizeStringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string] =>
+        entry[0].length > 0 && typeof entry[1] === "string" && entry[1].length > 0,
     ),
   );
 }
@@ -125,6 +236,58 @@ function sanitizeMyWorkDismissed(value: unknown): Record<string, string> {
   );
 }
 
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function sanitizeBoundedNumber(value: unknown, min: number, max: number, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? clampNumber(value, min, max)
+    : fallback;
+}
+
+function isSymphonyRoutePath(route: string): boolean {
+  const pathname = route.split(/[?#]/, 1)[0] ?? route;
+  return pathname === "/symphony" || pathname.startsWith("/symphony/");
+}
+
+function sanitizeModeViewSnapshot(value: unknown, fallback: ModeViewSnapshot): ModeViewSnapshot {
+  if (!value || typeof value !== "object") {
+    return fallback;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const route = candidate.route;
+  const selection = candidate.selection;
+  return {
+    route:
+      typeof route === "string" && route.startsWith("/") && route.length > 0
+        ? route
+        : fallback.route,
+    selection:
+      selection === null
+        ? null
+        : typeof selection === "string" && selection.length > 0
+          ? selection
+          : fallback.selection,
+    filters: sanitizeStringRecord(candidate.filters),
+    panelState: sanitizeBooleanRecord(candidate.panelState),
+  };
+}
+
+function sanitizeModeViewSnapshots(value: unknown): ModeViewSnapshots {
+  const defaults = createDefaultModeViewSnapshots();
+  if (!value || typeof value !== "object") {
+    return defaults;
+  }
+
+  const candidates = value as Record<string, unknown>;
+  return {
+    work: sanitizeModeViewSnapshot(candidates.work, defaults.work),
+    symphony: sanitizeModeViewSnapshot(candidates.symphony, defaults.symphony),
+  };
+}
+
 export function parsePersistedState(parsed: PersistedUiState): UiState {
   const projectExpandedById =
     parsed.projectExpandedById === undefined
@@ -148,8 +311,36 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
     parsed.projectOrder === undefined
       ? sanitizeStringArray(parsed.projectOrderCwds).map(legacyProjectCwdPreferenceKey)
       : sanitizeStringArray(parsed.projectOrder);
+  const viewSnapshotsByMode = sanitizeModeViewSnapshots(parsed.viewSnapshotsByMode);
 
   return {
+    operatingMode: parsed.operatingMode === "symphony" ? "symphony" : "work",
+    viewSnapshotsByMode,
+    chatFontSize: sanitizeBoundedNumber(
+      parsed.chatFontSize,
+      CHAT_FONT_SIZE_MIN,
+      CHAT_FONT_SIZE_MAX,
+      DEFAULT_CHAT_FONT_SIZE,
+    ),
+    chatLineHeight: sanitizeBoundedNumber(
+      parsed.chatLineHeight,
+      CHAT_LINE_HEIGHT_MIN,
+      CHAT_LINE_HEIGHT_MAX,
+      DEFAULT_CHAT_LINE_HEIGHT,
+    ),
+    chatColumnWidth: sanitizeBoundedNumber(
+      parsed.chatColumnWidth,
+      CHAT_COLUMN_WIDTH_MIN,
+      CHAT_COLUMN_WIDTH_MAX,
+      DEFAULT_CHAT_COLUMN_WIDTH,
+    ),
+    uiScale: sanitizeBoundedNumber(parsed.uiScale, UI_SCALE_MIN, UI_SCALE_MAX, DEFAULT_UI_SCALE),
+    radiusBase: sanitizeBoundedNumber(
+      parsed.radiusBase,
+      RADIUS_BASE_MIN,
+      RADIUS_BASE_MAX,
+      DEFAULT_RADIUS_BASE,
+    ),
     // Earlier releases persisted the former default ("threads") for every
     // user. Move that stale default once, while retaining choices made after
     // this migration.
@@ -247,9 +438,17 @@ export function persistState(state: UiState): void {
         return Object.keys(nextTurns).length > 0 ? [[threadId, nextTurns]] : [];
       }),
     );
+    const viewSnapshotsByMode = state.viewSnapshotsByMode ?? createDefaultModeViewSnapshots();
     window.localStorage.setItem(
       PERSISTED_STATE_KEY,
       JSON.stringify({
+        operatingMode: state.operatingMode ?? "work",
+        viewSnapshotsByMode,
+        chatFontSize: state.chatFontSize ?? DEFAULT_CHAT_FONT_SIZE,
+        chatLineHeight: state.chatLineHeight ?? DEFAULT_CHAT_LINE_HEIGHT,
+        chatColumnWidth: state.chatColumnWidth ?? DEFAULT_CHAT_COLUMN_WIDTH,
+        uiScale: state.uiScale ?? DEFAULT_UI_SCALE,
+        radiusBase: state.radiusBase ?? DEFAULT_RADIUS_BASE,
         sidebarView: state.sidebarView,
         sidebarViewMigratedToWorkspace: state.sidebarViewMigratedToWorkspace,
         myWorkCollapsed: state.myWorkCollapsed,
@@ -408,6 +607,97 @@ export function setSidebarView(state: UiState, sidebarView: UiState["sidebarView
   return state.sidebarView === sidebarView ? state : { ...state, sidebarView };
 }
 
+export function setOperatingMode(state: UiState, operatingMode: OperatingMode): UiState {
+  return state.operatingMode === operatingMode ? state : { ...state, operatingMode };
+}
+
+export function setChatFontSize(state: UiState, chatFontSize: number): UiState {
+  const next = clampNumber(chatFontSize, CHAT_FONT_SIZE_MIN, CHAT_FONT_SIZE_MAX);
+  return state.chatFontSize === next ? state : { ...state, chatFontSize: next };
+}
+
+export function setChatLineHeight(state: UiState, chatLineHeight: number): UiState {
+  const next = clampNumber(chatLineHeight, CHAT_LINE_HEIGHT_MIN, CHAT_LINE_HEIGHT_MAX);
+  return state.chatLineHeight === next ? state : { ...state, chatLineHeight: next };
+}
+
+export function setChatColumnWidth(state: UiState, chatColumnWidth: number): UiState {
+  const next = clampNumber(chatColumnWidth, CHAT_COLUMN_WIDTH_MIN, CHAT_COLUMN_WIDTH_MAX);
+  return state.chatColumnWidth === next ? state : { ...state, chatColumnWidth: next };
+}
+
+export function setUiScale(state: UiState, uiScale: number): UiState {
+  const next = clampNumber(uiScale, UI_SCALE_MIN, UI_SCALE_MAX);
+  return state.uiScale === next ? state : { ...state, uiScale: next };
+}
+
+export function setRadiusBase(state: UiState, radiusBase: number): UiState {
+  const next = clampNumber(radiusBase, RADIUS_BASE_MIN, RADIUS_BASE_MAX);
+  return state.radiusBase === next ? state : { ...state, radiusBase: next };
+}
+
+function recordsEqual<T extends string | boolean>(
+  left: Readonly<Record<string, T>>,
+  right: Readonly<Record<string, T>>,
+): boolean {
+  const leftEntries = Object.entries(left);
+  const rightEntries = Object.entries(right);
+  if (leftEntries.length !== rightEntries.length) {
+    return false;
+  }
+  return leftEntries.every(([key, value]) => right[key] === value);
+}
+
+export function setModeViewSnapshot(
+  state: UiState,
+  mode: OperatingMode,
+  snapshot: Partial<ModeViewSnapshot>,
+): UiState {
+  const currentSnapshots = state.viewSnapshotsByMode ?? createDefaultModeViewSnapshots();
+  const currentSnapshot = currentSnapshots[mode];
+  const nextSnapshot: ModeViewSnapshot = {
+    route:
+      typeof snapshot.route === "string" && snapshot.route.startsWith("/")
+        ? snapshot.route
+        : currentSnapshot.route,
+    selection: snapshot.selection !== undefined ? snapshot.selection : currentSnapshot.selection,
+    filters: snapshot.filters ?? currentSnapshot.filters,
+    panelState: snapshot.panelState ?? currentSnapshot.panelState,
+  };
+
+  if (
+    currentSnapshot.route === nextSnapshot.route &&
+    currentSnapshot.selection === nextSnapshot.selection &&
+    recordsEqual(currentSnapshot.filters, nextSnapshot.filters) &&
+    recordsEqual(currentSnapshot.panelState, nextSnapshot.panelState)
+  ) {
+    return state;
+  }
+
+  return {
+    ...state,
+    viewSnapshotsByMode: {
+      ...currentSnapshots,
+      [mode]: nextSnapshot,
+    },
+  };
+}
+
+export function resolveOperatingModeRoute(mode: OperatingMode, snapshot: ModeViewSnapshot): string {
+  const isValidRoute =
+    mode === "symphony"
+      ? isSymphonyRoutePath(snapshot.route)
+      : !isSymphonyRoutePath(snapshot.route);
+  if (isValidRoute) {
+    return snapshot.route;
+  }
+  return mode === "symphony" ? "/symphony" : "/";
+}
+
+export function isSymphonyRoute(route: string): boolean {
+  return isSymphonyRoutePath(route);
+}
+
 export function toggleMyWorkCollapsed(state: UiState): UiState {
   return { ...state, myWorkCollapsed: !state.myWorkCollapsed };
 }
@@ -517,7 +807,21 @@ export function reorderProjects(
 }
 
 interface UiStateStore extends UiState {
+  operatingMode: OperatingMode;
+  viewSnapshotsByMode: ModeViewSnapshots;
+  chatFontSize: number;
+  chatLineHeight: number;
+  chatColumnWidth: number;
+  uiScale: number;
+  radiusBase: number;
   setSidebarView: (sidebarView: UiState["sidebarView"]) => void;
+  setOperatingMode: (operatingMode: OperatingMode) => void;
+  setModeViewSnapshot: (mode: OperatingMode, snapshot: Partial<ModeViewSnapshot>) => void;
+  setChatFontSize: (chatFontSize: number) => void;
+  setChatLineHeight: (chatLineHeight: number) => void;
+  setChatColumnWidth: (chatColumnWidth: number) => void;
+  setUiScale: (uiScale: number) => void;
+  setRadiusBase: (radiusBase: number) => void;
   toggleMyWorkCollapsed: () => void;
   dismissMyWorkThread: (threadKey: string, signature: string) => void;
   dismissMyWorkThreads: (dismissed: Readonly<Record<string, string>>) => void;
@@ -536,9 +840,27 @@ interface UiStateStore extends UiState {
   ) => void;
 }
 
+const persistedState = readPersistedState();
+
 export const useUiStateStore = create<UiStateStore>((set) => ({
-  ...readPersistedState(),
+  ...persistedState,
+  operatingMode: persistedState.operatingMode ?? "work",
+  viewSnapshotsByMode: persistedState.viewSnapshotsByMode ?? createDefaultModeViewSnapshots(),
+  chatFontSize: persistedState.chatFontSize ?? DEFAULT_CHAT_FONT_SIZE,
+  chatLineHeight: persistedState.chatLineHeight ?? DEFAULT_CHAT_LINE_HEIGHT,
+  chatColumnWidth: persistedState.chatColumnWidth ?? DEFAULT_CHAT_COLUMN_WIDTH,
+  uiScale: persistedState.uiScale ?? DEFAULT_UI_SCALE,
+  radiusBase: persistedState.radiusBase ?? DEFAULT_RADIUS_BASE,
   setSidebarView: (sidebarView) => set((state) => setSidebarView(state, sidebarView)),
+  setOperatingMode: (operatingMode) => set((state) => setOperatingMode(state, operatingMode)),
+  setModeViewSnapshot: (mode, snapshot) =>
+    set((state) => setModeViewSnapshot(state, mode, snapshot)),
+  setChatFontSize: (chatFontSize) => set((state) => setChatFontSize(state, chatFontSize)),
+  setChatLineHeight: (chatLineHeight) => set((state) => setChatLineHeight(state, chatLineHeight)),
+  setChatColumnWidth: (chatColumnWidth) =>
+    set((state) => setChatColumnWidth(state, chatColumnWidth)),
+  setUiScale: (uiScale) => set((state) => setUiScale(state, uiScale)),
+  setRadiusBase: (radiusBase) => set((state) => setRadiusBase(state, radiusBase)),
   toggleMyWorkCollapsed: () => set(toggleMyWorkCollapsed),
   dismissMyWorkThread: (threadKey, signature) =>
     set((state) => dismissMyWorkThread(state, threadKey, signature)),

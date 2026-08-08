@@ -14,18 +14,30 @@
 import { HostProcessArchitecture, HostProcessPlatform } from "@neokod/shared/hostProcess";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
+import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
+import * as Stream from "effect/Stream";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 
 import packageJson from "../../package.json" with { type: "json" };
 import * as ServerConfig from "../config.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
+import { DEFAULT_ANALYTICS_SETTINGS, type AnalyticsSettings } from "@neokod/contracts";
 import { getTelemetryIdentifier } from "./Identify.ts";
+import { drainAnalyticsErrorEvents } from "./errorEvents.ts";
+
+/** Per-error-name delivery cap: at most this many `server.error` events per
+ * name within one window, so an error loop cannot flood PostHog. */
+const ERROR_EVENT_WINDOW_MILLIS = 3_600_000;
+const MAX_ERROR_EVENTS_PER_NAME_PER_WINDOW = 25;
 
 interface BufferedAnalyticsEvent {
   readonly event: string;
@@ -79,36 +91,64 @@ interface SendFailureReport {
   readonly batchSize: number;
 }
 
-const telemetryEnv = <A>(
-  name: string,
-  legacyName: string,
-  read: (key: string) => Config.Config<A>,
-) => read(name).pipe(Config.orElse(() => read(legacyName)));
+// The `T3CODE_*` fallbacks that used to sit alongside each `NEOKOD_*` name are
+// gone. They were inherited from upstream and, for the key and host in
+// particular, were a live path back to upstream's PostHog project: setting
+// `T3CODE_POSTHOG_KEY` would have redirected this fork's telemetry there.
+// Neokod never touches that instance, so the fallbacks are removed rather than
+// deprecated.
 
 const TelemetryEnvConfig = Config.all({
-  posthogKey: telemetryEnv("NEOKOD_POSTHOG_KEY", "T3CODE_POSTHOG_KEY", Config.string).pipe(
-    Config.withDefault("phc_XOWci4oZP4VvLiEyrFqkFjP4CZn55mjYYBMREK5Wd6m"),
+  /**
+   * Neokod's own PostHog project key, on the EU cloud.
+   *
+   * This previously defaulted to the upstream T3 Code project key, inherited
+   * verbatim when the fork rebranded the env var names, so every install
+   * reported into upstream's analytics. Replaced with Neokod's own project.
+   *
+   * `phc_` keys are PostHog public project keys, designed to be shipped in
+   * client code, so hardcoding one here is not a secret leak.
+   */
+  posthogKey: Config.string("NEOKOD_POSTHOG_KEY").pipe(
+    Config.withDefault("phc_ChMMKsYfCWTbG48KrKYZVvAeBPEGYBBX7fKUVBRvGAaE"),
   ),
-  posthogHost: telemetryEnv("NEOKOD_POSTHOG_HOST", "T3CODE_POSTHOG_HOST", Config.string).pipe(
-    Config.withDefault("https://us.i.posthog.com"),
+  /** EU cloud, matching the project the key above belongs to. */
+  posthogHost: Config.string("NEOKOD_POSTHOG_HOST").pipe(
+    Config.withDefault("https://eu.i.posthog.com"),
   ),
-  enabled: telemetryEnv(
-    "NEOKOD_TELEMETRY_ENABLED",
-    "T3CODE_TELEMETRY_ENABLED",
-    Config.boolean,
-  ).pipe(Config.withDefault(true)),
-  flushBatchSize: telemetryEnv(
-    "NEOKOD_TELEMETRY_FLUSH_BATCH_SIZE",
-    "T3CODE_TELEMETRY_FLUSH_BATCH_SIZE",
-    Config.number,
-  ).pipe(Config.withDefault(20)),
-  maxBufferedEvents: telemetryEnv(
-    "NEOKOD_TELEMETRY_MAX_BUFFERED_EVENTS",
-    "T3CODE_TELEMETRY_MAX_BUFFERED_EVENTS",
-    Config.number,
-  ).pipe(Config.withDefault(1_000)),
+  // Default-on with first-run disclosure per product decision 2026-08-06; PRD section 21 amendment pending.
+  enabled: Config.boolean("NEOKOD_TELEMETRY_ENABLED").pipe(Config.withDefault(true)),
+  flushBatchSize: Config.number("NEOKOD_TELEMETRY_FLUSH_BATCH_SIZE").pipe(Config.withDefault(20)),
+  maxBufferedEvents: Config.number("NEOKOD_TELEMETRY_MAX_BUFFERED_EVENTS").pipe(
+    Config.withDefault(1_000),
+  ),
   wslDistroName: Config.string("WSL_DISTRO_NAME").pipe(Config.option),
 });
+
+interface AnalyticsRuntimeConfig {
+  readonly enabled: boolean;
+  readonly posthogKey: string;
+  readonly posthogHost: string;
+}
+
+interface TelemetryEnvironmentConfig {
+  readonly enabled: boolean;
+  readonly posthogKey: string;
+  readonly posthogHost: string;
+}
+
+function resolveAnalyticsRuntimeConfig(input: {
+  readonly environment: TelemetryEnvironmentConfig;
+  readonly settings: AnalyticsSettings;
+}): AnalyticsRuntimeConfig {
+  const hasCustomPostHog =
+    input.settings.posthogApiKey.length > 0 && input.settings.posthogHost.length > 0;
+  return {
+    enabled: input.environment.enabled && input.settings.enabled,
+    posthogKey: hasCustomPostHog ? input.settings.posthogApiKey : input.environment.posthogKey,
+    posthogHost: hasCustomPostHog ? input.settings.posthogHost : input.environment.posthogHost,
+  };
+}
 
 export class AnalyticsService extends Context.Service<
   AnalyticsService,
@@ -137,11 +177,48 @@ export const make = Effect.gen(function* () {
   const telemetryConfig = yield* TelemetryEnvConfig;
   const httpClient = yield* HttpClient.HttpClient;
   const serverConfig = yield* ServerConfig.ServerConfig;
-  const identifier = yield* getTelemetryIdentifier;
+  const serverSettings = yield* ServerSettingsService;
+  const fileSystem = yield* FileSystem.FileSystem;
+  const pathService = yield* Path.Path;
+  const crypto = yield* Crypto.Crypto;
+  const initialAnalyticsSettings = yield* serverSettings.getSettings.pipe(
+    Effect.map((settings) => settings.analytics),
+    Effect.orElseSucceed(() => ({ ...DEFAULT_ANALYTICS_SETTINGS, enabled: false })),
+  );
+  const initialDestination = resolveAnalyticsRuntimeConfig({
+    environment: telemetryConfig,
+    settings: initialAnalyticsSettings,
+  });
+  const initialIdentifier = initialDestination.enabled ? yield* getTelemetryIdentifier : null;
   const bufferRef = yield* Ref.make<ReadonlyArray<BufferedAnalyticsEvent>>([]);
+  const analyticsSettingsRef = yield* Ref.make<AnalyticsSettings>(initialAnalyticsSettings);
+  const identifierRef = yield* Ref.make<string | null>(initialIdentifier);
   const clientType = serverConfig.mode === "desktop" ? "desktop-app" : "cli-web-client";
   const hostPlatform = yield* HostProcessPlatform;
   const hostArchitecture = yield* HostProcessArchitecture;
+
+  const resolveIdentifier = Effect.gen(function* () {
+    const current = yield* Ref.get(identifierRef);
+    if (current !== null) return current;
+
+    const analyticsSettings = yield* Ref.get(analyticsSettingsRef);
+    const destination = resolveAnalyticsRuntimeConfig({
+      environment: telemetryConfig,
+      settings: analyticsSettings,
+    });
+    if (!destination.enabled) return null;
+
+    const next = yield* getTelemetryIdentifier;
+    if (next !== null) {
+      yield* Ref.set(identifierRef, next);
+    }
+    return next;
+  }).pipe(
+    Effect.provideService(Crypto.Crypto, crypto),
+    Effect.provideService(FileSystem.FileSystem, fileSystem),
+    Effect.provideService(Path.Path, pathService),
+    Effect.provideService(ServerConfig.ServerConfig, serverConfig),
+  );
 
   const enqueueBufferedEvent = (event: string, properties?: Readonly<Record<string, unknown>>) =>
     Effect.flatMap(DateTime.now, (now) =>
@@ -173,10 +250,16 @@ export const make = Effect.gen(function* () {
   const sendBatch = Effect.fn("AnalyticsService.sendBatch")(function* (
     events: ReadonlyArray<BufferedAnalyticsEvent>,
   ) {
-    if (!telemetryConfig.enabled || !identifier) return;
+    const analyticsSettings = yield* Ref.get(analyticsSettingsRef);
+    const destination = resolveAnalyticsRuntimeConfig({
+      environment: telemetryConfig,
+      settings: analyticsSettings,
+    });
+    const identifier = destination.enabled ? yield* resolveIdentifier : null;
+    if (!destination.enabled || !identifier) return;
 
     const payload = {
-      api_key: telemetryConfig.posthogKey,
+      api_key: destination.posthogKey,
       batch: events.map((event) => ({
         event: event.event,
         distinct_id: identifier,
@@ -193,7 +276,7 @@ export const make = Effect.gen(function* () {
       })),
     };
 
-    yield* HttpClientRequest.post(`${telemetryConfig.posthogHost}/batch/`).pipe(
+    yield* HttpClientRequest.post(`${destination.posthogHost}/batch/`).pipe(
       HttpClientRequest.bodyJson(payload),
       Effect.flatMap(httpClient.execute),
       Effect.flatMap(HttpClientResponse.filterStatusOk),
@@ -252,7 +335,34 @@ export const make = Effect.gen(function* () {
       }
     });
 
+  // Error-level log entries published by the logger tap (serverLogger.ts via
+  // telemetry/errorEvents.ts). Drained at flush time so the logger stays free
+  // of service dependencies; `record` applies the enabled gate as usual.
+  const errorEventWindows = new Map<string, { count: number; windowStartMillis: number }>();
+  const drainLoggedErrors = Effect.gen(function* () {
+    const drained = drainAnalyticsErrorEvents();
+    if (drained.length === 0) return;
+    const nowMillis = DateTime.toEpochMillis(yield* DateTime.now);
+    for (const errorEvent of drained) {
+      const window = errorEventWindows.get(errorEvent.errorName);
+      if (
+        window !== undefined &&
+        nowMillis - window.windowStartMillis < ERROR_EVENT_WINDOW_MILLIS
+      ) {
+        if (window.count >= MAX_ERROR_EVENTS_PER_NAME_PER_WINDOW) continue;
+        window.count += 1;
+      } else {
+        errorEventWindows.set(errorEvent.errorName, { count: 1, windowStartMillis: nowMillis });
+      }
+      yield* record("server.error", {
+        errorName: errorEvent.errorName,
+        level: errorEvent.level,
+      });
+    }
+  });
+
   const flush: AnalyticsService["Service"]["flush"] = Effect.gen(function* () {
+    yield* drainLoggedErrors;
     while (true) {
       const batch = yield* Ref.modify(bufferRef, (current) => {
         if (current.length === 0) {
@@ -289,7 +399,13 @@ export const make = Effect.gen(function* () {
 
   const record: AnalyticsService["Service"]["record"] = Effect.fn("AnalyticsService.record")(
     function* (event, properties) {
-      if (!telemetryConfig.enabled || !identifier) return;
+      const analyticsSettings = yield* Ref.get(analyticsSettingsRef);
+      const destination = resolveAnalyticsRuntimeConfig({
+        environment: telemetryConfig,
+        settings: analyticsSettings,
+      });
+      const identifier = destination.enabled ? yield* resolveIdentifier : null;
+      if (!destination.enabled || !identifier) return;
 
       const enqueueResult = yield* enqueueBufferedEvent(event, properties);
       if (enqueueResult.dropped) {
@@ -309,9 +425,32 @@ export const make = Effect.gen(function* () {
     yield* flush;
   });
 
+  const applyAnalyticsSettings = (settings: AnalyticsSettings) =>
+    Effect.gen(function* () {
+      yield* Ref.set(analyticsSettingsRef, settings);
+      if (!settings.enabled) {
+        yield* Ref.set(bufferRef, []);
+      }
+    });
+
   yield* Effect.forever(scheduledFlush, {
     disableYield: true,
   }).pipe(Effect.forkScoped);
+
+  yield* serverSettings.streamChanges.pipe(
+    Stream.map((settings) => settings.analytics),
+    Stream.runForEach(applyAnalyticsSettings),
+    Effect.forkScoped,
+  );
+  yield* Effect.yieldNow;
+
+  // Re-read after the stream subscription is live so a change between the
+  // initial read and stream startup cannot remain unseen.
+  yield* serverSettings.getSettings.pipe(
+    Effect.map((settings) => settings.analytics),
+    Effect.flatMap(applyAnalyticsSettings),
+    Effect.catch(() => Effect.void),
+  );
 
   yield* Effect.addFinalizer(() => flush);
 

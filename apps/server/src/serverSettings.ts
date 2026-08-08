@@ -379,7 +379,13 @@ const make = Effect.gen(function* () {
         issues: Cause.pretty(decoded.cause),
         cause: decoded.cause,
       });
-      return DEFAULT_SERVER_SETTINGS;
+      return {
+        ...DEFAULT_SERVER_SETTINGS,
+        analytics: {
+          ...DEFAULT_SERVER_SETTINGS.analytics,
+          enabled: false,
+        },
+      };
     }
     // Eager one-time migration: a legacy settings.json may still carry a
     // plaintext `managedClientEvidence.credential`. `migrateManagedClientEvidenceCredential`

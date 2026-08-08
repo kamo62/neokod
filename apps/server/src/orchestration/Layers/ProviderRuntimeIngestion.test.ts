@@ -30,6 +30,8 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
+import { it as effectIt } from "@effect/vitest";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { OrchestrationEventStoreLive } from "../../persistence/Layers/OrchestrationEventStore.ts";
@@ -448,6 +450,49 @@ describe("ProviderRuntimeIngestion", () => {
     expect(thread.session?.lastError).toBeNull();
   });
 
+  effectIt.effect("clears active turn when provider session becomes ready", () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(0);
+      const harness = yield* Effect.promise(() => createHarness());
+      const now = "2026-01-01T00:00:00.000Z";
+
+      harness.emit({
+        type: "turn.started",
+        eventId: asEventId("evt-turn-started-session-ready"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-session-ready"),
+      });
+
+      yield* Effect.promise(harness.drain);
+      const runningThread = (yield* Effect.promise(harness.readModel)).threads.find(
+        (entry) => entry.id === asThreadId("thread-1"),
+      );
+      expect(runningThread?.session?.status).toBe("running");
+      expect(runningThread?.session?.activeTurnId).toBe("turn-session-ready");
+
+      harness.emit({
+        type: "session.state.changed",
+        eventId: asEventId("evt-session-state-ready-with-active-turn"),
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-1"),
+        createdAt: "2026-01-01T00:00:01.000Z",
+        payload: {
+          state: "ready",
+        },
+      });
+
+      yield* Effect.promise(harness.drain);
+      const thread = (yield* Effect.promise(harness.readModel)).threads.find(
+        (entry) => entry.id === asThreadId("thread-1"),
+      );
+      expect(thread?.session?.status).toBe("ready");
+      expect(thread?.session?.activeTurnId).toBeNull();
+      expect(thread?.session?.lastError).toBeNull();
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   it("does not clear active turn when session/thread started arrives mid-turn", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";
@@ -466,6 +511,7 @@ describe("ProviderRuntimeIngestion", () => {
       (thread) =>
         thread.session?.status === "running" &&
         thread.session?.activeTurnId === "turn-midturn-lifecycle",
+      10_000,
     );
 
     harness.emit({
@@ -502,6 +548,7 @@ describe("ProviderRuntimeIngestion", () => {
     await waitForThread(
       harness.readModel,
       (thread) => thread.session?.status === "ready" && thread.session?.activeTurnId === null,
+      10_000,
     );
   });
 

@@ -1,6 +1,7 @@
 import * as NetService from "@neokod/shared/Net";
 import { parsePersistedServerObservabilitySettings } from "@neokod/shared/serverSettings";
 import { DesktopBackendBootstrap, PortSchema } from "@neokod/contracts";
+import * as NodeCrypto from "node:crypto";
 import * as Config from "effect/Config";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -55,6 +56,18 @@ export const logWebSocketEventsFlag = Flag.boolean("log-websocket-events").pipe(
     "Emit server-side logs for outbound WebSocket push traffic (equivalent to NEOKOD_LOG_WS_EVENTS).",
   ),
   Flag.withAlias("log-ws-events"),
+  Flag.optional,
+);
+export const publicHostFlag = Flag.string("public-host").pipe(
+  Flag.withDescription(
+    "Declare a public Host name accepted by Host validation (for reverse-proxied serve).",
+  ),
+  Flag.optional,
+);
+export const publicOriginFlag = Flag.string("public-origin").pipe(
+  Flag.withDescription(
+    "Declare a public Origin accepted by Origin validation (for reverse-proxied serve).",
+  ),
   Flag.optional,
 );
 const envConfig = <A>(name: string, legacyName: string, read: (key: string) => Config.Config<A>) =>
@@ -138,6 +151,14 @@ const EnvServerConfig = Config.all({
     "T3CODE_LOG_WS_EVENTS",
     Config.boolean,
   ).pipe(Config.option, Config.map(Option.getOrUndefined)),
+  publicHost: envConfig("NEOKOD_PUBLIC_HOST", "T3CODE_PUBLIC_HOST", Config.string).pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  publicOrigin: envConfig("NEOKOD_PUBLIC_ORIGIN", "T3CODE_PUBLIC_ORIGIN", Config.string).pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
 });
 
 export interface CliServerFlags {
@@ -150,6 +171,8 @@ export interface CliServerFlags {
   readonly bootstrapFd: Option.Option<number>;
   readonly autoBootstrapProjectFromCwd: Option.Option<boolean>;
   readonly logWebSocketEvents: Option.Option<boolean>;
+  readonly publicHost: Option.Option<string>;
+  readonly publicOrigin: Option.Option<string>;
 }
 
 export interface CliProjectLocationFlags {
@@ -181,6 +204,8 @@ export const sharedServerCommandFlags = {
   bootstrapFd: bootstrapFdFlag,
   autoBootstrapProjectFromCwd: autoBootstrapProjectFromCwdFlag,
   logWebSocketEvents: logWebSocketEventsFlag,
+  publicHost: publicHostFlag,
+  publicOrigin: publicOriginFlag,
 } as const;
 
 const resolveOptionPrecedence = <Value>(
@@ -221,6 +246,8 @@ export const resolveServerConfig = (
       bootstrapFd: flags.bootstrapFd ?? Option.none(),
       autoBootstrapProjectFromCwd: flags.autoBootstrapProjectFromCwd ?? Option.none(),
       logWebSocketEvents: flags.logWebSocketEvents ?? Option.none(),
+      publicHost: flags.publicHost ?? Option.none(),
+      publicOrigin: flags.publicOrigin ?? Option.none(),
     } satisfies CliServerFlags;
     const bootstrapFd = Option.getOrUndefined(normalizedFlags.bootstrapFd) ?? env.bootstrapFd;
     const bootstrapEnvelope =
@@ -309,6 +336,19 @@ export const resolveServerConfig = (
     const staticDir = devUrl ? undefined : yield* ServerConfig.resolveStaticDir();
     const transport = bootstrap?.transport ?? "loopback";
     const host = bootstrap?.host ?? "127.0.0.1";
+    const publicHost = Option.getOrUndefined(normalizedFlags.publicHost) ?? env.publicHost;
+    const publicOrigin = Option.getOrUndefined(normalizedFlags.publicOrigin) ?? env.publicOrigin;
+    const bootstrapLoopbackToken =
+      bootstrap?.transport === "loopback" ? bootstrap.loopbackAuthToken : undefined;
+    // Serve/start on the loopback transport without a desktop bootstrap mints
+    // a per-launch token (plan WS-A2, 13.3): it is printed and written to a
+    // loopback-only file so a browser or CLI client can authenticate. It is
+    // never persisted to a stable location.
+    const loopbackAuthToken =
+      bootstrapLoopbackToken ??
+      (transport === "loopback" && bootstrapLoopbackToken === undefined && mode === "web"
+        ? NodeCrypto.randomBytes(24).toString("base64url")
+        : undefined);
     const logLevel = Option.getOrElse(cliLogLevel, () => env.logLevel);
 
     const config: ServerConfig.ServerConfig["Service"] = {
@@ -341,6 +381,9 @@ export const resolveServerConfig = (
       noBrowser,
       startupPresentation,
       wslBearerToken,
+      loopbackAuthToken,
+      publicHosts: publicHost === undefined ? [] : [publicHost],
+      publicOrigins: publicOrigin === undefined ? [] : [publicOrigin],
       autoBootstrapProjectFromCwd,
       logWebSocketEvents,
     };
@@ -363,6 +406,8 @@ export const resolveCliProjectConfig = (
       bootstrapFd: Option.none(),
       autoBootstrapProjectFromCwd: Option.none(),
       logWebSocketEvents: Option.none(),
+      publicHost: Option.none(),
+      publicOrigin: Option.none(),
     },
     cliLogLevel,
   );

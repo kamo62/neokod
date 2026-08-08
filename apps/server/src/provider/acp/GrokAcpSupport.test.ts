@@ -5,6 +5,7 @@ import * as EffectAcpErrors from "effect-acp/errors";
 import {
   applyGrokAcpModelSelection,
   buildGrokAcpSpawnInput,
+  currentGrokModelIdFromSessionSetup,
   resolveGrokAcpBaseModelId,
 } from "./GrokAcpSupport.ts";
 
@@ -13,6 +14,26 @@ describe("resolveGrokAcpBaseModelId", () => {
     expect(resolveGrokAcpBaseModelId(undefined)).toBe("grok-build");
     expect(resolveGrokAcpBaseModelId("   ")).toBe("grok-build");
     expect(resolveGrokAcpBaseModelId("  grok-test-custom-model  ")).toBe("grok-test-custom-model");
+  });
+});
+
+describe("currentGrokModelIdFromSessionSetup", () => {
+  it("reads the current value from the model config option", () => {
+    expect(
+      currentGrokModelIdFromSessionSetup({
+        sessionId: "session-1",
+        configOptions: [
+          {
+            id: "model",
+            name: "Model",
+            category: "model",
+            type: "select",
+            currentValue: " grok-build ",
+            options: [{ value: "grok-build", name: "Grok Build" }],
+          },
+        ],
+      }),
+    ).toBe("grok-build");
   });
 });
 

@@ -39,6 +39,7 @@ export interface ServerDerivedPaths {
   readonly providerLogsDir: string;
   readonly providerEventLogPath: string;
   readonly terminalLogsDir: string;
+  readonly symphonyLogsDir: string;
   readonly anonymousIdPath: string;
   readonly environmentIdPath: string;
   readonly serverRuntimeStatePath: string;
@@ -72,6 +73,23 @@ export class ServerConfig extends Context.Service<
     readonly noBrowser: boolean;
     readonly startupPresentation: StartupPresentation;
     readonly wslBearerToken: string | undefined;
+    /**
+     * Per-launch loopback credential (PRD 17.1, plan WS-A2). When set, the
+     * loopback transport requires a bearer on HTTP and a short-lived
+     * WebSocket ticket, replacing the historical pass-through. Delivered
+     * per-launch and never persisted. Absent means the legacy loopback
+     * trust model (documented in the README) is still in effect.
+     */
+    readonly loopbackAuthToken: string | undefined;
+    /**
+     * Explicitly declared public Host names and Origins accepted by the
+     * router-wide Host/Origin validation (PRD 17.1, plan 13.2). A fixed
+     * loopback-only allowlist would break the reverse-proxy deployment the
+     * README documents; these let `neokod serve` behind a proxy declare its
+     * public hostname and HTTPS origin explicitly.
+     */
+    readonly publicHosts: ReadonlyArray<string>;
+    readonly publicOrigins: ReadonlyArray<string>;
     readonly autoBootstrapProjectFromCwd: boolean;
     readonly logWebSocketEvents: boolean;
   }
@@ -112,6 +130,7 @@ export const deriveServerPaths = Effect.fn(function* (
     providerLogsDir,
     providerEventLogPath: join(providerLogsDir, "events.log"),
     terminalLogsDir: join(logsDir, "terminals"),
+    symphonyLogsDir: join(logsDir, "symphony"),
     anonymousIdPath: join(stateDir, "anonymous-id"),
     environmentIdPath: join(stateDir, "environment-id"),
     serverRuntimeStatePath: join(stateDir, "server-runtime.json"),
@@ -129,6 +148,7 @@ export const ensureServerDirectories = Effect.fn(function* (derivedPaths: Server
       fs.makeDirectory(derivedPaths.logsDir, { recursive: true }),
       fs.makeDirectory(derivedPaths.providerLogsDir, { recursive: true }),
       fs.makeDirectory(derivedPaths.terminalLogsDir, { recursive: true }),
+      fs.makeDirectory(derivedPaths.symphonyLogsDir, { recursive: true }),
       fs.makeDirectory(derivedPaths.attachmentsDir, { recursive: true }),
       fs.makeDirectory(derivedPaths.worktreesDir, { recursive: true }),
       fs.makeDirectory(path.dirname(derivedPaths.keybindingsConfigPath), { recursive: true }),
@@ -175,6 +195,9 @@ const makeTest = Effect.fn("ServerConfig.makeTest")(function* (
     transport: "loopback",
     host: "127.0.0.1",
     wslBearerToken: undefined,
+    loopbackAuthToken: undefined,
+    publicHosts: [],
+    publicOrigins: [],
     staticDir: undefined,
     devUrl,
     noBrowser: false,

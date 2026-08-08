@@ -43,7 +43,7 @@ export function prStatusIndicator(
   if (pr.state === "open") {
     return {
       label: `${presentation.shortName} open`,
-      colorClass: "text-emerald-600 dark:text-emerald-300/90",
+      colorClass: "text-success-foreground",
       tooltip: `#${pr.number} ${presentation.shortName} open: ${pr.title}`,
       url: pr.url,
     };
@@ -51,7 +51,7 @@ export function prStatusIndicator(
   if (pr.state === "closed") {
     return {
       label: `${presentation.shortName} closed`,
-      colorClass: "text-zinc-500 dark:text-zinc-400/80",
+      colorClass: "text-muted-foreground",
       tooltip: `#${pr.number} ${presentation.shortName} closed: ${pr.title}`,
       url: pr.url,
     };
@@ -59,7 +59,7 @@ export function prStatusIndicator(
   if (pr.state === "merged") {
     return {
       label: `${presentation.shortName} merged`,
-      colorClass: "text-violet-600 dark:text-violet-300/90",
+      colorClass: "text-merged-foreground",
       tooltip: `#${pr.number} ${presentation.shortName} merged: ${pr.title}`,
       url: pr.url,
     };
@@ -90,7 +90,7 @@ export function terminalStatusFromRunningIds(
   }
   return {
     label: "Terminal process running",
-    colorClass: "text-teal-600 dark:text-teal-300/90",
+    colorClass: "text-terminal-active-foreground",
     pulse: true,
   };
 }
@@ -149,7 +149,7 @@ export function ThreadStatusLabel({
         >
           <span
             className={`size-[9px] rounded-full ${status.dotClass} ${
-              status.pulse ? "animate-pulse" : ""
+              status.pulse ? "animate-status-pulse" : ""
             }`}
           />
         </TooltipTrigger>
@@ -170,7 +170,7 @@ export function ThreadStatusLabel({
       >
         <span
           className={`h-1.5 w-1.5 rounded-full ${status.dotClass} ${
-            status.pulse ? "animate-pulse" : ""
+            status.pulse ? "animate-status-pulse" : ""
           }`}
         />
         <span className="hidden md:inline">{status.label}</span>
@@ -276,7 +276,9 @@ export function ThreadRowTrailingStatus({ thread }: { thread: SidebarThreadSumma
               />
             }
           >
-            <TerminalIcon className={`size-3 ${terminalStatus.pulse ? "animate-pulse" : ""}`} />
+            <TerminalIcon
+              className={`size-3 ${terminalStatus.pulse ? "animate-status-pulse" : ""}`}
+            />
           </TooltipTrigger>
           <TooltipPopup side="top">{terminalStatus.label}</TooltipPopup>
         </Tooltip>

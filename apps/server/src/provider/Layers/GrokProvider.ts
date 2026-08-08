@@ -29,6 +29,10 @@ import {
   enrichProviderSnapshotWithVersionAdvisory,
   type ProviderMaintenanceCapabilities,
 } from "../providerMaintenance.ts";
+import {
+  collectSessionConfigOptionEntries,
+  findSessionModelConfigOption,
+} from "../acp/AcpRuntimeModel.ts";
 import { makeGrokAcpRuntime, resolveGrokAcpBaseModelId } from "../acp/GrokAcpSupport.ts";
 
 const GROK_PRESENTATION = {
@@ -105,28 +109,29 @@ function grokModelsFromSettings(
   );
 }
 
-function buildGrokDiscoveredModelsFromSessionModelState(
-  modelState: EffectAcpSchema.SessionModelState | null | undefined,
+export function buildGrokDiscoveredModelsFromConfigOptions(
+  configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption> | null | undefined,
 ): ReadonlyArray<ServerProviderModel> {
-  if (!modelState || modelState.availableModels.length === 0) {
+  const modelConfig = findSessionModelConfigOption(configOptions);
+  if (!modelConfig) {
     return [];
   }
   const seen = new Set<string>();
-  return modelState.availableModels
-    .map((model): ServerProviderModel | undefined => {
-      const slug = resolveGrokAcpBaseModelId(model.modelId);
-      if (!slug || seen.has(slug)) {
-        return undefined;
-      }
-      seen.add(slug);
-      return {
+  return collectSessionConfigOptionEntries(modelConfig).flatMap((model) => {
+    const slug = resolveGrokAcpBaseModelId(model.value);
+    if (!slug || seen.has(slug)) {
+      return [];
+    }
+    seen.add(slug);
+    return [
+      {
         slug,
         name: model.name.trim() || slug,
         isCustom: false,
         capabilities: EMPTY_CAPABILITIES,
-      };
-    })
-    .filter((model): model is ServerProviderModel => model !== undefined);
+      } satisfies ServerProviderModel,
+    ];
+  });
 }
 
 const discoverGrokModelsViaAcp = (
@@ -143,7 +148,7 @@ const discoverGrokModelsViaAcp = (
       clientInfo: { name: "neokod-provider-probe", version: "0.0.0" },
     });
     const started = yield* acp.start();
-    return buildGrokDiscoveredModelsFromSessionModelState(started.sessionSetupResult.models);
+    return buildGrokDiscoveredModelsFromConfigOptions(started.sessionSetupResult.configOptions);
   }).pipe(Effect.scoped);
 
 const runGrokVersionCommand = (

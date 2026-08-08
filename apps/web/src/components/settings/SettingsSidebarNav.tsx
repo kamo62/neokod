@@ -2,10 +2,13 @@ import { useCallback, type ComponentType } from "react";
 import {
   ArchiveIcon,
   ArrowLeftIcon,
+  BarChart3Icon,
   BotIcon,
+  CheckSquareIcon,
   GitBranchIcon,
   KeyboardIcon,
   Link2Icon,
+  PaletteIcon,
   Settings2Icon,
 } from "lucide-react";
 import { useCanGoBack, useNavigate } from "@tanstack/react-router";
@@ -23,9 +26,12 @@ import {
 
 export type SettingsSectionPath =
   | "/settings/general"
+  | "/settings/appearance"
   | "/settings/keybindings"
   | "/settings/providers"
   | "/settings/source-control"
+  | "/settings/tracking"
+  | "/settings/analytics"
   | "/settings/connections"
   | "/settings/archived";
 
@@ -35,9 +41,12 @@ export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
   icon: ComponentType<{ className?: string }>;
 }> = [
   { label: "General", to: "/settings/general", icon: Settings2Icon },
+  { label: "Appearance", to: "/settings/appearance", icon: PaletteIcon },
   { label: "Keybindings", to: "/settings/keybindings", icon: KeyboardIcon },
   { label: "Providers", to: "/settings/providers", icon: BotIcon },
   { label: "Source Control", to: "/settings/source-control", icon: GitBranchIcon },
+  { label: "Tracking", to: "/settings/tracking", icon: CheckSquareIcon },
+  { label: "Analytics", to: "/settings/analytics", icon: BarChart3Icon },
   { label: "Connections", to: "/settings/connections", icon: Link2Icon },
   { label: "Archive", to: "/settings/archived", icon: ArchiveIcon },
 ];

@@ -418,8 +418,8 @@ const SubagentsPanel = memo(function SubagentsPanel({
                     onClick={() => setSelectedTaskId(card.taskId)}
                     className={cn(
                       "w-full rounded-lg border border-border/50 bg-background/50 p-3 text-left transition-colors duration-200 hover:border-border focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                      status.iconStatus === "inProgress" && "bg-blue-500/5",
-                      status.iconStatus === "completed" && "bg-emerald-500/5",
+                      status.iconStatus === "inProgress" && "bg-info/5",
+                      status.iconStatus === "completed" && "bg-success/5",
                       status.iconStatus === "failed" && "bg-destructive/5",
                     )}
                   >

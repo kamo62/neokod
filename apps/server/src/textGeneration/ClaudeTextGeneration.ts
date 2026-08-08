@@ -21,6 +21,7 @@ import { TextGenerationError } from "@neokod/contracts";
 import * as TextGeneration from "./TextGeneration.ts";
 import {
   buildBranchNamePrompt,
+  buildCodeReviewPrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
@@ -84,6 +85,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     operation:
       | "generateCommitMessage"
       | "generatePrContent"
+      | "generateCodeReview"
       | "generateBranchName"
       | "generateThreadTitle",
     value: unknown,
@@ -114,6 +116,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     operation:
       | "generateCommitMessage"
       | "generatePrContent"
+      | "generateCodeReview"
       | "generateBranchName"
       | "generateThreadTitle";
     cwd: string;
@@ -315,6 +318,25 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       };
     });
 
+  const generateCodeReview: TextGeneration.TextGeneration["Service"]["generateCodeReview"] =
+    Effect.fn("ClaudeTextGeneration.generateCodeReview")(function* (input) {
+      const { prompt, outputSchema } = buildCodeReviewPrompt({
+        objective: input.objective,
+        acceptanceCriteria: input.acceptanceCriteria,
+        baseRef: input.baseRef,
+        headRef: input.headRef,
+        diffPatch: input.diffPatch,
+      });
+
+      return yield* runClaudeJson({
+        operation: "generateCodeReview",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+    });
+
   const generateBranchName: TextGeneration.TextGeneration["Service"]["generateBranchName"] =
     Effect.fn("ClaudeTextGeneration.generateBranchName")(function* (input) {
       const { prompt, outputSchema } = buildBranchNamePrompt({
@@ -358,6 +380,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
   return {
     generateCommitMessage,
     generatePrContent,
+    generateCodeReview,
     generateBranchName,
     generateThreadTitle,
   } satisfies TextGeneration.TextGeneration["Service"];

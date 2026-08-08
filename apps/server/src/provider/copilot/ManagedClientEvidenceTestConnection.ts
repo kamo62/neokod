@@ -1,7 +1,10 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeCrypto from "node:crypto";
 
-import type { CopilotManagedClientEvidenceSettings } from "@neokod/contracts";
+import {
+  type AnalyticsSettings,
+  type CopilotManagedClientEvidenceSettings,
+} from "@neokod/contracts";
 import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
@@ -33,6 +36,7 @@ import {
   buildPostHogTestConnectionEvent,
   readOrCreatePostHogAnonymousId,
   resolvePostHogBatchUrl,
+  resolvePostHogSinkSettings,
 } from "./PostHogSink.ts";
 
 export interface ManagedClientEvidenceRecordedIdentity {
@@ -183,6 +187,7 @@ const testAiOrchConnection = (
  */
 const testPostHogConnection = (
   settings: CopilotManagedClientEvidenceSettings,
+  analytics: AnalyticsSettings,
 ): Effect.Effect<
   ManagedClientEvidenceTestConnectionResult,
   never,
@@ -193,8 +198,19 @@ const testPostHogConnection = (
   | Crypto.Crypto
 > =>
   Effect.gen(function* () {
-    const posthogHost = settings.posthogHost.trim();
-    const posthogApiKey = settings.posthogApiKey.trim();
+    const posthog = resolvePostHogSinkSettings({
+      analytics,
+      fallback: settings,
+    });
+    const posthogHost = posthog.posthogHost.trim();
+    const posthogApiKey = posthog.posthogApiKey.trim();
+    if (!posthog.enabled) {
+      return {
+        ok: false,
+        status: null,
+        message: "Analytics is disabled.",
+      };
+    }
     if (posthogHost.length === 0 || posthogApiKey.length === 0) {
       return {
         ok: false,
@@ -286,6 +302,7 @@ const testOtlpConnection = (
  */
 export const testManagedClientEvidenceConnection = (
   settings: CopilotManagedClientEvidenceSettings,
+  analytics: AnalyticsSettings,
 ): Effect.Effect<
   ManagedClientEvidenceTestConnectionResult,
   never,
@@ -295,9 +312,17 @@ export const testManagedClientEvidenceConnection = (
   | ServerConfig.ServerConfig
   | Crypto.Crypto
 > => {
+  if (!analytics.enabled) {
+    return Effect.succeed({
+      ok: false,
+      status: null,
+      message: "Analytics is disabled.",
+    });
+  }
+
   switch (settings.backend) {
     case "posthog":
-      return testPostHogConnection(settings);
+      return testPostHogConnection(settings, analytics);
     case "otlp":
       return testOtlpConnection(settings);
     case "ai-orch":

@@ -10,7 +10,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { useUiStateStore } from "../uiStateStore";
 import { cn } from "~/lib/utils";
-import { selectMissionControlDashboardGroups } from "./MissionControl.logic";
+import { selectDashboardGroups } from "./threadDashboard.logic";
+import { ProviderMark } from "./sidebar/ProviderMark";
 import {
   computeThreadSignature,
   countMyWorkThreads,
@@ -49,6 +50,7 @@ function MyWorkRow({
         className="flex w-full min-w-0 items-start gap-2 rounded-md px-2 py-1 pr-7 text-left text-ui text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         onClick={onOpen}
       >
+        <ProviderMark thread={thread} className="mt-0.5" />
         {done ? (
           <CheckIcon
             className="mt-0.5 size-3 shrink-0 text-muted-foreground/45"
@@ -59,7 +61,7 @@ function MyWorkRow({
             aria-label={status?.label}
             className={cn(
               "mt-1.5 size-1.5 shrink-0 rounded-full",
-              needsAttention ? "bg-amber-500 dark:bg-amber-300/90" : status?.dotClass,
+              needsAttention ? "bg-warning" : status?.dotClass,
               status?.pulse && "animate-pulse",
             )}
           />
@@ -103,7 +105,7 @@ export function SidebarMyWork({
   const undoDismiss = useUiStateStore((state) => state.undoMyWorkDismissal);
   const [now, setNow] = useState(Date.now);
   const dashboardGroups = useMemo(
-    () => selectMissionControlDashboardGroups(threads, projects, MY_WORK_RECENT_CAP),
+    () => selectDashboardGroups(threads, projects, MY_WORK_RECENT_CAP),
     [projects, threads],
   );
   const groups = useMemo(

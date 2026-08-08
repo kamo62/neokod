@@ -78,6 +78,7 @@ import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
+import { ComposerQueuedMessages } from "./ComposerQueuedMessages";
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
 import { searchSlashCommandItems } from "./composerSlashCommandSearch";
 import {
@@ -129,7 +130,6 @@ import { searchProviderSkills } from "../../providerSkillSearch";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { useTerminalUiStateStore } from "../../terminalUiStateStore";
 import { useWorkspaceRailUiStore } from "../../workspaceRailUiStore";
-import { useMissionControlUiStore } from "../../missionControlUiStore";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
 
@@ -542,6 +542,8 @@ export interface ChatComposerProps {
   scheduleComposerFocus: () => void;
   setThreadError: (threadId: ThreadId | null, error: string | null) => void;
   onExpandImage: (preview: ExpandedImagePreview) => void;
+  /** Promotes a queued follow-up into the running turn immediately. */
+  onSteerQueuedMessage: (queuedMessageId: string) => void;
 }
 
 // --------------------------------------------------------------------------
@@ -614,6 +616,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     scheduleComposerFocus,
     setThreadError,
     onExpandImage,
+    onSteerQueuedMessage,
   } = props;
 
   // ------------------------------------------------------------------
@@ -629,6 +632,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const setTerminalOpen = useTerminalUiStateStore((state) => state.setTerminalOpen);
   const requestRailPopover = useWorkspaceRailUiStore((state) => state.requestOpen);
   const composerReviewComments = composerDraft.reviewComments;
+  const composerQueuedMessages = composerDraft.queuedMessages;
   const nonPersistedComposerImageIds = composerDraft.nonPersistedImageIds;
 
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
@@ -653,6 +657,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const removeComposerDraftReviewComment = useComposerDraftStore(
     (store) => store.removeReviewComment,
   );
+  const removeQueuedComposerMessage = useComposerDraftStore((store) => store.removeQueuedMessage);
   const clearComposerDraftPersistedAttachments = useComposerDraftStore(
     (store) => store.clearPersistedAttachments,
   );
@@ -935,6 +940,29 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       prompt,
     ],
   );
+  // Mirrors ChatView's `composerDraftIsEmpty`: whether anything at all is
+  // staged, not just whether it's currently sendable (an expired terminal
+  // context still counts as staged, so a queue dispatch there stays blocked
+  // instead of silently discarding it).
+  const composerDraftIsEmpty = useMemo(
+    () =>
+      prompt.trim().length === 0 &&
+      composerImages.length === 0 &&
+      composerDraft.persistedAttachments.length === 0 &&
+      composerTerminalContexts.length === 0 &&
+      composerElementContexts.length === 0 &&
+      composerPreviewAnnotations.length === 0 &&
+      composerReviewComments.length === 0,
+    [
+      composerDraft.persistedAttachments.length,
+      composerElementContexts.length,
+      composerImages.length,
+      composerPreviewAnnotations.length,
+      composerReviewComments.length,
+      composerTerminalContexts,
+      prompt,
+    ],
+  );
 
   // ------------------------------------------------------------------
   // Derived: composer trigger / menu
@@ -1010,13 +1038,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           command: "subagents",
           label: "/subagents",
           description: "Open this thread's subagent activity",
-        },
-        {
-          id: "slash:mission",
-          type: "slash-command",
-          command: "mission",
-          label: "/mission",
-          description: "Open cross-project agent activity",
         },
         {
           id: "slash:goal",
@@ -1666,8 +1687,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         }
         if (action.kind === "open-terminal") {
           setTerminalOpen(routeThreadRef, true);
-        } else if (action.kind === "open-mission-control") {
-          useMissionControlUiStore.getState().setOpen(true);
         } else if (action.kind === "open-right-panel") {
           openRightPanel(routeThreadRef, action.panel);
         } else if (action.kind === "open-rail-popover") {
@@ -2146,7 +2165,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     <form
       ref={composerFormRef}
       onSubmit={submitComposer}
-      className="mx-auto w-full min-w-0 max-w-3xl"
+      className="mx-auto w-full min-w-0 max-w-(--chat-max-width)"
       data-chat-composer-form="true"
     >
       <div
@@ -2484,6 +2503,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       </div>
                     ))}
                 </div>
+              )}
+
+            {!isComposerCollapsedMobile &&
+              !isComposerApprovalState &&
+              pendingUserInputs.length === 0 &&
+              composerQueuedMessages.length > 0 && (
+                <ComposerQueuedMessages
+                  messages={composerQueuedMessages}
+                  canSteer={phase === "running" && composerDraftIsEmpty}
+                  onRemove={(queuedMessageId) =>
+                    removeQueuedComposerMessage(composerDraftTarget, queuedMessageId)
+                  }
+                  onSteer={onSteerQueuedMessage}
+                  className="mb-2"
+                />
               )}
 
             <div className="relative min-w-0">

@@ -1,12 +1,20 @@
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
+import {
+  DEFAULT_SERVER_SETTINGS,
+  ServerSettingsError,
+  type ServerSettings as ServerSettingsModel,
+} from "@neokod/contracts";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
+import * as PubSub from "effect/PubSub";
 import { TestClock } from "effect/testing";
+import * as Stream from "effect/Stream";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientError from "effect/unstable/http/HttpClientError";
 import type * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
@@ -16,7 +24,9 @@ import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 
 import * as ServerConfig from "../config.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import { getTelemetryIdentifier } from "./Identify.ts";
+import { drainAnalyticsErrorEvents, publishAnalyticsErrorEvent } from "./errorEvents.ts";
 import * as AnalyticsService from "./AnalyticsService.ts";
 
 interface RecordedBatchRequest {
@@ -27,6 +37,8 @@ interface RecordedBatchRequest {
       readonly properties?: {
         readonly index?: number;
         readonly clientType?: string;
+        readonly errorName?: string;
+        readonly level?: string;
       };
     }>;
   } | null;
@@ -77,9 +89,14 @@ const mockClientConfigLayer = ConfigProvider.layer(
   }),
 );
 
-const mockClientRuntimeLayer = (client: HttpClient.HttpClient, prefix: string) =>
+const mockClientRuntimeLayer = (
+  client: HttpClient.HttpClient,
+  prefix: string,
+  serverSettingsLayer = ServerSettings.ServerSettingsService.layerTest(),
+) =>
   AnalyticsService.layer.pipe(
     Layer.provideMerge(ServerConfig.ServerConfig.layerTest(process.cwd(), { prefix })),
+    Layer.provideMerge(serverSettingsLayer),
     Layer.provide(mockClientConfigLayer),
     Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
   );
@@ -92,7 +109,10 @@ it.layer(NodeServices.layer)("AnalyticsService test", (it) => {
         prefix: "neokod-telemetry-base-",
       });
 
-      const telemetryLayer = AnalyticsService.layer.pipe(Layer.provideMerge(serverConfigLayer));
+      const telemetryLayer = AnalyticsService.layer.pipe(
+        Layer.provideMerge(serverConfigLayer),
+        Layer.provideMerge(ServerSettings.ServerSettingsService.layerTest()),
+      );
       const configLayer = ConfigProvider.layer(
         ConfigProvider.fromUnknown({
           NEOKOD_TELEMETRY_ENABLED: true,
@@ -161,6 +181,79 @@ it.layer(NodeServices.layer)("AnalyticsService test", (it) => {
       assert.equal(
         batchRequests.every((request) =>
           request.body.batch.every((event) => event.properties?.clientType === "cli-web-client"),
+        ),
+        true,
+      );
+    }),
+  );
+
+  it.effect("drains logged errors into privacy-safe server.error events with a per-name cap", () =>
+    Effect.gen(function* () {
+      drainAnalyticsErrorEvents();
+      const capturedRequests: Array<RecordedBatchRequest> = [];
+      const serverConfigLayer = ServerConfig.ServerConfig.layerTest(process.cwd(), {
+        prefix: "neokod-telemetry-errors-",
+      });
+      const telemetryLayer = AnalyticsService.layer.pipe(
+        Layer.provideMerge(serverConfigLayer),
+        Layer.provideMerge(ServerSettings.ServerSettingsService.layerTest()),
+      );
+      const configLayer = ConfigProvider.layer(
+        ConfigProvider.fromUnknown({
+          NEOKOD_TELEMETRY_ENABLED: true,
+          NEOKOD_POSTHOG_KEY: "phc_test_key",
+          NEOKOD_POSTHOG_HOST: "",
+          NEOKOD_TELEMETRY_FLUSH_BATCH_SIZE: 100,
+        }),
+      );
+      const batchServerLayer = HttpServer.serve(
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          if (request.method !== "POST") {
+            return HttpServerResponse.empty({ status: 404 });
+          }
+          const payload = yield* request.json.pipe(
+            Effect.map((body) => body as RecordedBatchRequest["body"]),
+            Effect.orElseSucceed(() => null),
+          );
+          capturedRequests.push({ path: request.url, body: payload });
+          return HttpServerResponse.jsonUnsafe({});
+        }),
+      );
+      const runtimeLayer = telemetryLayer.pipe(
+        Layer.provide(configLayer),
+        Layer.provideMerge(NodeHttpServer.layerTest),
+      );
+
+      yield* Effect.gen(function* () {
+        yield* Layer.launch(batchServerLayer).pipe(Effect.forkScoped);
+        const analytics = yield* AnalyticsService.AnalyticsService;
+
+        publishAnalyticsErrorEvent({ errorName: "GitCommandError", level: "Error" });
+        publishAnalyticsErrorEvent({ errorName: "GitCommandError", level: "Error" });
+        for (let index = 0; index < 40; index += 1) {
+          publishAnalyticsErrorEvent({ errorName: "FloodError", level: "Error" });
+        }
+        yield* analytics.flush;
+      }).pipe(Effect.provide(runtimeLayer));
+
+      const deliveredEvents = capturedRequests.flatMap((request) => request.body?.batch ?? []);
+      const errorEvents = deliveredEvents.filter((event) => event.event === "server.error");
+      const gitErrors = errorEvents.filter(
+        (event) => event.properties?.errorName === "GitCommandError",
+      );
+      const floodErrors = errorEvents.filter(
+        (event) => event.properties?.errorName === "FloodError",
+      );
+      assert.equal(gitErrors.length, 2);
+      // The per-name window cap holds back the flood.
+      assert.equal(floodErrors.length, 25);
+      assert.equal(gitErrors[0]?.properties?.level, "Error");
+      // Privacy: only the class name and level travel, never a message.
+      assert.equal(
+        errorEvents.every(
+          (event) =>
+            !("message" in (event.properties ?? {})) && !("stack" in (event.properties ?? {})),
         ),
         true,
       );
@@ -307,6 +400,167 @@ it.layer(NodeServices.layer)("AnalyticsService test", (it) => {
         assert.equal(recoveryLogs.length, 1);
         assert.equal(recoveryLogs[0]?.level, "Info");
       }).pipe(Effect.provide(runtimeLayer));
+    }),
+  );
+
+  it.effect("uses the custom PostHog host and project key from server settings", () =>
+    Effect.gen(function* () {
+      let requestUrl: string | undefined;
+      let requestApiKey: string | undefined;
+      const client = HttpClient.make((request) => {
+        requestUrl = request.url;
+        const body = JSON.parse(
+          new TextDecoder().decode((request.body as { readonly body: Uint8Array }).body),
+        ) as { readonly api_key?: string };
+        requestApiKey = body.api_key;
+        return successResponse(request);
+      });
+      const runtimeLayer = mockClientRuntimeLayer(
+        client,
+        "neokod-telemetry-custom-",
+        ServerSettings.ServerSettingsService.layerTest({
+          analytics: {
+            posthogApiKey: "phc_custom",
+            posthogHost: "https://posthog.example",
+          },
+        }),
+      );
+
+      yield* Effect.gen(function* () {
+        const analytics = yield* AnalyticsService.AnalyticsService;
+        yield* analytics.record("test.custom-destination");
+        yield* analytics.flush;
+      }).pipe(Effect.provide(runtimeLayer));
+
+      assert.equal(requestUrl, "https://posthog.example/batch/");
+      assert.equal(requestApiKey, "phc_custom");
+    }),
+  );
+
+  it.effect("does not enqueue or send events when analytics is disabled", () =>
+    Effect.gen(function* () {
+      let attempts = 0;
+      const client = HttpClient.make((request) => {
+        attempts += 1;
+        return successResponse(request);
+      });
+      const runtimeLayer = AnalyticsService.layer.pipe(
+        Layer.provideMerge(
+          ServerConfig.ServerConfig.layerTest(process.cwd(), {
+            prefix: "neokod-telemetry-disabled-",
+          }),
+        ),
+        Layer.provideMerge(
+          ServerSettings.ServerSettingsService.layerTest({
+            analytics: { enabled: false },
+          }),
+        ),
+        Layer.provide(mockClientConfigLayer),
+        Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
+      );
+
+      yield* Effect.gen(function* () {
+        const analytics = yield* AnalyticsService.AnalyticsService;
+        yield* analytics.record("test.disabled");
+        yield* analytics.flush;
+      }).pipe(Effect.provide(runtimeLayer));
+
+      assert.equal(attempts, 0);
+    }),
+  );
+
+  it.effect("fails closed when the initial settings read fails", () =>
+    Effect.gen(function* () {
+      let attempts = 0;
+      const client = HttpClient.make((request) => {
+        attempts += 1;
+        return successResponse(request);
+      });
+      const settingsError = new ServerSettingsError({
+        settingsPath: "/settings.json",
+        operation: "read-file",
+        cause: new Error("settings unavailable"),
+      });
+      const unreadableSettingsLayer = Layer.succeed(ServerSettings.ServerSettingsService, {
+        start: Effect.void,
+        ready: Effect.void,
+        getSettings: Effect.fail(settingsError),
+        updateSettings: () => Effect.fail(settingsError),
+        streamChanges: Stream.empty,
+      } satisfies ServerSettings.ServerSettingsService["Service"]);
+      const runtimeLayer = AnalyticsService.layer.pipe(
+        Layer.provideMerge(
+          ServerConfig.ServerConfig.layerTest(process.cwd(), {
+            prefix: "neokod-telemetry-settings-read-failure-",
+          }),
+        ),
+        Layer.provideMerge(unreadableSettingsLayer),
+        Layer.provide(mockClientConfigLayer),
+        Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
+      );
+
+      yield* Effect.gen(function* () {
+        const analytics = yield* AnalyticsService.AnalyticsService;
+        yield* analytics.record("test.settings-read-failure");
+        yield* analytics.flush;
+
+        const serverConfig = yield* ServerConfig.ServerConfig;
+        const fileSystem = yield* FileSystem.FileSystem;
+        assert.isFalse(yield* fileSystem.exists(serverConfig.anonymousIdPath));
+      }).pipe(Effect.provide(runtimeLayer));
+
+      assert.equal(attempts, 0);
+    }),
+  );
+
+  it.effect("clears buffered events when a live settings update disables analytics", () =>
+    Effect.gen(function* () {
+      const initialSettings: ServerSettingsModel = {
+        ...DEFAULT_SERVER_SETTINGS,
+        analytics: { ...DEFAULT_SERVER_SETTINGS.analytics, enabled: true },
+      };
+      const changes = yield* PubSub.unbounded<ServerSettingsModel>();
+      const reactiveSettingsLayer = Layer.succeed(ServerSettings.ServerSettingsService, {
+        start: Effect.void,
+        ready: Effect.void,
+        getSettings: Effect.succeed(initialSettings),
+        updateSettings: () => Effect.succeed(initialSettings),
+        streamChanges: Stream.fromPubSub(changes),
+      } satisfies ServerSettings.ServerSettingsService["Service"]);
+      const deliveredEvents: Array<string> = [];
+      const client = HttpClient.make((request) => {
+        deliveredEvents.push(...batchEventNames(request));
+        return successResponse(request);
+      });
+      const runtimeLayer = mockClientRuntimeLayer(
+        client,
+        "neokod-telemetry-live-disable-",
+        reactiveSettingsLayer,
+      );
+
+      yield* Effect.gen(function* () {
+        const analytics = yield* AnalyticsService.AnalyticsService;
+        yield* analytics.record("test.before-disable");
+        yield* PubSub.publish(changes, {
+          ...initialSettings,
+          analytics: { ...initialSettings.analytics, enabled: false },
+        });
+        yield* Effect.all(
+          Array.from({ length: 5 }, () => Effect.yieldNow),
+          { discard: true },
+        );
+        yield* analytics.flush;
+
+        yield* PubSub.publish(changes, initialSettings);
+        yield* Effect.all(
+          Array.from({ length: 5 }, () => Effect.yieldNow),
+          { discard: true },
+        );
+        yield* analytics.record("test.after-enable");
+        yield* analytics.flush;
+      }).pipe(Effect.provide(runtimeLayer));
+
+      assert.deepEqual(deliveredEvents, ["test.after-enable"]);
     }),
   );
 });

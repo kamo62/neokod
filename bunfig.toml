@@ -1,0 +1,17 @@
+# Bun configuration.
+#
+# pnpm is the package manager for this repo (see package.json `packageManager`),
+# and bun is used as a runtime. This install block exists as a backstop so that
+# an ad-hoc `bun install` or `bun add` in a workspace cannot bypass the
+# supply-chain cooldown that pnpm-workspace.yaml enforces.
+
+[install]
+# Supply-chain cooldown. Value is in SECONDS; 345600 = 4 days.
+# Note the unit differs from pnpm's minimumReleaseAge, which is in minutes.
+# Keep the two in sync: 345600 seconds == 5760 minutes.
+minimumReleaseAge = 345600
+
+# Packages exempt from the cooldown. Keep this aligned with
+# minimumReleaseAgeExclude in pnpm-workspace.yaml.
+# Note bun spells this key plural, unlike pnpm's singular Exclude.
+minimumReleaseAgeExcludes = []

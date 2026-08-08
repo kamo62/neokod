@@ -13,10 +13,10 @@ import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 import { useProjects, useThreadShells } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
 import {
-  formatMissionControlRelativeTime,
-  resolveMissionControlThreadStatusPill,
-  selectMissionControlDashboardGroups,
-} from "./MissionControl.logic";
+  formatRelativeTime,
+  resolveThreadStatusPill,
+  selectDashboardGroups,
+} from "./threadDashboard.logic";
 
 const HOME_DASHBOARD_RECENT_CAP = 8;
 
@@ -29,7 +29,7 @@ function HomeDashboardThreadRow({
   project: EnvironmentProject;
   onOpen: (thread: EnvironmentThreadShell) => void;
 }) {
-  const status = resolveMissionControlThreadStatusPill(thread);
+  const status = resolveThreadStatusPill(thread);
   return (
     <button
       type="button"
@@ -52,7 +52,7 @@ function HomeDashboardThreadRow({
         </span>
       </span>
       <span className="pt-0.5 text-xs text-muted-foreground">
-        {formatMissionControlRelativeTime(thread.updatedAt)}
+        {formatRelativeTime(thread.updatedAt)}
       </span>
     </button>
   );
@@ -103,7 +103,7 @@ export function HomeDashboard() {
   const navigate = useNavigate();
   const projects = useProjects();
   const threads = useThreadShells();
-  const groups = selectMissionControlDashboardGroups(threads, projects, HOME_DASHBOARD_RECENT_CAP);
+  const groups = selectDashboardGroups(threads, projects, HOME_DASHBOARD_RECENT_CAP);
   const projectsByKey = new Map(
     projects.map((project) => [`${project.environmentId}:${project.id}`, project]),
   );
@@ -122,21 +122,21 @@ export function HomeDashboard() {
       <div className="grid gap-4 lg:grid-cols-2">
         <HomeDashboardGroup
           title="Running"
-          icon={<ActivityIcon className="size-4 text-emerald-600 dark:text-emerald-300" />}
+          icon={<ActivityIcon className="size-4 text-success-foreground" />}
           threads={groups.running}
           projectsByKey={projectsByKey}
           onOpen={openThread}
         />
         <HomeDashboardGroup
           title="Needs attention"
-          icon={<TriangleAlertIcon className="size-4 text-amber-600 dark:text-amber-300" />}
+          icon={<TriangleAlertIcon className="size-4 text-warning-foreground" />}
           threads={groups.needsAttention}
           projectsByKey={projectsByKey}
           onOpen={openThread}
         />
         <HomeDashboardGroup
           title="Plan ready"
-          icon={<LightbulbIcon className="size-4 text-violet-600 dark:text-violet-300" />}
+          icon={<LightbulbIcon className="size-4 text-info-foreground" />}
           threads={groups.planReady}
           projectsByKey={projectsByKey}
           onOpen={openThread}

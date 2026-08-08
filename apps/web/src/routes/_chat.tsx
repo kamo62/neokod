@@ -1,4 +1,4 @@
-import { Outlet, createFileRoute } from "@tanstack/react-router";
+import { Outlet, createFileRoute, useLocation } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
 import { useEffect } from "react";
 
@@ -18,6 +18,7 @@ import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { primaryServerKeybindingsAtom } from "~/state/server";
+import { useUiStateStore } from "../uiStateStore";
 
 function ChatRouteGlobalShortcuts() {
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
@@ -149,6 +150,15 @@ function ChatRouteGlobalShortcuts() {
 }
 
 function ChatRouteLayout() {
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const setOperatingMode = useUiStateStore((state) => state.setOperatingMode);
+  const setModeViewSnapshot = useUiStateStore((state) => state.setModeViewSnapshot);
+
+  useEffect(() => {
+    setOperatingMode("work");
+    setModeViewSnapshot("work", { route: pathname });
+  }, [pathname, setModeViewSnapshot, setOperatingMode]);
+
   return (
     <>
       <ChatRouteGlobalShortcuts />

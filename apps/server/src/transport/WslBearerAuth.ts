@@ -70,11 +70,28 @@ export const make = Effect.gen(function* () {
     return token;
   };
 
+  /**
+   * Resolve the credential to enforce for the current transport. The WSL path
+   * requires its bearer. The loopback path is authenticated only when a
+   * per-launch token is configured (plan WS-A2); otherwise it keeps the legacy
+   * pass-through. Returns `null` when no credential applies.
+   */
+  const resolveExpectedToken = (): string | null => {
+    if (config.transport === "wsl-bearer") {
+      return requireConfiguredWslToken();
+    }
+    if (config.transport === "loopback") {
+      const token = config.loopbackAuthToken?.trim();
+      return token === undefined || token.length === 0 ? null : token;
+    }
+    return null;
+  };
+
   const authorizeBearerHeader = Effect.fn("WslBearerAuth.authorizeBearerHeader")(function* (
     authorization: string | undefined,
   ) {
-    if (config.transport === "loopback") return;
-    const expected = requireConfiguredWslToken();
+    const expected = resolveExpectedToken();
+    if (expected === null) return;
     if (authorization === undefined) {
       return yield* failInvalid("missing_credential");
     }
@@ -106,8 +123,8 @@ export const make = Effect.gen(function* () {
   const consumeWebSocketTicket = Effect.fn("WslBearerAuth.consumeWebSocketTicket")(function* (
     ticket: string | null,
   ) {
-    if (config.transport === "loopback") return;
-    requireConfiguredWslToken();
+    const expected = resolveExpectedToken();
+    if (expected === null) return;
     if (ticket === null || ticket.length === 0) {
       return yield* failInvalid("missing_websocket_ticket");
     }
@@ -142,7 +159,12 @@ export const layer = Layer.effect(WslBearerAuth, make);
 export const wslWebSocketTicketRouteLayer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
-    if (config.transport === "loopback") return Layer.empty;
+    const loopbackToken =
+      config.transport === "loopback" ? config.loopbackAuthToken?.trim() : undefined;
+    const hasCredential =
+      config.transport === "wsl-bearer" ||
+      (loopbackToken !== undefined && loopbackToken.length > 0);
+    if (!hasCredential) return Layer.empty;
     return HttpRouter.add(
       "POST",
       WSL_WEBSOCKET_TICKET_PATH,

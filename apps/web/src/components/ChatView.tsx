@@ -44,6 +44,7 @@ import { nextTerminalId, resolveTerminalSessionLabel } from "@neokod/shared/term
 import { Debouncer } from "@tanstack/react-pacer";
 import { useAtomValue } from "@effect/atom-react";
 import {
+  type CSSProperties,
   lazy,
   memo,
   Suspense,
@@ -167,6 +168,7 @@ import { buildDraftThreadRouteParams } from "../threadRoutes";
 import {
   type ComposerImageAttachment,
   type DraftThreadEnvMode,
+  EMPTY_QUEUED_MESSAGES,
   useComposerDraftStore,
   type DraftId,
 } from "../composerDraftStore";
@@ -265,11 +267,21 @@ const EMPTY_DISMISSED_SUBAGENTS: ReadonlySet<string> = new Set();
 const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
-const PreviewPanel = lazy(() =>
-  import("./preview/PreviewPanel").then((module) => ({ default: module.PreviewPanel })),
-);
-const DiffPanel = lazy(() => import("./DiffPanel"));
-const FilePreviewPanel = lazy(() => import("./files/FilePreviewPanel"));
+const loadPreviewPanel = () =>
+  import("./preview/PreviewPanel").then((module) => ({ default: module.PreviewPanel }));
+const loadDiffPanel = () => import("./DiffPanel");
+const loadFilePreviewPanel = () => import("./files/FilePreviewPanel");
+const PreviewPanel = lazy(loadPreviewPanel);
+const DiffPanel = lazy(loadDiffPanel);
+const FilePreviewPanel = lazy(loadFilePreviewPanel);
+
+type RightPanelPreloadSurface = "preview" | "diff" | "files";
+
+function preloadRightPanel(surface: RightPanelPreloadSurface): void {
+  if (surface === "preview") void loadPreviewPanel();
+  if (surface === "diff") void loadDiffPanel();
+  if (surface === "files") void loadFilePreviewPanel();
+}
 const EMPTY_PENDING_FILE_SURFACE_IDS: ReadonlySet<string> = new Set();
 const TYPE_TO_FOCUS_EDITABLE_SELECTOR = [
   "input",
@@ -1050,6 +1062,18 @@ function ChatViewContent(props: ChatViewProps) {
   const activeThreadLastVisitedAt = useUiStateStore((store) =>
     routeKind === "server" ? store.threadLastVisitedAtById[routeThreadKey] : undefined,
   );
+  const chatFontSize = useUiStateStore((store) => store.chatFontSize);
+  const chatLineHeight = useUiStateStore((store) => store.chatLineHeight);
+  const chatColumnWidth = useUiStateStore((store) => store.chatColumnWidth);
+  const chatTypographyStyle = useMemo(
+    () =>
+      ({
+        "--font-size-chat": `${chatFontSize}px`,
+        "--line-height-chat": chatLineHeight,
+        "--chat-max-width": `${chatColumnWidth}rem`,
+      }) as CSSProperties,
+    [chatFontSize, chatLineHeight, chatColumnWidth],
+  );
   const settings = useEnvironmentSettings(environmentId);
   const setStickyComposerModelSelection = useComposerDraftStore(
     (store) => store.setStickyModelSelection,
@@ -1086,6 +1110,30 @@ function ChatViewContent(props: ChatViewProps) {
     (store) => store.setInteractionMode,
   );
   const clearComposerDraftContent = useComposerDraftStore((store) => store.clearComposerContent);
+  // Queued follow-ups submitted while a turn is running. Granular selectors
+  // (like the runtimeMode/interactionMode reads above) avoid subscribing to
+  // prompt keystrokes.
+  const queuedComposerMessages = useComposerDraftStore(
+    (store) => store.getComposerDraft(composerDraftTarget)?.queuedMessages ?? EMPTY_QUEUED_MESSAGES,
+  );
+  const addQueuedComposerMessage = useComposerDraftStore((store) => store.addQueuedMessage);
+  const removeQueuedComposerMessage = useComposerDraftStore((store) => store.removeQueuedMessage);
+  // Whether the live draft (independent of the queue) has anything staged.
+  // Gates both auto-dispatch and manual steer so neither ever overwrites or
+  // clears content the user hasn't sent yet.
+  const composerDraftIsEmpty = useComposerDraftStore((store) => {
+    const draft = store.getComposerDraft(composerDraftTarget);
+    if (!draft) return true;
+    return (
+      draft.prompt.trim().length === 0 &&
+      draft.images.length === 0 &&
+      draft.persistedAttachments.length === 0 &&
+      draft.terminalContexts.length === 0 &&
+      draft.elementContexts.length === 0 &&
+      draft.previewAnnotations.length === 0 &&
+      draft.reviewComments.length === 0
+    );
+  });
   const setDraftThreadContext = useComposerDraftStore((store) => store.setDraftThreadContext);
   const getDraftSessionByLogicalProjectKey = useComposerDraftStore(
     (store) => store.getDraftSessionByLogicalProjectKey,
@@ -3951,7 +3999,10 @@ function ChatViewContent(props: ChatViewProps) {
     ],
   );
 
-  const onSend = async (e?: { preventDefault: () => void }) => {
+  const onSend = async (
+    e?: { preventDefault: () => void },
+    options?: { bypassQueue?: boolean },
+  ) => {
     e?.preventDefault();
     if (
       !activeThread ||
@@ -4037,6 +4088,28 @@ function ChatViewContent(props: ChatViewProps) {
           }),
         );
       }
+      return;
+    }
+    // While a turn is running, a plain-text submission queues behind it
+    // instead of sending. See the queued-messages list rendered above the
+    // composer. Submissions carrying images/terminal/element/preview/review
+    // context keep today's behavior (folded straight into the running turn
+    // by the provider adapter) since those can't be represented as a queued
+    // item yet. `bypassQueue` is set only by the explicit per-item "Steer"
+    // action, which re-enters here with a single queued message's text.
+    if (
+      phase === "running" &&
+      !options?.bypassQueue &&
+      composerImages.length === 0 &&
+      sendableComposerTerminalContexts.length === 0 &&
+      composerElementContexts.length === 0 &&
+      composerPreviewAnnotations.length === 0 &&
+      composerReviewComments.length === 0
+    ) {
+      addQueuedComposerMessage(composerDraftTarget, trimmed);
+      promptRef.current = "";
+      clearComposerDraftContent(composerDraftTarget);
+      composerRef.current?.resetCursorState();
       return;
     }
     if (!activeProject) return;
@@ -4313,6 +4386,59 @@ function ChatViewContent(props: ChatViewProps) {
       resetLocalDispatch();
     }
   };
+
+  // Guards re-entrant dispatch of a queued message: set for the span between
+  // handing its text to `onSend` and that call settling, which covers the
+  // window before `phase` has had a chance to flip to "running".
+  const dispatchingQueuedMessageRef = useRef(false);
+
+  const dispatchQueuedMessage = (queuedMessageId: string, text: string) => {
+    dispatchingQueuedMessageRef.current = true;
+    removeQueuedComposerMessage(composerDraftTarget, queuedMessageId);
+    promptRef.current = text;
+    void onSend(undefined, { bypassQueue: true })
+      .catch(() => {})
+      .finally(() => {
+        dispatchingQueuedMessageRef.current = false;
+        // A send that actually dispatched cleared promptRef itself. Text
+        // still here means an early return dropped it; restore it into the
+        // visible composer instead of destroying it. The now non-empty
+        // draft also halts the drain loop until the user resolves it.
+        if (promptRef.current === text) {
+          promptRef.current = "";
+          composerRef.current?.insertTextAtEnd(text);
+        }
+      });
+  };
+
+  // Promotes a queued follow-up into the running turn right away instead of
+  // waiting for it to settle. Every current provider adapter folds a second
+  // `startTurn` call into the in-flight turn rather than rejecting it. The
+  // one narrow exception (Codex mid review/compact) surfaces through the
+  // normal send-failure path, same as any other failed send.
+  const steerQueuedMessage = (queuedMessageId: string) => {
+    if (phase !== "running" || !composerDraftIsEmpty) return;
+    const message = queuedComposerMessages.find((entry) => entry.id === queuedMessageId);
+    if (!message) return;
+    dispatchQueuedMessage(queuedMessageId, message.text);
+  };
+
+  // Drains the queue one message at a time: once the turn a message was
+  // queued behind has settled and the live draft is clear, send the oldest
+  // queued item. Sending it may start a new turn, which this effect will
+  // notice and drain the next item behind once that also settles.
+  useEffect(() => {
+    if (phase !== "ready") return;
+    if (dispatchingQueuedMessageRef.current) return;
+    if (!composerDraftIsEmpty) return;
+    const next = queuedComposerMessages[0];
+    if (!next) return;
+    dispatchQueuedMessage(next.id, next.text);
+    // dispatchQueuedMessage intentionally omitted: it closes over the latest
+    // render's values already, and including it would redefine the effect's
+    // identity every render without changing when it should run.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, composerDraftIsEmpty, queuedComposerMessages, composerDraftTarget]);
 
   const onInterrupt = async () => {
     if (!activeThread) return;
@@ -5185,7 +5311,11 @@ function ChatViewContent(props: ChatViewProps) {
         {/* Main content area with optional plan sidebar */}
         <div className="flex min-h-0 min-w-0 flex-1">
           {/* Chat column */}
-          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          <div
+            className="relative flex min-h-0 min-w-0 flex-1 flex-col"
+            data-chat-typography-root="true"
+            style={chatTypographyStyle}
+          >
             {/* Messages Wrapper */}
             <div className="relative flex min-h-0 flex-1 flex-col">
               {/* Messages — LegendList handles virtualization and scrolling internally */}
@@ -5253,7 +5383,7 @@ function ChatViewContent(props: ChatViewProps) {
                 aria-hidden="true"
                 className="chat-composer-horizontal-inset pointer-events-none absolute inset-x-0 top-1 bottom-0 z-0 sm:top-1.5"
               >
-                <div className="relative mx-auto h-full w-full max-w-3xl overflow-clip rounded-t-[18px]">
+                <div className="relative mx-auto h-full w-full max-w-(--chat-max-width) overflow-clip rounded-t-[18px]">
                   <div className="chat-composer-shared-blur absolute -inset-8" />
                 </div>
               </div>
@@ -5330,6 +5460,7 @@ function ChatViewContent(props: ChatViewProps) {
                       scheduleComposerFocus={scheduleComposerFocus}
                       setThreadError={setThreadError}
                       onExpandImage={onExpandTimelineImage}
+                      onSteerQueuedMessage={steerQueuedMessage}
                     />
                   </div>
                 </div>
@@ -5433,6 +5564,7 @@ function ChatViewContent(props: ChatViewProps) {
           onAddTerminal={addTerminalSurface}
           onAddDiff={addDiffSurface}
           onAddFiles={addFilesSurface}
+          onPreloadSurface={preloadRightPanel}
           browserAvailable={isPreviewSupportedInRuntime()}
           diffAvailable={isServerThread && isGitRepo}
           filesAvailable={activeProject !== null}
@@ -5460,6 +5592,7 @@ function ChatViewContent(props: ChatViewProps) {
             onAddTerminal={addTerminalSurface}
             onAddDiff={addDiffSurface}
             onAddFiles={addFilesSurface}
+            onPreloadSurface={preloadRightPanel}
             browserAvailable={isPreviewSupportedInRuntime()}
             diffAvailable={isServerThread && isGitRepo}
             filesAvailable={activeProject !== null}

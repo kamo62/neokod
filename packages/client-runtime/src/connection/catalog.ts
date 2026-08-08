@@ -6,11 +6,16 @@ import { PrimaryConnectionTarget, WslConnectionTarget, type ConnectionTarget } f
 export interface ConnectionCatalogEntry {
   readonly target: ConnectionTarget;
   readonly wslBearerToken: Option.Option<string>;
+  /** Per-launch loopback credential (plan WS-A2), when the desktop minted one. */
+  readonly loopbackAuthToken?: string;
 }
 
 export class PrimaryConnectionRegistration extends Schema.TaggedClass<PrimaryConnectionRegistration>()(
   "PrimaryConnectionRegistration",
-  { target: PrimaryConnectionTarget },
+  {
+    target: PrimaryConnectionTarget,
+    loopbackAuthToken: Schema.optional(Schema.String),
+  },
 ) {}
 
 export class WslConnectionRegistration extends Schema.TaggedClass<WslConnectionRegistration>()(
@@ -36,5 +41,9 @@ export function connectionRegistrationCatalogEntry(
       registration._tag === "WslConnectionRegistration"
         ? Option.some(registration.wslBearerToken)
         : Option.none(),
+    ...(registration._tag === "PrimaryConnectionRegistration" &&
+    registration.loopbackAuthToken !== undefined
+      ? { loopbackAuthToken: registration.loopbackAuthToken }
+      : {}),
   };
 }

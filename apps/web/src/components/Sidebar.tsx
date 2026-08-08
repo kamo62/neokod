@@ -1,7 +1,8 @@
 import {
-  ActivityIcon,
   ArchiveIcon,
   ArrowUpDownIcon,
+  CheckIcon,
+  ChevronDownIcon,
   ChevronRightIcon,
   CloudIcon,
   ContainerIcon,
@@ -102,11 +103,13 @@ import {
   legacyProjectCwdPreferenceKey,
   resolveProjectExpanded,
   useUiStateStore,
+  type OperatingMode,
 } from "../uiStateStore";
 import {
   resolveShortcutCommand,
   shortcutLabelForCommand,
   shouldShowThreadJumpHintsForModifiers,
+  THREAD_REOPEN_LAST_ARCHIVED_COMMAND,
   threadJumpCommandForIndex,
   threadJumpIndexFromCommand,
   threadTraversalDirectionFromCommand,
@@ -133,6 +136,7 @@ import {
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
+import { SymphonySidebarNav } from "./sidebar/SymphonySidebarNav";
 import { Kbd } from "./ui/kbd";
 import {
   getArm64IntelBuildWarningDescription,
@@ -158,6 +162,7 @@ import { Input } from "./ui/input";
 import {
   Menu,
   MenuGroup,
+  MenuItem,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
@@ -190,7 +195,6 @@ import {
 } from "./ui/sidebar";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { useOpenAddProjectCommandPalette } from "../commandPaletteContext";
-import { useMissionControlUiStore } from "../missionControlUiStore";
 import {
   formatBulkThreadDeleteSummary,
   getSidebarThreadIdsToPrewarm,
@@ -233,6 +237,7 @@ import {
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
 import { SidebarProviderUpdatePill } from "./sidebar/SidebarProviderUpdatePill";
+import { ProviderMark } from "./sidebar/ProviderMark";
 import { SidebarMyWork } from "./SidebarMyWork";
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: "Last user message",
@@ -718,6 +723,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
       >
         <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
           <div className="flex min-w-0 items-center gap-1.5">
+            <ProviderMark thread={thread} />
             {prStatus && (
               <Tooltip>
                 <TooltipTrigger
@@ -801,7 +807,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
                   <button
                     type="button"
                     aria-label={`Open localhost:${discoveredPorts[0]?.port ?? ""}`}
-                    className="inline-flex cursor-pointer items-center justify-center text-emerald-600 outline-hidden focus-visible:ring-1 focus-visible:ring-ring dark:text-emerald-400"
+                    className="inline-flex cursor-pointer items-center justify-center text-success-foreground outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                     onClick={handleOpenDiscoveredPort}
                   />
                 }
@@ -842,7 +848,9 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
                   />
                 }
               >
-                <TerminalIcon className={`size-3 ${terminalStatus.pulse ? "animate-pulse" : ""}`} />
+                <TerminalIcon
+                  className={`size-3 ${terminalStatus.pulse ? "animate-status-pulse" : ""}`}
+                />
               </TooltipTrigger>
               <TooltipPopup side="top">{terminalStatus.label}</TooltipPopup>
             </Tooltip>
@@ -2374,7 +2382,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                 <span className="absolute inset-0 flex items-center justify-center transition-opacity duration-150 group-hover/project-header:opacity-0">
                   <span
                     className={`size-[9px] rounded-full ${projectStatus.dotClass} ${
-                      projectStatus.pulse ? "animate-pulse" : ""
+                      projectStatus.pulse ? "animate-status-pulse" : ""
                     }`}
                   />
                 </span>
@@ -2902,22 +2910,65 @@ const SidebarChromeHeader = memo(function SidebarChromeHeader({
   );
 });
 
+const OPERATING_MODES: ReadonlyArray<{
+  mode: OperatingMode;
+  label: string;
+  description: string;
+}> = [
+  { mode: "work", label: "Code", description: "Working directly with your code" },
+  { mode: "symphony", label: "Symphony", description: "Agent-led development" },
+];
+
 function SidebarBrand() {
   const stageLabel = useSidebarStageLabel();
+  const navigate = useNavigate();
+  const operatingMode = useUiStateStore((state) => state.operatingMode ?? "work");
+  const viewSnapshotsByMode = useUiStateStore((state) => state.viewSnapshotsByMode);
+
+  const switchMode = useCallback(
+    (mode: OperatingMode) => {
+      // Restore the mode's last view (persisted per-mode snapshot); the route
+      // entry effects own setting `operatingMode`, so navigation is the whole
+      // switch.
+      const fallbackRoute = mode === "symphony" ? "/symphony" : "/";
+      const route = viewSnapshotsByMode?.[mode]?.route ?? fallbackRoute;
+      void navigate({ to: route as "/" });
+    },
+    [navigate, viewSnapshotsByMode],
+  );
 
   return (
-    <Link
-      aria-label="Go to threads"
-      className="sidebar-brand ml-[var(--workspace-titlebar-content-left)] h-7 w-fit min-w-0 shrink-0 items-center gap-1 overflow-hidden rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2"
-      to="/"
-    >
-      <NeokodWordmark />
-      {stageLabel ? (
-        <span className="sidebar-brand-stage shrink-0 items-center whitespace-nowrap rounded-full bg-muted/50 px-1.5 py-0.5 text-meta font-medium uppercase tracking-[0.18em] text-text-tertiary">
-          {stageLabel}
-        </span>
-      ) : null}
-    </Link>
+    <Menu>
+      <MenuTrigger
+        aria-label="Switch mode"
+        className="sidebar-brand ml-[var(--workspace-titlebar-content-left)] flex h-7 w-fit min-w-0 shrink-0 items-center gap-1 overflow-hidden rounded-md px-1 text-foreground outline-hidden ring-ring hover:bg-surface-hover focus-visible:ring-2"
+      >
+        <NeokodWordmark />
+        {stageLabel ? (
+          <span className="sidebar-brand-stage shrink-0 items-center whitespace-nowrap rounded-full bg-muted/50 px-1.5 py-0.5 text-meta font-medium uppercase tracking-[0.18em] text-text-tertiary">
+            {stageLabel}
+          </span>
+        ) : null}
+        <ChevronDownIcon aria-hidden="true" className="size-3 shrink-0 text-text-tertiary" />
+      </MenuTrigger>
+      <MenuPopup align="start" className="w-64">
+        {OPERATING_MODES.map((entry) => (
+          <MenuItem
+            key={entry.mode}
+            aria-label={`Switch to ${entry.label}`}
+            onClick={() => switchMode(entry.mode)}
+          >
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="text-foreground font-medium">{entry.label}</span>
+              <span className="text-text-tertiary truncate">{entry.description}</span>
+            </span>
+            {operatingMode === entry.mode ? (
+              <CheckIcon aria-hidden="true" className="size-4 shrink-0" />
+            ) : null}
+          </MenuItem>
+        ))}
+      </MenuPopup>
+    </Menu>
   );
 }
 
@@ -2939,15 +2990,21 @@ function NeokodWordmark() {
   );
 }
 
-const SidebarChromeFooter = memo(function SidebarChromeFooter() {
+const SidebarChromeFooter = memo(function SidebarChromeFooter({
+  isOnSymphony = false,
+}: {
+  isOnSymphony?: boolean;
+}) {
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
   const handleSettingsClick = useCallback(() => {
     if (isMobile) {
       setOpenMobile(false);
     }
-    void navigate({ to: "/settings" });
-  }, [isMobile, navigate, setOpenMobile]);
+    // Symphony has its own settings surface, separate from the app settings
+    // pages, so this button follows whichever mode the sidebar is in.
+    void navigate({ to: isOnSymphony ? "/symphony/settings" : "/settings" });
+  }, [isMobile, isOnSymphony, navigate, setOpenMobile]);
 
   return (
     <SidebarFooter className="p-2">
@@ -2961,7 +3018,7 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
             onClick={handleSettingsClick}
           >
             <SettingsIcon className="size-3.5" />
-            <span className="text-ui">Settings</span>
+            <span className="text-ui">{isOnSymphony ? "Symphony settings" : "Settings"}</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
@@ -2980,7 +3037,6 @@ function SidebarPrimaryNav({
 }) {
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
-  const openMissionControl = useMissionControlUiStore((state) => state.setOpen);
   const finishNavigation = useCallback(() => {
     if (isMobile) setOpenMobile(false);
   }, [isMobile, setOpenMobile]);
@@ -3037,19 +3093,6 @@ function SidebarPrimaryNav({
           >
             <HouseIcon className="size-3.5" />
             <span className="text-ui">Home</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            size="sm"
-            className="gap-2 px-2 py-1.5 text-ui text-text-secondary hover:bg-accent hover:text-foreground"
-            onClick={() => {
-              finishNavigation();
-              openMissionControl(true);
-            }}
-          >
-            <ActivityIcon className="size-3.5" />
-            <span className="text-ui">Mission Control</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
@@ -3434,6 +3477,7 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const pathname = useLocation({ select: (loc) => loc.pathname });
   const isOnSettings = pathname.startsWith("/settings");
+  const isOnSymphony = pathname === "/symphony" || pathname.startsWith("/symphony/");
   const sidebarThreadSortOrder = useClientSettings((s) => s.sidebarThreadSortOrder);
   const sidebarProjectSortOrder = useClientSettings((s) => s.sidebarProjectSortOrder);
   const sidebarProjectGroupingMode = useClientSettings((s) => s.sidebarProjectGroupingMode);
@@ -3442,7 +3486,7 @@ export default function Sidebar() {
   const updateSettings = useUpdateClientSettings();
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
-  const { archiveThread, deleteThread } = useThreadActions();
+  const { archiveThread, deleteThread, reopenLastArchivedThread } = useThreadActions();
   const { isMobile, setOpenMobile } = useSidebar();
   const routeThreadRef = useParams({
     strict: false,
@@ -3872,6 +3916,12 @@ export default function Sidebar() {
         platform,
         context: shortcutContext,
       });
+      if (command === THREAD_REOPEN_LAST_ARCHIVED_COMMAND) {
+        event.preventDefault();
+        event.stopPropagation();
+        void reopenLastArchivedThread();
+        return;
+      }
       const traversalDirection = threadTraversalDirectionFromCommand(command);
       if (traversalDirection !== null) {
         const targetThreadKey = resolveAdjacentThreadId({
@@ -3923,6 +3973,7 @@ export default function Sidebar() {
     navigateToThread,
     orderedSidebarThreadKeys,
     platform,
+    reopenLastArchivedThread,
     routeThreadKey,
     sidebarThreadByKey,
     threadJumpThreadKeys,
@@ -4054,6 +4105,12 @@ export default function Sidebar() {
 
       {isOnSettings ? (
         <SettingsSidebarNav pathname={pathname} />
+      ) : isOnSymphony ? (
+        <>
+          <SymphonySidebarNav pathname={pathname} />
+          <SidebarSeparator />
+          <SidebarChromeFooter isOnSymphony />
+        </>
       ) : (
         <>
           <SidebarViewTabs sidebarView={sidebarView} setSidebarView={setSidebarView} />

@@ -71,19 +71,19 @@ export function ThreadRunBanner(props: ThreadRunBannerProps) {
         <span
           aria-hidden="true"
           className={cn(
-            "size-2 shrink-0 rounded-full bg-sky-500",
+            "size-2 shrink-0 rounded-full bg-info",
             summary.status === "working" && "animate-pulse",
-            summary.status === "completed" && "bg-emerald-500",
+            summary.status === "completed" && "bg-success",
             summary.status === "stopped" && "bg-muted-foreground/60",
             summary.status === "failed" && "bg-destructive",
-            isAttention && "bg-amber-500",
+            isAttention && "bg-warning",
           )}
         />
         <div className="flex min-w-0 flex-1 items-center gap-x-2 gap-y-0.5 overflow-hidden">
           {summary.compact && summary.status === "completed" ? (
-            <CheckIcon className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-300" />
+            <CheckIcon className="size-3.5 shrink-0 text-success-foreground" />
           ) : isAttention ? (
-            <CircleAlertIcon className="size-3.5 shrink-0 text-amber-600 dark:text-amber-300" />
+            <CircleAlertIcon className="size-3.5 shrink-0 text-warning-foreground" />
           ) : null}
           <span
             className={cn(

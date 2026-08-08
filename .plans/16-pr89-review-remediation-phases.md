@@ -39,7 +39,7 @@ Primary files:
 
 - `apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts`
 - `apps/server/src/orchestration/Layers/CheckpointReactor.ts`
-- `apps/server/src/wsServer.ts`
+- `apps/server/src/ws.ts`
 
 Exit criteria:
 
@@ -79,11 +79,11 @@ Related bug groups solved together:
 
 Primary files:
 
-- `apps/server/src/checkpointing/Layers/CheckpointStore.ts`
-- `apps/server/src/checkpointing/Layers/CheckpointDiffQuery.ts`
+- `apps/server/src/checkpointing/CheckpointStore.ts`
+- `apps/server/src/checkpointing/CheckpointDiffQuery.ts`
 - `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts`
 - `apps/server/src/orchestration/Layers/CheckpointReactor.ts`
-- `apps/server/src/wsServer.ts`
+- `apps/server/src/ws.ts`
 
 Exit criteria:
 
@@ -120,11 +120,12 @@ Related bug groups solved together:
 
 Primary files:
 
-- `apps/server/src/wsServer.ts`
-- `apps/server/src/git/Layers/CodexTextGeneration.ts`
+- `apps/server/src/ws.ts`
+- `apps/server/src/textGeneration/CodexTextGeneration.ts`
 - `apps/web/src/markdown-links.ts`
 - `apps/server/src/os-jank.ts`
-- `apps/server/src/git/Layers/GitCore.ts`
+- `packages/shared/src/shell.ts` (PATH-hydration logic now lives here, not in `os-jank.ts`)
+- `apps/server/src/vcs/GitVcsDriverCore.ts`
 - `apps/server/src/keybindings.ts`
 
 Exit criteria:

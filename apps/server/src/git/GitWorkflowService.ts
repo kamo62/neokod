@@ -1,6 +1,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 
 import {
   GitManagerError,
@@ -31,6 +32,7 @@ import {
 import * as GitManager from "./GitManager.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
+import { WorkspaceRemovalGuard } from "../symphony/Persistence/Services/WorkspaceOwnershipRepository.ts";
 
 export class GitWorkflowService extends Context.Service<
   GitWorkflowService,
@@ -308,8 +310,34 @@ export const make = Effect.gen(function* () {
         Effect.andThen(git.resolveRemoteTrackingCommit(input)),
       ),
     removeWorktree: (input) =>
-      ensureGitCommand("GitWorkflowService.removeWorktree", input.cwd).pipe(
-        Effect.andThen(git.removeWorktree(input)),
+      Effect.serviceOption(WorkspaceRemovalGuard).pipe(
+        Effect.flatMap((maybeGuard) =>
+          Option.isSome(maybeGuard)
+            ? maybeGuard.value
+                .assertRemovable({
+                  workspacePath: input.path,
+                  ...(input.force !== undefined ? { force: input.force } : {}),
+                  removingOwner: "work",
+                })
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new GitCommandError({
+                        operation: "GitWorkflowService.removeWorktree",
+                        command: "git worktree remove",
+                        cwd: input.cwd,
+                        detail: cause.message,
+                        cause,
+                      }),
+                  ),
+                )
+            : Effect.void,
+        ),
+        Effect.andThen(
+          ensureGitCommand("GitWorkflowService.removeWorktree", input.cwd).pipe(
+            Effect.andThen(git.removeWorktree(input)),
+          ),
+        ),
       ),
     createRef: (input) =>
       ensureGitCommand("GitWorkflowService.createRef", input.cwd).pipe(

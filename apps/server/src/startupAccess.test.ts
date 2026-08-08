@@ -8,9 +8,21 @@ import {
 } from "./startupAccess.ts";
 
 it("formats headless serve output with the Neokod heading and local URL", () => {
-  expect(formatHeadlessServeOutput({ connectionString: "http://localhost:3773" })).toBe(
-    "Neokod server is ready.\nLocal URL: http://localhost:3773\n",
-  );
+  expect(
+    formatHeadlessServeOutput({
+      connectionString: "http://localhost:3773",
+      loopbackAuthToken: undefined,
+    }),
+  ).toBe("Neokod server is ready.\nLocal URL: http://localhost:3773\n");
+});
+
+it("prints the per-launch token when the loopback transport is authenticated", () => {
+  const output = formatHeadlessServeOutput({
+    connectionString: "http://localhost:3773",
+    loopbackAuthToken: "launch-token",
+  });
+  expect(output).toContain("Launch token: launch-token");
+  expect(output).toContain("not persisted");
 });
 
 it("prefers localhost when no explicit host is configured", () => {

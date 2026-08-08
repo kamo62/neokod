@@ -257,7 +257,15 @@ const resolveStartupBrowserTarget = Effect.gen(function* () {
       ? `http://${formatHostForUrl(serverConfig.host)}:${serverConfig.port}`
       : localUrl;
   const baseTarget = serverConfig.devUrl?.toString() ?? bindUrl;
-  return baseTarget;
+  if (serverConfig.loopbackAuthToken === undefined) {
+    return baseTarget;
+  }
+  // Deliver the per-launch token to the renderer via the startup URL so the
+  // web client can authenticate (plan WS-A2, 13.3). The token is a bearer and
+  // WebSocket-ticket credential; it is never persisted.
+  const url = new URL(baseTarget);
+  url.searchParams.set("loopbackAuthToken", serverConfig.loopbackAuthToken);
+  return url.toString();
 });
 
 const maybeOpenBrowser = (target: string) =>

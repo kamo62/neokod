@@ -81,6 +81,7 @@ function unsupportedProvider(
         reference: SourceControlProvider.transportSafeSourceControlErrorValue(input.reference),
         detail: `No ${kind} source control provider is registered.`,
       }),
+    getChangeRequestStatus: () => Effect.succeed(null),
     createChangeRequest: (input) =>
       new SourceControlProviderError({
         provider: kind,
@@ -166,6 +167,11 @@ function bindProviderContext(
       }),
     getChangeRequest: (input) =>
       provider.getChangeRequest({
+        ...input,
+        context: input.context ?? context,
+      }),
+    getChangeRequestStatus: (input) =>
+      provider.getChangeRequestStatus({
         ...input,
         context: input.context ?? context,
       }),

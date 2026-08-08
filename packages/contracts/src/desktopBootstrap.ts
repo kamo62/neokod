@@ -22,6 +22,10 @@ export const DesktopBackendBootstrap = Schema.Union([
     ...DesktopBackendBootstrapCommon,
     transport: Schema.Literal("loopback"),
     host: Schema.Literal("127.0.0.1"),
+    // Per-launch loopback credential (PRD 17.1, plan WS-A2). When present the
+    // loopback transport requires a bearer on HTTP and a short-lived WebSocket
+    // ticket; when absent the legacy loopback trust model stays in effect.
+    loopbackAuthToken: Schema.optional(TrimmedNonEmptyString),
   }),
   Schema.Struct({
     ...DesktopBackendBootstrapCommon,

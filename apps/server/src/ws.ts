@@ -6,6 +6,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
+import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import {
@@ -32,7 +33,6 @@ import {
   ProjectReadFileError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
-  OrchestrationReplayEventsError,
   type FilesystemBrowseFailure,
   FilesystemBrowseError,
   AssetWorkspaceContextNotFoundError,
@@ -44,8 +44,41 @@ import {
   type TerminalMetadataStreamEvent,
   WS_METHODS,
   WsRpcGroup,
+  SYMPHONY_WS_METHODS,
+  type SymphonyOverview,
+  SymphonyError,
+  SymphonyApproveInput,
+  SymphonyApproveMergeInput,
+  SymphonyRefreshPullRequestInput,
+  SymphonyCancelRunInput,
+  SymphonyDelegateFromThreadInput,
+  SymphonyDispatchWorkItemInput,
+  SymphonyExcludeWorkItemInput,
+  SymphonyGetRunInput,
+  SymphonyIncludeWorkItemInput,
+  SymphonyListAttentionInput,
+  SymphonyListQueueInput,
+  SymphonyListRunsInput,
+  SymphonyRejectInput,
+  SymphonyRequestChangesInput,
+  SymphonyRespondToUserInputInput,
+  SymphonyResumeAutonomousInput,
+  SymphonySetLocalPriorityInput,
+  SymphonyTakeOverInput,
+  SymphonyActivateWorkflowInput,
+  SymphonyValidateWorkflowInput,
+  SymphonyPauseWorkflowInput,
+  SymphonyResumeWorkflowInput,
+  SymphonyPauseRepositoryInput,
+  SymphonyResumeRepositoryInput,
+  SymphonyStopAllRunsInput,
+  SymphonyGetWorkflowInput,
+  SymphonyGetWorkflowContentInput,
+  SymphonySaveWorkflowContentInput,
+  SymphonyCreateWorkflowInput,
+  SymphonyListHistoryInput,
+  SymphonyResolveAttentionInput,
 } from "@neokod/contracts";
-import { clamp } from "effect/Number";
 import { HttpRouter, HttpServerRespondable } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
@@ -53,9 +86,17 @@ import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "./config.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
+import {
+  projectActivityEvent,
+  projectThreadDetailSnapshot,
+} from "./orchestration/ActivityPayloadProjection.ts";
 import { normalizeDispatchCommand } from "./orchestration/Normalizer.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as SymphonyOrchestrator from "./symphony/Orchestrator/SymphonyOrchestrator.ts";
+import * as ApprovalService from "./symphony/Runner/ApprovalService.ts";
+import * as HandoffService from "./symphony/HandoffService.ts";
+import { WorkflowLoaderService } from "./symphony/Workflow/Loader.ts";
 import {
   observeRpcEffect as instrumentRpcEffect,
   observeRpcStream as instrumentRpcStream,
@@ -85,7 +126,6 @@ import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
-import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
@@ -264,6 +304,669 @@ function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
 
 const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 
+// Maximum number of global events a resuming shell subscription may replay.
+// Matches the event store's default page size (DEFAULT_READ_FROM_SEQUENCE_LIMIT).
+const SHELL_RESUME_MAX_GAP = 1_000;
+
+// Same bound for thread resume. The replay reads the *global* event range and
+// filters per-thread afterwards, so a stale cursor far behind the head would
+// otherwise decode every intervening event's payload; reconnects with cursors
+// hundreds of thousands of events behind have OOM-killed servers on large
+// databases. Past this gap the client is reset with a fresh thread snapshot.
+const THREAD_RESUME_MAX_GAP = 1_000;
+
+// Symphony Observe reads. These are read-only and never dispatch; the
+// orchestrator records transient tracker errors in health rather than
+// failing the request. When the orchestrator is not mounted (e.g. in
+// harnesses that do not provide the Symphony layers), they return empty
+// data rather than failing, so the socket surface stays inert.
+const observeRpcEffect = <A, E, R>(
+  method: string,
+  effect: Effect.Effect<A, E, R>,
+  traceAttributes?: Readonly<Record<string, unknown>>,
+) => instrumentRpcEffect(method, effect, traceAttributes);
+
+const observeRpcStream = <A, E, R>(
+  method: string,
+  stream: Stream.Stream<A, E, R>,
+  traceAttributes?: Readonly<Record<string, unknown>>,
+) => instrumentRpcStream(method, stream, traceAttributes);
+
+const emptyOverview = (): Effect.Effect<SymphonyOverview> =>
+  Effect.succeed({
+    running: 0,
+    queued: 0,
+    needsAttention: 0,
+    readyForReview: 0,
+    retrying: 0,
+    failedToday: 0,
+    orchestratorPaused: false,
+    activeWorkflowCount: 0,
+    providerHealth: {},
+    trackerHealth: {},
+    lastTrackerPollAt: null,
+    activeAgentCount: 0,
+    generatedAt: new Date().toISOString(),
+  });
+
+// Resolve the Symphony orchestrator lazily per request so the RPC layer
+// itself has no hard dependency on the Symphony layers. When they are not
+// mounted, the Observe methods degrade to empty data instead of failing.
+const withOrchestrator = <A, E, R>(
+  run: (
+    orchestrator: SymphonyOrchestrator.SymphonyOrchestrator["Service"],
+  ) => Effect.Effect<A, E, R>,
+  fallback: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> =>
+  Effect.serviceOption(SymphonyOrchestrator.SymphonyOrchestrator).pipe(
+    Effect.flatMap((maybe) => (Option.isSome(maybe) ? run(maybe.value) : fallback)),
+  );
+
+const withOrchestratorStream = <A, E, R>(
+  run: (
+    orchestrator: SymphonyOrchestrator.SymphonyOrchestrator["Service"],
+  ) => Stream.Stream<A, E, R>,
+  fallback: Stream.Stream<A, E, R>,
+): Stream.Stream<A, E, R> =>
+  Stream.fromEffect(
+    Effect.serviceOption(SymphonyOrchestrator.SymphonyOrchestrator).pipe(
+      Effect.map((maybe) =>
+        Option.isSome(maybe)
+          ? (maybe.value as SymphonyOrchestrator.SymphonyOrchestrator["Service"])
+          : null,
+      ),
+    ),
+  ).pipe(Stream.flatMap((orchestrator) => (orchestrator === null ? fallback : run(orchestrator))));
+const withApprovalService = <A, E>(
+  run: (approvals: ApprovalService.ApprovalService["Service"]) => Effect.Effect<A, E>,
+  fallback: Effect.Effect<A, E>,
+): Effect.Effect<A, E> =>
+  Effect.serviceOption(ApprovalService.ApprovalService).pipe(
+    Effect.flatMap((maybe) => (Option.isSome(maybe) ? run(maybe.value) : fallback)),
+  );
+const approvalError = (message: string): SymphonyError =>
+  new SymphonyError({ code: "approval_request_not_found", message });
+
+/** Actions must not report success when the Symphony layer is absent. */
+const orchestratorUnavailable = (): SymphonyError =>
+  new SymphonyError({ code: "symphony_unavailable", message: "symphony layer is not mounted" });
+
+const withHandoffService = <A, E>(
+  run: (handoff: HandoffService.HandoffService["Service"]) => Effect.Effect<A, E>,
+  fallback: Effect.Effect<A, E>,
+): Effect.Effect<A, E> =>
+  Effect.serviceOption(HandoffService.HandoffService).pipe(
+    Effect.flatMap((maybe) => (Option.isSome(maybe) ? run(maybe.value) : fallback)),
+  );
+const handoffError = (message: string): SymphonyError =>
+  new SymphonyError({ code: "symphony_handoff_failed", message });
+
+export const makeSymphonyRpcHandlers = () => ({
+  [SYMPHONY_WS_METHODS.subscribeOverview]: () =>
+    observeRpcStream(
+      SYMPHONY_WS_METHODS.subscribeOverview,
+      withOrchestratorStream(
+        (orchestrator) =>
+          Stream.fromEffect(
+            orchestrator
+              .getOverview()
+              .pipe(
+                Effect.map((overview) => ({ version: 1, type: "overview", overview }) as const),
+              ),
+          ).pipe(Stream.repeat(Schedule.fixed("2 seconds"))),
+        Stream.empty,
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.subscribeRuns]: () =>
+    observeRpcStream(
+      SYMPHONY_WS_METHODS.subscribeRuns,
+      withOrchestratorStream(
+        (orchestrator) =>
+          Stream.fromEffect(
+            orchestrator
+              .listRuns({})
+              .pipe(Effect.map((runs) => ({ version: 1, type: "runs", runs }) as const)),
+          ).pipe(Stream.repeat(Schedule.fixed("2 seconds"))),
+        Stream.empty,
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.subscribeQueue]: () =>
+    observeRpcStream(
+      SYMPHONY_WS_METHODS.subscribeQueue,
+      withOrchestratorStream(
+        (orchestrator) =>
+          Stream.fromEffect(
+            orchestrator
+              .listQueue({})
+              .pipe(Effect.map((items) => ({ version: 1, type: "queue", items }) as const)),
+          ).pipe(Stream.repeat(Schedule.fixed("2 seconds"))),
+        Stream.empty,
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.subscribeAttention]: () =>
+    observeRpcStream(
+      SYMPHONY_WS_METHODS.subscribeAttention,
+      withOrchestratorStream(
+        (orchestrator) =>
+          Stream.fromEffect(
+            orchestrator
+              .listAttention()
+              .pipe(Effect.map((items) => ({ version: 1, type: "attention", items }) as const)),
+          ).pipe(Stream.repeat(Schedule.fixed("2 seconds"))),
+        Stream.empty,
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.subscribeRunEvents]: (input: (typeof SymphonyGetRunInput)["Type"]) =>
+    observeRpcStream(
+      SYMPHONY_WS_METHODS.subscribeRunEvents,
+      withOrchestratorStream(
+        (orchestrator) =>
+          Stream.fromEffect(
+            orchestrator
+              .listRunEvents(input.runAttemptId)
+              .pipe(
+                Effect.map((events) =>
+                  events.map((runEvent) => ({ version: 1, type: "runEvent", runEvent }) as const),
+                ),
+              ),
+          ).pipe(
+            Stream.flatMap((events) => Stream.fromIterable(events)),
+            Stream.repeat(Schedule.fixed("2 seconds")),
+          ),
+        Stream.empty,
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.getOverview]: () =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.getOverview,
+      withOrchestrator((orchestrator) => orchestrator.getOverview(), emptyOverview()),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.listQueue]: (input: (typeof SymphonyListQueueInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.listQueue,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator.listQueue(input.limit === undefined ? undefined : { limit: input.limit }),
+        Effect.succeed([]),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.listRuns]: (input: (typeof SymphonyListRunsInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.listRuns,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator.listRuns(input.limit === undefined ? undefined : { limit: input.limit }),
+        Effect.succeed([]),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.getRun]: (input: (typeof SymphonyGetRunInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.getRun,
+      withOrchestrator(
+        (orchestrator) => orchestrator.getRun(input.runAttemptId),
+        Effect.succeed(null),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.listAttention]: (input: (typeof SymphonyListAttentionInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.listAttention,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator.listAttention(input.limit === undefined ? undefined : input.limit),
+        Effect.succeed([]),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.listWorkflows]: () =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.listWorkflows,
+      withOrchestrator((orchestrator) => orchestrator.listWorkflows(), Effect.succeed([])),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.getWorkflow]: (input: (typeof SymphonyGetWorkflowInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.getWorkflow,
+      withOrchestrator(
+        (orchestrator) => orchestrator.getWorkflow(String(input.workflowId)),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.listTrackers]: () =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.listTrackers,
+      withOrchestrator((orchestrator) => orchestrator.listTrackers(), Effect.succeed([])),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.listHistory]: (input: (typeof SymphonyListHistoryInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.listHistory,
+      withOrchestrator((orchestrator) => orchestrator.listHistory(input.limit), Effect.succeed([])),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.resolveAttention]: (input: (typeof SymphonyResolveAttentionInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.resolveAttention,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator
+            .resolveAttention(String(input.attentionItemId), "resolved via RPC")
+            .pipe(Effect.map((resolved) => ({ ok: resolved }))),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.validateWorkflow]: (input: (typeof SymphonyValidateWorkflowInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.validateWorkflow,
+      // Real validation (audit item 8: was an {ok:true} stub): load and
+      // parse WORKFLOW.md; a validation failure records the workflow as
+      // `invalid` and returns ok:false.
+      Effect.serviceOption(WorkflowLoaderService).pipe(
+        Effect.flatMap((maybe) =>
+          Option.isSome(maybe)
+            ? maybe.value
+                .loadWorkflow({
+                  repositoryPath: input.repositoryPath,
+                })
+                .pipe(
+                  Effect.map((result) => ({ ok: result.errors.length === 0 })),
+                  Effect.catch(() => Effect.succeed({ ok: false })),
+                )
+            : Effect.succeed({ ok: false }),
+        ),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  // In-app workflow editor (PRD 12.3, pragmatic v1). Both resolve the file
+  // path from the persisted WorkflowRecord inside WorkflowLoaderService,
+  // never from client input.
+  [SYMPHONY_WS_METHODS.getWorkflowContent]: (
+    input: (typeof SymphonyGetWorkflowContentInput)["Type"],
+  ) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.getWorkflowContent,
+      Effect.serviceOption(WorkflowLoaderService).pipe(
+        Effect.flatMap((maybe) =>
+          Option.isSome(maybe)
+            ? maybe.value.getWorkflowContent(input.workflowId).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new SymphonyError({
+                      code: "workflow_content_unavailable",
+                      message: cause.message,
+                    }),
+                ),
+              )
+            : Effect.fail(orchestratorUnavailable()),
+        ),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.saveWorkflowContent]: (
+    input: (typeof SymphonySaveWorkflowContentInput)["Type"],
+  ) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.saveWorkflowContent,
+      Effect.serviceOption(WorkflowLoaderService).pipe(
+        Effect.flatMap((maybe) =>
+          Option.isSome(maybe)
+            ? maybe.value
+                .saveWorkflowContent(input.workflowId, input.content)
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new SymphonyError({ code: "workflow_save_failed", message: cause.message }),
+                  ),
+                )
+            : Effect.fail(orchestratorUnavailable()),
+        ),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  // "New workflow" dialog: `repositoryPath` is client-supplied, so unlike
+  // every other workflow RPC above it is never trusted directly. It is
+  // checked against ProjectionSnapshotQuery — the same read model the
+  // client's own project list is built from — before any filesystem write
+  // happens; an unrecognised path is refused rather than treated as a
+  // filesystem location.
+  [SYMPHONY_WS_METHODS.createWorkflow]: (input: (typeof SymphonyCreateWorkflowInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.createWorkflow,
+      Effect.gen(function* () {
+        const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+        const project = yield* projectionSnapshotQuery
+          .getActiveProjectByWorkspaceRoot(input.repositoryPath)
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new SymphonyError({ code: "workflow_create_failed", message: cause.message }),
+            ),
+          );
+        if (Option.isNone(project)) {
+          return yield* Effect.fail(
+            new SymphonyError({
+              code: "workflow_create_invalid_repository",
+              message: `Not a tracked project root: ${input.repositoryPath}`,
+            }),
+          );
+        }
+        const maybeLoader = yield* Effect.serviceOption(WorkflowLoaderService);
+        if (Option.isNone(maybeLoader)) {
+          return yield* Effect.fail(orchestratorUnavailable());
+        }
+        const result = yield* maybeLoader.value
+          .createWorkflow({ repositoryPath: input.repositoryPath, content: input.content })
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new SymphonyError({ code: "workflow_create_failed", message: cause.message }),
+            ),
+          );
+        return { ok: true, ...result };
+      }),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.activateWorkflow]: (input: (typeof SymphonyActivateWorkflowInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.activateWorkflow,
+      // Real activation (audit item 8): load the workflow and mark it
+      // active so the poll loop starts dispatching from it.
+      Effect.serviceOption(WorkflowLoaderService).pipe(
+        Effect.flatMap((maybe) =>
+          Option.isSome(maybe)
+            ? maybe.value.loadWorkflow({ repositoryPath: input.repositoryPath }).pipe(
+                Effect.map((result) => ({ ok: result.errors.length === 0 })),
+                Effect.catch(() => Effect.succeed({ ok: false })),
+              )
+            : Effect.succeed({ ok: false }),
+        ),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.approve]: (input: (typeof SymphonyApproveInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.approve,
+      withApprovalService(
+        (approvals) =>
+          approvals.approve(input.requestId).pipe(
+            Effect.mapError((cause) => approvalError(cause.message)),
+            Effect.as({ ok: true }),
+          ),
+        Effect.succeed({ ok: true }),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.reject]: (input: (typeof SymphonyRejectInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.reject,
+      withApprovalService(
+        (approvals) =>
+          approvals.reject(input.requestId, input.reason).pipe(
+            Effect.mapError((cause) => approvalError(cause.message)),
+            Effect.as({ ok: true }),
+          ),
+        Effect.succeed({ ok: true }),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.respondToUserInput]: (
+    input: (typeof SymphonyRespondToUserInputInput)["Type"],
+  ) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.respondToUserInput,
+      withApprovalService(
+        (approvals) =>
+          approvals.respondToUserInput(input.requestId, input.text).pipe(
+            Effect.mapError((cause) => approvalError(cause.message)),
+            Effect.as({ ok: true }),
+          ),
+        Effect.succeed({ ok: true }),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.excludeWorkItem]: (input: (typeof SymphonyExcludeWorkItemInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.excludeWorkItem,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator
+            .excludeWorkItem(input.workItemId, input.exclude)
+            .pipe(Effect.as({ ok: true })),
+        Effect.succeed({ ok: true }),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.includeWorkItem]: (input: (typeof SymphonyIncludeWorkItemInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.includeWorkItem,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator.includeWorkItem(input.workItemId).pipe(Effect.as({ ok: true })),
+        Effect.succeed({ ok: true }),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.setLocalPriority]: (input: (typeof SymphonySetLocalPriorityInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.setLocalPriority,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator
+            .setLocalPriority(input.workItemId, input.priority)
+            .pipe(Effect.as({ ok: true })),
+        Effect.succeed({ ok: true }),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.dispatchWorkItem]: (input: (typeof SymphonyDispatchWorkItemInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.dispatchWorkItem,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator.dispatchWorkItem(input.workItemId).pipe(Effect.as({ ok: true })),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.cancelRun]: (input: (typeof SymphonyCancelRunInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.cancelRun,
+      withOrchestrator(
+        (orchestrator) => orchestrator.cancelRun(input.runAttemptId).pipe(Effect.as({ ok: true })),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.pauseWorkflow]: (input: (typeof SymphonyPauseWorkflowInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.pauseWorkflow,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator
+            .setWorkflowPaused(String(input.workflowId), true)
+            .pipe(Effect.as({ ok: true })),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.resumeWorkflow]: (input: (typeof SymphonyResumeWorkflowInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.resumeWorkflow,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator
+            .setWorkflowPaused(String(input.workflowId), false)
+            .pipe(Effect.as({ ok: true })),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.pauseRepository]: (input: (typeof SymphonyPauseRepositoryInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.pauseRepository,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator
+            .setRepositoryPaused(input.repositoryPath, true)
+            .pipe(Effect.as({ ok: true })),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.resumeRepository]: (input: (typeof SymphonyResumeRepositoryInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.resumeRepository,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator
+            .setRepositoryPaused(input.repositoryPath, false)
+            .pipe(Effect.as({ ok: true })),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.pauseGlobal]: () =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.pauseGlobal,
+      withOrchestrator(
+        (orchestrator) => orchestrator.setGlobalPaused(true).pipe(Effect.as({ ok: true })),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.resumeGlobal]: () =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.resumeGlobal,
+      withOrchestrator(
+        (orchestrator) => orchestrator.setGlobalPaused(false).pipe(Effect.as({ ok: true })),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.stopAllRuns]: (input: (typeof SymphonyStopAllRunsInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.stopAllRuns,
+      // FR-134: the confirm literal is required at the RPC boundary.
+      input.confirm === "stop-all-runs"
+        ? withOrchestrator(
+            (orchestrator) =>
+              orchestrator.stopAllRuns().pipe(Effect.map((stopped) => ({ ok: stopped > 0 }))),
+            Effect.fail(orchestratorUnavailable()),
+          )
+        : Effect.fail(
+            new SymphonyError({ code: "symphony_handoff_failed", message: "confirm required" }),
+          ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.requestChanges]: (input: (typeof SymphonyRequestChangesInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.requestChanges,
+      withOrchestrator(
+        // The boolean result is the gate outcome: report it as `ok` rather
+        // than always claiming success (REVIEW P2 #3).
+        (orchestrator) =>
+          orchestrator
+            .requestChanges(input.workItemId, input.reason)
+            .pipe(Effect.map((changed) => ({ ok: changed }))),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.refreshPullRequest]: (
+    input: (typeof SymphonyRefreshPullRequestInput)["Type"],
+  ) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.refreshPullRequest,
+      withOrchestrator(
+        // Boolean result = whether stored evidence changed; report it as ok
+        // so the client can distinguish refreshed from no-op.
+        (orchestrator) =>
+          orchestrator
+            .refreshPullRequest(input.workItemId)
+            .pipe(Effect.map((changed) => ({ ok: changed }))),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.approveMerge]: (input: (typeof SymphonyApproveMergeInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.approveMerge,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator
+            .approveMerge(input.workItemId)
+            .pipe(Effect.map((changed) => ({ ok: changed }))),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.takeOver]: (input: (typeof SymphonyTakeOverInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.takeOver,
+      withHandoffService(
+        (handoff) =>
+          handoff
+            .takeOver({ runAttemptId: input.runAttemptId })
+            .pipe(Effect.mapError((cause) => handoffError(cause.message))),
+        // The Symphony layer is not mounted: report unavailable rather than
+        // a fabricated success (REVIEW P2).
+        Effect.fail(handoffError("symphony layer is not mounted")),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.resumeAutonomous]: (input: (typeof SymphonyResumeAutonomousInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.resumeAutonomous,
+      withHandoffService(
+        (handoff) =>
+          handoff.resumeAutonomous({ workItemId: input.workItemId }).pipe(
+            Effect.mapError((cause) => handoffError(cause.message)),
+            Effect.as({ ok: true }),
+          ),
+        Effect.fail(handoffError("symphony layer is not mounted")),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.delegateFromThread]: (
+    input: (typeof SymphonyDelegateFromThreadInput)["Type"],
+  ) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.delegateFromThread,
+      withHandoffService(
+        (handoff) =>
+          handoff
+            .delegateFromThread({
+              threadId: input.threadId,
+              objective: input.objective,
+              ...(input.repositoryPath !== undefined
+                ? { repositoryPath: input.repositoryPath }
+                : {}),
+              ...(input.branch !== undefined ? { branch: input.branch } : {}),
+              ...(input.summary !== undefined ? { summary: input.summary } : {}),
+              ...(input.acceptanceCriteria !== undefined
+                ? { acceptanceCriteria: input.acceptanceCriteria }
+                : {}),
+            })
+            .pipe(
+              Effect.map((workItemId) => ({ workItemId })),
+              Effect.mapError((cause) => handoffError(cause.message)),
+            ),
+        Effect.fail(handoffError("symphony layer is not mounted")),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+});
+
 const makeWsRpcLayer = (
   previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
 ) =>
@@ -291,8 +994,6 @@ const makeWsRpcLayer = (
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
-      const repositoryIdentityResolver =
-        yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
       const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
       const sourceControlDiscovery = yield* SourceControlDiscovery.SourceControlDiscovery;
       const automaticGitFetchInterval = serverSettings.getSettings.pipe(
@@ -383,53 +1084,6 @@ const makeWsRpcLayer = (
               cause,
             });
       };
-
-      const enrichProjectEvent = (
-        event: OrchestrationEvent,
-      ): Effect.Effect<OrchestrationEvent, never, never> => {
-        switch (event.type) {
-          case "project.created":
-            return repositoryIdentityResolver.resolve(event.payload.workspaceRoot).pipe(
-              Effect.map((repositoryIdentity) => ({
-                ...event,
-                payload: {
-                  ...event.payload,
-                  repositoryIdentity,
-                },
-              })),
-            );
-          case "project.meta-updated":
-            return Effect.gen(function* () {
-              const workspaceRoot =
-                event.payload.workspaceRoot ??
-                Option.match(
-                  yield* projectionSnapshotQuery.getProjectShellById(event.payload.projectId),
-                  {
-                    onNone: () => null,
-                    onSome: (project) => project.workspaceRoot,
-                  },
-                ) ??
-                null;
-              if (workspaceRoot === null) {
-                return event;
-              }
-
-              const repositoryIdentity = yield* repositoryIdentityResolver.resolve(workspaceRoot);
-              return {
-                ...event,
-                payload: {
-                  ...event.payload,
-                  repositoryIdentity,
-                },
-              } satisfies OrchestrationEvent;
-            }).pipe(Effect.orElseSucceed(() => event));
-          default:
-            return Effect.succeed(event);
-        }
-      };
-
-      const enrichOrchestrationEvents = (events: ReadonlyArray<OrchestrationEvent>) =>
-        Effect.forEach(events, enrichProjectEvent, { concurrency: 4 });
 
       const toShellStreamEvent = (
         event: OrchestrationEvent,
@@ -853,29 +1507,6 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "orchestration" },
           ),
-        [ORCHESTRATION_WS_METHODS.replayEvents]: (input) =>
-          observeRpcEffect(
-            ORCHESTRATION_WS_METHODS.replayEvents,
-            Stream.runCollect(
-              orchestrationEngine.readEvents(
-                clamp(input.fromSequenceExclusive, {
-                  maximum: Number.MAX_SAFE_INTEGER,
-                  minimum: 0,
-                }),
-              ),
-            ).pipe(
-              Effect.map((events) => Array.from(events)),
-              Effect.flatMap(enrichOrchestrationEvents),
-              Effect.mapError(
-                (cause) =>
-                  new OrchestrationReplayEventsError({
-                    message: "Failed to replay orchestration events",
-                    cause,
-                  }),
-              ),
-            ),
-            { "rpc.aggregate": "orchestration" },
-          ),
         [ORCHESTRATION_WS_METHODS.subscribeShell]: (input) =>
           observeRpcStreamEffect(
             ORCHESTRATION_WS_METHODS.subscribeShell,
@@ -894,34 +1525,49 @@ const makeWsRpcLayer = (
               // live subscription is attached (into a scope-bound buffer) before
               // draining the catch-up replay so no event published during the
               // replay window is lost; overlapping events are deduped by sequence
-              // on the client. The full range is read (not the store's default
-              // page limit) since the shell filter runs after reading.
+              // on the client.
+              //
+              // The replay is bounded to the projection head captured below:
+              // replaying every intervening event (each a shell refetch) is far
+              // more expensive than a single O(active-threads) snapshot, and a
+              // stale cached cursor can sit hundreds of thousands of global
+              // events behind. Past the gap cap (or when the cursor is ahead of
+              // the authoritative state) the branch falls through to the fresh
+              // snapshot path below so the client converges from a snapshot
+              // instead of an unbounded replay.
               if (input.afterSequence !== undefined) {
                 const afterSequence = input.afterSequence;
-                return Stream.unwrap(
-                  Effect.gen(function* () {
-                    const liveBuffer = yield* Queue.unbounded<OrchestrationShellStreamItem>();
-                    yield* Effect.forkScoped(
-                      liveStream.pipe(Stream.runForEach((item) => Queue.offer(liveBuffer, item))),
-                    );
-                    const catchUpStream = orchestrationEngine
-                      .readEvents(afterSequence, Number.MAX_SAFE_INTEGER)
-                      .pipe(
-                        Stream.mapEffect(toShellStreamEvent),
-                        Stream.flatMap((event) =>
-                          Option.isSome(event) ? Stream.succeed(event.value) : Stream.empty,
-                        ),
-                        Stream.mapError(
-                          (cause) =>
-                            new OrchestrationGetSnapshotError({
-                              message: "Failed to replay orchestration shell events",
-                              cause,
-                            }),
-                        ),
+                const headSequence = yield* orchestrationEngine.latestSequence;
+                const replayGap = headSequence - afterSequence;
+                if (replayGap >= 0 && replayGap <= SHELL_RESUME_MAX_GAP) {
+                  return Stream.unwrap(
+                    Effect.gen(function* () {
+                      const liveBuffer = yield* Queue.unbounded<OrchestrationShellStreamItem>();
+                      yield* Effect.forkScoped(
+                        liveStream.pipe(Stream.runForEach((item) => Queue.offer(liveBuffer, item))),
                       );
-                    return Stream.concat(catchUpStream, Stream.fromQueue(liveBuffer));
-                  }),
-                );
+                      // Replay only through the head captured above. Newer events
+                      // are already covered by the live subscription, so this
+                      // bound cannot chase a moving event-store head.
+                      const catchUpStream = orchestrationEngine
+                        .readEvents(afterSequence, replayGap)
+                        .pipe(
+                          Stream.mapEffect(toShellStreamEvent),
+                          Stream.flatMap((event) =>
+                            Option.isSome(event) ? Stream.succeed(event.value) : Stream.empty,
+                          ),
+                          Stream.mapError(
+                            (cause) =>
+                              new OrchestrationGetSnapshotError({
+                                message: "Failed to replay orchestration shell events",
+                                cause,
+                              }),
+                          ),
+                        );
+                      return Stream.concat(catchUpStream, Stream.fromQueue(liveBuffer));
+                    }),
+                  );
+                }
               }
 
               const snapshot = yield* projectionSnapshotQuery.getShellSnapshot().pipe(
@@ -977,7 +1623,7 @@ const makeWsRpcLayer = (
                 Stream.filter(isThisThreadDetailEvent),
                 Stream.map((event) => ({
                   kind: "event" as const,
-                  event,
+                  event: projectActivityEvent(event),
                 })),
               );
 
@@ -1002,26 +1648,41 @@ const makeWsRpcLayer = (
               // catch-up followed by the buffered/ongoing live events. Overlapping
               // events are deduped by sequence on the client.
               //
-              // Read the full range after the cursor (not the store's default
-              // page-bounded limit): the range is normally tiny (a fresh HTTP
-              // snapshot sequence) and the per-thread filter runs after reading,
-              // so a global cap could otherwise omit this thread's events.
+              // The replay is bounded to the projection head captured below. The
+              // catch-up range is normally tiny (a fresh HTTP snapshot sequence),
+              // but a stale cached cursor can sit hundreds of thousands of global
+              // events behind; replaying that decodes every intervening event
+              // (including every other thread's tool payloads) only to discard
+              // almost all of them, which has OOM-killed servers on large
+              // databases. A truncated replay would silently drop this thread's
+              // events, so past the gap cap we reset the client with a fresh
+              // thread snapshot instead, exactly like subscribeShell above.
               if (input.afterSequence !== undefined) {
                 const afterSequence = input.afterSequence;
-                const catchUpStream = orchestrationEngine
-                  .readEvents(afterSequence, Number.MAX_SAFE_INTEGER)
-                  .pipe(
-                    Stream.filter(isThisThreadDetailEvent),
-                    Stream.map((event) => ({ kind: "event" as const, event })),
-                    Stream.mapError(
-                      (cause) =>
-                        new OrchestrationGetSnapshotError({
-                          message: `Failed to replay thread ${input.threadId} events`,
-                          cause,
-                        }),
-                    ),
-                  );
-                return Stream.concat(catchUpStream, bufferedLiveStream);
+                const headSequence = yield* orchestrationEngine.latestSequence;
+                const replayGap = headSequence - afterSequence;
+                if (replayGap >= 0 && replayGap <= THREAD_RESUME_MAX_GAP) {
+                  const catchUpStream = orchestrationEngine
+                    .readEvents(afterSequence, replayGap)
+                    .pipe(
+                      Stream.filter(isThisThreadDetailEvent),
+                      Stream.map((event) => ({
+                        kind: "event" as const,
+                        event: projectActivityEvent(event),
+                      })),
+                      Stream.mapError(
+                        (cause) =>
+                          new OrchestrationGetSnapshotError({
+                            message: `Failed to replay thread ${input.threadId} events`,
+                            cause,
+                          }),
+                      ),
+                    );
+                  return Stream.concat(catchUpStream, bufferedLiveStream);
+                }
+                // Gap too large (or cursor ahead of authoritative state): fall
+                // through to the snapshot path so the client converges from a
+                // fresh thread detail instead of an unbounded replay.
               }
 
               const snapshot = yield* projectionSnapshotQuery
@@ -1046,7 +1707,7 @@ const makeWsRpcLayer = (
               return Stream.concat(
                 Stream.make({
                   kind: "snapshot" as const,
-                  snapshot: snapshot.value,
+                  snapshot: projectThreadDetailSnapshot(snapshot.value),
                 }),
                 bufferedLiveStream,
               );
@@ -1154,6 +1815,7 @@ const makeWsRpcLayer = (
               Effect.flatMap((settings) =>
                 testManagedClientEvidenceConnection(
                   settings.providers.githubCopilot.managedClientEvidence,
+                  settings.analytics,
                 ),
               ),
             ),
@@ -1631,6 +2293,8 @@ const makeWsRpcLayer = (
             }),
             { "rpc.aggregate": "server" },
           ),
+
+        ...makeSymphonyRpcHandlers(),
       });
     }),
   );

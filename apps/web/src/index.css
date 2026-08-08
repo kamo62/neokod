@@ -36,6 +36,11 @@
 
 @theme inline {
   --animate-skeleton: skeleton 2s -1s infinite linear;
+  /* Duty-cycled indicator animations: long opacity holds with short stepped
+     ramps, so the compositor only produces frames while the value changes
+     (~20% of the cycle) instead of every vsync. Keep flat holds dominant. */
+  --animate-status-pulse: status-pulse 2s infinite;
+  --animate-status-ping: status-ping 2s infinite;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   --color-surface-canvas: var(--surface-canvas);
@@ -77,6 +82,10 @@
   --color-success: var(--success);
   --color-info-foreground: var(--info-foreground);
   --color-info: var(--info);
+  --color-merged-foreground: var(--merged-foreground);
+  --color-merged: var(--merged);
+  --color-terminal-active-foreground: var(--terminal-active-foreground);
+  --color-terminal-active: var(--terminal-active);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-ring: var(--ring);
   --color-input: var(--input);
@@ -96,17 +105,62 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  /* Subtractive steps clamp to 0: --radius derives from the --radius-base
+     master knob (Appearance settings, 0-14px), and a 0px base must not push
+     these negative — they are calc(var(--radius) - Npx). The additive steps
+     below can't go negative on their own, so they stay unclamped. */
+  --radius-sm: max(0px, calc(var(--radius) - 4px));
+  --radius-md: max(0px, calc(var(--radius) - 2px));
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
   --radius-card: 1rem;
+
+  /* Owned elevation ramp: a hairline for controls and progressively softer,
+     low-alpha shadows for surfaces that actually float above the canvas. */
+  --shadow-hairline: var(--elev-hairline);
+  --shadow-2xs: var(--elev-hairline);
+  --shadow-xs: var(--elev-hairline);
+  --shadow-sm: var(--elev-sm);
+  --shadow-md: var(--elev-md);
+  --shadow-lg: var(--elev-lg);
+  --shadow-xl: var(--elev-xl);
+  --shadow-2xl: var(--elev-2xl);
   @keyframes skeleton {
     to {
       background-position: -200% 0;
+    }
+  }
+  @keyframes status-pulse {
+    0%,
+    40% {
+      opacity: 1;
+      animation-timing-function: steps(6);
+    }
+    50%,
+    90% {
+      opacity: 0.5;
+      animation-timing-function: steps(6);
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+  @keyframes status-ping {
+    /* Burst first (immediate feedback for click ripples), then hold
+       invisible for the rest of the cycle. Mirrors animate-ping's
+       75%-scale start. */
+    0% {
+      opacity: 0.9;
+      scale: 0.75;
+      animation-timing-function: steps(8);
+    }
+    40%,
+    100% {
+      opacity: 0;
+      scale: 2;
     }
   }
 }
@@ -270,9 +324,12 @@
   }
 
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-    .chat-composer-glass,
-    .chat-composer-lower-chrome {
+    .chat-composer-glass {
       background: var(--card);
+    }
+
+    .chat-composer-lower-chrome {
+      background: var(--background);
     }
   }
 }
@@ -293,6 +350,15 @@
   padding-right: max(env(safe-area-inset-right), 0px);
 }
 
+/* Grain texture for chrome surfaces that float above the body (see the
+   --surface-grain note). Layered over the element's background-color, so it
+   composes with bg-* utilities. */
+@utility surface-grain {
+  background-image: var(--surface-grain);
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}
+
 /* Suppress all transitions during theme changes */
 .no-transitions,
 .no-transitions *,
@@ -304,14 +370,25 @@
 
 :root {
   color-scheme: light;
-  --radius: 0.625rem;
+  /* Master knobs: the Appearance settings pane writes these two, and every
+     token that reads them below updates through calc() — one slider each,
+     app-wide effect. --ui-scale multiplies the CHROME type ramp only (nav
+     labels, meta text, control text); chat prose keeps its own
+     user-controlled tokens (--font-size-chat/--line-height-chat, set from
+     General settings in ChatView) and is deliberately excluded so reading
+     preferences and chrome density stay independent. --radius-base replaces
+     the old --radius literal; see the --radius-sm/--radius-md clamp above
+     for why the subtractive steps can't just multiply it. */
+  --ui-scale: 1;
+  --radius-base: 10px;
+  --radius: var(--radius-base);
   --surface-canvas: #ffffff;
   --surface-sidebar: #f7f7f7;
   --surface-panel: #f7f7f7;
   --surface-elevated: #ffffff;
   --surface-control: #ededed;
-  --surface-hover: color-mix(in srgb, var(--brand) 6%, var(--surface-panel));
-  --surface-selected: color-mix(in srgb, var(--brand) 12%, var(--surface-panel));
+  --surface-hover: color-mix(in srgb, var(--text-primary) 6%, var(--surface-panel));
+  --surface-selected: color-mix(in srgb, var(--text-primary) 10%, var(--surface-panel));
   --text-primary: #292929;
   --text-secondary: #5d5d5d;
   /* Darkened from the #9e9e9e design value, which is 2.68:1 on the white canvas
@@ -328,14 +405,34 @@
   --brand: #339cff;
   --brand-foreground: #0a1a2a;
   --skill: #924ff7;
-  --font-size-ui: 12px;
-  --font-size-ui-sm: 11px;
-  --font-size-meta: 10px;
-  --font-size-chat: 13px;
-  --font-size-ui-lg: 14px;
-  --font-size-title: 24px;
-  --line-height-chat: 1.55;
+  /* CHROME type ramp, multiplied by --ui-scale above. --font-size-chat is
+     not part of this ramp — it stays a literal, driven independently by the
+     chat reading controls in General settings. */
+  --font-size-ui: calc(12px * var(--ui-scale));
+  --font-size-ui-sm: calc(11px * var(--ui-scale));
+  --font-size-meta: calc(10px * var(--ui-scale));
+  --font-size-chat: 16px;
+  --font-size-ui-lg: calc(14px * var(--ui-scale));
+  --font-size-title: calc(24px * var(--ui-scale));
+  --line-height-chat: 1.5;
+  --chat-max-width: 48rem;
   --tracking-tight: -0.15px;
+  --elev-hairline: 0 0 0 0.5px #0000001a;
+  --elev-sm: 0 1px 2px -1px #00000014;
+  --elev-md: 0 2px 4px -1px #00000014;
+  --elev-lg: 0 4px 8px -2px #0000001a;
+  --elev-xl: 0 8px 16px -4px #0000001f;
+  --elev-2xl: 0 16px 32px -8px #00000030;
+  --ease-enter: cubic-bezier(0.19, 1, 0.22, 1);
+  --ease-enter-snappy: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-basic: ease;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-linear: linear;
+  --duration-basic: 150ms;
+  --duration-standard: 200ms;
+  --duration-relaxed: 300ms;
+  --duration-notification: 180ms;
   --icon-nav: 14px;
   --icon-card: 20px;
   --row-height-compact: 1.75rem;
@@ -367,6 +464,16 @@
   --success-foreground: #007331;
   --warning: var(--color-amber-500);
   --warning-foreground: var(--color-amber-700);
+  /* Merged (purple) and running-terminal (teal) are their own hues, not
+     folded into success/warning/info: a merged PR/thread and a live
+     terminal process are distinct states, not "passing" or "caution".
+     -foreground is the text-safe shade: violet-700 is 7.29:1 on the white
+     canvas, teal-700 is 5.39:1 on white — both clear the WCAG AA 4.5:1 floor
+     for normal text (the base -500 tones are for dots/icons, not text). */
+  --merged: var(--color-violet-500);
+  --merged-foreground: var(--color-violet-700);
+  --terminal-active: var(--color-teal-500);
+  --terminal-active-foreground: var(--color-teal-700);
   --sidebar: var(--surface-sidebar);
   --sidebar-foreground: var(--text-primary);
   --sidebar-primary: var(--brand);
@@ -383,8 +490,8 @@
     --surface-panel: #1f1f1f;
     --surface-elevated: #242424;
     --surface-control: #262626;
-    --surface-hover: color-mix(in srgb, var(--brand) 14%, var(--surface-panel));
-    --surface-selected: color-mix(in srgb, var(--brand) 22%, var(--surface-panel));
+    --surface-hover: color-mix(in srgb, var(--text-primary) 6%, var(--surface-panel));
+    --surface-selected: color-mix(in srgb, var(--text-primary) 10%, var(--surface-panel));
     --text-primary: #f5f5f5;
     --text-secondary: #a8a8a8;
     /* Lightened from #737373, which is 3.74:1 on the dark canvas and also below
@@ -427,6 +534,13 @@
     --success-foreground: #72dda2;
     --warning: var(--color-amber-500);
     --warning-foreground: var(--color-amber-400);
+    /* Same reasoning as the light-theme comment above. -foreground clears AA
+       with a wide margin here: violet-300 is 9.55:1 on #181818, teal-300 is
+       12.07:1 on #181818. */
+    --merged: var(--color-violet-500);
+    --merged-foreground: var(--color-violet-300);
+    --terminal-active: var(--color-teal-500);
+    --terminal-active-foreground: var(--color-teal-300);
     --sidebar: var(--surface-sidebar);
     --sidebar-foreground: var(--text-primary);
     --sidebar-primary: var(--brand);
@@ -466,13 +580,19 @@ body {
   padding-top: max(env(safe-area-inset-top), 0px);
 }
 
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+/* App-chrome grain. Baked into each surface's own background (behind
+   content) rather than a fixed overlay on top: a full-viewport overlay
+   forces the compositor to re-blend every frame any animation produces,
+   which multiplied idle GPU cost. The overlay's 0.035 opacity lives in the
+   SVG rect instead. Surfaces that float over the body (e.g. the inset main
+   card) must opt in via the surface-grain utility, or they lose the
+   grain's subtle brightening and stand out against the body. */
+:root {
+  --surface-grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+}
+
+body {
+  background-image: var(--surface-grain);
   background-repeat: repeat;
   background-size: 256px 256px;
 }
@@ -567,6 +687,8 @@ label:has(> select#reasoning-effort) select {
   color: var(--text-primary);
   font-size: var(--font-size-chat);
   line-height: var(--line-height-chat);
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
 }
 
 .chat-markdown > :first-child {
@@ -599,21 +721,21 @@ label:has(> select#reasoning-effort) select {
 }
 
 .chat-markdown h1 {
-  font-size: 1.25rem;
+  font-size: calc(var(--font-size-chat) * 1.25);
 }
 
 .chat-markdown h2 {
-  font-size: 1.125rem;
+  font-size: calc(var(--font-size-chat) * 1.125);
 }
 
 .chat-markdown h3 {
-  font-size: 1rem;
+  font-size: var(--font-size-chat);
 }
 
 .chat-markdown h4,
 .chat-markdown h5,
 .chat-markdown h6 {
-  font-size: 0.875rem;
+  font-size: var(--font-size-chat);
 }
 
 .chat-markdown h6 {
@@ -934,24 +1056,6 @@ label:has(> select#reasoning-effort) select {
   background: color-mix(in srgb, var(--surface-panel) 92%, var(--surface-canvas));
 }
 
-@keyframes ultrathink-rainbow {
-  0% {
-    background-position: 0% 50%;
-  }
-  100% {
-    background-position: 200% 50%;
-  }
-}
-
-@keyframes ultrathink-chroma-shift {
-  0% {
-    filter: hue-rotate(0deg) saturate(1.2);
-  }
-  100% {
-    filter: hue-rotate(360deg) saturate(1.2);
-  }
-}
-
 .ultrathink-frame {
   --ultrathink-spectrum: linear-gradient(
     120deg,
@@ -974,7 +1078,8 @@ label:has(> select#reasoning-effort) select {
   border-radius: inherit;
   padding: 2px;
   background-image: var(--ultrathink-spectrum);
-  background-size: 220% 220%;
+  background-size: 180% 180%;
+  background-position: 50% 50%;
   pointer-events: none;
   filter: saturate(0.82) brightness(0.92);
   -webkit-mask:
@@ -985,7 +1090,6 @@ label:has(> select#reasoning-effort) select {
     linear-gradient(#000 0 0) content-box,
     linear-gradient(#000 0 0);
   mask-composite: exclude;
-  animation: ultrathink-rainbow 10s linear infinite;
 }
 
 .ultrathink-frame > * {
@@ -993,7 +1097,7 @@ label:has(> select#reasoning-effort) select {
 }
 
 .ultrathink-chroma {
-  animation: ultrathink-chroma-shift 10s linear infinite;
+  filter: saturate(1.2);
 }
 
 .ultrathink-pill {
@@ -1002,11 +1106,10 @@ label:has(> select#reasoning-effort) select {
     var(--ultrathink-spectrum) border-box;
   background-size:
     100% 100%,
-    220% 220%;
+    180% 180%;
   background-position:
     0 0,
-    0% 50%;
-  animation: ultrathink-rainbow 10s linear infinite;
+    50% 50%;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--card) 82%, transparent);
 }
 
@@ -1014,11 +1117,10 @@ label:has(> select#reasoning-effort) select {
   display: inline-block;
   color: transparent;
   background-image: var(--ultrathink-spectrum);
-  background-size: 220% 220%;
-  background-position: 0% 50%;
+  background-size: 180% 180%;
+  background-position: 50% 50%;
   background-clip: text;
   -webkit-background-clip: text;
-  animation: ultrathink-rainbow 10s linear infinite;
 }
 
 /* Thin scrollbar for model picker */

@@ -458,7 +458,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // from TimelineRowCtx, which propagates through LegendList's memo.
   const renderItem = useCallback(
     ({ item }: { item: MessagesTimelineRow }) => (
-      <div className="mx-auto w-full min-w-0 max-w-3xl overflow-x-clip" data-timeline-root="true">
+      <div
+        className="mx-auto w-full min-w-0 max-w-(--chat-max-width) overflow-x-clip"
+        data-timeline-root="true"
+      >
         <TimelineRowContent row={item} />
       </div>
     ),
@@ -1063,9 +1066,9 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
     <div className="py-0.5 pl-1.5">
       <div className="flex items-center gap-2 pt-1 text-ui-sm text-text-secondary tabular-nums">
         <span className="inline-flex items-center gap-[3px]">
-          <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse" />
-          <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:200ms]" />
-          <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:400ms]" />
+          <span className="h-1 w-1 rounded-full bg-muted-foreground/30" />
+          <span className="h-1 w-1 rounded-full bg-muted-foreground/30" />
+          <span className="h-1 w-1 rounded-full bg-muted-foreground/30" />
         </span>
         <span>
           {row.createdAt ? (

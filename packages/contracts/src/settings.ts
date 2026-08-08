@@ -551,6 +551,17 @@ export const OpenCodeSettings = makeProviderSettingsSchema(
 );
 export type OpenCodeSettings = typeof OpenCodeSettings.Type;
 
+export const AnalyticsSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  posthogApiKey: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  posthogHost: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+});
+export type AnalyticsSettings = typeof AnalyticsSettings.Type;
+
+export const DEFAULT_ANALYTICS_SETTINGS: AnalyticsSettings = Schema.decodeSync(AnalyticsSettings)(
+  {},
+);
+
 export const ObservabilitySettings = Schema.Struct({
   otlpTracesUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   otlpMetricsUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
@@ -558,6 +569,41 @@ export const ObservabilitySettings = Schema.Struct({
 export type ObservabilitySettings = typeof ObservabilitySettings.Type;
 
 export const DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL = Duration.seconds(30);
+
+/**
+ * Per-tracker settings for Symphony work tracking.
+ *
+ * This is the app-level control surface for issue trackers (GitHub Issues,
+ * Jira, Linear, GitLab, Asana): which trackers are enabled for Symphony and
+ * any host-side configuration needed to reach them. It lives alongside the
+ * existing provider and source-control settings rather than being folded into
+ * them, because a tracker is a work source, not a git host or a coding-agent
+ * provider. Each activated workflow still declares its own `tracker.kind` and
+ * `tracker.provider` in `WORKFLOW.md`; these settings gate enablement and
+ * supply defaults (credentials, scope) the workflow can reference.
+ */
+export const TrackerKindLiteral = Schema.Literals(["github", "jira", "linear", "gitlab", "asana"]);
+export type TrackerKindLiteral = typeof TrackerKindLiteral.Type;
+
+export const TrackerProviderSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** Host-side credential reference (e.g. a `$VAR` name or secret-store key). */
+  credentialRef: Schema.optional(TrimmedString),
+  /** Default scope for the tracker (e.g. `owner/repo` for GitHub, project key for Jira). */
+  scope: Schema.optional(TrimmedString),
+  /** Arbitrary adapter-specific configuration, forwarded to the tracker adapter. */
+  config: Schema.Record(Schema.String, Schema.Unknown).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
+});
+export type TrackerProviderSettings = typeof TrackerProviderSettings.Type;
+
+export const TrackersSettings = Schema.Record(Schema.String, TrackerProviderSettings).pipe(
+  Schema.withDecodingDefault(Effect.succeed({})),
+);
+export type TrackersSettings = typeof TrackersSettings.Type;
+
+export const DEFAULT_TRACKERS_SETTINGS: TrackersSettings = {};
 
 export const ServerSettings = Schema.Struct({
   enableAssistantStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -605,6 +651,8 @@ export const ServerSettings = Schema.Struct({
   providerInstances: Schema.Record(ProviderInstanceId, ProviderInstanceConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  trackers: TrackersSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  analytics: AnalyticsSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 });
 export type ServerSettings = typeof ServerSettings.Type;
@@ -720,6 +768,13 @@ export const ServerSettingsPatch = Schema.Struct({
   newWorktreesStartFromOrigin: Schema.optionalKey(Schema.Boolean),
   addProjectBaseDirectory: Schema.optionalKey(TrimmedString),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),
+  analytics: Schema.optionalKey(
+    Schema.Struct({
+      enabled: Schema.optionalKey(Schema.Boolean),
+      posthogApiKey: Schema.optionalKey(TrimmedString),
+      posthogHost: Schema.optionalKey(TrimmedString),
+    }),
+  ),
   observability: Schema.optionalKey(
     Schema.Struct({
       otlpTracesUrl: Schema.optionalKey(TrimmedString),
@@ -741,6 +796,9 @@ export const ServerSettingsPatch = Schema.Struct({
   // patches risk leaving driver-specific config in a half-merged state.
   // The web UI sends a fully-formed map every time it edits this field.
   providerInstances: Schema.optionalKey(Schema.Record(ProviderInstanceId, ProviderInstanceConfig)),
+  // Whole-map replacement, same contract as providerInstances: the web UI
+  // sends a fully-formed trackers map every time it edits this field.
+  trackers: Schema.optionalKey(Schema.Record(Schema.String, TrackerProviderSettings)),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
 

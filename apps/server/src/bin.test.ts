@@ -66,6 +66,9 @@ const makeCliTestServerConfig = (baseDir: string) =>
       noBrowser: true,
       startupPresentation: "browser",
       wslBearerToken: undefined,
+      loopbackAuthToken: undefined,
+      publicHosts: [],
+      publicOrigins: [],
       autoBootstrapProjectFromCwd: false,
       logWebSocketEvents: false,
     } satisfies ServerConfig.ServerConfig["Service"];

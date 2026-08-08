@@ -78,6 +78,9 @@ export const getLocalEnvironmentBootstraps = DesktopIpc.makeSyncIpcMethod({
           transport: "loopback",
           httpBaseUrl: httpBaseUrl.href,
           wsBaseUrl: toWebSocketBaseUrl(httpBaseUrl),
+          ...(bootstrap.loopbackAuthToken === undefined
+            ? {}
+            : { loopbackAuthToken: bootstrap.loopbackAuthToken }),
         });
         continue;
       }

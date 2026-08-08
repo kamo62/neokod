@@ -13,7 +13,7 @@ import * as RpcMessage from "effect/unstable/rpc/RpcMessage";
 import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 import * as RpcServer from "effect/unstable/rpc/RpcServer";
 
-import * as AcpSchema from "./_generated/schema.gen.ts";
+import * as AcpSchema from "./schema.ts";
 import { CLIENT_METHODS } from "./_generated/meta.gen.ts";
 import * as AcpError from "./errors.ts";
 const isAcpError = Schema.is(AcpError.AcpError);
@@ -32,8 +32,8 @@ export type AcpIncomingNotification =
     }
   | {
       readonly _tag: "ElicitationComplete";
-      readonly method: typeof CLIENT_METHODS.session_elicitation_complete;
-      readonly params: AcpSchema.ElicitationCompleteNotification;
+      readonly method: typeof CLIENT_METHODS.elicitation_complete;
+      readonly params: AcpSchema.CompleteElicitationNotification;
     }
   | {
       readonly _tag: "ExtNotification";
@@ -73,7 +73,7 @@ interface AcpPendingRequest {
 
 const decodeSessionUpdate = Schema.decodeUnknownEffect(AcpSchema.SessionNotification);
 const decodeElicitationComplete = Schema.decodeUnknownEffect(
-  AcpSchema.ElicitationCompleteNotification,
+  AcpSchema.CompleteElicitationNotification,
 );
 const parserFactory = RpcSerialization.ndJsonRpc();
 
@@ -281,20 +281,20 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
           Effect.flatMap(dispatchNotification),
         );
       }
-      if (message.tag === CLIENT_METHODS.session_elicitation_complete) {
+      if (message.tag === CLIENT_METHODS.elicitation_complete) {
         return decodeElicitationComplete(message.payload).pipe(
           Effect.map(
             (params) =>
               ({
                 _tag: "ElicitationComplete",
-                method: CLIENT_METHODS.session_elicitation_complete,
+                method: CLIENT_METHODS.elicitation_complete,
                 params,
               }) satisfies AcpIncomingNotification,
           ),
           Effect.mapError((cause) =>
             AcpError.AcpProtocolParseError.fromSchemaError(
               "decode-notification-payload",
-              CLIENT_METHODS.session_elicitation_complete,
+              CLIENT_METHODS.elicitation_complete,
               cause,
             ),
           ),

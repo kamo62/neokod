@@ -43,6 +43,28 @@ export interface PrContentGenerationResult {
   body: string;
 }
 
+export interface CodeReviewGenerationInput {
+  cwd: string;
+  objective: string;
+  acceptanceCriteria: ReadonlyArray<string>;
+  baseRef: string;
+  headRef: string;
+  diffPatch: string;
+  /** What model and provider instance to use for this reviewer. */
+  modelSelection: ModelSelection;
+}
+
+export interface CodeReviewGenerationResult {
+  verdict: "approve" | "request_changes";
+  summary: string;
+  findings: ReadonlyArray<{
+    readonly severity: "info" | "warning" | "blocking";
+    readonly title: string;
+    readonly detail: string;
+    readonly path?: string | undefined;
+  }>;
+}
+
 export interface BranchNameGenerationInput {
   cwd: string;
   message: string;
@@ -72,6 +94,7 @@ export interface TextGenerationService {
     input: CommitMessageGenerationInput,
   ): Promise<CommitMessageGenerationResult>;
   generatePrContent(input: PrContentGenerationInput): Promise<PrContentGenerationResult>;
+  generateCodeReview(input: CodeReviewGenerationInput): Promise<CodeReviewGenerationResult>;
   generateBranchName(input: BranchNameGenerationInput): Promise<BranchNameGenerationResult>;
   generateThreadTitle(input: ThreadTitleGenerationInput): Promise<ThreadTitleGenerationResult>;
 }
@@ -97,6 +120,13 @@ export class TextGeneration extends Context.Service<
     ) => Effect.Effect<PrContentGenerationResult, TextGenerationError>;
 
     /**
+     * Review a bounded host-provided diff using a read-only model call.
+     */
+    readonly generateCodeReview: (
+      input: CodeReviewGenerationInput,
+    ) => Effect.Effect<CodeReviewGenerationResult, TextGenerationError>;
+
+    /**
      * Generate a concise branch name from a user message.
      */
     readonly generateBranchName: (
@@ -118,6 +148,7 @@ export type TextGenerationShape = TextGeneration["Service"];
 type TextGenerationOp =
   | "generateCommitMessage"
   | "generatePrContent"
+  | "generateCodeReview"
   | "generateBranchName"
   | "generateThreadTitle";
 
@@ -150,6 +181,10 @@ export const makeTextGenerationFromRegistry = (
     generatePrContent: (input) =>
       resolveInstance(registry, "generatePrContent", input.modelSelection.instanceId).pipe(
         Effect.flatMap((textGeneration) => textGeneration.generatePrContent(input)),
+      ),
+    generateCodeReview: (input) =>
+      resolveInstance(registry, "generateCodeReview", input.modelSelection.instanceId).pipe(
+        Effect.flatMap((textGeneration) => textGeneration.generateCodeReview(input)),
       ),
     generateBranchName: (input) =>
       resolveInstance(registry, "generateBranchName", input.modelSelection.instanceId).pipe(

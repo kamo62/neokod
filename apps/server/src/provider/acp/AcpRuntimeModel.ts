@@ -11,24 +11,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isSessionModelState(value: unknown): value is EffectAcpSchema.SessionModelState {
-  if (!isRecord(value) || typeof value.currentModelId !== "string") {
-    return false;
-  }
-  if (!Array.isArray(value.availableModels)) {
-    return false;
-  }
-  return value.availableModels.every(
-    (model) =>
-      isRecord(model) &&
-      typeof model.modelId === "string" &&
-      typeof model.name === "string" &&
-      (model.description === undefined ||
-        model.description === null ||
-        typeof model.description === "string"),
-  );
-}
-
 function isSessionModeState(value: unknown): value is EffectAcpSchema.SessionModeState {
   if (!isRecord(value) || typeof value.currentModeId !== "string") {
     return false;
@@ -120,15 +102,42 @@ type AcpToolCallUpdate = Extract<
   { readonly sessionUpdate: "tool_call" | "tool_call_update" }
 >;
 
-export function extractModelConfigId(sessionResponse: AcpSessionSetupResponse): string | undefined {
-  const configOptions = sessionResponse.configOptions;
-  if (!configOptions) return undefined;
-  for (const opt of configOptions) {
-    if (opt.category === "model" && opt.id.trim().length > 0) {
-      return opt.id.trim();
-    }
+export function findSessionModelConfigOption(
+  configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption> | null | undefined,
+): Extract<EffectAcpSchema.SessionConfigOption, { readonly type: "select" }> | undefined {
+  return configOptions?.find(
+    (option): option is Extract<EffectAcpSchema.SessionConfigOption, { readonly type: "select" }> =>
+      option.category === "model" && option.type === "select",
+  );
+}
+
+export function currentSessionModelIdFromConfigOptions(
+  configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption> | null | undefined,
+): string | undefined {
+  const currentValue = findSessionModelConfigOption(configOptions)?.currentValue;
+  return currentValue?.trim() || undefined;
+}
+
+export interface AcpSessionConfigSelectOption {
+  readonly value: string;
+  readonly name: string;
+}
+
+export function collectSessionConfigOptionEntries(
+  configOption: EffectAcpSchema.SessionConfigOption,
+): ReadonlyArray<AcpSessionConfigSelectOption> {
+  if (configOption.type !== "select") {
+    return [];
   }
-  return undefined;
+  return configOption.options.flatMap((entry) =>
+    "value" in entry
+      ? [{ value: entry.value, name: entry.name }]
+      : entry.options.map((option) => ({ value: option.value, name: option.name })),
+  );
+}
+
+export function extractModelConfigId(sessionResponse: AcpSessionSetupResponse): string | undefined {
+  return findSessionModelConfigOption(sessionResponse.configOptions)?.id.trim() || undefined;
 }
 
 export function findSessionConfigOption(
@@ -148,12 +157,7 @@ export function findSessionConfigOption(
 export function collectSessionConfigOptionValues(
   configOption: EffectAcpSchema.SessionConfigOption,
 ): ReadonlyArray<string> {
-  if (configOption.type !== "select") {
-    return [];
-  }
-  return configOption.options.flatMap((entry) =>
-    "value" in entry ? [entry.value] : entry.options.map((option) => option.value),
-  );
+  return collectSessionConfigOptionEntries(configOption).map((entry) => entry.value);
 }
 
 export function parseSessionModeState(
@@ -491,13 +495,10 @@ export function syntheticLoadSessionResponseFromInitialize(
   initializeResult: EffectAcpSchema.InitializeResponse,
 ): EffectAcpSchema.LoadSessionResponse {
   const meta = initializeResult._meta;
-  const modelState = isRecord(meta) ? meta.modelState : undefined;
   const modeState = isRecord(meta) ? meta.modeState : undefined;
-  const models = isSessionModelState(modelState) ? modelState : undefined;
   const modes = isSessionModeState(modeState) ? modeState : undefined;
 
   return {
-    ...(models ? { models } : {}),
     ...(modes ? { modes } : {}),
     _meta: {
       neokodSessionLoadReady: "replay_idle",

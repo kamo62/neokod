@@ -122,6 +122,42 @@ describe("ServerSettings worktree defaults", () => {
   });
 });
 
+describe("ServerSettings analytics", () => {
+  it("defaults analytics on and uses the built-in PostHog destination", () => {
+    expect(DEFAULT_SERVER_SETTINGS.analytics).toEqual({
+      enabled: true,
+      posthogApiKey: "",
+      posthogHost: "",
+    });
+  });
+
+  it("decodes and trims custom PostHog settings", () => {
+    const decoded = decodeServerSettings({
+      analytics: {
+        enabled: false,
+        posthogApiKey: "  phc_custom  ",
+        posthogHost: "  https://posthog.example  ",
+      },
+    });
+    const patch = decodeServerSettingsPatch({
+      analytics: {
+        posthogApiKey: "  phc_patch  ",
+        posthogHost: "  https://patch.example  ",
+      },
+    });
+
+    expect(decoded.analytics).toEqual({
+      enabled: false,
+      posthogApiKey: "phc_custom",
+      posthogHost: "https://posthog.example",
+    });
+    expect(patch.analytics).toEqual({
+      posthogApiKey: "phc_patch",
+      posthogHost: "https://patch.example",
+    });
+  });
+});
+
 describe("ServerSettingsPatch.providerInstances", () => {
   it("treats providerInstances as an optional whole-map replacement", () => {
     const patch = decodeServerSettingsPatch({});

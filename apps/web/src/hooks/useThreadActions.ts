@@ -3,7 +3,11 @@ import {
   scopeProjectRef,
   scopeThreadRef,
 } from "@neokod/client-runtime/environment";
-import { settlePromise, squashAtomCommandFailure } from "@neokod/client-runtime/state/runtime";
+import {
+  isAtomCommandInterrupted,
+  settlePromise,
+  squashAtomCommandFailure,
+} from "@neokod/client-runtime/state/runtime";
 import { EnvironmentId, type ScopedThreadRef, ThreadId } from "@neokod/contracts";
 import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
@@ -38,6 +42,8 @@ export class ThreadArchiveBlockedError extends Schema.TaggedErrorClass<ThreadArc
     return "Cannot archive a running thread.";
   }
 }
+
+let lastArchivedThreadRef: ScopedThreadRef | null = null;
 
 export function useThreadActions() {
   const closeTerminal = useAtomCommand(terminalEnvironment.close);
@@ -88,6 +94,26 @@ export function useThreadActions() {
     return resolveThreadRouteRef(currentRouteParams);
   }, [router]);
 
+  const unarchiveThread = useCallback(
+    async (target: ScopedThreadRef) => {
+      const result = await unarchiveThreadMutation({
+        environmentId: target.environmentId,
+        input: { threadId: target.threadId },
+      });
+      if (result._tag === "Success") {
+        if (
+          lastArchivedThreadRef?.environmentId === target.environmentId &&
+          lastArchivedThreadRef.threadId === target.threadId
+        ) {
+          lastArchivedThreadRef = null;
+        }
+        refreshArchivedThreadsForEnvironment(target.environmentId);
+      }
+      return result;
+    },
+    [unarchiveThreadMutation],
+  );
+
   const archiveThread = useCallback(
     async (target: ScopedThreadRef) => {
       const resolved = resolveThreadTarget(target);
@@ -116,6 +142,33 @@ export function useThreadActions() {
         return archiveResult;
       }
 
+      lastArchivedThreadRef = threadRef;
+      toastManager.add(
+        stackedThreadToast({
+          type: "success",
+          title: "Thread archived",
+          description: thread.title || undefined,
+          actionVariant: "outline",
+          actionProps: {
+            children: "Undo",
+            onClick: () => {
+              void unarchiveThread(threadRef).then((result) => {
+                if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+                  const error = squashAtomCommandFailure(result);
+                  toastManager.add(
+                    stackedThreadToast({
+                      type: "error",
+                      title: "Failed to undo archive",
+                      description: error instanceof Error ? error.message : "An error occurred.",
+                    }),
+                  );
+                }
+              });
+            },
+          },
+        }),
+      );
+
       if (shouldNavigateToDraft) {
         const navigationResult = await settlePromise(() =>
           handleNewThreadRef.current(scopeProjectRef(thread.environmentId, thread.projectId)),
@@ -130,22 +183,45 @@ export function useThreadActions() {
       refreshArchivedThreadsForEnvironment(threadRef.environmentId);
       return archiveResult;
     },
-    [archiveThreadMutation, getCurrentRouteThreadRef, resolveThreadTarget],
+    [archiveThreadMutation, getCurrentRouteThreadRef, resolveThreadTarget, unarchiveThread],
   );
 
-  const unarchiveThread = useCallback(
-    async (target: ScopedThreadRef) => {
-      const result = await unarchiveThreadMutation({
-        environmentId: target.environmentId,
-        input: { threadId: target.threadId },
-      });
-      if (result._tag === "Success") {
-        refreshArchivedThreadsForEnvironment(target.environmentId);
+  const reopenLastArchivedThread = useCallback(async () => {
+    const target = lastArchivedThreadRef;
+    if (!target) return;
+
+    const result = await unarchiveThread(target);
+    if (result._tag === "Failure") {
+      if (!isAtomCommandInterrupted(result)) {
+        const error = squashAtomCommandFailure(result);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Failed to reopen archived thread",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          }),
+        );
       }
-      return result;
-    },
-    [unarchiveThreadMutation],
-  );
+      return;
+    }
+
+    const navigationResult = await settlePromise(() =>
+      router.navigate({
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(target),
+      }),
+    );
+    if (navigationResult._tag === "Failure") {
+      const error = squashAtomCommandFailure(navigationResult);
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Thread reopened, but navigation failed",
+          description: error instanceof Error ? error.message : "An error occurred.",
+        }),
+      );
+    }
+  }, [router, unarchiveThread]);
 
   const deleteThread = useCallback(
     async (target: ScopedThreadRef, opts: { deletedThreadKeys?: ReadonlySet<string> } = {}) => {
@@ -377,9 +453,16 @@ export function useThreadActions() {
     () => ({
       archiveThread,
       unarchiveThread,
+      reopenLastArchivedThread,
       deleteThread,
       confirmAndDeleteThread,
     }),
-    [archiveThread, confirmAndDeleteThread, deleteThread, unarchiveThread],
+    [
+      archiveThread,
+      confirmAndDeleteThread,
+      deleteThread,
+      reopenLastArchivedThread,
+      unarchiveThread,
+    ],
   );
 }

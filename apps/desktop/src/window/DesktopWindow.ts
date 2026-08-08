@@ -479,6 +479,7 @@ export const make = Effect.gen(function* () {
         );
       },
     );
+    let hasReloadedAfterRendererCrash = false;
     window.webContents.on("render-process-gone", (_event, details) => {
       void runPromise(
         logWindowWarning("main window render process gone", {
@@ -486,6 +487,21 @@ export const make = Effect.gen(function* () {
           exitCode: details.exitCode,
         }),
       );
+      // Recover from a renderer crash (OOM/GPU/abnormal exit) by reloading once,
+      // so the user isn't left staring at a permanently blank window.
+      // "clean-exit" is an explicit close/quit and needs no recovery. The
+      // one-shot guard is the loop protection: if the reloaded renderer
+      // crashes again, the window stays blank instead of retrying forever.
+      if (
+        details.reason === "clean-exit" ||
+        window.isDestroyed() ||
+        hasReloadedAfterRendererCrash
+      ) {
+        return;
+      }
+      hasReloadedAfterRendererCrash = true;
+      void runPromise(logWindowWarning("reloading main window after renderer crash"));
+      window.webContents.reload();
     });
 
     const revealSubscribers: RevealSubscription[] = [(fire) => window.once("ready-to-show", fire)];

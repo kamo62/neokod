@@ -78,3 +78,27 @@ export function resolveTriggerModel(
 ): ModelEsque | undefined {
   return modelOptions.find((option) => option.slug === model) ?? modelOptions[0];
 }
+
+function normalizeForVersionComparison(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * A model's slug (`claude-sonnet-5`) can carry a version the shown name does
+ * not — the live Claude Code SDK probe reports the bare family name
+ * ("Sonnet") for what the static catalog calls "Claude Sonnet 5", so the
+ * picker has no way to tell the user which Claude they're about to run.
+ * Returns the slug to display as a secondary tag when it adds information
+ * beyond `displayedName`, or `undefined` when the slug is just a
+ * punctuation/casing variant of the name already on screen (e.g. slug
+ * "gpt-5" next to name "GPT-5") — showing it there would only repeat the
+ * name.
+ */
+export function getModelVersionTag(model: ModelEsque, displayedName: string): string | undefined {
+  const normalizedSlug = normalizeForVersionComparison(model.slug);
+  const normalizedName = normalizeForVersionComparison(displayedName);
+  if (!normalizedSlug || normalizedSlug === normalizedName) {
+    return undefined;
+  }
+  return model.slug;
+}
