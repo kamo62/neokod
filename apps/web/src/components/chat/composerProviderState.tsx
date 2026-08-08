@@ -60,6 +60,13 @@ export function resolveProviderRuntimeMode(
   return supported.includes(runtimeMode) ? runtimeMode : (supported[0] ?? "approval-required");
 }
 
+export function shouldConfirmKiroSupervisedMode(
+  provider: ProviderDriverKind,
+  runtimeMode: RuntimeMode,
+): boolean {
+  return provider === ProviderDriverKind.make("kiro") && runtimeMode !== "approval-required";
+}
+
 type TraitsRenderInput = {
   provider: ProviderDriverKind;
   instanceId?: ProviderInstanceId;

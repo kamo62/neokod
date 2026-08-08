@@ -12,10 +12,32 @@ describe("buildKiroAcpSpawnInput", () => {
     const spawn = buildKiroAcpSpawnInput(settings, "/workspace", { PATH: "/bin" }, "linux");
 
     expect(spawn.command).toBe("kiro-cli");
-    expect(spawn.args).toEqual(["acp"]);
+    expect(spawn.args).toEqual(["acp", "--agent-engine", "v2"]);
     expect(spawn.cwd).toBe("/workspace");
     expect(spawn.detached).toBe(true);
     expect(spawn.extendEnv).toBe(false);
+  });
+
+  it("passes only KIRO_API_KEY to the v3 engine", () => {
+    const spawn = buildKiroAcpSpawnInput(
+      { ...settings, agentEngine: "v3" },
+      "/workspace",
+      {
+        PATH: "/safe/bin",
+        KIRO_API_KEY: "kiro-test-key",
+        ANTHROPIC_API_KEY: "nope",
+      },
+      "linux",
+      "/managed/kiro-v3-home",
+    );
+
+    expect(spawn.args).toEqual(["acp", "--agent-engine", "v3"]);
+    expect(spawn.env).toMatchObject({
+      PATH: "/safe/bin",
+      HOME: "/managed/kiro-v3-home",
+      KIRO_API_KEY: "kiro-test-key",
+    });
+    expect(spawn.env).not.toHaveProperty("ANTHROPIC_API_KEY");
   });
 
   it("drops parent secrets and never re-merges the parent environment", () => {

@@ -2,7 +2,7 @@
 
 Release impact: Minor because this adds an opt-in Kiro provider and Work-mode path while leaving existing providers and default behavior unchanged.
 
-- Added Kiro CLI 2.16.2 ACP sessions in approval-required Work mode. Kiro remains visibly Limited until a managed model turn succeeds; Crew, Symphony, automatic modes, full access, and Windows execution stay unavailable.
+- Added Kiro CLI 2.16.2 ACP sessions in approval-required Work mode, with a confirmation before lowering an existing composer permission mode and a v2/v3 engine selector. V2 uses the Kiro CLI login; v3 uses an explicit sensitive per-instance `KIRO_API_KEY`, an isolated ask-policy home, and engine-tagged sessions that cannot resume across engines. Kiro remains visibly Limited until a managed turn completes with assistant output, and exact prompt failures remain visible in health; Crew, Symphony, automatic modes, full access, and Windows execution stay unavailable.
 - Kiro children receive an allowlisted environment and run in validated POSIX process groups with bounded TERM-to-KILL settlement. Authentication follows the methods advertised by the ACP handshake, and unsupported or missing proof fails closed.
 - Provider session projection now preserves the selected runtime mode and latest turn identity through terminal settlement, so failed managed turns remain failed instead of briefly appearing complete.
 

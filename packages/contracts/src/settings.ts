@@ -124,10 +124,16 @@ const makeBinaryPathSetting = (fallback: string) =>
     Schema.withDecodingDefault(Effect.succeed(fallback)),
   );
 
-export type ProviderSettingsFormControl = "text" | "password" | "textarea" | "switch";
+export type ProviderSettingsFormControl = "text" | "password" | "textarea" | "switch" | "select";
+
+export interface ProviderSettingsFormSelectOption {
+  readonly value: string;
+  readonly label: string;
+}
 
 export interface ProviderSettingsFormAnnotation {
   readonly control?: ProviderSettingsFormControl | undefined;
+  readonly options?: ReadonlyArray<ProviderSettingsFormSelectOption> | undefined;
   readonly placeholder?: string | undefined;
   readonly hidden?: boolean | undefined;
   readonly clearWhenEmpty?: "omit" | "persist" | undefined;
@@ -330,8 +336,24 @@ export const KiroSettings = makeProviderSettingsSchema(
         providerSettingsForm: { placeholder: "kiro-cli", clearWhenEmpty: "omit" },
       }),
     ),
+    agentEngine: Schema.Literals(["v2", "v3"]).pipe(
+      Schema.withDecodingDefault(Effect.succeed("v2")),
+      Schema.annotateKey({
+        title: "Agent engine",
+        description:
+          "V2 uses your Kiro CLI login. V3 requires an explicit sensitive KIRO_API_KEY on this provider instance.",
+        providerSettingsForm: {
+          control: "select",
+          options: [
+            { value: "v2", label: "V2 - CLI login" },
+            { value: "v3", label: "V3 - API key" },
+          ],
+          clearWhenEmpty: "omit",
+        },
+      }),
+    ),
   },
-  { order: ["binaryPath"] },
+  { order: ["binaryPath", "agentEngine"] },
 );
 export type KiroSettings = typeof KiroSettings.Type;
 
@@ -773,6 +795,7 @@ const GrokSettingsPatch = Schema.Struct({
 const KiroSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   binaryPath: Schema.optionalKey(TrimmedString),
+  agentEngine: Schema.optionalKey(Schema.Literals(["v2", "v3"])),
 });
 
 const OpenCodeSettingsPatch = Schema.Struct({

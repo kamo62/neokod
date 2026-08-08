@@ -77,6 +77,8 @@ export interface AcpSessionRuntimeOptions {
     readonly version: string;
   };
   readonly authMethodId?: string;
+  /** Environment variable proving the filtered child already received a credential. */
+  readonly preAuthenticatedByEnvironmentVariable?: string;
   readonly mcpServers?: ReadonlyArray<EffectAcpSchema.McpServer>;
   readonly requestLogger?: (event: AcpSessionRequestLogEvent) => Effect.Effect<void, never>;
   readonly protocolLogging?: {
@@ -566,6 +568,27 @@ export const make = (
       const advertisedAuthMethods = initializeResult.authMethods ?? [];
       const advertisedAuthMethodIds = advertisedAuthMethods.map((method) => method.id);
       const configuredAuthMethodId = options.authMethodId;
+      const credentialEnvironmentVariable = options.preAuthenticatedByEnvironmentVariable;
+      if (configuredAuthMethodId !== undefined && credentialEnvironmentVariable !== undefined) {
+        return yield* new EffectAcpErrors.AcpRequestError({
+          code: -32602,
+          errorMessage: "ACP authentication cannot be both configured and pre-authenticated",
+          method: "authenticate",
+          data: { reason: "authentication_configuration_conflict" },
+        });
+      }
+      if (
+        credentialEnvironmentVariable !== undefined &&
+        !options.spawn.env?.[credentialEnvironmentVariable]?.trim()
+      ) {
+        return yield* EffectAcpErrors.AcpRequestError.authRequired(
+          "Pre-authenticated ACP startup requires credential evidence in the filtered child environment",
+          {
+            reason: "preauthentication_credential_missing",
+            environmentVariable: credentialEnvironmentVariable,
+          },
+        );
+      }
       if (configuredAuthMethodId !== undefined) {
         if (!advertisedAuthMethodIds.includes(configuredAuthMethodId)) {
           return yield* new EffectAcpErrors.AcpRequestError({
@@ -587,7 +610,7 @@ export const make = (
           authenticatePayload,
           acp.agent.authenticate(authenticatePayload),
         );
-      } else if (advertisedAuthMethods.length > 0) {
+      } else if (advertisedAuthMethods.length > 0 && credentialEnvironmentVariable === undefined) {
         return yield* EffectAcpErrors.AcpRequestError.authRequired(
           "Agent advertises authentication methods but none is configured",
           {

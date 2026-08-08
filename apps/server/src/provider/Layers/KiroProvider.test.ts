@@ -85,7 +85,7 @@ it.layer(NodeServices.layer)("checkKiroProviderStatus", (it) => {
       expect(snapshot.version).toBe("2.16.2");
       expect(snapshot.status).toBe("warning");
       expect(snapshot.auth.status).toBe("unknown");
-      expect(snapshot.message).toContain("Managed-turn availability is verified per session");
+      expect(snapshot.message).toContain("Readiness requires a completed managed turn");
     }),
   );
 
@@ -99,6 +99,38 @@ it.layer(NodeServices.layer)("checkKiroProviderStatus", (it) => {
       expect(snapshot.version).toBe("2.16.1");
       expect(snapshot.status).toBe("error");
       expect(snapshot.message).toContain(MINIMUM_KIRO_CLI_VERSION);
+    }),
+  );
+
+  it.effect("requires a provider API key for v3 ACP", () =>
+    Effect.gen(function* () {
+      const binaryPath = yield* Effect.promise(() => makeVersionBinary("2.16.2"));
+      const snapshot = yield* checkKiroProviderStatus(
+        decodeKiroSettings({ enabled: true, binaryPath, agentEngine: "v3" }),
+        { PATH: process.env.PATH, HOME: process.env.HOME },
+      );
+
+      expect(snapshot.status).toBe("error");
+      expect(snapshot.auth.status).toBe("unauthenticated");
+      expect(snapshot.message).toContain("KIRO_API_KEY");
+    }),
+  );
+
+  it.effect("accepts a configured v3 ACP API key without exposing it", () =>
+    Effect.gen(function* () {
+      const binaryPath = yield* Effect.promise(() => makeVersionBinary("2.16.2"));
+      const snapshot = yield* checkKiroProviderStatus(
+        decodeKiroSettings({ enabled: true, binaryPath, agentEngine: "v3" }),
+        {
+          PATH: process.env.PATH,
+          HOME: process.env.HOME,
+          KIRO_API_KEY: "kiro-test-key",
+        },
+      );
+
+      expect(snapshot.status).toBe("warning");
+      expect(snapshot.message).toContain("supervised Work-mode probe");
+      expect(snapshot.message).not.toContain("kiro-test-key");
     }),
   );
 

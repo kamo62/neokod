@@ -12,6 +12,7 @@ import {
   hasComposerTraitsTarget,
   renderProviderTraitsPicker,
   resolveProviderRuntimeMode,
+  shouldConfirmKiroSupervisedMode,
 } from "./composerProviderState";
 
 // Everything in composerProviderState is now data-driven by the model's
@@ -78,6 +79,13 @@ describe("provider runtime modes", () => {
       "full-access",
     ]);
     expect(getProviderRuntimeModes(ProviderDriverKind.make("claudeAgent"))).not.toContain("auto");
+  });
+
+  it("requests confirmation only when selecting Kiro would lower permissions", () => {
+    const kiro = ProviderDriverKind.make("kiro");
+    expect(shouldConfirmKiroSupervisedMode(kiro, "full-access")).toBe(true);
+    expect(shouldConfirmKiroSupervisedMode(kiro, "approval-required")).toBe(false);
+    expect(shouldConfirmKiroSupervisedMode(PROVIDER, "full-access")).toBe(false);
   });
 });
 

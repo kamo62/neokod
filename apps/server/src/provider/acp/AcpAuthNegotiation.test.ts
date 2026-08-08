@@ -92,6 +92,72 @@ describe("AcpSessionRuntime auth negotiation", () => {
     );
   });
 
+  it.effect("allows an explicitly pre-authenticated agent to advertise login methods", () => {
+    const requestEvents: Array<AcpSessionRuntime.AcpSessionRequestLogEvent> = [];
+    return Effect.gen(function* () {
+      const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+      const started = yield* runtime.start();
+
+      expect(started.sessionId).toBe("mock-session-1");
+      expect(started.initializeResult.authMethods?.map((method) => method.id)).toEqual([
+        "aws-builder-id",
+      ]);
+      expect(authenticateEvents(requestEvents)).toHaveLength(0);
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: {
+              NEOKOD_ACP_AUTH_METHOD_IDS: "aws-builder-id",
+              KIRO_API_KEY: "kiro-test-key",
+            },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "neokod-test", version: "0.0.0" },
+          preAuthenticatedByEnvironmentVariable: "KIRO_API_KEY",
+          requestLogger: (event) =>
+            Effect.sync(() => {
+              requestEvents.push(event);
+            }),
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    );
+  });
+
+  it.effect("rejects a pre-authentication claim without filtered child credential evidence", () =>
+    Effect.gen(function* () {
+      const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+      const error = yield* runtime.start().pipe(Effect.flip);
+
+      expect(error._tag).toBe("AcpRequestError");
+      if (error._tag === "AcpRequestError") {
+        expect(error.data).toMatchObject({
+          reason: "preauthentication_credential_missing",
+          environmentVariable: "KIRO_API_KEY",
+        });
+      }
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: { NEOKOD_ACP_AUTH_METHOD_IDS: "aws-builder-id" },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "neokod-test", version: "0.0.0" },
+          preAuthenticatedByEnvironmentVariable: "KIRO_API_KEY",
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    ),
+  );
+
   it.effect("fails startup when the agent advertises auth methods but none is configured", () => {
     const requestEvents: Array<AcpSessionRuntime.AcpSessionRequestLogEvent> = [];
     return Effect.gen(function* () {

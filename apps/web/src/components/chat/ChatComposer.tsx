@@ -88,12 +88,22 @@ import {
   hasComposerTraitsTarget,
   renderProviderTraitsPicker,
   resolveProviderRuntimeMode,
+  shouldConfirmKiroSupervisedMode,
 } from "./composerProviderState";
 import { ContextWindowMeter } from "./ContextWindowMeter";
 import { buildExpandedImagePreview, type ExpandedImagePreview } from "./ExpandedImagePreview";
 import { basenameOfPath } from "../../pierre-icons";
 import { cn, randomUUID } from "~/lib/utils";
 import { Button } from "../ui/button";
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
@@ -906,8 +916,34 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
   const [isComposerFocused, setIsComposerFocused] = useState(false);
+  const [pendingKiroSelection, setPendingKiroSelection] = useState<{
+    readonly instanceId: ProviderInstanceId;
+    readonly model: string;
+  } | null>(null);
   const isMobileViewport = useMediaQuery("max-sm");
   const isComposerCollapsedMobile = isMobileViewport && !isComposerFocused;
+
+  const handleProviderModelSelection = useCallback(
+    (instanceId: ProviderInstanceId, model: string) => {
+      const provider = providerInstanceEntries.find(
+        (entry) => entry.instanceId === instanceId,
+      )?.driverKind;
+      if (provider && shouldConfirmKiroSupervisedMode(provider, runtimeMode)) {
+        setIsComposerModelPickerOpen(false);
+        setPendingKiroSelection({ instanceId, model });
+        return;
+      }
+      onProviderModelSelect(instanceId, model);
+    },
+    [onProviderModelSelect, providerInstanceEntries, runtimeMode],
+  );
+
+  const confirmKiroSelection = useCallback(() => {
+    if (!pendingKiroSelection) return;
+    handleRuntimeModeChange("approval-required");
+    onProviderModelSelect(pendingKiroSelection.instanceId, pendingKiroSelection.model);
+    setPendingKiroSelection(null);
+  }, [handleRuntimeModeChange, onProviderModelSelect, pendingKiroSelection]);
 
   // ------------------------------------------------------------------
   // Refs
@@ -2647,7 +2683,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     setIsComposerModelPickerOpen(open);
                   }}
                   getModelDisabledReason={getModelDisabledReason}
-                  onInstanceModelChange={onProviderModelSelect}
+                  onInstanceModelChange={handleProviderModelSelection}
                 />
 
                 {isComposerFooterCompact ? (
@@ -2710,6 +2746,31 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           )}
         </div>
       </div>
+      <AlertDialog
+        open={pendingKiroSelection !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingKiroSelection(null);
+        }}
+      >
+        <AlertDialogPopup>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Use Kiro in Supervised mode?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Kiro managed sessions keep write-capable commands and file changes approval-gated.
+              Continuing changes this thread to Supervised mode. Crew, Symphony, automatic modes,
+              and full access remain disabled.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button type="button" variant="outline" />}>
+              Cancel
+            </AlertDialogClose>
+            <Button type="button" onClick={confirmKiroSelection}>
+              Continue in Supervised
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
     </form>
   );
 });

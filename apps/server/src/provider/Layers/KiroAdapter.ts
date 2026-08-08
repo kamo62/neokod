@@ -63,8 +63,13 @@ import type { WorkspaceOwnershipRepositoryShape } from "../../symphony/Persisten
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
 const PROVIDER = ProviderDriverKind.make("kiro");
-const KIRO_RESUME_VERSION = 1 as const;
+const KIRO_RESUME_VERSION = 2 as const;
+const KIRO_V3_PERMISSION_POLICY = "rules:\n  - capability: all\n    effect: ask\n";
 const isAcpError = Schema.is(EffectAcpErrors.AcpError);
+
+export type KiroManagedTurnEvidence =
+  | { readonly ready: true }
+  | { readonly ready: false; readonly reason: string };
 
 export interface KiroAdapterLiveOptions {
   readonly ownershipRepository: WorkspaceOwnershipRepositoryShape;
@@ -72,6 +77,7 @@ export interface KiroAdapterLiveOptions {
   readonly nativeEventLogPath?: string;
   readonly nativeEventLogger?: EventNdjsonLogger;
   readonly instanceId?: ProviderInstanceId;
+  readonly onManagedTurnEvidence?: (evidence: KiroManagedTurnEvidence) => Effect.Effect<void>;
 }
 
 interface PendingApproval {
@@ -97,6 +103,7 @@ interface KiroSessionContext {
   turns: Array<{ id: TurnId; items: Array<unknown> }>;
   notificationFiber: Fiber.Fiber<void, never> | undefined;
   activeTurnId: TurnId | undefined;
+  readonly assistantOutputTurnIds: Set<TurnId>;
   interruptedTurnIds: Set<TurnId>;
   stopped: boolean;
 }
@@ -105,11 +112,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function parseKiroResume(raw: unknown): { sessionId: string } | undefined {
-  if (!isRecord(raw) || raw.schemaVersion !== KIRO_RESUME_VERSION) return undefined;
-  return typeof raw.sessionId === "string" && raw.sessionId.trim().length > 0
-    ? { sessionId: raw.sessionId.trim() }
-    : undefined;
+function parseKiroResume(
+  raw: unknown,
+): { sessionId: string; agentEngine: KiroSettings["agentEngine"] } | undefined {
+  if (!isRecord(raw) || typeof raw.sessionId !== "string" || !raw.sessionId.trim()) {
+    return undefined;
+  }
+  if (raw.schemaVersion === 1) {
+    return { sessionId: raw.sessionId.trim(), agentEngine: "v2" };
+  }
+  if (
+    raw.schemaVersion === KIRO_RESUME_VERSION &&
+    (raw.agentEngine === "v2" || raw.agentEngine === "v3")
+  ) {
+    return { sessionId: raw.sessionId.trim(), agentEngine: raw.agentEngine };
+  }
+  return undefined;
 }
 
 function selectPermissionOptionId(
@@ -255,6 +273,27 @@ export function makeKiroAdapter(settings: KiroSettings, options: KiroAdapterLive
     const managedNativeEventLogger =
       options.nativeEventLogger === undefined ? nativeEventLogger : undefined;
     const makeAcpNativeLoggers = yield* makeAcpNativeLoggerFactory();
+    const managedV3Home =
+      settings.agentEngine === "v3"
+        ? path.join(
+            serverConfig.stateDir,
+            "provider-homes",
+            "kiro-v3",
+            encodeURIComponent(String(boundInstanceId)),
+          )
+        : undefined;
+    if (managedV3Home) {
+      const kiroSettingsDir = path.join(managedV3Home, ".kiro", "settings");
+      const permissionsPath = path.join(kiroSettingsDir, "permissions.yaml");
+      yield* fileSystem.makeDirectory(kiroSettingsDir, { recursive: true });
+      yield* Effect.all(
+        [managedV3Home, path.join(managedV3Home, ".kiro"), kiroSettingsDir].map((directory) =>
+          fileSystem.chmod(directory, 0o700),
+        ),
+      );
+      yield* fileSystem.writeFileString(permissionsPath, KIRO_V3_PERMISSION_POLICY);
+      yield* fileSystem.chmod(permissionsPath, 0o600);
+    }
 
     const sessions = new Map<ThreadId, KiroSessionContext>();
     const locks = yield* SynchronizedRef.make(new Map<string, Semaphore.Semaphore>());
@@ -548,7 +587,22 @@ export function makeKiroAdapter(settings: KiroSettings, options: KiroAdapterLive
           const pendingApprovals = new Map<ApprovalRequestId, PendingApproval>();
           const pendingUserInputs = new Map<ApprovalRequestId, PendingUserInput>();
           const extensionError = yield* Ref.make<string | undefined>(undefined);
-          const resumeSessionId = parseKiroResume(input.resumeCursor)?.sessionId;
+          const resume = parseKiroResume(input.resumeCursor);
+          if (input.resumeCursor !== undefined && resume === undefined) {
+            return yield* new ProviderAdapterValidationError({
+              provider: PROVIDER,
+              operation: "startSession",
+              issue: "Kiro resume cursor is invalid or unsupported.",
+            });
+          }
+          if (resume && resume.agentEngine !== settings.agentEngine) {
+            return yield* new ProviderAdapterValidationError({
+              provider: PROVIDER,
+              operation: "startSession",
+              issue: `Kiro ${resume.agentEngine} sessions cannot resume with the ${settings.agentEngine} engine.`,
+            });
+          }
+          const resumeSessionId = resume?.sessionId;
           const modelSelection =
             input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection : undefined;
           const acpLoggers = makeAcpNativeLoggers({
@@ -560,6 +614,7 @@ export function makeKiroAdapter(settings: KiroSettings, options: KiroAdapterLive
           const acp = yield* makeKiroAcpRuntime({
             settings,
             ...(options.environment ? { environment: options.environment } : {}),
+            ...(managedV3Home ? { managedHome: managedV3Home } : {}),
             childProcessSpawner,
             cwd,
             ...(resumeSessionId ? { resumeSessionId } : {}),
@@ -728,7 +783,11 @@ export function makeKiroAdapter(settings: KiroSettings, options: KiroAdapterLive
             cwd,
             model: modelSelection?.model ?? "auto",
             threadId: input.threadId,
-            resumeCursor: { schemaVersion: KIRO_RESUME_VERSION, sessionId: started.sessionId },
+            resumeCursor: {
+              schemaVersion: KIRO_RESUME_VERSION,
+              sessionId: started.sessionId,
+              agentEngine: settings.agentEngine,
+            },
             createdAt: now,
             updatedAt: now,
           };
@@ -747,6 +806,7 @@ export function makeKiroAdapter(settings: KiroSettings, options: KiroAdapterLive
             turns: [],
             notificationFiber: undefined,
             activeTurnId: undefined,
+            assistantOutputTurnIds: new Set(),
             interruptedTurnIds: new Set(),
             stopped: false,
           };
@@ -808,6 +868,7 @@ export function makeKiroAdapter(settings: KiroSettings, options: KiroAdapterLive
                   );
                   return;
                 case "ContentDelta":
+                  if (event.text.trim()) context.assistantOutputTurnIds.add(turnId);
                   yield* publish(
                     makeAcpContentDeltaEvent({
                       stamp,
@@ -985,6 +1046,7 @@ export function makeKiroAdapter(settings: KiroSettings, options: KiroAdapterLive
                 }
                 const { activeTurnId: _activeTurnId, ...ready } = context.session;
                 context.activeTurnId = undefined;
+                context.assistantOutputTurnIds.delete(prepared.turnId);
                 context.session = { ...ready, status: "ready", updatedAt: yield* nowIso };
                 yield* publish({
                   type: "turn.completed",
@@ -994,6 +1056,13 @@ export function makeKiroAdapter(settings: KiroSettings, options: KiroAdapterLive
                   turnId: prepared.turnId,
                   payload: { state: "failed", errorMessage: error.message },
                 });
+                yield* (
+                  options.onManagedTurnEvidence?.({
+                    ready: false,
+                    reason:
+                      error._tag === "ProviderAdapterRequestError" ? error.detail : error.message,
+                  }) ?? Effect.void
+                );
               }),
             ).pipe(Effect.catch(() => Effect.void)),
           ),
@@ -1011,6 +1080,7 @@ export function makeKiroAdapter(settings: KiroSettings, options: KiroAdapterLive
               };
             }
             appendPromptResult(context, prepared.turnId, prepared.prompt, result);
+            const hasAssistantOutput = context.assistantOutputTurnIds.delete(prepared.turnId);
             const { activeTurnId: _activeTurnId, ...ready } = context.session;
             context.activeTurnId = undefined;
             context.session = { ...ready, status: "ready", updatedAt: yield* nowIso };
@@ -1025,6 +1095,18 @@ export function makeKiroAdapter(settings: KiroSettings, options: KiroAdapterLive
                 stopReason: result.stopReason,
               },
             });
+            if (result.stopReason !== "cancelled") {
+              yield* (
+                options.onManagedTurnEvidence?.(
+                  hasAssistantOutput
+                    ? { ready: true }
+                    : {
+                        ready: false,
+                        reason: "Managed turn completed without assistant output.",
+                      },
+                ) ?? Effect.void
+              );
+            }
             return {
               threadId: input.threadId,
               turnId: prepared.turnId,
@@ -1045,6 +1127,7 @@ export function makeKiroAdapter(settings: KiroSettings, options: KiroAdapterLive
           const turnId = requestedTurnId ?? context.activeTurnId;
           if (!turnId || (context.activeTurnId && turnId !== context.activeTurnId)) return;
           context.interruptedTurnIds.add(turnId);
+          context.assistantOutputTurnIds.delete(turnId);
           yield* settleApprovals(context.pendingApprovals);
           yield* settleUserInputs(context.pendingUserInputs);
           yield* context.acp.cancel.pipe(Effect.ignore);

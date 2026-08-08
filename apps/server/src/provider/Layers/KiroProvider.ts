@@ -16,6 +16,7 @@ import {
   spawnAndCollect,
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
+import { hasKiroV3ApiKey, KIRO_API_KEY_ENV } from "../acp/KiroAcpSupport.ts";
 
 const PROVIDER = ProviderDriverKind.make("kiro");
 export const MINIMUM_KIRO_CLI_VERSION = "2.16.2";
@@ -151,6 +152,7 @@ export const checkKiroProviderStatus = Effect.fn("checkKiroProviderStatus")(func
   const result = versionExit.success.value;
   const version = parseGenericCliVersion(`${result.stdout}\n${result.stderr}`);
   const supported = result.code === 0 && isKiroVersionSupported(version);
+  const missingV3ApiKey = settings.agentEngine === "v3" && !hasKiroV3ApiKey(parentEnv);
   return buildServerProvider({
     driver: PROVIDER,
     presentation: KIRO_PRESENTATION,
@@ -160,14 +162,16 @@ export const checkKiroProviderStatus = Effect.fn("checkKiroProviderStatus")(func
     probe: {
       installed: true,
       version,
-      status: supported ? "warning" : "error",
-      auth: { status: "unknown" },
+      status: supported && !missingV3ApiKey ? "warning" : "error",
+      auth: { status: missingV3ApiKey ? "unauthenticated" : "unknown" },
       message:
         result.code !== 0
           ? "Kiro CLI is installed but failed to run."
           : !supported
             ? `Kiro CLI ${version ?? "unknown"} is below the required ${MINIMUM_KIRO_CLI_VERSION}.`
-            : "Kiro CLI detected. Managed-turn availability is verified per session; Crew and Symphony remain disabled.",
+            : missingV3ApiKey
+              ? `Kiro v3 ACP requires an explicit sensitive ${KIRO_API_KEY_ENV} on this provider instance; CLI browser login is available only with v2.`
+              : `Kiro ${settings.agentEngine} is available for a supervised Work-mode probe. Readiness requires a completed managed turn with assistant output; Crew and Symphony remain disabled.`,
     },
   });
 });

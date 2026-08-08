@@ -27,7 +27,11 @@ import type {
   WorkspaceOwnershipRecord,
   WorkspaceOwnershipRepositoryShape,
 } from "../../symphony/Persistence/Services/WorkspaceOwnershipRepository.ts";
-import { makeKiroAdapter, type KiroAdapterLiveOptions } from "./KiroAdapter.ts";
+import {
+  makeKiroAdapter,
+  type KiroAdapterLiveOptions,
+  type KiroManagedTurnEvidence,
+} from "./KiroAdapter.ts";
 
 const decodeKiroSettings = Schema.decodeSync(KiroSettings);
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
@@ -138,6 +142,9 @@ const makeTestAdapter = (
     ...(options?.nativeEventLogPath ? { nativeEventLogPath: options.nativeEventLogPath } : {}),
     ...(options?.nativeEventLogger ? { nativeEventLogger: options.nativeEventLogger } : {}),
     ...(options?.instanceId ? { instanceId: options.instanceId } : {}),
+    ...(options?.onManagedTurnEvidence
+      ? { onManagedTurnEvidence: options.onManagedTurnEvidence }
+      : {}),
   }).pipe(Effect.orDie);
 
 it.layer(kiroAdapterTestLayer)("KiroAdapterLive", (it) => {
@@ -215,8 +222,9 @@ it.layer(kiroAdapterTestLayer)("KiroAdapterLive", (it) => {
         resumeCursor: { schemaVersion: 1, sessionId: "kiro-resume-session" },
       });
       assert.deepStrictEqual(session.resumeCursor, {
-        schemaVersion: 1,
+        schemaVersion: 2,
         sessionId: "kiro-resume-session",
+        agentEngine: "v2",
       });
 
       const methods = (yield* Effect.promise(() => readJsonLines(requestLogPath))).flatMap(
@@ -226,6 +234,123 @@ it.layer(kiroAdapterTestLayer)("KiroAdapterLive", (it) => {
       assert.notInclude(methods, "session/new");
       yield* adapter.stopSession(threadId);
     }).pipe(TestClock.withLive),
+  );
+
+  it.effect("starts v3 ACP with an explicit provider API key", () =>
+    Effect.gen(function* () {
+      const tempDir = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "kiro-v3-")),
+      );
+      const requestLogPath = NodePath.join(tempDir, "requests.ndjson");
+      const environmentLogPath = NodePath.join(tempDir, "environment.txt");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockKiroWrapper(
+          {
+            NEOKOD_ACP_AUTH_METHOD_IDS: "aws-builder-id",
+            NEOKOD_ACP_REQUEST_LOG_PATH: requestLogPath,
+          },
+          environmentLogPath,
+        ),
+      );
+      const adapter = yield* makeTestAdapter(
+        wrapperPath,
+        { agentEngine: "v3" },
+        {
+          environment: {
+            PATH: process.env.PATH,
+            HOME: process.env.HOME,
+            KIRO_API_KEY: "kiro-test-key",
+            ANTHROPIC_API_KEY: "must-not-reach-child",
+          },
+        },
+      );
+      const threadId = ThreadId.make("kiro-v3-thread");
+
+      const session = yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("kiro"),
+        cwd: process.cwd(),
+        runtimeMode: "approval-required",
+      });
+
+      assert.deepStrictEqual(session.resumeCursor, {
+        schemaVersion: 2,
+        sessionId: "mock-session-1",
+        agentEngine: "v3",
+      });
+      const childEnvironment = yield* Effect.promise(() =>
+        NodeFSP.readFile(environmentLogPath, "utf8"),
+      );
+      assert.include(childEnvironment, "KIRO_API_KEY=kiro-test-key");
+      assert.notInclude(childEnvironment, "ANTHROPIC_API_KEY=");
+      const managedHome = childEnvironment
+        .split("\n")
+        .find((line) => line.startsWith("HOME="))
+        ?.slice("HOME=".length);
+      assert.isString(managedHome);
+      assert.notEqual(managedHome, process.env.HOME);
+      assert.equal(
+        yield* Effect.promise(() =>
+          NodeFSP.readFile(NodePath.join(managedHome!, ".kiro/settings/permissions.yaml"), "utf8"),
+        ),
+        "rules:\n  - capability: all\n    effect: ask\n",
+      );
+      const methods = (yield* Effect.promise(() => readJsonLines(requestLogPath))).flatMap(
+        (entry) => (typeof entry.method === "string" ? [entry.method] : []),
+      );
+      assert.notInclude(methods, "authenticate");
+      yield* adapter.stopSession(threadId);
+    }).pipe(TestClock.withLive),
+  );
+
+  it.effect("rejects v3 before spawn when its provider API key is missing", () =>
+    Effect.gen(function* () {
+      const adapter = yield* makeTestAdapter(
+        "/kiro-must-not-spawn",
+        { agentEngine: "v3" },
+        { environment: { PATH: process.env.PATH, HOME: process.env.HOME } },
+      );
+
+      const error = yield* adapter
+        .startSession({
+          threadId: ThreadId.make("kiro-v3-missing-key"),
+          provider: ProviderDriverKind.make("kiro"),
+          cwd: process.cwd(),
+          runtimeMode: "approval-required",
+        })
+        .pipe(Effect.flip);
+
+      assert.instanceOf(error, Error);
+      assert.include(error.message, "KIRO_API_KEY");
+    }),
+  );
+
+  it.effect("rejects cross-engine resume before starting ACP", () =>
+    Effect.gen(function* () {
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockKiroWrapper({ NEOKOD_ACP_AUTH_METHOD_IDS: "" }),
+      );
+      const adapter = yield* makeTestAdapter(
+        wrapperPath,
+        { agentEngine: "v3" },
+        {
+          environment: { PATH: process.env.PATH, HOME: process.env.HOME, KIRO_API_KEY: "test-key" },
+        },
+      );
+
+      const error = yield* adapter
+        .startSession({
+          threadId: ThreadId.make("kiro-cross-engine-resume"),
+          provider: ProviderDriverKind.make("kiro"),
+          cwd: process.cwd(),
+          runtimeMode: "approval-required",
+          resumeCursor: { schemaVersion: 1, sessionId: "legacy-v2-session" },
+        })
+        .pipe(Effect.flip);
+
+      assert.instanceOf(error, Error);
+      assert.include(error.message, "cannot resume");
+    }),
   );
 
   it.effect("maps semantic approvals and canonical tool events", () =>
@@ -344,7 +469,13 @@ it.layer(kiroAdapterTestLayer)("KiroAdapterLive", (it) => {
           NEOKOD_ACP_PROMPT_EXTENSION_ERROR: "The monthly usage limit has been reached",
         }),
       );
-      const adapter = yield* makeTestAdapter(wrapperPath);
+      let readinessFailure: string | undefined;
+      const adapter = yield* makeTestAdapter(wrapperPath, undefined, {
+        onManagedTurnEvidence: (evidence) =>
+          Effect.sync(() => {
+            if (!evidence.ready) readinessFailure = evidence.reason;
+          }),
+      });
       const threadId = ThreadId.make("kiro-failed-prompt-thread");
       const events: ProviderRuntimeEvent[] = [];
       const eventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
@@ -362,6 +493,7 @@ it.layer(kiroAdapterTestLayer)("KiroAdapterLive", (it) => {
       );
       assert.equal(failure._tag, "ProviderAdapterRequestError");
       assert.include(failure.message, "The monthly usage limit has been reached");
+      assert.equal(readinessFailure, "The monthly usage limit has been reached");
       const [session] = yield* adapter.listSessions();
       assert.equal(session?.status, "ready");
       assert.isUndefined(session?.activeTurnId);
@@ -371,6 +503,34 @@ it.layer(kiroAdapterTestLayer)("KiroAdapterLive", (it) => {
       );
       assert.equal(completed?.payload.state, "failed");
       yield* Fiber.interrupt(eventsFiber);
+      yield* adapter.stopSession(threadId);
+    }).pipe(TestClock.withLive),
+  );
+
+  it.effect("does not mark a completed turn ready without assistant output", () =>
+    Effect.gen(function* () {
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockKiroWrapper({
+          NEOKOD_ACP_AUTH_METHOD_IDS: "",
+          NEOKOD_ACP_PROMPT_RESPONSE_TEXT: "",
+        }),
+      );
+      let evidence: KiroManagedTurnEvidence | undefined;
+      const adapter = yield* makeTestAdapter(wrapperPath, undefined, {
+        onManagedTurnEvidence: (next) => Effect.sync(() => (evidence = next)),
+      });
+      const threadId = ThreadId.make("kiro-empty-assistant-output");
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("kiro"),
+        cwd: process.cwd(),
+        runtimeMode: "approval-required",
+      });
+      yield* adapter.sendTurn({ threadId, input: "empty", attachments: [] });
+      assert.deepStrictEqual(evidence, {
+        ready: false,
+        reason: "Managed turn completed without assistant output.",
+      });
       yield* adapter.stopSession(threadId);
     }).pipe(TestClock.withLive),
   );
