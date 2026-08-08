@@ -475,17 +475,26 @@ export const WorkItemSchema = Schema.Struct({
   claimedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   /** The coding-agent child PID recorded on the claim (audit item 3: orphan
    * termination after a crash needs it; null when never recorded). */
-  ownerPid: Schema.optional(Schema.NullOr(Schema.Int)),
+  ownerPid: Schema.optional(Schema.NullOr(PositiveInt)),
   /** The coding-agent child process-GROUP id, captured at spawn as an explicit
    * POSIX group leader (equal to the leader pid). Recovery signals the group,
    * never a bare pid; null when the child was not spawned as a group leader or
    * on a platform without group signalling (Issue #101 spec 4.1 / 6.6). */
-  ownerPgid: Schema.optional(Schema.NullOr(Schema.Int)),
+  ownerPgid: Schema.optional(Schema.NullOr(PositiveInt)),
   /** Recycle-resistant OS process-birth token for the agent child captured at
    * spawn. Recovery validates the live process against this before signalling;
    * `pid === pgid` alone is not proof of identity (Issue #101 spec 6.6). */
   ownerBirthToken: Schema.optional(Schema.NullOr(Schema.String)),
-});
+}).check(
+  Schema.makeFilter(
+    (input) =>
+      input.ownerPgid === undefined ||
+      input.ownerPgid === null ||
+      input.ownerPid === input.ownerPgid ||
+      "ownerPgid must be accompanied by an ownerPid with the same value.",
+    { identifier: "WorkItemProcessIdentity" },
+  ),
+);
 export type WorkItem = typeof WorkItemSchema.Type;
 
 // ---------------------------------------------------------------------------

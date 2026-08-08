@@ -104,3 +104,17 @@ hostProcessReferenceRule.valid(
     export const architecture = process.arch;
   `,
 );
+
+const nestedHostProcessReferenceRule = createOxlintRuleHarness("neokod/no-global-process-runtime", {
+  filename: "apps/web/src/packages/shared/src/hostProcess.ts",
+});
+
+nestedHostProcessReferenceRule.invalid(
+  "does not exempt nested paths ending with the host-process boundary path",
+  `
+    export const platform = process.platform;
+  `,
+  (output) => {
+    assert.match(output, /Use HostProcessPlatform/);
+  },
+);

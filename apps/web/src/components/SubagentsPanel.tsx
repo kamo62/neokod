@@ -94,7 +94,7 @@ function subagentStatusIcon(status: SubagentIconStatus): React.ReactNode {
 function timingLabel(card: ResolvedSubagentCard, timestampFormat: TimestampFormat): string {
   const { timing } = card.lifecycle;
   if (timing.elapsed !== null) {
-    return card.lifecycle.phase === "orphaned" ? `Observed ${timing.elapsed}` : timing.elapsed;
+    return card.lifecycle.phase === "orphaned" ? `Ran ${timing.elapsed}` : timing.elapsed;
   }
   const fallback =
     timing.kind === "exact"
@@ -172,7 +172,7 @@ const SubagentsPanel = memo(function SubagentsPanel({
     if (density === "expanded" && selected) {
       streamEndRef.current?.scrollIntoView({ block: "end" });
     }
-  }, [density, selected, progressCount]);
+  }, [density, selectedTaskId, progressCount]);
 
   return (
     <div

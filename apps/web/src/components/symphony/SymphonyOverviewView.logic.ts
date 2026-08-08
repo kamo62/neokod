@@ -31,18 +31,18 @@ export function resolveSymphonyOverviewViewState(input: {
   readonly isPending: boolean;
   readonly error: string | null;
 }): SymphonyOverviewViewState {
-  if (input.data !== null) {
-    return {
-      phase: "ready",
-      overview: input.data,
-      refreshError: input.error,
-    };
-  }
   if (!input.hasEnvironment) {
     return {
       phase: "unavailable",
       reason: "no-environment",
       message: "No environment is available for Symphony overview data.",
+    };
+  }
+  if (input.data !== null) {
+    return {
+      phase: "ready",
+      overview: input.data,
+      refreshError: input.error,
     };
   }
   if (input.isPending) return { phase: "loading" };

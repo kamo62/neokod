@@ -156,7 +156,8 @@ export function resolveSubagentCard(input: {
   }
 
   if (card.status === "inProgress" || card.status === "orphaned") {
-    const observedAt = card.completedAt ?? new Date(input.nowMs).toISOString();
+    const latestProgressAt = card.progress.at(-1)?.at;
+    const observedAt = latestProgressAt ?? card.startedAt;
     return {
       ...content,
       lifecycle: {
@@ -168,7 +169,7 @@ export function resolveSubagentCard(input: {
           kind: "last-observed",
           startedAt: card.startedAt,
           observedAt,
-          elapsed: elapsedTo(card, observedAt),
+          elapsed: latestProgressAt ? elapsedTo(card, observedAt) : null,
         },
       },
     };
