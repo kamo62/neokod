@@ -23,10 +23,12 @@ const HOME_DASHBOARD_RECENT_CAP = 8;
 function HomeDashboardThreadRow({
   thread,
   project,
+  nowMs,
   onOpen,
 }: {
   thread: EnvironmentThreadShell;
   project: EnvironmentProject;
+  nowMs: number;
   onOpen: (thread: EnvironmentThreadShell) => void;
 }) {
   const status = resolveThreadStatusPill(thread);
@@ -52,7 +54,7 @@ function HomeDashboardThreadRow({
         </span>
       </span>
       <span className="pt-0.5 text-xs text-muted-foreground">
-        {formatRelativeTime(thread.updatedAt)}
+        {formatRelativeTime(thread.updatedAt, nowMs)}
       </span>
     </button>
   );
@@ -63,12 +65,14 @@ function HomeDashboardGroup({
   icon,
   threads,
   projectsByKey,
+  nowMs,
   onOpen,
 }: {
   title: string;
   icon: ReactNode;
   threads: ReadonlyArray<EnvironmentThreadShell>;
   projectsByKey: ReadonlyMap<string, EnvironmentProject>;
+  nowMs: number;
   onOpen: (thread: EnvironmentThreadShell) => void;
 }) {
   return (
@@ -89,6 +93,7 @@ function HomeDashboardGroup({
                   key={`${thread.environmentId}:${thread.id}`}
                   thread={thread}
                   project={project}
+                  nowMs={nowMs}
                   onOpen={onOpen}
                 />,
               ]
@@ -101,6 +106,7 @@ function HomeDashboardGroup({
 
 export function HomeDashboard() {
   const navigate = useNavigate();
+  const nowMs = Date.now();
   const projects = useProjects();
   const threads = useThreadShells();
   const groups = selectDashboardGroups(threads, projects, HOME_DASHBOARD_RECENT_CAP);
@@ -125,6 +131,7 @@ export function HomeDashboard() {
           icon={<ActivityIcon className="size-4 text-success-foreground" />}
           threads={groups.running}
           projectsByKey={projectsByKey}
+          nowMs={nowMs}
           onOpen={openThread}
         />
         <HomeDashboardGroup
@@ -132,6 +139,7 @@ export function HomeDashboard() {
           icon={<TriangleAlertIcon className="size-4 text-warning-foreground" />}
           threads={groups.needsAttention}
           projectsByKey={projectsByKey}
+          nowMs={nowMs}
           onOpen={openThread}
         />
         <HomeDashboardGroup
@@ -139,6 +147,7 @@ export function HomeDashboard() {
           icon={<LightbulbIcon className="size-4 text-info-foreground" />}
           threads={groups.planReady}
           projectsByKey={projectsByKey}
+          nowMs={nowMs}
           onOpen={openThread}
         />
         <HomeDashboardGroup
@@ -146,6 +155,7 @@ export function HomeDashboard() {
           icon={<ActivityIcon className="size-4 text-muted-foreground" />}
           threads={groups.recent}
           projectsByKey={projectsByKey}
+          nowMs={nowMs}
           onOpen={openThread}
         />
       </div>

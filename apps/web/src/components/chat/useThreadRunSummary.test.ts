@@ -19,7 +19,7 @@ vi.mock("react", () => ({
 
 import { useThreadRunSummary } from "./useThreadRunSummary";
 
-const thread = {
+const thread: Parameters<typeof useThreadRunSummary>[0]["thread"] = {
   title: "Run",
   latestTurn: {
     state: "running" as const,
@@ -71,7 +71,7 @@ describe("useThreadRunSummary", () => {
     const cleanup = render({
       thread: {
         ...thread,
-        latestTurn: { ...thread.latestTurn, startedAt: "2026-07-18T10:00:20.000Z" },
+        latestTurn: { ...thread.latestTurn!, startedAt: "2026-07-18T10:00:20.000Z" },
       },
     });
 

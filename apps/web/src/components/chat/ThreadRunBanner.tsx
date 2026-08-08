@@ -76,6 +76,8 @@ export function ThreadRunBanner(props: ThreadRunBannerProps) {
             summary.status === "completed" && "bg-success",
             summary.status === "stopped" && "bg-muted-foreground/60",
             summary.status === "failed" && "bg-destructive",
+            summary.status === "plan-ready" && "bg-merged",
+            summary.status === "unknown" && "bg-muted-foreground/60",
             isAttention && "bg-warning",
           )}
         />
