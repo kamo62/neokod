@@ -42,13 +42,17 @@ export interface ThreadStatusPill {
   pulse: boolean;
 }
 
+// Distinct ranks so the project rollup is deterministic under strict `>`:
+// two threads never tie on severity and let iteration order pick the pill.
+// The user-actionable states lead (approval, then input), then the failure
+// signal, then live work.
 const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
-  "Pending Approval": 7,
-  "Awaiting Input": 6,
+  "Pending Approval": 8,
+  "Awaiting Input": 7,
   Failed: 6,
   Working: 5,
-  Connecting: 5,
-  "Plan Ready": 4,
+  Connecting: 4,
+  "Plan Ready": 3,
   Stopped: 2,
   Completed: 1,
 };

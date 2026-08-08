@@ -419,6 +419,10 @@ function useLocalDispatchState(input: {
   const beginLocalDispatch = useCallback(
     (options?: { preparingWorktree?: boolean }) => {
       const preparingWorktree = Boolean(options?.preparingWorktree);
+      // Capture the timestamp once: React can invoke the functional updater
+      // more than once (Strict Mode, rebased updates), so reading the clock
+      // inside it would let repeat calls disagree on startedAt.
+      const startedAt = new Date().toISOString();
       setLocalDispatch((current) => {
         const active = serverAcknowledgedLocalDispatch ? null : current;
         if (active) {
@@ -428,7 +432,7 @@ function useLocalDispatchState(input: {
         }
         return createLocalDispatchSnapshot(input.activeThread, {
           ...options,
-          startedAt: new Date().toISOString(),
+          startedAt,
         });
       });
     },
