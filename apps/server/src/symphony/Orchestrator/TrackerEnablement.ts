@@ -4,6 +4,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { ServerSettingsService } from "../../serverSettings.ts";
+import type { TrackerAdapterRegistry } from "../Trackers/Adapter.ts";
+import { effectiveTrackerProvider } from "../Trackers/SettingsOverlay.ts";
 
 /**
  * TrackerEnablement - app-level gate on which trackers Symphony may use.
@@ -25,6 +27,9 @@ export class TrackerEnablement extends Context.Service<
     readonly validateTrackerEnabled: (
       config: EffectiveWorkflowConfig,
     ) => Effect.Effect<void, TrackerDisabledError>;
+    readonly resolveProvider: (
+      config: EffectiveWorkflowConfig,
+    ) => Effect.Effect<Readonly<Record<string, unknown>>>;
   }
 >()("neokod/symphony/Orchestrator/TrackerEnablement") {}
 
@@ -55,7 +60,27 @@ export const makeTrackerEnablement = (
         );
       }
     }),
+  resolveProvider: (config) =>
+    readTrackers().pipe(
+      Effect.map((trackers) =>
+        effectiveTrackerProvider(config.trackerKind, config.trackerProvider, trackers),
+      ),
+    ),
 });
+
+export const resolveTrackerAdapter = (
+  registry: TrackerAdapterRegistry["Service"],
+  enablement: TrackerEnablement["Service"],
+  config: EffectiveWorkflowConfig,
+) =>
+  enablement.resolveProvider(config).pipe(
+    Effect.flatMap((provider) =>
+      registry.resolve(config.trackerKind, provider, {
+        repositoryPath: config.repositoryPath,
+        env: process.env,
+      }),
+    ),
+  );
 
 export const TrackerEnablementLive = Layer.effect(
   TrackerEnablement,

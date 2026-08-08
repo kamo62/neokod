@@ -15,6 +15,7 @@ import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
 
 import { nowIso } from "../../Domain/Time.ts";
@@ -39,6 +40,7 @@ import { NotificationCoordinatorLive } from "../../NotificationCoordinator.ts";
 import { EvidenceRepository } from "../../Persistence/Services/EvidenceRepository.ts";
 import { TrackerRegistryWithFactories } from "../../Trackers/Registry.ts";
 import { makeMemoryTrackerAdapter } from "../../Trackers/MemoryAdapter.ts";
+import { missingTrackerSecret } from "../../Trackers/Errors.ts";
 import { TrackerEnablementLive } from "../TrackerEnablement.ts";
 import { SymphonyOrchestrator } from "../SymphonyOrchestrator.ts";
 import { SymphonyOrchestratorLive, modelReviewAllowsMerge } from "./SymphonyOrchestratorLive.ts";
@@ -47,6 +49,8 @@ import { PullRequestService } from "../../Evidence/PullRequest.ts";
 import { buildRunPrompt, type ReviewFeedbackContext } from "../../Runner/Prompt.ts";
 import { WorkflowLoaderService, type WorkflowLoader } from "../../Workflow/Loader.ts";
 import { layerTest as serverSettingsTestLayer } from "../../../serverSettings.ts";
+
+const encodeJson = Schema.encodeUnknownSync(Schema.UnknownFromJsonString);
 
 const makeConfig = (repositoryPath: string): EffectiveWorkflowConfig => ({
   repositoryPath,
@@ -174,22 +178,24 @@ const makeIssue = (
 
 const pollCountsByRepository = new Map<string, number>();
 const memoryFactory = (options: { readonly repositoryPath: string }) =>
-  makeMemoryTrackerAdapter({
-    issues: [makeIssue("1"), makeIssue("2", "closed"), makeIssue("3", "open", [])],
-    activeStates: ["open"],
-    terminalStates: ["closed"],
-  }).pipe(
-    Effect.map((adapter) => ({
-      ...adapter,
-      listCandidateIssues: () =>
-        Effect.sync(() => {
-          pollCountsByRepository.set(
-            options.repositoryPath,
-            (pollCountsByRepository.get(options.repositoryPath) ?? 0) + 1,
-          );
-        }).pipe(Effect.flatMap(() => adapter.listCandidateIssues())),
-    })),
-  );
+  options.repositoryPath === "/repo/health-failure"
+    ? Effect.fail(missingTrackerSecret("TEST_TOKEN"))
+    : makeMemoryTrackerAdapter({
+        issues: [makeIssue("1"), makeIssue("2", "closed"), makeIssue("3", "open", [])],
+        activeStates: ["open"],
+        terminalStates: ["closed"],
+      }).pipe(
+        Effect.map((adapter) => ({
+          ...adapter,
+          listCandidateIssues: () =>
+            Effect.sync(() => {
+              pollCountsByRepository.set(
+                options.repositoryPath,
+                (pollCountsByRepository.get(options.repositoryPath) ?? 0) + 1,
+              );
+            }).pipe(Effect.flatMap(() => adapter.listCandidateIssues())),
+        })),
+      );
 
 const registryLayer = TrackerRegistryWithFactories(new Map([["github", memoryFactory]]));
 
@@ -457,15 +463,36 @@ layer("SymphonyOrchestrator Observe", (it) => {
     }),
   );
 
-  it.effect("tracks a disabled tracker as unhealthy without erroring", () =>
+  it.effect("publishes the adapter profile without provider secrets", () =>
     Effect.gen(function* () {
       const orchestrator = yield* SymphonyOrchestrator;
-      yield* seedWorkflow("wf-observe-2", "/repo/disabled");
+      yield* seedWorkflow("wf-observe-2", "/repo/health", {
+        trackerProvider: { api_key: "literal-token-must-not-leak" },
+      });
       yield* orchestrator.refreshNow();
 
       const health = yield* orchestrator.listTrackerHealth();
       const github = health.find((h) => h.kind === "github");
       expect(github).toBeDefined();
+      expect(github?.profile).toMatchObject({ kind: "github", displayName: "Memory (test)" });
+      expect(encodeJson(github)).not.toContain("literal-token-must-not-leak");
+    }),
+  );
+
+  it.effect("publishes an empty profile when adapter construction fails", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-health-failure", "/repo/health-failure", {
+        trackerProvider: { api_key: "literal-token-must-not-leak" },
+      });
+      yield* orchestrator.refreshNow();
+
+      const health = yield* orchestrator.listTrackerHealth();
+      const github = health.find((entry) => entry.kind === "github");
+      expect(github?.ok).toBe(false);
+      expect(github?.profile).toEqual({});
+      expect(github?.error).toContain("TEST_TOKEN");
+      expect(encodeJson(github)).not.toContain("literal-token-must-not-leak");
     }),
   );
 

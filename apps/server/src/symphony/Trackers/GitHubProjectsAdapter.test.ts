@@ -253,6 +253,16 @@ describe("makeGitHubProjectsAdapter", () => {
     }),
   );
 
+  it.effect("resolves GITHUB_PAT when api_key is omitted", () =>
+    Effect.gen(function* () {
+      const adapter = yield* makeAdapter({
+        provider: { api_key: undefined },
+        env: { GITHUB_PAT: "secret-value" },
+      });
+      expect(adapter.secretEnvironmentNames()).toContain("GITHUB_PAT");
+    }),
+  );
+
   it.effect("paginates past the first 100 items", () =>
     Effect.gen(function* () {
       const adapter = yield* makeAdapter({

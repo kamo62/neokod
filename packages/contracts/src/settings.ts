@@ -587,7 +587,7 @@ export type TrackerKindLiteral = typeof TrackerKindLiteral.Type;
 
 export const TrackerProviderSettings = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  /** Host-side credential reference (e.g. a `$VAR` name or secret-store key). */
+  /** Host-side credential environment reference (for example `$JIRA_API_TOKEN`). */
   credentialRef: Schema.optional(TrimmedString),
   /** Default scope for the tracker (e.g. `owner/repo` for GitHub, project key for Jira). */
   scope: Schema.optional(TrimmedString),

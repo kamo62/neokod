@@ -197,6 +197,8 @@ describe("makeGitLabAdapter", () => {
   it.effect("declares GITLAB_PAT and GITLAB_ACCESS_TOKEN in secretEnvironmentNames", () =>
     Effect.gen(function* () {
       const adapter = yield* makeAdapter({
+        provider: { api_key: undefined },
+        env: { GITLAB_PAT: "env-key" },
         httpClient: makeFakeClient({ pages: [[]] }),
       });
       const names = adapter.secretEnvironmentNames();

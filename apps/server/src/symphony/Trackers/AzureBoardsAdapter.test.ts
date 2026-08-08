@@ -197,6 +197,16 @@ describe("makeAzureBoardsAdapter", () => {
     }),
   );
 
+  it.effect("resolves AZURE_DEVOPS_PAT when api_key is omitted", () =>
+    Effect.gen(function* () {
+      const adapter = yield* makeAdapter({
+        provider: { api_key: undefined },
+        env: { AZURE_DEVOPS_PAT: "secret-value" },
+      });
+      expect(adapter.secretEnvironmentNames()).toContain("AZURE_DEVOPS_PAT");
+    }),
+  );
+
   it.effect("reports credentials via the probe", () =>
     Effect.gen(function* () {
       const adapter = yield* makeAdapter({

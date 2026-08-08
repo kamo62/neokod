@@ -154,7 +154,7 @@ describe("makeJiraAdapter", () => {
   it.effect("resolves credentials from env fallbacks", () =>
     Effect.gen(function* () {
       const adapter = yield* makeAdapter({
-        provider: { base_url: undefined },
+        provider: { base_url: undefined, api_token: undefined },
         env: { JIRA_BASE_URL: BASE_URL, JIRA_EMAIL: "env@neokod.dev", JIRA_API_TOKEN: "env-token" },
       });
       const profile = adapter.profile();

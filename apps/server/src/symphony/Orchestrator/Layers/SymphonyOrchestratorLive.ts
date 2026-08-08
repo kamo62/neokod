@@ -37,7 +37,7 @@ import { EvidenceRepository } from "../../Persistence/Services/EvidenceRepositor
 import { PullRequestService } from "../../Evidence/PullRequest.ts";
 import { WORKFLOW_DEFAULTS } from "../../Workflow/Config.ts";
 import { TrackerAdapterRegistry } from "../../Trackers/Adapter.ts";
-import { TrackerEnablement } from "../TrackerEnablement.ts";
+import { resolveTrackerAdapter, TrackerEnablement } from "../TrackerEnablement.ts";
 import { evaluateEligibility } from "../Eligibility.ts";
 import { projectWorkItem } from "../Projection.ts";
 import { nowMs, reconcileStaleClaims } from "../Reconciler.ts";
@@ -97,18 +97,15 @@ const refreshIssueSnapshot = (
   item: WorkItem,
   config: EffectiveWorkflowConfig,
   registry: TrackerAdapterRegistry["Service"],
+  enablement: TrackerEnablement["Service"],
 ): Effect.Effect<NormalizedIssue | null, never> =>
   Effect.gen(function* () {
     if (item.trackerIssueId !== undefined && item.trackerIssueId.length > 0) {
       const trackerIssueId: string = item.trackerIssueId;
-      const refreshed = yield* registry
-        .resolve(config.trackerKind, config.trackerProvider, {
-          repositoryPath: config.repositoryPath,
-        })
-        .pipe(
-          Effect.flatMap((adapter) => adapter.refreshIssues([trackerIssueId])),
-          Effect.catch(() => Effect.succeed([])),
-        );
+      const refreshed = yield* resolveTrackerAdapter(registry, enablement, config).pipe(
+        Effect.flatMap((adapter) => adapter.refreshIssues([trackerIssueId])),
+        Effect.catch(() => Effect.succeed([])),
+      );
       const fresh = refreshed.find((candidate) => candidate.id === trackerIssueId);
       if (fresh !== undefined) {
         return fresh;
@@ -334,6 +331,7 @@ const approvalToAttentionItem = (request: {
 const recordTrackerHealth = (
   stateRef: Ref.Ref<OrchestratorRuntimeState>,
   config: EffectiveWorkflowConfig,
+  profile: Readonly<Record<string, unknown>>,
   ok: boolean,
   error: string | null,
 ) =>
@@ -345,7 +343,7 @@ const recordTrackerHealth = (
         ok,
         error,
         lastPollAt: now,
-        profile: config.trackerProvider,
+        profile,
       };
       const next = state.trackerHealth.filter((h) => h.kind !== config.trackerKind);
       return { ...state, lastPollAt: now, trackerHealth: [...next, health] };
@@ -370,37 +368,32 @@ const pollWorkflow = (deps: {
       yield* recordTrackerHealth(
         deps.stateRef,
         config,
+        {},
         false,
         "tracker disabled in Tracking settings",
       );
       return;
     }
 
-    const adapter = yield* deps.registry
-      .resolve(config.trackerKind, config.trackerProvider, {
-        repositoryPath: config.repositoryPath,
-      })
-      .pipe(
-        Effect.catch((error) =>
-          recordTrackerHealth(deps.stateRef, config, false, error.message).pipe(
-            Effect.as(null as never),
-          ),
+    const adapter = yield* resolveTrackerAdapter(deps.registry, deps.enablement, config).pipe(
+      Effect.catch((error) =>
+        recordTrackerHealth(deps.stateRef, config, {}, false, error.message).pipe(
+          Effect.as(null as never),
         ),
-      );
+      ),
+    );
     if (adapter === null) {
       return;
     }
+    const profile = { ...adapter.profile() };
 
-    const issues = yield* adapter
-      .listCandidateIssues()
-      .pipe(
-        Effect.catch((error) =>
-          recordTrackerHealth(deps.stateRef, config, false, error.message).pipe(
-            Effect.as([] as NormalizedIssue[]),
-          ),
-        ),
-      );
-    yield* recordTrackerHealth(deps.stateRef, config, true, null);
+    const result = yield* Effect.result(adapter.listCandidateIssues());
+    if (result._tag === "Failure") {
+      yield* recordTrackerHealth(deps.stateRef, config, profile, false, result.failure.message);
+      return;
+    }
+    const issues = result.success;
+    yield* recordTrackerHealth(deps.stateRef, config, profile, true, null);
 
     // Tracker checkpoint (audit item 8 lane H): record when the poll last
     // succeeded so resume/recovery can tell a healthy poll from a silent one,
@@ -1056,7 +1049,7 @@ const makeOrchestrator = Effect.gen(function* () {
       return null;
     }
 
-    const issue = yield* refreshIssueSnapshot(item, config, registry);
+    const issue = yield* refreshIssueSnapshot(item, config, registry, enablement);
     if (issue === null) {
       return null;
     }

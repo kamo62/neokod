@@ -8,12 +8,12 @@ Bearer prefix). No credential is exposed to the coding-agent child.
 
 All keys live under `tracker.provider` in `WORKFLOW.md` front matter.
 
-| Key            | Required | Secret | Default | Description                                                    |
-| -------------- | -------- | ------ | ------- | -------------------------------------------------------------- |
-| `endpoint`     | yes      | no     | —       | Linear GraphQL endpoint, e.g. `https://api.linear.app/graphql` |
-| `api_key`      | yes      | yes    | —       | Linear API key, or a `$VAR` name                               |
-| `project_slug` | yes      | no     | —       | Project slug scope, e.g. `my-project`                          |
-| `assignee`     | no       | no     | —       | Only dispatch issues assigned to this user id, or `"me"`       |
+| Key            | Required | Secret | Default                          | Description                                              |
+| -------------- | -------- | ------ | -------------------------------- | -------------------------------------------------------- |
+| `endpoint`     | no       | no     | `https://api.linear.app/graphql` | Linear GraphQL endpoint                                  |
+| `api_key`      | yes      | yes    | —                                | Linear API key, or a `$VAR` name                         |
+| `project_slug` | yes      | no     | —                                | Project slug scope, e.g. `my-project`                    |
+| `assignee`     | no       | no     | —                                | Only dispatch issues assigned to this user id, or `"me"` |
 
 Values may reference environment variables with `$NAME`; the config loader resolves them. The
 `LINEAR_API_KEY` environment variable acts as a fallback. The adapter always declares

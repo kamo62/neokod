@@ -16,6 +16,7 @@ import {
   type AsanaRawTask,
 } from "./AsanaApiClient.ts";
 import { decodeNormalizedIssue, isStateIn, normalizeLabel } from "./Normalize.ts";
+import { resolveProviderSecret } from "./ProviderSecret.ts";
 
 /**
  * Asana tracker adapter (SPEC 11.2, plan 5.0.1).
@@ -43,29 +44,6 @@ const resolveProviderString = (
   typeof provider[key] === "string" && provider[key].length > 0
     ? (provider[key] as string)
     : undefined;
-
-const resolveEnv = (
-  name: string,
-  env: Readonly<Record<string, string | undefined>>,
-): string | undefined => {
-  const value = env[name];
-  return value === undefined || value.length === 0 ? undefined : value;
-};
-
-/** Resolve a provider value that may be a literal or a `$VAR` reference. */
-const resolveSecretValue = (
-  value: string | undefined,
-  env: Readonly<Record<string, string | undefined>>,
-): { readonly resolved: string | undefined; readonly envName: string | undefined } => {
-  if (value === undefined) {
-    return { resolved: undefined, envName: undefined };
-  }
-  const match = /^\$([A-Za-z_][A-Za-z0-9_]*)$/.exec(value.trim());
-  if (match === null || match[1] === undefined) {
-    return { resolved: value, envName: undefined };
-  }
-  return { resolved: resolveEnv(match[1], env), envName: match[1] };
-};
 
 const validEndpoint = (value: string): boolean => {
   try {
@@ -115,7 +93,7 @@ export const makeAsanaAdapter = (options: {
 
     const endpoint = resolveProviderString(provider, "endpoint");
     const apiKeyValue = resolveProviderString(provider, "api_key");
-    const apiKey = resolveSecretValue(apiKeyValue, options.env);
+    const apiKey = resolveProviderSecret(apiKeyValue, "ASANA_PAT", options.env);
     const projectGid = resolveProviderString(provider, "project_gid");
 
     if (endpoint !== undefined && !validEndpoint(endpoint)) {

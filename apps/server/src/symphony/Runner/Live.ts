@@ -9,6 +9,7 @@ import { ApprovalService } from "./ApprovalService.ts";
 import { LiveRequests } from "./LiveRequests.ts";
 import { AgentRuntimeFactory } from "./Dispatcher.ts";
 import { TrackerAdapterRegistry } from "../Trackers/Adapter.ts";
+import { resolveTrackerAdapter, TrackerEnablement } from "../Orchestrator/TrackerEnablement.ts";
 
 /**
  * Live per-config Codex agent runtime factory (Phase 2).
@@ -26,47 +27,44 @@ const makeAgentRuntimeFactory = Effect.gen(function* () {
   const approvalService = yield* ApprovalService;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const registry = yield* TrackerAdapterRegistry;
+  const enablement = yield* TrackerEnablement;
   const make = (config: EffectiveWorkflowConfig) =>
     // Secret names from the configured tracker adapter (SPEC 15.3). Any
     // adapter that cannot be resolved contributes nothing rather than
     // failing the dispatch.
-    registry
-      .resolve(config.trackerKind, config.trackerProvider, {
-        repositoryPath: config.repositoryPath,
-      })
-      .pipe(
-        Effect.map((adapter) => adapter.secretEnvironmentNames()),
-        Effect.catch(() => Effect.succeed([] as ReadonlyArray<string>)),
-        Effect.flatMap((secretNames) =>
-          makeCodexAgentRuntime({
-            codexCommand: config.codexCommand ?? "codex app-server",
-            codexHomePath: undefined,
-            env: process.env,
-            secretEnvironmentNames: secretNames,
-            liveRequests,
-            recordRequest: (input) =>
-              approvalService
-                .recordPending({
-                  id: input.requestId,
-                  requestId: input.requestId,
-                  workItemId: input.workItemId,
-                  runAttemptId: input.runAttemptId,
-                  action: input.action,
-                  scope: "once",
-                  ...(input.command !== undefined ? { command: input.command } : {}),
-                })
-                .pipe(
-                  Effect.asVoid,
-                  Effect.catch(() => Effect.void),
-                ),
-          }).pipe(
-            Effect.mapError(() => Effect.never as never),
-            // Resolve the spawner at factory construction so the dispatcher's public
-            // boundary does not leak ChildProcessSpawner into the RPC handler.
-            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-          ),
+    resolveTrackerAdapter(registry, enablement, config).pipe(
+      Effect.map((adapter) => adapter.secretEnvironmentNames()),
+      Effect.catch(() => Effect.succeed([] as ReadonlyArray<string>)),
+      Effect.flatMap((secretNames) =>
+        makeCodexAgentRuntime({
+          codexCommand: config.codexCommand ?? "codex app-server",
+          codexHomePath: undefined,
+          env: process.env,
+          secretEnvironmentNames: secretNames,
+          liveRequests,
+          recordRequest: (input) =>
+            approvalService
+              .recordPending({
+                id: input.requestId,
+                requestId: input.requestId,
+                workItemId: input.workItemId,
+                runAttemptId: input.runAttemptId,
+                action: input.action,
+                scope: "once",
+                ...(input.command !== undefined ? { command: input.command } : {}),
+              })
+              .pipe(
+                Effect.asVoid,
+                Effect.catch(() => Effect.void),
+              ),
+        }).pipe(
+          Effect.mapError(() => Effect.never as never),
+          // Resolve the spawner at factory construction so the dispatcher's public
+          // boundary does not leak ChildProcessSpawner into the RPC handler.
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         ),
-      );
+      ),
+    );
   return AgentRuntimeFactory.of({ make });
 });
 
@@ -78,4 +76,5 @@ export const AgentRuntimeFactoryLive: Layer.Layer<
   | ChildProcessSpawner.ChildProcessSpawner
   | Scope.Scope
   | TrackerAdapterRegistry
+  | TrackerEnablement
 > = Layer.effect(AgentRuntimeFactory, makeAgentRuntimeFactory);
