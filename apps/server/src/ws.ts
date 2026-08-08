@@ -332,22 +332,29 @@ const observeRpcStream = <A, E, R>(
   traceAttributes?: Readonly<Record<string, unknown>>,
 ) => instrumentRpcStream(method, stream, traceAttributes);
 
-const emptyOverview = (): Effect.Effect<SymphonyOverview> =>
-  Effect.succeed({
-    running: 0,
-    queued: 0,
-    needsAttention: 0,
-    readyForReview: 0,
-    retrying: 0,
-    failedToday: 0,
-    orchestratorPaused: false,
-    activeWorkflowCount: 0,
-    providerHealth: {},
-    trackerHealth: {},
-    lastTrackerPollAt: null,
-    activeAgentCount: 0,
-    generatedAt: new Date().toISOString(),
+const emptyOverview = (): Effect.Effect<SymphonyOverview> => {
+  const unavailable = (reason: string): SymphonyOverview["running"] => ({
+    state: "unavailable",
+    reason,
   });
+  return nowIso.pipe(
+    Effect.map((generatedAt) => ({
+      running: unavailable("Symphony orchestrator is unavailable."),
+      queued: unavailable("Symphony orchestrator is unavailable."),
+      needsAttention: unavailable("Symphony orchestrator is unavailable."),
+      readyForReview: unavailable("Symphony orchestrator is unavailable."),
+      retrying: unavailable("Symphony orchestrator is unavailable."),
+      failedToday: unavailable("Symphony orchestrator is unavailable."),
+      orchestratorPaused: null,
+      activeWorkflowCount: unavailable("Symphony orchestrator is unavailable."),
+      providerHealth: {},
+      trackerHealth: {},
+      lastTrackerPollAt: null,
+      activeAgentCount: unavailable("Symphony orchestrator is unavailable."),
+      generatedAt,
+    })),
+  );
+};
 
 // Resolve the Symphony orchestrator lazily per request so the RPC layer
 // itself has no hard dependency on the Symphony layers. When they are not

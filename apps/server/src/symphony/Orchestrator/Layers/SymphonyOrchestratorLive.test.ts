@@ -475,7 +475,11 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* seedWorkflow("wf-observe-3", "/repo/overview");
       yield* orchestrator.refreshNow();
       const overview = yield* orchestrator.getOverview();
-      expect(overview.activeWorkflowCount).toBeGreaterThanOrEqual(1);
+      expect(overview.activeWorkflowCount.state).toBe("known");
+      if (overview.activeWorkflowCount.state === "known") {
+        expect(overview.activeWorkflowCount.value).toBeGreaterThanOrEqual(1);
+      }
+      expect(overview.activeAgentCount.state).toBe("unavailable");
     }),
   );
 
@@ -1063,6 +1067,31 @@ layer("SymphonyOrchestrator Observe", (it) => {
       const evidenceRepo = yield* EvidenceRepository;
       yield* evidenceRepo.upsert(workItemId, evidence);
 
+      yield* setPullRequestRefresh({
+        number: 1,
+        title: "t",
+        branch: "b",
+        baseBranch: "m",
+        status: "open",
+        ciStatus: "success",
+        reviewState: "approved",
+        mergeable: "mergeable",
+      });
+      const unknownComments = yield* orchestrator.approveMerge("merge-1");
+      expect(unknownComments).toBe(false);
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("ready_for_review");
+
+      yield* setPullRequestRefresh({
+        number: 1,
+        title: "t",
+        branch: "b",
+        baseBranch: "m",
+        status: "open",
+        ciStatus: "success",
+        reviewState: "approved",
+        mergeable: "mergeable",
+        unresolvedComments: 0,
+      });
       const merged = yield* orchestrator.approveMerge("merge-1");
       expect(merged).toBe(true);
       const after = yield* workItems.getById(workItemId);

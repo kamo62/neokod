@@ -9,6 +9,7 @@ import type {
   RunDetails,
   RunSummary,
   SymphonyOverview,
+  SymphonyOverviewMetric,
   TrackerHealth,
   WorkflowRecord,
   WorkItem,
@@ -64,6 +65,25 @@ import { SymphonyOrchestrator, type SymphonyOrchestratorShape } from "../Symphon
  */
 
 const SCHEDULER_SCAN_INTERVAL = "5 seconds";
+
+const knownOverviewMetric = (value: number): SymphonyOverviewMetric => ({
+  state: "known",
+  value,
+});
+
+const unavailableOverviewMetric = (reason: string): SymphonyOverviewMetric => ({
+  state: "unavailable",
+  reason,
+});
+
+const readOverviewMetric = <E, R>(
+  read: Effect.Effect<number, E, R>,
+  unavailableReason: string,
+): Effect.Effect<SymphonyOverviewMetric, never, R> =>
+  read.pipe(
+    Effect.map(knownOverviewMetric),
+    Effect.catch(() => Effect.succeed(unavailableOverviewMetric(unavailableReason))),
+  );
 
 /**
  * Plan 9.5 re-check (audit item 2): a retry must re-read the issue from the
@@ -639,50 +659,52 @@ const makeOrchestrator = Effect.gen(function* () {
       const state = yield* Ref.get(stateRef);
       const paused = yield* orchestratorState
         .isGlobalPaused()
-        .pipe(Effect.catch(() => Effect.succeed(false)));
-      const activeWorkflows = yield* workflows
-        .list()
-        .pipe(Effect.map((all) => all.filter((w) => w.status === "active").length))
-        .pipe(Effect.catch(() => Effect.succeed(0)));
-      const queue = yield* workItems
-        .listByLifecycle(["eligible", "queued"])
-        .pipe(Effect.catch(() => Effect.succeed([])));
-      const queued = queue.filter((item) => item.lifecycle === "queued").length;
-      // Live counters (REVIEW P1: these were hardcoded zero, so the dashboard
-      // looked authoritative while runs were executing).
-      const running = yield* workItems
-        .listByLifecycle(["preparing", "running", "waiting_for_approval"])
-        .pipe(
-          Effect.map((items) => items.length),
-          Effect.catch(() => Effect.succeed(0)),
-        );
-      const readyForReview = yield* workItems
-        .listByLifecycle(["ready_for_review", "ready_to_merge"])
-        .pipe(
-          Effect.map((items) => items.length),
-          Effect.catch(() => Effect.succeed(0)),
-        );
-      const retrying = yield* workItems.listByLifecycle(["retry_scheduled"]).pipe(
-        Effect.map((items) => items.length),
-        Effect.catch(() => Effect.succeed(0)),
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      const activeWorkflows = yield* readOverviewMetric(
+        workflows.list().pipe(Effect.map((all) => all.filter((w) => w.status === "active").length)),
+        "Active workflow count could not be read.",
       );
-      const failedToday = yield* runAttempts.listRecent({ limit: 500 }).pipe(
-        Effect.map(
-          (attempts) =>
-            attempts.filter((attempt) => {
-              const started = Date.parse(attempt.startedAt);
-              return (
-                !Number.isNaN(started) &&
-                started >= startOfTodayMs &&
-                (attempt.status === "failed" || attempt.status === "validation_failed")
-              );
-            }).length,
+      const queued = yield* readOverviewMetric(
+        workItems
+          .listByLifecycle(["eligible", "queued"])
+          .pipe(Effect.map((items) => items.filter((item) => item.lifecycle === "queued").length)),
+        "Queue count could not be read.",
+      );
+      const running = yield* readOverviewMetric(
+        workItems
+          .listByLifecycle(["preparing", "running", "waiting_for_approval"])
+          .pipe(Effect.map((items) => items.length)),
+        "Running count could not be read.",
+      );
+      const readyForReview = yield* readOverviewMetric(
+        workItems
+          .listByLifecycle(["ready_for_review", "ready_to_merge"])
+          .pipe(Effect.map((items) => items.length)),
+        "Ready-for-review count could not be read.",
+      );
+      const retrying = yield* readOverviewMetric(
+        workItems.listByLifecycle(["retry_scheduled"]).pipe(Effect.map((items) => items.length)),
+        "Retry count could not be read.",
+      );
+      const failedToday = yield* readOverviewMetric(
+        runAttempts.listRecent({ limit: 500 }).pipe(
+          Effect.map(
+            (attempts) =>
+              attempts.filter((attempt) => {
+                const started = Date.parse(attempt.startedAt);
+                return (
+                  !Number.isNaN(started) &&
+                  started >= startOfTodayMs &&
+                  (attempt.status === "failed" || attempt.status === "validation_failed")
+                );
+              }).length,
+          ),
         ),
-        Effect.catch(() => Effect.succeed(0)),
+        "Failed-today count could not be read.",
       );
-      const needsAttention = yield* approvals.listPending().pipe(
-        Effect.map((requests) => requests.length),
-        Effect.catch(() => Effect.succeed(0)),
+      const needsAttention = yield* readOverviewMetric(
+        approvals.listPending().pipe(Effect.map((requests) => requests.length)),
+        "Needs-attention count could not be read.",
       );
       return {
         running,
@@ -701,9 +723,9 @@ const makeOrchestrator = Effect.gen(function* () {
           ]),
         ),
         lastTrackerPollAt: state.lastPollAt,
-        // The dispatcher's live agent count is not exposed to the
-        // orchestrator; the running counter covers it.
-        activeAgentCount: 0,
+        // The dispatcher's live agent count is not exposed to the orchestrator,
+        // so it must remain unavailable rather than being fabricated as zero.
+        activeAgentCount: unavailableOverviewMetric("Active agent count is not exposed."),
         generatedAt: now,
       };
     });
@@ -1366,7 +1388,7 @@ const makeOrchestrator = Effect.gen(function* () {
       if (pullRequest.mergeable !== "mergeable") {
         return false;
       }
-      if ((pullRequest.unresolvedComments ?? 0) > 0) {
+      if (pullRequest.unresolvedComments === undefined || pullRequest.unresolvedComments > 0) {
         return false;
       }
       const changed = yield* workItems

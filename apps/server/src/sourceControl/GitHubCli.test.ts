@@ -421,6 +421,7 @@ describe("GitHubCli.layer", () => {
                   pullRequest: {
                     reviewThreads: {
                       nodes: [{ isResolved: false }, { isResolved: true }],
+                      pageInfo: { hasNextPage: false, endCursor: null },
                     },
                   },
                 },
@@ -457,7 +458,16 @@ describe("GitHubCli.layer", () => {
         Effect.succeed(
           processOutput(
             JSON.stringify({
-              data: { repository: { pullRequest: { reviewThreads: { nodes: [] } } } },
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      nodes: [],
+                      pageInfo: { hasNextPage: false, endCursor: null },
+                    },
+                  },
+                },
+              },
             }),
           ),
         ),
@@ -504,7 +514,16 @@ describe("GitHubCli.layer", () => {
         Effect.succeed(
           processOutput(
             JSON.stringify({
-              data: { repository: { pullRequest: { reviewThreads: { nodes: [] } } } },
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      nodes: [],
+                      pageInfo: { hasNextPage: false, endCursor: null },
+                    },
+                  },
+                },
+              },
             }),
           ),
         ),
@@ -540,7 +559,16 @@ describe("GitHubCli.layer", () => {
         Effect.succeed(
           processOutput(
             JSON.stringify({
-              data: { repository: { pullRequest: { reviewThreads: { nodes: [] } } } },
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      nodes: [],
+                      pageInfo: { hasNextPage: false, endCursor: null },
+                    },
+                  },
+                },
+              },
             }),
           ),
         ),
@@ -589,6 +617,7 @@ describe("GitHubCli.layer", () => {
                           comments: { nodes: [{ body: "This needs a test." }] },
                         },
                       ],
+                      pageInfo: { hasNextPage: false, endCursor: null },
                     },
                   },
                 },
@@ -622,6 +651,7 @@ describe("GitHubCli.layer", () => {
                         isResolved: false,
                         comments: { nodes: [{ body: `comment ${index}` }] },
                       })),
+                      pageInfo: { hasNextPage: false, endCursor: null },
                     },
                   },
                 },
@@ -648,7 +678,16 @@ describe("GitHubCli.layer", () => {
           processOutput(
             // @effect-diagnostics-next-line preferSchemaOverJson:off
             JSON.stringify({
-              data: { repository: { pullRequest: { reviewThreads: { nodes: [] } } } },
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      nodes: [],
+                      pageInfo: { hasNextPage: false, endCursor: null },
+                    },
+                  },
+                },
+              },
             }),
           ),
         ),
@@ -666,6 +705,95 @@ describe("GitHubCli.layer", () => {
       assert.equal(args.includes("-F owner=:owner"), true);
       assert.equal(args.includes("-F name=:repo"), true);
       assert.equal(args.includes("-F pr=42"), true);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("paginates reviewThreads before reporting the unresolved count", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            JSON.stringify({ mergeable: "MERGEABLE", statusCheckRollup: [], reviews: [] }),
+          ),
+        ),
+      );
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            JSON.stringify({
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      nodes: [{ isResolved: true }],
+                      pageInfo: { hasNextPage: true, endCursor: "cursor-1" },
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        ),
+      );
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            JSON.stringify({
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      nodes: [{ isResolved: false }],
+                      pageInfo: { hasNextPage: false, endCursor: null },
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        ),
+      );
+
+      const gh = yield* GitHubCli.GitHubCli;
+      const status = yield* gh.getChangeRequestStatus({ cwd: "/repo", reference: "#42" });
+
+      expect(status.unresolvedComments).toBe(1);
+      expect((mockRun.mock.calls[2]?.[0].args ?? []).join(" ")).toContain("-F cursor=cursor-1");
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("fails closed when reviewThreads nodes are missing", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            JSON.stringify({ mergeable: "MERGEABLE", statusCheckRollup: [], reviews: [] }),
+          ),
+        ),
+      );
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            JSON.stringify({
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      pageInfo: { hasNextPage: false, endCursor: null },
+                    },
+                  },
+                },
+              },
+            }),
+          ),
+        ),
+      );
+
+      const gh = yield* GitHubCli.GitHubCli;
+      const result = yield* Effect.result(
+        gh.getChangeRequestStatus({ cwd: "/repo", reference: "#42" }),
+      );
+      expect(result._tag).toBe("Failure");
     }).pipe(Effect.provide(layer)),
   );
 

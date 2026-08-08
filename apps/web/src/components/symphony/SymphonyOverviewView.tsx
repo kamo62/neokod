@@ -1,22 +1,56 @@
+import type { SymphonyOverviewMetric } from "@neokod/contracts";
+
 import { RefreshCwIcon, TriangleAlertIcon } from "lucide-react";
 
-import type { SymphonyOverview } from "@neokod/contracts";
+import { cn } from "../../lib/utils";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { symphonyEnvironment } from "../../state/symphony";
 import { Button } from "../ui/button";
-import { cn } from "../../lib/utils";
 import { Skeleton } from "../ui/skeleton";
 import { SymphonyEmptyState } from "./SymphonyEmptyState";
+import {
+  resolveSymphonyOverviewMetric,
+  resolveSymphonyOverviewViewState,
+} from "./SymphonyOverviewView.logic";
 
-function MetricTile({ label, value }: { readonly label: string; readonly value: number }) {
+function MetricTile({
+  label,
+  metric,
+}: {
+  readonly label: string;
+  readonly metric: SymphonyOverviewMetric;
+}) {
+  const resolved = resolveSymphonyOverviewMetric(metric);
   return (
-    <div className="rounded-2xl border bg-card p-4">
+    <div
+      className="rounded-2xl border bg-card p-4"
+      title={resolved.state === "unavailable" ? resolved.reason : undefined}
+    >
       <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground/50">
         {label}
       </p>
-      <p className="mt-1 text-2xl font-semibold tracking-[-0.02em] text-foreground">{value}</p>
+      <p
+        className={cn(
+          "mt-1 font-semibold tracking-[-0.02em]",
+          resolved.state === "known" ? "text-2xl text-foreground" : "text-sm text-muted-foreground",
+        )}
+      >
+        {resolved.label}
+      </p>
     </div>
+  );
+}
+
+function ActiveWorkflowCount({ metric }: { readonly metric: SymphonyOverviewMetric }) {
+  const resolved = resolveSymphonyOverviewMetric(metric);
+  if (resolved.state === "unavailable") {
+    return <span title={resolved.reason}>Active workflows unavailable</span>;
+  }
+  return (
+    <span>
+      {resolved.value} active {resolved.value === 1 ? "workflow" : "workflows"}
+    </span>
   );
 }
 
@@ -57,47 +91,41 @@ function OverviewSkeleton() {
   );
 }
 
-const EMPTY_OVERVIEW: SymphonyOverview = {
-  running: 0,
-  queued: 0,
-  needsAttention: 0,
-  readyForReview: 0,
-  retrying: 0,
-  failedToday: 0,
-  orchestratorPaused: false,
-  activeWorkflowCount: 0,
-  providerHealth: {},
-  trackerHealth: {},
-  lastTrackerPollAt: null,
-  activeAgentCount: 0,
-  generatedAt: new Date().toISOString(),
-};
-
 export function SymphonyOverviewView() {
   const environmentId = usePrimaryEnvironmentId();
   const overviewQuery = useEnvironmentQuery(
     environmentId === null ? null : symphonyEnvironment.overview({ environmentId, input: {} }),
   );
-  const overview = overviewQuery.data ?? EMPTY_OVERVIEW;
-  const trackerHealth = Object.entries(overview.trackerHealth);
+  const viewState = resolveSymphonyOverviewViewState({
+    hasEnvironment: environmentId !== null,
+    data: overviewQuery.data,
+    isPending: overviewQuery.isPending,
+    error: overviewQuery.error,
+  });
+  const headerDescription =
+    viewState.phase === "ready"
+      ? viewState.overview.orchestratorPaused === null
+        ? "Symphony pause status is unavailable."
+        : viewState.overview.orchestratorPaused
+          ? "Dispatch is paused."
+          : "Symphony is watching for eligible work."
+      : viewState.phase === "loading"
+        ? "Loading Symphony overview data."
+        : "Symphony overview data is unavailable.";
 
   return (
     <div className="flex flex-1 flex-col">
       <div className="flex items-center justify-between px-6 pb-2 pt-6 sm:px-8">
         <div className="space-y-0.5">
           <h1 className="text-[15px] font-semibold tracking-[-0.01em] text-foreground">Overview</h1>
-          <p className="text-xs text-muted-foreground">
-            {overview.orchestratorPaused
-              ? "Dispatch is paused."
-              : "Symphony is watching for eligible work."}
-          </p>
+          <p className="text-xs text-muted-foreground">{headerDescription}</p>
         </div>
         <Button
           size="sm"
           variant="ghost"
           className="h-8 gap-1.5 px-3 text-xs"
           onClick={overviewQuery.refresh}
-          disabled={overviewQuery.isPending}
+          disabled={overviewQuery.isPending || environmentId === null}
           aria-label="Refresh overview"
         >
           <RefreshCwIcon className={cn("size-3.5", overviewQuery.isPending && "animate-spin")} />
@@ -106,33 +134,44 @@ export function SymphonyOverviewView() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 sm:p-8">
-        {overviewQuery.isPending && overviewQuery.data === null ? (
+        {viewState.phase === "loading" ? (
           <OverviewSkeleton />
-        ) : overviewQuery.error && overviewQuery.data === null ? (
+        ) : viewState.phase === "unavailable" ? (
           <SymphonyEmptyState
             icon={TriangleAlertIcon}
-            title="Could not load overview"
-            description={overviewQuery.error}
+            title="Overview unavailable"
+            description={viewState.message}
             action={
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={overviewQuery.refresh}
-                disabled={overviewQuery.isPending}
-              >
-                <RefreshCwIcon
-                  className={cn("size-3.5", overviewQuery.isPending && "animate-spin")}
-                />
-                Retry
-              </Button>
+              environmentId === null ? undefined : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={overviewQuery.refresh}
+                  disabled={overviewQuery.isPending}
+                >
+                  <RefreshCwIcon
+                    className={cn("size-3.5", overviewQuery.isPending && "animate-spin")}
+                  />
+                  Retry
+                </Button>
+              )
             }
           />
         ) : (
           <div className="space-y-6">
+            {viewState.refreshError ? (
+              <div
+                role="status"
+                className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-3 text-xs text-warning-foreground"
+              >
+                Showing the last known overview because refresh failed: {viewState.refreshError}
+              </div>
+            ) : null}
+
             <div className="grid gap-4 sm:grid-cols-3">
-              <MetricTile label="Queued" value={overview.queued} />
-              <MetricTile label="Running" value={overview.running} />
-              <MetricTile label="Needs Attention" value={overview.needsAttention} />
+              <MetricTile label="Queued" metric={viewState.overview.queued} />
+              <MetricTile label="Running" metric={viewState.overview.running} />
+              <MetricTile label="Needs Attention" metric={viewState.overview.needsAttention} />
             </div>
 
             <div className="rounded-2xl border bg-card">
@@ -141,17 +180,16 @@ export function SymphonyOverviewView() {
                   Tracker health
                 </h2>
                 <span className="text-xs text-muted-foreground">
-                  {overview.activeWorkflowCount} active{" "}
-                  {overview.activeWorkflowCount === 1 ? "workflow" : "workflows"}
+                  <ActiveWorkflowCount metric={viewState.overview.activeWorkflowCount} />
                 </span>
               </div>
-              {trackerHealth.length === 0 ? (
+              {Object.keys(viewState.overview.trackerHealth).length === 0 ? (
                 <p className="px-4 py-4 text-xs text-muted-foreground sm:px-5">
                   No trackers polled yet. Enable a tracker in Settings, add a WORKFLOW.md, and
                   activate it.
                 </p>
               ) : (
-                trackerHealth.map(([kind, health]) => (
+                Object.entries(viewState.overview.trackerHealth).map(([kind, health]) => (
                   <TrackerHealthRow
                     key={kind}
                     kind={kind}

@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import { makeModelReview } from "./PullRequestPanel.test-fixtures.ts";
-import { ModelReviewStrip } from "./PullRequestPanel.tsx";
+import { approveMergeBlockers, ModelReviewStrip } from "./PullRequestPanel.tsx";
 
 describe("ModelReviewStrip", () => {
   it("renders the aggregate gate and compact reviewer chips", () => {
@@ -26,5 +26,34 @@ describe("ModelReviewStrip", () => {
 
     expect(html).toContain("Advisory");
     expect(html).not.toContain("Review passed");
+  });
+});
+
+describe("approveMergeBlockers", () => {
+  const readyPullRequest = {
+    number: 42,
+    title: "Ready PR",
+    branch: "feature",
+    baseBranch: "main",
+    status: "open",
+    ciStatus: "success",
+    reviewState: "approved",
+    mergeable: "mergeable",
+  } as const;
+
+  it("fails closed when unresolved comments are unknown", () => {
+    expect(approveMergeBlockers(readyPullRequest, "ready_for_review", null)).toContain(
+      "unresolved comment count is not reported",
+    );
+  });
+
+  it("allows a known zero unresolved-comment count", () => {
+    expect(
+      approveMergeBlockers(
+        { ...readyPullRequest, unresolvedComments: 0 },
+        "ready_for_review",
+        null,
+      ),
+    ).toEqual([]);
   });
 });

@@ -476,6 +476,15 @@ export const WorkItemSchema = Schema.Struct({
   /** The coding-agent child PID recorded on the claim (audit item 3: orphan
    * termination after a crash needs it; null when never recorded). */
   ownerPid: Schema.optional(Schema.NullOr(Schema.Int)),
+  /** The coding-agent child process-GROUP id, captured at spawn as an explicit
+   * POSIX group leader (equal to the leader pid). Recovery signals the group,
+   * never a bare pid; null when the child was not spawned as a group leader or
+   * on a platform without group signalling (Issue #101 spec 4.1 / 6.6). */
+  ownerPgid: Schema.optional(Schema.NullOr(Schema.Int)),
+  /** Recycle-resistant OS process-birth token for the agent child captured at
+   * spawn. Recovery validates the live process against this before signalling;
+   * `pid === pgid` alone is not proof of identity (Issue #101 spec 6.6). */
+  ownerBirthToken: Schema.optional(Schema.NullOr(Schema.String)),
 });
 export type WorkItem = typeof WorkItemSchema.Type;
 
@@ -701,22 +710,28 @@ export type WorkflowValidationResult = typeof WorkflowValidationResultSchema.Typ
 // Overview / queue / run summaries (PRD 16, 25.1)
 // ---------------------------------------------------------------------------
 
+export const SymphonyOverviewMetricSchema = Schema.Union([
+  Schema.Struct({ state: Schema.Literal("known"), value: NonNegativeInt }),
+  Schema.Struct({ state: Schema.Literal("unavailable"), reason: Schema.String }),
+]);
+export type SymphonyOverviewMetric = typeof SymphonyOverviewMetricSchema.Type;
+
 export const SymphonyOverviewSchema = Schema.Struct({
-  running: NonNegativeInt,
-  queued: NonNegativeInt,
-  needsAttention: NonNegativeInt,
-  readyForReview: NonNegativeInt,
-  retrying: NonNegativeInt,
-  failedToday: NonNegativeInt,
-  orchestratorPaused: Schema.Boolean,
-  activeWorkflowCount: NonNegativeInt,
+  running: SymphonyOverviewMetricSchema,
+  queued: SymphonyOverviewMetricSchema,
+  needsAttention: SymphonyOverviewMetricSchema,
+  readyForReview: SymphonyOverviewMetricSchema,
+  retrying: SymphonyOverviewMetricSchema,
+  failedToday: SymphonyOverviewMetricSchema,
+  orchestratorPaused: Schema.NullOr(Schema.Boolean),
+  activeWorkflowCount: SymphonyOverviewMetricSchema,
   providerHealth: Schema.Record(Schema.String, Schema.Struct({ available: Schema.Boolean })),
   trackerHealth: Schema.Record(
     Schema.String,
     Schema.Struct({ ok: Schema.Boolean, lastPollAt: Schema.NullOr(IsoDateTime) }),
   ),
   lastTrackerPollAt: Schema.NullOr(IsoDateTime),
-  activeAgentCount: NonNegativeInt,
+  activeAgentCount: SymphonyOverviewMetricSchema,
   tokenUsage: Schema.optional(TokenUsageSchema),
   generatedAt: IsoDateTime,
 });
