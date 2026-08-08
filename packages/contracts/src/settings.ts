@@ -796,6 +796,9 @@ export const ServerSettingsPatch = Schema.Struct({
   // patches risk leaving driver-specific config in a half-merged state.
   // The web UI sends a fully-formed map every time it edits this field.
   providerInstances: Schema.optionalKey(Schema.Record(ProviderInstanceId, ProviderInstanceConfig)),
+  // Whole-map replacement, same contract as providerInstances: the web UI
+  // sends a fully-formed trackers map every time it edits this field.
+  trackers: Schema.optionalKey(Schema.Record(Schema.String, TrackerProviderSettings)),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
 
