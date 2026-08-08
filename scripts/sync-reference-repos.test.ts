@@ -17,6 +17,10 @@ import {
 
 const encoder = new TextEncoder();
 const effectSmol = referenceRepos[0]!;
+if (effectSmol.versionSourcePath === undefined) {
+  throw new Error("fixture repo effect-smol must define versionSourcePath");
+}
+const effectSmolVersionSourcePath: string = effectSmol.versionSourcePath;
 
 function mockHandle(
   options: {
@@ -98,7 +102,7 @@ it.layer(NodeServices.layer)("sync-reference-repos", (it) => {
       const rootDir = yield* fs.makeTempDirectoryScoped({
         prefix: "sync-reference-repos-read-error-",
       });
-      const sourcePath = path.join(rootDir, effectSmol.versionSourcePath);
+      const sourcePath = path.join(rootDir, effectSmolVersionSourcePath);
 
       const error = yield* resolveReferenceRepoRef(effectSmol, rootDir, false).pipe(Effect.flip);
 
@@ -120,7 +124,7 @@ it.layer(NodeServices.layer)("sync-reference-repos", (it) => {
       const rootDir = yield* fs.makeTempDirectoryScoped({
         prefix: "sync-reference-repos-parse-error-",
       });
-      const sourcePath = path.join(rootDir, effectSmol.versionSourcePath);
+      const sourcePath = path.join(rootDir, effectSmolVersionSourcePath);
       yield* fs.makeDirectory(path.dirname(sourcePath), { recursive: true });
       yield* fs.writeFileString(sourcePath, "{");
 
@@ -144,7 +148,7 @@ it.layer(NodeServices.layer)("sync-reference-repos", (it) => {
       const rootDir = yield* fs.makeTempDirectoryScoped({
         prefix: "sync-reference-repos-resolution-error-",
       });
-      const sourcePath = path.join(rootDir, effectSmol.versionSourcePath);
+      const sourcePath = path.join(rootDir, effectSmolVersionSourcePath);
       yield* fs.makeDirectory(path.dirname(sourcePath), { recursive: true });
       yield* fs.writeFileString(sourcePath, "catalog: {}");
 
