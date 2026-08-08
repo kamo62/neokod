@@ -16,6 +16,7 @@ import {
   type GitLabRawIssue,
 } from "./GitLabApiClient.ts";
 import { decodeNormalizedIssue, isStateIn, normalizeLabel, normalizeState } from "./Normalize.ts";
+import { resolveProviderSecret } from "./ProviderSecret.ts";
 
 /**
  * GitLab Issues tracker adapter (SPEC 11.2, plan 5.0.1).
@@ -50,21 +51,6 @@ const resolveEnv = (
 ): string | undefined => {
   const value = env[name];
   return value === undefined || value.length === 0 ? undefined : value;
-};
-
-/** Resolve a provider value that may be a literal or a `$VAR` reference. */
-const resolveSecretValue = (
-  value: string | undefined,
-  env: Readonly<Record<string, string | undefined>>,
-): { readonly resolved: string | undefined; readonly envName: string | undefined } => {
-  if (value === undefined) {
-    return { resolved: undefined, envName: undefined };
-  }
-  const match = /^\$([A-Za-z_][A-Za-z0-9_]*)$/.exec(value.trim());
-  if (match === null || match[1] === undefined) {
-    return { resolved: value, envName: undefined };
-  }
-  return { resolved: resolveEnv(match[1], env), envName: match[1] };
 };
 
 const validApiUrl = (value: string): boolean => {
@@ -127,7 +113,7 @@ export const makeGitLabAdapter = (options: {
       resolveProviderString(provider, "project_path") ??
       resolveEnv("GITLAB_PROJECT_PATH", options.env);
     const apiKeyValue = resolveProviderString(provider, "api_key");
-    const apiKey = resolveSecretValue(apiKeyValue, options.env);
+    const apiKey = resolveProviderSecret(apiKeyValue, "GITLAB_PAT", options.env);
 
     if (apiUrl !== undefined && !validApiUrl(apiUrl)) {
       return yield* Effect.fail(

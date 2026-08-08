@@ -12,6 +12,7 @@ import {
 import type { TrackerAdapterError } from "./Errors.ts";
 import { makeJiraApiClient, type JiraCredentials, type JiraRawIssue } from "./JiraApiClient.ts";
 import { decodeNormalizedIssue, normalizeLabel, normalizeState } from "./Normalize.ts";
+import { resolveProviderSecret } from "./ProviderSecret.ts";
 
 /**
  * Jira Cloud tracker adapter (SPEC 11.2, plan 5.2).
@@ -47,21 +48,6 @@ const resolveEnv = (
 ): string | undefined => {
   const value = env[name];
   return value === undefined || value.length === 0 ? undefined : value;
-};
-
-/** Resolve a provider value that may be a literal or a `$VAR` reference. */
-const resolveSecretValue = (
-  value: string | undefined,
-  env: Readonly<Record<string, string | undefined>>,
-): { readonly resolved: string | undefined; readonly envName: string | undefined } => {
-  if (value === undefined) {
-    return { resolved: undefined, envName: undefined };
-  }
-  const match = /^\$([A-Za-z_][A-Za-z0-9_]*)$/.exec(value.trim());
-  if (match === null || match[1] === undefined) {
-    return { resolved: value, envName: undefined };
-  }
-  return { resolved: resolveEnv(match[1], env), envName: match[1] };
 };
 
 const validBaseUrl = (value: string): boolean => {
@@ -155,7 +141,7 @@ export const makeJiraAdapter = (options: {
       resolveProviderString(provider, "base_url") ?? resolveEnv("JIRA_BASE_URL", options.env);
     const email = resolveProviderString(provider, "email") ?? resolveEnv("JIRA_EMAIL", options.env);
     const apiTokenValue = resolveProviderString(provider, "api_token");
-    const apiToken = resolveSecretValue(apiTokenValue, options.env);
+    const apiToken = resolveProviderSecret(apiTokenValue, "JIRA_API_TOKEN", options.env);
     const projectKey = resolveProviderString(provider, "project_key");
 
     if (baseUrl === undefined || !validBaseUrl(baseUrl)) {

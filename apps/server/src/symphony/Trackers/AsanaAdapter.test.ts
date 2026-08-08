@@ -287,6 +287,8 @@ describe("makeAsanaAdapter", () => {
   it.effect("declares ASANA_PAT in secretEnvironmentNames", () =>
     Effect.gen(function* () {
       const adapter = yield* makeAdapter({
+        provider: { api_key: undefined },
+        env: { ASANA_PAT: "env-key" },
         httpClient: makeFakeClient({ pages: [pageResponse([], null)] }),
       });
       expect(adapter.secretEnvironmentNames()).toContain("ASANA_PAT");

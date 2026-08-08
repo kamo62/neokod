@@ -22,6 +22,12 @@ type TrackerDefinition = {
   readonly description: string;
   readonly icon: Icon;
   readonly scopePlaceholder: string;
+  readonly credentialPlaceholder: string;
+  readonly connectionFields?: ReadonlyArray<{
+    readonly key: string;
+    readonly label: string;
+    readonly placeholder: string;
+  }>;
 };
 
 const TRACKERS: ReadonlyArray<TrackerDefinition> = [
@@ -31,6 +37,7 @@ const TRACKERS: ReadonlyArray<TrackerDefinition> = [
     description: "Pull issues from a GitHub repository for autonomous implementation.",
     icon: GitHubIcon,
     scopePlaceholder: "owner/repo",
+    credentialPlaceholder: "optional $VAR; blank uses gh login",
   },
   {
     kind: "jira",
@@ -38,13 +45,19 @@ const TRACKERS: ReadonlyArray<TrackerDefinition> = [
     description: "Pull issues from a Jira project or board.",
     icon: JiraIcon,
     scopePlaceholder: "project key",
+    credentialPlaceholder: "$JIRA_API_TOKEN",
+    connectionFields: [
+      { key: "base_url", label: "Base URL", placeholder: "https://example.atlassian.net" },
+      { key: "email", label: "Account email", placeholder: "developer@example.com" },
+    ],
   },
   {
     kind: "linear",
     label: "Linear",
-    description: "Pull issues from a Linear team or board.",
+    description: "Pull issues from a Linear project.",
     icon: LinearIcon,
-    scopePlaceholder: "team key",
+    scopePlaceholder: "project slug",
+    credentialPlaceholder: "$LINEAR_API_KEY",
   },
   {
     kind: "gitlab",
@@ -52,6 +65,14 @@ const TRACKERS: ReadonlyArray<TrackerDefinition> = [
     description: "Pull issues from a GitLab project.",
     icon: GitLabIcon,
     scopePlaceholder: "group/project",
+    credentialPlaceholder: "$GITLAB_PAT",
+    connectionFields: [
+      {
+        key: "api_url",
+        label: "API URL (self-hosted only)",
+        placeholder: "https://gitlab.example.com/api/v4",
+      },
+    ],
   },
   {
     kind: "asana",
@@ -59,6 +80,7 @@ const TRACKERS: ReadonlyArray<TrackerDefinition> = [
     description: "Pull tasks from an Asana project.",
     icon: AsanaIcon,
     scopePlaceholder: "project id",
+    credentialPlaceholder: "$ASANA_PAT",
   },
 ];
 
@@ -71,6 +93,7 @@ function TrackerRow({ definition }: { readonly definition: TrackerDefinition }) 
   const enabled = tracker?.enabled ?? false;
   const credentialRef = tracker?.credentialRef ?? "";
   const scope = tracker?.scope ?? "";
+  const config = tracker?.config ?? {};
 
   const updateTracker = (patch: Partial<TrackerProviderSettings>) => {
     updateSettings({
@@ -80,7 +103,7 @@ function TrackerRow({ definition }: { readonly definition: TrackerDefinition }) 
           enabled,
           credentialRef,
           scope,
-          config: tracker?.config ?? {},
+          config,
           ...patch,
         },
       },
@@ -123,11 +146,28 @@ function TrackerRow({ definition }: { readonly definition: TrackerDefinition }) 
             <Input
               size="sm"
               value={credentialRef}
-              placeholder="$VAR or secret-store key"
+              placeholder={definition.credentialPlaceholder}
               onChange={(event) => updateTracker({ credentialRef: event.target.value })}
               aria-label={`${definition.label} credential reference`}
             />
           </label>
+          {definition.connectionFields?.map((field) => {
+            const value = config[field.key];
+            return (
+              <label key={field.key} className="block space-y-1">
+                <span className="text-[11px] font-medium text-muted-foreground">{field.label}</span>
+                <Input
+                  size="sm"
+                  value={typeof value === "string" ? value : ""}
+                  placeholder={field.placeholder}
+                  onChange={(event) =>
+                    updateTracker({ config: { ...config, [field.key]: event.target.value } })
+                  }
+                  aria-label={`${definition.label} ${field.label}`}
+                />
+              </label>
+            );
+          })}
         </div>
       ) : null}
     </SettingsRow>

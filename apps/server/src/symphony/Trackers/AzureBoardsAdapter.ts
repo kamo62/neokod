@@ -16,6 +16,7 @@ import {
   type AzureBoardsWorkItem,
 } from "./AzureBoardsApiClient.ts";
 import { decodeNormalizedIssue, isStateIn, normalizeLabel, normalizeState } from "./Normalize.ts";
+import { resolveProviderSecret } from "./ProviderSecret.ts";
 
 /**
  * Azure Boards tracker adapter (plan 6, WS-Q).
@@ -41,29 +42,6 @@ const resolveProviderString = (
   typeof provider[key] === "string" && provider[key].length > 0
     ? (provider[key] as string)
     : undefined;
-
-const resolveEnv = (
-  name: string,
-  env: Readonly<Record<string, string | undefined>>,
-): string | undefined => {
-  const value = env[name];
-  return value === undefined || value.length === 0 ? undefined : value;
-};
-
-/** Resolve a provider value that may be a literal or a `$VAR` reference. */
-const resolveSecretValue = (
-  value: string | undefined,
-  env: Readonly<Record<string, string | undefined>>,
-): { readonly resolved: string | undefined; readonly envName: string | undefined } => {
-  if (value === undefined) {
-    return { resolved: undefined, envName: undefined };
-  }
-  const match = /^\$([A-Za-z_][A-Za-z0-9_]*)$/.exec(value.trim());
-  if (match === null || match[1] === undefined) {
-    return { resolved: value, envName: undefined };
-  }
-  return { resolved: resolveEnv(match[1], env), envName: match[1] };
-};
 
 const validIdentifier = (value: string): boolean => {
   if (value.length === 0) {
@@ -124,7 +102,7 @@ export const makeAzureBoardsAdapter = (options: {
     const organization = resolveProviderString(provider, "organization");
     const project = resolveProviderString(provider, "project");
     const apiKeyValue = resolveProviderString(provider, "api_key");
-    const apiKey = resolveSecretValue(apiKeyValue, options.env);
+    const apiKey = resolveProviderSecret(apiKeyValue, "AZURE_DEVOPS_PAT", options.env);
 
     if (organization === undefined || !validIdentifier(organization)) {
       return yield* Effect.fail(

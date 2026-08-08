@@ -255,15 +255,21 @@ describe("makeLinearAdapter", () => {
     }),
   );
 
-  it.effect("fails configuration when the endpoint is missing or not https", () =>
+  it.effect("defaults the endpoint and rejects non-https overrides", () =>
     Effect.gen(function* () {
-      const adapterResult = yield* Effect.result(
-        makeAdapter({ provider: { endpoint: undefined } }),
-      );
-      if (adapterResult._tag === "Success") {
-        throw new Error("expected adapter construction failure");
-      }
-      expect(adapterResult.failure.code).toBe("invalid_tracker_config");
+      let requestedUrl = "";
+      const adapter = yield* makeAdapter({
+        provider: { endpoint: undefined, api_key: undefined },
+        env: { LINEAR_API_KEY: "env-key" },
+        httpClient: HttpClient.make((request) => {
+          requestedUrl = request.url;
+          return Effect.succeed(
+            HttpClientResponse.fromWeb(request, Response.json(pageResponse([]))),
+          );
+        }),
+      });
+      yield* adapter.listCandidateIssues();
+      expect(requestedUrl).toBe("https://api.linear.app/graphql");
 
       const httpResult = yield* Effect.result(
         makeAdapter({ provider: { endpoint: "http://api.linear.app/graphql" } }),
@@ -297,6 +303,8 @@ describe("makeLinearAdapter", () => {
   it.effect("declares LINEAR_API_KEY in secretEnvironmentNames", () =>
     Effect.gen(function* () {
       const adapter = yield* makeAdapter({
+        provider: { api_key: undefined },
+        env: { LINEAR_API_KEY: "env-key" },
         httpClient: makeFakeClient({ pages: [pageResponse([])] }),
       });
       expect(adapter.secretEnvironmentNames()).toContain("LINEAR_API_KEY");

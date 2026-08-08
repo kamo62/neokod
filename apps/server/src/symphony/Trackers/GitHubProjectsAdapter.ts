@@ -16,6 +16,7 @@ import {
   type GitHubProjectsApiClientShape,
 } from "./GitHubProjectsApiClient.ts";
 import { decodeNormalizedIssue, isStateIn, normalizeLabel } from "./Normalize.ts";
+import { resolveProviderSecret } from "./ProviderSecret.ts";
 
 /**
  * GitHub Projects v2 tracker adapter (plan 6, WS-Q).
@@ -41,28 +42,6 @@ const resolveProviderString = (
   typeof provider[key] === "string" && provider[key].length > 0
     ? (provider[key] as string)
     : undefined;
-
-const resolveEnv = (
-  name: string,
-  env: Readonly<Record<string, string | undefined>>,
-): string | undefined => {
-  const value = env[name];
-  return value === undefined || value.length === 0 ? undefined : value;
-};
-
-const resolveSecretValue = (
-  value: string | undefined,
-  env: Readonly<Record<string, string | undefined>>,
-): { readonly resolved: string | undefined; readonly envName: string | undefined } => {
-  if (value === undefined) {
-    return { resolved: undefined, envName: undefined };
-  }
-  const match = /^\$([A-Za-z_][A-Za-z0-9_]*)$/.exec(value.trim());
-  if (match === null || match[1] === undefined) {
-    return { resolved: value, envName: undefined };
-  }
-  return { resolved: resolveEnv(match[1], env), envName: match[1] };
-};
 
 const validOwner = (value: string): boolean => /^[a-zA-Z0-9-]+$/.test(value) && value.length > 0;
 
@@ -135,7 +114,7 @@ export const makeGitHubProjectsAdapter = (options: {
     const owner = resolveProviderString(provider, "owner");
     const projectNumberValue = resolveProviderString(provider, "number");
     const apiKeyValue = resolveProviderString(provider, "api_key");
-    const apiKey = resolveSecretValue(apiKeyValue, options.env);
+    const apiKey = resolveProviderSecret(apiKeyValue, "GITHUB_PAT", options.env);
 
     if (owner === undefined || !validOwner(owner)) {
       return yield* Effect.fail(

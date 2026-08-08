@@ -128,6 +128,7 @@ const HandoffServiceSlice = HandoffServiceLive.pipe(
             AgentRuntimeFactoryLive.pipe(
               Layer.provide(NodeServices.layer),
               Layer.provideMerge(LiveRequestsLive),
+              Layer.provideMerge(TrackerEnablementLive),
               Layer.provideMerge(
                 TrackerRegistryGitHubLive.pipe(Layer.provide(FetchHttpClient.layer)),
               ),
@@ -194,6 +195,7 @@ export const SymphonyLayerObserve = Layer.merge(
                 AgentRuntimeFactoryLive.pipe(
                   Layer.provide(NodeServices.layer),
                   Layer.provideMerge(LiveRequestsLive),
+                  Layer.provideMerge(TrackerEnablementLive),
                   Layer.provideMerge(
                     TrackerRegistryGitHubLive.pipe(Layer.provide(FetchHttpClient.layer)),
                   ),
