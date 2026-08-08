@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 import type * as EffectAcpSchema from "effect-acp/schema";
 
 import {
+  collectSessionConfigOptionEntries,
+  currentSessionModelIdFromConfigOptions,
   extractModelConfigId,
   mergeToolCallState,
   parsePermissionRequest,
@@ -83,7 +85,35 @@ describe("AcpRuntimeModel", () => {
     ).toBe(false);
   });
 
-  it("builds a synthetic load response from initialize model state", () => {
+  it("extracts current and available models from the typed model config option", () => {
+    const configOptions = [
+      {
+        id: "model",
+        name: "Model",
+        category: "model",
+        type: "select" as const,
+        currentValue: "grok-build",
+        options: [
+          {
+            group: "grok",
+            name: "Grok",
+            options: [
+              { value: "grok-build", name: "Grok Build" },
+              { value: "grok-mock-alt", name: "Grok Mock Alt" },
+            ],
+          },
+        ],
+      },
+    ] satisfies ReadonlyArray<EffectAcpSchema.SessionConfigOption>;
+
+    expect(currentSessionModelIdFromConfigOptions(configOptions)).toBe("grok-build");
+    expect(collectSessionConfigOptionEntries(configOptions[0]!)).toEqual([
+      { value: "grok-build", name: "Grok Build" },
+      { value: "grok-mock-alt", name: "Grok Mock Alt" },
+    ]);
+  });
+
+  it("does not project removed model state from initialize metadata", () => {
     const response = syntheticLoadSessionResponseFromInitialize({
       protocolVersion: 1,
       _meta: {
@@ -94,32 +124,15 @@ describe("AcpRuntimeModel", () => {
       },
     } satisfies EffectAcpSchema.InitializeResponse);
 
-    expect(response.models?.currentModelId).toBe("grok-build");
+    expect(response).not.toHaveProperty("models");
+    expect(response.configOptions).toBeUndefined();
     expect(response._meta).toMatchObject({ neokodSessionLoadReady: "replay_idle" });
   });
 
-  it("accepts initialize model descriptions with null", () => {
+  it("ignores malformed initialize mode state in synthetic load responses", () => {
     const response = syntheticLoadSessionResponseFromInitialize({
       protocolVersion: 1,
       _meta: {
-        modelState: {
-          currentModelId: "grok-build",
-          availableModels: [{ modelId: "grok-build", name: "Grok Build", description: null }],
-        },
-      },
-    } satisfies EffectAcpSchema.InitializeResponse);
-
-    expect(response.models?.availableModels[0]?.description).toBeNull();
-  });
-
-  it("ignores malformed initialize model state in synthetic load responses", () => {
-    const response = syntheticLoadSessionResponseFromInitialize({
-      protocolVersion: 1,
-      _meta: {
-        modelState: {
-          currentModelId: "grok-build",
-          availableModels: [null],
-        },
         modeState: {
           currentModeId: "code",
           availableModes: [{ id: "code", name: 12 }],
@@ -127,7 +140,6 @@ describe("AcpRuntimeModel", () => {
       },
     } as EffectAcpSchema.InitializeResponse);
 
-    expect(response.models).toBeUndefined();
     expect(response.modes).toBeUndefined();
     expect(response._meta).toMatchObject({ neokodSessionLoadReady: "replay_idle" });
   });

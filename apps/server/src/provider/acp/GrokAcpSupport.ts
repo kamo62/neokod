@@ -8,6 +8,7 @@ import type * as EffectAcpSchema from "effect-acp/schema";
 import { normalizeModelSlug } from "@neokod/shared/model";
 
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
+import { currentSessionModelIdFromConfigOptions } from "./AcpRuntimeModel.ts";
 import { makeXAiPromptCompletionRuntime } from "./XAiAcpExtension.ts";
 
 const GROK_API_KEY_ENV = "XAI_API_KEY";
@@ -88,7 +89,7 @@ export function currentGrokModelIdFromSessionSetup(
     | EffectAcpSchema.NewSessionResponse
     | EffectAcpSchema.ResumeSessionResponse,
 ): string | undefined {
-  return sessionSetupResult.models?.currentModelId?.trim() || undefined;
+  return currentSessionModelIdFromConfigOptions(sessionSetupResult.configOptions);
 }
 
 export function applyGrokAcpModelSelection<E>(input: {

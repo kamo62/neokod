@@ -6,9 +6,42 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { GrokSettings } from "@neokod/contracts";
 
-import { buildInitialGrokProviderSnapshot, checkGrokProviderStatus } from "./GrokProvider.ts";
+import {
+  buildGrokDiscoveredModelsFromConfigOptions,
+  buildInitialGrokProviderSnapshot,
+  checkGrokProviderStatus,
+} from "./GrokProvider.ts";
 
 const decodeGrokSettings = Schema.decodeSync(GrokSettings);
+
+describe("buildGrokDiscoveredModelsFromConfigOptions", () => {
+  it("maps model config option values and names to provider models", () => {
+    const models = buildGrokDiscoveredModelsFromConfigOptions([
+      {
+        id: "model",
+        name: "Model",
+        category: "model",
+        type: "select",
+        currentValue: "grok-build",
+        options: [
+          {
+            group: "grok",
+            name: "Grok",
+            options: [
+              { value: "grok-build", name: "Grok Build" },
+              { value: "grok-mock-alt", name: "Grok Mock Alt" },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    expect(models.map((model) => ({ slug: model.slug, name: model.name }))).toEqual([
+      { slug: "grok-build", name: "Grok Build" },
+      { slug: "grok-mock-alt", name: "Grok Mock Alt" },
+    ]);
+  });
+});
 
 describe("buildInitialGrokProviderSnapshot", () => {
   it.effect("returns a disabled snapshot when settings.enabled is false", () =>

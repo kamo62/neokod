@@ -35,7 +35,7 @@ describe.runIf(process.env.NEOKOD_GROK_ACP_PROBE === "1")("Grok ACP CLI probe", 
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
-  it.effect("session/new advertises typed SessionModelState with at least one model", () =>
+  it.effect("session/new advertises a model config option with at least one model", () =>
     Effect.gen(function* () {
       const runtime = yield* makeProbeRuntime;
       const started = yield* runtime.start();
@@ -43,13 +43,12 @@ describe.runIf(process.env.NEOKOD_GROK_ACP_PROBE === "1")("Grok ACP CLI probe", 
 
       expect(typeof started.sessionId).toBe("string");
 
-      // Modern grok-shell advertises models through the typed
-      // `SessionModelState` field, not via a `configOptions` entry.
-      // If this assertion fails the upstream surface has regressed.
-      const models = result.models;
-      expect(models).toBeDefined();
-      expect(typeof models?.currentModelId).toBe("string");
-      expect(models?.availableModels.length ?? 0).toBeGreaterThan(0);
+      // ACP v1.20 advertises models through the typed `model` config option.
+      const modelConfig = result.configOptions?.find((option) => option.category === "model");
+      expect(modelConfig?.type).toBe("select");
+      if (modelConfig?.type !== "select") return;
+      expect(modelConfig.currentValue).toEqual(expect.any(String));
+      expect(modelConfig.options.length).toBeGreaterThan(0);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
@@ -57,9 +56,11 @@ describe.runIf(process.env.NEOKOD_GROK_ACP_PROBE === "1")("Grok ACP CLI probe", 
     Effect.gen(function* () {
       const runtime = yield* makeProbeRuntime;
       const started = yield* runtime.start();
-      const currentModelId = started.sessionSetupResult.models?.currentModelId?.trim();
-      expect(currentModelId).toBeDefined();
-      if (!currentModelId) return;
+      const modelConfig = started.sessionSetupResult.configOptions?.find(
+        (option) => option.category === "model",
+      );
+      const currentModelId = modelConfig?.type === "select" ? modelConfig.currentValue.trim() : "";
+      expect(currentModelId).toBeTruthy();
 
       // No-op switch — selecting the model the session already runs on must
       // succeed against every Grok build that implements `session/set_model`.

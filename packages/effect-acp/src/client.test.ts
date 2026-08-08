@@ -106,11 +106,9 @@ it.layer(NodeServices.layer)("effect-acp client", (it) => {
         );
         yield* acp.handleElicitation(() =>
           Effect.succeed({
-            action: {
-              action: "accept",
-              content: {
-                approved: true,
-              },
+            action: "accept",
+            content: {
+              approved: true,
             },
           }),
         );
@@ -209,11 +207,9 @@ it.layer(NodeServices.layer)("effect-acp client", (it) => {
           );
           yield* acp.handleElicitation(() =>
             Effect.succeed({
-              action: {
-                action: "accept",
-                content: {
-                  approved: true,
-                },
+              action: "accept",
+              content: {
+                approved: true,
               },
             }),
           );
@@ -283,11 +279,9 @@ it.layer(NodeServices.layer)("effect-acp client", (it) => {
         );
         yield* acp.handleElicitation(() =>
           Effect.succeed({
-            action: {
-              action: "accept",
-              content: {
-                approved: true,
-              },
+            action: "accept",
+            content: {
+              approved: true,
             },
           }),
         );
@@ -366,11 +360,9 @@ it.layer(NodeServices.layer)("effect-acp client", (it) => {
         );
         yield* acp.handleElicitation(() =>
           Effect.succeed({
-            action: {
-              action: "accept",
-              content: {
-                approved: true,
-              },
+            action: "accept",
+            content: {
+              approved: true,
             },
           }),
         );

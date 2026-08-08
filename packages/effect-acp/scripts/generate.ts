@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
+import { resolveSpawnCommand } from "@neokod/shared/shell";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { make as makeJsonSchemaGenerator } from "@effect/openapi-generator/JsonSchemaGenerator";
 import * as Effect from "effect/Effect";
@@ -13,7 +14,7 @@ import { Command, Flag } from "effect/unstable/cli";
 import { FetchHttpClient, HttpClient, HttpClientResponse } from "effect/unstable/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
-const CURRENT_SCHEMA_RELEASE = "v0.11.3";
+const CURRENT_SCHEMA_RELEASE = "schema-v1.20.0";
 
 interface GenerateCommandError {
   readonly _tag: "GenerateCommandError";
@@ -264,15 +265,32 @@ const generateSchemas = Effect.fn("generateSchemas")(function* (skipDownload: bo
   );
 
   const { generatedDir } = yield* getGeneratedPaths();
+  const path = yield* Path.Path;
+  const formatterPath = path.join(
+    import.meta.dirname,
+    "..",
+    "..",
+    "..",
+    "node_modules",
+    ".bin",
+    "vp",
+  );
+  const formatterCommand = yield* resolveSpawnCommand(formatterPath, ["fmt", generatedDir]);
   yield* Effect.service(ChildProcessSpawner.ChildProcessSpawner).pipe(
-    Effect.flatMap((spawner) => spawner.spawn(ChildProcess.make("bun", ["oxfmt", generatedDir]))),
+    Effect.flatMap((spawner) =>
+      spawner.spawn(
+        ChildProcess.make(formatterCommand.command, formatterCommand.args, {
+          shell: formatterCommand.shell,
+        }),
+      ),
+    ),
     Effect.flatMap((child) => child.exitCode),
     Effect.tap((code) =>
       code === 0
         ? Effect.void
         : Effect.fail<GenerateCommandError>({
             _tag: "GenerateCommandError",
-            message: `oxfmt failed with exit code ${code}`,
+            message: `vp fmt failed with exit code ${code}`,
           }),
     ),
   );

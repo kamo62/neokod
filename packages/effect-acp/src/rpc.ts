@@ -1,8 +1,11 @@
 import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 
-import * as AcpSchema from "./_generated/schema.gen.ts";
+import * as AcpSchema from "./schema.ts";
 import { AGENT_METHODS, CLIENT_METHODS } from "./_generated/meta.gen.ts";
+
+/** Provider compatibility extension; deliberately absent from generated ACP metadata. */
+export const SESSION_SET_MODEL = "session/set_model" as const;
 
 export const InitializeRpc = Rpc.make(AGENT_METHODS.initialize, {
   payload: AcpSchema.InitializeRequest,
@@ -64,7 +67,13 @@ export const PromptRpc = Rpc.make(AGENT_METHODS.session_prompt, {
   error: AcpSchema.Error,
 });
 
-export const SetSessionModelRpc = Rpc.make(AGENT_METHODS.session_set_model, {
+export const SetSessionModeRpc = Rpc.make(AGENT_METHODS.session_set_mode, {
+  payload: AcpSchema.SetSessionModeRequest,
+  success: AcpSchema.SetSessionModeResponse,
+  error: AcpSchema.Error,
+});
+
+export const SetSessionModelRpc = Rpc.make(SESSION_SET_MODEL, {
   payload: AcpSchema.SetSessionModelRequest,
   success: AcpSchema.SetSessionModelResponse,
   error: AcpSchema.Error,
@@ -94,9 +103,9 @@ export const RequestPermissionRpc = Rpc.make(CLIENT_METHODS.session_request_perm
   error: AcpSchema.Error,
 });
 
-export const ElicitationRpc = Rpc.make(CLIENT_METHODS.session_elicitation, {
-  payload: AcpSchema.ElicitationRequest,
-  success: AcpSchema.ElicitationResponse,
+export const ElicitationRpc = Rpc.make(CLIENT_METHODS.elicitation_create, {
+  payload: AcpSchema.CreateElicitationRequest,
+  success: AcpSchema.CreateElicitationResponse,
   error: AcpSchema.Error,
 });
 
@@ -141,6 +150,7 @@ export const AgentRpcs = RpcGroup.make(
   ResumeSessionRpc,
   CloseSessionRpc,
   PromptRpc,
+  SetSessionModeRpc,
   SetSessionModelRpc,
   SetSessionConfigOptionRpc,
 );
