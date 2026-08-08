@@ -167,8 +167,8 @@ describe("resolveSubagentCard", () => {
       timing: {
         kind: "last-observed",
         startedAt: "2026-07-04T00:00:00.000Z",
-        observedAt: "2026-07-04T00:00:05.000Z",
-        elapsed: "5.0s",
+        observedAt: "2026-07-04T00:00:00.000Z",
+        elapsed: null,
       },
     });
   });
@@ -219,7 +219,21 @@ describe("resolveSubagentCard", () => {
       makeCard({
         taskId: "explicit-orphan",
         status: "orphaned",
-        completedAt: "2026-07-04T00:00:03.000Z",
+        completedAt: "2026-07-04T00:00:04.000Z",
+        progress: [
+          {
+            description: "First observation",
+            summary: null,
+            lastToolName: null,
+            at: "2026-07-04T00:00:02.000Z",
+          },
+          {
+            description: "Latest observation",
+            summary: null,
+            lastToolName: null,
+            at: "2026-07-04T00:00:03.000Z",
+          },
+        ],
       }),
     );
 
