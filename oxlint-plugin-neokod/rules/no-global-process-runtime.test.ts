@@ -92,3 +92,15 @@ describe("neokod/no-global-process-runtime", () => {
     `,
   );
 });
+
+const hostProcessReferenceRule = createOxlintRuleHarness("neokod/no-global-process-runtime", {
+  filename: "packages/shared/src/hostProcess.ts",
+});
+
+hostProcessReferenceRule.valid(
+  "allows ambient runtime reads only in the designated host-process boundary",
+  `
+    export const platform = process.platform;
+    export const architecture = process.arch;
+  `,
+);

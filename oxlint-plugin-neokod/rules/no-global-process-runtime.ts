@@ -18,8 +18,10 @@ const toRepoPath = (filename: string, cwd: string) => {
     : normalizedFilename;
 };
 
-const isHostProcessReferenceFile = (filename: string, cwd: string) =>
-  toRepoPath(filename, cwd) === HOST_PROCESS_REFERENCE_FILE;
+const isHostProcessReferenceFile = (filename: string, cwd: string) => {
+  const path = toRepoPath(filename, cwd);
+  return path === HOST_PROCESS_REFERENCE_FILE || path.endsWith(`/${HOST_PROCESS_REFERENCE_FILE}`);
+};
 
 const isGlobalProcessObject = (node: unknown): boolean => {
   const expression = unwrapExpression(node);
