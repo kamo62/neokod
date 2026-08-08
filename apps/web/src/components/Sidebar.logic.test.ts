@@ -681,6 +681,34 @@ describe("resolveThreadStatusPill", () => {
     ).toMatchObject({ label: "Working", pulse: true });
   });
 
+  it("shows working from a running latest turn even when the session is absent", () => {
+    expect(
+      resolveThreadStatusPill({
+        thread: {
+          ...baseThread,
+          latestTurn: {
+            ...makeLatestTurn(),
+            state: "running",
+            completedAt: null,
+          },
+          session: null,
+        },
+      }),
+    ).toMatchObject({ label: "Working", pulse: true });
+  });
+
+  it("surfaces a failed latest turn instead of presenting it as idle", () => {
+    expect(
+      resolveThreadStatusPill({
+        thread: {
+          ...baseThread,
+          latestTurn: { ...makeLatestTurn(), state: "error" },
+          session: { ...baseThread.session, status: "error", activeTurnId: null },
+        },
+      }),
+    ).toMatchObject({ label: "Failed", pulse: false });
+  });
+
   it("shows plan ready when a settled plan turn has a proposed plan ready for follow-up", () => {
     expect(
       resolveThreadStatusPill({

@@ -114,6 +114,31 @@ describe("deriveSubagentCards", () => {
     expect(card?.summary).toBe("Boom");
   });
 
+  it("preserves an explicit orphaned completion status", () => {
+    const [card] = deriveSubagentCards([
+      makeActivity({
+        kind: "task.started",
+        createdAt: "2026-02-23T00:00:00.000Z",
+        sequence: 0,
+        payload: { taskId: "task-a" },
+      }),
+      makeActivity({
+        kind: "task.completed",
+        createdAt: "2026-02-23T00:00:03.000Z",
+        sequence: 1,
+        payload: {
+          taskId: "task-a",
+          status: "orphaned",
+          summary: "Tracking lost",
+        },
+      }),
+    ]);
+
+    expect(card?.status).toBe("orphaned");
+    expect(card?.summary).toBe("Tracking lost");
+    expect(card?.completedAt).toBe("2026-02-23T00:00:03.000Z");
+  });
+
   it("accumulates progress entries in order", () => {
     const [card] = deriveSubagentCards([
       makeActivity({

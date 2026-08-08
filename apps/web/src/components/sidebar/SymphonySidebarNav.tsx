@@ -87,10 +87,11 @@ const MAX_ACTIVE_RUNS_SHOWN = 5;
 function overviewCount(
   overview: SymphonyOverview | null,
   key: SymphonyOverviewCountKey | undefined,
-): number | null {
+): number | "—" | null {
   if (!overview || key === undefined) return null;
-  const value = overview[key];
-  return value > 0 ? value : null;
+  const metric = overview[key];
+  if (metric.state === "unavailable") return "—";
+  return metric.value > 0 ? metric.value : null;
 }
 
 function ActiveRunsSkeleton() {
@@ -197,9 +198,11 @@ export function SymphonySidebarNav({ pathname }: { pathname: string }) {
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
                   {showCount ? (
                     <Badge
-                      variant={item.badgeVariant ?? "secondary"}
+                      variant={count === "—" ? "secondary" : (item.badgeVariant ?? "secondary")}
                       size="sm"
                       className="shrink-0"
+                      title={count === "—" ? `${item.label} count unavailable` : undefined}
+                      aria-label={count === "—" ? `${item.label} count unavailable` : undefined}
                     >
                       {count}
                     </Badge>

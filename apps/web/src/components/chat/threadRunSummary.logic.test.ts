@@ -3,7 +3,9 @@ import { deriveThreadRunSummary } from "./threadRunSummary.logic";
 
 const NOW = Date.parse("2026-07-18T10:02:03.000Z");
 
-function input(overrides: Partial<Parameters<typeof deriveThreadRunSummary>[0]> = {}) {
+function input(
+  overrides: Partial<Parameters<typeof deriveThreadRunSummary>[0]> = {},
+): Parameters<typeof deriveThreadRunSummary>[0] {
   return {
     thread: {
       title: "Implement banner",
@@ -69,6 +71,17 @@ describe("deriveThreadRunSummary", () => {
         }),
       )?.statusLabel,
     ).toBe("Completed");
+  });
+
+  it("matches the shared lifecycle when only the latest turn reports running", () => {
+    const live = input();
+    expect(
+      deriveThreadRunSummary({
+        ...live,
+        isWorking: false,
+        thread: { ...live.thread, session: null },
+      }),
+    ).toMatchObject({ status: "working", compact: false });
   });
 
   it("keeps a completed run as a compact summary", () => {

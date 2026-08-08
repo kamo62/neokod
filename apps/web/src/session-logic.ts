@@ -55,6 +55,12 @@ export const PROVIDER_OPTIONS: Array<{
     available: true,
     pickerSidebarBadge: "new",
   },
+  {
+    value: ProviderDriverKind.make("kiro"),
+    label: "Kiro",
+    available: true,
+    pickerSidebarBadge: "new",
+  },
 ];
 
 export type WorkLogToolLifecycleStatus =
@@ -117,7 +123,7 @@ export interface SubagentCard {
   // Provider-stable worker instance id, when known (Copilot). Absent for
   // providers that only expose a task id.
   agentId: string | null;
-  status: "inProgress" | "completed" | "failed" | "stopped";
+  status: "inProgress" | "completed" | "failed" | "stopped" | "orphaned";
   startedAt: string;
   completedAt: string | null;
   summary: string | null;
@@ -808,7 +814,9 @@ export function deriveSubagentCards(
     // task.completed
     const status = payload?.status;
     card.status =
-      status === "completed" || status === "failed" || status === "stopped" ? status : "completed";
+      status === "completed" || status === "failed" || status === "stopped" || status === "orphaned"
+        ? status
+        : "completed";
     const completionSummary = optionalString(payload?.detail) ?? optionalString(payload?.summary);
     card.summary =
       completionSummary && completionSummary !== card.name

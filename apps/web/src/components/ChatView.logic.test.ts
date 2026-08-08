@@ -71,6 +71,10 @@ const readySession = {
   updatedAt: "2026-03-29T00:00:10.000Z",
 };
 
+function createTestLocalDispatchSnapshot(thread: Thread) {
+  return createLocalDispatchSnapshot(thread, { startedAt: now });
+}
+
 describe("buildThreadTurnInterruptInput", () => {
   it("targets the session's active running turn", () => {
     const activeTurnId = TurnId.make("turn-running");
@@ -399,7 +403,7 @@ describe("shouldWriteThreadErrorToCurrentServerThread", () => {
 
 describe("hasServerAcknowledgedLocalDispatch", () => {
   it("does not acknowledge unchanged server state", () => {
-    const localDispatch = createLocalDispatchSnapshot(
+    const localDispatch = createTestLocalDispatchSnapshot(
       makeThread({ latestTurn: completedTurn, session: readySession }),
     );
 
@@ -417,7 +421,7 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
   });
 
   it("acknowledges a settled newer turn", () => {
-    const localDispatch = createLocalDispatchSnapshot(
+    const localDispatch = createTestLocalDispatchSnapshot(
       makeThread({ latestTurn: completedTurn, session: readySession }),
     );
     const newerTurn = {
@@ -442,7 +446,7 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
   });
 
   it("waits for the matching running turn before acknowledging", () => {
-    const localDispatch = createLocalDispatchSnapshot(
+    const localDispatch = createTestLocalDispatchSnapshot(
       makeThread({ latestTurn: completedTurn, session: readySession }),
     );
     const runningTurn = {
@@ -487,7 +491,7 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
   });
 
   it("acknowledges pending user interaction and errors immediately", () => {
-    const localDispatch = createLocalDispatchSnapshot(makeThread());
+    const localDispatch = createTestLocalDispatchSnapshot(makeThread());
     const common = {
       localDispatch,
       phase: "ready" as const,

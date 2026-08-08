@@ -426,7 +426,10 @@ function useLocalDispatchState(input: {
             ? active
             : { ...active, preparingWorktree };
         }
-        return createLocalDispatchSnapshot(input.activeThread, options);
+        return createLocalDispatchSnapshot(input.activeThread, {
+          ...options,
+          startedAt: new Date().toISOString(),
+        });
       });
     },
     [input.activeThread, serverAcknowledgedLocalDispatch],

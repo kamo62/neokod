@@ -12,13 +12,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "..
 import { Skeleton } from "../ui/skeleton";
 import { cn } from "../../lib/utils";
 import { SymphonyEmptyState } from "./SymphonyEmptyState";
-
-const STATUS_BADGE: Record<string, "default" | "secondary" | "success" | "warning" | "info"> = {
-  running: "success",
-  queued: "info",
-  failed: "warning",
-  succeeded: "secondary",
-};
+import { runAttemptStatusBadgeVariant } from "./SymphonyRunningView.logic";
 
 const RUNNING_STATUSES = new Set([
   "preparing_workspace",
@@ -51,7 +45,7 @@ function RunningRow({
             <span className="truncate text-[13px] font-semibold tracking-[-0.01em] text-foreground">
               {run.issueTitle ?? run.workItemId}
             </span>
-            <Badge variant={STATUS_BADGE[run.lifecycle] ?? "secondary"} size="sm">
+            <Badge variant={runAttemptStatusBadgeVariant(run.status)} size="sm">
               {run.status}
             </Badge>
           </div>
