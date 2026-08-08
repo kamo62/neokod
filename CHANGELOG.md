@@ -1,3 +1,11 @@
+## 3.5.32 - 2026-08-08 (Minor)
+
+Release impact: Minor because this adds an opt-in Kiro provider and Work-mode path while leaving existing providers and default behavior unchanged.
+
+- Added Kiro CLI 2.16.2 ACP sessions in approval-required Work mode. Kiro remains visibly Limited until a managed model turn succeeds; Crew, Symphony, automatic modes, full access, and Windows execution stay unavailable.
+- Kiro children receive an allowlisted environment and run in validated POSIX process groups with bounded TERM-to-KILL settlement. Authentication follows the methods advertised by the ACP handshake, and unsupported or missing proof fails closed.
+- Provider session projection now preserves the selected runtime mode and latest turn identity through terminal settlement, so failed managed turns remain failed instead of briefly appearing complete.
+
 ## 3.5.31 - 2026-08-02 (Patch)
 
 Release impact: Patch because this reduces websocket payload size and bounds reconnect replay work on the server, with no schema or storage changes. One RPC contract member is removed, but no shipped client ever called it and client and server ship together.

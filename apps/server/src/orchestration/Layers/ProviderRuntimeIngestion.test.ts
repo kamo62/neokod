@@ -244,10 +244,13 @@ describe("ProviderRuntimeIngestion", () => {
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
       Layer.provideMerge(NodeServices.layer),
     );
-    runtime = ManagedRuntime.make(layer);
-    const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
-    const snapshotQuery = await runtime.runPromise(Effect.service(ProjectionSnapshotQuery));
-    const ingestion = await runtime.runPromise(Effect.service(ProviderRuntimeIngestionService));
+    const activeRuntime = ManagedRuntime.make(layer);
+    runtime = activeRuntime;
+    const engine = await activeRuntime.runPromise(Effect.service(OrchestrationEngineService));
+    const snapshotQuery = await activeRuntime.runPromise(Effect.service(ProjectionSnapshotQuery));
+    const ingestion = await activeRuntime.runPromise(
+      Effect.service(ProviderRuntimeIngestionService),
+    );
     scope = await Effect.runPromise(Scope.make("sequential"));
     await Effect.runPromise(ingestion.start().pipe(Scope.provide(scope)));
     const drain = () => Effect.runPromise(ingestion.drain);
@@ -314,6 +317,10 @@ describe("ProviderRuntimeIngestion", () => {
     return {
       engine,
       readModel: () => Effect.runPromise(snapshotQuery.getSnapshot()),
+      readEvents: () =>
+        activeRuntime.runPromise(
+          Stream.runCollect(engine.readEvents(0)).pipe(Effect.map((chunk) => Array.from(chunk))),
+        ),
       emit: provider.emit,
       setProviderSession: provider.setSession,
       drain,
@@ -550,6 +557,47 @@ describe("ProviderRuntimeIngestion", () => {
       (thread) => thread.session?.status === "ready" && thread.session?.activeTurnId === null,
       10_000,
     );
+  });
+
+  it("preserves the thread runtime mode when the first provider event creates its session", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-session-first-event");
+    const createdAt = "2026-01-01T00:00:00.000Z";
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("cmd-thread-session-first-event"),
+        threadId,
+        projectId: asProjectId("project-1"),
+        title: "Session first event",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("codex"),
+          model: "gpt-5-codex",
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        branch: null,
+        worktreePath: null,
+        createdAt,
+      }),
+    );
+    await waitForThread(harness.readModel, (entry) => entry.id === threadId, 2_000, threadId);
+
+    harness.emit({
+      type: "session.started",
+      eventId: asEventId("evt-session-first-event"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt,
+      threadId,
+    });
+
+    const thread = await waitForThread(
+      harness.readModel,
+      (entry) => entry.id === threadId && entry.session !== null,
+      2_000,
+      threadId,
+    );
+    expect(thread.session?.runtimeMode).toBe("approval-required");
   });
 
   it("accepts claude turn lifecycle when seeded thread id is a synthetic placeholder", async () => {
@@ -2341,11 +2389,7 @@ describe("ProviderRuntimeIngestion", () => {
         ),
     );
 
-    const events = await Effect.runPromise(
-      Stream.runCollect(harness.engine.readEvents(0)).pipe(
-        Effect.map((chunk) => Array.from(chunk)),
-      ),
-    );
+    const events = await harness.readEvents();
     const completionEvents = events.filter((event) => {
       if (event.type !== "thread.message-sent") {
         return false;

@@ -1,9 +1,10 @@
-import type {
-  EffectiveWorkflowConfig,
-  ModelReviewArtefact,
-  ModelReviewerResult,
-  ServerProvider,
-  WorkItem,
+import {
+  ProviderDriverKind,
+  type EffectiveWorkflowConfig,
+  type ModelReviewArtefact,
+  type ModelReviewerResult,
+  type ServerProvider,
+  type WorkItem,
 } from "@neokod/contracts";
 import { createModelSelection } from "@neokod/shared/model";
 import * as Context from "effect/Context";
@@ -66,6 +67,7 @@ const resolveModel = (
   const matches = providers.filter(
     ({ instance, snapshot }) =>
       instance.enabled &&
+      instance.driverKind !== ProviderDriverKind.make("kiro") &&
       snapshot.availability !== "unavailable" &&
       snapshot.models.some((candidate) => candidate.slug === model),
   );

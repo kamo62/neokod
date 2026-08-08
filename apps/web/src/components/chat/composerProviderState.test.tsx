@@ -8,8 +8,10 @@ import {
 import {
   getComposerPromptInjectionState,
   getComposerProviderState,
+  getProviderRuntimeModes,
   hasComposerTraitsTarget,
   renderProviderTraitsPicker,
+  resolveProviderRuntimeMode,
 } from "./composerProviderState";
 
 // Everything in composerProviderState is now data-driven by the model's
@@ -60,6 +62,24 @@ const ULTRATHINK_FRAME_CLASSES = {
   composerSurfaceClassName: "shadow-[0_0_0_1px_rgba(255,255,255,0.07)_inset]",
   modelPickerIconClassName: "ultrathink-chroma",
 } as const;
+
+describe("provider runtime modes", () => {
+  it("keeps Kiro supervised and fails closed for persisted unsafe modes", () => {
+    const kiro = ProviderDriverKind.make("kiro");
+    expect(getProviderRuntimeModes(kiro)).toEqual(["approval-required"]);
+    expect(resolveProviderRuntimeMode(kiro, "full-access")).toBe("approval-required");
+  });
+
+  it("preserves existing provider mode behavior", () => {
+    expect(getProviderRuntimeModes(ProviderDriverKind.make("codex"))).toEqual([
+      "approval-required",
+      "auto-accept-edits",
+      "auto",
+      "full-access",
+    ]);
+    expect(getProviderRuntimeModes(ProviderDriverKind.make("claudeAgent"))).not.toContain("auto");
+  });
+});
 
 describe("getComposerProviderState", () => {
   it("derives a stable prompt injection state for ordinary prompt edits", () => {

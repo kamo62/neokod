@@ -84,8 +84,10 @@ import { searchSlashCommandItems } from "./composerSlashCommandSearch";
 import {
   getComposerPromptInjectionState,
   getComposerProviderState,
+  getProviderRuntimeModes,
   hasComposerTraitsTarget,
   renderProviderTraitsPicker,
+  resolveProviderRuntimeMode,
 } from "./composerProviderState";
 import { ContextWindowMeter } from "./ContextWindowMeter";
 import { buildExpandedImagePreview, type ExpandedImagePreview } from "./ExpandedImagePreview";
@@ -206,7 +208,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
   showInteractionModeToggle: boolean;
   interactionMode: ProviderInteractionMode;
   runtimeMode: RuntimeMode;
-  showAutoRuntimeMode: boolean;
+  availableRuntimeModes: ReadonlyArray<RuntimeMode>;
   showPlanToggle: boolean;
   planSidebarLabel: string;
   planSidebarOpen: boolean;
@@ -280,7 +282,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
           </TooltipTrigger>
           <SelectPopup alignItemWithTrigger={false}>
             {runtimeModeOptions
-              .filter((mode) => props.showAutoRuntimeMode || mode !== "auto")
+              .filter((mode) => props.availableRuntimeModes.includes(mode))
               .map((mode) => {
                 const option = runtimeModeConfig[mode];
                 const OptionIcon = option.icon;
@@ -694,8 +696,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       explicitSelectedInstanceId,
     ) ?? ProviderDriverKind.make("codex");
   const selectedProvider: ProviderDriverKind = lockedProvider ?? unlockedSelectedProvider;
-  // Claude Auto remains hidden until the upstream #4495 turn failures are verified fixed.
-  const showAutoRuntimeMode = selectedProvider !== ProviderDriverKind.make("claudeAgent");
+  const availableRuntimeModes = useMemo(
+    () => getProviderRuntimeModes(selectedProvider),
+    [selectedProvider],
+  );
+  const resolvedRuntimeMode = resolveProviderRuntimeMode(selectedProvider, runtimeMode);
+  useEffect(() => {
+    if (resolvedRuntimeMode !== runtimeMode) handleRuntimeModeChange(resolvedRuntimeMode);
+  }, [handleRuntimeModeChange, resolvedRuntimeMode, runtimeMode]);
   const lockedContinuationGroupKey = useMemo((): string | null => {
     if (!lockedProvider || !activeThread) return null;
     const lockedInstanceId =
@@ -2648,8 +2656,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     interactionMode={interactionMode}
                     planSidebarLabel={planSidebarLabel}
                     planSidebarOpen={planSidebarOpen}
-                    runtimeMode={runtimeMode}
-                    showAutoRuntimeMode={showAutoRuntimeMode}
+                    runtimeMode={resolvedRuntimeMode}
+                    availableRuntimeModes={availableRuntimeModes}
                     showInteractionModeToggle={composerProviderControls.showInteractionModeToggle}
                     onToggleInteractionMode={toggleInteractionMode}
                     onTogglePlanSidebar={togglePlanSidebar}
@@ -2659,8 +2667,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   <ComposerFooterModeControls
                     showInteractionModeToggle={composerProviderControls.showInteractionModeToggle}
                     interactionMode={interactionMode}
-                    runtimeMode={runtimeMode}
-                    showAutoRuntimeMode={showAutoRuntimeMode}
+                    runtimeMode={resolvedRuntimeMode}
+                    availableRuntimeModes={availableRuntimeModes}
                     showPlanToggle={showPlanSidebarToggle}
                     planSidebarLabel={planSidebarLabel}
                     planSidebarOpen={planSidebarOpen}

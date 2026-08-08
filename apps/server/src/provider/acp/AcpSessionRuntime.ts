@@ -18,6 +18,12 @@ import * as EffectAcpClient from "effect-acp/client";
 import * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/schema";
 import type * as EffectAcpProtocol from "effect-acp/protocol";
+import {
+  captureProcessBirthToken,
+  makeProvenGroupIdentity,
+  type ProcessGroupIdentity,
+} from "@neokod/shared/processGroup";
+import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import { resolveSpawnCommand } from "@neokod/shared/shell";
 
 import {
@@ -54,6 +60,9 @@ export interface AcpSpawnInput {
   readonly args: ReadonlyArray<string>;
   readonly cwd?: string;
   readonly env?: NodeJS.ProcessEnv;
+  readonly extendEnv?: boolean;
+  readonly detached?: boolean;
+  readonly forceKillAfter?: Duration.Input;
 }
 
 export interface AcpSessionRuntimeOptions {
@@ -67,7 +76,7 @@ export interface AcpSessionRuntimeOptions {
     readonly name: string;
     readonly version: string;
   };
-  readonly authMethodId: string;
+  readonly authMethodId?: string;
   readonly mcpServers?: ReadonlyArray<EffectAcpSchema.McpServer>;
   readonly requestLogger?: (event: AcpSessionRequestLogEvent) => Effect.Effect<void, never>;
   readonly protocolLogging?: {
@@ -178,6 +187,8 @@ export class AcpSessionRuntime extends Context.Service<
      * Concurrent calls share the same in-flight startup and a failed startup may be retried.
      */
     readonly start: () => Effect.Effect<AcpSessionRuntimeStartResult, EffectAcpErrors.AcpError>;
+    readonly pid: Effect.Effect<number | null>;
+    readonly identity: Effect.Effect<ProcessGroupIdentity | null>;
     /** Stream of parsed ACP session events emitted after startup. */
     readonly getEvents: () => Stream.Stream<AcpSessionRuntimeEvent, never>;
     /** Waits until the current event consumer has processed every queued event. */
@@ -274,6 +285,7 @@ export const make = (
 > =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const platform = yield* HostProcessPlatform;
     const runtimeScope = yield* Scope.Scope;
     const eventQueue = yield* Queue.unbounded<AcpSessionRuntimeEvent>();
     const modeStateRef = yield* Ref.make<AcpSessionModeState | undefined>(undefined);
@@ -318,16 +330,22 @@ export const make = (
         ),
       );
 
+    const spawnExtendEnv = options.spawn.extendEnv ?? true;
+    const spawnDetached = options.spawn.detached ?? false;
     const spawnCommand = yield* resolveSpawnCommand(
       options.spawn.command,
       options.spawn.args,
-      options.spawn.env ? { env: options.spawn.env, extendEnv: true } : {},
+      options.spawn.env ? { env: options.spawn.env, extendEnv: spawnExtendEnv } : {},
     );
     const child = yield* spawner
       .spawn(
         ChildProcess.make(spawnCommand.command, spawnCommand.args, {
           ...(options.spawn.cwd ? { cwd: options.spawn.cwd } : {}),
-          ...(options.spawn.env ? { env: options.spawn.env, extendEnv: true } : {}),
+          ...(options.spawn.env ? { env: options.spawn.env, extendEnv: spawnExtendEnv } : {}),
+          detached: spawnDetached,
+          ...(options.spawn.forceKillAfter === undefined
+            ? {}
+            : { forceKillAfter: options.spawn.forceKillAfter }),
           shell: spawnCommand.shell,
         }),
       )
@@ -341,6 +359,22 @@ export const make = (
             }),
         ),
       );
+
+    const rawChildPid = Number(child.pid);
+    const childPid = Number.isSafeInteger(rawChildPid) && rawChildPid > 0 ? rawChildPid : null;
+    const childIdentity = yield* Effect.gen(function* () {
+      if (!spawnDetached || childPid === null) return null;
+      const spawnedAtMs = yield* Clock.currentTimeMillis;
+      const birthToken = yield* captureProcessBirthToken(childPid);
+      const proven = makeProvenGroupIdentity({
+        pid: childPid,
+        pgid: childPid,
+        spawnedAtMs,
+        platform,
+        birthToken,
+      });
+      return proven.ok ? proven.identity : null;
+    });
 
     const acpContext = yield* Layer.build(
       EffectAcpClient.layerChildProcess(child, {
@@ -529,15 +563,39 @@ export const make = (
         acp.agent.initialize(initializePayload),
       );
 
-      const authenticatePayload = {
-        methodId: options.authMethodId,
-      } satisfies EffectAcpSchema.AuthenticateRequest;
-
-      yield* runLoggedRequest(
-        "authenticate",
-        authenticatePayload,
-        acp.agent.authenticate(authenticatePayload),
-      );
+      const advertisedAuthMethods = initializeResult.authMethods ?? [];
+      const advertisedAuthMethodIds = advertisedAuthMethods.map((method) => method.id);
+      const configuredAuthMethodId = options.authMethodId;
+      if (configuredAuthMethodId !== undefined) {
+        if (!advertisedAuthMethodIds.includes(configuredAuthMethodId)) {
+          return yield* new EffectAcpErrors.AcpRequestError({
+            code: -32601,
+            errorMessage: `Configured ACP auth method "${configuredAuthMethodId}" is not advertised by the agent`,
+            method: "authenticate",
+            data: {
+              reason: "auth_method_unadvertised",
+              configuredMethodId: configuredAuthMethodId,
+              advertisedMethodIds: advertisedAuthMethodIds,
+            },
+          });
+        }
+        const authenticatePayload = {
+          methodId: configuredAuthMethodId,
+        } satisfies EffectAcpSchema.AuthenticateRequest;
+        yield* runLoggedRequest(
+          "authenticate",
+          authenticatePayload,
+          acp.agent.authenticate(authenticatePayload),
+        );
+      } else if (advertisedAuthMethods.length > 0) {
+        return yield* EffectAcpErrors.AcpRequestError.authRequired(
+          "Agent advertises authentication methods but none is configured",
+          {
+            reason: "authentication_required",
+            advertisedMethodIds: advertisedAuthMethodIds,
+          },
+        );
+      }
 
       let sessionId: string;
       let sessionSetupResult:
@@ -693,6 +751,8 @@ export const make = (
       handleExtRequest: acp.handleExtRequest,
       handleExtNotification: acp.handleExtNotification,
       start: () => start,
+      pid: Effect.succeed(childPid),
+      identity: Effect.succeed(childIdentity),
       getEvents: () => Stream.fromQueue(eventQueue),
       drainEvents: Effect.gen(function* () {
         const acknowledge = yield* Deferred.make<void>();
