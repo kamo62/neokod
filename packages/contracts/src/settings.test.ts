@@ -61,6 +61,7 @@ describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
       githubCopilot: { enabled: false },
       cursor: { enabled: false },
       grok: { enabled: false },
+      kiro: { enabled: false, agentEngine: "v2" },
       opencode: { enabled: false },
     });
   });
@@ -106,6 +107,22 @@ describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
       decodeServerSettings({
         providerInstances: { "1bad": { driver: "codex" } },
       }),
+    ).toThrow();
+  });
+});
+
+describe("Kiro engine settings", () => {
+  it("defaults to v2 and accepts v3 patches", () => {
+    expect(decodeServerSettings({}).providers.kiro.agentEngine).toBe("v2");
+    expect(
+      decodeServerSettingsPatch({ providers: { kiro: { agentEngine: "v3" } } }).providers?.kiro
+        ?.agentEngine,
+    ).toBe("v3");
+  });
+
+  it("rejects the unsupported v1 engine", () => {
+    expect(() =>
+      decodeServerSettingsPatch({ providers: { kiro: { agentEngine: "v1" } } }),
     ).toThrow();
   });
 });

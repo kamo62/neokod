@@ -139,6 +139,14 @@
       "types": "./src/hostProcess.ts",
       "import": "./src/hostProcess.ts"
     },
+    "./providerChildEnv": {
+      "types": "./src/providerChildEnv.ts",
+      "import": "./src/providerChildEnv.ts"
+    },
+    "./processGroup": {
+      "types": "./src/processGroup.ts",
+      "import": "./src/processGroup.ts"
+    },
     "./neokodHome": {
       "types": "./src/neokodHome.ts",
       "import": "./src/neokodHome.ts"

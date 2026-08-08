@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import type { EffectiveWorkflowConfig, WorkItem } from "@neokod/contracts";
-import { ProviderInstanceId, TextGenerationError } from "@neokod/contracts";
+import { ProviderDriverKind, ProviderInstanceId, TextGenerationError } from "@neokod/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as PubSub from "effect/PubSub";
@@ -28,14 +28,15 @@ const makeTextGeneration = (
 
 const makeInstance = (input: {
   readonly id: string;
+  readonly driverKind?: string;
   readonly models: ReadonlyArray<string>;
   readonly review: TextGeneration.TextGeneration["Service"]["generateCodeReview"];
 }): ProviderInstance =>
   ({
     instanceId: ProviderInstanceId.make(input.id),
-    driverKind: input.id as ProviderInstance["driverKind"],
+    driverKind: ProviderDriverKind.make(input.driverKind ?? input.id),
     continuationIdentity: {
-      driverKind: input.id as ProviderInstance["driverKind"],
+      driverKind: ProviderDriverKind.make(input.driverKind ?? input.id),
       continuationKey: `${input.id}:test`,
     },
     displayName: input.id,
@@ -211,6 +212,25 @@ describe("SymphonyModelReviewer", () => {
       expect(result?.passed).toBe(true);
       expect(result?.reviewers[1]?.status).toBe("failed");
       expect(result?.reviewers[1]?.error).toContain("No enabled provider instance");
+    }),
+  );
+
+  it.effect("never resolves Kiro as a Symphony reviewer", () =>
+    Effect.gen(function* () {
+      const result = yield* runReview(
+        [
+          makeInstance({
+            id: "kiro",
+            driverKind: "kiro",
+            models: ["auto"],
+            review: () => Effect.die("Kiro review must not run"),
+          }),
+        ],
+        makeConfig(["auto"], "all-approve"),
+      );
+
+      expect(result?.passed).toBe(false);
+      expect(result?.reviewers[0]?.error).toContain("No enabled provider instance");
     }),
   );
 

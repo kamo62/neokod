@@ -16,6 +16,7 @@ import { isTemporaryWorktreeBranch, WORKTREE_BRANCH_PREFIX } from "@neokod/share
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
+import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -287,23 +288,28 @@ const make = Effect.gen(function* () {
   const setThreadSessionErrorOnTurnStartFailure = Effect.fnUntraced(function* (input: {
     readonly threadId: ThreadId;
     readonly detail: string;
-    readonly createdAt: string;
   }) {
     const thread = yield* resolveThread(input.threadId);
     const session = thread?.session;
     if (!session) {
       return;
     }
+    const updatedAt = DateTime.formatIso(yield* DateTime.now);
     yield* setThreadSession({
       threadId: input.threadId,
       session: {
         ...session,
-        status: session.status === "stopped" ? "stopped" : "ready",
+        status:
+          session.status === "stopped"
+            ? "stopped"
+            : session.status === "running"
+              ? "error"
+              : "ready",
         activeTurnId: null,
         lastError: input.detail,
-        updatedAt: input.createdAt,
+        updatedAt,
       },
-      createdAt: input.createdAt,
+      createdAt: updatedAt,
     });
   });
 
@@ -833,7 +839,6 @@ const make = Effect.gen(function* () {
       return setThreadSessionErrorOnTurnStartFailure({
         threadId: event.payload.threadId,
         detail,
-        createdAt: event.payload.createdAt,
       }).pipe(
         Effect.flatMap(() =>
           appendProviderFailureActivity({
