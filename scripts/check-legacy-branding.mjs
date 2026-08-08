@@ -30,6 +30,13 @@ const ALLOW_RULES = [
     line: LEGACY_PATTERN,
   },
   {
+    // The child-env scrubber must recognize legacy T3CODE_* prefixed secrets
+    // (documented retained surface); its test needs the literal prefix.
+    reason: "fixture proving legacy-prefix secret scrubbing",
+    path: /^packages\/shared\/src\/providerChildEnv\.test\.ts$/,
+    line: /T3CODE_LEGACY/,
+  },
+  {
     reason: "central compatibility documentation",
     path: /^docs\/reference\/legacy-t3code-compatibility\.md$/,
     line: LEGACY_PATTERN,
