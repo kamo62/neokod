@@ -964,4 +964,32 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         assert.isUndefined(next.providers.githubCopilot.managedClientEvidence.otlpHeadersRedacted);
       }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
+
+  it.effect("stores tracker credentials outside settings.json and redacts client reads", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+
+      const materialized = yield* serverSettings.updateSettings({
+        trackers: {
+          jira: {
+            enabled: true,
+            credential: "jira_secret_token",
+            credentialRedacted: false,
+            config: { base_url: "https://example.atlassian.net" },
+          },
+        },
+      });
+      assert.equal(materialized.trackers.jira?.credential, "jira_secret_token");
+
+      const persisted = yield* fileSystem.readFileString(serverConfig.settingsPath);
+      assert.notInclude(persisted, "jira_secret_token");
+      assert.include(persisted, '"credentialRedacted": true');
+
+      const client = ServerSettingsModule.redactServerSettingsForClient(materialized);
+      assert.equal(client.trackers.jira?.credential, "");
+      assert.isTrue(client.trackers.jira?.credentialRedacted);
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
 });

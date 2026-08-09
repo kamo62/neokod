@@ -159,6 +159,25 @@ it.effect("resolves a token env and declares it a secret environment name", () =
   }),
 );
 
+it.effect("injects a stored token only into GitHub CLI calls", () =>
+  Effect.gen(function* () {
+    let receivedEnv: NodeJS.ProcessEnv | undefined;
+    const cli = {
+      ...makeFakeCli([]),
+      listOpenIssues: (input: { readonly env?: NodeJS.ProcessEnv }) => {
+        receivedEnv = input.env;
+        return Effect.succeed([]);
+      },
+    } satisfies GitHubIssuesCli["Service"];
+    const adapter = yield* makeAdapter(cli, { token: "ghp_secret" });
+
+    yield* adapter.listCandidateIssues();
+
+    expect(receivedEnv).toEqual({ GH_TOKEN: "ghp_secret" });
+    expect(adapter.secretEnvironmentNames()).toEqual([]);
+  }),
+);
+
 it.effect("reports the profile with documented provider keys and states", () =>
   Effect.gen(function* () {
     const adapter = yield* makeAdapter(makeFakeCli([]));

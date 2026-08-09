@@ -101,7 +101,7 @@ const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
 export const runStartupRecovery = (deps: RecoveryDeps) =>
   Effect.gen(function* () {
     const held = yield* deps.workItems
-      .listByLifecycle(["preparing", "running"])
+      .listByLifecycle(["preparing", "running", "testing"])
       .pipe(Effect.catch(() => Effect.succeed([] as WorkItem[])));
     if (held.length === 0) {
       return;
@@ -172,7 +172,7 @@ const recoverItem = (
       // creation (REVIEW P1 #11). Land the item in its review state instead.
       if (attempt.status === "succeeded") {
         yield* deps.workItems
-          .transition(item.id, "ready_for_review", { from: ["preparing", "running"] })
+          .transition(item.id, "ready_for_review", { from: ["preparing", "running", "testing"] })
           .pipe(Effect.catch(() => Effect.void));
         return;
       }

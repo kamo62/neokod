@@ -30,6 +30,7 @@ import {
   type ProjectFileFailure,
   type ProjectFileOperation,
   ProjectListEntriesError,
+  ProjectId,
   ProjectReadFileError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
@@ -55,6 +56,14 @@ import {
   SymphonyDispatchWorkItemInput,
   SymphonyExcludeWorkItemInput,
   SymphonyGetRunInput,
+  SymphonyListProjectsInput,
+  SymphonyGetProjectInput,
+  SymphonyCreateProjectInput,
+  SymphonyUpdateProjectInput,
+  SymphonyStartProjectInput,
+  SymphonyPauseProjectInput,
+  SymphonyGetProjectBoardInput,
+  SymphonyProjectId,
   SymphonyIncludeWorkItemInput,
   SymphonyListAttentionInput,
   SymphonyListQueueInput,
@@ -143,6 +152,7 @@ import * as VcsProjectConfig from "./vcs/VcsProjectConfig.ts";
 import * as VcsProcess from "./vcs/VcsProcess.ts";
 import * as WslBearerAuth from "./transport/WslBearerAuth.ts";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
+const isSymphonyError = Schema.is(SymphonyError);
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
@@ -398,6 +408,12 @@ const approvalError = (message: string): SymphonyError =>
 const orchestratorUnavailable = (): SymphonyError =>
   new SymphonyError({ code: "symphony_unavailable", message: "symphony layer is not mounted" });
 
+const projectError = (code: string, message: string): SymphonyError =>
+  new SymphonyError({ code, message });
+
+const requireProject = <A>(value: A | null, code: string, message: string) =>
+  value === null ? Effect.fail(projectError(code, message)) : Effect.succeed(value);
+
 const withHandoffService = <A, E>(
   run: (handoff: HandoffService.HandoffService["Service"]) => Effect.Effect<A, E>,
   fallback: Effect.Effect<A, E>,
@@ -467,6 +483,29 @@ export const makeSymphonyRpcHandlers = () => ({
       ),
       { "rpc.aggregate": "symphony" },
     ),
+  [SYMPHONY_WS_METHODS.subscribeProjectBoard]: (
+    input: (typeof SymphonyGetProjectBoardInput)["Type"],
+  ) =>
+    observeRpcStream(
+      SYMPHONY_WS_METHODS.subscribeProjectBoard,
+      withOrchestratorStream(
+        (orchestrator) =>
+          Stream.fromEffect(
+            orchestrator.getProjectBoard(input.projectId).pipe(
+              Effect.flatMap((board) =>
+                requireProject(
+                  board,
+                  "symphony_project_not_found",
+                  `Symphony project ${input.projectId} was not found.`,
+                ),
+              ),
+              Effect.map((board) => ({ version: 1, type: "projectBoard", board }) as const),
+            ),
+          ).pipe(Stream.repeat(Schedule.fixed("2 seconds"))),
+        Stream.empty,
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
   [SYMPHONY_WS_METHODS.subscribeRunEvents]: (input: (typeof SymphonyGetRunInput)["Type"]) =>
     observeRpcStream(
       SYMPHONY_WS_METHODS.subscribeRunEvents,
@@ -497,21 +536,13 @@ export const makeSymphonyRpcHandlers = () => ({
   [SYMPHONY_WS_METHODS.listQueue]: (input: (typeof SymphonyListQueueInput)["Type"]) =>
     observeRpcEffect(
       SYMPHONY_WS_METHODS.listQueue,
-      withOrchestrator(
-        (orchestrator) =>
-          orchestrator.listQueue(input.limit === undefined ? undefined : { limit: input.limit }),
-        Effect.succeed([]),
-      ),
+      withOrchestrator((orchestrator) => orchestrator.listQueue(input), Effect.succeed([])),
       { "rpc.aggregate": "symphony" },
     ),
   [SYMPHONY_WS_METHODS.listRuns]: (input: (typeof SymphonyListRunsInput)["Type"]) =>
     observeRpcEffect(
       SYMPHONY_WS_METHODS.listRuns,
-      withOrchestrator(
-        (orchestrator) =>
-          orchestrator.listRuns(input.limit === undefined ? undefined : { limit: input.limit }),
-        Effect.succeed([]),
-      ),
+      withOrchestrator((orchestrator) => orchestrator.listRuns(input), Effect.succeed([])),
       { "rpc.aggregate": "symphony" },
     ),
   [SYMPHONY_WS_METHODS.getRun]: (input: (typeof SymphonyGetRunInput)["Type"]) =>
@@ -523,14 +554,246 @@ export const makeSymphonyRpcHandlers = () => ({
       ),
       { "rpc.aggregate": "symphony" },
     ),
+  [SYMPHONY_WS_METHODS.listProjects]: (_input: (typeof SymphonyListProjectsInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.listProjects,
+      withOrchestrator((orchestrator) => orchestrator.listProjects(), Effect.succeed([])),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.getProject]: (input: (typeof SymphonyGetProjectInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.getProject,
+      withOrchestrator(
+        (orchestrator) => orchestrator.getProject(input.projectId),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.createProject]: (input: (typeof SymphonyCreateProjectInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.createProject,
+      withOrchestrator(
+        (orchestrator) =>
+          Effect.gen(function* () {
+            const projection = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+            const shell = yield* projection
+              .getProjectShellById(ProjectId.make(input.codeProjectId))
+              .pipe(
+                Effect.mapError((cause) =>
+                  projectError("symphony_project_create_failed", cause.message),
+                ),
+              );
+            if (Option.isNone(shell)) {
+              return yield* Effect.fail(
+                projectError(
+                  "symphony_code_project_not_found",
+                  `Code project ${input.codeProjectId} was not found.`,
+                ),
+              );
+            }
+            const crypto = yield* Crypto.Crypto;
+            const id = yield* crypto.randomUUIDv4.pipe(
+              Effect.map(SymphonyProjectId.make),
+              Effect.mapError((cause) =>
+                projectError("symphony_project_create_failed", String(cause)),
+              ),
+            );
+            return yield* orchestrator
+              .createProject({
+                id,
+                codeProjectId: String(shell.value.id),
+                title: input.title ?? shell.value.title,
+                repositoryPath: shell.value.workspaceRoot,
+                configuration: input.configuration,
+                now: yield* nowIso,
+              })
+              .pipe(
+                Effect.mapError((cause) =>
+                  projectError("symphony_project_create_failed", cause.message),
+                ),
+              );
+          }),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.updateProject]: (input: (typeof SymphonyUpdateProjectInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.updateProject,
+      withOrchestrator(
+        (orchestrator) =>
+          nowIso
+            .pipe(
+              Effect.flatMap((now) =>
+                orchestrator.updateProject({
+                  projectId: input.projectId,
+                  expectedRevision: input.expectedRevision,
+                  ...(input.title === undefined ? {} : { title: input.title }),
+                  ...(input.configuration === undefined
+                    ? {}
+                    : { configuration: input.configuration }),
+                  now,
+                }),
+              ),
+            )
+            .pipe(
+              Effect.flatMap((project) =>
+                requireProject(
+                  project,
+                  "symphony_project_revision_conflict",
+                  "The project changed. Refresh and retry.",
+                ),
+              ),
+              Effect.mapError((cause) =>
+                isSymphonyError(cause)
+                  ? cause
+                  : projectError("symphony_project_update_failed", cause.message),
+              ),
+            ),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.startProject]: (input: (typeof SymphonyStartProjectInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.startProject,
+      withOrchestrator(
+        (orchestrator) =>
+          Effect.gen(function* () {
+            const project = yield* orchestrator
+              .getProject(input.projectId)
+              .pipe(
+                Effect.flatMap((value) =>
+                  requireProject(
+                    value,
+                    "symphony_project_not_found",
+                    `Symphony project ${input.projectId} was not found.`,
+                  ),
+                ),
+              );
+            if (project.setupState !== "ready" || project.configuration === null) {
+              return yield* Effect.fail(
+                projectError(
+                  "symphony_project_needs_setup",
+                  "Complete the tracker and runtime settings before starting this project.",
+                ),
+              );
+            }
+            if (project.configuration.autonomy === "deliver") {
+              const board = yield* orchestrator
+                .getProjectBoard(project.id)
+                .pipe(
+                  Effect.flatMap((value) =>
+                    requireProject(
+                      value,
+                      "symphony_project_not_found",
+                      `Symphony project ${input.projectId} was not found.`,
+                    ),
+                  ),
+                );
+              if (board.sourceControl.state !== "known" || board.sourceControl.provider === null) {
+                return yield* Effect.fail(
+                  projectError(
+                    "symphony_delivery_unavailable",
+                    "Deliver mode requires a recognised source-control remote.",
+                  ),
+                );
+              }
+              const discovery = yield* SourceControlDiscovery.SourceControlDiscovery;
+              const providers = yield* discovery.discover;
+              const providerKind = board.sourceControl.provider;
+              const provider = providers.sourceControlProviders.find(
+                (candidate) => candidate.kind === providerKind,
+              );
+              if (provider?.auth.status !== "authenticated") {
+                return yield* Effect.fail(
+                  projectError(
+                    "symphony_delivery_unauthenticated",
+                    "Authenticate the repository's source-control provider before using Deliver mode.",
+                  ),
+                );
+              }
+            }
+            const updated = yield* orchestrator.updateProject({
+              projectId: project.id,
+              expectedRevision: input.expectedRevision,
+              status: "active",
+              now: yield* nowIso,
+            });
+            return yield* requireProject(
+              updated,
+              "symphony_project_revision_conflict",
+              "The project changed. Refresh and retry.",
+            );
+          }).pipe(
+            Effect.mapError((cause) =>
+              isSymphonyError(cause)
+                ? cause
+                : projectError("symphony_project_start_failed", cause.message),
+            ),
+          ),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.pauseProject]: (input: (typeof SymphonyPauseProjectInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.pauseProject,
+      withOrchestrator(
+        (orchestrator) =>
+          nowIso
+            .pipe(
+              Effect.flatMap((now) =>
+                orchestrator.updateProject({
+                  projectId: input.projectId,
+                  expectedRevision: input.expectedRevision,
+                  status: "paused",
+                  now,
+                }),
+              ),
+            )
+            .pipe(
+              Effect.flatMap((project) =>
+                requireProject(
+                  project,
+                  "symphony_project_revision_conflict",
+                  "The project changed. Refresh and retry.",
+                ),
+              ),
+              Effect.mapError((cause) =>
+                isSymphonyError(cause)
+                  ? cause
+                  : projectError("symphony_project_pause_failed", cause.message),
+              ),
+            ),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
+  [SYMPHONY_WS_METHODS.getProjectBoard]: (input: (typeof SymphonyGetProjectBoardInput)["Type"]) =>
+    observeRpcEffect(
+      SYMPHONY_WS_METHODS.getProjectBoard,
+      withOrchestrator(
+        (orchestrator) =>
+          orchestrator
+            .getProjectBoard(input.projectId)
+            .pipe(
+              Effect.flatMap((board) =>
+                requireProject(
+                  board,
+                  "symphony_project_not_found",
+                  `Symphony project ${input.projectId} was not found.`,
+                ),
+              ),
+            ),
+        Effect.fail(orchestratorUnavailable()),
+      ),
+      { "rpc.aggregate": "symphony" },
+    ),
   [SYMPHONY_WS_METHODS.listAttention]: (input: (typeof SymphonyListAttentionInput)["Type"]) =>
     observeRpcEffect(
       SYMPHONY_WS_METHODS.listAttention,
-      withOrchestrator(
-        (orchestrator) =>
-          orchestrator.listAttention(input.limit === undefined ? undefined : input.limit),
-        Effect.succeed([]),
-      ),
+      withOrchestrator((orchestrator) => orchestrator.listAttention(input), Effect.succeed([])),
       { "rpc.aggregate": "symphony" },
     ),
   [SYMPHONY_WS_METHODS.listWorkflows]: () =>
@@ -557,7 +820,7 @@ export const makeSymphonyRpcHandlers = () => ({
   [SYMPHONY_WS_METHODS.listHistory]: (input: (typeof SymphonyListHistoryInput)["Type"]) =>
     observeRpcEffect(
       SYMPHONY_WS_METHODS.listHistory,
-      withOrchestrator((orchestrator) => orchestrator.listHistory(input.limit), Effect.succeed([])),
+      withOrchestrator((orchestrator) => orchestrator.listHistory(input), Effect.succeed([])),
       { "rpc.aggregate": "symphony" },
     ),
   [SYMPHONY_WS_METHODS.resolveAttention]: (input: (typeof SymphonyResolveAttentionInput)["Type"]) =>

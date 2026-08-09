@@ -5,6 +5,7 @@ import { FetchHttpClient } from "effect/unstable/http";
 import { layer as ProcessRunnerLayer } from "../../processRunner.ts";
 import { layer as GitVcsDriverLayer } from "../../vcs/GitVcsDriver.ts";
 import { WorkflowRepositoryLive } from "../Persistence/Layers/WorkflowRepository.ts";
+import { SymphonyProjectRepositoryLive } from "../Persistence/Layers/SymphonyProjectRepository.ts";
 import { WorkItemRepositoryLive } from "../Persistence/Layers/WorkItemRepository.ts";
 import { RunAttemptRepositoryLive } from "../Persistence/Layers/RunAttemptRepository.ts";
 import { RunEventRepositoryLive } from "../Persistence/Layers/RunEventRepository.ts";
@@ -153,6 +154,7 @@ export const SymphonyLayerObserve = Layer.merge(
     Layer.provide(
       Layer.mergeAll(
         WorkflowRepositoryLive,
+        SymphonyProjectRepositoryLive,
         WorkItemRepositoryLive,
         RunAttemptRepositoryLive,
         RunEventRepositoryLive,
@@ -172,6 +174,7 @@ export const SymphonyLayerObserve = Layer.merge(
           Layer.provide(NodeServices.layer),
         ),
         TrackerRegistryGitHubLive.pipe(Layer.provide(FetchHttpClient.layer)),
+        VcsDriverRegistryLayer.pipe(Layer.provide(VcsProjectConfigLayer)),
         TrackerEnablementLive,
         ApprovalServiceLive.pipe(
           Layer.provide(Layer.mergeAll(ApprovalRepositoryLive, LiveRequestsLive)),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { ProviderDriverKind, ProviderInstanceId } from "@neokod/contracts";
+import { ProviderDriverKind, ProviderInstanceId, SymphonyProjectId } from "@neokod/contracts";
 import type { EffectiveWorkflowConfig, NormalizedIssue } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 
@@ -43,9 +43,10 @@ const makeIssue = (overrides: Partial<NormalizedIssue> = {}): NormalizedIssue =>
 });
 
 const eligibility = { reasons: [] } as never;
+const PROJECT_ID = SymphonyProjectId.make("project-1");
 
 const project = (issue: NormalizedIssue, config: EffectiveWorkflowConfig = makeConfig()) =>
-  projectWorkItem(issue, config, eligibility, "2026-08-04T00:00:00Z");
+  projectWorkItem(issue, config, eligibility, "2026-08-04T00:00:00Z", PROJECT_ID);
 
 describe("projectWorkItem", () => {
   it.effect("accumulates description, branch, priority, and blocked onto one row", () =>
@@ -84,7 +85,7 @@ describe("projectWorkItem", () => {
     }),
   );
 
-  it("derives a deterministic work-item id from tracker kind and issue id", () => {
-    expect(workItemIdForIssue("github", "1")).toBe("github:1");
+  it("derives a deterministic work-item id from project, tracker kind, and issue id", () => {
+    expect(workItemIdForIssue(PROJECT_ID, "github", "1")).toBe("project-1:github:1");
   });
 });

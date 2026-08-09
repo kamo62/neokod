@@ -8,13 +8,23 @@ import type {
   RunAttempt,
   RunDetails,
   RunSummary,
+  SymphonyProject,
+  SymphonyProjectConfiguration,
+  SymphonyProjectSourceControl,
   SymphonyOverview,
   SymphonyOverviewMetric,
   TrackerHealth,
   WorkflowRecord,
   WorkItem,
 } from "@neokod/contracts";
-import { AttentionItemId, RunAttemptId, WorkflowId, WorkItemId } from "@neokod/contracts";
+import {
+  AttentionItemId,
+  ProjectId,
+  RunAttemptId,
+  SymphonyProjectId,
+  WorkflowId,
+  WorkItemId,
+} from "@neokod/contracts";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -26,6 +36,7 @@ import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
 
 import { nowIso } from "../../Domain/Time.ts";
+import { SymphonyProjectRepository } from "../../Persistence/Services/SymphonyProjectRepository.ts";
 import { WorkflowRepository } from "../../Persistence/Services/WorkflowRepository.ts";
 import { WorkItemRepository } from "../../Persistence/Services/WorkItemRepository.ts";
 import { OrchestratorStateRepository } from "../../Persistence/Services/OrchestratorStateRepository.ts";
@@ -52,6 +63,9 @@ import { deriveWorkingBranch } from "../../Domain/Keys.ts";
 import { WorkspaceOwnershipRepository } from "../../Persistence/Services/WorkspaceOwnershipRepository.ts";
 import type { ReviewFeedbackContext } from "../../Runner/Prompt.ts";
 import { SymphonyOrchestrator, type SymphonyOrchestratorShape } from "../SymphonyOrchestrator.ts";
+import { projectBoardFromWorkItems } from "../ProjectBoard.ts";
+import { VcsDriverRegistry } from "../../../vcs/VcsDriverRegistry.ts";
+import { ServerConfig } from "../../../config.ts";
 
 /**
  * Live orchestrator. Active workflows are reloaded and polled independently,
@@ -65,6 +79,92 @@ import { SymphonyOrchestrator, type SymphonyOrchestratorShape } from "../Symphon
  */
 
 const SCHEDULER_SCAN_INTERVAL = "5 seconds";
+
+const ALL_WORK_LIFECYCLES = [
+  "draft",
+  "eligible",
+  "queued",
+  "preparing",
+  "running",
+  "testing",
+  "blocked",
+  "waiting_for_approval",
+  "retry_scheduled",
+  "validation_failed",
+  "ready_for_review",
+  "changes_requested",
+  "ready_to_merge",
+  "completed",
+  "cancelled",
+  "failed",
+] as const;
+
+const trackerProviderForProject = (
+  tracker: SymphonyProjectConfiguration["tracker"],
+): Readonly<Record<string, unknown>> => {
+  switch (tracker.kind) {
+    case "github":
+      return { repo: tracker.repository };
+    case "jira":
+      return { project_key: tracker.projectKey };
+    case "linear":
+      return { project_slug: tracker.projectSlug };
+    case "gitlab":
+      return { project_path: tracker.projectPath };
+    case "asana":
+      return { project_gid: tracker.projectGid };
+    case "azure_boards":
+      return {
+        ...(tracker.organization === undefined ? {} : { organization: tracker.organization }),
+        project: tracker.project,
+      };
+    case "github_projects":
+      return { owner: tracker.owner, number: tracker.number };
+  }
+};
+
+const effectiveConfigForProject = (
+  project: SymphonyProject,
+  worktreesDir: string,
+): EffectiveWorkflowConfig | null => {
+  const configuration = project.configuration;
+  if (configuration === null) return null;
+  return {
+    repositoryPath: project.repositoryPath,
+    workflowPath: `symphony-project:${project.id}`,
+    trackerKind: configuration.tracker.kind,
+    trackerRequiredLabels: [...configuration.trackerRequiredLabels],
+    trackerActiveStates: [...configuration.trackerActiveStates],
+    trackerTerminalStates: [...configuration.trackerTerminalStates],
+    trackerProvider: trackerProviderForProject(configuration.tracker),
+    pollIntervalMs: WORKFLOW_DEFAULTS.pollIntervalMs,
+    workspaceRoot: `${worktreesDir}/symphony-${project.id}`,
+    autonomy: configuration.autonomy,
+    agentProvider: configuration.agentProvider,
+    ...(configuration.agentModel === undefined ? {} : { agentModel: configuration.agentModel }),
+    maxConcurrentAgents: configuration.maxConcurrentAgents,
+    maxTurns: configuration.maxTurns,
+    maxAttempts: configuration.maxAttempts,
+    validationRequired: [...configuration.validationRequired],
+    validationTestPathPatterns: [],
+    approvalsBeforePush: configuration.approvalsBeforePush,
+    approvalsBeforePullRequest: configuration.approvalsBeforePullRequest,
+    approvalsBeforeMerge: configuration.approvalsBeforeMerge,
+    approvalsProtectedPaths: [],
+    approvalsPolicies: [],
+  };
+};
+
+const providerForRemoteUrl = (remoteUrl: string): string | null => {
+  const normalized = remoteUrl.toLowerCase();
+  if (normalized.includes("github.com")) return "github";
+  if (normalized.includes("gitlab")) return "gitlab";
+  if (normalized.includes("bitbucket")) return "bitbucket";
+  if (normalized.includes("dev.azure.com") || normalized.includes("visualstudio.com")) {
+    return "azure-devops";
+  }
+  return null;
+};
 
 const knownOverviewMetric = (value: number): SymphonyOverviewMetric => ({
   state: "known",
@@ -225,6 +325,7 @@ const lifecycleForRun = (
     const reviewLifecycles: ReadonlySet<WorkItem["lifecycle"]> = new Set([
       "waiting_for_approval",
       "blocked",
+      "testing",
       "cancelled",
       "changes_requested",
       "ready_for_review",
@@ -414,7 +515,13 @@ const pollWorkflow = (deps: {
         claimedIssueIds: new Set<string>(),
         dispatchPaused: false,
       });
-      const projected = yield* projectWorkItem(issue, config, eligibility, now);
+      const projected = yield* projectWorkItem(
+        issue,
+        config,
+        eligibility,
+        now,
+        SymphonyProjectId.make(workflow.id),
+      );
       const workItem = { ...projected, workflowId: workflow.id };
       yield* deps.workItems.upsert(workItem).pipe(Effect.catch(() => Effect.void));
     }
@@ -422,6 +529,7 @@ const pollWorkflow = (deps: {
 
 const makeOrchestrator = Effect.gen(function* () {
   const workflows = yield* WorkflowRepository;
+  const projects = yield* SymphonyProjectRepository;
   const workItems = yield* WorkItemRepository;
   const attentionRepository = yield* AttentionRepository;
   const registry = yield* TrackerAdapterRegistry;
@@ -436,6 +544,8 @@ const makeOrchestrator = Effect.gen(function* () {
   const checkpointRepository = yield* TrackerCheckpointRepository;
   const auditRepository = yield* AuditRepository;
   const notifications = yield* NotificationCoordinator;
+  const serverConfig = yield* ServerConfig;
+  const vcsRegistry = yield* Effect.serviceOption(VcsDriverRegistry);
 
   const stateRef = yield* Ref.make<OrchestratorRuntimeState>(EMPTY_STATE);
   const lastPollByWorkflowRef = yield* Ref.make<ReadonlyMap<string, number>>(new Map());
@@ -449,11 +559,69 @@ const makeOrchestrator = Effect.gen(function* () {
     }
     const records = yield* workflows.list().pipe(Effect.catch(() => Effect.succeed([])));
     for (const workflow of records) {
+      if (workflow.workflowPath.startsWith("symphony-project:")) continue;
       yield* workflowLoader.value
         .reloadChanged({ repositoryPath: workflow.repositoryPath })
         .pipe(Effect.catch(() => Effect.void));
     }
   });
+
+  const syncProjectWorkflow = Effect.fn("symphonyOrchestrator.syncProjectWorkflow")(function* (
+    project: SymphonyProject,
+  ) {
+    const effectiveConfig = effectiveConfigForProject(project, serverConfig.worktreesDir);
+    const id = WorkflowId.make(project.id);
+    const existing = yield* workflows.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
+    yield* workflows.upsert({
+      id,
+      repositoryPath: project.repositoryPath,
+      workflowPath: `symphony-project:${project.id}`,
+      status: effectiveConfig === null ? "paused" : project.status,
+      autonomy: effectiveConfig?.autonomy ?? "observe",
+      validationError: effectiveConfig === null ? "Project setup is incomplete" : null,
+      definition: existing?.definition ?? { config: {}, promptTemplate: "" },
+      effectiveConfig,
+      enabledAt:
+        project.status === "active" && effectiveConfig !== null
+          ? (existing?.enabledAt ?? project.updatedAt)
+          : null,
+      createdAt: existing?.createdAt ?? project.createdAt,
+      updatedAt: project.updatedAt,
+    });
+  });
+
+  const persistedProjects = yield* projects.list().pipe(Effect.catch(() => Effect.succeed([])));
+  for (const project of persistedProjects) yield* syncProjectWorkflow(project);
+
+  const resolveProjectSourceControl = Effect.fn("symphonyOrchestrator.resolveProjectSourceControl")(
+    function* (repositoryPath: string): Effect.fn.Return<SymphonyProjectSourceControl> {
+      if (Option.isNone(vcsRegistry)) {
+        return { state: "unavailable", reason: "VCS discovery is unavailable" };
+      }
+      const detected = yield* Effect.result(vcsRegistry.value.detect({ cwd: repositoryPath }));
+      if (detected._tag === "Failure") {
+        return { state: "unavailable", reason: detected.failure.message };
+      }
+      if (detected.success === null) {
+        return { state: "none" };
+      }
+      const remotes = yield* Effect.result(detected.success.driver.listRemotes(repositoryPath));
+      if (remotes._tag === "Failure") {
+        return { state: "unavailable", reason: remotes.failure.message };
+      }
+      const remote =
+        remotes.success.remotes.find((candidate) => candidate.isPrimary) ??
+        remotes.success.remotes[0] ??
+        null;
+      return {
+        state: "known",
+        vcsKind: detected.success.kind,
+        provider: remote === null ? null : providerForRemoteUrl(remote.url),
+        remoteUrl: remote?.url ?? null,
+        authenticated: null,
+      };
+    },
+  );
 
   const runTick = Effect.fn("symphonyOrchestrator.tick")(function* (
     forcePoll = false,
@@ -727,18 +895,28 @@ const makeOrchestrator = Effect.gen(function* () {
     Effect.gen(function* () {
       const items = yield* workItems
         .listByLifecycle(
-          ["eligible", "queued"],
-          filter?.limit === undefined ? undefined : { limit: filter.limit },
+          filter?.lifecycle === undefined ? ["eligible", "queued"] : [filter.lifecycle],
+          {
+            ...(filter?.projectId === undefined ? {} : { projectId: filter.projectId }),
+            limit: 1_000,
+          },
         )
         .pipe(Effect.catch(() => Effect.succeed([] as WorkItem[])));
-      return items.map(buildQueueItem);
+      return items
+        .filter(
+          (item) =>
+            (filter?.workflowId === undefined || item.workflowId === filter.workflowId) &&
+            (filter?.repositoryPath === undefined || item.repositoryPath === filter.repositoryPath),
+        )
+        .slice(0, filter?.limit ?? items.length)
+        .map(buildQueueItem);
     });
 
   const listRuns: SymphonyOrchestratorShape["listRuns"] = (filter) =>
     Effect.gen(function* () {
       const currentTimeMs = yield* Clock.currentTimeMillis;
       const attempts = yield* runAttempts
-        .listRecent({ limit: filter?.limit ?? 50 })
+        .listRecent({ limit: filter === undefined ? 50 : 1_000 })
         .pipe(Effect.catch(() => Effect.succeed([])));
       const workItemIds = Array.from(
         new Set(attempts.map((attempt) => String(attempt.workItemId))),
@@ -787,7 +965,17 @@ const makeOrchestrator = Effect.gen(function* () {
           }),
         );
       }
-      return summaries;
+      return summaries
+        .filter(
+          (summary) =>
+            (filter?.projectId === undefined || summary.projectId === filter.projectId) &&
+            (filter?.workflowId === undefined || summary.workflowId === filter.workflowId) &&
+            (filter?.repositoryPath === undefined ||
+              summary.repositoryPath === filter.repositoryPath) &&
+            (filter?.status === undefined || summary.status === filter.status) &&
+            (filter?.lifecycle === undefined || summary.lifecycle === filter.lifecycle),
+        )
+        .slice(0, filter?.limit ?? summaries.length);
     });
 
   const getRun: SymphonyOrchestratorShape["getRun"] = (runAttemptId) =>
@@ -830,10 +1018,10 @@ const makeOrchestrator = Effect.gen(function* () {
       .listForAttempt(RunAttemptId.make(runAttemptId))
       .pipe(Effect.catch(() => Effect.succeed([])));
 
-  const listAttention: SymphonyOrchestratorShape["listAttention"] = (limit) =>
+  const listAttention: SymphonyOrchestratorShape["listAttention"] = (filter) =>
     Effect.gen(function* () {
       const durable = yield* approvals
-        .listPending({ limit: limit ?? 100 })
+        .listPending({ limit: filter?.projectId === undefined ? (filter?.limit ?? 100) : 1_000 })
         .pipe(Effect.catch(() => Effect.succeed([])));
       const attention: AttentionItem[] = [];
       for (const request of durable) {
@@ -842,12 +1030,85 @@ const makeOrchestrator = Effect.gen(function* () {
       // Direct attention items (audit item 7: pr_creation_failed raises a
       // durable record; attention is no longer approval-derived only).
       const raised = yield* attentionRepository
-        .listOpen({ limit: limit ?? 100 })
+        .listOpen({ limit: filter?.projectId === undefined ? (filter?.limit ?? 100) : 1_000 })
         .pipe(Effect.catch(() => Effect.succeed([])));
       for (const item of raised) {
         attention.push(item);
       }
-      return attention;
+      if (filter?.projectId === undefined)
+        return attention.slice(0, filter?.limit ?? attention.length);
+      const matching: AttentionItem[] = [];
+      for (const item of attention) {
+        const workItem = yield* workItems
+          .getById(item.workItemId)
+          .pipe(Effect.catch(() => Effect.succeed(null)));
+        if (workItem?.projectId === filter.projectId) matching.push(item);
+      }
+      return matching.slice(0, filter.limit ?? matching.length);
+    });
+
+  const listProjects: SymphonyOrchestratorShape["listProjects"] = () =>
+    projects.list().pipe(Effect.catch(() => Effect.succeed([])));
+
+  const getProject: SymphonyOrchestratorShape["getProject"] = (projectId) =>
+    projects.getById(projectId).pipe(Effect.catch(() => Effect.succeed(null)));
+
+  const createProject: SymphonyOrchestratorShape["createProject"] = (input) =>
+    Effect.gen(function* () {
+      const project = yield* projects.create({
+        id: input.id,
+        codeProjectId: ProjectId.make(input.codeProjectId),
+        title: input.title,
+        repositoryPath: input.repositoryPath,
+        status: "paused",
+        setupState: "ready",
+        configuration: input.configuration,
+        revision: 0,
+        legacyWorkflowId: null,
+        createdAt: input.now,
+        updatedAt: input.now,
+      });
+      yield* syncProjectWorkflow(project);
+      return project;
+    });
+
+  const updateProject: SymphonyOrchestratorShape["updateProject"] = (input) =>
+    Effect.gen(function* () {
+      const current = yield* projects.getById(input.projectId);
+      if (current === null) return null;
+      const configuration = input.configuration ?? current.configuration;
+      const updated = yield* projects.update(
+        {
+          ...current,
+          ...(input.title === undefined ? {} : { title: input.title }),
+          ...(input.configuration === undefined ? {} : { configuration: input.configuration }),
+          ...(input.status === undefined ? {} : { status: input.status }),
+          setupState:
+            configuration === null || current.codeProjectId === null ? "needs_setup" : "ready",
+          updatedAt: input.now,
+        },
+        input.expectedRevision,
+      );
+      if (updated !== null) yield* syncProjectWorkflow(updated);
+      return updated;
+    });
+
+  const getProjectBoard: SymphonyOrchestratorShape["getProjectBoard"] = (projectId) =>
+    Effect.gen(function* () {
+      const project = yield* projects
+        .getById(projectId)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (project === null) return null;
+      const workItemsForProject = yield* workItems
+        .listByLifecycle(ALL_WORK_LIFECYCLES, { projectId, limit: 1_000 })
+        .pipe(Effect.catch(() => Effect.succeed([])));
+      const sourceControl = yield* resolveProjectSourceControl(project.repositoryPath);
+      return projectBoardFromWorkItems({
+        project,
+        sourceControl,
+        workItems: workItemsForProject,
+        generatedAt: yield* nowIso,
+      });
     });
 
   const listWorkflows: SymphonyOrchestratorShape["listWorkflows"] = () =>
@@ -871,8 +1132,11 @@ const makeOrchestrator = Effect.gen(function* () {
       return [...state.trackerHealth];
     });
 
-  const listHistory: SymphonyOrchestratorShape["listHistory"] = (limit) =>
-    listRuns(limit === undefined ? {} : { limit }).pipe(Effect.catch(() => Effect.succeed([])));
+  const listHistory: SymphonyOrchestratorShape["listHistory"] = (filter) =>
+    listRuns(filter).pipe(
+      Effect.map((runs) => runs.filter((run) => RUN_TERMINAL_STATUSES.has(run.status))),
+      Effect.catch(() => Effect.succeed([])),
+    );
 
   const resolveAttention: SymphonyOrchestratorShape["resolveAttention"] = (
     attentionItemId,
@@ -973,7 +1237,12 @@ const makeOrchestrator = Effect.gen(function* () {
     const item = yield* workItems
       .getById(WorkItemId.make(workItemId))
       .pipe(Effect.catch(() => Effect.succeed(null)));
-    if (item === null || item.lifecycle === "preparing" || item.lifecycle === "running") {
+    if (
+      item === null ||
+      item.lifecycle === "preparing" ||
+      item.lifecycle === "running" ||
+      item.lifecycle === "testing"
+    ) {
       return null;
     }
     if (item.lifecycle === "changes_requested") {
@@ -1443,6 +1712,11 @@ const makeOrchestrator = Effect.gen(function* () {
     listQueue,
     listRuns,
     getRun,
+    listProjects,
+    getProject,
+    createProject,
+    updateProject,
+    getProjectBoard,
     listRunEvents,
     listAttention,
     listWorkflows,

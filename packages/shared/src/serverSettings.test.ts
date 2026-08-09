@@ -195,19 +195,44 @@ describe("serverSettings helpers", () => {
     const current = {
       ...DEFAULT_SERVER_SETTINGS,
       trackers: {
-        github: { enabled: false, credentialRef: "$GH_TOKEN", scope: "owner/repo", config: {} },
-        jira: { enabled: true, scope: "NEO", config: {} },
+        github: {
+          enabled: false,
+          credential: "",
+          credentialRedacted: false,
+          credentialRef: "$GH_TOKEN",
+          scope: "owner/repo",
+          config: {},
+        },
+        jira: {
+          enabled: true,
+          credential: "",
+          credentialRedacted: false,
+          scope: "NEO",
+          config: {},
+        },
       },
     };
 
     const next = applyServerSettingsPatch(current, {
       trackers: {
-        github: { enabled: true, scope: "owner/repo", config: {} },
+        github: {
+          enabled: true,
+          credential: "",
+          credentialRedacted: false,
+          scope: "owner/repo",
+          config: {},
+        },
       },
     });
 
     expect(next.trackers).toEqual({
-      github: { enabled: true, scope: "owner/repo", config: {} },
+      github: {
+        enabled: true,
+        credential: "",
+        credentialRedacted: false,
+        scope: "owner/repo",
+        config: {},
+      },
     });
   });
 });

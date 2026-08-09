@@ -36,6 +36,8 @@ it.effect("composes settings defaults under the workflow provider", () =>
     const service = makeEnablement({
       github: {
         enabled: true,
+        credential: "",
+        credentialRedacted: false,
         scope: "settings/repo",
         credentialRef: "$GH_TOKEN",
         config: {},

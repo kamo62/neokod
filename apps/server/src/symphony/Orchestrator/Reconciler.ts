@@ -70,7 +70,7 @@ const workflowById = (
 export const reconcileStaleClaims = (deps: ReconcilerDeps) =>
   Effect.gen(function* () {
     const held = yield* deps.workItems
-      .listByLifecycle(["preparing", "running"])
+      .listByLifecycle(["preparing", "running", "testing"])
       .pipe(Effect.catch(() => Effect.succeed([] as WorkItem[])));
     if (held.length === 0) {
       return;

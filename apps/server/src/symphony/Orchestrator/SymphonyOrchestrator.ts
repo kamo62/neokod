@@ -4,6 +4,10 @@ import type {
   RunDetails,
   RunEvent,
   RunSummary,
+  SymphonyProject,
+  SymphonyProjectBoard,
+  SymphonyProjectConfiguration,
+  SymphonyProjectId,
   SymphonyOverview,
   TrackerHealth,
   WorkflowRecord,
@@ -11,6 +15,7 @@ import type {
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
+import type { SymphonyPersistenceError } from "../Persistence/Errors.ts";
 
 /**
  * SymphonyOrchestrator - single-authority orchestrator for Symphony Mode.
@@ -29,19 +34,50 @@ export interface SymphonyOrchestratorShape {
   readonly refreshNow: () => Effect.Effect<void>;
   readonly getOverview: () => Effect.Effect<SymphonyOverview>;
   readonly listQueue: (filter?: {
-    readonly workflowId?: string;
-    readonly limit?: number;
+    readonly projectId?: SymphonyProjectId | undefined;
+    readonly workflowId?: string | undefined;
+    readonly repositoryPath?: string | undefined;
+    readonly lifecycle?: QueueItem["lifecycle"] | undefined;
+    readonly limit?: number | undefined;
   }) => Effect.Effect<QueueItem[]>;
   readonly listRuns: (filter?: {
-    readonly workflowId?: string;
-    readonly limit?: number;
+    readonly projectId?: SymphonyProjectId | undefined;
+    readonly workflowId?: string | undefined;
+    readonly repositoryPath?: string | undefined;
+    readonly status?: RunSummary["status"] | undefined;
+    readonly lifecycle?: RunSummary["lifecycle"] | undefined;
+    readonly limit?: number | undefined;
   }) => Effect.Effect<RunSummary[]>;
   /** Full run details: work item, attempt, timeline, attention items. */
   readonly getRun: (runAttemptId: string) => Effect.Effect<RunDetails | null>;
+  readonly listProjects: () => Effect.Effect<SymphonyProject[]>;
+  readonly getProject: (projectId: SymphonyProjectId) => Effect.Effect<SymphonyProject | null>;
+  readonly createProject: (input: {
+    readonly id: SymphonyProjectId;
+    readonly codeProjectId: string;
+    readonly title: string;
+    readonly repositoryPath: string;
+    readonly configuration: SymphonyProjectConfiguration;
+    readonly now: string;
+  }) => Effect.Effect<SymphonyProject, SymphonyPersistenceError>;
+  readonly updateProject: (input: {
+    readonly projectId: SymphonyProjectId;
+    readonly expectedRevision: number;
+    readonly title?: string;
+    readonly configuration?: SymphonyProjectConfiguration;
+    readonly status?: "active" | "paused";
+    readonly now: string;
+  }) => Effect.Effect<SymphonyProject | null, SymphonyPersistenceError>;
+  readonly getProjectBoard: (
+    projectId: SymphonyProjectId,
+  ) => Effect.Effect<SymphonyProjectBoard | null>;
   /** The run's event timeline (subscribeRunEvents stream). */
   readonly listRunEvents: (runAttemptId: string) => Effect.Effect<RunEvent[]>;
   /** Open attention items: pending approvals and input requests. */
-  readonly listAttention: (limit?: number) => Effect.Effect<AttentionItem[]>;
+  readonly listAttention: (filter?: {
+    readonly projectId?: SymphonyProjectId | undefined;
+    readonly limit?: number | undefined;
+  }) => Effect.Effect<AttentionItem[]>;
   readonly listWorkflows: () => Effect.Effect<WorkflowRecord[]>;
   readonly listTrackerHealth: () => Effect.Effect<TrackerHealth[]>;
   /** Single workflow record (getWorkflow RPC; audit item 8 lane B). */
@@ -49,7 +85,10 @@ export interface SymphonyOrchestratorShape {
   /** Tracker health/profiles for the UI (listTrackers RPC). */
   readonly listTrackers: () => Effect.Effect<TrackerHealth[]>;
   /** Terminal runs, newest first (listHistory RPC). */
-  readonly listHistory: (limit?: number) => Effect.Effect<RunSummary[]>;
+  readonly listHistory: (filter?: {
+    readonly projectId?: SymphonyProjectId | undefined;
+    readonly limit?: number | undefined;
+  }) => Effect.Effect<RunSummary[]>;
   /** Resolve a raised attention item (resolveAttention RPC). */
   readonly resolveAttention: (
     attentionItemId: string,

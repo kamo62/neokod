@@ -1,7 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-
-import { SymphonyHistoryView } from "../components/symphony/SymphonyHistoryView";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/symphony/history")({
-  component: SymphonyHistoryView,
+  beforeLoad: () => {
+    throw redirect({ to: "/symphony" });
+  },
 });

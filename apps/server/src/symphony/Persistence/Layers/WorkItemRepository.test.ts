@@ -1,4 +1,4 @@
-import { WorkflowId, WorkItemId } from "@neokod/contracts";
+import { SymphonyProjectId, WorkflowId, WorkItemId } from "@neokod/contracts";
 import type { WorkItem, WorkLifecycle } from "@neokod/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -18,6 +18,7 @@ import {
 } from "../../../persistence/Layers/Sqlite.ts";
 
 const layer = it.layer(WorkItemRepositoryLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
+const PROJECT_ID = SymphonyProjectId.make("symphony-project-test");
 
 const makeWorkItem = (
   id: string,
@@ -29,6 +30,7 @@ const makeWorkItem = (
     return {
       id: WorkItemId.make(id),
       mode: "symphony",
+      projectId: PROJECT_ID,
       workflowId: undefined,
       objective: `Implement ${trackerIssueId}`,
       acceptanceCriteria: [],
@@ -155,7 +157,7 @@ layer("WorkItemRepository claim authority", (it) => {
       const afterUpsert = yield* repo.upsert(reUpsert);
 
       expect(afterUpsert.id).toBe(id);
-      const byIssue = yield* repo.getByTrackerIssue("github", "46");
+      const byIssue = yield* repo.getByTrackerIssue(PROJECT_ID, "github", "46");
       expect(byIssue?.id).toBe(id);
     }),
   );

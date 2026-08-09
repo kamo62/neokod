@@ -42,6 +42,40 @@ export function createSymphonyEnvironmentAtoms<R, E>(
       staleTimeMs: 5_000,
       refreshIntervalMs: 10_000,
     }),
+    projects: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:symphony:projects",
+      tag: SYMPHONY_WS_METHODS.listProjects,
+      staleTimeMs: 5_000,
+      refreshIntervalMs: 15_000,
+    }),
+    project: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:symphony:project",
+      tag: SYMPHONY_WS_METHODS.getProject,
+      staleTimeMs: 5_000,
+      refreshIntervalMs: 15_000,
+    }),
+    projectBoard: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:symphony:projectBoard",
+      tag: SYMPHONY_WS_METHODS.getProjectBoard,
+      staleTimeMs: 2_000,
+      refreshIntervalMs: 5_000,
+    }),
+    createProject: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:symphony:createProject",
+      tag: SYMPHONY_WS_METHODS.createProject,
+    }),
+    updateProject: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:symphony:updateProject",
+      tag: SYMPHONY_WS_METHODS.updateProject,
+    }),
+    startProject: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:symphony:startProject",
+      tag: SYMPHONY_WS_METHODS.startProject,
+    }),
+    pauseProject: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:symphony:pauseProject",
+      tag: SYMPHONY_WS_METHODS.pauseProject,
+    }),
     attention: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:symphony:attention",
       tag: SYMPHONY_WS_METHODS.listAttention,

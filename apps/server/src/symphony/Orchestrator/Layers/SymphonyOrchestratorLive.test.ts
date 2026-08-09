@@ -22,6 +22,7 @@ import { nowIso } from "../../Domain/Time.ts";
 import { SqlitePersistenceMemory } from "../../../persistence/Layers/Sqlite.ts";
 import { WorkflowRepository } from "../../Persistence/Services/WorkflowRepository.ts";
 import { WorkflowRepositoryLive } from "../../Persistence/Layers/WorkflowRepository.ts";
+import { SymphonyProjectRepositoryLive } from "../../Persistence/Layers/SymphonyProjectRepository.ts";
 import { WorkItemRepository } from "../../Persistence/Services/WorkItemRepository.ts";
 import { WorkItemRepositoryLive } from "../../Persistence/Layers/WorkItemRepository.ts";
 import { RunAttemptRepository } from "../../Persistence/Services/RunAttemptRepository.ts";
@@ -49,6 +50,8 @@ import { PullRequestService } from "../../Evidence/PullRequest.ts";
 import { buildRunPrompt, type ReviewFeedbackContext } from "../../Runner/Prompt.ts";
 import { WorkflowLoaderService, type WorkflowLoader } from "../../Workflow/Loader.ts";
 import { layerTest as serverSettingsTestLayer } from "../../../serverSettings.ts";
+import * as ServerConfig from "../../../config.ts";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 
 const encodeJson = Schema.encodeUnknownSync(Schema.UnknownFromJsonString);
 
@@ -312,6 +315,7 @@ const layer = it.layer(
   SymphonyOrchestratorLive.pipe(
     Layer.provideMerge(WorkItemRepositoryLive),
     Layer.provideMerge(WorkflowRepositoryLive),
+    Layer.provideMerge(SymphonyProjectRepositoryLive),
     Layer.provideMerge(RunAttemptRepositoryLive),
     Layer.provideMerge(RunEventRepositoryLive),
     Layer.provideMerge(OrchestratorStateRepositoryLive),
@@ -327,42 +331,47 @@ const layer = it.layer(
     Layer.provideMerge(AuditRepositoryLive),
     Layer.provideMerge(NotificationCoordinatorLive),
     Layer.provideMerge(
-      Layer.effect(
-        PullRequestService,
-        Effect.gen(function* () {
-          // Per-test control of the fresh host query (fix-lane item 8: the
-          // gate must not be proven by a stub that always passes).
-          pullRequestRefreshRef = yield* Ref.make<PullRequestEvidence | null>({
-            number: 1,
-            title: "t",
-            branch: "b",
-            baseBranch: "m",
-            status: "open",
-            ciStatus: "success",
-            reviewState: "approved",
-            mergeable: "mergeable",
-            unresolvedComments: 0,
-          });
-          pullRequestCommentsRef = yield* Ref.make<ReadonlyArray<{
-            readonly body: string;
-            readonly author?: string;
-          }> | null>(null);
-          return {
-            create: () => Effect.succeed(null as never),
-            refresh: () => Ref.get(pullRequestRefreshRef as Ref.Ref<PullRequestEvidence | null>),
-            listUnresolvedComments: () =>
-              Ref.get(
-                pullRequestCommentsRef as Ref.Ref<ReadonlyArray<{
-                  readonly body: string;
-                  readonly author?: string;
-                }> | null>,
-              ),
-          } satisfies PullRequestService["Service"];
-        }),
+      Layer.mergeAll(
+        Layer.effect(
+          PullRequestService,
+          Effect.gen(function* () {
+            // Per-test control of the fresh host query (fix-lane item 8: the
+            // gate must not be proven by a stub that always passes).
+            pullRequestRefreshRef = yield* Ref.make<PullRequestEvidence | null>({
+              number: 1,
+              title: "t",
+              branch: "b",
+              baseBranch: "m",
+              status: "open",
+              ciStatus: "success",
+              reviewState: "approved",
+              mergeable: "mergeable",
+              unresolvedComments: 0,
+            });
+            pullRequestCommentsRef = yield* Ref.make<ReadonlyArray<{
+              readonly body: string;
+              readonly author?: string;
+            }> | null>(null);
+            return {
+              create: () => Effect.succeed(null as never),
+              refresh: () => Ref.get(pullRequestRefreshRef as Ref.Ref<PullRequestEvidence | null>),
+              listUnresolvedComments: () =>
+                Ref.get(
+                  pullRequestCommentsRef as Ref.Ref<ReadonlyArray<{
+                    readonly body: string;
+                    readonly author?: string;
+                  }> | null>,
+                ),
+            } satisfies PullRequestService["Service"];
+          }),
+        ),
+        serverSettingsTestLayer({ trackers: { github: { enabled: true } } }),
+        ServerConfig.layerTest(process.cwd(), {
+          prefix: "neokod-symphony-orchestrator-test-",
+        }).pipe(Layer.provide(NodeServices.layer)),
+        SqlitePersistenceMemory,
       ),
     ),
-    Layer.provideMerge(serverSettingsTestLayer({ trackers: { github: { enabled: true } } })),
-    Layer.provideMerge(SqlitePersistenceMemory),
   ),
 );
 

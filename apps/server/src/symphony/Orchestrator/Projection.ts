@@ -1,4 +1,9 @@
-import type { EffectiveWorkflowConfig, NormalizedIssue, WorkItem } from "@neokod/contracts";
+import type {
+  EffectiveWorkflowConfig,
+  NormalizedIssue,
+  SymphonyProjectId,
+  WorkItem,
+} from "@neokod/contracts";
 import { WorkItemId } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 
@@ -15,14 +20,18 @@ import type { EligibilityResult } from "./Eligibility.ts";
  * (lifecycle `eligible`) with their reasons so the Queue view can explain them.
  */
 
-export const workItemIdForIssue = (trackerKind: string, issueId: string): WorkItemId =>
-  WorkItemId.make(`${trackerKind}:${issueId}`);
+export const workItemIdForIssue = (
+  projectId: SymphonyProjectId,
+  trackerKind: string,
+  issueId: string,
+): WorkItemId => WorkItemId.make(`${projectId}:${trackerKind}:${issueId}`);
 
 export const projectWorkItem = Effect.fn("projectWorkItem")(function* (
   issue: NormalizedIssue,
   config: EffectiveWorkflowConfig,
   eligibility: EligibilityResult,
   now: string,
+  projectId: SymphonyProjectId,
 ) {
   const workspaceKey = yield* deriveWorkspaceKeyEffect(issue.identifier);
   const lifecycle = inferQueuedLifecycle(issue, eligibility);
@@ -34,8 +43,9 @@ export const projectWorkItem = Effect.fn("projectWorkItem")(function* (
   };
 
   const workItem: WorkItem = {
-    id: workItemIdForIssue(config.trackerKind, issue.id),
+    id: workItemIdForIssue(projectId, config.trackerKind, issue.id),
     mode: "symphony",
+    projectId,
     repositoryPath: config.repositoryPath,
     objective: issue.title,
     acceptanceCriteria: [],

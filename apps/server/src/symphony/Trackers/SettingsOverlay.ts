@@ -9,11 +9,13 @@ const SCOPE_KEY: Partial<Record<TrackerKind, string>> = {
 };
 
 const SECRET_KEY: Partial<Record<TrackerKind, string>> = {
-  github: "tokenEnv",
+  github: "token",
   jira: "api_token",
   linear: "api_key",
   gitlab: "api_key",
   asana: "api_key",
+  azure_boards: "api_key",
+  github_projects: "api_key",
 };
 
 export const trackerSettingsOverlay = (
@@ -30,8 +32,10 @@ export const trackerSettingsOverlay = (
     overlay[scopeKey] = tracker.scope;
   }
   const secretKey = SECRET_KEY[kind];
-  if (secretKey !== undefined && tracker.credentialRef !== undefined) {
-    overlay[secretKey] =
+  if (secretKey !== undefined && tracker.credential.length > 0) {
+    overlay[secretKey] = tracker.credential;
+  } else if (tracker.credentialRef !== undefined) {
+    overlay[kind === "github" ? "tokenEnv" : (secretKey ?? "credential")] =
       kind === "github" ? tracker.credentialRef.replace(/^\$/, "") : tracker.credentialRef;
   }
   return overlay;

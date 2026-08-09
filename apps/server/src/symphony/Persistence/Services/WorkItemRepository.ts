@@ -23,6 +23,7 @@ export interface WorkItemRepositoryShape {
 
   /** Read the work item for a tracker issue, if one exists. */
   readonly getByTrackerIssue: (
+    projectId: string,
     trackerKind: string,
     trackerIssueId: string,
   ) => Effect.Effect<WorkItem | null, SymphonyPersistenceError>;
@@ -30,7 +31,11 @@ export interface WorkItemRepositoryShape {
   /** Read work items in a set of lifecycles, optionally scoped. */
   readonly listByLifecycle: (
     lifecycles: ReadonlyArray<WorkLifecycle>,
-    options?: { readonly workflowId?: string; readonly limit?: number },
+    options?: {
+      readonly projectId?: string;
+      readonly workflowId?: string;
+      readonly limit?: number;
+    },
   ) => Effect.Effect<WorkItem[], SymphonyPersistenceError>;
 
   /** Claim: conditional update to `preparing`, or {@link SymphonyClaimLost}. */
