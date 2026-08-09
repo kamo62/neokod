@@ -115,18 +115,19 @@ const fakeSignaller = (config: {
 }) =>
   Effect.gen(function* () {
     const calls = yield* Ref.make<Array<NodeJS.Signals>>([]);
-    const sentCount = yield* Ref.make(0);
+    const alive = yield* Ref.make(true);
     const signaller: ProcessGroupSignaller = {
       signalGroup: (_pgid, signal) =>
         Effect.gen(function* () {
           yield* Ref.update(calls, (prev) => [...prev, signal]);
-          if (signal === "SIGTERM") return config.termResult ?? "sent";
+          if (signal === "SIGTERM") {
+            yield* Ref.set(alive, config.aliveAfterTerm);
+            return config.termResult ?? "sent";
+          }
+          yield* Ref.set(alive, config.aliveAfterKill);
           return "sent";
         }),
-      isGroupAlive: (_pgid) =>
-        Ref.updateAndGet(sentCount, (n) => n + 1).pipe(
-          Effect.map((n) => (n === 1 ? config.aliveAfterTerm : config.aliveAfterKill)),
-        ),
+      isGroupAlive: (_pgid) => Ref.get(alive),
     };
     return { signaller, calls };
   });
@@ -219,23 +220,32 @@ describe("terminateProcessGroup (real POSIX signaller)", () => {
         detached: true,
         stdio: "ignore",
       });
+      child.unref();
       const pid = child.pid;
-      expect(pid).toBeGreaterThan(0);
-      const spawnedAtMs = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-      const identity = makeProvenGroupIdentity({
-        pid: pid as number,
-        pgid: pid as number,
-        spawnedAtMs,
-        platform,
-      });
-      if (!identity.ok) throw new Error("expected proven identity for real child");
+      yield* Effect.gen(function* () {
+        expect(pid).toBeGreaterThan(0);
+        const spawnedAtMs = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+        const identity = makeProvenGroupIdentity({
+          pid: pid as number,
+          pgid: pid as number,
+          spawnedAtMs,
+          platform,
+        });
+        if (!identity.ok) throw new Error("expected proven identity for real child");
 
-      // Confirm the group is alive before termination.
-      expect(yield* posixProcessGroupSignaller.isGroupAlive(pid as number)).toBe(true);
+        // Confirm the group is alive before termination.
+        expect(yield* posixProcessGroupSignaller.isGroupAlive(pid as number)).toBe(true);
 
-      const outcome = yield* terminateProcessGroup(identity.identity, { graceMs: 2_000 });
-      expect(["terminated", "escalated_kill", "already_dead"]).toContain(outcome.status);
-      expect(yield* posixProcessGroupSignaller.isGroupAlive(pid as number)).toBe(false);
+        const outcome = yield* terminateProcessGroup(identity.identity, { graceMs: 2_000 });
+        expect(["terminated", "escalated_kill", "already_dead"]).toContain(outcome.status);
+        expect(yield* posixProcessGroupSignaller.isGroupAlive(pid as number)).toBe(false);
+      }).pipe(
+        Effect.ensuring(
+          typeof pid === "number"
+            ? posixProcessGroupSignaller.signalGroup(pid, "SIGKILL").pipe(Effect.asVoid)
+            : Effect.void,
+        ),
+      );
     }),
   );
 });

@@ -1,4 +1,4 @@
-## 3.5.32 - 2026-08-08 (Minor)
+## 3.5.32 - 2026-08-09 (Minor)
 
 Release impact: Minor because this adds an opt-in Kiro provider and Work-mode path while leaving existing providers and default behavior unchanged.
 
