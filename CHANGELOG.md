@@ -1,3 +1,9 @@
+## 3.5.37 - 2026-08-09 (Patch)
+
+Release impact: Patch because this makes the existing Symphony review path fail closed for unsupported providers without changing review configuration.
+
+- Provider instances now declare whether they can perform Symphony code review. Model resolution ignores unproven providers and keeps Kiro excluded from Symphony execution and review.
+
 ## 3.5.36 - 2026-08-09 (Patch)
 
 Release impact: Patch because this polishes the shipped subagent panel without changing its contracts or lifecycle behavior.

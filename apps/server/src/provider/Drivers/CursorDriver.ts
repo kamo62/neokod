@@ -178,6 +178,7 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
         displayName,
         accentColor,
         enabled,
+        symphonyCodeReview: true,
         snapshot,
         adapter,
         textGeneration,

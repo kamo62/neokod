@@ -214,6 +214,7 @@ export const KiroDriver: ProviderDriver<KiroSettings, KiroDriverEnv> = {
         displayName,
         accentColor,
         enabled,
+        symphonyCodeReview: false,
         snapshot,
         adapter,
         textGeneration,
