@@ -1,3 +1,9 @@
+## 3.5.35 - 2026-08-09 (Patch)
+
+Release impact: Patch because this adds regression coverage for shipped runtime safety and subagent UI behavior without changing public contracts.
+
+- Added browser coverage for subagent lifecycle and density transitions, plus contract tests that keep Symphony process-group identity positive, paired, and fail-closed.
+
 ## 3.5.34 - 2026-08-09 (Patch)
 
 Release impact: Patch because this prevents stale settings writes and responses from rolling back newer server state without changing the settings schema.
