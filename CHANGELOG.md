@@ -1,3 +1,10 @@
+## 3.5.43 - 2026-08-09 (Patch)
+
+Release impact: Patch because this restores existing Symphony navigation and corrects source-control discovery without changing configured integrations.
+
+- Switching from Code to Symphony now rejects stale cross-mode view snapshots instead of navigating back to Code.
+- Source Control now distinguishes missing command-line tools from probe failures, gives GitHub discovery more time, and surfaces verification errors across settings, import, and publishing flows.
+
 ## 3.5.42 - 2026-08-09 (Minor)
 
 Release impact: Minor because this adds an opt-in server transport mode while preserving existing defaults, alongside CLI and CI corrections.
