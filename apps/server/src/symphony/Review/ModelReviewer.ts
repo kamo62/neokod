@@ -1,10 +1,9 @@
-import {
-  ProviderDriverKind,
-  type EffectiveWorkflowConfig,
-  type ModelReviewArtefact,
-  type ModelReviewerResult,
-  type ServerProvider,
-  type WorkItem,
+import type {
+  EffectiveWorkflowConfig,
+  ModelReviewArtefact,
+  ModelReviewerResult,
+  ServerProvider,
+  WorkItem,
 } from "@neokod/contracts";
 import { createModelSelection } from "@neokod/shared/model";
 import * as Context from "effect/Context";
@@ -67,16 +66,18 @@ const resolveModel = (
   const matches = providers.filter(
     ({ instance, snapshot }) =>
       instance.enabled &&
-      instance.driverKind !== ProviderDriverKind.make("kiro") &&
+      instance.symphonyCodeReview === true &&
       snapshot.availability !== "unavailable" &&
       snapshot.models.some((candidate) => candidate.slug === model),
   );
   if (matches.length === 0) {
-    return { error: `No enabled provider instance exposes reviewer model '${model}'.` };
+    return {
+      error: `No enabled review-capable provider instance exposes reviewer model '${model}'.`,
+    };
   }
   if (matches.length > 1) {
     return {
-      error: `Reviewer model '${model}' is ambiguous across provider instances: ${matches
+      error: `Reviewer model '${model}' is ambiguous across review-capable provider instances: ${matches
         .map(({ instance }) => String(instance.instanceId))
         .join(", ")}.`,
     };
