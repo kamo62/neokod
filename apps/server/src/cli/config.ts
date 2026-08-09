@@ -70,6 +70,12 @@ export const publicOriginFlag = Flag.string("public-origin").pipe(
   ),
   Flag.optional,
 );
+export const strictTransportFlag = Flag.boolean("strict-transport").pipe(
+  Flag.withDescription(
+    "Harden the loopback transport: mint a per-launch loopback token and enforce Host/Origin validation. Opt-in and off by default (equivalent to NEOKOD_STRICT_TRANSPORT).",
+  ),
+  Flag.optional,
+);
 const envConfig = <A>(name: string, legacyName: string, read: (key: string) => Config.Config<A>) =>
   read(name).pipe(Config.orElse(() => read(legacyName)));
 
@@ -159,6 +165,11 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
+  strictTransport: envConfig(
+    "NEOKOD_STRICT_TRANSPORT",
+    "T3CODE_STRICT_TRANSPORT",
+    Config.boolean,
+  ).pipe(Config.option, Config.map(Option.getOrUndefined)),
 });
 
 export interface CliServerFlags {
@@ -173,6 +184,7 @@ export interface CliServerFlags {
   readonly logWebSocketEvents: Option.Option<boolean>;
   readonly publicHost: Option.Option<string>;
   readonly publicOrigin: Option.Option<string>;
+  readonly strictTransport: Option.Option<boolean>;
 }
 
 export interface CliProjectLocationFlags {
@@ -206,6 +218,7 @@ export const sharedServerCommandFlags = {
   logWebSocketEvents: logWebSocketEventsFlag,
   publicHost: publicHostFlag,
   publicOrigin: publicOriginFlag,
+  strictTransport: strictTransportFlag,
 } as const;
 
 const resolveOptionPrecedence = <Value>(
@@ -248,6 +261,7 @@ export const resolveServerConfig = (
       logWebSocketEvents: flags.logWebSocketEvents ?? Option.none(),
       publicHost: flags.publicHost ?? Option.none(),
       publicOrigin: flags.publicOrigin ?? Option.none(),
+      strictTransport: flags.strictTransport ?? Option.none(),
     } satisfies CliServerFlags;
     const bootstrapFd = Option.getOrUndefined(normalizedFlags.bootstrapFd) ?? env.bootstrapFd;
     const bootstrapEnvelope =
@@ -338,6 +352,13 @@ export const resolveServerConfig = (
     const host = bootstrap?.host ?? "127.0.0.1";
     const publicHost = Option.getOrUndefined(normalizedFlags.publicHost) ?? env.publicHost;
     const publicOrigin = Option.getOrUndefined(normalizedFlags.publicOrigin) ?? env.publicOrigin;
+    const strictTransport = Option.getOrElse(
+      resolveOptionPrecedence(
+        normalizedFlags.strictTransport,
+        Option.fromUndefinedOr(env.strictTransport),
+      ),
+      () => false,
+    );
     const bootstrapLoopbackToken =
       bootstrap?.transport === "loopback" ? bootstrap.loopbackAuthToken : undefined;
     // Serve/start on the loopback transport without a desktop bootstrap mints
@@ -346,7 +367,7 @@ export const resolveServerConfig = (
     // never persisted to a stable location.
     const loopbackAuthToken =
       bootstrapLoopbackToken ??
-      (transport === "loopback" && bootstrapLoopbackToken === undefined && mode === "web"
+      (strictTransport && transport === "loopback" && mode === "web"
         ? NodeCrypto.randomBytes(24).toString("base64url")
         : undefined);
     const logLevel = Option.getOrElse(cliLogLevel, () => env.logLevel);
@@ -384,6 +405,7 @@ export const resolveServerConfig = (
       loopbackAuthToken,
       publicHosts: publicHost === undefined ? [] : [publicHost],
       publicOrigins: publicOrigin === undefined ? [] : [publicOrigin],
+      strictTransport,
       autoBootstrapProjectFromCwd,
       logWebSocketEvents,
     };
@@ -408,6 +430,7 @@ export const resolveCliProjectConfig = (
       logWebSocketEvents: Option.none(),
       publicHost: Option.none(),
       publicOrigin: Option.none(),
+      strictTransport: Option.none(),
     },
     cliLogLevel,
   );

@@ -43,6 +43,7 @@ const makeServerConfig = Effect.fn(function* (baseDir: string) {
     loopbackAuthToken: undefined,
     publicHosts: [],
     publicOrigins: [],
+    strictTransport: false,
     staticDir: undefined,
     devUrl: undefined,
     noBrowser: false,

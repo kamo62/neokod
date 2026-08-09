@@ -363,6 +363,7 @@ const buildAppUnderTest = (options?: {
       loopbackAuthToken: undefined,
       publicHosts: [],
       publicOrigins: [],
+      strictTransport: false,
       autoBootstrapProjectFromCwd: false,
       logWebSocketEvents: false,
       ...options?.config,

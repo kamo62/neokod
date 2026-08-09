@@ -92,6 +92,12 @@ export const make = Effect.gen(function* () {
     declaredPublicHosts.length > 0 ? declaredPublicHosts.join(", ") : "loopback host";
 
   const validate = Effect.gen(function* () {
+    // Host/Origin validation is opt-in (NEOKOD_STRICT_TRANSPORT), off by
+    // default so `neokod serve` runs behind a reverse proxy with no config.
+    // Paired with an unminted loopback token this is the pass-through transport.
+    if (!config.strictTransport) {
+      return;
+    }
     const request = yield* HttpServerRequest.HttpServerRequest;
     const requestUrl = HttpServerRequest.toURL(request);
     if (Option.isNone(requestUrl)) {

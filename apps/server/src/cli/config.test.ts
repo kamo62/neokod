@@ -30,6 +30,7 @@ const emptyFlags: CliServerFlags = {
   logWebSocketEvents: Option.none(),
   publicHost: Option.none(),
   publicOrigin: Option.none(),
+  strictTransport: Option.none(),
 };
 
 it.layer(NodeServices.layer)("cli config resolution", (it) => {
@@ -86,6 +87,33 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       expect(resolved.host).toBe("127.0.0.1");
       expect(resolved.transport).toBe("loopback");
       expect(resolved.port).toBe(4001);
+    }),
+  );
+
+  it.effect("strict-transport mints the loopback token; default does not", () =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const baseDir = path.join(NodeOS.tmpdir(), "neokod-cli-strict-transport");
+      const env = Layer.mergeAll(
+        ConfigProvider.layer(ConfigProvider.fromEnv({ env: { NEOKOD_HOME: baseDir } })),
+        NetService.layer,
+      );
+
+      // Default: serve does not mint a token, leaving the transport open.
+      const open = yield* resolveServerConfig(
+        { ...emptyFlags, mode: Option.some("web") },
+        Option.none(),
+      ).pipe(Effect.provide(env));
+      expect(open.strictTransport).toBe(false);
+      expect(open.loopbackAuthToken).toBeUndefined();
+
+      // strict-transport: a per-launch loopback token is minted.
+      const strict = yield* resolveServerConfig(
+        { ...emptyFlags, mode: Option.some("web"), strictTransport: Option.some(true) },
+        Option.none(),
+      ).pipe(Effect.provide(env));
+      expect(strict.strictTransport).toBe(true);
+      expect(typeof strict.loopbackAuthToken).toBe("string");
     }),
   );
 

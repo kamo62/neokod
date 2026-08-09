@@ -17,6 +17,7 @@ const makeAuth = (overrides: Partial<ServerConfig.ServerConfig["Service"]> = {})
         loopbackAuthToken: undefined,
         publicHosts: [],
         publicOrigins: [],
+        strictTransport: true,
         devUrl: undefined,
         ...overrides,
       } as ServerConfig.ServerConfig["Service"]),
@@ -58,6 +59,14 @@ describe("LocalTransportAuth", () => {
         expect(result.failure).toBeInstanceOf(TransportOriginInvalidError);
         expect(result.failure.reason).toBe("invalid_host");
       }
+    }),
+  );
+
+  // With strict-transport off (the default), a foreign Host + Origin that
+  // validation would otherwise reject passes straight through.
+  it.effect("with strict-transport off, accepts any Host and Origin", () =>
+    withAuth({ strictTransport: false })("http://evil.example.com/", {
+      origin: "https://evil.example.com",
     }),
   );
 
