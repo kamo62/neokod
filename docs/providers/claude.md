@@ -24,19 +24,21 @@ In Neokod Settings, your Claude provider can stay like this:
 ```text
 Display name: Claude
 Binary path: claude
-Claude HOME path: empty
+CLAUDE_CONFIG_DIR path: empty
 ```
 
-An empty `Claude HOME path` means Neokod uses your normal home directory.
+An empty `CLAUDE_CONFIG_DIR path` leaves Claude Code's normal environment unchanged. When the field
+is set, Neokod passes it as `CLAUDE_CONFIG_DIR` rather than `HOME`, so isolating a provider instance
+does not also relocate the macOS login keychain lookup.
 
 ## I Want Work And Personal Claude Accounts
 
-Use a different Claude home for each account.
+Use a different Claude config directory for each account.
 
 Example:
 
 ```text
-default home                 work account
+default config directory      work account
 ~/.claude_personal_home       personal account
 ```
 
@@ -53,16 +55,16 @@ In Neokod Settings:
 ```text
 Display name: Claude Work
 Binary path: claude
-Claude HOME path: empty
+CLAUDE_CONFIG_DIR path: empty
 ```
 
 ### Set Up The Second Account
 
-Log in with a separate home:
+Log in with a separate config directory:
 
 ```bash
 mkdir -p ~/.claude_personal_home
-HOME=~/.claude_personal_home claude auth login
+CLAUDE_CONFIG_DIR=~/.claude_personal_home claude auth login
 ```
 
 Then add another Claude provider in Neokod:
@@ -70,7 +72,7 @@ Then add another Claude provider in Neokod:
 ```text
 Display name: Claude Personal
 Binary path: claude
-Claude HOME path: ~/.claude_personal_home
+CLAUDE_CONFIG_DIR path: ~/.claude_personal_home
 ```
 
 Use the email shown in Settings to confirm each provider is using the intended account. Emails are
@@ -80,12 +82,12 @@ blurred by default; click the blurred email to reveal it.
 
 Usually, no.
 
-Neokod only offers Claude providers that use the same Claude home for an existing thread. A
-different Claude home is treated as a different Claude environment.
+Neokod only offers Claude providers that use the same Claude config directory for an existing
+thread. A different config directory is treated as a different Claude environment.
 
 This is different from the recommended Codex setup. Claude Code keeps account and local state across
-multiple files under its home directory, so Neokod keeps separate Claude homes isolated instead of
-trying to share part of the state.
+multiple config files, so Neokod keeps separate Claude config directories isolated instead of trying
+to share part of the state.
 
 ## I Want To Use OpenRouter
 
@@ -102,7 +104,7 @@ Add or edit a Claude provider in Neokod Settings:
 ```text
 Display name: Claude OpenRouter
 Binary path: claude
-Claude HOME path: ~/.claude_openrouter_home
+CLAUDE_CONFIG_DIR path: ~/.claude_openrouter_home
 ```
 
 In that provider's Environment variables section, add:
@@ -116,15 +118,15 @@ ANTHROPIC_API_KEY                              Empty value
 Mark `ANTHROPIC_AUTH_TOKEN` as sensitive. Neokod stores the value as a server secret and does not
 send it back to the app after saving.
 
-If you want this setup isolated from your normal Claude account, create that home first:
+If you want this setup isolated from your normal Claude account, create that config directory first:
 
 ```bash
 mkdir -p ~/.claude_openrouter_home
 ```
 
-If you previously used the same Claude home with a normal Anthropic login, run `/logout` in a Claude
-Code session for that home before using OpenRouter. Otherwise Claude Code may keep using cached
-Anthropic credentials instead of the OpenRouter token.
+If you previously used the same Claude config directory with a normal Anthropic login, run `/logout`
+in a Claude Code session for that config directory before using OpenRouter. Otherwise Claude Code
+may keep using cached Anthropic credentials instead of the OpenRouter token.
 
 ### Pick OpenRouter Models
 
@@ -189,20 +191,20 @@ Configure a Claude provider:
 ```text
 Display name: Claude Router
 Binary path: claude
-Claude HOME path: ~/.claude_router_home
+CLAUDE_CONFIG_DIR path: ~/.claude_router_home
 ```
 
 Then copy the variables that `ccr activate` would export into the provider's Environment variables
 section. Mark tokens and API keys as sensitive.
 
 If you want the router-backed setup to stay separate from your normal Claude account, create and log
-in with a dedicated home first:
+in with a dedicated config directory first:
 
 ```bash
 mkdir -p ~/.claude_router_home
 ccr start
 ccr activate
-HOME=~/.claude_router_home claude auth login
+CLAUDE_CONFIG_DIR=~/.claude_router_home claude auth login
 ```
 
 Claude Code Router's setup can change over time. Use its upstream README for the current install and
@@ -218,7 +220,7 @@ Examples:
 - "Claude Router"
 - "Claude Experimental"
 
-If the preset needs different Claude files, give it a different `Claude HOME path`. If it needs
+If the preset needs different Claude files, give it a different `CLAUDE_CONFIG_DIR path`. If it needs
 different API keys, base URLs, or router settings, use Environment variables.
 
 Do not put environment variable assignments in `Launch arguments`.
