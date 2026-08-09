@@ -62,6 +62,12 @@ export const makeKiroAcpRuntime = (
     const parentEnvironment = yield* HostProcessEnvironment;
     const platform = yield* HostProcessPlatform;
     const effectiveEnvironment = environment ?? parentEnvironment;
+    if (settings.agentEngine === "v3" && !managedHome?.trim()) {
+      return yield* EffectAcpErrors.AcpRequestError.invalidParams(
+        "Kiro v3 ACP requires an isolated managed home",
+        { reason: "kiro_v3_managed_home_required" },
+      );
+    }
     if (settings.agentEngine === "v3" && !hasKiroV3ApiKey(effectiveEnvironment)) {
       return yield* EffectAcpErrors.AcpRequestError.authRequired(
         "Kiro v3 ACP requires KIRO_API_KEY in this provider instance's environment",

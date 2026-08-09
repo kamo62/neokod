@@ -1,4 +1,22 @@
-## 3.5.32 - 2026-08-08 (Minor)
+## 3.5.35 - 2026-08-09 (Patch)
+
+Release impact: Patch because this adds regression coverage for shipped runtime safety and subagent UI behavior without changing public contracts.
+
+- Added browser coverage for subagent lifecycle and density transitions, plus contract tests that keep Symphony process-group identity positive, paired, and fail-closed.
+
+## 3.5.34 - 2026-08-09 (Patch)
+
+Release impact: Patch because this prevents stale settings writes and responses from rolling back newer server state without changing the settings schema.
+
+- Settings mutations now carry the expected server-owned monotonic revision and return the authoritative redacted snapshot. Writes are serialized per environment, while the UI exposes saving and failed states and rejects stale acknowledgements or stream events before they can overwrite newer settings.
+
+## 3.5.33 - 2026-08-09 (Patch)
+
+Release impact: Patch because this makes provider runtime-item closure durable and deterministic without changing user-facing configuration or protocols.
+
+- Provider runtime items are now persisted by thread, runtime session, kind, and provider item id, then closed atomically when a turn or session ends. Startup reconciliation and interrupted assistant-stream finalization prevent orphaned in-progress items after crashes, restarts, and stop races while preserving the provider's terminal evidence.
+
+## 3.5.32 - 2026-08-09 (Minor)
 
 Release impact: Minor because this adds an opt-in Kiro provider and Work-mode path while leaving existing providers and default behavior unchanged.
 
