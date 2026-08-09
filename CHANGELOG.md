@@ -1,3 +1,12 @@
+## 3.6.0 - 2026-08-10 (Minor)
+
+Release impact: Minor because this replaces Symphony's workflow-file setup with a backward-compatible project model and consolidated board while preserving existing tracker integrations.
+
+- Symphony now starts from DB-backed projects that pair one Code project with one tracker scope while deriving source control independently from the repository remote. Existing workflows migrate as paused projects without creating or modifying `WORKFLOW.md`.
+- The project wizard can reuse an existing Code project, clone a repository, or create and initialise a local Git project. Clone destinations now include the repository name, and new repositories work before their first commit.
+- Each project has Board, Runs, Attention, History, and Settings tabs. The server-owned board projects work into Not Started, In Progress, Testing, PR / Human Review, and Done without writing tracker state from card movement.
+- Tracker account credentials are global, secret-backed, and redacted from clients; project keys, board identifiers, runtime policy, validation, and delivery settings remain project-scoped. Observe, Prepare, and Execute can run without a remote, while Deliver fails closed without an authenticated source-control provider.
+
 ## 3.5.43 - 2026-08-09 (Patch)
 
 Release impact: Patch because this restores existing Symphony navigation and corrects source-control discovery without changing configured integrations.
