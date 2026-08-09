@@ -2,6 +2,8 @@
 
 Neokod runs as a **Node.js WebSocket server** that drives the provider CLI you choose per session (JSON-RPC or a comparable adapter protocol, mostly over stdio) and serves a React web app.
 
+This page describes Code mode: the interactive flow where a person drives an agent thread through the browser app. Symphony, Neokod's autonomous, tracker-driven mode, runs inside the same server process as an additional layer graph rather than a separate service; see [Symphony architecture](./symphony.md) for its dispatch, worktree, validation, evidence, and pull-request flow.
+
 ```
 ┌─────────────────────────────────┐
 │  Browser (React + Vite)         │
@@ -40,6 +42,8 @@ Neokod runs as a **Node.js WebSocket server** that drives the provider CLI you c
 - **Runtime signals**: The server emits lightweight typed receipts when important async milestones finish, such as checkpoint capture, diff finalization, or a turn becoming fully quiescent. Tests and orchestration code wait on these signals instead of polling internal state.
 
 - **Local notifications**: Browser activity notifications project local thread state through `packages/shared/src/agentAwareness.ts`. The server no longer publishes provider activity to a hosted relay or mobile push service.
+
+- **Symphony**: `apps/server/src/symphony/` adds a scheduler that polls an issue tracker, dispatches Codex into an isolated git worktree per issue, validates, assembles evidence, and opens a pull request, gated by policy declared in the repository's `WORKFLOW.md`. It shares this server process, the git plumbing, and the source-control provider abstraction with Code mode. See [Symphony architecture](./symphony.md).
 
 ## Access boundary
 

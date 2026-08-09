@@ -47,20 +47,50 @@ Install and authenticate at least one provider before use, for example:
 
 - Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
 - Claude: install [Claude Code](https://claude.com/product/claude-code) and run `claude auth login`
-- Copilot: install [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli), then sign in from Neokod using the in-app GitHub device sign-in flow, no separate login command needed
-- Cursor: install [Cursor CLI](https://cursor.com/cli) and run `cursor-agent login`
+- Copilot: nothing to install first. The Copilot CLI runtime ships bundled inside Neokod; open Settings and sign in with the in-app GitHub device flow (a GitHub account with a Copilot subscription or an assigned seat is required)
+- Cursor: install [Cursor CLI](https://cursor.com/cli) and run `cursor-agent login`, then set the Cursor provider's Binary path to `cursor-agent` in Neokod Settings if it does not detect the CLI automatically
 - Grok: install [Grok CLI](https://docs.x.ai/build/overview) and authenticate it directly
 - OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
 
 ## Install and run
 
+Two ways to run Neokod: the desktop app, or the `neokod` CLI on a machine that already has your agent CLIs.
+
 ### Desktop app
 
 Install the latest macOS or Windows build from [Neokod releases](https://github.com/kamo62/neokod/releases). macOS builds are signed and notarized. Windows builds are not signed yet, so Windows SmartScreen may require manual confirmation.
 
+### npx / npm CLI
+
+Neokod also publishes its server as the [`neokod`](https://www.npmjs.com/package/neokod) package on npm, for a machine that already has your agent CLIs installed and authenticated:
+
+```bash
+npx neokod serve
+# or install it once and reuse it:
+npm i -g neokod
+neokod serve
+```
+
+`serve` starts the local server without opening a browser, and prints the local URL together with a per-launch token. The port defaults to 3773 and Neokod picks a different free port automatically if that one is taken:
+
+```text
+Neokod server is ready.
+Local URL: http://127.0.0.1:3773
+Launch token: <token>
+The web client authenticates with this token for this launch; it is not persisted.
+```
+
+Open the printed URL with the token attached as a query parameter, for example
+`http://127.0.0.1:3773/?loopbackAuthToken=<token>`. The token is minted fresh on every launch and is
+never written to disk; if the server restarts, reload with the new URL and token it prints.
+
+Running bare `neokod` (or `neokod start`) starts the same server but opens your default browser
+automatically, with the token already attached to the URL, instead of leaving you to open it by
+hand. Both accept `--port` and `--base-dir` to control the listen port and Neokod's data directory.
+
 ## Local access boundary
 
-Neokod is local-first, and that boundary applies the same way to Code mode and Symphony mode: both run through the same local server, with no application session, pairing flow, cookie, or bearer credential on the loopback listener. The native desktop backend and the standalone `neokod serve` listen on `127.0.0.1` and use direct HTTP and WebSocket connections. This matches a single-user-per-machine model, like a local IDE. It is not a multi-user service.
+Neokod is local-first, and that boundary applies the same way to Code mode and Symphony mode: both run through the same local server, with no application user account, pairing flow, or cookie. The native desktop backend and the standalone `neokod serve` listen on `127.0.0.1` and use direct HTTP and WebSocket connections. Headless `serve`/`start` launches require the per-launch bearer described above; only the legacy desktop bootstrap can run without that credential. This matches a single-user-per-machine model, like a local IDE. It is not a multi-user service.
 
 The only non-loopback exception is a desktop-managed WSL backend. It listens on `0.0.0.0` inside WSL and stays fail-closed behind a desktop-generated bearer for HTTP plus short-lived, single-use WebSocket tickets. The WSL credential is delivered only through the live desktop topology and is never persisted.
 
@@ -69,7 +99,7 @@ The only non-loopback exception is a desktop-managed WSL backend. It listens on 
 The loopback listener validates `Host` and `Origin` on every request before any route runs, but it still trusts everything that can authenticate to it. Read this before assuming "local only" means "only I can reach it".
 
 - `neokod serve` binds `127.0.0.1` with the `loopback` transport. Router-wide transport validation (`apps/server/src/transport/LocalTransportAuth.ts`) runs before route dispatch and before the `/ws` upgrade: it accepts loopback Hosts (`127.0.0.1`, `localhost`, `[::1]`) and loopback, dev, desktop-renderer (`neokod://app`, `neokod-dev://app`), or self Origins, and rejects anything else with a 403. Malformed or duplicated Host headers are rejected outright. Requests with no `Origin` (non-browser clients such as the desktop renderer) pass the Origin check but are still gated by the credential policy.
-- On the `loopback` transport the server performs no application authentication of its own: the HTTP bearer check and the WebSocket ticket check both return immediately (`apps/server/src/transport/WslBearerAuth.ts`, `authorizeBearerHeader` and `consumeWebSocketTicket`). Only the WSL transport described above carries a credential.
+- `apps/server/src/transport/WslBearerAuth.ts` resolves the credential by transport. WSL always requires its desktop-generated bearer. Loopback enforces `loopbackAuthToken` when configured: HTTP requires its bearer and WebSocket upgrades require a short-lived, single-use ticket. The checks return immediately only when the legacy desktop bootstrap supplied no loopback token.
 - `neokod serve` and `neokod start` mint a per-launch token on the loopback transport when no desktop bootstrap delivered one (plan WS-A2). The token is printed at startup and passed to the browser on the startup URL; the web client uses it as an HTTP bearer and a short-lived WebSocket ticket. It is never persisted, so the loopback listener is unauthenticated only in the legacy desktop bootstrap path.
 - A connection to `/ws` gets the full RPC surface. That includes reading and writing files in your workspaces (`projectsReadFile` and `projectsWriteFile`, `apps/server/src/ws.ts` near lines 1230-1260), opening and writing to interactive terminals (`terminalOpen` and `terminalWrite`, near lines 1440-1460), and dispatching the commands that drive agents under your provider credentials (`dispatchCommand`, near line 760). There is no permission layer behind the socket.
 - Host and Origin validation blocks DNS rebinding: a page that re-points its own hostname to `127.0.0.1` sends a non-loopback `Host` header, which the listener rejects before any route runs. A page can no longer call the listener as if it were the page's own backend. "I have not exposed a port, so I am safe" is still the wrong conclusion for a machine whose operator visits untrusted pages, but the rebinding vector itself is closed.
@@ -109,7 +139,7 @@ vp test
 - Symphony mode's domain model and RPC surface: `packages/contracts/src/symphony.ts`. Its runtime lives under `apps/server/src/symphony/`.
 - Tracker adapters for Symphony (GitHub Issues, GitHub Projects, Jira, Linear, GitLab, Asana, Azure Boards), each with its own `WORKFLOW.md` configuration keys: `docs/integrations/`.
 - Provider drivers and adapters, one directory per provider: `apps/server/src/provider/`.
-- Architecture and the access-boundary table: `docs/architecture/overview.md`.
+- Architecture and the access-boundary table: `docs/architecture/overview.md`. Symphony's dispatch-to-PR flow and current maturity: `docs/architecture/symphony.md`.
 - Full documentation index: [docs](./docs).
 
 ## Upstream updates
@@ -131,7 +161,10 @@ Neokod is early. Expect bugs and fast-moving internals. We are not accepting con
 
 - [Getting started](./docs/getting-started/quick-start.md)
 - [Architecture overview](./docs/architecture/overview.md)
-- [Provider guides](./docs/providers/codex.md)
+- [Symphony architecture](./docs/architecture/symphony.md)
+- Provider guides: [Codex](./docs/providers/codex.md), [Claude](./docs/providers/claude.md),
+  [Copilot](./docs/providers/copilot.md), [Cursor](./docs/providers/cursor.md),
+  [Grok](./docs/providers/grok.md), [OpenCode](./docs/providers/opencode.md)
 - [Symphony tracker integrations](./docs/integrations/symphony-github.md)
 - [Operations](./docs/operations/ci.md)
 - [Reference](./docs/reference/encyclopedia.md)
