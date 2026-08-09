@@ -4,6 +4,7 @@ import {
   CopilotSettings,
   CursorSettings,
   GrokSettings,
+  KiroSettings,
   OpenCodeSettings,
   ProviderDriverKind,
 } from "@neokod/contracts";
@@ -13,6 +14,7 @@ import {
   CursorIcon,
   GithubCopilotIcon,
   GrokIcon,
+  KiroIcon,
   type Icon,
   OpenAI,
   OpenCodeIcon,
@@ -75,6 +77,13 @@ export const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = 
     icon: GrokIcon,
     badgeLabel: "Early Access",
     settingsSchema: GrokSettings,
+  },
+  {
+    value: ProviderDriverKind.make("kiro"),
+    label: "Kiro",
+    icon: KiroIcon,
+    badgeLabel: "Early Access",
+    settingsSchema: KiroSettings,
   },
   {
     value: ProviderDriverKind.make("opencode"),

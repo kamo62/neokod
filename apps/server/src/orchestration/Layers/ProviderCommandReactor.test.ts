@@ -236,19 +236,16 @@ describe("ProviderCommandReactor", () => {
     const interruptTurn = vi.fn<ProviderServiceShape["interruptTurn"]>(() => Effect.void);
     const respondToRequest = vi.fn<ProviderServiceShape["respondToRequest"]>(() => Effect.void);
     const respondToUserInput = vi.fn<ProviderServiceShape["respondToUserInput"]>(() => Effect.void);
-    const stopSession = vi.fn((input: unknown) =>
+    const stopSession = vi.fn<ProviderServiceShape["stopSession"]>((input) =>
       Effect.sync(() => {
-        const threadId =
-          typeof input === "object" && input !== null && "threadId" in input
-            ? (input as { threadId?: ThreadId }).threadId
-            : undefined;
-        if (!threadId) {
-          return;
-        }
-        const index = runtimeSessions.findIndex((session) => session.threadId === threadId);
+        const index = runtimeSessions.findIndex((session) => session.threadId === input.threadId);
         if (index >= 0) {
           runtimeSessions.splice(index, 1);
         }
+        return {
+          status: "stopped_confirmed" as const,
+          stoppedAt: "2026-01-01T00:00:00.000Z",
+        };
       }),
     );
     const renameBranch = vi.fn((input: unknown) =>
@@ -312,7 +309,8 @@ describe("ProviderCommandReactor", () => {
       interruptTurn: interruptTurn as ProviderServiceShape["interruptTurn"],
       respondToRequest: respondToRequest as ProviderServiceShape["respondToRequest"],
       respondToUserInput: respondToUserInput as ProviderServiceShape["respondToUserInput"],
-      stopSession: stopSession as ProviderServiceShape["stopSession"],
+      stopSession,
+      stopAllSessions: () => unsupported(),
       listSessions: () => Effect.succeed(runtimeSessions),
       getCapabilities: (_provider) =>
         Effect.succeed({
@@ -1846,7 +1844,7 @@ describe("ProviderCommandReactor", () => {
     });
   });
 
-  it("rejects active runtime sessions that are missing provider instance ids", async () => {
+  it("keeps a failed starting session disconnected when its provider instance id is missing", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";
 
@@ -1857,7 +1855,7 @@ describe("ProviderCommandReactor", () => {
         threadId: ThreadId.make("thread-1"),
         session: {
           threadId: ThreadId.make("thread-1"),
-          status: "ready",
+          status: "starting",
           providerName: "codex",
           runtimeMode: "approval-required",
           activeTurnId: null,
@@ -1908,6 +1906,8 @@ describe("ProviderCommandReactor", () => {
     expect(harness.sendTurn.mock.calls.length).toBe(0);
     const readModel = await harness.readModel();
     const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    expect(thread?.session?.status).toBe("error");
+    expect(thread?.session?.lastError).toContain("without a provider instance id");
     expect(
       thread?.activities.find((activity) => activity.kind === "provider.turn.start.failed"),
     ).toMatchObject({

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import type { EffectiveWorkflowConfig, WorkItem } from "@neokod/contracts";
-import { ProviderInstanceId, TextGenerationError } from "@neokod/contracts";
+import { ProviderDriverKind, ProviderInstanceId, TextGenerationError } from "@neokod/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as PubSub from "effect/PubSub";
@@ -28,18 +28,21 @@ const makeTextGeneration = (
 
 const makeInstance = (input: {
   readonly id: string;
+  readonly driverKind?: string;
   readonly models: ReadonlyArray<string>;
   readonly review: TextGeneration.TextGeneration["Service"]["generateCodeReview"];
+  readonly symphonyCodeReview?: boolean;
 }): ProviderInstance =>
   ({
     instanceId: ProviderInstanceId.make(input.id),
-    driverKind: input.id as ProviderInstance["driverKind"],
+    driverKind: ProviderDriverKind.make(input.driverKind ?? input.id),
     continuationIdentity: {
-      driverKind: input.id as ProviderInstance["driverKind"],
+      driverKind: ProviderDriverKind.make(input.driverKind ?? input.id),
       continuationKey: `${input.id}:test`,
     },
     displayName: input.id,
     enabled: true,
+    symphonyCodeReview: input.symphonyCodeReview ?? true,
     snapshot: {
       maintenanceCapabilities: {},
       getSnapshot: Effect.succeed({
@@ -210,7 +213,71 @@ describe("SymphonyModelReviewer", () => {
 
       expect(result?.passed).toBe(true);
       expect(result?.reviewers[1]?.status).toBe("failed");
-      expect(result?.reviewers[1]?.error).toContain("No enabled provider instance");
+      expect(result?.reviewers[1]?.error).toContain("No enabled review-capable provider instance");
+    }),
+  );
+
+  it.effect("never resolves Kiro as a Symphony reviewer", () =>
+    Effect.gen(function* () {
+      const result = yield* runReview(
+        [
+          makeInstance({
+            id: "kiro",
+            driverKind: "kiro",
+            models: ["auto"],
+            symphonyCodeReview: false,
+            review: () => Effect.die("Kiro review must not run"),
+          }),
+        ],
+        makeConfig(["auto"], "all-approve"),
+      );
+
+      expect(result?.passed).toBe(false);
+      expect(result?.reviewers[0]?.error).toContain("No enabled review-capable provider instance");
+    }),
+  );
+
+  it.effect("fails closed when a driver omits the review capability", () =>
+    Effect.gen(function* () {
+      const candidate = makeInstance({
+        id: "future_driver",
+        models: ["future-reviewer"],
+        review: () => Effect.die("an unproven driver must not run model review"),
+      });
+      const { symphonyCodeReview: _capability, ...unproven } = candidate;
+      const result = yield* runReview([unproven], makeConfig(["future-reviewer"], "all-approve"));
+
+      expect(result?.passed).toBe(false);
+      expect(result?.reviewers[0]?.error).toContain("No enabled review-capable provider instance");
+    }),
+  );
+
+  it.effect("ignores a non-review-capable model collision", () =>
+    Effect.gen(function* () {
+      const calls: string[] = [];
+      const result = yield* runReview(
+        [
+          makeInstance({
+            id: "kiro",
+            driverKind: "kiro",
+            models: ["gpt-5.6-sol"],
+            symphonyCodeReview: false,
+            review: () => Effect.die("Kiro review must not run"),
+          }),
+          makeInstance({
+            id: "codex_review",
+            models: ["gpt-5.6-sol"],
+            review: (input) => {
+              calls.push(String(input.modelSelection.model));
+              return Effect.succeed({ verdict: "approve", summary: "Fine.", findings: [] });
+            },
+          }),
+        ],
+        makeConfig(["gpt-5.6-sol"], "all-approve"),
+      );
+
+      expect(result?.passed).toBe(true);
+      expect(calls).toEqual(["gpt-5.6-sol"]);
     }),
   );
 

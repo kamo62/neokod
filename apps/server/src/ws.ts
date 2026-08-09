@@ -1770,12 +1770,15 @@ const makeWsRpcLayer = (
               "rpc.aggregate": "server",
             },
           ),
-        [WS_METHODS.serverUpdateSettings]: ({ patch }) =>
+        [WS_METHODS.serverUpdateSettings]: (mutation) =>
           observeRpcEffect(
             WS_METHODS.serverUpdateSettings,
-            serverSettings
-              .updateSettings(patch)
-              .pipe(Effect.map(ServerSettings.redactServerSettingsForClient)),
+            serverSettings.updateSettingsMutation(mutation).pipe(
+              Effect.map((acknowledgement) => ({
+                ...acknowledgement,
+                settings: ServerSettings.redactServerSettingsForClient(acknowledgement.settings),
+              })),
+            ),
             {
               "rpc.aggregate": "server",
             },

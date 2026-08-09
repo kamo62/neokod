@@ -16,6 +16,8 @@ import {
   NonNegativeInt,
   ProjectId,
   ProviderItemId,
+  RuntimeItemId,
+  RuntimeSessionId,
   ThreadId,
   TrimmedNonEmptyString,
   TurnId,
@@ -336,6 +338,96 @@ export const OrchestrationThreadActivity = Schema.Struct({
   createdAt: IsoDateTime,
 });
 export type OrchestrationThreadActivity = typeof OrchestrationThreadActivity.Type;
+
+export const RuntimeItemKind = Schema.Literals([
+  "tool",
+  "delegated-task",
+  "approval",
+  "user-input",
+  "assistant-message",
+]);
+export type RuntimeItemKind = typeof RuntimeItemKind.Type;
+
+export const RuntimeItemScope = Schema.Literals(["turn", "session", "detached"]);
+export type RuntimeItemScope = typeof RuntimeItemScope.Type;
+
+export const RuntimeItemProviderState = Schema.Literals([
+  "active",
+  "completed",
+  "failed",
+  "stopped",
+]);
+export type RuntimeItemProviderState = typeof RuntimeItemProviderState.Type;
+
+export const RuntimeItemSyntheticState = Schema.Literals([
+  "completed",
+  "failed",
+  "stopped",
+  "cancelled",
+  "interrupted",
+  "orphaned",
+]);
+export type RuntimeItemSyntheticState = typeof RuntimeItemSyntheticState.Type;
+
+export const RuntimeItemEffectiveState = Schema.Literals([
+  "active",
+  "completed",
+  "failed",
+  "stopped",
+  "cancelled",
+  "interrupted",
+  "orphaned",
+]);
+export type RuntimeItemEffectiveState = typeof RuntimeItemEffectiveState.Type;
+
+export const RuntimeItemTerminalSource = Schema.Literals(["provider", "synthetic"]);
+export type RuntimeItemTerminalSource = typeof RuntimeItemTerminalSource.Type;
+
+export const RuntimeItemObservation = Schema.Struct({
+  runtimeItemId: RuntimeItemId,
+  providerItemId: Schema.NullOr(ProviderItemId),
+  sessionId: RuntimeSessionId,
+  kind: RuntimeItemKind,
+  scope: RuntimeItemScope,
+  turnId: Schema.NullOr(TurnId),
+  providerState: RuntimeItemProviderState,
+  label: TrimmedNonEmptyString,
+  providerEventId: EventId,
+  observedAt: IsoDateTime,
+});
+export type RuntimeItemObservation = typeof RuntimeItemObservation.Type;
+
+export const OrchestrationRuntimeItem = Schema.Struct({
+  runtimeItemId: RuntimeItemId,
+  providerItemId: Schema.NullOr(ProviderItemId),
+  threadId: ThreadId,
+  sessionId: RuntimeSessionId,
+  turnId: Schema.NullOr(TurnId),
+  kind: RuntimeItemKind,
+  scope: RuntimeItemScope,
+  label: TrimmedNonEmptyString,
+  providerState: Schema.NullOr(RuntimeItemProviderState),
+  syntheticState: Schema.NullOr(RuntimeItemSyntheticState),
+  effectiveState: RuntimeItemEffectiveState,
+  terminalSource: Schema.NullOr(RuntimeItemTerminalSource),
+  mayStillBeRunning: Schema.Boolean,
+  providerEventId: Schema.NullOr(EventId),
+  syntheticEventId: Schema.NullOr(EventId),
+  startedAt: IsoDateTime,
+  updatedAt: IsoDateTime,
+  completedAt: Schema.NullOr(IsoDateTime),
+  lastSequence: NonNegativeInt,
+});
+export type OrchestrationRuntimeItem = typeof OrchestrationRuntimeItem.Type;
+
+export const RuntimeItemSyntheticClosure = Schema.Struct({
+  runtimeItemId: RuntimeItemId,
+  sessionId: RuntimeSessionId,
+  kind: RuntimeItemKind,
+  syntheticState: RuntimeItemSyntheticState,
+  activity: OrchestrationThreadActivity,
+});
+export type RuntimeItemSyntheticClosure = typeof RuntimeItemSyntheticClosure.Type;
 
 const OrchestrationLatestTurnState = Schema.Literals([
   "running",
@@ -809,6 +901,25 @@ const ThreadRevertCompleteCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+const ThreadRuntimeItemObserveCommand = Schema.Struct({
+  type: Schema.Literal("thread.runtime-item.observe"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  observation: RuntimeItemObservation,
+  createdAt: IsoDateTime,
+});
+
+const ThreadRuntimeItemsCloseCommand = Schema.Struct({
+  type: Schema.Literal("thread.runtime-items.close"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  boundary: Schema.Literals(["turn", "session"]),
+  turnId: Schema.optional(TurnId),
+  terminationGuaranteed: Schema.Boolean,
+  closures: Schema.Array(RuntimeItemSyntheticClosure),
+  createdAt: IsoDateTime,
+});
+
 const InternalOrchestrationCommand = Schema.Union([
   ThreadSessionSetCommand,
   ThreadMessageAssistantDeltaCommand,
@@ -817,6 +928,8 @@ const InternalOrchestrationCommand = Schema.Union([
   ThreadTurnDiffCompleteCommand,
   ThreadActivityAppendCommand,
   ThreadRevertCompleteCommand,
+  ThreadRuntimeItemObserveCommand,
+  ThreadRuntimeItemsCloseCommand,
 ]);
 export type InternalOrchestrationCommand = typeof InternalOrchestrationCommand.Type;
 
@@ -849,6 +962,8 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.proposed-plan-upserted",
   "thread.turn-diff-completed",
   "thread.activity-appended",
+  "thread.runtime-item-observed",
+  "thread.runtime-items-closed",
 ]);
 export type OrchestrationEventType = typeof OrchestrationEventType.Type;
 
@@ -1029,6 +1144,20 @@ export const ThreadActivityAppendedPayload = Schema.Struct({
   activity: OrchestrationThreadActivity,
 });
 
+export const ThreadRuntimeItemObservedPayload = Schema.Struct({
+  threadId: ThreadId,
+  observation: RuntimeItemObservation,
+});
+
+export const ThreadRuntimeItemsClosedPayload = Schema.Struct({
+  threadId: ThreadId,
+  boundary: Schema.Literals(["turn", "session"]),
+  turnId: Schema.NullOr(TurnId),
+  terminationGuaranteed: Schema.Boolean,
+  closures: Schema.Array(RuntimeItemSyntheticClosure),
+  closedAt: IsoDateTime,
+});
+
 export const OrchestrationEventMetadata = Schema.Struct({
   providerTurnId: Schema.optional(TrimmedNonEmptyString),
   providerItemId: Schema.optional(ProviderItemId),
@@ -1160,6 +1289,16 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.activity-appended"),
     payload: ThreadActivityAppendedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.runtime-item-observed"),
+    payload: ThreadRuntimeItemObservedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.runtime-items-closed"),
+    payload: ThreadRuntimeItemsClosedPayload,
   }),
 ]);
 export type OrchestrationEvent = typeof OrchestrationEvent.Type;

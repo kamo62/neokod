@@ -84,14 +84,26 @@ import { searchSlashCommandItems } from "./composerSlashCommandSearch";
 import {
   getComposerPromptInjectionState,
   getComposerProviderState,
+  getProviderRuntimeModes,
   hasComposerTraitsTarget,
   renderProviderTraitsPicker,
+  resolveProviderRuntimeMode,
+  shouldConfirmKiroSupervisedMode,
 } from "./composerProviderState";
 import { ContextWindowMeter } from "./ContextWindowMeter";
 import { buildExpandedImagePreview, type ExpandedImagePreview } from "./ExpandedImagePreview";
 import { basenameOfPath } from "../../pierre-icons";
 import { cn, randomUUID } from "~/lib/utils";
 import { Button } from "../ui/button";
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
@@ -206,7 +218,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
   showInteractionModeToggle: boolean;
   interactionMode: ProviderInteractionMode;
   runtimeMode: RuntimeMode;
-  showAutoRuntimeMode: boolean;
+  availableRuntimeModes: ReadonlyArray<RuntimeMode>;
   showPlanToggle: boolean;
   planSidebarLabel: string;
   planSidebarOpen: boolean;
@@ -280,7 +292,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
           </TooltipTrigger>
           <SelectPopup alignItemWithTrigger={false}>
             {runtimeModeOptions
-              .filter((mode) => props.showAutoRuntimeMode || mode !== "auto")
+              .filter((mode) => props.availableRuntimeModes.includes(mode))
               .map((mode) => {
                 const option = runtimeModeConfig[mode];
                 const OptionIcon = option.icon;
@@ -694,8 +706,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       explicitSelectedInstanceId,
     ) ?? ProviderDriverKind.make("codex");
   const selectedProvider: ProviderDriverKind = lockedProvider ?? unlockedSelectedProvider;
-  // Claude Auto remains hidden until the upstream #4495 turn failures are verified fixed.
-  const showAutoRuntimeMode = selectedProvider !== ProviderDriverKind.make("claudeAgent");
+  const availableRuntimeModes = useMemo(
+    () => getProviderRuntimeModes(selectedProvider),
+    [selectedProvider],
+  );
+  const resolvedRuntimeMode = resolveProviderRuntimeMode(selectedProvider, runtimeMode);
+  useEffect(() => {
+    if (resolvedRuntimeMode !== runtimeMode) handleRuntimeModeChange(resolvedRuntimeMode);
+  }, [handleRuntimeModeChange, resolvedRuntimeMode, runtimeMode]);
   const lockedContinuationGroupKey = useMemo((): string | null => {
     if (!lockedProvider || !activeThread) return null;
     const lockedInstanceId =
@@ -898,8 +916,34 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
   const [isComposerFocused, setIsComposerFocused] = useState(false);
+  const [pendingKiroSelection, setPendingKiroSelection] = useState<{
+    readonly instanceId: ProviderInstanceId;
+    readonly model: string;
+  } | null>(null);
   const isMobileViewport = useMediaQuery("max-sm");
   const isComposerCollapsedMobile = isMobileViewport && !isComposerFocused;
+
+  const handleProviderModelSelection = useCallback(
+    (instanceId: ProviderInstanceId, model: string) => {
+      const provider = providerInstanceEntries.find(
+        (entry) => entry.instanceId === instanceId,
+      )?.driverKind;
+      if (provider && shouldConfirmKiroSupervisedMode(provider, runtimeMode)) {
+        setIsComposerModelPickerOpen(false);
+        setPendingKiroSelection({ instanceId, model });
+        return;
+      }
+      onProviderModelSelect(instanceId, model);
+    },
+    [onProviderModelSelect, providerInstanceEntries, runtimeMode],
+  );
+
+  const confirmKiroSelection = useCallback(() => {
+    if (!pendingKiroSelection) return;
+    handleRuntimeModeChange("approval-required");
+    onProviderModelSelect(pendingKiroSelection.instanceId, pendingKiroSelection.model);
+    setPendingKiroSelection(null);
+  }, [handleRuntimeModeChange, onProviderModelSelect, pendingKiroSelection]);
 
   // ------------------------------------------------------------------
   // Refs
@@ -2639,7 +2683,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     setIsComposerModelPickerOpen(open);
                   }}
                   getModelDisabledReason={getModelDisabledReason}
-                  onInstanceModelChange={onProviderModelSelect}
+                  onInstanceModelChange={handleProviderModelSelection}
                 />
 
                 {isComposerFooterCompact ? (
@@ -2648,8 +2692,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     interactionMode={interactionMode}
                     planSidebarLabel={planSidebarLabel}
                     planSidebarOpen={planSidebarOpen}
-                    runtimeMode={runtimeMode}
-                    showAutoRuntimeMode={showAutoRuntimeMode}
+                    runtimeMode={resolvedRuntimeMode}
+                    availableRuntimeModes={availableRuntimeModes}
                     showInteractionModeToggle={composerProviderControls.showInteractionModeToggle}
                     onToggleInteractionMode={toggleInteractionMode}
                     onTogglePlanSidebar={togglePlanSidebar}
@@ -2659,8 +2703,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   <ComposerFooterModeControls
                     showInteractionModeToggle={composerProviderControls.showInteractionModeToggle}
                     interactionMode={interactionMode}
-                    runtimeMode={runtimeMode}
-                    showAutoRuntimeMode={showAutoRuntimeMode}
+                    runtimeMode={resolvedRuntimeMode}
+                    availableRuntimeModes={availableRuntimeModes}
                     showPlanToggle={showPlanSidebarToggle}
                     planSidebarLabel={planSidebarLabel}
                     planSidebarOpen={planSidebarOpen}
@@ -2702,6 +2746,31 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           )}
         </div>
       </div>
+      <AlertDialog
+        open={pendingKiroSelection !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingKiroSelection(null);
+        }}
+      >
+        <AlertDialogPopup>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Use Kiro in Supervised mode?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Kiro managed sessions keep write-capable commands and file changes approval-gated.
+              Continuing changes this thread to Supervised mode. Crew, Symphony, automatic modes,
+              and full access remain disabled.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button type="button" variant="outline" />}>
+              Cancel
+            </AlertDialogClose>
+            <Button type="button" onClick={confirmKiroSelection}>
+              Continue in Supervised
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
     </form>
   );
 });

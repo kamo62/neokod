@@ -124,7 +124,12 @@ import {
   CopilotDeviceLoginStatusResult,
   CopilotSignOutResult,
 } from "./server.ts";
-import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
+import {
+  ServerSettings,
+  ServerSettingsError,
+  ServerSettingsMutation,
+  ServerSettingsMutationAcknowledgement,
+} from "./settings.ts";
 import {
   SYMPHONY_WS_METHODS,
   AttentionItemSchema,
@@ -330,8 +335,8 @@ export const WsServerGetSettingsRpc = Rpc.make(WS_METHODS.serverGetSettings, {
 });
 
 export const WsServerUpdateSettingsRpc = Rpc.make(WS_METHODS.serverUpdateSettings, {
-  payload: Schema.Struct({ patch: ServerSettingsPatch }),
-  success: ServerSettings,
+  payload: ServerSettingsMutation,
+  success: ServerSettingsMutationAcknowledgement,
   error: ServerSettingsError,
 });
 

@@ -194,11 +194,32 @@ export type ProviderAdapterError =
   | ProviderAdapterRequestError
   | ProviderAdapterProcessError;
 
+/**
+ * ProviderStoppingError - A start/send operation was rejected because the
+ * thread (or the whole runtime, during a stop-all sweep) is inside the
+ * Work-mode dispatch barrier. New turns must not begin while a stop is in
+ * flight or while an unacknowledged orphan state is unresolved (Issue #101,
+ * spec section 6.5).
+ */
+export class ProviderStoppingError extends Schema.TaggedErrorClass<ProviderStoppingError>()(
+  "ProviderStoppingError",
+  {
+    operation: Schema.String,
+    threadId: Schema.String,
+    scope: Schema.Literals(["thread", "stop-all"]),
+  },
+) {
+  override get message(): string {
+    return `Provider operation '${this.operation}' rejected: thread ${this.threadId} is stopping (${this.scope} barrier).`;
+  }
+}
+
 export type ProviderServiceError =
   | ProviderValidationError
   | ProviderUnsupportedError
   | ProviderInstanceNotFoundError
   | ProviderSessionNotFoundError
   | ProviderSessionDirectoryPersistenceError
+  | ProviderStoppingError
   | ProviderAdapterError
   | CheckpointServiceError;

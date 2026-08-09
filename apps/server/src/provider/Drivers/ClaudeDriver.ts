@@ -225,6 +225,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         displayName,
         accentColor,
         enabled,
+        symphonyCodeReview: true,
         snapshot,
         adapter,
         textGeneration,

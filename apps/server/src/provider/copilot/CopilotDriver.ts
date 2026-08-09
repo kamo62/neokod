@@ -227,6 +227,7 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
         displayName,
         accentColor,
         enabled,
+        symphonyCodeReview: true,
         snapshot,
         adapter,
         textGeneration,

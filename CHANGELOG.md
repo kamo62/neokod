@@ -1,3 +1,60 @@
+## 3.5.40 - 2026-08-09 (Patch)
+
+Release impact: Patch because this corrects product and release documentation without changing runtime behavior.
+
+- Reframed the README around Code and Symphony modes, documented the shipped Kiro restrictions and local access boundary, and corrected the release pipeline description.
+
+## 3.5.39 - 2026-08-09 (Patch)
+
+Release impact: Patch because this reduces duplicate tool lifecycle rows in thread snapshots without changing live event delivery or public contracts.
+
+- Thread-detail snapshots now omit `tool.updated` rows that a later matching completion supersedes in the same turn, using collision-safe lifecycle identities while preserving live updates and unmatched work.
+
+## 3.5.38 - 2026-08-09 (Patch)
+
+Release impact: Patch because this fixes provider turn attribution and queued-follow-up interruption without changing provider configuration.
+
+- Claude no longer emits phantom turn completions for resume handshakes or late results, and ingestion rejects untargeted completions when no active turn can own them.
+- Codex keeps the currently interruptible turn id when the app-server accepts a queued follow-up, then advances through normal lifecycle notifications.
+
+## 3.5.37 - 2026-08-09 (Patch)
+
+Release impact: Patch because this makes the existing Symphony review path fail closed for unsupported providers without changing review configuration.
+
+- Provider instances now declare whether they can perform Symphony code review. Model resolution ignores unproven providers and keeps Kiro excluded from Symphony execution and review.
+
+## 3.5.36 - 2026-08-09 (Patch)
+
+Release impact: Patch because this polishes the shipped subagent panel without changing its contracts or lifecycle behavior.
+
+- Refined the subagent Command Deck with compact lifecycle timing, a clearer progress timeline, and focused browser coverage for active and orphaned states.
+
+## 3.5.35 - 2026-08-09 (Patch)
+
+Release impact: Patch because this adds regression coverage for shipped runtime safety and subagent UI behavior without changing public contracts.
+
+- Added browser coverage for subagent lifecycle and density transitions, plus contract tests that keep Symphony process-group identity positive, paired, and fail-closed.
+
+## 3.5.34 - 2026-08-09 (Patch)
+
+Release impact: Patch because this prevents stale settings writes and responses from rolling back newer server state without changing the settings schema.
+
+- Settings mutations now carry the expected server-owned monotonic revision and return the authoritative redacted snapshot. Writes are serialized per environment, while the UI exposes saving and failed states and rejects stale acknowledgements or stream events before they can overwrite newer settings.
+
+## 3.5.33 - 2026-08-09 (Patch)
+
+Release impact: Patch because this makes provider runtime-item closure durable and deterministic without changing user-facing configuration or protocols.
+
+- Provider runtime items are now persisted by thread, runtime session, kind, and provider item id, then closed atomically when a turn or session ends. Startup reconciliation and interrupted assistant-stream finalization prevent orphaned in-progress items after crashes, restarts, and stop races while preserving the provider's terminal evidence.
+
+## 3.5.32 - 2026-08-09 (Minor)
+
+Release impact: Minor because this adds an opt-in Kiro provider and Work-mode path while leaving existing providers and default behavior unchanged.
+
+- Added Kiro CLI 2.16.2 ACP sessions in approval-required Work mode, with a confirmation before lowering an existing composer permission mode and a v2/v3 engine selector. V2 uses the Kiro CLI login; v3 uses an explicit sensitive per-instance `KIRO_API_KEY`, an isolated ask-policy home, and engine-tagged sessions that cannot resume across engines. Kiro remains visibly Limited until a managed turn completes with assistant output, and exact prompt failures remain visible in health; Crew, Symphony, automatic modes, full access, and Windows execution stay unavailable.
+- Kiro children receive an allowlisted environment and run in validated POSIX process groups with bounded TERM-to-KILL settlement. Authentication follows the methods advertised by the ACP handshake, and unsupported or missing proof fails closed.
+- Provider session projection now preserves the selected runtime mode and latest turn identity through terminal settlement, so failed managed turns remain failed instead of briefly appearing complete.
+
 ## 3.5.31 - 2026-08-02 (Patch)
 
 Release impact: Patch because this reduces websocket payload size and bounds reconnect replay work on the server, with no schema or storage changes. One RPC contract member is removed, but no shipped client ever called it and client and server ship together.

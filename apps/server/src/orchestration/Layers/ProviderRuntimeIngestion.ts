@@ -2,12 +2,16 @@ import {
   ApprovalRequestId,
   type AssistantDeliveryMode,
   CommandId,
+  EventId,
   MessageId,
   type OrchestrationEvent,
   type OrchestrationMessage,
   type OrchestrationProposedPlanId,
   CheckpointRef,
   isToolLifecycleItemType,
+  RuntimeItemId,
+  RuntimeSessionId,
+  type RuntimeItemObservation,
   ThreadId,
   type ThreadTokenUsageSnapshot,
   TurnId,
@@ -19,7 +23,6 @@ import {
 } from "@neokod/contracts";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
-import * as Crypto from "effect/Crypto";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -29,6 +32,7 @@ import { makeDrainableWorker } from "@neokod/shared/DrainableWorker";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
+import { ProjectionRuntimeItemRepository } from "../../persistence/Services/ProjectionRuntimeItems.ts";
 import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
 import { isGitRepository } from "../../git/Utils.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
@@ -38,6 +42,7 @@ import {
   type ProviderRuntimeIngestionShape,
 } from "../Services/ProviderRuntimeIngestion.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { planRuntimeItemClosures } from "../RuntimeItemProjection.ts";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
 
@@ -247,6 +252,217 @@ function orchestrationSessionStatusFromRuntimeState(
   }
 }
 
+function runtimeItemId(identity: string): RuntimeItemId {
+  return RuntimeItemId.make(identity);
+}
+
+function itemProviderState(
+  status: string | undefined,
+  defaultState: RuntimeItemObservation["providerState"],
+): RuntimeItemObservation["providerState"] {
+  switch (status) {
+    case "inProgress":
+    case "in_progress":
+      return "active";
+    case "completed":
+      return "completed";
+    case "failed":
+      return "failed";
+    case "declined":
+      return "stopped";
+    default:
+      return defaultState;
+  }
+}
+
+function runtimeEventToItemObservation(
+  event: ProviderRuntimeEvent,
+  sessionId: RuntimeSessionId,
+): RuntimeItemObservation | null {
+  const turnId = toTurnId(event.turnId) ?? null;
+  const scope = turnId === null ? "session" : "turn";
+  const providerItemId = event.providerRefs?.providerItemId ?? null;
+  const base = {
+    providerItemId,
+    sessionId,
+    turnId,
+    providerEventId: event.eventId,
+    observedAt: event.createdAt,
+  } as const;
+
+  switch (event.type) {
+    case "item.started":
+    case "item.updated":
+    case "item.completed": {
+      const isAssistant = event.payload.itemType === "assistant_message";
+      if (!isAssistant && !isToolLifecycleItemType(event.payload.itemType)) return null;
+      const identity = String(event.itemId ?? providerItemId ?? event.eventId);
+      return {
+        ...base,
+        runtimeItemId: runtimeItemId(identity),
+        kind: isAssistant ? "assistant-message" : "tool",
+        scope,
+        providerState: itemProviderState(
+          event.payload.status,
+          event.type === "item.completed" ? "completed" : "active",
+        ),
+        label: event.payload.title ?? (isAssistant ? "Assistant response" : event.payload.itemType),
+      };
+    }
+
+    case "content.delta": {
+      if (event.payload.streamKind !== "assistant_text") return null;
+      const identity = String(event.itemId ?? event.turnId ?? event.eventId);
+      return {
+        ...base,
+        runtimeItemId: runtimeItemId(identity),
+        kind: "assistant-message",
+        scope,
+        providerState: "active",
+        label: "Assistant response",
+      };
+    }
+
+    case "request.opened":
+    case "request.resolved": {
+      if (event.payload.requestType === "tool_user_input") return null;
+      const identity = String(
+        event.requestId ?? event.providerRefs?.providerRequestId ?? event.eventId,
+      );
+      return {
+        ...base,
+        runtimeItemId: runtimeItemId(identity),
+        kind: "approval",
+        scope,
+        providerState: event.type === "request.resolved" ? "completed" : "active",
+        label: "Approval request",
+      };
+    }
+
+    case "user-input.requested":
+    case "user-input.resolved": {
+      const identity = String(
+        event.requestId ?? event.providerRefs?.providerRequestId ?? event.eventId,
+      );
+      return {
+        ...base,
+        runtimeItemId: runtimeItemId(identity),
+        kind: "user-input",
+        scope,
+        providerState: event.type === "user-input.resolved" ? "completed" : "active",
+        label: "User input request",
+      };
+    }
+
+    case "task.started":
+    case "task.progress":
+    case "task.completed": {
+      const detached =
+        event.providerRefs?.providerChildThreadId !== undefined ||
+        event.payload.agentId !== undefined;
+      return {
+        ...base,
+        runtimeItemId: runtimeItemId(String(event.payload.taskId)),
+        kind: "delegated-task",
+        scope: detached ? "detached" : scope,
+        providerState:
+          event.type === "task.completed"
+            ? event.payload.status === "failed"
+              ? "failed"
+              : event.payload.status === "stopped"
+                ? "stopped"
+                : "completed"
+            : "active",
+        label:
+          event.type === "task.completed"
+            ? "Delegated task"
+            : (event.payload.description ?? "Delegated task"),
+      };
+    }
+
+    case "tool.denied": {
+      const identity = String(event.payload.toolUseId ?? event.itemId ?? event.eventId);
+      return {
+        ...base,
+        runtimeItemId: runtimeItemId(identity),
+        kind: "tool",
+        scope,
+        providerState: "failed",
+        label: event.payload.toolName,
+      };
+    }
+
+    default:
+      return null;
+  }
+}
+
+type RuntimeItemsClosure = {
+  readonly boundary: "turn" | "session";
+  readonly turnId?: TurnId;
+  readonly outcome: "completed" | "failed" | "stopped";
+  readonly terminationGuaranteed: boolean;
+};
+
+function runtimeEventToItemsClosure(event: ProviderRuntimeEvent): RuntimeItemsClosure | null {
+  switch (event.type) {
+    case "turn.completed": {
+      const turnId = toTurnId(event.turnId);
+      if (turnId === undefined) return null;
+      return {
+        boundary: "turn",
+        turnId,
+        outcome:
+          event.payload.state === "completed"
+            ? "completed"
+            : event.payload.state === "failed"
+              ? "failed"
+              : "stopped",
+        terminationGuaranteed: true,
+      };
+    }
+    case "turn.aborted": {
+      const turnId = toTurnId(event.turnId);
+      return turnId === undefined
+        ? null
+        : { boundary: "turn", turnId, outcome: "stopped", terminationGuaranteed: true };
+    }
+    case "session.exited":
+      return {
+        boundary: "session",
+        outcome: event.payload.exitKind === "error" ? "failed" : "stopped",
+        terminationGuaranteed: event.payload.exitKind !== "orphan_possible",
+      };
+    case "session.stop.updated":
+      switch (event.payload.outcome?.status) {
+        case "stopped_confirmed":
+          return {
+            boundary: "session",
+            outcome: "stopped",
+            terminationGuaranteed: true,
+          };
+        case "orphan_possible":
+          return {
+            boundary: "session",
+            outcome: "stopped",
+            terminationGuaranteed: false,
+          };
+        case "stop_failed":
+        case undefined:
+          return null;
+      }
+    case "session.state.changed":
+      return event.payload.state === "stopped" || event.payload.state === "error"
+        ? {
+            boundary: "session",
+            outcome: event.payload.state === "error" ? "failed" : "stopped",
+            terminationGuaranteed: false,
+          }
+        : null;
+    default:
+      return null;
+  }
+}
 function sessionStatusAllowsActiveTurn(
   status: ReturnType<typeof orchestrationSessionStatusFromRuntimeState>,
 ): boolean {
@@ -643,16 +859,54 @@ function runtimeEventToActivities(
 }
 
 const make = Effect.gen(function* () {
-  const crypto = yield* Crypto.Crypto;
   const orchestrationEngine = yield* OrchestrationEngineService;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const providerService = yield* ProviderService;
   const projectionTurnRepository = yield* ProjectionTurnRepository;
+  const projectionRuntimeItemRepository = yield* ProjectionRuntimeItemRepository;
   const serverSettingsService = yield* ServerSettingsService;
   const providerCommandId = (event: ProviderRuntimeEvent, tag: string) =>
-    crypto.randomUUIDv4.pipe(
-      Effect.map((uuid) => CommandId.make(`provider:${event.eventId}:${tag}:${uuid}`)),
-    );
+    Effect.succeed(CommandId.make(`provider:${event.eventId}:${tag}`));
+  const currentRuntimeSessionIds = new Map<string, RuntimeSessionId>();
+  const runtimeSessionKey = (event: ProviderRuntimeEvent) =>
+    `${event.providerInstanceId ?? event.provider}:${event.threadId}`;
+
+  const closeRuntimeItems = Effect.fn("closeRuntimeItems")(function* (input: {
+    readonly threadId: ThreadId;
+    readonly sessionId: RuntimeSessionId;
+    readonly boundary: "turn" | "session";
+    readonly turnId: TurnId | null;
+    readonly outcome: "completed" | "failed" | "stopped";
+    readonly terminationGuaranteed: boolean;
+    readonly commandId: CommandId;
+    readonly boundaryEventId: EventId;
+    readonly closedAt: string;
+  }) {
+    const items = yield* projectionRuntimeItemRepository.listByThreadId({
+      threadId: input.threadId,
+    });
+    const closures = planRuntimeItemClosures({
+      items,
+      boundary: input.boundary,
+      sessionId: input.sessionId,
+      turnId: input.turnId,
+      outcome: input.outcome,
+      terminationGuaranteed: input.terminationGuaranteed,
+      boundaryEventId: input.boundaryEventId,
+      closedAt: input.closedAt,
+    });
+    if (closures.length === 0) return;
+    yield* orchestrationEngine.dispatch({
+      type: "thread.runtime-items.close",
+      commandId: input.commandId,
+      threadId: input.threadId,
+      boundary: input.boundary,
+      ...(input.turnId !== null ? { turnId: input.turnId } : {}),
+      terminationGuaranteed: input.terminationGuaranteed,
+      closures,
+      createdAt: input.closedAt,
+    });
+  });
 
   const turnMessageIdsByTurnKey = yield* Cache.make<string, Set<MessageId>>({
     capacity: TURN_MESSAGE_IDS_BY_TURN_CACHE_CAPACITY,
@@ -889,7 +1143,7 @@ const make = Effect.gen(function* () {
 
       yield* orchestrationEngine.dispatch({
         type: "thread.message.assistant.delta",
-        commandId: yield* providerCommandId(input.event, input.commandTag),
+        commandId: yield* providerCommandId(input.event, `${input.commandTag}:${input.messageId}`),
         threadId: input.threadId,
         messageId: input.messageId,
         delta: bufferedText,
@@ -956,7 +1210,10 @@ const make = Effect.gen(function* () {
       if (hasRenderableText) {
         yield* orchestrationEngine.dispatch({
           type: "thread.message.assistant.delta",
-          commandId: yield* providerCommandId(input.event, input.finalDeltaCommandTag),
+          commandId: yield* providerCommandId(
+            input.event,
+            `${input.finalDeltaCommandTag}:${input.messageId}`,
+          ),
           threadId: input.threadId,
           messageId: input.messageId,
           delta: text,
@@ -968,7 +1225,10 @@ const make = Effect.gen(function* () {
       if (input.hasProjectedMessage || hasRenderableText) {
         yield* orchestrationEngine.dispatch({
           type: "thread.message.assistant.complete",
-          commandId: yield* providerCommandId(input.event, input.commandTag),
+          commandId: yield* providerCommandId(
+            input.event,
+            `${input.commandTag}:${input.messageId}`,
+          ),
           threadId: input.threadId,
           messageId: input.messageId,
           ...(input.turnId ? { turnId: input.turnId } : {}),
@@ -1142,6 +1402,46 @@ const make = Effect.gen(function* () {
       ).pipe(Effect.asVoid);
     });
 
+  const finalizeAssistantMessagesForSession = (input: {
+    readonly event: ProviderRuntimeEvent;
+    readonly threadId: ThreadId;
+    readonly createdAt: string;
+  }) =>
+    Effect.gen(function* () {
+      const detailedThread = yield* resolveThreadDetail(input.threadId);
+      const prefix = `${input.threadId}:`;
+      const turnKeys = Array.from(yield* Cache.keys(turnMessageIdsByTurnKey));
+      yield* Effect.forEach(
+        turnKeys,
+        (key) => {
+          if (!key.startsWith(prefix)) return Effect.void;
+          const turnId = TurnId.make(key.slice(prefix.length));
+          return getAssistantMessageIdsForTurn(input.threadId, turnId).pipe(
+            Effect.flatMap((messageIds) =>
+              Effect.forEach(
+                messageIds,
+                (messageId) =>
+                  finalizeAssistantMessage({
+                    event: input.event,
+                    threadId: input.threadId,
+                    messageId,
+                    turnId,
+                    createdAt: input.createdAt,
+                    commandTag: "assistant-complete-on-session-terminal",
+                    finalDeltaCommandTag: "assistant-delta-on-session-terminal",
+                    hasProjectedMessage:
+                      findMessageById(detailedThread?.messages ?? [], messageId) !== undefined,
+                  }),
+                { concurrency: 1 },
+              ),
+            ),
+          );
+        },
+        { concurrency: 1 },
+      ).pipe(Effect.asVoid);
+      yield* clearTurnStateForSession(input.threadId);
+    });
+
   const getSourceProposedPlanReferenceForPendingTurnStart = Effect.fn(
     "getSourceProposedPlanReferenceForPendingTurnStart",
   )(function* (threadId: ThreadId) {
@@ -1200,11 +1500,10 @@ const make = Effect.gen(function* () {
         return;
       }
 
-      const commandUuid = yield* crypto.randomUUIDv4;
       yield* orchestrationEngine.dispatch({
         type: "thread.proposed-plan.upsert",
         commandId: CommandId.make(
-          `provider:source-proposed-plan-implemented:${implementationThreadId}:${commandUuid}`,
+          `provider:source-proposed-plan-implemented:${sourceThreadId}:${sourcePlanId}:${implementationThreadId}`,
         ),
         threadId: sourceThread.id,
         proposedPlan: {
@@ -1220,6 +1519,14 @@ const make = Effect.gen(function* () {
 
   const processRuntimeEvent = (event: ProviderRuntimeEvent) =>
     Effect.gen(function* () {
+      if (event.type === "session.started") {
+        currentRuntimeSessionIds.set(
+          runtimeSessionKey(event),
+          event.sessionId ?? RuntimeSessionId.make(`runtime-session:${event.eventId}`),
+        );
+      }
+      const runtimeSessionId =
+        event.sessionId ?? currentRuntimeSessionIds.get(runtimeSessionKey(event));
       const thread = yield* resolveThreadShell(event.threadId);
       if (!thread) return;
 
@@ -1277,8 +1584,14 @@ const make = Effect.gen(function* () {
             if (activeTurnId !== null && eventTurnId !== undefined) {
               return sameId(activeTurnId, eventTurnId);
             }
-            // If no active turn is tracked, accept completion scoped to this thread.
-            return true;
+            // No active turn tracked: accept only completions that name their
+            // turn (covers a real completion whose turn.started was lost). An
+            // untargeted completion cannot prove it belongs to any turn this
+            // thread ran — the known emitter was the Claude resume handshake
+            // (system/init + result(num_turns: 0)), which is not a turn at
+            // all — and applying it here stomps the "starting" lifecycle
+            // state while a turn start is pending.
+            return eventTurnId !== undefined;
           default:
             return true;
         }
@@ -1365,12 +1678,56 @@ const make = Effect.gen(function* () {
               ...(event.providerInstanceId !== undefined
                 ? { providerInstanceId: event.providerInstanceId }
                 : {}),
-              runtimeMode: thread.session?.runtimeMode ?? "full-access",
+              runtimeMode: thread.session?.runtimeMode ?? thread.runtimeMode,
               activeTurnId: nextActiveTurnId,
               lastError,
               updatedAt: now,
             },
             createdAt: now,
+          });
+        }
+      }
+
+      const observation =
+        runtimeSessionId === undefined
+          ? null
+          : runtimeEventToItemObservation(event, runtimeSessionId);
+      if (observation !== null) {
+        yield* orchestrationEngine.dispatch({
+          type: "thread.runtime-item.observe",
+          commandId: yield* providerCommandId(
+            event,
+            `runtime-item-observe:${observation.runtimeItemId}`,
+          ),
+          threadId: thread.id,
+          observation,
+          createdAt: now,
+        });
+      }
+
+      const runtimeItemsClosure = runtimeEventToItemsClosure(event);
+      if (runtimeItemsClosure !== null) {
+        const sessionId = runtimeSessionId;
+        if (sessionId !== undefined) {
+          yield* closeRuntimeItems({
+            threadId: thread.id,
+            sessionId,
+            boundary: runtimeItemsClosure.boundary,
+            turnId: runtimeItemsClosure.turnId ?? null,
+            outcome: runtimeItemsClosure.outcome,
+            terminationGuaranteed: runtimeItemsClosure.terminationGuaranteed,
+            commandId: yield* providerCommandId(
+              event,
+              [
+                "runtime-items-close",
+                runtimeItemsClosure.boundary,
+                runtimeItemsClosure.turnId ?? "all",
+                runtimeItemsClosure.outcome,
+                runtimeItemsClosure.terminationGuaranteed ? "confirmed" : "uncertain",
+              ].join(":"),
+            ),
+            boundaryEventId: event.eventId,
+            closedAt: now,
           });
         }
       }
@@ -1592,8 +1949,12 @@ const make = Effect.gen(function* () {
         }
       }
 
-      if (event.type === "session.exited") {
-        yield* clearTurnStateForSession(thread.id);
+      if (runtimeItemsClosure?.boundary === "session") {
+        yield* finalizeAssistantMessagesForSession({
+          event,
+          threadId: thread.id,
+          createdAt: now,
+        });
       }
 
       if (event.type === "runtime.error") {
@@ -1615,7 +1976,7 @@ const make = Effect.gen(function* () {
               ...(event.providerInstanceId !== undefined
                 ? { providerInstanceId: event.providerInstanceId }
                 : {}),
-              runtimeMode: thread.session?.runtimeMode ?? "full-access",
+              runtimeMode: thread.session?.runtimeMode ?? thread.runtimeMode,
               activeTurnId: eventTurnId ?? null,
               lastError: runtimeErrorMessage,
               updatedAt: now,
@@ -1707,10 +2068,124 @@ const make = Effect.gen(function* () {
       }),
     );
 
+  const reconcileRuntimeItemsAtStartup = Effect.gen(function* () {
+    const [activeSnapshot, archivedSnapshot] = yield* Effect.all([
+      projectionSnapshotQuery.getShellSnapshot(),
+      projectionSnapshotQuery.getArchivedShellSnapshot(),
+    ]);
+    const threads = new Map(
+      [...activeSnapshot.threads, ...archivedSnapshot.threads].map((thread) => [thread.id, thread]),
+    );
+
+    yield* Effect.forEach(
+      threads.values(),
+      (thread) =>
+        Effect.gen(function* () {
+          const runtimeItems = yield* projectionRuntimeItemRepository.listByThreadId({
+            threadId: thread.id,
+          });
+          const activeItems = runtimeItems.filter((item) => item.effectiveState === "active");
+          if (activeItems.length === 0) return;
+
+          const session = thread.session;
+          if (
+            session !== null &&
+            (session.status === "stopped" ||
+              session.status === "interrupted" ||
+              session.status === "error")
+          ) {
+            const outcome = session.status === "error" ? "failed" : "stopped";
+            const sessionIds = new Set(activeItems.map((item) => item.sessionId));
+            yield* Effect.forEach(
+              sessionIds,
+              (sessionId) => {
+                const boundaryId = `reconcile:runtime-items:${thread.id}:session:${sessionId}:${session.status}:${session.updatedAt}`;
+                return closeRuntimeItems({
+                  threadId: thread.id,
+                  sessionId,
+                  boundary: "session",
+                  turnId: null,
+                  outcome,
+                  terminationGuaranteed: false,
+                  commandId: CommandId.make(boundaryId),
+                  boundaryEventId: EventId.make(boundaryId),
+                  closedAt: session.updatedAt,
+                });
+              },
+              { concurrency: 1 },
+            ).pipe(Effect.asVoid);
+            return;
+          }
+
+          const activeTurnIds = new Set(
+            activeItems
+              .map((item) => item.turnId)
+              .filter((turnId): turnId is TurnId => turnId !== null),
+          );
+          if (activeTurnIds.size === 0) return;
+
+          const turns = yield* projectionTurnRepository.listByThreadId({ threadId: thread.id });
+          yield* Effect.forEach(
+            turns,
+            (turn) => {
+              if (
+                turn.turnId === null ||
+                !activeTurnIds.has(turn.turnId) ||
+                (turn.state !== "completed" &&
+                  turn.state !== "error" &&
+                  turn.state !== "interrupted")
+              ) {
+                return Effect.void;
+              }
+              const outcome =
+                turn.state === "completed"
+                  ? "completed"
+                  : turn.state === "error"
+                    ? "failed"
+                    : "stopped";
+              const settledAt = turn.completedAt ?? turn.requestedAt;
+              const sessionIds = new Set(
+                activeItems
+                  .filter((item) => item.turnId === turn.turnId)
+                  .map((item) => item.sessionId),
+              );
+              return Effect.forEach(
+                sessionIds,
+                (sessionId) => {
+                  const boundaryId = `reconcile:runtime-items:${thread.id}:session:${sessionId}:turn:${turn.turnId}:${turn.state}:${settledAt}`;
+                  return closeRuntimeItems({
+                    threadId: thread.id,
+                    sessionId,
+                    boundary: "turn",
+                    turnId: turn.turnId,
+                    outcome,
+                    terminationGuaranteed: true,
+                    commandId: CommandId.make(boundaryId),
+                    boundaryEventId: EventId.make(boundaryId),
+                    closedAt: settledAt,
+                  });
+                },
+                { concurrency: 1 },
+              ).pipe(Effect.asVoid);
+            },
+            { concurrency: 1 },
+          ).pipe(Effect.asVoid);
+        }),
+      { concurrency: 1 },
+    ).pipe(Effect.asVoid);
+  });
+
   const worker = yield* makeDrainableWorker(processInputSafely);
 
   const start: ProviderRuntimeIngestionShape["start"] = () =>
     Effect.gen(function* () {
+      yield* reconcileRuntimeItemsAtStartup.pipe(
+        Effect.catchCause((cause) =>
+          Effect.logError("provider runtime-item startup reconciliation failed", {
+            cause: Cause.pretty(cause),
+          }),
+        ),
+      );
       yield* Effect.forkScoped(
         Stream.runForEach(providerService.streamEvents, (event) =>
           worker.enqueue({ source: "runtime", event }),
@@ -1735,4 +2210,11 @@ const make = Effect.gen(function* () {
 export const ProviderRuntimeIngestionLive = Layer.effect(
   ProviderRuntimeIngestionService,
   make,
-).pipe(Layer.provide(ProjectionTurnRepositoryLive));
+).pipe(
+  Layer.provide(ProjectionTurnRepositoryLive),
+  // ProjectionRuntimeItemRepository is NOT provided here: a bare provide
+  // builds the repository in this layer's local context, which has no
+  // SqlClient, and the memoized broken build then kills the real server at
+  // boot (suites stay green on fakes). The repository reaches this layer
+  // from the projection pipeline's provideMerge exposure instead.
+);
