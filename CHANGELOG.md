@@ -1,3 +1,10 @@
+## 3.5.38 - 2026-08-09 (Patch)
+
+Release impact: Patch because this fixes provider turn attribution and queued-follow-up interruption without changing provider configuration.
+
+- Claude no longer emits phantom turn completions for resume handshakes or late results, and ingestion rejects untargeted completions when no active turn can own them.
+- Codex keeps the currently interruptible turn id when the app-server accepts a queued follow-up, then advances through normal lifecycle notifications.
+
 ## 3.5.37 - 2026-08-09 (Patch)
 
 Release impact: Patch because this makes the existing Symphony review path fail closed for unsupported providers without changing review configuration.

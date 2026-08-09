@@ -680,17 +680,20 @@ function currentProviderThreadId(session: ProviderSession): string | undefined {
 
 function updateSession(
   sessionRef: Ref.Ref<ProviderSession>,
-  updates: Partial<ProviderSession>,
+  updates: Partial<ProviderSession> | ((session: ProviderSession) => Partial<ProviderSession>),
 ): Effect.Effect<void> {
   return Effect.gen(function* () {
     const updatedAt = DateTime.formatIso(yield* DateTime.now);
     yield* Ref.update(sessionRef, (session) => ({
       ...session,
-      ...updates,
+      ...(typeof updates === "function" ? updates(session) : updates),
       updatedAt,
     }));
   });
 }
+
+export const activeTurnIdAfterStart = (current: TurnId | undefined, started: TurnId): TurnId =>
+  current ?? started;
 
 function parseThreadSnapshot(
   response: EffectCodexSchema.V2ThreadReadResponse | EffectCodexSchema.V2ThreadRollbackResponse,
@@ -1313,11 +1316,16 @@ export const makeCodexSessionRuntime = (
             ),
           );
           const turnId = TurnId.make(response.turn.id);
-          yield* updateSession(sessionRef, {
+          yield* updateSession(sessionRef, (session) => ({
             status: "running",
-            activeTurnId: turnId,
+            // Codex accepts follow-ups while the current turn is still
+            // running. The response carries the queued turn id, but
+            // turn/interrupt only accepts the id that is active now, so keep
+            // the existing active id until turn-lifecycle notifications
+            // advance it.
+            activeTurnId: activeTurnIdAfterStart(session.activeTurnId, turnId),
             ...(normalizedModel ? { model: normalizedModel } : {}),
-          });
+          }));
           const resumedProviderThreadId = currentProviderThreadId(yield* Ref.get(sessionRef));
           return {
             threadId: options.threadId,
