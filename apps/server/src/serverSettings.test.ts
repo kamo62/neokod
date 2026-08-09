@@ -4,6 +4,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ServerSettings,
+  ServerSettingsMutationId,
   ServerSettingsPatch,
 } from "@neokod/contracts";
 import { createModelSelection } from "@neokod/shared/model";
@@ -133,6 +134,43 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         },
       );
     }),
+  );
+
+  it.effect("persists monotonic revisions and rejects stale mutations", () =>
+    Effect.gen(function* () {
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const mutationId = ServerSettingsMutationId.make("settings:test:0:1");
+
+      const acknowledgement = yield* serverSettings.updateSettingsMutation({
+        mutationId,
+        expectedRevision: 0,
+        patch: { enableAssistantStreaming: true },
+      });
+
+      assert.strictEqual(acknowledgement.mutationId, mutationId);
+      assert.strictEqual(acknowledgement.revision, 1);
+      assert.strictEqual(acknowledgement.settings.revision, 1);
+      assert.isTrue(acknowledgement.settings.enableAssistantStreaming);
+
+      const staleError = yield* Effect.flip(
+        serverSettings.updateSettingsMutation({
+          mutationId: ServerSettingsMutationId.make("settings:test:0:2"),
+          expectedRevision: 0,
+          patch: { enableProviderUpdateChecks: false },
+        }),
+      );
+      assert.strictEqual(staleError.operation, "revision-conflict");
+      assert.strictEqual(staleError.expectedRevision, 0);
+      assert.strictEqual(staleError.actualRevision, 1);
+
+      const current = yield* serverSettings.getSettings;
+      assert.strictEqual(current.revision, 1);
+      assert.isTrue(current.enableProviderUpdateChecks);
+      const persisted = yield* fileSystem.readFileString(serverConfig.settingsPath);
+      assert.include(persisted, '"revision": 1');
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
   it.effect("keeps the saved text-generation selection when every provider is disabled", () =>
@@ -565,6 +603,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
       // @effect-diagnostics-next-line preferSchemaOverJson:off
       assert.deepEqual(JSON.parse(raw), {
+        revision: 1,
         addProjectBaseDirectory: "~/Development",
         observability: {
           otlpTracesUrl: "http://localhost:4318/v1/traces",

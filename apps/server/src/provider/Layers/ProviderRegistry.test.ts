@@ -404,6 +404,7 @@ function makeMutableServerSettingsService(
           yield* PubSub.publish(changes, next);
           return next;
         }),
+      updateSettingsMutation: () => Effect.die(new Error("unused settings mutation")),
       get streamChanges() {
         return Stream.fromPubSub(changes);
       },
