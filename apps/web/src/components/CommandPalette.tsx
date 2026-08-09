@@ -110,6 +110,7 @@ import {
   filterCommandPaletteGroups,
   getCommandPaletteInputPlaceholder,
   getCommandPaletteMode,
+  getDefaultCloneDestinationPath,
   ITEM_ICON_CLASS,
   RECENT_THREAD_LIMIT,
 } from "./CommandPalette.logic";
@@ -1350,7 +1351,10 @@ function OpenCommandPaletteDialog(props: {
 
       const provider = remoteProjectSourceProvider(addProjectCloneFlow.source);
       if (!provider) {
-        const destinationPath = getDefaultCloneParentPath(addProjectCloneFlow.environmentId);
+        const destinationPath = getDefaultCloneDestinationPath(
+          getDefaultCloneParentPath(addProjectCloneFlow.environmentId),
+          rawRepository,
+        );
         setAddProjectCloneFlow({
           step: "confirm",
           environmentId: addProjectCloneFlow.environmentId,
@@ -1387,7 +1391,10 @@ function OpenCommandPaletteDialog(props: {
         return;
       }
       const repository = lookupResult.value;
-      const destinationPath = getDefaultCloneParentPath(addProjectCloneFlow.environmentId);
+      const destinationPath = getDefaultCloneDestinationPath(
+        getDefaultCloneParentPath(addProjectCloneFlow.environmentId),
+        repository.nameWithOwner,
+      );
       setAddProjectCloneFlow({
         step: "confirm",
         environmentId: addProjectCloneFlow.environmentId,
@@ -1438,9 +1445,11 @@ function OpenCommandPaletteDialog(props: {
     }
 
     setIsRemoteProjectCloning(true);
+    const cloneProvider = sourceProviderKind(addProjectCloneFlow.source);
     const cloneResult = await cloneRepository({
       environmentId: addProjectCloneFlow.environmentId,
       input: {
+        ...(cloneProvider === null ? {} : { provider: cloneProvider }),
         remoteUrl: addProjectCloneFlow.remoteUrl,
         destinationPath,
       },
@@ -1502,7 +1511,7 @@ function OpenCommandPaletteDialog(props: {
   const cloneDestinationBrowseGroups = useMemo(
     () =>
       browseGroups.map((group) =>
-        group.value === "directories" ? { ...group, label: "Select where to clone" } : group,
+        group.value === "directories" ? { ...group, label: "Destination folder" } : group,
       ),
     [browseGroups],
   );
@@ -1942,7 +1951,7 @@ function OpenCommandPaletteDialog(props: {
                 }
               : addProjectCloneFlow?.step === "confirm"
                 ? {
-                    emptyStateMessage: "Choose a destination path and press Enter to clone.",
+                    emptyStateMessage: "Review the destination folder and press Enter to clone.",
                   }
                 : relativePathNeedsActiveProject
                   ? {
