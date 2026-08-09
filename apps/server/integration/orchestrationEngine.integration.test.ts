@@ -566,13 +566,6 @@ it.live("tracks approval requests and resolves pending approvals on user respons
             requestKind: "command",
             detail: "Approve command execution",
           },
-          {
-            type: "turn.completed",
-            ...runtimeBase("evt-approval-3", "2026-02-24T10:03:00.200Z"),
-            threadId: THREAD_ID,
-            turnId: FIXTURE_TURN_ID,
-            status: "completed",
-          },
         ],
       });
 
@@ -1155,17 +1148,6 @@ it.live("forwards claudeAgent approval responses to the provider session", () =>
               requestId: APPROVAL_REQUEST_ID,
               requestKind: "command",
               detail: "Approve Claude tool call",
-            },
-            {
-              type: "turn.completed",
-              ...runtimeBase(
-                "evt-claude-approval-3",
-                "2026-02-24T10:12:00.100Z",
-                CLAUDE_AGENT_PROVIDER,
-              ),
-              threadId: THREAD_ID,
-              turnId: FIXTURE_TURN_ID,
-              status: "completed",
             },
           ],
         });

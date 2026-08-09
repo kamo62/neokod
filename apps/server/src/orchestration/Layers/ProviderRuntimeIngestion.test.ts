@@ -18,11 +18,12 @@ import {
   MessageId,
   ProjectId,
   ProviderItemId,
+  RuntimeItemId,
+  RuntimeSessionId,
   type ServerSettings,
   ThreadId,
   TurnId,
 } from "@neokod/contracts";
-import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -37,6 +38,8 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 import { OrchestrationEventStoreLive } from "../../persistence/Layers/OrchestrationEventStore.ts";
 import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Layers/OrchestrationCommandReceipts.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
+import { ProjectionRuntimeItemRepositoryLive } from "../../persistence/Layers/ProjectionRuntimeItems.ts";
+import { ProjectionRuntimeItemRepository } from "../../persistence/Services/ProjectionRuntimeItems.ts";
 import {
   ProviderService,
   type ProviderServiceShape,
@@ -106,6 +109,7 @@ function createProviderServiceHarness() {
     respondToRequest: () => unsupported(),
     respondToUserInput: () => unsupported(),
     stopSession: () => unsupported(),
+    stopAllSessions: () => unsupported(),
     listSessions: () => Effect.succeed([...runtimeSessions]),
     getCapabilities: () => Effect.succeed({ sessionModelSwitch: "in-session" }),
     getInstanceInfo: (instanceId) => {
@@ -175,17 +179,18 @@ async function waitForThread(
   timeoutMs = 2000,
   threadId: ThreadId = asThreadId("thread-1"),
 ) {
-  const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
+  let attemptsRemaining = Math.max(1, timeoutMs);
   const poll = async (): Promise<ProviderRuntimeTestThread> => {
     const snapshot = await readModel();
     const thread = snapshot.threads.find((entry) => entry.id === threadId);
     if (thread && predicate(thread)) {
       return thread;
     }
-    if ((await Effect.runPromise(Clock.currentTimeMillis)) >= deadline) {
+    attemptsRemaining -= 1;
+    if (attemptsRemaining <= 0) {
       throw new Error("Timed out waiting for thread state");
     }
-    await Effect.runPromise(Effect.yieldNow);
+    await Promise.resolve();
     return poll();
   };
   return poll();
@@ -193,7 +198,10 @@ async function waitForThread(
 
 describe("ProviderRuntimeIngestion", () => {
   let runtime: ManagedRuntime.ManagedRuntime<
-    OrchestrationEngineService | ProviderRuntimeIngestionService | ProjectionSnapshotQuery,
+    | OrchestrationEngineService
+    | ProviderRuntimeIngestionService
+    | ProjectionSnapshotQuery
+    | ProjectionRuntimeItemRepository,
     unknown
   > | null = null;
   let scope: Scope.Closeable | null = null;
@@ -206,8 +214,8 @@ describe("ProviderRuntimeIngestion", () => {
   }
 
   afterEach(async () => {
-    if (scope) {
-      await Effect.runPromise(Scope.close(scope, Exit.void));
+    if (scope && runtime) {
+      await runtime.runPromise(Scope.close(scope, Exit.void));
     }
     scope = null;
     if (runtime) {
@@ -219,7 +227,10 @@ describe("ProviderRuntimeIngestion", () => {
     }
   });
 
-  async function createHarness(options?: { serverSettings?: Partial<ServerSettings> }) {
+  async function createHarness(options?: {
+    serverSettings?: Partial<ServerSettings>;
+    startIngestion?: boolean;
+  }) {
     const workspaceRoot = makeTempDir("neokod-provider-project-");
     NodeFS.mkdirSync(NodePath.join(workspaceRoot, ".git"));
     const provider = createProviderServiceHarness();
@@ -238,6 +249,9 @@ describe("ProviderRuntimeIngestion", () => {
     const layer = ProviderRuntimeIngestionLive.pipe(
       Layer.provideMerge(orchestrationLayer),
       Layer.provideMerge(projectionSnapshotLayer),
+      Layer.provideMerge(
+        ProjectionRuntimeItemRepositoryLive.pipe(Layer.provide(SqlitePersistenceMemory)),
+      ),
       Layer.provideMerge(SqlitePersistenceMemory),
       Layer.provideMerge(Layer.succeed(ProviderService, provider.service)),
       Layer.provideMerge(makeTestServerSettingsLayer(options?.serverSettings)),
@@ -248,15 +262,21 @@ describe("ProviderRuntimeIngestion", () => {
     runtime = activeRuntime;
     const engine = await activeRuntime.runPromise(Effect.service(OrchestrationEngineService));
     const snapshotQuery = await activeRuntime.runPromise(Effect.service(ProjectionSnapshotQuery));
+    const runtimeItemRepository = await activeRuntime.runPromise(
+      Effect.service(ProjectionRuntimeItemRepository),
+    );
     const ingestion = await activeRuntime.runPromise(
       Effect.service(ProviderRuntimeIngestionService),
     );
-    scope = await Effect.runPromise(Scope.make("sequential"));
-    await Effect.runPromise(ingestion.start().pipe(Scope.provide(scope)));
-    const drain = () => Effect.runPromise(ingestion.drain);
+    scope = await activeRuntime.runPromise(Scope.make("sequential"));
+    const start = () => activeRuntime.runPromise(ingestion.start().pipe(Scope.provide(scope!)));
+    if (options?.startIngestion !== false) {
+      await start();
+    }
+    const drain = () => activeRuntime.runPromise(ingestion.drain);
 
     const createdAt = "2026-01-01T00:00:00.000Z";
-    await Effect.runPromise(
+    await activeRuntime.runPromise(
       engine.dispatch({
         type: "project.create",
         commandId: CommandId.make("cmd-provider-project-create"),
@@ -270,7 +290,7 @@ describe("ProviderRuntimeIngestion", () => {
         createdAt,
       }),
     );
-    await Effect.runPromise(
+    await activeRuntime.runPromise(
       engine.dispatch({
         type: "thread.create",
         commandId: CommandId.make("cmd-thread-create"),
@@ -288,7 +308,7 @@ describe("ProviderRuntimeIngestion", () => {
         createdAt,
       }),
     );
-    await Effect.runPromise(
+    await activeRuntime.runPromise(
       engine.dispatch({
         type: "thread.session.set",
         commandId: CommandId.make("cmd-session-seed"),
@@ -316,16 +336,437 @@ describe("ProviderRuntimeIngestion", () => {
 
     return {
       engine,
-      readModel: () => Effect.runPromise(snapshotQuery.getSnapshot()),
+      run: activeRuntime.runPromise,
+      readModel: () => activeRuntime.runPromise(snapshotQuery.getSnapshot()),
       readEvents: () =>
         activeRuntime.runPromise(
           Stream.runCollect(engine.readEvents(0)).pipe(Effect.map((chunk) => Array.from(chunk))),
         ),
+      shellSnapshot: () => activeRuntime.runPromise(snapshotQuery.getShellSnapshot()),
+      runtimeItems: () =>
+        activeRuntime.runPromise(
+          runtimeItemRepository.listByThreadId({ threadId: ThreadId.make("thread-1") }),
+        ),
       emit: provider.emit,
       setProviderSession: provider.setSession,
+      start,
       drain,
     };
   }
+
+  it("persists runtime-item observations and closes missing terminal events at turn boundaries", async () => {
+    const harness = await createHarness();
+    const turnId = asTurnId("turn-runtime-items");
+
+    harness.emit({
+      type: "session.started",
+      eventId: asEventId("runtime-items-session-started"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      createdAt: "2026-01-01T00:00:09.000Z",
+      payload: {},
+    });
+
+    harness.emit({
+      type: "item.started",
+      eventId: asEventId("provider-tool-started"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      turnId,
+      itemId: asItemId("provider-tool-1"),
+      createdAt: "2026-01-01T00:00:10.000Z",
+      payload: {
+        itemType: "command_execution",
+        status: "inProgress",
+        title: "Run tests",
+      },
+    });
+    harness.emit({
+      type: "task.started",
+      eventId: asEventId("provider-task-started"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      turnId,
+      createdAt: "2026-01-01T00:00:11.000Z",
+      payload: {
+        taskId: "task-detached-1",
+        description: "Investigate failures",
+        agentId: "agent-1",
+      },
+    });
+    await harness.drain();
+
+    let runtimeItems = await harness.runtimeItems();
+    expect(runtimeItems).toHaveLength(2);
+    expect(runtimeItems.map((item) => item.effectiveState)).toEqual(["active", "active"]);
+    expect(
+      (await harness.shellSnapshot()).threads.find((thread) => thread.id === "thread-1")
+        ?.workerCount,
+    ).toBe(1);
+
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("provider-tool-completed"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      turnId,
+      itemId: asItemId("provider-tool-1"),
+      createdAt: "2026-01-01T00:00:20.000Z",
+      payload: {
+        itemType: "command_execution",
+        status: "completed",
+        title: "Run tests",
+      },
+    });
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("provider-turn-failed"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      turnId,
+      createdAt: "2026-01-01T00:00:30.000Z",
+      payload: { state: "failed", errorMessage: "turn failed" },
+    });
+    await harness.drain();
+
+    runtimeItems = await harness.runtimeItems();
+    const tool = runtimeItems.find((item) => item.kind === "tool");
+    const task = runtimeItems.find((item) => item.kind === "delegated-task");
+    expect(tool).toMatchObject({
+      providerState: "completed",
+      effectiveState: "completed",
+      terminalSource: "provider",
+    });
+    expect(task).toMatchObject({
+      providerState: "active",
+      syntheticState: "orphaned",
+      effectiveState: "orphaned",
+      terminalSource: "synthetic",
+      mayStillBeRunning: true,
+    });
+    expect(
+      (await harness.shellSnapshot()).threads.find((thread) => thread.id === "thread-1")
+        ?.workerCount,
+    ).toBe(0);
+    const activity = (await harness.readModel()).threads.find(
+      (thread) => thread.id === "thread-1",
+    )?.activities;
+    const taskStarted = activity?.find((entry) => entry.id === "provider-task-started");
+    const syntheticTaskTerminal = activity?.find(
+      (entry) =>
+        entry.kind === "task.completed" &&
+        typeof entry.payload === "object" &&
+        entry.payload !== null &&
+        "synthetic" in entry.payload,
+    );
+    expect(syntheticTaskTerminal).toMatchObject({
+      kind: "task.completed",
+      payload: { taskId: "task-detached-1", status: "orphaned", synthetic: true },
+    });
+    expect(syntheticTaskTerminal?.sequence).toBeGreaterThan(taskStarted?.sequence ?? 0);
+
+    const lateCompletion = {
+      type: "task.completed" as const,
+      eventId: asEventId("provider-task-completed-late"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      turnId,
+      createdAt: "2026-01-01T00:00:40.000Z",
+      payload: {
+        taskId: "task-detached-1",
+        status: "completed" as const,
+        agentId: "agent-1",
+      },
+    };
+    harness.emit(lateCompletion);
+    harness.emit(lateCompletion);
+    await harness.drain();
+
+    runtimeItems = await harness.runtimeItems();
+    expect(runtimeItems).toHaveLength(2);
+    expect(runtimeItems.find((item) => item.kind === "delegated-task")).toMatchObject({
+      providerState: "completed",
+      syntheticState: "orphaned",
+      effectiveState: "completed",
+      terminalSource: "provider",
+      mayStillBeRunning: false,
+    });
+  });
+
+  it("durably terminates every runtime-item kind when a managed session exits", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-all-runtime-items");
+    const provider = ProviderDriverKind.make("codex");
+
+    harness.emit({
+      type: "session.started",
+      eventId: asEventId("all-items-session-started"),
+      provider,
+      threadId,
+      createdAt: "2026-01-01T01:00:00.000Z",
+      payload: {},
+    });
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("all-items-turn-started"),
+      provider,
+      threadId,
+      turnId,
+      createdAt: "2026-01-01T01:00:01.000Z",
+    });
+    harness.emit({
+      type: "item.started",
+      eventId: asEventId("all-items-tool-started"),
+      provider,
+      threadId,
+      turnId,
+      itemId: asItemId("all-items-tool"),
+      createdAt: "2026-01-01T01:00:02.000Z",
+      payload: { itemType: "command_execution", status: "inProgress", title: "Run command" },
+    });
+    harness.emit({
+      type: "request.opened",
+      eventId: asEventId("all-items-approval-opened"),
+      provider,
+      threadId,
+      turnId,
+      requestId: ApprovalRequestId.make("all-items-approval"),
+      createdAt: "2026-01-01T01:00:03.000Z",
+      payload: { requestType: "command_execution_approval", detail: "Run command" },
+    });
+    harness.emit({
+      type: "user-input.requested",
+      eventId: asEventId("all-items-input-opened"),
+      provider,
+      threadId,
+      turnId,
+      requestId: ApprovalRequestId.make("all-items-input"),
+      createdAt: "2026-01-01T01:00:04.000Z",
+      payload: {
+        questions: [{ id: "answer", header: "Answer", question: "Continue?", options: [] }],
+      },
+    });
+    harness.emit({
+      type: "task.started",
+      eventId: asEventId("all-items-task-started"),
+      provider,
+      threadId,
+      turnId,
+      createdAt: "2026-01-01T01:00:05.000Z",
+      payload: { taskId: "all-items-task", description: "Delegated work", agentId: "agent-1" },
+    });
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("all-items-assistant-delta"),
+      provider,
+      threadId,
+      turnId,
+      itemId: asItemId("all-items-assistant"),
+      createdAt: "2026-01-01T01:00:06.000Z",
+      payload: { streamKind: "assistant_text", delta: "partial response" },
+    });
+    harness.emit({
+      type: "session.exited",
+      eventId: asEventId("all-items-session-exited"),
+      provider,
+      threadId,
+      createdAt: "2026-01-01T01:00:07.000Z",
+      payload: { exitKind: "error", reason: "provider crashed", recoverable: true },
+    });
+    await harness.drain();
+
+    expect(await harness.runtimeItems()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "tool",
+          syntheticState: "failed",
+          effectiveState: "failed",
+        }),
+        expect.objectContaining({
+          kind: "approval",
+          syntheticState: "cancelled",
+          effectiveState: "cancelled",
+        }),
+        expect.objectContaining({
+          kind: "user-input",
+          syntheticState: "cancelled",
+          effectiveState: "cancelled",
+        }),
+        expect.objectContaining({
+          kind: "delegated-task",
+          syntheticState: "orphaned",
+          effectiveState: "orphaned",
+          mayStillBeRunning: true,
+        }),
+        expect.objectContaining({
+          kind: "assistant-message",
+          syntheticState: "interrupted",
+          effectiveState: "interrupted",
+        }),
+      ]),
+    );
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(
+      thread?.messages.find((message) => message.id === "assistant:all-items-assistant"),
+    ).toMatchObject({
+      text: "partial response",
+      streaming: false,
+    });
+    expect(
+      thread?.activities
+        .filter(
+          (entry) =>
+            typeof entry.payload === "object" &&
+            entry.payload !== null &&
+            "synthetic" in entry.payload,
+        )
+        .map((entry) => entry.kind),
+    ).toEqual([
+      "tool.completed",
+      "approval.resolved",
+      "user-input.resolved",
+      "task.completed",
+      "assistant.interrupted",
+    ]);
+  });
+
+  it("reconciles active runtime items against settled turns before live subscriptions", async () => {
+    const harness = await createHarness({ startIngestion: false });
+    const turnId = asTurnId("turn-restart-reconciliation");
+    const threadId = asThreadId("thread-1");
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("restart-running-session"),
+        threadId,
+        session: {
+          threadId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: turnId,
+          updatedAt: "2026-01-01T00:02:00.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:02:00.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.runtime-item.observe",
+        commandId: CommandId.make("restart-runtime-item-observe"),
+        threadId,
+        observation: {
+          runtimeItemId: RuntimeItemId.make("restart-runtime-tool"),
+          providerItemId: null,
+          sessionId: RuntimeSessionId.make("restart-runtime-session"),
+          kind: "tool",
+          scope: "turn",
+          turnId,
+          providerState: "active",
+          label: "Interrupted tool",
+          providerEventId: EventId.make("restart-provider-tool-started"),
+          observedAt: "2026-01-01T00:02:01.000Z",
+        },
+        createdAt: "2026-01-01T00:02:01.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("restart-ready-session"),
+        threadId,
+        session: {
+          threadId,
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: "2026-01-01T00:02:30.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:02:30.000Z",
+      }),
+    );
+
+    expect(await harness.runtimeItems()).toMatchObject([{ effectiveState: "active" }]);
+    await harness.start();
+
+    expect(await harness.runtimeItems()).toMatchObject([
+      {
+        providerState: "active",
+        syntheticState: "completed",
+        effectiveState: "completed",
+        terminalSource: "synthetic",
+        mayStillBeRunning: false,
+      },
+    ]);
+    expect(
+      (await harness.readModel()).threads
+        .find((entry) => entry.id === threadId)
+        ?.activities.find(
+          (activity) =>
+            activity.kind === "tool.completed" &&
+            typeof activity.payload === "object" &&
+            activity.payload !== null &&
+            "synthetic" in activity.payload,
+        ),
+    ).toBeDefined();
+  });
+
+  it("does not collide when a provider reuses an item id in a new managed session", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const provider = ProviderDriverKind.make("codex");
+    const emitTool = (eventId: string, turnId: string) =>
+      harness.emit({
+        type: "item.started",
+        eventId: asEventId(eventId),
+        provider,
+        threadId,
+        turnId: asTurnId(turnId),
+        itemId: asItemId("reused-provider-item"),
+        createdAt: "2026-01-01T02:00:01.000Z",
+        payload: { itemType: "command_execution", status: "inProgress" },
+      });
+
+    harness.emit({
+      type: "session.started",
+      eventId: asEventId("reused-session-one"),
+      provider,
+      threadId,
+      createdAt: "2026-01-01T02:00:00.000Z",
+      payload: {},
+    });
+    emitTool("reused-tool-one", "reused-turn-one");
+    harness.emit({
+      type: "session.exited",
+      eventId: asEventId("reused-session-one-exited"),
+      provider,
+      threadId,
+      createdAt: "2026-01-01T02:00:02.000Z",
+      payload: { exitKind: "graceful" },
+    });
+    harness.emit({
+      type: "session.started",
+      eventId: asEventId("reused-session-two"),
+      provider,
+      threadId,
+      createdAt: "2026-01-01T02:00:03.000Z",
+      payload: {},
+    });
+    emitTool("reused-tool-two", "reused-turn-two");
+    await harness.drain();
+
+    const reused = (await harness.runtimeItems()).filter(
+      (item) => item.runtimeItemId === "reused-provider-item",
+    );
+    expect(reused).toHaveLength(2);
+    expect(new Set(reused.map((item) => item.sessionId)).size).toBe(2);
+    expect(reused.map((item) => item.effectiveState)).toEqual(["stopped", "active"]);
+  });
 
   it("maps turn started/completed events into thread session updates", async () => {
     const harness = await createHarness();
@@ -563,7 +1004,7 @@ describe("ProviderRuntimeIngestion", () => {
     const harness = await createHarness();
     const threadId = asThreadId("thread-session-first-event");
     const createdAt = "2026-01-01T00:00:00.000Z";
-    await Effect.runPromise(
+    await harness.run(
       harness.engine.dispatch({
         type: "thread.create",
         commandId: CommandId.make("cmd-thread-session-first-event"),
@@ -604,7 +1045,7 @@ describe("ProviderRuntimeIngestion", () => {
     const harness = await createHarness();
     const seededAt = "2026-01-01T00:00:00.000Z";
 
-    await Effect.runPromise(
+    await harness.run(
       harness.engine.dispatch({
         type: "thread.session.set",
         commandId: CommandId.make("cmd-session-seed-claude-placeholder"),
@@ -1024,7 +1465,7 @@ describe("ProviderRuntimeIngestion", () => {
     const targetTurnId = asTurnId("turn-plan-implement");
     const createdAt = "2026-01-01T00:00:00.000Z";
 
-    await Effect.runPromise(
+    await harness.run(
       harness.engine.dispatch({
         type: "thread.create",
         commandId: CommandId.make("cmd-thread-create-plan-source"),
@@ -1042,7 +1483,7 @@ describe("ProviderRuntimeIngestion", () => {
         createdAt,
       }),
     );
-    await Effect.runPromise(
+    await harness.run(
       harness.engine.dispatch({
         type: "thread.session.set",
         commandId: CommandId.make("cmd-session-set-plan-source"),
@@ -1059,7 +1500,7 @@ describe("ProviderRuntimeIngestion", () => {
         createdAt,
       }),
     );
-    await Effect.runPromise(
+    await harness.run(
       harness.engine.dispatch({
         type: "thread.create",
         commandId: CommandId.make("cmd-thread-create-plan-target"),
@@ -1077,7 +1518,7 @@ describe("ProviderRuntimeIngestion", () => {
         createdAt,
       }),
     );
-    await Effect.runPromise(
+    await harness.run(
       harness.engine.dispatch({
         type: "thread.session.set",
         commandId: CommandId.make("cmd-session-set-plan-target"),
@@ -1136,7 +1577,7 @@ describe("ProviderRuntimeIngestion", () => {
       throw new Error("Expected source plan to exist.");
     }
 
-    await Effect.runPromise(
+    await harness.run(
       harness.engine.dispatch({
         type: "thread.turn.start",
         commandId: CommandId.make("cmd-turn-start-plan-target"),
@@ -1211,7 +1652,7 @@ describe("ProviderRuntimeIngestion", () => {
     const staleTurnId = asTurnId("turn-stale-start");
     const createdAt = "2026-01-01T00:00:00.000Z";
 
-    await Effect.runPromise(
+    await harness.run(
       Effect.andThen(
         harness.engine.dispatch({
           type: "thread.create",
@@ -1305,7 +1746,7 @@ describe("ProviderRuntimeIngestion", () => {
       throw new Error("Expected source plan to exist.");
     }
 
-    await Effect.runPromise(
+    await harness.run(
       harness.engine.dispatch({
         type: "thread.turn.start",
         commandId: CommandId.make("cmd-turn-start-plan-target-guarded"),
@@ -1392,7 +1833,7 @@ describe("ProviderRuntimeIngestion", () => {
     );
 
     // The steer: a user-requested turn start while the old turn still runs.
-    await Effect.runPromise(
+    await harness.run(
       harness.engine.dispatch({
         type: "thread.turn.start",
         commandId: CommandId.make("cmd-turn-start-steer"),
@@ -1450,7 +1891,7 @@ describe("ProviderRuntimeIngestion", () => {
     const replayedTurnId = asTurnId("turn-replayed");
     const createdAt = "2026-01-01T00:00:00.000Z";
 
-    await Effect.runPromise(
+    await harness.run(
       harness.engine.dispatch({
         type: "thread.create",
         commandId: CommandId.make("cmd-thread-create-plan-source-unrelated"),
@@ -1468,7 +1909,7 @@ describe("ProviderRuntimeIngestion", () => {
         createdAt,
       }),
     );
-    await Effect.runPromise(
+    await harness.run(
       harness.engine.dispatch({
         type: "thread.session.set",
         commandId: CommandId.make("cmd-session-set-plan-source-unrelated"),
@@ -1485,7 +1926,7 @@ describe("ProviderRuntimeIngestion", () => {
         createdAt,
       }),
     );
-    await Effect.runPromise(
+    await harness.run(
       harness.engine.dispatch({
         type: "thread.create",
         commandId: CommandId.make("cmd-thread-create-plan-target-unrelated"),
@@ -1503,7 +1944,7 @@ describe("ProviderRuntimeIngestion", () => {
         createdAt,
       }),
     );
-    await Effect.runPromise(
+    await harness.run(
       harness.engine.dispatch({
         type: "thread.session.set",
         commandId: CommandId.make("cmd-session-set-plan-target-unrelated"),
@@ -1553,7 +1994,7 @@ describe("ProviderRuntimeIngestion", () => {
       throw new Error("Expected source plan to exist.");
     }
 
-    await Effect.runPromise(
+    await harness.run(
       harness.engine.dispatch({
         type: "thread.turn.start",
         commandId: CommandId.make("cmd-turn-start-plan-target-unrelated"),
@@ -2033,7 +2474,7 @@ describe("ProviderRuntimeIngestion", () => {
     expect(resumedMessage?.text).toBe(" second half");
     expect(resumedMessage?.streaming).toBe(false);
 
-    const events = await Effect.runPromise(
+    const events = await harness.run(
       Stream.runCollect(harness.engine.readEvents(0)).pipe(
         Effect.map((chunk) => Array.from(chunk)),
       ),
@@ -2171,7 +2612,7 @@ describe("ProviderRuntimeIngestion", () => {
     const harness = await createHarness({ serverSettings: { enableAssistantStreaming: true } });
     const now = "2026-01-01T00:00:00.000Z";
 
-    await Effect.runPromise(
+    await harness.run(
       harness.engine.dispatch({
         type: "thread.turn.start",
         commandId: CommandId.make("cmd-turn-start-streaming-mode"),

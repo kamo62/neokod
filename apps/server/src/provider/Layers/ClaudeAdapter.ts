@@ -87,6 +87,7 @@ import {
   type ProviderAdapterError,
 } from "../Errors.ts";
 import { type ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
+import { stoppedConfirmed } from "../providerStopOutcome.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.UnknownFromJsonString);
 const decodeUnknownJsonStringExit = Schema.decodeUnknownExit(Schema.UnknownFromJsonString);
@@ -4053,6 +4054,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       yield* stopSessionInternal(context, {
         emitExitEvent: true,
       });
+      // Claude runs through an SDK-managed subprocess; teardown closes the
+      // owned query/process. No detached descendant model, so confirmed.
+      return stoppedConfirmed(yield* nowIso);
     },
   );
 

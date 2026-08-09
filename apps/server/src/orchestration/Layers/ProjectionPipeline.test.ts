@@ -5,9 +5,14 @@ import {
   EventId,
   MessageId,
   ProjectId,
+  RuntimeItemId,
+  RuntimeSessionId,
   ThreadId,
   TurnId,
   ProviderInstanceId,
+  type OrchestrationThreadActivity,
+  type RuntimeItemKind,
+  type RuntimeItemProviderState,
 } from "@neokod/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
@@ -311,6 +316,174 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline worker count", (it) => 
       });
       yield* projectionPipeline.bootstrap;
       assert.equal(yield* readWorkerCount(), 0);
+    }),
+  );
+
+  it.effect("selects durable shell-summary evidence independently per lifecycle kind", () =>
+    Effect.gen(function* () {
+      const projectionPipeline = yield* OrchestrationProjectionPipeline;
+      const eventStore = yield* OrchestrationEventStore;
+      const sql = yield* SqlClient.SqlClient;
+      const threadId = ThreadId.make("thread-mixed-runtime-evidence");
+      const turnId = TurnId.make("turn-mixed-runtime-evidence");
+      const now = "2026-07-26T01:00:00.000Z";
+      const appendAndProject = (event: Parameters<typeof eventStore.append>[0]) =>
+        eventStore
+          .append(event)
+          .pipe(Effect.flatMap((savedEvent) => projectionPipeline.projectEvent(savedEvent)));
+      const appendActivity = (eventId: string, activity: OrchestrationThreadActivity) =>
+        appendAndProject({
+          type: "thread.activity-appended",
+          eventId: EventId.make(eventId),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: activity.createdAt,
+          commandId: CommandId.make(`cmd-${eventId}`),
+          causationEventId: null,
+          correlationId: CommandId.make(`cmd-${eventId}`),
+          metadata: {},
+          payload: { threadId, activity },
+        });
+      const appendObservation = (
+        suffix: string,
+        kind: RuntimeItemKind,
+        providerState: RuntimeItemProviderState,
+      ) =>
+        appendAndProject({
+          type: "thread.runtime-item-observed",
+          eventId: EventId.make(`evt-mixed-runtime-${suffix}`),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: now,
+          commandId: CommandId.make(`cmd-mixed-runtime-${suffix}`),
+          causationEventId: null,
+          correlationId: CommandId.make(`cmd-mixed-runtime-${suffix}`),
+          metadata: {},
+          payload: {
+            threadId,
+            observation: {
+              runtimeItemId: RuntimeItemId.make(`runtime-mixed-${suffix}`),
+              providerItemId: null,
+              sessionId: RuntimeSessionId.make("session-mixed-runtime-evidence"),
+              kind,
+              scope: "turn",
+              turnId,
+              providerState,
+              label: `Mixed ${kind}`,
+              providerEventId: EventId.make(`provider-mixed-${suffix}`),
+              observedAt: now,
+            },
+          },
+        });
+      const readCounts = () =>
+        sql<{
+          readonly pendingApprovalCount: number;
+          readonly pendingUserInputCount: number;
+          readonly workerCount: number;
+        }>`
+          SELECT
+            pending_approval_count AS "pendingApprovalCount",
+            pending_user_input_count AS "pendingUserInputCount",
+            worker_count AS "workerCount"
+          FROM projection_threads
+          WHERE thread_id = ${threadId}
+        `.pipe(Effect.map((rows) => rows[0]));
+
+      yield* appendAndProject({
+        type: "thread.created",
+        eventId: EventId.make("evt-mixed-runtime-created"),
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        occurredAt: now,
+        commandId: CommandId.make("cmd-mixed-runtime-created"),
+        causationEventId: null,
+        correlationId: CommandId.make("cmd-mixed-runtime-created"),
+        metadata: {},
+        payload: {
+          threadId,
+          projectId: ProjectId.make("project-mixed-runtime-evidence"),
+          title: "Mixed runtime evidence",
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("codex"),
+            model: "gpt-5-codex",
+          },
+          runtimeMode: "approval-required",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+      yield* appendAndProject({
+        type: "thread.session-set",
+        eventId: EventId.make("evt-mixed-runtime-session"),
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        occurredAt: now,
+        commandId: CommandId.make("cmd-mixed-runtime-session"),
+        causationEventId: null,
+        correlationId: CommandId.make("cmd-mixed-runtime-session"),
+        metadata: {},
+        payload: {
+          threadId,
+          session: {
+            threadId,
+            status: "running",
+            providerName: "codex",
+            runtimeMode: "approval-required",
+            activeTurnId: turnId,
+            lastError: null,
+            updatedAt: now,
+          },
+        },
+      });
+      yield* appendActivity("evt-mixed-runtime-legacy-approval", {
+        id: EventId.make("activity-mixed-runtime-approval"),
+        tone: "approval",
+        kind: "approval.requested",
+        summary: "Approval requested",
+        payload: { requestId: "approval-mixed-runtime", requestKind: "command" },
+        turnId,
+        sequence: 1,
+        createdAt: now,
+      });
+      yield* appendActivity("evt-mixed-runtime-legacy-user-input", {
+        id: EventId.make("activity-mixed-runtime-user-input"),
+        tone: "info",
+        kind: "user-input.requested",
+        summary: "User input requested",
+        payload: { requestId: "user-input-mixed-runtime", questions: [] },
+        turnId,
+        sequence: 2,
+        createdAt: now,
+      });
+      yield* appendActivity("evt-mixed-runtime-legacy-task", {
+        id: EventId.make("activity-mixed-runtime-task"),
+        tone: "info",
+        kind: "task.started",
+        summary: "Task started",
+        payload: { taskId: "task-mixed-runtime" },
+        turnId,
+        sequence: 3,
+        createdAt: now,
+      });
+
+      yield* appendObservation("tool", "tool", "active");
+      assert.deepEqual(yield* readCounts(), {
+        pendingApprovalCount: 1,
+        pendingUserInputCount: 1,
+        workerCount: 1,
+      });
+
+      yield* appendObservation("approval", "approval", "completed");
+      yield* appendObservation("user-input", "user-input", "completed");
+      yield* appendObservation("delegated-task", "delegated-task", "completed");
+      assert.deepEqual(yield* readCounts(), {
+        pendingApprovalCount: 0,
+        pendingUserInputCount: 0,
+        workerCount: 0,
+      });
     }),
   );
 });

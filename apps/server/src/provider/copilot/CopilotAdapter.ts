@@ -62,6 +62,7 @@ import {
   ProviderAdapterValidationError,
   type ProviderAdapterError,
 } from "../Errors.ts";
+import { stoppedConfirmed } from "../providerStopOutcome.ts";
 import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "../Layers/EventNdjsonLogger.ts";
 import { copyCopilotMcpServerConfigs, resolveCopilotMcpServers } from "./CopilotMcpServers.ts";
@@ -1764,6 +1765,9 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
     Effect.gen(function* () {
       const ctx = yield* requireSession(threadId);
       yield* stopSessionInternal(ctx);
+      // Copilot owns a single SDK-managed session; teardown reaps the owned
+      // process. No detached descendant model, so this is a confirmed stop.
+      return stoppedConfirmed(yield* nowIso);
     });
 
   const listSessions: CopilotAdapterShape["listSessions"] = () =>

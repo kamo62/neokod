@@ -28,6 +28,7 @@ import {
 } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 import * as Crypto from "effect/Crypto";
+import * as DateTime from "effect/DateTime";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -52,6 +53,7 @@ import {
   type ProviderAdapterError,
 } from "../Errors.ts";
 import { type CodexAdapterShape } from "../Services/CodexAdapter.ts";
+import { stoppedConfirmed } from "../providerStopOutcome.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import {
@@ -1886,10 +1888,14 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
   const stopSession: CodexAdapterShape["stopSession"] = (threadId) =>
     Effect.gen(function* () {
       const session = sessions.get(threadId);
-      if (!session) {
-        return;
+      if (session) {
+        yield* stopSessionInternal(session);
       }
-      yield* stopSessionInternal(session);
+      // Codex owns a single app-server child process; `stopSessionInternal`
+      // closes the runtime and its scope, tearing down the owned process tree.
+      // There is no detached/unobservable descendant model here, so a completed
+      // teardown is a confirmed stop.
+      return stoppedConfirmed(DateTime.formatIso(yield* DateTime.now));
     });
 
   const listSessions: CodexAdapterShape["listSessions"] = () =>

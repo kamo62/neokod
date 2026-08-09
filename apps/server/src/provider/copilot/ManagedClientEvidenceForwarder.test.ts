@@ -85,6 +85,7 @@ const makeProviderLayer = (pubsub: PubSub.PubSub<ProviderRuntimeEvent>, onSubscr
     respondToRequest: dieUnused,
     respondToUserInput: dieUnused,
     stopSession: dieUnused,
+    stopAllSessions: dieUnused,
     listSessions: () => Effect.succeed([]),
     getCapabilities: dieUnused,
     getInstanceInfo: dieUnused,
