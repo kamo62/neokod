@@ -146,6 +146,10 @@ describe("ProviderSessionReaper", () => {
           ? input.stopSessionImplementation(request)
           : Effect.sync(() => {
               stoppedThreadIds.add(request.threadId);
+              return {
+                status: "stopped_confirmed" as const,
+                stoppedAt: "2026-01-01T00:00:00.000Z",
+              };
             })) as ReturnType<ProviderServiceShape["stopSession"]>,
     );
 
@@ -156,6 +160,7 @@ describe("ProviderSessionReaper", () => {
       respondToRequest: () => unsupported(),
       respondToUserInput: () => unsupported(),
       stopSession,
+      stopAllSessions: () => unsupported(),
       listSessions: () => Effect.succeed([]),
       getCapabilities: () => Effect.succeed({ sessionModelSwitch: "in-session" }),
       getInstanceInfo: (instanceId) => {
@@ -455,7 +460,10 @@ describe("ProviderSessionReaper", () => {
                 issue: "simulated stop failure",
               }),
             )
-          : Effect.void,
+          : Effect.succeed({
+              status: "stopped_confirmed" as const,
+              stoppedAt: "2026-01-01T00:00:00.000Z",
+            }),
     });
     const repository = await runtime!.runPromise(
       Effect.service(ProviderSessionRuntime.ProviderSessionRuntimeRepository),
@@ -538,7 +546,10 @@ describe("ProviderSessionReaper", () => {
       stopSessionImplementation: (request) =>
         request.threadId === defectThreadId
           ? Effect.die(new Error("simulated stop defect"))
-          : Effect.void,
+          : Effect.succeed({
+              status: "stopped_confirmed" as const,
+              stoppedAt: "2026-01-01T00:00:00.000Z",
+            }),
     });
     const repository = await runtime!.runPromise(
       Effect.service(ProviderSessionRuntime.ProviderSessionRuntimeRepository),

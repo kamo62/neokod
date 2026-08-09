@@ -75,6 +75,7 @@ import {
   extractTodosAsPlan,
 } from "../acp/CursorAcpExtension.ts";
 import { type CursorAdapterShape } from "../Services/CursorAdapter.ts";
+import { stoppedConfirmed } from "../providerStopOutcome.ts";
 import { resolveCursorAcpBaseModelId } from "./CursorProvider.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.UnknownFromJsonString);
@@ -1140,6 +1141,9 @@ export function makeCursorAdapter(
         Effect.gen(function* () {
           const ctx = yield* requireSession(threadId);
           yield* stopSessionInternal(ctx);
+          // Cursor runs as an isolated ACP child; scope close tears down the
+          // owned process with no detached descendant model.
+          return stoppedConfirmed(yield* nowIso);
         }),
       );
 

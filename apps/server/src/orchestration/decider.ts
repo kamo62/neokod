@@ -761,6 +761,78 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       };
     }
 
+    case "thread.runtime-item.observe": {
+      yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+          metadata: {
+            ...(command.observation.providerItemId !== null
+              ? { providerItemId: command.observation.providerItemId }
+              : {}),
+            ingestedAt: command.createdAt,
+          },
+        })),
+        eventId: EventId.make(`runtime-item:${command.observation.providerEventId}`),
+        type: "thread.runtime-item-observed",
+        payload: {
+          threadId: command.threadId,
+          observation: command.observation,
+        },
+      };
+    }
+
+    case "thread.runtime-items.close": {
+      yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      const closureEvent = {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        })),
+        eventId: EventId.make(`runtime-close:${command.commandId}`),
+        type: "thread.runtime-items-closed",
+        payload: {
+          threadId: command.threadId,
+          boundary: command.boundary,
+          turnId: command.turnId ?? null,
+          terminationGuaranteed: command.terminationGuaranteed,
+          closures: command.closures,
+          closedAt: command.createdAt,
+        },
+      } satisfies PlannedOrchestrationEvent;
+      const activityEvents: PlannedOrchestrationEvent[] = [];
+      for (const closure of command.closures) {
+        activityEvents.push({
+          ...(yield* withEventBase({
+            aggregateKind: "thread",
+            aggregateId: command.threadId,
+            occurredAt: command.createdAt,
+            commandId: command.commandId,
+          })),
+          eventId: closure.activity.id,
+          type: "thread.activity-appended",
+          payload: {
+            threadId: command.threadId,
+            activity: closure.activity,
+          },
+        });
+      }
+      return [closureEvent, ...activityEvents];
+    }
+
     default: {
       command satisfies never;
       const fallback = command as never as { type: string };

@@ -5,6 +5,7 @@ import {
   type ProviderApprovalDecision,
   type ProviderRuntimeEvent,
   type ProviderSession,
+  type ProviderStopOutcome,
   type ProviderUserInputAnswers,
   type UserInputQuestion,
   ProviderDriverKind,
@@ -59,6 +60,7 @@ import { makeKiroAcpRuntime } from "../acp/KiroAcpSupport.ts";
 import { parsePermissionRequest } from "../acp/AcpRuntimeModel.ts";
 import { makeAcpNativeLoggerFactory } from "../acp/AcpNativeLogging.ts";
 import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
+import { stoppedConfirmed } from "../providerStopOutcome.ts";
 import type { WorkspaceOwnershipRepositoryShape } from "../../symphony/Persistence/Services/WorkspaceOwnershipRepository.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
@@ -1199,7 +1201,7 @@ export function makeKiroAdapter(settings: KiroSettings, options: KiroAdapterLive
     const stopSession: ProviderAdapterShape<ProviderAdapterError>["stopSession"] = (threadId) =>
       withLock(
         threadId,
-        Effect.gen(function* (): Effect.fn.Return<void, ProviderAdapterError> {
+        Effect.gen(function* (): Effect.fn.Return<ProviderStopOutcome, ProviderAdapterError> {
           const context = yield* requireSession(threadId);
           yield* settleApprovals(context.pendingApprovals);
           yield* settleUserInputs(context.pendingUserInputs);
@@ -1227,6 +1229,7 @@ export function makeKiroAdapter(settings: KiroSettings, options: KiroAdapterLive
             });
           }
           yield* closeSession(context, "graceful", false);
+          return stoppedConfirmed(yield* nowIso);
         }),
       );
 

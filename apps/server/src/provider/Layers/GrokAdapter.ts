@@ -67,6 +67,7 @@ import {
   XAiAskUserQuestionRequest,
 } from "../acp/XAiAcpExtension.ts";
 import { type GrokAdapterShape } from "../Services/GrokAdapter.ts";
+import { stoppedConfirmed } from "../providerStopOutcome.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.UnknownFromJsonString);
@@ -1424,6 +1425,10 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
         Effect.gen(function* () {
           const ctx = yield* requireSession(threadId);
           yield* stopSessionInternal(ctx);
+          // Grok runs as an isolated ACP child; scope close in
+          // `stopSessionInternal` tears down the owned process. No detached
+          // descendant model, so teardown is a confirmed stop.
+          return stoppedConfirmed(yield* nowIso);
         }),
       );
 

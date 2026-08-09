@@ -29,6 +29,7 @@ import {
   ProjectionThreadProposedPlanRepository,
 } from "../../persistence/Services/ProjectionThreadProposedPlans.ts";
 import { ProjectionThreadSessionRepository } from "../../persistence/Services/ProjectionThreadSessions.ts";
+import { ProjectionRuntimeItemRepository } from "../../persistence/Services/ProjectionRuntimeItems.ts";
 import {
   type ProjectionTurn,
   ProjectionTurnRepository,
@@ -41,6 +42,7 @@ import { ProjectionThreadActivityRepositoryLive } from "../../persistence/Layers
 import { ProjectionThreadMessageRepositoryLive } from "../../persistence/Layers/ProjectionThreadMessages.ts";
 import { ProjectionThreadProposedPlanRepositoryLive } from "../../persistence/Layers/ProjectionThreadProposedPlans.ts";
 import { ProjectionThreadSessionRepositoryLive } from "../../persistence/Layers/ProjectionThreadSessions.ts";
+import { ProjectionRuntimeItemRepositoryLive } from "../../persistence/Layers/ProjectionRuntimeItems.ts";
 import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
 import { ProjectionThreadRepositoryLive } from "../../persistence/Layers/ProjectionThreads.ts";
 import { ServerConfig } from "../../config.ts";
@@ -54,6 +56,10 @@ import {
   parseThreadSegmentFromAttachmentId,
   toSafeThreadAttachmentSegment,
 } from "../../attachmentStore.ts";
+import {
+  projectRuntimeItemClosure,
+  projectRuntimeItemObservation,
+} from "../RuntimeItemProjection.ts";
 
 export const ORCHESTRATION_PROJECTOR_NAMES = {
   projects: "projection.projects",
@@ -65,6 +71,7 @@ export const ORCHESTRATION_PROJECTOR_NAMES = {
   threadTurns: "projection.thread-turns",
   checkpoints: "projection.checkpoints",
   pendingApprovals: "projection.pending-approvals",
+  runtimeItems: "projection.runtime-items",
 } as const;
 
 type ProjectorName =
@@ -511,6 +518,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
     const projectionThreadSessionRepository = yield* ProjectionThreadSessionRepository;
     const projectionTurnRepository = yield* ProjectionTurnRepository;
     const projectionPendingApprovalRepository = yield* ProjectionPendingApprovalRepository;
+    const projectionRuntimeItemRepository = yield* ProjectionRuntimeItemRepository;
 
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -585,13 +593,15 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         return;
       }
 
-      const [messages, proposedPlans, activities, pendingApprovals, turns] = yield* Effect.all([
-        projectionThreadMessageRepository.listByThreadId({ threadId }),
-        projectionThreadProposedPlanRepository.listByThreadId({ threadId }),
-        projectionThreadActivityRepository.listByThreadId({ threadId }),
-        projectionPendingApprovalRepository.listByThreadId({ threadId }),
-        projectionTurnRepository.listByThreadId({ threadId }),
-      ]);
+      const [messages, proposedPlans, activities, pendingApprovals, turns, runtimeItems] =
+        yield* Effect.all([
+          projectionThreadMessageRepository.listByThreadId({ threadId }),
+          projectionThreadProposedPlanRepository.listByThreadId({ threadId }),
+          projectionThreadActivityRepository.listByThreadId({ threadId }),
+          projectionPendingApprovalRepository.listByThreadId({ threadId }),
+          projectionTurnRepository.listByThreadId({ threadId }),
+          projectionRuntimeItemRepository.listByThreadId({ threadId }),
+        ]);
 
       let latestUserMessageAt: string | null = null;
       for (const message of messages) {
@@ -603,20 +613,32 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         }
       }
 
-      const pendingApprovalCount = pendingApprovals.filter(
-        (approval) => approval.status === "pending",
-      ).length;
-      const pendingUserInputCount = derivePendingUserInputCountFromActivities(activities);
+      const runtimeApprovalItems = runtimeItems.filter((item) => item.kind === "approval");
+      const pendingApprovalCount =
+        runtimeApprovalItems.length > 0
+          ? runtimeApprovalItems.filter((item) => item.effectiveState === "active").length
+          : pendingApprovals.filter((approval) => approval.status === "pending").length;
+      const runtimeUserInputItems = runtimeItems.filter((item) => item.kind === "user-input");
+      const pendingUserInputCount =
+        runtimeUserInputItems.length > 0
+          ? runtimeUserInputItems.filter((item) => item.effectiveState === "active").length
+          : derivePendingUserInputCountFromActivities(activities);
       const hasActionableProposedPlan = deriveHasActionableProposedPlan({
         latestTurnId: existingRow.value.latestTurnId,
         proposedPlans,
       });
       const activeTurn = turns.find((turn) => turn.turnId === existingRow.value.latestTurnId);
-      const workerCount = deriveInFlightWorkerCount({
-        activities,
-        activeTurnId: existingRow.value.latestTurnId,
-        activeTurnState: activeTurn?.state ?? null,
-      });
+      const runtimeDelegatedTaskItems = runtimeItems.filter(
+        (item) => item.kind === "delegated-task",
+      );
+      const workerCount =
+        runtimeDelegatedTaskItems.length > 0
+          ? runtimeDelegatedTaskItems.filter((item) => item.effectiveState === "active").length
+          : deriveInFlightWorkerCount({
+              activities,
+              activeTurnId: existingRow.value.latestTurnId,
+              activeTurnState: activeTurn?.state ?? null,
+            });
 
       yield* projectionThreadRepository.upsert({
         ...existingRow.value,
@@ -762,6 +784,8 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         case "thread.message-sent":
         case "thread.proposed-plan-upserted":
         case "thread.activity-appended":
+        case "thread.runtime-item-observed":
+        case "thread.runtime-items-closed":
         case "thread.approval-response-requested":
         case "thread.user-input-response-requested": {
           const existingRow = yield* projectionThreadRepository.getById({
@@ -996,9 +1020,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             kind: event.payload.activity.kind,
             summary: event.payload.activity.summary,
             payload: event.payload.activity.payload,
-            ...(event.payload.activity.sequence !== undefined
-              ? { sequence: event.payload.activity.sequence }
-              : {}),
+            sequence: event.payload.activity.sequence ?? event.sequence,
             createdAt: event.payload.activity.createdAt,
           });
           return;
@@ -1505,6 +1527,95 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       }
     });
 
+    const applyRuntimeItemsProjection: ProjectorDefinition["apply"] = Effect.fn(
+      "applyRuntimeItemsProjection",
+    )(function* (event, _attachmentSideEffects) {
+      switch (event.type) {
+        case "thread.runtime-item-observed": {
+          const existing = yield* projectionRuntimeItemRepository.getById({
+            threadId: event.payload.threadId,
+            sessionId: event.payload.observation.sessionId,
+            kind: event.payload.observation.kind,
+            runtimeItemId: event.payload.observation.runtimeItemId,
+          });
+          yield* projectionRuntimeItemRepository.upsert(
+            projectRuntimeItemObservation({
+              existing: Option.getOrNull(existing),
+              threadId: event.payload.threadId,
+              observation: event.payload.observation,
+              sequence: event.sequence,
+            }),
+          );
+          return;
+        }
+
+        case "thread.runtime-items-closed": {
+          yield* Effect.forEach(
+            event.payload.closures,
+            (closure) =>
+              Effect.gen(function* () {
+                const existing = yield* projectionRuntimeItemRepository.getById({
+                  threadId: event.payload.threadId,
+                  sessionId: closure.sessionId,
+                  kind: closure.kind,
+                  runtimeItemId: closure.runtimeItemId,
+                });
+                if (Option.isNone(existing)) return;
+                const item = existing.value;
+                const projected = projectRuntimeItemClosure({
+                  item,
+                  closure,
+                  syntheticEventId: event.eventId,
+                  closedAt: event.payload.closedAt,
+                  sequence: event.sequence,
+                });
+                if (projected !== item) {
+                  yield* projectionRuntimeItemRepository.upsert(projected);
+                }
+              }),
+            { concurrency: 1 },
+          ).pipe(Effect.asVoid);
+          return;
+        }
+
+        case "thread.deleted":
+          yield* projectionRuntimeItemRepository.deleteByThreadId({
+            threadId: event.payload.threadId,
+          });
+          return;
+
+        case "thread.reverted": {
+          const [items, turns] = yield* Effect.all([
+            projectionRuntimeItemRepository.listByThreadId({ threadId: event.payload.threadId }),
+            projectionTurnRepository.listByThreadId({ threadId: event.payload.threadId }),
+          ]);
+          const retainedTurnIds = new Set(
+            turns
+              .filter(
+                (turn) =>
+                  turn.turnId !== null &&
+                  turn.checkpointTurnCount !== null &&
+                  turn.checkpointTurnCount <= event.payload.turnCount,
+              )
+              .map((turn) => turn.turnId),
+          );
+          const retainedItems = items.filter(
+            (item) => item.turnId === null || retainedTurnIds.has(item.turnId),
+          );
+          yield* projectionRuntimeItemRepository.deleteByThreadId({
+            threadId: event.payload.threadId,
+          });
+          yield* Effect.forEach(retainedItems, projectionRuntimeItemRepository.upsert, {
+            concurrency: 1,
+          }).pipe(Effect.asVoid);
+          return;
+        }
+
+        default:
+          return;
+      }
+    });
+
     const projectors: ReadonlyArray<ProjectorDefinition> = [
       {
         name: ORCHESTRATION_PROJECTOR_NAMES.projects,
@@ -1537,6 +1648,10 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       {
         name: ORCHESTRATION_PROJECTOR_NAMES.pendingApprovals,
         apply: applyPendingApprovalsProjection,
+      },
+      {
+        name: ORCHESTRATION_PROJECTOR_NAMES.runtimeItems,
+        apply: applyRuntimeItemsProjection,
       },
       {
         name: ORCHESTRATION_PROJECTOR_NAMES.threads,
@@ -1644,5 +1759,6 @@ export const OrchestrationProjectionPipelineLive = Layer.effect(
   Layer.provideMerge(ProjectionThreadSessionRepositoryLive),
   Layer.provideMerge(ProjectionTurnRepositoryLive),
   Layer.provideMerge(ProjectionPendingApprovalRepositoryLive),
+  Layer.provideMerge(ProjectionRuntimeItemRepositoryLive),
   Layer.provideMerge(ProjectionStateRepositoryLive),
 );
