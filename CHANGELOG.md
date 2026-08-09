@@ -1,3 +1,9 @@
+## 3.5.41 - 2026-08-09 (Patch)
+
+Release impact: Patch because this fixes the default executable for an existing provider without changing its contracts.
+
+- Cursor now defaults fresh provider instances and self-update commands to the installed `cursor-agent` executable, with matching settings guidance.
+
 ## 3.5.40 - 2026-08-09 (Patch)
 
 Release impact: Patch because this corrects product and release documentation without changing runtime behavior.
