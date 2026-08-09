@@ -1070,7 +1070,19 @@ export function makeKiroAdapter(settings: KiroSettings, options: KiroAdapterLive
         return yield* withLock(
           input.threadId,
           Effect.gen(function* () {
-            const context = yield* requireSession(input.threadId);
+            const context = sessions.get(input.threadId);
+            if (
+              !context ||
+              context.stopped ||
+              context.acpSessionId !== prepared.context.acpSessionId ||
+              context.activeTurnId !== prepared.turnId
+            ) {
+              return {
+                threadId: input.threadId,
+                turnId: prepared.turnId,
+                resumeCursor: prepared.context.session.resumeCursor,
+              };
+            }
             yield* context.acp.drainEvents;
             if (context.interruptedTurnIds.has(prepared.turnId)) {
               return {

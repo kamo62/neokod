@@ -7,6 +7,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import * as TestClock from "effect/testing/TestClock";
 
 import { KiroSettings } from "@neokod/contracts";
 
@@ -27,6 +28,23 @@ async function makeVersionBinary(version: string, extraLines: ReadonlyArray<stri
   await NodeFSP.writeFile(
     binaryPath,
     ["#!/bin/sh", ...extraLines, `printf 'kiro-cli ${version}\\n'`, ""].join("\n"),
+    "utf8",
+  );
+  await NodeFSP.chmod(binaryPath, 0o755);
+  return binaryPath;
+}
+
+async function makeIgnoringTermVersionBinary() {
+  const dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "kiro-version-hang-"));
+  const binaryPath = NodePath.join(dir, "kiro-cli");
+  await NodeFSP.writeFile(
+    binaryPath,
+    [
+      "#!/usr/bin/env node",
+      'process.on("SIGTERM", () => undefined);',
+      "setInterval(() => undefined, 1_000);",
+      "",
+    ].join("\n"),
     "utf8",
   );
   await NodeFSP.chmod(binaryPath, 0o755);
@@ -157,6 +175,33 @@ it.layer(NodeServices.layer)("checkKiroProviderStatus", (it) => {
       expect(childEnvironment).not.toContain("KIRO_HEALTH_SECRET=");
       expect(childEnvironment).not.toContain("GITHUB_TOKEN=");
       if (process.env.HOME) expect(childEnvironment).toContain(`HOME=${process.env.HOME}`);
+    }),
+  );
+
+  it.effect("force-kills a version probe that ignores SIGTERM", () =>
+    Effect.gen(function* () {
+      const binaryPath = yield* Effect.promise(makeIgnoringTermVersionBinary);
+      const startedAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+      const snapshot = yield* checkKiroProviderStatus(
+        decodeKiroSettings({ enabled: true, binaryPath }),
+      );
+      const finishedAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+
+      expect(snapshot.status).toBe("error");
+      expect(snapshot.message).toContain("timed out");
+      expect(finishedAt - startedAt).toBeLessThan(7_000);
+    }).pipe(TestClock.withLive),
+  );
+
+  it.effect("names a configured binary that is missing", () =>
+    Effect.gen(function* () {
+      const binaryPath = "/definitely/missing/custom-kiro";
+      const snapshot = yield* checkKiroProviderStatus(
+        decodeKiroSettings({ enabled: true, binaryPath }),
+      );
+
+      expect(snapshot.status).toBe("error");
+      expect(snapshot.message).toContain(binaryPath);
     }),
   );
 });
