@@ -1,3 +1,9 @@
+## 3.5.34 - 2026-08-09 (Patch)
+
+Release impact: Patch because this prevents stale settings writes and responses from rolling back newer server state without changing the settings schema.
+
+- Settings mutations now carry the expected server-owned monotonic revision and return the authoritative redacted snapshot. Writes are serialized per environment, while the UI exposes saving and failed states and rejects stale acknowledgements or stream events before they can overwrite newer settings.
+
 ## 3.5.33 - 2026-08-09 (Patch)
 
 Release impact: Patch because this makes provider runtime-item closure durable and deterministic without changing user-facing configuration or protocols.
