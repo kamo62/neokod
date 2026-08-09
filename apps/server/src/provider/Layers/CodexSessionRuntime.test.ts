@@ -4,7 +4,7 @@ import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { describe } from "vite-plus/test";
-import { ThreadId } from "@neokod/contracts";
+import { ThreadId, TurnId } from "@neokod/contracts";
 import * as CodexErrors from "effect-codex-app-server/errors";
 import * as CodexRpc from "effect-codex-app-server/rpc";
 
@@ -13,6 +13,7 @@ import {
   CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
 } from "../CodexDeveloperInstructions.ts";
 import {
+  activeTurnIdAfterStart,
   buildTurnStartParams,
   hasConfiguredMcpServer,
   isRecoverableThreadResumeError,
@@ -34,6 +35,16 @@ describe("CodexSessionRuntimeIdentifierGenerationError", () => {
       error.message,
       "Failed to generate Codex App Server identifier for provider-event.",
     );
+  });
+});
+
+describe("activeTurnIdAfterStart", () => {
+  it("keeps the active id when Codex accepts a queued follow-up", () => {
+    const active = TurnId.make("turn-active");
+    const queued = TurnId.make("turn-queued");
+
+    NodeAssert.equal(activeTurnIdAfterStart(active, queued), active);
+    NodeAssert.equal(activeTurnIdAfterStart(undefined, queued), queued);
   });
 });
 

@@ -692,6 +692,9 @@ function updateSession(
   });
 }
 
+export const activeTurnIdAfterStart = (current: TurnId | undefined, started: TurnId): TurnId =>
+  current ?? started;
+
 function parseThreadSnapshot(
   response: EffectCodexSchema.V2ThreadReadResponse | EffectCodexSchema.V2ThreadRollbackResponse,
 ): CodexThreadSnapshot {
@@ -1320,7 +1323,7 @@ export const makeCodexSessionRuntime = (
             // turn/interrupt only accepts the id that is active now, so keep
             // the existing active id until turn-lifecycle notifications
             // advance it.
-            activeTurnId: session.activeTurnId ?? turnId,
+            activeTurnId: activeTurnIdAfterStart(session.activeTurnId, turnId),
             ...(normalizedModel ? { model: normalizedModel } : {}),
           }));
           const resumedProviderThreadId = currentProviderThreadId(yield* Ref.get(sessionRef));
