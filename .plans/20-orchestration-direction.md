@@ -22,8 +22,6 @@ Both lanes reviewed the first draft's "adopt upstream v2's engine, keep our cont
 
 7. **Preconditions and omissions to close.** A single ordered runtime-mode rank is not a valid cross-provider privilege model; compare effective capabilities per provider. A command receipt proves domain acceptance, not provider-turn acceptance; launch outcome must stay durable and idempotent. Child output is untrusted context and needs size limits, provenance, and prompt-injection boundaries. There is no migration, rollback, or canary plan for existing local v1 history. And "single omniscient choke point" is false until native subagents, direct provider actions, and every raw-dispatch consumer are covered. Replace "v2 is real, built, and correct" with a versioned acceptance checklist, since it is still branch work with unresolved provider, rollback, and subagent cases.
 
-The sections below predate this synthesis in places; where a section still reads "adopt the engine" or calls the reviewer an embryo, this synthesis governs. A later editing pass will reconcile the body line by line.
-
 ## 0. How to read this document
 
 This plan started from a comparison between neokod's parked Agent Gateway and upstream T3 Code's `orchestration-v2`. The first draft concluded "adopt upstream's engine, keep our control plane." The Fable review lane refuted that on grounded evidence, and this revision reflects the corrected direction. The comparison and the four-axis evidence are kept because they are still the reason the direction exists. The decision they lead to has changed.
@@ -38,7 +36,7 @@ This plan started from a comparison between neokod's parked Agent Gateway and up
 
 4. **Keep the orchestrator vantage, reframed as owning authority, not initiation.** Agents may initiate delegation. What matters is that an agent-initiated request carries no authority, and the orchestrator stamps the ceiling and provenance server-side at the single command choke. This preserves emergent, agent-directed delegation while keeping governance real.
 
-5. **Before any subagent work, land a canonical privilege lattice** and flip the default runtime mode off the most-permissive setting. This is a precondition, not a later cleanup.
+5. **Before any subagent work, land a provider-aware capability model** and flip the default runtime mode off the most-permissive setting. Narrow effective capabilities within each provider instead of forcing unlike permission vocabularies into one rank. This is a precondition, not a later cleanup.
 
 One-line form: own the engine, harvest the ideas, govern at your own command boundary by owning authority rather than initiation.
 
@@ -66,7 +64,7 @@ Grounded facts from the tree that decide this:
 - Upstream v2 is an execution-node aggregate tree with a leased effect outbox. Neokod is a decider producing events consumed by a projector and reactors. "Rebase your control plane onto their engine" is not a meaningful operation across that boundary, because neokod's control plane is its decider.
 - The threshold where forking is cheaper than tracking has already been crossed: own event-sourced core, own provider registry, Symphony on a separate plane, #112 and #117 merged.
 
-Enforcement follows directly. On neokod's own engine the ceiling is roughly a ten-line invariant in `commandInvariants.ts` and `decider.ts` `thread.create`, permanent and conflict-free. On upstream's engine it would be a perpetual patch at the hottest path, and upstream's own trust-boundary gap (enforced at the MCP handler, unenforced at the WS dispatch) is direct evidence that you cannot reliably bolt a ceiling onto an engine you do not own. Owning the choke requires owning the engine.
+Enforcement follows directly. On neokod's own engine the governed admission and its invariants can live with the engine's serialized command path. Every external dispatch path still has to route through that admission, and later mutations need the same authorization; this is more than a `thread.create` guard. On upstream's engine it would be a perpetual patch at the hottest path, and upstream's own trust-boundary gap (enforced at the MCP handler, unenforced at the WS dispatch) is direct evidence that you cannot reliably bolt a ceiling onto an engine you do not own. Owning the choke requires owning the engine.
 
 ## 4. Vantage: own the authority, not the initiation
 
@@ -124,12 +122,12 @@ Neither mode does what a user wants when an agent runs out of usage. `/throw` (s
 
 The goal is that a Symphony agent working an issue can spin up its own subagents for research, for review, and for parallel work, under Symphony's authority.
 
-The pattern exists in embryo. Symphony's model reviewer (#108) is an orchestrator-spawned, ceiling-bounded review subagent whose output is evidence with `provenance: "model"`, not authority, and `resolveRunnerPolicy` computes the sandbox server-side and refuses silent escalation. Generalizing gives three orchestrator-granted roles: read-only research children, interim review children, and parallel work children in isolated worktrees.
+Symphony's model reviewer (#108) provides useful policy and evidence patterns, but it is a bounded `generateCodeReview` call, not a child run, session, workspace, or cancellable node. General subagents therefore require new durable orchestration state for three roles: read-only research children, interim review children, and parallel work children in isolated worktrees.
 
 The load-bearing failure modes that must be designed before this is built, flagged by the review lane:
 
 - **Substrate mismatch.** Symphony runs on a separate plane: `Runner/AgentRuntime.ts` spawns `codex app-server` directly as a child process, and the Dispatcher calls `runTurn`, never `orchestrationEngine.dispatch`. So subagents built on the Symphony runner do not inherit the engine's outbox, coalescing, or immutable pin. Either re-platform Symphony onto the engine (large, unscoped) or reimplement fan-in and pinning in the runner. This must be decided, not assumed.
-- **Privilege lattice.** "Child equals parent narrowed" needs a total order that does not exist. There are three un-unified permission vocabularies (orchestration `RuntimeMode`, Symphony `autonomy`, Codex sandbox), no narrowing function, and the default runtime mode is `full-access`, the most permissive. An "observe" ceiling for research children is not even in the `RuntimeMode` enum. Land the lattice and flip the default to the floor first (section 1, item 5).
+- **Capability narrowing.** "Child equals parent narrowed" needs a provider-aware comparison that does not exist. There are three un-unified permission vocabularies (orchestration `RuntimeMode`, Symphony `autonomy`, Codex sandbox), no narrowing function, and the default runtime mode is `full-access`, the most permissive. An "observe" ceiling for research children is not even in the `RuntimeMode` enum. Land the effective-capability model and flip the default to the floor first (section 1, item 5).
 - **Cost and quota.** No budget exists. Fan-out multiplies credit burn, and Copilot quota is data-layer only. The orchestrator must debit a per-run budget before granting a subagent. This is the most concrete organization ask and it is currently absent from the whole model.
 - **Nesting and concurrency.** No max depth or total concurrency cap. Work subagents that can request subagents give an unbounded tree. Add both.
 - **Wait deadlock.** A blocking wait primitive plus Symphony's blocking approval loop can deadlock: a parent blocked in wait cannot answer the child's approval, and two work subagents can wait on each other's worktree. Need wait TTLs, cycle detection, and a rule that a waiting parent still services child approvals.
@@ -152,18 +150,18 @@ Telemetry substrate: PostHog is in for rough usage stats. The direction is to en
 - Keep: neokod's event-sourced engine (decider, projector, reactors, event store), the merged #112 runtime-item lifecycle and #117 settings revisions, the provider registry, and Symphony.
 - Harvest from v2 as new commands on neokod's engine: the execution-node tree, cohort coalescing, the immutable delegated-result pin, and the replay-safe versus process-bound effect classification.
 - Keep from the Agent Gateway design: command-boundary privilege enforcement, server-stamped un-forgeable provenance, worktree-identity recovery, setup-script exclusion, ancestry authorization on read, wait, and interrupt.
-- Build new: the canonical privilege lattice (precondition), the `/throw` flow and its project chain UI (near-term, standalone), the Symphony subagent-role model with the bounds in section 8, the governance telemetry substrate on the command boundary, and the routing integration with AI-Orch.
+- Build new: the provider-aware capability model (precondition), the `/throw` flow and its project chain UI (near-term, standalone), the Symphony subagent-role model with the bounds in section 8, the governance telemetry substrate on the command boundary, and the routing integration with AI-Orch.
 
 ## 11. Sequencing and open questions
 
-Near-term and independent of everything else: the privilege lattice, and `/throw` with its chain UI. Neither waits on any orchestration decision.
+Near-term and independent of everything else: the provider-aware capability model, and `/throw` with its chain UI. Neither waits on any orchestration decision.
 
 Then: harvest v2's ideas into neokod's engine as they prove out upstream, without adopting the engine. Decide the Symphony-plane question (re-platform onto the engine, or dual-instrument) before subagents, because it gates both the substrate and the single-boundary governance claim.
 
 Open questions for the final review pass:
 
 - The Symphony-plane decision. Re-platforming Symphony onto the orchestration engine is large and unscoped. Dual-instrumenting keeps two planes but delivers governance sooner. Which, and at what cost?
-- The privilege lattice. What is the canonical order across the three vocabularies, and what is the narrowing function? This blocks subagents.
+- Capability narrowing. How are effective capabilities compared within each provider, and what cross-provider narrowing relation is safe? This blocks subagents.
 - Cost and quota governance. What is the budget model, and where is it debited, given Copilot quota is data-layer only today?
 - The org gateway. Is an opt-in credential-owning gateway acceptable as a separate surface, and does offering it undermine the local-first positioning, or extend it?
 - `/throw` workspace semantics. Does a thrown thread share the source worktree (live state, ownership question) or start clean (safe, loses working state)?
