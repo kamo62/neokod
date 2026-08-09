@@ -145,7 +145,14 @@ function getPublishProviderReadiness(input: {
     };
   }
   if (discovered.status !== "available") {
-    return { ready: false, hint: discovered.installHint };
+    return {
+      ready: false,
+      hint:
+        discovered.status === "missing"
+          ? discovered.installHint
+          : (Option.getOrNull(discovered.detail) ??
+            "Provider check failed. Open Settings -> Source Control and rescan."),
+    };
   }
   if (discovered.auth.status === "unauthenticated") {
     return {

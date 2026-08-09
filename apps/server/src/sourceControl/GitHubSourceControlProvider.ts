@@ -89,6 +89,7 @@ export const discovery = {
   executable: "gh",
   versionArgs: ["--version"],
   authArgs: ["auth", "status", "--json", "hosts"],
+  probeTimeoutMs: 15_000,
   parseAuth: parseGitHubAuth,
   installHint:
     "Install the GitHub command-line tool (`gh`) via https://cli.github.com/ or your package manager (for example `brew install gh`).",

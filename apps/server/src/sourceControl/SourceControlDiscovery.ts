@@ -1,4 +1,5 @@
 import {
+  type SourceControlDiscoveryStatus,
   type SourceControlDiscoveryResult,
   type VcsDiscoveryItem,
   type VcsDriverKind,
@@ -10,7 +11,11 @@ import * as Option from "effect/Option";
 
 import { ServerConfig } from "../config.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
-import { detailFromCause, firstNonEmptyLine } from "./SourceControlProviderDiscovery.ts";
+import {
+  classifyDiscoveryFailure,
+  detailFromCause,
+  firstNonEmptyLine,
+} from "./SourceControlProviderDiscovery.ts";
 import * as SourceControlProviderRegistry from "./SourceControlProviderRegistry.ts";
 
 interface DiscoveryProbe {
@@ -32,7 +37,7 @@ interface DiscoveryProbeResult<Kind extends string> {
   readonly label: string;
   readonly executable?: string;
   readonly implemented: boolean;
-  readonly status: "available" | "missing";
+  readonly status: SourceControlDiscoveryStatus;
   readonly version: Option.Option<string>;
   readonly installHint: string;
   readonly detail: Option.Option<string>;
@@ -119,7 +124,7 @@ export const make = Effect.gen(function* () {
             label: input.label,
             executable,
             implemented: input.implemented,
-            status: "missing" as const,
+            status: classifyDiscoveryFailure(cause, config.cwd),
             version: Option.none<string>(),
             installHint: input.installHint,
             detail: detailFromCause(cause),

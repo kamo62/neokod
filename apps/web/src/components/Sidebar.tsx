@@ -101,6 +101,7 @@ import { useAtomCommand } from "../state/use-atom-command";
 import { previewEnvironment } from "../state/preview";
 import {
   legacyProjectCwdPreferenceKey,
+  resolveOperatingModeRoute,
   resolveProjectExpanded,
   useUiStateStore,
   type OperatingMode,
@@ -2930,8 +2931,7 @@ function SidebarBrand() {
       // Restore the mode's last view (persisted per-mode snapshot); the route
       // entry effects own setting `operatingMode`, so navigation is the whole
       // switch.
-      const fallbackRoute = mode === "symphony" ? "/symphony" : "/";
-      const route = viewSnapshotsByMode?.[mode]?.route ?? fallbackRoute;
+      const route = resolveOperatingModeRoute(mode, viewSnapshotsByMode?.[mode]);
       void navigate({ to: route as "/" });
     },
     [navigate, viewSnapshotsByMode],

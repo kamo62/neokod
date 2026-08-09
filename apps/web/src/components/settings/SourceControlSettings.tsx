@@ -171,8 +171,16 @@ function itemSummary({
     return <span>Support for {item.label} is coming soon.</span>;
   }
 
-  if (item.status !== "available") {
+  if (item.status === "missing") {
     return <span>Not available on this server: {item.installHint}</span>;
+  }
+
+  if (item.status === "error") {
+    return (
+      <span>
+        Could not verify {item.label}. {optionLabel(item.detail) ?? "Rescan to try again."}
+      </span>
+    );
   }
 
   if (auth) {

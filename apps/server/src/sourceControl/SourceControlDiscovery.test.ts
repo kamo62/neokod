@@ -3,8 +3,9 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PlatformError from "effect/PlatformError";
 import { ChildProcessSpawner } from "effect/unstable/process";
-import { VcsProcessSpawnError } from "@neokod/contracts";
+import { VcsProcessSpawnError, VcsProcessTimeoutError } from "@neokod/contracts";
 
 import * as ServerConfig from "../config.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
@@ -50,6 +51,20 @@ const processOutput = (
   stderrTruncated: false,
 });
 
+function missingExecutable(input: VcsProcess.VcsProcessInput): VcsProcessSpawnError {
+  return new VcsProcessSpawnError({
+    operation: input.operation,
+    command: input.command,
+    cwd: input.cwd,
+    cause: PlatformError.systemError({
+      _tag: "NotFound",
+      module: "ChildProcess",
+      method: "spawn",
+      pathOrDescriptor: input.command,
+    }),
+  });
+}
+
 it.effect("reports implemented tools separately from locally available executables", () => {
   const processMock = {
     run: (input: VcsProcess.VcsProcessInput) => {
@@ -57,7 +72,14 @@ it.effect("reports implemented tools separately from locally available executabl
         return Effect.succeed(processOutput("git version 2.51.0\n"));
       }
       if (input.command === "gh" && input.args[0] === "--version") {
-        return Effect.succeed(processOutput("gh version 2.83.0\n"));
+        return Effect.fail(
+          new VcsProcessTimeoutError({
+            operation: input.operation,
+            command: input.command,
+            cwd: input.cwd,
+            timeoutMs: input.timeoutMs ?? 0,
+          }),
+        );
       }
       if (input.command === "gh" && input.args.join(" ") === "auth status --json hosts") {
         return Effect.succeed(
@@ -79,14 +101,7 @@ it.effect("reports implemented tools separately from locally available executabl
           ),
         );
       }
-      return Effect.fail(
-        new VcsProcessSpawnError({
-          operation: input.operation,
-          command: input.command,
-          cwd: input.cwd,
-          cause: new Error(`${input.command} not found`),
-        }),
-      );
+      return Effect.fail(missingExecutable(input));
     },
   } satisfies Partial<VcsProcess.VcsProcess["Service"]>;
   const testLayer = SourceControlDiscovery.layer.pipe(
@@ -139,9 +154,9 @@ it.effect("reports implemented tools separately from locally available executabl
       [
         {
           kind: "github",
-          status: "available",
-          auth: "authenticated",
-          account: Option.some("juliusmarminge"),
+          status: "error",
+          auth: "unknown",
+          account: Option.none(),
         },
         {
           kind: "gitlab",
@@ -163,6 +178,9 @@ it.effect("reports implemented tools separately from locally available executabl
         },
       ],
     );
+    const github = result.sourceControlProviders.find((item) => item.kind === "github");
+    assert.ok(github);
+    assert.strictEqual(github.detail.pipe(Option.getOrThrow).includes("after 15000ms"), true);
     const bitbucket = result.sourceControlProviders.find((item) => item.kind === "bitbucket");
     assert.ok(bitbucket);
     assert.strictEqual(bitbucket.executable, undefined);
@@ -211,14 +229,7 @@ Logged in to gitlab.com as gitlab-user
       if (input.command === "az" && input.args.join(" ") === "extension show --name azure-devops") {
         return Effect.succeed(processOutput("azure-devops extension installed\n"));
       }
-      return Effect.fail(
-        new VcsProcessSpawnError({
-          operation: input.operation,
-          command: input.command,
-          cwd: input.cwd,
-          cause: new Error(`${input.command} not found`),
-        }),
-      );
+      return Effect.fail(missingExecutable(input));
     },
   } satisfies Partial<VcsProcess.VcsProcess["Service"]>;
   const testLayer = SourceControlDiscovery.layer.pipe(

@@ -683,7 +683,13 @@ export function setModeViewSnapshot(
   };
 }
 
-export function resolveOperatingModeRoute(mode: OperatingMode, snapshot: ModeViewSnapshot): string {
+export function resolveOperatingModeRoute(
+  mode: OperatingMode,
+  snapshot?: ModeViewSnapshot,
+): string {
+  if (!snapshot) {
+    return mode === "symphony" ? "/symphony" : "/";
+  }
   const isValidRoute =
     mode === "symphony"
       ? isSymphonyRoutePath(snapshot.route)

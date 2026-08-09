@@ -2,6 +2,7 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PlatformError from "effect/PlatformError";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { VcsProcessSpawnError } from "@neokod/contracts";
 
@@ -35,7 +36,12 @@ function notFound(input: VcsProcess.VcsProcessInput): VcsProcessSpawnError {
     operation: input.operation,
     command: input.command,
     cwd: input.cwd,
-    cause: new Error(`${input.command} not found`),
+    cause: PlatformError.systemError({
+      _tag: "NotFound",
+      module: "ChildProcess",
+      method: "spawn",
+      pathOrDescriptor: input.command,
+    }),
   });
 }
 

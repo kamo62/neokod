@@ -1,11 +1,14 @@
 import type {
+  SourceControlDiscoveryStatus,
   SourceControlProviderAuth,
   SourceControlProviderDiscoveryItem,
   SourceControlProviderInfo,
   SourceControlProviderKind,
+  VcsError,
 } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as PlatformError from "effect/PlatformError";
 
 import type * as SourceControlProvider from "./SourceControlProvider.ts";
 import type * as VcsProcess from "../vcs/VcsProcess.ts";
@@ -64,10 +67,23 @@ interface DiscoveryProbeResult {
   readonly kind: SourceControlProviderKind;
   readonly label: string;
   readonly executable: string;
-  readonly status: "available" | "missing";
+  readonly status: SourceControlDiscoveryStatus;
   readonly version: Option.Option<string>;
   readonly installHint: string;
   readonly detail: Option.Option<string>;
+}
+
+export function classifyDiscoveryFailure(cause: VcsError, cwd: string): "missing" | "error" {
+  if (
+    cause._tag === "VcsProcessSpawnError" &&
+    cause.cause instanceof PlatformError.PlatformError &&
+    cause.cause.reason._tag === "NotFound" &&
+    cause.cause.reason.pathOrDescriptor !== cwd &&
+    cause.cause.reason.syscall !== "chdir"
+  ) {
+    return "missing";
+  }
+  return "error";
 }
 
 export function firstNonEmptyLine(text: string): Option.Option<string> {
@@ -199,7 +215,7 @@ function probeCli(input: {
           kind: input.spec.kind,
           label: input.spec.label,
           executable: input.spec.executable,
-          status: "missing" as const,
+          status: classifyDiscoveryFailure(cause, input.cwd),
           version: Option.none<string>(),
           installHint: input.spec.installHint,
           detail: detailFromCause(cause),
@@ -241,7 +257,11 @@ export function probeSourceControlProvider(input: {
       if (item.status !== "available") {
         return Effect.succeed({
           ...item,
-          auth: unknownAuth("Hosting integration command was not found on the server PATH."),
+          auth: unknownAuth(
+            item.status === "missing"
+              ? "Hosting integration command was not found on the server PATH."
+              : Option.getOrUndefined(item.detail),
+          ),
         } satisfies SourceControlProviderDiscoveryItem);
       }
 

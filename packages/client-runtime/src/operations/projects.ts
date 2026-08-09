@@ -148,7 +148,14 @@ export function buildAddProjectRemoteSourceReadiness(
       continue;
     }
     if (provider.status !== "available") {
-      readiness[source] = { ready: false, hint: provider.installHint };
+      readiness[source] = {
+        ready: false,
+        hint:
+          provider.status === "missing"
+            ? provider.installHint
+            : (Option.getOrNull(provider.detail) ??
+              "Provider check failed. Open Source Control settings and rescan."),
+      };
       continue;
     }
     if (provider.auth.status === "unauthenticated") {

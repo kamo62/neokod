@@ -13,6 +13,7 @@ import {
   removeMyWorkDismissed,
   removePinnedThreads,
   reorderProjects,
+  resolveOperatingModeRoute,
   resolveProjectExpanded,
   setProjectExpanded,
   setSidebarView,
@@ -52,6 +53,16 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
 }
 
 describe("uiStateStore pure functions", () => {
+  it("does not restore a route from the other operating mode", () => {
+    const state = makeUiState();
+
+    expect(resolveOperatingModeRoute("symphony", state.viewSnapshotsByMode?.work)).toBe(
+      "/symphony",
+    );
+    expect(resolveOperatingModeRoute("work", state.viewSnapshotsByMode?.symphony)).toBe("/");
+    expect(resolveOperatingModeRoute("symphony")).toBe("/symphony");
+  });
+
   it("stores server timestamps without moving visit state backwards", () => {
     const threadId = ThreadId.make("thread-1");
     const initialState = makeUiState();
