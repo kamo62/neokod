@@ -32,6 +32,34 @@ intentionally unchanged until Stage 6.
   so a conflict resolution can distinguish "reapply this exact block" from
   "re-verify this whole file still makes sense."
 
+### Porting upstream fixes: attribution convention
+
+The fork has diverged far enough that most upstream fixes cannot be applied with
+`git cherry-pick`; they are hand-adapted to the fork's structure and committed
+fresh. A clean cherry-pick would preserve the original author automatically. A
+hand-adapted port does not, so the credit must be added by hand.
+
+When you port an upstream fix, credit the original contributor with a
+`Co-authored-by` trailer, alongside the upstream commit SHA or PR reference in
+the commit body. GitHub recognizes the trailer and shows the credit on the
+contributor's profile, which keeps the fork honest about where the work came
+from. Provenance (which upstream change this derives from) and authorship (who
+wrote it) are both recorded, not just the first.
+
+```
+fix(server): <what changed>
+
+Port of upstream pingdotgg/t3code#<PR>. <one or two lines on the adaptation>.
+
+Co-authored-by: <Author Name> <author-email>
+```
+
+Take the author name and email from the upstream commit metadata
+(`git show <upstream-sha> --format='%an <%ae>'`) so the credit links correctly.
+This is the standing convention for every port going forward. Ports made before
+this convention was recorded credited the upstream commit or PR in the message
+but not the author; those are left as-is and the practice starts here.
+
 ## Fork-owned (new files, zero conflict risk)
 
 All GitHub Copilot driver internals live in one directory:
