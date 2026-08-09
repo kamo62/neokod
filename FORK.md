@@ -178,6 +178,16 @@ All GitHub Copilot driver internals live in one directory:
 | `apps/web/src/components/chat/providerIconUtils.ts`, `apps/web/src/components/chat/ThreadWorkspaceRail.tsx`, `apps/web/src/components/chat/ThreadWorkspaceRail.test.ts`, `apps/web/src/components/MissionControl.tsx` | Resolves selected models through the live instance catalog so thread surfaces show display names, with slugs as a fallback. | Preserve exact instance-id routing; custom provider instances must not collapse into the default driver.                                |
 | `apps/web/src/components/settings/ConnectionsSettings.tsx`                                                                                                                                                            | Describes browser-origin connections as browser access rather than claiming every primary connection is loopback-only.      | Keep desktop/loopback copy unchanged and avoid implying that the web client itself supplies the reverse-proxy security boundary.        |
 
+### Removed upstream tooling and experiments (2026-08-09)
+
+Deleted in PR #137. Each of these was authored upstream and is not part of Neokod's toolchain, CI, or product, so the fork drops them. On a future rebase an upstream edit to any of these paths appears as a delete/modify conflict; resolve every one in favour of the deletion.
+
+| Path                                | Fork edit                                                                                                                 | Rebase guidance                                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `.cursor/`                          | Deleted. Upstream (#2246, #3755) ships Cursor IDE rules and a Cursor Cloud dev-environment config; Neokod uses neither.    | Keep deleted. Resolve any delete/modify conflict by keeping the deletion.                 |
+| `.macroscope/check-run-agents/`     | Deleted. The Macroscope "Effect service conventions" check-run agent config (#3212) is not part of Neokod's CI.           | Keep deleted. Resolve any delete/modify conflict by keeping the deletion.                 |
+| `experiments/messages-glass-lab/`   | Deleted. A SwiftUI/Xcode iPad split-view spike from upstream (#3514); Neokod builds no native iPad client.                 | Keep deleted. Resolve any delete/modify conflict by keeping the deletion.                 |
+
 ## Neokod product and release identity
 
 | Path                                                                                                                                        | Fork edit                                                                                                                                                                                                                         | Rebase guidance                                                                                                                                          |
