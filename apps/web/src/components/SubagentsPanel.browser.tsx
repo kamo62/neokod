@@ -129,6 +129,15 @@ describe("SubagentsPanel browser presentation", () => {
         expect.stringContaining("Failed"),
       ]),
     );
+    expect(
+      rosterButtons().find((button) => button.textContent?.includes("Repository explorer"))
+        ?.textContent,
+    ).toContain("Active ·");
+    expect(
+      rosterButtons().find((button) => button.textContent?.includes("Detached reviewer"))
+        ?.textContent,
+    ).not.toContain("Orphaned ·");
+    expect(document.querySelectorAll("time")).toHaveLength(2);
 
     await page.getByRole("button", { name: /^Detached reviewer/ }).click();
     await expect.element(page.getByText("Tracking lost", { exact: true })).toBeVisible();

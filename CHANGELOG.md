@@ -1,3 +1,9 @@
+## 3.5.36 - 2026-08-09 (Patch)
+
+Release impact: Patch because this polishes the shipped subagent panel without changing its contracts or lifecycle behavior.
+
+- Refined the subagent Command Deck with compact lifecycle timing, a clearer progress timeline, and focused browser coverage for active and orphaned states.
+
 ## 3.5.35 - 2026-08-09 (Patch)
 
 Release impact: Patch because this adds regression coverage for shipped runtime safety and subagent UI behavior without changing public contracts.
