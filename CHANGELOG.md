@@ -1,3 +1,9 @@
+## 3.5.39 - 2026-08-09 (Patch)
+
+Release impact: Patch because this reduces duplicate tool lifecycle rows in thread snapshots without changing live event delivery or public contracts.
+
+- Thread-detail snapshots now omit `tool.updated` rows that a later matching completion supersedes in the same turn, using collision-safe lifecycle identities while preserving live updates and unmatched work.
+
 ## 3.5.38 - 2026-08-09 (Patch)
 
 Release impact: Patch because this fixes provider turn attribution and queued-follow-up interruption without changing provider configuration.
