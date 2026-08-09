@@ -311,7 +311,7 @@ function dropSupersededToolUpdatedActivities(
     if (!identity) {
       continue;
     }
-    const key = `${activity.turnId ?? ""} ${identity}`;
+    const key = JSON.stringify([activity.turnId ?? null, identity]);
     const indices = completionIndicesByKey.get(key);
     if (indices) {
       indices.push(index);
@@ -331,7 +331,7 @@ function dropSupersededToolUpdatedActivities(
     if (!identity) {
       return true;
     }
-    const indices = completionIndicesByKey.get(`${activity.turnId ?? ""} ${identity}`);
+    const indices = completionIndicesByKey.get(JSON.stringify([activity.turnId ?? null, identity]));
     return !indices?.some((completionIndex) => completionIndex > index);
   });
 }

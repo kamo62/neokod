@@ -494,6 +494,19 @@ describe("superseded tool.updated snapshot dedup", () => {
     expect(projectedIds([update, completed])).toEqual([update.id, completed.id]);
   });
 
+  it("keeps turn and tool identities whose fields collide when space-joined", () => {
+    const update = makeToolLifecycleActivity("upd-turn-separated", "tool.updated", {
+      turn: "turn",
+      toolCallId: "outer id:inner",
+    });
+    const completed = makeToolLifecycleActivity("done-other-turn", "tool.completed", {
+      turn: "turn id:outer",
+      toolCallId: "inner",
+    });
+
+    expect(projectedIds([update, completed])).toEqual([update.id, completed.id]);
+  });
+
   it("keeps updates with no matching completion", () => {
     const inFlight = makeToolLifecycleActivity("upd-live", "tool.updated", { title: "Running" });
     const other = makeToolLifecycleActivity("upd-other", "tool.updated", { title: "Reading" });
