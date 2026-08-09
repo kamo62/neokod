@@ -23,16 +23,14 @@ cursor-agent login
 There is no in-app sign-in for Cursor; authentication is entirely the CLI's own login, and Neokod
 reads back whatever session it finds.
 
-Neokod's Cursor provider currently defaults the "Binary path" setting to `agent`, not `cursor-agent`.
-If Neokod cannot find the CLI, for example a session fails to start or the provider status shows
-unauthenticated when you know you signed in, set Binary path to `cursor-agent` explicitly, or to its
-full path (`which cursor-agent`).
+Neokod defaults the "Binary path" setting to `cursor-agent`. If Neokod cannot find the CLI, set it
+to the full path reported by `which cursor-agent`.
 
 ## Neokod Settings
 
 ```text
 Display name: Cursor
-Binary path: agent (default; most installs need this set to cursor-agent)
+Binary path: cursor-agent (default)
 API endpoint: empty (override only for a custom Cursor API endpoint)
 ```
 
@@ -41,8 +39,6 @@ over its stdio.
 
 ## Known Limitations
 
-- The "Binary path" default (`agent`) does not match the CLI's real command (`cursor-agent`) in this
-  build; set it explicitly after installing. See Authenticate above.
 - Cursor ships as Early Access.
 - The parameterized model picker, with per-model reasoning effort, context window, and fast-mode
   options, requires Cursor CLI 2026.04.08 or newer on Cursor's `lab` channel. Older or other-channel
