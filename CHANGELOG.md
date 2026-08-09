@@ -1,3 +1,9 @@
+## 3.5.40 - 2026-08-09 (Patch)
+
+Release impact: Patch because this corrects product and release documentation without changing runtime behavior.
+
+- Reframed the README around Code and Symphony modes, documented the shipped Kiro restrictions and local access boundary, and corrected the release pipeline description.
+
 ## 3.5.39 - 2026-08-09 (Patch)
 
 Release impact: Patch because this reduces duplicate tool lifecycle rows in thread snapshots without changing live event delivery or public contracts.

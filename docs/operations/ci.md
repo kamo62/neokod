@@ -13,6 +13,6 @@
 
 - Browser tests run serially in deterministic Chromium: 1280×900 viewport, DPR 1, `en-US`, UTC, light color scheme, and reduced motion. Use role, text, and state assertions—no screenshots, geometry checks, or arbitrary sleeps in this blocking lane.
 - `browser_test` is separate from the existing 10-minute unit-test job and is blocking: it has no retries or `continue-on-error` exceptions.
-- `.github/workflows/release.yml` builds Neokod for macOS (`arm64` and `x64`) and Windows (`x64`) and publishes one private GitHub Release.
-- Stable and nightly channels use the same version/tag scheme as upstream T3 Code. macOS artifacts are signed and notarized; Windows artifacts are not signed yet.
+- `.github/workflows/release.yml` builds Neokod for macOS (`arm64` and `x64`) and Windows (`x64`) and publishes a GitHub Release as a draft, then publishes it.
+- The release version comes from the top entry in `CHANGELOG.md`. The pipeline gates on its own checks and versions independently of upstream T3 Code. Only the nightly version-string format is inherited from upstream. macOS artifacts are signed and notarized; Windows artifacts are not signed yet.
 - See [Release Checklist](./release.md) for the full release/signing setup checklist.
