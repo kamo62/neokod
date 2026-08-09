@@ -1,10 +1,27 @@
 name: CI
 
 on:
+  # Documentation-only changes skip CI: none of the doc paths below affect
+  # typecheck, build, tests, or release smoke. CHANGELOG.md is deliberately
+  # NOT ignored, because release_smoke reads it (check-changelog-version.ts).
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - ".plans/**"
+      - "README.md"
+      - "FORK.md"
+      - "LICENSE"
+      - ".github/pull_request_template.md"
   push:
     branches:
       - main
+    paths-ignore:
+      - "docs/**"
+      - ".plans/**"
+      - "README.md"
+      - "FORK.md"
+      - "LICENSE"
+      - ".github/pull_request_template.md"
 
 jobs:
   check:
