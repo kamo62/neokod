@@ -301,7 +301,7 @@ function toolLifecycleIdentity(activity: OrchestrationThreadActivity): string | 
 function dropSupersededToolUpdatedActivities(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
 ): ReadonlyArray<OrchestrationThreadActivity> {
-  const completionIndicesByKey = new Map<string, number[]>();
+  const completionIndexByKey = new Map<string, number>();
   for (let index = 0; index < activities.length; index += 1) {
     const activity = activities[index]!;
     if (activity.kind !== "tool.completed") {
@@ -312,14 +312,9 @@ function dropSupersededToolUpdatedActivities(
       continue;
     }
     const key = JSON.stringify([activity.turnId ?? null, identity]);
-    const indices = completionIndicesByKey.get(key);
-    if (indices) {
-      indices.push(index);
-    } else {
-      completionIndicesByKey.set(key, [index]);
-    }
+    completionIndexByKey.set(key, index);
   }
-  if (completionIndicesByKey.size === 0) {
+  if (completionIndexByKey.size === 0) {
     return activities;
   }
 
@@ -331,8 +326,10 @@ function dropSupersededToolUpdatedActivities(
     if (!identity) {
       return true;
     }
-    const indices = completionIndicesByKey.get(JSON.stringify([activity.turnId ?? null, identity]));
-    return !indices?.some((completionIndex) => completionIndex > index);
+    const completionIndex = completionIndexByKey.get(
+      JSON.stringify([activity.turnId ?? null, identity]),
+    );
+    return completionIndex === undefined || completionIndex <= index;
   });
 }
 
