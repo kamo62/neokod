@@ -179,6 +179,7 @@ const makeReactiveSettingsLayer = (
           current = patchManagedClientEvidenceSettings(current, patch);
           return current;
         }).pipe(Effect.tap((settings) => PubSub.publish(changes, settings))),
+      updateSettingsMutation: () => dieUnused(),
       streamChanges: Stream.fromPubSub(changes),
     } satisfies ServerSettingsService["Service"]),
     publishCurrent,

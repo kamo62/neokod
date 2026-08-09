@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Duration from "effect/Duration";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
-import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
+import { NonNegativeInt, TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
 import { DEFAULT_GIT_TEXT_GENERATION_MODEL, ProviderOptionSelections } from "./model.ts";
 import { ModelSelection } from "./orchestration.ts";
 import { ProviderInstanceConfig, ProviderInstanceId } from "./providerInstance.ts";
@@ -646,6 +646,8 @@ export type TrackersSettings = typeof TrackersSettings.Type;
 export const DEFAULT_TRACKERS_SETTINGS: TrackersSettings = {};
 
 export const ServerSettings = Schema.Struct({
+  /** Server-owned durable revision. Clients must never author this value. */
+  revision: NonNegativeInt.pipe(Schema.withDecodingDefault(Effect.succeed(0))),
   enableAssistantStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   automaticGitFetchInterval: Schema.DurationFromMillis.pipe(
@@ -710,6 +712,7 @@ export const ServerSettingsOperation = Schema.Literals([
   "write-secret",
   "write-file",
   "prepare-directory",
+  "revision-conflict",
 ]);
 export type ServerSettingsOperation = typeof ServerSettingsOperation.Type;
 
@@ -720,10 +723,15 @@ export class ServerSettingsError extends Schema.TaggedErrorClass<ServerSettingsE
     operation: ServerSettingsOperation,
     providerInstanceId: Schema.optional(Schema.String),
     environmentVariable: Schema.optional(Schema.String),
+    expectedRevision: Schema.optional(NonNegativeInt),
+    actualRevision: Schema.optional(NonNegativeInt),
     cause: Schema.Defect(),
   },
 ) {
   override get message(): string {
+    if (this.operation === "revision-conflict") {
+      return `Server settings revision conflict at ${this.settingsPath}: expected ${String(this.expectedRevision)}, actual ${String(this.actualRevision)}.`;
+    }
     const provider =
       this.providerInstanceId === undefined ? "" : ` for provider ${this.providerInstanceId}`;
     const variable =
@@ -849,6 +857,26 @@ export const ServerSettingsPatch = Schema.Struct({
   trackers: Schema.optionalKey(Schema.Record(Schema.String, TrackerProviderSettings)),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
+
+export const ServerSettingsMutationId = TrimmedNonEmptyString.pipe(
+  Schema.brand("ServerSettingsMutationId"),
+);
+export type ServerSettingsMutationId = typeof ServerSettingsMutationId.Type;
+
+export const ServerSettingsMutation = Schema.Struct({
+  mutationId: ServerSettingsMutationId,
+  expectedRevision: NonNegativeInt,
+  patch: ServerSettingsPatch,
+});
+export type ServerSettingsMutation = typeof ServerSettingsMutation.Type;
+
+export const ServerSettingsMutationAcknowledgement = Schema.Struct({
+  mutationId: ServerSettingsMutationId,
+  revision: NonNegativeInt,
+  settings: ServerSettings,
+});
+export type ServerSettingsMutationAcknowledgement =
+  typeof ServerSettingsMutationAcknowledgement.Type;
 
 export const ClientSettingsPatch = Schema.Struct({
   appIconVariant: Schema.optionalKey(AppIconVariant),
