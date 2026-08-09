@@ -264,4 +264,23 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
       assert.equal(optionError.option, "--dev-url");
     }),
   );
+
+  it.effect("routes the `update` alias to the upgrade command", () =>
+    Effect.gen(function* () {
+      const error = yield* runCliWithRuntime(["update", "--not-a-flag"]).pipe(Effect.flip);
+
+      if (!CliError.isCliError(error)) {
+        assert.fail(`Expected CliError, got ${String(error)}`);
+      }
+      if (error._tag !== "ShowHelp") {
+        assert.fail(`Expected ShowHelp, got ${error._tag}`);
+      }
+      assert.deepEqual(error.commandPath, ["neokod", "upgrade"]);
+      const optionError = error.errors[0] as CliError.CliError | undefined;
+      if (!optionError || optionError._tag !== "UnrecognizedOption") {
+        assert.fail(`Expected UnrecognizedOption, got ${String(optionError?._tag)}`);
+      }
+      assert.equal(optionError.option, "--not-a-flag");
+    }),
+  );
 });

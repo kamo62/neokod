@@ -310,4 +310,7 @@ export const upgradeCommand = Command.make(
     ),
   },
   ({ check }) => runUpgrade(check),
-).pipe(Command.withDescription("Install the latest Neokod server and restart its supervisor."));
+).pipe(
+  Command.withAlias("update"),
+  Command.withDescription("Install the latest Neokod server and restart its supervisor."),
+);
