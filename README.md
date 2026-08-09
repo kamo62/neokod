@@ -1,10 +1,20 @@
 # Neokod
 
-Neokod is a local-first desktop app for coding with the AI agent CLIs you already use. It brings agent chats, terminals, git worktrees, diffs, and provider sessions into one focused workspace that runs entirely on your machine.
+Neokod is a local-first, multi-provider, governed agent workbench for coding with the AI agent CLIs you already use. It runs agent chats, terminals, git worktrees, diffs, and provider sessions in one focused workspace on your own machine, with no application login and no cloud service holding your repositories or history.
 
-Neokod began as a fork of T3 Code and has been carved down to a local-first tool: no cloud service, no mobile app, no remote-access control plane. Your projects, threads, and history stay on your machine, and Neokod talks directly to the providers you choose.
+Neokod began as a fork of T3 Code and has been carved down to a local-first tool: no cloud service, no mobile app, no remote-access control plane. Your projects, threads, and history stay on your machine, and Neokod talks directly to the providers you choose. The fork exists to add governance on top of that foundation: one place for an organization to route and control Claude and Copilot usage across its developers, in place of scattered personal CLI logins.
 
 Neokod continues to track upstream T3 Code selectively: fixes and updates that apply to the local-first tree are backported as needed, with original authorship preserved. Upstream changes tied to the removed cloud, mobile, and relay layers are not ported.
+
+## Two modes
+
+Neokod keeps interactive work and autonomous work as two separate modes.
+
+**Code mode** is the interactive mode: you drive an agent thread directly, with parallel threads, per-thread git worktrees, diffs, branches, commits, and PRs, an embedded terminal, and file and preview views in the same window. This is the shipped foundation of the app.
+
+**Symphony mode** is autonomous and workflow-led. A daemon-driven scheduler pulls dispatchable issues from a tracker (GitHub Issues, GitHub Projects, Jira, Linear, GitLab, Asana, or Azure Boards), dispatches an agent into an isolated git worktree for each one, runs the validation configured for that repository, assembles an evidence bundle, and opens a pull request. A `WORKFLOW.md` file in the repository configures the tracker, dispatch rules, and approval policy. Autonomy is bounded by that policy throughout: work can require approval before merge, and merging stays off by default until a human or a configured gate approves it. Symphony is implemented and merged into the app, gated behind these policy controls. It has not yet been run end to end against a live tracker in production use, so treat it as present and policy-bounded. It is not a finished, battle-tested path yet.
+
+Two further directions describe where the project is headed. Neither ships today. The goal is a provider-neutral capability graph, so that what an agent can do (its commands, tools, skills, and integrations) looks the same in the UI whichever provider is running it, and the UI does not branch per provider. Alongside that, the aim is centralized governance over which agents run, how, and under what controls, including governed delegation across multiple agents. Both are design direction today, not shipped features.
 
 ## What it does
 
@@ -16,7 +26,8 @@ Neokod continues to track upstream T3 Code selectively: fixes and updates that a
 - See what subagents are doing in a dedicated Subagents panel.
 - Pick a provider model and its reasoning effort from one combined control.
 - Get notified when an agent finishes or needs you, so you do not have to watch a thread. An in-app toast appears when you are elsewhere in the app, a native system notification when the window is hidden, and clicking either jumps straight to that thread. Notifications are opt-out and only request OS permission when you ask.
-- Stay local. There is no Neokod cloud holding your repositories, chats, or history. The provider you pick still receives the prompts, diffs, and tool output a session needs, but that traffic goes to that provider, not through a Neokod service.
+- Run Symphony mode alongside Code mode on a repository that has a `WORKFLOW.md`: dispatch tracker issues to agents, watch runs and evidence, and approve or hold merges under policy.
+- Stay local. There is no Neokod cloud holding your repositories, chats, or history. The provider you pick still receives the prompts, diffs, and tool output a session needs. That traffic goes straight to the provider, with no Neokod service in the path.
 
 ## Providers
 
@@ -28,6 +39,8 @@ Neokod drives agent CLIs you have installed and authenticated yourself. Supporte
 - Cursor (Cursor CLI)
 - Grok
 - OpenCode
+
+A Kiro provider is in review as a draft PR. It is scoped to Code mode only; Kiro's multi-agent Crew capability is deliberately disabled behind safety gates that are not yet met, so it will not ship enabled by default.
 
 Install and authenticate at least one provider before use, for example:
 
@@ -46,7 +59,7 @@ Install the latest macOS or Windows build from [Neokod releases](https://github.
 
 ## Local access boundary
 
-Neokod is local-first. The native desktop backend and the standalone `neokod serve` listen on `127.0.0.1` and use direct HTTP and WebSocket connections with no application session, pairing flow, cookie, or bearer credential.
+Neokod is local-first, and that boundary applies the same way to Code mode and Symphony mode: both run through the same local server, with no application session, pairing flow, cookie, or bearer credential on the loopback listener. The native desktop backend and the standalone `neokod serve` listen on `127.0.0.1` and use direct HTTP and WebSocket connections. This matches a single-user-per-machine model, like a local IDE. It is not a multi-user service.
 
 The only non-loopback exception is a desktop-managed WSL backend. It listens on `0.0.0.0` inside WSL and stays fail-closed behind a desktop-generated bearer for HTTP plus short-lived, single-use WebSocket tickets. The WSL credential is delivered only through the live desktop topology and is never persisted.
 
@@ -90,6 +103,14 @@ vp run typecheck
 vp test
 ```
 
+## Where things are
+
+- Symphony mode's domain model and RPC surface: `packages/contracts/src/symphony.ts`. Its runtime lives under `apps/server/src/symphony/`.
+- Tracker adapters for Symphony (GitHub Issues, GitHub Projects, Jira, Linear, GitLab, Asana, Azure Boards), each with its own `WORKFLOW.md` configuration keys: `docs/integrations/`.
+- Provider drivers and adapters, one directory per provider: `apps/server/src/provider/`.
+- Architecture and the access-boundary table: `docs/architecture/overview.md`.
+- Full documentation index: [docs](./docs).
+
 ## Upstream updates
 
 The fork keeps T3 Code's release-aware rebase helper. In a fresh clone, configure the public upstream once:
@@ -110,6 +131,7 @@ Neokod is early. Expect bugs and fast-moving internals. We are not accepting con
 - [Getting started](./docs/getting-started/quick-start.md)
 - [Architecture overview](./docs/architecture/overview.md)
 - [Provider guides](./docs/providers/codex.md)
+- [Symphony tracker integrations](./docs/integrations/symphony-github.md)
 - [Operations](./docs/operations/ci.md)
 - [Reference](./docs/reference/encyclopedia.md)
 
