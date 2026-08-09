@@ -1,3 +1,11 @@
+## 3.5.42 - 2026-08-09 (Minor)
+
+Release impact: Minor because this adds an opt-in server transport mode while preserving existing defaults, alongside CLI and CI corrections.
+
+- Added opt-in `--strict-transport` / `NEOKOD_STRICT_TRANSPORT` hardening for loopback authentication and Host/Origin validation.
+- Added `neokod update` as an alias for `neokod upgrade`.
+- Documentation-only pull requests now skip the full build suite while retaining release-smoke validation.
+
 ## 3.5.41 - 2026-08-09 (Patch)
 
 Release impact: Patch because this fixes the default executable for an existing provider without changing its contracts.
