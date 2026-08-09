@@ -50,6 +50,14 @@ export function applyServerConfigProjection(
         latestEvent: event,
       }));
     case "settingsUpdated":
+      if (
+        Option.exists(
+          current,
+          (projection) => event.payload.settings.revision < projection.config.settings.revision,
+        )
+      ) {
+        return current;
+      }
       return Option.map(current, (projection) => ({
         config: {
           ...projection.config,
@@ -65,7 +73,7 @@ export function projectServerConfig(
   event: ServerConfigStreamEvent,
 ): readonly [Option.Option<ServerConfigProjection>, ReadonlyArray<ServerConfigProjection>] {
   const next = applyServerConfigProjection(current, event);
-  return [next, Option.toArray(next)];
+  return [next, next === current ? [] : Option.toArray(next)];
 }
 
 export function projectServerWelcome(

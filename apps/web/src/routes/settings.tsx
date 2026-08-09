@@ -10,6 +10,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 
 import { useSettingsRestore } from "../components/settings/SettingsPanels";
+import { usePrimarySettingsMutationState } from "../hooks/useSettings";
 import { Button } from "../components/ui/button";
 import { SidebarInset } from "../components/ui/sidebar";
 import { isElectron } from "../env";
@@ -29,6 +30,23 @@ function RestoreDefaultsButton({ onRestored }: { onRestored: () => void }) {
       <RotateCcwIcon className="mx-1 size-3.5" />
       Restore defaults
     </Button>
+  );
+}
+
+function SettingsSaveStatus() {
+  const state = usePrimarySettingsMutationState();
+  if (state.status === "idle") return null;
+  if (state.status === "saving") {
+    return (
+      <span role="status" aria-live="polite" className="text-xs text-muted-foreground">
+        Saving…
+      </span>
+    );
+  }
+  return (
+    <span role="alert" className="max-w-80 truncate text-xs text-destructive">
+      Settings not saved{state.failure ? `: ${state.failure}` : "."}
+    </span>
   );
 }
 
@@ -74,11 +92,10 @@ function SettingsContentLayout() {
           >
             <div className="flex min-h-7 items-center gap-2 sm:min-h-6">
               <span className="text-sm font-medium text-foreground">Settings</span>
-              {showRestoreDefaults ? (
-                <div className="ms-auto flex items-center gap-2">
-                  <RestoreDefaultsButton onRestored={handleRestored} />
-                </div>
-              ) : null}
+              <div className="ms-auto flex items-center gap-2">
+                <SettingsSaveStatus />
+                {showRestoreDefaults ? <RestoreDefaultsButton onRestored={handleRestored} /> : null}
+              </div>
             </div>
           </header>
         )}
@@ -93,11 +110,10 @@ function SettingsContentLayout() {
             <span className="text-xs font-medium tracking-wide text-muted-foreground/70">
               Settings
             </span>
-            {showRestoreDefaults ? (
-              <div className="ms-auto flex items-center gap-2">
-                <RestoreDefaultsButton onRestored={handleRestored} />
-              </div>
-            ) : null}
+            <div className="ms-auto flex items-center gap-2">
+              <SettingsSaveStatus />
+              {showRestoreDefaults ? <RestoreDefaultsButton onRestored={handleRestored} /> : null}
+            </div>
           </div>
         )}
 

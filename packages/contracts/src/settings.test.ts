@@ -7,14 +7,52 @@ import {
   ClientSettingsSchema,
   DEFAULT_SERVER_SETTINGS,
   ServerSettings,
+  ServerSettingsMutation,
+  ServerSettingsMutationAcknowledgement,
+  ServerSettingsMutationId,
   ServerSettingsPatch,
 } from "./settings.ts";
 
 const decodeClientSettings = Schema.decodeUnknownSync(ClientSettingsSchema);
 const decodeCopilotSettings = Schema.decodeUnknownSync(CopilotSettings);
 const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
+const decodeServerSettingsMutation = Schema.decodeUnknownSync(ServerSettingsMutation);
+const decodeServerSettingsMutationAcknowledgement = Schema.decodeUnknownSync(
+  ServerSettingsMutationAcknowledgement,
+);
 const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
+
+describe("ServerSettings revisions", () => {
+  it("defaults legacy settings to revision zero", () => {
+    expect(decodeServerSettings({}).revision).toBe(0);
+    expect(DEFAULT_SERVER_SETTINGS.revision).toBe(0);
+  });
+
+  it("round-trips a mutation and its authoritative acknowledgement", () => {
+    const mutationId = ServerSettingsMutationId.make("settings:primary:0:1");
+    expect(
+      decodeServerSettingsMutation({
+        mutationId,
+        expectedRevision: 0,
+        patch: { enableAssistantStreaming: true },
+      }),
+    ).toEqual({
+      mutationId,
+      expectedRevision: 0,
+      patch: { enableAssistantStreaming: true },
+    });
+
+    const settings = { ...DEFAULT_SERVER_SETTINGS, revision: 1, enableAssistantStreaming: true };
+    expect(
+      decodeServerSettingsMutationAcknowledgement({
+        mutationId,
+        revision: 1,
+        settings: encodeServerSettings(settings),
+      }),
+    ).toEqual({ mutationId, revision: 1, settings });
+  });
+});
 
 describe("ClientSettings word wrap", () => {
   it("defaults word wrap on", () => {
@@ -61,6 +99,7 @@ describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
       githubCopilot: { enabled: false },
       cursor: { enabled: false },
       grok: { enabled: false },
+      kiro: { enabled: false, agentEngine: "v2" },
       opencode: { enabled: false },
     });
   });
@@ -106,6 +145,22 @@ describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
       decodeServerSettings({
         providerInstances: { "1bad": { driver: "codex" } },
       }),
+    ).toThrow();
+  });
+});
+
+describe("Kiro engine settings", () => {
+  it("defaults to v2 and accepts v3 patches", () => {
+    expect(decodeServerSettings({}).providers.kiro.agentEngine).toBe("v2");
+    expect(
+      decodeServerSettingsPatch({ providers: { kiro: { agentEngine: "v3" } } }).providers?.kiro
+        ?.agentEngine,
+    ).toBe("v3");
+  });
+
+  it("rejects the unsupported v1 engine", () => {
+    expect(() =>
+      decodeServerSettingsPatch({ providers: { kiro: { agentEngine: "v1" } } }),
     ).toThrow();
   });
 });

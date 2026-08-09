@@ -68,6 +68,11 @@ export interface ProviderInstance {
   readonly displayName: string | undefined;
   readonly accentColor?: string | undefined;
   readonly enabled: boolean;
+  /**
+   * Opt-in gate for Symphony model review. Missing values fail closed so a
+   * newly added driver cannot become an autonomous reviewer by accident.
+   */
+  readonly symphonyCodeReview?: boolean;
   readonly snapshot: ServerProviderShape;
   readonly adapter: ProviderAdapterShape<ProviderAdapterError>;
   readonly textGeneration: TextGeneration.TextGeneration["Service"];

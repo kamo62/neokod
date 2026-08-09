@@ -8,6 +8,7 @@ import {
   PositiveInt,
   RuntimeItemId,
   RuntimeRequestId,
+  RuntimeSessionId,
   RuntimeTaskId,
   ThreadId,
   TrimmedNonEmptyString,
@@ -91,7 +92,12 @@ const RuntimeContentStreamKind = Schema.Literals([
 ]);
 export type RuntimeContentStreamKind = typeof RuntimeContentStreamKind.Type;
 
-const RuntimeSessionExitKind = Schema.Literals(["graceful", "error"]);
+// `orphan_possible` marks an exit where the neokod-owned process/turn settled
+// but managed descendants (e.g. Kiro Crew work) could not be proven stopped.
+// The authoritative, detailed outcome always travels on `session.stop.updated`
+// (see `ProviderStopOutcome`); this exit kind keeps the uncertainty visible on
+// the coarse session-exit stream too.
+const RuntimeSessionExitKind = Schema.Literals(["graceful", "error", "orphan_possible"]);
 export type RuntimeSessionExitKind = typeof RuntimeSessionExitKind.Type;
 
 const RuntimeErrorClass = Schema.Literals([
@@ -102,6 +108,95 @@ const RuntimeErrorClass = Schema.Literals([
   "unknown",
 ]);
 export type RuntimeErrorClass = typeof RuntimeErrorClass.Type;
+
+// ---------------------------------------------------------------------------
+// Canonical stop / orphan contracts (Issue #101, spec section 6.2)
+//
+// A process exit is not proof that provider work stopped. `stopped_confirmed`
+// is reserved for the case where the foreground turn settled AND every managed
+// descendant is confirmed stopped. When descendants cannot be observed the
+// outcome must remain `orphan_possible` so the uncertainty survives projection
+// and reconnect. `stop_failed` records a teardown that could not complete.
+// ---------------------------------------------------------------------------
+
+/**
+ * Why a stop landed in an uncertain (`orphan_possible`) state. Every reason
+ * describes a specific way descendant termination could not be proven.
+ */
+export const ProviderStopReason = Schema.Literals([
+  "descendants_unobservable",
+  "host_lost",
+  "cancel_timeout",
+  "cancel_failed",
+  "process_group_exited_descendants_unobservable",
+]);
+export type ProviderStopReason = typeof ProviderStopReason.Type;
+
+/**
+ * Why a stop hard-failed. Distinct from `ProviderStopReason`: these are not
+ * "work may continue" states, they are "the stop operation itself failed".
+ */
+export const ProviderStopFailedReason = Schema.Literals([
+  "process_group_termination_failed",
+  "persistence_failed",
+  "unknown",
+]);
+export type ProviderStopFailedReason = typeof ProviderStopFailedReason.Type;
+
+const ProviderStopOutcomeConfirmed = Schema.Struct({
+  status: Schema.Literal("stopped_confirmed"),
+  stoppedAt: IsoDateTime,
+});
+export type ProviderStopOutcomeConfirmed = typeof ProviderStopOutcomeConfirmed.Type;
+
+const ProviderStopOutcomeOrphanPossible = Schema.Struct({
+  status: Schema.Literal("orphan_possible"),
+  stoppedAt: IsoDateTime,
+  reason: ProviderStopReason,
+  providerSessionId: Schema.optional(TrimmedNonEmptyStringSchema),
+  knownExternalRunIds: Schema.Array(TrimmedNonEmptyStringSchema),
+});
+export type ProviderStopOutcomeOrphanPossible = typeof ProviderStopOutcomeOrphanPossible.Type;
+
+const ProviderStopOutcomeFailed = Schema.Struct({
+  status: Schema.Literal("stop_failed"),
+  reason: ProviderStopFailedReason,
+  detail: Schema.optional(TrimmedNonEmptyStringSchema),
+});
+export type ProviderStopOutcomeFailed = typeof ProviderStopOutcomeFailed.Type;
+
+/**
+ * Structured result of stopping a single provider session. Returned by
+ * `ProviderAdapter.stopSession` (which replaced the old `Effect<void>`).
+ */
+export const ProviderStopOutcome = Schema.Union([
+  ProviderStopOutcomeConfirmed,
+  ProviderStopOutcomeOrphanPossible,
+  ProviderStopOutcomeFailed,
+]);
+export type ProviderStopOutcome = typeof ProviderStopOutcome.Type;
+
+/**
+ * Aggregate of a stop-all sweep, owned by `ProviderService`. Sessions are keyed
+ * by their `ThreadId` (the runtime session key). Global "stopped" state must
+ * not be shown while `orphanPossible` or `failed` is non-empty.
+ */
+export const StopAllResult = Schema.Struct({
+  confirmed: Schema.Array(ThreadId),
+  orphanPossible: Schema.Array(
+    Schema.Struct({
+      sessionId: ThreadId,
+      reason: ProviderStopReason,
+    }),
+  ),
+  failed: Schema.Array(
+    Schema.Struct({
+      sessionId: ThreadId,
+      reason: TrimmedNonEmptyStringSchema,
+    }),
+  ),
+});
+export type StopAllResult = typeof StopAllResult.Type;
 
 export const TOOL_LIFECYCLE_ITEM_TYPES = [
   "command_execution",
@@ -152,6 +247,7 @@ const ProviderRuntimeEventType = Schema.Literals([
   "session.configured",
   "session.state.changed",
   "session.exited",
+  "session.stop.updated",
   "thread.started",
   "thread.state.changed",
   "thread.metadata.updated",
@@ -202,6 +298,7 @@ const SessionStartedType = Schema.Literal("session.started");
 const SessionConfiguredType = Schema.Literal("session.configured");
 const SessionStateChangedType = Schema.Literal("session.state.changed");
 const SessionExitedType = Schema.Literal("session.exited");
+const SessionStopUpdatedType = Schema.Literal("session.stop.updated");
 const ThreadStartedType = Schema.Literal("thread.started");
 const ThreadStateChangedType = Schema.Literal("thread.state.changed");
 const ThreadMetadataUpdatedType = Schema.Literal("thread.metadata.updated");
@@ -254,6 +351,8 @@ const ProviderRuntimeEventBase = Schema.Struct({
   // for the routing-key-vs-driver-id distinction. Once every emitter
   // populates it (post-slice-4), routing flips to instance-id-only.
   providerInstanceId: Schema.optional(ProviderInstanceId),
+  /** Server-owned generation for one managed provider session. */
+  sessionId: Schema.optional(RuntimeSessionId),
   threadId: ThreadId,
   createdAt: IsoDateTime,
   turnId: Schema.optional(TurnId),
@@ -288,6 +387,26 @@ const SessionExitedPayload = Schema.Struct({
   exitKind: Schema.optional(RuntimeSessionExitKind),
 });
 export type SessionExitedPayload = typeof SessionExitedPayload.Type;
+
+/**
+ * Transition of the stop state machine (spec section 6.2). Emitted for every
+ * step so uncertain outcomes (`orphan_possible`) survive projection/reconnect.
+ * `phase` is the machine transition; `outcome` is present once a terminal
+ * `ProviderStopOutcome` has been decided.
+ */
+const SessionStopPhase = Schema.Literals([
+  "stop_requested",
+  "foreground_cancelled",
+  "process_termination_requested",
+  "settled",
+]);
+export type SessionStopPhase = typeof SessionStopPhase.Type;
+
+const SessionStopUpdatedPayload = Schema.Struct({
+  phase: SessionStopPhase,
+  outcome: Schema.optional(ProviderStopOutcome),
+});
+export type SessionStopUpdatedPayload = typeof SessionStopUpdatedPayload.Type;
 
 const ThreadStartedPayload = Schema.Struct({
   providerThreadId: Schema.optional(TrimmedNonEmptyStringSchema),
@@ -650,6 +769,14 @@ const ProviderRuntimeSessionExitedEvent = Schema.Struct({
 });
 export type ProviderRuntimeSessionExitedEvent = typeof ProviderRuntimeSessionExitedEvent.Type;
 
+const ProviderRuntimeSessionStopUpdatedEvent = Schema.Struct({
+  ...ProviderRuntimeEventBase.fields,
+  type: SessionStopUpdatedType,
+  payload: SessionStopUpdatedPayload,
+});
+export type ProviderRuntimeSessionStopUpdatedEvent =
+  typeof ProviderRuntimeSessionStopUpdatedEvent.Type;
+
 const ProviderRuntimeThreadStartedEvent = Schema.Struct({
   ...ProviderRuntimeEventBase.fields,
   type: ThreadStartedType,
@@ -978,6 +1105,7 @@ export const ProviderRuntimeEventV2 = Schema.Union([
   ProviderRuntimeSessionConfiguredEvent,
   ProviderRuntimeSessionStateChangedEvent,
   ProviderRuntimeSessionExitedEvent,
+  ProviderRuntimeSessionStopUpdatedEvent,
   ProviderRuntimeThreadStartedEvent,
   ProviderRuntimeThreadStateChangedEvent,
   ProviderRuntimeThreadMetadataUpdatedEvent,

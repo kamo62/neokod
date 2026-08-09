@@ -206,6 +206,7 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
         displayName,
         accentColor,
         enabled,
+        symphonyCodeReview: true,
         snapshot,
         adapter,
         textGeneration,

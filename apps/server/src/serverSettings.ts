@@ -24,6 +24,8 @@ import {
   ProviderInstanceId,
   ServerSettings,
   ServerSettingsError,
+  type ServerSettingsMutation,
+  type ServerSettingsMutationAcknowledgement,
   type ServerSettingsPatch,
 } from "@neokod/contracts";
 import * as Cache from "effect/Cache";
@@ -198,6 +200,11 @@ export class ServerSettingsService extends Context.Service<
       patch: ServerSettingsPatch,
     ) => Effect.Effect<ServerSettings, ServerSettingsError>;
 
+    /** Apply a client mutation only at its expected revision and acknowledge the result. */
+    readonly updateSettingsMutation: (
+      mutation: ServerSettingsMutation,
+    ) => Effect.Effect<ServerSettingsMutationAcknowledgement, ServerSettingsError>;
+
     /** Stream of settings change events. */
     readonly streamChanges: Stream.Stream<ServerSettings>;
   }
@@ -217,16 +224,38 @@ const makeTest = (overrides: DeepPartial<ServerSettings> = {}) =>
         : {}),
     });
     const currentSettingsRef = yield* Ref.make<ServerSettings>(initialSettings);
+    const updateSettingsRef = (patch: ServerSettingsPatch, expectedRevision?: number) =>
+      Effect.gen(function* () {
+        const current = yield* Ref.get(currentSettingsRef);
+        if (expectedRevision !== undefined && current.revision !== expectedRevision) {
+          return yield* new ServerSettingsError({
+            settingsPath: "<memory>",
+            operation: "revision-conflict",
+            expectedRevision,
+            actualRevision: current.revision,
+            cause: new Error("Server settings revision conflict"),
+          });
+        }
+        const next = yield* normalizeServerSettings({
+          ...applyServerSettingsPatch(current, patch),
+          revision: current.revision + 1,
+        });
+        yield* Ref.set(currentSettingsRef, next);
+        return next;
+      });
 
     return {
       start: Effect.void,
       ready: Effect.void,
       getSettings: Ref.get(currentSettingsRef),
-      updateSettings: (patch) =>
-        Ref.get(currentSettingsRef).pipe(
-          Effect.map((currentSettings) => applyServerSettingsPatch(currentSettings, patch)),
-          Effect.flatMap(normalizeServerSettings),
-          Effect.tap((nextSettings) => Ref.set(currentSettingsRef, nextSettings)),
+      updateSettings: (patch) => updateSettingsRef(patch),
+      updateSettingsMutation: (mutation) =>
+        updateSettingsRef(mutation.patch, mutation.expectedRevision).pipe(
+          Effect.map((settings) => ({
+            mutationId: mutation.mutationId,
+            revision: settings.revision,
+            settings,
+          })),
         ),
       streamChanges: Stream.empty,
     } satisfies ServerSettingsService["Service"];
@@ -923,6 +952,38 @@ const make = Effect.gen(function* () {
     yield* Deferred.succeed(startedDeferred, undefined).pipe(Effect.orDie);
   });
 
+  const updateSettingsUnderLock = (patch: ServerSettingsPatch, expectedRevision?: number) =>
+    Effect.gen(function* () {
+      const current = yield* getSettingsFromCache;
+      if (expectedRevision !== undefined && current.revision !== expectedRevision) {
+        return yield* new ServerSettingsError({
+          settingsPath,
+          operation: "revision-conflict",
+          expectedRevision,
+          actualRevision: current.revision,
+          cause: new Error("Server settings revision conflict"),
+        });
+      }
+      const patched = {
+        ...applyServerSettingsPatch(current, patch),
+        revision: current.revision + 1,
+      };
+      const nextPersistedEnvironment = yield* persistProviderEnvironmentSecrets(current, patched);
+      const nextPersistedCredential =
+        yield* persistManagedClientEvidenceCredential(nextPersistedEnvironment);
+      const nextPersisted =
+        yield* persistManagedClientEvidenceSecretFields(nextPersistedCredential);
+      const next = yield* normalizeServerSettings(nextPersisted);
+      yield* writeSettingsAtomically(next);
+      yield* Cache.set(settingsCache, cacheKey, next);
+      yield* emitChange(next);
+      const materialized = yield* materializeProviderEnvironmentSecrets(next).pipe(
+        Effect.flatMap(materializeManagedClientEvidenceCredential),
+        Effect.flatMap(materializeManagedClientEvidenceSecretFields),
+      );
+      return resolveTextGenerationProvider(materialized);
+    });
+
   return {
     start,
     ready: Deferred.await(startedDeferred),
@@ -932,28 +993,16 @@ const make = Effect.gen(function* () {
       Effect.flatMap(materializeManagedClientEvidenceSecretFields),
       Effect.map(resolveTextGenerationProvider),
     ),
-    updateSettings: (patch) =>
+    updateSettings: (patch) => writeSemaphore.withPermits(1)(updateSettingsUnderLock(patch)),
+    updateSettingsMutation: (mutation) =>
       writeSemaphore.withPermits(1)(
-        Effect.gen(function* () {
-          const current = yield* getSettingsFromCache;
-          const nextPersistedEnvironment = yield* persistProviderEnvironmentSecrets(
-            current,
-            applyServerSettingsPatch(current, patch),
-          );
-          const nextPersistedCredential =
-            yield* persistManagedClientEvidenceCredential(nextPersistedEnvironment);
-          const nextPersisted =
-            yield* persistManagedClientEvidenceSecretFields(nextPersistedCredential);
-          const next = yield* normalizeServerSettings(nextPersisted);
-          yield* writeSettingsAtomically(next);
-          yield* Cache.set(settingsCache, cacheKey, next);
-          yield* emitChange(next);
-          const materialized = yield* materializeProviderEnvironmentSecrets(next).pipe(
-            Effect.flatMap(materializeManagedClientEvidenceCredential),
-            Effect.flatMap(materializeManagedClientEvidenceSecretFields),
-          );
-          return resolveTextGenerationProvider(materialized);
-        }),
+        updateSettingsUnderLock(mutation.patch, mutation.expectedRevision).pipe(
+          Effect.map((settings) => ({
+            mutationId: mutation.mutationId,
+            revision: settings.revision,
+            settings,
+          })),
+        ),
       ),
     get streamChanges() {
       return Stream.fromPubSub(changesPubSub).pipe(

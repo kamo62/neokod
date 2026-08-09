@@ -57,9 +57,18 @@ export interface ProviderInstanceEntry {
  *
  * Disabling an instance updates `enabled` independently, while its previous
  * `ready` probe status can remain in the streamed snapshot until reconciliation.
+ * Kiro's supported `warning` state is selectable so its first supervised turn
+ * can provide the evidence that promotes it to `ready`.
  */
 export function isProviderInstancePickerReady(entry: ProviderInstanceEntry): boolean {
-  return entry.enabled && entry.isAvailable && entry.status === "ready";
+  return (
+    entry.enabled &&
+    entry.isAvailable &&
+    (entry.status === "ready" ||
+      (entry.driverKind === "kiro" &&
+        entry.status === "warning" &&
+        entry.snapshot.version !== null))
+  );
 }
 
 /** Picker rails contain configured, enabled instances only. */

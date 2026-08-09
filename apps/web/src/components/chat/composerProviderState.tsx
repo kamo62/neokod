@@ -1,7 +1,8 @@
 import {
-  type ProviderDriverKind,
+  ProviderDriverKind,
   type ProviderInstanceId,
   type ProviderOptionSelection,
+  type RuntimeMode,
   type ScopedThreadRef,
   type ServerProviderModel,
 } from "@neokod/contracts";
@@ -35,6 +36,36 @@ export type ComposerProviderState = {
   composerSurfaceClassName?: string;
   modelPickerIconClassName?: string;
 };
+
+const ALL_RUNTIME_MODES: ReadonlyArray<RuntimeMode> = [
+  "approval-required",
+  "auto-accept-edits",
+  "auto",
+  "full-access",
+];
+
+export function getProviderRuntimeModes(provider: ProviderDriverKind): ReadonlyArray<RuntimeMode> {
+  if (provider === ProviderDriverKind.make("kiro")) return ["approval-required"];
+  if (provider === ProviderDriverKind.make("claudeAgent")) {
+    return ALL_RUNTIME_MODES.filter((mode) => mode !== "auto");
+  }
+  return ALL_RUNTIME_MODES;
+}
+
+export function resolveProviderRuntimeMode(
+  provider: ProviderDriverKind,
+  runtimeMode: RuntimeMode,
+): RuntimeMode {
+  const supported = getProviderRuntimeModes(provider);
+  return supported.includes(runtimeMode) ? runtimeMode : (supported[0] ?? "approval-required");
+}
+
+export function shouldConfirmKiroSupervisedMode(
+  provider: ProviderDriverKind,
+  runtimeMode: RuntimeMode,
+): boolean {
+  return provider === ProviderDriverKind.make("kiro") && runtimeMode !== "approval-required";
+}
 
 type TraitsRenderInput = {
   provider: ProviderDriverKind;

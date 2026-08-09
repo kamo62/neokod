@@ -8,6 +8,7 @@ import type {
   ProviderRuntimeEvent,
   ProviderSendTurnInput,
   ProviderSession,
+  ProviderStopOutcome,
   ProviderTurnStartResult,
 } from "@neokod/contracts";
 import {
@@ -153,9 +154,13 @@ function makeFakeCodexAdapter(provider: ProviderDriverKind = CODEX_DRIVER) {
   );
 
   const stopSession = vi.fn(
-    (threadId: ThreadId): Effect.Effect<void, ProviderAdapterError> =>
+    (threadId: ThreadId): Effect.Effect<ProviderStopOutcome, ProviderAdapterError> =>
       Effect.sync(() => {
         sessions.delete(threadId);
+        return {
+          status: "stopped_confirmed" as const,
+          stoppedAt: "2026-01-01T00:00:00.000Z",
+        };
       }),
   );
 
@@ -1488,6 +1493,120 @@ routing.layer("ProviderServiceLive routing", (it) => {
   );
 });
 
+const stopAllRouting = makeProviderServiceLayer();
+stopAllRouting.layer("ProviderServiceLive structured stop-all", (it) => {
+  it.effect("aggregates outcomes, persists uncertainty, and keeps dispatch blocked", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const runtimeRepository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+      const confirmedThread = asThreadId("thread-stop-all-confirmed");
+      const orphanThread = asThreadId("thread-stop-all-orphan");
+      const failedThread = asThreadId("thread-stop-all-failed");
+
+      yield* provider.startSession(confirmedThread, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId: confirmedThread,
+        cwd: "/tmp/project-stop-all-confirmed",
+        runtimeMode: "full-access",
+      });
+      yield* provider.startSession(orphanThread, {
+        provider: CLAUDE_AGENT_DRIVER,
+        providerInstanceId: claudeAgentInstanceId,
+        threadId: orphanThread,
+        cwd: "/tmp/project-stop-all-orphan",
+        runtimeMode: "full-access",
+      });
+      yield* provider.startSession(failedThread, {
+        provider: CURSOR_DRIVER,
+        providerInstanceId: ProviderInstanceId.make("cursor"),
+        threadId: failedThread,
+        cwd: "/tmp/project-stop-all-failed",
+        runtimeMode: "full-access",
+      });
+
+      stopAllRouting.claude.stopSession.mockImplementation(() =>
+        Effect.succeed({
+          status: "orphan_possible",
+          stoppedAt: "2026-01-01T00:00:01.000Z",
+          reason: "descendants_unobservable",
+          knownExternalRunIds: [],
+        }),
+      );
+      stopAllRouting.cursor.stopSession.mockImplementation(() =>
+        Effect.succeed({
+          status: "stop_failed",
+          reason: "process_group_termination_failed",
+          detail: "group remained alive",
+        }),
+      );
+      stopAllRouting.codex.stopAll.mockClear();
+      stopAllRouting.claude.stopAll.mockClear();
+      stopAllRouting.cursor.stopAll.mockClear();
+
+      const result = yield* provider.stopAllSessions();
+      assert.deepEqual(result, {
+        confirmed: [confirmedThread],
+        orphanPossible: [
+          {
+            sessionId: orphanThread,
+            reason: "descendants_unobservable",
+          },
+        ],
+        failed: [
+          {
+            sessionId: failedThread,
+            reason: "process_group_termination_failed: group remained alive",
+          },
+        ],
+      });
+      // User-facing aggregation must not call the deprecated adapter-local
+      // sweep, whose void result cannot represent partial uncertainty.
+      assert.equal(stopAllRouting.codex.stopAll.mock.calls.length, 0);
+      assert.equal(stopAllRouting.claude.stopAll.mock.calls.length, 0);
+      assert.equal(stopAllRouting.cursor.stopAll.mock.calls.length, 0);
+
+      const orphanBinding = yield* runtimeRepository.getByThreadId({ threadId: orphanThread });
+      assert.equal(Option.isSome(orphanBinding), true);
+      if (Option.isSome(orphanBinding)) {
+        assert.equal(orphanBinding.value.status, "error");
+        const payload = orphanBinding.value.runtimePayload;
+        assert.equal(
+          payload !== null && typeof payload === "object" && !Array.isArray(payload),
+          true,
+        );
+        if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+          assert.equal("stopPhase" in payload ? payload.stopPhase : undefined, "settled");
+          assert.deepEqual("stopOutcome" in payload ? payload.stopOutcome : undefined, {
+            status: "orphan_possible",
+            stoppedAt: "2026-01-01T00:00:01.000Z",
+            reason: "descendants_unobservable",
+            knownExternalRunIds: [],
+          });
+          assert.equal(
+            typeof ("stopRequestedAt" in payload ? payload.stopRequestedAt : undefined),
+            "string",
+          );
+          assert.equal(
+            typeof ("lastRuntimeEventAt" in payload ? payload.lastRuntimeEventAt : undefined),
+            "string",
+          );
+        }
+      }
+
+      const blocked = yield* provider
+        .startSession(asThreadId("thread-after-uncertain-stop-all"), {
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          threadId: asThreadId("thread-after-uncertain-stop-all"),
+          runtimeMode: "full-access",
+        })
+        .pipe(Effect.flip);
+      assert.equal(blocked._tag, "ProviderStoppingError");
+    }),
+  );
+});
+
 const fanout = makeProviderServiceLayer();
 fanout.layer("ProviderServiceLive fanout", (it) => {
   it.effect("fans out adapter turn completion events", () =>
@@ -1589,6 +1708,11 @@ fanout.layer("ProviderServiceLive fanout", (it) => {
         received.map((event) => event.eventId),
         [asEventId("evt-seq-1"), asEventId("evt-seq-2"), asEventId("evt-seq-3")],
       );
+      assert.equal(
+        received.every((event) => event.sessionId !== undefined),
+        true,
+      );
+      assert.equal(new Set(received.map((event) => event.sessionId)).size, 1);
     }),
   );
 

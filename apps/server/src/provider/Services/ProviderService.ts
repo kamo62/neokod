@@ -20,7 +20,9 @@ import type {
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
+  ProviderStopOutcome,
   ProviderStopSessionInput,
+  StopAllResult,
   ThreadId,
   ProviderTurnStartResult,
 } from "@neokod/contracts";
@@ -77,7 +79,13 @@ export interface ProviderServiceShape {
    */
   readonly stopSession: (
     input: ProviderStopSessionInput,
-  ) => Effect.Effect<void, ProviderServiceError>;
+  ) => Effect.Effect<ProviderStopOutcome, ProviderServiceError>;
+
+  /**
+   * Stop every persisted or active provider session behind a global dispatch
+   * barrier and report confirmed, uncertain, and failed outcomes separately.
+   */
+  readonly stopAllSessions: () => Effect.Effect<StopAllResult, ProviderServiceError>;
 
   /**
    * List active provider sessions.
