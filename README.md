@@ -38,9 +38,10 @@ Neokod drives agent CLIs you have installed and authenticated yourself. Supporte
 - Copilot (GitHub Copilot CLI)
 - Cursor (Cursor CLI)
 - Grok
+- Kiro
 - OpenCode
 
-A Kiro provider is in review as a draft PR. It is scoped to Code mode only; Kiro's multi-agent Crew capability is deliberately disabled behind safety gates that are not yet met, so it will not ship enabled by default.
+Kiro is restricted to supervised, approval-required Code mode. Crew, Symphony execution and review, automatic modes, and full access remain disabled.
 
 Install and authenticate at least one provider before use, for example:
 
