@@ -90,6 +90,15 @@ export class ServerConfig extends Context.Service<
      */
     readonly publicHosts: ReadonlyArray<string>;
     readonly publicOrigins: ReadonlyArray<string>;
+    /**
+     * When true, the loopback transport is hardened: a per-launch loopback
+     * token is minted (bearer on HTTP, ticket on WS) and router-wide
+     * Host/Origin validation is enforced. Opt-in via NEOKOD_STRICT_TRANSPORT.
+     * Default false leaves `neokod serve` open with no token so it runs behind
+     * a reverse proxy with zero config; the desktop bootstrap still supplies
+     * its own loopback token regardless of this flag.
+     */
+    readonly strictTransport: boolean;
     readonly autoBootstrapProjectFromCwd: boolean;
     readonly logWebSocketEvents: boolean;
   }
@@ -198,6 +207,7 @@ const makeTest = Effect.fn("ServerConfig.makeTest")(function* (
     loopbackAuthToken: undefined,
     publicHosts: [],
     publicOrigins: [],
+    strictTransport: false,
     staticDir: undefined,
     devUrl,
     noBrowser: false,

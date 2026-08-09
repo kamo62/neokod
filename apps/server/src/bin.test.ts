@@ -69,6 +69,7 @@ const makeCliTestServerConfig = (baseDir: string) =>
       loopbackAuthToken: undefined,
       publicHosts: [],
       publicOrigins: [],
+      strictTransport: false,
       autoBootstrapProjectFromCwd: false,
       logWebSocketEvents: false,
     } satisfies ServerConfig.ServerConfig["Service"];
