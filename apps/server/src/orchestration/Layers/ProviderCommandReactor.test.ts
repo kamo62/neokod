@@ -1844,7 +1844,7 @@ describe("ProviderCommandReactor", () => {
     });
   });
 
-  it("rejects active runtime sessions that are missing provider instance ids", async () => {
+  it("keeps a failed starting session disconnected when its provider instance id is missing", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";
 
@@ -1855,7 +1855,7 @@ describe("ProviderCommandReactor", () => {
         threadId: ThreadId.make("thread-1"),
         session: {
           threadId: ThreadId.make("thread-1"),
-          status: "ready",
+          status: "starting",
           providerName: "codex",
           runtimeMode: "approval-required",
           activeTurnId: null,
@@ -1906,6 +1906,8 @@ describe("ProviderCommandReactor", () => {
     expect(harness.sendTurn.mock.calls.length).toBe(0);
     const readModel = await harness.readModel();
     const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    expect(thread?.session?.status).toBe("error");
+    expect(thread?.session?.lastError).toContain("without a provider instance id");
     expect(
       thread?.activities.find((activity) => activity.kind === "provider.turn.start.failed"),
     ).toMatchObject({

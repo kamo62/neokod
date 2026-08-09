@@ -197,6 +197,7 @@ export const DEFAULT_GROUP_TERM_GRACE_MS = 10_000;
 
 /** Settle window after SIGKILL before the final liveness check. */
 const KILL_SETTLE_MS = 250;
+const GROUP_LIVENESS_POLL_MS = 50;
 
 export type ProcessGroupTerminationOutcome =
   /** The group exited within the grace window after SIGTERM. */
@@ -216,6 +217,20 @@ export interface TerminateGroupOptions {
   readonly forceSignal?: NodeJS.Signals;
   readonly signaller?: ProcessGroupSignaller;
 }
+
+const waitForGroupExit = Effect.fn("waitForGroupExit")(function* (
+  signaller: ProcessGroupSignaller,
+  pgid: number,
+  graceMs: number,
+) {
+  const deadline = (yield* Effect.clockWith((clock) => clock.currentTimeMillis)) + graceMs;
+  while (yield* signaller.isGroupAlive(pgid)) {
+    const remaining = deadline - (yield* Effect.clockWith((clock) => clock.currentTimeMillis));
+    if (remaining <= 0) return false;
+    yield* Effect.sleep(Duration.millis(Math.min(GROUP_LIVENESS_POLL_MS, remaining)));
+  }
+  return true;
+});
 
 /**
  * Terminate a proven neokod-owned process group with a bounded TERM-to-KILL
@@ -242,8 +257,7 @@ export const terminateProcessGroup = (
       return { status: "already_dead" } as const;
     }
 
-    yield* Effect.sleep(Duration.millis(graceMs));
-    if (!(yield* signaller.isGroupAlive(pgid))) {
+    if (yield* waitForGroupExit(signaller, pgid, graceMs)) {
       return { status: "terminated" } as const;
     }
 

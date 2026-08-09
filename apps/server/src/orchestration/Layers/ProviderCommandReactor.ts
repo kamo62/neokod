@@ -288,6 +288,7 @@ const make = Effect.gen(function* () {
   const setThreadSessionErrorOnTurnStartFailure = Effect.fnUntraced(function* (input: {
     readonly threadId: ThreadId;
     readonly detail: string;
+    readonly createdAt: string;
   }) {
     const thread = yield* resolveThread(input.threadId);
     const session = thread?.session;
@@ -300,16 +301,12 @@ const make = Effect.gen(function* () {
       session: {
         ...session,
         status:
-          session.status === "stopped"
-            ? "stopped"
-            : session.status === "running"
-              ? "error"
-              : "ready",
+          session.status === "stopped" ? "stopped" : session.status === "ready" ? "ready" : "error",
         activeTurnId: null,
         lastError: input.detail,
         updatedAt,
       },
-      createdAt: updatedAt,
+      createdAt: input.createdAt,
     });
   });
 
@@ -839,6 +836,7 @@ const make = Effect.gen(function* () {
       return setThreadSessionErrorOnTurnStartFailure({
         threadId: event.payload.threadId,
         detail,
+        createdAt: event.payload.createdAt,
       }).pipe(
         Effect.flatMap(() =>
           appendProviderFailureActivity({
