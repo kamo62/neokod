@@ -1,11 +1,15 @@
-import { Schema } from "effect";
+import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
+import { describe, expect, it } from "@effect/vitest";
 import { KiroSettings } from "@neokod/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { HostProcessEnvironment, HostProcessPlatform } from "@neokod/shared/hostProcess";
 
-import { buildKiroAcpSpawnInput } from "./KiroAcpSupport.ts";
+import { buildKiroAcpSpawnInput, makeKiroAcpRuntime } from "./KiroAcpSupport.ts";
 
 const settings = Schema.decodeSync(KiroSettings)({ enabled: true });
+const v3Settings = Schema.decodeSync(KiroSettings)({ enabled: true, agentEngine: "v3" });
 
 describe("buildKiroAcpSpawnInput", () => {
   it("builds the default managed ACP launch without Crew or trust flags", () => {
@@ -39,6 +43,25 @@ describe("buildKiroAcpSpawnInput", () => {
     });
     expect(spawn.env).not.toHaveProperty("ANTHROPIC_API_KEY");
   });
+
+  it.effect("rejects v3 before spawn when its managed home is missing", () =>
+    Effect.gen(function* () {
+      const failure = yield* makeKiroAcpRuntime({
+        settings: v3Settings,
+        environment: { PATH: "/safe/bin", KIRO_API_KEY: "kiro-test-key" },
+        childProcessSpawner: {} as ChildProcessSpawner.ChildProcessSpawner["Service"],
+        cwd: "/workspace",
+        clientInfo: { name: "neokod-test", version: "0" },
+      }).pipe(
+        Effect.provideService(HostProcessEnvironment, {}),
+        Effect.provideService(HostProcessPlatform, "linux"),
+        Effect.scoped,
+        Effect.flip,
+      );
+
+      expect(failure.message).toContain("isolated managed home");
+    }),
+  );
 
   it("drops parent secrets and never re-merges the parent environment", () => {
     const spawn = buildKiroAcpSpawnInput(
