@@ -420,19 +420,26 @@ describe("superseded tool.updated snapshot dedup", () => {
     kind: "tool.updated" | "tool.completed",
     options: {
       readonly turn?: string;
+      readonly itemType?: string;
       readonly title?: string;
       readonly detail?: string;
       readonly toolCallId?: string;
     } = {},
   ): OrchestrationThreadActivity {
-    const { turn = "turn-a", title = "File change", detail, toolCallId } = options;
+    const {
+      turn = "turn-a",
+      itemType = "file_change",
+      title = "File change",
+      detail,
+      toolCallId,
+    } = options;
     return {
       id: EventId.make(id),
       tone: "tool",
       kind,
       summary: title,
       payload: {
-        itemType: "file_change",
+        itemType,
         title,
         ...(detail ? { detail } : {}),
         data: {
@@ -472,6 +479,19 @@ describe("superseded tool.updated snapshot dedup", () => {
 
     // Same itemType/title, different call: only call-a's update is superseded.
     expect(projectedIds([otherCall, update, completed])).toEqual([otherCall.id, completed.id]);
+  });
+
+  it("keeps identities whose fields only collide when concatenated without separators", () => {
+    const update = makeToolLifecycleActivity("upd-separated", "tool.updated", {
+      itemType: "ab",
+      title: "c",
+    });
+    const completed = makeToolLifecycleActivity("done-other", "tool.completed", {
+      itemType: "a",
+      title: "bc",
+    });
+
+    expect(projectedIds([update, completed])).toEqual([update.id, completed.id]);
   });
 
   it("keeps updates with no matching completion", () => {

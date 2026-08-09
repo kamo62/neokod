@@ -279,7 +279,7 @@ function toolLifecycleIdentity(activity: OrchestrationThreadActivity): string | 
   if (itemType.length === 0 && label.length === 0 && detail.length === 0) {
     return null;
   }
-  return [itemType, label, detail].join("");
+  return [itemType, label, detail].join("\u001f");
 }
 
 /**
