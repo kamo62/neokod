@@ -442,7 +442,7 @@ export function useSettingsRestore(onRestored?: () => void) {
     if (!confirmed) return;
 
     setTheme("system");
-    updateSettings({
+    await updateSettings({
       appIconVariant: DEFAULT_UNIFIED_SETTINGS.appIconVariant,
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
       wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap,

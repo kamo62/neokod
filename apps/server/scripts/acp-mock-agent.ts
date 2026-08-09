@@ -18,6 +18,7 @@ const emitInterleavedAssistantToolCalls =
   process.env.NEOKOD_ACP_EMIT_INTERLEAVED_ASSISTANT_TOOL_CALLS === "1";
 const emitGenericToolPlaceholders = process.env.NEOKOD_ACP_EMIT_GENERIC_TOOL_PLACEHOLDERS === "1";
 const emitAskQuestion = process.env.NEOKOD_ACP_EMIT_ASK_QUESTION === "1";
+const emitElicitation = process.env.NEOKOD_ACP_EMIT_ELICITATION === "1";
 const emitXAiAskUserQuestion = process.env.NEOKOD_ACP_EMIT_XAI_ASK_USER_QUESTION === "1";
 const emitXAiPromptCompleteThenHang =
   process.env.NEOKOD_ACP_EMIT_XAI_PROMPT_COMPLETE_THEN_HANG === "1";
@@ -37,6 +38,7 @@ const emitStaleXAiPromptCompleteBeforeSecondHang =
 const emitOverlappingXAiPromptCompleteOutOfOrder =
   process.env.NEOKOD_ACP_EMIT_OVERLAPPING_XAI_PROMPT_COMPLETE_OUT_OF_ORDER === "1";
 const failPrompt = process.env.NEOKOD_ACP_FAIL_PROMPT === "1";
+const promptExtensionError = process.env.NEOKOD_ACP_PROMPT_EXTENSION_ERROR;
 const failSetConfigOption = process.env.NEOKOD_ACP_FAIL_SET_CONFIG_OPTION === "1";
 const exitOnSetConfigOption = process.env.NEOKOD_ACP_EXIT_ON_SET_CONFIG_OPTION === "1";
 const promptResponseText = process.env.NEOKOD_ACP_PROMPT_RESPONSE_TEXT;
@@ -47,6 +49,13 @@ const permissionOptionIds = {
   rejectOnce: process.env.NEOKOD_ACP_REJECT_ONCE_OPTION_ID ?? "reject-once",
 };
 const sessionId = "mock-session-1";
+
+const advertisedAuthMethodIds: ReadonlyArray<string> =
+  process.env.NEOKOD_ACP_AUTH_METHOD_IDS === undefined
+    ? ["test", "cursor_login", "xai.api_key", "cached_token"]
+    : process.env.NEOKOD_ACP_AUTH_METHOD_IDS.split(",")
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0);
 
 let currentModeId = "ask";
 let currentModelId = "default";
@@ -293,6 +302,7 @@ const program = Effect.gen(function* () {
       return {
         protocolVersion: 1,
         agentCapabilities: { loadSession: true },
+        authMethods: advertisedAuthMethodIds.map((id) => ({ id, name: id })),
       };
     }),
   );
@@ -448,7 +458,34 @@ const program = Effect.gen(function* () {
         yield* Effect.sleep(`${promptDelayMs} millis`);
       }
 
+      if (emitElicitation) {
+        yield* agent.client.elicit({
+          sessionId: requestedSessionId,
+          message: "Choose a deployment target.",
+          mode: "form",
+          requestedSchema: {
+            type: "object",
+            title: "Deployment",
+            properties: {
+              target: {
+                type: "string",
+                title: "Target",
+                description: "Where should this deploy?",
+                enum: ["staging", "production"],
+              },
+            },
+            required: ["target"],
+          },
+        });
+      }
+
       if (failPrompt) {
+        if (promptExtensionError) {
+          writeJsonRpcNotification("_kiro.dev/error/rate_limit", {
+            sessionId: requestedSessionId,
+            message: promptExtensionError,
+          });
+        }
         return yield* AcpError.AcpRequestError.internalError("Mock prompt failure");
       }
 

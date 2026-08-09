@@ -36,6 +36,25 @@ describe("ProviderSettingsForm helpers", () => {
     });
   });
 
+  it("renders Kiro engine selection as a v2/v3 dropdown", () => {
+    const kiro = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("kiro")];
+    expect(kiro).toBeDefined();
+
+    const agentEngine = deriveProviderSettingsFields(kiro!).find(
+      (field) => field.key === "agentEngine",
+    );
+
+    expect(agentEngine).toMatchObject({
+      label: "Agent engine",
+      control: "select",
+      defaultStringValue: "v2",
+      options: [
+        { value: "v2", label: "V2 - CLI login" },
+        { value: "v3", label: "V3 - API key" },
+      ],
+    });
+  });
+
   it("preserves unknown config keys while omitting empty configurable fields", () => {
     const opencode = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("opencode")];
     expect(opencode).toBeDefined();

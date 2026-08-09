@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Duration from "effect/Duration";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
-import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
+import { NonNegativeInt, TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
 import { DEFAULT_GIT_TEXT_GENERATION_MODEL, ProviderOptionSelections } from "./model.ts";
 import { ModelSelection } from "./orchestration.ts";
 import { ProviderInstanceConfig, ProviderInstanceId } from "./providerInstance.ts";
@@ -124,10 +124,16 @@ const makeBinaryPathSetting = (fallback: string) =>
     Schema.withDecodingDefault(Effect.succeed(fallback)),
   );
 
-export type ProviderSettingsFormControl = "text" | "password" | "textarea" | "switch";
+export type ProviderSettingsFormControl = "text" | "password" | "textarea" | "switch" | "select";
+
+export interface ProviderSettingsFormSelectOption {
+  readonly value: string;
+  readonly label: string;
+}
 
 export interface ProviderSettingsFormAnnotation {
   readonly control?: ProviderSettingsFormControl | undefined;
+  readonly options?: ReadonlyArray<ProviderSettingsFormSelectOption> | undefined;
   readonly placeholder?: string | undefined;
   readonly hidden?: boolean | undefined;
   readonly clearWhenEmpty?: "omit" | "persist" | undefined;
@@ -316,6 +322,40 @@ export const GrokSettings = makeProviderSettingsSchema(
   },
 );
 export type GrokSettings = typeof GrokSettings.Type;
+
+export const KiroSettings = makeProviderSettingsSchema(
+  {
+    enabled: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    binaryPath: makeBinaryPathSetting("kiro-cli").pipe(
+      Schema.annotateKey({
+        title: "Binary path",
+        description: "Path to the Kiro CLI binary.",
+        providerSettingsForm: { placeholder: "kiro-cli", clearWhenEmpty: "omit" },
+      }),
+    ),
+    agentEngine: Schema.Literals(["v2", "v3"]).pipe(
+      Schema.withDecodingDefault(Effect.succeed("v2")),
+      Schema.annotateKey({
+        title: "Agent engine",
+        description:
+          "V2 uses your Kiro CLI login. V3 requires an explicit sensitive KIRO_API_KEY on this provider instance.",
+        providerSettingsForm: {
+          control: "select",
+          options: [
+            { value: "v2", label: "V2 - CLI login" },
+            { value: "v3", label: "V3 - API key" },
+          ],
+          clearWhenEmpty: "omit",
+        },
+      }),
+    ),
+  },
+  { order: ["binaryPath", "agentEngine"] },
+);
+export type KiroSettings = typeof KiroSettings.Type;
 
 const CopilotMcpServerBase = {
   tools: Schema.optional(Schema.Array(Schema.String)),
@@ -606,6 +646,8 @@ export type TrackersSettings = typeof TrackersSettings.Type;
 export const DEFAULT_TRACKERS_SETTINGS: TrackersSettings = {};
 
 export const ServerSettings = Schema.Struct({
+  /** Server-owned durable revision. Clients must never author this value. */
+  revision: NonNegativeInt.pipe(Schema.withDecodingDefault(Effect.succeed(0))),
   enableAssistantStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   automaticGitFetchInterval: Schema.DurationFromMillis.pipe(
@@ -641,6 +683,7 @@ export const ServerSettings = Schema.Struct({
     githubCopilot: CopilotSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     cursor: CursorSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     grok: GrokSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+    kiro: KiroSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     opencode: OpenCodeSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   }).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // New driver-agnostic instance map. Keyed by `ProviderInstanceId`; values
@@ -669,6 +712,7 @@ export const ServerSettingsOperation = Schema.Literals([
   "write-secret",
   "write-file",
   "prepare-directory",
+  "revision-conflict",
 ]);
 export type ServerSettingsOperation = typeof ServerSettingsOperation.Type;
 
@@ -679,10 +723,15 @@ export class ServerSettingsError extends Schema.TaggedErrorClass<ServerSettingsE
     operation: ServerSettingsOperation,
     providerInstanceId: Schema.optional(Schema.String),
     environmentVariable: Schema.optional(Schema.String),
+    expectedRevision: Schema.optional(NonNegativeInt),
+    actualRevision: Schema.optional(NonNegativeInt),
     cause: Schema.Defect(),
   },
 ) {
   override get message(): string {
+    if (this.operation === "revision-conflict") {
+      return `Server settings revision conflict at ${this.settingsPath}: expected ${String(this.expectedRevision)}, actual ${String(this.actualRevision)}.`;
+    }
     const provider =
       this.providerInstanceId === undefined ? "" : ` for provider ${this.providerInstanceId}`;
     const variable =
@@ -751,6 +800,12 @@ const GrokSettingsPatch = Schema.Struct({
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
+const KiroSettingsPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  binaryPath: Schema.optionalKey(TrimmedString),
+  agentEngine: Schema.optionalKey(Schema.Literals(["v2", "v3"])),
+});
+
 const OpenCodeSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   binaryPath: Schema.optionalKey(TrimmedString),
@@ -788,6 +843,7 @@ export const ServerSettingsPatch = Schema.Struct({
       githubCopilot: Schema.optionalKey(CopilotSettingsPatch),
       cursor: Schema.optionalKey(CursorSettingsPatch),
       grok: Schema.optionalKey(GrokSettingsPatch),
+      kiro: Schema.optionalKey(KiroSettingsPatch),
       opencode: Schema.optionalKey(OpenCodeSettingsPatch),
     }),
   ),
@@ -801,6 +857,26 @@ export const ServerSettingsPatch = Schema.Struct({
   trackers: Schema.optionalKey(Schema.Record(Schema.String, TrackerProviderSettings)),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
+
+export const ServerSettingsMutationId = TrimmedNonEmptyString.pipe(
+  Schema.brand("ServerSettingsMutationId"),
+);
+export type ServerSettingsMutationId = typeof ServerSettingsMutationId.Type;
+
+export const ServerSettingsMutation = Schema.Struct({
+  mutationId: ServerSettingsMutationId,
+  expectedRevision: NonNegativeInt,
+  patch: ServerSettingsPatch,
+});
+export type ServerSettingsMutation = typeof ServerSettingsMutation.Type;
+
+export const ServerSettingsMutationAcknowledgement = Schema.Struct({
+  mutationId: ServerSettingsMutationId,
+  revision: NonNegativeInt,
+  settings: ServerSettings,
+});
+export type ServerSettingsMutationAcknowledgement =
+  typeof ServerSettingsMutationAcknowledgement.Type;
 
 export const ClientSettingsPatch = Schema.Struct({
   appIconVariant: Schema.optionalKey(AppIconVariant),

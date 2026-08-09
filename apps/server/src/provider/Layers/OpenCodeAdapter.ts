@@ -36,6 +36,7 @@ import {
   ProviderAdapterValidationError,
 } from "../Errors.ts";
 import { type OpenCodeAdapterShape } from "../Services/OpenCodeAdapter.ts";
+import { stoppedConfirmed } from "../providerStopOutcome.ts";
 import {
   buildOpenCodePermissionRules,
   OpenCodeRuntime,
@@ -1476,18 +1477,20 @@ export function makeOpenCodeAdapter(
         }
         const stopped = yield* stopOpenCodeContext(context);
         sessions.delete(threadId);
-        if (!stopped) {
-          return;
+        if (stopped) {
+          yield* emit({
+            ...(yield* buildEventBase({ threadId })),
+            type: "session.exited",
+            payload: {
+              reason: "Session stopped.",
+              recoverable: false,
+              exitKind: "graceful",
+            },
+          });
         }
-        yield* emit({
-          ...(yield* buildEventBase({ threadId })),
-          type: "session.exited",
-          payload: {
-            reason: "Session stopped.",
-            recoverable: false,
-            exitKind: "graceful",
-          },
-        });
+        // OpenCode owns a single local server/process per session; the context
+        // teardown reaps it. No detached descendant model, so confirmed.
+        return stoppedConfirmed(yield* nowIso);
       },
     );
 

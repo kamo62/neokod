@@ -16,6 +16,7 @@ import { isTemporaryWorktreeBranch, WORKTREE_BRANCH_PREFIX } from "@neokod/share
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
+import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -294,14 +295,16 @@ const make = Effect.gen(function* () {
     if (!session) {
       return;
     }
+    const updatedAt = DateTime.formatIso(yield* DateTime.now);
     yield* setThreadSession({
       threadId: input.threadId,
       session: {
         ...session,
-        status: session.status === "stopped" ? "stopped" : "ready",
+        status:
+          session.status === "stopped" ? "stopped" : session.status === "ready" ? "ready" : "error",
         activeTurnId: null,
         lastError: input.detail,
-        updatedAt: input.createdAt,
+        updatedAt,
       },
       createdAt: input.createdAt,
     });

@@ -13,6 +13,8 @@ function provider(input: {
   provider: ProviderDriverKind;
   instanceId: string;
   enabled?: boolean;
+  status?: ServerProvider["status"];
+  version?: string | null;
   availability?: ServerProvider["availability"];
   displayName?: string;
 }): ServerProvider {
@@ -22,8 +24,8 @@ function provider(input: {
     ...(input.displayName ? { displayName: input.displayName } : {}),
     enabled: input.enabled ?? true,
     installed: true,
-    version: null,
-    status: "ready",
+    version: input.version === undefined ? "2.16.2" : input.version,
+    status: input.status ?? "ready",
     ...(input.availability ? { availability: input.availability } : {}),
     auth: { status: "authenticated" },
     checkedAt: "2026-01-01T00:00:00.000Z",
@@ -53,6 +55,31 @@ describe("isProviderInstancePickerReady", () => {
     ]);
 
     expect(entry && isProviderInstancePickerReady(entry)).toBe(true);
+  });
+
+  it("allows a limited Kiro instance to run its first supervised readiness probe", () => {
+    const [entry] = deriveProviderInstanceEntries([
+      provider({
+        provider: ProviderDriverKind.make("kiro"),
+        instanceId: "kiro",
+        status: "warning",
+      }),
+    ]);
+
+    expect(entry && isProviderInstancePickerReady(entry)).toBe(true);
+  });
+
+  it("does not select Kiro before its CLI version probe completes", () => {
+    const [entry] = deriveProviderInstanceEntries([
+      provider({
+        provider: ProviderDriverKind.make("kiro"),
+        instanceId: "kiro",
+        status: "warning",
+        version: null,
+      }),
+    ]);
+
+    expect(entry && isProviderInstancePickerReady(entry)).toBe(false);
   });
 });
 

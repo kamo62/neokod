@@ -18,7 +18,7 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
   planSidebarLabel: string;
   planSidebarOpen: boolean;
   runtimeMode: RuntimeMode;
-  showAutoRuntimeMode: boolean;
+  availableRuntimeModes: ReadonlyArray<RuntimeMode>;
   showInteractionModeToggle: boolean;
   onToggleInteractionMode: () => void;
   onTogglePlanSidebar: () => void;
@@ -63,10 +63,18 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
             props.onRuntimeModeChange(value as RuntimeMode);
           }}
         >
-          <MenuRadioItem value="approval-required">Supervised</MenuRadioItem>
-          <MenuRadioItem value="auto-accept-edits">Auto-accept edits</MenuRadioItem>
-          {props.showAutoRuntimeMode ? <MenuRadioItem value="auto">Auto</MenuRadioItem> : null}
-          <MenuRadioItem value="full-access">Full access</MenuRadioItem>
+          {props.availableRuntimeModes.includes("approval-required") ? (
+            <MenuRadioItem value="approval-required">Supervised</MenuRadioItem>
+          ) : null}
+          {props.availableRuntimeModes.includes("auto-accept-edits") ? (
+            <MenuRadioItem value="auto-accept-edits">Auto-accept edits</MenuRadioItem>
+          ) : null}
+          {props.availableRuntimeModes.includes("auto") ? (
+            <MenuRadioItem value="auto">Auto</MenuRadioItem>
+          ) : null}
+          {props.availableRuntimeModes.includes("full-access") ? (
+            <MenuRadioItem value="full-access">Full access</MenuRadioItem>
+          ) : null}
         </MenuRadioGroup>
         {props.activePlan ? (
           <>

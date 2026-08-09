@@ -486,6 +486,7 @@ it.layer(NodeServices.layer)("AnalyticsService test", (it) => {
         ready: Effect.void,
         getSettings: Effect.fail(settingsError),
         updateSettings: () => Effect.fail(settingsError),
+        updateSettingsMutation: () => Effect.fail(settingsError),
         streamChanges: Stream.empty,
       } satisfies ServerSettings.ServerSettingsService["Service"]);
       const runtimeLayer = AnalyticsService.layer.pipe(
@@ -525,6 +526,12 @@ it.layer(NodeServices.layer)("AnalyticsService test", (it) => {
         ready: Effect.void,
         getSettings: Effect.succeed(initialSettings),
         updateSettings: () => Effect.succeed(initialSettings),
+        updateSettingsMutation: (mutation) =>
+          Effect.succeed({
+            mutationId: mutation.mutationId,
+            revision: initialSettings.revision,
+            settings: initialSettings,
+          }),
         streamChanges: Stream.fromPubSub(changes),
       } satisfies ServerSettings.ServerSettingsService["Service"]);
       const deliveredEvents: Array<string> = [];

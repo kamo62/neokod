@@ -16,6 +16,7 @@ import type {
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
+  ProviderStopOutcome,
   ThreadId,
   ProviderTurnStartResult,
   TurnId,
@@ -88,8 +89,14 @@ export interface ProviderAdapterShape<TError> {
 
   /**
    * Stop one provider session.
+   *
+   * Returns a structured `ProviderStopOutcome` (Issue #101 spec section 6.2)
+   * instead of the former `Effect<void>`. `interruptTurn` remains the
+   * cooperative foreground-turn primitive and does not itself claim a durable
+   * stop. Adapters must not report `stopped_confirmed` unless the owned process
+   * tree is torn down with no unobservable descendants.
    */
-  readonly stopSession: (threadId: ThreadId) => Effect.Effect<void, TError>;
+  readonly stopSession: (threadId: ThreadId) => Effect.Effect<ProviderStopOutcome, TError>;
 
   /**
    * List currently active provider sessions for this adapter.
@@ -116,6 +123,13 @@ export interface ProviderAdapterShape<TError> {
 
   /**
    * Stop all sessions owned by this adapter.
+   *
+   * @deprecated Stop-all aggregation is owned by `ProviderService`, which
+   * enumerates active sessions and calls the structured `stopSession` so it can
+   * build a `StopAllResult` (confirmed / orphanPossible / failed) behind a
+   * dispatch barrier. This adapter-local sweep is retained only for
+   * layer-teardown finalizers where no aggregate is needed; it must not be used
+   * to service a user-facing stop-all.
    */
   readonly stopAll: () => Effect.Effect<void, TError>;
 
