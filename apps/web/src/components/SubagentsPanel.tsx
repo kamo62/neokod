@@ -2,19 +2,7 @@ import * as Schema from "effect/Schema";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { OrchestrationThreadActivity, ScopedThreadRef } from "@neokod/contracts";
 import { type TimestampFormat } from "@neokod/contracts/settings";
-import {
-  CheckIcon,
-  EyeIcon,
-  LoaderIcon,
-  SearchIcon,
-  SparklesIcon,
-  SquarePenIcon,
-  TerminalIcon,
-  TriangleAlertIcon,
-  UnplugIcon,
-  WrenchIcon,
-  XIcon,
-} from "lucide-react";
+import { CheckIcon, LoaderIcon, TriangleAlertIcon, UnplugIcon, XIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { deriveSubagentCards } from "../session-logic";
@@ -31,7 +19,6 @@ import {
   type ResolvedSubagentCard,
   type SubagentIconStatus,
 } from "./SubagentsPanel.logic";
-import { deriveToolIconKindFromName, type ToolCallIconKind } from "./chat/ToolCallLabel.logic";
 import { Badge } from "./ui/badge";
 import { ScrollArea } from "./ui/scroll-area";
 import { Toggle, ToggleGroup } from "./ui/toggle-group";
@@ -43,16 +30,6 @@ type SubagentCardDensity = typeof SubagentCardDensitySchema.Type;
 
 function toPlainPreview(text: string): string {
   return text.replace(/`+/g, "").trim();
-}
-
-function subagentProgressIcon(iconKind: ToolCallIconKind): React.ReactNode {
-  const className = "mt-0.5 size-3 shrink-0 text-muted-foreground/50";
-  if (iconKind === "terminal") return <TerminalIcon className={className} aria-hidden />;
-  if (iconKind === "search") return <SearchIcon className={className} aria-hidden />;
-  if (iconKind === "eye") return <EyeIcon className={className} aria-hidden />;
-  if (iconKind === "square-pen") return <SquarePenIcon className={className} aria-hidden />;
-  if (iconKind === "sparkles") return <SparklesIcon className={className} aria-hidden />;
-  return <WrenchIcon className={className} aria-hidden />;
 }
 
 function subagentStatusIcon(status: SubagentIconStatus): React.ReactNode {
@@ -247,11 +224,14 @@ const SubagentsPanel = memo(function SubagentsPanel({
                       </span>
                     ) : null}
                   </span>
-                  <span className="text-right text-[10px] leading-tight tabular-nums">
-                    <span className="block text-muted-foreground/80">{card.lifecycle.label}</span>
-                    <span className="mt-0.5 block text-muted-foreground/50">
-                      {timingLabel(card, timestampFormat)}
-                    </span>
+                  <span className="shrink-0 text-right text-[10px] whitespace-nowrap text-muted-foreground/70 tabular-nums">
+                    {card.lifecycle.label}
+                    {card.lifecycle.phase === "orphaned" ? null : (
+                      <>
+                        <span className="text-muted-foreground/40"> · </span>
+                        {timingLabel(card, timestampFormat)}
+                      </>
+                    )}
                   </span>
                 </button>
                 <button
@@ -308,39 +288,38 @@ const SubagentsPanel = memo(function SubagentsPanel({
                   ) : null}
 
                   {selected.summary ? (
-                    <div className="mt-2 text-[11px] leading-snug text-muted-foreground/80">
+                    <div className="mt-2">
                       <ChatMarkdown
                         text={selected.summary}
                         cwd={markdownCwd}
                         threadRef={threadRef}
                         isStreaming={false}
+                        className="[--font-size-chat:11px] [--line-height-chat:1.45] text-muted-foreground/80"
                       />
                     </div>
                   ) : null}
                 </div>
               </div>
 
-              <div className="mt-3 space-y-2 border-l border-border/60 pl-3">
+              <div className="relative mt-3 border-t border-border/50 pt-2.5 pl-[15px] before:absolute before:top-4 before:bottom-1 before:left-1 before:w-px before:bg-border/60">
                 {selected.progress.length > 0 ? (
                   selected.progress.map((entry, index) => {
                     const text = cleanSubagentProgressLabel(entry.summary ?? entry.description);
+                    const isLatest = index === selected.progress.length - 1;
                     return (
                       <div
                         key={`${selected.taskId}:${entry.at}:${entry.lastToolName ?? entry.summary ?? entry.description ?? index}`}
-                        className="relative flex gap-1.5 text-[11px] leading-snug text-muted-foreground/75 before:absolute before:top-1.5 before:-left-[15px] before:size-1.5 before:rounded-full before:border before:border-muted-foreground/50 before:bg-surface-panel"
+                        className={cn(
+                          "relative grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 pb-2 text-[10px] leading-snug before:absolute before:top-1 before:-left-[14px] before:size-[7px] before:rounded-full before:border before:bg-surface-panel",
+                          isLatest
+                            ? "text-foreground/85 before:border-primary before:bg-primary"
+                            : "text-muted-foreground/70 before:border-muted-foreground/45",
+                        )}
                       >
-                        {subagentProgressIcon(deriveToolIconKindFromName(entry.lastToolName))}
-                        <div className="min-w-0 flex-1">
-                          <ChatMarkdown
-                            text={text}
-                            cwd={markdownCwd}
-                            threadRef={threadRef}
-                            isStreaming={false}
-                          />
-                        </div>
-                        <span className="shrink-0 text-[9px] text-muted-foreground/40 tabular-nums">
+                        <span className="min-w-0 break-words">{toPlainPreview(text)}</span>
+                        <time className="shrink-0 text-[9px] whitespace-nowrap text-muted-foreground/40 tabular-nums">
                           {formatTimestamp(entry.at, timestampFormat)}
-                        </span>
+                        </time>
                       </div>
                     );
                   })

@@ -4,6 +4,7 @@ import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import { buildProviderChildEnv } from "@neokod/shared/providerChildEnv";
 import { resolveSpawnCommand } from "@neokod/shared/shell";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
@@ -21,6 +22,7 @@ import { hasKiroV3ApiKey, KIRO_API_KEY_ENV } from "../acp/KiroAcpSupport.ts";
 const PROVIDER = ProviderDriverKind.make("kiro");
 export const MINIMUM_KIRO_CLI_VERSION = "2.16.2";
 const VERSION_PROBE_TIMEOUT_MS = 4_000;
+const VERSION_PROBE_FORCE_KILL_AFTER = Duration.seconds(1);
 
 const KIRO_PRESENTATION = {
   displayName: "Kiro",
@@ -98,6 +100,7 @@ const runKiroVersionCommand = (settings: KiroSettings, parentEnv: NodeJS.Process
         extendEnv: environment.extendEnv,
         shell: spawnCommand.shell,
       }),
+      { forceKillAfter: VERSION_PROBE_FORCE_KILL_AFTER },
     );
   });
 
@@ -127,7 +130,7 @@ export const checkKiroProviderStatus = Effect.fn("checkKiroProviderStatus")(func
         status: "error",
         auth: { status: "unknown" },
         message: isCommandMissingCause(versionExit.failure)
-          ? "Kiro CLI (`kiro-cli`) is not installed or not on PATH."
+          ? `Kiro CLI (\`${settings.binaryPath || "kiro-cli"}\`) is not installed or not on PATH.`
           : "Failed to execute the Kiro CLI health check.",
       },
     });
