@@ -20,6 +20,7 @@ import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { nowIso } from "../../Domain/Time.ts";
 import { SqlitePersistenceMemory } from "../../../persistence/Layers/Sqlite.ts";
@@ -186,6 +187,7 @@ it("gates enforced model review on verdict, configuration, and reviewed head", (
 
 it("classifies source-control providers by parsed remote host", () => {
   expect(providerForRemoteUrl("https://github.com/owner/repo.git")).toBe("github");
+  expect(providerForRemoteUrl("github.com:owner/repo.git")).toBe("github");
   expect(providerForRemoteUrl("git@gitlab.com:owner/repo.git")).toBe("gitlab");
   expect(providerForRemoteUrl("https://dev.azure.com/org/project/_git/repo")).toBe("azure-devops");
   expect(providerForRemoteUrl("https://github.com.evil.test/owner/repo.git")).toBeNull();
@@ -485,6 +487,58 @@ layer("SymphonyOrchestrator Observe", (it) => {
           now: "2026-08-10T00:02:00.000Z",
         }))._tag,
       ).toBe("not_found");
+    }),
+  );
+
+  it.effect("rolls back project writes when workflow synchronization fails", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const sql = yield* SqlClient.SqlClient;
+      const createProjectId = SymphonyProjectId.make("project-create-sync-failure");
+      yield* seedWorkflow("conflicting-create-workflow", "/repo/project-create-sync-failure");
+
+      const createResult = yield* Effect.result(
+        orchestrator.createProject({
+          id: createProjectId,
+          codeProjectId: ProjectId.make("code-project-create-sync-failure"),
+          title: "Create should roll back",
+          repositoryPath: "/repo/project-create-sync-failure",
+          configuration: makeProjectConfiguration(),
+          now: "2026-08-10T00:00:00.000Z",
+        }),
+      );
+      expect(createResult._tag).toBe("Failure");
+      expect(yield* orchestrator.getProject(createProjectId)).toBeNull();
+      yield* sql`DELETE FROM symphony_workflows WHERE id = ${WorkflowId.make("conflicting-create-workflow")}`;
+
+      const updateProjectId = SymphonyProjectId.make("project-update-sync-failure");
+      const created = yield* orchestrator.createProject({
+        id: updateProjectId,
+        codeProjectId: ProjectId.make("code-project-update-sync-failure"),
+        title: "Original title",
+        repositoryPath: "/repo/project-update-sync-failure",
+        configuration: makeProjectConfiguration(),
+        now: "2026-08-10T00:00:00.000Z",
+      });
+      yield* sql`
+        UPDATE symphony_workflows
+        SET id = ${WorkflowId.make("conflicting-update-workflow")}
+        WHERE id = ${WorkflowId.make(updateProjectId)}
+      `;
+
+      const updateResult = yield* Effect.result(
+        orchestrator.updateProject({
+          projectId: updateProjectId,
+          expectedRevision: created.revision,
+          title: "Partially updated title",
+          now: "2026-08-10T00:01:00.000Z",
+        }),
+      );
+      expect(updateResult._tag).toBe("Failure");
+      expect(yield* orchestrator.getProject(updateProjectId)).toMatchObject({
+        title: "Original title",
+        revision: 0,
+      });
     }),
   );
 

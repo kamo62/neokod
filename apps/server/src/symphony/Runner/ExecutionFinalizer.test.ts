@@ -477,6 +477,12 @@ layer([], makePullRequest())("ExecutionFinalizer no validation configured", (it)
       const workItem = yield* seedWorkItem("4", "owner-4");
       const runAttemptId = yield* seedAttempt("4");
       const finalizer = yield* ExecutionFinalizer;
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.transition(workItem.id, "running", {
+        ownerToken: "owner-4",
+        generation: 1,
+        from: ["preparing"],
+      });
 
       const outcome = yield* finalizer.finalize({
         workItem,
@@ -492,7 +498,6 @@ layer([], makePullRequest())("ExecutionFinalizer no validation configured", (it)
 
       expect(outcome).toBe("review_ready");
 
-      const workItems = yield* WorkItemRepository;
       const after = yield* workItems.getById(workItem.id);
       expect(after?.lifecycle).toBe("ready_for_review");
       const events = yield* RunEventRepository.pipe(

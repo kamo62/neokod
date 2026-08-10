@@ -34,8 +34,10 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { nowIso } from "../../Domain/Time.ts";
+import { SymphonyPersistenceSqlError } from "../../Persistence/Errors.ts";
 import { SymphonyProjectRepository } from "../../Persistence/Services/SymphonyProjectRepository.ts";
 import { WorkflowRepository } from "../../Persistence/Services/WorkflowRepository.ts";
 import { WorkItemRepository } from "../../Persistence/Services/WorkItemRepository.ts";
@@ -160,11 +162,12 @@ const effectiveConfigForProject = (
 };
 
 const remoteHostname = (remoteUrl: string): string | null => {
+  const scpLike = /^(?:[^@/\s]+@)?([^:/\s]+):/.exec(remoteUrl.trim());
+  const scpHostname = scpLike?.[1]?.toLowerCase() ?? null;
   try {
-    return new URL(remoteUrl).hostname.toLowerCase();
+    return new URL(remoteUrl).hostname.toLowerCase() || scpHostname;
   } catch {
-    const scpLike = /^(?:[^@/\s]+@)?([^:/\s]+):/.exec(remoteUrl.trim());
-    return scpLike?.[1]?.toLowerCase() ?? null;
+    return scpHostname;
   }
 };
 
@@ -563,6 +566,7 @@ const makeOrchestrator = Effect.gen(function* () {
   const auditRepository = yield* AuditRepository;
   const notifications = yield* NotificationCoordinator;
   const serverConfig = yield* ServerConfig;
+  const sql = yield* SqlClient.SqlClient;
   const vcsRegistry = yield* Effect.serviceOption(VcsDriverRegistry);
 
   const stateRef = yield* Ref.make<OrchestratorRuntimeState>(EMPTY_STATE);
@@ -1114,45 +1118,73 @@ const makeOrchestrator = Effect.gen(function* () {
     projects.getById(projectId).pipe(Effect.catch(() => Effect.succeed(null)));
 
   const createProject: SymphonyOrchestratorShape["createProject"] = (input) =>
-    Effect.gen(function* () {
-      const project = yield* projects.create({
-        id: input.id,
-        codeProjectId: input.codeProjectId,
-        title: input.title,
-        repositoryPath: input.repositoryPath,
-        status: "paused",
-        setupState: "ready",
-        configuration: input.configuration,
-        revision: 0,
-        legacyWorkflowId: null,
-        createdAt: input.now,
-        updatedAt: input.now,
-      });
-      yield* syncProjectWorkflow(project);
-      return project;
-    });
+    sql
+      .withTransaction(
+        Effect.gen(function* () {
+          const project = yield* projects.create({
+            id: input.id,
+            codeProjectId: input.codeProjectId,
+            title: input.title,
+            repositoryPath: input.repositoryPath,
+            status: "paused",
+            setupState: "ready",
+            configuration: input.configuration,
+            revision: 0,
+            legacyWorkflowId: null,
+            createdAt: input.now,
+            updatedAt: input.now,
+          });
+          yield* syncProjectWorkflow(project);
+          return project;
+        }),
+      )
+      .pipe(
+        Effect.catchTag("SqlError", (cause) =>
+          Effect.fail(
+            new SymphonyPersistenceSqlError({
+              operation: "SymphonyOrchestrator.createProject",
+              detail: "Project transaction failed",
+              cause,
+            }),
+          ),
+        ),
+      );
 
   const updateProject: SymphonyOrchestratorShape["updateProject"] = (input) =>
-    Effect.gen(function* () {
-      const current = yield* projects.getById(input.projectId);
-      if (current === null) return { _tag: "not_found" } as const;
-      const configuration = input.configuration ?? current.configuration;
-      const updated = yield* projects.update(
-        {
-          ...current,
-          ...(input.title === undefined ? {} : { title: input.title }),
-          ...(input.configuration === undefined ? {} : { configuration: input.configuration }),
-          ...(input.status === undefined ? {} : { status: input.status }),
-          setupState:
-            configuration === null || current.codeProjectId === null ? "needs_setup" : "ready",
-          updatedAt: input.now,
-        },
-        input.expectedRevision,
+    sql
+      .withTransaction(
+        Effect.gen(function* () {
+          const current = yield* projects.getById(input.projectId);
+          if (current === null) return { _tag: "not_found" } as const;
+          const configuration = input.configuration ?? current.configuration;
+          const updated = yield* projects.update(
+            {
+              ...current,
+              ...(input.title === undefined ? {} : { title: input.title }),
+              ...(input.configuration === undefined ? {} : { configuration: input.configuration }),
+              ...(input.status === undefined ? {} : { status: input.status }),
+              setupState:
+                configuration === null || current.codeProjectId === null ? "needs_setup" : "ready",
+              updatedAt: input.now,
+            },
+            input.expectedRevision,
+          );
+          if (updated === null) return { _tag: "revision_conflict" } as const;
+          yield* syncProjectWorkflow(updated);
+          return { _tag: "updated", project: updated } as const;
+        }),
+      )
+      .pipe(
+        Effect.catchTag("SqlError", (cause) =>
+          Effect.fail(
+            new SymphonyPersistenceSqlError({
+              operation: "SymphonyOrchestrator.updateProject",
+              detail: "Project transaction failed",
+              cause,
+            }),
+          ),
+        ),
       );
-      if (updated === null) return { _tag: "revision_conflict" } as const;
-      yield* syncProjectWorkflow(updated);
-      return { _tag: "updated", project: updated } as const;
-    });
 
   const getProjectSourceControl: SymphonyOrchestratorShape["getProjectSourceControl"] = (
     projectId,

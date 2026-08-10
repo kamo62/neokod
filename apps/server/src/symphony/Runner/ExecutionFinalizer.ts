@@ -93,7 +93,7 @@ export const makeExecutionFinalizer = Effect.gen(function* () {
           from: ["running"],
         })
         .pipe(Effect.catch(() => Effect.succeed(false)));
-      if (enteredTesting) {
+      if (enteredTesting && input.config.validationRequired.length > 0) {
         yield* appendEvent(input.runAttemptId, "validation_started");
       }
 
