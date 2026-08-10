@@ -8,6 +8,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   RunAttemptId,
+  SymphonyProjectId,
   WorkItemId,
 } from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
@@ -65,6 +66,7 @@ const seedWorkItem = (id: string, ownerToken: string) =>
     const workItem: WorkItem = {
       id: WorkItemId.make(id),
       mode: "symphony",
+      projectId: SymphonyProjectId.make("execution-finalizer-project"),
       objective: `Implement issue ${id}`,
       description: "Seeded for finalizer tests",
       acceptanceCriteria: [],
@@ -208,6 +210,12 @@ layer(["passed"], makePullRequest())("ExecutionFinalizer review-ready path", (it
       const workItem = yield* seedWorkItem("1", "owner-1");
       const runAttemptId = yield* seedAttempt("1");
       const finalizer = yield* ExecutionFinalizer;
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.transition(workItem.id, "running", {
+        ownerToken: "owner-1",
+        generation: 1,
+        from: ["preparing"],
+      });
 
       const outcome = yield* finalizer.finalize({
         workItem,
@@ -229,7 +237,6 @@ layer(["passed"], makePullRequest())("ExecutionFinalizer review-ready path", (it
       expect(attempt?.status).toBe("succeeded");
       expect(attempt?.finishedAt).not.toBeNull();
 
-      const workItems = yield* WorkItemRepository;
       const after = yield* workItems.getById(workItem.id);
       expect(after?.lifecycle).toBe("ready_for_review");
 
@@ -240,6 +247,7 @@ layer(["passed"], makePullRequest())("ExecutionFinalizer review-ready path", (it
 
       const runEvents = yield* RunEventRepository;
       const events = yield* runEvents.listForAttempt(runAttemptId);
+      expect(events.map((e) => e.eventType)).toContain("validation_started");
       expect(events.map((e) => e.eventType)).toContain("pull_request_opened");
       expect(events.map((e) => e.eventType)).toContain("evidence_assembled");
     }),
@@ -487,6 +495,10 @@ layer([], makePullRequest())("ExecutionFinalizer no validation configured", (it)
       const workItems = yield* WorkItemRepository;
       const after = yield* workItems.getById(workItem.id);
       expect(after?.lifecycle).toBe("ready_for_review");
+      const events = yield* RunEventRepository.pipe(
+        Effect.flatMap((repository) => repository.listForAttempt(runAttemptId)),
+      );
+      expect(events.map((event) => event.eventType)).not.toContain("validation_started");
     }),
   );
 });

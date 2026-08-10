@@ -72,7 +72,7 @@ export default Effect.gen(function* () {
   yield* sql`
     CREATE TABLE symphony_work_items (
       id TEXT PRIMARY KEY,
-      project_id TEXT,
+      project_id TEXT NOT NULL,
       workflow_id TEXT,
       tracker_kind TEXT NOT NULL,
       tracker_issue_id TEXT NOT NULL,
@@ -123,7 +123,7 @@ export default Effect.gen(function* () {
     )
     SELECT
       item.id,
-      COALESCE(item.workflow_id, project.id),
+      COALESCE(workflow_project.id, repository_project.id),
       item.workflow_id,
       item.tracker_kind,
       item.tracker_issue_id,
@@ -158,8 +158,10 @@ export default Effect.gen(function* () {
       item.claimed_at,
       item.dispatch_seq
     FROM symphony_work_items_legacy AS item
-    LEFT JOIN symphony_projects AS project
-      ON project.repository_path = item.repository_path
+    LEFT JOIN symphony_projects AS workflow_project
+      ON workflow_project.legacy_workflow_id = item.workflow_id
+    LEFT JOIN symphony_projects AS repository_project
+      ON repository_project.repository_path = item.repository_path
   `;
 
   yield* sql`
@@ -181,7 +183,18 @@ export default Effect.gen(function* () {
       UNIQUE(work_item_id, attempt_number)
     )
   `;
-  yield* sql`INSERT INTO symphony_run_attempts SELECT * FROM symphony_run_attempts_legacy`;
+  yield* sql`
+    INSERT INTO symphony_run_attempts (
+      id, work_item_id, attempt_number, provider, model, status, current_stage,
+      workspace_path, started_at, finished_at, error_json, token_usage_json,
+      session_id, thread_id
+    )
+    SELECT
+      id, work_item_id, attempt_number, provider, model, status, current_stage,
+      workspace_path, started_at, finished_at, error_json, token_usage_json,
+      session_id, thread_id
+    FROM symphony_run_attempts_legacy
+  `;
 
   yield* sql`
     CREATE TABLE symphony_run_events (
@@ -193,7 +206,13 @@ export default Effect.gen(function* () {
       payload_json TEXT
     )
   `;
-  yield* sql`INSERT INTO symphony_run_events SELECT * FROM symphony_run_events_legacy`;
+  yield* sql`
+    INSERT INTO symphony_run_events (
+      row_id, run_attempt_id, sequence, event_type, occurred_at, payload_json
+    )
+    SELECT row_id, run_attempt_id, sequence, event_type, occurred_at, payload_json
+    FROM symphony_run_events_legacy
+  `;
 
   yield* sql`
     CREATE TABLE symphony_evidence (
@@ -202,7 +221,11 @@ export default Effect.gen(function* () {
       created_at TEXT NOT NULL
     )
   `;
-  yield* sql`INSERT INTO symphony_evidence SELECT * FROM symphony_evidence_legacy`;
+  yield* sql`
+    INSERT INTO symphony_evidence (work_item_id, bundle_json, created_at)
+    SELECT work_item_id, bundle_json, created_at
+    FROM symphony_evidence_legacy
+  `;
 
   yield* sql`
     CREATE TABLE symphony_attention_items (
@@ -219,7 +242,16 @@ export default Effect.gen(function* () {
       resolution TEXT
     )
   `;
-  yield* sql`INSERT INTO symphony_attention_items SELECT * FROM symphony_attention_items_legacy`;
+  yield* sql`
+    INSERT INTO symphony_attention_items (
+      id, work_item_id, run_attempt_id, kind, severity, state, payload_json,
+      recommended_action, created_at, resolved_at, resolution
+    )
+    SELECT
+      id, work_item_id, run_attempt_id, kind, severity, state, payload_json,
+      recommended_action, created_at, resolved_at, resolution
+    FROM symphony_attention_items_legacy
+  `;
 
   yield* sql`
     CREATE TABLE symphony_approvals (
@@ -237,7 +269,16 @@ export default Effect.gen(function* () {
       decided_at TEXT
     )
   `;
-  yield* sql`INSERT INTO symphony_approvals SELECT * FROM symphony_approvals_legacy`;
+  yield* sql`
+    INSERT INTO symphony_approvals (
+      id, request_id, work_item_id, run_attempt_id, action, scope, state,
+      decision, policy_source, payload_json, created_at, decided_at
+    )
+    SELECT
+      id, request_id, work_item_id, run_attempt_id, action, scope, state,
+      decision, policy_source, payload_json, created_at, decided_at
+    FROM symphony_approvals_legacy
+  `;
 
   yield* sql`
     CREATE TABLE symphony_retry_queue (
@@ -248,7 +289,11 @@ export default Effect.gen(function* () {
       scheduled TEXT NOT NULL
     )
   `;
-  yield* sql`INSERT INTO symphony_retry_queue SELECT * FROM symphony_retry_queue_legacy`;
+  yield* sql`
+    INSERT INTO symphony_retry_queue (work_item_id, attempt, due_at_ms, error_json, scheduled)
+    SELECT work_item_id, attempt, due_at_ms, error_json, scheduled
+    FROM symphony_retry_queue_legacy
+  `;
 
   yield* sql`DROP TABLE symphony_run_events_legacy`;
   yield* sql`DROP TABLE symphony_evidence_legacy`;

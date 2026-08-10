@@ -68,9 +68,21 @@ export const projectBoardFromWorkItems = (input: {
           ? item.lifecycle
           : null,
       ...(item.priority === undefined ? {} : { priority: item.priority }),
-      ...(item.source.kind === "manual" ? {} : { issueUrl: item.source.externalUrl }),
+      ...(item.source.kind === "manual" || item.source.externalUrl.trim().length === 0
+        ? {}
+        : { issueUrl: item.source.externalUrl }),
       updatedAt: item.updatedAt,
     });
+  }
+
+  for (const column of columns) {
+    column.cards.sort(
+      (left, right) =>
+        (left.priority ?? Number.POSITIVE_INFINITY) -
+          (right.priority ?? Number.POSITIVE_INFINITY) ||
+        left.updatedAt.localeCompare(right.updatedAt) ||
+        left.workItemId.localeCompare(right.workItemId),
+    );
   }
 
   return {

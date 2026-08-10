@@ -178,6 +178,18 @@ it.effect("injects a stored token only into GitHub CLI calls", () =>
   }),
 );
 
+it.effect("prefers a direct token without declaring the fallback token env", () =>
+  Effect.gen(function* () {
+    const adapter = yield* makeAdapter(
+      makeFakeCli([]),
+      { token: "ghp_direct", tokenEnv: "GH_SYMPHONY_TOKEN" },
+      { GH_SYMPHONY_TOKEN: "ghp_fallback" },
+    );
+
+    expect(adapter.secretEnvironmentNames()).toEqual([]);
+  }),
+);
+
 it.effect("reports the profile with documented provider keys and states", () =>
   Effect.gen(function* () {
     const adapter = yield* makeAdapter(makeFakeCli([]));

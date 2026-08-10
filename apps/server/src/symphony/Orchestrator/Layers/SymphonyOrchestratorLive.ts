@@ -16,10 +16,10 @@ import type {
   TrackerHealth,
   WorkflowRecord,
   WorkItem,
+  WorkLifecycle,
 } from "@neokod/contracts";
 import {
   AttentionItemId,
-  ProjectId,
   RunAttemptId,
   SymphonyProjectId,
   WorkflowId,
@@ -99,6 +99,10 @@ const ALL_WORK_LIFECYCLES = [
   "failed",
 ] as const;
 
+type MissingWorkLifecycle = Exclude<WorkLifecycle, (typeof ALL_WORK_LIFECYCLES)[number]>;
+const _allWorkLifecyclesCovered: MissingWorkLifecycle extends never ? true : never = true;
+void _allWorkLifecyclesCovered;
+
 const trackerProviderForProject = (
   tracker: SymphonyProjectConfiguration["tracker"],
 ): Readonly<Record<string, unknown>> => {
@@ -142,7 +146,6 @@ const effectiveConfigForProject = (
     autonomy: configuration.autonomy,
     agentProvider: configuration.agentProvider,
     ...(configuration.agentModel === undefined ? {} : { agentModel: configuration.agentModel }),
-    maxConcurrentAgents: configuration.maxConcurrentAgents,
     maxTurns: configuration.maxTurns,
     maxAttempts: configuration.maxAttempts,
     validationRequired: [...configuration.validationRequired],
@@ -152,15 +155,29 @@ const effectiveConfigForProject = (
     approvalsBeforeMerge: configuration.approvalsBeforeMerge,
     approvalsProtectedPaths: [],
     approvalsPolicies: [],
+    concurrencyGlobal: configuration.maxConcurrentAgents,
   };
 };
 
+const remoteHostname = (remoteUrl: string): string | null => {
+  try {
+    return new URL(remoteUrl).hostname.toLowerCase();
+  } catch {
+    const scpLike = /^(?:[^@/\s]+@)?([^:/\s]+):/.exec(remoteUrl.trim());
+    return scpLike?.[1]?.toLowerCase() ?? null;
+  }
+};
+
+const matchesHost = (hostname: string, expected: string): boolean =>
+  hostname === expected || hostname.endsWith(`.${expected}`);
+
 const providerForRemoteUrl = (remoteUrl: string): string | null => {
-  const normalized = remoteUrl.toLowerCase();
-  if (normalized.includes("github.com")) return "github";
-  if (normalized.includes("gitlab")) return "gitlab";
-  if (normalized.includes("bitbucket")) return "bitbucket";
-  if (normalized.includes("dev.azure.com") || normalized.includes("visualstudio.com")) {
+  const hostname = remoteHostname(remoteUrl);
+  if (hostname === null) return null;
+  if (matchesHost(hostname, "github.com")) return "github";
+  if (matchesHost(hostname, "gitlab.com")) return "gitlab";
+  if (matchesHost(hostname, "bitbucket.org")) return "bitbucket";
+  if (matchesHost(hostname, "dev.azure.com") || matchesHost(hostname, "visualstudio.com")) {
     return "azure-devops";
   }
   return null;
@@ -383,6 +400,7 @@ const buildRunSummary = (input: {
       : {}),
     ...(workItem !== null ? { issueTitle: workItem.objective } : {}),
     ...(workItem?.repositoryPath !== undefined ? { repositoryPath: workItem.repositoryPath } : {}),
+    ...(workItem?.projectId !== undefined ? { projectId: workItem.projectId } : {}),
     ...(workItem?.workflowId !== undefined ? { workflowId: workItem.workflowId } : {}),
     provider: attempt.provider as RunSummary["provider"],
     ...(attempt.model !== undefined ? { model: attempt.model } : {}),
@@ -591,21 +609,40 @@ const makeOrchestrator = Effect.gen(function* () {
   });
 
   const persistedProjects = yield* projects.list().pipe(Effect.catch(() => Effect.succeed([])));
-  for (const project of persistedProjects) yield* syncProjectWorkflow(project);
+  for (const project of persistedProjects) {
+    yield* syncProjectWorkflow(project).pipe(
+      Effect.catch((cause) =>
+        Effect.logWarning("symphony.project.workflow_sync_failed", {
+          projectId: project.id,
+          error: cause.message,
+        }),
+      ),
+    );
+  }
 
-  const resolveProjectSourceControl = Effect.fn("symphonyOrchestrator.resolveProjectSourceControl")(
+  const sourceControlCache = new Map<
+    string,
+    { readonly expiresAt: number; readonly value: SymphonyProjectSourceControl }
+  >();
+  const sourceControlCacheTtlMs = 5_000;
+
+  const readProjectSourceControl = Effect.fn("symphonyOrchestrator.readProjectSourceControl")(
     function* (repositoryPath: string): Effect.fn.Return<SymphonyProjectSourceControl> {
       if (Option.isNone(vcsRegistry)) {
         return { state: "unavailable", reason: "VCS discovery is unavailable" };
       }
-      const detected = yield* Effect.result(vcsRegistry.value.detect({ cwd: repositoryPath }));
+      const detected = yield* Effect.result(
+        vcsRegistry.value.detect({ cwd: repositoryPath }).pipe(Effect.timeout("5 seconds")),
+      );
       if (detected._tag === "Failure") {
         return { state: "unavailable", reason: detected.failure.message };
       }
       if (detected.success === null) {
         return { state: "none" };
       }
-      const remotes = yield* Effect.result(detected.success.driver.listRemotes(repositoryPath));
+      const remotes = yield* Effect.result(
+        detected.success.driver.listRemotes(repositoryPath).pipe(Effect.timeout("5 seconds")),
+      );
       if (remotes._tag === "Failure") {
         return { state: "unavailable", reason: remotes.failure.message };
       }
@@ -620,6 +657,21 @@ const makeOrchestrator = Effect.gen(function* () {
         remoteUrl: remote?.url ?? null,
         authenticated: null,
       };
+    },
+  );
+
+  const resolveProjectSourceControl = Effect.fn("symphonyOrchestrator.resolveProjectSourceControl")(
+    function* (repositoryPath: string): Effect.fn.Return<SymphonyProjectSourceControl> {
+      const now = yield* Clock.currentTimeMillis;
+      const cached = sourceControlCache.get(repositoryPath);
+      if (cached !== undefined && cached.expiresAt > now) return cached.value;
+      const value = yield* readProjectSourceControl(repositoryPath);
+      const refreshedAt = yield* Clock.currentTimeMillis;
+      sourceControlCache.set(repositoryPath, {
+        expiresAt: refreshedAt + sourceControlCacheTtlMs,
+        value,
+      });
+      return value;
     },
   );
 
@@ -915,8 +967,14 @@ const makeOrchestrator = Effect.gen(function* () {
   const listRuns: SymphonyOrchestratorShape["listRuns"] = (filter) =>
     Effect.gen(function* () {
       const currentTimeMs = yield* Clock.currentTimeMillis;
+      const hasFilterCriteria =
+        filter?.projectId !== undefined ||
+        filter?.workflowId !== undefined ||
+        filter?.repositoryPath !== undefined ||
+        filter?.status !== undefined ||
+        filter?.lifecycle !== undefined;
       const attempts = yield* runAttempts
-        .listRecent({ limit: filter === undefined ? 50 : 1_000 })
+        .listRecent({ limit: hasFilterCriteria ? 1_000 : (filter?.limit ?? 50) })
         .pipe(Effect.catch(() => Effect.succeed([])));
       const workItemIds = Array.from(
         new Set(attempts.map((attempt) => String(attempt.workItemId))),
@@ -1038,13 +1096,15 @@ const makeOrchestrator = Effect.gen(function* () {
       if (filter?.projectId === undefined)
         return attention.slice(0, filter?.limit ?? attention.length);
       const matching: AttentionItem[] = [];
+      const wanted = filter.limit ?? Number.POSITIVE_INFINITY;
       for (const item of attention) {
+        if (matching.length >= wanted) break;
         const workItem = yield* workItems
           .getById(item.workItemId)
           .pipe(Effect.catch(() => Effect.succeed(null)));
         if (workItem?.projectId === filter.projectId) matching.push(item);
       }
-      return matching.slice(0, filter.limit ?? matching.length);
+      return matching;
     });
 
   const listProjects: SymphonyOrchestratorShape["listProjects"] = () =>
@@ -1057,7 +1117,7 @@ const makeOrchestrator = Effect.gen(function* () {
     Effect.gen(function* () {
       const project = yield* projects.create({
         id: input.id,
-        codeProjectId: ProjectId.make(input.codeProjectId),
+        codeProjectId: input.codeProjectId,
         title: input.title,
         repositoryPath: input.repositoryPath,
         status: "paused",
@@ -1075,7 +1135,7 @@ const makeOrchestrator = Effect.gen(function* () {
   const updateProject: SymphonyOrchestratorShape["updateProject"] = (input) =>
     Effect.gen(function* () {
       const current = yield* projects.getById(input.projectId);
-      if (current === null) return null;
+      if (current === null) return { _tag: "not_found" } as const;
       const configuration = input.configuration ?? current.configuration;
       const updated = yield* projects.update(
         {
@@ -1089,8 +1149,19 @@ const makeOrchestrator = Effect.gen(function* () {
         },
         input.expectedRevision,
       );
-      if (updated !== null) yield* syncProjectWorkflow(updated);
-      return updated;
+      if (updated === null) return { _tag: "revision_conflict" } as const;
+      yield* syncProjectWorkflow(updated);
+      return { _tag: "updated", project: updated } as const;
+    });
+
+  const getProjectSourceControl: SymphonyOrchestratorShape["getProjectSourceControl"] = (
+    projectId,
+  ) =>
+    Effect.gen(function* () {
+      const project = yield* projects
+        .getById(projectId)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      return project === null ? null : yield* resolveProjectSourceControl(project.repositoryPath);
     });
 
   const getProjectBoard: SymphonyOrchestratorShape["getProjectBoard"] = (projectId) =>
@@ -1133,8 +1204,15 @@ const makeOrchestrator = Effect.gen(function* () {
     });
 
   const listHistory: SymphonyOrchestratorShape["listHistory"] = (filter) =>
-    listRuns(filter).pipe(
-      Effect.map((runs) => runs.filter((run) => RUN_TERMINAL_STATUSES.has(run.status))),
+    listRuns({
+      ...(filter?.projectId === undefined ? {} : { projectId: filter.projectId }),
+      limit: 1_000,
+    }).pipe(
+      Effect.map((runs) =>
+        runs
+          .filter((run) => RUN_TERMINAL_STATUSES.has(run.status))
+          .slice(0, filter?.limit ?? runs.length),
+      ),
       Effect.catch(() => Effect.succeed([])),
     );
 
@@ -1716,6 +1794,7 @@ const makeOrchestrator = Effect.gen(function* () {
     getProject,
     createProject,
     updateProject,
+    getProjectSourceControl,
     getProjectBoard,
     listRunEvents,
     listAttention,
@@ -1745,4 +1824,4 @@ const makeOrchestrator = Effect.gen(function* () {
 
 export const SymphonyOrchestratorLive = Layer.effect(SymphonyOrchestrator, makeOrchestrator);
 
-export { pollWorkflow, buildQueueItem, modelReviewAllowsMerge };
+export { pollWorkflow, buildQueueItem, modelReviewAllowsMerge, providerForRemoteUrl };

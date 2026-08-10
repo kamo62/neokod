@@ -17,7 +17,7 @@ import {
 
 const WorkItemRowSchema = Schema.Struct({
   id: WorkItemId,
-  projectId: Schema.NullOr(SymphonyProjectId),
+  projectId: SymphonyProjectId,
   workflowId: Schema.NullOr(Schema.String),
   trackerKind: Schema.String,
   trackerIssueId: Schema.String,
@@ -109,7 +109,7 @@ const rowToWorkItem = (row: Schema.Schema.Type<typeof WorkItemRowSchema>): WorkI
   id: row.id,
   mode: "symphony",
   repositoryPath: row.repositoryPath ?? undefined,
-  projectId: row.projectId ?? undefined,
+  projectId: row.projectId,
   workflowId: row.workflowId === null ? undefined : (row.workflowId as WorkItem["workflowId"]),
   objective: row.objective,
   description: row.description ?? undefined,
@@ -134,9 +134,11 @@ const rowToWorkItem = (row: Schema.Schema.Type<typeof WorkItemRowSchema>): WorkI
   ...(row.ownerPid === null ? {} : { ownerPid: row.ownerPid }),
 });
 
-const workItemToRow = (workItem: WorkItem): Schema.Schema.Type<typeof WorkItemRowSchema> => ({
+const workItemToRow = (
+  workItem: WorkItem & { readonly projectId: SymphonyProjectId },
+): Schema.Schema.Type<typeof WorkItemRowSchema> => ({
   id: workItem.id,
-  projectId: workItem.projectId ?? null,
+  projectId: workItem.projectId,
   workflowId: workItem.workflowId ?? null,
   trackerKind: workItem.source.kind,
   trackerIssueId:
@@ -353,7 +355,16 @@ const makeRepository = Effect.gen(function* () {
   });
 
   const upsert: WorkItemRepositoryShape["upsert"] = (workItem) => {
-    const row = workItemToRow(workItem);
+    if (workItem.projectId === undefined) {
+      return Effect.fail(
+        new SymphonyPersistenceSqlError({
+          operation: "WorkItemRepository.upsert",
+          detail: `Work item ${workItem.id} is not assigned to a Symphony project`,
+          workItemId: workItem.id,
+        }),
+      );
+    }
+    const row = workItemToRow({ ...workItem, projectId: workItem.projectId });
     return insertRow(row).pipe(
       Effect.mapError(toBusyOrSqlError("WorkItemRepository.upsert:insert")),
       Effect.flatMap((inserted) =>
@@ -398,7 +409,7 @@ const makeRepository = Effect.gen(function* () {
   ) =>
     SqlSchema.findOneOption({
       Request: Schema.Struct({
-        projectId: Schema.String,
+        projectId: SymphonyProjectId,
         trackerKind: Schema.String,
         trackerIssueId: Schema.String,
       }),

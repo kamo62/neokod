@@ -3,6 +3,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   RunAttemptId,
+  SymphonyProjectId,
   WorkflowId,
   WorkItemId,
 } from "@neokod/contracts";
@@ -50,6 +51,7 @@ const makeAttempt = (id: string, workItemId: string, workspacePath = "/ws/wi-1")
 const makeWorkItem = (id: string, lifecycle: WorkItem["lifecycle"] = "running"): WorkItem => ({
   id: WorkItemId.make(id),
   mode: "symphony",
+  projectId: SymphonyProjectId.make("handoff-project"),
   objective: `Issue ${id}`,
   acceptanceCriteria: [],
   source: { kind: "manual" },
@@ -457,18 +459,20 @@ layer("HandoffService delegateFromThread", (it) => {
       expect(created?.baseBranch).toBe("fix/flaky");
       expect(created?.lifecycle).toBe("eligible");
       expect(created?.workflowId).toBe(WorkflowId.make("wf-handoff-1"));
+      expect(created?.projectId).toBe(SymphonyProjectId.make("wf-handoff-1"));
     }),
   );
 
-  it.effect("creates without a workflow when the repository is unknown", () =>
+  it.effect("rejects delegation when the repository is not attached to Symphony", () =>
     Effect.gen(function* () {
       const handoff = yield* HandoffService;
-      const id = yield* handoff.delegateFromThread({
-        threadId: "th-5",
-        objective: "Something else",
-      });
-      const created = yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.getById(id)));
-      expect(created?.workflowId).toBeUndefined();
+      const result = yield* Effect.result(
+        handoff.delegateFromThread({
+          threadId: "th-5",
+          objective: "Something else",
+        }),
+      );
+      expect(result._tag).toBe("Failure");
     }),
   );
 });

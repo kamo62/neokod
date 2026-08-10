@@ -4,7 +4,12 @@ import type {
   RunAttemptId,
   WorkItem,
 } from "@neokod/contracts";
-import { ProviderDriverKind, ProviderInstanceId, WorkItemId } from "@neokod/contracts";
+import {
+  ProviderDriverKind,
+  ProviderInstanceId,
+  SymphonyProjectId,
+  WorkItemId,
+} from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -86,6 +91,7 @@ const seedWorkItem = (id: string) =>
     const workItem: WorkItem = {
       id: WorkItemId.make(id),
       mode: "symphony",
+      projectId: SymphonyProjectId.make("dispatcher-project"),
       objective: `Implement issue ${id}`,
       description: "Seeded for dispatcher tests",
       acceptanceCriteria: [],

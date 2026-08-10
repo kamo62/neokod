@@ -1,4 +1,4 @@
-import type { SymphonyProject, SymphonyProjectId } from "@neokod/contracts";
+import type { ProjectId, SymphonyProject, SymphonyProjectId } from "@neokod/contracts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 
@@ -12,7 +12,7 @@ export interface SymphonyProjectRepositoryShape {
     id: SymphonyProjectId,
   ) => Effect.Effect<SymphonyProject | null, SymphonyPersistenceError>;
   readonly getByCodeProjectId: (
-    codeProjectId: string,
+    codeProjectId: ProjectId,
   ) => Effect.Effect<SymphonyProject | null, SymphonyPersistenceError>;
   readonly list: () => Effect.Effect<SymphonyProject[], SymphonyPersistenceError>;
   readonly update: (

@@ -42,11 +42,17 @@ layer("041_SymphonyProjects", (it) => {
         INSERT INTO symphony_work_items (
           id, workflow_id, tracker_kind, tracker_issue_id, objective, lifecycle,
           repository_path, source_json, created_at, updated_at
-        ) VALUES (
-          'item-1', 'workflow-matched', 'github', '42', 'First issue', 'queued',
-          '/repo/matched', '{"kind":"github","externalId":"42","externalUrl":"https://example/42"}',
-          '2026-08-09T00:00:00.000Z', '2026-08-09T00:00:00.000Z'
-        )
+        ) VALUES
+          (
+            'item-1', 'workflow-matched', 'github', '42', 'First issue', 'queued',
+            '/repo/matched', '{"kind":"github","externalId":"42","externalUrl":"https://example/42"}',
+            '2026-08-09T00:00:00.000Z', '2026-08-09T00:00:00.000Z'
+          ),
+          (
+            'item-repository-match', NULL, 'github', '43', 'Repository matched issue', 'queued',
+            '/repo/matched', '{"kind":"github","externalId":"43","externalUrl":"https://example/43"}',
+            '2026-08-09T00:00:00.000Z', '2026-08-09T00:00:00.000Z'
+          )
       `;
       yield* sql`
         INSERT INTO symphony_run_attempts (
@@ -114,6 +120,7 @@ layer("041_SymphonyProjects", (it) => {
       assert.deepStrictEqual(identities, [
         { projectId: "workflow-matched", trackerIssueId: "42" },
         { projectId: "workflow-unmatched", trackerIssueId: "42" },
+        { projectId: "workflow-matched", trackerIssueId: "43" },
       ]);
 
       const foreignKeyViolations = yield* sql`PRAGMA foreign_key_check`;

@@ -1,4 +1,4 @@
-import type { WorkItem, WorkItemId, WorkLifecycle } from "@neokod/contracts";
+import type { SymphonyProjectId, WorkItem, WorkItemId, WorkLifecycle } from "@neokod/contracts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 
@@ -23,7 +23,7 @@ export interface WorkItemRepositoryShape {
 
   /** Read the work item for a tracker issue, if one exists. */
   readonly getByTrackerIssue: (
-    projectId: string,
+    projectId: SymphonyProjectId,
     trackerKind: string,
     trackerIssueId: string,
   ) => Effect.Effect<WorkItem | null, SymphonyPersistenceError>;
@@ -32,7 +32,7 @@ export interface WorkItemRepositoryShape {
   readonly listByLifecycle: (
     lifecycles: ReadonlyArray<WorkLifecycle>,
     options?: {
-      readonly projectId?: string;
+      readonly projectId?: SymphonyProjectId;
       readonly workflowId?: string;
       readonly limit?: number;
     },

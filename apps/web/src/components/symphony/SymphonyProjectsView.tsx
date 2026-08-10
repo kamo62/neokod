@@ -83,6 +83,11 @@ function CreateProjectDialog({
   const addCodeProject = () => {
     onOpenChange(false);
     openAddCodeProject(async (project) => {
+      if (project.environmentId !== environmentId) {
+        setError("Choose a Code project in the current environment.");
+        onOpenChange(true);
+        return;
+      }
       const initialized = await initializeRepository({
         environmentId: project.environmentId,
         input: { cwd: project.workspaceRoot },
@@ -111,7 +116,14 @@ function CreateProjectDialog({
         if (!isAtomCommandInterrupted(result)) {
           const cause = squashAtomCommandFailure(result);
           setError(
-            cause instanceof Error ? cause.message : "Could not create the Symphony project.",
+            typeof cause === "object" &&
+              cause !== null &&
+              "code" in cause &&
+              cause.code === "symphony_project_already_exists"
+              ? "This Code project already has a Symphony project."
+              : cause instanceof Error
+                ? cause.message
+                : "Could not create the Symphony project.",
           );
         }
         return;

@@ -1,5 +1,6 @@
 import type {
   AttentionItem,
+  ProjectId,
   QueueItem,
   RunDetails,
   RunEvent,
@@ -8,6 +9,7 @@ import type {
   SymphonyProjectBoard,
   SymphonyProjectConfiguration,
   SymphonyProjectId,
+  SymphonyProjectSourceControl,
   SymphonyOverview,
   TrackerHealth,
   WorkflowRecord,
@@ -16,6 +18,11 @@ import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
 import type { SymphonyPersistenceError } from "../Persistence/Errors.ts";
+
+export type SymphonyProjectUpdateResult =
+  | { readonly _tag: "updated"; readonly project: SymphonyProject }
+  | { readonly _tag: "not_found" }
+  | { readonly _tag: "revision_conflict" };
 
 /**
  * SymphonyOrchestrator - single-authority orchestrator for Symphony Mode.
@@ -54,7 +61,7 @@ export interface SymphonyOrchestratorShape {
   readonly getProject: (projectId: SymphonyProjectId) => Effect.Effect<SymphonyProject | null>;
   readonly createProject: (input: {
     readonly id: SymphonyProjectId;
-    readonly codeProjectId: string;
+    readonly codeProjectId: ProjectId;
     readonly title: string;
     readonly repositoryPath: string;
     readonly configuration: SymphonyProjectConfiguration;
@@ -67,7 +74,10 @@ export interface SymphonyOrchestratorShape {
     readonly configuration?: SymphonyProjectConfiguration;
     readonly status?: "active" | "paused";
     readonly now: string;
-  }) => Effect.Effect<SymphonyProject | null, SymphonyPersistenceError>;
+  }) => Effect.Effect<SymphonyProjectUpdateResult, SymphonyPersistenceError>;
+  readonly getProjectSourceControl: (
+    projectId: SymphonyProjectId,
+  ) => Effect.Effect<SymphonyProjectSourceControl | null>;
   readonly getProjectBoard: (
     projectId: SymphonyProjectId,
   ) => Effect.Effect<SymphonyProjectBoard | null>;

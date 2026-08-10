@@ -24,13 +24,14 @@ const makeWorkItem = (
   id: string,
   trackerIssueId: string,
   lifecycle: WorkLifecycle = "eligible",
+  projectId: SymphonyProjectId | undefined = PROJECT_ID,
 ): Effect.Effect<WorkItem> =>
   Effect.gen(function* () {
     const now = yield* nowIso;
     return {
       id: WorkItemId.make(id),
       mode: "symphony",
-      projectId: PROJECT_ID,
+      ...(projectId === undefined ? {} : { projectId }),
       workflowId: undefined,
       objective: `Implement ${trackerIssueId}`,
       acceptanceCriteria: [],
@@ -159,6 +160,39 @@ layer("WorkItemRepository claim authority", (it) => {
       expect(afterUpsert.id).toBe(id);
       const byIssue = yield* repo.getByTrackerIssue(PROJECT_ID, "github", "46");
       expect(byIssue?.id).toBe(id);
+    }),
+  );
+
+  it.effect("rejects work items that are not assigned to a Symphony project", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const scoped = yield* makeWorkItem("workitem-unscoped", "unscoped");
+      const { projectId: _projectId, ...item } = scoped;
+      const result = yield* Effect.result(repo.upsert(item));
+
+      expect(result._tag).toBe("Failure");
+      expect(yield* repo.getById(item.id)).toBeNull();
+    }),
+  );
+
+  it.effect("isolates the same tracker issue across Symphony projects", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const otherProjectId = SymphonyProjectId.make("symphony-project-other");
+      const first = yield* makeWorkItem("workitem-project-a", "shared");
+      const second = yield* makeWorkItem(
+        "workitem-project-b",
+        "shared",
+        "eligible",
+        otherProjectId,
+      );
+      yield* repo.upsert(first);
+      yield* repo.upsert(second);
+
+      expect((yield* repo.getByTrackerIssue(PROJECT_ID, "github", "shared"))?.id).toBe(first.id);
+      expect((yield* repo.getByTrackerIssue(otherProjectId, "github", "shared"))?.id).toBe(
+        second.id,
+      );
     }),
   );
 

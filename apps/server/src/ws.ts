@@ -414,6 +414,24 @@ const projectError = (code: string, message: string): SymphonyError =>
 const requireProject = <A>(value: A | null, code: string, message: string) =>
   value === null ? Effect.fail(projectError(code, message)) : Effect.succeed(value);
 
+const requireProjectUpdate = (result: SymphonyOrchestrator.SymphonyProjectUpdateResult) => {
+  switch (result._tag) {
+    case "updated":
+      return Effect.succeed(result.project);
+    case "not_found":
+      return Effect.fail(
+        projectError("symphony_project_not_found", "The Symphony project no longer exists."),
+      );
+    case "revision_conflict":
+      return Effect.fail(
+        projectError(
+          "symphony_project_revision_conflict",
+          "The project changed. Refresh and retry.",
+        ),
+      );
+  }
+};
+
 const withHandoffService = <A, E>(
   run: (handoff: HandoffService.HandoffService["Service"]) => Effect.Effect<A, E>,
   fallback: Effect.Effect<A, E>,
@@ -601,7 +619,7 @@ export const makeSymphonyRpcHandlers = () => ({
             return yield* orchestrator
               .createProject({
                 id,
-                codeProjectId: String(shell.value.id),
+                codeProjectId: shell.value.id,
                 title: input.title ?? shell.value.title,
                 repositoryPath: shell.value.workspaceRoot,
                 configuration: input.configuration,
@@ -609,7 +627,12 @@ export const makeSymphonyRpcHandlers = () => ({
               })
               .pipe(
                 Effect.mapError((cause) =>
-                  projectError("symphony_project_create_failed", cause.message),
+                  cause._tag === "SymphonyProjectConflict"
+                    ? projectError(
+                        "symphony_project_already_exists",
+                        "This Code project or repository already has a Symphony project.",
+                      )
+                    : projectError("symphony_project_create_failed", cause.message),
                 ),
               );
           }),
@@ -637,13 +660,7 @@ export const makeSymphonyRpcHandlers = () => ({
               ),
             )
             .pipe(
-              Effect.flatMap((project) =>
-                requireProject(
-                  project,
-                  "symphony_project_revision_conflict",
-                  "The project changed. Refresh and retry.",
-                ),
-              ),
+              Effect.flatMap(requireProjectUpdate),
               Effect.mapError((cause) =>
                 isSymphonyError(cause)
                   ? cause
@@ -680,8 +697,8 @@ export const makeSymphonyRpcHandlers = () => ({
               );
             }
             if (project.configuration.autonomy === "deliver") {
-              const board = yield* orchestrator
-                .getProjectBoard(project.id)
+              const sourceControl = yield* orchestrator
+                .getProjectSourceControl(project.id)
                 .pipe(
                   Effect.flatMap((value) =>
                     requireProject(
@@ -691,7 +708,7 @@ export const makeSymphonyRpcHandlers = () => ({
                     ),
                   ),
                 );
-              if (board.sourceControl.state !== "known" || board.sourceControl.provider === null) {
+              if (sourceControl.state !== "known" || sourceControl.provider === null) {
                 return yield* Effect.fail(
                   projectError(
                     "symphony_delivery_unavailable",
@@ -701,7 +718,7 @@ export const makeSymphonyRpcHandlers = () => ({
               }
               const discovery = yield* SourceControlDiscovery.SourceControlDiscovery;
               const providers = yield* discovery.discover;
-              const providerKind = board.sourceControl.provider;
+              const providerKind = sourceControl.provider;
               const provider = providers.sourceControlProviders.find(
                 (candidate) => candidate.kind === providerKind,
               );
@@ -720,11 +737,7 @@ export const makeSymphonyRpcHandlers = () => ({
               status: "active",
               now: yield* nowIso,
             });
-            return yield* requireProject(
-              updated,
-              "symphony_project_revision_conflict",
-              "The project changed. Refresh and retry.",
-            );
+            return yield* requireProjectUpdate(updated);
           }).pipe(
             Effect.mapError((cause) =>
               isSymphonyError(cause)
@@ -753,13 +766,7 @@ export const makeSymphonyRpcHandlers = () => ({
               ),
             )
             .pipe(
-              Effect.flatMap((project) =>
-                requireProject(
-                  project,
-                  "symphony_project_revision_conflict",
-                  "The project changed. Refresh and retry.",
-                ),
-              ),
+              Effect.flatMap(requireProjectUpdate),
               Effect.mapError((cause) =>
                 isSymphonyError(cause)
                   ? cause

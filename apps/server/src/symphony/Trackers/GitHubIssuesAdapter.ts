@@ -312,7 +312,8 @@ export const makeGitHubIssuesAdapter = (options: {
       listCandidateIssues,
       refreshIssues,
       getIssue,
-      secretEnvironmentNames: () => (tokenEnv === null ? [] : [tokenEnv]),
+      secretEnvironmentNames: () =>
+        directToken === undefined && tokenEnv !== null ? [tokenEnv] : [],
       probe,
       profile: () => profile,
     };

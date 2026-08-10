@@ -17,7 +17,7 @@ import * as Option from "effect/Option";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 
-import { SymphonyPersistenceSqlError } from "../Errors.ts";
+import { SymphonyPersistenceSqlError, SymphonyProjectConflict } from "../Errors.ts";
 import { decodeJson, encodeJson } from "../Json.ts";
 import {
   SymphonyProjectRepository,
@@ -90,64 +90,102 @@ const legacyTrackerScope = (
   }
 };
 
-const decodeProjectConfiguration = (row: ProjectRow): SymphonyProjectConfiguration | null => {
+type DecodedProjectConfiguration =
+  | { readonly state: "decoded"; readonly configuration: SymphonyProjectConfiguration }
+  | { readonly state: "absent"; readonly configuration: null }
+  | { readonly state: "invalid"; readonly configuration: null; readonly issue: string };
+
+const decodeProjectConfiguration = (row: ProjectRow): DecodedProjectConfiguration => {
   if (row.configurationJson !== null) {
     try {
-      return decodeProjectConfigurationOption(decodeJson(row.configurationJson)).pipe(
-        Option.getOrNull,
-      );
+      const decoded = decodeProjectConfigurationOption(decodeJson(row.configurationJson));
+      return Option.isSome(decoded)
+        ? { state: "decoded", configuration: decoded.value }
+        : {
+            state: "invalid",
+            configuration: null,
+            issue: "configuration_json does not match SymphonyProjectConfiguration",
+          };
     } catch {
-      return null;
+      return { state: "invalid", configuration: null, issue: "configuration_json is invalid JSON" };
     }
   }
   if (row.legacyConfigJson === null) {
-    return null;
+    return { state: "absent", configuration: null };
   }
   let legacy: EffectiveWorkflowConfig;
   try {
     const decoded = decodeLegacyConfigurationOption(decodeJson(row.legacyConfigJson));
-    if (Option.isNone(decoded)) return null;
+    if (Option.isNone(decoded)) {
+      return {
+        state: "invalid",
+        configuration: null,
+        issue: "legacy_config_json does not match EffectiveWorkflowConfig",
+      };
+    }
     legacy = decoded.value;
   } catch {
-    return null;
+    return { state: "invalid", configuration: null, issue: "legacy_config_json is invalid JSON" };
   }
   const tracker = legacyTrackerScope(legacy);
   if (!tracker) {
-    return null;
+    return {
+      state: "invalid",
+      configuration: null,
+      issue: "legacy_config_json does not contain a usable tracker scope",
+    };
   }
   return {
-    tracker,
-    trackerRequiredLabels: [...legacy.trackerRequiredLabels],
-    trackerActiveStates: [...legacy.trackerActiveStates],
-    trackerTerminalStates: [...legacy.trackerTerminalStates],
-    autonomy: legacy.autonomy,
-    agentProvider: legacy.agentProvider,
-    ...(legacy.agentModel === undefined ? {} : { agentModel: legacy.agentModel }),
-    validationRequired: [...legacy.validationRequired],
-    maxConcurrentAgents: legacy.maxConcurrentAgents ?? 1,
-    maxTurns: legacy.maxTurns ?? 20,
-    maxAttempts: legacy.maxAttempts ?? 3,
-    approvalsBeforePush: legacy.approvalsBeforePush ?? false,
-    approvalsBeforePullRequest: legacy.approvalsBeforePullRequest ?? false,
-    approvalsBeforeMerge: legacy.approvalsBeforeMerge ?? true,
+    state: "decoded",
+    configuration: {
+      tracker,
+      trackerRequiredLabels: [...legacy.trackerRequiredLabels],
+      trackerActiveStates: [...legacy.trackerActiveStates],
+      trackerTerminalStates: [...legacy.trackerTerminalStates],
+      autonomy: legacy.autonomy,
+      agentProvider: legacy.agentProvider,
+      ...(legacy.agentModel === undefined ? {} : { agentModel: legacy.agentModel }),
+      validationRequired: [...legacy.validationRequired],
+      maxConcurrentAgents: legacy.maxConcurrentAgents ?? 1,
+      maxTurns: legacy.maxTurns ?? 20,
+      maxAttempts: legacy.maxAttempts ?? 3,
+      approvalsBeforePush: legacy.approvalsBeforePush ?? false,
+      approvalsBeforePullRequest: legacy.approvalsBeforePullRequest ?? false,
+      approvalsBeforeMerge: legacy.approvalsBeforeMerge ?? true,
+    },
   };
 };
 
-const rowToProject = (row: ProjectRow): SymphonyProject => {
-  const configuration = decodeProjectConfiguration(row);
+const rowToProject = (
+  row: ProjectRow,
+): { readonly project: SymphonyProject; readonly decodeIssue: string | null } => {
+  const decoded = decodeProjectConfiguration(row);
   return {
-    id: row.id,
-    codeProjectId: row.codeProjectId,
-    title: row.title,
-    repositoryPath: row.repositoryPath,
-    status: row.status,
-    setupState: configuration === null ? "needs_setup" : row.setupState,
-    configuration,
-    revision: row.revision,
-    legacyWorkflowId: row.legacyWorkflowId,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
+    project: {
+      id: row.id,
+      codeProjectId: row.codeProjectId,
+      title: row.title,
+      repositoryPath: row.repositoryPath,
+      status: row.status,
+      setupState: decoded.configuration === null ? "needs_setup" : row.setupState,
+      configuration: decoded.configuration,
+      revision: row.revision,
+      legacyWorkflowId: row.legacyWorkflowId,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    },
+    decodeIssue: decoded.state === "invalid" ? decoded.issue : null,
   };
+};
+
+const decodeProjectRow = (row: ProjectRow): Effect.Effect<SymphonyProject> => {
+  const decoded = rowToProject(row);
+  return decoded.decodeIssue === null
+    ? Effect.succeed(decoded.project)
+    : Effect.logWarning("symphony.project.configuration.invalid", {
+        projectId: row.id,
+        issue: decoded.decodeIssue,
+      }).pipe(Effect.as(decoded.project));
 };
 
 const projectToRow = (project: SymphonyProject): ProjectRow => ({
@@ -192,7 +230,12 @@ const makeRepository = Effect.gen(function* () {
   const getById: SymphonyProjectRepositoryShape["getById"] = (id) =>
     selectById(id).pipe(
       Effect.mapError(toSqlError("SymphonyProjectRepository.getById")),
-      Effect.map(Option.match({ onNone: () => null, onSome: rowToProject })),
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.succeed(null),
+          onSome: decodeProjectRow,
+        }),
+      ),
     );
 
   const getByCodeProjectId: SymphonyProjectRepositoryShape["getByCodeProjectId"] = (
@@ -205,7 +248,28 @@ const makeRepository = Effect.gen(function* () {
         sql`SELECT ${columns} FROM symphony_projects WHERE code_project_id = ${request.codeProjectId}`,
     })({ codeProjectId }).pipe(
       Effect.mapError(toSqlError("SymphonyProjectRepository.getByCodeProjectId")),
-      Effect.map(Option.match({ onNone: () => null, onSome: rowToProject })),
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.succeed(null),
+          onSome: decodeProjectRow,
+        }),
+      ),
+    );
+
+  const getByRepositoryPath = (repositoryPath: string) =>
+    SqlSchema.findOneOption({
+      Request: Schema.Struct({ repositoryPath: Schema.String }),
+      Result: ProjectRowSchema,
+      execute: (request) =>
+        sql`SELECT ${columns} FROM symphony_projects WHERE repository_path = ${request.repositoryPath}`,
+    })({ repositoryPath }).pipe(
+      Effect.mapError(toSqlError("SymphonyProjectRepository.getByRepositoryPath")),
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.succeed(null),
+          onSome: decodeProjectRow,
+        }),
+      ),
     );
 
   const create: SymphonyProjectRepositoryShape["create"] = (project) => {
@@ -224,34 +288,62 @@ const makeRepository = Effect.gen(function* () {
           ${request.legacyConfigJson}, ${request.revision}, ${request.legacyWorkflowId},
           ${request.createdAt}, ${request.updatedAt}
         )
-        ON CONFLICT(code_project_id) DO NOTHING
+        ON CONFLICT DO NOTHING
         RETURNING ${columns}
       `,
     })(row).pipe(
       Effect.mapError(toSqlError("SymphonyProjectRepository.create")),
       Effect.flatMap(
         Option.match({
-          onNone: () => getByCodeProjectId(String(project.codeProjectId)),
-          onSome: (created) => Effect.succeed(rowToProject(created)),
+          onNone: () =>
+            Effect.gen(function* () {
+              if ((yield* getById(project.id)) !== null) {
+                return yield* Effect.fail(
+                  new SymphonyProjectConflict({ field: "id", value: project.id }),
+                );
+              }
+              if (
+                project.codeProjectId !== null &&
+                (yield* getByCodeProjectId(project.codeProjectId)) !== null
+              ) {
+                return yield* Effect.fail(
+                  new SymphonyProjectConflict({
+                    field: "code_project_id",
+                    value: project.codeProjectId,
+                  }),
+                );
+              }
+              if ((yield* getByRepositoryPath(project.repositoryPath)) !== null) {
+                return yield* Effect.fail(
+                  new SymphonyProjectConflict({
+                    field: "repository_path",
+                    value: project.repositoryPath,
+                  }),
+                );
+              }
+              return yield* Effect.fail(
+                new SymphonyPersistenceSqlError({
+                  operation: "SymphonyProjectRepository.create",
+                  detail: `Project was not created for ${project.id}`,
+                }),
+              );
+            }),
+          onSome: decodeProjectRow,
         }),
-      ),
-      Effect.flatMap((created) =>
-        created === null
-          ? Effect.fail(
-              new SymphonyPersistenceSqlError({
-                operation: "SymphonyProjectRepository.create",
-                detail: `Project was not created for ${project.codeProjectId}`,
-              }),
-            )
-          : Effect.succeed(created),
       ),
     );
   };
 
+  const listRows = SqlSchema.findAll({
+    Request: Schema.Void,
+    Result: ProjectRowSchema,
+    execute: () => sql`SELECT ${columns} FROM symphony_projects ORDER BY created_at ASC`,
+  });
+
   const list: SymphonyProjectRepositoryShape["list"] = () =>
-    sql<ProjectRow>`SELECT ${columns} FROM symphony_projects ORDER BY created_at ASC`.pipe(
+    listRows(undefined).pipe(
       Effect.mapError(toSqlError("SymphonyProjectRepository.list")),
-      Effect.map((rows) => rows.map(rowToProject)),
+      Effect.flatMap((rows) => Effect.forEach(rows, decodeProjectRow)),
     );
 
   const update: SymphonyProjectRepositoryShape["update"] = (project, expectedRevision) => {
@@ -265,7 +357,10 @@ const makeRepository = Effect.gen(function* () {
           status = ${request.row.status},
           setup_state = ${request.row.setupState},
           configuration_json = ${request.row.configurationJson},
-          legacy_config_json = NULL,
+          legacy_config_json = CASE
+            WHEN ${request.row.configurationJson} IS NOT NULL THEN NULL
+            ELSE legacy_config_json
+          END,
           revision = revision + 1,
           updated_at = ${request.row.updatedAt}
         WHERE id = ${request.row.id} AND revision = ${request.expectedRevision}
@@ -273,7 +368,12 @@ const makeRepository = Effect.gen(function* () {
       `,
     })({ row, expectedRevision }).pipe(
       Effect.mapError(toSqlError("SymphonyProjectRepository.update")),
-      Effect.map(Option.match({ onNone: () => null, onSome: rowToProject })),
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.succeed(null),
+          onSome: decodeProjectRow,
+        }),
+      ),
     );
   };
 
