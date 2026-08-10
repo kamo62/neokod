@@ -147,6 +147,16 @@ import {
   SymphonyExportDiagnosticsInput,
   SymphonyExportDiagnosticsResult,
   SymphonyGetOverviewInput,
+  SymphonyListProjectsInput,
+  SymphonyGetProjectInput,
+  SymphonyCreateProjectInput,
+  SymphonyUpdateProjectInput,
+  SymphonyStartProjectInput,
+  SymphonyPauseProjectInput,
+  SymphonyGetProjectBoardInput,
+  SymphonyProjectSchema,
+  SymphonyProjectBoardSchema,
+  SymphonyProjectBoardStreamEvent,
   SymphonyGetRunInput,
   SymphonyGetWorkflowInput,
   SymphonyGetWorkflowContentInput,
@@ -757,6 +767,48 @@ export const WsSymphonyGetRunRpc = Rpc.make(SYMPHONY_WS_METHODS.getRun, {
   error: SymphonyError,
 });
 
+export const WsSymphonyListProjectsRpc = Rpc.make(SYMPHONY_WS_METHODS.listProjects, {
+  payload: SymphonyListProjectsInput,
+  success: Schema.Array(SymphonyProjectSchema),
+  error: SymphonyError,
+});
+
+export const WsSymphonyGetProjectRpc = Rpc.make(SYMPHONY_WS_METHODS.getProject, {
+  payload: SymphonyGetProjectInput,
+  success: Schema.NullOr(SymphonyProjectSchema),
+  error: SymphonyError,
+});
+
+export const WsSymphonyCreateProjectRpc = Rpc.make(SYMPHONY_WS_METHODS.createProject, {
+  payload: SymphonyCreateProjectInput,
+  success: SymphonyProjectSchema,
+  error: SymphonyError,
+});
+
+export const WsSymphonyUpdateProjectRpc = Rpc.make(SYMPHONY_WS_METHODS.updateProject, {
+  payload: SymphonyUpdateProjectInput,
+  success: SymphonyProjectSchema,
+  error: SymphonyError,
+});
+
+export const WsSymphonyStartProjectRpc = Rpc.make(SYMPHONY_WS_METHODS.startProject, {
+  payload: SymphonyStartProjectInput,
+  success: SymphonyProjectSchema,
+  error: SymphonyError,
+});
+
+export const WsSymphonyPauseProjectRpc = Rpc.make(SYMPHONY_WS_METHODS.pauseProject, {
+  payload: SymphonyPauseProjectInput,
+  success: SymphonyProjectSchema,
+  error: SymphonyError,
+});
+
+export const WsSymphonyGetProjectBoardRpc = Rpc.make(SYMPHONY_WS_METHODS.getProjectBoard, {
+  payload: SymphonyGetProjectBoardInput,
+  success: SymphonyProjectBoardSchema,
+  error: SymphonyError,
+});
+
 export const WsSymphonyListWorkflowsRpc = Rpc.make(SYMPHONY_WS_METHODS.listWorkflows, {
   payload: SymphonyListWorkflowsInput,
   success: Schema.Array(WorkflowRecordSchema),
@@ -990,6 +1042,16 @@ export const WsSubscribeSymphonyRunEventsRpc = Rpc.make(SYMPHONY_WS_METHODS.subs
   stream: true,
 });
 
+export const WsSubscribeSymphonyProjectBoardRpc = Rpc.make(
+  SYMPHONY_WS_METHODS.subscribeProjectBoard,
+  {
+    payload: SymphonyGetProjectBoardInput,
+    success: SymphonyProjectBoardStreamEvent,
+    error: SymphonyError,
+    stream: true,
+  },
+);
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
@@ -1063,6 +1125,13 @@ export const WsRpcGroup = RpcGroup.make(
   WsSymphonyListQueueRpc,
   WsSymphonyListRunsRpc,
   WsSymphonyGetRunRpc,
+  WsSymphonyListProjectsRpc,
+  WsSymphonyGetProjectRpc,
+  WsSymphonyCreateProjectRpc,
+  WsSymphonyUpdateProjectRpc,
+  WsSymphonyStartProjectRpc,
+  WsSymphonyPauseProjectRpc,
+  WsSymphonyGetProjectBoardRpc,
   WsSymphonyListWorkflowsRpc,
   WsSymphonyGetWorkflowRpc,
   WsSymphonyValidateWorkflowRpc,
@@ -1100,4 +1169,5 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeSymphonyQueueRpc,
   WsSubscribeSymphonyAttentionRpc,
   WsSubscribeSymphonyRunEventsRpc,
+  WsSubscribeSymphonyProjectBoardRpc,
 );

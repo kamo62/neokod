@@ -1,10 +1,19 @@
 import { createContext, use, type ReactNode } from "react";
+import type { EnvironmentId, ProjectId } from "@neokod/contracts";
 
-const OpenAddProjectCommandPaletteContext = createContext<(() => void) | null>(null);
+export interface AddedCodeProject {
+  readonly environmentId: EnvironmentId;
+  readonly projectId: ProjectId;
+  readonly workspaceRoot: string;
+}
+
+type OpenAddProject = (onAdded?: (project: AddedCodeProject) => void) => void;
+
+const OpenAddProjectCommandPaletteContext = createContext<OpenAddProject | null>(null);
 
 export function OpenAddProjectCommandPaletteProvider(props: {
   readonly children: ReactNode;
-  readonly openAddProject: () => void;
+  readonly openAddProject: OpenAddProject;
 }) {
   return (
     <OpenAddProjectCommandPaletteContext value={props.openAddProject}>
@@ -13,7 +22,7 @@ export function OpenAddProjectCommandPaletteProvider(props: {
   );
 }
 
-export function useOpenAddProjectCommandPalette(): () => void {
+export function useOpenAddProjectCommandPalette(): OpenAddProject {
   const openAddProject = use(OpenAddProjectCommandPaletteContext);
   if (!openAddProject) {
     throw new Error("Command palette actions must be used inside CommandPalette");

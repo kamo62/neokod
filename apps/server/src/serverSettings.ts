@@ -27,6 +27,8 @@ import {
   type ServerSettingsMutation,
   type ServerSettingsMutationAcknowledgement,
   type ServerSettingsPatch,
+  type TrackerProviderSettings,
+  type TrackersSettings,
 } from "@neokod/contracts";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
@@ -60,6 +62,20 @@ const decodeServerSettings = Schema.decodeUnknownEffect(ServerSettings);
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+
+const trackerSecretName = (kind: string) =>
+  `tracker-${Buffer.from(kind, "utf8").toString("base64url")}-credential`;
+
+function redactTrackerCredentials(trackers: TrackersSettings): TrackersSettings {
+  return Object.fromEntries(
+    Object.entries(trackers).map(([kind, tracker]) => [
+      kind,
+      tracker.credential.length > 0
+        ? { ...tracker, credential: "", credentialRedacted: true }
+        : tracker,
+    ]),
+  );
+}
 
 const normalizeServerSettings = (
   settings: ServerSettings,
@@ -168,6 +184,7 @@ export function redactServerSettingsForClient(settings: ServerSettings): ServerS
   );
   return {
     ...settings,
+    trackers: redactTrackerCredentials(settings.trackers),
     providerInstances,
     providers: {
       ...settings.providers,
@@ -565,6 +582,73 @@ const make = Effect.gen(function* () {
           },
         },
       };
+    });
+
+  const materializeTrackerCredentials = (
+    settings: ServerSettings,
+  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
+    Effect.gen(function* () {
+      const trackers: Record<string, TrackerProviderSettings> = { ...settings.trackers };
+      for (const [kind, tracker] of Object.entries(settings.trackers)) {
+        if (tracker.credential.length === 0 && !tracker.credentialRedacted) continue;
+        const secret = yield* secretStore.get(trackerSecretName(kind)).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ServerSettingsError({
+                settingsPath,
+                operation: "read-secret",
+                cause,
+              }),
+          ),
+        );
+        if (Option.isSome(secret)) {
+          trackers[kind] = { ...tracker, credential: textDecoder.decode(secret.value) };
+        }
+      }
+      return { ...settings, trackers };
+    });
+
+  const persistTrackerCredentials = (
+    current: ServerSettings,
+    next: ServerSettings,
+  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
+    Effect.gen(function* () {
+      const trackers: Record<string, TrackerProviderSettings> = { ...next.trackers };
+      for (const [kind, tracker] of Object.entries(next.trackers)) {
+        if (tracker.credentialRedacted) continue;
+        if (tracker.credential.length === 0) {
+          yield* secretStore
+            .remove(trackerSecretName(kind))
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ServerSettingsError({ settingsPath, operation: "remove-secret", cause }),
+              ),
+            );
+          continue;
+        }
+        yield* secretStore
+          .set(trackerSecretName(kind), textEncoder.encode(tracker.credential))
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new ServerSettingsError({ settingsPath, operation: "write-secret", cause }),
+            ),
+          );
+        trackers[kind] = { ...tracker, credential: "", credentialRedacted: true };
+      }
+      for (const kind of Object.keys(current.trackers)) {
+        if (kind in next.trackers) continue;
+        yield* secretStore
+          .remove(trackerSecretName(kind))
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new ServerSettingsError({ settingsPath, operation: "remove-stale-secret", cause }),
+            ),
+          );
+      }
+      return { ...next, trackers };
     });
 
   const persistProviderEnvironmentSecrets = (
@@ -968,7 +1052,11 @@ const make = Effect.gen(function* () {
         ...applyServerSettingsPatch(current, patch),
         revision: current.revision + 1,
       };
-      const nextPersistedEnvironment = yield* persistProviderEnvironmentSecrets(current, patched);
+      const nextPersistedTrackers = yield* persistTrackerCredentials(current, patched);
+      const nextPersistedEnvironment = yield* persistProviderEnvironmentSecrets(
+        current,
+        nextPersistedTrackers,
+      );
       const nextPersistedCredential =
         yield* persistManagedClientEvidenceCredential(nextPersistedEnvironment);
       const nextPersisted =
@@ -980,6 +1068,7 @@ const make = Effect.gen(function* () {
       const materialized = yield* materializeProviderEnvironmentSecrets(next).pipe(
         Effect.flatMap(materializeManagedClientEvidenceCredential),
         Effect.flatMap(materializeManagedClientEvidenceSecretFields),
+        Effect.flatMap(materializeTrackerCredentials),
       );
       return resolveTextGenerationProvider(materialized);
     });
@@ -991,6 +1080,7 @@ const make = Effect.gen(function* () {
       Effect.flatMap(materializeProviderEnvironmentSecrets),
       Effect.flatMap(materializeManagedClientEvidenceCredential),
       Effect.flatMap(materializeManagedClientEvidenceSecretFields),
+      Effect.flatMap(materializeTrackerCredentials),
       Effect.map(resolveTextGenerationProvider),
     ),
     updateSettings: (patch) => writeSemaphore.withPermits(1)(updateSettingsUnderLock(patch)),
@@ -1010,6 +1100,7 @@ const make = Effect.gen(function* () {
           materializeProviderEnvironmentSecrets(settings).pipe(
             Effect.flatMap(materializeManagedClientEvidenceCredential),
             Effect.flatMap(materializeManagedClientEvidenceSecretFields),
+            Effect.flatMap(materializeTrackerCredentials),
             Effect.catch((error: ServerSettingsError) =>
               Effect.logWarning("failed to materialize provider environment secrets", {
                 operation: error.operation,

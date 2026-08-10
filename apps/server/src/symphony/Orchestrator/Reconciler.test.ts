@@ -3,6 +3,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   RunAttemptId,
+  SymphonyProjectId,
   WorkflowId,
   WorkItemId,
 } from "@neokod/contracts";
@@ -49,6 +50,7 @@ const makeConfig = (repositoryPath: string): EffectiveWorkflowConfig => ({
 const makeWorkItem = (id: string, lifecycle: WorkItem["lifecycle"]): WorkItem => ({
   id: WorkItemId.make(id),
   mode: "symphony",
+  projectId: SymphonyProjectId.make("reconciler-project"),
   objective: `Issue ${id}`,
   acceptanceCriteria: [],
   source: { kind: "manual" },

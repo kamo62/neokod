@@ -33,6 +33,7 @@ import { Route as SettingsConnectionsRouteImport } from './routes/settings.conne
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
 import { Route as SettingsAnalyticsRouteImport } from './routes/settings.analytics'
+import { Route as SymphonyProjectsProjectIdRouteImport } from './routes/symphony.projects.$projectId'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
 
@@ -155,6 +156,12 @@ const SettingsAnalyticsRoute = SettingsAnalyticsRouteImport.update({
   path: '/analytics',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SymphonyProjectsProjectIdRoute =
+  SymphonyProjectsProjectIdRouteImport.update({
+    id: '/projects/$projectId',
+    path: '/projects/$projectId',
+    getParentRoute: () => SymphonyRoute,
+  } as any)
 const ChatDraftDraftIdRoute = ChatDraftDraftIdRouteImport.update({
   id: '/draft/$draftId',
   path: '/draft/$draftId',
@@ -193,6 +200,7 @@ export interface FileRoutesByFullPath {
   '/symphony/': typeof SymphonyIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/symphony/projects/$projectId': typeof SymphonyProjectsProjectIdRoute
 }
 export interface FileRoutesByTo {
   '/settings': typeof SettingsRouteWithChildren
@@ -219,6 +227,7 @@ export interface FileRoutesByTo {
   '/symphony': typeof SymphonyIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/symphony/projects/$projectId': typeof SymphonyProjectsProjectIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -248,6 +257,7 @@ export interface FileRoutesById {
   '/symphony/': typeof SymphonyIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/symphony/projects/$projectId': typeof SymphonyProjectsProjectIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -277,6 +287,7 @@ export interface FileRouteTypes {
     | '/symphony/'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
+    | '/symphony/projects/$projectId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/settings'
@@ -303,6 +314,7 @@ export interface FileRouteTypes {
     | '/symphony'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
+    | '/symphony/projects/$projectId'
   id:
     | '__root__'
     | '/_chat'
@@ -331,6 +343,7 @@ export interface FileRouteTypes {
     | '/symphony/'
     | '/_chat/$environmentId/$threadId'
     | '/_chat/draft/$draftId'
+    | '/symphony/projects/$projectId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -509,6 +522,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsAnalyticsRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/symphony/projects/$projectId': {
+      id: '/symphony/projects/$projectId'
+      path: '/projects/$projectId'
+      fullPath: '/symphony/projects/$projectId'
+      preLoaderRoute: typeof SymphonyProjectsProjectIdRouteImport
+      parentRoute: typeof SymphonyRoute
+    }
     '/_chat/draft/$draftId': {
       id: '/_chat/draft/$draftId'
       path: '/draft/$draftId'
@@ -581,6 +601,7 @@ interface SymphonyRouteChildren {
   SymphonyTrackersRoute: typeof SymphonyTrackersRoute
   SymphonyWorkflowsRoute: typeof SymphonyWorkflowsRoute
   SymphonyIndexRoute: typeof SymphonyIndexRoute
+  SymphonyProjectsProjectIdRoute: typeof SymphonyProjectsProjectIdRoute
 }
 
 const SymphonyRouteChildren: SymphonyRouteChildren = {
@@ -594,6 +615,7 @@ const SymphonyRouteChildren: SymphonyRouteChildren = {
   SymphonyTrackersRoute: SymphonyTrackersRoute,
   SymphonyWorkflowsRoute: SymphonyWorkflowsRoute,
   SymphonyIndexRoute: SymphonyIndexRoute,
+  SymphonyProjectsProjectIdRoute: SymphonyProjectsProjectIdRoute,
 }
 
 const SymphonyRouteWithChildren = SymphonyRoute._addFileChildren(

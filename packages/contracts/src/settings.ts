@@ -618,18 +618,28 @@ export const DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL = Duration.seconds(30);
  * any host-side configuration needed to reach them. It lives alongside the
  * existing provider and source-control settings rather than being folded into
  * them, because a tracker is a work source, not a git host or a coding-agent
- * provider. Each activated workflow still declares its own `tracker.kind` and
- * `tracker.provider` in `WORKFLOW.md`; these settings gate enablement and
- * supply defaults (credentials, scope) the workflow can reference.
+ * provider. These settings gate connectivity and supply account or tenant
+ * credentials. Tracker scope belongs to each Symphony Project.
  */
-export const TrackerKindLiteral = Schema.Literals(["github", "jira", "linear", "gitlab", "asana"]);
+export const TrackerKindLiteral = Schema.Literals([
+  "github",
+  "jira",
+  "linear",
+  "gitlab",
+  "asana",
+  "azure_boards",
+  "github_projects",
+]);
 export type TrackerKindLiteral = typeof TrackerKindLiteral.Type;
 
 export const TrackerProviderSettings = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  /** Host-side credential environment reference (for example `$JIRA_API_TOKEN`). */
+  /** Server-materialized credential. Persisted only in ServerSecretStore. */
+  credential: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  credentialRedacted: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** @deprecated Environment-reference compatibility for existing settings. */
   credentialRef: Schema.optional(TrimmedString),
-  /** Default scope for the tracker (e.g. `owner/repo` for GitHub, project key for Jira). */
+  /** @deprecated Project scope now belongs to SymphonyProject configuration. */
   scope: Schema.optional(TrimmedString),
   /** Arbitrary adapter-specific configuration, forwarded to the tracker adapter. */
   config: Schema.Record(Schema.String, Schema.Unknown).pipe(

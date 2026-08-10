@@ -100,12 +100,20 @@ export const makeGitHubIssuesAdapter = (options: {
     }
 
     const tokenEnv = resolveTokenEnv(options.provider);
-    const tokenValue = tokenEnv === null ? undefined : options.env[tokenEnv];
+    const directToken =
+      typeof options.provider.token === "string" && options.provider.token.length > 0
+        ? options.provider.token
+        : undefined;
+    const tokenValue = directToken ?? (tokenEnv === null ? undefined : options.env[tokenEnv]);
     if (tokenEnv !== null && (tokenValue === undefined || tokenValue === "")) {
       return yield* Effect.fail(missingTrackerSecret(tokenEnv));
     }
     const cliEnv: NodeJS.ProcessEnv | undefined =
-      tokenEnv === null ? undefined : { [tokenEnv]: tokenValue };
+      directToken !== undefined
+        ? { GH_TOKEN: directToken }
+        : tokenEnv === null
+          ? undefined
+          : { [tokenEnv]: tokenValue };
 
     const activeStates = normalizeStates(options.provider.active_states) ?? GITHUB_ACTIVE_STATES;
     const terminalStates =
@@ -304,7 +312,8 @@ export const makeGitHubIssuesAdapter = (options: {
       listCandidateIssues,
       refreshIssues,
       getIssue,
-      secretEnvironmentNames: () => (tokenEnv === null ? [] : [tokenEnv]),
+      secretEnvironmentNames: () =>
+        directToken === undefined && tokenEnv !== null ? [tokenEnv] : [],
       probe,
       profile: () => profile,
     };

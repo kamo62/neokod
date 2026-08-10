@@ -1,4 +1,4 @@
-import { WorkItemId, WorkLifecycleSchema } from "@neokod/contracts";
+import { SymphonyProjectId, WorkItemId, WorkLifecycleSchema } from "@neokod/contracts";
 import type { WorkItem } from "@neokod/contracts";
 import { Schema } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
@@ -17,6 +17,7 @@ import {
 
 const WorkItemRowSchema = Schema.Struct({
   id: WorkItemId,
+  projectId: SymphonyProjectId,
   workflowId: Schema.NullOr(Schema.String),
   trackerKind: Schema.String,
   trackerIssueId: Schema.String,
@@ -74,13 +75,15 @@ const DEFAULT_TRANSITION_SOURCES: Readonly<Record<string, ReadonlyArray<string>>
   ],
   preparing: ["eligible", "queued"],
   running: ["preparing"],
+  testing: ["running"],
   blocked: ["preparing", "running", "waiting_for_approval", "retry_scheduled"],
   waiting_for_approval: ["running"],
   retry_scheduled: ["preparing", "running", "waiting_for_approval", "validation_failed"],
-  validation_failed: ["preparing", "running", "retry_scheduled"],
+  validation_failed: ["preparing", "running", "testing", "retry_scheduled"],
   ready_for_review: [
     "preparing",
     "running",
+    "testing",
     "changes_requested",
     "retry_scheduled",
     "validation_failed",
@@ -95,16 +98,18 @@ const DEFAULT_TRANSITION_SOURCES: Readonly<Record<string, ReadonlyArray<string>>
     "preparing",
     "blocked",
     "running",
+    "testing",
     "waiting_for_approval",
     "retry_scheduled",
   ],
-  failed: ["running", "retry_scheduled", "validation_failed"],
+  failed: ["running", "testing", "retry_scheduled", "validation_failed"],
 };
 
 const rowToWorkItem = (row: Schema.Schema.Type<typeof WorkItemRowSchema>): WorkItem => ({
   id: row.id,
   mode: "symphony",
   repositoryPath: row.repositoryPath ?? undefined,
+  projectId: row.projectId,
   workflowId: row.workflowId === null ? undefined : (row.workflowId as WorkItem["workflowId"]),
   objective: row.objective,
   description: row.description ?? undefined,
@@ -129,8 +134,11 @@ const rowToWorkItem = (row: Schema.Schema.Type<typeof WorkItemRowSchema>): WorkI
   ...(row.ownerPid === null ? {} : { ownerPid: row.ownerPid }),
 });
 
-const workItemToRow = (workItem: WorkItem): Schema.Schema.Type<typeof WorkItemRowSchema> => ({
+const workItemToRow = (
+  workItem: WorkItem & { readonly projectId: SymphonyProjectId },
+): Schema.Schema.Type<typeof WorkItemRowSchema> => ({
   id: workItem.id,
+  projectId: workItem.projectId,
   workflowId: workItem.workflowId ?? null,
   trackerKind: workItem.source.kind,
   trackerIssueId:
@@ -170,7 +178,7 @@ const workItemToRow = (workItem: WorkItem): Schema.Schema.Type<typeof WorkItemRo
 // The verbose RETURNING / SELECT column list is written once and interpolated
 // as a literal fragment (`sql.literal`). Kept in sync with WorkItemRowSchema by
 // hand.
-const SELECT_COLUMNS = `  id, workflow_id AS "workflowId", tracker_kind AS "trackerKind",
+const SELECT_COLUMNS = `  id, project_id AS "projectId", workflow_id AS "workflowId", tracker_kind AS "trackerKind",
   tracker_issue_id AS "trackerIssueId", tracker_identifier AS "trackerIdentifier",
   repository_path AS "repositoryPath", objective, description, priority, state,
   labels_json AS "labelsJson", assignee_id AS "assigneeId",
@@ -232,7 +240,7 @@ const makeRepository = Effect.gen(function* () {
     execute: (row) =>
       sql`
         INSERT INTO symphony_work_items (
-          id, workflow_id, tracker_kind, tracker_issue_id, tracker_identifier,
+          id, project_id, workflow_id, tracker_kind, tracker_issue_id, tracker_identifier,
           repository_path, objective, description, priority, state, labels_json,
           assignee_id, blockers_json, branch_name, issue_url, lifecycle,
           workspace_key, workspace_path, base_branch, source_json,
@@ -240,7 +248,7 @@ const makeRepository = Effect.gen(function* () {
           created_at, updated_at, last_seen_at, claimed_at
         )
         VALUES (
-          ${row.id}, ${row.workflowId}, ${row.trackerKind}, ${row.trackerIssueId},
+          ${row.id}, ${row.projectId}, ${row.workflowId}, ${row.trackerKind}, ${row.trackerIssueId},
           ${row.trackerIdentifier}, ${row.repositoryPath}, ${row.objective},
           ${row.description}, ${row.priority}, ${row.state}, ${row.labelsJson},
           ${row.assigneeId}, ${row.blockersJson}, ${row.branchName}, ${row.issueUrl},
@@ -248,7 +256,7 @@ const makeRepository = Effect.gen(function* () {
           ${row.sourceJson}, ${row.acceptanceCriteriaJson}, ${row.eligibilityReasonsJson},
           ${row.createdAt}, ${row.updatedAt}, ${row.lastSeenAt}, ${row.claimedAt}
         )
-        ON CONFLICT(tracker_kind, tracker_issue_id) DO NOTHING
+        ON CONFLICT(project_id, tracker_kind, tracker_issue_id) DO NOTHING
         RETURNING ${cols}
       `,
   });
@@ -259,6 +267,7 @@ const makeRepository = Effect.gen(function* () {
     execute: (row) =>
       sql`
         UPDATE symphony_work_items SET
+          project_id = ${row.projectId},
           workflow_id = ${row.workflowId},
           repository_path = ${row.repositoryPath},
           objective = ${row.objective},
@@ -346,7 +355,16 @@ const makeRepository = Effect.gen(function* () {
   });
 
   const upsert: WorkItemRepositoryShape["upsert"] = (workItem) => {
-    const row = workItemToRow(workItem);
+    if (workItem.projectId === undefined) {
+      return Effect.fail(
+        new SymphonyPersistenceSqlError({
+          operation: "WorkItemRepository.upsert",
+          detail: `Work item ${workItem.id} is not assigned to a Symphony project`,
+          workItemId: workItem.id,
+        }),
+      );
+    }
+    const row = workItemToRow({ ...workItem, projectId: workItem.projectId });
     return insertRow(row).pipe(
       Effect.mapError(toBusyOrSqlError("WorkItemRepository.upsert:insert")),
       Effect.flatMap((inserted) =>
@@ -385,20 +403,26 @@ const makeRepository = Effect.gen(function* () {
     );
 
   const getByTrackerIssue: WorkItemRepositoryShape["getByTrackerIssue"] = (
+    projectId,
     trackerKind,
     trackerIssueId,
   ) =>
     SqlSchema.findOneOption({
-      Request: Schema.Struct({ trackerKind: Schema.String, trackerIssueId: Schema.String }),
+      Request: Schema.Struct({
+        projectId: SymphonyProjectId,
+        trackerKind: Schema.String,
+        trackerIssueId: Schema.String,
+      }),
       Result: WorkItemRowSchema,
       execute: (request) =>
         sql`
           SELECT ${cols}
           FROM symphony_work_items
-          WHERE tracker_kind = ${request.trackerKind}
+          WHERE project_id = ${request.projectId}
+            AND tracker_kind = ${request.trackerKind}
             AND tracker_issue_id = ${request.trackerIssueId}
         `,
-    })({ trackerKind, trackerIssueId }).pipe(
+    })({ projectId, trackerKind, trackerIssueId }).pipe(
       Effect.mapError(toSqlError("WorkItemRepository.getByTrackerIssue")),
       Effect.map(
         Option.match({
@@ -409,6 +433,8 @@ const makeRepository = Effect.gen(function* () {
     );
 
   const listByLifecycle: WorkItemRepositoryShape["listByLifecycle"] = (lifecycles, options) => {
+    const projectFilter =
+      options?.projectId === undefined ? sql`` : sql`AND project_id = ${options.projectId}`;
     const workflowFilter =
       options?.workflowId === undefined ? sql`` : sql`AND workflow_id = ${options.workflowId}`;
     const lifecycleFilter = sql.in("lifecycle", lifecycles);
@@ -416,6 +442,7 @@ const makeRepository = Effect.gen(function* () {
       SELECT ${cols}
       FROM symphony_work_items
       WHERE ${lifecycleFilter}
+        ${projectFilter}
         ${workflowFilter}
       ORDER BY
         (COALESCE(local_priority, priority) BETWEEN 1 AND 4) DESC,
@@ -459,7 +486,7 @@ const makeRepository = Effect.gen(function* () {
         WHERE id = ${id}
           AND owner_token = ${ownerToken}
           AND generation = ${generation}
-          AND lifecycle IN ('preparing', 'running')
+          AND lifecycle IN ('preparing', 'running', 'testing')
         RETURNING ${cols}
       `.pipe(Effect.mapError(toBusyOrSqlError("WorkItemRepository.setClaimOwnerPid")));
       return row.length > 0;
@@ -493,7 +520,7 @@ const makeRepository = Effect.gen(function* () {
           generation = generation + 1,
           updated_at = ${now}
         WHERE id = ${id}
-          AND lifecycle IN ('preparing', 'running')
+          AND lifecycle IN ('preparing', 'running', 'testing')
         RETURNING ${cols}
       `.pipe(Effect.mapError(toBusyOrSqlError("WorkItemRepository.releaseClaim")));
       return row.length > 0;

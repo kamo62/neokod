@@ -41,6 +41,18 @@ export class SymphonyPersistenceDecodeError extends Schema.TaggedErrorClass<Symp
   }
 }
 
+export class SymphonyProjectConflict extends Schema.TaggedErrorClass<SymphonyProjectConflict>()(
+  "SymphonyProjectConflict",
+  {
+    field: Schema.Literals(["id", "code_project_id", "repository_path"]),
+    value: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `A Symphony project already exists for ${this.field} ${this.value}`;
+  }
+}
+
 export class SymphonyClaimLost extends Schema.TaggedErrorClass<SymphonyClaimLost>()(
   "SymphonyClaimLost",
   {
@@ -76,5 +88,6 @@ export class SymphonyOrchestratorLockHeld extends Schema.TaggedErrorClass<Sympho
 export type SymphonyPersistenceError =
   | SymphonyPersistenceSqlError
   | SymphonyPersistenceDecodeError
+  | SymphonyProjectConflict
   | SymphonyClaimLost
   | SymphonyBusy;

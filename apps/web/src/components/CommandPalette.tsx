@@ -52,7 +52,10 @@ import {
   type ReactNode,
 } from "react";
 import { useAtomValue } from "@effect/atom-react";
-import { OpenAddProjectCommandPaletteProvider } from "../commandPaletteContext";
+import {
+  type AddedCodeProject,
+  OpenAddProjectCommandPaletteProvider,
+} from "../commandPaletteContext";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
@@ -110,6 +113,7 @@ import {
   filterCommandPaletteGroups,
   getCommandPaletteInputPlaceholder,
   getCommandPaletteMode,
+  getDefaultCloneDestinationPath,
   ITEM_ICON_CLASS,
   RECENT_THREAD_LIMIT,
 } from "./CommandPalette.logic";
@@ -389,9 +393,23 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     open: false,
     openIntent: null,
   });
-  const setOpen = useCallback((open: boolean) => dispatch({ _tag: "SetOpen", open }), []);
+  const onProjectAddedRef = useRef<((project: AddedCodeProject) => void) | null>(null);
+  const setOpen = useCallback((open: boolean) => {
+    if (!open) onProjectAddedRef.current = null;
+    dispatch({ _tag: "SetOpen", open });
+  }, []);
   const toggleOpen = useCallback(() => dispatch({ _tag: "Toggle" }), []);
-  const openAddProject = useCallback(() => dispatch({ _tag: "OpenAddProject" }), []);
+  const openAddProject = useCallback((onAdded?: (project: AddedCodeProject) => void) => {
+    onProjectAddedRef.current = onAdded ?? null;
+    dispatch({ _tag: "OpenAddProject" });
+  }, []);
+  const completeAddProject = useCallback((project: AddedCodeProject) => {
+    const onAdded = onProjectAddedRef.current;
+    if (onAdded === null) return false;
+    onProjectAddedRef.current = null;
+    onAdded(project);
+    return true;
+  }, []);
   const clearOpenIntent = useCallback(() => dispatch({ _tag: "ClearOpenIntent" }), []);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const composerHandleRef = useRef<ChatComposerHandle | null>(null);
@@ -436,6 +454,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
             openIntent={state.openIntent}
             setOpen={setOpen}
             clearOpenIntent={clearOpenIntent}
+            completeAddProject={completeAddProject}
           />
         </CommandDialog>
       </ComposerHandleContext>
@@ -448,6 +467,7 @@ function CommandPaletteDialog(props: {
   readonly openIntent: CommandPaletteOpenIntent | null;
   readonly setOpen: (open: boolean) => void;
   readonly clearOpenIntent: () => void;
+  readonly completeAddProject: (project: AddedCodeProject) => boolean;
 }) {
   if (!props.open) {
     return null;
@@ -458,6 +478,7 @@ function CommandPaletteDialog(props: {
       openIntent={props.openIntent}
       setOpen={props.setOpen}
       clearOpenIntent={props.clearOpenIntent}
+      completeAddProject={props.completeAddProject}
     />
   );
 }
@@ -466,9 +487,10 @@ function OpenCommandPaletteDialog(props: {
   readonly openIntent: CommandPaletteOpenIntent | null;
   readonly setOpen: (open: boolean) => void;
   readonly clearOpenIntent: () => void;
+  readonly completeAddProject: (project: AddedCodeProject) => boolean;
 }) {
   const navigate = useNavigate();
-  const { clearOpenIntent, openIntent, setOpen } = props;
+  const { clearOpenIntent, completeAddProject, openIntent, setOpen } = props;
   const composerHandleRef = useComposerHandleContext();
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -1228,6 +1250,16 @@ function OpenCommandPaletteDialog(props: {
         cwd,
       );
       if (existing) {
+        if (
+          completeAddProject({
+            environmentId: existing.environmentId,
+            projectId: existing.id,
+            workspaceRoot: existing.workspaceRoot,
+          })
+        ) {
+          setOpen(false);
+          return;
+        }
         const latestThread = getLatestThreadForProject(
           threads.filter((thread) => thread.environmentId === existing.environmentId),
           existing.id,
@@ -1288,6 +1320,13 @@ function OpenCommandPaletteDialog(props: {
         return;
       }
 
+      if (
+        completeAddProject({ environmentId: input.environmentId, projectId, workspaceRoot: cwd })
+      ) {
+        setOpen(false);
+        return;
+      }
+
       const navigationResult = await settlePromise(() =>
         handleNewThread(scopeProjectRef(input.environmentId, projectId)),
       );
@@ -1306,6 +1345,7 @@ function OpenCommandPaletteDialog(props: {
     },
     [
       handleNewThread,
+      completeAddProject,
       createProject,
       navigate,
       projects,
@@ -1350,7 +1390,10 @@ function OpenCommandPaletteDialog(props: {
 
       const provider = remoteProjectSourceProvider(addProjectCloneFlow.source);
       if (!provider) {
-        const destinationPath = getDefaultCloneParentPath(addProjectCloneFlow.environmentId);
+        const destinationPath = getDefaultCloneDestinationPath(
+          getDefaultCloneParentPath(addProjectCloneFlow.environmentId),
+          rawRepository,
+        );
         setAddProjectCloneFlow({
           step: "confirm",
           environmentId: addProjectCloneFlow.environmentId,
@@ -1387,7 +1430,10 @@ function OpenCommandPaletteDialog(props: {
         return;
       }
       const repository = lookupResult.value;
-      const destinationPath = getDefaultCloneParentPath(addProjectCloneFlow.environmentId);
+      const destinationPath = getDefaultCloneDestinationPath(
+        getDefaultCloneParentPath(addProjectCloneFlow.environmentId),
+        repository.nameWithOwner,
+      );
       setAddProjectCloneFlow({
         step: "confirm",
         environmentId: addProjectCloneFlow.environmentId,
@@ -1438,9 +1484,11 @@ function OpenCommandPaletteDialog(props: {
     }
 
     setIsRemoteProjectCloning(true);
+    const cloneProvider = sourceProviderKind(addProjectCloneFlow.source);
     const cloneResult = await cloneRepository({
       environmentId: addProjectCloneFlow.environmentId,
       input: {
+        ...(cloneProvider === null ? {} : { provider: cloneProvider }),
         remoteUrl: addProjectCloneFlow.remoteUrl,
         destinationPath,
       },
@@ -1502,7 +1550,7 @@ function OpenCommandPaletteDialog(props: {
   const cloneDestinationBrowseGroups = useMemo(
     () =>
       browseGroups.map((group) =>
-        group.value === "directories" ? { ...group, label: "Select where to clone" } : group,
+        group.value === "directories" ? { ...group, label: "Destination folder" } : group,
       ),
     [browseGroups],
   );
@@ -1942,7 +1990,7 @@ function OpenCommandPaletteDialog(props: {
                 }
               : addProjectCloneFlow?.step === "confirm"
                 ? {
-                    emptyStateMessage: "Choose a destination path and press Enter to clone.",
+                    emptyStateMessage: "Review the destination folder and press Enter to clone.",
                   }
                 : relativePathNeedsActiveProject
                   ? {

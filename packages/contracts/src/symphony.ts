@@ -4,6 +4,7 @@ import {
   IsoDateTime,
   NonNegativeInt,
   PositiveInt,
+  ProjectId,
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
@@ -31,6 +32,13 @@ export const SYMPHONY_WS_METHODS = {
   listQueue: "symphony.listQueue",
   listRuns: "symphony.listRuns",
   getRun: "symphony.getRun",
+  listProjects: "symphony.listProjects",
+  getProject: "symphony.getProject",
+  createProject: "symphony.createProject",
+  updateProject: "symphony.updateProject",
+  startProject: "symphony.startProject",
+  pauseProject: "symphony.pauseProject",
+  getProjectBoard: "symphony.getProjectBoard",
   listWorkflows: "symphony.listWorkflows",
   getWorkflow: "symphony.getWorkflow",
   validateWorkflow: "symphony.validateWorkflow",
@@ -81,6 +89,7 @@ export const SYMPHONY_WS_METHODS = {
   subscribeQueue: "subscribeSymphonyQueue",
   subscribeAttention: "subscribeSymphonyAttention",
   subscribeRunEvents: "subscribeSymphonyRunEvents",
+  subscribeProjectBoard: "subscribeSymphonyProjectBoard",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -92,6 +101,8 @@ const makeEntityId = <Brand extends string>(brand: Brand) =>
 
 export const WorkflowId = makeEntityId("SymphonyWorkflowId");
 export type WorkflowId = typeof WorkflowId.Type;
+export const SymphonyProjectId = makeEntityId("SymphonyProjectId");
+export type SymphonyProjectId = typeof SymphonyProjectId.Type;
 export const WorkItemId = makeEntityId("SymphonyWorkItemId");
 export type WorkItemId = typeof WorkItemId.Type;
 export const RunAttemptId = makeEntityId("SymphonyRunAttemptId");
@@ -198,6 +209,7 @@ export const WorkLifecycleSchema = Schema.Literals([
   "queued",
   "preparing",
   "running",
+  "testing",
   "blocked",
   "waiting_for_approval",
   "retry_scheduled",
@@ -451,6 +463,7 @@ export const WorkItemSchema = Schema.Struct({
   mode: Schema.Literals(["work", "symphony"]),
   repositoryId: Schema.optional(TrimmedNonEmptyString),
   repositoryPath: Schema.optional(TrimmedNonEmptyString),
+  projectId: Schema.optional(SymphonyProjectId),
   workflowId: Schema.optional(WorkflowId),
   objective: Schema.String,
   description: Schema.optional(Schema.String),
@@ -525,6 +538,7 @@ export type AttentionItemState = typeof AttentionItemStateSchema.Type;
 
 export const AttentionItemSchema = Schema.Struct({
   id: AttentionItemId,
+  projectId: Schema.optional(SymphonyProjectId),
   workItemId: WorkItemId,
   runAttemptId: Schema.optional(RunAttemptId),
   kind: AttentionItemKindSchema,
@@ -616,6 +630,80 @@ export type TrackerKind = typeof TrackerKindSchema.Type;
 
 export const AutonomyLevelSchema = Schema.Literals(["observe", "prepare", "execute", "deliver"]);
 export type AutonomyLevel = typeof AutonomyLevelSchema.Type;
+
+export const SymphonyTrackerScopeSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("github"),
+    repository: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("jira"),
+    projectKey: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("linear"),
+    projectSlug: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("gitlab"),
+    projectPath: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("asana"),
+    projectGid: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("azure_boards"),
+    /** @deprecated Legacy project-local organization; new projects use global Tracking settings. */
+    organization: Schema.optional(TrimmedNonEmptyString),
+    project: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("github_projects"),
+    owner: TrimmedNonEmptyString,
+    number: PositiveInt,
+  }),
+]);
+export type SymphonyTrackerScope = typeof SymphonyTrackerScopeSchema.Type;
+
+export const SymphonyProjectConfigurationSchema = Schema.Struct({
+  tracker: SymphonyTrackerScopeSchema,
+  trackerRequiredLabels: Schema.Array(Schema.String),
+  trackerActiveStates: Schema.Array(Schema.String),
+  trackerTerminalStates: Schema.Array(Schema.String),
+  autonomy: AutonomyLevelSchema,
+  agentProvider: ProviderInstanceRef,
+  agentModel: Schema.optional(TrimmedNonEmptyString),
+  validationRequired: Schema.Array(Schema.String),
+  maxConcurrentAgents: PositiveInt,
+  maxTurns: PositiveInt,
+  maxAttempts: PositiveInt,
+  approvalsBeforePush: Schema.Boolean,
+  approvalsBeforePullRequest: Schema.Boolean,
+  approvalsBeforeMerge: Schema.Boolean,
+});
+export type SymphonyProjectConfiguration = typeof SymphonyProjectConfigurationSchema.Type;
+
+export const SymphonyProjectStatusSchema = Schema.Literals(["active", "paused"]);
+export type SymphonyProjectStatus = typeof SymphonyProjectStatusSchema.Type;
+
+export const SymphonyProjectSetupStateSchema = Schema.Literals(["ready", "needs_setup"]);
+export type SymphonyProjectSetupState = typeof SymphonyProjectSetupStateSchema.Type;
+
+export const SymphonyProjectSchema = Schema.Struct({
+  id: SymphonyProjectId,
+  codeProjectId: Schema.NullOr(ProjectId),
+  title: TrimmedNonEmptyString,
+  repositoryPath: TrimmedNonEmptyString,
+  status: SymphonyProjectStatusSchema,
+  setupState: SymphonyProjectSetupStateSchema,
+  configuration: Schema.NullOr(SymphonyProjectConfigurationSchema),
+  revision: NonNegativeInt,
+  legacyWorkflowId: Schema.NullOr(WorkflowId),
+  createdAt: IsoDateTime,
+  updatedAt: IsoDateTime,
+});
+export type SymphonyProject = typeof SymphonyProjectSchema.Type;
 
 export const ApprovalPolicyClassSchema = Schema.Struct({
   action: ApprovalActionSchema,
@@ -748,6 +836,7 @@ export type SymphonyOverview = typeof SymphonyOverviewSchema.Type;
 
 export const QueueItemSchema = Schema.Struct({
   workItemId: WorkItemId,
+  projectId: Schema.optional(SymphonyProjectId),
   trackerIdentifier: Schema.optional(Schema.String),
   title: Schema.String,
   repositoryPath: Schema.optional(Schema.String),
@@ -781,6 +870,7 @@ export type RunSummaryPullRequest = typeof RunSummaryPullRequestSchema.Type;
 export const RunSummarySchema = Schema.Struct({
   runAttemptId: RunAttemptId,
   workItemId: WorkItemId,
+  projectId: Schema.optional(SymphonyProjectId),
   trackerIdentifier: Schema.optional(Schema.String),
   issueTitle: Schema.optional(Schema.String),
   repositoryPath: Schema.optional(Schema.String),
@@ -816,6 +906,7 @@ export type RunDetails = typeof RunDetailsSchema.Type;
 
 export const RunHistoryEntrySchema = Schema.Struct({
   workItemId: WorkItemId,
+  projectId: Schema.optional(SymphonyProjectId),
   trackerIdentifier: Schema.optional(Schema.String),
   issueTitle: Schema.optional(Schema.String),
   repositoryPath: Schema.optional(Schema.String),
@@ -837,6 +928,60 @@ export const TrackerHealthSchema = Schema.Struct({
   profile: Schema.Record(Schema.String, Schema.Unknown),
 });
 export type TrackerHealth = typeof TrackerHealthSchema.Type;
+
+export const SymphonyBoardColumnIdSchema = Schema.Literals([
+  "not_started",
+  "in_progress",
+  "testing",
+  "human_review",
+  "done",
+]);
+export type SymphonyBoardColumnId = typeof SymphonyBoardColumnIdSchema.Type;
+
+export const SymphonyBoardCardSchema = Schema.Struct({
+  workItemId: WorkItemId,
+  projectId: SymphonyProjectId,
+  trackerIdentifier: Schema.optional(Schema.String),
+  title: Schema.String,
+  lifecycle: WorkLifecycleSchema,
+  columnId: SymphonyBoardColumnIdSchema,
+  outcome: Schema.NullOr(Schema.Literals(["completed", "cancelled", "failed"])),
+  priority: Schema.optional(Schema.Int),
+  issueUrl: Schema.optional(Schema.String),
+  updatedAt: IsoDateTime,
+});
+export type SymphonyBoardCard = typeof SymphonyBoardCardSchema.Type;
+
+export const SymphonyBoardColumnSchema = Schema.Struct({
+  id: SymphonyBoardColumnIdSchema,
+  title: TrimmedNonEmptyString,
+  cards: Schema.Array(SymphonyBoardCardSchema),
+});
+export type SymphonyBoardColumn = typeof SymphonyBoardColumnSchema.Type;
+
+export const SymphonyProjectSourceControlSchema = Schema.Union([
+  Schema.Struct({ state: Schema.Literal("none") }),
+  Schema.Struct({
+    state: Schema.Literal("known"),
+    vcsKind: TrimmedNonEmptyString,
+    provider: Schema.NullOr(TrimmedNonEmptyString),
+    remoteUrl: Schema.NullOr(TrimmedNonEmptyString),
+    authenticated: Schema.NullOr(Schema.Boolean),
+  }),
+  Schema.Struct({
+    state: Schema.Literal("unavailable"),
+    reason: Schema.String,
+  }),
+]);
+export type SymphonyProjectSourceControl = typeof SymphonyProjectSourceControlSchema.Type;
+
+export const SymphonyProjectBoardSchema = Schema.Struct({
+  project: SymphonyProjectSchema,
+  sourceControl: SymphonyProjectSourceControlSchema,
+  columns: Schema.Array(SymphonyBoardColumnSchema),
+  generatedAt: IsoDateTime,
+});
+export type SymphonyProjectBoard = typeof SymphonyProjectBoardSchema.Type;
 
 // ---------------------------------------------------------------------------
 // Handoff (PRD 14.12, 16)
@@ -890,12 +1035,14 @@ export const SymphonyRpcErrorSchema = Schema.Union([
 
 export const SymphonyGetOverviewInput = Schema.Struct({});
 export const SymphonyListQueueInput = Schema.Struct({
+  projectId: Schema.optional(SymphonyProjectId),
   workflowId: Schema.optional(WorkflowId),
   repositoryPath: Schema.optional(Schema.String),
   lifecycle: Schema.optional(WorkLifecycleSchema),
   limit: Schema.optional(PositiveInt),
 });
 export const SymphonyListRunsInput = Schema.Struct({
+  projectId: Schema.optional(SymphonyProjectId),
   workflowId: Schema.optional(WorkflowId),
   repositoryPath: Schema.optional(Schema.String),
   status: Schema.optional(RunAttemptStatusSchema),
@@ -904,6 +1051,32 @@ export const SymphonyListRunsInput = Schema.Struct({
 });
 export const SymphonyGetRunInput = Schema.Struct({
   runAttemptId: RunAttemptId,
+});
+export const SymphonyListProjectsInput = Schema.Struct({});
+export const SymphonyGetProjectInput = Schema.Struct({
+  projectId: SymphonyProjectId,
+});
+export const SymphonyCreateProjectInput = Schema.Struct({
+  codeProjectId: ProjectId,
+  title: Schema.optional(TrimmedNonEmptyString),
+  configuration: SymphonyProjectConfigurationSchema,
+});
+export const SymphonyUpdateProjectInput = Schema.Struct({
+  projectId: SymphonyProjectId,
+  expectedRevision: NonNegativeInt,
+  title: Schema.optional(TrimmedNonEmptyString),
+  configuration: Schema.optional(SymphonyProjectConfigurationSchema),
+});
+export const SymphonyStartProjectInput = Schema.Struct({
+  projectId: SymphonyProjectId,
+  expectedRevision: NonNegativeInt,
+});
+export const SymphonyPauseProjectInput = Schema.Struct({
+  projectId: SymphonyProjectId,
+  expectedRevision: NonNegativeInt,
+});
+export const SymphonyGetProjectBoardInput = Schema.Struct({
+  projectId: SymphonyProjectId,
 });
 export const SymphonyListWorkflowsInput = Schema.Struct({
   repositoryPath: Schema.optional(Schema.String),
@@ -957,6 +1130,7 @@ export const SymphonyCreateWorkflowResult = Schema.Struct({
 });
 export const SymphonyListTrackersInput = Schema.Struct({});
 export const SymphonyListHistoryInput = Schema.Struct({
+  projectId: Schema.optional(SymphonyProjectId),
   limit: Schema.optional(PositiveInt),
 });
 export const SymphonyActivateWorkflowInput = Schema.Struct({
@@ -1013,6 +1187,7 @@ export const SymphonyResolveAttentionInput = Schema.Struct({
   attentionItemId: AttentionItemId,
 });
 export const SymphonyListAttentionInput = Schema.Struct({
+  projectId: Schema.optional(SymphonyProjectId),
   limit: Schema.optional(PositiveInt),
 });
 export const SymphonyRequestChangesInput = Schema.Struct({
@@ -1109,6 +1284,14 @@ export const SymphonyAttentionStreamEvent = Schema.Union([
     version: Schema.Literal(1),
     type: Schema.Literal("attentionItemChanged"),
     item: AttentionItemSchema,
+  }),
+]);
+
+export const SymphonyProjectBoardStreamEvent = Schema.Union([
+  Schema.Struct({
+    version: Schema.Literal(1),
+    type: Schema.Literal("projectBoard"),
+    board: SymphonyProjectBoardSchema,
   }),
 ]);
 

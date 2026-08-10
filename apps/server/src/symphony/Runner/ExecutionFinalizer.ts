@@ -86,6 +86,17 @@ export const makeExecutionFinalizer = Effect.gen(function* () {
     Effect.gen(function* () {
       const now = yield* nowIso;
 
+      const enteredTesting = yield* workItems
+        .transition(input.workItem.id, "testing", {
+          ownerToken: input.ownerToken,
+          generation: input.generation,
+          from: ["running"],
+        })
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+      if (enteredTesting && input.config.validationRequired.length > 0) {
+        yield* appendEvent(input.runAttemptId, "validation_started");
+      }
+
       // 1. Validation (no-op when nothing is configured).
       const validationResults = yield* validationRunner.runAll({
         config: input.config,

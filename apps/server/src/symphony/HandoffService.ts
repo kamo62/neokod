@@ -6,6 +6,7 @@ import {
   ProviderInstanceId,
   ProjectId,
   RunAttemptId,
+  SymphonyProjectId,
   ThreadId,
   WorkItemId as WorkItemIdBrand,
 } from "@neokod/contracts";
@@ -509,11 +510,17 @@ export const makeHandoffService = Effect.gen(function* () {
       const workflow = yield* resolveWorkflowForDelegate(input.repositoryPath).pipe(
         Effect.catch(() => Effect.succeed(null)),
       );
+      if (workflow === null) {
+        return yield* Effect.fail(
+          new HandoffError("the repository is not attached to a Symphony project"),
+        );
+      }
       const workItem: WorkItem = {
         id,
         mode: "symphony",
+        projectId: SymphonyProjectId.make(workflow.id),
         ...(input.repositoryPath !== undefined ? { repositoryPath: input.repositoryPath } : {}),
-        ...(workflow !== null ? { workflowId: workflow.id } : {}),
+        workflowId: workflow.id,
         objective: input.objective,
         ...(input.summary !== undefined ? { description: input.summary } : {}),
         ...(input.relevantFiles !== undefined && input.relevantFiles.length > 0

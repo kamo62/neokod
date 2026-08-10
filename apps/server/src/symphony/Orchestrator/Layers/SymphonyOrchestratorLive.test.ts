@@ -3,13 +3,16 @@ import type {
   EvidenceBundle,
   NormalizedIssue,
   PullRequestEvidence,
+  SymphonyProjectConfiguration,
 } from "@neokod/contracts";
 import {
+  ProjectId,
   WorkflowId,
   WorkItemId,
   ProviderInstanceId,
   ProviderDriverKind,
   RunAttemptId,
+  SymphonyProjectId,
 } from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -17,11 +20,13 @@ import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { nowIso } from "../../Domain/Time.ts";
 import { SqlitePersistenceMemory } from "../../../persistence/Layers/Sqlite.ts";
 import { WorkflowRepository } from "../../Persistence/Services/WorkflowRepository.ts";
 import { WorkflowRepositoryLive } from "../../Persistence/Layers/WorkflowRepository.ts";
+import { SymphonyProjectRepositoryLive } from "../../Persistence/Layers/SymphonyProjectRepository.ts";
 import { WorkItemRepository } from "../../Persistence/Services/WorkItemRepository.ts";
 import { WorkItemRepositoryLive } from "../../Persistence/Layers/WorkItemRepository.ts";
 import { RunAttemptRepository } from "../../Persistence/Services/RunAttemptRepository.ts";
@@ -43,14 +48,40 @@ import { makeMemoryTrackerAdapter } from "../../Trackers/MemoryAdapter.ts";
 import { missingTrackerSecret } from "../../Trackers/Errors.ts";
 import { TrackerEnablementLive } from "../TrackerEnablement.ts";
 import { SymphonyOrchestrator } from "../SymphonyOrchestrator.ts";
-import { SymphonyOrchestratorLive, modelReviewAllowsMerge } from "./SymphonyOrchestratorLive.ts";
+import {
+  SymphonyOrchestratorLive,
+  modelReviewAllowsMerge,
+  providerForRemoteUrl,
+} from "./SymphonyOrchestratorLive.ts";
 import { RunDispatcher, RunDispatchError } from "../../Runner/Dispatcher.ts";
 import { PullRequestService } from "../../Evidence/PullRequest.ts";
 import { buildRunPrompt, type ReviewFeedbackContext } from "../../Runner/Prompt.ts";
 import { WorkflowLoaderService, type WorkflowLoader } from "../../Workflow/Loader.ts";
 import { layerTest as serverSettingsTestLayer } from "../../../serverSettings.ts";
+import * as ServerConfig from "../../../config.ts";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 
 const encodeJson = Schema.encodeUnknownSync(Schema.UnknownFromJsonString);
+const TEST_PROJECT_ID = SymphonyProjectId.make("orchestrator-test-project");
+
+const makeProjectConfiguration = (): SymphonyProjectConfiguration => ({
+  tracker: { kind: "github", repository: "owner/repo" },
+  trackerRequiredLabels: [],
+  trackerActiveStates: ["open"],
+  trackerTerminalStates: ["closed"],
+  autonomy: "observe",
+  agentProvider: {
+    instanceId: ProviderInstanceId.make("codex_default"),
+    driver: ProviderDriverKind.make("codex"),
+  },
+  validationRequired: [],
+  maxConcurrentAgents: 4,
+  maxTurns: 20,
+  maxAttempts: 3,
+  approvalsBeforePush: false,
+  approvalsBeforePullRequest: false,
+  approvalsBeforeMerge: true,
+});
 
 const makeConfig = (repositoryPath: string): EffectiveWorkflowConfig => ({
   repositoryPath,
@@ -152,6 +183,15 @@ it("gates enforced model review on verdict, configuration, and reviewed head", (
       {} as PullRequestEvidence,
     ),
   ).toBe(true);
+});
+
+it("classifies source-control providers by parsed remote host", () => {
+  expect(providerForRemoteUrl("https://github.com/owner/repo.git")).toBe("github");
+  expect(providerForRemoteUrl("github.com:owner/repo.git")).toBe("github");
+  expect(providerForRemoteUrl("git@gitlab.com:owner/repo.git")).toBe("gitlab");
+  expect(providerForRemoteUrl("https://dev.azure.com/org/project/_git/repo")).toBe("azure-devops");
+  expect(providerForRemoteUrl("https://github.com.evil.test/owner/repo.git")).toBeNull();
+  expect(providerForRemoteUrl("not a remote with github.com in the path")).toBeNull();
 });
 
 const makeIssue = (
@@ -312,6 +352,7 @@ const layer = it.layer(
   SymphonyOrchestratorLive.pipe(
     Layer.provideMerge(WorkItemRepositoryLive),
     Layer.provideMerge(WorkflowRepositoryLive),
+    Layer.provideMerge(SymphonyProjectRepositoryLive),
     Layer.provideMerge(RunAttemptRepositoryLive),
     Layer.provideMerge(RunEventRepositoryLive),
     Layer.provideMerge(OrchestratorStateRepositoryLive),
@@ -327,42 +368,47 @@ const layer = it.layer(
     Layer.provideMerge(AuditRepositoryLive),
     Layer.provideMerge(NotificationCoordinatorLive),
     Layer.provideMerge(
-      Layer.effect(
-        PullRequestService,
-        Effect.gen(function* () {
-          // Per-test control of the fresh host query (fix-lane item 8: the
-          // gate must not be proven by a stub that always passes).
-          pullRequestRefreshRef = yield* Ref.make<PullRequestEvidence | null>({
-            number: 1,
-            title: "t",
-            branch: "b",
-            baseBranch: "m",
-            status: "open",
-            ciStatus: "success",
-            reviewState: "approved",
-            mergeable: "mergeable",
-            unresolvedComments: 0,
-          });
-          pullRequestCommentsRef = yield* Ref.make<ReadonlyArray<{
-            readonly body: string;
-            readonly author?: string;
-          }> | null>(null);
-          return {
-            create: () => Effect.succeed(null as never),
-            refresh: () => Ref.get(pullRequestRefreshRef as Ref.Ref<PullRequestEvidence | null>),
-            listUnresolvedComments: () =>
-              Ref.get(
-                pullRequestCommentsRef as Ref.Ref<ReadonlyArray<{
-                  readonly body: string;
-                  readonly author?: string;
-                }> | null>,
-              ),
-          } satisfies PullRequestService["Service"];
-        }),
+      Layer.mergeAll(
+        Layer.effect(
+          PullRequestService,
+          Effect.gen(function* () {
+            // Per-test control of the fresh host query (fix-lane item 8: the
+            // gate must not be proven by a stub that always passes).
+            pullRequestRefreshRef = yield* Ref.make<PullRequestEvidence | null>({
+              number: 1,
+              title: "t",
+              branch: "b",
+              baseBranch: "m",
+              status: "open",
+              ciStatus: "success",
+              reviewState: "approved",
+              mergeable: "mergeable",
+              unresolvedComments: 0,
+            });
+            pullRequestCommentsRef = yield* Ref.make<ReadonlyArray<{
+              readonly body: string;
+              readonly author?: string;
+            }> | null>(null);
+            return {
+              create: () => Effect.succeed(null as never),
+              refresh: () => Ref.get(pullRequestRefreshRef as Ref.Ref<PullRequestEvidence | null>),
+              listUnresolvedComments: () =>
+                Ref.get(
+                  pullRequestCommentsRef as Ref.Ref<ReadonlyArray<{
+                    readonly body: string;
+                    readonly author?: string;
+                  }> | null>,
+                ),
+            } satisfies PullRequestService["Service"];
+          }),
+        ),
+        serverSettingsTestLayer({ trackers: { github: { enabled: true } } }),
+        ServerConfig.layerTest(process.cwd(), {
+          prefix: "neokod-symphony-orchestrator-test-",
+        }).pipe(Layer.provide(NodeServices.layer)),
+        SqlitePersistenceMemory,
       ),
     ),
-    Layer.provideMerge(serverSettingsTestLayer({ trackers: { github: { enabled: true } } })),
-    Layer.provideMerge(SqlitePersistenceMemory),
   ),
 );
 
@@ -391,6 +437,111 @@ const seedWorkflow = (
   });
 
 layer("SymphonyOrchestrator Observe", (it) => {
+  it.effect("creates project workflows, exposes boards, and distinguishes update failures", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workflows = yield* WorkflowRepository;
+      const projectId = SymphonyProjectId.make("project-operations");
+      const created = yield* orchestrator.createProject({
+        id: projectId,
+        codeProjectId: ProjectId.make("code-project-operations"),
+        title: "Project operations",
+        repositoryPath: "/repo/project-operations",
+        configuration: makeProjectConfiguration(),
+        now: "2026-08-10T00:00:00.000Z",
+      });
+
+      expect(created.status).toBe("paused");
+      const syncedWorkflow = yield* workflows.getById(WorkflowId.make(projectId));
+      expect(syncedWorkflow?.status).toBe("paused");
+      expect(syncedWorkflow?.effectiveConfig?.concurrencyGlobal).toBe(4);
+      expect((yield* orchestrator.getProjectBoard(projectId))?.sourceControl.state).toBe(
+        "unavailable",
+      );
+
+      const updated = yield* orchestrator.updateProject({
+        projectId,
+        expectedRevision: 0,
+        title: "Renamed project",
+        now: "2026-08-10T00:01:00.000Z",
+      });
+      expect(updated._tag).toBe("updated");
+      if (updated._tag === "updated") {
+        expect(updated.project.title).toBe("Renamed project");
+        expect(updated.project.revision).toBe(1);
+      }
+
+      expect(
+        (yield* orchestrator.updateProject({
+          projectId,
+          expectedRevision: 0,
+          title: "Stale",
+          now: "2026-08-10T00:02:00.000Z",
+        }))._tag,
+      ).toBe("revision_conflict");
+      expect(
+        (yield* orchestrator.updateProject({
+          projectId: SymphonyProjectId.make("missing-project"),
+          expectedRevision: 0,
+          title: "Missing",
+          now: "2026-08-10T00:02:00.000Z",
+        }))._tag,
+      ).toBe("not_found");
+    }),
+  );
+
+  it.effect("rolls back project writes when workflow synchronization fails", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const sql = yield* SqlClient.SqlClient;
+      const createProjectId = SymphonyProjectId.make("project-create-sync-failure");
+      yield* seedWorkflow("conflicting-create-workflow", "/repo/project-create-sync-failure");
+
+      const createResult = yield* Effect.result(
+        orchestrator.createProject({
+          id: createProjectId,
+          codeProjectId: ProjectId.make("code-project-create-sync-failure"),
+          title: "Create should roll back",
+          repositoryPath: "/repo/project-create-sync-failure",
+          configuration: makeProjectConfiguration(),
+          now: "2026-08-10T00:00:00.000Z",
+        }),
+      );
+      expect(createResult._tag).toBe("Failure");
+      expect(yield* orchestrator.getProject(createProjectId)).toBeNull();
+      yield* sql`DELETE FROM symphony_workflows WHERE id = ${WorkflowId.make("conflicting-create-workflow")}`;
+
+      const updateProjectId = SymphonyProjectId.make("project-update-sync-failure");
+      const created = yield* orchestrator.createProject({
+        id: updateProjectId,
+        codeProjectId: ProjectId.make("code-project-update-sync-failure"),
+        title: "Original title",
+        repositoryPath: "/repo/project-update-sync-failure",
+        configuration: makeProjectConfiguration(),
+        now: "2026-08-10T00:00:00.000Z",
+      });
+      yield* sql`
+        UPDATE symphony_workflows
+        SET id = ${WorkflowId.make("conflicting-update-workflow")}
+        WHERE id = ${WorkflowId.make(updateProjectId)}
+      `;
+
+      const updateResult = yield* Effect.result(
+        orchestrator.updateProject({
+          projectId: updateProjectId,
+          expectedRevision: created.revision,
+          title: "Partially updated title",
+          now: "2026-08-10T00:01:00.000Z",
+        }),
+      );
+      expect(updateResult._tag).toBe("Failure");
+      expect(yield* orchestrator.getProject(updateProjectId)).toMatchObject({
+        title: "Original title",
+        revision: 0,
+      });
+    }),
+  );
+
   it.effect("polls an Observe workflow and projects an eligible queue without dispatching", () =>
     Effect.gen(function* () {
       dispatchedIds.length = 0;
@@ -411,6 +562,13 @@ layer("SymphonyOrchestrator Observe", (it) => {
         byTitle.get("Issue 3")?.ineligibilityReasons.some((r) => r.startsWith("missing_label")),
       ).toBe(true);
       expect(byTitle.get("Issue 2")).toBeUndefined();
+      expect(
+        (yield* orchestrator.listQueue({ projectId: SymphonyProjectId.make("wf-observe-1") }))
+          .length,
+      ).toBeGreaterThan(0);
+      expect(
+        yield* orchestrator.listQueue({ projectId: SymphonyProjectId.make("other-project") }),
+      ).toEqual([]);
       expect(dispatchedIds).toEqual([]);
     }),
   );
@@ -516,7 +674,12 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* seedWorkflow("wf-runs-1", "/repo/runs");
       yield* orchestrator.refreshNow();
       const queue = yield* orchestrator.listQueue();
-      const eligible = queue.find((item) => item.eligible === true && item.excluded === false);
+      const eligible = queue.find(
+        (item) =>
+          item.workflowId === WorkflowId.make("wf-runs-1") &&
+          item.eligible === true &&
+          item.excluded === false,
+      );
       if (eligible === undefined) {
         return;
       }
@@ -566,6 +729,16 @@ layer("SymphonyOrchestrator Observe", (it) => {
       expect(latest?.status).toBe("streaming_turn");
       expect(latest?.latestEvent).toBe("turn_started");
       expect(latest?.lifecycle).toBe("running");
+      expect(latest?.projectId).toBe(SymphonyProjectId.make("wf-runs-1"));
+      const scopedRuns = yield* orchestrator.listRuns({
+        projectId: SymphonyProjectId.make("wf-runs-1"),
+      });
+      expect(scopedRuns.some((run) => run.runAttemptId === secondId)).toBe(true);
+      const history = yield* orchestrator.listHistory({
+        projectId: SymphonyProjectId.make("wf-runs-1"),
+        limit: 1,
+      });
+      expect(history.map((run) => run.runAttemptId)).toEqual([firstId]);
     }),
   );
 
@@ -620,7 +793,12 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* seedWorkflow("wf-attention-1", "/repo/attention");
       yield* orchestrator.refreshNow();
       const queue = yield* orchestrator.listQueue();
-      const eligible = queue.find((item) => item.eligible === true && item.excluded === false);
+      const eligible = queue.find(
+        (item) =>
+          item.workflowId === WorkflowId.make("wf-attention-1") &&
+          item.eligible === true &&
+          item.excluded === false,
+      );
       if (eligible === undefined) {
         return;
       }
@@ -643,6 +821,11 @@ layer("SymphonyOrchestrator Observe", (it) => {
       expect(item).toBeDefined();
       expect(item?.kind).toBe("command_approval");
       expect(item?.availableActions).toEqual(["approve", "reject"]);
+      const scopedAttention = yield* orchestrator.listAttention({
+        projectId: SymphonyProjectId.make("wf-attention-1"),
+        limit: 1,
+      });
+      expect(scopedAttention.map((entry) => entry.id)).toEqual([item?.id]);
     }),
   );
 
@@ -678,6 +861,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* workItemRepository.upsert({
         id: WorkItemId.make(`sweep-${eligible.workItemId}`),
         mode: "symphony",
+        projectId: TEST_PROJECT_ID,
         objective: "Sweep target",
         acceptanceCriteria: [],
         source: { kind: "manual" },
@@ -758,6 +942,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* workItems.upsert({
         id: workItemId,
         mode: "symphony",
+        projectId: TEST_PROJECT_ID,
         objective: "Retry target",
         acceptanceCriteria: [],
         source: { kind: "manual" },
@@ -838,6 +1023,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* workItems.upsert({
         id: workItemId,
         mode: "symphony",
+        projectId: TEST_PROJECT_ID,
         objective: "Vanished issue",
         acceptanceCriteria: [],
         source: { kind: "manual" },
@@ -903,6 +1089,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* workItems.upsert({
         id: workItemId,
         mode: "symphony",
+        projectId: TEST_PROJECT_ID,
         objective: "Paused target",
         acceptanceCriteria: [],
         source: { kind: "manual" },
@@ -950,6 +1137,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* workItems.upsert({
         id: workItemId,
         mode: "symphony",
+        projectId: TEST_PROJECT_ID,
         objective: "Global pause target",
         acceptanceCriteria: [],
         source: { kind: "manual" },
@@ -983,6 +1171,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* workItems.upsert({
         id: workItemId,
         mode: "symphony",
+        projectId: TEST_PROJECT_ID,
         objective: "Review target",
         acceptanceCriteria: [],
         source: { kind: "manual" },
@@ -1010,6 +1199,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* workItems.upsert({
         id: workItemId,
         mode: "symphony",
+        projectId: TEST_PROJECT_ID,
         objective: "Not ready",
         acceptanceCriteria: [],
         source: { kind: "manual" },
@@ -1077,6 +1267,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* workItems.upsert({
         id: workItemId,
         mode: "symphony",
+        projectId: TEST_PROJECT_ID,
         objective: "Merge target",
         acceptanceCriteria: [],
         source: { kind: "manual" },
@@ -1134,6 +1325,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* workItems.upsert({
         id: workItemId,
         mode: "symphony",
+        projectId: TEST_PROJECT_ID,
         objective: "Merge target 3",
         acceptanceCriteria: [],
         source: { kind: "manual" },
@@ -1165,6 +1357,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* workItems.upsert({
         id: workItemId,
         mode: "symphony",
+        projectId: TEST_PROJECT_ID,
         objective: "Merge target 4",
         acceptanceCriteria: [],
         source: { kind: "manual" },
@@ -1195,6 +1388,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* workItems.upsert({
         id: workItemId,
         mode: "symphony",
+        projectId: TEST_PROJECT_ID,
         objective: "Broken",
         acceptanceCriteria: [],
         source: { kind: "manual" },
@@ -1258,6 +1452,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* workItems.upsert({
         id: workItemId,
         mode: "symphony",
+        projectId: TEST_PROJECT_ID,
         objective: "Merge target 5",
         acceptanceCriteria: [],
         source: { kind: "manual" },
@@ -1353,6 +1548,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* workItems.upsert({
         id: workItemId,
         mode: "symphony",
+        projectId: TEST_PROJECT_ID,
         objective: "Review feedback target",
         acceptanceCriteria: [],
         source: { kind: input.sourceKind, externalId: "", externalUrl: "" },

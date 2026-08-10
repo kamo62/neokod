@@ -4,11 +4,23 @@ import type { Thread } from "../types";
 import {
   buildThreadActionItems,
   filterCommandPaletteGroups,
+  getDefaultCloneDestinationPath,
   type CommandPaletteGroup,
 } from "./CommandPalette.logic";
 
 const LOCAL_ENVIRONMENT_ID = EnvironmentId.make("environment-local");
 const PROJECT_ID = ProjectId.make("project-1");
+
+describe("getDefaultCloneDestinationPath", () => {
+  it("adds the repository name to the configured clone directory", () => {
+    expect(getDefaultCloneDestinationPath("/home/kamo/code", "kamo62/t3code")).toBe(
+      "/home/kamo/code/t3code",
+    );
+    expect(
+      getDefaultCloneDestinationPath("C:\\Code\\", "https://github.com/kamo62/t3code.git?ref=main"),
+    ).toBe("C:\\Code\\t3code");
+  });
+});
 
 function makeThread(overrides: Partial<Thread> = {}): Thread {
   return {

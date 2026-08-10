@@ -3,6 +3,7 @@ import type { SidebarThreadSortOrder } from "@neokod/contracts/settings";
 import * as Arr from "effect/Array";
 import * as Result from "effect/Result";
 import { type ReactNode } from "react";
+import { ensureBrowseDirectoryPath, inferProjectTitleFromPath } from "../lib/projectPaths";
 import { sortThreads } from "../lib/threadSort";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { type Project, type SidebarThreadSummary, type Thread } from "../types";
@@ -88,6 +89,16 @@ export function filterBrowseEntries(input: {
 
 export function normalizeSearchText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export function getDefaultCloneDestinationPath(parentPath: string, repository: string): string {
+  const repositoryName = inferProjectTitleFromPath(repository.replace(/[?#].*$/, "")).replace(
+    /\.git$/i,
+    "",
+  );
+  return repositoryName.length === 0
+    ? parentPath
+    : `${ensureBrowseDirectoryPath(parentPath)}${repositoryName}`;
 }
 
 export function buildProjectActionItems(input: {

@@ -1,7 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-
-import { SymphonyAttentionView } from "../components/symphony/SymphonyAttentionView";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/symphony/attention")({
-  component: SymphonyAttentionView,
+  beforeLoad: () => {
+    throw redirect({ to: "/symphony" });
+  },
 });

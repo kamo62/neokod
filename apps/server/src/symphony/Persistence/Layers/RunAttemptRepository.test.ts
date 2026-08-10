@@ -2,6 +2,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   RunAttemptId,
+  SymphonyProjectId,
   WorkItemId,
 } from "@neokod/contracts";
 import type { RunAttempt } from "@neokod/contracts";
@@ -30,6 +31,7 @@ const seedWorkItem = (workItemId: string) =>
     yield* repo.upsert({
       id: WorkItemId.make(workItemId),
       mode: "symphony",
+      projectId: SymphonyProjectId.make("run-attempt-project"),
       objective: "Seed work item",
       acceptanceCriteria: [],
       source: { kind: "github", externalId: workItemId, externalUrl: "https://example.test" },

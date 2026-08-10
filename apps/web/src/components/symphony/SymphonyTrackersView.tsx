@@ -1,4 +1,5 @@
 import { RefreshCwIcon, TagsIcon, TriangleAlertIcon } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 
 import type { TrackerHealth, TrackerKind } from "@neokod/contracts";
 import { usePrimaryEnvironmentId } from "../../state/environments";
@@ -83,6 +84,7 @@ function TrackersSkeleton() {
 }
 
 export function SymphonyTrackersView() {
+  const navigate = useNavigate();
   const environmentId = usePrimaryEnvironmentId();
   const trackers = useEnvironmentQuery(
     environmentId === null ? null : symphonyExtras.trackers({ environmentId, input: {} }),
@@ -95,20 +97,30 @@ export function SymphonyTrackersView() {
         <div className="space-y-0.5">
           <h1 className="text-[15px] font-semibold tracking-[-0.01em] text-foreground">Trackers</h1>
           <p className="text-xs text-muted-foreground">
-            Connection health for every tracker a Symphony workflow polls.
+            Connection health for every tracker used by Symphony projects.
           </p>
         </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-8 gap-1.5 px-3 text-xs"
-          onClick={trackers.refresh}
-          disabled={trackers.isPending}
-          aria-label="Refresh trackers"
-        >
-          <RefreshCwIcon className={cn("size-3.5", trackers.isPending && "animate-spin")} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 px-3 text-xs"
+            onClick={() => void navigate({ to: "/settings/tracking" })}
+          >
+            Manage connections
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 gap-1.5 px-3 text-xs"
+            onClick={trackers.refresh}
+            disabled={trackers.isPending}
+            aria-label="Refresh trackers"
+          >
+            <RefreshCwIcon className={cn("size-3.5", trackers.isPending && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 sm:p-8">
@@ -141,8 +153,7 @@ export function SymphonyTrackersView() {
             <EmptyHeader>
               <EmptyTitle>No trackers connected</EmptyTitle>
               <EmptyDescription>
-                No trackers polled yet. Add a WORKFLOW.md to a tracked repository and activate it to
-                connect a tracker.
+                Configure a tracker connection, then create and start a Symphony project.
               </EmptyDescription>
             </EmptyHeader>
           </Empty>

@@ -393,6 +393,20 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("reports an initialized repository before its first commit", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.initRepo({ cwd });
+
+        const status = yield* driver.statusDetailsRemote(cwd, { refreshUpstream: false });
+
+        assert.equal(status.isRepo, true);
+        assert.equal(status.branch, yield* git(cwd, ["branch", "--show-current"]));
+        assert.equal(status.hasUpstream, false);
+      }),
+    );
+
     it.effect("reports refName and dirty state for a repository", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();

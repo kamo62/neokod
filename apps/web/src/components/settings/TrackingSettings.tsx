@@ -1,19 +1,28 @@
 import type { TrackerKindLiteral, TrackerProviderSettings } from "@neokod/contracts";
 import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
-import { AsanaIcon, GitHubIcon, GitLabIcon, JiraIcon, LinearIcon, type Icon } from "../Icons";
+import {
+  AsanaIcon,
+  AzureDevOpsIcon,
+  GitHubIcon,
+  GitHubProjectsIcon,
+  GitLabIcon,
+  JiraIcon,
+  LinearIcon,
+  type Icon,
+} from "../Icons";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { Switch } from "../ui/switch";
-import { Input } from "../ui/input";
+import { Button } from "../ui/button";
+import { DraftInput } from "../ui/draft-input";
 
 /**
  * Tracking settings surface.
  *
  * This is the app-level control for Symphony work trackers. Source Control
  * covers git hosts (remotes, PRs, cloning); Tracking covers the issue/work
- * sources Symphony reads (GitHub Issues, Jira, Linear, GitLab, Asana). Each
- * activated workflow still declares its own `tracker.kind` in `WORKFLOW.md`;
- * these settings gate enablement and supply host-side defaults the workflow
- * can reference.
+ * sources Symphony reads (GitHub Issues, Jira, Linear, GitLab, Asana). These
+ * settings own account and tenant connectivity only. Tracker project,
+ * board, and repository scope belongs to each Symphony project.
  */
 
 type TrackerDefinition = {
@@ -21,7 +30,6 @@ type TrackerDefinition = {
   readonly label: string;
   readonly description: string;
   readonly icon: Icon;
-  readonly scopePlaceholder: string;
   readonly credentialPlaceholder: string;
   readonly connectionFields?: ReadonlyArray<{
     readonly key: string;
@@ -36,16 +44,14 @@ const TRACKERS: ReadonlyArray<TrackerDefinition> = [
     label: "GitHub Issues",
     description: "Pull issues from a GitHub repository for autonomous implementation.",
     icon: GitHubIcon,
-    scopePlaceholder: "owner/repo",
-    credentialPlaceholder: "optional $VAR; blank uses gh login",
+    credentialPlaceholder: "Optional token; blank uses gh login",
   },
   {
     kind: "jira",
     label: "Jira",
     description: "Pull issues from a Jira project or board.",
     icon: JiraIcon,
-    scopePlaceholder: "project key",
-    credentialPlaceholder: "$JIRA_API_TOKEN",
+    credentialPlaceholder: "Jira API token",
     connectionFields: [
       { key: "base_url", label: "Base URL", placeholder: "https://example.atlassian.net" },
       { key: "email", label: "Account email", placeholder: "developer@example.com" },
@@ -56,16 +62,14 @@ const TRACKERS: ReadonlyArray<TrackerDefinition> = [
     label: "Linear",
     description: "Pull issues from a Linear project.",
     icon: LinearIcon,
-    scopePlaceholder: "project slug",
-    credentialPlaceholder: "$LINEAR_API_KEY",
+    credentialPlaceholder: "Linear API key",
   },
   {
     kind: "gitlab",
     label: "GitLab",
     description: "Pull issues from a GitLab project.",
     icon: GitLabIcon,
-    scopePlaceholder: "group/project",
-    credentialPlaceholder: "$GITLAB_PAT",
+    credentialPlaceholder: "GitLab personal access token",
     connectionFields: [
       {
         key: "api_url",
@@ -79,8 +83,25 @@ const TRACKERS: ReadonlyArray<TrackerDefinition> = [
     label: "Asana",
     description: "Pull tasks from an Asana project.",
     icon: AsanaIcon,
-    scopePlaceholder: "project id",
-    credentialPlaceholder: "$ASANA_PAT",
+    credentialPlaceholder: "Asana personal access token",
+  },
+  {
+    kind: "azure_boards",
+    label: "Azure Boards",
+    description:
+      "Pull work items from an Azure DevOps project independently of its repository host.",
+    icon: AzureDevOpsIcon,
+    credentialPlaceholder: "Azure DevOps personal access token",
+    connectionFields: [
+      { key: "organization", label: "Organisation", placeholder: "my-organisation" },
+    ],
+  },
+  {
+    kind: "github_projects",
+    label: "GitHub Projects",
+    description: "Pull work items from a GitHub Projects board.",
+    icon: GitHubProjectsIcon,
+    credentialPlaceholder: "GitHub personal access token",
   },
 ];
 
@@ -91,8 +112,8 @@ function TrackerRow({ definition }: { readonly definition: TrackerDefinition }) 
 
   const tracker = trackers[definition.kind];
   const enabled = tracker?.enabled ?? false;
-  const credentialRef = tracker?.credentialRef ?? "";
-  const scope = tracker?.scope ?? "";
+  const credential = tracker?.credential ?? "";
+  const credentialRedacted = tracker?.credentialRedacted ?? false;
   const config = tracker?.config ?? {};
 
   const updateTracker = (patch: Partial<TrackerProviderSettings>) => {
@@ -101,8 +122,8 @@ function TrackerRow({ definition }: { readonly definition: TrackerDefinition }) 
         ...trackers,
         [definition.kind]: {
           enabled,
-          credentialRef,
-          scope,
+          credential,
+          credentialRedacted,
           config,
           ...patch,
         },
@@ -130,25 +151,27 @@ function TrackerRow({ definition }: { readonly definition: TrackerDefinition }) 
       {enabled ? (
         <div className="grid gap-3 pb-3.5 sm:grid-cols-2">
           <label className="block space-y-1">
-            <span className="text-[11px] font-medium text-muted-foreground">Scope</span>
-            <Input
-              size="sm"
-              value={scope}
-              placeholder={definition.scopePlaceholder}
-              onChange={(event) => updateTracker({ scope: event.target.value })}
-              aria-label={`${definition.label} scope`}
-            />
-          </label>
-          <label className="block space-y-1">
-            <span className="text-[11px] font-medium text-muted-foreground">
-              Credential reference
+            <span className="flex items-center justify-between text-[11px] font-medium text-muted-foreground">
+              Credential
+              {credentialRedacted ? (
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => updateTracker({ credential: "", credentialRedacted: false })}
+                >
+                  Clear
+                </Button>
+              ) : null}
             </span>
-            <Input
+            <DraftInput
               size="sm"
-              value={credentialRef}
-              placeholder={definition.credentialPlaceholder}
-              onChange={(event) => updateTracker({ credentialRef: event.target.value })}
-              aria-label={`${definition.label} credential reference`}
+              type="password"
+              value={credentialRedacted ? "" : credential}
+              placeholder={credentialRedacted ? "Configured" : definition.credentialPlaceholder}
+              onCommit={(value) =>
+                updateTracker({ credential: value.trim(), credentialRedacted: false })
+              }
+              aria-label={`${definition.label} credential`}
             />
           </label>
           {definition.connectionFields?.map((field) => {
@@ -156,12 +179,12 @@ function TrackerRow({ definition }: { readonly definition: TrackerDefinition }) 
             return (
               <label key={field.key} className="block space-y-1">
                 <span className="text-[11px] font-medium text-muted-foreground">{field.label}</span>
-                <Input
+                <DraftInput
                   size="sm"
                   value={typeof value === "string" ? value : ""}
                   placeholder={field.placeholder}
-                  onChange={(event) =>
-                    updateTracker({ config: { ...config, [field.key]: event.target.value } })
+                  onCommit={(value) =>
+                    updateTracker({ config: { ...config, [field.key]: value.trim() } })
                   }
                   aria-label={`${definition.label} ${field.label}`}
                 />

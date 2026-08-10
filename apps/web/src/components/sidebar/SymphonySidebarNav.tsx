@@ -1,22 +1,10 @@
 import { useCallback, type ComponentType } from "react";
-import {
-  ArrowLeftIcon,
-  GitPullRequestIcon,
-  HistoryIcon,
-  LayoutDashboardIcon,
-  ListTodoIcon,
-  PlayCircleIcon,
-  Settings2Icon,
-  TagsIcon,
-  TriangleAlertIcon,
-} from "lucide-react";
+import { ArrowLeftIcon, FolderKanbanIcon, TagsIcon } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 
-import type { SymphonyOverview } from "@neokod/contracts";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { symphonyEnvironment } from "../../state/symphony";
-import { Badge } from "../ui/badge";
 import { Skeleton } from "../ui/skeleton";
 import {
   SidebarContent,
@@ -28,53 +16,19 @@ import {
   useSidebar,
 } from "../ui/sidebar";
 
-export type SymphonyNavPath =
-  | "/symphony"
-  | "/symphony/queue"
-  | "/symphony/running"
-  | "/symphony/reviews"
-  | "/symphony/attention"
-  | "/symphony/history"
-  | "/symphony/trackers"
-  | "/symphony/settings";
-
-type SymphonyOverviewCountKey = "queued" | "running" | "needsAttention";
-// Only the variants this nav actually uses — keeps the item table's type
-// independent of Badge's full variant surface.
-type BadgeVariant = "secondary" | "success" | "warning";
+export type SymphonyNavPath = "/symphony" | "/symphony/trackers";
 
 interface SymphonyNavItem {
   readonly label: string;
   readonly to: SymphonyNavPath;
   readonly icon: ComponentType<{ className?: string }>;
-  readonly countKey?: SymphonyOverviewCountKey;
-  readonly badgeVariant?: BadgeVariant;
 }
 
-// Paths match apps/web/src/routes/symphony.*.tsx exactly. "/symphony" (not
-// "/symphony/") is the path this codebase already navigates to for the
-// overview — see SidebarBrand's switchMode fallbackRoute in Sidebar.tsx.
+// Global Symphony navigation stays deliberately small. Project-specific
+// board, run, attention, history, and settings tabs live in the project view.
 const SYMPHONY_NAV_ITEMS: readonly SymphonyNavItem[] = [
-  { label: "Overview", to: "/symphony", icon: LayoutDashboardIcon },
-  { label: "Queue", to: "/symphony/queue", icon: ListTodoIcon, countKey: "queued" },
-  {
-    label: "Running",
-    to: "/symphony/running",
-    icon: PlayCircleIcon,
-    countKey: "running",
-    badgeVariant: "success",
-  },
-  { label: "Reviews", to: "/symphony/reviews", icon: GitPullRequestIcon },
-  {
-    label: "Attention",
-    to: "/symphony/attention",
-    icon: TriangleAlertIcon,
-    countKey: "needsAttention",
-    badgeVariant: "warning",
-  },
-  { label: "History", to: "/symphony/history", icon: HistoryIcon },
-  { label: "Trackers", to: "/symphony/trackers", icon: TagsIcon },
-  { label: "Settings", to: "/symphony/settings", icon: Settings2Icon },
+  { label: "Projects", to: "/symphony", icon: FolderKanbanIcon },
+  { label: "Tracker connections", to: "/symphony/trackers", icon: TagsIcon },
 ];
 
 // Mirrors the lifecycle set the orchestrator counts toward `overview.running`
@@ -83,16 +37,6 @@ const SYMPHONY_NAV_ITEMS: readonly SymphonyNavItem[] = [
 // "Active runs" list below lines up with the Running row's badge count.
 const ACTIVE_RUN_LIFECYCLES = new Set(["preparing", "running", "waiting_for_approval"]);
 const MAX_ACTIVE_RUNS_SHOWN = 5;
-
-function overviewCount(
-  overview: SymphonyOverview | null,
-  key: SymphonyOverviewCountKey | undefined,
-): number | "—" | null {
-  if (!overview || key === undefined) return null;
-  const metric = overview[key];
-  if (metric.state === "unavailable") return "—";
-  return metric.value > 0 ? metric.value : null;
-}
 
 function ActiveRunsSkeleton() {
   const rows = ["one", "two"] as const;
@@ -109,15 +53,11 @@ export function SymphonySidebarNav({ pathname }: { pathname: string }) {
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
   const environmentId = usePrimaryEnvironmentId();
-  const overviewQuery = useEnvironmentQuery(
-    environmentId === null ? null : symphonyEnvironment.overview({ environmentId, input: {} }),
-  );
   // Same query (same environmentId + input) the Running view issues, so this
   // shares that atom's cache entry instead of triggering a second fetch.
   const runsQuery = useEnvironmentQuery(
     environmentId === null ? null : symphonyEnvironment.runs({ environmentId, input: {} }),
   );
-  const overview = overviewQuery.data;
   const activeRuns = (runsQuery.data ?? []).filter((run) =>
     ACTIVE_RUN_LIFECYCLES.has(run.lifecycle),
   );
@@ -173,9 +113,9 @@ export function SymphonySidebarNav({ pathname }: { pathname: string }) {
         <SidebarMenu>
           {SYMPHONY_NAV_ITEMS.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.to;
-            const count = overviewCount(overview, item.countKey);
-            const showCount = count !== null;
+            const isActive =
+              pathname === item.to ||
+              (item.to === "/symphony" && pathname.startsWith("/symphony/projects/"));
             return (
               <SidebarMenuItem key={item.to}>
                 <SidebarMenuButton
@@ -196,17 +136,6 @@ export function SymphonySidebarNav({ pathname }: { pathname: string }) {
                     }
                   />
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                  {showCount ? (
-                    <Badge
-                      variant={count === "—" ? "secondary" : (item.badgeVariant ?? "secondary")}
-                      size="sm"
-                      className="shrink-0"
-                      title={count === "—" ? `${item.label} count unavailable` : undefined}
-                      aria-label={count === "—" ? `${item.label} count unavailable` : undefined}
-                    >
-                      {count}
-                    </Badge>
-                  ) : null}
                 </SidebarMenuButton>
               </SidebarMenuItem>
             );
@@ -251,7 +180,7 @@ export function SymphonySidebarNav({ pathname }: { pathname: string }) {
                     <SidebarMenuButton
                       size="sm"
                       className="px-2.5 py-1.5 text-left text-meta text-text-tertiary hover:text-foreground"
-                      onClick={() => handleNavClick("/symphony/running")}
+                      onClick={() => handleNavClick("/symphony")}
                     >
                       +{hiddenActiveRunCount} more running
                     </SidebarMenuButton>
