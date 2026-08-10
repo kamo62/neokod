@@ -5,12 +5,14 @@ import * as NodeChildProcess from "node:child_process";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
 import * as Scope from "effect/Scope";
+import * as TestClock from "effect/testing/TestClock";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { expect } from "vite-plus/test";
 import type {
@@ -658,6 +660,9 @@ function makeManager(input?: {
   ghScenario?: FakeGhScenario;
   textGeneration?: Partial<FakeGitTextGeneration>;
   setupScriptRunner?: ProjectSetupScriptRunner.ProjectSetupScriptRunner["Service"];
+  vcsDriver?: (
+    driver: GitVcsDriver.GitVcsDriver["Service"],
+  ) => GitVcsDriver.GitVcsDriver["Service"];
 }) {
   const { service: gitHubCli, ghCalls } = createGitHubCliWithFakeGh(input?.ghScenario);
   const textGeneration = createTextGeneration(input?.textGeneration);
@@ -667,11 +672,17 @@ function makeManager(input?: {
 
   const serverSettingsLayer = ServerSettings.ServerSettingsService.layerTest();
 
-  const vcsDriverLayer = GitVcsDriver.layer.pipe(
+  const baseVcsDriverLayer = GitVcsDriver.layer.pipe(
     Layer.provideMerge(VcsProcess.layer),
     Layer.provideMerge(NodeServices.layer),
     Layer.provideMerge(serverConfigLayer),
   );
+  const vcsDriverLayer = input?.vcsDriver
+    ? Layer.effect(
+        GitVcsDriver.GitVcsDriver,
+        GitVcsDriver.GitVcsDriver.pipe(Effect.map(input.vcsDriver)),
+      ).pipe(Layer.provide(baseVcsDriverLayer))
+    : baseVcsDriverLayer;
   const sourceControlRegistryLayer = Layer.effect(
     SourceControlProviderRegistry.SourceControlProviderRegistry,
     GitHubSourceControlProvider.make.pipe(
@@ -712,6 +723,13 @@ const GitManagerTestLayer = GitVcsDriver.layer.pipe(
   Layer.provideMerge(VcsProcess.layer),
   Layer.provideMerge(NodeServices.layer),
 );
+
+it("backs off PR lookup failures exponentially up to the maximum TTL", () => {
+  expect(Duration.toMillis(GitManager.prLookupFailureTtl(1))).toBe(120_000);
+  expect(Duration.toMillis(GitManager.prLookupFailureTtl(2))).toBe(240_000);
+  expect(Duration.toMillis(GitManager.prLookupFailureTtl(3))).toBe(480_000);
+  expect(Duration.toMillis(GitManager.prLookupFailureTtl(20))).toBe(1_800_000);
+});
 
 it.layer(GitManagerTestLayer)("GitManager", (it) => {
   it.effect("status includes PR metadata when branch already has an open PR", () =>
@@ -986,6 +1004,172 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     }),
   );
 
+  it.effect("status backs off repeated PR lookup failures", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
+      yield* initRepo(repoDir);
+      yield* runGit(repoDir, ["checkout", "-b", "feature/status-failure-backoff"]);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "feature/status-failure-backoff"]);
+
+      const { manager, ghCalls } = yield* makeManager({
+        ghScenario: {
+          failWith: new GitHubCli.GitHubCliUnavailableError({
+            command: "gh",
+            cwd: repoDir,
+            cause: new Error("rate limited"),
+          }),
+        },
+      });
+      const prListCalls = () => ghCalls.filter((call) => call.startsWith("pr list "));
+
+      expect((yield* manager.status({ cwd: repoDir })).pr).toBeNull();
+      expect(prListCalls()).toHaveLength(1);
+
+      yield* TestClock.adjust(Duration.seconds(119));
+      yield* manager.invalidateRemoteStatus(repoDir);
+      expect((yield* manager.status({ cwd: repoDir })).pr).toBeNull();
+      expect(prListCalls()).toHaveLength(1);
+
+      yield* TestClock.adjust(Duration.seconds(2));
+      yield* manager.invalidateRemoteStatus(repoDir);
+      expect((yield* manager.status({ cwd: repoDir })).pr).toBeNull();
+      expect(prListCalls()).toHaveLength(2);
+
+      yield* TestClock.adjust(Duration.seconds(239));
+      yield* manager.invalidateRemoteStatus(repoDir);
+      expect((yield* manager.status({ cwd: repoDir })).pr).toBeNull();
+      expect(prListCalls()).toHaveLength(2);
+
+      yield* TestClock.adjust(Duration.seconds(2));
+      yield* manager.invalidateRemoteStatus(repoDir);
+      expect((yield* manager.status({ cwd: repoDir })).pr).toBeNull();
+      expect(prListCalls()).toHaveLength(3);
+    }),
+  );
+
+  it.effect("status skips PR lookups for branches that have never been pushed", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
+      yield* initRepo(repoDir);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "main"]);
+      yield* runGit(repoDir, ["checkout", "-b", "feature/never-pushed"]);
+      yield* runGit(repoDir, ["push", "origin", "HEAD:refs/heads/feature/never-pushed/child"]);
+
+      const { manager, ghCalls } = yield* makeManager();
+      const status = yield* manager.status({ cwd: repoDir });
+
+      expect(status.pr).toBeNull();
+      expect(ghCalls.filter((call) => call.startsWith("pr list "))).toHaveLength(0);
+    }),
+  );
+
+  it.effect("status looks up PRs for pushed branches without an upstream", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
+      yield* initRepo(repoDir);
+      yield* runGit(repoDir, ["checkout", "-b", "feature/pushed-without-upstream"]);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "origin", "feature/pushed-without-upstream"]);
+
+      const { manager, ghCalls } = yield* makeManager({
+        ghScenario: {
+          prListSequence: [
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify([
+              {
+                number: 114,
+                title: "Pushed PR",
+                url: "https://github.com/pingdotgg/codething-mvp/pull/114",
+                baseRefName: "main",
+                headRefName: "feature/pushed-without-upstream",
+              },
+            ]),
+          ],
+        },
+      });
+
+      const status = yield* manager.status({ cwd: repoDir });
+
+      expect(status.hasUpstream).toBe(false);
+      expect(status.pr?.number).toBe(114);
+      expect(ghCalls.filter((call) => call.startsWith("pr list "))).toHaveLength(1);
+    }),
+  );
+
+  it.effect("status preserves a known PR when remote-ref enumeration fails", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
+      yield* initRepo(repoDir);
+      yield* runGit(repoDir, ["checkout", "-b", "feature/ref-enumeration-failure"]);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "origin", "feature/ref-enumeration-failure"]);
+
+      let failRefProbe = false;
+      let refProbeCalls = 0;
+      const { manager, ghCalls } = yield* makeManager({
+        ghScenario: {
+          prListSequence: [
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify([
+              {
+                number: 115,
+                title: "Known PR",
+                url: "https://github.com/pingdotgg/codething-mvp/pull/115",
+                baseRefName: "main",
+                headRefName: "feature/ref-enumeration-failure",
+              },
+            ]),
+          ],
+        },
+        vcsDriver: (driver) =>
+          GitVcsDriver.GitVcsDriver.of({
+            ...driver,
+            execute: (input) => {
+              if (input.operation !== "GitManager.isUnpublishedBranch.remoteRefs") {
+                return driver.execute(input);
+              }
+              refProbeCalls += 1;
+              return failRefProbe
+                ? Effect.fail(
+                    new GitCommandError({
+                      operation: input.operation,
+                      command: "git for-each-ref",
+                      cwd: input.cwd,
+                      detail: "simulated remote-ref enumeration failure",
+                    }),
+                  )
+                : driver.execute(input);
+            },
+          }),
+      });
+
+      expect((yield* manager.status({ cwd: repoDir })).pr?.number).toBe(115);
+      expect(refProbeCalls).toBe(1);
+      expect(ghCalls.filter((call) => call.startsWith("pr list "))).toHaveLength(1);
+
+      failRefProbe = true;
+      yield* manager.invalidateStatus(repoDir);
+      expect((yield* manager.status({ cwd: repoDir })).pr?.number).toBe(115);
+      expect(refProbeCalls).toBe(2);
+
+      yield* manager.invalidateRemoteStatus(repoDir);
+      expect((yield* manager.status({ cwd: repoDir })).pr?.number).toBe(115);
+      expect(refProbeCalls).toBe(2);
+
+      yield* TestClock.adjust(Duration.seconds(121));
+      yield* manager.invalidateRemoteStatus(repoDir);
+      expect((yield* manager.status({ cwd: repoDir })).pr?.number).toBe(115);
+      expect(refProbeCalls).toBe(3);
+      expect(ghCalls.filter((call) => call.startsWith("pr list "))).toHaveLength(1);
+    }),
+  );
+
   it.effect(
     "status ignores unrelated fork PRs when the current branch tracks the same repository",
     () =>
@@ -1218,6 +1402,9 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       const repoDir = yield* makeTempDir("neokod-git-manager-");
       yield* initRepo(repoDir);
       yield* runGit(repoDir, ["checkout", "-b", "feature/status-merged-pr"]);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "feature/status-merged-pr"]);
 
       const { manager } = yield* makeManager({
         ghScenario: {
@@ -1256,6 +1443,9 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     Effect.gen(function* () {
       const repoDir = yield* makeTempDir("neokod-git-manager-");
       yield* initRepo(repoDir);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "main"]);
 
       const { manager } = yield* makeManager({
         ghScenario: {
@@ -1288,6 +1478,9 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       const repoDir = yield* makeTempDir("neokod-git-manager-");
       yield* initRepo(repoDir);
       yield* runGit(repoDir, ["checkout", "-b", "feature/status-open-over-merged"]);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "feature/status-open-over-merged"]);
 
       const { manager } = yield* makeManager({
         ghScenario: {
@@ -1457,6 +1650,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       yield* runGit(repoDir, ["checkout", "-b", "feature/pr-sticky-first-push"]);
       const remoteDir = yield* createBareRemote();
       yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "origin", "feature/pr-sticky-first-push"]);
 
       const existingPr = {
         number: 215,
