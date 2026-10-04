@@ -194,6 +194,7 @@ export const makeCodexAgentRuntime = (
           const thread = yield* client
             .request("thread/start", {
               cwd: input.workspacePath,
+              ...(input.config.agentModel !== undefined ? { model: input.config.agentModel } : {}),
               approvalPolicy: policy.approvalPolicy,
               sandbox: policy.threadSandbox,
               approvalsReviewer: policy.reviewer,
@@ -222,6 +223,7 @@ export const makeCodexAgentRuntime = (
             approvalPolicy: policy.approvalPolicy,
             approvalsReviewer: policy.reviewer,
             sandboxPolicy: policy.turnSandboxPolicy,
+            ...(input.config.agentModel !== undefined ? { model: input.config.agentModel } : {}),
           })
           .pipe(Effect.mapError((cause) => new AgentRuntimeSpawnError(cause.message)));
         turnId = (turn as { readonly turn: { readonly id: string } }).turn.id;
@@ -274,10 +276,8 @@ const consumeIncoming = (
   recordRequest: AgentRuntimeDeps["recordRequest"],
   config: EffectiveWorkflowConfig,
 ): Effect.Effect<void, never, never> =>
-  Stream.runDrain(
-    Stream.map(client.raw.requests, (request) =>
-      handleRequest(client, request, runAttemptId, workItemId, liveRequests, recordRequest, config),
-    ),
+  Stream.runForEach(client.raw.requests, (request) =>
+    handleRequest(client, request, runAttemptId, workItemId, liveRequests, recordRequest, config),
   ).pipe(
     Effect.catch(() => Effect.void),
     Effect.interruptible,
@@ -354,25 +354,36 @@ const handleRequest = (
     }
   });
 
-const waitForTurnCompletion = (
+export const waitForTurnCompletion = (
   client: CodexClientService,
   config: EffectiveWorkflowConfig,
 ): Effect.Effect<boolean, AgentRuntimeSpawnError, Scope.Scope> =>
   Effect.gen(function* () {
     const timeout = Duration.millis(config.codexTurnTimeoutMs ?? 3_600_000);
-    const waitDeferred = yield* Deferred.make<boolean>();
+    const waitDeferred = yield* Deferred.make<boolean, AgentRuntimeSpawnError>();
     yield* Effect.forkScoped(
-      Stream.runDrain(
-        Stream.map(client.raw.notifications, (notification) => {
-          if (notification.method === "turn/completed") {
-            return Deferred.succeed(waitDeferred, true).pipe(Effect.asVoid);
+      Stream.runForEach(client.raw.notifications, (notification) => {
+        if (notification.method === "turn/completed") {
+          return Deferred.succeed(waitDeferred, true).pipe(Effect.asVoid);
+        }
+        if (notification.method === "error") {
+          const params = notification.params as {
+            readonly error?: { readonly message?: unknown };
+            readonly willRetry?: unknown;
+          };
+          if (params.willRetry === true) {
+            return Effect.void;
           }
-          if (notification.method === "error") {
-            return Deferred.succeed(waitDeferred, false).pipe(Effect.asVoid);
-          }
-          return Effect.void;
-        }),
-      ).pipe(Effect.catch(() => Effect.void)),
+          const message =
+            typeof params.error?.message === "string"
+              ? params.error.message
+              : "Codex app-server reported an error";
+          return Deferred.fail(waitDeferred, new AgentRuntimeSpawnError(message)).pipe(
+            Effect.asVoid,
+          );
+        }
+        return Effect.void;
+      }).pipe(Effect.catch(() => Effect.void)),
     );
     return yield* Deferred.await(waitDeferred).pipe(
       Effect.timeoutOption(timeout),

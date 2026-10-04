@@ -37,7 +37,7 @@ const makeAgentRuntimeFactory = Effect.gen(function* () {
       Effect.catch(() => Effect.succeed([] as ReadonlyArray<string>)),
       Effect.flatMap((secretNames) =>
         makeCodexAgentRuntime({
-          codexCommand: config.codexCommand ?? "codex app-server",
+          codexCommand: config.codexCommand ?? "codex",
           codexHomePath: undefined,
           env: process.env,
           secretEnvironmentNames: secretNames,

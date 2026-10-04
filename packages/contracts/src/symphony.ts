@@ -674,6 +674,8 @@ export const SymphonyProjectConfigurationSchema = Schema.Struct({
   autonomy: AutonomyLevelSchema,
   agentProvider: ProviderInstanceRef,
   agentModel: Schema.optional(TrimmedNonEmptyString),
+  reviewAgents: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  reviewRequirement: Schema.optional(ModelReviewRequirementSchema),
   validationRequired: Schema.Array(Schema.String),
   maxConcurrentAgents: PositiveInt,
   maxTurns: PositiveInt,

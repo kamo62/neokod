@@ -1114,6 +1114,83 @@ layer("SymphonyOrchestrator Observe", (it) => {
     }),
   );
 
+  it.effect("does not auto-dispatch queued work from a paused workflow", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-project-paused", "/repo/project-paused");
+      const workflows = yield* WorkflowRepository;
+      yield* workflows.upsert({
+        id: WorkflowId.make("wf-project-paused"),
+        repositoryPath: "/repo/project-paused",
+        workflowPath: "symphony-project:project-paused",
+        status: "paused",
+        autonomy: "execute",
+        validationError: null,
+        definition: { config: {}, promptTemplate: "Implement." },
+        effectiveConfig: { ...makeConfig("/repo/project-paused"), autonomy: "execute" },
+        enabledAt: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.upsert({
+        id: WorkItemId.make("project-paused-1"),
+        mode: "symphony",
+        projectId: TEST_PROJECT_ID,
+        objective: "Paused project target",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "project-paused-3",
+        workflowId: WorkflowId.make("wf-project-paused"),
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      const retryItemId = WorkItemId.make("project-paused-retry");
+      yield* workItems.upsert({
+        id: retryItemId,
+        mode: "symphony",
+        projectId: TEST_PROJECT_ID,
+        objective: "Paused project retry",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "project-paused-retry",
+        workflowId: WorkflowId.make("wf-project-paused"),
+        lifecycle: "retry_scheduled",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      const recent = yield* nowIso;
+      const runAttempts = yield* RunAttemptRepository;
+      yield* runAttempts.create({
+        id: RunAttemptId.make("project-paused-retry-run"),
+        workItemId: retryItemId,
+        attemptNumber: 1,
+        workspacePath: "/ws/project-paused-retry",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "failed",
+        startedAt: recent,
+        finishedAt: recent,
+        error: { category: "agent", message: "retry me" },
+      });
+      yield* TestClock.adjust("31 seconds");
+
+      dispatchedIds.length = 0;
+      yield* orchestrator.refreshNow();
+      expect(dispatchedIds).not.toContain("project-paused-1");
+      expect(dispatchedIds).not.toContain("project-paused-retry");
+    }),
+  );
+
   it.effect("global pause blocks dispatch and stopAllRuns reports stopped runs", () =>
     Effect.gen(function* () {
       const orchestrator = yield* SymphonyOrchestrator;

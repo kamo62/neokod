@@ -148,6 +148,12 @@ const effectiveConfigForProject = (
     autonomy: configuration.autonomy,
     agentProvider: configuration.agentProvider,
     ...(configuration.agentModel === undefined ? {} : { agentModel: configuration.agentModel }),
+    ...(configuration.reviewAgents === undefined
+      ? {}
+      : { reviewAgents: [...configuration.reviewAgents] }),
+    ...(configuration.reviewRequirement === undefined
+      ? {}
+      : { reviewRequirement: configuration.reviewRequirement }),
     maxTurns: configuration.maxTurns,
     maxAttempts: configuration.maxAttempts,
     validationRequired: [...configuration.validationRequired],
@@ -732,10 +738,14 @@ const makeOrchestrator = Effect.gen(function* () {
   // poll cadence, which is acceptable because the sweep is idempotent.
   const retrySweep = Effect.fn("symphonyOrchestrator.retrySweep")(function* () {
     const now = yield* nowIso;
+    const activeWorkflowIds = yield* listActiveWorkflowIds;
     const scheduled = yield* workItems
       .listByLifecycle(["retry_scheduled"])
       .pipe(Effect.catch(() => Effect.succeed([] as WorkItem[])));
     for (const item of scheduled) {
+      if (item.workflowId === undefined || !activeWorkflowIds.has(String(item.workflowId))) {
+        continue;
+      }
       const attempt = yield* runAttempts
         .latestForWorkItem(item.id)
         .pipe(Effect.catch(() => Effect.succeed(null)));
@@ -1445,8 +1455,8 @@ const makeOrchestrator = Effect.gen(function* () {
 
   const executePreparedDispatch = Effect.fn("symphonyOrchestrator.executePreparedDispatch")(
     function* (prepared: PreparedDispatch) {
-      yield* dispatcher
-        .dispatchWorkItem({
+      const result = yield* Effect.result(
+        dispatcher.dispatchWorkItem({
           workItem: prepared.item,
           issue: prepared.issue,
           config: prepared.config,
@@ -1456,8 +1466,15 @@ const makeOrchestrator = Effect.gen(function* () {
           ...(prepared.reviewFeedback !== undefined
             ? { reviewFeedback: prepared.reviewFeedback }
             : {}),
-        })
-        .pipe(Effect.catch(() => Effect.void));
+        }),
+      );
+      if (result._tag === "Failure") {
+        yield* Effect.logError("symphony.dispatch.failed", {
+          workItemId: String(prepared.item.id),
+          error: result.failure.message,
+        });
+        return;
+      }
       yield* auditRepository
         .record({
           actor: "symphony",
@@ -1469,11 +1486,30 @@ const makeOrchestrator = Effect.gen(function* () {
     },
   );
 
+  const listActiveWorkflowIds = workflows.list().pipe(
+    Effect.map(
+      (all) =>
+        new Set(
+          all
+            .filter((workflow) => workflow.status === "active")
+            .map((workflow) => String(workflow.id)),
+        ),
+    ),
+    Effect.catch(() => Effect.succeed(new Set<string>())),
+  );
+
   const launchNextQueuedWork = Effect.fn("symphonyOrchestrator.launchNextQueuedWork")(function* () {
+    const activeWorkflowIds = yield* listActiveWorkflowIds;
     const candidates = yield* workItems
       .listByLifecycle(["queued"], { limit: 100 })
       .pipe(Effect.catch(() => Effect.succeed([] as WorkItem[])));
     for (const candidate of candidates) {
+      if (
+        candidate.workflowId === undefined ||
+        !activeWorkflowIds.has(String(candidate.workflowId))
+      ) {
+        continue;
+      }
       const prepared = yield* prepareDispatch(String(candidate.id));
       if (prepared === null) {
         continue;

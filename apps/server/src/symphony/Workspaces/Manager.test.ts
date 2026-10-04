@@ -67,6 +67,28 @@ const makeFakeGit = (overrides: Partial<GitVcsDriver["Service"]> = {}): GitVcsDr
         nextCursor: null,
         totalCount: 1,
       }),
+    statusDetailsLocal: () =>
+      Effect.succeed({
+        isRepo: true,
+        hasOriginRemote: true,
+        isDefaultBranch: false,
+        branch: "symphony/issue-1",
+        upstreamRef: null,
+        hasWorkingTreeChanges: false,
+        workingTree: [],
+        hasUpstream: false,
+        aheadCount: 0,
+        behindCount: 0,
+        aheadOfDefaultCount: 1,
+      }),
+    execute: () =>
+      Effect.succeed({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        stdoutTruncated: false,
+        stderrTruncated: false,
+      }),
     ...overrides,
     _created: created,
   } as GitVcsDriver["Service"];
@@ -87,7 +109,24 @@ describe("WorkspaceManager", () => {
 
   it.effect("creates a worktree at a deterministic path under the root", () =>
     Effect.gen(function* () {
-      const manager = makeWorkspaceManager(makeDeps());
+      const createdDirectories: string[] = [];
+      const createdRefs: Array<{ refName: string; newRefName: string | undefined }> = [];
+      const manager = makeWorkspaceManager(
+        makeDeps({
+          git: makeFakeGit({
+            createWorktree: (input) => {
+              createdRefs.push({ refName: input.refName, newRefName: input.newRefName });
+              return Effect.succeed({
+                worktree: { path: String(input.path), refName: input.newRefName ?? input.refName },
+              });
+            },
+          }),
+          ensureDir: (path) =>
+            Effect.sync(() => {
+              createdDirectories.push(path);
+            }),
+        }),
+      );
       const ws = yield* manager.ensureWorkspace({
         issue: makeIssue({ identifier: "issue-1" }),
         config: makeConfig(),
@@ -97,6 +136,8 @@ describe("WorkspaceManager", () => {
       expect(ws.branch).toBe(deriveWorkingBranch(key));
       expect(ws.baseBranch).toBe("main");
       expect(ws.createdNow).toBe(true);
+      expect(createdDirectories).toEqual(["/ws"]);
+      expect(createdRefs).toEqual([{ refName: "main", newRefName: deriveWorkingBranch(key) }]);
     }),
   );
 
@@ -112,6 +153,21 @@ describe("WorkspaceManager", () => {
     }),
   );
 
+  it.effect("compares workspaces against the real path of a symlinked root", () =>
+    Effect.gen(function* () {
+      const manager = makeWorkspaceManager(
+        makeDeps({
+          realpath: (path) => Effect.succeed(path === "/ws" ? "/private/ws" : path),
+        }),
+      );
+      const ws = yield* manager.ensureWorkspace({
+        issue: makeIssue({ identifier: "issue-1" }),
+        config: makeConfig(),
+      });
+      expect(ws.path).toBe(`/private/ws/${key}`);
+    }),
+  );
+
   it.effect("reuses an existing workspace instead of recreating it", () =>
     Effect.gen(function* () {
       const git = makeFakeGit();
@@ -124,6 +180,42 @@ describe("WorkspaceManager", () => {
       });
       expect(ws.createdNow).toBe(false);
       expect(ws.path).toBe(`/ws/${key}`);
+    }),
+  );
+
+  it.effect("recognizes only a clean committed handoff ahead of the base branch", () =>
+    Effect.gen(function* () {
+      const manager = makeWorkspaceManager(makeDeps());
+      const workspace = {
+        key,
+        path: `/ws/${key}`,
+        branch: deriveWorkingBranch(key),
+        baseBranch: "main",
+        createdNow: false,
+      };
+      expect(yield* manager.hasCommittedHandoff(workspace)).toBe(true);
+
+      const dirty = makeWorkspaceManager(
+        makeDeps({
+          git: makeFakeGit({
+            statusDetailsLocal: () =>
+              Effect.succeed({
+                isRepo: true,
+                hasOriginRemote: true,
+                isDefaultBranch: false,
+                branch: workspace.branch,
+                upstreamRef: null,
+                hasWorkingTreeChanges: true,
+                workingTree: [],
+                hasUpstream: false,
+                aheadCount: 0,
+                behindCount: 0,
+                aheadOfDefaultCount: 1,
+              }),
+          }),
+        }),
+      );
+      expect(yield* dirty.hasCommittedHandoff(workspace)).toBe(false);
     }),
   );
 
