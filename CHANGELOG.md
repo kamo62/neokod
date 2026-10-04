@@ -1,3 +1,13 @@
+## 3.6.1 - 2026-10-04 (Minor)
+
+Release impact: Minor because this adds a Run now action and corrects Symphony and clone behaviour without changing existing contracts or defaults.
+
+- Symphony now executes the Codex request and notification handlers it registers. Previously the handler effects were produced but never run, so approvals were not handled and turns could only end by timing out. The default Codex command is `codex`, and a committed handoff is recovered without a second agent turn.
+- GitHub Issues listing uses one bounded `gh issue list` call. The previous paging loop passed a `--page` flag that `gh` does not have.
+- The Symphony project settings form was reworked, and board cards offer a Run now action.
+- Clone destinations: a destination that does not exist yet is the clone target itself, and the folder picker fills in the clone destination while the clone dialog is open instead of adding the folder as a project.
+- The plan, a card library of 66 implementation specifications and the research record are added under `docs/` and `plan.md`. `AGENTS.md` now allows user-controlled direct connections (Tailscale, LAN, saved servers with a token).
+
 ## 3.6.0 - 2026-08-10 (Minor)
 
 Release impact: Minor because this replaces Symphony's workflow-file setup with a backward-compatible project model and consolidated board while preserving existing tracker integrations.
