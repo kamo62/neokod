@@ -5,6 +5,7 @@ import {
   buildThreadActionItems,
   filterCommandPaletteGroups,
   getDefaultCloneDestinationPath,
+  isBrowsedExistingDirectory,
   resolveCloneDestinationPath,
   type CommandPaletteGroup,
 } from "./CommandPalette.logic";
@@ -20,6 +21,22 @@ describe("getDefaultCloneDestinationPath", () => {
     expect(
       getDefaultCloneDestinationPath("C:\\Code\\", "https://github.com/kamo62/t3code.git?ref=main"),
     ).toBe("C:\\Code\\t3code");
+  });
+});
+
+describe("isBrowsedExistingDirectory", () => {
+  const base = { hasTrailingSeparator: true, isPending: false, hasError: false };
+  it("is true only for a positively browsed directory", () => {
+    expect(isBrowsedExistingDirectory({ ...base, result: { entries: [] } })).toBe(true);
+  });
+  it("is false for a missing folder, a pending lookup, an error or no trailing separator", () => {
+    expect(isBrowsedExistingDirectory({ ...base, result: null })).toBe(false);
+    expect(isBrowsedExistingDirectory({ ...base, result: undefined })).toBe(false);
+    expect(isBrowsedExistingDirectory({ ...base, isPending: true, result: {} })).toBe(false);
+    expect(isBrowsedExistingDirectory({ ...base, hasError: true, result: {} })).toBe(false);
+    expect(isBrowsedExistingDirectory({ ...base, hasTrailingSeparator: false, result: {} })).toBe(
+      false,
+    );
   });
 });
 
