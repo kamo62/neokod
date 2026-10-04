@@ -1,0 +1,109 @@
+{
+  "scope": "17 additional issue/comment threads; later selected detail captures do not refresh whole census",
+  "cases": [
+    {
+      "repository": "BytePioneer-AI/codex-host",
+      "number": 310,
+      "assessment": "Defender quarantine report; no comments; benign false-positive claim not established.",
+      "in_original_census": true
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "number": 108003,
+      "assessment": "Feature/visibility report with another user dataset; existing backend source filters do not prove complete desktop controls.",
+      "in_original_census": true
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "number": 131998,
+      "assessment": "Detailed reported logs; no comments/minimal reproduction; earlier observer guard present according to reporter, later fix not established. Second event explicitly corrected to Modern Standby.",
+      "in_original_census": true
+    },
+    {
+      "repository": "Untrivial-ai/agent-orchestrator",
+      "number": 4608,
+      "assessment": "User profiling; collaborator discussion. 2.42 GB parent attribution explicitly low-confidence; frozen later startup split is not proven runtime fix.",
+      "in_original_census": true
+    },
+    {
+      "repository": "Untrivial-ai/agent-orchestrator",
+      "number": 6108,
+      "assessment": "Collaborator could not reproduce; multiple-account/unresolved-PR conditions mentioned by reporter.",
+      "in_original_census": true
+    },
+    {
+      "repository": "can1357/oh-my-pi",
+      "number": 12423,
+      "assessment": "Unconfirmed typing/scroll report after 30+ turns; desired near-60 FPS is not measured FPS; later source cadence is 30 FPS for ordinary row renderer.",
+      "in_original_census": true
+    },
+    {
+      "repository": "earendil-works/pi",
+      "number": 9807,
+      "assessment": "Long-history lag; later extension attribution needs no-extension interactive control.",
+      "in_original_census": true
+    },
+    {
+      "repository": "get-bb/bb",
+      "number": 4413,
+      "assessment": "Search prototype responsiveness gain with unchanged SQL and cold-search regression; unmerged proposal.",
+      "in_original_census": true
+    },
+    {
+      "repository": "getpaseo/paseo",
+      "number": 4408,
+      "assessment": "Native Android OOM reports; allocation cause/current general fix/web applicability unproven.",
+      "in_original_census": true
+    },
+    {
+      "repository": "lidge-jun/opencodex",
+      "number": 5493,
+      "assessment": "Open hidden-startup/polling tracker; source confirms paths; PR5742 merge state owner-reported only.",
+      "in_original_census": true
+    },
+    {
+      "repository": "omnigent-ai/omnigent",
+      "number": 6205,
+      "assessment": "Open sound-preferences request; frozen source already handles sound/attention.",
+      "in_original_census": true
+    },
+    {
+      "repository": "stablyai/orca",
+      "number": 24123,
+      "assessment": "Unconfirmed detailed user report; no comments; decoder experiment and CPU attribution are separate observations.",
+      "in_original_census": true
+    },
+    {
+      "repository": "stablyai/orca",
+      "number": 24247,
+      "assessment": "User report plus fresh CLI read; no captured maintainer confirmation/fix.",
+      "in_original_census": true
+    },
+    {
+      "repository": "superset-sh/superset",
+      "number": 7877,
+      "assessment": "Reported watcher counts/churn; only github-actions[bot] source triage, not human runtime reproduction; current source still releases last listener immediately.",
+      "in_original_census": true
+    },
+    {
+      "repository": "superset-sh/superset",
+      "number": 7892,
+      "assessment": "Historical report still open; automated bot source triage. Claimed isLinearConnected gate is absent in frozen source; no shipped fix claim.",
+      "in_original_census": true
+    },
+    {
+      "repository": "traycerai/traycer",
+      "number": 1950,
+      "assessment": "User report corroborated by frozen selectAllVisible path. PR2214 remains open/unmerged; author test count is not passed CI.",
+      "in_original_census": true
+    },
+    {
+      "repository": "traycerai/traycer",
+      "number": 2029,
+      "assessment": "User local SQL investigation and follow-up; private Host resolution code unavailable; no maintainer-confirmed fix.",
+      "in_original_census": true
+    }
+  ],
+  "total_distinct_selected": 100,
+  "note": "Read full bodies/comments plus bounded source mechanisms; no own reproduction. A-tier full qualifiers are in competitor-a-product-patterns.json; S/B capture indexes in competitor-sb-product-issue-manifest.json."
+}

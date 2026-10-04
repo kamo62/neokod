@@ -1,0 +1,10 @@
+{
+  "status": "PASS",
+  "errors": [],
+  "findings": 10,
+  "sources": 65,
+  "all_snapshots_sha256_verified": true,
+  "all_reference_lines_in_bounds": true,
+  "proof": "Artifact/source integrity only. No vp, tests, app, provider, tracker or runtime operations.",
+  "findings_ids": ["S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08", "S09", "S10"]
+}

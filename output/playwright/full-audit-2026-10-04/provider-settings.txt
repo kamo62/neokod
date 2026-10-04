@@ -1,0 +1,79 @@
+- button "Switch mode": Neokod Dev
+- list:
+  - listitem:
+    - button "General"
+  - listitem:
+    - button "Appearance"
+  - listitem:
+    - button "Keybindings"
+  - listitem:
+    - button "Providers"
+  - listitem:
+    - button "Source Control"
+  - listitem:
+    - button "Tracking"
+  - listitem:
+    - button "Analytics"
+  - listitem:
+    - button "Connections"
+  - listitem:
+    - button "Archive"
+- separator
+- list:
+  - listitem:
+    - button "Back"
+- button "Resize Sidebar"
+- main:
+  - text: Settings
+  - heading "Providers" [level=2]
+  - text: Checked 1m ago
+  - button "Add provider instance"
+  - button "Refresh provider status"
+  - heading "Codex" [level=3]
+  - button "Reset Codex provider settings to default"
+  - paragraph: "Unavailable - Codex app-server provider probe failed: Codex App Server process exited with code 1."
+  - button "Toggle Codex details"
+  - switch "Enable Codex" [checked]
+  - heading "Claude" [level=3]
+  - code: v2.1.289
+  - button "Reset Claude provider settings to default"
+  - paragraph:
+    - text: Authenticated as
+    - button "Toggle account email visibility": 8k2fcdnrqg@p8g4t.syd
+    - text: · Claude Pro Subscription
+  - button "Toggle Claude details"
+  - switch "Enable Claude" [checked]
+  - text: GC
+  - heading "GitHub Copilot" [level=3]
+  - code: v1.0.78
+  - button "Reset GitHub Copilot provider settings to default"
+  - paragraph:
+    - text: Authenticated as
+    - button "Toggle account email visibility": fetex4
+    - text: · GitHub (gh-cli)
+  - button "Toggle GitHub Copilot details"
+  - switch "Enable GitHub Copilot" [checked]
+  - heading "Cursor" [level=3]
+  - text: Early Access
+  - paragraph: Disabled - Cursor is disabled in Neokod settings.
+  - button "Toggle Cursor details"
+  - switch "Enable Cursor"
+  - heading "Grok" [level=3]
+  - text: Early Access
+  - paragraph: Disabled - Grok is disabled in Neokod settings.
+  - button "Toggle Grok details"
+  - switch "Enable Grok"
+  - heading "Kiro" [level=3]
+  - text: Early Access
+  - paragraph: Disabled - Kiro is disabled in Neokod settings.
+  - button "Toggle Kiro details"
+  - switch "Enable Kiro"
+  - heading "OpenCode" [level=3]
+  - code: v1.18.34
+  - button "Reset OpenCode provider settings to default"
+  - paragraph: Authenticated · opencode - 11 upstream providers connected through OpenCode.
+  - button "Toggle OpenCode details"
+  - switch "Enable OpenCode" [checked]
+- button "Toggle main sidebar" [pressed]: Toggle Sidebar
+- region "Notifications"
+- region "Notifications"

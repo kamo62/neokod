@@ -1,0 +1,22 @@
+{
+  "nodeVersion": "v26.10.0",
+  "isolatedDatabase": "/var/folders/b6/87d2msqd6fdbtcddcw5k8gbw0000gn/T/neokod-sqlite-audit-98eYkg/snapshot.sqlite",
+  "snapshotUpgrade": {
+    "code": "ERR_SQLITE_ERROR",
+    "errcode": 517,
+    "errstr": "database is locked",
+    "message": "database is locked"
+  },
+  "uniqueViolation": {
+    "code": "ERR_SQLITE_ERROR",
+    "errcode": 2067,
+    "errstr": "constraint failed",
+    "message": "UNIQUE constraint failed: t.value"
+  },
+  "storageFull": {
+    "code": "ERR_SQLITE_ERROR",
+    "errcode": 13,
+    "errstr": "database or disk is full",
+    "message": "database or disk is full"
+  }
+}

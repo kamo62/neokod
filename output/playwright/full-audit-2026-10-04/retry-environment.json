@@ -1,0 +1,29 @@
+{
+  "capturedAt": "2026-10-04T10:59:35.358519+00:00",
+  "head": "da7655bb2e3964c800eec882360e7d1d0eb4ca25",
+  "browserControl": "Chrome CDP selection timed out twice; native selection requested state refresh; no later UI recovery observation",
+  "environment": {
+    "httpStatus": 200,
+    "keys": ["environmentId", "label", "platform", "serverVersion", "capabilities"],
+    "serverVersion": "3.0.3",
+    "platform": {
+      "os": "darwin",
+      "arch": "arm64"
+    }
+  },
+  "snapshot": {
+    "httpStatus": 200,
+    "keys": ["snapshotSequence", "projects", "threads", "updatedAt"],
+    "projects": [
+      {
+        "id": "c6fe003f-7c40-4c7b-9b1a-61a815482615",
+        "title": "arbitrage"
+      },
+      {
+        "id": "c44fa6ec-0221-4382-8693-c8f6cc8c38ac",
+        "title": "neokod-functional-audit-uy22dh88"
+      }
+    ],
+    "threadCount": 3
+  }
+}

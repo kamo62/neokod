@@ -1,0 +1,13 @@
+{
+  "captured_at": "2026-10-04T05:27:33Z",
+  "baseline": "2026-08-10T06:42:36Z",
+  "baseline_release": "v3.6.0",
+  "closed_count": 3233,
+  "open_count": 1059,
+  "closed_search_complete": true,
+  "baseline_evidence": "Latest published GitHub release; installed deployment not verified",
+  "open_capture_start_utc": "2026-10-04T05:27:36.763182+00:00",
+  "open_capture_end_utc": "2026-10-04T05:27:56.922883+00:00",
+  "file_details_completed_utc": "2026-10-04T05:39:01.798034+00:00",
+  "open_metadata_update_drift_ids": [15328, 15462, 15477, 15493, 15495, 15496, 15499]
+}

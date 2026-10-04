@@ -1,0 +1,58 @@
+- button "Switch mode": Neokod Dev
+- list:
+  - listitem:
+    - button "General"
+  - listitem:
+    - button "Appearance"
+  - listitem:
+    - button "Keybindings"
+  - listitem:
+    - button "Providers"
+  - listitem:
+    - button "Source Control"
+  - listitem:
+    - button "Tracking"
+  - listitem:
+    - button "Analytics"
+  - listitem:
+    - button "Connections"
+  - listitem:
+    - button "Archive"
+- separator
+- list:
+  - listitem:
+    - button "Back"
+- button "Resize Sidebar"
+- main:
+  - text: Settings
+  - heading "Version Control" [level=2]
+  - button "Rescan server environment"
+  - text: Git
+  - code: git version 2.55.0
+  - paragraph: Available
+  - button "Toggle Git details"
+  - switch "Git availability" [checked] [disabled]
+  - text: Jujutsu Coming Soon
+  - paragraph: Support for Jujutsu is coming soon.
+  - heading "Source Control Providers" [level=2]
+  - text: GitHub
+  - code: gh version 2.101.0 (2026-09-15)
+  - paragraph:
+    - text: Authenticated
+    - button "Toggle source control account visibility": fetex4
+  - switch "GitHub availability" [checked] [disabled]
+  - text: GitLab
+  - paragraph: "Not available on this server: Install the GitLab command-line tool (`glab`) from https://gitlab.com/gitlab-org/cli or your package manager (for example `brew install glab`)."
+  - switch "GitLab availability" [disabled]
+  - text: Azure DevOps
+  - code: azure-cli 2.90.0
+  - paragraph:
+    - text: Authenticated
+    - button "Toggle source control account visibility": xq569ktp.2cay53rv@j4dx6vhxz.tbj
+  - switch "Azure DevOps availability" [checked] [disabled]
+  - text: Bitbucket Not authenticated
+  - paragraph: Available. Set NEOKOD_BITBUCKET_EMAIL and NEOKOD_BITBUCKET_API_TOKEN on the server (use a Bitbucket API token with pull request and repository scopes).
+  - switch "Bitbucket availability" [disabled]
+- button "Toggle main sidebar" [pressed]: Toggle Sidebar
+- region "Notifications"
+- region "Notifications"

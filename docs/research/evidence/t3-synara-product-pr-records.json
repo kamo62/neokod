@@ -1,0 +1,521 @@
+{
+  "t3": [
+    {
+      "number": 10616,
+      "title": "fix(server): report capped content searches as truncated",
+      "url": "https://github.com/pingdotgg/t3code/pull/10616",
+      "state": "OPEN",
+      "merged": false,
+      "mergedAt": null,
+      "closedAt": null,
+      "updatedAt": "2026-10-01T01:24:17Z",
+      "changedFiles": 2,
+      "mergeCommit": null,
+      "isDraft": false
+    },
+    {
+      "number": 10622,
+      "title": "fix(server): preserve Unicode case-insensitive search matches",
+      "url": "https://github.com/pingdotgg/t3code/pull/10622",
+      "state": "OPEN",
+      "merged": false,
+      "mergedAt": null,
+      "closedAt": null,
+      "updatedAt": "2026-10-01T01:24:33Z",
+      "changedFiles": 2,
+      "mergeCommit": null,
+      "isDraft": false
+    },
+    {
+      "number": 14519,
+      "title": "perf(server): connects no longer wait on editor and SSH target discovery",
+      "url": "https://github.com/pingdotgg/t3code/pull/14519",
+      "state": "OPEN",
+      "merged": false,
+      "mergedAt": null,
+      "closedAt": null,
+      "updatedAt": "2026-10-03T11:16:24Z",
+      "changedFiles": 7,
+      "mergeCommit": null,
+      "isDraft": false
+    },
+    {
+      "number": 14912,
+      "title": "fix(server): stop the startup project sync from delaying the app window",
+      "url": "https://github.com/pingdotgg/t3code/pull/14912",
+      "state": "OPEN",
+      "merged": false,
+      "mergedAt": null,
+      "closedAt": null,
+      "updatedAt": "2026-10-03T17:57:18Z",
+      "changedFiles": 2,
+      "mergeCommit": null,
+      "isDraft": false
+    },
+    {
+      "number": 15301,
+      "title": "perf: prune per-thread client state and evict idle VCS status cache",
+      "url": "https://github.com/pingdotgg/t3code/pull/15301",
+      "state": "OPEN",
+      "merged": false,
+      "mergedAt": null,
+      "closedAt": null,
+      "updatedAt": "2026-10-03T20:28:28Z",
+      "changedFiles": 9,
+      "mergeCommit": null,
+      "isDraft": false
+    },
+    {
+      "number": 9718,
+      "title": "perf(web): stop rendering hidden terminals",
+      "url": "https://github.com/pingdotgg/t3code/pull/9718",
+      "state": "MERGED",
+      "merged": true,
+      "mergedAt": "2026-09-04T16:54:17Z",
+      "closedAt": "2026-09-04T16:54:17Z",
+      "updatedAt": "2026-09-04T16:54:19Z",
+      "changedFiles": 4,
+      "mergeCommit": {
+        "oid": "5eab021a5185e492b6b021f83564143d5263e8a6"
+      },
+      "isDraft": false
+    },
+    {
+      "number": 9740,
+      "title": "perf(client): stop thread streams when unused",
+      "url": "https://github.com/pingdotgg/t3code/pull/9740",
+      "state": "MERGED",
+      "merged": true,
+      "mergedAt": "2026-09-04T18:56:06Z",
+      "closedAt": "2026-09-04T18:56:06Z",
+      "updatedAt": "2026-09-04T18:56:09Z",
+      "changedFiles": 6,
+      "mergeCommit": {
+        "oid": "d7cf8aaa8d4fbcbdd523b4f4bc86fda5c47b4a70"
+      },
+      "isDraft": false
+    },
+    {
+      "number": 9748,
+      "title": "perf(server): bound terminal history by bytes",
+      "url": "https://github.com/pingdotgg/t3code/pull/9748",
+      "state": "MERGED",
+      "merged": true,
+      "mergedAt": "2026-09-04T18:49:16Z",
+      "closedAt": "2026-09-04T18:49:16Z",
+      "updatedAt": "2026-09-04T18:49:18Z",
+      "changedFiles": 4,
+      "mergeCommit": {
+        "oid": "cf9729d5ee9660c08556e823080d3bb19648ed28"
+      },
+      "isDraft": false
+    },
+    {
+      "number": 10561,
+      "title": "feat(mcp): expose the existing thread search query",
+      "url": "https://github.com/pingdotgg/t3code/pull/10561",
+      "state": "MERGED",
+      "merged": true,
+      "mergedAt": "2026-09-07T21:34:00Z",
+      "closedAt": "2026-09-07T21:34:00Z",
+      "updatedAt": "2026-09-07T21:34:10Z",
+      "changedFiles": 4,
+      "mergeCommit": {
+        "oid": "3151e72733b6d378cbe5939102cbb8c178b0c94a"
+      },
+      "isDraft": false
+    },
+    {
+      "number": 11169,
+      "title": "perf(web): huge-thread switch no longer blanks the chat pane",
+      "url": "https://github.com/pingdotgg/t3code/pull/11169",
+      "state": "MERGED",
+      "merged": true,
+      "mergedAt": "2026-09-11T06:50:37Z",
+      "closedAt": "2026-09-11T06:50:37Z",
+      "updatedAt": "2026-09-11T06:50:40Z",
+      "changedFiles": 4,
+      "mergeCommit": {
+        "oid": "211618fd9fe39d3dde01171a6856ce9f633571c9"
+      },
+      "isDraft": false
+    },
+    {
+      "number": 11193,
+      "title": "perf(web): reuse completed Markdown prefixes while streaming",
+      "url": "https://github.com/pingdotgg/t3code/pull/11193",
+      "state": "MERGED",
+      "merged": true,
+      "mergedAt": "2026-09-11T06:50:34Z",
+      "closedAt": "2026-09-11T06:50:34Z",
+      "updatedAt": "2026-09-11T06:50:39Z",
+      "changedFiles": 5,
+      "mergeCommit": {
+        "oid": "a9dabbf100d1f6c0b2ed7b5e879d469ac14fd186"
+      },
+      "isDraft": false
+    },
+    {
+      "number": 11196,
+      "title": "perf(web): resume syntax highlighting from completed lines",
+      "url": "https://github.com/pingdotgg/t3code/pull/11196",
+      "state": "MERGED",
+      "merged": true,
+      "mergedAt": "2026-09-11T06:50:35Z",
+      "closedAt": "2026-09-11T06:50:35Z",
+      "updatedAt": "2026-09-11T06:50:39Z",
+      "changedFiles": 3,
+      "mergeCommit": {
+        "oid": "d7d7f8f3eb7bf593925281eb62348e15a91252b8"
+      },
+      "isDraft": false
+    },
+    {
+      "number": 11198,
+      "title": "perf(web): preserve completed code-line DOM while streaming",
+      "url": "https://github.com/pingdotgg/t3code/pull/11198",
+      "state": "MERGED",
+      "merged": true,
+      "mergedAt": "2026-09-11T06:50:36Z",
+      "closedAt": "2026-09-11T06:50:36Z",
+      "updatedAt": "2026-09-11T06:50:40Z",
+      "changedFiles": 8,
+      "mergeCommit": {
+        "oid": "8078c532ceeee5cb951325031f216171507f3d5e"
+      },
+      "isDraft": false
+    },
+    {
+      "number": 11761,
+      "title": "fix(web): sidebar search matches message content",
+      "url": "https://github.com/pingdotgg/t3code/pull/11761",
+      "state": "MERGED",
+      "merged": true,
+      "mergedAt": "2026-09-18T18:17:16Z",
+      "closedAt": "2026-09-18T18:17:16Z",
+      "updatedAt": "2026-09-18T18:17:16Z",
+      "changedFiles": 5,
+      "mergeCommit": {
+        "oid": "c557bb10aa7cbb78a50df230d1e8e24af79cb662"
+      },
+      "isDraft": false
+    },
+    {
+      "number": 12109,
+      "title": "perf(client): coalesce persistent cache writes during streaming",
+      "url": "https://github.com/pingdotgg/t3code/pull/12109",
+      "state": "MERGED",
+      "merged": true,
+      "mergedAt": "2026-09-16T18:22:25Z",
+      "closedAt": "2026-09-16T18:22:25Z",
+      "updatedAt": "2026-09-16T18:22:30Z",
+      "changedFiles": 7,
+      "mergeCommit": {
+        "oid": "9f05b25d67be1692952d5b4e38b2fc1d5f421faa"
+      },
+      "isDraft": false
+    },
+    {
+      "number": 13320,
+      "title": "perf(server): speed up cold desktop launches",
+      "url": "https://github.com/pingdotgg/t3code/pull/13320",
+      "state": "MERGED",
+      "merged": true,
+      "mergedAt": "2026-09-23T23:21:36Z",
+      "closedAt": "2026-09-23T23:21:36Z",
+      "updatedAt": "2026-09-23T23:21:40Z",
+      "changedFiles": 2,
+      "mergeCommit": null,
+      "isDraft": false
+    },
+    {
+      "number": 13501,
+      "title": "perf(desktop): cache compiled JavaScript between launches",
+      "url": "https://github.com/pingdotgg/t3code/pull/13501",
+      "state": "MERGED",
+      "merged": true,
+      "mergedAt": "2026-09-25T06:43:48Z",
+      "closedAt": "2026-09-25T06:43:48Z",
+      "updatedAt": "2026-09-25T06:45:21Z",
+      "changedFiles": 15,
+      "mergeCommit": {
+        "oid": "d10bd1360ace3ab1dbccc1ee706c9169982d98ae"
+      },
+      "isDraft": false
+    },
+    {
+      "number": 13686,
+      "title": "perf(web): hidden terminal drawers no longer keep full thread history in memory",
+      "url": "https://github.com/pingdotgg/t3code/pull/13686",
+      "state": "MERGED",
+      "merged": true,
+      "mergedAt": "2026-09-26T03:29:29Z",
+      "closedAt": "2026-09-26T03:29:29Z",
+      "updatedAt": "2026-09-26T03:29:31Z",
+      "changedFiles": 1,
+      "mergeCommit": {
+        "oid": "6989856aa630611dd7d6dcc8cfe9f97456816284"
+      },
+      "isDraft": false
+    },
+    {
+      "number": 13767,
+      "title": "perf(clients): saving the thread list cache no longer freezes the UI",
+      "url": "https://github.com/pingdotgg/t3code/pull/13767",
+      "state": "MERGED",
+      "merged": true,
+      "mergedAt": "2026-09-26T08:35:22Z",
+      "closedAt": "2026-09-26T08:35:23Z",
+      "updatedAt": "2026-09-26T08:35:25Z",
+      "changedFiles": 5,
+      "mergeCommit": {
+        "oid": "9151ea407accd1b7af575dcdd514e2b2e3fe6cbb"
+      },
+      "isDraft": false
+    }
+  ],
+  "synara": [
+    {
+      "number": 423,
+      "title": "feat(server): fetch Linear/GitHub issues for composer references",
+      "url": "https://github.com/Emanuele-web04/synara/pull/423",
+      "state": "OPEN",
+      "mergedAt": null,
+      "closedAt": null,
+      "updatedAt": "2026-09-25T15:50:24Z",
+      "changedFiles": 16,
+      "headRefOid": "dc2afc56bf7ab564a098fcd32a67976c5ad33cb6",
+      "mergeCommit": null
+    },
+    {
+      "number": 424,
+      "title": "feat(web): attach Linear/GitHub issues as composer references",
+      "url": "https://github.com/Emanuele-web04/synara/pull/424",
+      "state": "OPEN",
+      "mergedAt": null,
+      "closedAt": null,
+      "updatedAt": "2026-09-25T15:50:23Z",
+      "changedFiles": 40,
+      "headRefOid": "e787bd4b7d9d18c174e4bdb447140d3cc36cb8d1",
+      "mergeCommit": null
+    },
+    {
+      "number": 637,
+      "title": "fix(server): 10x faster startup on large databases \u2014 keep PK range scan in projector replay",
+      "url": "https://github.com/Emanuele-web04/synara/pull/637",
+      "state": "MERGED",
+      "mergedAt": "2026-08-11T11:19:47Z",
+      "closedAt": "2026-08-11T11:19:47Z",
+      "updatedAt": "2026-08-11T11:19:47Z",
+      "changedFiles": 5,
+      "headRefOid": "0c73c961fc5ccba55cf28ec34eabcab09dece1fd",
+      "mergeCommit": {
+        "oid": "66acd8c3bb017b51a2d27c4734e9b02aa0fcb3fc"
+      }
+    },
+    {
+      "number": 670,
+      "title": "feat: add workspace file and snippet search (#647)",
+      "url": "https://github.com/Emanuele-web04/synara/pull/670",
+      "state": "MERGED",
+      "mergedAt": "2026-08-13T14:57:20Z",
+      "closedAt": "2026-08-13T14:57:20Z",
+      "updatedAt": "2026-08-28T09:38:08Z",
+      "changedFiles": 14,
+      "headRefOid": "99ceea809833d53879fab6c4d2611f635298846e",
+      "mergeCommit": {
+        "oid": "685c33973f8c7cc5a04e886bde62e8536bec47a8"
+      }
+    },
+    {
+      "number": 764,
+      "title": "Reduce desktop CPU and process-tree memory",
+      "url": "https://github.com/Emanuele-web04/synara/pull/764",
+      "state": "MERGED",
+      "mergedAt": "2026-08-20T20:20:38Z",
+      "closedAt": "2026-08-20T20:20:38Z",
+      "updatedAt": "2026-08-20T20:20:38Z",
+      "changedFiles": 2,
+      "headRefOid": "604bb15726c8fc3a048fd547c5b067c75b22d6d0",
+      "mergeCommit": {
+        "oid": "7f21a7e59063e63ca5ccb17739b78fab1ec45875"
+      }
+    },
+    {
+      "number": 906,
+      "title": "perf: cut startup work on large databases",
+      "url": "https://github.com/Emanuele-web04/synara/pull/906",
+      "state": "MERGED",
+      "mergedAt": "2026-09-01T21:15:23Z",
+      "closedAt": "2026-09-01T21:15:23Z",
+      "updatedAt": "2026-09-01T21:15:23Z",
+      "changedFiles": 11,
+      "headRefOid": "641a390126f5aa46b9536fbfe4495f95f08f5d37",
+      "mergeCommit": {
+        "oid": "ac07bddf225d1faaa484b25a82e7d42111754c44"
+      }
+    },
+    {
+      "number": 925,
+      "title": "feat(resources): Orca-parity resource manager with provider attribution",
+      "url": "https://github.com/Emanuele-web04/synara/pull/925",
+      "state": "OPEN",
+      "mergedAt": null,
+      "closedAt": null,
+      "updatedAt": "2026-09-25T14:29:54Z",
+      "changedFiles": 25,
+      "headRefOid": "907fb8cd136ccb41689443d56898f2e892aa475e",
+      "mergeCommit": null
+    },
+    {
+      "number": 967,
+      "title": "perf(server): wake turns early on claim settlement; log startup phase durations",
+      "url": "https://github.com/Emanuele-web04/synara/pull/967",
+      "state": "MERGED",
+      "mergedAt": "2026-09-05T19:07:18Z",
+      "closedAt": "2026-09-05T19:07:18Z",
+      "updatedAt": "2026-09-05T19:07:18Z",
+      "changedFiles": 5,
+      "headRefOid": "4e2a8c5ba19044b0d8349a52cb3a6540bc99cbc5",
+      "mergeCommit": {
+        "oid": "3d7ecc1c4994179fc6ed4a10c8db5d853e378e4f"
+      }
+    },
+    {
+      "number": 1077,
+      "title": "fix(web): separate message and geometry signals in tail anchor scroll",
+      "url": "https://github.com/Emanuele-web04/synara/pull/1077",
+      "state": "MERGED",
+      "mergedAt": "2026-09-13T22:58:15Z",
+      "closedAt": "2026-09-13T22:58:15Z",
+      "updatedAt": "2026-09-13T22:58:15Z",
+      "changedFiles": 6,
+      "headRefOid": "8a5a3e0a860f9adc9d4b91a01585c85ad9e9f6cd",
+      "mergeCommit": {
+        "oid": "3b021c6817dbac40c2cdc2ac03d535390c8214a3"
+      }
+    },
+    {
+      "number": 1144,
+      "title": "[codex] Refactor ChatView and speed up warm chat opening",
+      "url": "https://github.com/Emanuele-web04/synara/pull/1144",
+      "state": "MERGED",
+      "mergedAt": "2026-09-11T20:53:54Z",
+      "closedAt": "2026-09-11T20:53:55Z",
+      "updatedAt": "2026-09-11T20:53:55Z",
+      "changedFiles": 38,
+      "headRefOid": "21f7af0206ba144f588a87211602b11cb9ce9415",
+      "mergeCommit": {
+        "oid": "a355cf2000b18aeb032e7dac18b74efdb3ab3268"
+      }
+    },
+    {
+      "number": 1148,
+      "title": "feat: Mind \u2014 project memory with agent tools and Mind view",
+      "url": "https://github.com/Emanuele-web04/synara/pull/1148",
+      "state": "OPEN",
+      "mergedAt": null,
+      "closedAt": null,
+      "updatedAt": "2026-09-25T13:32:28Z",
+      "changedFiles": 47,
+      "headRefOid": "e6c805973ea98aa057566fcc3f87cfeec95acbff",
+      "mergeCommit": null
+    },
+    {
+      "number": 1234,
+      "title": "perf: reduce shipped desktop size without runtime or visual changes",
+      "url": "https://github.com/Emanuele-web04/synara/pull/1234",
+      "state": "MERGED",
+      "mergedAt": "2026-09-16T22:47:04Z",
+      "closedAt": "2026-09-16T22:47:04Z",
+      "updatedAt": "2026-09-16T22:47:04Z",
+      "changedFiles": 12,
+      "headRefOid": "d3087a60c60bac0397c83c2fa3e2a5a0885a98f7",
+      "mergeCommit": {
+        "oid": "b0fa12778b53ea35614f6218a5b8d5cd46c2c7ef"
+      }
+    },
+    {
+      "number": 1258,
+      "title": "perf(web): eliminate stalled reveal frames and hidden presentation ticks",
+      "url": "https://github.com/Emanuele-web04/synara/pull/1258",
+      "state": "MERGED",
+      "mergedAt": "2026-09-19T17:31:36Z",
+      "closedAt": "2026-09-19T17:31:37Z",
+      "updatedAt": "2026-09-19T17:31:37Z",
+      "changedFiles": 8,
+      "headRefOid": "21bfba98395230a713d16d6e276fa9c11f44dfd5",
+      "mergeCommit": {
+        "oid": "e0b0528484c57886b11f2b216538539aa9ce3a4d"
+      }
+    },
+    {
+      "number": 1290,
+      "title": "perf: remove redundant work on streaming, rendering, and I/O hot paths (#1289)",
+      "url": "https://github.com/Emanuele-web04/synara/pull/1290",
+      "state": "MERGED",
+      "mergedAt": "2026-09-22T15:25:26Z",
+      "closedAt": "2026-09-22T15:25:26Z",
+      "updatedAt": "2026-09-22T15:25:26Z",
+      "changedFiles": 52,
+      "headRefOid": "20afade3f79cd0c1d2ac97ff9f0de801e3e5e770",
+      "mergeCommit": {
+        "oid": "03fd183c2430d1f6f4a95c9495467cfc2bb2425d"
+      }
+    },
+    {
+      "number": 1308,
+      "title": "Reset transcript scroll ownership before following a new thread",
+      "url": "https://github.com/Emanuele-web04/synara/pull/1308",
+      "state": "MERGED",
+      "mergedAt": "2026-09-24T19:05:19Z",
+      "closedAt": "2026-09-24T19:05:19Z",
+      "updatedAt": "2026-09-24T19:05:19Z",
+      "changedFiles": 3,
+      "headRefOid": "bb072ac249584958b6f1f1ada25d94dec46cf8f1",
+      "mergeCommit": {
+        "oid": "5a5d7ceb2d9453f758b671a9f9ee0fca1e15c832"
+      }
+    },
+    {
+      "number": 1314,
+      "title": "feat: Groups, a coordinator with parallel threads, shared memory and a Library",
+      "url": "https://github.com/Emanuele-web04/synara/pull/1314",
+      "state": "OPEN",
+      "mergedAt": null,
+      "closedAt": null,
+      "updatedAt": "2026-09-25T12:59:02Z",
+      "changedFiles": 314,
+      "headRefOid": "3a435f0a8a79c7a9f3a9f571456cea94234fa85c",
+      "mergeCommit": null
+    },
+    {
+      "number": 1442,
+      "title": "fix(server): leave deleted tracked files out of workspace search",
+      "url": "https://github.com/Emanuele-web04/synara/pull/1442",
+      "state": "MERGED",
+      "mergedAt": "2026-10-02T12:24:36Z",
+      "closedAt": "2026-10-02T12:24:36Z",
+      "updatedAt": "2026-10-02T12:24:36Z",
+      "changedFiles": 3,
+      "headRefOid": "766069d4a703e7d5c4feda9eb655f52b960e355f",
+      "mergeCommit": {
+        "oid": "201ef733438d052f537f208e797fbe896960f9f0"
+      }
+    },
+    {
+      "number": 1490,
+      "title": "Add durable Hub work orchestration and task tracking",
+      "url": "https://github.com/Emanuele-web04/synara/pull/1490",
+      "state": "MERGED",
+      "mergedAt": "2026-10-02T19:53:37Z",
+      "closedAt": "2026-10-02T19:53:37Z",
+      "updatedAt": "2026-10-02T19:53:38Z",
+      "changedFiles": 60,
+      "headRefOid": "28a017b7a05eb99864dc59ca76b3bc5d68e1fa11",
+      "mergeCommit": {
+        "oid": "2aa79c3eb31fa3420e570fd0867692fe4ba37df2"
+      }
+    }
+  ]
+}

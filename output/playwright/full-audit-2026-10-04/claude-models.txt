@@ -1,0 +1,144 @@
+- button "Switch mode": Neokod Dev
+- tablist "Sidebar view":
+  - tab "Projects" [selected]
+  - tab "All threads"
+- list:
+  - listitem:
+    - button "New thread"
+  - listitem:
+    - button "Search ⌘K"
+  - listitem:
+    - button "Home"
+- tabpanel "Projects":
+  - region "My Work":
+    - button "My Work 2" [expanded]
+    - text: Needs you
+    - button "Clear"
+    - button "Failed Functional audit thread neokod-functional-audit-uy22dh88": Functional audit thread neokod-functional-audit-uy22dh88
+    - button "Dismiss Functional audit thread from My Work"
+    - text: Recent
+    - button "Clear"
+    - button "Done Hi arbitrage":
+      - img "Done"
+      - text: Hi arbitrage
+    - button "Dismiss Hi from My Work"
+  - text: Projects
+  - button
+  - button "Add project"
+  - list:
+    - listitem:
+      - button "neokod-functional-audit-uy22dh88"
+      - button "Create new thread in neokod-functional-audit-uy22dh88"
+      - list:
+        - listitem:
+          - button "Failed Functional audit thread 6m ago Pin Functional audit thread Archive Functional audit thread":
+            - text: Failed Functional audit thread 6m ago
+            - button "Pin Functional audit thread"
+            - button "Archive Functional audit thread"
+    - listitem:
+      - button "arbitrage"
+      - button "Create new thread in arbitrage"
+      - list:
+        - listitem:
+          - button "Hi 20m ago Pin Hi Archive Hi":
+            - text: Hi 20m ago
+            - button "Pin Hi"
+            - button "Archive Hi"
+- separator
+- list:
+  - listitem:
+    - button "Settings"
+- button "Resize Sidebar"
+- main:
+  - button "Toggle terminal drawer"
+  - button "Toggle right panel"
+  - heading "New thread" [level=2]
+  - button "Set goal"
+  - button "Open terminal"
+  - button "Open diff"
+  - button "More thread actions"
+  - alert: "Codex provider status Codex app-server provider probe failed: Codex App Server process exited with code 1."
+  - paragraph: Send a message to start the conversation.
+  - textbox:
+    - paragraph
+  - text: Ask for follow-up changes or attach images
+  - button "GPT-6.1-Sol · Low" [expanded]
+  - dialog:
+    - button "Favorites"
+    - button "Claude"
+    - 'button "Codex — Unavailable. Codex app-server provider probe failed: Codex App Server process exited with code 1." [disabled]'
+    - button "GitHub Copilot": GC
+    - button "OpenCode"
+    - combobox "Search models..."
+    - listbox:
+      - option "Default (recommended) default Claude ⌘1 Add to favorites":
+        - text: Default (recommended) default
+        - img
+        - text: Claude ⌘1
+        - button "Add to favorites"
+      - option "Opus 5.5 opus Claude ⌘2 Add to favorites":
+        - text: Opus 5.5 opus
+        - img
+        - text: Claude ⌘2
+        - button "Add to favorites"
+      - option "Sonnet 5.5 sonnet Claude ⌘3 Add to favorites":
+        - text: Sonnet 5.5 sonnet
+        - img
+        - text: Claude ⌘3
+        - button "Add to favorites"
+      - option "Fable 5.1 fable Claude ⌘4 Add to favorites":
+        - text: Fable 5.1 fable
+        - img
+        - text: Claude ⌘4
+        - button "Add to favorites"
+      - option "Haiku 4.5 haiku Claude ⌘5 Add to favorites":
+        - text: Haiku 4.5 haiku
+        - img
+        - text: Claude ⌘5
+        - button "Add to favorites"
+      - option "Sonnet 5 claude-sonnet-5 Claude ⌘6 Add to favorites":
+        - text: Sonnet 5 claude-sonnet-5
+        - img
+        - text: Claude ⌘6
+        - button "Add to favorites"
+      - option "Opus 5 claude-opus-5 Claude ⌘7 Add to favorites":
+        - text: Opus 5 claude-opus-5
+        - img
+        - text: Claude ⌘7
+        - button "Add to favorites"
+      - option "Fable 5 claude-fable-5 Claude ⌘8 Add to favorites":
+        - text: Fable 5 claude-fable-5
+        - img
+        - text: Claude ⌘8
+        - button "Add to favorites"
+      - option "Opus 4.8 claude-opus-4-8 Claude ⌘9 Add to favorites":
+        - text: Opus 4.8 claude-opus-4-8
+        - img
+        - text: Claude ⌘9
+        - button "Add to favorites"
+      - option "Opus 4.7 claude-opus-4-7 Claude Add to favorites":
+        - text: Opus 4.7 claude-opus-4-7
+        - img
+        - text: Claude
+        - button "Add to favorites"
+      - option "Opus 4.6 claude-opus-4-6 Claude Add to favorites":
+        - text: Opus 4.6 claude-opus-4-6
+        - img
+        - text: Claude
+        - button "Add to favorites"
+      - option "Sonnet 4.6 claude-sonnet-4-6 Claude Add to favorites":
+        - text: Sonnet 4.6 claude-sonnet-4-6
+        - img
+        - text: Claude
+        - button "Add to favorites"
+    - status
+    - text: Provider options
+    - button "Low · Fast"
+  - combobox "Runtime mode": Full access
+  - button "Default mode — click to enter plan mode": Build
+  - button "Send message" [disabled]
+  - combobox "Workspace": Current checkout
+  - combobox: main
+- button "Toggle main sidebar" [pressed]: Toggle Sidebar
+- region "Notifications"
+- region "Notifications"

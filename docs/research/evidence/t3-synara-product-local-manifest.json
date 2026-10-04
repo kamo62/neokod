@@ -1,0 +1,106 @@
+{
+  "captured_utc": "2026-10-04T07:07:03.963282+00:00",
+  "scope": "read current local source, including unrelated owner dirt; no implementation validation",
+  "files": [
+    {
+      "path": "apps/web/src/components/ChatMarkdown.tsx",
+      "sha256": "2863dbb532cc9464e737718b153eb74338f13594f1ce296c71787ac5c6a834dd"
+    },
+    {
+      "path": "apps/web/src/components/ChatView.tsx",
+      "sha256": "4acd35846ccb75aba5ee676a080d5687f1edae761da9c6310f0e2801e6d2fd0e"
+    },
+    {
+      "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+      "sha256": "5b35db6694cc984072613ca055f798f91643377168348119b7c971160479c661"
+    },
+    {
+      "path": "apps/web/src/components/ThreadTerminalDrawer.tsx",
+      "sha256": "ac213508dee08d2aeb959a47e796094332f6133cae8667ed0f959548118f4065"
+    },
+    {
+      "path": "apps/server/src/terminal/Manager.ts",
+      "sha256": "ee98ede1e1fe1634724b54deaff7ea94d26b9aff3a55ca4971016057fc72bf51"
+    },
+    {
+      "path": "packages/client-runtime/src/state/threads.ts",
+      "sha256": "c8fd76477bdd176e75aa2e970f58c85c16a554dd3269b011a65dd5c5fafa719b"
+    },
+    {
+      "path": "packages/client-runtime/src/state/threadDetail.ts",
+      "sha256": "f54a20e9e4271c3b22515223639883876042af251f8356810369a4dcc4106ea6"
+    },
+    {
+      "path": "apps/web/src/connection/storage.ts",
+      "sha256": "0b17d856d8c6312204a3039b222e3e5e22827d0c0907468f70cae04b5f749b3f"
+    },
+    {
+      "path": "apps/web/src/hooks/useLocalStorage.ts",
+      "sha256": "b3c67018a2c07140503443dfde5281e20bcae45aadab0947fdd9d24f32fa30d7"
+    },
+    {
+      "path": "apps/web/src/components/CommandPalette.logic.ts",
+      "sha256": "b12eff5461cad195f47427aec260de2310bcc392e27d7744b36f1c1455ac85c7"
+    },
+    {
+      "path": "apps/web/src/components/CommandPaletteResults.tsx",
+      "sha256": "8210b7248759e2ae5c0e61ed63db34e3eeb2cb523165124f83e55e684347275e"
+    },
+    {
+      "path": "apps/server/src/workspace/WorkspaceEntries.ts",
+      "sha256": "1587cabd52687eb380a5784b11f8c09d018721d01f7310b03b80af400dfff48b"
+    },
+    {
+      "path": "apps/server/src/workspace/WorkspaceSearchIndex.ts",
+      "sha256": "6a3d6cd9d31beb4efdd52cc3cdaa3f1b963205a1d4df040f7d59770037840d9a"
+    },
+    {
+      "path": "apps/desktop/src/electron/ElectronProtocol.ts",
+      "sha256": "20e14cb51171404f1d6f2a1d9964f097e221cd7fd7fb7f11889b0e594c5b05c6"
+    },
+    {
+      "path": "apps/desktop/src/app/DesktopApp.ts",
+      "sha256": "1187b6debe731d2107a00417cdeb4e93e359c63f8b56c81f1a47815eb7bd9894"
+    },
+    {
+      "path": "apps/desktop/src/backend/DesktopLocalServer.ts",
+      "sha256": "8a7c2bd6a01a1f47fc8ef15520c62d209f7d6cadf6fd87a21e0cea0a2f9c7b01"
+    },
+    {
+      "path": "apps/server/src/provider/Layers/CodexProvider.ts",
+      "sha256": "375650f518013af9faf0179961eb94c40e12778928b5581a734d560b50f87e99"
+    },
+    {
+      "path": "apps/server/src/persistence/Layers/Sqlite.ts",
+      "sha256": "c647b429d2d45425e762f53e75e091918c59aab162541d4ff2b420fffd958f63"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/Registry.ts",
+      "sha256": "60047b89e9e34a6302e3203469ecd3cd61641f67e2b6d3feb57fb94767c18d85"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/Adapter.ts",
+      "sha256": "2d99882f09236af9078e1c85a9547dfc61f16884402428faf3e0c777956f8f7a"
+    },
+    {
+      "path": "apps/server/src/symphony/HandoffService.ts",
+      "sha256": "c09fcf7100ac3c7e476a4429857df2564ba80d274e7fea7b93a4c258458b8b96"
+    },
+    {
+      "path": "packages/contracts/src/symphony.ts",
+      "sha256": "bf0abf7e079bee664590572f2fffd1b8aff7f831faa26b0cc0276b8e7450a056"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/LinearAdapter.ts",
+      "sha256": "8a853a8950383c01c5d2aa9b094c7967b64a317fd1a267613a54d0f74097a8a9"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/AzureBoardsAdapter.ts",
+      "sha256": "59a1790cf54b6f31e4544d6a60e91dd02459a1c4bdb5b7991322cdb439dba58f"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/GitHubProjectsAdapter.ts",
+      "sha256": "fdd36462ed17f98746e09c51ae62e99800fa249907da6493838a80bd79c8f356"
+    }
+  ]
+}

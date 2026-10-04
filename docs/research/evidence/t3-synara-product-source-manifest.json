@@ -1,0 +1,249 @@
+[
+  {
+    "repo": "pingdotgg/t3code",
+    "pin": "ee7b49d638e412590b09b415cc48399d51644b60",
+    "path": "apps/web/src/markdown-incremental.ts",
+    "sha256": "99e6190d5a8c1278e7cc388d3235ff5ef1e9579a77d5b8a478e672491defd387",
+    "method": "existing frozen Git object"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "pin": "ee7b49d638e412590b09b415cc48399d51644b60",
+    "path": "apps/web/src/lib/incrementalHighlighting.ts",
+    "sha256": "559e2eb9931710f568a09f2f1b8f595349e969131e39afd1feecd3a089c03937",
+    "method": "existing frozen Git object"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "pin": "ee7b49d638e412590b09b415cc48399d51644b60",
+    "path": "apps/web/src/components/chat/HighlightedCodeLines.tsx",
+    "sha256": "28f6a3d73d4f0f84c6dbc1282d082de705090cc402ef24d929f3141c6aa606c6",
+    "method": "existing frozen Git object"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "pin": "ee7b49d638e412590b09b415cc48399d51644b60",
+    "path": "apps/web/src/terminal/ghostty/surface.ts",
+    "sha256": "1ea94e19afd13966f21c2f234ad0b801182394fb2fdccf82a09d84d4a65176cb",
+    "method": "existing frozen Git object"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "pin": "ee7b49d638e412590b09b415cc48399d51644b60",
+    "path": "apps/server/src/terminal/Manager.ts",
+    "sha256": "906c02b494edb66dd87384b251e140e9e8abd514bd8b6ef42f22a06324d56ad8",
+    "method": "existing frozen Git object"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "pin": "ee7b49d638e412590b09b415cc48399d51644b60",
+    "path": "packages/client-runtime/src/state/threads.ts",
+    "sha256": "acf332d02d718cf3f4bdc0ec76de17c37038dfb3e31aa9fc7fa24e7643616ffc",
+    "method": "existing frozen Git object"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "pin": "ee7b49d638e412590b09b415cc48399d51644b60",
+    "path": "packages/client-runtime/src/state/threadDetail.ts",
+    "sha256": "39084a15bcd8167584519b1056dec48792b9c938b1821188763bd596efd49bff",
+    "method": "existing frozen Git object"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "pin": "ee7b49d638e412590b09b415cc48399d51644b60",
+    "path": "apps/desktop/src/compileCache.ts",
+    "sha256": "f26bf29193de83a6c19c90519c8bb41e7d00de18b701cace603368cfabb7283c",
+    "method": "existing frozen Git object"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "pin": "ee7b49d638e412590b09b415cc48399d51644b60",
+    "path": "apps/desktop/src/main.ts",
+    "sha256": "9ecb6c10df5f23cf3a0becea4445226f835ac6a24f76b525f5e957490a0e2a6e",
+    "method": "existing frozen Git object"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "pin": "5f2ee77ae9fc60993db47e81419c1171a99a5c32",
+    "path": "apps/desktop/src/main.ts",
+    "sha256": "9e1ab4af76dc2a2ee0ec1f39539663e2f04580a5e805207558698ca487ac9cd2",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/desktop/src/main.ts",
+    "method": "anonymous pinned primary source",
+    "captured_utc": "2026-10-04T07:03:30.156428+00:00"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "pin": "5f2ee77ae9fc60993db47e81419c1171a99a5c32",
+    "path": "apps/server/src/codexAppServerManager.ts",
+    "sha256": "ed9968057eb5ee764010013746655f11e73b683b74a4491dce4f073caa575e6c",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/codexAppServerManager.ts",
+    "method": "anonymous pinned primary source",
+    "captured_utc": "2026-10-04T07:03:30.197111+00:00"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "pin": "5f2ee77ae9fc60993db47e81419c1171a99a5c32",
+    "path": "apps/server/src/persistence/sqliteMemoryBudget.ts",
+    "sha256": "f00f38c59b6a3dfe7cf4b949778533fcca5ad01ac6f1a6fbabd713894f2520c5",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/persistence/sqliteMemoryBudget.ts",
+    "method": "anonymous pinned primary source",
+    "captured_utc": "2026-10-04T07:03:30.087722+00:00"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "pin": "5f2ee77ae9fc60993db47e81419c1171a99a5c32",
+    "path": "apps/server/src/workspaceEntries.ts",
+    "sha256": "a3876c3fdbe5b37c93597b8d276935a599cf9c5bc9ec2b1940a789aeaa26552c",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/workspaceEntries.ts",
+    "method": "anonymous pinned primary source",
+    "captured_utc": "2026-10-04T07:03:30.093731+00:00"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "pin": "5f2ee77ae9fc60993db47e81419c1171a99a5c32",
+    "path": "apps/web/src/hooks/useSmoothStreamedText.ts",
+    "sha256": "04f29aac4e95f72d722db4bb06d8e9631136cc758ab489969f43b95764032f67",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/hooks/useSmoothStreamedText.ts",
+    "method": "anonymous pinned primary source",
+    "captured_utc": "2026-10-04T07:03:30.432582+00:00"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "pin": "5f2ee77ae9fc60993db47e81419c1171a99a5c32",
+    "path": "apps/web/src/lib/visibleInterval.ts",
+    "sha256": "9d9da09db5cae06005984dbc82403e73c2e87d6ccb2f8c29a9602d5cf50573ed",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/lib/visibleInterval.ts",
+    "method": "anonymous pinned primary source",
+    "captured_utc": "2026-10-04T07:03:30.496029+00:00"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "pin": "5f2ee77ae9fc60993db47e81419c1171a99a5c32",
+    "path": "apps/web/src/lib/localStorage.ts",
+    "error": "HTTP Error 404: Not Found"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "pin": "5f2ee77ae9fc60993db47e81419c1171a99a5c32",
+    "path": "apps/web/src/components/chat/useTailAnchorScroll.ts",
+    "sha256": "dd347d6f2087801c461ca03ac92e01c8633971d62c90861ba828d5b24bc9c87f",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/chat/useTailAnchorScroll.ts",
+    "method": "anonymous pinned primary source",
+    "captured_utc": "2026-10-04T07:03:30.568718+00:00"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "pin": "5f2ee77ae9fc60993db47e81419c1171a99a5c32",
+    "path": "apps/web/src/hooks/useNowMs.ts",
+    "sha256": "5bdaa7ae185e3b8049d5e266c0908e7c40a12ccabae89ca01be089247820f628",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/hooks/useNowMs.ts",
+    "method": "anonymous pinned primary source",
+    "captured_utc": "2026-10-04T07:03:31.196283+00:00"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "pin": "5f2ee77ae9fc60993db47e81419c1171a99a5c32",
+    "path": "apps/web/src/components/ChatMarkdown.tsx",
+    "sha256": "fe773cda4ffec2c76bf2fadedad251d63e765182153443b08afe67e53bb720dc",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/ChatMarkdown.tsx",
+    "method": "anonymous pinned primary source",
+    "captured_utc": "2026-10-04T07:03:30.860851+00:00"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "pin": "5f2ee77ae9fc60993db47e81419c1171a99a5c32",
+    "path": "apps/web/src/components/WorkspaceSearchPalette.tsx",
+    "sha256": "74cd0d81c317b8df8977d066a89e7a199bea43ed36ed49b58843ca68119b4530",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/WorkspaceSearchPalette.tsx",
+    "method": "anonymous pinned primary source",
+    "captured_utc": "2026-10-04T07:03:31.236210+00:00"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "pin": "dc2afc56bf7ab564a098fcd32a67976c5ad33cb6",
+    "path": "apps/server/src/issues/Layers/IssueService.ts",
+    "error": "HTTP Error 404: Not Found"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "pin": "e6c805973ea98aa057566fcc3f87cfeec95acbff",
+    "path": "apps/server/src/mind/scoring.ts",
+    "sha256": "80a8386c638ad7763718777841d1479656236a7261cf326831a41a5efc5942c9",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/e6c805973ea98aa057566fcc3f87cfeec95acbff/apps/server/src/mind/scoring.ts",
+    "method": "anonymous pinned primary source",
+    "captured_utc": "2026-10-04T07:03:31.210727+00:00"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "pin": "e6c805973ea98aa057566fcc3f87cfeec95acbff",
+    "path": "apps/server/src/mind/Layers/MindService.ts",
+    "sha256": "b446063b8bf6bebf8c0dc01336eb4ec4d14535738f1df26652d1f0a77220ec37",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/e6c805973ea98aa057566fcc3f87cfeec95acbff/apps/server/src/mind/Layers/MindService.ts",
+    "method": "anonymous pinned primary source",
+    "captured_utc": "2026-10-04T07:03:31.566565+00:00"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "pin": "5f2ee77ae9fc60993db47e81419c1171a99a5c32",
+    "path": "apps/web/src/hooks/useLocalStorage.ts",
+    "sha256": "e1bdbcd47b495e54221543e11551ff0e4822ffceb65c98609892bae4fa66e9c3",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/hooks/useLocalStorage.ts",
+    "method": "anonymous pinned primary source",
+    "captured_utc": "2026-10-04T07:05:04.954315+00:00"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "pin": "dc2afc56bf7ab564a098fcd32a67976c5ad33cb6",
+    "path": "apps/server/src/workItems/Layers/WorkItemService.ts",
+    "sha256": "5d3d09f5ade3a1fd39ff7939b8ae2517b578cfc08f65422709d40a0bfeb6edde",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/dc2afc56bf7ab564a098fcd32a67976c5ad33cb6/apps/server/src/workItems/Layers/WorkItemService.ts",
+    "method": "anonymous pinned primary source",
+    "captured_utc": "2026-10-04T07:05:10.017081+00:00"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "pin": "dc2afc56bf7ab564a098fcd32a67976c5ad33cb6",
+    "path": "packages/contracts/src/workItemReferences.ts",
+    "sha256": "02028c59372039861b47d38e8341b828a63b3aeeb232c787b2387c57ce75902e",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/dc2afc56bf7ab564a098fcd32a67976c5ad33cb6/packages/contracts/src/workItemReferences.ts",
+    "method": "anonymous pinned primary source",
+    "captured_utc": "2026-10-04T07:05:04.955192+00:00"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "pin": "dc2afc56bf7ab564a098fcd32a67976c5ad33cb6",
+    "path": "apps/server/src/workItems/linearClient.ts",
+    "sha256": "1ba74a6da2781525c85797b4ba5ef2d5a3cd31deaea9d3e2aaa90e5ae8bea63e",
+    "url": "https://raw.githubusercontent.com/Emanuele-web04/synara/dc2afc56bf7ab564a098fcd32a67976c5ad33cb6/apps/server/src/workItems/linearClient.ts",
+    "method": "anonymous pinned primary source",
+    "captured_utc": "2026-10-04T07:05:04.955839+00:00"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "pin": "ee7b49d638e412590b09b415cc48399d51644b60",
+    "path": "apps/web/src/components/chat/ComposerBanner.tsx",
+    "sha256": "56795a75ef1c7c34e7bbc38bbc0fea16472fa8167a1161c1e4202b75392235b2",
+    "method": "existing frozen Git object"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "pin": "ee7b49d638e412590b09b415cc48399d51644b60",
+    "path": "apps/web/src/components/CommandPaletteResults.tsx",
+    "sha256": "5110991b758801b1d690d5e1216e5007e0d38b54f97b390ca469cedae07a07f9",
+    "method": "existing frozen Git object"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "pin": "ee7b49d638e412590b09b415cc48399d51644b60",
+    "path": "packages/client-runtime/src/platform/persistence.ts",
+    "sha256": "1c4d5ea54e653c0e0ce21812b1e18efa8b22fca8e29ed564bef7d1d41595bfd7",
+    "method": "existing frozen Git object"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "pin": "ee7b49d638e412590b09b415cc48399d51644b60",
+    "path": "packages/client-runtime/src/state/cachePersistence.ts",
+    "sha256": "863a6a601097c433ae07b17cdef0270576d0cd1034b1ff8f767582cfe3c384cf",
+    "method": "existing frozen Git object"
+  }
+]

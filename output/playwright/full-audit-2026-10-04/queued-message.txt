@@ -1,0 +1,95 @@
+- button "Switch mode": Neokod Dev
+- tablist "Sidebar view":
+  - tab "Projects" [selected]
+  - tab "All threads"
+- list:
+  - listitem:
+    - button "New thread"
+  - listitem:
+    - button "Search ⌘K"
+  - listitem:
+    - button "Home"
+- tabpanel "Projects":
+  - region "My Work":
+    - button "My Work 3" [expanded]
+    - text: Needs you
+    - button "Clear"
+    - button "Failed Functional audit thread neokod-functional-audit-uy22dh88": Functional audit thread neokod-functional-audit-uy22dh88
+    - button "Dismiss Functional audit thread from My Work"
+    - text: Recent
+    - button "Clear"
+    - button "Done Reply with exactly CLAUDE_AUDIT_ACK. Do not use to... neokod-functional-audit-uy22dh88":
+      - img "Done"
+      - text: Reply with exactly CLAUDE_AUDIT_ACK. Do not use to... neokod-functional-audit-uy22dh88
+    - button "Dismiss Reply with exactly CLAUDE_AUDIT_ACK. Do not use to... from My Work"
+    - button "Done Hi arbitrage":
+      - img "Done"
+      - text: Hi arbitrage
+    - button "Dismiss Hi from My Work"
+  - text: Projects
+  - button
+  - button "Add project"
+  - list:
+    - listitem:
+      - button "neokod-functional-audit-uy22dh88"
+      - button "Create new thread in neokod-functional-audit-uy22dh88"
+      - list:
+        - listitem:
+          - button "Reply with exactly CLAUDE_AUDIT_ACK. Do not use to... just now Pin Reply with exactly CLAUDE_AUDIT_ACK. Do not use to... Archive Reply with exactly CLAUDE_AUDIT_ACK. Do not use to...":
+            - text: Reply with exactly CLAUDE_AUDIT_ACK. Do not use to... just now
+            - button "Pin Reply with exactly CLAUDE_AUDIT_ACK. Do not use to..."
+            - button "Archive Reply with exactly CLAUDE_AUDIT_ACK. Do not use to..."
+        - listitem:
+          - button "Failed Functional audit thread 7m ago Pin Functional audit thread Archive Functional audit thread":
+            - text: Failed Functional audit thread 7m ago
+            - button "Pin Functional audit thread"
+            - button "Archive Functional audit thread"
+    - listitem:
+      - button "arbitrage"
+      - button "Create new thread in arbitrage"
+      - list:
+        - listitem:
+          - button "Hi 21m ago Pin Hi Archive Hi":
+            - text: Hi 21m ago
+            - button "Pin Hi"
+            - button "Archive Hi"
+- separator
+- list:
+  - listitem:
+    - button "Settings"
+- button "Resize Sidebar"
+- main:
+  - button "Toggle terminal drawer"
+  - button "Toggle right panel"
+  - heading "Reply with exactly CLAUDE_AUDIT_ACK. Do not use to..." [level=2]
+  - button "Set goal"
+  - button "Sonnet 5.5"
+  - button "Open terminal"
+  - button "Open diff"
+  - button "More thread actions"
+  - region "Thread run progress": Reply with exactly CLAUDE_AUDIT_ACK. Do not use to... Working 0s
+  - paragraph: Reply with exactly CLAUDE_AUDIT_ACK. Do not use tools, modify files, or run commands.
+  - paragraph: 12:35 PM
+  - button "Revert to this message" [disabled]
+  - button "Copy link"
+  - paragraph: Reply with exactly QUEUE_AUDIT_ACK. Do not use tools or modify files.
+  - paragraph: 12:36 PM
+  - button "Copy link"
+  - paragraph: CLAUDE_AUDIT_ACK
+  - button "Copy link"
+  - paragraph: 12:36 PM
+  - text: Working for 0s
+  - 'button "Jump to message: User message"'
+  - textbox:
+    - paragraph
+  - text: Ask anything, @tag files/folders, $use skills, or / for commands
+  - button "Sonnet 5.5 · High"
+  - combobox "Runtime mode": Supervised
+  - button "Plan mode — click to return to normal build mode": Plan
+  - button "Context window 3.3% used"
+  - button "Sending" [disabled]
+  - text: Local checkout
+  - combobox: main
+- button "Toggle main sidebar" [pressed]: Toggle Sidebar
+- region "Notifications"
+- region "Notifications"

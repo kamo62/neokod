@@ -1,0 +1,33 @@
+- button "Switch mode": Neokod Dev
+- list:
+  - listitem:
+    - button "General"
+  - listitem:
+    - button "Appearance"
+  - listitem:
+    - button "Keybindings"
+  - listitem:
+    - button "Providers"
+  - listitem:
+    - button "Source Control"
+  - listitem:
+    - button "Tracking"
+  - listitem:
+    - button "Analytics"
+  - listitem:
+    - button "Connections"
+  - listitem:
+    - button "Archive"
+- separator
+- list:
+  - listitem:
+    - button "Back"
+- button "Resize Sidebar"
+- main:
+  - text: Settings
+  - heading "Version Control" [level=2]
+  - button "Rescan server environment" [disabled]
+  - heading "Source Control Providers" [level=2]
+- button "Toggle main sidebar" [pressed]: Toggle Sidebar
+- region "Notifications"
+- region "Notifications"

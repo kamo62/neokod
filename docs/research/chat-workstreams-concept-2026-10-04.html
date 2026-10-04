@@ -1,0 +1,991 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Neokod · Work inside the conversation</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --base: #171a1e;
+        --panel: #1e2329;
+        --raised: #272e36;
+        --line: #39424c;
+        --ink: #edf1f4;
+        --muted: #a9b3be;
+        --blue: #9fbfe1;
+        --amber: #e2bf87;
+        --green: #a9c6ad;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--base);
+        color: var(--ink);
+        font:
+          15px/1.6 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+      button,
+      select {
+        font: inherit;
+      }
+      button,
+      a,
+      select {
+        outline-offset: 5px;
+      }
+      button:focus-visible,
+      a:focus-visible,
+      select:focus-visible {
+        outline: 2px solid var(--blue);
+      }
+      button {
+        cursor: pointer;
+      }
+      a {
+        color: var(--blue);
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      h1 {
+        font-size: 26px;
+        font-weight: 550;
+        letter-spacing: -0.5px;
+      }
+      h2 {
+        font-size: 16px;
+        font-weight: 600;
+      }
+      h3 {
+        font-size: 14px;
+      }
+      code {
+        font:
+          12px/1.5 ui-monospace,
+          SFMono-Regular,
+          Consolas,
+          monospace;
+      }
+      small,
+      .muted {
+        color: var(--muted);
+      }
+      .top {
+        min-height: 58px;
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        padding: 10px 24px;
+        border-bottom: 1px solid var(--line);
+      }
+      .brand {
+        font-weight: 700;
+        letter-spacing: -0.5px;
+        font-size: 18px;
+      }
+      .concept {
+        color: var(--amber);
+        font-size: 12px;
+      }
+      .top a {
+        margin-left: auto;
+        font-size: 13px;
+      }
+      .workspace {
+        display: grid;
+        grid-template-columns: 270px minmax(480px, 1fr) 300px;
+        min-height: calc(100vh - 58px);
+      }
+      .tree {
+        background: var(--panel);
+        padding: 26px 15px;
+        border-right: 1px solid var(--line);
+      }
+      .project {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 12px 23px;
+      }
+      .project-icon {
+        width: 29px;
+        height: 29px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        display: grid;
+        place-items: center;
+        color: var(--blue);
+      }
+      .tree small {
+        display: block;
+        font-size: 12px;
+      }
+      .tree-label {
+        padding: 0 12px 8px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .work {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        border-radius: 5px;
+        color: var(--ink);
+        text-align: left;
+        padding: 10px 12px;
+        margin: 2px 0;
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+      }
+      .work:hover {
+        background: var(--raised);
+      }
+      .work[aria-pressed="true"] {
+        background: #303b48;
+        box-shadow: inset 2px 0 var(--blue);
+      }
+      .work span.content {
+        min-width: 0;
+        flex: 1;
+      }
+      .work strong {
+        display: block;
+        font-size: 13px;
+        font-weight: 550;
+      }
+      .children {
+        margin-left: 24px;
+        border-left: 1px solid #536172;
+        padding-left: 9px;
+      }
+      .symbol {
+        font-size: 15px;
+        color: var(--blue);
+        width: 16px;
+      }
+      .tag {
+        color: var(--amber);
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .work-state {
+        width: 6px;
+        height: 6px;
+        background: var(--amber);
+        border-radius: 50%;
+        margin-top: 8px;
+      }
+      .work-state.done {
+        background: var(--green);
+      }
+      .work-state.unknown {
+        background: transparent;
+        border: 1px solid var(--muted);
+      }
+      .tree-note {
+        margin: 29px 12px 0;
+        padding-top: 16px;
+        border-top: 1px solid var(--line);
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .conversation {
+        padding: 30px 38px 28px;
+        max-width: 1100px;
+        width: 100%;
+        margin: auto;
+      }
+      .chat-heading {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 15px;
+        margin-bottom: 30px;
+      }
+      .chat-heading p {
+        font-size: 13px;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+      .view-label {
+        font-size: 12px;
+        color: var(--blue);
+        white-space: nowrap;
+        padding-top: 7px;
+      }
+      .message {
+        margin: 25px 0;
+      }
+      .message-head {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 9px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .actor {
+        font-weight: 600;
+        color: var(--ink);
+      }
+      .stamp {
+        margin-left: auto;
+        font-size: 11px;
+      }
+      .message-body {
+        max-width: 78ch;
+      }
+      .message-body p + p {
+        margin-top: 12px;
+      }
+      .user .message-body {
+        background: var(--raised);
+        border-radius: 8px;
+        padding: 15px 18px;
+      }
+      .work-inline {
+        margin: 28px 0;
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+      }
+      .inline-heading {
+        padding: 12px 0 5px;
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+      }
+      .inline-row {
+        display: grid;
+        grid-template-columns: 18px 1fr auto;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 0;
+        font-size: 13px;
+      }
+      .inline-row small {
+        font-size: 11px;
+      }
+      .state {
+        color: var(--amber);
+        font-size: 12px;
+      }
+      .state.done {
+        color: var(--green);
+      }
+      .inline-row button {
+        background: transparent;
+        border: 0;
+        color: var(--blue);
+        padding: 0;
+        text-align: left;
+        font-weight: 550;
+      }
+      .attribution {
+        border-left: 2px solid #6888a7;
+        padding: 0 0 0 16px;
+      }
+      .attribution p {
+        font-size: 14px;
+      }
+      .link-chip {
+        border: 1px solid #566579;
+        border-radius: 4px;
+        padding: 1px 6px;
+        color: var(--blue);
+        font-size: 11px;
+        white-space: nowrap;
+      }
+      .composer {
+        margin-top: 35px;
+        border: 1px solid #586574;
+        border-radius: 9px;
+        padding: 15px 17px;
+        background: var(--panel);
+      }
+      .composer-prompt {
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .composer-bottom {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-top: 25px;
+        font-size: 12px;
+      }
+      .handoff {
+        margin-left: auto;
+        border: 1px solid #657487;
+        background: transparent;
+        color: var(--ink);
+        border-radius: 5px;
+        padding: 7px 11px;
+        font-size: 12px;
+      }
+      .detail {
+        background: var(--panel);
+        border-left: 1px solid var(--line);
+        padding: 29px 22px;
+      }
+      .detail-label {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 17px;
+      }
+      .detail h2 {
+        font-size: 18px;
+        line-height: 1.35;
+      }
+      .detail p {
+        font-size: 13px;
+        margin-top: 12px;
+      }
+      .detail dl {
+        margin: 22px 0 26px;
+      }
+      .detail dt {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 16px;
+      }
+      .detail dd {
+        margin: 3px 0;
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+      .evidence {
+        border-top: 1px solid var(--line);
+        padding-top: 18px;
+      }
+      .evidence ul {
+        padding-left: 18px;
+        font-size: 13px;
+      }
+      .evidence li + li {
+        margin-top: 8px;
+      }
+      .scenario {
+        margin-top: 28px;
+        border-top: 1px solid var(--line);
+        padding-top: 16px;
+      }
+      .scenario label {
+        font-size: 12px;
+        color: var(--muted);
+        display: block;
+      }
+      .scenario select {
+        margin-top: 8px;
+        background: var(--raised);
+        border: 1px solid #637286;
+        border-radius: 4px;
+        color: var(--ink);
+        width: 100%;
+        padding: 7px;
+        font-size: 12px;
+      }
+      .status-note {
+        padding: 10px 0;
+        color: var(--amber);
+        font-size: 12px !important;
+      }
+      .footnote {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 24px;
+      }
+      .dialog {
+        color: var(--ink);
+        background: var(--panel);
+        border: 1px solid #718096;
+        border-radius: 10px;
+        max-width: 590px;
+        padding: 27px;
+      }
+      .dialog::backdrop {
+        background: rgba(0, 0, 0, 0.65);
+      }
+      .dialog p {
+        margin: 12px 0;
+        font-size: 14px;
+      }
+      .dialog ol {
+        padding-left: 21px;
+        font-size: 14px;
+      }
+      .dialog li + li {
+        margin-top: 9px;
+      }
+      .dialog button {
+        background: var(--raised);
+        color: var(--ink);
+        border: 1px solid #718096;
+        border-radius: 5px;
+        padding: 8px 16px;
+        margin-top: 9px;
+      }
+      .diagram {
+        border-top: 1px solid var(--line);
+        padding-top: 20px;
+        margin-top: 24px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      @media (min-width: 1700px) {
+        .workspace {
+          grid-template-columns: 300px 1fr 330px;
+        }
+        .conversation {
+          padding: 40px 55px;
+        }
+      }
+      @media (max-width: 1150px) {
+        .workspace {
+          grid-template-columns: 245px minmax(0, 1fr);
+        }
+        .detail {
+          grid-column: 2;
+          border-top: 1px solid var(--line);
+          border-left: 0;
+        }
+        .conversation {
+          padding: 26px;
+        }
+        .tree {
+          grid-row: 1/3;
+        }
+      }
+      @media (max-width: 700px) {
+        .top {
+          padding: 10px 16px;
+          gap: 10px;
+        }
+        .workspace {
+          display: block;
+        }
+        .tree {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+          padding: 18px 15px;
+        }
+        .tree-note {
+          display: none;
+        }
+        .conversation {
+          padding: 23px 19px;
+        }
+        .chat-heading {
+          display: block;
+        }
+        .view-label {
+          display: block;
+        }
+        .detail {
+          border-top: 1px solid var(--line);
+        }
+        .inline-row {
+          grid-template-columns: 18px 1fr;
+        }
+        .inline-row .state {
+          grid-column: 2;
+        }
+        .stamp {
+          display: none;
+        }
+        .top a {
+          font-size: 11px;
+        }
+        .composer-bottom {
+          flex-wrap: wrap;
+        }
+        .handoff {
+          margin-left: 0;
+        }
+        .concept {
+          font-size: 10px;
+        }
+      }
+      .delivery-picker {
+        margin: 0 0 24px;
+        padding: 14px 16px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+      }
+      .delivery-picker label {
+        display: block;
+        font-size: 12px;
+        color: var(--ink);
+      }
+      .delivery-picker label small {
+        color: var(--muted);
+        margin-left: 10px;
+      }
+      .delivery-picker select {
+        margin-top: 8px;
+        width: 100%;
+        background: var(--raised);
+        color: var(--ink);
+        border: 1px solid #637286;
+        border-radius: 4px;
+        padding: 8px;
+      }
+      .delivery-picker p {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 9px;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <span class="brand">neokod</span><span class="concept">Workflow design concept</span
+      ><a href="competitor-codebase-review-2026-10-04.md">Read the research</a>
+    </header>
+    <div class="workspace">
+      <nav class="tree" aria-label="Project conversations and linked work">
+        <div class="project">
+          <span class="project-icon">N</span>
+          <div><strong>Neokod workbench</strong><small>Local project</small></div>
+        </div>
+        <p class="tree-label">Conversations</p>
+        <button class="work" data-work="root" aria-pressed="true">
+          <span class="symbol">◇</span
+          ><span class="content"
+            ><span class="tag">Coordinator</span><strong>Make orchestration feel natural</strong
+            ><small>main · Claude</small></span
+          >
+        </button>
+        <div class="children">
+          <button class="work" data-work="research" aria-pressed="false">
+            <span class="symbol">↳</span
+            ><span class="content"
+              ><span class="tag">Research</span><strong>Trace provider recovery</strong
+              ><small>Separate worktree · Sol</small></span
+            ><span class="work-state done" aria-label="Complete"></span>
+          </button>
+          <button class="work" data-work="implementation" aria-pressed="false">
+            <span class="symbol">↳</span
+            ><span class="content"
+              ><span class="tag">Implementation</span><strong>Persist queued work</strong
+              ><small>feat/durable-queue · Codex</small></span
+            ><span class="work-state" aria-label="Working"></span>
+          </button>
+          <button class="work" data-work="delivery" aria-pressed="false">
+            <span class="symbol">↳</span
+            ><span class="content"
+              ><span class="tag" id="delivery-tree">Symphony · Jira ABC-123</span
+              ><strong>Recover interrupted dispatch</strong
+              ><small>Attempt 2 · Isolated worktree</small></span
+            ><span class="work-state" aria-label="Awaiting review"></span>
+          </button>
+        </div>
+        <p class="tree-note">
+          Select a child to inspect its owner, workspace and evidence while staying in this
+          conversation.
+        </p>
+      </nav>
+      <main class="conversation">
+        <div class="chat-heading">
+          <div>
+            <h1>Make orchestration feel natural</h1>
+            <p>One conversation, with linked work and clear ownership.</p>
+          </div>
+          <span class="view-label">Parent conversation</span>
+        </div>
+        <div class="delivery-picker">
+          <label for="delivery-source">Delivery source <small>Illustrative examples</small></label
+          ><select id="delivery-source">
+            <option value="jira">Jira · ABC-123</option>
+            <option value="linear">Linear · NEO-42</option>
+            <option value="github_projects">GitHub Projects · repository issue #42</option>
+            <option value="azure_boards">Azure DevOps Boards · work item 42</option>
+            <option value="github">GitHub Issues · neokod #42</option>
+            <option value="gitlab">GitLab · project issue #42</option>
+            <option value="asana">Asana · recovery task</option>
+          </select>
+          <p id="delivery-capability">
+            Proposed intake through the configured connection and project workflow.
+          </p>
+        </div>
+        <article class="message user">
+          <div class="message-head">
+            <span class="actor">You</span><time class="stamp">09:02</time>
+          </div>
+          <div class="message-body">
+            Review the recovery paths, then implement the durable queue. Send
+            <span id="delivery-request">Jira ABC-123</span> to Symphony using the workflow we
+            already have.
+          </div>
+        </article>
+        <article class="message">
+          <div class="message-head">
+            <span class="actor">Coordinator</span><span>Claude</span
+            ><time class="stamp">09:03</time>
+          </div>
+          <div class="message-body">
+            <p>
+              I’ve split the work into a source review, an implementation and the linked delivery
+              task. Each worker has its own workspace.
+            </p>
+            <p>
+              <span id="delivery-accepted">ABC-123</span> is attached to its existing Symphony work
+              item. Its validation and merge policy come from this project’s workflow.
+            </p>
+          </div>
+        </article>
+        <section class="work-inline" aria-labelledby="work-heading">
+          <div class="inline-heading">
+            <h2 id="work-heading">Work in this conversation</h2>
+            <small>3 linked tasks</small>
+          </div>
+          <div class="inline-row">
+            <span class="symbol">✓</span>
+            <div>
+              <button data-work="research">Provider recovery review</button
+              ><small style="display: block">Source findings returned to this chat</small>
+            </div>
+            <span class="state done">Complete</span>
+          </div>
+          <div class="inline-row">
+            <span class="symbol">◌</span>
+            <div>
+              <button data-work="implementation">Persist queued work</button
+              ><small id="inline-runtime" style="display: block"
+                >Running regression checks · 37m 12s elapsed</small
+              >
+            </div>
+            <span class="state" id="inline-state">Working</span>
+          </div>
+          <div class="inline-row">
+            <span class="symbol">◇</span>
+            <div>
+              <button data-work="delivery" id="delivery-inline">
+                ABC-123 · Recover interrupted dispatch</button
+              ><small style="display: block">Attempt 2 · Changes and validation ready</small>
+            </div>
+            <span class="state">Awaiting review</span>
+          </div>
+        </section>
+        <article class="message attribution">
+          <div class="message-head">
+            <span class="actor">Message from Research</span
+            ><span class="link-chip">Source task</span><time class="stamp">09:18</time>
+          </div>
+          <p>
+            The terminal event must survive a failed persistence write. Retrying that event must not
+            restart provider work. I’ve returned the affected paths and the failure-injection
+            acceptance case.
+          </p>
+        </article>
+        <article class="message attribution">
+          <div class="message-head">
+            <span class="actor">Update from Symphony</span
+            ><span class="link-chip" id="delivery-update">ABC-123 · Attempt 2</span
+            ><time class="stamp">09:34</time>
+          </div>
+          <p>
+            Validation completed. The changes and evidence are ready to review. This result remains
+            linked to the original delivery task and this conversation.
+          </p>
+        </article>
+        <div class="composer" aria-label="Illustrative chat composer">
+          <p class="composer-prompt">Follow up with the coordinator or refer to a linked task…</p>
+          <div class="composer-bottom">
+            <span>Claude · High</span><span class="muted">Current workflow policy</span
+            ><button class="handoff" id="show-handoff">Inspect “Send to Symphony”</button>
+          </div>
+        </div>
+        <p class="footnote">
+          Illustrative tasks and times. This is an interactive design document; no provider,
+          external task or workflow is running.
+        </p>
+      </main>
+      <aside class="detail" aria-live="polite">
+        <p class="detail-label">Selected work</p>
+        <h2 id="detail-title">Make orchestration feel natural</h2>
+        <p class="muted" id="detail-summary">
+          The conversation remains the home for decisions and returned outcomes.
+        </p>
+        <dl>
+          <dt>Owner</dt>
+          <dd id="detail-owner">Coordinator · Claude</dd>
+          <dt>Workspace</dt>
+          <dd id="detail-workspace">Project checkout · read-only coordination</dd>
+          <dt>State</dt>
+          <dd id="detail-state">Two results returned, one task working</dd>
+          <dt>Linked identity</dt>
+          <dd id="detail-id">Parent conversation</dd>
+        </dl>
+        <section class="evidence">
+          <h3>Evidence and next action</h3>
+          <ul id="detail-evidence">
+            <li>Research result received</li>
+            <li>Implementation still running</li>
+            <li>ABC-123 awaiting review under project policy</li>
+          </ul>
+        </section>
+        <div class="scenario">
+          <label for="scenario">Inspect an implementation scenario</label
+          ><select id="scenario">
+            <option value="running">Worker is running</option>
+            <option value="review">Worker returned changes</option>
+            <option value="disconnected">Connection lost</option>
+          </select>
+          <p class="status-note" id="status-note">
+            Elapsed time is shown without an invented completion percentage.
+          </p>
+        </div>
+        <p class="diagram">
+          Conversation → admitted task → owned workspace → result and evidence → originating
+          conversation
+        </p>
+      </aside>
+    </div>
+    <dialog class="dialog" id="handoff-dialog">
+      <h2>Send an existing delivery task to Symphony</h2>
+      <p>
+        The request uses the selected project’s configured connection. It keeps the native task
+        identity and returns results to this chat.
+      </p>
+      <ol>
+        <li id="delivery-resolve">Resolve ABC-123 to its canonical Jira issue ID.</li>
+        <li>Check scope, state and supported dependency/workflow policy.</li>
+        <li>Reuse or claim the existing item once, even if the request is retried.</li>
+        <li>Allocate a separate worktree or explicitly transfer exclusive ownership.</li>
+        <li>Link attempts, validation, changes and PR back to this conversation.</li>
+      </ol>
+      <p id="delivery-limit" class="muted">
+        The selected adapter’s capabilities determine which task types and workflow rules can be
+        checked.
+      </p>
+      <p class="muted">This document illustrates the proposed flow. It makes no tracker request.</p>
+      <form method="dialog"><button>Close</button></form>
+    </dialog>
+    <script>
+      const tasks = {
+        root: {
+          title: "Make orchestration feel natural",
+          summary: "The conversation remains the home for decisions and returned outcomes.",
+          owner: "Coordinator · Claude",
+          workspace: "Project checkout · read-only coordination",
+          state: "Two results returned, one task working",
+          id: "Parent conversation",
+          evidence: [
+            "Research result received",
+            "Implementation still running",
+            "ABC-123 awaiting review under project policy",
+          ],
+        },
+        research: {
+          title: "Trace provider recovery",
+          summary: "An independent source review with a bounded returned result.",
+          owner: "Research · GPT 6.1 Sol high",
+          workspace: "Separate worktree · read-only review",
+          state: "Complete · result delivered",
+          id: "Child of this conversation",
+          evidence: [
+            "Affected code paths identified",
+            "No runtime reproduction claimed",
+            "Acceptance cases returned to parent",
+          ],
+        },
+        implementation: {
+          title: "Persist queued work",
+          summary: "A bounded implementation with its own workspace and cancellation scope.",
+          owner: "Implementation · Codex",
+          workspace: "Separate worktree · feat/durable-queue",
+          state: "Working · running regression checks",
+          id: "Child of this conversation",
+          evidence: [
+            "Accepted request retained",
+            "Launch observed by server",
+            "Terminal result not yet received",
+          ],
+        },
+        delivery: {
+          title: "ABC-123 · Recover interrupted dispatch",
+          summary: "An existing tracker item, linked to the conversation that requested it.",
+          owner: "Symphony worker · Codex",
+          workspace: "Separate worktree · exclusive attempt ownership",
+          state: "Awaiting review · attempt 2",
+          id: "Jira ABC-123 · canonical issue 123456 (illustrative)",
+          evidence: [
+            "Workflow validation completed",
+            "Changes and evidence ready",
+            "Review/merge authority follows project policy",
+          ],
+        },
+      };
+      let selected = "root";
+      function render() {
+        const t = tasks[selected];
+        for (const key of ["title", "summary", "owner", "workspace", "state", "id"])
+          document.getElementById("detail-" + key).textContent = t[key];
+        document.getElementById("detail-evidence").replaceChildren(
+          ...t.evidence.map((text) => {
+            const li = document.createElement("li");
+            li.textContent = text;
+            return li;
+          }),
+        );
+        document
+          .querySelectorAll(".tree [data-work]")
+          .forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.work === selected)));
+      }
+      document.querySelectorAll("[data-work]").forEach((b) =>
+        b.addEventListener("click", () => {
+          selected = b.dataset.work;
+          render();
+        }),
+      );
+      document.getElementById("scenario").addEventListener("change", (event) => {
+        const mode = event.target.value;
+        const impl = tasks.implementation;
+        let note = "Elapsed time is shown without an invented completion percentage.";
+        if (mode === "review") {
+          impl.state = "Awaiting review · result delivered";
+          impl.evidence = [
+            "Validation completed",
+            "Changes and evidence returned",
+            "Merge still follows project policy",
+          ];
+          document.getElementById("inline-runtime").textContent =
+            "Changes and validation ready · result delivered";
+          document.getElementById("inline-state").textContent = "Awaiting review";
+          tasks.root.state = "Three results returned";
+          tasks.root.evidence[1] = "Implementation returned changes";
+        } else if (mode === "disconnected") {
+          impl.state = "Unknown current state · last observed working";
+          impl.evidence = [
+            "Last server observation: regression checks running",
+            "Connection lost; completion is unknown",
+            "Reconnect and reconcile before offering retry",
+          ];
+          document.getElementById("inline-runtime").textContent =
+            "Last observed running checks · connection lost";
+          document.getElementById("inline-state").textContent = "State unknown";
+          note = "A lost connection is not proof that the task failed or finished.";
+          tasks.root.state = "Implementation state unknown";
+          tasks.root.evidence[1] = "Implementation connection lost; outcome unknown";
+        } else {
+          impl.state = "Working · running regression checks";
+          impl.evidence = [
+            "Accepted request retained",
+            "Launch observed by server",
+            "Terminal result not yet received",
+          ];
+          document.getElementById("inline-runtime").textContent =
+            "Running regression checks · 37m 12s elapsed";
+          document.getElementById("inline-state").textContent = "Working";
+          tasks.root.state = "Two results returned, one task working";
+          tasks.root.evidence[1] = "Implementation still running";
+        }
+        const marker = document.querySelector(".tree [data-work=implementation] .work-state");
+        marker.setAttribute(
+          "aria-label",
+          mode === "disconnected"
+            ? "State unknown"
+            : mode === "review"
+              ? "Awaiting review"
+              : "Working",
+        );
+        marker.classList.toggle("unknown", mode === "disconnected");
+        document.getElementById("status-note").textContent = note;
+        selected = "implementation";
+        render();
+      });
+      document
+        .getElementById("show-handoff")
+        .addEventListener("click", () => document.getElementById("handoff-dialog").showModal());
+
+      const deliveryExamples = {
+        jira: {
+          label: "Jira ABC-123",
+          short: "ABC-123",
+          identity: "Jira issue ID 123456",
+          resolve: "Resolve ABC-123 through the configured Jira site, then verify its project.",
+          limit:
+            "Native ID and project membership must agree. Blocker checks follow the selected workflow and available evidence.",
+        },
+        linear: {
+          label: "Linear NEO-42",
+          short: "NEO-42",
+          identity: "Linear issue UUID",
+          resolve: "Resolve NEO-42 to its issue UUID in the configured Linear project.",
+          limit:
+            "Project and assignee policy apply. Incomplete relation data cannot prove that all dependencies are clear.",
+        },
+        github_projects: {
+          label: "GitHub Projects issue #42",
+          short: "Project item · #42",
+          identity: "GitHub Project item node ID",
+          resolve: "Resolve the issue URL to its membership item in the selected GitHub Project.",
+          limit:
+            "Current source accepts issue cards. Draft cards and PR cards require additional support; the selected project membership owns the status.",
+        },
+        azure_boards: {
+          label: "Azure Boards work item 42",
+          short: "AB-42",
+          identity: "Azure work item 42 · organisation/project",
+          resolve:
+            "Resolve work item 42 within the configured Azure organisation and verify its project.",
+          limit:
+            "Current state support is restricted. Different/custom process states need explicit mapping before this workflow can dispatch them.",
+        },
+        github: {
+          label: "GitHub Issues neokod #42",
+          short: "neokod #42",
+          identity: "GitHub issue 42 · configured repository",
+          resolve: "Resolve issue #42 within the configured GitHub repository.",
+          limit:
+            "Repository and assignment policy apply. A short issue number from another repository is a different task.",
+        },
+        gitlab: {
+          label: "GitLab project issue #42",
+          short: "GitLab #42",
+          identity: "GitLab project issue IID 42",
+          resolve: "Resolve issue #42 within the configured GitLab host and project.",
+          limit:
+            "Use the project issue IID. Dependency evidence is not currently supplied by this adapter.",
+        },
+        asana: {
+          label: "Asana recovery task",
+          short: "Asana task",
+          identity: "Asana task GID · selected project",
+          resolve: "Resolve the task URL/GID and verify membership in the selected Asana project.",
+          limit:
+            "Project sections supply workflow state. A task without a usable section cannot be silently treated as ready.",
+        },
+      };
+      function updateDelivery() {
+        const d = deliveryExamples[document.getElementById("delivery-source").value];
+        tasks.delivery.title = d.short + " · Recover interrupted dispatch";
+        tasks.delivery.id = d.identity + " (illustrative)";
+        tasks.root.evidence[2] = d.short + " awaiting review under project policy";
+        document.getElementById("delivery-tree").textContent = "Symphony · " + d.short;
+        document.getElementById("delivery-request").textContent = d.label;
+        document.getElementById("delivery-accepted").textContent = d.short;
+        document.getElementById("delivery-inline").textContent = tasks.delivery.title;
+        document.getElementById("delivery-update").textContent = d.short + " · Attempt 2";
+        document.getElementById("delivery-resolve").textContent = d.resolve;
+        document.getElementById("delivery-limit").textContent = d.limit;
+        document.getElementById("delivery-capability").textContent = d.limit;
+        render();
+      }
+      document.getElementById("delivery-source").addEventListener("change", updateDelivery);
+      updateDelivery();
+    </script>
+  </body>
+</html>

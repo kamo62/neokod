@@ -1,0 +1,562 @@
+[
+  {
+    "app": "omnigent",
+    "path": "web/src/hooks/useScopeCache.ts",
+    "sha": "5fae3371a7f9786b9e95ab9ea1038b6227d82872",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/web/src/hooks/useScopeCache.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/omnigent/web/src/hooks/useScopeCache.ts",
+    "retrieved_at": "2026-10-04T07:01:07.593447+00:00",
+    "bytes": 6957,
+    "sha256": "127bf8c44bcdef39129f9c906b0935e935bfada3d3e1c671af63a58ab824e4eb"
+  },
+  {
+    "app": "omnigent",
+    "path": "web/src/lib/sessionListCache.ts",
+    "sha": "5fae3371a7f9786b9e95ab9ea1038b6227d82872",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/web/src/lib/sessionListCache.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/omnigent/web/src/lib/sessionListCache.ts",
+    "retrieved_at": "2026-10-04T07:01:07.573955+00:00",
+    "bytes": 25502,
+    "sha256": "ebfb8262c2844cf508ac13181c0b988997c649c38f8a8ad027f8265acff93b82"
+  },
+  {
+    "app": "omnigent",
+    "path": "web/src/components/blocks/TerminalSession.ts",
+    "sha": "5fae3371a7f9786b9e95ab9ea1038b6227d82872",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/web/src/components/blocks/TerminalSession.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/omnigent/web/src/components/blocks/TerminalSession.ts",
+    "retrieved_at": "2026-10-04T07:01:07.593650+00:00",
+    "bytes": 44406,
+    "sha256": "c3e2f6d3e72332b9d594650c6f1ded848a0823e8c2dee144ba73d41f6ec8df3d"
+  },
+  {
+    "app": "omnigent",
+    "path": "web/src/components/blocks/TerminalView.tsx",
+    "sha": "5fae3371a7f9786b9e95ab9ea1038b6227d82872",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/web/src/components/blocks/TerminalView.tsx",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/omnigent/web/src/components/blocks/TerminalView.tsx",
+    "retrieved_at": "2026-10-04T07:01:07.571512+00:00",
+    "bytes": 36725,
+    "sha256": "3d582da17f8c4f8ba5f442974710ae3c23a6dc0562813321fc48ec2e99c5e47c"
+  },
+  {
+    "app": "omnigent",
+    "path": "web/src/hooks/useIdleNotifications.ts",
+    "sha": "5fae3371a7f9786b9e95ab9ea1038b6227d82872",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/web/src/hooks/useIdleNotifications.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/omnigent/web/src/hooks/useIdleNotifications.ts",
+    "retrieved_at": "2026-10-04T07:01:07.559337+00:00",
+    "bytes": 21845,
+    "sha256": "aab781538d8bf12a74de906e011605d9f519b9567cbf3d698c27550bbb913dcb"
+  },
+  {
+    "app": "omnigent",
+    "path": "omnigent/models/model_catalog_store.py",
+    "sha": "5fae3371a7f9786b9e95ab9ea1038b6227d82872",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/models/model_catalog_store.py",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/omnigent/omnigent/models/model_catalog_store.py",
+    "retrieved_at": "2026-10-04T07:01:07.552685+00:00",
+    "bytes": 12138,
+    "sha256": "60fd8ee8298f8e746707c9d264933266091bcab7927bec6736318f4cb87605fe"
+  },
+  {
+    "app": "paseo",
+    "path": "packages/app/src/agent-stream/history-window.ts",
+    "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+    "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/agent-stream/history-window.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/agent-stream/history-window.ts",
+    "retrieved_at": "2026-10-04T07:01:07.561212+00:00",
+    "bytes": 1139,
+    "sha256": "93fc23ead80e43963664479695a69123cbce344a246825bb6388ca20bd54715b"
+  },
+  {
+    "app": "paseo",
+    "path": "packages/app/src/agent-stream/use-stream-history-window.ts",
+    "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+    "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/agent-stream/use-stream-history-window.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/agent-stream/use-stream-history-window.ts",
+    "retrieved_at": "2026-10-04T07:01:07.588764+00:00",
+    "bytes": 4119,
+    "sha256": "dd120a015aa7b277fc3b9411e01d3fd488bce157958bfb6b314254006bdfa190"
+  },
+  {
+    "app": "paseo",
+    "path": "packages/app/src/agent-stream/web-virtualization.ts",
+    "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+    "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/agent-stream/web-virtualization.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/agent-stream/web-virtualization.ts",
+    "retrieved_at": "2026-10-04T07:01:07.911431+00:00",
+    "bytes": 2873,
+    "sha256": "64aec237950385684c03a77c220e56d763b7426a1e09784608c395e7bee27b28"
+  },
+  {
+    "app": "paseo",
+    "path": "packages/app/src/terminal/runtime/terminal-stream-controller.ts",
+    "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+    "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/terminal/runtime/terminal-stream-controller.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/terminal/runtime/terminal-stream-controller.ts",
+    "retrieved_at": "2026-10-04T07:01:07.933444+00:00",
+    "bytes": 5654,
+    "sha256": "00f69d4eecdadf4ced78ca672814e1597c8c309c45386970582652b1c4d38995"
+  },
+  {
+    "app": "paseo",
+    "path": "packages/app/src/terminal/runtime/workspace-terminal-session.ts",
+    "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+    "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/terminal/runtime/workspace-terminal-session.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/terminal/runtime/workspace-terminal-session.ts",
+    "retrieved_at": "2026-10-04T07:01:07.906706+00:00",
+    "bytes": 2511,
+    "sha256": "835d6bde72fe0f21c9e1db5c6e72a620a87ea963a65822f948b421d1adbed5db"
+  },
+  {
+    "app": "paseo",
+    "path": "packages/app/src/components/terminal-resize-debouncer.ts",
+    "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+    "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/components/terminal-resize-debouncer.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/components/terminal-resize-debouncer.ts",
+    "retrieved_at": "2026-10-04T07:01:07.948983+00:00",
+    "bytes": 1143,
+    "sha256": "844cba1b0d0e9625e3580682e6d301e9785229e7694b10b823f8e22d68a0e0fe"
+  },
+  {
+    "app": "bb",
+    "path": "apps/app/src/hooks/cache-owners/query-cache.ts",
+    "sha": "4d15c1da0a848fa4834c1e5d0480a0891683bbe9",
+    "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/app/src/hooks/cache-owners/query-cache.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/bb/apps/app/src/hooks/cache-owners/query-cache.ts",
+    "retrieved_at": "2026-10-04T07:01:07.929452+00:00",
+    "bytes": 19204,
+    "sha256": "fd2fd3afc2b91ba00695a7e4f3c8d550b069150d1e2dd8e645f249ab8d369148"
+  },
+  {
+    "app": "bb",
+    "path": "apps/app/src/hooks/cache-owners/thread-list-cache-data.ts",
+    "sha": "4d15c1da0a848fa4834c1e5d0480a0891683bbe9",
+    "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/app/src/hooks/cache-owners/thread-list-cache-data.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/bb/apps/app/src/hooks/cache-owners/thread-list-cache-data.ts",
+    "retrieved_at": "2026-10-04T07:01:07.932928+00:00",
+    "bytes": 3897,
+    "sha256": "a63da02abc21bd2510c92ef438d55897b47bbacdb652595a2d47733d2c1a41b2"
+  },
+  {
+    "app": "bb",
+    "path": "apps/app/src/hooks/cache-owners/thread-open-cache-owner.ts",
+    "sha": "4d15c1da0a848fa4834c1e5d0480a0891683bbe9",
+    "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/app/src/hooks/cache-owners/thread-open-cache-owner.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/bb/apps/app/src/hooks/cache-owners/thread-open-cache-owner.ts",
+    "retrieved_at": "2026-10-04T07:01:07.931204+00:00",
+    "bytes": 2479,
+    "sha256": "2ff69c38250fb090e41377365e6f1f53e8dbb8abfd953cad133ec21afd98eb35"
+  },
+  {
+    "app": "bb",
+    "path": "apps/app/src/lib/command-palette/palette-thread-search.ts",
+    "sha": "4d15c1da0a848fa4834c1e5d0480a0891683bbe9",
+    "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/app/src/lib/command-palette/palette-thread-search.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/bb/apps/app/src/lib/command-palette/palette-thread-search.ts",
+    "retrieved_at": "2026-10-04T07:01:07.929284+00:00",
+    "bytes": 3963,
+    "sha256": "6a627a9c761d06212410852620a57414391421ade463a54ae75f191d0343ea53"
+  },
+  {
+    "app": "bb",
+    "path": "apps/app/src/lib/command-palette/palette-thread-search-window.ts",
+    "sha": "4d15c1da0a848fa4834c1e5d0480a0891683bbe9",
+    "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/app/src/lib/command-palette/palette-thread-search-window.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/bb/apps/app/src/lib/command-palette/palette-thread-search-window.ts",
+    "retrieved_at": "2026-10-04T07:01:08.266124+00:00",
+    "bytes": 4448,
+    "sha256": "cacf03ea291e923c437ecbdf4e0bd3f327d421c3f7de5a6d79bd69bbe470bc54"
+  },
+  {
+    "app": "bb",
+    "path": "apps/app/src/components/layout/useMobileVisualViewportHeight.ts",
+    "sha": "4d15c1da0a848fa4834c1e5d0480a0891683bbe9",
+    "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/app/src/components/layout/useMobileVisualViewportHeight.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/bb/apps/app/src/components/layout/useMobileVisualViewportHeight.ts",
+    "retrieved_at": "2026-10-04T07:01:08.284190+00:00",
+    "bytes": 6437,
+    "sha256": "c6412a88b5c04d0aa7ae04098ccddba5ce8bcba845eb236b600b0cea1221e14e"
+  },
+  {
+    "app": "pi",
+    "path": "packages/coding-agent/src/modes/interactive/model-catalog-refresh.ts",
+    "sha": "200387122ca450d6387f033949423114a270b96c",
+    "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/model-catalog-refresh.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/pi/packages/coding-agent/src/modes/interactive/model-catalog-refresh.ts",
+    "retrieved_at": "2026-10-04T07:01:08.285461+00:00",
+    "bytes": 1847,
+    "sha256": "a7a10647deaba5036019737c376ab3f73eed12703dafeb8cb8920581ec8672e2"
+  },
+  {
+    "app": "pi",
+    "path": "packages/coding-agent/src/modes/interactive/model-search.ts",
+    "sha": "200387122ca450d6387f033949423114a270b96c",
+    "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/model-search.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/pi/packages/coding-agent/src/modes/interactive/model-search.ts",
+    "retrieved_at": "2026-10-04T07:01:08.311580+00:00",
+    "bytes": 729,
+    "sha256": "9be620174c0f25516b0c537dcd4ef9be7c9c9a145e6489e186cc6c4787b25412"
+  },
+  {
+    "app": "pi",
+    "path": "packages/coding-agent/src/modes/interactive/components/session-selector-search.ts",
+    "sha": "200387122ca450d6387f033949423114a270b96c",
+    "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/components/session-selector-search.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/pi/packages/coding-agent/src/modes/interactive/components/session-selector-search.ts",
+    "retrieved_at": "2026-10-04T07:01:08.362958+00:00",
+    "bytes": 5099,
+    "sha256": "5b1811240c39c958f863091ece06d67cb8432d4d7e70185087d5e041432dff36"
+  },
+  {
+    "app": "pi",
+    "path": "packages/coding-agent/examples/extensions/notify.ts",
+    "sha": "200387122ca450d6387f033949423114a270b96c",
+    "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/examples/extensions/notify.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/pi/packages/coding-agent/examples/extensions/notify.ts",
+    "retrieved_at": "2026-10-04T07:01:08.305972+00:00",
+    "bytes": 2073,
+    "sha256": "70e4333e09ce00d546c116fd2e918abf7616c70b5da6e88ba8ee21a326afd483"
+  },
+  {
+    "app": "pi",
+    "path": "packages/coding-agent/src/utils/image-resize.ts",
+    "sha": "200387122ca450d6387f033949423114a270b96c",
+    "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/utils/image-resize.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/pi/packages/coding-agent/src/utils/image-resize.ts",
+    "retrieved_at": "2026-10-04T07:01:08.306180+00:00",
+    "bytes": 3898,
+    "sha256": "d93a007eb45a02b73b1a4777d193614dae5fbcadd9139c8b755ea35c1d649757"
+  },
+  {
+    "app": "pi",
+    "path": "packages/coding-agent/src/utils/image-resize-worker.ts",
+    "sha": "200387122ca450d6387f033949423114a270b96c",
+    "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/utils/image-resize-worker.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/pi/packages/coding-agent/src/utils/image-resize-worker.ts",
+    "retrieved_at": "2026-10-04T07:01:08.356163+00:00",
+    "bytes": 1315,
+    "sha256": "c77213875e45d2aea46deb67b6cc03bcfb57cba84c8a17ccc2158aa3e79873c7"
+  },
+  {
+    "app": "opencodex",
+    "path": "src/server/startup-health-cache.ts",
+    "sha": "06841165f884a9176d701310638b2112aca7a514",
+    "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/server/startup-health-cache.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/src/server/startup-health-cache.ts",
+    "retrieved_at": "2026-10-04T07:01:08.666110+00:00",
+    "bytes": 9217,
+    "sha256": "d811b597d5fe44de11f80a526dc1e1437a154d7461fe1bad2b04bdc5c274613f"
+  },
+  {
+    "app": "opencodex",
+    "path": "src/codex/catalog-write-serialization.ts",
+    "sha": "06841165f884a9176d701310638b2112aca7a514",
+    "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/codex/catalog-write-serialization.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/src/codex/catalog-write-serialization.ts",
+    "retrieved_at": "2026-10-04T07:01:13.694369+00:00",
+    "bytes": 9219,
+    "sha256": "462e8fa4acff845e61c6498d91cb0f84549b92f0893b0fcbe49e0aa7673d9fbe"
+  },
+  {
+    "app": "opencodex",
+    "path": "src/codex/catalog-refresh-status.ts",
+    "sha": "06841165f884a9176d701310638b2112aca7a514",
+    "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/codex/catalog-refresh-status.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/src/codex/catalog-refresh-status.ts",
+    "retrieved_at": "2026-10-04T07:01:08.674020+00:00",
+    "bytes": 8026,
+    "sha256": "0608ee249b699d0fc5aa8da32ba64447d1a6ea3444d56b0d37bbcad511e2cebc"
+  },
+  {
+    "app": "opencodex",
+    "path": "src/server/management/usage-summary-cache.ts",
+    "sha": "06841165f884a9176d701310638b2112aca7a514",
+    "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/server/management/usage-summary-cache.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/src/server/management/usage-summary-cache.ts",
+    "retrieved_at": "2026-10-04T07:01:08.682244+00:00",
+    "bytes": 3388,
+    "sha256": "527a6a9237f85c5af51cd1281fb1ea7970f7f0939c3ee565a36953be29612456"
+  },
+  {
+    "app": "opencodex",
+    "path": "src/codex/catalog/filesystem-evidence.ts",
+    "sha": "06841165f884a9176d701310638b2112aca7a514",
+    "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/codex/catalog/filesystem-evidence.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/src/codex/catalog/filesystem-evidence.ts",
+    "retrieved_at": "2026-10-04T07:01:08.672077+00:00",
+    "bytes": 10834,
+    "sha256": "fde4b84ebda1835a10b753ff58b9c161127ef8d75dd3f73ae89b650e747ae8ff"
+  },
+  {
+    "app": "harnessrouter",
+    "path": "ui/src/components/TaskChat.tsx",
+    "sha": "2826cf633b0588fa494da20fdf2828deacfb7e79",
+    "url": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/ui/src/components/TaskChat.tsx",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/harnessrouter/ui/src/components/TaskChat.tsx",
+    "retrieved_at": "2026-10-04T07:01:08.798679+00:00",
+    "bytes": 46893,
+    "sha256": "861b065c8f26a9aca308ad299b1f1d5d4bad34b763a5b0e1f5c5080d16e36a8d"
+  },
+  {
+    "app": "harnessrouter",
+    "path": "ui/src/lib/conversation.ts",
+    "sha": "2826cf633b0588fa494da20fdf2828deacfb7e79",
+    "url": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/ui/src/lib/conversation.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/harnessrouter/ui/src/lib/conversation.ts",
+    "retrieved_at": "2026-10-04T07:01:08.798495+00:00",
+    "bytes": 44227,
+    "sha256": "3d7b8990e6d4acc053f1c0a88224e68401f6e21923b7a26cfb364c1fa57f7a62"
+  },
+  {
+    "app": "harnessrouter",
+    "path": "ui/src/components/FilePreview.tsx",
+    "sha": "2826cf633b0588fa494da20fdf2828deacfb7e79",
+    "url": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/ui/src/components/FilePreview.tsx",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/harnessrouter/ui/src/components/FilePreview.tsx",
+    "retrieved_at": "2026-10-04T07:01:08.792060+00:00",
+    "bytes": 13845,
+    "sha256": "e3e76fc305533c6778819eb731c1ec77929ea3338eee21b43914818d94842ccb"
+  },
+  {
+    "app": "harnessrouter",
+    "path": "ui/src/components/HarnessSettings.tsx",
+    "sha": "2826cf633b0588fa494da20fdf2828deacfb7e79",
+    "url": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/ui/src/components/HarnessSettings.tsx",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/harnessrouter/ui/src/components/HarnessSettings.tsx",
+    "retrieved_at": "2026-10-04T07:01:09.024212+00:00",
+    "bytes": 51485,
+    "sha256": "0af24844e7c5ff96419c3b19dd16cb3ab3a5089a194ac519c360e8a3a6a1d25d"
+  },
+  {
+    "app": "omnigent",
+    "path": "web/src/hooks/useSidebarData.tsx",
+    "sha": "5fae3371a7f9786b9e95ab9ea1038b6227d82872",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/web/src/hooks/useSidebarData.tsx",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/omnigent/web/src/hooks/useSidebarData.tsx",
+    "retrieved_at": "2026-10-04T07:03:03.164452+00:00",
+    "bytes": 8077,
+    "sha256": "896594949ade7d868da4f71ad44f86cca2ee509075f2cef5f11116581d76f2c3"
+  },
+  {
+    "app": "omnigent",
+    "path": "web/src/shell/AppShell.tsx",
+    "sha": "5fae3371a7f9786b9e95ab9ea1038b6227d82872",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/web/src/shell/AppShell.tsx",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/omnigent/web/src/shell/AppShell.tsx",
+    "retrieved_at": "2026-10-04T07:03:03.189218+00:00",
+    "bytes": 131233,
+    "sha256": "be377c885207fbca3768c63a23dd2baffdc705be61b8dca7e9e8341a28df8c5d"
+  },
+  {
+    "app": "paseo",
+    "path": "packages/app/src/agent-stream/strategy-web.tsx",
+    "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+    "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/agent-stream/strategy-web.tsx",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/agent-stream/strategy-web.tsx",
+    "retrieved_at": "2026-10-04T07:03:03.167026+00:00",
+    "bytes": 47378,
+    "sha256": "0893ee4cce0603dfcedd98b607348b1c671cda15ab5ed666912e8759abd3e6a7"
+  },
+  {
+    "app": "paseo",
+    "path": "packages/app/src/components/terminal-emulator.tsx",
+    "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+    "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/components/terminal-emulator.tsx",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/components/terminal-emulator.tsx",
+    "retrieved_at": "2026-10-04T07:03:03.152466+00:00",
+    "bytes": 20702,
+    "sha256": "a2bc4bacbc2bfb04b0e6291dee5a1046845ef80192f8171b86e4710193cdbece"
+  },
+  {
+    "app": "bb",
+    "path": "apps/app/src/components/commands/ThreadSearchPaletteMode.tsx",
+    "sha": "4d15c1da0a848fa4834c1e5d0480a0891683bbe9",
+    "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/app/src/components/commands/ThreadSearchPaletteMode.tsx",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/bb/apps/app/src/components/commands/ThreadSearchPaletteMode.tsx",
+    "retrieved_at": "2026-10-04T07:03:03.143610+00:00",
+    "bytes": 19949,
+    "sha256": "36cc6de413bbde90ed7a7303cb4de6957e4f8c14245c7941e2db3d82bc8584d8"
+  },
+  {
+    "app": "pi",
+    "path": "packages/coding-agent/src/modes/interactive/components/model-selector.ts",
+    "sha": "200387122ca450d6387f033949423114a270b96c",
+    "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/components/model-selector.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/pi/packages/coding-agent/src/modes/interactive/components/model-selector.ts",
+    "retrieved_at": "2026-10-04T07:03:03.143546+00:00",
+    "bytes": 14708,
+    "sha256": "92d70b9faffc9febf2ce0c519c7c086938bddfc5da9ad28d819f408d54e3637e"
+  },
+  {
+    "app": "pi",
+    "path": "packages/coding-agent/src/modes/interactive/components/session-selector.ts",
+    "sha": "200387122ca450d6387f033949423114a270b96c",
+    "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/components/session-selector.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/pi/packages/coding-agent/src/modes/interactive/components/session-selector.ts",
+    "retrieved_at": "2026-10-04T07:03:03.120413+00:00",
+    "bytes": 33960,
+    "sha256": "8d8744ed7ba79d04fbc5e2fac16ef38083ba2d1e871d12a1a2460faa27e29f27"
+  },
+  {
+    "app": "pi",
+    "path": "packages/coding-agent/src/core/tools/read.ts",
+    "sha": "200387122ca450d6387f033949423114a270b96c",
+    "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/tools/read.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/pi/packages/coding-agent/src/core/tools/read.ts",
+    "retrieved_at": "2026-10-04T07:03:03.133991+00:00",
+    "bytes": 9451,
+    "sha256": "297d26092979651091f44de8862a6fd55aaf59e7252f8fb8dd3d7cb3f9771518"
+  },
+  {
+    "app": "opencodex",
+    "path": "src/codex/catalog-auto-refresh.ts",
+    "sha": "06841165f884a9176d701310638b2112aca7a514",
+    "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/codex/catalog-auto-refresh.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/src/codex/catalog-auto-refresh.ts",
+    "retrieved_at": "2026-10-04T07:03:03.507890+00:00",
+    "bytes": 16282,
+    "sha256": "75cdfa052e5fd4328729e01c0c7d64d9b163f40a3f1ef24d53099f73b416958f"
+  },
+  {
+    "app": "opencodex",
+    "path": "src/lib/app-owned-memory.ts",
+    "sha": "06841165f884a9176d701310638b2112aca7a514",
+    "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/lib/app-owned-memory.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/src/lib/app-owned-memory.ts",
+    "retrieved_at": "2026-10-04T07:03:03.508241+00:00",
+    "bytes": 9360,
+    "sha256": "7d2efb9ffc98095a6c61d654297ee85f3873edf1cd11f3bd28b7efc3cfe42664"
+  },
+  {
+    "app": "opencodex",
+    "path": "desktop/src-tauri/src/startup.rs",
+    "sha": "06841165f884a9176d701310638b2112aca7a514",
+    "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/desktop/src-tauri/src/startup.rs",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/desktop/src-tauri/src/startup.rs",
+    "retrieved_at": "2026-10-04T07:10:13.569443+00:00",
+    "bytes": 101023,
+    "sha256": "c69c1e9181a4f5936aadea21f9d49b04346ff6d5a3f8ba2d59e8d88d7f26c874"
+  },
+  {
+    "app": "opencodex",
+    "path": "desktop/src-tauri/src/window.rs",
+    "sha": "06841165f884a9176d701310638b2112aca7a514",
+    "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/desktop/src-tauri/src/window.rs",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/desktop/src-tauri/src/window.rs",
+    "retrieved_at": "2026-10-04T07:10:13.581472+00:00",
+    "bytes": 14659,
+    "sha256": "2089bf51add10f555bd0e9ac680d57e5954e392adbebe6d876dfd6ea187daa6d"
+  },
+  {
+    "app": "opencodex",
+    "path": "gui/src/visibility-poll.ts",
+    "sha": "06841165f884a9176d701310638b2112aca7a514",
+    "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/gui/src/visibility-poll.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/gui/src/visibility-poll.ts",
+    "retrieved_at": "2026-10-04T07:10:13.577823+00:00",
+    "bytes": 3755,
+    "sha256": "06131be669cafd6664ca06884b7ec88a3a90ff2182e9c1ee84101abe964e0f4b"
+  },
+  {
+    "app": "opencodex",
+    "path": "gui/src/host-visibility.ts",
+    "sha": "06841165f884a9176d701310638b2112aca7a514",
+    "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/gui/src/host-visibility.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/gui/src/host-visibility.ts",
+    "retrieved_at": "2026-10-04T07:10:13.583585+00:00",
+    "bytes": 3204,
+    "sha256": "aaf6d8cc18c17610aeb7f97f3631950373b06c63131f276ca2664d16aa52fa6f"
+  },
+  {
+    "app": "opencodex",
+    "path": "src/server/management/logs-usage-routes.ts",
+    "sha": "06841165f884a9176d701310638b2112aca7a514",
+    "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/server/management/logs-usage-routes.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/src/server/management/logs-usage-routes.ts",
+    "retrieved_at": "2026-10-04T07:10:13.580673+00:00",
+    "bytes": 28438,
+    "sha256": "f491959dc9b3131050712bcda93354b153961e84f21123dda932d60f8742f1c2"
+  },
+  {
+    "app": "bb",
+    "path": "apps/app/src/hooks/queries/thread-queries.ts",
+    "sha": "4d15c1da0a848fa4834c1e5d0480a0891683bbe9",
+    "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/app/src/hooks/queries/thread-queries.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/bb/apps/app/src/hooks/queries/thread-queries.ts",
+    "retrieved_at": "2026-10-04T07:10:13.578631+00:00",
+    "bytes": 33501,
+    "sha256": "a4db646dd60318dc755d5934ec4d536880bc6ee6396298b89562fff473eaad89"
+  },
+  {
+    "app": "bb",
+    "path": "apps/app/src/hooks/cache-owners/thread-detail-cache-owner.ts",
+    "sha": "4d15c1da0a848fa4834c1e5d0480a0891683bbe9",
+    "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/app/src/hooks/cache-owners/thread-detail-cache-owner.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/bb/apps/app/src/hooks/cache-owners/thread-detail-cache-owner.ts",
+    "retrieved_at": "2026-10-04T07:10:13.940624+00:00",
+    "bytes": 1675,
+    "sha256": "3af273b1c70f2cd1c6889c029b3c8564b651103967c4db89dde9156ba930ec97"
+  },
+  {
+    "app": "bb",
+    "path": "apps/app/src/hooks/queries/palette-thread-queries.ts",
+    "sha": "4d15c1da0a848fa4834c1e5d0480a0891683bbe9",
+    "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/app/src/hooks/queries/palette-thread-queries.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/bb/apps/app/src/hooks/queries/palette-thread-queries.ts",
+    "retrieved_at": "2026-10-04T07:10:13.914301+00:00",
+    "bytes": 820,
+    "sha256": "09a89d0b6410227bc39882a6ae123ab5afeb7c8f65e705764c118dab7c7f478c"
+  },
+  {
+    "app": "pi",
+    "path": "packages/coding-agent/src/utils/image-process.ts",
+    "sha": "200387122ca450d6387f033949423114a270b96c",
+    "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/utils/image-process.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/pi/packages/coding-agent/src/utils/image-process.ts",
+    "retrieved_at": "2026-10-04T07:10:13.953045+00:00",
+    "bytes": 3102,
+    "sha256": "fffb65fba877607644f8028c0f24aa6e74228e15427e112ee367e7983f2a79e5"
+  },
+  {
+    "app": "paseo",
+    "path": "packages/app/src/terminal/runtime/terminal-emulator-runtime.ts",
+    "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+    "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/terminal/runtime/terminal-emulator-runtime.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/terminal/runtime/terminal-emulator-runtime.ts",
+    "retrieved_at": "2026-10-04T07:11:45.920431+00:00",
+    "bytes": 46285,
+    "sha256": "503b54078d9ceae4ad67d918940ed94f6940ff2c407fe359e081dbabafdc3101"
+  },
+  {
+    "app": "paseo",
+    "path": "packages/app/src/screens/workspace/terminals/use-workspace-terminals.ts",
+    "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+    "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/screens/workspace/terminals/use-workspace-terminals.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/screens/workspace/terminals/use-workspace-terminals.ts",
+    "retrieved_at": "2026-10-04T07:12:42.043950+00:00",
+    "bytes": 9717,
+    "sha256": "b49ae1a3b3a1fca2c680f8ef70141f40acbd4d677ca8c6240d1b104d9c2d3914"
+  },
+  {
+    "app": "paseo",
+    "path": "packages/app/src/terminal/hooks/use-workspace-terminal-session-retention.ts",
+    "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+    "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/terminal/hooks/use-workspace-terminal-session-retention.ts",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/terminal/hooks/use-workspace-terminal-session-retention.ts",
+    "retrieved_at": "2026-10-04T07:12:42.044280+00:00",
+    "bytes": 523,
+    "sha256": "9e14e423160b2ed44718d838c7e2a01b0d684abe7b7560c188780760777b0a85"
+  },
+  {
+    "app": "opencodex",
+    "path": "gui/src/pages/Logs.tsx",
+    "sha": "06841165f884a9176d701310638b2112aca7a514",
+    "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/gui/src/pages/Logs.tsx",
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/gui/src/pages/Logs.tsx",
+    "retrieved_at": "2026-10-04T07:12:42.063099+00:00",
+    "bytes": 66003,
+    "sha256": "d99b5400d1089486fe2e0fcd851a811f8c50fcc5d907a8820181852ee53c4209"
+  }
+]

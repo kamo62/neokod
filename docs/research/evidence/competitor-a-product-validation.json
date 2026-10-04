@@ -1,0 +1,17 @@
+{
+  "status": "PASS",
+  "source_hashes": 67,
+  "pattern_counts": {
+    "onorca": 3,
+    "agent-orchestrator": 3,
+    "codex-host": 2,
+    "hermes": 3,
+    "superset": 3,
+    "oh-my-pi": 2,
+    "traycer": 3
+  },
+  "current_issue_comment_sets": 12,
+  "pinned_refs": 66,
+  "local_refs": 38,
+  "scope": "Artifact integrity and source-reference checks only; no application tests or benchmark run."
+}

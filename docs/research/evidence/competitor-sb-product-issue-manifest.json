@@ -1,0 +1,42 @@
+[
+  {
+    "repo": "omnigent-ai/omnigent",
+    "number": 6205,
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/omnigent-ai--omnigent/6205.json",
+    "comments_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/omnigent-ai--omnigent/6205-comments.json",
+    "retrieved_comments_at": "2026-10-04T07:04:52.791251+00:00",
+    "returncode": 0
+  },
+  {
+    "repo": "getpaseo/paseo",
+    "number": 4408,
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/getpaseo--paseo/4408.json",
+    "comments_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/getpaseo--paseo/4408-comments.json",
+    "retrieved_comments_at": "2026-10-04T07:04:52.762287+00:00",
+    "returncode": 0
+  },
+  {
+    "repo": "get-bb/bb",
+    "number": 4413,
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/get-bb--bb/4413.json",
+    "comments_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/get-bb--bb/4413-comments.json",
+    "retrieved_comments_at": "2026-10-04T07:04:52.783689+00:00",
+    "returncode": 0
+  },
+  {
+    "repo": "lidge-jun/opencodex",
+    "number": 5493,
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/lidge-jun--opencodex/5493.json",
+    "comments_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/lidge-jun--opencodex/5493-comments.json",
+    "retrieved_comments_at": "2026-10-04T07:04:52.743583+00:00",
+    "returncode": 0
+  },
+  {
+    "repo": "earendil-works/pi",
+    "number": 9807,
+    "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/earendil-works--pi/9807.json",
+    "comments_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/earendil-works--pi/9807-comments.json",
+    "retrieved_comments_at": "2026-10-04T07:04:52.794688+00:00",
+    "returncode": 0
+  }
+]

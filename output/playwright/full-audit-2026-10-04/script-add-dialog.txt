@@ -1,0 +1,35 @@
+- region "Notifications"
+- region "Notifications":
+  - dialog "Analytics is enabled by default":
+    - button "Dismiss notification"
+    - heading "Analytics is enabled by default" [level=2]
+    - paragraph: It collects usage data and error logs only, never prompts or source code.
+    - button "Review Settings > Analytics"
+- dialog "Add Action":
+  - heading "Add Action" [level=2]
+  - paragraph: Actions are project-scoped commands you can run from the top bar or keybindings.
+  - text: Name
+  - button "Choose icon"
+  - textbox "Name":
+    - /placeholder: Test
+  - text: Keybinding
+  - textbox "Keybinding":
+    - /placeholder: Press shortcut
+  - paragraph:
+    - text: Press a shortcut. Use
+    - code: Backspace
+    - text: to clear.
+  - text: Command
+  - textbox "Command":
+    - /placeholder: bun test
+  - text: Preview URL (optional)
+  - textbox "Preview URL (optional)":
+    - /placeholder: http://localhost:5173
+  - paragraph: Open this URL in the in-app preview when this action runs.
+  - text: Run automatically on worktree creation
+  - switch "Run automatically on worktree creation"
+  - text: Open preview automatically when this action runs
+  - switch "Open preview automatically when this action runs" [disabled]
+  - button "Cancel"
+  - button "Save action"
+  - button "Close"

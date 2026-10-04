@@ -1,0 +1,12 @@
+- region "Notifications"
+- region "Notifications"
+- dialog "Create Symphony project":
+  - heading "Create Symphony project" [level=2]
+  - paragraph: Attach one Code project to one tracker. Source control is inferred independently from the repository remote. The project starts paused.
+  - text: Code project
+  - paragraph: Add, clone, or create a Code project first.
+  - button "Add Code project"
+  - paragraph: Symphony execution currently requires an enabled Codex provider.
+  - button "Cancel"
+  - button "Create paused project" [disabled]
+  - button "Close"

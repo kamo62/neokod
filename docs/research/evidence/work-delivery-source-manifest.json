@@ -1,0 +1,118 @@
+{
+  "date": "2026-10-04",
+  "evidence_class": "current local source including owner dirty work; no live adapter calls",
+  "tracker_kinds": [
+    "github",
+    "jira",
+    "linear",
+    "gitlab",
+    "asana",
+    "azure_boards",
+    "github_projects"
+  ],
+  "files": [
+    {
+      "path": "packages/contracts/src/symphony.ts",
+      "sha256": "bf0abf7e079bee664590572f2fffd1b8aff7f831faa26b0cc0276b8e7450a056"
+    },
+    {
+      "path": "apps/server/src/symphony/HandoffService.ts",
+      "sha256": "c09fcf7100ac3c7e476a4429857df2564ba80d274e7fea7b93a4c258458b8b96"
+    },
+    {
+      "path": "apps/server/src/symphony/Persistence/Layers/WorkItemRepository.ts",
+      "sha256": "379d8878db5288e65108b8adf46402a7069d9e157d5339b52c0bc091624166dd"
+    },
+    {
+      "path": "apps/server/src/symphony/Orchestrator/Eligibility.ts",
+      "sha256": "025b508fee54952640f2fd37cc4fe5483128846b2a8f34c460403e7c0a66e952"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/Adapter.ts",
+      "sha256": "2d99882f09236af9078e1c85a9547dfc61f16884402428faf3e0c777956f8f7a"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/AsanaAdapter.ts",
+      "sha256": "22dc3260fe835e47cc3f20d9b1751e1a0b139e650812ecd3dd7f4be7b7f210c5"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/AsanaApiClient.ts",
+      "sha256": "46b3d7854693e6b666399b8d61eb3c6a498d90fb156b0e4ead2ca79658ecf593"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/AzureBoardsAdapter.ts",
+      "sha256": "59a1790cf54b6f31e4544d6a60e91dd02459a1c4bdb5b7991322cdb439dba58f"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/AzureBoardsApiClient.ts",
+      "sha256": "d76aa5442b8458bbe57346843ec0fad74307bbf0e5626fb704c62d608e4cf8d2"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/Errors.ts",
+      "sha256": "76225efec67fbc34c5412ca6b28cdeb40598c605707e7f10b4210639913202fc"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/GitHubIssuesAdapter.ts",
+      "sha256": "6cb95d4c1d2ecfbadf095b49a209726df69d6d7c88e124bf3e5ea05e99d9c516"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/GitHubIssuesCli.ts",
+      "sha256": "edf8a54f58f0e248b424ea112022efe3bbd6ab2ada8f8ddcb3f27c03d43dec95"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/GitHubProjectsAdapter.ts",
+      "sha256": "fdd36462ed17f98746e09c51ae62e99800fa249907da6493838a80bd79c8f356"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/GitHubProjectsApiClient.ts",
+      "sha256": "9e3134e506de91ad8d5412b6e16113330dcb77d05598cd2edbda1bebed170769"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/GitLabAdapter.ts",
+      "sha256": "af55cf467fa551f755b5eca999e75ea4824d6d341b2692a3b061dd6d93231b81"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/GitLabApiClient.ts",
+      "sha256": "845f5f43edc14947caedf172bae67aee57bd1b277874cf1be95d3f21b0bffcb7"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/JiraAdapter.ts",
+      "sha256": "577dbab36e10ec54bd9723ff6a6d77f42a9ef82854a0f38e372eb468c17150b3"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/JiraApiClient.ts",
+      "sha256": "f4071fc8526f5d4941c086dceb17895d342824bfde82343f004dd93f6a8e8ba9"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/LinearAdapter.ts",
+      "sha256": "8a853a8950383c01c5d2aa9b094c7967b64a317fd1a267613a54d0f74097a8a9"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/LinearApiClient.ts",
+      "sha256": "bfeab1addccefff45c2c9693f5c7096f21881fa41ee1b12745dfa1c881f05ff7"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/MemoryAdapter.ts",
+      "sha256": "cca1035c348232405c2ae6f4d811d81766fe377a4d94fc7726333631c214c282"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/Normalize.ts",
+      "sha256": "3430c4873e968b5bb678d4de24c0d2a777c897446a71977a140f67a9e9eaed8f"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/ProviderSecret.ts",
+      "sha256": "3b795502214e2b836d8bcad8788b37d2b15e84b8b7ac0da625a1e666632c499b"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/Registry.ts",
+      "sha256": "60047b89e9e34a6302e3203469ecd3cd61641f67e2b6d3feb57fb94767c18d85"
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/SettingsOverlay.ts",
+      "sha256": "2dddaa62d38bb805bae558bc49336ca35b3dd538894cdb307022df9f42f2eae0"
+    }
+  ],
+  "report": "work-delivery-intake-review-2026-10-04.md",
+  "native_scope_gaps": "Jira bulk/project; GitHub Projects global node/project; Azure item/project need explicit proof at intake; no unauthorised-access incident claimed",
+  "runtime": "not exercised"
+}

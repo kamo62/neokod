@@ -1,0 +1,91 @@
+{
+  "date_utc": "2026-10-04T07:27:33.190764+00:00",
+  "scope": "Research, global instructions, canonical plan, documentation and standalone illustrative HTML only. No application code delivery.",
+  "artifact_checks": {
+    "json_parse": "passed",
+    "t3_csv_records": 4292,
+    "synara_csv_records": 965,
+    "open_issue_csv_records": 24333,
+    "selected_current_issue_records": 100,
+    "independent_t3_findings": 100,
+    "independent_t3_broader_claims": 17,
+    "explicit_override_precedence": "orchestrator \u2192 main \u2192 early \u2192 open \u2192 final Sol",
+    "early_override_application": "all21 applied",
+    "t3_12847_exclusion_corrected": true,
+    "t3_15491_ui_excluded": true,
+    "markdown_fences_and_whitespace": "passed; local link validation rerun after this record is saved",
+    "git_diff_check_task_paths": "passed",
+    "preserved_owner_dirty_files": 27,
+    "owner_file_hashes_unchanged": true,
+    "local_links_checked": 307,
+    "local_links": "passed",
+    "additional_performance_product_patterns": 49,
+    "apps_in_broader_comparison": 17,
+    "additional_a_sb_source_hashes_verified": 123,
+    "additional_t3_synara_successful_source_records": 29,
+    "t3_synara_failed_reads_disclosed": 2,
+    "local_source_hashes_verified": 50,
+    "credential_pattern_scan": "passed after one public credential-like title redaction"
+  },
+  "independent_integration_review": {
+    "model": "gpt-6.1-sol",
+    "effort": "high",
+    "result": "No remaining factual integration errors found; source/issue mappings, licences, counts, Jira seams and evidence classes match saved records."
+  },
+  "concept_browser_verification": {
+    "browser": "Chrome",
+    "viewport": "Default desktop; no mobile breakpoint runtime check claimed",
+    "visual_inspection": "Expanded full-page desktop screenshot inspected; source selector, workstream tree, attributed updates and unknown-state evidence are legible",
+    "interactions": [
+      "child selection preserves parent conversation",
+      "connection loss updates sidebar/inline/detail to unknown",
+      "returned result updates review state",
+      "Jira explanation opens and closes native dialog",
+      "Linear source changes scoped identity and linked conversation content",
+      "GitHub Projects source displays project-item identity and unsupported draft/PR-card note; native dialog opens/closes",
+      "Azure Boards source displays restricted-state capability note",
+      "Expanded connection-loss scenario preserves unknown in sidebar/inline/detail"
+    ],
+    "console": "No error logs in the expanded concept capture",
+    "temporary_preview": "Local loopback HTTP server and task-created Chrome tab closed after review",
+    "direct_file_url_navigation": "Browser policy disallowed file protocol; no bypass attempted. HTML remains a workspace artifact."
+  },
+  "application_checks": {
+    "vp_check": {
+      "exit_code": 127,
+      "reason": "vp unavailable; local dependency binary absent"
+    },
+    "vp_run_typecheck": {
+      "exit_code": 127,
+      "reason": "vp unavailable; local dependency binary absent"
+    },
+    "competitor_binaries": "not executed",
+    "neokod_provider_session": "not exercised",
+    "live_jira_or_tracker_to_pr": "not exercised",
+    "native_platform_or_migration_acceptance": "not exercised"
+  },
+  "isolated_mechanism_probe": "Node26.10.0 temporary SQLite probe only; not application adapter proof. Result linked separately.",
+  "global_instruction_update": "Only orchestration model-routing bullets changed; Sol6.1high investigation/validation, Luna6max established-plan execution with Sol substantial review.",
+  "version_changelog": "Not required for research/documentation; no application release.",
+  "expanded_integration_review": {
+    "model": "gpt-6.1-sol",
+    "effort": "high",
+    "scope": "New 17-app performance/product and generic delivery sections only",
+    "result": "Counts and mappings passed; two proof-boundary wording qualifications applied by main task",
+    "record": "performance-integration-review.md"
+  },
+  "work_delivery_matrix_review": {
+    "model": "gpt-6.1-sol",
+    "effort": "high",
+    "result": "Seven-adapter source matrix reviewed. Corrected current GitHub Issues scheduler list to fixed default100 without completeness signal. No other material source corrections identified.",
+    "record": "../work-delivery-matrix-validation-2026-10-04.md",
+    "live_calls": "not exercised"
+  },
+  "public_issue_redaction": {
+    "repository": "NousResearch/hermes-agent",
+    "issue_number": 60382,
+    "field": "title",
+    "value": "not retained in durable CSV or report",
+    "raw_snapshot": "public raw source preserved only in temporary capture; no value tested"
+  }
+}

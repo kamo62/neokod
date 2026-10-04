@@ -1,0 +1,9 @@
+- region "Notifications"
+- region "Notifications"
+- dialog "Command palette":
+  - combobox "Search commands, projects, and threads...": subagents
+  - listbox:
+    - group "Actions":
+      - text: Actions
+      - option "Open subagents"
+  - text: Navigate Enter Select Esc Close

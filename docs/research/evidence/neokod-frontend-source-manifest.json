@@ -1,0 +1,82 @@
+{
+  "head": "80334a4c8a6badd9a0014bbc34af4bcb346c3cff",
+  "proof": "working-tree source only; dirty files retained",
+  "sources": [
+    {
+      "path": "apps/web/src/components/ChatMarkdown.tsx",
+      "sha256": "2863dbb532cc9464e737718b153eb74338f13594f1ce296c71787ac5c6a834dd"
+    },
+    {
+      "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+      "sha256": "5b35db6694cc984072613ca055f798f91643377168348119b7c971160479c661"
+    },
+    {
+      "path": "apps/web/src/components/ChatView.tsx",
+      "sha256": "4acd35846ccb75aba5ee676a080d5687f1edae761da9c6310f0e2801e6d2fd0e"
+    },
+    {
+      "path": "apps/web/src/components/symphony/SymphonyProjectView.tsx",
+      "sha256": "1611341696265acec7149f75848c58732f612e7d5227d6136fac34e397b614e6"
+    },
+    {
+      "path": "apps/web/src/components/symphony/SymphonyQueueView.tsx",
+      "sha256": "cb66c4c32a1732a2a9639724e6b51a5719512ee63ef7842cb9c9d416b7c718ff"
+    },
+    {
+      "path": "apps/web/src/components/ui/command.tsx",
+      "sha256": "8723ca483ec1a2bd4281405e13045386c5fddf5ba2b1ecf002482bebcda6770b"
+    },
+    {
+      "path": "apps/web/src/hooks/useLocalStorage.ts",
+      "sha256": "b3c67018a2c07140503443dfde5281e20bcae45aadab0947fdd9d24f32fa30d7"
+    },
+    {
+      "path": "apps/web/src/components/CommandPaletteResults.tsx",
+      "sha256": "8210b7248759e2ae5c0e61ed63db34e3eeb2cb523165124f83e55e684347275e"
+    },
+    {
+      "path": "apps/web/src/components/DiffWorkerPoolProvider.tsx",
+      "sha256": "2adfe18a0f9921552a5d9bfe3648d4b1162276ee3d182ea86800c97c81a4a406"
+    },
+    {
+      "path": "apps/web/src/state/use-atom-command.ts",
+      "sha256": "d1bd7ee2a72e63f9b043162909f43dfb7f5d2c7c652e4ce7ce3e8b55b172967b"
+    },
+    {
+      "path": "apps/server/src/terminal/Manager.ts",
+      "sha256": "ee98ede1e1fe1634724b54deaff7ea94d26b9aff3a55ca4971016057fc72bf51"
+    },
+    {
+      "path": "apps/server/src/ws.ts",
+      "sha256": "bdba799cb5ba7f881aac6f27f59adbac24dadd72bd450b69ad4821fd44cf0eb0"
+    },
+    {
+      "path": "apps/server/src/symphony/Orchestrator/ProjectBoard.ts",
+      "sha256": "636062b5628d4d1646337c98e3e0d899f2fb20b53bb2c54040880c2cdb874a50"
+    },
+    {
+      "path": "apps/server/src/symphony/Orchestrator/Layers/SymphonyOrchestratorLive.ts",
+      "sha256": "42a61b3d69adffb2ee4a90663980b910327baf91f8f623c74ad860bb70511b7d"
+    },
+    {
+      "path": "apps/server/src/diagnostics/TraceDiagnostics.ts",
+      "sha256": "a49b180f71344cc2a5892e52a475efd6156cd6d1e0ae564838960af5ed9d9fc1"
+    },
+    {
+      "path": "packages/client-runtime/src/state/runtime.ts",
+      "sha256": "961a67854a7d2251185f66ccd6ac9dda438a8fb277cc23a16e02947f70976f3f"
+    },
+    {
+      "path": "packages/client-runtime/src/state/symphony.ts",
+      "sha256": "8dc48f9e92e6179753034ffc9a70a4ad12896cc4550bea90d18778ac4924a920"
+    },
+    {
+      "path": "packages/contracts/src/symphony.ts",
+      "sha256": "bf0abf7e079bee664590572f2fffd1b8aff7f831faa26b0cc0276b8e7450a056"
+    },
+    {
+      "path": "docs/architecture/state-and-evidence.md",
+      "sha256": "d02f53c79b81ab8d2d1e2e5629f5a6fbe203a5394fedf1a22c6e7bbcda85e642"
+    }
+  ]
+}

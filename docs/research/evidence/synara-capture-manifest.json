@@ -1,0 +1,48 @@
+{
+  "repository": "Emanuele-web04/synara",
+  "window_start_inclusive_utc": "2026-07-04T00:00:00Z",
+  "capture_start_utc": "2026-10-04T06:17:40.999632+00:00",
+  "capture_end_utc": "2026-10-04T06:17:55.192433+00:00",
+  "method": "REST updated-desc all PR pages until before window, plus all currently-open PR pages. Scope includes created/closed/merged in last three calendar months, older updated records explicitly labelled, and older currently-open records. No search 1000 cap. Mutable capture intervals not atomic snapshot.",
+  "queries": [
+    {
+      "state": "all",
+      "capture_start_utc": "2026-10-04T06:17:41.000221+00:00",
+      "capture_end_utc": "2026-10-04T06:17:52.830508+00:00",
+      "pages": 10,
+      "raw_records": 1000,
+      "complete_for_scope": true
+    },
+    {
+      "state": "open",
+      "capture_start_utc": "2026-10-04T06:17:52.831080+00:00",
+      "capture_end_utc": "2026-10-04T06:17:55.093371+00:00",
+      "pages": 2,
+      "raw_records": 191,
+      "complete_for_scope": true
+    }
+  ],
+  "records": 965,
+  "states": {
+    "open": 163,
+    "closed_unmerged": 125,
+    "open_draft": 28,
+    "merged": 649
+  },
+  "scopes": {
+    "older_currently_open": 25,
+    "created_closed_or_merged_in_window": 939,
+    "older_updated_in_window": 1
+  },
+  "file_details_records": 965,
+  "incomplete_file_inventories": [],
+  "selected_pr_intent_comparisons": [
+    580, 613, 764, 1097, 1115, 1270, 1307, 1332, 1378, 1484, 1490, 1494
+  ],
+  "review_levels": {
+    "metadata_and_file_scope_triage": 953,
+    "selected_pr_intent_and_current_source_comparison": 12
+  },
+  "raw_input_root": "/tmp/neokod-competitors-20261004/synara-sol",
+  "semantic_scope": "Full metadata/file enumeration with 12 selected intent/current-source comparisons, not deep diff audit of all965 PRs"
+}

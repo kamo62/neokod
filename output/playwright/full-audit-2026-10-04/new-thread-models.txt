@@ -1,0 +1,84 @@
+- button "Switch mode": Neokod Dev
+- tablist "Sidebar view":
+  - tab "Projects" [selected]
+  - tab "All threads"
+- list:
+  - listitem:
+    - button "New thread"
+  - listitem:
+    - button "Search ⌘K"
+  - listitem:
+    - button "Home"
+- tabpanel "Projects":
+  - region "My Work":
+    - button "My Work 2" [expanded]
+    - text: Needs you
+    - button "Clear"
+    - button "Failed Functional audit thread neokod-functional-audit-uy22dh88": Functional audit thread neokod-functional-audit-uy22dh88
+    - button "Dismiss Functional audit thread from My Work"
+    - text: Recent
+    - button "Clear"
+    - button "Done Hi arbitrage":
+      - img "Done"
+      - text: Hi arbitrage
+    - button "Dismiss Hi from My Work"
+  - text: Projects
+  - button
+  - button "Add project"
+  - list:
+    - listitem:
+      - button "neokod-functional-audit-uy22dh88"
+      - button "Create new thread in neokod-functional-audit-uy22dh88"
+      - list:
+        - listitem:
+          - button "Failed Functional audit thread 6m ago Pin Functional audit thread Archive Functional audit thread":
+            - text: Failed Functional audit thread 6m ago
+            - button "Pin Functional audit thread"
+            - button "Archive Functional audit thread"
+    - listitem:
+      - button "arbitrage"
+      - button "Create new thread in arbitrage"
+      - list:
+        - listitem:
+          - button "Hi 20m ago Pin Hi Archive Hi":
+            - text: Hi 20m ago
+            - button "Pin Hi"
+            - button "Archive Hi"
+- separator
+- list:
+  - listitem:
+    - button "Settings"
+- button "Resize Sidebar"
+- main:
+  - button "Toggle terminal drawer"
+  - button "Toggle right panel"
+  - heading "New thread" [level=2]
+  - button "Set goal"
+  - button "Open terminal"
+  - button "Open diff"
+  - button "More thread actions"
+  - alert: "Codex provider status Codex app-server provider probe failed: Codex App Server process exited with code 1."
+  - paragraph: Send a message to start the conversation.
+  - textbox:
+    - paragraph
+  - text: Ask for follow-up changes or attach images
+  - button "GPT-6.1-Sol · Low" [expanded]
+  - dialog:
+    - button "Favorites"
+    - button "Claude"
+    - 'button "Codex — Unavailable. Codex app-server provider probe failed: Codex App Server process exited with code 1." [disabled]'
+    - button "GitHub Copilot": GC
+    - button "OpenCode"
+    - combobox "Search models..."
+    - listbox
+    - status: No models found
+    - text: Provider options
+    - button "Low · Fast"
+  - combobox "Runtime mode": Full access
+  - button "Default mode — click to enter plan mode": Build
+  - button "Send message" [disabled]
+  - combobox "Workspace": Current checkout
+  - combobox: main
+- button "Toggle main sidebar" [pressed]: Toggle Sidebar
+- region "Notifications"
+- region "Notifications"

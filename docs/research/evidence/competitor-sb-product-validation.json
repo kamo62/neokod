@@ -1,0 +1,33 @@
+{
+  "checked_at": "2026-10-04T07:18:50.816372+00:00",
+  "status": "pass",
+  "patterns": 18,
+  "per_app": {
+    "omnigent": 3,
+    "paseo": 2,
+    "bb": 2,
+    "pi": 3,
+    "opencodex": 2,
+    "harnessrouter": 2,
+    "conductor": 2,
+    "maestri": 2
+  },
+  "new_source_files": 56,
+  "new_issue_threads": 5,
+  "checks": [
+    "JSON parses",
+    "all new frozen-source hashes match",
+    "source line anchors exist",
+    "referenced Neokod paths exist",
+    "all eight apps have one to three patterns",
+    "new issue capture paths exist"
+  ],
+  "failures": [],
+  "not_run": [
+    "application tests/builds",
+    "runtime benchmarks",
+    "native competitor apps",
+    "provider turns",
+    "live tracker operations"
+  ]
+}

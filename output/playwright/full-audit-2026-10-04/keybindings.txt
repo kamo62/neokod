@@ -1,0 +1,166 @@
+- button "Switch mode": Neokod Dev
+- list:
+  - listitem:
+    - button "General"
+  - listitem:
+    - button "Appearance"
+  - listitem:
+    - button "Keybindings"
+  - listitem:
+    - button "Providers"
+  - listitem:
+    - button "Source Control"
+  - listitem:
+    - button "Tracking"
+  - listitem:
+    - button "Analytics"
+  - listitem:
+    - button "Connections"
+  - listitem:
+    - button "Archive"
+- separator
+- list:
+  - listitem:
+    - button "Back"
+- button "Resize Sidebar"
+- main:
+  - text: Settings
+  - heading "Keybindings" [level=2]
+  - text: 43 bindings
+  - button "Search keybindings"
+  - button "Add keybinding"
+  - button "Open keybindings.json"
+  - paragraph: Some shortcuts may be claimed by the browser before Neokod sees them. Use the desktop app for better keybinding support.
+  - text: "Command Keybinding When Status Chat: New"
+  - 'button "Edit shortcut for Chat: New"': ⌘ N Edit
+  - 'button "Edit when clause for Chat: New"': "!terminalFocus"
+  - text: "⌘N Chat: New"
+  - 'button "Edit shortcut for Chat: New"': ⌘ ⇧ O Edit
+  - 'button "Edit when clause for Chat: New"': "!terminalFocus"
+  - text: "⇧⌘O Chat: New Local"
+  - 'button "Edit shortcut for Chat: New Local"': ⌘ ⇧ N Edit
+  - 'button "Edit when clause for Chat: New Local"': "!terminalFocus"
+  - text: "⇧⌘N Command Palette: Toggle"
+  - 'button "Edit shortcut for Command Palette: Toggle"': ⌘ K Edit
+  - 'button "Edit when clause for Command Palette: Toggle"': "!terminalFocus"
+  - text: "⌘K Diff: Toggle"
+  - 'button "Edit shortcut for Diff: Toggle"': ⌘ D Edit
+  - 'button "Edit when clause for Diff: Toggle"': "!terminalFocus"
+  - text: "⌘D Editor: Open Favorite"
+  - 'button "Edit shortcut for Editor: Open Favorite"': ⌘ O Edit
+  - 'button "Edit when clause for Editor: Open Favorite"': Always
+  - text: "⌘O Model Picker: Jump: 1"
+  - 'button "Edit shortcut for Model Picker: Jump: 1"': ⌘ 1 Edit
+  - 'button "Edit when clause for Model Picker: Jump: 1"': modelPickerOpen
+  - text: "⌘1 Model Picker: Jump: 2"
+  - 'button "Edit shortcut for Model Picker: Jump: 2"': ⌘ 2 Edit
+  - 'button "Edit when clause for Model Picker: Jump: 2"': modelPickerOpen
+  - text: "⌘2 Model Picker: Jump: 3"
+  - 'button "Edit shortcut for Model Picker: Jump: 3"': ⌘ 3 Edit
+  - 'button "Edit when clause for Model Picker: Jump: 3"': modelPickerOpen
+  - text: "⌘3 Model Picker: Jump: 4"
+  - 'button "Edit shortcut for Model Picker: Jump: 4"': ⌘ 4 Edit
+  - 'button "Edit when clause for Model Picker: Jump: 4"': modelPickerOpen
+  - text: "⌘4 Model Picker: Jump: 5"
+  - 'button "Edit shortcut for Model Picker: Jump: 5"': ⌘ 5 Edit
+  - 'button "Edit when clause for Model Picker: Jump: 5"': modelPickerOpen
+  - text: "⌘5 Model Picker: Jump: 6"
+  - 'button "Edit shortcut for Model Picker: Jump: 6"': ⌘ 6 Edit
+  - 'button "Edit when clause for Model Picker: Jump: 6"': modelPickerOpen
+  - text: "⌘6 Model Picker: Jump: 7"
+  - 'button "Edit shortcut for Model Picker: Jump: 7"': ⌘ 7 Edit
+  - 'button "Edit when clause for Model Picker: Jump: 7"': modelPickerOpen
+  - text: "⌘7 Model Picker: Jump: 8"
+  - 'button "Edit shortcut for Model Picker: Jump: 8"': ⌘ 8 Edit
+  - 'button "Edit when clause for Model Picker: Jump: 8"': modelPickerOpen
+  - text: "⌘8 Model Picker: Jump: 9"
+  - 'button "Edit shortcut for Model Picker: Jump: 9"': ⌘ 9 Edit
+  - 'button "Edit when clause for Model Picker: Jump: 9"': modelPickerOpen
+  - text: "⌘9 Model Picker: Toggle"
+  - 'button "Edit shortcut for Model Picker: Toggle"': ⌘ ⇧ M Edit
+  - 'button "Edit when clause for Model Picker: Toggle"': "!terminalFocus"
+  - text: "⇧⌘M Preview: Focus Url"
+  - 'button "Edit shortcut for Preview: Focus Url"': ⌘ L Edit
+  - 'button "Edit when clause for Preview: Focus Url"': previewFocus
+  - text: "⌘L Preview: Refresh"
+  - 'button "Edit shortcut for Preview: Refresh"': ⌘ R Edit
+  - 'button "Edit when clause for Preview: Refresh"': previewFocus
+  - text: "⌘R Preview: Reset Zoom"
+  - 'button "Edit shortcut for Preview: Reset Zoom"': ⌘ 0 Edit
+  - 'button "Edit when clause for Preview: Reset Zoom"': previewFocus
+  - text: "⌘0 Preview: Toggle"
+  - 'button "Edit shortcut for Preview: Toggle"': ⌘ ⇧ J Edit
+  - 'button "Edit when clause for Preview: Toggle"': Always
+  - text: "⇧⌘J Preview: Zoom In"
+  - 'button "Edit shortcut for Preview: Zoom In"': ⌘ Edit
+  - 'button "Edit when clause for Preview: Zoom In"': previewFocus
+  - text: "⌘+ Preview: Zoom In"
+  - 'button "Edit shortcut for Preview: Zoom In"': ⌘ = Edit
+  - 'button "Edit when clause for Preview: Zoom In"': previewFocus
+  - text: "⌘= Preview: Zoom Out"
+  - 'button "Edit shortcut for Preview: Zoom Out"': ⌘ - Edit
+  - 'button "Edit when clause for Preview: Zoom Out"': previewFocus
+  - text: "⌘- Right Panel: Toggle"
+  - 'button "Edit shortcut for Right Panel: Toggle"': ⌘ ⌥ B Edit
+  - 'button "Edit when clause for Right Panel: Toggle"': Always
+  - text: "⌥⌘B Sidebar: Toggle"
+  - 'button "Edit shortcut for Sidebar: Toggle"': ⌘ B Edit
+  - 'button "Edit when clause for Sidebar: Toggle"': Always
+  - text: "⌘B Terminal: Close"
+  - 'button "Edit shortcut for Terminal: Close"': ⌘ W Edit
+  - 'button "Edit when clause for Terminal: Close"': terminalFocus
+  - text: "⌘W Terminal: New"
+  - 'button "Edit shortcut for Terminal: New"': ⌘ N Edit
+  - 'button "Edit when clause for Terminal: New"': terminalFocus
+  - text: "⌘N Terminal: Split"
+  - 'button "Edit shortcut for Terminal: Split"': ⌘ D Edit
+  - 'button "Edit when clause for Terminal: Split"': terminalFocus
+  - text: "⌘D Terminal: Split Vertical"
+  - 'button "Edit shortcut for Terminal: Split Vertical"': ⌘ ⇧ D Edit
+  - 'button "Edit when clause for Terminal: Split Vertical"': terminalFocus
+  - text: "⇧⌘D Terminal: Toggle"
+  - 'button "Edit shortcut for Terminal: Toggle"': ⌘ J Edit
+  - 'button "Edit when clause for Terminal: Toggle"': Always
+  - text: "⌘J Thread: Jump: 1"
+  - 'button "Edit shortcut for Thread: Jump: 1"': ⌘ 1 Edit
+  - 'button "Edit when clause for Thread: Jump: 1"': Always
+  - text: "⌘1 Thread: Jump: 2"
+  - 'button "Edit shortcut for Thread: Jump: 2"': ⌘ 2 Edit
+  - 'button "Edit when clause for Thread: Jump: 2"': Always
+  - text: "⌘2 Thread: Jump: 3"
+  - 'button "Edit shortcut for Thread: Jump: 3"': ⌘ 3 Edit
+  - 'button "Edit when clause for Thread: Jump: 3"': Always
+  - text: "⌘3 Thread: Jump: 4"
+  - 'button "Edit shortcut for Thread: Jump: 4"': ⌘ 4 Edit
+  - 'button "Edit when clause for Thread: Jump: 4"': Always
+  - text: "⌘4 Thread: Jump: 5"
+  - 'button "Edit shortcut for Thread: Jump: 5"': ⌘ 5 Edit
+  - 'button "Edit when clause for Thread: Jump: 5"': Always
+  - text: "⌘5 Thread: Jump: 6"
+  - 'button "Edit shortcut for Thread: Jump: 6"': ⌘ 6 Edit
+  - 'button "Edit when clause for Thread: Jump: 6"': Always
+  - text: "⌘6 Thread: Jump: 7"
+  - 'button "Edit shortcut for Thread: Jump: 7"': ⌘ 7 Edit
+  - 'button "Edit when clause for Thread: Jump: 7"': Always
+  - text: "⌘7 Thread: Jump: 8"
+  - 'button "Edit shortcut for Thread: Jump: 8"': ⌘ 8 Edit
+  - 'button "Edit when clause for Thread: Jump: 8"': Always
+  - text: "⌘8 Thread: Jump: 9"
+  - 'button "Edit shortcut for Thread: Jump: 9"': ⌘ 9 Edit
+  - 'button "Edit when clause for Thread: Jump: 9"': Always
+  - text: "⌘9 Thread: Next"
+  - 'button "Edit shortcut for Thread: Next"': ⌘ ⇧ ] Edit
+  - 'button "Edit when clause for Thread: Next"': Always
+  - text: "⇧⌘] Thread: Previous"
+  - 'button "Edit shortcut for Thread: Previous"': ⌘ ⇧ [ Edit
+  - 'button "Edit when clause for Thread: Previous"': Always
+  - text: "⇧⌘[ Thread: Reopen Last Archived"
+  - 'button "Edit shortcut for Thread: Reopen Last Archived"': ⌘ ⇧ T Edit
+  - 'button "Edit when clause for Thread: Reopen Last Archived"': Always
+  - text: "⇧⌘T Thread: Switcher"
+  - 'button "Edit shortcut for Thread: Switcher"': ⌃ tab Edit
+  - 'button "Edit when clause for Thread: Switcher"': Always
+  - text: ⌃Tab
+- button "Toggle main sidebar" [pressed]: Toggle Sidebar
+- region "Notifications"
+- region "Notifications"
