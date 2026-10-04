@@ -42,6 +42,17 @@ for porting:
    management, mobile apps, the marketing site, and public or loopback auth
    control planes.
 
+   **Owner exception, 4 October 2026: user-controlled direct connections are in
+   scope.** A Neokod server may listen beyond loopback (for example on a
+   Tailscale or LAN address, or behind the owner's own reverse proxy), and a
+   Neokod client may hold saved servers with a user-supplied access token. This
+   covers the owner's own and work machines, with the target machine visible and
+   pinned before work is accepted. A non-loopback listener must require that
+   token. Still excluded: hosted relay, cloud accounts, hosted pairing and auth
+   control planes, T3 Connect, mobile apps, and shared multi-user tenancy. A
+   direct-connection change is still a port of intent against Neokod's code,
+   never a cherry-pick of upstream UI.
+
 What remains eligible: backend correctness fixes, provider (Codex/Claude/Copilot)
 behavior, performance and reliability work, and self-contained protocol or SDK
 changes that run fully local. Even eligible changes are ports, not merges: re-apply
