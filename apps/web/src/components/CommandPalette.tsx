@@ -114,6 +114,7 @@ import {
   getCommandPaletteInputPlaceholder,
   getCommandPaletteMode,
   getDefaultCloneDestinationPath,
+  resolveCloneDestinationPath,
   ITEM_ICON_CLASS,
   RECENT_THREAD_LIMIT,
 } from "./CommandPalette.logic";
@@ -1534,6 +1535,14 @@ function OpenCommandPaletteDialog(props: {
   const resolvedAddProjectPath = hasTrailingPathSeparator(query)
     ? (browseResult?.parentPath ?? query.trim())
     : (exactBrowseEntry?.fullPath ?? query.trim());
+  const resolvedCloneDestinationPath = resolveCloneDestinationPath(
+    resolvedAddProjectPath,
+    addProjectCloneFlow?.step === "confirm" ? addProjectCloneFlow.remoteUrl : "",
+    addProjectCloneFlow?.step === "confirm" &&
+      hasTrailingPathSeparator(query) &&
+      !isBrowsePending &&
+      browseResult !== undefined,
+  );
 
   const canBrowseUp =
     isBrowsing && !relativePathNeedsActiveProject && canNavigateUp(browseDirectoryPath);
@@ -1665,7 +1674,7 @@ function OpenCommandPaletteDialog(props: {
     if (shouldSubmitBrowsePath) {
       event.preventDefault();
       if (isCloneDestinationStep) {
-        void submitAddProjectCloneFlow(resolvedAddProjectPath);
+        void submitAddProjectCloneFlow(resolvedCloneDestinationPath);
       } else {
         void handleAddProject(resolvedAddProjectPath);
       }
@@ -1935,7 +1944,7 @@ function OpenCommandPaletteDialog(props: {
                         return;
                       }
                       if (isCloneDestinationStep) {
-                        void submitAddProjectCloneFlow(resolvedAddProjectPath);
+                        void submitAddProjectCloneFlow(resolvedCloneDestinationPath);
                       } else {
                         void handleAddProject(resolvedAddProjectPath);
                       }

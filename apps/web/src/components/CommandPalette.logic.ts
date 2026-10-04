@@ -101,6 +101,16 @@ export function getDefaultCloneDestinationPath(parentPath: string, repository: s
     : `${ensureBrowseDirectoryPath(parentPath)}${repositoryName}`;
 }
 
+export function resolveCloneDestinationPath(
+  selectedPath: string,
+  repository: string,
+  selectedExistingDirectory: boolean,
+): string {
+  return selectedExistingDirectory
+    ? getDefaultCloneDestinationPath(selectedPath, repository)
+    : selectedPath;
+}
+
 export function buildProjectActionItems(input: {
   projects: ReadonlyArray<Project>;
   valuePrefix: string;

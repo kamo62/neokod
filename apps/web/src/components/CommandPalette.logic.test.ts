@@ -5,6 +5,7 @@ import {
   buildThreadActionItems,
   filterCommandPaletteGroups,
   getDefaultCloneDestinationPath,
+  resolveCloneDestinationPath,
   type CommandPaletteGroup,
 } from "./CommandPalette.logic";
 
@@ -19,6 +20,17 @@ describe("getDefaultCloneDestinationPath", () => {
     expect(
       getDefaultCloneDestinationPath("C:\\Code\\", "https://github.com/kamo62/t3code.git?ref=main"),
     ).toBe("C:\\Code\\t3code");
+  });
+});
+
+describe("resolveCloneDestinationPath", () => {
+  it("clones inside a selected directory while preserving an explicit target path", () => {
+    expect(
+      resolveCloneDestinationPath("/home/kamo/code", "git@github.com:kamo62/neokod.git", true),
+    ).toBe("/home/kamo/code/neokod");
+    expect(resolveCloneDestinationPath("/home/kamo/code/custom", "kamo62/neokod", false)).toBe(
+      "/home/kamo/code/custom",
+    );
   });
 });
 
