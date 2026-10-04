@@ -4,6 +4,7 @@ import {
   squashAtomCommandFailure,
 } from "@neokod/client-runtime/state/runtime";
 import type {
+  SymphonyBoardCard,
   SymphonyProject,
   SymphonyProjectBoard,
   SymphonyProjectConfiguration,
@@ -81,9 +82,9 @@ function BoardTab({
 }) {
   const environmentId = usePrimaryEnvironmentId();
   const dispatchWorkItem = useAtomCommand(symphonyEnvironment.dispatchWorkItem);
-  const [dispatching, setDispatching] = useState<string | null>(null);
+  const [dispatching, setDispatching] = useState<SymphonyBoardCard["workItemId"] | null>(null);
 
-  const dispatch = async (workItemId: string) => {
+  const dispatch = async (workItemId: SymphonyBoardCard["workItemId"]) => {
     if (environmentId === null) return;
     setDispatching(workItemId);
     try {

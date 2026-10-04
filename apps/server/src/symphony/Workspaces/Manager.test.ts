@@ -206,7 +206,7 @@ describe("WorkspaceManager", () => {
                 branch: workspace.branch,
                 upstreamRef: null,
                 hasWorkingTreeChanges: true,
-                workingTree: [],
+                workingTree: { files: [], insertions: 0, deletions: 0 },
                 hasUpstream: false,
                 aheadCount: 0,
                 behindCount: 0,

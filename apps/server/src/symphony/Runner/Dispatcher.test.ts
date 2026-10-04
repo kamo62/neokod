@@ -35,7 +35,7 @@ import {
   RunDispatcher,
   RunDispatcherLive,
 } from "./Dispatcher.ts";
-import { ExecutionFinalizer } from "./ExecutionFinalizer.ts";
+import { ExecutionFinalizer, type FinalizeOutcome } from "./ExecutionFinalizer.ts";
 import { AgentRuntimeSpawnError, type AgentRuntimeService } from "./AgentRuntime.ts";
 
 const makeConfig = (
@@ -351,6 +351,8 @@ const resumableWorkspaceManager = Layer.succeed(WorkspaceManager, {
   resolvePath: () => "/ws",
 });
 const completingFinalizer = Layer.succeed(ExecutionFinalizer, {
+  // The stub runs inside the dispatcher fiber, whose context already holds the
+  // repositories, so the narrowed service type is satisfied at runtime.
   finalize: (input) =>
     Effect.gen(function* () {
       const finishedAt = yield* nowIso;
@@ -370,7 +372,7 @@ const completingFinalizer = Layer.succeed(ExecutionFinalizer, {
         ),
       );
       return "review_ready" as const;
-    }),
+    }).pipe(Effect.orDie) as unknown as Effect.Effect<FinalizeOutcome>,
 });
 
 layer(
