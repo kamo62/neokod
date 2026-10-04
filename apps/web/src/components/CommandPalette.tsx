@@ -114,6 +114,8 @@ import {
   getCommandPaletteInputPlaceholder,
   getCommandPaletteMode,
   getDefaultCloneDestinationPath,
+  isBrowsedExistingDirectory,
+  resolveCloneDestinationPath,
   ITEM_ICON_CLASS,
   RECENT_THREAD_LIMIT,
 } from "./CommandPalette.logic";
@@ -1534,6 +1536,17 @@ function OpenCommandPaletteDialog(props: {
   const resolvedAddProjectPath = hasTrailingPathSeparator(query)
     ? (browseResult?.parentPath ?? query.trim())
     : (exactBrowseEntry?.fullPath ?? query.trim());
+  const resolvedCloneDestinationPath = resolveCloneDestinationPath(
+    resolvedAddProjectPath,
+    addProjectCloneFlow?.step === "confirm" ? addProjectCloneFlow.remoteUrl : "",
+    addProjectCloneFlow?.step === "confirm" &&
+      isBrowsedExistingDirectory({
+        hasTrailingSeparator: hasTrailingPathSeparator(query),
+        isPending: isBrowsePending,
+        hasError: Boolean(browseQuery.error),
+        result: browseResult,
+      }),
+  );
 
   const canBrowseUp =
     isBrowsing && !relativePathNeedsActiveProject && canNavigateUp(browseDirectoryPath);
@@ -1665,7 +1678,7 @@ function OpenCommandPaletteDialog(props: {
     if (shouldSubmitBrowsePath) {
       event.preventDefault();
       if (isCloneDestinationStep) {
-        void submitAddProjectCloneFlow(resolvedAddProjectPath);
+        void submitAddProjectCloneFlow(resolvedCloneDestinationPath);
       } else {
         void handleAddProject(resolvedAddProjectPath);
       }
@@ -1749,6 +1762,24 @@ function OpenCommandPaletteDialog(props: {
     if (!pickedPath) {
       return;
     }
+    if (addProjectCloneFlow?.step === "confirm") {
+      // The picker chose the clone parent. Do not fall through to add-project,
+      // which would register the folder and abandon the clone.
+      if (parseWslUncPath(pickedPath)) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not use this folder for the clone",
+            description: "Type the Linux path of the WSL folder in the destination field instead.",
+          }),
+        );
+        return;
+      }
+      void submitAddProjectCloneFlow(
+        resolveCloneDestinationPath(pickedPath, addProjectCloneFlow.remoteUrl, true),
+      );
+      return;
+    }
     if (parseWslUncPath(pickedPath)) {
       desktopWslState ??= (await window.desktopBridge?.getWslState().catch(() => null)) ?? null;
       let primaryRunningDistro: string | null = null;
@@ -1808,6 +1839,7 @@ function OpenCommandPaletteDialog(props: {
     }
     await handleAddProject(pickedPath);
   }, [
+    addProjectCloneFlow,
     browseDesktopInstanceId,
     browseEnvironmentId,
     browseEnvironmentPlatform,
@@ -1819,6 +1851,7 @@ function OpenCommandPaletteDialog(props: {
     handleAddProjectForEnvironment,
     isPickingProjectFolder,
     primaryEnvironmentId,
+    submitAddProjectCloneFlow,
   ]);
 
   return (
@@ -1935,7 +1968,7 @@ function OpenCommandPaletteDialog(props: {
                         return;
                       }
                       if (isCloneDestinationStep) {
-                        void submitAddProjectCloneFlow(resolvedAddProjectPath);
+                        void submitAddProjectCloneFlow(resolvedCloneDestinationPath);
                       } else {
                         void handleAddProject(resolvedAddProjectPath);
                       }

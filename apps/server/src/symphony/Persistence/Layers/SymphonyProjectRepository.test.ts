@@ -37,6 +37,8 @@ const project = (id: string, codeProjectId: string): SymphonyProject => ({
       instanceId: ProviderInstanceId.make("codex"),
       driver: ProviderDriverKind.make("codex"),
     },
+    reviewAgents: ["gpt-5.6-sol", "opencode/deepseek-v4-flash-free"],
+    reviewRequirement: "all-approve",
     validationRequired: [],
     maxConcurrentAgents: 1,
     maxTurns: 20,
@@ -76,6 +78,11 @@ layer("SymphonyProjectRepository", (it) => {
         expect(duplicateRepository.failure.field).toBe("repository_path");
       }
       expect(yield* repository.list()).toHaveLength(1);
+      expect(created.configuration?.reviewAgents).toEqual([
+        "gpt-5.6-sol",
+        "opencode/deepseek-v4-flash-free",
+      ]);
+      expect(created.configuration?.reviewRequirement).toBe("all-approve");
 
       const updated = yield* repository.update(
         { ...created, title: "Renamed", updatedAt: "2026-08-10T00:01:00.000Z" },

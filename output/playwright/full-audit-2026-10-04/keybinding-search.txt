@@ -1,0 +1,69 @@
+- button "Switch mode": Neokod Dev
+- list:
+  - listitem:
+    - button "General"
+  - listitem:
+    - button "Appearance"
+  - listitem:
+    - button "Keybindings"
+  - listitem:
+    - button "Providers"
+  - listitem:
+    - button "Source Control"
+  - listitem:
+    - button "Tracking"
+  - listitem:
+    - button "Analytics"
+  - listitem:
+    - button "Connections"
+  - listitem:
+    - button "Archive"
+- separator
+- list:
+  - listitem:
+    - button "Back"
+- button "Resize Sidebar"
+- main:
+  - text: Settings
+  - heading "Keybindings" [level=2]
+  - textbox "Search keybindings": terminal
+  - button "Add keybinding"
+  - button "Open keybindings.json"
+  - paragraph: Some shortcuts may be claimed by the browser before Neokod sees them. Use the desktop app for better keybinding support.
+  - text: "Command Keybinding When Status Chat: New"
+  - 'button "Edit shortcut for Chat: New"': ⌘ N Edit
+  - 'button "Edit when clause for Chat: New"': "!terminalFocus"
+  - text: "⌘N Chat: New"
+  - 'button "Edit shortcut for Chat: New"': ⌘ ⇧ O Edit
+  - 'button "Edit when clause for Chat: New"': "!terminalFocus"
+  - text: "⇧⌘O Chat: New Local"
+  - 'button "Edit shortcut for Chat: New Local"': ⌘ ⇧ N Edit
+  - 'button "Edit when clause for Chat: New Local"': "!terminalFocus"
+  - text: "⇧⌘N Command Palette: Toggle"
+  - 'button "Edit shortcut for Command Palette: Toggle"': ⌘ K Edit
+  - 'button "Edit when clause for Command Palette: Toggle"': "!terminalFocus"
+  - text: "⌘K Diff: Toggle"
+  - 'button "Edit shortcut for Diff: Toggle"': ⌘ D Edit
+  - 'button "Edit when clause for Diff: Toggle"': "!terminalFocus"
+  - text: "⌘D Model Picker: Toggle"
+  - 'button "Edit shortcut for Model Picker: Toggle"': ⌘ ⇧ M Edit
+  - 'button "Edit when clause for Model Picker: Toggle"': "!terminalFocus"
+  - text: "⇧⌘M Terminal: Close"
+  - 'button "Edit shortcut for Terminal: Close"': ⌘ W Edit
+  - 'button "Edit when clause for Terminal: Close"': terminalFocus
+  - text: "⌘W Terminal: New"
+  - 'button "Edit shortcut for Terminal: New"': ⌘ N Edit
+  - 'button "Edit when clause for Terminal: New"': terminalFocus
+  - text: "⌘N Terminal: Split"
+  - 'button "Edit shortcut for Terminal: Split"': ⌘ D Edit
+  - 'button "Edit when clause for Terminal: Split"': terminalFocus
+  - text: "⌘D Terminal: Split Vertical"
+  - 'button "Edit shortcut for Terminal: Split Vertical"': ⌘ ⇧ D Edit
+  - 'button "Edit when clause for Terminal: Split Vertical"': terminalFocus
+  - text: "⇧⌘D Terminal: Toggle"
+  - 'button "Edit shortcut for Terminal: Toggle"': ⌘ J Edit
+  - 'button "Edit when clause for Terminal: Toggle"': Always
+  - text: ⌘J
+- button "Toggle main sidebar" [pressed]: Toggle Sidebar
+- region "Notifications"
+- region "Notifications"

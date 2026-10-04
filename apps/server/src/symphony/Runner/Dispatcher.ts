@@ -250,6 +250,11 @@ export const makeRunDispatcher = Effect.gen(function* () {
         .latestForWorkItem(workItemId)
         .pipe(Effect.catch(() => Effect.succeed(null)));
       const attemptNumber = (latestAttempt?.attemptNumber ?? 0) + 1;
+      const resumeCommittedHandoff =
+        !workspace.createdNow &&
+        latestAttempt !== null &&
+        (latestAttempt.status === "failed" || latestAttempt.status === "interrupted") &&
+        (yield* workspaces.hasCommittedHandoff(workspace));
       yield* runAttempts
         .create({
           id: runAttemptId,
@@ -350,6 +355,37 @@ export const makeRunDispatcher = Effect.gen(function* () {
         }
 
         // 5. Execute/deliver: edits allowed subject to the approval policy.
+        yield* workItems
+          .transition(workItemId, "running", {
+            ownerToken,
+            generation: claimed.generation,
+            from: ["preparing"],
+          })
+          .pipe(Effect.catch(() => Effect.void));
+        if (resumeCommittedHandoff) {
+          yield* runAttempts
+            .updateStatus(runAttemptId, "streaming_turn")
+            .pipe(Effect.catch(() => Effect.void));
+          yield* appendEvent(runAttemptId, "committed_handoff_resumed", {
+            branch: workspace.branch,
+            previousAttemptId: String(latestAttempt.id),
+          });
+          yield* finalizer
+            .finalize({
+              workItem,
+              issue,
+              runAttemptId,
+              config,
+              workspacePath: workspace.path,
+              branch: workspace.branch,
+              baseBranch: workspace.baseBranch,
+              ownerToken,
+              generation: claimed.generation,
+              bodyFileDir,
+            })
+            .pipe(Effect.catch(() => Effect.void));
+          return runAttemptId;
+        }
         if (requiresApprovalBeforeEdit(config)) {
           yield* runAttempts
             .updateStatus(runAttemptId, "launching_agent")
@@ -445,6 +481,25 @@ export const makeRunDispatcher = Effect.gen(function* () {
       // releases the claim when the fiber ends (completion or interruption).
       const fiber = yield* Effect.forkScoped(
         runDispatch.pipe(
+          Effect.catch((error) =>
+            Effect.logError("symphony.run.failed", {
+              runAttemptId: String(runAttemptId),
+              workItemId: String(workItemId),
+              error: error.message,
+            }).pipe(
+              Effect.andThen(
+                markFailed(
+                  runAttemptId,
+                  workItemId,
+                  ownerToken,
+                  claimed.generation,
+                  { category: "agent", message: error.message },
+                  maxAttempts,
+                ),
+              ),
+              Effect.as(runAttemptId),
+            ),
+          ),
           Effect.ensuring(
             Effect.gen(function* () {
               yield* Ref.update(activeAgents, (map) => {

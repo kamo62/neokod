@@ -33,7 +33,10 @@ import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
 import { SymphonyEmptyState } from "./SymphonyEmptyState";
 import {
+  availableSymphonyImplementationProviders,
+  availableSymphonyReviewProviders,
   defaultSymphonyProjectConfiguration,
+  githubIssueRepositoryFromIdentity,
   isSymphonyProjectConfigurationComplete,
   SymphonyProjectConfigurationForm,
 } from "./SymphonyProjectConfigurationForm";
@@ -54,29 +57,53 @@ function CreateProjectDialog({
   const openAddCodeProject = useOpenAddProjectCommandPalette();
   const allCodeProjects = useProjects();
   const codeProjects = allCodeProjects.filter((project) => project.environmentId === environmentId);
-  const providers = useAtomValue(primaryServerProvidersAtom).filter(
-    (provider) => provider.enabled && provider.installed && provider.availability !== "unavailable",
-  );
+  const allProviders = useAtomValue(primaryServerProvidersAtom);
+  const providers = availableSymphonyImplementationProviders(allProviders);
+  const reviewProviders = availableSymphonyReviewProviders(allProviders);
   const defaultProvider = providers[0] ?? null;
   const [codeProjectId, setCodeProjectId] = useState<ProjectId | null>(null);
   const [configuration, setConfiguration] = useState<SymphonyProjectConfiguration | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (configuration === null && defaultProvider !== null) {
-      setConfiguration(defaultSymphonyProjectConfiguration(defaultProvider));
-    }
-  }, [configuration, defaultProvider]);
-
   const selectedProjectId =
     codeProjectId ?? (codeProjects.length === 1 ? (codeProjects[0]?.id ?? null) : null);
+  const selectedProject = codeProjects.find((project) => project.id === selectedProjectId) ?? null;
+  const detectedGithubRepository = githubIssueRepositoryFromIdentity(
+    selectedProject?.repositoryIdentity,
+  );
+  const sourceControlRemoteUrl = selectedProject?.repositoryIdentity?.locator.remoteUrl ?? null;
+
+  useEffect(() => {
+    if (configuration === null && defaultProvider !== null) {
+      setConfiguration(
+        defaultSymphonyProjectConfiguration(defaultProvider, detectedGithubRepository ?? ""),
+      );
+    }
+  }, [configuration, defaultProvider, detectedGithubRepository]);
+
+  useEffect(() => {
+    if (!open) return;
+    setConfiguration((current) => {
+      if (current === null || current.tracker.kind !== "github") return current;
+      const repository = detectedGithubRepository ?? "";
+      return current.tracker.repository === repository
+        ? current
+        : { ...current, tracker: { kind: "github", repository } };
+    });
+  }, [configuration?.tracker.kind, detectedGithubRepository, open, selectedProjectId]);
+
   const configurationComplete =
-    configuration !== null && isSymphonyProjectConfigurationComplete(configuration);
+    configuration !== null &&
+    isSymphonyProjectConfigurationComplete(configuration, providers, reviewProviders);
 
   const reset = () => {
     setCodeProjectId(null);
-    setConfiguration(defaultProvider ? defaultSymphonyProjectConfiguration(defaultProvider) : null);
+    setConfiguration(
+      defaultProvider
+        ? defaultSymphonyProjectConfiguration(defaultProvider, detectedGithubRepository ?? "")
+        : null,
+    );
     setError(null);
   };
 
@@ -88,12 +115,12 @@ function CreateProjectDialog({
         onOpenChange(true);
         return;
       }
+      setCodeProjectId(project.projectId);
+      onOpenChange(true);
       const initialized = await initializeRepository({
         environmentId: project.environmentId,
         input: { cwd: project.workspaceRoot },
       });
-      setCodeProjectId(project.projectId);
-      onOpenChange(true);
       if (initialized._tag === "Failure" && !isAtomCommandInterrupted(initialized)) {
         const cause = squashAtomCommandFailure(initialized);
         setError(
@@ -194,15 +221,30 @@ function CreateProjectDialog({
             )}
           </div>
 
+          {selectedProject !== null ? (
+            <div className="rounded-xl border p-3 text-sm">
+              <p className="font-medium">Source control</p>
+              <p className="mt-1 break-all text-xs text-muted-foreground">
+                {sourceControlRemoteUrl ?? "No Git remote detected for this Code project."}
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Symphony uses this remote for branches and pull requests. Your work tracker can be
+                hosted somewhere else.
+              </p>
+            </div>
+          ) : null}
+
           {configuration === null ? (
             <p className="rounded-xl border border-warning/30 bg-warning/5 p-3 text-sm text-warning-foreground">
-              Configure and enable at least one coding provider before creating a Symphony project.
+              Symphony execution currently requires an enabled Codex provider.
             </p>
           ) : (
             <SymphonyProjectConfigurationForm
               value={configuration}
               providers={providers}
+              reviewProviders={reviewProviders}
               onChange={setConfiguration}
+              repositoryWasDetected={detectedGithubRepository !== null}
             />
           )}
           {error ? <p className="text-sm text-destructive-foreground">{error}</p> : null}

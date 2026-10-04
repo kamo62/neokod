@@ -1,12 +1,8 @@
-import type {
-  EffectiveWorkflowConfig,
-  NormalizedIssue,
-  RunAttemptId,
-  WorkItem,
-} from "@neokod/contracts";
+import type { EffectiveWorkflowConfig, NormalizedIssue, WorkItem } from "@neokod/contracts";
 import {
   ProviderDriverKind,
   ProviderInstanceId,
+  RunAttemptId,
   SymphonyProjectId,
   WorkItemId,
 } from "@neokod/contracts";
@@ -39,7 +35,7 @@ import {
   RunDispatcher,
   RunDispatcherLive,
 } from "./Dispatcher.ts";
-import { ExecutionFinalizer } from "./ExecutionFinalizer.ts";
+import { ExecutionFinalizer, type FinalizeOutcome } from "./ExecutionFinalizer.ts";
 import { AgentRuntimeSpawnError, type AgentRuntimeService } from "./AgentRuntime.ts";
 
 const makeConfig = (
@@ -223,6 +219,7 @@ const fakeWorkspaceManager = Layer.succeed(WorkspaceManager, {
       createdNow: true,
     }),
   removeWorkspace: () => Effect.void,
+  hasCommittedHandoff: () => Effect.succeed(false),
   resolvePath: () => "/ws",
 });
 
@@ -230,7 +227,11 @@ const fakeFinalizer = Layer.succeed(ExecutionFinalizer, {
   finalize: () => Effect.succeed("review_ready"),
 });
 
-const layer = (factory: Layer.Layer<AgentRuntimeFactory>) =>
+const layer = (
+  factory: Layer.Layer<AgentRuntimeFactory>,
+  workspaceManager: Layer.Layer<WorkspaceManager> = fakeWorkspaceManager,
+  finalizer: Layer.Layer<ExecutionFinalizer> = fakeFinalizer,
+) =>
   it.layer(
     RunDispatcherLive.pipe(
       Layer.provideMerge(WorkItemRepositoryLive),
@@ -238,8 +239,8 @@ const layer = (factory: Layer.Layer<AgentRuntimeFactory>) =>
       Layer.provideMerge(RunEventRepositoryLive),
       Layer.provideMerge(ApprovalRepositoryLive),
       Layer.provideMerge(LiveRequestsLive),
-      Layer.provideMerge(fakeWorkspaceManager),
-      Layer.provideMerge(fakeFinalizer),
+      Layer.provideMerge(workspaceManager),
+      Layer.provideMerge(finalizer),
       Layer.provideMerge(factory),
       Layer.provideMerge(
         Layer.succeed(ServerConfig, {
@@ -331,6 +332,85 @@ layer(scriptedFactory(countingIncompleteAgent().agent))("Dispatcher continuation
       const continuationEvents = list.filter((event) => event.eventType === "continuation_turn");
       // First turn + 2 continuation turns (maxTurns 3), then the failure path.
       expect(continuationEvents.length).toBe(2);
+    }),
+  );
+});
+
+const resumedAgent = countingIncompleteAgent();
+const resumableWorkspaceManager = Layer.succeed(WorkspaceManager, {
+  ensureWorkspace: (input: { readonly issue: NormalizedIssue }) =>
+    Effect.succeed({
+      key: deriveWorkspaceKey(input.issue.identifier),
+      path: `/ws/${input.issue.identifier}`,
+      branch: `symphony/${input.issue.identifier}`,
+      baseBranch: "main",
+      createdNow: false,
+    }),
+  removeWorkspace: () => Effect.void,
+  hasCommittedHandoff: () => Effect.succeed(true),
+  resolvePath: () => "/ws",
+});
+const completingFinalizer = Layer.succeed(ExecutionFinalizer, {
+  // The stub runs inside the dispatcher fiber, whose context already holds the
+  // repositories, so the narrowed service type is satisfied at runtime.
+  finalize: (input) =>
+    Effect.gen(function* () {
+      const finishedAt = yield* nowIso;
+      yield* RunAttemptRepository.pipe(
+        Effect.flatMap((attempts) =>
+          attempts.updateStatus(input.runAttemptId, "succeeded", {
+            finishedAt,
+          }),
+        ),
+      );
+      yield* WorkItemRepository.pipe(
+        Effect.flatMap((items) =>
+          items.transition(input.workItem.id, "ready_for_review", {
+            ownerToken: input.ownerToken,
+            generation: input.generation,
+          }),
+        ),
+      );
+      return "review_ready" as const;
+    }).pipe(Effect.orDie) as unknown as Effect.Effect<FinalizeOutcome>,
+});
+
+layer(
+  scriptedFactory(resumedAgent.agent),
+  resumableWorkspaceManager,
+  completingFinalizer,
+)("Dispatcher committed handoff recovery", (it) => {
+  it.effect("resumes validation without another agent turn", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("1007");
+      const attempts = yield* RunAttemptRepository;
+      const now = yield* nowIso;
+      yield* attempts.create({
+        id: RunAttemptId.make("run-1007-1"),
+        workItemId: workItem.id,
+        attemptNumber: 1,
+        workspacePath: "/ws/#1007",
+        provider: makeConfig("/repo").agentProvider,
+        status: "failed",
+        startedAt: now,
+        finishedAt: now,
+        error: { category: "agent", message: "runner interrupted after commit" },
+      });
+
+      const dispatcher = yield* RunDispatcher;
+      const runAttemptId = yield* dispatcher.dispatchWorkItem({
+        workItem,
+        issue: makeIssue("1007"),
+        config: makeConfig("/repo", { autonomy: "execute" }),
+      });
+
+      expect(resumedAgent.count()).toBe(0);
+      const attempt = yield* attempts.getById(runAttemptId).pipe(Effect.flatMap(required));
+      expect(attempt.status).toBe("succeeded");
+      const events = yield* RunEventRepository.pipe(
+        Effect.flatMap((runEvents) => runEvents.listForAttempt(runAttemptId)),
+      );
+      expect(events.map((event) => event.eventType)).toContain("committed_handoff_resumed");
     }),
   );
 });

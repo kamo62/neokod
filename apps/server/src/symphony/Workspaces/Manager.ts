@@ -118,6 +118,11 @@ export class WorkspaceManager extends Context.Service<
       readonly force?: boolean;
     }) => Effect.Effect<void, WorkspaceRemovalBlocked>;
 
+    /** True when a reused workspace contains a clean, committed agent handoff
+     * ahead of its base branch. This lets a retry resume validation after the
+     * agent finished but the runner was interrupted before finalization. */
+    readonly hasCommittedHandoff: (workspace: SymphonyWorkspace) => Effect.Effect<boolean, never>;
+
     /** Resolve the absolute workspace path for a key under the configured root. */
     readonly resolvePath: (key: WorkspaceKey, config: EffectiveWorkflowConfig) => string;
   }
@@ -166,14 +171,17 @@ export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManag
         );
       }
       const key = deriveWorkspaceKey(input.issue.identifier);
-      const rawPath = resolvePath(key, config);
+      const resolvedRoot = yield* deps
+        .realpath(root)
+        .pipe(Effect.catch(() => Effect.succeed(root)));
+      const rawPath = `${resolvedRoot}/${key}`;
 
       // Containment invariant: resolve symlinks then require the path under root.
       const resolvedPath = yield* deps
         .realpath(rawPath)
         .pipe(Effect.catch(() => Effect.succeed(rawPath)));
-      if (!isPathInsideRoot(resolvedPath, root)) {
-        return yield* Effect.fail(new WorkspaceOutsideRootError(resolvedPath, root));
+      if (!isPathInsideRoot(resolvedPath, resolvedRoot)) {
+        return yield* Effect.fail(new WorkspaceOutsideRootError(resolvedPath, resolvedRoot));
       }
 
       const baseBranch = yield* deps
@@ -197,18 +205,19 @@ export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManag
       }
 
       yield* deps
-        .ensureDir(resolvedPath)
+        .ensureDir(root)
         .pipe(
           Effect.mapError(
             (cause) =>
-              new WorkspacePopulationError(key, `Failed to create directory: ${cause.detail}`),
+              new WorkspacePopulationError(key, `Failed to create workspace root: ${cause.detail}`),
           ),
         );
 
       yield* deps.git
         .createWorktree({
           cwd: config.repositoryPath,
-          refName: branch,
+          refName: baseBranch,
+          newRefName: branch,
           baseRefName: baseBranch,
           path: resolvedPath,
         })
@@ -265,9 +274,25 @@ export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManag
         .pipe(Effect.catch(() => Effect.void));
     });
 
+  const hasCommittedHandoff: WorkspaceManager["Service"]["hasCommittedHandoff"] = (workspace) =>
+    Effect.gen(function* () {
+      const status = yield* deps.git.statusDetailsLocal(workspace.path);
+      if (!status.isRepo || status.hasWorkingTreeChanges || status.aheadOfDefaultCount < 1) {
+        return false;
+      }
+      const evidence = yield* deps.git.execute({
+        operation: "WorkspaceManager.hasCommittedHandoff",
+        cwd: workspace.path,
+        args: ["cat-file", "-e", "HEAD:SYMPHONY_EVIDENCE.md"],
+        allowNonZeroExit: true,
+      });
+      return evidence.exitCode === 0;
+    }).pipe(Effect.catch(() => Effect.succeed(false)));
+
   return {
     ensureWorkspace,
     removeWorkspace,
+    hasCommittedHandoff,
     resolvePath,
   };
 };

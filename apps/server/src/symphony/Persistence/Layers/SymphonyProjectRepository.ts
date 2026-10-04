@@ -145,6 +145,10 @@ const decodeProjectConfiguration = (row: ProjectRow): DecodedProjectConfiguratio
       autonomy: legacy.autonomy,
       agentProvider: legacy.agentProvider,
       ...(legacy.agentModel === undefined ? {} : { agentModel: legacy.agentModel }),
+      ...(legacy.reviewAgents === undefined ? {} : { reviewAgents: [...legacy.reviewAgents] }),
+      ...(legacy.reviewRequirement === undefined
+        ? {}
+        : { reviewRequirement: legacy.reviewRequirement }),
       validationRequired: [...legacy.validationRequired],
       maxConcurrentAgents: legacy.maxConcurrentAgents ?? 1,
       maxTurns: legacy.maxTurns ?? 20,

@@ -1,0 +1,334 @@
+{
+  "validator": "GPT6.1Sol high, independent subagent",
+  "validated_at_utc": "2026-10-04T06:46:58.713845+00:00",
+  "scope": "Only Synara six specified mechanisms,12selectedPRs,six specified issues and their immediate fix boundaries; no re-audit completed competitor lane",
+  "frozen_source_sha": "5f2ee77ae9fc60993db47e81419c1171a99a5c32",
+  "coverage_validation": {
+    "window_start": "2026-07-04T00:00:00Z",
+    "capture_start": "2026-10-04T06:17:40.999632+00:00",
+    "capture_end": "2026-10-04T06:17:55.192433+00:00",
+    "records": 965,
+    "unique_records": 965,
+    "all_detail_file_lists_complete": true,
+    "states": {
+      "open": 163,
+      "closed_unmerged": 125,
+      "open_draft": 28,
+      "merged": 649
+    },
+    "scopes": {
+      "older_currently_open": 25,
+      "created_closed_or_merged_in_window": 939,
+      "older_updated_in_window": 1
+    },
+    "last_all_page_oldest_updated": "2026-06-23T19:47:12Z",
+    "selected_prs": 12,
+    "selected_pr_records_identical_to_full_details": true,
+    "pinned_git_blob_hashes_verified": 25,
+    "limitations": "Finite updated-desc REST coverage plus all-open pages, not search1000cap. Bodies and complete filename inventories retained; details do not include complete PR comments/reviews/checkruns/diff patches. Mutable/non-atomic intervals; merged metadata not release qualification."
+  },
+  "source_findings": [
+    {
+      "topic": "Shared GitHub read gate",
+      "verdict": "confirmed with scope limit",
+      "source": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/git/githubReadGate.ts#L30",
+      "caller": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/git/Layers/GitHubCli.ts#L2716",
+      "finding": "Single service-instance semaphore has six slots and common rate-limit pause; checks pause again after slot admission. All execute errors can extend pause, but only withRead callers are queued. Cached lists/details remain usable; listOpenPullRequests/direct execute/create/merge/comment/checkout are deliberately ungated.60s pause is a fallback, not authoritative reset time; not account-global across other apps/server instances.",
+      "gate": "Burst12 cold local worktrees: designated reads peak≤6, queued work does not launch after rate-limit detection, cached reads remain available, mutation prerequisite reads obtain fresh head facts. No promise of protection from all account consumers or remote calls."
+    },
+    {
+      "topic": "Beta-only Hub work and human provenance",
+      "verdict": "confirmed, not Jira identity",
+      "source": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/agentGateway/hubWorkSource.ts#L13",
+      "caller": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/projectAgent/hubWorkService.ts#L196",
+      "finding": "Gateway/service gate Groups Beta, require coordinator and enabled/unpaused config. Server resolves1–16 unique message IDs or durable turn pending-message identity from coordinator detail; requires role=user and dispatchOrigin=user/unset. Frozen source messages retain text/attachments/IDs/timestamps; model brief is separate and does not grant permissions. Source hash+task index determines work identity; transaction stores request ID/fingerprint and rejects conflicting replay. Dedup is human-source-plan scope, not canonical tracker issue identity.",
+      "gate": "Reject forged/cross-thread/agent/automation/duplicate context references before provider side effects; repeated request and alternate request ID with same frozen plan return same item; conflicting plan refused. Stable(saved Beta state) launches nothing. Jira/poll/chat race must use Neokod canonical tracker connection+immutable issueID instead."
+    },
+    {
+      "topic": "Message-chunk replay safety",
+      "verdict": "confirmed mechanism, not simple SQL append",
+      "source": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/persistence/messageTextChunks.ts#L44",
+      "caller": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/persistence/Layers/ProjectionThreadMessages.ts#L130",
+      "finding": "Every mutation is in caller projection/event transaction. Per-message text_event_sequence watermark rejects applied/older event; chunk PK includes event sequence. Imported/resumed body becomes one prefix chunk(-1), segment boundaries separate visible segments from full body, settle removes chunks after materialization. Ordered readers assemble JSON-preserved UTF16/NUL-safe text. Bare concatenation or INSERT without watermark/rollback/reader updates would duplicate or corrupt replay.",
+      "gate": "Repeat event, crash before commit, replay after completion, imported prefix, segment replacement, rollback/purge, split surrogate and embedded NUL produce identical durable message across all readers. Benchmark actual engine/WAL; PR1097 still documented flat per-delta overhead."
+    },
+    {
+      "topic": "Startup replay before reconciliation",
+      "verdict": "confirmed ordering, blocked replay requires gate",
+      "source": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/effectServer.ts#L138",
+      "caller": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/orchestration/startupTurnReconciliation.ts#L1",
+      "finding": "OrchestrationReactor awaits provider ingestion start. Extra pinned source confirms pruneSettledOpenTurns→rebuildAcceptedOpenTurnState→drainRuntimeJournal before startup replay Deferred resolves. Only then restart reconciliation and settled-open cleanup, then background reactors. Blocked journal page can yield before full fence and retry later, so ordering is not unconditional proof every persisted terminal event was consumed. Restart reconciler assumes provider runtime dies with server, which must be checked for each Neokod surviving native child.",
+      "gate": "Crash after terminal event journaled/before projection: normal completed result including buffered text survives. Also block earlier journal page/ack failure and verify a later durable terminal is not incorrectly interrupted. Absent/uncertain inventory remains unknown/orphaned in Neokod; no blind all-children-dead assumption.",
+      "additional_caller": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts#L3503"
+    },
+    {
+      "topic": "Process incarnation guards",
+      "verdict": "confirmed narrow protection; universal claim rejected",
+      "source": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/platform/processTreeController.ts#L187",
+      "caller": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/platform/processTreeController.ts#L313",
+      "finding": "Reject pid≤1/malformed/out-of-range/self root; POSIX batched probes force C locale and capture command+second-resolution lstart. Delayed SIGKILL verifies captured descendant identity unless already verified. SIGTERM and root signalling rely on caller ownership; no universal spawn registry or atomically held root incarnation. Optional missing startedAt falls back to command equality. Windows root uses treeKill. Closed-unmerged1267 proposed broader guarantees; merged1270 is deliberately scoped.",
+      "gate": "Invalid/broadcast targets never signal; reused same-command PID with new captured start rejected; probe failure preserves unknown; caller fences live root owner/generation. Exercise native Windows/POSIX actual child cancellation. Retain probe→kill race and timestamp resolution as limits."
+    },
+    {
+      "topic": "Same-visible-thread handoff",
+      "verdict": "confirmed fresh target; bootstrap status overstates delivery",
+      "source": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/orchestration/decider.ts#L152",
+      "caller": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts#L6383",
+      "finding": "Same thread/project/workspace/history stay. Refuses busy/approval/question/same-provider switch; reactor also guards background native tasks, clears source native cursor/stops source, starts fresh target, restores source selection on failure. Source writes handoff.bootstrapStatus=completed when target session is up; actual bounded prior transcript travels in next turn and provider acceptance varies. This is neither native continuity across providers nor proof target consumed full displayed transcript.1494 claims live Codex↔Claude only; other pairs mocked; slash commands do not run pre-send handoff.",
+      "gate": "Preserve thread/worktree/provenance; source ownership ends before target writer; rejected/live-background handoff has no launch. Distinguish selected/session-ready/context-pending/context-accepted; first turn failure/restart retains replay-safe pending context; different account and other provider pairs require native qualification. Never call recap full native memory transfer."
+    }
+  ],
+  "pr_validation": [
+    {
+      "number": 580,
+      "title": "Scope orchestration replay and avoid duplicate runtime event persistence",
+      "url": "https://github.com/Emanuele-web04/synara/pull/580",
+      "state": "MERGED",
+      "merged_at": "2026-08-08T00:08:32Z",
+      "merge_sha": "54f7ee75f02bf328058d3201debfb2db6e9b57f3",
+      "changed_files": 25,
+      "files_complete": true,
+      "validation_note": "Body Testing says not run; durable replay/fan-out file coverage is not local execution."
+    },
+    {
+      "number": 613,
+      "title": "Make queued-turn promotion replay-safe",
+      "url": "https://github.com/Emanuele-web04/synara/pull/613",
+      "state": "MERGED",
+      "merged_at": "2026-08-09T21:04:45Z",
+      "merge_sha": "5c361f19ca17066c260044b9cf26470d966ffaec",
+      "changed_files": 3,
+      "files_complete": true,
+      "validation_note": "Claims focused queue/promotion/reconciliation tests; no local run by validator."
+    },
+    {
+      "number": 764,
+      "title": "Reduce desktop CPU and process-tree memory",
+      "url": "https://github.com/Emanuele-web04/synara/pull/764",
+      "state": "MERGED",
+      "merged_at": "2026-08-20T20:20:38Z",
+      "merge_sha": "7f21a7e59063e63ca5ccb17739b78fab1ec45875",
+      "changed_files": 2,
+      "files_complete": true,
+      "validation_note": "Actual changedFiles=2(codex manager+test); broad27-file audit and before/after figures in body describe cumulative branch context. Do not attribute all renderer changes/measurements to this two-file PR or Neokod."
+    },
+    {
+      "number": 1097,
+      "title": "Store streamed assistant text as chunks; tighten provider memory and cleanup",
+      "url": "https://github.com/Emanuele-web04/synara/pull/1097",
+      "state": "MERGED",
+      "merged_at": "2026-09-10T13:29:57Z",
+      "merge_sha": "d724d3ccc5caf7822b1dd0f68d61f45ee20de1c6",
+      "changed_files": 54,
+      "files_complete": true,
+      "validation_note": "Merged chunk and cleanup mechanism; body excludes flat per-delta floor/process orphan ledger. Measurements belong to contributor environment."
+    },
+    {
+      "number": 1115,
+      "title": "Harden orchestration replay and provider startup against stalls",
+      "url": "https://github.com/Emanuele-web04/synara/pull/1115",
+      "state": "MERGED",
+      "merged_at": "2026-09-10T20:16:52Z",
+      "merge_sha": "738a3ce715c64a0f2f4013b5b4a817ca9f62a551",
+      "changed_files": 11,
+      "files_complete": true,
+      "validation_note": "Body Testing says not run; generated summary test coverage is not a run."
+    },
+    {
+      "number": 1270,
+      "title": "fix(process): guard invalid signals and captured process identities",
+      "url": "https://github.com/Emanuele-web04/synara/pull/1270",
+      "state": "MERGED",
+      "merged_at": "2026-09-19T17:33:37Z",
+      "merge_sha": "4d45200e480a9a5550b57c4ebad6c21a77537ab1",
+      "changed_files": 10,
+      "files_complete": true,
+      "validation_note": "Scoped invalid target/captured descendant guard; no global kill replacement, spawn registry or universal root identity. Native tests are contributor claims."
+    },
+    {
+      "number": 1307,
+      "title": "Settle restart-orphaned turns before background reactors start",
+      "url": "https://github.com/Emanuele-web04/synara/pull/1307",
+      "state": "MERGED",
+      "merged_at": "2026-09-24T19:03:44Z",
+      "merge_sha": "0a6d1f506fc50d03eecccaa36bec56d18718ecc8",
+      "changed_files": 3,
+      "files_complete": true,
+      "validation_note": "Ordering fix confirmed source; not proof shutdown quarantine974 fixed."
+    },
+    {
+      "number": 1332,
+      "title": "feat(server): persist provider model catalogs across restarts",
+      "url": "https://github.com/Emanuele-web04/synara/pull/1332",
+      "state": "MERGED",
+      "merged_at": "2026-09-25T16:02:54Z",
+      "merge_sha": "c49ad1ad0b5cdb0854a51d55e4938aec2136de9f",
+      "changed_files": 11,
+      "files_complete": true,
+      "validation_note": "Persistent successful model catalog keyed paths/endpoint/cwd; same-path account/CLI change not immediately invalidated. OMP bypass, pending/degraded distinct; live account/performance not verified."
+    },
+    {
+      "number": 1378,
+      "title": "Groups in Synara Beta: coordinator workers, Library, and clear thread state",
+      "url": "https://github.com/Emanuele-web04/synara/pull/1378",
+      "state": "MERGED",
+      "merged_at": "2026-09-30T14:55:33Z",
+      "merge_sha": "ff9e89dc16365181c7d112a5764f68989ed6f32e",
+      "changed_files": 327,
+      "files_complete": true,
+      "validation_note": "Groups Beta gates both server and UI; local SQLite/provider-recorded tests and browser rendering do not prove live coordinator or signed release."
+    },
+    {
+      "number": 1484,
+      "title": "Share one GitHub read queue and rate-limit pause across gh reads",
+      "url": "https://github.com/Emanuele-web04/synara/pull/1484",
+      "state": "MERGED",
+      "merged_at": "2026-10-02T19:37:38Z",
+      "merge_sha": "9739fa9c569a23aabfa907dd9380b766e61a8d33",
+      "changed_files": 18,
+      "files_complete": true,
+      "validation_note": "Background subset gate confirmed; stub-gh performance only, no live secondary-limit reproduction."
+    },
+    {
+      "number": 1490,
+      "title": "Add durable Hub work orchestration and task tracking",
+      "url": "https://github.com/Emanuele-web04/synara/pull/1490",
+      "state": "MERGED",
+      "merged_at": "2026-10-02T19:53:37Z",
+      "merge_sha": "2aa79c3eb31fa3420e570fd0867692fe4ba37df2",
+      "changed_files": 60,
+      "files_complete": true,
+      "validation_note": "Body Testing explicitly not run; test file presence and automated review summary do not establish passing tests."
+    },
+    {
+      "number": 1494,
+      "title": "feat(handoff): continue provider handoffs in the same thread, from the model picker",
+      "url": "https://github.com/Emanuele-web04/synara/pull/1494",
+      "state": "MERGED",
+      "merged_at": "2026-10-03T17:03:33Z",
+      "merge_sha": "f308d699bc5b115108d8d0f5a45cecd3fa062888",
+      "changed_files": 27,
+      "files_complete": true,
+      "validation_note": "Source-ready status precedes next-turn bootstrap; fresh target, no native return session, Codex↔Claude live claim only, other pairs mocked, slash-command gap."
+    }
+  ],
+  "issue_validation": [
+    {
+      "number": 282,
+      "title": "Conversations list appears empty after 0.3.6 → 0.3.7 upgrade, but data is intact in SQLite",
+      "url": "https://github.com/Emanuele-web04/synara/issues/282",
+      "state": "open",
+      "updated_at": "2026-09-25T15:07:45Z",
+      "reported_environment": "macOS15.6 arm64; upgrade0.3.6→0.3.7, persists0.3.8",
+      "classification": "User report later corrected by durable SQL/event evidence",
+      "validated_evidence": "Initial hydration theory is superseded for this installation: reporter later finds four soft-deleted rows, all projectors at635, and client-origin thread.deleted events285–288 within46ms. It does not prove what caused that burst. Maintainer discussion explains a separate hydration gap without independently reproducing this incident.",
+      "fix_boundary": "PR324 is closed unmerged as of2026-09-04; historical comments called it draft. It targets hydration, not reversal of persisted deletes.",
+      "acceptance_gate": "Seed upgrade history with active, archived and soft-deleted threads. Preserve deletion provenance, verify zero unrequested delete commands, and sequence-fence shell recovery so older snapshots cannot erase newer detail.",
+      "comments_complete": true,
+      "comments_captured": 9,
+      "automated_triage_comments": []
+    },
+    {
+      "number": 393,
+      "title": "[Bug]: Windows upgrade loops on SQLite backup fsync and blocks Codex recovery",
+      "url": "https://github.com/Emanuele-web04/synara/issues/393",
+      "state": "open",
+      "updated_at": "2026-09-25T14:49:41Z",
+      "reported_environment": "Windowsx64; publishedv0.5.5→main ef16dee9; Bun1.3.12, Codex0.144.5",
+      "classification": "Detailed user/contributor report with claimed native Windows and Codex acceptance evidence",
+      "validated_evidence": "Read-only fsync handle EPERM, per-file SQLite-family overlay ownership and initialize deadline are separate failure stages. Contributor reports live acceptance for a local patch; we did not run it. COLLABORATOR related-links comment is explicitly automated Synara triage · Devin.",
+      "fix_boundary": "PR396 is open ready, not shipped. Merged1062 fixes SQLite-family linking using one source SQLite home, a different policy from396 process-owned overlay. Related issue406 asks for immutable released-database fixture and interruption cleanup; it is not a fix PR.",
+      "acceptance_gate": "Native Windows upgrade from immutable released DB fixture: correct backup/marker integrity; failure leaves only owned recoverable artifacts; one canonical DB/WAL/SHM home; initialize→initialized→resume→harmless turn with versioned timeout. Do not infer packaged success from reconstructed migrations.",
+      "comments_complete": true,
+      "comments_captured": 2,
+      "automated_triage_comments": [
+        "https://github.com/Emanuele-web04/synara/issues/393#issuecomment-5834388610"
+      ]
+    },
+    {
+      "number": 618,
+      "title": "Deleted or archived projects leave worktrees and database records behind, causing disk growth and projection-repair lockups",
+      "url": "https://github.com/Emanuele-web04/synara/issues/618",
+      "state": "open",
+      "updated_at": "2026-09-25T14:48:27Z",
+      "reported_environment": "macOS;0.7.1 and0.7.0",
+      "classification": "User report with measured retained state/logs; contributor implementation claim only",
+      "validated_evidence": "Reporter distinguishes retained state/repair thrash from project data loss:35GB worktrees,4.1GB backups,1.1GB DB; healthy server still maintenance-locks commands.0.7.1 avoids the specific0.7.0 false60s readiness timeout, not all repair/cleanup problems.",
+      "fix_boundary": "Merged724 coalesces repair and adds2min successful-rebuild cooldown; merged747 reclaims safe managed worktrees, skips dirty paths and retains active owners. Both explicitly partial; dirty confirmation/storage browser/complete progress qualification remain outside those PRs.",
+      "acceptance_gate": "Concurrent repair converges once; command latency remains bounded through large-state maintenance; clean deleted/orphan worktree safely removed only after ownership/data checks, dirty/unknown preserved; finalized backups bounded without destroying recovery evidence.",
+      "comments_complete": true,
+      "comments_captured": 1,
+      "automated_triage_comments": []
+    },
+    {
+      "number": 974,
+      "title": "[Bug]: Quit with a running turn can leave the thread durably quarantined (interrupt failure reported after command admission stopped)",
+      "url": "https://github.com/Emanuele-web04/synara/issues/974",
+      "state": "open",
+      "updated_at": "2026-09-25T14:09:17Z",
+      "reported_environment": "Official0.8.1 LinuxAppImage; ArchLinux/Hyprland/Wayland; Codex; source562c5fea77cf",
+      "classification": "User report with precise quit/restart timing and durable delivery rows",
+      "validated_evidence": "Detached quit interrupt attempts failure activity after command admission stops, and the diagnostic dispatch rejection becomes uncertain durable quarantine. Later restart continuation and manual messages are skipped. Automated COLLABORATOR triage only links985; it is not human reproduction.",
+      "fix_boundary": "985 is an open feature/PRD issue, not a merged fix.1307 changes restart ordering and cannot be credited as resolution of974 shutdown admission/quarantine.",
+      "acceptance_gate": "Deterministically stop command admission during quit interrupt failure logging; diagnostic refusal must not poison provider delivery. Preserve actual ambiguous provider side effects; restart/resume-on and resume-off paths accept next intended request exactly once.",
+      "comments_complete": true,
+      "comments_captured": 1,
+      "automated_triage_comments": [
+        "https://github.com/Emanuele-web04/synara/issues/974#issuecomment-5833794737"
+      ]
+    },
+    {
+      "number": 1264,
+      "title": "[Bug]: OpenCode 2.x unsupported — server readiness prefix changed and V1 HTTP API routes removed",
+      "url": "https://github.com/Emanuele-web04/synara/issues/1264",
+      "state": "open",
+      "updated_at": "2026-09-25T12:57:18Z",
+      "reported_environment": "Synara0.8.4 macOS; OpenCode2.0.7; bundledSDK1.15.13",
+      "classification": "Unconfirmed user report with bundled-source/output/API route probes",
+      "validated_evidence": "Two independent boundaries: readiness prefix changed and old SDK v2 entrypoint still issues unprefixed routes returning HTML. Supplying server URL only bypasses readiness; it does not restore API compatibility. No comments captured.",
+      "fix_boundary": "No linked/current verified fix for OpenCode2 compatibility. This version-specific report does not establish all current OpenCode builds fail or that frozen main has the same adapter.",
+      "acceptance_gate": "Test actual installed CLI/SDK pair: both supported readiness banners, correct API routes/content schema, model/session/start/stream/cancel behavior. Unsupported contracts fail explicitly before claiming provider readiness.",
+      "comments_complete": true,
+      "comments_captured": 0,
+      "automated_triage_comments": []
+    },
+    {
+      "number": 1250,
+      "title": "[Bug]: Profile undercounts Claude and Antigravity usage in mixed-provider histories",
+      "url": "https://github.com/Emanuele-web04/synara/issues/1250",
+      "state": "open",
+      "updated_at": "2026-09-25T12:58:57Z",
+      "reported_environment": "Local0.8.4 macOS mixed-provider history; inspected9f91d59f; modified prototype build",
+      "classification": "Source/database/log investigation and local prototype, not stock current runtime verification",
+      "validated_evidence": "Accounting gaps include independently billed children, missing completed-turn usage and cross-session LAG baselines; context occupancy is not processed tokens. Prototype native-request recovery is supporting evidence, not requirement for normal query-time log scanning. Automated COLLABORATOR triage links1251 only.",
+      "fix_boundary": "Merged1024 explicitly defers complete lifetime summaries/historical Claude migration and Antigravity normalization.1251 is an open RFC related to existing1025 implementation, not fix1250. No evidence these lifetime/history gaps are all shipped fixed.",
+      "acceptance_gate": "Count normalized inclusive input1000+output100 as1100, not1900 with cache subset800. Separate provider/native-session cumulative baselines(1000+1500=2500), replay/import idempotence, independent child once vs native mirror excluded, deletion archives totals, unavailable historic usage stays unknown.",
+      "comments_complete": true,
+      "comments_captured": 1,
+      "automated_triage_comments": [
+        "https://github.com/Emanuele-web04/synara/issues/1250#issuecomment-5832775868"
+      ]
+    }
+  ],
+  "execution": "Research only. No competitor/app execution, package install, repo edits, provider requests or authenticated tracker operations. Only extra source HTTP GETs at fixed public SHA; all writes under assigned temp lane.",
+  "additional_pinned_source": [
+    {
+      "path": "apps/server/src/githubInbox/githubInbox.logic.ts",
+      "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/githubInbox/githubInbox.logic.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/synara-validation-source/apps/server/src/githubInbox/githubInbox.logic.ts",
+      "sha256": "b2c7235890ae509ec3abb64ec8114d4dc8f3eb5bb6ca03702641cf2b23f71fac"
+    },
+    {
+      "path": "apps/server/src/orchestration/Layers/OrchestrationReactor.ts",
+      "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/orchestration/Layers/OrchestrationReactor.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/synara-validation-source/apps/server/src/orchestration/Layers/OrchestrationReactor.ts",
+      "sha256": "b5c4c5a653a4909421651db7bc057fcbd5cfcbc7f35a0b521fd383c3c69efd5f"
+    },
+    {
+      "path": "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts",
+      "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/synara-validation-source/apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts",
+      "sha256": "24ef083c1db082788d37af5327c1168ced690606682ab9be28c62cb395bdcd10"
+    }
+  ]
+}

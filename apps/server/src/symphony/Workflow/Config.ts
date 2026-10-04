@@ -36,7 +36,7 @@ export const WORKFLOW_DEFAULTS = {
   initialRetryDelayMs: 10_000,
   maxRetryBackoffMs: 300_000,
   maxRunDurationMs: 14_400_000,
-  codexCommand: "codex app-server",
+  codexCommand: "codex",
   codexApprovalPolicy: "on-request",
   codexThreadSandbox: "workspace-write",
   codexTurnSandboxPolicy: "workspaceWrite",

@@ -1,0 +1,237 @@
+- button "Switch mode": Neokod Dev
+- tablist "Sidebar view":
+  - tab "Projects" [selected]
+  - tab "All threads"
+- list:
+  - listitem:
+    - button "New thread"
+  - listitem:
+    - button "Search ⌘K"
+  - listitem:
+    - button "Home"
+- tabpanel "Projects":
+  - region "My Work":
+    - button "My Work 3" [expanded]
+    - text: Needs you
+    - button "Clear"
+    - button "Failed Functional audit thread neokod-functional-audit-uy22dh88": Functional audit thread neokod-functional-audit-uy22dh88
+    - button "Dismiss Functional audit thread from My Work"
+    - text: Recent
+    - button "Clear"
+    - button "Done Reply with exactly CLAUDE_AUDIT_ACK. Do not use to... neokod-functional-audit-uy22dh88":
+      - img "Done"
+      - text: Reply with exactly CLAUDE_AUDIT_ACK. Do not use to... neokod-functional-audit-uy22dh88
+    - button "Dismiss Reply with exactly CLAUDE_AUDIT_ACK. Do not use to... from My Work"
+    - button "Done Hi arbitrage":
+      - img "Done"
+      - text: Hi arbitrage
+    - button "Dismiss Hi from My Work"
+  - text: Projects
+  - button
+  - button "Add project"
+  - list:
+    - listitem:
+      - button "neokod-functional-audit-uy22dh88"
+      - button "Create new thread in neokod-functional-audit-uy22dh88"
+      - list:
+        - listitem:
+          - button "Reply with exactly CLAUDE_AUDIT_ACK. Do not use to... just now Pin Reply with exactly CLAUDE_AUDIT_ACK. Do not use to... Archive Reply with exactly CLAUDE_AUDIT_ACK. Do not use to...":
+            - text: Reply with exactly CLAUDE_AUDIT_ACK. Do not use to... just now
+            - button "Pin Reply with exactly CLAUDE_AUDIT_ACK. Do not use to..."
+            - button "Archive Reply with exactly CLAUDE_AUDIT_ACK. Do not use to..."
+        - listitem:
+          - button "Failed Functional audit thread 8m ago Pin Functional audit thread Archive Functional audit thread":
+            - text: Failed Functional audit thread 8m ago
+            - button "Pin Functional audit thread"
+            - button "Archive Functional audit thread"
+    - listitem:
+      - button "arbitrage"
+      - button "Create new thread in arbitrage"
+      - list:
+        - listitem:
+          - button "Hi 22m ago Pin Hi Archive Hi":
+            - text: Hi 22m ago
+            - button "Pin Hi"
+            - button "Archive Hi"
+- separator
+- list:
+  - listitem:
+    - button "Settings"
+- button "Resize Sidebar"
+- main:
+  - button "Maximize panel"
+  - button "Toggle terminal drawer"
+  - button "Toggle right panel" [pressed]
+  - heading "Reply with exactly CLAUDE_AUDIT_ACK. Do not use to..." [level=2]
+  - button "Set goal"
+  - button "Sonnet 5.5"
+  - button "Open terminal"
+  - button "Open diff"
+  - button "More thread actions"
+  - region "Thread run progress": Reply with exactly CLAUDE_AUDIT_ACK. Do not use to... Completed 0s
+  - paragraph: Reply with exactly CLAUDE_AUDIT_ACK. Do not use tools, modify files, or run commands.
+  - paragraph: 12:35 PM
+  - button "Revert to this message"
+  - button "Copy link"
+  - paragraph: CLAUDE_AUDIT_ACK
+  - button "Copy link"
+  - paragraph: 12:36 PM
+  - paragraph: Reply with exactly QUEUE_AUDIT_ACK. Do not use tools or modify files.
+  - paragraph: 12:36 PM
+  - button "Copy link"
+  - 'button "Jump to message: User message"'
+  - listbox:
+    - group "Built-in":
+      - text: Built-in
+      - option "/model Switch response model for this thread"
+      - option "/plan Switch this thread into plan mode"
+      - option "/default Switch this thread back to normal build mode"
+      - option "/terminal Open this thread's terminal"
+      - option "/diff Open this thread's diff"
+      - option "/files Open this thread's files"
+      - option "/subagents Open this thread's subagent activity"
+      - option "/goal Set or edit this thread's goal"
+      - option "/fleet Open Copilot fleet & agent controls"
+      - option "/mcp View and enable/disable Copilot MCP servers"
+    - separator
+    - group "Provider":
+      - text: Provider
+      - option "/add-3d-assets Replace primitive 3D shapes with real GLB models — animated characters, world props, buildings, and scenery for Three.js games. Use when the user says \"add 3D models\", \"replace the boxes with real models\", \"add GLB assets\", or \"make the 3D game look real\". For 2D pixel art, use add-assets instead. Do NOT use for 2D pixel art (use add-assets) or gameplay changes (use add-feature). (user)"
+      - option "/add-assets Replace geometric shapes with pixel art sprites — recognizable characters, enemies, and items with optional animation. Use when the user says \"add sprites\", \"replace the shapes with real art\", \"add pixel art\", \"make the characters look real\", or \"add game assets\". For 3D games, use add-3d-assets instead. Do NOT use for 3D models (use add-3d-assets) or gameplay changes (use add-feature). (user)"
+      - option "/add-audio Add music and sound effects to a game using the Web Audio API — background music, gameplay themes, and SFX. Zero dependencies. Use when the user says \"add music\", \"add sound effects\", \"add audio\", \"make it sound good\", \"add BGM\", or \"add SFX to my game\". Do NOT use for gameplay features or visual design. (user)"
+      - option "/add-feature Add a new gameplay feature to an existing browser game following its architecture patterns. Use when the user says \"add a feature\", \"add double-jump\", \"add a power-up\", \"add a leaderboard\", or describes a specific game mechanic to implement. Do NOT use for visual-only changes (use design-game) or replacing shapes with sprites (use add-assets). (user)"
+      - option "/add-multiplayer Add real-time or turn-based multiplayer to an existing browser game using PartyKit (Cloudflare Durable Objects). Scaffolds a room-based server, a NetworkManager client, EventBus events, GameState fields, Constants, and extends render_game_to_text(). Use when the user says \"add multiplayer\", \"make this multiplayer\", \"add real-time co-op\", \"add online play\", \"scaffold multiplayer\", or \"add netcode\". Do NOT use for solo leaderboards (use monetize-game), single-player AI opponents (use add-feature), or peer-to-peer/WebRTC games. (user)"
+      - option "/app-store-screenshots Use when building App Store screenshot pages, generating exportable marketing screenshots for iOS apps, or creating programmatic screenshot generators with Next.js. Triggers on app store, screenshots, marketing assets, html-to-image, phone mockup. (user)"
+      - option "/appllama-app-design-skill Build native-feeling, benchmark-quality mobile app screens (Expo / React Native). Use when designing or implementing any mobile UI — screens, flows, onboarding, paywalls, tab bars, sheets, settings, empty states — or when polishing motion, navigation, typography, dark mode, or perceived performance. Enforces Apple HIG fidelity, semantic colors, native controls, anti-slop discipline, navigation semantics (push vs replace, modal vs sheet vs overlay, the one-way doors where back must not exist), purposeful Reanimated motion, a full-motion simulator-verified iteration loop, and a study-real-apps-first workflow (pairs with the Appllama MCP). Trigger on \"build a screen\", \"make this screen better\", \"design the onboarding\", \"wire up this flow\", \"polish the UI\", \"make it feel native\", or any mobile design/implementation task. (user)"
+      - option "/appllama-usage Use the Appllama MCP (mcp.appllama.io) well — research real top-grossing mobile apps, their screens, flows, and UI elements, then build from what you learn. Load when the Appllama MCP is connected and the task involves building a mobile app or screen, researching app design patterns, studying onboarding/paywall/feature flows, improving an existing screen, or whenever an appllama_* / search_apps / list_app_screens tool is available. Covers the tool map, pagination, expiring media, and the full build-from-research playbooks. (user)"
+      - option "/asc-app-create-ui Create an App Store Connect app via iris API using web session from Blitz (user)"
+      - option "/asc-iap-attach Attach in-app purchases and subscriptions to an app version for App Store review. Use when the user has IAPs or subscriptions in \"Ready to Submit\" state that need to be included with a first-time version submission. Works for both first-time and subsequent submissions. (user)"
+      - option "/asc-privacy-nutrition-labels Set up App Store privacy nutrition labels (data collection declarations) for an app. Use when the user needs to declare what data their app collects, how it's used, and whether it's linked to the user. Handles both \"no data collected\" and full data collection declarations. (user)"
+      - option "/asc-team-key-create Create a new App Store Connect Team API Key with Admin permissions, download the one-time .p8 private key, and store it in ~/.blitz. Use when the user needs a new ASC API key for CLI auth, CI/CD, or external tooling. (user)"
+      - option "/design-game Audit and improve the visual design, polish, and player experience of an existing game. Use when the user says \"make my game look better\", \"improve the design\", \"add polish\", \"add juice\", \"add particles\", \"fix the UI\", or \"make it more visually appealing\". Do NOT use for gameplay logic changes (use add-feature instead). (user)"
+      - option "/fetch-tweet Fetch tweet content directly from fxtwitter API. Use when given a tweet/X URL to extract the tweet text, author, media, and engagement stats without loading x.com. (user)"
+      - option "/find-skills Helps users discover and install agent skills when they ask questions like \"how do I do X\", \"find a skill for X\", \"is there a skill that can...\", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill. (user)"
+      - option "/game-3d-assets 3D asset engineer that finds, downloads, and integrates GLB/GLTF models into Three.js browser games. Use when a 3D game needs real models instead of primitive BoxGeometry/SphereGeometry shapes. (user)"
+      - option "/game-architecture Game architecture patterns and best practices for browser games. Use when designing game systems, planning architecture, structuring a game project, or making architectural decisions about game code. (user)"
+      - option "/game-assets Game asset engineer that creates pixel art sprites, animated characters, and visual entities for browser games. Use when a game needs better character art, enemy sprites, item visuals, or any upgrade from basic geometric shapes to recognizable pixel art. (user)"
+      - option "/game-audio Game audio engineer using Web Audio API for procedural music and sound effects in browser games. Zero dependencies. Use when adding music or SFX to a game. (user)"
+      - option "/game-deploy Deploy browser games to here.now (default), GitHub Pages, or other hosting. Use when deploying a game, setting up hosting, or publishing a game build. Do NOT use for local development servers (use npm run dev). (user)"
+      - option "/game-designer Game UI/UX designer that analyzes and improves the visual polish, atmosphere, and player experience of browser games. Use when a game needs visual improvements, better backgrounds, particles, animations, screen transitions, juice/feel, or overall aesthetic upgrades. (user)"
+      - option "/game-qa Game QA testing with Playwright — visual regression, gameplay verification, performance, and accessibility for browser games. Use when writing or running game tests, debugging test failures, or building QA infrastructure. This is the reference skill — use qa-game for the user-facing command. (user)"
+      - 'option "/handoff Write or refresh HANDOFF.md so work can resume instantly after an interruption, including on a different machine. Use at every milestone of multi-session work: a merged PR, a completed delegation lane, a feature going green for the first time. Also use when the user asks to save state, hand off, or wrap up. (user)"'
+      - option "/improve-game Analyze a game, find what needs work, and implement the highest-impact improvements. Use when the user says \"improve my game\", \"make my game better\", \"fix my game\", \"what's wrong with my game\", or \"polish my game\". Run repeatedly — each pass finds the next most impactful thing to fix. Do NOT use for adding specific new features (use add-feature) or initial game creation (use viral-game for one-shot builds, make-game for milestone-driven projects). (user)"
+      - option "/make-game Use when the user wants to design, scaffold, build, or iterate on a video game — including brainstorming new game ideas, planning a gameplay loop, choosing an engine, scaffolding a project, adding features, fixing gameplay bugs, or working on assets. Triggers on phrases like \"make a game\", \"create a [genre] game\", \"build a [type] game\", \"I want to make a [genre]\", or any session inside a game project directory (has docs/, src/, or an engine config). (user)"
+      - option "/meshyai Generate custom 3D models from text or images using Meshy AI, then auto-rig and animate them for Three.js games. The preferred source for all 3D game assets. Use when the user says \"generate a 3D model\", \"create a character model\", \"use Meshy\", or needs a custom GLB model that doesn't exist in free libraries. (user)"
+      - option "/monetize-game Register your game on Play.fun (OpenGameProtocol), add the browser SDK, and get a monetized play.fun URL. Use when the user says \"monetize my game\", \"add Play.fun\", \"add rewards\", \"register on Play.fun\", or \"get a play.fun URL\". Requires Play.fun MCP server for game registration. (user)"
+      - option "/phaser Build 2D browser games with Phaser 3 using scene-based architecture and centralized state. Use when creating a new 2D game, adding 2D game features, working with Phaser, or building sprite-based web games. (user)"
+      - 'option "/promo-video Record a high-FPS autonomous promo video of a Phaser game using Playwright. Triggers on: promo video, gameplay recording, marketing video, game capture. (user)"'
+      - option "/qa-game Add Playwright QA tests to a game — visual regression, gameplay verification, and performance. Use when the user says \"add tests\", \"test my game\", \"add QA\", \"check for bugs\", or \"add visual regression tests\". Do NOT use for manual playtesting or gameplay design. (user)"
+      - option "/quick-game Rapidly scaffold and implement a playable game — no assets, design, audio, deploy, or monetize. Get something on screen fast. Use when the user says \"quick game\", \"fast prototype\", \"just get something playable\", or wants a game without the full pipeline. For the complete one-shot pipeline (deploy + monetize), use /viral-game instead. For a milestone-driven project, use /make-game. Do NOT use for production games. (user)"
+      - option "/record-promo Record an autonomous 50 FPS promo video of your game for social media. Use when the user says \"record a video\", \"make a promo\", \"capture gameplay\", \"record gameplay footage\", or \"make a trailer for my game\". Do NOT use for gameplay testing (use qa-game). (user)"
+      - option "/retrodiffusion Generate true pixel art sprites, tilesets, and animations with the Retro Diffusion API — the best dedicated pixel art model. Use when the user says \"generate pixel art\", \"make a sprite with AI\", \"use Retro Diffusion\", \"rdpk\", or wants high-quality pixel art faster than hand-coded sprite arrays. Requires a Retro Diffusion account and RETRODIFFUSION_API_KEY (paid credits). Great for quick prototyping of 2D Phaser games. (user)"
+      - option "/review-game Review an existing game codebase for architecture, performance, and best practices. Use when the user says \"review my game\", \"code review\", \"check my game architecture\", \"is my game well structured\", or \"audit my game code\". Do NOT use for making changes — this is read-only analysis. Use improve-game to implement fixes. (user)"
+      - option "/review-log Run a long-form or manual code review by appending findings to REVIEW.md incrementally instead of producing one giant summary at the end. Use for any review expected to run longer than a single response. (user)"
+      - option "/scaffold-gateables Add gateable features to an existing browser game — skin picker, continue-after-death, bonus mode, save slots, daily challenge. Monetization-agnostic scaffolding that leaves clean hooks for any paywall, subscription, or entitlement layer. Features are scaffolded at silver and gold tiers only (bronze is the default everyone gets). Use when the user says \"add gateables\", \"scaffold monetizable features\", \"add skin picker\", \"add continue-after-death\", \"make my game monetizable\", or \"add premium hooks\". Do NOT use for Play.fun SDK integration (use monetize-game) or generic gameplay features (use add-feature). (user)"
+      - 'option "/swiftui-expert-skill Use when writing, reviewing, or refactoring SwiftUI code for iOS or macOS, including state and `@Observable` data flow, view composition, resizable layouts, safe areas, display scale, performance, lists, environment, localization, animation, Liquid Glass, and API migration. Also use for iPhone Duo or foldable layouts, `ArrangementView`, `ReservedRegion`, hinge effects, vertical bars, `@State` initialization or synthesized-property diagnostics, `@ContentBuilder` ambiguity, `reorderable` drag/drop, custom `AsyncImage` `URLSession`, swipe actions outside List, item-bound `alert`/`confirmationDialog`, `ToolbarOverflowMenu`, `AnimatableValues`, Document APIs (`Document`/`DocumentReader`), and Instruments `.trace` capture or analysis. (user)"'
+      - option "/swiftui-pro Comprehensively reviews SwiftUI code for best practices on modern APIs, maintainability, and performance. Use when reading, writing, or reviewing SwiftUI projects. (user)"
+      - option "/threejs-game Build 3D browser games with Three.js using event-driven modular architecture. Use when creating a new 3D game, adding 3D game features, setting up Three.js scenes, or working on any Three.js game project. (user)"
+      - option "/threejs-perf Three.js performance optimization patterns for draw calls, scene traversal, and instancing. Use when optimizing 3D scenes with 100+ repeated objects, thousands of moving entities, or draw calls above 500. Loaded by threejs-game, viral-game, and make-game for performance guidance. (user)"
+      - option "/use-template Clone a game template from the gallery as a starting point. Use when the user says \"use a template\", \"start from a template\", \"clone flappy-bird\", \"use the platformer template\", or wants to quickly bootstrap a game from an existing example. Do NOT use for creating a game from scratch (use viral-game for one-shot builds or make-game for milestone-driven projects). (user)"
+      - 'option "/viral-game One-shot viral game pipeline — turn a tweet, news story, or short prompt into a scaffolded, designed, deployed, and monetized browser game in roughly 10 minutes. Use when the user says \"make a viral game\", \"build a game from this tweet\", \"turn this story into a game\", \"/viral-game\", or provides a tweet URL / short concept they want shipped end-to-end fast. Do NOT use when the user wants to design and build a real game project with milestones, ADRs, or multi-session iteration — use `/make-game` for that. Also do NOT use for modifying existing games (use `/add-feature` or `/improve-game`). (user)"'
+      - option "/worldlabs Generate photorealistic 3D worlds and environments with the World Labs Marble API — Gaussian Splat scenes from text prompts or reference images. Use when the user says \"generate a 3D world\", \"create an environment\", \"make a 3D scene\", or \"use World Labs\". Requires WLT_API_KEY environment variable. (user)"
+      - option "/codex:adversarial-review (codex) Run a Codex review that challenges the implementation approach and design choices"
+      - option "/codex:cancel (codex) Cancel an active background Codex job in this repository"
+      - option "/codex:rescue (codex) Delegate investigation, an explicit fix request, or follow-up rescue work to the Codex rescue subagent"
+      - option "/codex:result (codex) Show the stored final output for a finished Codex job in this repository"
+      - option "/codex:review (codex) Run a Codex code review against local git state"
+      - option "/codex:setup (codex) Check whether the local Codex CLI is ready and optionally toggle the stop-time review gate"
+      - option "/codex:status (codex) Show active and recent Codex jobs for this repository, including review-gate status"
+      - option "/codex:transfer (codex) Transfer the current Claude Code session into a resumable Codex thread"
+      - option "/frontend-design:frontend-design (frontend-design) Guidance for distinctive, intentional visual design when building new UI or reshaping an existing one. Helps with aesthetic direction, typography, and making choices that don't read as templated defaults."
+      - option "/design Grant or revoke Claude agent access to your Design projects"
+      - option "/design-sync Push a React design system to claude.ai/design. This runs a converter that bundles the real component code (from Storybook or a bare package) and uploads it. Use when the user runs /design-sync or says \"sync my design system to Claude Design\"."
+      - option
+      - 'option "/update-config Use this skill to configure the Claude Code harness via settings.json. Automated behaviors (\"from now on when X\", \"each time X\", \"whenever X\", \"before/after X\") require hooks configured in settings.json - the harness executes these, not Claude, so memory/preferences cannot fulfill them. Also use for: permissions (\"allow X\", \"add permission\", \"move permission to\"), env vars (\"set X=Y\"), hook troubleshooting, or any changes to settings.json/settings.local.json files. Examples: \"allow npm commands\", \"add bq permission to global settings\", \"move permission to user settings\", \"set DEBUG=true\", \"when claude stops show X\". For simple settings like theme/model, suggest the /config command."'
+      - option "/verify Verify that a code change actually does what it's supposed to by exercising it end-to-end and observing behavior — drive the affected flow, not just tests or typecheck. Run before committing nontrivial changes; bootstraps this repo's project verify skill if none exists yet. Don't invoke it on a diff that only touches tests, docs, or other code with no runtime surface to drive (a change to product source always has one) — there's nothing to observe."
+      - option "/debug Enable debug logging for this session and help diagnose issues"
+      - option
+      - option "/simplify Review the changed code for reuse, simplification, efficiency, and altitude cleanups, then apply the fixes. Quality only — it does not hunt for bugs; use /code-review for that."
+      - option "/batch Research and plan a large-scale change, then execute it in parallel across 5–30 isolated worktree agents that each open a PR."
+      - option "/fewer-permission-prompts Scan your transcripts for common read-only Bash and MCP tool calls, then add a prioritized allowlist to project .claude/settings.json to reduce permission prompts."
+      - option
+      - option "/loop Run a prompt or slash command on a recurring interval (e.g. /loop 5m /foo). Omit the interval to let the model self-pace."
+      - option "/schedule Create, update, list, or run scheduled cloud agents (routines) that execute on a cron schedule."
+      - option
+      - option "/run Launch and drive this project's app to see a change working. Use when asked to run, start, or screenshot the app, or to confirm a change works in the real app (not just tests). First looks for a project skill that already covers launching the app; otherwise falls back to built-in patterns per project type (CLI, server, TUI, Electron, browser-driven, library)."
+      - option "/run-skill-generator Author or improve the run-<unit> skill - a per-project skill that tells agents how to build, launch, and drive this project's app. Use when the user asks to set up the project, get it running, write run instructions, or verify build/run steps work from a clean environment."
+      - 'option "/plugin-authoring Make a mod: a live pane, band, status line, toast or hook inside Claude Code (terminal or desktop Code tab), written as a plugin of function hooks that hot-reloads in this session. Load before writing or debugging a hooks module."'
+      - option "/advisor Let Claude consult a stronger model at key moments"
+      - option /agents (removed) Ask Claude to create/manage subagents, or edit .claude/agents/
+      - option "/auto-mode-setup Teach auto mode about your environment, plus optional rule tweaks"
+      - option "/autocompact Configure the auto-compact window size"
+      - option "/clear Start a new session with empty context; previous session stays on disk (resumable with /resume)"
+      - option "/color Set the prompt bar color for this session"
+      - option "/compact Free up context by summarizing the conversation so far"
+      - option "/config Set a setting by key"
+      - option "/output-style List output styles or switch to one"
+      - option "/context Show current context usage"
+      - option "/effort Set effort level for model usage"
+      - option "/fast Toggle fast mode (Opus 5.5)"
+      - 'option "/focus Toggle focus view: just your prompt, summary, and response"'
+      - option "/heapdump Dump the JS heap to the Desktop; on Linux with no Desktop folder, the home directory"
+      - option "/init Initialize a new CLAUDE.md file with codebase documentation"
+      - option "/mcp Manage MCP servers"
+      - option "/import Import config from another AI coding agent"
+      - option "/model Set the AI model for Claude Code"
+      - option "/__remote-workflow Run the workflow script delivered in this session environment (server-launched sessions only)"
+      - option "/workflow-launch-exec Execute a server-launched workflow handoff (workflow_launch event sessions only)"
+      - option "/reload-plugins Activate pending plugin changes in the current session"
+      - option "/reload-skills Pick up skills added or changed on disk during this session"
+      - option "/rename Rename the current conversation"
+      - option "/ultrareview Start a cloud agent that finds and verifies bugs in your branch (~15-25 min, $5-$25 USD) · Runs in a cloud session. See https://code.claude.com/docs/en/claude-code-on-the-web"
+      - option "/security-review Complete a security review of the pending changes on the current branch"
+      - option "/usage-credits Configure usage credits or request them from your admin when you hit a limit"
+      - option "/extra-usage Renamed to /usage-credits"
+      - option "/usage Show session cost, plan usage, and what's contributing to your limits"
+      - option "/insights Generate a report analyzing your Claude Code sessions"
+      - option "/recap Generate a one-line session recap now"
+      - option "/skill-doctor Show which loaded skills are unused and costing context"
+      - option "/goal Set a goal — keep working until the condition is met"
+      - option "/design-consent Grant Claude agent access to your Design projects"
+      - option "/design-revoke Revoke Claude agent access to your Design projects"
+      - option "/list-agents List subagents, teammates, and other Claude sessions you can message"
+      - option "/team-onboarding Help teammates ramp on Claude Code with a guide from your usage"
+      - option "/built-in-browser Read this skill before the first step that uses the built-in browser, the browser pane inside the Claude desktop app (also called the in-app browser, the browser pane, Claude's browser, or \"your own browser\"), whose tools are named mcp__Claude_Browser__* when the session runs in the desktop app and mcp__remote-devices__Claude_Browser__* when a cloud session is linked to the person's computer; before those tools are turned on there may be a single enable__mcp__remote-devices__Claude_Browser tool instead. It covers the pane's persistent sign-ins, tabs and preview_start, reading pages as text, site approvals, what the pane cannot open, and what to do when it cannot be reached. It is not for Claude in Chrome (mcp__claude-in-chrome__* tools), which has its own skill, and it does not decide which browser to use. (claude.ai sync)"
+      - option "/chrome-browser Read this skill before the first step that uses Claude in Chrome, the browser extension whose tools are named mcp__claude-in-chrome__* (also called Chrome, the browser extension, or the external browser) and which acts in the person's real Chrome with their own sign-ins; before those tools are turned on there may be a single enable__mcp__claude-in-chrome tool instead. It covers loading the tools in one ToolSearch call, checking the person's open tabs and working in a new tab, site permissions, GIF recordings, console logs, dialogs to avoid, and when to stop and ask. It is not for the built-in browser (mcp__Claude_Browser__* or mcp__remote-devices__Claude_Browser__* tools), which has its own skill, and it does not decide which browser to use. (claude.ai sync)"
+      - option
+      - option "/deep-research Use this skill when the user's prompt requires (1) researching a topic across multiple sources, comparing options or alternatives, analyzing trends or history, understanding markets or industries, or reviewing literature or studies and (2) synthesizing that research into a comprehensive, narrative report. If you're planning to search the web or internal knowledge bases, consider using this skill. This skill coordinates research subagents, so use it only when you have a tool for spawning subagents (the Agent or Task tool); otherwise, research the question directly. (claude.ai sync)"
+      - option
+      - option
+      - option
+      - option "/import-memory Import a memory export from another AI assistant into Claude's memory — conversationally, additively, and with the content treated as data. (claude.ai sync)"
+      - option "/morning Render the user's morning brief as a styled HTML artifact, or set it up as a recurring weekday task. Use only when the user explicitly asks to run, see, or set up their morning brief, or if they invoke /morning by name. A question about their day, schedule, or calendar is not by itself a request for the brief; answer it directly instead. (claude.ai sync)"
+      - option "/pdf Use this skill whenever the user wants to do anything with PDF files. This includes reading or extracting text/tables from PDFs, combining or merging multiple PDFs into one, splitting PDFs apart, rotating pages, adding watermarks, creating new PDFs, filling PDF forms, encrypting/decrypting PDFs, extracting images, and OCR on scanned PDFs to make them searchable. If the user mentions a .pdf file or asks to produce one, use this skill. (claude.ai sync)"
+      - option
+      - option "/skill-creator Create new skills, modify and improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, edit, or optimize an existing skill, run evals to test a skill, benchmark skill performance with variance analysis, or optimize a skill's description for better triggering accuracy. (claude.ai sync)"
+      - option
+  - textbox:
+    - paragraph: /
+  - button "Sonnet 5.5 · High"
+  - button "More composer controls"
+  - button "Context window 3.3% used"
+  - button "Send message"
+  - text: Local checkout
+  - combobox: main
+  - separator
+  - tablist "Right panel surfaces":
+    - tab "Subagents"
+    - button "Close Subagents"
+    - tab "Plan" [selected]
+    - button "Close Plan"
+    - button "Add panel surface"
+  - text: Plan
+  - paragraph: No active plan yet.
+  - paragraph: Plans will appear here when generated.
+- button "Toggle main sidebar" [pressed]: Toggle Sidebar
+- region "Notifications"
+- region "Notifications"

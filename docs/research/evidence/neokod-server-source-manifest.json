@@ -1,0 +1,1077 @@
+{
+  "schema_version": 1,
+  "captured_utc": "2026-10-04T07:51:38.917745+00:00",
+  "base_head": "80334a4c8a6badd9a0014bbc34af4bcb346c3cff",
+  "workspace": "/Users/kamogelo/Code/t3code",
+  "proof_boundary": "Static current working tree; all failures/gates unrun. No application or authenticated calls.",
+  "sources": [
+    {
+      "path": "apps/server/src/ws.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/ws.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/ws.ts",
+      "sha256": "bdba799cb5ba7f881aac6f27f59adbac24dadd72bd450b69ad4821fd44cf0eb0",
+      "lines": 2630,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/orchestration/Layers/OrchestrationEngine.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/OrchestrationEngine.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/orchestration/Layers/OrchestrationEngine.ts",
+      "sha256": "0787929dd9a5a73de3981a9ee8e4db7e0088fc53e681130328c30cad19045e94",
+      "lines": 343,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/persistence/Layers/OrchestrationCommandReceipts.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/persistence/Layers/OrchestrationCommandReceipts.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/persistence/Layers/OrchestrationCommandReceipts.ts",
+      "sha256": "7e33d155ab8b3421b29feae3f1dddb11ea403ef9dbf8716396265a8ff9224d10",
+      "lines": 90,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/persistence/Services/OrchestrationCommandReceipts.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/persistence/Services/OrchestrationCommandReceipts.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/persistence/Services/OrchestrationCommandReceipts.ts",
+      "sha256": "3f36283d3201d6eaa69057fdfdc7fad3696ed60c73e60a3be81e329ae3191eab",
+      "lines": 73,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/orchestration/Layers/ProviderCommandReactor.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts",
+      "sha256": "07e60ba63cde8f4366fb8fad46641b69515ad74d7a536cbc9545400ff1298bc7",
+      "lines": 1126,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/provider/Layers/ProviderSessionReconciler.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/provider/Layers/ProviderSessionReconciler.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/provider/Layers/ProviderSessionReconciler.ts",
+      "sha256": "dd5439b3328070c77706c1f7c13f2e754914c306e26aff9be8af2c37cd2298d4",
+      "lines": 76,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/symphony/Runner/Dispatcher.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Runner/Dispatcher.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/symphony/Runner/Dispatcher.ts",
+      "sha256": "fa78f10317a18cd4d00426ecdf11d89b8f4ec23e0b68a497286723496959f15b",
+      "lines": 613,
+      "pre_existing_dirty": true
+    },
+    {
+      "path": "apps/server/src/symphony/Runner/AgentRuntime.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Runner/AgentRuntime.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/symphony/Runner/AgentRuntime.ts",
+      "sha256": "b593cf63cd52f78a7e77a22dadd3ba46a006a8342b373b57766e1a0fe3060d34",
+      "lines": 411,
+      "pre_existing_dirty": true
+    },
+    {
+      "path": "apps/server/src/symphony/Orchestrator/Reconciler.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Orchestrator/Reconciler.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/symphony/Orchestrator/Reconciler.ts",
+      "sha256": "49629d01a08e02de52417ddd5c318dce51bff943518a973b152d3a2c37346cc0",
+      "lines": 142,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/terminal/Manager.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/terminal/Manager.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/terminal/Manager.ts",
+      "sha256": "ee98ede1e1fe1634724b54deaff7ea94d26b9aff3a55ca4971016057fc72bf51",
+      "lines": 2651,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "packages/shared/src/KeyedCoalescingWorker.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/packages/shared/src/KeyedCoalescingWorker.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/packages/shared/src/KeyedCoalescingWorker.ts",
+      "sha256": "6be1fd6a363f1e62f08005dd3e2113e8b06d42a632b6b7c69417edcf0d7344d1",
+      "lines": 142,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "packages/effect-codex-app-server/src/protocol.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/packages/effect-codex-app-server/src/protocol.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/packages/effect-codex-app-server/src/protocol.ts",
+      "sha256": "81c5368c6a6e0458607940369f854640871c11f1906847b97436f8c3d6d52508",
+      "lines": 423,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "packages/effect-codex-app-server/src/_internal/stdio.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/packages/effect-codex-app-server/src/_internal/stdio.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/packages/effect-codex-app-server/src/_internal/stdio.ts",
+      "sha256": "491c7d64d97fa87b42b1bfdf411156ab34cc80a2cf51a1bb5b236f5a3a3d0967",
+      "lines": 63,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/provider/Layers/CodexSessionRuntime.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/provider/Layers/CodexSessionRuntime.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/provider/Layers/CodexSessionRuntime.ts",
+      "sha256": "7153b9821c61954037f3862d7f85f555f12271af038ab3ac37a68b9907edce79",
+      "lines": 1431,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/orchestration/decider.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/decider.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/orchestration/decider.ts",
+      "sha256": "5937e24872fe140626266ede78fc6da9979ee1d8f8a9a95f88d7c7d3659d39c6",
+      "lines": 845,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/orchestration/Layers/CheckpointReactor.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/CheckpointReactor.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/orchestration/Layers/CheckpointReactor.ts",
+      "sha256": "3e2eab228eda9fae4f9f39dcfac68af2a660d16830be2d8512d9daf7f2e2a32c",
+      "lines": 971,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/vcs/GitVcsDriver.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/vcs/GitVcsDriver.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/vcs/GitVcsDriver.ts",
+      "sha256": "251d0335af8ba1e973fdbf878221c3dc5d7978ca05a2703f1770dff0bdebdc1e",
+      "lines": 1008,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/symphony/Persistence/Layers/WorkspaceOwnershipRepository.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Persistence/Layers/WorkspaceOwnershipRepository.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/symphony/Persistence/Layers/WorkspaceOwnershipRepository.ts",
+      "sha256": "31ef8dd8a4f0adc48662d6a424b669f84b025d7f672d1cc2230253832c42eb3b",
+      "lines": 249,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "README.md",
+      "workspace_path": "/Users/kamogelo/Code/t3code/README.md",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/README.md",
+      "sha256": "f54db49322a9a419b5509ee297104c7de62789d891e495efdb3bdfff47c25889",
+      "lines": 172,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": ".plans/20-orchestration-direction.md",
+      "workspace_path": "/Users/kamogelo/Code/t3code/.plans/20-orchestration-direction.md",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/.plans/20-orchestration-direction.md",
+      "sha256": "a6bf649b005e0e40ee5607c423a7901bfb0764a67adba36dd403fb080ffb5e4f",
+      "lines": 250,
+      "pre_existing_dirty": true
+    },
+    {
+      "path": "apps/server/src/cli/config.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/cli/config.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/cli/config.ts",
+      "sha256": "794ec04a093c06412c56ed2107417f1cf9ea1345d3b942d52a019b11e8f39839",
+      "lines": 499,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/cli/config.test.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/cli/config.test.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/cli/config.test.ts",
+      "sha256": "bca93358474d7d7be3ed66a3cd61fe8896ac450d6cf559c691d85b1688edc245",
+      "lines": 362,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/transport/LocalTransportAuth.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/transport/LocalTransportAuth.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/transport/LocalTransportAuth.ts",
+      "sha256": "33a01141dadd8b2feeb600f330b7a3dc46cea479fa9c769216916d1837cb94ba",
+      "lines": 171,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/transport/WslBearerAuth.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/transport/WslBearerAuth.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/transport/WslBearerAuth.ts",
+      "sha256": "d257f095c2287f6dc45a4d26b3f3177440fe7c43b6a22a10cdf1d3a20ad81d5f",
+      "lines": 183,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/server.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/server.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/server.ts",
+      "sha256": "724116b5c7682054ecf613a7f7c23e8a0fd6dd4561c9c12b681a6b95c8a8ac74",
+      "lines": 424,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/orchestration/http.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/http.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/orchestration/http.ts",
+      "sha256": "e5374fa9dfa2ac465c4a97b90fde31c0439b9655c9fcc9a36f1c5605d1478f80",
+      "lines": 96,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "packages/contracts/src/orchestration.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/packages/contracts/src/orchestration.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/packages/contracts/src/orchestration.ts",
+      "sha256": "7fd44fe841bffe8582dbc6f0444452a4a80aec2ad3ab9be5273bdebfb3e28754",
+      "lines": 1461,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/symphony/Runner/Live.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Runner/Live.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/symphony/Runner/Live.ts",
+      "sha256": "296f81041c68cb924a6745abd9a12642df801a99c9c2fc3418622cdc4dd850a1",
+      "lines": 80,
+      "pre_existing_dirty": true
+    },
+    {
+      "path": "apps/server/src/symphony/Runner/Policy.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Runner/Policy.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/symphony/Runner/Policy.ts",
+      "sha256": "0621406dce8719e6c9bc691b8cdc5f7780baa4c5bca247773d344d9fc7166ab6",
+      "lines": 113,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/symphony/Workflow/Config.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Workflow/Config.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/symphony/Workflow/Config.ts",
+      "sha256": "8307b4c220c4c855d420057249f33d8cc567f57229291517bcead1023f05dd28",
+      "lines": 376,
+      "pre_existing_dirty": true
+    },
+    {
+      "path": "docs/architecture/symphony.md",
+      "workspace_path": "/Users/kamogelo/Code/t3code/docs/architecture/symphony.md",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/docs/architecture/symphony.md",
+      "sha256": "d3cb4aa05828cb8186b61176ac15a95216ba1d6fee2f10ecec3097c3dcee8433",
+      "lines": 195,
+      "pre_existing_dirty": true
+    },
+    {
+      "path": "apps/server/src/symphony/Runner/AgentRuntime.scrub.test.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Runner/AgentRuntime.scrub.test.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/symphony/Runner/AgentRuntime.scrub.test.ts",
+      "sha256": "e45e2a7994ec0e771476980985afab58b8108d3da929c2db1212e0efa8e79858",
+      "lines": 82,
+      "pre_existing_dirty": true
+    },
+    {
+      "path": ".repos/effect-smol/packages/effect/src/unstable/process/ChildProcess.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/.repos/effect-smol/packages/effect/src/unstable/process/ChildProcess.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/.repos/effect-smol/packages/effect/src/unstable/process/ChildProcess.ts",
+      "sha256": "65265e30fa65768b2d298fcc389d2a9008112d704a882a3820ec517781b1865b",
+      "lines": 1068,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": ".repos/effect-smol/packages/platform-node-shared/src/NodeChildProcessSpawner.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/.repos/effect-smol/packages/platform-node-shared/src/NodeChildProcessSpawner.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/.repos/effect-smol/packages/platform-node-shared/src/NodeChildProcessSpawner.ts",
+      "sha256": "9fe269a92be4106e6ee2e9497becbac61f71526f62f74ed1b51aa86616af08ff",
+      "lines": 713,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "packages/shared/src/shell.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/packages/shared/src/shell.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/packages/shared/src/shell.ts",
+      "sha256": "6c5343dd78742bcb116977aa1aacb8632034ee090f0cbf3548741993a684f949",
+      "lines": 703,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/symphony/HandoffService.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/HandoffService.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/symphony/HandoffService.ts",
+      "sha256": "c09fcf7100ac3c7e476a4429857df2564ba80d274e7fea7b93a4c258458b8b96",
+      "lines": 637,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/symphony/Persistence/Layers/WorkItemRepository.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Persistence/Layers/WorkItemRepository.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/symphony/Persistence/Layers/WorkItemRepository.ts",
+      "sha256": "379d8878db5288e65108b8adf46402a7069d9e157d5339b52c0bc091624166dd",
+      "lines": 584,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/Registry.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/Registry.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/symphony/Trackers/Registry.ts",
+      "sha256": "60047b89e9e34a6302e3203469ecd3cd61641f67e2b6d3feb57fb94767c18d85",
+      "lines": 114,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/Adapter.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/Adapter.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/symphony/Trackers/Adapter.ts",
+      "sha256": "2d99882f09236af9078e1c85a9547dfc61f16884402428faf3e0c777956f8f7a",
+      "lines": 76,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/symphony/Orchestrator/Eligibility.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Orchestrator/Eligibility.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/symphony/Orchestrator/Eligibility.ts",
+      "sha256": "025b508fee54952640f2fd37cc4fe5483128846b2a8f34c460403e7c0a66e952",
+      "lines": 80,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/LinearApiClient.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/LinearApiClient.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/symphony/Trackers/LinearApiClient.ts",
+      "sha256": "bfeab1addccefff45c2c9693f5c7096f21881fa41ee1b12745dfa1c881f05ff7",
+      "lines": 313,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/LinearAdapter.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/LinearAdapter.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/symphony/Trackers/LinearAdapter.ts",
+      "sha256": "8a853a8950383c01c5d2aa9b094c7967b64a317fd1a267613a54d0f74097a8a9",
+      "lines": 335,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/GitHubProjectsAdapter.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/GitHubProjectsAdapter.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/symphony/Trackers/GitHubProjectsAdapter.ts",
+      "sha256": "fdd36462ed17f98746e09c51ae62e99800fa249907da6493838a80bd79c8f356",
+      "lines": 314,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/symphony/Trackers/AzureBoardsAdapter.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/AzureBoardsAdapter.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/symphony/Trackers/AzureBoardsAdapter.ts",
+      "sha256": "59a1790cf54b6f31e4544d6a60e91dd02459a1c4bdb5b7991322cdb439dba58f",
+      "lines": 320,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/persistence/NodeSqliteClient.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/persistence/NodeSqliteClient.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/persistence/NodeSqliteClient.ts",
+      "sha256": "293a1ad1fc1efcc6f4f03c643d4504b030767569befcb46b4c32438f4e6ee5a1",
+      "lines": 344,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts",
+      "sha256": "45350a5781757e42f095993b5b9e4b31b98ad1b7a28d7feeb917c9f0e9f90cdb",
+      "lines": 2114,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "packages/effect-codex-app-server/src/client.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/packages/effect-codex-app-server/src/client.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/packages/effect-codex-app-server/src/client.ts",
+      "sha256": "87869fbc0857ba0b97c0b99509e15e2fd994250df2c110e5a1cd289ad5249d5c",
+      "lines": 269,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/workspace/WorkspaceSearchIndex.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/workspace/WorkspaceSearchIndex.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/workspace/WorkspaceSearchIndex.ts",
+      "sha256": "6a3d6cd9d31beb4efdd52cc3cdaa3f1b963205a1d4df040f7d59770037840d9a",
+      "lines": 326,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "AGENTS.md",
+      "workspace_path": "/Users/kamogelo/Code/t3code/AGENTS.md",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/AGENTS.md",
+      "sha256": "b55317b2eaeca3be291a6d5733692498acb7491f34a1d0fdf4b43fc29241ab08",
+      "lines": 87,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "docs/README.md",
+      "workspace_path": "/Users/kamogelo/Code/t3code/docs/README.md",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/docs/README.md",
+      "sha256": "1cbc94bef2bff9c8a9e45ede48964e36078331f4a2295a798d68ee2efb9468ce",
+      "lines": 12,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "docs/architecture/overview.md",
+      "workspace_path": "/Users/kamogelo/Code/t3code/docs/architecture/overview.md",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/docs/architecture/overview.md",
+      "sha256": "09d1a5ee08a48c34d771054925b36b78202d03e813238cbdb7e2c73dbfa2a2be",
+      "lines": 161,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "docs/architecture/state-and-evidence.md",
+      "workspace_path": "/Users/kamogelo/Code/t3code/docs/architecture/state-and-evidence.md",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/docs/architecture/state-and-evidence.md",
+      "sha256": "d02f53c79b81ab8d2d1e2e5629f5a6fbe203a5394fedf1a22c6e7bbcda85e642",
+      "lines": 115,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "docs/providers/codex.md",
+      "workspace_path": "/Users/kamogelo/Code/t3code/docs/providers/codex.md",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/docs/providers/codex.md",
+      "sha256": "b73a23350fb5936c2c8c6cccd4824f2912c9b148dffde78ad278cf24bfa51997",
+      "lines": 140,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "docs/providers/claude.md",
+      "workspace_path": "/Users/kamogelo/Code/t3code/docs/providers/claude.md",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/docs/providers/claude.md",
+      "sha256": "beae826028d59b14e89f6809a059f7f57cabe7a81e784bed3d6227bf6e05794c",
+      "lines": 226,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "docs/providers/copilot.md",
+      "workspace_path": "/Users/kamogelo/Code/t3code/docs/providers/copilot.md",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/docs/providers/copilot.md",
+      "sha256": "b89857cf3beb838c5d49f1ff8b0c7bd037e28a209582b40195680cae42cee0a2",
+      "lines": 58,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "docs/providers/cursor.md",
+      "workspace_path": "/Users/kamogelo/Code/t3code/docs/providers/cursor.md",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/docs/providers/cursor.md",
+      "sha256": "79419182e89cbaea0a3cb46a662bf20f0020ed0c4290f74a341c06d3e203a143",
+      "lines": 50,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "docs/providers/grok.md",
+      "workspace_path": "/Users/kamogelo/Code/t3code/docs/providers/grok.md",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/docs/providers/grok.md",
+      "sha256": "f22ad6ec615169cd28f06f16cd11a1d6383a56031b30e9ca39e58b91c0ea33c4",
+      "lines": 44,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "docs/providers/opencode.md",
+      "workspace_path": "/Users/kamogelo/Code/t3code/docs/providers/opencode.md",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/docs/providers/opencode.md",
+      "sha256": "7fbd2067ca4b128c3ee6e617cc81dd1fe06d5153c477180db4e7532dd35da1c4",
+      "lines": 57,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "docs/integrations/symphony-linear.md",
+      "workspace_path": "/Users/kamogelo/Code/t3code/docs/integrations/symphony-linear.md",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/docs/integrations/symphony-linear.md",
+      "sha256": "b321f74005807413a2a74890a7049efc1cdb35d25777795dce7da64af98f798b",
+      "lines": 71,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "docs/integrations/symphony-github-projects.md",
+      "workspace_path": "/Users/kamogelo/Code/t3code/docs/integrations/symphony-github-projects.md",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/docs/integrations/symphony-github-projects.md",
+      "sha256": "28c8c60e5ac0aa48cb5be361e26ddedd95969678d151473c36dc40d80f5635fe",
+      "lines": 70,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "docs/integrations/symphony-azure-boards.md",
+      "workspace_path": "/Users/kamogelo/Code/t3code/docs/integrations/symphony-azure-boards.md",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/docs/integrations/symphony-azure-boards.md",
+      "sha256": "1678000546643d585a08e0ad2bce9f44f91a56ec8434c5dd970e5f0e271d0c7d",
+      "lines": 71,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/orchestration/Layers/OrchestrationEngine.test.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/OrchestrationEngine.test.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/orchestration/Layers/OrchestrationEngine.test.ts",
+      "sha256": "d4c8ad3305719a42aed3cffcc82c8855b49333ebe3dd3ce1cdf1a54845f28c9f",
+      "lines": 1309,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "packages/effect-codex-app-server/src/protocol.test.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/packages/effect-codex-app-server/src/protocol.test.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/packages/effect-codex-app-server/src/protocol.test.ts",
+      "sha256": "398e834c374f4a3559ed22e3c7f3c31f3bca33ac20f88e34b6c094681485f842",
+      "lines": 361,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "packages/effect-codex-app-server/src/_internal/stdio.test.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/packages/effect-codex-app-server/src/_internal/stdio.test.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/packages/effect-codex-app-server/src/_internal/stdio.test.ts",
+      "sha256": "af2ebfde1488a91c03297dd5fcaf42decfad880e11484a3b1bce64dba8c94799",
+      "lines": 48,
+      "pre_existing_dirty": false
+    },
+    {
+      "path": "apps/server/src/symphony/Runner/Dispatcher.test.ts",
+      "workspace_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Runner/Dispatcher.test.ts",
+      "snapshot_path": "/tmp/neokod-critical-review-20261004/server-source-snapshot/apps/server/src/symphony/Runner/Dispatcher.test.ts",
+      "sha256": "2c2b98061dc118372b930c94591316816cc43063273a43944e5938ec99e733b3",
+      "lines": 569,
+      "pre_existing_dirty": true
+    }
+  ],
+  "findings": [
+    {
+      "id": "S01",
+      "title": "Command receipt reuse does not validate aggregate or request identity",
+      "priority": "P1",
+      "evidence_class": "Source-confirmed acceptance defect; conflicting-retry scenario unrun.",
+      "current_call_path": "WS dispatch normalises a wire command and invokes the serialized engine. processEnvelope looks up getByCommandId before deciding the command. An accepted stored receipt returns its resultSequence immediately; aggregateKind/aggregateId are present in the stored row but never compared with commandToAggregateRef. The receipt schema has no canonical request fingerprint. Thus reusing a command ID against another thread, or with another command/body on the same thread, can return success for work that was never accepted.",
+      "implication": "This violates command idempotency and makes a transport retry receipt unsafe as an aggregate-specific acknowledgement. Serialization prevents a concurrent race but does not repair identity mismatch. It also means a correction using the same previously rejected ID will remain rejected, which is correct only if the caller knows IDs identify immutable intents.",
+      "minimum_direction": "Keep the serialized transaction. Before reusing a receipt, compare target aggregate and command kind; bind immutable caller intent with a canonical input hash if semantic replay is supported. Make conflict a specific error, preserve original receipts and avoid upsert-overwriting a receipt\u2019s identity. Do not hash resolved defaults that may legitimately change across an honest retry.",
+      "focused_regression_gate": "Two threads: accept ID X on A, submit X on B and assert explicit conflict with no events on B. On A, submit X with changed body/type and assert conflict; exact retry returns the original sequence and one event set. Exercise accepted/rejected receipts and transaction rollback. Existing engine/receipt tests are the narrow target; no new infrastructure needed.",
+      "refs": [
+        {
+          "path": "apps/server/src/ws.ts",
+          "line": 1634,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/ws.ts:1634"
+        },
+        {
+          "path": "apps/server/src/orchestration/Layers/OrchestrationEngine.ts",
+          "line": 138,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/OrchestrationEngine.ts:138"
+        },
+        {
+          "path": "apps/server/src/persistence/Layers/OrchestrationCommandReceipts.ts",
+          "line": 27,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/persistence/Layers/OrchestrationCommandReceipts.ts:27"
+        },
+        {
+          "path": "apps/server/src/persistence/Services/OrchestrationCommandReceipts.ts",
+          "line": 1,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/persistence/Services/OrchestrationCommandReceipts.ts:1"
+        }
+      ]
+    },
+    {
+      "id": "S02",
+      "title": "Durable command acceptance is separated from provider launch by a volatile effect path",
+      "priority": "P1",
+      "evidence_class": "Current recovery design limit; crash/duplicate-work scenarios unrun.",
+      "current_call_path": "The engine atomically writes events/projections/receipt, then broadcasts events through an in-memory PubSub. ProviderCommandReactor.start subscribes only to the live stream; it has no persisted consumer cursor or replayed effect claim. Its 10,000-entry/30-minute handled-turn cache is process-local, set before sending. processTurnStartRequested forks ProviderService.sendTurn and does not pin the returned provider turn against a durable launch intent. ProviderSessionReconciler settles projected/live binding differences but does not establish that a committed unobserved send never reached the provider.",
+      "implication": "A crash after accepted turn intent but before consumption can leave accepted content without a send. A crash after the provider starts but before the corresponding ingestion commit leaves ambiguous execution. Blind replay is unsafe: a domain receipt proves acceptance, not external side-effect idempotency. Symphony has the same recovery class through a different path: Dispatcher reads agent.pid before the lazy runTurn spawn, usually gets null, and has no later setClaimOwnerPid caller. Reconciler trusts the volatile activeAgents registry and, after a stall threshold, releases claims without proving surviving child-process termination. No claim-after-restart overlap was run here.",
+      "minimum_direction": "Introduce the smallest durable execution intent and outcome contract at the existing engine/runner boundaries: accepted, starting, confirmed provider thread/turn, failed or launch-unknown. Classify replay-safe local effects separately from process-bound sends. Resolve ambiguous sends through provider-native correlation and confirmed stop, not a TTL resend. Record child incarnation only after spawn and make claim recovery prove ownership/termination or quarantine it. Preserve authoritative Code and Symphony attempts rather than mirror one into the other.",
+      "focused_regression_gate": "Crash fixtures at commit-before-consume, send-before-provider-response and response-before-binding write. Exact retry cannot produce a second provider turn; ambiguous state stays explicit. Symphony fixture returns pid=null before spawn and a concrete PID afterward, then restarts with a surviving fake child: do not requeue while ownership is unresolved. Include claim-without-attempt recovery so it neither races a live preparer nor remains permanently stranded.",
+      "refs": [
+        {
+          "path": "apps/server/src/orchestration/Layers/OrchestrationEngine.ts",
+          "line": 174,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/OrchestrationEngine.ts:174"
+        },
+        {
+          "path": "apps/server/src/orchestration/Layers/ProviderCommandReactor.ts",
+          "line": 205,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts:205"
+        },
+        {
+          "path": "apps/server/src/orchestration/Layers/ProviderCommandReactor.ts",
+          "line": 867,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts:867"
+        },
+        {
+          "path": "apps/server/src/orchestration/Layers/ProviderCommandReactor.ts",
+          "line": 1099,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts:1099"
+        },
+        {
+          "path": "apps/server/src/provider/Layers/ProviderSessionReconciler.ts",
+          "line": 23,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/provider/Layers/ProviderSessionReconciler.ts:23"
+        },
+        {
+          "path": "apps/server/src/symphony/Runner/Dispatcher.ts",
+          "line": 288,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Runner/Dispatcher.ts:288"
+        },
+        {
+          "path": "apps/server/src/symphony/Runner/AgentRuntime.ts",
+          "line": 135,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Runner/AgentRuntime.ts:135"
+        },
+        {
+          "path": "apps/server/src/symphony/Orchestrator/Reconciler.ts",
+          "line": 97,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Orchestrator/Reconciler.ts:97"
+        }
+      ]
+    },
+    {
+      "id": "S03",
+      "title": "Terminal history drain can report success after a failed write; stale callbacks are PID-scoped",
+      "priority": "P1 durability; P2 incarnation scenario",
+      "evidence_class": "Source-confirmed swallowed persistence error; PID-reuse scenario unrun.",
+      "current_call_path": "Terminal output updates in-memory history, enqueues a keyed coalesced save and emits output. The persistence process sleeps 40 ms, writes the target file directly and catches a filesystem failure as only a log warning. persistHistory then drains the key, which means no pending worker item, not successful persistence. KeyedCoalescingWorker removes the active value and clears active state when the process returns success; the caught write therefore leaves no failed generation for retry. PTY callbacks capture processPid, and enqueue/drain check only the current numeric PID/status, not the captured process object or incarnation.",
+      "implication": "A transient last-write error followed by idle/close can lose the latest terminal tail while flush returns normally. Direct replacement is also weaker than atomic temp-file rename on crash. If a restarted process reuses the same PID and a queued old callback arrives, its guard can admit output/exit into the replacement; that is an unrun scenario, not an observed failure. Unsubscribing handlers and process-object killFibers are useful existing safeguards, but queued callbacks still need the stronger identity.",
+      "minimum_direction": "Retain a dirty history generation until an atomic write succeeds, surface failure through explicit persistence evidence, and retry with bounded backoff without suppressing live output. Compare callbacks/drain against the captured process object or monotonic incarnation. Preserve coalescing; do not write every output frame synchronously.",
+      "focused_regression_gate": "Inject one write failure then recovery with no further PTY bytes; drain must not masquerade as a successful saved generation. Close/reopen must retain the final output and existing target on partial-write failure. Restart using a fake reused PID; old data and exit callbacks must not mutate the new process. Use existing Manager and KeyedCoalescingWorker fixtures.",
+      "refs": [
+        {
+          "path": "apps/server/src/terminal/Manager.ts",
+          "line": 421,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/terminal/Manager.ts:421"
+        },
+        {
+          "path": "apps/server/src/terminal/Manager.ts",
+          "line": 1353,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/terminal/Manager.ts:1353"
+        },
+        {
+          "path": "apps/server/src/terminal/Manager.ts",
+          "line": 1384,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/terminal/Manager.ts:1384"
+        },
+        {
+          "path": "apps/server/src/terminal/Manager.ts",
+          "line": 1640,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/terminal/Manager.ts:1640"
+        },
+        {
+          "path": "apps/server/src/terminal/Manager.ts",
+          "line": 1873,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/terminal/Manager.ts:1873"
+        },
+        {
+          "path": "packages/shared/src/KeyedCoalescingWorker.ts",
+          "line": 40,
+          "url": "/Users/kamogelo/Code/t3code/packages/shared/src/KeyedCoalescingWorker.ts:40"
+        }
+      ]
+    },
+    {
+      "id": "S04",
+      "title": "EOF classification waits for child exit, and Symphony completion is not pinned to a turn",
+      "priority": "P1 EOF; P2 waiter contract",
+      "evidence_class": "Source-confirmed closure/correlation gaps; process-alive EOF and unrelated-completion scenarios unrun.",
+      "current_call_path": "The local Codex package does handle clean input EOF; earlier shorthand that it simply ignores EOF would be inaccurate. Its success path calls handleTermination with makeTerminationError(handle), whose effect awaits handle.exitCode. handleTermination fails pending requests and ends outgoing only after that classification effect returns. A child that closes stdout while staying alive can therefore leave all pending requests unresolved. Separately, Symphony waitForTurnCompletion consumes a queue of raw notifications, accepts any turn/completed without thread/turn correlation and leaves its forkScoped consumer running after Deferred resolution.",
+      "implication": "The EOF gap is specifically clean stream end before process exit, not the already-handled process-exit case. The Symphony consumer\u2019s lifetime is the wider dispatch scope; if runTurn is reused, consumers compete for one queue. Current real runtime returns completed=true or failure, so Dispatcher\u2019s continuation loop normally does not reach a second turn; do not present stolen second-turn completion as a reproduced current normal flow. Unrelated/native-child completion and unscoped errors remain correlation scenarios to test.",
+      "minimum_direction": "Fail outstanding transport work on EOF immediately with an EOF error; enrich it with exit status only when available and bound subsequent process shutdown. Pin Symphony waiting/interrupt to the accepted thread and turn, end each waiter on settlement, and own one notification router per runtime with per-turn subscriptions. Keep existing typed protocol decoding and process-exit handling.",
+      "focused_regression_gate": "Fake child emits a final complete/partial line, closes stdout and keeps exitCode pending: requests must fail within the explicit EOF bound, independent of process exit. Preserve final-line decoding. Feed an unrelated turn/completed before the pinned one and require the wait to remain open. Reuse the runtime for two turns in a focused unit fixture and verify one active consumer, no stolen completion and no leaked waiters.",
+      "refs": [
+        {
+          "path": "packages/effect-codex-app-server/src/protocol.ts",
+          "line": 187,
+          "url": "/Users/kamogelo/Code/t3code/packages/effect-codex-app-server/src/protocol.ts:187"
+        },
+        {
+          "path": "packages/effect-codex-app-server/src/protocol.ts",
+          "line": 354,
+          "url": "/Users/kamogelo/Code/t3code/packages/effect-codex-app-server/src/protocol.ts:354"
+        },
+        {
+          "path": "packages/effect-codex-app-server/src/_internal/stdio.ts",
+          "line": 51,
+          "url": "/Users/kamogelo/Code/t3code/packages/effect-codex-app-server/src/_internal/stdio.ts:51"
+        },
+        {
+          "path": "apps/server/src/provider/Layers/CodexSessionRuntime.ts",
+          "line": 1191,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/provider/Layers/CodexSessionRuntime.ts:1191"
+        },
+        {
+          "path": "apps/server/src/symphony/Runner/AgentRuntime.ts",
+          "line": 354,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Runner/AgentRuntime.ts:354"
+        },
+        {
+          "path": "apps/server/src/symphony/Runner/Dispatcher.ts",
+          "line": 417,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Runner/Dispatcher.ts:417"
+        }
+      ]
+    },
+    {
+      "id": "S05",
+      "title": "Checkpoint rewind mutates the whole resolved workspace without proving exclusive ownership",
+      "priority": "P1 data-loss scenario",
+      "evidence_class": "Current destructive scope is source-confirmed; shared-CWD overwrite scenario unrun.",
+      "current_call_path": "thread.checkpoint.revert validates only that the thread exists, then the reactor resolves a live provider session\u2019s cwd and calls restoreCheckpoint. Git restore operates on dot with --worktree --staged, then git clean -fd dot removes untracked paths; reset adjusts staging afterward. The reactor rolls back the conversation only after the filesystem restore. It has no conversation-only variant or canonical workspace ownership check before restore, and multiple Code threads may resolve to the same project root.",
+      "implication": "Restoring files is the current advertised command semantics, so its existence alone is not a defect. The missing ownership proof matters when another thread, terminal or Symphony attempt writes that cwd: one thread\u2019s checkpoint can overwrite another\u2019s tracked changes or remove newly untracked work. A filesystem-success/provider-rollback-failure also leaves a partially applied cross-system operation; no runtime reproduction was attempted.",
+      "minimum_direction": "Define conversation-only and conversation-plus-files as separate contracts if both are wanted. For file restore, acquire/fence canonical workspace authority and reject or quarantine conflicting writers. Preserve capture\u2019s isolated temporary index. Persist the restore operation and partial outcome so a failed provider rollback cannot look like an entirely successful rewind; do not automatically delete recovery evidence.",
+      "focused_regression_gate": "Two threads sharing one canonical/symlinked cwd: B creates tracked and untracked work after A\u2019s checkpoint; A\u2019s restore must be refused until the declared exclusive-ownership condition holds. Verify isolated worktree restore remains correct. Inject provider rollback failure after successful file restore and require explicit partial outcome/recovery evidence. Never execute this test against the user\u2019s working tree.",
+      "refs": [
+        {
+          "path": "apps/server/src/orchestration/decider.ts",
+          "line": 546,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/decider.ts:546"
+        },
+        {
+          "path": "apps/server/src/orchestration/Layers/CheckpointReactor.ts",
+          "line": 156,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/CheckpointReactor.ts:156"
+        },
+        {
+          "path": "apps/server/src/orchestration/Layers/CheckpointReactor.ts",
+          "line": 731,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/CheckpointReactor.ts:731"
+        },
+        {
+          "path": "apps/server/src/orchestration/Layers/CheckpointReactor.ts",
+          "line": 783,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/CheckpointReactor.ts:783"
+        },
+        {
+          "path": "apps/server/src/vcs/GitVcsDriver.ts",
+          "line": 868,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/vcs/GitVcsDriver.ts:868"
+        },
+        {
+          "path": "apps/server/src/symphony/Persistence/Layers/WorkspaceOwnershipRepository.ts",
+          "line": 1,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Persistence/Layers/WorkspaceOwnershipRepository.ts:1"
+        }
+      ]
+    },
+    {
+      "id": "S06",
+      "title": "Default transport posture contradicts the README and Plan 20\u2019s current-auth claims",
+      "priority": "P1",
+      "evidence_class": "Source-confirmed security/documentation mismatch; no live attack or listener probe.",
+      "current_call_path": "CLI config resolves strictTransport to false by default and only mints a loopback bearer when strictTransport=true (unless a desktop bootstrap supplied one). Router-wide LocalTransportAuth.validate returns before Host/Origin checks when strict is false. WslBearerAuth returns when the loopback token is absent, including WebSocket ticket consumption. server.ts installs that middleware before routes and ws.ts calls the ticket guard, so both guards intentionally pass through under the default. CLI tests explicitly expect default serve to have no token. README says headless serve/start require a per-launch token and Host/Origin validation happens on every request; Plan 20 repeats that assertion.",
+      "implication": "The actual default local listener exposes the broad RPC surface to callers that can reach it without the documented token/Host/Origin gates. Loopback binding still limits ordinary remote access; WSL bearer remains a separate required path. Browser exploitability depends on concrete browser/DNS/network conditions and was not established. This is not evidence that every installation is unauthenticated: strict or bootstrap-token configurations differ.",
+      "minimum_direction": "Make the intended product default an explicit decision, then align code, README, self-hosting guidance and Plan 20. If strict is the required default, change it deliberately and preserve explicit proxy configuration. If open loopback remains intentional, document it accurately and show the actual posture. This cannot be repaired by adding an MCP-only permission wrapper or changing desktop technology.",
+      "focused_regression_gate": "Config matrix: default serve/start, strict flag/env, desktop bootstrap with/without token, WSL and declared proxy host/origin. Assert minted credentials and actual HTTP/WebSocket Host/Origin/token acceptance for each. Confirm the documented matrix matches source and tests. No authenticated caller should gain an actor-specific governance claim merely by connecting.",
+      "refs": [
+        {
+          "path": "README.md",
+          "line": 106,
+          "url": "/Users/kamogelo/Code/t3code/README.md:106"
+        },
+        {
+          "path": ".plans/20-orchestration-direction.md",
+          "line": 14,
+          "url": "/Users/kamogelo/Code/t3code/.plans/20-orchestration-direction.md:14"
+        },
+        {
+          "path": "apps/server/src/cli/config.ts",
+          "line": 356,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/cli/config.ts:356"
+        },
+        {
+          "path": "apps/server/src/cli/config.test.ts",
+          "line": 93,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/cli/config.test.ts:93"
+        },
+        {
+          "path": "apps/server/src/transport/LocalTransportAuth.ts",
+          "line": 94,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/transport/LocalTransportAuth.ts:94"
+        },
+        {
+          "path": "apps/server/src/transport/WslBearerAuth.ts",
+          "line": 80,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/transport/WslBearerAuth.ts:80"
+        },
+        {
+          "path": "apps/server/src/transport/WslBearerAuth.ts",
+          "line": 122,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/transport/WslBearerAuth.ts:122"
+        },
+        {
+          "path": "apps/server/src/server.ts",
+          "line": 383,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/server.ts:383"
+        },
+        {
+          "path": "apps/server/src/ws.ts",
+          "line": 2590,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/ws.ts:2590"
+        }
+      ]
+    },
+    {
+      "id": "S07",
+      "title": "Governed admission and common Code/Symphony attempt authority are not implemented",
+      "priority": "P1 prerequisite to agent-controlled delegation; existing opt-in design gap",
+      "evidence_class": "Source-confirmed architecture limit; not an unauthenticated exploit claim.",
+      "current_call_path": "Authenticated/otherwise admitted WS and HTTP callers normalise commands then reach engine.dispatch. Commands do not carry a server-derived actor/lineage/ceiling context. decider runtime-mode changes, approval responses and checkpoint reverts require the target thread but not an agent-aware capability decision. Default RuntimeMode is full-access, while invalid persisted mode deliberately falls back to approval-required. ProviderCommandReactor binds Code threads to a driver; Symphony builds its own Codex runtime and records separate RunAttempt/LiveRequests state without dispatching through that engine. config.agentProvider labels the Symphony attempt, but factory.make still spawns config.codexCommand.",
+      "implication": "The current trusted-developer local app is not a shipped governed delegation engine. Calling a wrapper \u201cthe single choke point\u201d would overstate coverage. RuntimeMode, Symphony autonomy and Codex sandbox/approval policy are different vocabularies, not one safe cross-provider rank. Config parses before_push/before_pull_request/protected_paths/policies but the runner does not consult those fields. Those are documented non-gates, not new secretly missing enforcement. Provider-native subagents are observed rather than admitted as app-owned children.",
+      "minimum_direction": "Keep independent authoritative execution attempts; add a small durable request/result link and server-derived admission context first. Route every external entry and later mutation through engine-owned admission when governance is enabled; explicitly instrument Symphony or adapt its execution onto the common provider service. Capability checks compare provider-specific effective abilities, preserve unknown and retain Kiro restrictions. Enforce or reject parsed-only controls before presenting them as guards. Do not build a third state machine that mirrors Code and Symphony lifecycle.",
+      "focused_regression_gate": "Inventory WS, HTTP/CLI, bootstrap, reactors, recovery, Symphony runtime and reviewer paths. Deterministic fixtures must prove a child cannot widen mode, self-answer approval, revert outside ownership, switch to an unsupported execution provider or read unrelated lineage. Missing policy evidence fails closed for governed actors while trusted human opt-in semantics remain explicit. Test each supported provider\u2019s effective capabilities; approval labels alone are insufficient.",
+      "refs": [
+        {
+          "path": "apps/server/src/orchestration/http.ts",
+          "line": 79,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/http.ts:79"
+        },
+        {
+          "path": "apps/server/src/ws.ts",
+          "line": 1634,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/ws.ts:1634"
+        },
+        {
+          "path": "apps/server/src/orchestration/decider.ts",
+          "line": 351,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/decider.ts:351"
+        },
+        {
+          "path": "apps/server/src/orchestration/decider.ts",
+          "line": 494,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/decider.ts:494"
+        },
+        {
+          "path": "packages/contracts/src/orchestration.ts",
+          "line": 125,
+          "url": "/Users/kamogelo/Code/t3code/packages/contracts/src/orchestration.ts:125"
+        },
+        {
+          "path": "apps/server/src/orchestration/Layers/ProviderCommandReactor.ts",
+          "line": 447,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts:447"
+        },
+        {
+          "path": "apps/server/src/symphony/Runner/Live.ts",
+          "line": 29,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Runner/Live.ts:29"
+        },
+        {
+          "path": "apps/server/src/symphony/Runner/Dispatcher.ts",
+          "line": 263,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Runner/Dispatcher.ts:263"
+        },
+        {
+          "path": "apps/server/src/symphony/Runner/Policy.ts",
+          "line": 14,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Runner/Policy.ts:14"
+        },
+        {
+          "path": "apps/server/src/symphony/Workflow/Config.ts",
+          "line": 345,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Workflow/Config.ts:345"
+        },
+        {
+          "path": "docs/architecture/symphony.md",
+          "line": 143,
+          "url": "/Users/kamogelo/Code/t3code/docs/architecture/symphony.md:143"
+        }
+      ]
+    },
+    {
+      "id": "S08",
+      "title": "Symphony reintroduces scrubbed tracker secrets when spawning its child",
+      "priority": "P1",
+      "evidence_class": "Source-confirmed credential-boundary defect; no secret values read or child run.",
+      "current_call_path": "Runner/Live resolves the selected tracker\u2019s secretEnvironmentNames and supplies process.env to makeCodexAgentRuntime. spawnAppServer removes those names with scrubEnvironment, then passes the resulting env to ChildProcess.make with extendEnv:true. The vendored Effect Node spawner implements that as { ...globalThis.process.env, ...options.env }; omitted keys therefore reappear. resolveSpawnCommand has the same extend-merge behaviour on Windows. The factory also catches adapter resolution errors and uses an empty secret-name list.",
+      "implication": "Environment-backed tracker credentials present on the server are inherited by the coding child despite the documented promise they are scrubbed. Inline YAML secrets not present in process.env are a different case. Pure scrubEnvironment tests cover removal from a JavaScript object but not the final spawned environment. This does not require an attacker or remote access to be a defect: it contradicts an explicit child credential boundary.",
+      "minimum_direction": "Pass a complete scrubbed environment with extendEnv=false at both resolution and spawn. Resolve required credential boundaries fail-closed; do not quietly turn adapter failure into an empty blocklist. Consider whether each child should receive only its selected provider credentials, but do not expand this fix into an unscoped global secret vault or arbitrary environment blacklist.",
+      "focused_regression_gate": "Use sentinel names/values in an injected host environment and capture final spawn options/environment through the existing fake spawner, including Windows .cmd resolution. Require PATH/HOME and intended provider auth preserved, all declared tracker secret names absent, and adapter-resolution failure to prevent spawn. Test the actual spawn boundary, not only scrubEnvironment.",
+      "refs": [
+        {
+          "path": "apps/server/src/symphony/Runner/Live.ts",
+          "line": 29,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Runner/Live.ts:29"
+        },
+        {
+          "path": "apps/server/src/symphony/Runner/AgentRuntime.ts",
+          "line": 139,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Runner/AgentRuntime.ts:139"
+        },
+        {
+          "path": "apps/server/src/symphony/Runner/AgentRuntime.scrub.test.ts",
+          "line": 9,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Runner/AgentRuntime.scrub.test.ts:9"
+        },
+        {
+          "path": ".repos/effect-smol/packages/effect/src/unstable/process/ChildProcess.ts",
+          "line": 415,
+          "url": "/Users/kamogelo/Code/t3code/.repos/effect-smol/packages/effect/src/unstable/process/ChildProcess.ts:415"
+        },
+        {
+          "path": ".repos/effect-smol/packages/platform-node-shared/src/NodeChildProcessSpawner.ts",
+          "line": 80,
+          "url": "/Users/kamogelo/Code/t3code/.repos/effect-smol/packages/platform-node-shared/src/NodeChildProcessSpawner.ts:80"
+        },
+        {
+          "path": "packages/shared/src/shell.ts",
+          "line": 575,
+          "url": "/Users/kamogelo/Code/t3code/packages/shared/src/shell.ts:575"
+        }
+      ]
+    },
+    {
+      "id": "S09",
+      "title": "Chat delegation is a new manual item, and tracker eligibility can overstate complete dependency evidence",
+      "priority": "P1 intake correctness prerequisite; P2 current manual-duplicate risk",
+      "evidence_class": "Source-confirmed product-contract gap and bounded dependency-read gap; no live tracker writes.",
+      "current_call_path": "ws delegates to HandoffService.delegateFromThread. The service verifies a source thread exists, then creates a random wi-ID and a manual item with delegated-ID, lifecycle eligible and caller-supplied objective/summary. It does not resolve a configured native tracker item, deduplicate source request/message, validate that source thread belongs to the chosen repository/project or persist the human message and resulting attempt linkage. Existing WorkItemRepository uniqueness on project/tracker-kind/opaque ID and fenced claims are reusable, but random manual IDs evade canonical intake dedupe.",
+      "implication": "The seven adapter registry is real and should be reused. Its read interface does not establish mutation support. Eligibility correctly checks active/terminal state, labels, dispatchable and claimed IDs, but leaf dependency evidence differs. Linear fetches inverseRelations(first:50) without relation pageInfo; a hidden 51st blocker cannot be marked unknown. GitHub Projects and Azure Boards emit blockedBy=[] for unsupported relation reads; Azure mapping also defaults a missing System.State to Active. Empty or fabricated active evidence must not silently support a general \u201csafe to dispatch this external item\u201d promise. Existing adapter profiles describe some of these limits; they are not evidence of live support.",
+      "minimum_direction": "Implement a durable ordinary-chat request linked to the original human message and canonical {project, tracker kind, configured scope/connection, opaque native ID}, using Registry.resolve and existing claims. Keep read/probe/write and dependency evidence explicit. Reject incomplete required blocker evidence; paginate or expose unsupported/unknown. Preserve Symphony board and review/merge policy, separate tracker from source control and avoid a Jira-only path.",
+      "focused_regression_gate": "Duplicate submit and restart produce one canonical item/result link; changed source message conflicts. Same display key in two scopes never aliases. Reject source-thread/repository mismatch. Linear fixture with 51 relations and a non-terminal last blocker must not dispatch; Azure missing state stays unknown/malformed; Projects closed issue in active board column stays excluded. Unavailable optional mutations cannot be advertised or silently emulated.",
+      "refs": [
+        {
+          "path": "apps/server/src/ws.ts",
+          "line": 1217,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/ws.ts:1217"
+        },
+        {
+          "path": "apps/server/src/symphony/HandoffService.ts",
+          "line": 490,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/HandoffService.ts:490"
+        },
+        {
+          "path": "apps/server/src/symphony/Persistence/Layers/WorkItemRepository.ts",
+          "line": 259,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Persistence/Layers/WorkItemRepository.ts:259"
+        },
+        {
+          "path": "apps/server/src/symphony/Trackers/Registry.ts",
+          "line": 72,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/Registry.ts:72"
+        },
+        {
+          "path": "apps/server/src/symphony/Trackers/Adapter.ts",
+          "line": 18,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/Adapter.ts:18"
+        },
+        {
+          "path": "apps/server/src/symphony/Orchestrator/Eligibility.ts",
+          "line": 30,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Orchestrator/Eligibility.ts:30"
+        },
+        {
+          "path": "apps/server/src/symphony/Trackers/LinearApiClient.ts",
+          "line": 227,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/LinearApiClient.ts:227"
+        },
+        {
+          "path": "apps/server/src/symphony/Trackers/LinearAdapter.ts",
+          "line": 138,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/LinearAdapter.ts:138"
+        },
+        {
+          "path": "apps/server/src/symphony/Trackers/GitHubProjectsAdapter.ts",
+          "line": 170,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/GitHubProjectsAdapter.ts:170"
+        },
+        {
+          "path": "apps/server/src/symphony/Trackers/AzureBoardsAdapter.ts",
+          "line": 145,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/AzureBoardsAdapter.ts:145"
+        }
+      ]
+    },
+    {
+      "id": "S10",
+      "title": "Large reads and unbounded ingress can monopolise the same server that owns reliable acceptance",
+      "priority": "P2",
+      "evidence_class": "Source-confirmed capacity limits/opportunities; no measured performance incident.",
+      "current_call_path": "NodeSqliteClient uses DatabaseSync with synchronous statement.all/run, a single connection semaphore and a 5-second busy timeout. Per-thread detail selects all messages/activities/checkpoints, then materialises them under a snapshot transaction; UI row virtualisation does not bound that server work. ProviderSessionReconciler still calls getSnapshot, hydrating every thread\u2019s body, despite the HTTP snapshot route already changing to a lightweight command model to avoid that cost. Engine ingress and domain PubSub are unbounded. More concretely, protocol.handleNotification and handleRequest enqueue every payload into unbounded raw queues before calling the typed handler. client.ts always installs those direct handlers; CodexSessionRuntime registers typed handlers and consumes its own serverNotifications queue, but never consumes raw.notifications/raw.requests. This retains a duplicate raw notification/request history for the Code session lifetime even when typed processing keeps up; Symphony does use the raw notification API, so globally removing it would break a real caller. Terminal history is capped by 5,000 lines but a single long line is not byte-bounded.",
+      "implication": "A large detail/reconcile read or SQLite lock wait can block the Node event loop, while upstream queues accumulate. The raw duplicate-queue retention is a current allocation path, rather than merely a hypothetical slow consumer. There is no measured p95, CPU, RSS or production stall in this review, and no retained-byte estimate is claimed. Existing lightweight shell/command snapshots, atomic detail sequence, native FileFinder cap/idle TTL, coalesced saves and runtime receipts are positive foundations. Root owns the separate board subscription/truncation findings; this row does not duplicate those.",
+      "minimum_direction": "Use the lightweight lifecycle fields for session reconciliation; paginate history/storage projections with stable snapshot/cursor semantics where actual callers permit it. Make raw queue delivery opt-in or otherwise bounded for subscribers while preserving typed handlers and Symphony\u2019s real raw subscription; specify whether slow subscribers block or fail explicitly. Introduce bounded admission/backpressure and per-key fairness at demonstrated hot queues; do not truncate authoritative closure events. Add byte limits to retained terminal/output representations. Only consider a SQLite worker/read separation after equivalent workload measurements show it necessary, because transaction/cancellation semantics must remain correct.",
+      "focused_regression_gate": "Fixed fixtures: 100 idle threads, one 10,000-turn history, a single multi-MiB terminal line and a contended SQLite write. Record event-loop lag, command acceptance p95/p99, RSS, rows/bytes decoded, queue depth and first-page latency. Feed a large typed-only Codex stream and assert no raw compatibility history is retained; preserve the Symphony raw subscription fixture. Assert reconciliation does not hydrate message bodies, bounded page/queue contracts and no false fresh empty result on read failure. Benchmark the same datasets/runtime before and after; no timings are claimed here.",
+      "refs": [
+        {
+          "path": "apps/server/src/persistence/NodeSqliteClient.ts",
+          "line": 33,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/persistence/NodeSqliteClient.ts:33"
+        },
+        {
+          "path": "apps/server/src/persistence/NodeSqliteClient.ts",
+          "line": 185,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/persistence/NodeSqliteClient.ts:185"
+        },
+        {
+          "path": "apps/server/src/persistence/NodeSqliteClient.ts",
+          "line": 277,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/persistence/NodeSqliteClient.ts:277"
+        },
+        {
+          "path": "apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts",
+          "line": 782,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts:782"
+        },
+        {
+          "path": "apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts",
+          "line": 1933,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts:1933"
+        },
+        {
+          "path": "apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts",
+          "line": 2064,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts:2064"
+        },
+        {
+          "path": "apps/server/src/provider/Layers/ProviderSessionReconciler.ts",
+          "line": 23,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/provider/Layers/ProviderSessionReconciler.ts:23"
+        },
+        {
+          "path": "apps/server/src/orchestration/http.ts",
+          "line": 29,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/http.ts:29"
+        },
+        {
+          "path": "apps/server/src/orchestration/Layers/OrchestrationEngine.ts",
+          "line": 90,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/OrchestrationEngine.ts:90"
+        },
+        {
+          "path": "packages/effect-codex-app-server/src/protocol.ts",
+          "line": 156,
+          "url": "/Users/kamogelo/Code/t3code/packages/effect-codex-app-server/src/protocol.ts:156"
+        },
+        {
+          "path": "packages/effect-codex-app-server/src/protocol.ts",
+          "line": 294,
+          "url": "/Users/kamogelo/Code/t3code/packages/effect-codex-app-server/src/protocol.ts:294"
+        },
+        {
+          "path": "packages/effect-codex-app-server/src/client.ts",
+          "line": 187,
+          "url": "/Users/kamogelo/Code/t3code/packages/effect-codex-app-server/src/client.ts:187"
+        },
+        {
+          "path": "apps/server/src/provider/Layers/CodexSessionRuntime.ts",
+          "line": 1138,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/provider/Layers/CodexSessionRuntime.ts:1138"
+        },
+        {
+          "path": "apps/server/src/terminal/Manager.ts",
+          "line": 855,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/terminal/Manager.ts:855"
+        },
+        {
+          "path": "apps/server/src/workspace/WorkspaceSearchIndex.ts",
+          "line": 15,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/workspace/WorkspaceSearchIndex.ts:15"
+        }
+      ]
+    }
+  ],
+  "worktree_status_path": "/tmp/neokod-critical-review-20261004/server-review-worktree-status.txt",
+  "docs_read": [
+    "README.md",
+    "AGENTS.md",
+    "docs/README.md",
+    "docs/architecture/overview.md",
+    "docs/architecture/state-and-evidence.md",
+    "docs/architecture/symphony.md",
+    ".plans/20-orchestration-direction.md",
+    "docs/providers/codex.md",
+    "docs/providers/claude.md",
+    "docs/providers/copilot.md",
+    "docs/providers/cursor.md",
+    "docs/providers/grok.md",
+    "docs/providers/opencode.md",
+    "docs/integrations/symphony-linear.md",
+    "docs/integrations/symphony-github-projects.md",
+    "docs/integrations/symphony-azure-boards.md"
+  ],
+  "findings_count": 10,
+  "scope": "Backend/domain/server only; root owns frontend and board findings"
+}

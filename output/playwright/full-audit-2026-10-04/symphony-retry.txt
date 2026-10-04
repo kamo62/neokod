@@ -1,0 +1,24 @@
+- button "Switch mode": Neokod Dev
+- list:
+  - listitem:
+    - button "Back to Code mode": Back to Code
+- list:
+  - listitem:
+    - button "Projects"
+  - listitem:
+    - button "Tracker connections"
+- separator
+- list:
+  - listitem:
+    - button "Symphony settings"
+- button "Resize Sidebar"
+- main:
+  - heading "Symphony projects" [level=1]
+  - paragraph: Code repository, tracker scope, and delivery policy meet here.
+  - button "Refresh"
+  - button "Create project"
+  - text: Create your first Symphony project Choose an existing Code project, clone a repository, or create a local project. Then attach its tracker and runtime policy.
+  - button "Create project"
+- button "Toggle main sidebar" [pressed]: Toggle Sidebar
+- region "Notifications"
+- region "Notifications"

@@ -1,0 +1,73 @@
+# Independent validation of the T3 upstream review
+
+Reviewed on 4 October 2026 with the requested Sol high lane. This was read-only research. No application files, report, plan, tests, dependencies, provider sessions, tracker data, commits or deployments were changed. Evidence and this validation were written only under `/tmp/neokod-sol-validation-20261004/`.
+
+The main local correctness findings survive independent source tracing. Rewind isolation, command-receipt aggregate identity, Claude result/config-directory ownership, terminal-event persistence, process signal validation, protocol EOF and unbounded input, checkpoint object isolation and specific history/logging reads all have concrete local seams. Their implementation and runtime acceptance gates remain outstanding. The evidence supports bounded local changes and an in-chat orchestration prototype; it does not prove a replacement engine cheaper or production-ready.
+
+The machine-readable [per-finding validation](evidence/t3-sol-per-finding-validation.json) accounts for every PR mention and override across the early, open, orchestration and initial port findings: 100 distinct PRs, with every original claim variant retained. It also records 17 non-PR coverage, architecture, governance, provider and Symphony/Jira claims. For PRs, 39 are confirmed at source scope, 60 require qualifications, and one existing exclusion rationale is rejected. For non-PR claims, eight are confirmed, seven qualified and two coverage assertions rejected. These verdicts do not certify every hunk of stacked PRs, every semantic requirement of auto-triaged proposals, or live behaviour.
+
+## Corrections that need integration
+
+1. **The observed ledger was behind the completed review.** None of the 21 `early-overrides.json` records had been applied to `/tmp/neokod-comprehensive-20261004/ledger.json`. All retained automated triage levels, including the deeper #12306/#5246 findings and already-covered #4759/#5134. The observed 4,231 automated / 61 deeper count is stale relative to that completed audit. Four overlapping open records, #15400/#15488/#15297/#15450, also had older orchestration narratives replacing later detailed findings. `classify.py` relies on unsorted `glob('*overrides.json')`, while `orchestrator-overrides.json` is a wrapper and cannot be treated as a flat ID map. Regenerate using explicit precedence and compare every applied override; root owns this integration.
+
+2. **Path triage does not fully implement the two hard exclusion policies.** All 4,292 path-count fields recompute without discrepancies, but a deterministic sample shows removed relay/connect paths left as eligible (#4844 and #11794), desktop composer dictation UI marked candidate (#15491), V2 testkit fixtures counted as production (#4786), and ACP fake-package fixtures classified as runtime (#15484). Keep this as mechanical inventory/path matching, with exclusions enforced during intent review. It is not a semantic audit of 4,292 diffs or a policy-complete portable backlog. The sample and full field reconciliation are saved separately.
+
+3. **Reject the #12847 “unmatched V2 indexes” rationale.** Saved `recent-deep/pr-12847-files.json` drops four classic projection indexes. All four exist locally in migrations 005/008. Later local indexes in 018/019/029 cover some exact prefixes. The turn `(thread_id, requested_at)` covering relation is not established. Reclassify as conditional local index/query-plan investigation; do not remove all four blindly or reuse upstream timing claims.
+
+4. **#12306 requires truthful local rewind semantics.** The filesystem risk is confirmed: `CheckpointReactor.ts:715-807` resolves a live cwd and restores without proving isolation, and `GitVcsDriver.ts:868-904` runs `git restore` and `git clean -fd`. However, current Neokod has no `restoreFiles` selector on the revert command/event. It always restores files before provider rollback. “Preserve conversation-only rewind” is an upstream/product requirement, not existing local behaviour to preserve. A backend guard can reject root/shared rewinds; a conversation-only action needs a deliberate local contract if chosen.
+
+5. **#9000 is a snapshot materialisation optimisation, not a licence to truncate raw domain detail.** Local detail and detail-snapshot queries do materialise every activity payload. Upstream's body explicitly preserves raw `getThreadDetailById`. Follow the actual client projection/recent/pinned selection boundary, preserve sequence consistency, and leave raw consumers correct. #9662 removes only timestamp/approval reads, not all six history scans. #9671 describes nine upstream projectors; local has ten, including runtime items.
+
+6. **Correct the #11773 fallback anchor.** The worktree succeeds before optional `gh-merge-base` write, whose error propagates. Existing base fallback is `GitVcsDriverCore.ts:1184-1235`. The cited 1284-1302 handles unborn branch lookup. Keep metadata failure best effort while preserving checkout/cancellation errors.
+
+7. **Preserve the exact SQLite boundaries.** Exact published Effect beta.78 source defaults to deferred `BEGIN` and reads `code`/`errno`, not Node `errcode`. The isolated Node v26.10.0 mechanism probe establishes 517 for snapshot upgrade, 2067 for unique violation and 13 for full storage. Normalising `errcode` to `errno` lets beta.78 classify 517 as `LockTimeoutError` and 2067 as `UniqueViolation`; code 13 still becomes `UnknownError`. Disk-full recovery therefore needs its own explicit cause/policy handling. Writable-client `BEGIN IMMEDIATE` avoids snapshot upgrade, while read-only clients remain deferred. It does not cure every lock condition. The project CLI prefers live RPC and opens the database directly when that mode cannot be resolved, so a same-database separate writer is possible; it was not demonstrated as typical. No Neokod application SQLite test was run.
+
+8. **Keep already-covered and deferred claims narrow.** Local busy timeout (#5134), central runtime-item closure (#4759), Claude permission callback (#13786), and omission/false fast-mode semantics (#15473) have source coverage. This does not establish every native child cleanup or live permission edge. #5388 remains a current SDK attribution-trace candidate. #15224 is covered when interaction mode is explicitly plan/default, while omission leaves current SDK permission state unchanged. #15389 has generated unarchive/resume methods locally, but method presence does not prove archived-session recovery.
+
+## Independent coverage checks
+
+[Coverage evidence](evidence/t3-coverage-validation.json) independently reconciles the raw closed/open lists, details and ledger IDs:
+
+| Check                                                   | Result                                            |
+| ------------------------------------------------------- | ------------------------------------------------- |
+| Closed records / distinct IDs                           | 3,233 / 3,233                                     |
+| Merged / closed unmerged                                | 2,562 / 671                                       |
+| Open records / distinct IDs                             | 1,059 / 1,059                                     |
+| Combined details and ledger                             | 4,292 each, identical ID union                    |
+| Closed/open overlap                                     | None                                              |
+| Closed outside declared interval                        | None                                              |
+| Early closed slice before 19 September                  | 2,305, of which 1,869 merged                      |
+| Closed search leaf counts                               | 474 + 250 + 782 + 857 + 870 = 3,233               |
+| Closed leaf pages                                       | 5 + 3 + 8 + 9 + 9, no incomplete-results flags    |
+| Open REST page sizes                                    | Ten pages of 100, final page of 59                |
+| Complete file inventory with bad length                 | None                                              |
+| Partial inventories                                     | 4179, 5199, 6248, 7171, 8183, 10653, 10654, 12327 |
+| Recomputed file/UI/removed/runtime/matching-path counts | No differences across all 4,292 rows              |
+
+The closed collector splits searches exceeding GitHub's 1,000-result ceiling into disjoint intervals whose inclusive boundaries advance by one second. Saved leaves cover the declared interval contiguously, and the raw search union matches the saved closed records. Open enumeration uses paginated REST rather than capped search.
+
+This confirms complete enumeration of the captured API results, not atomic external state or complete semantic review. Closed cutoff is 05:27:33 UTC. Open capture runs 05:27:36.763–05:27:56.923 UTC; file details complete at 05:39:01.798 UTC. Seven open metadata updates drifted and are recorded in the manifest. Later observed diffs for open proposals must retain their own dates. Zero-file records and partial inventories stay deferred.
+
+The saved Neokod release list confirms non-draft published v3.6.0 at 10 August 06:42:36 UTC. It is a published-release proxy; installed/deployed version was not established. The saved nightly release/compare objects confirm `.2644` at `737993303d36e10674c54b95e5bd3826682c99c7`, published 4 October 03:41:53 UTC, 50 commits beyond `31a9da179ed0`, then nine commits to frozen main `ee7b49d638e4`. The last two post-`c5a0c78...` changes are web UI/test fixture only. Release availability and ancestry do not prove maturity. Initial per-merge comparisons independently support the prior stable/.2623 membership distinctions, including #15048 after .2623 and the off-main branch commits #14665/#14547/#14615.
+
+## Architecture and product validation
+
+Upstream V2 is an execution/lifecycle engine with MCP delegation inside an ordinary provider conversation. The active parent tool call requests child work; server-owned thread/run/node/attempt records carry lineage. It is not inherently a second LLM coordinator, mandatory user mode, or QuickJS evaluator. Execution trees, completion cohorts, pinned result transfers and replay-safe/process-bound effects are real source patterns. The .2610 notes explicitly describe lossy provider handoff and a one-way history copy whose databases diverge afterwards.
+
+Neokod's single in-memory command worker and atomic event/projection/receipt transaction are a useful admission seam. They are neither a durable pending-work queue nor provider-start acknowledgement. The existing follow-up queue is persisted on the client and drains through mounted `ChatView`. Durable acceptance, launch identity, cancellation, restart/resume policy and results need deliberate implementation.
+
+The governance distinction remains source-supported. Upstream's MCP helper restricts requested child runtime and interaction modes. Its raw WebSocket route requires authenticated operate authority and server-stamps creation provenance, but the delegated command reaches run/node validation and materialises supplied modes without the same visible ceiling check. This is a mismatch between authenticated admission surfaces. It is not evidence of unauthenticated access, child credential possession, or an exploit. Trusted human operate authority is distinct from any promised agent ceiling. Neokod should enforce app-owned-agent authority at a common accepted-command seam; upstream auth/cloud infrastructure remains excluded.
+
+Upstream's inspected built-in driver list lacks dedicated Copilot and Kiro adapters. Generic ACP is not proof of their compatibility. Current Kiro supervised/approval-required restrictions remain part of any local capability design. All-provider parity is a release gate, not necessarily the first Codex+Claude chat prototype.
+
+Symphony remains a second execution plane. Its runner directly spawns Codex app-server; sharing the server process and git infrastructure does not unify chat authority, cancellation or history. Parsed approval/protected-path/limit fields must remain separate from runtime-enforced controls. Existing owner Symphony changes were not reviewed for implementation approval. No live tracker-to-PR proof was supplied.
+
+The requested existing-Jira-task flow has a concrete gap. The Jira client accepts keys or IDs, and the adapter preserves the display key while using `raw.id` as canonical identity. Current `delegateFromThread` accepts objective/thread but creates a generated manual `delegated-...` item and does not persist source-thread identity in that item's source. Reuse the existing configured tracker/workflow, resolve key to canonical ID, validate dispatch scope/state/blockers, claim or reuse the normal work item, and durably link request/result back to the chat. Authentication is not dispatchability. Existing ownership transfer code helps, but does not prove native session continuity or one lifecycle across both planes.
+
+The product direction is coherent: orchestration inside ordinary chat, with optional “Send ABC-123 to Symphony”, rather than a required mode change. The evolution-first recommendation remains a design judgement supported by concrete local seams. A replacement should remain open to a comparable prototype that proves authority, provider lifecycle, restart, history-copy/rollback and measured maintenance/performance advantage. No source inspection establishes those comparative outcomes by itself.
+
+## Verification limits and delivery
+
+No new runtime experiment, application test, build, benchmark, native provider session or tracker/API operation was performed in this lane. The Node SQLite probe and unavailable `vp check` / `vp run typecheck` evidence were supplied by root and independently interpreted, not rerun. No dependency installation was requested or performed. Passing source/JSON reconciliation is not passing application checks. The required application checks and live acceptance gates remain outstanding for implementation; no version/changelog bump applies to this research validation.
+
+The authoritative per-finding record includes original claim variants, status/head or merge pins, independent code/diff anchors, verdict, corrections and remaining gates. `evidence-hashes.json` records source/evidence fingerprints; `classifier-sample.json` preserves the sample, and `coverage-validation.json` preserves full arithmetic/field checks. Root should integrate corrections into the existing report and canonical plan, without introducing another execution tracker.

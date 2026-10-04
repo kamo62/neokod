@@ -39,7 +39,7 @@ describe("resolveEnvIndirection / resolveEffectiveConfig", () => {
     expect(config?.pollIntervalMs).toBe(WORKFLOW_DEFAULTS.pollIntervalMs);
     expect(config?.autonomy).toBe("execute");
     expect(config?.maxConcurrentAgents).toBe(WORKFLOW_DEFAULTS.maxConcurrentAgents);
-    expect(config?.codexCommand).toBe("codex app-server");
+    expect(config?.codexCommand).toBe("codex");
   });
 
   it("YAML values take precedence over environment for non-indirected keys", () => {

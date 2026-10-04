@@ -1,0 +1,2684 @@
+{
+  "captured_utc": "2026-10-04T12:33:52.089480+00:00",
+  "scope": "Usage, model analytics, account limits, pricing provenance and Neokod gap review. Twenty competitors: eighteen with selected public source; Conductor and Maestri documentation only. Traycer accounting Host and current Empryo v3 remain private.",
+  "proof_boundary": "Read-only source and official-document inspection. No competitor execution, account probes, paid provider calls, billing verification or matched visual/performance trial.",
+  "source_policy": "Existing research SHAs reused for focused follow-up, except CodexMonitor head refreshed. These are pinned mechanisms, not a fresh full-main census for every repository.",
+  "neokod": {
+    "captured_utc": "2026-10-04T12:20:13.338041+00:00",
+    "head": "da7655bb2e3964c800eec882360e7d1d0eb4ca25",
+    "evidence": "Current working-tree source inspection only; application and provider not run.",
+    "files": [
+      {
+        "path": "apps/web/src/components/chat/ChatComposer.tsx",
+        "bytes": 107775,
+        "sha256": "eaa68696e03228e74ee4017511eb98fc8f50eaf1a2e95a22b00bcc49ac0f0371"
+      },
+      {
+        "path": "apps/web/src/components/chat/ContextWindowMeter.tsx",
+        "bytes": 5513,
+        "sha256": "91bb3e10a19cc3203a7e0bb910501e4cb28219e2c79e39b9e7e3830d1b80f778"
+      },
+      {
+        "path": "apps/web/src/lib/contextWindow.ts",
+        "bytes": 4119,
+        "sha256": "8c4c003b081e5440153a679f3dac35b50a4b5d9a49052bbd0616030e22da7267"
+      },
+      {
+        "path": "apps/web/src/components/settings/ProviderModelsSection.tsx",
+        "bytes": 16272,
+        "sha256": "6ee8d0a48f0d6846b971b93482325aaf520248258f4b3e3bb6421ebeb3d73d01"
+      },
+      {
+        "path": "apps/web/src/providerModels.ts",
+        "bytes": 3305,
+        "sha256": "80fc540031370a749b151276476c0d85ce3ab3811b3ee83bd50d63edb5eb73af"
+      },
+      {
+        "path": "packages/contracts/src/server.ts",
+        "bytes": 24432,
+        "sha256": "37a0b4d2144e6c3d9aa8dd8efee30048a8769572e0a464bf0e0cc3066b227fde"
+      },
+      {
+        "path": "packages/contracts/src/providerRuntime.ts",
+        "bytes": 43957,
+        "sha256": "f5ac630d893ffb9841a52621a97818777d54d0b9f9b0788316c254ad8d879923"
+      },
+      {
+        "path": "packages/contracts/src/symphony.ts",
+        "bytes": 48567,
+        "sha256": "bf0abf7e079bee664590572f2fffd1b8aff7f831faa26b0cc0276b8e7450a056"
+      },
+      {
+        "path": "apps/server/src/provider/copilot/CopilotQuota.ts",
+        "bytes": 2993,
+        "sha256": "194cfced5a70624fd83c1acb6ccdb748fe7b112497bbebb745e204197b8eb16d"
+      },
+      {
+        "path": "apps/server/src/provider/copilot/CopilotProvider.ts",
+        "bytes": 10923,
+        "sha256": "841ae59d56a21cc930aa1947502798acfda2c6531d474ee9c37d7c3d983d363e"
+      },
+      {
+        "path": "apps/server/src/provider/Layers/ClaudeAdapter.ts",
+        "bytes": 135878,
+        "sha256": "107199dbe54ffe8cbdbd85f269fa36803f1b853d2202ed532ea91a1bbda2996d"
+      },
+      {
+        "path": "apps/server/src/provider/Layers/CodexAdapter.ts",
+        "bytes": 63491,
+        "sha256": "7b46bf8fad439cb84d6c03fd2cbeb2182d03418ae1e7fc151ecb3314235a11c9"
+      },
+      {
+        "path": "apps/server/src/provider/Layers/ProviderService.ts",
+        "bytes": 52463,
+        "sha256": "a2d8bfcf1d6d6f7e0f55583535ceb20fda2642d857b2a38e33086df0a17f214e"
+      },
+      {
+        "path": "apps/server/src/provider/Layers/ProviderEventLoggers.ts",
+        "bytes": 3455,
+        "sha256": "08162324045c64368b921c97640ccb15d605b52c7835e98938d66703a93b5729"
+      },
+      {
+        "path": "apps/server/src/provider/Layers/EventNdjsonLogger.ts",
+        "bytes": 8681,
+        "sha256": "f2cddfbdf6929944206311cb5eaea10de08bd0a910a79915af307104c1386885"
+      },
+      {
+        "path": "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts",
+        "bytes": 77941,
+        "sha256": "e18cdbd8dd22fda2c0727f641ba7d350297255eeaac23f43e0126a22ec6c6dbd"
+      },
+      {
+        "path": "apps/server/src/symphony/Persistence/Layers/RunAttemptRepository.ts",
+        "bytes": 10708,
+        "sha256": "0a16ebc1e9ba527773718b08fd5561bb8d4745090f17006e006c667fdaa750ef"
+      },
+      {
+        "path": "apps/server/src/symphony/Runner/AgentRuntime.ts",
+        "bytes": 15534,
+        "sha256": "b593cf63cd52f78a7e77a22dadd3ba46a006a8342b373b57766e1a0fe3060d34"
+      }
+    ],
+    "revalidated_utc": "2026-10-04T12:33:52.089480+00:00"
+  },
+  "products": [
+    {
+      "repository": "BytePioneer-AI/codex-host",
+      "sha": "49d8b1c6a3d70ca9ea2024d688e68847e66dd163",
+      "evidence": "Pinned public source inspection; no application or provider execution.",
+      "files": [
+        {
+          "path": "packages/adapters/claude-code/src/account-usage.ts",
+          "bytes": 2717,
+          "sha256": "30ab88d5dd3b0b376b5246d269f1e4ed00f4f9d24fbb64f5ba175904e8224f25",
+          "url": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/packages/adapters/claude-code/src/account-usage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/codex-host/packages/adapters/claude-code/src/account-usage.ts"
+        },
+        {
+          "path": "packages/adapters/claude-code/src/usage-estimate.ts",
+          "bytes": 2137,
+          "sha256": "c9244905e67a21b73a5474578f03d46d9bf8dda3519e46c54e4eaadfa63ba8d7",
+          "url": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/packages/adapters/claude-code/src/usage-estimate.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/codex-host/packages/adapters/claude-code/src/usage-estimate.ts"
+        },
+        {
+          "path": "packages/renderer-extension/src/renderer-usage-control.ts",
+          "bytes": 22315,
+          "sha256": "bd9ca1a93cab51274864bd661cdac6d2ebaeeaca6656c0eb3f4c618130ddb92d",
+          "url": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/packages/renderer-extension/src/renderer-usage-control.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/codex-host/packages/renderer-extension/src/renderer-usage-control.ts"
+        },
+        {
+          "path": "packages/renderer-extension/src/settings/accounts-usage.ts",
+          "bytes": 15270,
+          "sha256": "c2ea009d2fd49bcf3a4eaf6da516ec83070d652beb78e8b474efacdfa1b4173e",
+          "url": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/packages/renderer-extension/src/settings/accounts-usage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/codex-host/packages/renderer-extension/src/settings/accounts-usage.ts"
+        },
+        {
+          "path": "packages/shared-contracts/src/thread-usage.ts",
+          "bytes": 5209,
+          "sha256": "408432f9cd597eb608feada1f8bd688b97646f1708c225ffc0f809f8fbe031e5",
+          "url": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/packages/shared-contracts/src/thread-usage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/codex-host/packages/shared-contracts/src/thread-usage.ts"
+        }
+      ]
+    },
+    {
+      "repository": "can1357/oh-my-pi",
+      "sha": "6d8552d7f9df1852826923f07f0eed4fe29511f3",
+      "evidence": "Pinned public source inspection; no application or provider execution.",
+      "files": [
+        {
+          "path": "packages/ai/src/auth/usage.ts",
+          "bytes": 36001,
+          "sha256": "f74ad142500e059ef35d9e2646b44cf3a6052abb4e5f4cfaf275405ff2c96bb4",
+          "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/ai/src/auth/usage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/oh-my-pi/packages/ai/src/auth/usage.ts"
+        },
+        {
+          "path": "packages/stats/README.md",
+          "bytes": 3858,
+          "sha256": "14818017cdc0a087dbfb80ec80f72719848deb8a5d3f02481656bbf8731afdd6",
+          "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/stats/README.md",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/oh-my-pi/packages/stats/README.md"
+        },
+        {
+          "path": "packages/stats/src/aggregator.ts",
+          "bytes": 23193,
+          "sha256": "93053561abeb3534f17e1bdbe9a107289cdb1cba2696468b0e1e7989c0375eec",
+          "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/stats/src/aggregator.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/oh-my-pi/packages/stats/src/aggregator.ts"
+        },
+        {
+          "path": "packages/stats/src/client/app/nav.ts",
+          "bytes": 1885,
+          "sha256": "6bccbf901db752cd39921b2ee8d63a6d49d4b3718b469237364209c43889e60a",
+          "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/stats/src/client/app/nav.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/oh-my-pi/packages/stats/src/client/app/nav.ts"
+        },
+        {
+          "path": "packages/stats/src/client/routes/CostsRoute.tsx",
+          "bytes": 13558,
+          "sha256": "6c6f7c213aa0d9f45f248b1ed39e0d9038bf61cba8a00a8731419a8c11160bde",
+          "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/stats/src/client/routes/CostsRoute.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/oh-my-pi/packages/stats/src/client/routes/CostsRoute.tsx"
+        },
+        {
+          "path": "packages/stats/src/client/routes/OverviewRoute.tsx",
+          "bytes": 10478,
+          "sha256": "e109e8c930d487ffd1ee940e58fd28b6e0373eb0fb1015cbaf15778211e09fd2",
+          "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/stats/src/client/routes/OverviewRoute.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/oh-my-pi/packages/stats/src/client/routes/OverviewRoute.tsx"
+        },
+        {
+          "path": "packages/stats/src/db.ts",
+          "bytes": 60118,
+          "sha256": "eaecf997ea5dcc71c0fefabb36cbafe0ea43e1f8a5948ee581d28db75c29b467",
+          "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/stats/src/db.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/oh-my-pi/packages/stats/src/db.ts"
+        },
+        {
+          "path": "packages/stats/src/parser.ts",
+          "bytes": 24157,
+          "sha256": "14618542dabcea54791a7a9c3dc61316279a62304d73ba1e4559ed9084f105a2",
+          "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/stats/src/parser.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/oh-my-pi/packages/stats/src/parser.ts"
+        },
+        {
+          "path": "packages/stats/src/rollup.ts",
+          "bytes": 36792,
+          "sha256": "356322f6077bde7288c2eeef36d676ef9e652f143454ee7c33697c280317bc3a",
+          "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/stats/src/rollup.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/oh-my-pi/packages/stats/src/rollup.ts"
+        },
+        {
+          "path": "packages/stats/src/usage-windows.ts",
+          "bytes": 14052,
+          "sha256": "5be47345cae387fdefdae19599687f575512a6b49ee8698d0e58e553a560a2b3",
+          "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/stats/src/usage-windows.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/oh-my-pi/packages/stats/src/usage-windows.ts"
+        }
+      ]
+    },
+    {
+      "repository": "Dimillian/CodexMonitor",
+      "sha": "dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5",
+      "evidence": "Pinned public source inspection; no application or provider execution.",
+      "files": [
+        {
+          "path": "README.md",
+          "bytes": 14109,
+          "sha256": "6562fdbb361b7f6786756d10d1b5fab5ebed4c90c97ff3b1718299209bbf4507",
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/README.md",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/codexmonitor/source/README.md"
+        },
+        {
+          "path": "src-tauri/src/local_usage.rs",
+          "bytes": 860,
+          "sha256": "a34ae2491aafb2a938f9447ef9a2bb8bbc68e15d6b69b557f5e72384322ccabb",
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/src-tauri/src/local_usage.rs",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/codexmonitor/source/src-tauri/src/local_usage.rs"
+        },
+        {
+          "path": "src-tauri/src/shared/account.rs",
+          "bytes": 6951,
+          "sha256": "133c4a6f30e1e9d44749e4486e16a6753b123eaa37230a9b2817092364836e00",
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/src-tauri/src/shared/account.rs",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/codexmonitor/source/src-tauri/src/shared/account.rs"
+        },
+        {
+          "path": "src-tauri/src/shared/codex_core.rs",
+          "bytes": 35938,
+          "sha256": "080228367f569cb9afc3fb7fdea55d28a1a5ae71f1979eadd6c5a324d5d21854",
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/src-tauri/src/shared/codex_core.rs",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/codexmonitor/source/src-tauri/src/shared/codex_core.rs"
+        },
+        {
+          "path": "src-tauri/src/shared/local_usage_core.rs",
+          "bytes": 31310,
+          "sha256": "b1eefec4b24edeca4aa4bbdacbd1e85a39489191eadfa205a2650dc7a5def8a3",
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/src-tauri/src/shared/local_usage_core.rs",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/codexmonitor/source/src-tauri/src/shared/local_usage_core.rs"
+        },
+        {
+          "path": "src/features/app/hooks/useHomeAccount.ts",
+          "bytes": 10453,
+          "sha256": "cff499e25351b32f7e86a25e91441eced3637df7f6b6ee93b53c330f425c682f",
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/src/features/app/hooks/useHomeAccount.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/codexmonitor/source/src/features/app/hooks/useHomeAccount.ts"
+        },
+        {
+          "path": "src/features/app/hooks/useTraySessionUsage.ts",
+          "bytes": 2633,
+          "sha256": "450fca6166b2a46dd6b7eafe7e1e9d6001938574ee98439e018e4492bbae837d",
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/src/features/app/hooks/useTraySessionUsage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/codexmonitor/source/src/features/app/hooks/useTraySessionUsage.ts"
+        },
+        {
+          "path": "src/features/app/utils/usageLabels.ts",
+          "bytes": 2432,
+          "sha256": "bdba15df4dd00755fe13242c396d8ad96c02a484c69e8713cd28d05c2a324170",
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/src/features/app/utils/usageLabels.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/codexmonitor/source/src/features/app/utils/usageLabels.ts"
+        },
+        {
+          "path": "src/features/home/components/HomeUsageSection.tsx",
+          "bytes": 11640,
+          "sha256": "7d5632a1e00129d5c1840375f9cc252767c454b38b215b290d2c045e08a7bfd8",
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/src/features/home/components/HomeUsageSection.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/codexmonitor/source/src/features/home/components/HomeUsageSection.tsx"
+        },
+        {
+          "path": "src/features/home/homeFormatters.ts",
+          "bytes": 4543,
+          "sha256": "638b4d6cdc354fa9e6d2a257370fccd3658b8d394d7e15b43a325dac3dcf9a09",
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/src/features/home/homeFormatters.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/codexmonitor/source/src/features/home/homeFormatters.ts"
+        },
+        {
+          "path": "src/features/home/homeUsageViewModel.ts",
+          "bytes": 9366,
+          "sha256": "d3f039a5af7920abd48d4ff01b4952c0fa50156b46572608eab3e10296bca34f",
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/src/features/home/homeUsageViewModel.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/codexmonitor/source/src/features/home/homeUsageViewModel.ts"
+        },
+        {
+          "path": "src/features/home/hooks/useLocalUsage.ts",
+          "bytes": 2121,
+          "sha256": "19a4e0c3d16031c426f890e5c63503394c02648b604437c1b81937376a0c7c33",
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/src/features/home/hooks/useLocalUsage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/codexmonitor/source/src/features/home/hooks/useLocalUsage.ts"
+        },
+        {
+          "path": "src/features/models/hooks/useModels.ts",
+          "bytes": 10436,
+          "sha256": "fc13341600f7a67e02cf44a90642fd62de16141693ac5eacde0f88f74fcb9a4f",
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/src/features/models/hooks/useModels.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/codexmonitor/source/src/features/models/hooks/useModels.ts"
+        },
+        {
+          "path": "src/features/threads/hooks/useThreadRateLimits.ts",
+          "bytes": 2935,
+          "sha256": "fc3146efd755096202dafa893ba311c015224caee9ae488ca4f1865bf71689f1",
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/src/features/threads/hooks/useThreadRateLimits.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/codexmonitor/source/src/features/threads/hooks/useThreadRateLimits.ts"
+        },
+        {
+          "path": "src/features/threads/utils/threadNormalize.ts",
+          "bytes": 11704,
+          "sha256": "4c3acd2433f52abaa7c6c327b655ae24f3a289b658587c5732c9ff722bcce8b4",
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/src/features/threads/utils/threadNormalize.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/codexmonitor/source/src/features/threads/utils/threadNormalize.ts"
+        },
+        {
+          "path": "src/services/tauri.ts",
+          "bytes": 32191,
+          "sha256": "23ce2a9db0553c510a3b8b16eb6abd3d341e414981ecfbf01fb0b33fe42e3eca",
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/src/services/tauri.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/codexmonitor/source/src/services/tauri.ts"
+        },
+        {
+          "path": "src/types.ts",
+          "bytes": 16393,
+          "sha256": "8a08580b580441676e81513978df6195c6cb48f1b35e77894d9a3eb07dee839f",
+          "url": "https://github.com/Dimillian/CodexMonitor/blob/dd61b9abd37de5ded86e82b9fe8a83fd49d46fa5/src/types.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/codexmonitor/source/src/types.ts"
+        }
+      ]
+    },
+    {
+      "repository": "earendil-works/pi",
+      "sha": "200387122ca450d6387f033949423114a270b96c",
+      "evidence": "Pinned public source inspection; no application or provider execution.",
+      "files": [
+        {
+          "path": "packages/coding-agent/docs/usage.md",
+          "bytes": 5268,
+          "sha256": "88f22eb38ff9cf980d4d5c6af2376d08d683db20073c57fa8b10e752fee322d6",
+          "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/docs/usage.md",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/pi/packages/coding-agent/docs/usage.md"
+        },
+        {
+          "path": "packages/coding-agent/src/core/footer-data-provider.ts",
+          "bytes": 11687,
+          "sha256": "024ae5b3f50a15db9c149f644845ffb267df838b3a555a0756db95043e05a0e2",
+          "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/footer-data-provider.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/pi/packages/coding-agent/src/core/footer-data-provider.ts"
+        },
+        {
+          "path": "packages/coding-agent/src/core/model-registry.ts",
+          "bytes": 7309,
+          "sha256": "f4ced2d92df9097647aba7da3ae0bb273fa8089e966be15dba880db51d5dee0b",
+          "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/model-registry.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/pi/packages/coding-agent/src/core/model-registry.ts"
+        },
+        {
+          "path": "packages/coding-agent/src/core/usage-totals.ts",
+          "bytes": 3135,
+          "sha256": "8b18dd04d65e90af9b331cd5aa23d7891aab8a296f38a6026ce17a098d674ee9",
+          "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/usage-totals.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/pi/packages/coding-agent/src/core/usage-totals.ts"
+        },
+        {
+          "path": "packages/coding-agent/src/modes/interactive/components/footer.ts",
+          "bytes": 11618,
+          "sha256": "494c5dca212af8d895e20810269fd9d46b3b4f8e12435c803ae93049d6eb4ad4",
+          "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/components/footer.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/pi/packages/coding-agent/src/modes/interactive/components/footer.ts"
+        }
+      ]
+    },
+    {
+      "repository": "Emanuele-web04/synara",
+      "sha": "5f2ee77ae9fc60993db47e81419c1171a99a5c32",
+      "evidence": "Pinned public source inspection; no application or provider execution.",
+      "files": [
+        {
+          "path": "apps/server/src/betaUsageSnapshot.ts",
+          "bytes": 3645,
+          "sha256": "3358cec7fe6f184e0355c58cc686c0f89dfe14e71d6294c06bab60ccab328426",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/betaUsageSnapshot.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/betaUsageSnapshot.ts"
+        },
+        {
+          "path": "apps/server/src/persistence/Migrations/043_ProfileStatsIndexes.ts",
+          "bytes": 850,
+          "sha256": "98795bb89d743a418d6515dc75a740a37ace749b3f1de176dfe3115663f620ec",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/persistence/Migrations/043_ProfileStatsIndexes.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/persistence/Migrations/043_ProfileStatsIndexes.ts"
+        },
+        {
+          "path": "apps/server/src/persistence/Migrations/050_ProfileStatsArchive.ts",
+          "bytes": 2697,
+          "sha256": "a827621f5de7d2d6a168fce7423f600c62e9879d0a91a6f7aba3b4afe73e3a6e",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/persistence/Migrations/050_ProfileStatsArchive.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/persistence/Migrations/050_ProfileStatsArchive.ts"
+        },
+        {
+          "path": "apps/server/src/persistence/Migrations/051_ProfileStatsDeletedTokensModel.ts",
+          "bytes": 695,
+          "sha256": "8e0149a551c67067737442b24ac3a3a42c20a26b20638a505100662adcd59295",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/persistence/Migrations/051_ProfileStatsDeletedTokensModel.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/persistence/Migrations/051_ProfileStatsDeletedTokensModel.ts"
+        },
+        {
+          "path": "apps/server/src/persistence/Migrations/120_ProfileStatsDeletedProviderInstances.ts",
+          "bytes": 1301,
+          "sha256": "efe8b1f15897241ba3bdb1b183329fac9beb78fcc3389481a2e0ba79ed800f64",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/persistence/Migrations/120_ProfileStatsDeletedProviderInstances.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/persistence/Migrations/120_ProfileStatsDeletedProviderInstances.ts"
+        },
+        {
+          "path": "apps/server/src/profileStats.ts",
+          "bytes": 58390,
+          "sha256": "cc6213260c8d9e42d631d8d1ea080136e9801c3329f48a063e0318dda2f4f13e",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/profileStats.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/profileStats.ts"
+        },
+        {
+          "path": "apps/server/src/profileStatsArchive.ts",
+          "bytes": 39221,
+          "sha256": "2937396eee1525bd511c2046060ea58663852daf3ace374c357149c3de948d8a",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/profileStatsArchive.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/profileStatsArchive.ts"
+        },
+        {
+          "path": "apps/server/src/provider/claudeRequestUsage.ts",
+          "bytes": 887,
+          "sha256": "c20a8ea3f8f38efecd0c239041c9f5a881f6e005a79541a689c80c1aa732e242",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/provider/claudeRequestUsage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/provider/claudeRequestUsage.ts"
+        },
+        {
+          "path": "apps/server/src/provider/claudeResultUsage.ts",
+          "bytes": 1664,
+          "sha256": "a05b084b99ea55bfdc875e2dc47c1da7f3623de4dd84315db8e90875da0a9d44",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/provider/claudeResultUsage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/provider/claudeResultUsage.ts"
+        },
+        {
+          "path": "apps/server/src/provider/claudeTokenUsage.ts",
+          "bytes": 11748,
+          "sha256": "f7070c33781df8bfea5f40939d94b4b0559d4ae3848233752401652ef83f9026",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/provider/claudeTokenUsage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/provider/claudeTokenUsage.ts"
+        },
+        {
+          "path": "apps/server/src/provider/providerModelCatalogCache.ts",
+          "bytes": 2750,
+          "sha256": "0480414b4811fda0e53b5c8c95c7fa93c5435babaf468ff124d342c8e1d9bc1d",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/provider/providerModelCatalogCache.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/provider/providerModelCatalogCache.ts"
+        },
+        {
+          "path": "apps/server/src/provider/providerModelDiscoveryCache.ts",
+          "bytes": 14766,
+          "sha256": "f5d0fcb760447926491c90b141b47e0922e7fd60bc1f7b29bb17e1f612d2ad43",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/provider/providerModelDiscoveryCache.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/provider/providerModelDiscoveryCache.ts"
+        },
+        {
+          "path": "apps/server/src/provider/tokenUsage.ts",
+          "bytes": 1358,
+          "sha256": "10263dd858e93818c62499459bfb9ff3cfdd3dfe94f300e52868e66548a4a2f0",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/provider/tokenUsage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/provider/tokenUsage.ts"
+        },
+        {
+          "path": "apps/server/src/providerUsage/codexResetCredits.ts",
+          "bytes": 10802,
+          "sha256": "44527ac67de35c92c5423c3987407bc2497cdf0a0599337a4475d660db64e715",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/providerUsage/codexResetCredits.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/providerUsage/codexResetCredits.ts"
+        },
+        {
+          "path": "apps/server/src/providerUsage/http.ts",
+          "bytes": 3438,
+          "sha256": "cfaf9f4e0a2634ec05b4abfd3984d5b9a520c4a72e9852f0cf1d90bfac80547e",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/providerUsage/http.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/providerUsage/http.ts"
+        },
+        {
+          "path": "apps/server/src/providerUsage/index.ts",
+          "bytes": 18557,
+          "sha256": "357fc7e94e818cbffc2fe0b3cf4a8281297033cca6bedf46b9c8df6b6fa6bbb5",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/providerUsage/index.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/providerUsage/index.ts"
+        },
+        {
+          "path": "apps/server/src/providerUsage/parse.ts",
+          "bytes": 4821,
+          "sha256": "4b27b93fe86c46bcef983ab492e42a7042dbff9e8102004d5444982cd107f757",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/providerUsage/parse.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/providerUsage/parse.ts"
+        },
+        {
+          "path": "apps/server/src/providerUsage/providers/antigravity.ts",
+          "bytes": 12381,
+          "sha256": "f49c5d1344763108d100adae3c9f75e9c049ddec0f83f48d6392e4cc6834c96e",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/providerUsage/providers/antigravity.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/providerUsage/providers/antigravity.ts"
+        },
+        {
+          "path": "apps/server/src/providerUsage/providers/claude.ts",
+          "bytes": 19789,
+          "sha256": "288cacc1e4b978b2792e1481c015247d9fb3fca70ecf15d1d5157206e5adc8c7",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/providerUsage/providers/claude.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/providerUsage/providers/claude.ts"
+        },
+        {
+          "path": "apps/server/src/providerUsage/providers/codex.ts",
+          "bytes": 18232,
+          "sha256": "302ca1c6cc495e9c18a19eb6a21f8c5273ec446c39da2cf56aad7cd6686c0c3e",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/providerUsage/providers/codex.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/providerUsage/providers/codex.ts"
+        },
+        {
+          "path": "apps/server/src/providerUsage/providers/cursor.ts",
+          "bytes": 7218,
+          "sha256": "d701e16c6a9b8b5124449aa4424ddc540899dd1d6efa6a95ddf589abf1c4680d",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/providerUsage/providers/cursor.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/providerUsage/providers/cursor.ts"
+        },
+        {
+          "path": "apps/server/src/providerUsage/providers/devin.ts",
+          "bytes": 10769,
+          "sha256": "364909c1bac38f697a13418fb6e82a55505c596859fe843db5cd6fe9b480ce44",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/providerUsage/providers/devin.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/providerUsage/providers/devin.ts"
+        },
+        {
+          "path": "apps/server/src/providerUsage/providers/droid.ts",
+          "bytes": 11224,
+          "sha256": "e61e73c47f9d213f14f257568c2d693f3874352b4072a964ba74c81fcf582812",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/providerUsage/providers/droid.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/providerUsage/providers/droid.ts"
+        },
+        {
+          "path": "apps/server/src/providerUsage/providers/droidSecureStorage.ts",
+          "bytes": 4400,
+          "sha256": "a9d09b9980837654e440d796fddf391545c293f90c0bc5f067f596619791b279",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/providerUsage/providers/droidSecureStorage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/providerUsage/providers/droidSecureStorage.ts"
+        },
+        {
+          "path": "apps/server/src/providerUsage/providers/grok.ts",
+          "bytes": 17123,
+          "sha256": "a87cc7a60c3f7a7251956e4f5129d579dbb7e86cd88cdd0f07710923a8bdd692",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/providerUsage/providers/grok.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/providerUsage/providers/grok.ts"
+        },
+        {
+          "path": "apps/server/src/providerUsage/providers/opencode.ts",
+          "bytes": 5031,
+          "sha256": "86268d59317be3ca6a21bd615aa0ae06240ca92f1ddc928ccdc1ec01fd1b59ba",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/providerUsage/providers/opencode.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/providerUsage/providers/opencode.ts"
+        },
+        {
+          "path": "apps/server/src/providerUsage/rateLimitResilience.ts",
+          "bytes": 5436,
+          "sha256": "1501881c6e7e1ee2d1be873c3b244a3833fad20a44f906efa68db6d11c41e9a6",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/providerUsage/rateLimitResilience.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/providerUsage/rateLimitResilience.ts"
+        },
+        {
+          "path": "apps/server/src/providerUsage/registry.ts",
+          "bytes": 1205,
+          "sha256": "81dea994a6064fb934cec9304b4b1e97ebe103a9cb4bf61542ed4591ad0bef79",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/providerUsage/registry.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/providerUsage/registry.ts"
+        },
+        {
+          "path": "apps/server/src/providerUsage/sqlite.ts",
+          "bytes": 2607,
+          "sha256": "5d67f521fc6ba2471af6aea571b8d9f0826ca765917e3a96fbf2badf30a1d1c6",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/providerUsage/sqlite.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/providerUsage/sqlite.ts"
+        },
+        {
+          "path": "apps/server/src/providerUsage/types.ts",
+          "bytes": 2523,
+          "sha256": "919c7095b12b480a797b2f0be750c62dab2d388fb0bd6f5f8ea4d53e58b2c322",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/providerUsage/types.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/providerUsage/types.ts"
+        },
+        {
+          "path": "apps/server/src/providerUsageSnapshot.ts",
+          "bytes": 24795,
+          "sha256": "00a32310dde55bf0f4b25cf7c004005940cbe7801dc43f1e3d0f895c3a3c6de7",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/providerUsageSnapshot.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/server/src/providerUsageSnapshot.ts"
+        },
+        {
+          "path": "apps/web/src/components/AppRailUsage.browser.tsx",
+          "bytes": 5909,
+          "sha256": "abd697cd90976968798472f417b6e70fa0535c066243c9668ac7722e642fd098",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/AppRailUsage.browser.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/AppRailUsage.browser.tsx"
+        },
+        {
+          "path": "apps/web/src/components/AppRailUsage.logic.ts",
+          "bytes": 2798,
+          "sha256": "71133dba6a163e2c6962dd679cb9d054e9fcba829ec873fac9d3c1fa42abadc0",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/AppRailUsage.logic.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/AppRailUsage.logic.ts"
+        },
+        {
+          "path": "apps/web/src/components/AppRailUsage.tsx",
+          "bytes": 8318,
+          "sha256": "5c726ffccdfa0fbfb1c80fc514471d2c8ce5203d56ac1d4ab474980f5be116b6",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/AppRailUsage.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/AppRailUsage.tsx"
+        },
+        {
+          "path": "apps/web/src/components/ProviderUsageLimitRows.tsx",
+          "bytes": 4190,
+          "sha256": "13cd39d0991418f38322c116edb896ad8d7758ef497a05640955c713dabda8ab",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/ProviderUsageLimitRows.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/ProviderUsageLimitRows.tsx"
+        },
+        {
+          "path": "apps/web/src/components/ProviderUsageLineList.tsx",
+          "bytes": 1861,
+          "sha256": "e47d60bbe66c1509de4ee4e0a631150619bd878f5a87bd82ace845e7f7c7726b",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/ProviderUsageLineList.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/ProviderUsageLineList.tsx"
+        },
+        {
+          "path": "apps/web/src/components/ProviderUsageMenuControl.tsx",
+          "bytes": 5962,
+          "sha256": "1e2310b6609806508aac244b6942dbca9205ce6eef00a6cff0156deb916b7d31",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/ProviderUsageMenuControl.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/ProviderUsageMenuControl.tsx"
+        },
+        {
+          "path": "apps/web/src/components/ProviderUsagePanelContent.browser.tsx",
+          "bytes": 3619,
+          "sha256": "3f5373d30df3a1c3fbfad275655a68c4bc716313b87a15c15560674ae42de955",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/ProviderUsagePanelContent.browser.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/ProviderUsagePanelContent.browser.tsx"
+        },
+        {
+          "path": "apps/web/src/components/ProviderUsagePanelContent.tsx",
+          "bytes": 5576,
+          "sha256": "8940864c218138a2a5aa4887d831bde75fe399cad2ccc7a9d8b12ab668823120",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/ProviderUsagePanelContent.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/ProviderUsagePanelContent.tsx"
+        },
+        {
+          "path": "apps/web/src/components/ProviderUsageResetCredits.browser.tsx",
+          "bytes": 4377,
+          "sha256": "95322a8c6cccaad5c513407a145367c74458151de4ba5fa3b9736b1ffc5d4d21",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/ProviderUsageResetCredits.browser.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/ProviderUsageResetCredits.browser.tsx"
+        },
+        {
+          "path": "apps/web/src/components/ProviderUsageResetCredits.tsx",
+          "bytes": 6703,
+          "sha256": "9105a731826860ae20c209a8f4c13416f4620603a7182753acc0d5e13d12890b",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/ProviderUsageResetCredits.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/ProviderUsageResetCredits.tsx"
+        },
+        {
+          "path": "apps/web/src/components/UsageProgressTrack.tsx",
+          "bytes": 1878,
+          "sha256": "52b2c38437a319650264f3fca394c97a9ceaf8a19849294718a91b08263fe1f6",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/UsageProgressTrack.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/UsageProgressTrack.tsx"
+        },
+        {
+          "path": "apps/web/src/components/chat/ContextWindowMeter.browser.tsx",
+          "bytes": 1951,
+          "sha256": "7fbca9c49bd5dd1be78d88345be18002e3634729377896d25aafdfdf9bc4da51",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/chat/ContextWindowMeter.browser.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/chat/ContextWindowMeter.browser.tsx"
+        },
+        {
+          "path": "apps/web/src/components/chat/ContextWindowMeter.tsx",
+          "bytes": 7072,
+          "sha256": "f50d649e21ff60b9fa49bc7ff8bde1c73f369dfe8a29c02311c95e3f78247711",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/chat/ContextWindowMeter.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/chat/ContextWindowMeter.tsx"
+        },
+        {
+          "path": "apps/web/src/components/chat/RateLimitBanner.tsx",
+          "bytes": 3262,
+          "sha256": "64d4213b5fed1a594a1dfbfa394a0cc1e4b2c0737a1ee9f00e6e6279a7202975",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/chat/RateLimitBanner.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/chat/RateLimitBanner.tsx"
+        },
+        {
+          "path": "apps/web/src/components/chat/environment/EnvironmentUsageSection.browser.tsx",
+          "bytes": 10600,
+          "sha256": "14e067fc53bd1456aa4d0015dac09a073ae8d4493d99067e5600044e7d8c60a2",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/chat/environment/EnvironmentUsageSection.browser.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/chat/environment/EnvironmentUsageSection.browser.tsx"
+        },
+        {
+          "path": "apps/web/src/components/chat/environment/EnvironmentUsageSection.logic.ts",
+          "bytes": 1546,
+          "sha256": "39e3dfb01bb7c5ade2e42dd2bf67a41cf16f6744c3f0605bc708a94f49950631",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/chat/environment/EnvironmentUsageSection.logic.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/chat/environment/EnvironmentUsageSection.logic.ts"
+        },
+        {
+          "path": "apps/web/src/components/chat/environment/EnvironmentUsageSection.tsx",
+          "bytes": 5331,
+          "sha256": "a6248031dc608a49a0c5d6cfcc4b886671793c520de9df05e3bd76ff1c6abd4e",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/chat/environment/EnvironmentUsageSection.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/chat/environment/EnvironmentUsageSection.tsx"
+        },
+        {
+          "path": "apps/web/src/components/profile/ProfileUsageCoverage.tsx",
+          "bytes": 824,
+          "sha256": "a797bbb4f1b5a9f49b5f8e860ed15b8599b08488c73ecf479a7a58574263cfd6",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/profile/ProfileUsageCoverage.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/profile/ProfileUsageCoverage.tsx"
+        },
+        {
+          "path": "apps/web/src/components/settings/ProfileSettingsPanel.tsx",
+          "bytes": 15127,
+          "sha256": "38bfca9a75afd88ec46b599d014e62344e838440f00ee1c5e3dd4d8713cc8c84",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/settings/ProfileSettingsPanel.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/settings/ProfileSettingsPanel.tsx"
+        },
+        {
+          "path": "apps/web/src/components/settings/ProviderUsageSettingsPanel.tsx",
+          "bytes": 13556,
+          "sha256": "c64451ea77c8711ae205ef2b844130eda19ef86d519cfe020989183a7d5bdb78",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/components/settings/ProviderUsageSettingsPanel.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/components/settings/ProviderUsageSettingsPanel.tsx"
+        },
+        {
+          "path": "apps/web/src/hooks/useProviderUsageSummary.ts",
+          "bytes": 6279,
+          "sha256": "9c09783fba3e8e022d9c5d03928786bae22b6bf4d91a19d1423eef1a7b749ef3",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/hooks/useProviderUsageSummary.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/hooks/useProviderUsageSummary.ts"
+        },
+        {
+          "path": "apps/web/src/lib/contextWindow.ts",
+          "bytes": 13734,
+          "sha256": "cf4cdca530663af6ae95000b90b0aa597e9cd4827587846011a71945153ff26c",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/lib/contextWindow.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/lib/contextWindow.ts"
+        },
+        {
+          "path": "apps/web/src/lib/openUsageRateLimits.ts",
+          "bytes": 4377,
+          "sha256": "5589949dfd4ef97f5b940a3049b7d4ff24f1118bdc785566b5e216a5ca9ac641",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/lib/openUsageRateLimits.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/lib/openUsageRateLimits.ts"
+        },
+        {
+          "path": "apps/web/src/lib/openUsageReactQuery.ts",
+          "bytes": 1653,
+          "sha256": "004f0e9af4f3464377658636f6f4a4070d7302bd07db994d6f95c8e620dbc1f6",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/lib/openUsageReactQuery.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/lib/openUsageReactQuery.ts"
+        },
+        {
+          "path": "apps/web/src/lib/providerUsageDisplay.ts",
+          "bytes": 4318,
+          "sha256": "1d706cb006d49098737170ed810179d41a980a984344ea8db32ce9a9cb5b3a77",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/lib/providerUsageDisplay.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/lib/providerUsageDisplay.ts"
+        },
+        {
+          "path": "apps/web/src/lib/providerUsageSnapshot.ts",
+          "bytes": 1639,
+          "sha256": "ca56986a4731015f892df4bc259d13514b6150f15828642aa66faf3b72e79bf6",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/lib/providerUsageSnapshot.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/lib/providerUsageSnapshot.ts"
+        },
+        {
+          "path": "apps/web/src/lib/rateLimits.ts",
+          "bytes": 16992,
+          "sha256": "73a426b720f1d0da305e5449ea7eae66fdabb49008e3c5975eb96c176f135aa2",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/lib/rateLimits.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/lib/rateLimits.ts"
+        },
+        {
+          "path": "apps/web/src/lib/serverReactQuery.ts",
+          "bytes": 15610,
+          "sha256": "278d790374ea42e05f2adcf3fc192de2c88278ca53943bccd31f1ce14d0f430d",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/lib/serverReactQuery.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/lib/serverReactQuery.ts"
+        },
+        {
+          "path": "apps/web/src/lib/usagePace.ts",
+          "bytes": 3479,
+          "sha256": "1c2d7540311f18399f320ef4ffa5921d9e3b5bd897260d2cab210de445454585",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/lib/usagePace.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/lib/usagePace.ts"
+        },
+        {
+          "path": "apps/web/src/providerModelOptions.ts",
+          "bytes": 21442,
+          "sha256": "5cf6baf7d3da57c5f0d1db4a06b22fdc5db3662d7def2134753f71b86817712e",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/web/src/providerModelOptions.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/apps/web/src/providerModelOptions.ts"
+        },
+        {
+          "path": "packages/shared/src/providerUsage.ts",
+          "bytes": 2888,
+          "sha256": "6b9afc533febb622d7da6fff43574a56c11f5bd4684df833250f0f9bbdbc6ddc",
+          "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/packages/shared/src/providerUsage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/synara/source/packages/shared/src/providerUsage.ts"
+        }
+      ]
+    },
+    {
+      "repository": "get-bb/bb",
+      "sha": "4d15c1da0a848fa4834c1e5d0480a0891683bbe9",
+      "evidence": "Pinned public source inspection; no application or provider execution.",
+      "files": [
+        {
+          "path": "apps/server/src/services/system/usage-limits.ts",
+          "bytes": 2073,
+          "sha256": "bdded16cba464864cd0ad689b72c5b68a0da53b54a9d5e12029a19e5c9a35c16",
+          "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/server/src/services/system/usage-limits.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/bb/source/apps/server/src/services/system/usage-limits.ts"
+        },
+        {
+          "path": "packages/thread-view/src/thread-context-window-usage.ts",
+          "bytes": 3857,
+          "sha256": "80bf5a94d07b3adc3acd10d1f4b4bcbf35aad6f3559f848354b7e8fc77f1bef2",
+          "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/packages/thread-view/src/thread-context-window-usage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/bb/source/packages/thread-view/src/thread-context-window-usage.ts"
+        },
+        {
+          "path": "plugins/account-pool/src/quota.ts",
+          "bytes": 9838,
+          "sha256": "1daf23e1281c0d06474776c466b6b5f5b57eae543e3ed26641983188af923475",
+          "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/plugins/account-pool/src/quota.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/bb/source/plugins/account-pool/src/quota.ts"
+        },
+        {
+          "path": "plugins/account-pool/src/usage-source.ts",
+          "bytes": 6344,
+          "sha256": "78076db2a8251df956a72ea07cdf298b9369f0b20be2edbd039ca99571a1c011",
+          "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/plugins/account-pool/src/usage-source.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/bb/source/plugins/account-pool/src/usage-source.ts"
+        },
+        {
+          "path": "plugins/provider-acp/src/usage-source.ts",
+          "bytes": 5546,
+          "sha256": "ef8687cb0e6f72d498c1e9d2c53ec3a8c2021d2da0492833f3a82a31223bfa0a",
+          "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/plugins/provider-acp/src/usage-source.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/bb/source/plugins/provider-acp/src/usage-source.ts"
+        },
+        {
+          "path": "plugins/provider-claude-code/src/usage-source.ts",
+          "bytes": 5733,
+          "sha256": "40ecefb71e34f9b04d55bfa8e31ba188a3030e3e0a78f446f8dc4d24260e8393",
+          "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/plugins/provider-claude-code/src/usage-source.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/bb/source/plugins/provider-claude-code/src/usage-source.ts"
+        },
+        {
+          "path": "plugins/provider-codex/src/usage-source.ts",
+          "bytes": 5703,
+          "sha256": "4c52018153baf2f6ceb7db1f55542693101b9fb7e07d4a753c5344f728095208",
+          "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/plugins/provider-codex/src/usage-source.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/bb/source/plugins/provider-codex/src/usage-source.ts"
+        },
+        {
+          "path": "plugins/provider-usage/README.md",
+          "bytes": 3155,
+          "sha256": "586ba221a7dee9e343454a4a574ce43683340a83853e7c0720991b24553abcc7",
+          "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/plugins/provider-usage/README.md",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/bb/source/plugins/provider-usage/README.md"
+        },
+        {
+          "path": "plugins/provider-usage/app.tsx",
+          "bytes": 32713,
+          "sha256": "53816506a5624627678e6e7f13387084d2865ad70d4c81628219c0d3d2d2601c",
+          "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/plugins/provider-usage/app.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/bb/source/plugins/provider-usage/app.tsx"
+        },
+        {
+          "path": "plugins/provider-usage/server.ts",
+          "bytes": 12427,
+          "sha256": "71db08857e832a56683ab4d6f9cec89bcfee3667c108f7f58749d61598f81dbb",
+          "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/plugins/provider-usage/server.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/bb/source/plugins/provider-usage/server.ts"
+        },
+        {
+          "path": "plugins/provider-usage/usage-normalization.ts",
+          "bytes": 2178,
+          "sha256": "bbbc38921690589202889989b078f4ab4d04d5ecaf080b8c3fe7ba8ba732cafc",
+          "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/plugins/provider-usage/usage-normalization.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/bb/source/plugins/provider-usage/usage-normalization.ts"
+        },
+        {
+          "path": "plugins/provider-usage/usage-schema.ts",
+          "bytes": 3260,
+          "sha256": "e7c19798f7ed0ec88b6c5af03ff4470dc325f0a04a10b63995dc759750aec585",
+          "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/plugins/provider-usage/usage-schema.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/bb/source/plugins/provider-usage/usage-schema.ts"
+        },
+        {
+          "path": "plugins/provider-usage/usage-source-contract.ts",
+          "bytes": 4597,
+          "sha256": "2f15ed2e9920a7228bb93a7eac00fb86beaa23887f0929c234223dd4c1710637",
+          "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/plugins/provider-usage/usage-source-contract.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/bb/source/plugins/provider-usage/usage-source-contract.ts"
+        }
+      ]
+    },
+    {
+      "repository": "getpaseo/paseo",
+      "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+      "evidence": "Pinned public source inspection; no application or provider execution.",
+      "files": [
+        {
+          "path": "packages/app/src/usage/card.tsx",
+          "bytes": 10729,
+          "sha256": "38edf259473cfb20eaa9f45df8564da39a574b1cb3a85092fec9d323bd18d69e",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/usage/card.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/paseo/source/packages/app/src/usage/card.tsx"
+        },
+        {
+          "path": "packages/app/src/usage/display.ts",
+          "bytes": 2072,
+          "sha256": "69f9d53c7aa1960d31817a745be99083aa5a55f004bfc41dd703f68e07919bad",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/usage/display.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/paseo/source/packages/app/src/usage/display.ts"
+        },
+        {
+          "path": "packages/app/src/usage/host-usage-section.tsx",
+          "bytes": 603,
+          "sha256": "3743b5c346449a9fb129a632c7449976ca0d07c964ed22abbf6f307e091a440f",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/usage/host-usage-section.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/paseo/source/packages/app/src/usage/host-usage-section.tsx"
+        },
+        {
+          "path": "packages/app/src/usage/model.ts",
+          "bytes": 7010,
+          "sha256": "e6b3afdd6460ece2cb4c7a59c26565875f2f2ed968b53a4dbded1cda6da78921",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/usage/model.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/paseo/source/packages/app/src/usage/model.ts"
+        },
+        {
+          "path": "packages/app/src/usage/queries.ts",
+          "bytes": 8895,
+          "sha256": "dfc71a5acbc4807ed6b2e720daadd0f616449220622752278449f47de77ff5b2",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/usage/queries.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/paseo/source/packages/app/src/usage/queries.ts"
+        },
+        {
+          "path": "packages/app/src/usage/types.ts",
+          "bytes": 807,
+          "sha256": "129ff3203462a712d63f872df69dbcf059c3cabf71100359e8d6af7e40b29aad",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/usage/types.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/paseo/source/packages/app/src/usage/types.ts"
+        },
+        {
+          "path": "packages/app/src/usage/usage-screen.tsx",
+          "bytes": 2236,
+          "sha256": "7d7d3e4c9fc7180bca7dfca7b7bf35861b9a6b86192c20af8faf2853a909851f",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/usage/usage-screen.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/paseo/source/packages/app/src/usage/usage-screen.tsx"
+        },
+        {
+          "path": "packages/plugin/src/server/usage.ts",
+          "bytes": 6826,
+          "sha256": "4c8463983dd238c0790b527ecc0c3e30de5c22ae5bdcd9768de0f1ca06c69fad",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/plugin/src/server/usage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/paseo/source/packages/plugin/src/server/usage.ts"
+        },
+        {
+          "path": "packages/server/src/server/plugins/usage-sources/index.ts",
+          "bytes": 11191,
+          "sha256": "f3fb36f43a5309e2e731270084f67d700a082bb67669b2d12ce8a85088aca706",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/server/src/server/plugins/usage-sources/index.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/paseo/source/packages/server/src/server/plugins/usage-sources/index.ts"
+        },
+        {
+          "path": "packages/server/src/server/session/usage/usage-session.ts",
+          "bytes": 2688,
+          "sha256": "1656390eed7bba4e9b6b725848718f365f35b8dbae92ebee5cd5f519007b5068",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/server/src/server/session/usage/usage-session.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/paseo/source/packages/server/src/server/session/usage/usage-session.ts"
+        },
+        {
+          "path": "plugins/claude-usage-source/server/usage.ts",
+          "bytes": 23266,
+          "sha256": "ae4a45c5de166cb9499af9247750e24847037919ff94e472cddcf391b427ea82",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/plugins/claude-usage-source/server/usage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/paseo/source/plugins/claude-usage-source/server/usage.ts"
+        },
+        {
+          "path": "plugins/codex-usage-source/server/usage.ts",
+          "bytes": 9554,
+          "sha256": "65428f1f292a309055b87947cddd9c09a865ef7b7d5870c4b3e49820686e4a85",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/plugins/codex-usage-source/server/usage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/paseo/source/plugins/codex-usage-source/server/usage.ts"
+        },
+        {
+          "path": "plugins/copilot-usage-source/server/usage.ts",
+          "bytes": 2631,
+          "sha256": "1b23762e264a499864826de477465ffd88cad8f28c8e4a3424e258b015a38754",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/plugins/copilot-usage-source/server/usage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/paseo/source/plugins/copilot-usage-source/server/usage.ts"
+        },
+        {
+          "path": "plugins/cursor-usage-source/server/usage.ts",
+          "bytes": 7815,
+          "sha256": "cabc3ca22cfe68c0cf860c15b1dc95531107957f214b8e2c7aa5d2c815c8d5c9",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/plugins/cursor-usage-source/server/usage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/paseo/source/plugins/cursor-usage-source/server/usage.ts"
+        }
+      ]
+    },
+    {
+      "repository": "hardbeat920/monocode",
+      "sha": "271b66ded71e795e0569db77c9bbf599219c8cdc",
+      "evidence": "Pinned public source inspection; no application or provider execution.",
+      "files": [
+        {
+          "path": "src-tauri/src/pi_usage.rs",
+          "bytes": 22542,
+          "sha256": "05b9af0e1ecb058b31edb53b2b37497d72d29418d0903360653bef8fb7be2196",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src-tauri/src/pi_usage.rs",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src-tauri/src/pi_usage.rs"
+        },
+        {
+          "path": "src-tauri/src/rate_limits.rs",
+          "bytes": 28795,
+          "sha256": "d877ae71bd1d027b72b575bbe27487ea123c8397a69e3bbb735e11d628f20380",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src-tauri/src/rate_limits.rs",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src-tauri/src/rate_limits.rs"
+        },
+        {
+          "path": "src/app/model/harnessFlush.ts",
+          "bytes": 615,
+          "sha256": "4f6f2701559890d7a350098a8d66cbf0066e7145c735ff8bae72578bca28ab08",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/app/model/harnessFlush.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/app/model/harnessFlush.ts"
+        },
+        {
+          "path": "src/app/shell/PiUsage.tsx",
+          "bytes": 3568,
+          "sha256": "6b83443d9ee69b2235ab0c1f0fa805be61de6ed62fd3321de5099c64dd29ca1b",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/app/shell/PiUsage.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/app/shell/PiUsage.tsx"
+        },
+        {
+          "path": "src/app/shell/UsageFooter.tsx",
+          "bytes": 19092,
+          "sha256": "4e5828ed83aa65131318afcc0c63671a487aec3b653ce47b32d784b4a9b72a1a",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/app/shell/UsageFooter.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/app/shell/UsageFooter.tsx"
+        },
+        {
+          "path": "src/app/shell/UsageProviderChip.tsx",
+          "bytes": 40461,
+          "sha256": "f907a51f80ee31ce2bff336004e8a43d9ba3e4c8ef58dc736c6670a25bd0002e",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/app/shell/UsageProviderChip.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/app/shell/UsageProviderChip.tsx"
+        },
+        {
+          "path": "src/features/providers/model/accountUsage.ts",
+          "bytes": 5755,
+          "sha256": "83ff7465641aea8a357f6f630e956880ebfb8e6d4913e571571862291a7ba434",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/providers/model/accountUsage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/features/providers/model/accountUsage.ts"
+        },
+        {
+          "path": "src/features/providers/model/piUsage.ts",
+          "bytes": 2813,
+          "sha256": "61be2b5c761faac9dc2ec273d66b9df48334623a0c14dc9a7e9b1e7eab2ab8c8",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/providers/model/piUsage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/features/providers/model/piUsage.ts"
+        },
+        {
+          "path": "src/features/providers/model/providerAccounts.ts",
+          "bytes": 8595,
+          "sha256": "327bece4e980af060886f108c448cddc2d8caa952e0391545635cf398013b366",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/providers/model/providerAccounts.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/features/providers/model/providerAccounts.ts"
+        },
+        {
+          "path": "src/features/providers/model/rateLimits.ts",
+          "bytes": 15056,
+          "sha256": "7fbf2faf882aa8d205d06ddeaf4d7c38ff7a20847efbfa293e12a42b841ba678",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/providers/model/rateLimits.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/features/providers/model/rateLimits.ts"
+        },
+        {
+          "path": "src/features/providers/model/rateLimitsCache.ts",
+          "bytes": 3956,
+          "sha256": "62cc95cc1f64ac8802e6f05f5029b0df4ed64983c2ed689dd3e61224183786c6",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/providers/model/rateLimitsCache.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/features/providers/model/rateLimitsCache.ts"
+        },
+        {
+          "path": "src/features/providers/model/rateLimitsFetch.ts",
+          "bytes": 7988,
+          "sha256": "286dbb773a8b48d835629fa58b7b20471fa6495bee9675b01f881ba90328f1fa",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/providers/model/rateLimitsFetch.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/features/providers/model/rateLimitsFetch.ts"
+        },
+        {
+          "path": "src/features/providers/ui/ProviderAccountUsage.tsx",
+          "bytes": 5991,
+          "sha256": "02d5bd3581fa0862992a4b0156800236be7f1fbbf93b143ba39acc0058d99e60",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/providers/ui/ProviderAccountUsage.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/features/providers/ui/ProviderAccountUsage.tsx"
+        },
+        {
+          "path": "src/features/sessions/model/contextUsage.ts",
+          "bytes": 3115,
+          "sha256": "222c6af6c2063f540e1e6de440d093edcb5fb51d707c98c0eece70f864bd506a",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/sessions/model/contextUsage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/features/sessions/model/contextUsage.ts"
+        },
+        {
+          "path": "src/features/sessions/model/session.ts",
+          "bytes": 22340,
+          "sha256": "f17f68c1e810cdfee79bb349c2840d3096aed72e87a5cf1a1653830f8a69bd3f",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/sessions/model/session.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/features/sessions/model/session.ts"
+        },
+        {
+          "path": "src/features/sessions/model/usageLimit.ts",
+          "bytes": 1075,
+          "sha256": "f888452ffee405b6355b41eee998da8d7f1598247e5db57b664e72bb11fbfccb",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/sessions/model/usageLimit.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/features/sessions/model/usageLimit.ts"
+        },
+        {
+          "path": "src/features/sessions/ui/UsageLimitNotice.tsx",
+          "bytes": 2717,
+          "sha256": "67d6fe251d80dcf5752d400d65884fbe37b0a091823f21f186d2768e160171f5",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/sessions/ui/UsageLimitNotice.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/features/sessions/ui/UsageLimitNotice.tsx"
+        },
+        {
+          "path": "src/integrations/harness/core/apply.ts",
+          "bytes": 36748,
+          "sha256": "b2bc6528c00940a9b2df0df7d5b372a3663f3d87c0eadfb960ea063351e9ea71",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/integrations/harness/core/apply.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/integrations/harness/core/apply.ts"
+        },
+        {
+          "path": "src/integrations/harness/core/types.ts",
+          "bytes": 6112,
+          "sha256": "c1faea19ef573940fb426279c57485c60c66c6bbab5c6ae18fdde01945d2e313",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/integrations/harness/core/types.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/integrations/harness/core/types.ts"
+        },
+        {
+          "path": "src/integrations/harness/providers/claude/claude.ts",
+          "bytes": 54134,
+          "sha256": "263dcb35928ed42c5f71f5cfee864b3b0052c17ccbc5fc25292c2b86b1b49c67",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/integrations/harness/providers/claude/claude.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/integrations/harness/providers/claude/claude.ts"
+        },
+        {
+          "path": "src/integrations/harness/providers/claude/claudeAdapter.ts",
+          "bytes": 1604,
+          "sha256": "4991c69bc94bcb51cdff85d22d50f19f0cb8370d9ba2d22cd414686fc737be29",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/integrations/harness/providers/claude/claudeAdapter.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/integrations/harness/providers/claude/claudeAdapter.ts"
+        },
+        {
+          "path": "src/integrations/harness/providers/claude/claudeCatalog.ts",
+          "bytes": 16260,
+          "sha256": "7dd548098230e8672fefba13cf566dd15e2832ffefbd060318707ad87a2e2dc8",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/integrations/harness/providers/claude/claudeCatalog.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/integrations/harness/providers/claude/claudeCatalog.ts"
+        },
+        {
+          "path": "src/integrations/harness/providers/claude/claudeProtocol.ts",
+          "bytes": 35029,
+          "sha256": "5376f91c3b2479804ca73e4a2e7797dfedb4d223e3b1912793888fcb1171caa1",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/integrations/harness/providers/claude/claudeProtocol.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/integrations/harness/providers/claude/claudeProtocol.ts"
+        },
+        {
+          "path": "src/integrations/harness/providers/codex/codex.ts",
+          "bytes": 41615,
+          "sha256": "d8cfc34383f15f7975aec28d7710e0b4d3e5d9df93d5c5e9c86d8d389eae05cd",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/integrations/harness/providers/codex/codex.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/integrations/harness/providers/codex/codex.ts"
+        },
+        {
+          "path": "src/integrations/harness/providers/codex/codexAdapter.ts",
+          "bytes": 1680,
+          "sha256": "6cf36bdf35bab9a1ae67e3e6784657155a40171cfe72d62e2e922ec1f95f9981",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/integrations/harness/providers/codex/codexAdapter.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/integrations/harness/providers/codex/codexAdapter.ts"
+        },
+        {
+          "path": "src/integrations/harness/providers/codex/codexCatalog.ts",
+          "bytes": 8333,
+          "sha256": "fad4c705e9d5676ab56e0d2e5a5a6c0021938e9019261e53fc63482332e0908e",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/integrations/harness/providers/codex/codexCatalog.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/integrations/harness/providers/codex/codexCatalog.ts"
+        },
+        {
+          "path": "src/integrations/harness/providers/codex/codexProtocol.ts",
+          "bytes": 41265,
+          "sha256": "1848bc3bc23023c2a6e4a0ef20eab03d47580c3b2b7572bc1803de293c7f908a",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/integrations/harness/providers/codex/codexProtocol.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/integrations/harness/providers/codex/codexProtocol.ts"
+        },
+        {
+          "path": "src/integrations/harness/providers/pi/pi.ts",
+          "bytes": 1972,
+          "sha256": "c39fa935e5ebf3743c4081df573bbd4553e28e97390ae5275511912da59d26b1",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/integrations/harness/providers/pi/pi.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/integrations/harness/providers/pi/pi.ts"
+        },
+        {
+          "path": "src/integrations/harness/providers/pi/piAdapter.ts",
+          "bytes": 1224,
+          "sha256": "3b0d694bb802e94a992695ea68b497580729a81885cf7f311bd1d6f0eaee568d",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/integrations/harness/providers/pi/piAdapter.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/monocode/source/src/integrations/harness/providers/pi/piAdapter.ts"
+        }
+      ]
+    },
+    {
+      "repository": "HarnessRouter/harnessrouter",
+      "sha": "2826cf633b0588fa494da20fdf2828deacfb7e79",
+      "evidence": "Pinned public source inspection; no application or provider execution.",
+      "files": [
+        {
+          "path": "gateway/app.py",
+          "bytes": 1066498,
+          "sha256": "212e62084d126078334091dca51b84cbd8523e4338883819aa985b0b2db7c58f",
+          "url": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/gateway/app.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/harnessrouter/gateway/app.py"
+        },
+        {
+          "path": "gateway/tests/test_pricing_visibility.py",
+          "bytes": 3637,
+          "sha256": "8d2ff5c9814e1f41d44a89cffdd3797cb9bff8cef93be8fd13ee0d85ad014070",
+          "url": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/gateway/tests/test_pricing_visibility.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/harnessrouter/gateway/tests/test_pricing_visibility.py"
+        },
+        {
+          "path": "runner/server.py",
+          "bytes": 588173,
+          "sha256": "9eb84d75970361e1e65322b0eba30cc81ef5aa5d16bbd12bb19005b90e35f360",
+          "url": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/runner/server.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/harnessrouter/runner/server.py"
+        },
+        {
+          "path": "runner/tests/test_token_usage_norm.py",
+          "bytes": 1889,
+          "sha256": "adc0e43ba5faf781bd7dba765674e874052d22c55b89046ec6959d64bf9a80e0",
+          "url": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/runner/tests/test_token_usage_norm.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/harnessrouter/runner/tests/test_token_usage_norm.py"
+        },
+        {
+          "path": "ui/src/app/(app)/billing/lib.ts",
+          "bytes": 6554,
+          "sha256": "9da24c33ab7bd82fb24435ebce8117cc783fcbc0e6ff4c96501c79facf45acc3",
+          "url": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/ui/src/app/(app)/billing/lib.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/harnessrouter/ui/src/app/(app)/billing/lib.ts"
+        },
+        {
+          "path": "ui/src/app/(app)/billing/page.tsx",
+          "bytes": 23842,
+          "sha256": "d6b75565efa1d231e841691e8890cede46335b3c76cf859c33cf29dd705680ba",
+          "url": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/ui/src/app/(app)/billing/page.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/harnessrouter/ui/src/app/(app)/billing/page.tsx"
+        },
+        {
+          "path": "ui/src/app/(app)/billing/usage/page.tsx",
+          "bytes": 7646,
+          "sha256": "0064566e8f87fb965184936291f7cd46bea01959e705d0a792bcacf564c66b65",
+          "url": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/ui/src/app/(app)/billing/usage/page.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/harnessrouter/ui/src/app/(app)/billing/usage/page.tsx"
+        }
+      ]
+    },
+    {
+      "repository": "lidge-jun/opencodex",
+      "sha": "06841165f884a9176d701310638b2112aca7a514",
+      "evidence": "Pinned public source inspection; no application or provider execution.",
+      "files": [
+        {
+          "path": "gui/src/pages/Dashboard.tsx",
+          "bytes": 4928,
+          "sha256": "e9f28451da127a4754aae683433917f2eb38904a6c5d6353e2776557e7b9d1ef",
+          "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/gui/src/pages/Dashboard.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/opencodex/gui/src/pages/Dashboard.tsx"
+        },
+        {
+          "path": "gui/src/pages/Usage.tsx",
+          "bytes": 58082,
+          "sha256": "1bbd19090844d6de3638c89e524d9de3ab2c720ef636e9af95fdd52ed8887c7e",
+          "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/gui/src/pages/Usage.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/opencodex/gui/src/pages/Usage.tsx"
+        },
+        {
+          "path": "src/providers/quota/report-cache.ts",
+          "bytes": 14597,
+          "sha256": "dcbfaed190a09462cac3c96d68233b2d9433fff02c96c884df035308d107da78",
+          "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/providers/quota/report-cache.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/opencodex/src/providers/quota/report-cache.ts"
+        },
+        {
+          "path": "src/server/management/usage-timeline-routes.ts",
+          "bytes": 2137,
+          "sha256": "88b392a0b4e355ec1718ebd4738ae9bdf578adae51f56366a30ec964bd1ccf08",
+          "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/server/management/usage-timeline-routes.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/opencodex/src/server/management/usage-timeline-routes.ts"
+        },
+        {
+          "path": "src/usage/log.ts",
+          "bytes": 87963,
+          "sha256": "df57fe8330e7fec79fade92b619a0006347e995f8ca70099d270ba0d858e0de8",
+          "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/usage/log.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/opencodex/src/usage/log.ts"
+        },
+        {
+          "path": "src/usage/model-identity.ts",
+          "bytes": 1235,
+          "sha256": "cce96d46d807f71fdcf161dd9977604d5396ff0dffed96db4ae7be101c043e76",
+          "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/usage/model-identity.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/opencodex/src/usage/model-identity.ts"
+        },
+        {
+          "path": "src/usage/summary.ts",
+          "bytes": 72828,
+          "sha256": "b0cdc5392c4715131db2373b0b5c175a3d37a4b2f4778eafa65a19a381fb8b48",
+          "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/usage/summary.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/opencodex/src/usage/summary.ts"
+        },
+        {
+          "path": "structure/dashboard-and-usage.md",
+          "bytes": 62701,
+          "sha256": "d64f1b0ebff79b32682ca4eefd9e423ca91d2a30dbaca079a0f07c8d331d59c7",
+          "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/structure/dashboard-and-usage.md",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/opencodex/structure/dashboard-and-usage.md"
+        },
+        {
+          "path": "structure/decisions/ADR-0106-usage-read-failure-contract.md",
+          "bytes": 1250,
+          "sha256": "6b688c1d240257c6bdf1d32e4f9b75375d3c31f9d5fc4c6f23525587e2436373",
+          "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/structure/decisions/ADR-0106-usage-read-failure-contract.md",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/opencodex/structure/decisions/ADR-0106-usage-read-failure-contract.md"
+        }
+      ]
+    },
+    {
+      "repository": "NousResearch/hermes-agent",
+      "sha": "64ad33e32dadbdb462468c7384aa38e5c99a1b7a",
+      "evidence": "Pinned public source inspection; no application or provider execution.",
+      "files": [
+        {
+          "path": "agent/account_usage.py",
+          "bytes": 34570,
+          "sha256": "ee8e0c618df20293c4ee292f8c4260d2c7ce6bedadd876c24fa5c6cd4b2f7591",
+          "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/agent/account_usage.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/hermes/agent/account_usage.py"
+        },
+        {
+          "path": "apps/desktop/src/app/command-center/index.tsx",
+          "bytes": 29618,
+          "sha256": "8d13a5c1a58e2427da0b3d40e32ac44552756b3f11cd4f7530e31faf47e16d2a",
+          "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/apps/desktop/src/app/command-center/index.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/hermes/apps/desktop/src/app/command-center/index.tsx"
+        },
+        {
+          "path": "apps/desktop/src/app/shell/context-usage-panel.tsx",
+          "bytes": 4937,
+          "sha256": "0575f6151a3b5be73d6e626b074ad986da0718b99e3de3073a4a6acf5734bca4",
+          "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/apps/desktop/src/app/shell/context-usage-panel.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/hermes/apps/desktop/src/app/shell/context-usage-panel.tsx"
+        },
+        {
+          "path": "hermes_cli/web_routers/analytics.py",
+          "bytes": 13712,
+          "sha256": "4ed35d8e5e3fa23c380bcd6e90aa00cfd02b8de1002116a3cd43ff2451d2d91c",
+          "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/hermes_cli/web_routers/analytics.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/hermes/hermes_cli/web_routers/analytics.py"
+        },
+        {
+          "path": "hermes_state_usage.py",
+          "bytes": 24909,
+          "sha256": "0fd87edd7f576488e2fabd82b7e0d6ed46f26589d5bece2b3a29741c856786eb",
+          "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/hermes_state_usage.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/hermes/hermes_state_usage.py"
+        }
+      ]
+    },
+    {
+      "repository": "omnigent-ai/omnigent",
+      "sha": "5fae3371a7f9786b9e95ab9ea1038b6227d82872",
+      "evidence": "Pinned public source inspection; no application or provider execution.",
+      "files": [
+        {
+          "path": "docs/cursor-native-cost-tracking.md",
+          "bytes": 7922,
+          "sha256": "eba3330932d7640f03769a9e5b347cd867269b7d968da4e7e9cf621dc407335b",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/docs/cursor-native-cost-tracking.md",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/omnigent/source/docs/cursor-native-cost-tracking.md"
+        },
+        {
+          "path": "omnigent/db/migrations/versions/cad9b3e1f7a2_add_user_daily_cost_table.py",
+          "bytes": 1461,
+          "sha256": "bab10a2419de53d591ea12f364732787e793205fc826fee55d542040dc8de4b5",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/db/migrations/versions/cad9b3e1f7a2_add_user_daily_cost_table.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/omnigent/source/omnigent/db/migrations/versions/cad9b3e1f7a2_add_user_daily_cost_table.py"
+        },
+        {
+          "path": "omnigent/harnesses/cursor_native/usage.py",
+          "bytes": 16080,
+          "sha256": "1be5ccd1a33776e9731e934ea8583151230dc94eb7a6f5de729daa76a1562f36",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/harnesses/cursor_native/usage.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/omnigent/source/omnigent/harnesses/cursor_native/usage.py"
+        },
+        {
+          "path": "omnigent/llms/_usage_observer.py",
+          "bytes": 12364,
+          "sha256": "c6cc130d438181a94c15646b5248b0c789a442def0178903b88557c900528622",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/llms/_usage_observer.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/omnigent/source/omnigent/llms/_usage_observer.py"
+        },
+        {
+          "path": "omnigent/policies/builtins/cost.py",
+          "bytes": 65746,
+          "sha256": "42bcdf5598aaf89063a3892d05cf90f646db54e349f6a4c47875999713c48b78",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/policies/builtins/cost.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/omnigent/source/omnigent/policies/builtins/cost.py"
+        },
+        {
+          "path": "omnigent/runtime/policies/builder.py",
+          "bytes": 81313,
+          "sha256": "73e40c95e5d37925fb291bfd25800ad621aeec25099fc701772e1be7e1657c11",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/runtime/policies/builder.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/omnigent/source/omnigent/runtime/policies/builder.py"
+        },
+        {
+          "path": "omnigent/server/feature_flags.py",
+          "bytes": 4306,
+          "sha256": "ed69d12a25f3ca5fc4830d479a7d685190df27e5f781826eb6b794364f17e182",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/server/feature_flags.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/omnigent/source/omnigent/server/feature_flags.py"
+        },
+        {
+          "path": "omnigent/server/routes/_sessions/common.py",
+          "bytes": 42169,
+          "sha256": "3df4f174da8385fa6881a3d1571883d4491507239eff28a65a05dd09bca7aca0",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/server/routes/_sessions/common.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/omnigent/source/omnigent/server/routes/_sessions/common.py"
+        },
+        {
+          "path": "omnigent/server/routes/_sessions/orchestration.py",
+          "bytes": 555452,
+          "sha256": "e47fbdced175a4501dfd7490b333fab2b5ae64f5b8a9c6ad9ffdb0d8b77680e2",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/server/routes/_sessions/orchestration.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/omnigent/source/omnigent/server/routes/_sessions/orchestration.py"
+        },
+        {
+          "path": "omnigent/server/routes/sessions/routes_events.py",
+          "bytes": 150909,
+          "sha256": "6d8b7fcf0c1ddc028b092a12dd33f277833bf7431be24a6ee721163d32fb3561",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/server/routes/sessions/routes_events.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/omnigent/source/omnigent/server/routes/sessions/routes_events.py"
+        },
+        {
+          "path": "omnigent/server/routes/usage.py",
+          "bytes": 10610,
+          "sha256": "69d18f9411674bda1da1a0613d51da4d5fc932a5bd1499374b937ba59257baf2",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/server/routes/usage.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/omnigent/source/omnigent/server/routes/usage.py"
+        },
+        {
+          "path": "omnigent/stores/conversation_store/__init__.py",
+          "bytes": 87781,
+          "sha256": "58b9aab9e41e7527a2267e4d2fa9a013f88d4053d6646f08bedd32d3fb60692f",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/stores/conversation_store/__init__.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/omnigent/source/omnigent/stores/conversation_store/__init__.py"
+        },
+        {
+          "path": "omnigent/stores/conversation_store/sqlalchemy_store.py",
+          "bytes": 238993,
+          "sha256": "7cfa4cfba84ded5ef51dde17e640adaaa2fd06125fb276682c9dc77964012117",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/stores/conversation_store/sqlalchemy_store.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/omnigent/source/omnigent/stores/conversation_store/sqlalchemy_store.py"
+        },
+        {
+          "path": "omnigent/util/cost_plan.py",
+          "bytes": 1217,
+          "sha256": "659b6c69a03429fd25af01643d4a840a835621193542a37948beb752af2a0aa9",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/util/cost_plan.py",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/omnigent/source/omnigent/util/cost_plan.py"
+        },
+        {
+          "path": "web/src/components/usage/UsageBreakdownCharts.tsx",
+          "bytes": 3616,
+          "sha256": "0d64152d8a79a375baaf50277fe978e1bbbf5ecce1107855b1f5c5cfd0d42028",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/web/src/components/usage/UsageBreakdownCharts.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/omnigent/source/web/src/components/usage/UsageBreakdownCharts.tsx"
+        },
+        {
+          "path": "web/src/components/usage/UsageSessionTable.tsx",
+          "bytes": 5636,
+          "sha256": "2e47ef8eba848d61568667d24225e9af797faaedf4a8b6d015242dca61db175f",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/web/src/components/usage/UsageSessionTable.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/omnigent/source/web/src/components/usage/UsageSessionTable.tsx"
+        },
+        {
+          "path": "web/src/hooks/useUsageReport.ts",
+          "bytes": 275,
+          "sha256": "3ee39fe910b4e8a491610a7c5848161e4d33211d9f76008078f4218f32e77045",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/web/src/hooks/useUsageReport.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/omnigent/source/web/src/hooks/useUsageReport.ts"
+        },
+        {
+          "path": "web/src/lib/usageApi.ts",
+          "bytes": 2444,
+          "sha256": "523dbeffaa21df5f89eb4dc39be4941f86f6e79b7950209e70b909cf737a2548",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/web/src/lib/usageApi.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/omnigent/source/web/src/lib/usageApi.ts"
+        },
+        {
+          "path": "web/src/pages/UsagePage.tsx",
+          "bytes": 7301,
+          "sha256": "c39f64f7a1bb36fb01ed349b4f92054576e1683da1c57dc1757b40cbb85cc053",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/web/src/pages/UsagePage.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/omnigent/source/web/src/pages/UsagePage.tsx"
+        }
+      ]
+    },
+    {
+      "repository": "pingdotgg/t3code",
+      "sha": "b3b6ae2cebbae39a706038911dbb8c85c7120be7",
+      "evidence": "Pinned public source inspection; no application or provider execution.",
+      "files": [
+        {
+          "path": "apps/server/src/orchestration-v2/UsageLimitRecoveryWorker.ts",
+          "bytes": 4219,
+          "sha256": "a2e7297ce433aff1f957e51f203b2516cdc82c0b05d16c243d5c5ac078d1e9f5",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/orchestration-v2/UsageLimitRecoveryWorker.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/orchestration-v2/UsageLimitRecoveryWorker.ts"
+        },
+        {
+          "path": "apps/server/src/provider/ClaudeModelCatalog.ts",
+          "bytes": 9353,
+          "sha256": "a7fa14b70259e72f874bd117216753e1516296e450a4af24f18c64116b4c53fb",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/provider/ClaudeModelCatalog.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/provider/ClaudeModelCatalog.ts"
+        },
+        {
+          "path": "apps/server/src/provider/ClaudeTurnTokenUsage.ts",
+          "bytes": 3159,
+          "sha256": "88ef275cf7c50d62c4041a6a84e9ac5d101537bf94640a674d2d7de5e5d2f25c",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/provider/ClaudeTurnTokenUsage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/provider/ClaudeTurnTokenUsage.ts"
+        },
+        {
+          "path": "apps/server/src/provider/CodexChatGptModels.ts",
+          "bytes": 1695,
+          "sha256": "071a8f3f540282504b63d29c2f20219aab6b9bceac40f0c03216bc379cad566e",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/provider/CodexChatGptModels.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/provider/CodexChatGptModels.ts"
+        },
+        {
+          "path": "apps/server/src/provider/CodexTurnTokenUsage.ts",
+          "bytes": 5888,
+          "sha256": "1170cab9e416502d8e21f0c565be5d64f88600426b67643a8d9ab20a099e7d1f",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/provider/CodexTurnTokenUsage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/provider/CodexTurnTokenUsage.ts"
+        },
+        {
+          "path": "apps/server/src/provider/Layers/ProviderUsageLimitsIngestion.ts",
+          "bytes": 258,
+          "sha256": "3c7d2a8205616a21d146cb6f584c63a13bc08f7ac9ff317d603a0ebdecf94617",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/provider/Layers/ProviderUsageLimitsIngestion.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/provider/Layers/ProviderUsageLimitsIngestion.ts"
+        },
+        {
+          "path": "apps/server/src/provider/Layers/claudeUsageLimits.ts",
+          "bytes": 7345,
+          "sha256": "d6a8cd906ef9737c033534f42399f97b90b7882a330dfd3c7ca2741484ef3c2b",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/provider/Layers/claudeUsageLimits.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/provider/Layers/claudeUsageLimits.ts"
+        },
+        {
+          "path": "apps/server/src/provider/Layers/codexUsageLimits.ts",
+          "bytes": 10081,
+          "sha256": "d59034985213b5ad534ffe75da9ddac146a0be5e5414f830d99c765d71031c3d",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/provider/Layers/codexUsageLimits.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/provider/Layers/codexUsageLimits.ts"
+        },
+        {
+          "path": "apps/server/src/provider/Layers/cursorUsageLimits.ts",
+          "bytes": 6083,
+          "sha256": "ecf54e1ed265437d02add63bc6448bead14d6bea6b9da1c295c0ee3f0d35e0a2",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/provider/Layers/cursorUsageLimits.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/provider/Layers/cursorUsageLimits.ts"
+        },
+        {
+          "path": "apps/server/src/provider/Layers/grokUsageLimits.ts",
+          "bytes": 6903,
+          "sha256": "9bf2332c0772c4ce3c9067c11c682718558bafea6d7d89e8da72e67b1fc98037",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/provider/Layers/grokUsageLimits.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/provider/Layers/grokUsageLimits.ts"
+        },
+        {
+          "path": "apps/server/src/provider/Layers/openCodeUsageLimits.ts",
+          "bytes": 4597,
+          "sha256": "b099b774467fb2f88815b7cb6d6c9b877871ffec3fe22b032134675d8e984f0c",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/provider/Layers/openCodeUsageLimits.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/provider/Layers/openCodeUsageLimits.ts"
+        },
+        {
+          "path": "apps/server/src/provider/providerUsageLimits.ts",
+          "bytes": 4881,
+          "sha256": "1135f005acb8f4bfdde11b50f223f8f1ab8896d84eba14db1c18fb0ef6ebcab7",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/provider/providerUsageLimits.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/provider/providerUsageLimits.ts"
+        },
+        {
+          "path": "apps/server/src/sourceControl/SourceControlRateLimit.ts",
+          "bytes": 5850,
+          "sha256": "625105eff47bb7e7159f61fd62e7495bc9b9721aec0397b6cf5ef44c3b401c64",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/sourceControl/SourceControlRateLimit.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/sourceControl/SourceControlRateLimit.ts"
+        },
+        {
+          "path": "apps/server/src/usage/UsageLimitSources.ts",
+          "bytes": 7545,
+          "sha256": "1c74fdcefecfdbd94d7aca9aed061fea6c0f51cda664bfd7cd0ab88d93253bfd",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/usage/UsageLimitSources.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/usage/UsageLimitSources.ts"
+        },
+        {
+          "path": "apps/server/src/usage/UsageService.ts",
+          "bytes": 39469,
+          "sha256": "876d4ea1f464cabbef64ca832ca38d2496475f6bb63c8be1efef76e40d864190",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/usage/UsageService.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/usage/UsageService.ts"
+        },
+        {
+          "path": "apps/server/src/usage/antigravityUsageReader.ts",
+          "bytes": 13582,
+          "sha256": "65f05c2eaa0e9865a552dc323a13d082d3a7a825bab2febb5c33a4fdac42f4f6",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/usage/antigravityUsageReader.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/usage/antigravityUsageReader.ts"
+        },
+        {
+          "path": "apps/server/src/usage/cliproxyApi.ts",
+          "bytes": 13440,
+          "sha256": "f1874b60d1e1a319c5fe7cbdf496c281f8e3c08ac1c8dbabef50abd91d2313f4",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/usage/cliproxyApi.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/usage/cliproxyApi.ts"
+        },
+        {
+          "path": "apps/server/src/usage/cursorUsageReader.ts",
+          "bytes": 10761,
+          "sha256": "684f6324d792d02019f95f5fd397f6e1db51eb5037c2cbdf7c0751262af8449b",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/usage/cursorUsageReader.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/usage/cursorUsageReader.ts"
+        },
+        {
+          "path": "apps/server/src/usage/opencodeUsageReader.ts",
+          "bytes": 7151,
+          "sha256": "1047b04c40cdd4af4a5d7dda1643d4b6253200cda78830b7184d663a4660296f",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/usage/opencodeUsageReader.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/usage/opencodeUsageReader.ts"
+        },
+        {
+          "path": "apps/server/src/usage/usageAggregation.ts",
+          "bytes": 12948,
+          "sha256": "1be337c1df634c7b65524db44042da55d78640f28e1bb1aa4e05fb27401c3931",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/usage/usageAggregation.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/usage/usageAggregation.ts"
+        },
+        {
+          "path": "apps/server/src/usage/usagePricing.ts",
+          "bytes": 12513,
+          "sha256": "f4f3d5d8adf2497239bd5b28ac4548560cfa5db9eadf109e6ba6c9e9e58b0f3d",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/usage/usagePricing.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/usage/usagePricing.ts"
+        },
+        {
+          "path": "apps/server/src/usage/usageScanCache.ts",
+          "bytes": 15094,
+          "sha256": "deef175340007b42a3436fb5b4bc62caf32d871ac7d6748d16840225bf888fb8",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/usage/usageScanCache.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/usage/usageScanCache.ts"
+        },
+        {
+          "path": "apps/server/src/usage/usageTranscriptReader.ts",
+          "bytes": 15289,
+          "sha256": "b6a9a3ca73e39bd13d400d5dc06851e00e5ead2a6040daecb9583573116076c6",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/usage/usageTranscriptReader.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/usage/usageTranscriptReader.ts"
+        },
+        {
+          "path": "apps/server/src/usage/usageTranscripts.ts",
+          "bytes": 20067,
+          "sha256": "0eef232bab3b9c804ec1ac866901467cf862e4d5a0bc352027d7647c86c318e4",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/server/src/usage/usageTranscripts.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/server/src/usage/usageTranscripts.ts"
+        },
+        {
+          "path": "apps/web/src/components/chat/ComposerUsageLimits.tsx",
+          "bytes": 4882,
+          "sha256": "dcb065b9be979526c2e7f151cbd85755105cadcec5f3259c647a257d38455f93",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/chat/ComposerUsageLimits.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/chat/ComposerUsageLimits.tsx"
+        },
+        {
+          "path": "apps/web/src/components/chat/ContextWindowMeter.logic.ts",
+          "bytes": 5320,
+          "sha256": "0493f64cb404f5d03bc0318168c000dbce43eb13953a55f9346e3bf1e9bf67b8",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/chat/ContextWindowMeter.logic.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/chat/ContextWindowMeter.logic.ts"
+        },
+        {
+          "path": "apps/web/src/components/chat/ContextWindowMeter.tsx",
+          "bytes": 6978,
+          "sha256": "a1a0fb22ef8f75746a9e331d752c20c6024809ae2097c900a300d3d8f4644cb6",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/chat/ContextWindowMeter.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/chat/ContextWindowMeter.tsx"
+        },
+        {
+          "path": "apps/web/src/components/chat/UsageLimitRecoveryBanner.tsx",
+          "bytes": 3465,
+          "sha256": "63b03931d644c05d708b450262d6a10a4b726cc520f633f3b5d3687db481f59f",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/chat/UsageLimitRecoveryBanner.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/chat/UsageLimitRecoveryBanner.tsx"
+        },
+        {
+          "path": "apps/web/src/components/settings/AddUsageLimitSourceDialog.tsx",
+          "bytes": 4690,
+          "sha256": "f89741bc57cbd5dcfe6af83a6e4ea3afcb07d3e1014b63e9c69de23e1eae76b5",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/settings/AddUsageLimitSourceDialog.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/settings/AddUsageLimitSourceDialog.tsx"
+        },
+        {
+          "path": "apps/web/src/components/settings/ChatGptUsageButton.tsx",
+          "bytes": 619,
+          "sha256": "b0aaedf07c50501c12b747c90eea0c6aa81f522f9c5a7c5cf6b087c6e40bad32",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/settings/ChatGptUsageButton.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/settings/ChatGptUsageButton.tsx"
+        },
+        {
+          "path": "apps/web/src/components/settings/UsageProviderSettings.tsx",
+          "bytes": 5808,
+          "sha256": "9e0d8ea75fbb69712e34f2527fc5ab96f0d94aaa6428ee1a33d3d01c7e8fa226",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/settings/UsageProviderSettings.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/settings/UsageProviderSettings.tsx"
+        },
+        {
+          "path": "apps/web/src/components/usage/UsageLimits.tsx",
+          "bytes": 11868,
+          "sha256": "90e06b4b22142b775058986f2bd4a0025dad2ef8d5b5d161d532c77a62127ffe",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/usage/UsageLimits.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/usage/UsageLimits.tsx"
+        },
+        {
+          "path": "apps/web/src/components/usage/UsageLimitsPooled.tsx",
+          "bytes": 22839,
+          "sha256": "4b0dc4dda861f2be10364a6fe8b445103de398a328f1bfbc5b63e5ff727ab0b8",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/usage/UsageLimitsPooled.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/usage/UsageLimitsPooled.tsx"
+        },
+        {
+          "path": "apps/web/src/components/usage/UsageModelDialog.tsx",
+          "bytes": 5909,
+          "sha256": "f5574ef2f4042be6402ce810a768bcae4d3cf66374f3f0058c3c91e2b0414923",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/usage/UsageModelDialog.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/usage/UsageModelDialog.tsx"
+        },
+        {
+          "path": "apps/web/src/components/usage/UsagePage.tsx",
+          "bytes": 52054,
+          "sha256": "abf0e4c350c6a0cb822350a545137848226eb28b91679407f267eca9e9103cd5",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/usage/UsagePage.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/usage/UsagePage.tsx"
+        },
+        {
+          "path": "apps/web/src/components/usage/UsagePriceOverrides.tsx",
+          "bytes": 27501,
+          "sha256": "361f498e66620deb2253f0ce62a99b8950cd31d44a425dbca3bcd7e605b88fb8",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/usage/UsagePriceOverrides.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/usage/UsagePriceOverrides.tsx"
+        },
+        {
+          "path": "apps/web/src/components/usage/UsageProviderChart.tsx",
+          "bytes": 16185,
+          "sha256": "1116cecd173c5f468cc5ce91cc4764911187fb16fd56413070afd554021d417a",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/usage/UsageProviderChart.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/usage/UsageProviderChart.tsx"
+        },
+        {
+          "path": "apps/web/src/components/usage/UsageShareBar.tsx",
+          "bytes": 2421,
+          "sha256": "ccc3abde00cd2f8cd1ef577e72ebf9de27c6de95f949526cad2e52f7f8121508",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/usage/UsageShareBar.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/usage/UsageShareBar.tsx"
+        },
+        {
+          "path": "apps/web/src/components/usage/usageBreakdown.ts",
+          "bytes": 3410,
+          "sha256": "5b7998c80ac42e35adc44f0185dfa262f453cc30192b6d740ebfcc6aaf1ec56a",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/usage/usageBreakdown.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/usage/usageBreakdown.ts"
+        },
+        {
+          "path": "apps/web/src/components/usage/usagePagePreferences.ts",
+          "bytes": 1260,
+          "sha256": "db11dce70b89a45f375669a8c658c0c872149d54c896285a781ce329df5782e6",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/usage/usagePagePreferences.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/usage/usagePagePreferences.ts"
+        },
+        {
+          "path": "apps/web/src/components/usage/usagePriceForm.ts",
+          "bytes": 2380,
+          "sha256": "d15bfb7becaffb38e95569216c63ae611318637a5bd26590aeb8ff511f61a49a",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/usage/usagePriceForm.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/usage/usagePriceForm.ts"
+        },
+        {
+          "path": "apps/web/src/components/usage/usagePriceTable.ts",
+          "bytes": 5060,
+          "sha256": "dec9effc56c6d95e78e444dc9a60ff00b0ae7b436cce51f08f207df4670fc651",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/usage/usagePriceTable.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/usage/usagePriceTable.ts"
+        },
+        {
+          "path": "apps/web/src/components/usage/usagePriceTargets.ts",
+          "bytes": 3134,
+          "sha256": "a2442eb678fcb65ae573709b84f10a5d399213174f33d23dc181df811b6f6528",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/usage/usagePriceTargets.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/usage/usagePriceTargets.ts"
+        },
+        {
+          "path": "apps/web/src/components/usage/usageProviders.ts",
+          "bytes": 2103,
+          "sha256": "5a87cef00e6e27b1190c57bdacdf82098f47834f88d4b0b8ff062f4e97533c01",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/usage/usageProviders.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/usage/usageProviders.ts"
+        },
+        {
+          "path": "apps/web/src/components/usage/usageShortcuts.ts",
+          "bytes": 1575,
+          "sha256": "9c2f9495469783fb2ee03d73afde97237ecbf43e94b383c4f730ec339883e35e",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/components/usage/usageShortcuts.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/components/usage/usageShortcuts.ts"
+        },
+        {
+          "path": "apps/web/src/lib/contextWindow.ts",
+          "bytes": 6156,
+          "sha256": "aec20f191ca81232fa9ff033186e87c3a72cc379369829cdb803397ac36058a5",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/lib/contextWindow.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/lib/contextWindow.ts"
+        },
+        {
+          "path": "apps/web/src/routes/usage.tsx",
+          "bytes": 196,
+          "sha256": "65914b809e9044e8c0ac25231e90ce36d13fb7fa5e7b3b63f7ef79466bb85c23",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/routes/usage.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/routes/usage.tsx"
+        },
+        {
+          "path": "apps/web/src/state/usage.ts",
+          "bytes": 5903,
+          "sha256": "bdcf3bf8a0083ddbfdf9b9d774d91d67240a5fa5da1932d2ccdbd0d25642ba5c",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/apps/web/src/state/usage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/apps/web/src/state/usage.ts"
+        },
+        {
+          "path": "docs/user/usage.md",
+          "bytes": 9058,
+          "sha256": "ca1e6660e1fabfa82eea8a6b53e829b3050c8eb68779ef8affbf37225edaebe7",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/docs/user/usage.md",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/docs/user/usage.md"
+        },
+        {
+          "path": "packages/client-runtime/src/state/usage.ts",
+          "bytes": 4994,
+          "sha256": "9b1294963abb7b9c5ae0c59b29b2708d95f07278119508e20704e9228b474963",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/packages/client-runtime/src/state/usage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/packages/client-runtime/src/state/usage.ts"
+        },
+        {
+          "path": "packages/contracts/src/providerUsageLimits.ts",
+          "bytes": 7158,
+          "sha256": "013153dbd3252c99c7a30270d4aabb4d3263e13ea8abf04f9866a86476829f5b",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/packages/contracts/src/providerUsageLimits.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/packages/contracts/src/providerUsageLimits.ts"
+        },
+        {
+          "path": "packages/contracts/src/usage.ts",
+          "bytes": 9419,
+          "sha256": "c924950424fd4878e39c5c606ecb48cce3a7486a53fb81346fa54c60bb12b6a5",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/packages/contracts/src/usage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/packages/contracts/src/usage.ts"
+        },
+        {
+          "path": "packages/contracts/src/usageLimitSourceId.ts",
+          "bytes": 380,
+          "sha256": "bde1b1042a49cd4e409defcb0358aabec5442522f07f14f41c0acc895c16d80c",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/packages/contracts/src/usageLimitSourceId.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/packages/contracts/src/usageLimitSourceId.ts"
+        },
+        {
+          "path": "packages/shared/src/usageFormat.ts",
+          "bytes": 8850,
+          "sha256": "3aeb4d24b5e57b53c032a2fe28c7f389889094bf29bf0e9c84fee7d7fad81669",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/packages/shared/src/usageFormat.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/packages/shared/src/usageFormat.ts"
+        },
+        {
+          "path": "packages/shared/src/usageLimits.ts",
+          "bytes": 29219,
+          "sha256": "e4358e9a57001572794fec23d365ef7a7c4e181d05b055b6d6b116b8bc244ef5",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/packages/shared/src/usageLimits.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/packages/shared/src/usageLimits.ts"
+        },
+        {
+          "path": "packages/shared/src/usageMerge.ts",
+          "bytes": 22295,
+          "sha256": "098af42a52e203bfdd739127797d7ecaa41c4a054c60892635c6bb6f5a650894",
+          "url": "https://github.com/pingdotgg/t3code/blob/b3b6ae2cebbae39a706038911dbb8c85c7120be7/packages/shared/src/usageMerge.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/t3/source/packages/shared/src/usageMerge.ts"
+        }
+      ]
+    },
+    {
+      "repository": "proxysoul/Empryo",
+      "sha": "28802a4f169abcc378032e0a4774bc162c12a00c",
+      "evidence": "Pinned public source inspection; no application or provider execution.",
+      "files": [
+        {
+          "path": "mintlify-docs/concepts/cost-tracking.mdx",
+          "bytes": 2312,
+          "sha256": "0e2c5c693237f78aa9ec0c0acc71c613090a38b7aa7420728167a776f4f1a1a4",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/mintlify-docs/concepts/cost-tracking.mdx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/mintlify-docs/concepts/cost-tracking.mdx"
+        },
+        {
+          "path": "mintlify-docs/reference/telemetry.mdx",
+          "bytes": 4146,
+          "sha256": "bae87777feb5d4c00cb6f5d66664f86a3fcea5ef70e42e9f8778ad6d9e008f6e",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/mintlify-docs/reference/telemetry.mdx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/mintlify-docs/reference/telemetry.mdx"
+        },
+        {
+          "path": "src/components/layout/ContextBar.tsx",
+          "bytes": 10251,
+          "sha256": "c8f2f5d5584804abf0196d082c3d1045ec59eafd9001ecef0aeddf55915678e9",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/components/layout/ContextBar.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/components/layout/ContextBar.tsx"
+        },
+        {
+          "path": "src/components/layout/TokenDisplay.tsx",
+          "bytes": 3173,
+          "sha256": "8b0798f1bf8568fc061658d2812b46992f89f9e9d473036aaaf4b3a1bdd04ccd",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/components/layout/TokenDisplay.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/components/layout/TokenDisplay.tsx"
+        },
+        {
+          "path": "src/components/modals/StatusDashboard.tsx",
+          "bytes": 42732,
+          "sha256": "954af90869e88484d03a118d26f36c1044b83f98339c764568bef77f252a8de7",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/components/modals/StatusDashboard.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/components/modals/StatusDashboard.tsx"
+        },
+        {
+          "path": "src/core/agents/agent-runner.ts",
+          "bytes": 30510,
+          "sha256": "c66d535289035c18ed6508751b14a9ab28b832e8dac81e8c3bd7bc665a77b276",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/agents/agent-runner.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/core/agents/agent-runner.ts"
+        },
+        {
+          "path": "src/core/agents/forge.ts",
+          "bytes": 46284,
+          "sha256": "45f5519615e80380ee1d54082e58f480aeb0f60039af70e8ef9fc4b1e8f82bda",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/agents/forge.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/core/agents/forge.ts"
+        },
+        {
+          "path": "src/core/agents/step-utils.ts",
+          "bytes": 30297,
+          "sha256": "7a548038c8124d06a9683cac7cc4da758d601853e46ec65bd79717d7529d5c59",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/agents/step-utils.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/core/agents/step-utils.ts"
+        },
+        {
+          "path": "src/core/agents/subagent-events.ts",
+          "bytes": 3097,
+          "sha256": "923b57f134c5598e51486402ecf5dd8a89e52e0c213894929b605b2d4719dc81",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/agents/subagent-events.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/core/agents/subagent-events.ts"
+        },
+        {
+          "path": "src/core/commands/context.ts",
+          "bytes": 2261,
+          "sha256": "7324609f45cf75f8d8a57e1280db66fccf80c77f6c8aee15e6156de12f0d907a",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/commands/context.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/core/commands/context.ts"
+        },
+        {
+          "path": "src/core/compaction/working-state.ts",
+          "bytes": 5634,
+          "sha256": "102020b686195a12f2db9ad7582f6d7fbc8c561f8651d179db4615e97eecb4bc",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/compaction/working-state.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/core/compaction/working-state.ts"
+        },
+        {
+          "path": "src/core/llm/models.ts",
+          "bytes": 25470,
+          "sha256": "387009dbb4103b486a87cd3a74d3c6bb5e6c58ab30366f79f1889385c1d811c0",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/llm/models.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/core/llm/models.ts"
+        },
+        {
+          "path": "src/core/sessions/manager.ts",
+          "bytes": 25736,
+          "sha256": "c0dbf5ba8a0ebf703a90e7c9b882ad90402f8a357afa2ecffe657dbbdb68f73b",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/sessions/manager.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/core/sessions/manager.ts"
+        },
+        {
+          "path": "src/core/sessions/types.ts",
+          "bytes": 1007,
+          "sha256": "0dc8252a94b7c115c0fdaba4ec78936f4ef17214be8e8e4fbea565900f56b1de",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/sessions/types.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/core/sessions/types.ts"
+        },
+        {
+          "path": "src/core/telemetry.ts",
+          "bytes": 7384,
+          "sha256": "6d82953f31940790ea7c297bbc7a6eacb756ae389d30c2a9482e51afed379e5f",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/telemetry.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/core/telemetry.ts"
+        },
+        {
+          "path": "src/hooks/chat/message-processing.ts",
+          "bytes": 2505,
+          "sha256": "0a3162317f327084c379f9cc5d2abee49cae767a8218d558f00d7e54ab8acaae",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/chat/message-processing.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/chat/message-processing.ts"
+        },
+        {
+          "path": "src/hooks/index.ts",
+          "bytes": 998,
+          "sha256": "bc672b0a478bd61f0365bdc21e2b63ee575b42a29f82b397a698935e96fd1f2f",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/index.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/index.ts"
+        },
+        {
+          "path": "src/hooks/useAllProviderModels.ts",
+          "bytes": 7665,
+          "sha256": "06e8540dd65da61b96b8e129982a7ca5c32299cfff05f480ca14efb18139e199",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useAllProviderModels.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useAllProviderModels.ts"
+        },
+        {
+          "path": "src/hooks/useAnimatedNumber.ts",
+          "bytes": 1000,
+          "sha256": "c74e5915e4ec212c31b48066a181c11c67bafe68e5ad287a2e79dcfb867ceeb4",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useAnimatedNumber.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useAnimatedNumber.ts"
+        },
+        {
+          "path": "src/hooks/useChat-content.ts",
+          "bytes": 1563,
+          "sha256": "99bc63a0485cf1c87e4a3ad56b419452ab4e2ff3aae0027866c036fda4ca6719",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useChat-content.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useChat-content.ts"
+        },
+        {
+          "path": "src/hooks/useChat.ts",
+          "bytes": 182584,
+          "sha256": "696da4c978415b4d5e5ef40bc094d68b741d7bbda1962d2bba4b34c071c067b6",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useChat.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useChat.ts"
+        },
+        {
+          "path": "src/hooks/useConfigSync.ts",
+          "bytes": 4123,
+          "sha256": "7331d0b6ca453385162deb00fc2d84e7d47a2693c44413baf69b210089f90c7c",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useConfigSync.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useConfigSync.ts"
+        },
+        {
+          "path": "src/hooks/useCopySelection.ts",
+          "bytes": 3256,
+          "sha256": "dbcf44444035a052cd65afb380eb3cc1767bcd155cd24d38ca8a27adab84998a",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useCopySelection.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useCopySelection.ts"
+        },
+        {
+          "path": "src/hooks/useEditorFocus.ts",
+          "bytes": 1486,
+          "sha256": "a3a626d5692aa55b83f6c7b8ba0af29861376a595084878ece0561f875ee3673",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useEditorFocus.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useEditorFocus.ts"
+        },
+        {
+          "path": "src/hooks/useEditorInput.ts",
+          "bytes": 3585,
+          "sha256": "753ba2905fc6a7a12b6e1f2a28ccab5ce9de86713dde2d324ed4a814cd172f3d",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useEditorInput.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useEditorInput.ts"
+        },
+        {
+          "path": "src/hooks/useElapsed.ts",
+          "bytes": 1019,
+          "sha256": "be9b9d05e54b244e0ba2a02609d1512b3d5cc6d763f3b4b05eee9be25ca755ee",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useElapsed.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useElapsed.ts"
+        },
+        {
+          "path": "src/hooks/useForgeMode.ts",
+          "bytes": 1212,
+          "sha256": "98493a39ec713db6ae0b374d16c973f9b5e7c00abbb2c36a3dbcd971e467da14",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useForgeMode.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useForgeMode.ts"
+        },
+        {
+          "path": "src/hooks/useGitStatus.ts",
+          "bytes": 1760,
+          "sha256": "1c847ba48b6412e3ab7e4100b1f901c6511ff37805659da533fa656f6286f0f9",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useGitStatus.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useGitStatus.ts"
+        },
+        {
+          "path": "src/hooks/useGlobalKeyboard.ts",
+          "bytes": 7081,
+          "sha256": "a5b81803d7cde75372d6a69e7cb9be74ae215f3b89d77cc9ea3a5b7bd7f89233",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useGlobalKeyboard.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useGlobalKeyboard.ts"
+        },
+        {
+          "path": "src/hooks/useGroupedModels.ts",
+          "bytes": 1834,
+          "sha256": "bc60251b61c62e31e76ba71d0e61a43e43577b0fccb36dac559921f28fa226a7",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useGroupedModels.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useGroupedModels.ts"
+        },
+        {
+          "path": "src/hooks/useHover.ts",
+          "bytes": 881,
+          "sha256": "8e388b4722672358359128827f0fe12d5daae46f47024a11e632faab8ef197fe",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useHover.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useHover.ts"
+        },
+        {
+          "path": "src/hooks/useLandingTransition.ts",
+          "bytes": 3606,
+          "sha256": "fcad0690cc42b38c508ee5dc022826157311c31286a426ead040aeee22d6918b",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useLandingTransition.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useLandingTransition.ts"
+        },
+        {
+          "path": "src/hooks/useMarqueeScroll.ts",
+          "bytes": 2378,
+          "sha256": "ed142dca6426beae7ffd7030a0a9e62915756466041a81da7430877f06b74ebe",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useMarqueeScroll.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useMarqueeScroll.ts"
+        },
+        {
+          "path": "src/hooks/useMouse.ts",
+          "bytes": 2168,
+          "sha256": "0f1af150c3ecd40d19f1156711ef618ba2fd89b80c1b30e50a928bd4a3751166",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useMouse.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useMouse.ts"
+        },
+        {
+          "path": "src/hooks/useNeovim.ts",
+          "bytes": 10287,
+          "sha256": "815b04e848f6ed320167ecd162a5fa4b69a1a53def8929032507f3052c28e98c",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useNeovim.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useNeovim.ts"
+        },
+        {
+          "path": "src/hooks/useProviderModels.ts",
+          "bytes": 1516,
+          "sha256": "25ca9da478f4137a94f6b3d32551c20b6b55144e0d074a6e93a915f62475cf23",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useProviderModels.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useProviderModels.ts"
+        },
+        {
+          "path": "src/hooks/useSessionBuilder.ts",
+          "bytes": 5851,
+          "sha256": "2442e9b33b2fb6cb67fc2a20bb842190af913b09ab038d35799a45a8e5ee3056",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useSessionBuilder.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useSessionBuilder.ts"
+        },
+        {
+          "path": "src/hooks/useTabs.ts",
+          "bytes": 12241,
+          "sha256": "c190ec73b77cd833497d6e6dd12bff483214afb6607ee63ae1c98e45a79e6978",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useTabs.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useTabs.ts"
+        },
+        {
+          "path": "src/hooks/useVersionCheck.ts",
+          "bytes": 481,
+          "sha256": "4b61968be88c42ae213b2e126cd95a5caaa5d9e009922e1e91d82bad2413547d",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hooks/useVersionCheck.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/hooks/useVersionCheck.ts"
+        },
+        {
+          "path": "src/stores/checkpoints.ts",
+          "bytes": 19947,
+          "sha256": "16001c0eb269efa697708e9373377790e404448961033bdc83432acf9c52a53b",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/stores/checkpoints.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/stores/checkpoints.ts"
+        },
+        {
+          "path": "src/stores/compaction-logs.ts",
+          "bytes": 1545,
+          "sha256": "98c4d5fdcbd6e741ca81076a4a5dd7d331a56c198939869513b70b39771ca25d",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/stores/compaction-logs.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/stores/compaction-logs.ts"
+        },
+        {
+          "path": "src/stores/dialog.ts",
+          "bytes": 4135,
+          "sha256": "1c12cb64218b8d233932c3ffb09eae9c0ee74d6e814cdf1c3e1026f8ca5b153b",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/stores/dialog.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/stores/dialog.ts"
+        },
+        {
+          "path": "src/stores/errors.ts",
+          "bytes": 977,
+          "sha256": "55ad4338cfdf032b9e531ca00882d48c444c3efdf466eef418b19674e46c1174",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/stores/errors.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/stores/errors.ts"
+        },
+        {
+          "path": "src/stores/mcp.ts",
+          "bytes": 2782,
+          "sha256": "4e04d25270e6ab7d2286a014dc440f8ec77352d1110befc480d4579e3aa87cf1",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/stores/mcp.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/stores/mcp.ts"
+        },
+        {
+          "path": "src/stores/model-events.ts",
+          "bytes": 4273,
+          "sha256": "1b1a0d344fdf782607affd3d62b7f1b7354f885204c7d92798755696641794e3",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/stores/model-events.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/stores/model-events.ts"
+        },
+        {
+          "path": "src/stores/repomap.ts",
+          "bytes": 3647,
+          "sha256": "b1a8f2e0910e85e419c131c88c5e10ba389b745761ce313ea1dd5c8b9c4c9b14",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/stores/repomap.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/stores/repomap.ts"
+        },
+        {
+          "path": "src/stores/session.ts",
+          "bytes": 1949,
+          "sha256": "0cf696b5dc4434543459d89c88947048049bed31b373fb2135bf9822aeda9ab8",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/stores/session.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/stores/session.ts"
+        },
+        {
+          "path": "src/stores/statusbar.ts",
+          "bytes": 31052,
+          "sha256": "e92f051c5e63b77f626f7f035f1f9667aca8ca987e2a27e7fe37ffddc980923e",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/stores/statusbar.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/stores/statusbar.ts"
+        },
+        {
+          "path": "src/stores/terminals.ts",
+          "bytes": 1590,
+          "sha256": "fb9e8a2d78b5a495685a87bd4964919abc77f6e8906420a19feaf26b8e893a02",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/stores/terminals.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/stores/terminals.ts"
+        },
+        {
+          "path": "src/stores/tools.ts",
+          "bytes": 678,
+          "sha256": "d26da174d312b5821c354993318e7adf6db491c5610d592ed4be2c0a3c4e7e53",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/stores/tools.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/stores/tools.ts"
+        },
+        {
+          "path": "src/stores/ui.ts",
+          "bytes": 9248,
+          "sha256": "ab915276be5c5c7063dddd6c87256b8455424308d6a077ce67d23f3b1ec3cbee",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/stores/ui.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/stores/ui.ts"
+        },
+        {
+          "path": "src/stores/version.ts",
+          "bytes": 1269,
+          "sha256": "6c1299e8a4d9a7fa0f0ad039918f7a7b9c5fe622edbcee2af8edaeebd7542f53",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/stores/version.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/stores/version.ts"
+        },
+        {
+          "path": "src/stores/workers.ts",
+          "bytes": 2836,
+          "sha256": "cb93e578f94f00073be2dc85b90dab8d44c775776ff4f7d0a926b309067038f8",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/stores/workers.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/src/stores/workers.ts"
+        },
+        {
+          "path": "telemetry-worker/README.md",
+          "bytes": 4506,
+          "sha256": "35a1466a044f15cdc0a75664ed28a814c39d9b8cb0741195025fa25dff765e5a",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/telemetry-worker/README.md",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/telemetry-worker/README.md"
+        },
+        {
+          "path": "telemetry-worker/src/index.ts",
+          "bytes": 6540,
+          "sha256": "908d310faec8ed0a188350b82fabe426ca7b8f5b137718558eb26c122214b48c",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/telemetry-worker/src/index.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/competitor-verdicts/empryo/source/telemetry-worker/src/index.ts"
+        }
+      ]
+    },
+    {
+      "repository": "stablyai/orca",
+      "sha": "3cc5e1dac659ffd163b81b28261cd843261f4ca5",
+      "evidence": "Pinned public source inspection; no application or provider execution.",
+      "files": [
+        {
+          "path": "docs/site/content/docs/agents/usage-tracking.mdx",
+          "bytes": 2253,
+          "sha256": "e3fe4209857755edd15d76aa63ce1662c52f8bbfee2098209ebcf2604ab6b423",
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/docs/site/content/docs/agents/usage-tracking.mdx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/onorca/source/docs/site/content/docs/agents/usage-tracking.mdx"
+        },
+        {
+          "path": "src/main/codex-usage/scanner.ts",
+          "bytes": 6060,
+          "sha256": "367d7c3caad25b5213c3eec14981b11d2f18b7b7ea168a513f1adbf6924db0ca",
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/codex-usage/scanner.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/onorca/source/src/main/codex-usage/scanner.ts"
+        },
+        {
+          "path": "src/main/codex-usage/store.ts",
+          "bytes": 5087,
+          "sha256": "f4acb606222d683127806f3ee2bd5467628647b2acccf48a33bcd1c90a811d80",
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/codex-usage/store.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/onorca/source/src/main/codex-usage/store.ts"
+        },
+        {
+          "path": "src/main/rate-limits/claude-oauth-usage-request.ts",
+          "bytes": 3174,
+          "sha256": "61f3fa8b8b75d64bd00ccc66c1678649b49ee142c71afd27fe8d6a41cea5d1e3",
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/rate-limits/claude-oauth-usage-request.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/onorca/source/src/main/rate-limits/claude-oauth-usage-request.ts"
+        },
+        {
+          "path": "src/main/rate-limits/codex-fetcher.ts",
+          "bytes": 8544,
+          "sha256": "6c230e34d5c342e47cea3a8d3b1570aee8957bd4c35e707711d34c33d50c5118",
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/rate-limits/codex-fetcher.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/onorca/source/src/main/rate-limits/codex-fetcher.ts"
+        },
+        {
+          "path": "src/main/rate-limits/service/service-polling.ts",
+          "bytes": 6337,
+          "sha256": "c0ef45dcd512ec44cd1262932ed54f81f3af6e9cd09ac7767e1e6a7f7ab7f4d9",
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/rate-limits/service/service-polling.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/onorca/source/src/main/rate-limits/service/service-polling.ts"
+        },
+        {
+          "path": "src/main/rate-limits/service/service-result-policy.ts",
+          "bytes": 3142,
+          "sha256": "cf51289f4c968e9990fc7d964b2708ae38b4aa0d31451ec54ab077da58ec9d6e",
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/rate-limits/service/service-result-policy.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/onorca/source/src/main/rate-limits/service/service-result-policy.ts"
+        },
+        {
+          "path": "src/main/usage/usage-event-aggregation.ts",
+          "bytes": 10352,
+          "sha256": "68caf65824d32c55b706fd78ee90d583439f4b86445862cd75d10f3f4ef122d1",
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/usage/usage-event-aggregation.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/onorca/source/src/main/usage/usage-event-aggregation.ts"
+        },
+        {
+          "path": "src/main/usage/usage-provider-store-lifecycle.ts",
+          "bytes": 8164,
+          "sha256": "49759bda2ba0efb81ac785eb13d4c51685dac505f5aa245144d441353793b5b0",
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/usage/usage-provider-store-lifecycle.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/onorca/source/src/main/usage/usage-provider-store-lifecycle.ts"
+        },
+        {
+          "path": "src/renderer/src/components/stats/UsageOverviewPane.tsx",
+          "bytes": 12640,
+          "sha256": "87ac95680209ffb51f94a95c9559652c6ade628478739d8bb388d975e66df676",
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/renderer/src/components/stats/UsageOverviewPane.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/onorca/source/src/renderer/src/components/stats/UsageOverviewPane.tsx"
+        },
+        {
+          "path": "src/renderer/src/components/stats/usage-overview-model.ts",
+          "bytes": 3579,
+          "sha256": "16f7100eadc96ae933fae40cfb95a2d7bd2f1b3f0153f0fdac9844138a7af598",
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/renderer/src/components/stats/usage-overview-model.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/onorca/source/src/renderer/src/components/stats/usage-overview-model.ts"
+        }
+      ]
+    },
+    {
+      "repository": "superset-sh/superset",
+      "sha": "c711aa02da3f5625a49c58ec4035eea57b87df0a",
+      "evidence": "Pinned public source inspection; no application or provider execution.",
+      "files": [
+        {
+          "path": "apps/desktop/src/renderer/hooks/host-service/useHostUsageQuota/useHostUsageQuota.ts",
+          "bytes": 1773,
+          "sha256": "66a3a5afdc4b3b4bbc8825edf0a50f9a27d4adeb45e85c2a30bfdbfe779ea520",
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/apps/desktop/src/renderer/hooks/host-service/useHostUsageQuota/useHostUsageQuota.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/superset/source/apps/desktop/src/renderer/hooks/host-service/useHostUsageQuota/useHostUsageQuota.ts"
+        },
+        {
+          "path": "apps/desktop/src/renderer/routes/_authenticated/settings/usage/components/UsageHistorySection/UsageHistorySection.tsx",
+          "bytes": 10074,
+          "sha256": "9a831cae5eb7067c40194b83a647a11df434dcbdc2c51317f1685e8bddeb86bb",
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/apps/desktop/src/renderer/routes/_authenticated/settings/usage/components/UsageHistorySection/UsageHistorySection.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/superset/source/apps/desktop/src/renderer/routes/_authenticated/settings/usage/components/UsageHistorySection/UsageHistorySection.tsx"
+        },
+        {
+          "path": "apps/desktop/src/renderer/routes/_authenticated/settings/usage/components/UsageView/UsageView.tsx",
+          "bytes": 21686,
+          "sha256": "816a73fdc80a3fd5fdc73d740f7e45a27768137ec562134dfd8f0d9bcc32192b",
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/apps/desktop/src/renderer/routes/_authenticated/settings/usage/components/UsageView/UsageView.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/superset/source/apps/desktop/src/renderer/routes/_authenticated/settings/usage/components/UsageView/UsageView.tsx"
+        },
+        {
+          "path": "apps/desktop/src/renderer/routes/_authenticated/settings/usage/hooks/useHostUsageHistory/useHostUsageHistory.ts",
+          "bytes": 1494,
+          "sha256": "37bb4309fac69d1f60c4ca78966a7481699bc924aa9d7900bf76aa3e4e1a337c",
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/apps/desktop/src/renderer/routes/_authenticated/settings/usage/hooks/useHostUsageHistory/useHostUsageHistory.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/superset/source/apps/desktop/src/renderer/routes/_authenticated/settings/usage/hooks/useHostUsageHistory/useHostUsageHistory.ts"
+        },
+        {
+          "path": "packages/host-service/src/trpc/router/usage/history/aggregate.ts",
+          "bytes": 11869,
+          "sha256": "49cd358e5dd20abbc245ad7510aaf94f0cb69f69e7ebcbdae1ba5e00b06537e1",
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/host-service/src/trpc/router/usage/history/aggregate.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/superset/source/packages/host-service/src/trpc/router/usage/history/aggregate.ts"
+        },
+        {
+          "path": "packages/host-service/src/trpc/router/usage/history/entries.ts",
+          "bytes": 6054,
+          "sha256": "b9e6734fd0ec61399792f6bd3efac8f0a7382f7512ac9d7d65cafe432e679571",
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/host-service/src/trpc/router/usage/history/entries.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/superset/source/packages/host-service/src/trpc/router/usage/history/entries.ts"
+        },
+        {
+          "path": "packages/host-service/src/trpc/router/usage/history/pricing.ts",
+          "bytes": 8325,
+          "sha256": "3806a6a05a95b83bab4c12c98877497a8cf1d991057966da2e2bb6bed344b397",
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/host-service/src/trpc/router/usage/history/pricing.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/superset/source/packages/host-service/src/trpc/router/usage/history/pricing.ts"
+        },
+        {
+          "path": "packages/host-service/src/trpc/router/usage/usage.ts",
+          "bytes": 13333,
+          "sha256": "d5bd87586f78cf6628a05422ee4d3b1b39392879e80f4cea0965c1e1c0377d50",
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/host-service/src/trpc/router/usage/usage.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/superset/source/packages/host-service/src/trpc/router/usage/usage.ts"
+        }
+      ]
+    },
+    {
+      "repository": "traycerai/traycer",
+      "sha": "745704377226b576d92b80ba421466e5c7a71fa9",
+      "evidence": "Pinned public source inspection; no application or provider execution.",
+      "files": [
+        {
+          "path": "clients/gui-app/src/components/usage-analytics/usage-summary-panel.tsx",
+          "bytes": 28961,
+          "sha256": "5e54192b18d123fb4cb853e29ee031b3d4650f5db424a4e7c81c1a2b85315814",
+          "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/components/usage-analytics/usage-summary-panel.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/traycer/clients/gui-app/src/components/usage-analytics/usage-summary-panel.tsx"
+        },
+        {
+          "path": "clients/gui-app/src/hooks/usage-analytics/use-usage-summary-query.ts",
+          "bytes": 5326,
+          "sha256": "15e87db3ebeaa6cbec8ed37acdaaefcd8927e0d3601efd55c3d14e49f2808def",
+          "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/hooks/usage-analytics/use-usage-summary-query.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/traycer/clients/gui-app/src/hooks/usage-analytics/use-usage-summary-query.ts"
+        },
+        {
+          "path": "mintlify/agents-and-models/usage-limits-and-routing.mdx",
+          "bytes": 12575,
+          "sha256": "94088f3d8130ff99331340fa22ba00ec7921315b7a2bccd29c72638869e8941b",
+          "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/mintlify/agents-and-models/usage-limits-and-routing.mdx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/traycer/mintlify/agents-and-models/usage-limits-and-routing.mdx"
+        },
+        {
+          "path": "protocol/src/host/usage-analytics/contracts.ts",
+          "bytes": 5052,
+          "sha256": "8403ba367f0c1b03c93d7a358f4b2eff4ac7d00b730f48fd35507be8df7ca133",
+          "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/protocol/src/host/usage-analytics/contracts.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/traycer/protocol/src/host/usage-analytics/contracts.ts"
+        },
+        {
+          "path": "protocol/src/host/usage-analytics/schemas.ts",
+          "bytes": 13487,
+          "sha256": "29a21d2a0d91aa425222e4bbef7255ade4d6d30029dfc55d43c23d04d134e5ce",
+          "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/protocol/src/host/usage-analytics/schemas.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/traycer/protocol/src/host/usage-analytics/schemas.ts"
+        }
+      ]
+    },
+    {
+      "repository": "Untrivial-ai/agent-orchestrator",
+      "sha": "b2461dc5955bb11b4ee1213871e6a2157e68da0e",
+      "evidence": "Pinned public source inspection; no application or provider execution.",
+      "files": [
+        {
+          "path": "backend/internal/domain/usage.go",
+          "bytes": 14870,
+          "sha256": "c7778fe3d16707bbfeb7a1fb556f786796ba77a97bfee3e702fc246cdd5bf0eb",
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/domain/usage.go",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/agent-orchestrator/source/backend/internal/domain/usage.go"
+        },
+        {
+          "path": "backend/internal/httpd/controllers/usage.go",
+          "bytes": 3947,
+          "sha256": "4f8159f667ee49305d6d7588aba9e20961943af430475c0bce3fdc75f409d2ba",
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/httpd/controllers/usage.go",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/agent-orchestrator/source/backend/internal/httpd/controllers/usage.go"
+        },
+        {
+          "path": "backend/internal/observe/usage/coordinator.go",
+          "bytes": 12189,
+          "sha256": "d5cfecb1059afcb49ffe1837a894b7d3f95915d3f2736d49d2ea75734cbb35f3",
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/observe/usage/coordinator.go",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/agent-orchestrator/source/backend/internal/observe/usage/coordinator.go"
+        },
+        {
+          "path": "backend/internal/observe/usage/ingestor.go",
+          "bytes": 24841,
+          "sha256": "ac53d78c6c8fd4c19c9bfde66c972e8bc551e67fc3666e614c8f30ad92b76a6f",
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/observe/usage/ingestor.go",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/agent-orchestrator/source/backend/internal/observe/usage/ingestor.go"
+        },
+        {
+          "path": "backend/internal/service/usage/capabilities.go",
+          "bytes": 349,
+          "sha256": "4add67a613921448a4f1b62241a8ba6c8866bcb6732d03463cf0ee641f085992",
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/service/usage/capabilities.go",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/agent-orchestrator/source/backend/internal/service/usage/capabilities.go"
+        },
+        {
+          "path": "backend/internal/service/usage/collector.go",
+          "bytes": 70931,
+          "sha256": "53515d364be1b9f4de1511a5fa640292fa6550ef150cee85b576ced7b7e828c5",
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/service/usage/collector.go",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/agent-orchestrator/source/backend/internal/service/usage/collector.go"
+        },
+        {
+          "path": "backend/internal/service/usage/summary.go",
+          "bytes": 11298,
+          "sha256": "46d72caf44669e12b72b40b4e23f4a16d46fcb2bd45b0e6dfae2ec4c3d287e73",
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/service/usage/summary.go",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/agent-orchestrator/source/backend/internal/service/usage/summary.go"
+        },
+        {
+          "path": "backend/internal/storage/sqlite/store/usage_store.go",
+          "bytes": 43822,
+          "sha256": "3ab69d8805362bf3c7769d0af91715846479906e46f063266731318f00b17085",
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/storage/sqlite/store/usage_store.go",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/agent-orchestrator/source/backend/internal/storage/sqlite/store/usage_store.go"
+        },
+        {
+          "path": "frontend/src/renderer/components/SessionInspector.tsx",
+          "bytes": 101666,
+          "sha256": "b669cf1b9dab48877e4fa6648e26564c46ea1e9d96ef2ed02a0a58f6ecff9bfc",
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/frontend/src/renderer/components/SessionInspector.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/agent-orchestrator/source/frontend/src/renderer/components/SessionInspector.tsx"
+        },
+        {
+          "path": "frontend/src/renderer/components/SessionsBoardAdapters.tsx",
+          "bytes": 14231,
+          "sha256": "89af79ec85698f33a5bd4d8f27e49d0b569ebedbb28d16b200be249de29c2476",
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/frontend/src/renderer/components/SessionsBoardAdapters.tsx",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/agent-orchestrator/source/frontend/src/renderer/components/SessionsBoardAdapters.tsx"
+        },
+        {
+          "path": "frontend/src/renderer/hooks/useSessionUsageSummaries.ts",
+          "bytes": 1433,
+          "sha256": "53fe8fb226fca42a16997a9e21e7b4284aaa2320cc7d94fd3b810b1941cc09d2",
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/frontend/src/renderer/hooks/useSessionUsageSummaries.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/agent-orchestrator/source/frontend/src/renderer/hooks/useSessionUsageSummaries.ts"
+        },
+        {
+          "path": "frontend/src/renderer/lib/format-cost.ts",
+          "bytes": 1383,
+          "sha256": "c40d2e80cf2629e1dada30c33ae971e36cba3dc13997af54b26a8564ff9a2d29",
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/frontend/src/renderer/lib/format-cost.ts",
+          "local_capture": "/tmp/neokod-usage-dashboard-20261004/remote/agent-orchestrator/source/frontend/src/renderer/lib/format-cost.ts"
+        }
+      ]
+    }
+  ],
+  "official_documents": [
+    {
+      "name": "maestri-changelog",
+      "url": "https://www.themaestri.app/en/changelog",
+      "captured": "2026-10-04",
+      "proof": "official documentation read with web tool; no implementation source",
+      "bytes": 554771,
+      "sha256": "5f9b649de686627bc708eb891e9979c7619724ce8ae44da66375d13b8fda31ca",
+      "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/official-docs/maestri-changelog.html"
+    },
+    {
+      "name": "maestri-intro",
+      "url": "https://www.themaestri.app/en/docs/intro",
+      "captured": "2026-10-04",
+      "proof": "official documentation read with web tool; no implementation source",
+      "bytes": 63904,
+      "sha256": "41c24cdd311b0de0729a9d6d2361e0b447743065f294521e4de691b71c97c785",
+      "local_capture": "/tmp/neokod-usage-dashboard-20261004/remaining/official-docs/maestri-intro.html"
+    },
+    {
+      "name": "conductor-changelog-3",
+      "url": "https://www.conductor.build/changelog/page/3",
+      "captured": "2026-10-04",
+      "proof": "official documentation read with web tool; no implementation source",
+      "raw_capture_status": "shell urllib HTTP 403; web open returned readable page"
+    },
+    {
+      "name": "conductor-harnesses",
+      "url": "https://www.conductor.build/docs/reference/harnesses",
+      "captured": "2026-10-04",
+      "proof": "official documentation read with web tool; no implementation source",
+      "raw_capture_status": "shell urllib HTTP 403; web open returned readable page"
+    },
+    {
+      "name": "empryo-cost-tracking",
+      "url": "https://empryo.com/docs/concepts/cost-tracking",
+      "captured_utc": "2026-10-04T12:33:52.089480+00:00",
+      "proof": "Unversioned official documentation; current v3 implementation is private.",
+      "bytes": 160691,
+      "sha256": "2793b22d5515c47c556429f0113fcd7fac7d2572d6b31e76d139700e34a0e2b0",
+      "local_capture": "/tmp/neokod-usage-dashboard-20261004/main/empryo-cost-tracking.html"
+    },
+    {
+      "name": "empryo-subscriptions",
+      "url": "https://empryo.com/docs/providers/subscriptions",
+      "captured_utc": "2026-10-04T12:33:52.089480+00:00",
+      "proof": "Unversioned official documentation; current v3 implementation is private.",
+      "bytes": 181758,
+      "sha256": "573a4fca3ff30d0a9f8d33ba5ecf4892c190119b321f1c6b56cce7f64f640c40",
+      "local_capture": "/tmp/neokod-usage-dashboard-20261004/main/empryo-subscriptions.html"
+    }
+  ],
+  "limitations": [
+    "Temporary source captures are not durable workspace attachments; pinned public URLs and hashes identify them.",
+    "Conductor raw HTTP capture failed; official content was read through the web tool.",
+    "CodexMonitor screenshot retrieval was blocked; no visual-inspection claim is made.",
+    "Layout findings use actual component source. No usage dashboard was run."
+  ]
+}

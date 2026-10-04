@@ -23,7 +23,7 @@ import {
  */
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-const PAGE_SIZE = 100;
+const DEFAULT_LIMIT = 100;
 const isTrackerAdapterError = Schema.is(TrackerAdapterError);
 
 export interface GitHubIssueRaw {
@@ -135,42 +135,27 @@ export const make = Effect.gen(function* () {
 
   const listOpenIssues: GitHubIssuesCli["Service"]["listOpenIssues"] = (input) =>
     Effect.gen(function* () {
-      const pageCount = Math.max(1, Math.ceil((input.limit ?? PAGE_SIZE) / PAGE_SIZE));
-      const issues: GitHubIssueRaw[] = [];
-      for (let page = 1; page <= pageCount; page += 1) {
-        const result = yield* execute({
-          cwd: input.cwd,
-          ...(input.env === undefined ? {} : { env: input.env }),
-          args: [
-            "issue",
-            "list",
-            "--repo",
-            input.repo,
-            "--state",
-            "open",
-            "--limit",
-            String(PAGE_SIZE),
-            "--page",
-            String(page),
-            "--json",
-            "number,title,body,state,labels,assignees,createdAt,updatedAt,url",
-          ],
-        }).pipe(Effect.mapError(toTrackerError("listOpenIssues")));
-        const raw = result.stdout.trim();
-        if (raw.length === 0) {
-          break;
-        }
-        const decoded = yield* decodeGitHubIssueListJson(raw).pipe(
-          Effect.mapError(() =>
-            trackerResponseError("GitHub CLI returned invalid issue list JSON"),
-          ),
-        );
-        issues.push(...decoded);
-        if (decoded.length < PAGE_SIZE) {
-          break;
-        }
-      }
-      return issues;
+      const result = yield* execute({
+        cwd: input.cwd,
+        ...(input.env === undefined ? {} : { env: input.env }),
+        args: [
+          "issue",
+          "list",
+          "--repo",
+          input.repo,
+          "--state",
+          "open",
+          "--limit",
+          String(input.limit ?? DEFAULT_LIMIT),
+          "--json",
+          "number,title,body,state,labels,assignees,createdAt,updatedAt,url",
+        ],
+      }).pipe(Effect.mapError(toTrackerError("listOpenIssues")));
+      const raw = result.stdout.trim();
+      if (raw.length === 0) return [];
+      return yield* decodeGitHubIssueListJson(raw).pipe(
+        Effect.mapError(() => trackerResponseError("GitHub CLI returned invalid issue list JSON")),
+      );
     });
 
   const getIssue: GitHubIssuesCli["Service"]["getIssue"] = (input) =>

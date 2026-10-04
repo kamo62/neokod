@@ -1,4 +1,4 @@
-import { ORCHESTRATION_WS_METHODS, WS_METHODS } from "@neokod/contracts";
+import { ORCHESTRATION_WS_METHODS, SYMPHONY_WS_METHODS, WS_METHODS } from "@neokod/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import type * as Duration from "effect/Duration";
@@ -49,6 +49,12 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.subscribeDiscoveredLocalServers
   | typeof WS_METHODS.previewAutomationConnect
   | typeof WS_METHODS.subscribeVcsStatus
+  | typeof SYMPHONY_WS_METHODS.subscribeOverview
+  | typeof SYMPHONY_WS_METHODS.subscribeRuns
+  | typeof SYMPHONY_WS_METHODS.subscribeQueue
+  | typeof SYMPHONY_WS_METHODS.subscribeAttention
+  | typeof SYMPHONY_WS_METHODS.subscribeRunEvents
+  | typeof SYMPHONY_WS_METHODS.subscribeProjectBoard
   | typeof WS_METHODS.terminalAttach;
 
 export type EnvironmentStreamCommandRpcTag = typeof WS_METHODS.gitRunStackedAction;

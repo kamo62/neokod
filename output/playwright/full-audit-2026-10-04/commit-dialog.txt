@@ -1,0 +1,16 @@
+- region "Notifications"
+- region "Notifications"
+- dialog "Commit changes":
+  - heading "Commit changes" [level=2]
+  - paragraph: Review and confirm your commit. Leave the message blank to auto-generate one.
+  - text: "Branch main Warning: default refName Files"
+  - button "Edit"
+  - button "src/example.ts +1 / -1"
+  - button "untracked.txt +0 / -0"
+  - text: +1 / -1
+  - paragraph: Commit message (optional)
+  - textbox "Leave empty to auto-generate"
+  - button "Cancel"
+  - button "Commit on new refName"
+  - button "Commit"
+  - button "Close"

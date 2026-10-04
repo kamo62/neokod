@@ -101,6 +101,30 @@ export function getDefaultCloneDestinationPath(parentPath: string, repository: s
     : `${ensureBrowseDirectoryPath(parentPath)}${repositoryName}`;
 }
 
+/**
+ * True only when the typed path ends with a separator and the browse lookup
+ * positively returned that directory. A missing folder yields no result (or an
+ * error), so it must not be treated as an existing parent directory.
+ */
+export function isBrowsedExistingDirectory(input: {
+  hasTrailingSeparator: boolean;
+  isPending: boolean;
+  hasError: boolean;
+  result: object | null | undefined;
+}): boolean {
+  return input.hasTrailingSeparator && !input.isPending && !input.hasError && input.result != null;
+}
+
+export function resolveCloneDestinationPath(
+  selectedPath: string,
+  repository: string,
+  selectedExistingDirectory: boolean,
+): string {
+  return selectedExistingDirectory
+    ? getDefaultCloneDestinationPath(selectedPath, repository)
+    : selectedPath;
+}
+
 export function buildProjectActionItems(input: {
   projects: ReadonlyArray<Project>;
   valuePrefix: string;

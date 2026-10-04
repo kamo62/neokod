@@ -1,6 +1,10 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Fiber from "effect/Fiber";
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
+import * as Effect from "effect/Effect";
 
-import { scrubEnvironment } from "./AgentRuntime.ts";
+import { scrubEnvironment, waitForTurnCompletion } from "./AgentRuntime.ts";
 
 describe("scrubEnvironment (SPEC 15.3)", () => {
   it("strips secret names from the inherited environment", () => {
@@ -29,4 +33,50 @@ describe("scrubEnvironment (SPEC 15.3)", () => {
     const env = { A: "1", B: "2" };
     expect(scrubEnvironment(env, [])).toEqual({ A: "1", B: "2" });
   });
+
+  it.effect("executes completion notification handlers", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const notifications = yield* Queue.unbounded<{ readonly method: string }>();
+        const client = {
+          raw: { notifications: Stream.fromQueue(notifications) },
+        } as unknown as Parameters<typeof waitForTurnCompletion>[0];
+        const completion = yield* waitForTurnCompletion(client, {
+          codexTurnTimeoutMs: 1_000,
+        } as Parameters<typeof waitForTurnCompletion>[1]).pipe(Effect.forkScoped);
+
+        yield* Queue.offer(notifications, { method: "turn/completed" });
+
+        expect(yield* Fiber.join(completion)).toBe(true);
+      }),
+    ),
+  );
+
+  it.effect("fails terminal app-server errors instead of starting continuation turns", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const notifications = yield* Queue.unbounded<{
+          readonly method: string;
+          readonly params?: unknown;
+        }>();
+        const client = {
+          raw: { notifications: Stream.fromQueue(notifications) },
+        } as unknown as Parameters<typeof waitForTurnCompletion>[0];
+        const completion = yield* waitForTurnCompletion(client, {
+          codexTurnTimeoutMs: 1_000,
+        } as Parameters<typeof waitForTurnCompletion>[1]).pipe(Effect.forkScoped);
+
+        yield* Queue.offer(notifications, {
+          method: "error",
+          params: { error: { message: "out of credits" }, willRetry: false },
+        });
+
+        const result = yield* Effect.result(Fiber.join(completion));
+        expect(result._tag).toBe("Failure");
+        if (result._tag === "Failure") {
+          expect(result.failure.message).toContain("out of credits");
+        }
+      }),
+    ),
+  );
 });

@@ -1,0 +1,1777 @@
+{
+  "a": {
+    "scope": "Seven A-tier products; no further delegation; independent read-only source and current issue investigation by GPT6.1Sol high",
+    "captured_date": "2026-10-04",
+    "limitations": [
+      "No competitor code executed, installed or built; no Neokod application edits; no provider/tracker writes. Source analysis is not runtime proof.",
+      "Frozen source commit and issue snapshots are non-atomic. OnOrca main advanced during research; report preserves initial frozen SHA.",
+      "Raw site requests for some apps returned403; browser web tool read official sites successfully; reciprocal README/homepage and direct site GitHub links validate identity.",
+      "Traycer public repository lacks execution Host implementation; only clients/CLI/protocol source analysed.",
+      "Root owns shared complete issue inventories; this lane selected five relevant current open issues per app from first100updated open records and fetched full issue/comments/timelines."
+    ],
+    "apps": [
+      {
+        "app": "onorca",
+        "repository": "stablyai/orca",
+        "repository_url": "https://github.com/stablyai/orca",
+        "official_site": "https://onOrca.dev",
+        "default_branch": "main",
+        "frozen_sha": "3cc5e1dac659ffd163b81b28261cd843261f4ca5",
+        "frozen_commit_date": "2026-10-04T05:47:26Z",
+        "frozen_commit_url": "https://github.com/stablyai/orca/commit/3cc5e1dac659ffd163b81b28261cd843261f4ca5",
+        "later_observed_default_branch_sha": "ce0778626618bb9a5197209f5189190f2d51545c",
+        "main_advanced_during_capture": true,
+        "license": "MIT",
+        "license_api_spdx": "MIT",
+        "license_path": "LICENSE",
+        "license_url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/LICENSE",
+        "latest_stable_release": {
+          "tag": "v1.4.220",
+          "published_at": "2026-10-04T05:01:05Z",
+          "sha": "a7927b28ce45cbb044add478d957abe36c99ccd8",
+          "url": "https://github.com/stablyai/orca/releases/tag/v1.4.220"
+        },
+        "source_archive": "/tmp/neokod-competitors-20261004/tier-a-sol/raw/onorca/archive.tar.gz",
+        "archive_sha256": "03606909868ad4d3c4bf4077a824682f9e549ff16d5c9d87caca20e25eed91d2",
+        "source_files": [
+          {
+            "path": "README.md",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/onorca/README.md",
+            "sha256": "6a1ce61982427b1ff6ae179bd3a82846b3e5d19aff1b79236eb5b7a35c5ac56e",
+            "permalink": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/README.md"
+          },
+          {
+            "path": "LICENSE",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/onorca/LICENSE",
+            "sha256": "ff1b611f80580d49f4b97e93a97b24eb050b0671b26b8afe16341fab699112f3",
+            "permalink": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/LICENSE"
+          },
+          {
+            "path": "docs/site/content/docs/cli/orchestration.mdx",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/onorca/docs/site/content/docs/cli/orchestration.mdx",
+            "sha256": "47bd3bc8e73470b8cb1b2efadd2919450e5519f60dbb517ab30460aa7e0c9eb2",
+            "permalink": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/docs/site/content/docs/cli/orchestration.mdx"
+          },
+          {
+            "path": "src/main/runtime/rpc/methods/orchestration/worker/local-worker-start.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/onorca/src/main/runtime/rpc/methods/orchestration/worker/local-worker-start.ts",
+            "sha256": "674411c3dc95b4c559d0ee5df48c7030693fedce5cf81e2519a372c841dc1fb4",
+            "permalink": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/runtime/rpc/methods/orchestration/worker/local-worker-start.ts"
+          },
+          {
+            "path": "src/main/runtime/orchestration/db/worker-dispatch/worker-dispatch-start.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/onorca/src/main/runtime/orchestration/db/worker-dispatch/worker-dispatch-start.ts",
+            "sha256": "ce3f031e6e3f6fc781060773c0cbf7dd926a7f2ac9695620c9014b4df1f6afe6",
+            "permalink": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/runtime/orchestration/db/worker-dispatch/worker-dispatch-start.ts"
+          },
+          {
+            "path": "src/main/runtime/runtime-restored-orchestration-authority-sweep.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/onorca/src/main/runtime/runtime-restored-orchestration-authority-sweep.ts",
+            "sha256": "a305836c3996dab9c844692bc959470bd30f1847d189569a320cdc5422294214",
+            "permalink": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/runtime/runtime-restored-orchestration-authority-sweep.ts"
+          },
+          {
+            "path": "src/main/runtime/orca-runtime-refresh-pty-worktree-records-with-controller-inventory.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/onorca/src/main/runtime/orca-runtime-refresh-pty-worktree-records-with-controller-inventory.ts",
+            "sha256": "7bc599ce837d2bb832dcd0cda18058cef087219c90816b5e6dbe62b22f31d475",
+            "permalink": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/runtime/orca-runtime-refresh-pty-worktree-records-with-controller-inventory.ts"
+          },
+          {
+            "path": "src/shared/orchestration-worker-start-prompt-budget.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/onorca/src/shared/orchestration-worker-start-prompt-budget.ts",
+            "sha256": "4677bbaca22e3e26bf25bc5045315fa1684e05c679c062ece2f16ea6c00e1ae7",
+            "permalink": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/shared/orchestration-worker-start-prompt-budget.ts"
+          }
+        ]
+      },
+      {
+        "app": "agent-orchestrator",
+        "repository": "Untrivial-ai/agent-orchestrator",
+        "repository_url": "https://github.com/Untrivial-ai/agent-orchestrator",
+        "official_site": "orchestrator.inc",
+        "default_branch": "main",
+        "frozen_sha": "b2461dc5955bb11b4ee1213871e6a2157e68da0e",
+        "frozen_commit_date": "2026-10-04T04:11:46Z",
+        "frozen_commit_url": "https://github.com/Untrivial-ai/agent-orchestrator/commit/b2461dc5955bb11b4ee1213871e6a2157e68da0e",
+        "later_observed_default_branch_sha": "b2461dc5955bb11b4ee1213871e6a2157e68da0e",
+        "main_advanced_during_capture": false,
+        "license": "Apache-2.0",
+        "license_api_spdx": "Apache-2.0",
+        "license_path": "LICENSE",
+        "license_url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/LICENSE",
+        "latest_stable_release": {
+          "tag": "v0.13.3",
+          "published_at": "2026-10-01T23:42:19Z",
+          "sha": "99d4035e992c84da0c1aadf5c76c5f6710e9221a",
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/releases/tag/v0.13.3"
+        },
+        "source_archive": "/tmp/neokod-competitors-20261004/tier-a-sol/raw/agent-orchestrator/archive.tar.gz",
+        "archive_sha256": "1094eccfe266a3047cea1a6e4d2a4883613b7b8affea8ec6c530b49516f9a636",
+        "source_files": [
+          {
+            "path": "README.md",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/agent-orchestrator/README.md",
+            "sha256": "6023f82b91bdb927b972ec7eeed40088c64d8a3d2891274d9097b4928fd104f4",
+            "permalink": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/README.md"
+          },
+          {
+            "path": "LICENSE",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/agent-orchestrator/LICENSE",
+            "sha256": "1a2219722b7ef58364065e9073a2cb2831891eb147a785742a31431c9cddad1d",
+            "permalink": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/LICENSE"
+          },
+          {
+            "path": "backend/internal/service/chat/service.go",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/agent-orchestrator/backend/internal/service/chat/service.go",
+            "sha256": "1fce2f2ff7d5ba5f9cfd3700efd8fe9e637fc2af3d293005869e8e0dc6a4afc2",
+            "permalink": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/service/chat/service.go"
+          },
+          {
+            "path": "backend/internal/service/chat/queue.go",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/agent-orchestrator/backend/internal/service/chat/queue.go",
+            "sha256": "67f3d3f538d85ef55bfbc82b28f1bd883700301d456139da18c28f8ee2e0025a",
+            "permalink": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/service/chat/queue.go"
+          },
+          {
+            "path": "backend/internal/httpd/controllers/conversation_queue.go",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/agent-orchestrator/backend/internal/httpd/controllers/conversation_queue.go",
+            "sha256": "390c1c5ff40598a8b6cf2bc01e7f3411d9b4c454e199b63a4e2a8a4cac758191",
+            "permalink": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/httpd/controllers/conversation_queue.go"
+          },
+          {
+            "path": "backend/internal/service/report/service.go",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/agent-orchestrator/backend/internal/service/report/service.go",
+            "sha256": "f6b42e801a5dfb486bc5df0793b4aecd6c9a7f1fc44a3f24cc1c97eb09004a41",
+            "permalink": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/service/report/service.go"
+          },
+          {
+            "path": "backend/internal/service/report/coordinator.go",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/agent-orchestrator/backend/internal/service/report/coordinator.go",
+            "sha256": "d4067402368095784e11925e2f0c449c7c1cd41eac5597aa013a409d4359d2e4",
+            "permalink": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/service/report/coordinator.go"
+          },
+          {
+            "path": "backend/internal/adapters/workspace/gitworktree/workspace.go",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/agent-orchestrator/backend/internal/adapters/workspace/gitworktree/workspace.go",
+            "sha256": "621974aae6763a1e6589e567c4a809991a55e786f1ba4651b4d68244814ba090",
+            "permalink": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/adapters/workspace/gitworktree/workspace.go"
+          }
+        ]
+      },
+      {
+        "app": "codex-host",
+        "repository": "BytePioneer-AI/codex-host",
+        "repository_url": "https://github.com/BytePioneer-AI/codex-host",
+        "official_site": "https://github.com/BytePioneer-AI/codex-host",
+        "default_branch": "main",
+        "frozen_sha": "49d8b1c6a3d70ca9ea2024d688e68847e66dd163",
+        "frozen_commit_date": "2026-10-04T05:18:57Z",
+        "frozen_commit_url": "https://github.com/BytePioneer-AI/codex-host/commit/49d8b1c6a3d70ca9ea2024d688e68847e66dd163",
+        "later_observed_default_branch_sha": "49d8b1c6a3d70ca9ea2024d688e68847e66dd163",
+        "main_advanced_during_capture": false,
+        "license": "LGPL-3.0",
+        "license_api_spdx": "LGPL-3.0",
+        "license_path": "LICENSE",
+        "license_url": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/LICENSE",
+        "latest_stable_release": {
+          "tag": "v0.12.1",
+          "published_at": "2026-10-03T07:12:43Z",
+          "sha": "87b5067f03d3d79b7e828e150d8ac7d841322fc4",
+          "url": "https://github.com/BytePioneer-AI/codex-host/releases/tag/v0.12.1"
+        },
+        "source_archive": "/tmp/neokod-competitors-20261004/tier-a-sol/raw/codex-host/archive.tar.gz",
+        "archive_sha256": "bbb0ad21207a23729dbb99d3b2c9296d721c82ebc109871e6cc8ec0b98c3a7eb",
+        "source_files": [
+          {
+            "path": "README.md",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/codex-host/README.md",
+            "sha256": "e756ff8f4462edd5d56075587696d2e4675dbdc0573bf29f9872f790da6a6ddc",
+            "permalink": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/README.md"
+          },
+          {
+            "path": "LICENSE",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/codex-host/LICENSE",
+            "sha256": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118",
+            "permalink": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/LICENSE"
+          },
+          {
+            "path": "docs/harnesses/capability-boundaries.md",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/codex-host/docs/harnesses/capability-boundaries.md",
+            "sha256": "2617f0c20a897f08346a0e11ff4eb9e9c341d4e44e9985e3b388fe0d4ae488b9",
+            "permalink": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/docs/harnesses/capability-boundaries.md"
+          },
+          {
+            "path": "packages/host-runtime/src/harness-delegation-coordinator.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/codex-host/packages/host-runtime/src/harness-delegation-coordinator.ts",
+            "sha256": "c8631aad6a6fd125680bd8bbbb2025c47666a3d949f41ed6aba01267114b898a",
+            "permalink": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/packages/host-runtime/src/harness-delegation-coordinator.ts"
+          },
+          {
+            "path": "packages/host-runtime/src/external-thread-runtime.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/codex-host/packages/host-runtime/src/external-thread-runtime.ts",
+            "sha256": "33314f7462eebbab9ffaaa1f9d8578154fe76d2c5fdd45cb06831b3b8eb5ed4d",
+            "permalink": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/packages/host-runtime/src/external-thread-runtime.ts"
+          },
+          {
+            "path": "packages/host-runtime/src/delegation-snapshot.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/codex-host/packages/host-runtime/src/delegation-snapshot.ts",
+            "sha256": "440a70c03cf8ea0246c7b0f089e9613dfbda4f3737989c98097cfadcd82dd693",
+            "permalink": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/packages/host-runtime/src/delegation-snapshot.ts"
+          }
+        ]
+      },
+      {
+        "app": "hermes",
+        "repository": "NousResearch/hermes-agent",
+        "repository_url": "https://github.com/NousResearch/hermes-agent",
+        "official_site": "https://hermes-agent.nousresearch.com",
+        "default_branch": "main",
+        "frozen_sha": "64ad33e32dadbdb462468c7384aa38e5c99a1b7a",
+        "frozen_commit_date": "2026-10-04T06:05:48Z",
+        "frozen_commit_url": "https://github.com/NousResearch/hermes-agent/commit/64ad33e32dadbdb462468c7384aa38e5c99a1b7a",
+        "later_observed_default_branch_sha": "64ad33e32dadbdb462468c7384aa38e5c99a1b7a",
+        "main_advanced_during_capture": false,
+        "license": "MIT",
+        "license_api_spdx": "MIT",
+        "license_path": "LICENSE",
+        "license_url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/LICENSE",
+        "latest_stable_release": {
+          "tag": "v2026.9.24",
+          "published_at": "2026-09-24T10:09:38Z",
+          "sha": "f97608f178d1ffeca59860195ab7da295f7c8e5f",
+          "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v2026.9.24"
+        },
+        "source_archive": "/tmp/neokod-competitors-20261004/tier-a-sol/raw/hermes/archive.tar.gz",
+        "archive_sha256": "3a0ce075c805ad2a38467a075fb957aa9ab6c9d6a09b97a9a30e5c53ee28ea5a",
+        "source_files": [
+          {
+            "path": "README.md",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/hermes/README.md",
+            "sha256": "c8c3009b1cf6e8d6e48e96a9b4c549d9ab0c86fdaffd91b19f3e9d9b37d93d9d",
+            "permalink": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/README.md"
+          },
+          {
+            "path": "LICENSE",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/hermes/LICENSE",
+            "sha256": "821556e6336796450ab852d375117b48a4887e71d255794fd6318d99982a5ab6",
+            "permalink": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/LICENSE"
+          },
+          {
+            "path": "website/docs/developer-guide/subagent-lifecycle-api.md",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/hermes/website/docs/developer-guide/subagent-lifecycle-api.md",
+            "sha256": "627a7e88653f0353314a62c7eb5eefbb6083a55312cbfd585eddc1d6b46226c7",
+            "permalink": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/website/docs/developer-guide/subagent-lifecycle-api.md"
+          },
+          {
+            "path": "agent/subagent_lifecycle.py",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/hermes/agent/subagent_lifecycle.py",
+            "sha256": "1c3dc15ad5bb91a79cba040ca7bf504e44f8fbf45db1911ed30821ce1730b51c",
+            "permalink": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/agent/subagent_lifecycle.py"
+          },
+          {
+            "path": "tools/delegate_tool_dispatch.py",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/hermes/tools/delegate_tool_dispatch.py",
+            "sha256": "434a66c2c37576bc1579ed660072e6f86b1dc2f92391f722985f6a0d3bf0b6af",
+            "permalink": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/tools/delegate_tool_dispatch.py"
+          },
+          {
+            "path": "tools/delegate_tool_child_run.py",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/hermes/tools/delegate_tool_child_run.py",
+            "sha256": "15cbcac25d3304c5e6587afb7da4103616ec0a7302f6ab2a84e54c7358a71a72",
+            "permalink": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/tools/delegate_tool_child_run.py"
+          },
+          {
+            "path": "tools/subagent_worktree.py",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/hermes/tools/subagent_worktree.py",
+            "sha256": "85883822f0e168116314d1b4aa0d72d7959c57819eb03b7d44198938306ccc07",
+            "permalink": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/tools/subagent_worktree.py"
+          },
+          {
+            "path": "hermes_cli/kanban_pr_acceptance_store.py",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/hermes/hermes_cli/kanban_pr_acceptance_store.py",
+            "sha256": "cb5ad362162a645a2f5ae9042b86c9980bcc8a4212bddd6d1fb3d63b46fdc8cc",
+            "permalink": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/hermes_cli/kanban_pr_acceptance_store.py"
+          }
+        ]
+      },
+      {
+        "app": "oh-my-pi",
+        "repository": "can1357/oh-my-pi",
+        "repository_url": "https://github.com/can1357/oh-my-pi",
+        "official_site": "https://omp.sh",
+        "default_branch": "main",
+        "frozen_sha": "6d8552d7f9df1852826923f07f0eed4fe29511f3",
+        "frozen_commit_date": "2026-10-03T23:48:58Z",
+        "frozen_commit_url": "https://github.com/can1357/oh-my-pi/commit/6d8552d7f9df1852826923f07f0eed4fe29511f3",
+        "later_observed_default_branch_sha": "6d8552d7f9df1852826923f07f0eed4fe29511f3",
+        "main_advanced_during_capture": false,
+        "license": "MIT",
+        "license_api_spdx": "MIT",
+        "license_path": "LICENSE",
+        "license_url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/LICENSE",
+        "latest_stable_release": {
+          "tag": "v18.6.0",
+          "published_at": "2026-10-03T22:06:50Z",
+          "sha": "89d2610993af69427574bde17791df63906ec4e5",
+          "url": "https://github.com/can1357/oh-my-pi/releases/tag/v18.6.0"
+        },
+        "source_archive": "/tmp/neokod-competitors-20261004/tier-a-sol/raw/oh-my-pi/archive.tar.gz",
+        "archive_sha256": "fd870a49d39684c26017d92f8aecc0ce3e7fa8082425e227d778b2487e38df92",
+        "source_files": [
+          {
+            "path": "README.md",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/oh-my-pi/README.md",
+            "sha256": "8537fd4129534af5179fe9ed7f3d1264be29111c008412a3685fa4ced3974e4b",
+            "permalink": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/README.md"
+          },
+          {
+            "path": "LICENSE",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/oh-my-pi/LICENSE",
+            "sha256": "16c45f9d667442781f03fa198914cc39abcaa48ec5ed8f644643e554ca2fbf63",
+            "permalink": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/LICENSE"
+          },
+          {
+            "path": "docs/compaction.md",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/oh-my-pi/docs/compaction.md",
+            "sha256": "035c3817f5eedca95815b721ba94d5ae72647e604b7cb83b8b54251fcd83319c",
+            "permalink": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/docs/compaction.md"
+          },
+          {
+            "path": "packages/coding-agent/src/task/isolation-ownership.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/oh-my-pi/packages/coding-agent/src/task/isolation-ownership.ts",
+            "sha256": "3e757e28263a829f51304fb271e7005c98d229b712f9930d5a2c9088ee97d9c4",
+            "permalink": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/coding-agent/src/task/isolation-ownership.ts"
+          },
+          {
+            "path": "packages/coding-agent/src/task/worktree.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/oh-my-pi/packages/coding-agent/src/task/worktree.ts",
+            "sha256": "3cbd8124f12023dafab43baa92ad0afb45d3d62a67beecb6622bceb5c38d6b2f",
+            "permalink": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/coding-agent/src/task/worktree.ts"
+          },
+          {
+            "path": "packages/coding-agent/src/session/turn-recovery.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/oh-my-pi/packages/coding-agent/src/session/turn-recovery.ts",
+            "sha256": "df9d24d077af2f39749992987ac697db6cd4389a0eb0dff41127114900ef291b",
+            "permalink": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/coding-agent/src/session/turn-recovery.ts"
+          },
+          {
+            "path": "packages/coding-agent/src/session/compaction-methods.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/oh-my-pi/packages/coding-agent/src/session/compaction-methods.ts",
+            "sha256": "5445506c4d3a498038d595f88b7f8b4683d4772ae124ec24cead81b90cbf7950",
+            "permalink": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/coding-agent/src/session/compaction-methods.ts"
+          },
+          {
+            "path": "packages/agent/src/compaction/transcript-tokens.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/oh-my-pi/packages/agent/src/compaction/transcript-tokens.ts",
+            "sha256": "a56828e126f982a1711d449b2b10e28d3b53da60bc4db05973e1707a346dfdc7",
+            "permalink": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/agent/src/compaction/transcript-tokens.ts"
+          }
+        ]
+      },
+      {
+        "app": "superset",
+        "repository": "superset-sh/superset",
+        "repository_url": "https://github.com/superset-sh/superset",
+        "official_site": "https://superset.sh",
+        "default_branch": "main",
+        "frozen_sha": "c711aa02da3f5625a49c58ec4035eea57b87df0a",
+        "frozen_commit_date": "2026-10-04T02:31:12Z",
+        "frozen_commit_url": "https://github.com/superset-sh/superset/commit/c711aa02da3f5625a49c58ec4035eea57b87df0a",
+        "later_observed_default_branch_sha": "c711aa02da3f5625a49c58ec4035eea57b87df0a",
+        "main_advanced_during_capture": false,
+        "license": "Elastic License 2.0 (ELv2)",
+        "license_api_spdx": "NOASSERTION",
+        "license_path": "LICENSE.md",
+        "license_url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/LICENSE.md",
+        "latest_stable_release": {
+          "tag": "desktop-v1.35.0",
+          "published_at": "2026-10-02T21:42:15Z",
+          "sha": "e15ae8cfacfdb08f5706a8a018672dc327b62d19",
+          "url": "https://github.com/superset-sh/superset/releases/tag/desktop-v1.35.0"
+        },
+        "source_archive": "/tmp/neokod-competitors-20261004/tier-a-sol/raw/superset/archive.tar.gz",
+        "archive_sha256": "dd8e81a62de14b2b8f84a407ebae6a9033859f3b7e370f1187ed86821ee56750",
+        "source_files": [
+          {
+            "path": "README.md",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/superset/README.md",
+            "sha256": "2671ad241ee5c87adeec485923be465e740137deca549a4eca2df357005d1b74",
+            "permalink": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/README.md"
+          },
+          {
+            "path": "LICENSE.md",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/superset/LICENSE.md",
+            "sha256": "bc497211b5858fb19678a4651fe915f92ccf857e5dc49c0f30d3cdb4e452413d",
+            "permalink": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/LICENSE.md"
+          },
+          {
+            "path": "apps/docs/content/docs/orchestration.mdx",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/superset/apps/docs/content/docs/orchestration.mdx",
+            "sha256": "212940ffcd2b12f272dca9d4b6a99f2468bc4eb04a3388197b2a3676905857e4",
+            "permalink": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/apps/docs/content/docs/orchestration.mdx"
+          },
+          {
+            "path": "packages/host-service/src/trpc/router/workspace-creation/shared/require-independent-worktree.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/superset/packages/host-service/src/trpc/router/workspace-creation/shared/require-independent-worktree.ts",
+            "sha256": "159672b6cb2707f0b734d4c962ace47bdf715722b92ff3cd74eec73d0f37ae94",
+            "permalink": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/host-service/src/trpc/router/workspace-creation/shared/require-independent-worktree.ts"
+          },
+          {
+            "path": "packages/host-service/src/trpc/router/workspace-creation/shared/adopt-existing-worktree.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/superset/packages/host-service/src/trpc/router/workspace-creation/shared/adopt-existing-worktree.ts",
+            "sha256": "b6fdc878292a07a654c591f3d37173ddee0f8d27ab6792a39011721aab228f92",
+            "permalink": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/host-service/src/trpc/router/workspace-creation/shared/adopt-existing-worktree.ts"
+          },
+          {
+            "path": "packages/host-service/src/trpc/router/git/utils/git-status-refresh-limiter.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/superset/packages/host-service/src/trpc/router/git/utils/git-status-refresh-limiter.ts",
+            "sha256": "0979b04e21d5afd0d53a5407115366822c66f10ca1afe10c6f779189b843c915",
+            "permalink": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/host-service/src/trpc/router/git/utils/git-status-refresh-limiter.ts"
+          },
+          {
+            "path": "packages/host-service/src/trpc/router/git/git.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/superset/packages/host-service/src/trpc/router/git/git.ts",
+            "sha256": "67079cfc5564f9849a35995022b341fe076de9f9b49b1b4a1587b8dfc3bb4214",
+            "permalink": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/host-service/src/trpc/router/git/git.ts"
+          },
+          {
+            "path": "packages/host-service/src/terminal-agents/daemon-loss-sweep.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/superset/packages/host-service/src/terminal-agents/daemon-loss-sweep.ts",
+            "sha256": "5bc604907604e2cabae3d09647517953f8477596976a744fc3f6aa42be415c18",
+            "permalink": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/host-service/src/terminal-agents/daemon-loss-sweep.ts"
+          }
+        ]
+      },
+      {
+        "app": "traycer",
+        "repository": "traycerai/traycer",
+        "repository_url": "https://github.com/traycerai/traycer",
+        "official_site": "https://traycer.ai",
+        "default_branch": "main",
+        "frozen_sha": "745704377226b576d92b80ba421466e5c7a71fa9",
+        "frozen_commit_date": "2026-10-04T02:10:40Z",
+        "frozen_commit_url": "https://github.com/traycerai/traycer/commit/745704377226b576d92b80ba421466e5c7a71fa9",
+        "later_observed_default_branch_sha": "745704377226b576d92b80ba421466e5c7a71fa9",
+        "main_advanced_during_capture": false,
+        "license": "MIT",
+        "license_api_spdx": "MIT",
+        "license_path": "LICENSE",
+        "license_url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/LICENSE",
+        "latest_stable_release": {
+          "tag": "desktop-v1.4.2",
+          "published_at": "2026-10-01T00:40:56Z",
+          "sha": "f3df0e6cebffddc9a4d871290ad8abd0819ecf47",
+          "url": "https://github.com/traycerai/traycer/releases/tag/desktop-v1.4.2"
+        },
+        "source_archive": "/tmp/neokod-competitors-20261004/tier-a-sol/raw/traycer/archive.tar.gz",
+        "archive_sha256": "be52b2a577f3774e66b248108f9995d487e3837a6a2cd5ebae566c3402ff766c",
+        "source_files": [
+          {
+            "path": "README.md",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/traycer/README.md",
+            "sha256": "c4ada404039a9756496ffe6225f21647e5545d10ec5fc0e190fd72aca20284f8",
+            "permalink": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/README.md"
+          },
+          {
+            "path": "LICENSE",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/traycer/LICENSE",
+            "sha256": "2cd0326a35e707bc95d137c1f52cfd18ef91e4b025f3d4fa51cc2070033c0425",
+            "permalink": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/LICENSE"
+          },
+          {
+            "path": "CONTRIBUTING.md",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/traycer/CONTRIBUTING.md",
+            "sha256": "445d1a4d82c72d3ab95eaba4ee9dfbdc122c733f268bfec4970d71f3043f69da",
+            "permalink": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/CONTRIBUTING.md"
+          },
+          {
+            "path": "mintlify/concepts/agent-to-agent.mdx",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/traycer/mintlify/concepts/agent-to-agent.mdx",
+            "sha256": "78bdedbfab5fc5f7f1e496a0e49ade9e4f2bf351f4ec3e0a1be82e5d6d1a1e86",
+            "permalink": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/mintlify/concepts/agent-to-agent.mdx"
+          },
+          {
+            "path": "clients/desktop/src/electron-main/host/host-recovery-governor.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/traycer/clients/desktop/src/electron-main/host/host-recovery-governor.ts",
+            "sha256": "8eb444b50c1859e926bb2391cb770d61b032faec82a4886937dbcbc4a19ff9df",
+            "permalink": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/desktop/src/electron-main/host/host-recovery-governor.ts"
+          },
+          {
+            "path": "clients/desktop/src/electron-main/startup/desktop-startup.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/traycer/clients/desktop/src/electron-main/startup/desktop-startup.ts",
+            "sha256": "dbb808608fa918e033257d8d59359e2d71a04cd0d50edabe7efdf18e030b19a1",
+            "permalink": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/desktop/src/electron-main/startup/desktop-startup.ts"
+          },
+          {
+            "path": "clients/gui-app/src/lib/host/owned-durable-stream-client.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/traycer/clients/gui-app/src/lib/host/owned-durable-stream-client.ts",
+            "sha256": "2591704f6f0d4b5a4c72e197af691341316a549e179a0fea23a21e88453477e5",
+            "permalink": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/lib/host/owned-durable-stream-client.ts"
+          },
+          {
+            "path": "clients/gui-app/src/lib/registries/chat-session-registry.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/traycer/clients/gui-app/src/lib/registries/chat-session-registry.ts",
+            "sha256": "dbd8b8be83620c2aeed5c6644eb446af74d0dc9e14566d6b70585c30fc7696ad",
+            "permalink": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/lib/registries/chat-session-registry.ts"
+          },
+          {
+            "path": "clients/gui-app/src/lib/registries/terminal-session-registry.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/traycer/clients/gui-app/src/lib/registries/terminal-session-registry.ts",
+            "sha256": "46e1824dc3e3fd65d4cdf2114a006dc428d6aa4f704a50d75818fb45f6deaa82",
+            "permalink": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/lib/registries/terminal-session-registry.ts"
+          },
+          {
+            "path": "protocol/src/framework/worktree-busy-holders.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/traycer/protocol/src/framework/worktree-busy-holders.ts",
+            "sha256": "f65c7af481ffeeaf3a47635836a7d899da6d60de5b4455dfa9b0fd957a49d01e",
+            "permalink": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/protocol/src/framework/worktree-busy-holders.ts"
+          },
+          {
+            "path": "clients/traycer-cli/src/host/update-dispatch-ack.ts",
+            "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/traycer/clients/traycer-cli/src/host/update-dispatch-ack.ts",
+            "sha256": "e63b35b731d214e3f36f0627d6000ff9bcb40cfeaf0ebae5bc210d344c334a4f",
+            "permalink": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/traycer-cli/src/host/update-dispatch-ack.ts"
+          }
+        ]
+      }
+    ]
+  },
+  "s_b": {
+    "generated_at": "2026-10-04T06:35:55.611657+00:00",
+    "applications": [
+      {
+        "application": "omnigent",
+        "resolved_full_name": "omnigent-ai/omnigent",
+        "default_branch": "main",
+        "head_sha": "5fae3371a7f9786b9e95ab9ea1038b6227d82872",
+        "retrieved_at": "2026-10-04T06:16:34.356933+00:00",
+        "licence_metadata": {
+          "key": "apache-2.0",
+          "name": "Apache License 2.0",
+          "spdx_id": "Apache-2.0",
+          "url": "https://api.github.com/licenses/apache-2.0",
+          "node_id": "MDc6TGljZW5zZTI="
+        },
+        "licence_source_note": "See captured LICENSE; reuse must retain applicable notices",
+        "source_kind": "public implementation",
+        "metadata_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/omnigent/metadata.json",
+        "head_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/omnigent/head.json",
+        "tree_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/omnigent/tree.json",
+        "sources": [
+          {
+            "path": "LICENSE",
+            "permalink": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/LICENSE",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/omnigent/source/LICENSE",
+            "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",
+            "bytes": 10173
+          },
+          {
+            "path": "README.md",
+            "permalink": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/README.md",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/omnigent/source/README.md",
+            "sha256": "8712434ac4f692ce570c921eb5dc15ecd0719b40c667dd5fde5f44383648a652",
+            "bytes": 26776
+          },
+          {
+            "path": "omnigent/runner/app.py",
+            "permalink": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/runner/app.py",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/omnigent/source/omnigent/runner/app.py",
+            "sha256": "e517aab3f71e3a5606cf59009eb39d1f9862ea630199f22f70bc00f90796ce5f",
+            "bytes": 372701
+          },
+          {
+            "path": "omnigent/runner/subagent_recovery.py",
+            "permalink": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/runner/subagent_recovery.py",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/omnigent/source/omnigent/runner/subagent_recovery.py",
+            "sha256": "1bd374a88e0a1f90e21e5c368dabd365d408da26a20c49ffa8977f92af0a1b7c",
+            "bytes": 10931
+          },
+          {
+            "path": "omnigent/runner/subagent_routing.py",
+            "permalink": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/runner/subagent_routing.py",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/omnigent/source/omnigent/runner/subagent_routing.py",
+            "sha256": "e23bc74ea5782c89c20502f852869e93ad934c0c2b9f6382b4b348fde1fd30d0",
+            "bytes": 67174
+          },
+          {
+            "path": "omnigent/runner/subagent_work.py",
+            "permalink": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/runner/subagent_work.py",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/omnigent/source/omnigent/runner/subagent_work.py",
+            "sha256": "e0297083c3e6b93fa8a541799d2ec93cd410f7d2edb813a1525d0fae5dcfffbf",
+            "bytes": 47434
+          },
+          {
+            "path": "omnigent/runtime/README.md",
+            "permalink": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/runtime/README.md",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/omnigent/source/omnigent/runtime/README.md",
+            "sha256": "487dd833a4c9903f9c7908d35547a387ae10319538eb0e230701810cc3330661",
+            "bytes": 383
+          },
+          {
+            "path": "omnigent/runtime/policies/enforcement.py",
+            "permalink": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/runtime/policies/enforcement.py",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/omnigent/source/omnigent/runtime/policies/enforcement.py",
+            "sha256": "5d4e045dc3c55f19ef5ed20f97094f9da776c19a28c4e82d968d1288c3ec7d0a",
+            "bytes": 1238
+          },
+          {
+            "path": "omnigent/runtime/session_stream.py",
+            "permalink": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/runtime/session_stream.py",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/omnigent/source/omnigent/runtime/session_stream.py",
+            "sha256": "295c53c086a4b1ae551b2b4d8b2ac098a3c56e9105c74e1ceb027708d4a0ef3e",
+            "bytes": 23945
+          },
+          {
+            "path": "omnigent/runtime/workflow.py",
+            "permalink": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/runtime/workflow.py",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/omnigent/source/omnigent/runtime/workflow.py",
+            "sha256": "c17c26ef3c49e39b5185326c4915d4cb41491aecd52edcbf1b1b3c65f642d495",
+            "bytes": 148844
+          },
+          {
+            "path": "omnigent/server/README.md",
+            "permalink": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/server/README.md",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/omnigent/source/omnigent/server/README.md",
+            "sha256": "848f0d6610adab04f0a2b7a3407ed7b3f15faab123058a1e3eab14f6a92fbcd2",
+            "bytes": 239
+          },
+          {
+            "path": "omnigent/server/child_session_recovery.py",
+            "permalink": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/server/child_session_recovery.py",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/omnigent/source/omnigent/server/child_session_recovery.py",
+            "sha256": "e890aedf921df3da1015c194e8755841e3cdceaeae1cebd511b9b95addabb933",
+            "bytes": 8729
+          },
+          {
+            "path": "omnigent/server/routes/_sessions/helpers.py",
+            "permalink": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/server/routes/_sessions/helpers.py",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/omnigent/source/omnigent/server/routes/_sessions/helpers.py",
+            "sha256": "72db16d0044094a7952fc07d284a673bda5d8eeb455f9c923666bf3bbe5c3877",
+            "bytes": 486116
+          }
+        ],
+        "source_capture_is_execution_proof": false,
+        "patterns": [
+          {
+            "title": "Recover child results with durable identity",
+            "source_paths": [
+              "omnigent/runner/subagent_work.py",
+              "omnigent/runner/subagent_recovery.py"
+            ],
+            "source_links": [
+              "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/runner/subagent_work.py",
+              "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/runner/subagent_recovery.py"
+            ],
+            "decision": "adapt",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/OrchestrationEngine.ts",
+            "adaptation": "Neokod already persists command receipts in engine transactions. Extend that receipt discipline to child commands, result acknowledgements and a server-owned parent result inbox. An in-memory task map or inbox is insufficient by itself.",
+            "proof_boundary": "Subagent recovery rereads server children and reconstructs terminal results using dispatch IDs and delivery markers. Recovery is single-flight per parent, retries failed reads and retains undelivered results when an inbox disappears. The application caller creates the recovery service in runner/app.py. This is a useful separation of durable result facts from an ephemeral delivery channel.",
+            "acceptance_gates": ["G2", "G9"]
+          },
+          {
+            "title": "Fence stale terminal callbacks",
+            "source_paths": ["omnigent/runner/subagent_work.py"],
+            "source_links": [
+              "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/runner/subagent_work.py"
+            ],
+            "decision": "adapt/build",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/RuntimeItemProjection.ts",
+            "adaptation": "Use Neokod event identities and provider terminal evidence. Preserve correction provenance, but do not publish completion from an idle heuristic. Neokod orphaned items already express missing closure evidence.",
+            "proof_boundary": "mark_subagent_work_terminal uses only_if_work_id to stop an old timer finalising a newer dispatch. It allows a late failure to replace a previously delivered completion and redelivers the correction. Its own comments admit a false-idle early-completion window; borrowing only the dedupe key would preserve that defect.",
+            "acceptance_gates": ["G2", "G3"]
+          },
+          {
+            "title": "Recover descendants under an ownership check",
+            "source_paths": ["omnigent/server/child_session_recovery.py"],
+            "source_links": [
+              "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/omnigent/server/child_session_recovery.py"
+            ],
+            "decision": "adapt",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Persistence/Layers/WorkspaceOwnershipRepository.ts",
+            "adaptation": "Retain Neokod generation fencing and durable runtime-owner lease identities. A process-local lock alone cannot establish cross-process ownership. Apply the same discipline to managed child sessions, without importing hosted runner control planes.",
+            "proof_boundary": "Child recovery waits for parent readiness, skips intentional stop/archive/closure and native mirrors, checks other runner ownership, rereads under a lock and uses compare-and-set runner replacement. This prevents a restart sweep blindly stealing live descendants.",
+            "acceptance_gates": ["G4", "G6", "G12"]
+          }
+        ]
+      },
+      {
+        "application": "paseo",
+        "resolved_full_name": "getpaseo/paseo",
+        "default_branch": "main",
+        "head_sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+        "retrieved_at": "2026-10-04T06:16:34.119571+00:00",
+        "licence_metadata": {
+          "key": "other",
+          "name": "Other",
+          "spdx_id": "NOASSERTION",
+          "url": null,
+          "node_id": "MDc6TGljZW5zZTA="
+        },
+        "licence_source_note": "LICENSE explicitly states Apache-2.0 except separate third-party licences; GitHub reports NOASSERTION/Other",
+        "source_kind": "public implementation",
+        "metadata_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/paseo/metadata.json",
+        "head_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/paseo/head.json",
+        "tree_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/paseo/tree.json",
+        "sources": [
+          {
+            "path": "LICENSE",
+            "permalink": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/LICENSE",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/paseo/source/LICENSE",
+            "sha256": "79d5aedce6aa0adc547336dc1bd34c5cc9308ba110fac7079ed97515ee573ad3",
+            "bytes": 11708
+          },
+          {
+            "path": "README.md",
+            "permalink": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/README.md",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/paseo/source/README.md",
+            "sha256": "25083913d593c407412c10f98b67255f1b26b57fcb635d884e890e318aaad2e0",
+            "bytes": 7730
+          },
+          {
+            "path": "packages/server/src/server/agent/agent-manager-stream-coalescing.test.ts",
+            "permalink": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/server/src/server/agent/agent-manager-stream-coalescing.test.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/paseo/source/packages/server/src/server/agent/agent-manager-stream-coalescing.test.ts",
+            "sha256": "8d74e34d2964d0dae307ad148cc7dc9abc087aed1a9e95f6995a19bc71da85c5",
+            "bytes": 49508
+          },
+          {
+            "path": "packages/server/src/server/agent/agent-manager.ts",
+            "permalink": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/server/src/server/agent/agent-manager.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/paseo/source/packages/server/src/server/agent/agent-manager.ts",
+            "sha256": "1af9666ec5441d36703574848783adccaca15e6764902241fcc7498f5e2621e0",
+            "bytes": 176100
+          },
+          {
+            "path": "packages/server/src/server/agent/agent-stream-coalescer.ts",
+            "permalink": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/server/src/server/agent/agent-stream-coalescer.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/paseo/source/packages/server/src/server/agent/agent-stream-coalescer.ts",
+            "sha256": "c92bfe724a28e2882726f2e160da3325d598ed5622c8597c3c7ee09278443ead",
+            "bytes": 8081
+          },
+          {
+            "path": "packages/server/src/server/agent/create-agent/create.ts",
+            "permalink": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/server/src/server/agent/create-agent/create.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/paseo/source/packages/server/src/server/agent/create-agent/create.ts",
+            "sha256": "1c6933c7c1c7929d8e8aab575fab7f141c2c2c18818dd21a04b88e3975177d25",
+            "bytes": 20906
+          },
+          {
+            "path": "packages/server/src/server/agent/permission-response.ts",
+            "permalink": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/server/src/server/agent/permission-response.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/paseo/source/packages/server/src/server/agent/permission-response.ts",
+            "sha256": "724298a5c7394384768642804996c217d6ec45d6517cba18a5a0a59c9cdbef9b",
+            "bytes": 1368
+          },
+          {
+            "path": "packages/server/src/server/session/workspace-provisioning/workspace-provisioning-service.ts",
+            "permalink": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/server/src/server/session/workspace-provisioning/workspace-provisioning-service.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/paseo/source/packages/server/src/server/session/workspace-provisioning/workspace-provisioning-service.ts",
+            "sha256": "e3e4372318d062fff174cf0365ccf29abf34b76a1982b690ddaa02558d6dc3be",
+            "bytes": 18043
+          },
+          {
+            "path": "packages/server/src/server/session/workspace-recovery/workspace-recovery-service.ts",
+            "permalink": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/server/src/server/session/workspace-recovery/workspace-recovery-service.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/paseo/source/packages/server/src/server/session/workspace-recovery/workspace-recovery-service.ts",
+            "sha256": "6ab7ec08385e014057a81aa83f6b0f8a4ae7bff1b8cf96a4e157328c54978486",
+            "bytes": 9209
+          },
+          {
+            "path": "packages/server/src/server/session.ts",
+            "permalink": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/server/src/server/session.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/paseo/source/packages/server/src/server/session.ts",
+            "sha256": "41897b396e17599c800a9f2f512201b04b138256736ffbd3c0a62bbffb24bb38",
+            "bytes": 307575
+          },
+          {
+            "path": "packages/server/src/server/workspace-automation-gate.ts",
+            "permalink": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/server/src/server/workspace-automation-gate.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/paseo/source/packages/server/src/server/workspace-automation-gate.ts",
+            "sha256": "a9defd50cc520dabc682b2b69f6c200b6815b2a8f96a5a642adbcbb44e01d023",
+            "bytes": 1796
+          },
+          {
+            "path": "public-docs/orchestration-workflows.md",
+            "permalink": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/public-docs/orchestration-workflows.md",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/paseo/source/public-docs/orchestration-workflows.md",
+            "sha256": "9002d31c240bb75471c4a965548eb58937e746b70b45b20eba8583a720efcc78",
+            "bytes": 6033
+          },
+          {
+            "path": "public-docs/orchestration.md",
+            "permalink": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/public-docs/orchestration.md",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/paseo/source/public-docs/orchestration.md",
+            "sha256": "ddaee5536d5dd15b5690e3fe89d48b65a19f6602cfd8fc43050b33d42eac9ddb",
+            "bytes": 4100
+          }
+        ],
+        "source_capture_is_execution_proof": false,
+        "patterns": [
+          {
+            "title": "Keep cross-provider orchestration in ordinary chat",
+            "source_paths": [
+              "public-docs/orchestration.md",
+              "packages/server/src/server/agent/create-agent/create.ts"
+            ],
+            "source_links": [
+              "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/public-docs/orchestration.md",
+              "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/server/src/server/agent/create-agent/create.ts"
+            ],
+            "decision": "adapt/build",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/provider/Services/ProviderService.ts",
+            "adaptation": "Reuse provider capability and session contracts for governed create/send/stop/wait controls. Persist the parent relation before provider execution, register the result recipient first and expose unavailable capabilities explicitly. Normal chat remains the entry point; Symphony stays an optional workstream.",
+            "proof_boundary": "Official orchestration docs distinguish managed Paseo children, which are full sessions, from provider-native subagents, which are timeline observations. createAgentCommand creates a persisted session and resolves caller-scoped parent information; independently read initial prompt before finish-watcher registration, which supports the fast-child race report.",
+            "acceptance_gates": ["G1", "G2", "G5", "G9", "G10"]
+          },
+          {
+            "title": "Coalesce live deltas, flush semantic barriers",
+            "source_paths": [
+              "packages/server/src/server/agent/agent-manager.ts",
+              "packages/server/src/server/agent/agent-stream-coalescer.ts"
+            ],
+            "source_links": [
+              "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/server/src/server/agent/agent-manager.ts",
+              "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/server/src/server/agent/agent-stream-coalescer.ts"
+            ],
+            "decision": "adapt",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts",
+            "adaptation": "Measure the actual Neokod provider ingestion path before choosing limits. Coalesce display traffic after durable semantic events are accepted; approval/tool/terminal events must keep ordering and identity.",
+            "proof_boundary": "handleStreamEvent coalesces adjacent live deltas and flushes them before terminal/barrier processing. History replay does not restamp timestamps and already-finalised turn handling is guarded. The captured coalescing tests were read, not run; throughput has not been measured here.",
+            "acceptance_gates": ["G3", "G7"]
+          },
+          {
+            "title": "Restore a workspace before resuming its agent",
+            "source_paths": [
+              "packages/server/src/server/session/workspace-recovery/workspace-recovery-service.ts",
+              "packages/server/src/server/session.ts"
+            ],
+            "source_links": [
+              "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/server/src/server/session/workspace-recovery/workspace-recovery-service.ts",
+              "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/server/src/server/session.ts"
+            ],
+            "decision": "adapt/conditional",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/HandoffService.ts",
+            "adaptation": "Neokod already verifies the worktree/branch and stops the former worker before ownership transfer. Reuse that path for ordinary chat handoff; add trust gating only where an external change request can supply executable setup content. Do not import remote/mobile orchestration.",
+            "proof_boundary": "session.ts calls inspect/restore. The recovery service distinguishes unavailable reasons, reuses surviving archived placement or recreates recorded worktree branch/root, maps nested cwd and rolls back failures. An external-change-request gate blocks automatic workspace setup until trusted.",
+            "acceptance_gates": ["G4", "G5", "G10"]
+          }
+        ]
+      },
+      {
+        "application": "opencodex",
+        "resolved_full_name": "lidge-jun/opencodex",
+        "default_branch": "main",
+        "head_sha": "06841165f884a9176d701310638b2112aca7a514",
+        "retrieved_at": "2026-10-04T06:16:36.868649+00:00",
+        "licence_metadata": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT",
+          "url": "https://api.github.com/licenses/mit",
+          "node_id": "MDc6TGljZW5zZTEz"
+        },
+        "licence_source_note": "See captured LICENSE; reuse must retain applicable notices",
+        "source_kind": "public implementation",
+        "metadata_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/opencodex/metadata.json",
+        "head_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/opencodex/head.json",
+        "tree_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/opencodex/tree.json",
+        "sources": [
+          {
+            "path": "LICENSE",
+            "permalink": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/LICENSE",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/opencodex/source/LICENSE",
+            "sha256": "34012a5529ad1e574e84457a609f9ea3df03c63d7c42c7e5f74ec14f438ed346",
+            "bytes": 1079
+          },
+          {
+            "path": "README.md",
+            "permalink": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/README.md",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/opencodex/source/README.md",
+            "sha256": "b3da588aaecf8d25db77191c432bc0667936ced887fe4e62080b30f175ffa7dd",
+            "bytes": 26685
+          },
+          {
+            "path": "src/adapters/base.ts",
+            "permalink": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/adapters/base.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/opencodex/source/src/adapters/base.ts",
+            "sha256": "6ef23a8d7caec31a4316f1bc217db53f0b1ebb90bb1635ef3fb02e1bf1083c5e",
+            "bytes": 11023
+          },
+          {
+            "path": "src/adapters/openai-chat/tool-call-validation.ts",
+            "permalink": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/adapters/openai-chat/tool-call-validation.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/opencodex/source/src/adapters/openai-chat/tool-call-validation.ts",
+            "sha256": "704e1aefcdf85e294f00a564e9393081b9e406b0ae20b156f2f5b98b44ee09fb",
+            "bytes": 8145
+          },
+          {
+            "path": "src/adapters/run-turn-queue.ts",
+            "permalink": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/adapters/run-turn-queue.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/opencodex/source/src/adapters/run-turn-queue.ts",
+            "sha256": "061318d71ef5a6077c4050a3e2daf07c5f3934536926312c52f59a7cdaf81bc6",
+            "bytes": 15545
+          },
+          {
+            "path": "src/combos/failover.ts",
+            "permalink": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/combos/failover.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/opencodex/source/src/combos/failover.ts",
+            "sha256": "6976db08ad87f3accd1f5dd3036db7ca593cb3f70c0e30a34d8050204f110530",
+            "bytes": 40486
+          },
+          {
+            "path": "src/config/multi-agent-surface.ts",
+            "permalink": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/config/multi-agent-surface.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/opencodex/source/src/config/multi-agent-surface.ts",
+            "sha256": "bb2dd8488a98a4d52888de904a9ca3dde52c4b8a9c31dac0c47bd09140c12157",
+            "bytes": 2672
+          },
+          {
+            "path": "src/lib/upstream-retry.ts",
+            "permalink": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/lib/upstream-retry.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/opencodex/source/src/lib/upstream-retry.ts",
+            "sha256": "9a239b498ce5cc709d45a803c1fb6b0afac3ebf477016d4face8c577b3d57684",
+            "bytes": 42955
+          },
+          {
+            "path": "src/server/responses/combo-stream-preflight.ts",
+            "permalink": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/server/responses/combo-stream-preflight.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/opencodex/source/src/server/responses/combo-stream-preflight.ts",
+            "sha256": "ca570fdbf952ea9544c31556d28255cb3079ca40ad643fcc1dc1a1ca44d58a92",
+            "bytes": 20120
+          },
+          {
+            "path": "src/server/responses/core-combo-failure.ts",
+            "permalink": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/server/responses/core-combo-failure.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/opencodex/source/src/server/responses/core-combo-failure.ts",
+            "sha256": "757c2f5218b3ca3f27b9c61a93d98e644cabe1830cd5f166896b92aaa09dacf8",
+            "bytes": 9743
+          },
+          {
+            "path": "src/server/responses/core-combo.ts",
+            "permalink": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/server/responses/core-combo.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/opencodex/source/src/server/responses/core-combo.ts",
+            "sha256": "b38e5edb327c43135a6605838f0b3ca4a61882f59f7208a92a0b3043f11c8ce6",
+            "bytes": 51687
+          }
+        ],
+        "source_capture_is_execution_proof": false,
+        "patterns": [
+          {
+            "title": "Fence retries at execution uncertainty",
+            "source_paths": [
+              "src/lib/upstream-retry.ts",
+              "src/server/responses/core-combo-failure.ts"
+            ],
+            "source_links": [
+              "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/lib/upstream-retry.ts",
+              "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/server/responses/core-combo-failure.ts"
+            ],
+            "decision": "conditional",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts",
+            "adaptation": "Useful if a Neokod provider adapter gains controlled retry/failover. It does not justify switching to a second coding agent after a possibly executed turn. Existing model/runtime/cwd session-reuse logic is the relevant caller and must remain authoritative.",
+            "proof_boundary": "fetchWithTransientRetry counts physical sends once across reset/transient layers, preserves non-replayable responses, honours caller-bounded Retry-After and aborts waits. Core combo failure logic preserves execution uncertainty. In failover.ts, cancellation, origin/cyber hard refusals and non-replayable codes stop target hopping; context overflow hopping is permitted only on zero-output failure.",
+            "acceptance_gates": ["G6", "G11"]
+          },
+          {
+            "title": "Bound retained stream memory and preserve terminal reasons",
+            "source_paths": [
+              "src/adapters/run-turn-queue.ts",
+              "src/server/responses/core-combo.ts"
+            ],
+            "source_links": [
+              "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/adapters/run-turn-queue.ts",
+              "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/server/responses/core-combo.ts"
+            ],
+            "decision": "adapt/conditional",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/RuntimeItemProjection.ts",
+            "adaptation": "Adopt explicit budgets and semantic barriers at Neokod stream boundaries, with measurements to select local defaults. Keep durable event projection separate from display coalescing. A budget over one queue does not prove total-process memory boundedness.",
+            "proof_boundary": "The adapter queue limits event count, total retained strings and one retained event, coalesces adjacent deltas, refunds charges on dequeue and admits a terminal overflow error. It bypasses retention charging for direct delivery to waiting readers; the downstream consumer therefore needs its own per-event bound. Object traversal is depth/node bounded and can undercount pathological nested payloads. Preflight retains a replayUnsafe latch even if older heartbeats are evicted.",
+            "acceptance_gates": ["G7", "G11"]
+          },
+          {
+            "title": "Diagnose provider shapes without retaining values",
+            "source_paths": ["src/adapters/openai-chat/tool-call-validation.ts"],
+            "source_links": [
+              "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/adapters/openai-chat/tool-call-validation.ts"
+            ],
+            "decision": "adapt",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/provider/Services/ProviderAdapter.ts",
+            "adaptation": "Use adapter-specific validation before durable call history is accepted. Do not copy endpoint translation, account pools or custom model grammar into ordinary-chat orchestration. MultiAgentMode settings describe a Codex surface and do not establish a provider-neutral managed-child control plane.",
+            "proof_boundary": "Malformed tool-call diagnostics report reason, structural types and an allowlist of field shapes; arguments and credential values are omitted. Stream null continuation fields are treated as absent consistently with accumulation, while buffered calls require a dispatchable name. This avoids a diagnostic inventing a compatibility failure or leaking content.",
+            "acceptance_gates": ["G8", "G11"]
+          }
+        ]
+      },
+      {
+        "application": "bb",
+        "resolved_full_name": "get-bb/bb",
+        "default_branch": "main",
+        "head_sha": "4d15c1da0a848fa4834c1e5d0480a0891683bbe9",
+        "retrieved_at": "2026-10-04T06:16:34.353248+00:00",
+        "licence_metadata": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT",
+          "url": "https://api.github.com/licenses/mit",
+          "node_id": "MDc6TGljZW5zZTEz"
+        },
+        "licence_source_note": "See captured LICENSE; reuse must retain applicable notices",
+        "source_kind": "public implementation",
+        "metadata_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/metadata.json",
+        "head_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/head.json",
+        "tree_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/tree.json",
+        "sources": [
+          {
+            "path": "LICENSE",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/LICENSE",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/LICENSE",
+            "sha256": "d10816aa30183af920bdd789a81b16847bcf3e287e1b3419dd7d85f6e3e8e7b0",
+            "bytes": 1069
+          },
+          {
+            "path": "README.md",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/README.md",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/README.md",
+            "sha256": "8b7741995585402ac98796e22981a6c2eb8dcc2bce9e4a279afd0d3d343bca3b",
+            "bytes": 10763
+          },
+          {
+            "path": "apps/server/src/services/hosts/permission-ceiling.ts",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/server/src/services/hosts/permission-ceiling.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/apps/server/src/services/hosts/permission-ceiling.ts",
+            "sha256": "9b4debc157e0d9220c89c62d7bcd6e8c88b4a8057730d7cc0d3d4510fc5ac1e3",
+            "bytes": 1885
+          },
+          {
+            "path": "apps/server/src/services/threads/child-thread-notifications.ts",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/server/src/services/threads/child-thread-notifications.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/apps/server/src/services/threads/child-thread-notifications.ts",
+            "sha256": "92ee2a25a4c32b654b1b20a22a3a0570184b8163f8afd45b6eedb987d18334a5",
+            "bytes": 15984
+          },
+          {
+            "path": "apps/server/src/services/threads/thread-create-helpers.ts",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/server/src/services/threads/thread-create-helpers.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/apps/server/src/services/threads/thread-create-helpers.ts",
+            "sha256": "65f0ce0ac3df06995c6cb30f1ce74800f890c86e95020a953a2a4ca0abb1bfee",
+            "bytes": 4818
+          },
+          {
+            "path": "apps/server/src/services/threads/thread-create-request.ts",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/server/src/services/threads/thread-create-request.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/apps/server/src/services/threads/thread-create-request.ts",
+            "sha256": "86efdf183f391866782447fab3e3e962eee72a1e68b7b71cf427e73b92a8dab8",
+            "bytes": 2031
+          },
+          {
+            "path": "apps/server/src/services/threads/thread-create.ts",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/server/src/services/threads/thread-create.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/apps/server/src/services/threads/thread-create.ts",
+            "sha256": "6d997a48094561bbc7f3092cf1edc6412fd6090347ef4586f878e44773624e50",
+            "bytes": 24996
+          },
+          {
+            "path": "apps/server/src/services/threads/thread-environment-directory.ts",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/server/src/services/threads/thread-environment-directory.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/apps/server/src/services/threads/thread-environment-directory.ts",
+            "sha256": "8852669345e830b2fe9cdf7ddbde9e9fe382bb033b2609ff23936dd595d30eea",
+            "bytes": 11528
+          },
+          {
+            "path": "apps/server/src/services/threads/thread-environment-placement.ts",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/server/src/services/threads/thread-environment-placement.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/apps/server/src/services/threads/thread-environment-placement.ts",
+            "sha256": "de1b4aa19b69bd8daacc5bc7ddb1884233f55f8864f22098bae2099e5cc3b507",
+            "bytes": 41727
+          },
+          {
+            "path": "apps/server/src/services/threads/thread-environment-restore.ts",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/server/src/services/threads/thread-environment-restore.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/apps/server/src/services/threads/thread-environment-restore.ts",
+            "sha256": "ce972058530f6af93fb5d86f745c1422b0efd54517b297efcbdf4449c94096b1",
+            "bytes": 4061
+          },
+          {
+            "path": "apps/server/src/services/threads/thread-host-admission.ts",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/server/src/services/threads/thread-host-admission.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/apps/server/src/services/threads/thread-host-admission.ts",
+            "sha256": "955d10354c20dd315e7564cdb0c0ef6d43c3489fac5789f788093e1a113da351",
+            "bytes": 811
+          },
+          {
+            "path": "apps/server/src/services/threads/thread-provisioning-environment.ts",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/server/src/services/threads/thread-provisioning-environment.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/apps/server/src/services/threads/thread-provisioning-environment.ts",
+            "sha256": "e561cf3c0e4b63cb29ea9964bb87f18af3cb27d78768a1ab20ca298e63cfdc24",
+            "bytes": 9592
+          },
+          {
+            "path": "apps/server/src/services/threads/thread-runtime-config.ts",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/server/src/services/threads/thread-runtime-config.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/apps/server/src/services/threads/thread-runtime-config.ts",
+            "sha256": "74a933bdf87e6bf387dbf198bb6ecf253c6f56ce4ad745ca149ff0bba63bf8d0",
+            "bytes": 9599
+          },
+          {
+            "path": "apps/server/src/services/threads/thread-send-request.ts",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/server/src/services/threads/thread-send-request.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/apps/server/src/services/threads/thread-send-request.ts",
+            "sha256": "e8df7ea875038ee9c7dd0f474a059bdd63ab911df5b230511991465ca23a8f74",
+            "bytes": 1687
+          },
+          {
+            "path": "apps/server/src/services/threads/workspace-path-claims.ts",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/server/src/services/threads/workspace-path-claims.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/apps/server/src/services/threads/workspace-path-claims.ts",
+            "sha256": "b4b09af7b1bf1b238846ffbdf958bafb3c9626adb2492d9e114f7963912d8039",
+            "bytes": 1458
+          },
+          {
+            "path": "apps/server/test/threads/workspace-path-claims.test.ts",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/server/test/threads/workspace-path-claims.test.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/apps/server/test/threads/workspace-path-claims.test.ts",
+            "sha256": "e6d544e8ab18b01c557d6a106d56d6f9a417f5ad171379b285d6c6e7328dc004",
+            "bytes": 7840
+          },
+          {
+            "path": "packages/agent-runtime/README.md",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/packages/agent-runtime/README.md",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/packages/agent-runtime/README.md",
+            "sha256": "d930ba33364843310e8842b32eb9b34a3d7ac2623280e06d511526228dedd687",
+            "bytes": 8964
+          },
+          {
+            "path": "packages/agent-runtime/src/provider-adapter.ts",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/packages/agent-runtime/src/provider-adapter.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/packages/agent-runtime/src/provider-adapter.ts",
+            "sha256": "9aea4dd6022ad85da10c362f125343ab0b9d673d2cddbaa13a4fdc9f6db6c0b7",
+            "bytes": 3119
+          },
+          {
+            "path": "packages/agent-runtime/src/runtime.ts",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/packages/agent-runtime/src/runtime.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/packages/agent-runtime/src/runtime.ts",
+            "sha256": "070a92f7e10b37ed8369b84ddfe93b4928cf3fae31c6fb50ce6cf78cd9adbd1c",
+            "bytes": 81470
+          },
+          {
+            "path": "packages/db/src/data/queued-thread-messages.ts",
+            "permalink": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/packages/db/src/data/queued-thread-messages.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/bb/source/packages/db/src/data/queued-thread-messages.ts",
+            "sha256": "0a2abeb6b0bf91773f471db660e123880c59c62b0603355329612fe6e125044d",
+            "bytes": 65652
+          }
+        ],
+        "source_capture_is_execution_proof": false,
+        "patterns": [
+          {
+            "title": "Use verified capabilities rather than provider guesses",
+            "source_paths": [
+              "packages/agent-runtime/README.md",
+              "packages/agent-runtime/src/runtime.ts"
+            ],
+            "source_links": [
+              "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/packages/agent-runtime/README.md",
+              "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/packages/agent-runtime/src/runtime.ts"
+            ],
+            "decision": "adapt",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/provider/Services/ProviderService.ts",
+            "adaptation": "Neokod already exposes getCapabilities and confirmed/uncertain/failed stop outcomes. Extend its adapter contract only for demonstrated child control dependencies; defer restart when siblings or pending interactions may be harmed. Do not add bb plugin/host/connect infrastructure.",
+            "proof_boundary": "The runtime bridge receives plugin-delivered verified artifact capabilities and semantic deltas, rejects missing thread identity and rejects invalid release/forget resume operations. Runtime recovery checks all sibling hosted threads for active turns, in-flight operations and background work before restarting a shared artifact process.",
+            "acceptance_gates": ["G1", "G5", "G6"]
+          },
+          {
+            "title": "Reject workspace paths owned by another project",
+            "source_paths": [
+              "apps/server/src/services/threads/workspace-path-claims.ts",
+              "apps/server/src/services/threads/thread-environment-directory.ts"
+            ],
+            "source_links": [
+              "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/server/src/services/threads/workspace-path-claims.ts",
+              "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/server/src/services/threads/thread-environment-directory.ts"
+            ],
+            "decision": "adapt",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Persistence/Layers/WorkspaceOwnershipRepository.ts",
+            "adaptation": "Reapply path admission against Neokod repository/worktree identities, then retain generation-fenced ownership. Shared review/test checkout must be explicit and writable child tasks require a clear owner.",
+            "proof_boundary": "suppliedWorkspacePathRefusal rejects foreign-project managed paths and unrecorded paths under managed storage. Directory creation and environment placement call the helper before accepting supplied paths. This is an admission check, not a substitute for durable exclusive ownership.",
+            "acceptance_gates": ["G4"]
+          },
+          {
+            "title": "Persist queue claims and preserve initiator provenance",
+            "source_paths": [
+              "packages/db/src/data/queued-thread-messages.ts",
+              "apps/server/src/services/threads/child-thread-notifications.ts"
+            ],
+            "source_links": [
+              "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/packages/db/src/data/queued-thread-messages.ts",
+              "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/server/src/services/threads/child-thread-notifications.ts"
+            ],
+            "decision": "adapt/build",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/OrchestrationEngine.ts",
+            "adaptation": "Persist acceptance, claim, delivery and acknowledgement alongside canonical command/event identities. Attribute parent/child chat updates to the actual turn initiator and cover aggregate versus individual completions; do not dedupe on text or timestamps.",
+            "proof_boundary": "Queue operations use transactional claims and distinguish sender from requestedBy. Claimed rows are excluded from the normal queue list; the issue review shows why a durable visible delivery receipt is still needed. Child terminal notices format excerpts but omit user-vs-parent turn initiator, consistent with the source/storage-confirmed report.",
+            "acceptance_gates": ["G1", "G2"]
+          },
+          {
+            "title": "Clamp permissions to the effective host ceiling",
+            "source_paths": ["apps/server/src/services/hosts/permission-ceiling.ts"],
+            "source_links": [
+              "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/server/src/services/hosts/permission-ceiling.ts"
+            ],
+            "decision": "adapt; reject default",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts",
+            "adaptation": "Check current policy at every queued delivery/steer, restart only if provider capability requires it and preserve pending approvals. Unknown capability must not widen authority.",
+            "proof_boundary": "The helper intersects supported provider modes with a host maximum and refuses when no valid mode exists. Missing host/default policy can resolve to full authority in this source; that default is unsuitable for Neokod unknown evidence. Current stale-ACP and auto-ask reports also show that startup clamping alone is insufficient.",
+            "acceptance_gates": ["G5", "G6"]
+          }
+        ]
+      },
+      {
+        "application": "pi",
+        "resolved_full_name": "earendil-works/pi",
+        "default_branch": "main",
+        "head_sha": "200387122ca450d6387f033949423114a270b96c",
+        "retrieved_at": "2026-10-04T06:16:33.886296+00:00",
+        "licence_metadata": {
+          "key": "mit",
+          "name": "MIT License",
+          "spdx_id": "MIT",
+          "url": "https://api.github.com/licenses/mit",
+          "node_id": "MDc6TGljZW5zZTEz"
+        },
+        "licence_source_note": "See captured LICENSE; reuse must retain applicable notices",
+        "source_kind": "public implementation",
+        "metadata_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/pi/metadata.json",
+        "head_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/pi/head.json",
+        "tree_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/pi/tree.json",
+        "sources": [
+          {
+            "path": "LICENSE",
+            "permalink": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/LICENSE",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/pi/source/LICENSE",
+            "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48",
+            "bytes": 1069
+          },
+          {
+            "path": "README.md",
+            "permalink": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/README.md",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/pi/source/README.md",
+            "sha256": "63d76d96fbd1f98b670a9f3e746102343e04b2d026bd05c9fe06700ceb95a0f2",
+            "bytes": 9211
+          },
+          {
+            "path": "packages/agent/src/agent-loop.ts",
+            "permalink": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/agent/src/agent-loop.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/pi/source/packages/agent/src/agent-loop.ts",
+            "sha256": "e773e822a2587caf314e6bb66ea6370fce3468b7eecd26d6a67afe673f81eabc",
+            "bytes": 29088
+          },
+          {
+            "path": "packages/coding-agent/README.md",
+            "permalink": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/README.md",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/pi/source/packages/coding-agent/README.md",
+            "sha256": "fbc7abec7d0829ac8bc4b217e950794e1ba4d8d1b3e0850f970da318ad72e863",
+            "bytes": 4080
+          },
+          {
+            "path": "packages/coding-agent/docs/rpc.md",
+            "permalink": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/docs/rpc.md",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/pi/source/packages/coding-agent/docs/rpc.md",
+            "sha256": "37a03d180115460a0a275022f4aeabef1e5345458df6a9b6e8a6de18474de720",
+            "bytes": 8897
+          },
+          {
+            "path": "packages/coding-agent/examples/extensions/subagent/README.md",
+            "permalink": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/examples/extensions/subagent/README.md",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/pi/source/packages/coding-agent/examples/extensions/subagent/README.md",
+            "sha256": "6a888330bf974657751e09f5d375a9039872d59d6606fc217c5105c7eca51b1a",
+            "bytes": 6298
+          },
+          {
+            "path": "packages/coding-agent/examples/extensions/subagent/index.ts",
+            "permalink": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/examples/extensions/subagent/index.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/pi/source/packages/coding-agent/examples/extensions/subagent/index.ts",
+            "sha256": "4facaa61c9c781748dd000eb5d2ec0a75289986d1a6e11ce13971ca5653dc252",
+            "bytes": 35714
+          },
+          {
+            "path": "packages/coding-agent/src/core/agent-session.ts",
+            "permalink": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/agent-session.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/pi/source/packages/coding-agent/src/core/agent-session.ts",
+            "sha256": "fa1a4f2d84efd0aab8f4a74301d1106395130d3cc59bd665c558280f27dceb03",
+            "bytes": 158139
+          },
+          {
+            "path": "packages/coding-agent/src/core/session-manager.ts",
+            "permalink": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/session-manager.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/pi/source/packages/coding-agent/src/core/session-manager.ts",
+            "sha256": "450d82c529933214e088b8422f00061815e617f352f6c834689787a314064bff",
+            "bytes": 63809
+          },
+          {
+            "path": "packages/coding-agent/test/suite/regressions/9178-tree-during-compaction.test.ts",
+            "permalink": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/test/suite/regressions/9178-tree-during-compaction.test.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/pi/source/packages/coding-agent/test/suite/regressions/9178-tree-during-compaction.test.ts",
+            "sha256": "21dee83475afbc7421e4c44594b51cd4f3666b68953fc91266de4ab0e305c482",
+            "bytes": 3814
+          },
+          {
+            "path": "packages/durable/README.md",
+            "permalink": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/durable/README.md",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/pi/source/packages/durable/README.md",
+            "sha256": "43d5f169feebd88484014c0fab88b018a655dc7d01351e2a5d797a122638063b",
+            "bytes": 35238
+          },
+          {
+            "path": "packages/durable/src/harness/scheduler.ts",
+            "permalink": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/durable/src/harness/scheduler.ts",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/pi/source/packages/durable/src/harness/scheduler.ts",
+            "sha256": "d69b7a6880aed16f034b6c3f07530ce0eb182f5741da90005a1ab8b1015be4f4",
+            "bytes": 56393
+          }
+        ],
+        "source_capture_is_execution_proof": false,
+        "patterns": [
+          {
+            "title": "Keep session facts separate from selected branch context",
+            "source_paths": ["packages/coding-agent/src/core/session-manager.ts"],
+            "source_links": [
+              "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/session-manager.ts"
+            ],
+            "decision": "adapt/conditional",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/RuntimeItemProjection.ts",
+            "adaptation": "Retain typed facts and explicit context lineage. Malformed or absent history must remain visible as a gap rather than silently pretending nothing happened. No append-only JSONL migration is needed solely for this pattern.",
+            "proof_boundary": "Session entries use IDs and parent IDs; model, thinking, compaction and context edits are distinct facts and projection follows a selected leaf. Loading repairs a truncated tail and skips malformed lines; it still reconstructs in-memory history. This provides inspectable branch semantics but is not proof of bounded loading, complete history or Neokod lifecycle truth.",
+            "acceptance_gates": ["G3", "G7", "G8"]
+          },
+          {
+            "title": "Separate steering from follow-up and compaction",
+            "source_paths": [
+              "packages/agent/src/agent-loop.ts",
+              "packages/coding-agent/src/core/agent-session.ts"
+            ],
+            "source_links": [
+              "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/agent/src/agent-loop.ts",
+              "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/agent-session.ts"
+            ],
+            "decision": "adapt",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts",
+            "adaptation": "Name queue semantics in contracts, preserve accepted messages during compaction and use server-owned receipts. Provider-native steer capability is separate from replacing a running turn.",
+            "proof_boundary": "The loop awaits its semantic event sink, polls steering before tool/assistant work and processes follow-ups after natural completion. prepareNextTurn can compact then repoll steering, so messages arriving during preparation are not overlooked. Core queues are not proof of durable command receipts; manual compaction rejects prompt during compaction.",
+            "acceptance_gates": ["G2", "G8"]
+          },
+          {
+            "title": "Bound optional child processes and validate waits",
+            "source_paths": [
+              "packages/coding-agent/examples/extensions/subagent/index.ts",
+              "packages/durable/src/harness/scheduler.ts"
+            ],
+            "source_links": [
+              "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/examples/extensions/subagent/index.ts",
+              "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/durable/src/harness/scheduler.ts"
+            ],
+            "decision": "conditional/build",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/provider/Services/ProviderService.ts",
+            "adaptation": "Borrow finite bounds and explicit trust; build a durable managed-child graph with cycle rejection and confirmed cancellation. Pi core intentionally omits built-in permissions and cannot supply Neokod admission guarantees.",
+            "proof_boundary": "The example extension supports single/parallel/chain subprocesses, eight tasks/four concurrent by default, isolated context, output truncation and project-agent trust. It is not a built-in governed multi-agent scheduler. Durable scheduler validates self/owner/existence and owned-only failFast waits, but an arbitrary dependency graph cycle check was not found, matching the current mutual-wait report.",
+            "acceptance_gates": ["G5", "G8", "G9"]
+          }
+        ]
+      },
+      {
+        "application": "harnessrouter",
+        "resolved_full_name": "HarnessRouter/harnessrouter",
+        "default_branch": "main",
+        "head_sha": "2826cf633b0588fa494da20fdf2828deacfb7e79",
+        "retrieved_at": "2026-10-04T06:16:34.214845+00:00",
+        "licence_metadata": {
+          "key": "apache-2.0",
+          "name": "Apache License 2.0",
+          "spdx_id": "Apache-2.0",
+          "url": "https://api.github.com/licenses/apache-2.0",
+          "node_id": "MDc6TGljZW5zZTI="
+        },
+        "licence_source_note": "See captured LICENSE; reuse must retain applicable notices",
+        "source_kind": "public implementation",
+        "metadata_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/harnessrouter/metadata.json",
+        "head_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/harnessrouter/head.json",
+        "tree_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/harnessrouter/tree.json",
+        "sources": [
+          {
+            "path": "LICENSE",
+            "permalink": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/LICENSE",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/harnessrouter/source/LICENSE",
+            "sha256": "0718ec35489c1c3735eadeea39ddf54daa7f452e749f214bcc08cb27bf56339f",
+            "bytes": 11344
+          },
+          {
+            "path": "README.md",
+            "permalink": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/README.md",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/harnessrouter/source/README.md",
+            "sha256": "b20e6a0d47584a92c10f46a9359bfd5f46edce23c90103d647f4ec74ffa56fd1",
+            "bytes": 21890
+          },
+          {
+            "path": "gateway/app.py",
+            "permalink": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/gateway/app.py",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/harnessrouter/source/gateway/app.py",
+            "sha256": "212e62084d126078334091dca51b84cbd8523e4338883819aa985b0b2db7c58f",
+            "bytes": 1066498
+          },
+          {
+            "path": "gateway/backing.py",
+            "permalink": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/gateway/backing.py",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/harnessrouter/source/gateway/backing.py",
+            "sha256": "d1677b375b00e6a354d25c3c8b78728c9d38c7af433dccf3e5785d7e6c36871c",
+            "bytes": 29453
+          },
+          {
+            "path": "gateway/control_sqlite.py",
+            "permalink": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/gateway/control_sqlite.py",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/harnessrouter/source/gateway/control_sqlite.py",
+            "sha256": "37d7c6b545d9dff751fad325c16aff6e281fbdc4f04c41748a6051959726e8b4",
+            "bytes": 9981
+          },
+          {
+            "path": "gateway/control_store.py",
+            "permalink": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/gateway/control_store.py",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/harnessrouter/source/gateway/control_store.py",
+            "sha256": "f72fc35eecfe23eca664fc60f252369806f4a01c3b5c8920e537492c542aef2e",
+            "bytes": 27198
+          },
+          {
+            "path": "gateway/tests/test_workspace_write_durability.py",
+            "permalink": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/gateway/tests/test_workspace_write_durability.py",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/harnessrouter/source/gateway/tests/test_workspace_write_durability.py",
+            "sha256": "65465f9f03e5f316dca64b2a8e94adc93d3843b66f0e7db9b3aaaa3b9cca5001",
+            "bytes": 3874
+          },
+          {
+            "path": "protocol/CONNECTING.md",
+            "permalink": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/protocol/CONNECTING.md",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/harnessrouter/source/protocol/CONNECTING.md",
+            "sha256": "fd8fcb07482658b0305e1fcee52155aaceaaa0f42e23a73a7fcad3077883f7c1",
+            "bytes": 3242
+          },
+          {
+            "path": "protocol/README.md",
+            "permalink": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/protocol/README.md",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/harnessrouter/source/protocol/README.md",
+            "sha256": "b21a3c09901e61102a18c3fcffe1a8f2b284aca0bcdb2a23945271b20062e393",
+            "bytes": 8249
+          },
+          {
+            "path": "runner/server.py",
+            "permalink": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/runner/server.py",
+            "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/harnessrouter/source/runner/server.py",
+            "sha256": "9eb84d75970361e1e65322b0eba30cc81ef5aa5d16bbd12bb19005b90e35f360",
+            "bytes": 588173
+          }
+        ],
+        "source_capture_is_execution_proof": false,
+        "patterns": [
+          {
+            "title": "Reserve request identity before execution",
+            "source_paths": ["gateway/app.py", "gateway/control_store.py"],
+            "source_links": [
+              "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/gateway/app.py",
+              "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/gateway/control_store.py"
+            ],
+            "decision": "adapt/conditional",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/OrchestrationEngine.ts",
+            "adaptation": "Use Neokod persisted commands and canonical IDs rather than introducing UHP/Cosmos compatibility. Keep child request hashing and replay semantics typed and versioned if needed.",
+            "proof_boundary": "Turn admission hashes semantic payload excluding stream/idempotency key, reserves the key before starting, rejects mismatched repeats and replays a recorded response. This is task/harness-level admission rather than a model endpoint proxy. Trace cursor durability follows flush. Protocol documents are a draft and show date drift between current README and connection examples.",
+            "acceptance_gates": ["G2", "G11"]
+          },
+          {
+            "title": "Use local CAS, enforce admission failure",
+            "source_paths": ["gateway/control_sqlite.py", "gateway/control_store.py"],
+            "source_links": [
+              "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/gateway/control_sqlite.py",
+              "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/gateway/control_store.py"
+            ],
+            "decision": "adapt CAS; reject admission",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Persistence/Layers/WorkItemRepository.ts",
+            "adaptation": "Neokod already persists owner token/generation/PID/start/lease and workspace generations. Reuse those repositories and fail admission closed on unknown ownership; do not clone a second store abstraction.",
+            "proof_boundary": "SQLite backing uses BEGIN IMMEDIATE and etag compare-and-set with explicit TTL deletion. However control_store lease_admit defaults to observe and storage errors return a non-rejected fence 0, explicitly permitting work without exclusive ownership. The code is not a correctness template in that configuration.",
+            "acceptance_gates": ["G4", "G12"]
+          },
+          {
+            "title": "Capture between-turn edits for recovery, surface failed capture",
+            "source_paths": [
+              "gateway/backing.py",
+              "gateway/tests/test_workspace_write_durability.py"
+            ],
+            "source_links": [
+              "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/gateway/backing.py",
+              "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/gateway/tests/test_workspace_write_durability.py"
+            ],
+            "decision": "conditional; reject success claim",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/HandoffService.ts",
+            "adaptation": "If Neokod supports recovery copies for ordinary-chat edits, define live-write success separately from durable capture success and surface degraded recovery. Keep local filesystem/worktree authority; no cloud blob dependency is justified.",
+            "proof_boundary": "RunnerWorkspaceFiles writes live files then stores a path-keyed between-turn copy. Captured tests exercise copy and traversal rejection. But _capture returns without a blob or logs and swallows capture failure; write still returns success. Read exceptions become None. Those paths do not prove recoverable edits or distinguish unavailable from absent.",
+            "acceptance_gates": ["G4", "G12"]
+          }
+        ]
+      },
+      {
+        "application": "conductor",
+        "resolved_full_name": "meltylabs/conductor-releases",
+        "default_branch": "main",
+        "head_sha": "0095de9b888f2a37413a3a3666638344028d2f46",
+        "retrieved_at": "2026-10-04T06:23:48.035962+00:00",
+        "licence_metadata": null,
+        "licence_source_note": "No public implementation licence established",
+        "source_kind": "public release/changelog repo only",
+        "metadata_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/conductor/metadata.json",
+        "head_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/conductor/head.json",
+        "tree_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/conductor/tree.json",
+        "sources": [],
+        "source_capture_is_execution_proof": false,
+        "patterns": [
+          {
+            "title": "Choose task workspace and shared checkout deliberately",
+            "source_paths": [],
+            "source_links": [],
+            "decision": "adapt behaviour; reject cloud",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/HandoffService.ts",
+            "adaptation": "Use the existing local handoff and ownership path for an ordinary chat task. Preserve board/review policy and distinguish branch isolation from permission admission. The release repository has changelog/issues only, so no private process/cache implementation or licence grant is inferred.",
+            "proof_boundary": "Official workspaces/parallel-agent docs describe git worktrees/task branches, terminals/diffs/review and .context notes. Independently landable work belongs in separate workspaces; agents reviewing/testing the same branch can share a checkout with explicit collision risk. The current product also advertises cloud/multiplayer; its local docs remain available. Local agents run with operator/provider permissions, and worktree isolation is not a security sandbox.",
+            "acceptance_gates": ["G1", "G4", "G5", "G10"],
+            "official_links": [
+              "https://www.conductor.build/docs/concepts/parallel-agents",
+              "https://www.conductor.build/docs/concepts/workspaces-and-branches",
+              "https://www.conductor.build/docs/reference/security-and-permissions"
+            ]
+          },
+          {
+            "title": "Preserve waiting questions and background outcomes",
+            "source_paths": [],
+            "source_links": [],
+            "decision": "build acceptance coverage",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/RuntimeItemProjection.ts",
+            "adaptation": "Render pending interactions from durable correlated identity. If the provider exits, show that loss explicitly and provide supported recovery without inventing a runnable approval or replaying unknown work.",
+            "proof_boundary": "Public release issues report idle sweeps/restarts losing pending questions or autonomous background work. These are user observations on named older releases, with no maintainer comments in the selected capture. They suggest tests, not confirmation that current Conductor always behaves this way.",
+            "acceptance_gates": ["G3", "G6", "G7"],
+            "official_links": [
+              "https://github.com/meltylabs/conductor-releases/issues/27",
+              "https://github.com/meltylabs/conductor-releases/issues/21"
+            ]
+          }
+        ]
+      },
+      {
+        "application": "Maestri",
+        "official_site": "https://www.themaestri.app/en",
+        "resolved_full_name": null,
+        "head_sha": null,
+        "licence_metadata": null,
+        "source_kind": "official behaviour documentation only",
+        "public_source_not_identified": true,
+        "public_github_tracker_not_identified": true,
+        "patterns": [
+          {
+            "title": "Make peer routing explicit and context scoped",
+            "source_paths": [],
+            "source_links": [],
+            "decision": "adapt identity; reject delivery",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/provider/Services/ProviderService.ts",
+            "adaptation": "Persist routing and result receipts on the server. Human focus, window state and stream subscription cannot determine whether a parent receives a result. Notes/progress from agents remain attributed reports, not authoritative runtime state.",
+            "proof_boundary": "Official connections docs expose cross-provider skills/CLI messaging and explicit connected peers; cross-workspace names are qualified. However the receiving agent must remain unselected: focusing it stops monitoring and the waiting sender never receives its reply according to the docs. That documented behaviour is unsuitable for a durable parent/child result protocol.",
+            "acceptance_gates": ["G1", "G2", "G3", "G9"],
+            "official_links": ["https://www.themaestri.app/en/docs/connections"]
+          },
+          {
+            "title": "Separate floor creation from platform acceleration",
+            "source_paths": [],
+            "source_links": [],
+            "decision": "conditional",
+            "neokod_caller": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Persistence/Layers/WorkspaceOwnershipRepository.ts",
+            "adaptation": "A CoW acceleration option needs measured platform support, exact copy exclusions and explicit secret/.env handling; no performance claim is established. Always validate repository/cwd/path ownership before launch, and never clear an active git lock. Canvas/Swift/remote feature adoption is outside scope.",
+            "proof_boundary": "Official floors docs use git worktrees by default; optional copy-on-write clones can include untracked dependencies/settings/current edits, skip build caches and fall back to ordinary checkout on Windows. PR floors use a read-only copy; git host CLI/auth remain operator supplied. Changelog reports fixes for cloned-floor target cwd, prompt submission, stale git locks and unsafe symlinks/FIFOs. These are vendor-reported fixes, not independently reproduced GitHub issues.",
+            "acceptance_gates": ["G4", "G5", "G7", "G12"],
+            "official_links": [
+              "https://www.themaestri.app/en/docs/floors",
+              "https://www.themaestri.app/en/changelog"
+            ]
+          }
+        ]
+      }
+    ],
+    "official_document_capture": {
+      "retrieved_at": "2026-10-04T06:23:50.821268+00:00",
+      "urls": {
+        "conductor-home": "https://www.conductor.build/",
+        "conductor-docs": "https://www.conductor.build/docs",
+        "conductor-workspaces": "https://www.conductor.build/docs/concepts/workspaces-and-branches",
+        "conductor-parallel": "https://www.conductor.build/docs/concepts/parallel-agents",
+        "conductor-permissions": "https://www.conductor.build/docs/reference/security-and-permissions",
+        "maestri-home": "https://www.themaestri.app/en",
+        "maestri-connections": "https://www.themaestri.app/en/docs/connections",
+        "maestri-floors": "https://www.themaestri.app/en/docs/floors",
+        "maestri-troubleshooting": "https://www.themaestri.app/en/docs/troubleshooting",
+        "maestri-changelog": "https://www.themaestri.app/en/changelog"
+      }
+    },
+    "official_capture_limits": "Conductor direct HTTP fetch returned 403; official docs successfully read through web tool. Maestri raw HTML retained in official-docs. Vendor claims not runtime verification.",
+    "source_fetch_limits": [
+      "Omnigent examples/polly/agent.yaml returned 404; not read as source implementation.",
+      "Source SHA and issue snapshots were captured at different times; no atomic cross-product snapshot claimed.",
+      "Previous Luna partial lane not found; these raw sources/issues independently captured and reviewed."
+    ],
+    "neokod_read_before_comparison": [
+      "README.md",
+      "docs/architecture/overview.md",
+      "docs/architecture/state-and-evidence.md",
+      "docs/architecture/symphony.md",
+      "docs/architecture/runtime-modes.md",
+      "docs/integrations/symphony-jira.md"
+    ],
+    "neokod_source_paths": [
+      "/Users/kamogelo/Code/t3code/apps/server/src/provider/Services/ProviderService.ts",
+      "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts",
+      "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/RuntimeItemProjection.ts",
+      "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/OrchestrationEngine.ts",
+      "/Users/kamogelo/Code/t3code/apps/server/src/symphony/HandoffService.ts",
+      "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Persistence/Layers/WorkspaceOwnershipRepository.ts",
+      "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Persistence/Layers/WorkItemRepository.ts",
+      "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/JiraAdapter.ts",
+      "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/JiraApiClient.ts",
+      "/Users/kamogelo/Code/t3code/packages/shared/src/agentAwareness.ts",
+      "/Users/kamogelo/Code/t3code/apps/web/src/components/SubagentsPanel.logic.ts"
+    ],
+    "verification": "Source and documentation review only. Captured tests were read but not run. No competitor execution, package installation, real provider/tracker calls, application edits or publication."
+  },
+  "synara": {
+    "repository": "Emanuele-web04/synara",
+    "head_sha": "5f2ee77ae9fc60993db47e81419c1171a99a5c32",
+    "captured_utc": "2026-10-04T06:29:19.312352+00:00",
+    "files": [
+      {
+        "path": "README.md",
+        "blob_sha": "78188a4c3d0c4c91d4d013089f5f124c07e9ef44",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/README.md"
+      },
+      {
+        "path": "AGENTS.md",
+        "blob_sha": "b11223a580dded5a8d826b1f1968ea9a36262abe",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/AGENTS.md"
+      },
+      {
+        "path": "LICENSE",
+        "blob_sha": "960499447d8ea8f6ce86017893f132f0c3885fef",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/LICENSE"
+      },
+      {
+        "path": "apps/server/src/git/githubReadGate.ts",
+        "blob_sha": "2579169f9d729efe3e231af04f5da11020f249b3",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/git/githubReadGate.ts"
+      },
+      {
+        "path": "apps/server/src/git/Layers/GitHubCli.ts",
+        "blob_sha": "009eb700ead304c1a864acc52a3c2f60812fe76a",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/git/Layers/GitHubCli.ts"
+      },
+      {
+        "path": "apps/server/src/persistence/Layers/HubWorkRepository.ts",
+        "blob_sha": "b412bdecbb906a2f157e969fdd80bb421e0a0600",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/persistence/Layers/HubWorkRepository.ts"
+      },
+      {
+        "path": "apps/server/src/persistence/Migrations/128_HubWork.ts",
+        "blob_sha": "4783a062c22c7d62d62af81b74206c2c89c149ca",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/persistence/Migrations/128_HubWork.ts"
+      },
+      {
+        "path": "apps/server/src/projectAgent/hubWorkLifecycle.ts",
+        "blob_sha": "7c8634d16ccbd8771308a6a337f6cb5852ff5a86",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/projectAgent/hubWorkLifecycle.ts"
+      },
+      {
+        "path": "apps/server/src/projectAgent/hubWorkService.ts",
+        "blob_sha": "2809e130a9513eade33ad923a5c9af6af2da2735",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/projectAgent/hubWorkService.ts"
+      },
+      {
+        "path": "apps/server/src/projectAgent/groupsBetaGate.ts",
+        "blob_sha": "fa518985c4e3ecf705af0d89960cf47c46f47c11",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/projectAgent/groupsBetaGate.ts"
+      },
+      {
+        "path": "apps/server/src/agentGateway/hubWorkGateway.ts",
+        "blob_sha": "ec63500d7adbdb1ac42680ea7ce2f93bfec5ae75",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/agentGateway/hubWorkGateway.ts"
+      },
+      {
+        "path": "apps/server/src/agentGateway/hubWorkSource.ts",
+        "blob_sha": "dc42bf607849eed4481cf90f04f92c5a5954fdc1",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/agentGateway/hubWorkSource.ts"
+      },
+      {
+        "path": "apps/server/src/agentGateway/harnessPolicy.ts",
+        "blob_sha": "14728f39162382b0467da1d2c0c3e151895ace8a",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/agentGateway/harnessPolicy.ts"
+      },
+      {
+        "path": "apps/server/src/agentGateway/creationCoordinator.ts",
+        "blob_sha": "99ffba516e590b1b6cab3e2102fe85fcff80cfb7",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/agentGateway/creationCoordinator.ts"
+      },
+      {
+        "path": "apps/server/src/persistence/messageTextChunks.ts",
+        "blob_sha": "2a254957aa4edab70434e49bc50e74dcd6f6c747",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/persistence/messageTextChunks.ts"
+      },
+      {
+        "path": "apps/server/src/persistence/Migrations/100_MessageTextChunks.ts",
+        "blob_sha": "5e941fb56f204814ff4e6b8cf8baa2b3d88fa681",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/persistence/Migrations/100_MessageTextChunks.ts"
+      },
+      {
+        "path": "apps/server/src/persistence/Layers/ProjectionThreadMessages.ts",
+        "blob_sha": "8efaf1332d5d2018b899321d7ceb85f4f6bc5bc9",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/persistence/Layers/ProjectionThreadMessages.ts"
+      },
+      {
+        "path": "apps/server/src/orchestration/startupTurnReconciliation.ts",
+        "blob_sha": "b8f58e1adb437c1313a0d3fe681d04fe77425a6c",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/orchestration/startupTurnReconciliation.ts"
+      },
+      {
+        "path": "apps/server/src/effectServer.ts",
+        "blob_sha": "ab5a10b89d93679c3776e1b908890745ecf71592",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/effectServer.ts"
+      },
+      {
+        "path": "apps/server/src/platform/processTreeController.ts",
+        "blob_sha": "76798d71f9f43cccd5fb69224d52b5317fecef7d",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/platform/processTreeController.ts"
+      },
+      {
+        "path": "apps/server/src/provider/providerModelCatalogCache.ts",
+        "blob_sha": "1ab115979f85ab2536319bc2dfd82bab4e3cd4e4",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/provider/providerModelCatalogCache.ts"
+      },
+      {
+        "path": "apps/server/src/orchestration/Layers/ProviderCommandReactor.ts",
+        "blob_sha": "a26d4e9f4042ec52c2c6dae70390a45709c78fda",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts"
+      },
+      {
+        "path": "apps/server/src/orchestration/decider.ts",
+        "blob_sha": "554dbff6702dfa83fcf61f8a0867f389638cb144",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/apps/server/src/orchestration/decider.ts"
+      },
+      {
+        "path": "docs/PROJECT_COORDINATOR_IMPLEMENTATION.md",
+        "blob_sha": "8d06217d9cdbd75e4153e68c18f6e46882c22d6b",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/docs/PROJECT_COORDINATOR_IMPLEMENTATION.md"
+      },
+      {
+        "path": "docs/PROJECT_COORDINATOR_PLAN.md",
+        "blob_sha": "615c86ff5c33fa1ce79e98e38330ba6e52499795",
+        "url": "https://github.com/Emanuele-web04/synara/blob/5f2ee77ae9fc60993db47e81419c1171a99a5c32/docs/PROJECT_COORDINATOR_PLAN.md"
+      }
+    ]
+  }
+}

@@ -1,0 +1,899 @@
+{
+  "captured_at": "2026-10-04T07:44:06.757868+00:00",
+  "workspace_head": "80334a4c8a6badd9a0014bbc34af4bcb346c3cff",
+  "proof_class": "source-only; no install/build/runtime/provider calls",
+  "local_sources": [
+    {
+      "source": "/Users/kamogelo/Code/t3code/README.md",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/README.md",
+      "sha256": "f54db49322a9a419b5509ee297104c7de62789d891e495efdb3bdfff47c25889"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/AGENTS.md",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/AGENTS.md",
+      "sha256": "b55317b2eaeca3be291a6d5733692498acb7491f34a1d0fdf4b43fc29241ab08"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/LICENSE",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/LICENSE",
+      "sha256": "935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/package.json",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/package.json",
+      "sha256": "a8d114d72d1a874aefd5875fa72c4cae59c5dc4cc1111bc2bae4406a413d7e7f"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/package.json",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/package.json",
+      "sha256": "a787f990ce6553956e778fb7fc4b16c71aec5365662256360f8caf21f061e535"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/server/package.json",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/server/package.json",
+      "sha256": "2c11be75ab8863a3990f94e89358d642bd194bdfef687c999db18c34943ea85e"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/vite.config.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/vite.config.ts",
+      "sha256": "642f460adc8484a6680269fe1672044359bbf44c20a894e5bc90c0bb81b1d5f0"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/server/vite.config.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/server/vite.config.ts",
+      "sha256": "4dfd30577f5b416ff31f91af9c22bb85c33b1b98cde303c045777e5a9bb02527"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/docs/architecture/overview.md",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/docs/architecture/overview.md",
+      "sha256": "09d1a5ee08a48c34d771054925b36b78202d03e813238cbdb7e2c73dbfa2a2be"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/docs/architecture/connection-runtime.md",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/docs/architecture/connection-runtime.md",
+      "sha256": "44b18ebd580fc48b41ec9c5d28eecdea46a761f51d04a9a02e216ca05f191f10"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/docs/architecture/state-and-evidence.md",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/docs/architecture/state-and-evidence.md",
+      "sha256": "d02f53c79b81ab8d2d1e2e5629f5a6fbe203a5394fedf1a22c6e7bbcda85e642"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/.plans/20-orchestration-direction.md",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/.plans/20-orchestration-direction.md",
+      "sha256": "a6bf649b005e0e40ee5607c423a7901bfb0764a67adba36dd403fb080ffb5e4f"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/src/main.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/main.ts",
+      "sha256": "3efcfe5fd816eba59be042a6e23914fd53236f861cbcfe6305dd767644c2f44c"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/src/preload.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/preload.ts",
+      "sha256": "9a25702c3e5585d5971a9adf5c6784a7ebf8862654b6e52db13728ae3f370c4a"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/src/app/DesktopApp.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/app/DesktopApp.ts",
+      "sha256": "1187b6debe731d2107a00417cdeb4e93e359c63f8b56c81f1a47815eb7bd9894"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/src/app/DesktopEnvironment.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/app/DesktopEnvironment.ts",
+      "sha256": "dd4bdfa68f851d4fe6dad637fd67cf7e48622ad1950ad1b7217bdcc78d0326bb"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/src/backend/DesktopBackendConfiguration.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/backend/DesktopBackendConfiguration.ts",
+      "sha256": "ef1c7b6be9abb67a2ada4f96bf1b0c6ee2caa21e5da996fa047c49d487a976ce"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/src/backend/DesktopBackendManager.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/backend/DesktopBackendManager.ts",
+      "sha256": "3ac282d510faba510e8599a14521c7d3deeb9ef74517f6a7fef1ff4fd0e92c04"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/src/backend/DesktopBackendPool.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/backend/DesktopBackendPool.ts",
+      "sha256": "95dcec2e76c3e0006ed4f92f209979ef96ed5eacb97870e86502ad0ebe03fcd8"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/src/electron/ElectronProtocol.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/electron/ElectronProtocol.ts",
+      "sha256": "20e14cb51171404f1d6f2a1d9964f097e221cd7fd7fb7f11889b0e594c5b05c6"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/src/window/DesktopWindow.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/window/DesktopWindow.ts",
+      "sha256": "ac1c68514c01d9f568a6e3f69907eefe5e274a32ab31821fe9dbb882472c1c86"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/src/app/DesktopConnectionCatalogStore.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/app/DesktopConnectionCatalogStore.ts",
+      "sha256": "83a001320b6ad618d43b9e600a3a984a326a60ce61e0f689d18a2860cdd1681d"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/src/ipc/DesktopIpc.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/ipc/DesktopIpc.ts",
+      "sha256": "0862a6672e3af3c599d31a6900ad890be3adb2fa87defeb7eea94e123d27139a"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/src/ipc/methods/window.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/ipc/methods/window.ts",
+      "sha256": "2dd6788ef22ab8ecd65c0fb0ad7b3a8d431810f7e06c61dd1ae1b4a1de37952f"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/src/preview/Manager.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/preview/Manager.ts",
+      "sha256": "5e76c06a0b0cadf43044578fd654665e30d286844e5c5415911a9ff17d362521"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/src/preview/BrowserSession.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/preview/BrowserSession.ts",
+      "sha256": "b3b1abc18953246a0902e0861af05bac0089da221a73ac82c0fee79da16105b0"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/src/preview/WebviewPreferences.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/preview/WebviewPreferences.ts",
+      "sha256": "2efbe6804db3146d74cb534f6ca5ad3b2d9e92ce140528958ec0c710def81c40"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/src/preview/PlaywrightInjectedRuntime.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/preview/PlaywrightInjectedRuntime.ts",
+      "sha256": "316cbc66f9c3d0ab9b84c2360fea1f905169e1a8aec3118d6b4594cbd7501715"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/src/wsl/DesktopWslEnvironment.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/wsl/DesktopWslEnvironment.ts",
+      "sha256": "3ca3208b3ba5c9ffd267310f8b7553ecee413a65c204336afa83e716d94eb74f"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/desktop/src/shell/DesktopShellEnvironment.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/shell/DesktopShellEnvironment.ts",
+      "sha256": "8f7eeef4844a771ff5b466acc4832064da5384cac8844a98e1a735e455fcdb4e"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/web/src/localApi.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/web/src/localApi.ts",
+      "sha256": "03efe7cae0610ad05b8f66492604d7f52ff82da7b23a967d1b45762206c23c74"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/web/src/environments/primary/target.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/web/src/environments/primary/target.ts",
+      "sha256": "a4956aef049ac1c5ebc0d316ffb02740ff0622e0268029a8b7c16ae45082d359"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/web/src/connection/platform.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/web/src/connection/platform.ts",
+      "sha256": "e94196e3bc2ed1a8a3775f0d5b05785a039fa3ca1d94a66523a20576d9b3b1fa"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/web/src/connection/storage.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/web/src/connection/storage.ts",
+      "sha256": "0b17d856d8c6312204a3039b222e3e5e22827d0c0907468f70cae04b5f749b3f"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/web/src/browser/ElectronBrowserHost.tsx",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/web/src/browser/ElectronBrowserHost.tsx",
+      "sha256": "4de034c164b23c825b3cf83b15505f9cfd13bfcf16050d59b4b2c6fa16515e5b"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/web/src/browser/HostedBrowserWebview.tsx",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/web/src/browser/HostedBrowserWebview.tsx",
+      "sha256": "c4c5c72cef7e6c4c4eb1031f6229edcda62adc95bd959b380efc634a8ae516e2"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/packages/contracts/src/ipc.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/packages/contracts/src/ipc.ts",
+      "sha256": "e64896198c96aeda4147aacf6d598bad13a0f7425ca51e393922965e8752f348"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/server/src/cli/config.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/server/src/cli/config.ts",
+      "sha256": "794ec04a093c06412c56ed2107417f1cf9ea1345d3b942d52a019b11e8f39839"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/server/src/transport/LocalTransportAuth.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/server/src/transport/LocalTransportAuth.ts",
+      "sha256": "33a01141dadd8b2feeb600f330b7a3dc46cea479fa9c769216916d1837cb94ba"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/server/src/transport/WslBearerAuth.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/server/src/transport/WslBearerAuth.ts",
+      "sha256": "d257f095c2287f6dc45a4d26b3f3177440fe7c43b6a22a10cdf1d3a20ad81d5f"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/apps/server/src/persistence/NodeSqliteClient.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/apps/server/src/persistence/NodeSqliteClient.ts",
+      "sha256": "293a1ad1fc1efcc6f4f03c643d4504b030767569befcb46b4c32438f4e6ee5a1"
+    },
+    {
+      "source": "/Users/kamogelo/Code/t3code/scripts/build-desktop-artifact.ts",
+      "captured_copy": "/tmp/neokod-critical-review-20261004/sources/local/scripts/build-desktop-artifact.ts",
+      "sha256": "be526b6a2cfa67ad5476a9fd8d7aca5c64f3ad46665c16da01ed40a26e246fdf"
+    },
+    {
+      "source": "https://github.com/pingdotgg/t3code/blob/ee7b49d638e412590b09b415cc48399d51644b60/LICENSE",
+      "pin": "ee7b49d638e412590b09b415cc48399d51644b60",
+      "path": "/tmp/neokod-critical-review-20261004/sources/t3-license-ee7b49d638e4.txt",
+      "sha256": "935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43"
+    },
+    {
+      "source": "https://github.com/pingdotgg/t3code/blob/737993303d36e10674c54b95e5bd3826682c99c7/LICENSE",
+      "pin": "737993303d36e10674c54b95e5bd3826682c99c7",
+      "path": "/tmp/neokod-critical-review-20261004/sources/t3-license-737993303d36.txt",
+      "sha256": "935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43"
+    }
+  ],
+  "network_sources": [
+    {
+      "id": "t3-main",
+      "url": "https://api.github.com/repos/pingdotgg/t3code/commits/main",
+      "file": "/tmp/neokod-critical-review-20261004/sources/t3-main.json",
+      "sha256": "0b5abc4adfd47888519fa440c011178c57d2371b63ddc96c51a06608c6e7249f",
+      "captured": "2026-10-04T07:39:51.716087+00:00",
+      "status": 200
+    },
+    {
+      "id": "t3-license-history",
+      "url": "https://api.github.com/repos/pingdotgg/t3code/commits?path=LICENSE&per_page=100",
+      "file": "/tmp/neokod-critical-review-20261004/sources/t3-license-history.json",
+      "sha256": "c5a3ec10260b1b2e7fffe554540a67f0f47cd951e90e976db35fb804503b3753",
+      "captured": "2026-10-04T07:39:51.712433+00:00",
+      "status": 200
+    },
+    {
+      "id": "tauri-repo",
+      "url": "https://api.github.com/repos/tauri-apps/tauri",
+      "file": "/tmp/neokod-critical-review-20261004/sources/tauri-repo.json",
+      "sha256": "f4296700a927b608a2bf68b25550bf9428d7ffe151881d44bd94d572c2df0aba",
+      "captured": "2026-10-04T07:39:51.698056+00:00",
+      "status": 200
+    },
+    {
+      "id": "tauri-release",
+      "url": "https://api.github.com/repos/tauri-apps/tauri/releases/latest",
+      "file": "/tmp/neokod-critical-review-20261004/sources/tauri-release.json",
+      "sha256": "04df606dbe358bb5ce12104229745265d51c575ab5fae11c0c0e93fa791ed37d",
+      "captured": "2026-10-04T07:39:51.689685+00:00",
+      "status": 200
+    },
+    {
+      "id": "electrobun-repo",
+      "url": "https://api.github.com/repos/blackboardsh/electrobun",
+      "file": "/tmp/neokod-critical-review-20261004/sources/electrobun-repo.json",
+      "sha256": "25781cc963033b596a8ece6f3e75b218a3d51ef143ad94566f1fed70198a1a4c",
+      "captured": "2026-10-04T07:39:52.074359+00:00",
+      "status": 200
+    },
+    {
+      "id": "electrobun-release",
+      "url": "https://api.github.com/repos/blackboardsh/electrobun/releases/latest",
+      "file": "/tmp/neokod-critical-review-20261004/sources/electrobun-release.json",
+      "sha256": "a10bc63ff789497634006273ad714b7398b7a966324b62573ca1baf0a8334ba1",
+      "captured": "2026-10-04T07:39:52.131938+00:00",
+      "status": 200
+    },
+    {
+      "id": "wails-repo",
+      "url": "https://api.github.com/repos/wailsapp/wails",
+      "file": "/tmp/neokod-critical-review-20261004/sources/wails-repo.json",
+      "sha256": "bbe2f189201d8ae5e150a7846cbc8cf30a3cdedd71782baab41442eb990765a4",
+      "captured": "2026-10-04T07:39:52.074571+00:00",
+      "status": 200
+    },
+    {
+      "id": "wails-license",
+      "url": "https://raw.githubusercontent.com/wailsapp/wails/master/LICENSE",
+      "file": "/tmp/neokod-critical-review-20261004/sources/wails-license.txt",
+      "sha256": "cede95c28e6e9d67d1c1e49e8ba3c20250c7d4080c3faca1579b6732327ae40d",
+      "captured": "2026-10-04T07:39:52.054242+00:00",
+      "status": 200
+    },
+    {
+      "id": "tauri-license-mit",
+      "url": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/LICENSE_MIT",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "id": "tauri-license-apache",
+      "url": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/LICENSE_APACHE-2.0",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "id": "electrobun-license",
+      "url": "https://raw.githubusercontent.com/blackboardsh/electrobun/main/LICENSE",
+      "file": "/tmp/neokod-critical-review-20261004/sources/electrobun-license.txt",
+      "sha256": "89501a3146809de20e626255576d513ff89777d29a6f7e659d07be59b0ce2d91",
+      "captured": "2026-10-04T07:39:52.407135+00:00",
+      "status": 200
+    },
+    {
+      "id": "electrobun-readme",
+      "url": "https://raw.githubusercontent.com/blackboardsh/electrobun/main/README.md",
+      "file": "/tmp/neokod-critical-review-20261004/sources/electrobun-readme.txt",
+      "sha256": "f7afd3825db0aca22a623b440cc2b2cf5cf3c831b6d47bf1e5ec910d726b1bfc",
+      "captured": "2026-10-04T07:39:52.459940+00:00",
+      "status": 200
+    },
+    {
+      "id": "electrobun-cef",
+      "url": "https://raw.githubusercontent.com/blackboardsh/electrobun/main/CEF.md",
+      "file": "/tmp/neokod-critical-review-20261004/sources/electrobun-cef.txt",
+      "sha256": "d9f2ef14c7328ac01064e49b619fa81b9652eb415f7cfb7065c7b99945503900",
+      "captured": "2026-10-04T07:39:52.688719+00:00",
+      "status": 200
+    },
+    {
+      "id": "electrobun-build",
+      "url": "https://raw.githubusercontent.com/blackboardsh/electrobun/main/docs/BUILD.md",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "id": "t3-current-license",
+      "url": "https://raw.githubusercontent.com/pingdotgg/t3code/1302ccacbd6d3e957f2f95239556adb6eae79a48/LICENSE",
+      "file": "/tmp/neokod-critical-review-20261004/sources/t3-current-license.txt",
+      "sha256": "935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43",
+      "captured": "2026-10-04T07:39:53.070271+00:00",
+      "status": 200
+    },
+    {
+      "id": "t3-license-at-4916dad78ef8",
+      "url": "https://raw.githubusercontent.com/pingdotgg/t3code/4916dad78ef84d6e9c605d2f75b0bd7ed25afb6d/LICENSE",
+      "file": "/tmp/neokod-critical-review-20261004/sources/t3-license-at-4916dad78ef8.txt",
+      "sha256": "935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43",
+      "captured": "2026-10-04T07:39:53.414536+00:00",
+      "status": 200
+    },
+    {
+      "id": "tauri-license-mit",
+      "url": "https://raw.githubusercontent.com/tauri-apps/tauri/tauri-v2.12.1/LICENSE-MIT",
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-license-mit.txt",
+      "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
+      "captured": "2026-10-04T07:41:44.723288+00:00",
+      "status": "captured"
+    },
+    {
+      "id": "tauri-license-apache",
+      "url": "https://raw.githubusercontent.com/tauri-apps/tauri/tauri-v2.12.1/LICENSE-APACHE-2.0",
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-license-apache.txt",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+      "captured": "2026-10-04T07:41:44.694492+00:00",
+      "status": "captured"
+    },
+    {
+      "id": "tauri-readme",
+      "url": "https://raw.githubusercontent.com/tauri-apps/tauri/tauri-v2.12.1/README.md",
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-readme.txt",
+      "sha256": "db8ff4de3e034289f335c1ae5527d41f3142b2ea9c2002967be5cf5f0e7d39d7",
+      "captured": "2026-10-04T07:41:44.688716+00:00",
+      "status": "captured"
+    },
+    {
+      "id": "electrobun-runtimes",
+      "url": "https://framework.blackboard.sh/electrobun/guides/native-main-process/",
+      "path": "/tmp/neokod-critical-review-20261004/sources/electrobun-runtimes.txt",
+      "sha256": "fcf7db91201b32dc6c34f61ba0df06f6179b1be82d9d4ed38ced2daa2d96046e",
+      "captured": "2026-10-04T07:41:45.036829+00:00",
+      "status": "captured"
+    },
+    {
+      "id": "electrobun-compatibility",
+      "url": "https://framework.blackboard.sh/electrobun/guides/compatability/",
+      "path": "/tmp/neokod-critical-review-20261004/sources/electrobun-compatibility.txt",
+      "sha256": "b4d8a9db5050063640c0e6bf4a7b2b2ac1c5177fb17817206b192efa8cd2fdc9",
+      "captured": "2026-10-04T07:41:45.026626+00:00",
+      "status": "captured"
+    },
+    {
+      "id": "electrobun-updates",
+      "url": "https://framework.blackboard.sh/electrobun/guides/updates/",
+      "path": "/tmp/neokod-critical-review-20261004/sources/electrobun-updates.txt",
+      "sha256": "6c3e295d2df42d53af1f84bb0a0fc4026cf251442e7998f60a812f5640ea34d7",
+      "captured": "2026-10-04T07:41:45.370948+00:00",
+      "status": "captured"
+    },
+    {
+      "id": "electrobun-signing",
+      "url": "https://framework.blackboard.sh/electrobun/guides/code-signing/",
+      "path": "/tmp/neokod-critical-review-20261004/sources/electrobun-signing.txt",
+      "sha256": "ad87ab28dffe97483baef19cc73d1ded086fc1afb5da49ebee1a04b13e075810",
+      "captured": "2026-10-04T07:41:45.051411+00:00",
+      "status": "captured"
+    },
+    {
+      "id": "electrobun-architecture",
+      "url": "https://framework.blackboard.sh/electrobun/guides/architecture/overview/",
+      "path": "/tmp/neokod-critical-review-20261004/sources/electrobun-architecture.txt",
+      "sha256": "dbc54889b09d038ddc45e405ea875dea2a54d558f6d7a3e31643e055e102890f",
+      "captured": "2026-10-04T07:41:45.310827+00:00",
+      "status": "captured"
+    },
+    {
+      "id": "electrobun-webview",
+      "url": "https://framework.blackboard.sh/electrobun/api/browser/webview-tag/",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "id": "electrobun-cottontail",
+      "url": "https://framework.blackboard.sh/electrobun/guides/cottontail/",
+      "path": "/tmp/neokod-critical-review-20261004/sources/electrobun-cottontail.txt",
+      "sha256": "f144f07bc18e545f7f8e0edf5b435a87455024aab13c59d953d4d393bb3fa8a0",
+      "captured": "2026-10-04T07:41:45.127107+00:00",
+      "status": "captured"
+    },
+    {
+      "id": "tauri-sidecar",
+      "url": "https://v2.tauri.app/develop/sidecar/",
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-sidecar.txt",
+      "sha256": "6e35ab813db3c56bc1f39cac947326537508bff0faa960ef498eeacfe22d8472",
+      "captured": "2026-10-04T07:41:47.602846+00:00",
+      "status": "captured"
+    },
+    {
+      "id": "tauri-capabilities",
+      "url": "https://v2.tauri.app/security/capabilities/",
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-capabilities.txt",
+      "sha256": "d6c1101e899e7d5d72ace7650fb22ba41f10b4170ccf0c62aff07efc1fe806aa",
+      "captured": "2026-10-04T07:41:47.729192+00:00",
+      "status": "captured"
+    },
+    {
+      "id": "tauri-updater",
+      "url": "https://v2.tauri.app/plugin/updater/",
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-updater.txt",
+      "sha256": "f2df3e9c1f3c34e110efa04d2034c536ed1dba9296d18c4bfc051cc958e02faf",
+      "captured": "2026-10-04T07:41:47.852914+00:00",
+      "status": "captured"
+    },
+    {
+      "id": "tauri-webview",
+      "url": "https://v2.tauri.app/reference/webview-versions/",
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-webview.txt",
+      "sha256": "a1d5254ba647a704dbcfed4ac7a64cf1313a92fe1c60712a475fadd9b1e89ae1",
+      "captured": "2026-10-04T07:41:47.311845+00:00",
+      "status": "captured"
+    },
+    {
+      "id": "tauri-sign-mac",
+      "url": "https://v2.tauri.app/distribute/sign/macos/",
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-sign-mac.txt",
+      "sha256": "41b6070fee30e8905c0118e456054e70d120acea21f8636967f2a20f81e2089d",
+      "captured": "2026-10-04T07:41:49.618893+00:00",
+      "status": "captured"
+    },
+    {
+      "id": "tauri-sign-windows",
+      "url": "https://v2.tauri.app/distribute/sign/windows/",
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-sign-windows.txt",
+      "sha256": "e0df56998972fb12d43ef6d1fb582a41d931811e5f2a9c9df1af15c83ca33e0b",
+      "captured": "2026-10-04T07:41:49.798512+00:00",
+      "status": "captured"
+    },
+    {
+      "id": "wails-faq",
+      "url": "https://v3.wails.io/faq/",
+      "path": "/tmp/neokod-critical-review-20261004/sources/wails-faq.txt",
+      "sha256": "e4975b3f2cd4c21dde539eaecc975c130ff978522162cce2c67166fc9adebba8",
+      "captured": "2026-10-04T07:41:47.991688+00:00",
+      "status": "captured"
+    },
+    {
+      "id": "wails-status",
+      "url": "https://v3.wails.io/status/",
+      "path": "/tmp/neokod-critical-review-20261004/sources/wails-status.txt",
+      "sha256": "5ff58f3196cd85ef73cc6e0c447df8f40ebbb2d3077ceda948724b058b2e6758",
+      "captured": "2026-10-04T07:41:48.098906+00:00",
+      "status": "captured"
+    }
+  ],
+  "status": {
+    "recommendation": "bounded Tauri2 proof; retain Node server; Electron production remains until gates pass",
+    "frameworks": {
+      "tauri2": "v2.12.1; v3 alpha excluded",
+      "electrobun": "v2.0.2; current2.x docs new runtime/toolchain; incomplete Neokod target/signing parity",
+      "wails3": "current docs beta; optional only"
+    },
+    "licence": "local/frozen/currentT3 MIT; licence path history single entry; provenance retained",
+    "checks": "source traces and source integrity only; no vp/build/new runtime checks"
+  },
+  "source_files": [
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/electrobun-architecture.txt",
+      "bytes": 60492,
+      "sha256": "dbc54889b09d038ddc45e405ea875dea2a54d558f6d7a3e31643e055e102890f"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/electrobun-cef.txt",
+      "bytes": 6138,
+      "sha256": "d9f2ef14c7328ac01064e49b619fa81b9652eb415f7cfb7065c7b99945503900"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/electrobun-compatibility.txt",
+      "bytes": 53416,
+      "sha256": "b4d8a9db5050063640c0e6bf4a7b2b2ac1c5177fb17817206b192efa8cd2fdc9"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/electrobun-cottontail.txt",
+      "bytes": 70747,
+      "sha256": "f144f07bc18e545f7f8e0edf5b435a87455024aab13c59d953d4d393bb3fa8a0"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/electrobun-license.txt",
+      "bytes": 1084,
+      "sha256": "89501a3146809de20e626255576d513ff89777d29a6f7e659d07be59b0ce2d91"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/electrobun-readme.txt",
+      "bytes": 15812,
+      "sha256": "f7afd3825db0aca22a623b440cc2b2cf5cf3c831b6d47bf1e5ec910d726b1bfc"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/electrobun-release.json",
+      "bytes": 25628,
+      "sha256": "a10bc63ff789497634006273ad714b7398b7a966324b62573ca1baf0a8334ba1"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/electrobun-repo.json",
+      "bytes": 6552,
+      "sha256": "25781cc963033b596a8ece6f3e75b218a3d51ef143ad94566f1fed70198a1a4c"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/electrobun-runtimes.txt",
+      "bytes": 78925,
+      "sha256": "fcf7db91201b32dc6c34f61ba0df06f6179b1be82d9d4ed38ced2daa2d96046e"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/electrobun-signing.txt",
+      "bytes": 74937,
+      "sha256": "ad87ab28dffe97483baef19cc73d1ded086fc1afb5da49ebee1a04b13e075810"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/electrobun-tree.json",
+      "bytes": 317664,
+      "sha256": "7a9e36978c31086d1bd69d963ab5afaa986adcd2b7652bd3371e43dd0da2b0a5"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/electrobun-updates.txt",
+      "bytes": 86613,
+      "sha256": "6c3e295d2df42d53af1f84bb0a0fc4026cf251442e7998f60a812f5640ea34d7"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/.plans/20-orchestration-direction.md",
+      "bytes": 48601,
+      "sha256": "a6bf649b005e0e40ee5607c423a7901bfb0764a67adba36dd403fb080ffb5e4f"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/AGENTS.md",
+      "bytes": 5052,
+      "sha256": "b55317b2eaeca3be291a6d5733692498acb7491f34a1d0fdf4b43fc29241ab08"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/LICENSE",
+      "bytes": 1070,
+      "sha256": "935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/README.md",
+      "bytes": 14477,
+      "sha256": "f54db49322a9a419b5509ee297104c7de62789d891e495efdb3bdfff47c25889"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/package.json",
+      "bytes": 998,
+      "sha256": "a787f990ce6553956e778fb7fc4b16c71aec5365662256360f8caf21f061e535"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/app/DesktopApp.ts",
+      "bytes": 11471,
+      "sha256": "1187b6debe731d2107a00417cdeb4e93e359c63f8b56c81f1a47815eb7bd9894"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/app/DesktopConnectionCatalogStore.ts",
+      "bytes": 7848,
+      "sha256": "83a001320b6ad618d43b9e600a3a984a326a60ce61e0f689d18a2860cdd1681d"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/app/DesktopEnvironment.ts",
+      "bytes": 9107,
+      "sha256": "dd4bdfa68f851d4fe6dad637fd67cf7e48622ad1950ad1b7217bdcc78d0326bb"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/backend/DesktopBackendConfiguration.ts",
+      "bytes": 26780,
+      "sha256": "ef1c7b6be9abb67a2ada4f96bf1b0c6ee2caa21e5da996fa047c49d487a976ce"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/backend/DesktopBackendManager.ts",
+      "bytes": 35397,
+      "sha256": "3ac282d510faba510e8599a14521c7d3deeb9ef74517f6a7fef1ff4fd0e92c04"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/backend/DesktopBackendPool.ts",
+      "bytes": 21577,
+      "sha256": "95dcec2e76c3e0006ed4f92f209979ef96ed5eacb97870e86502ad0ebe03fcd8"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/electron/ElectronProtocol.ts",
+      "bytes": 7550,
+      "sha256": "20e14cb51171404f1d6f2a1d9964f097e221cd7fd7fb7f11889b0e594c5b05c6"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/ipc/DesktopIpc.ts",
+      "bytes": 7808,
+      "sha256": "0862a6672e3af3c599d31a6900ad890be3adb2fa87defeb7eea94e123d27139a"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/ipc/methods/window.ts",
+      "bytes": 9231,
+      "sha256": "2dd6788ef22ab8ecd65c0fb0ad7b3a8d431810f7e06c61dd1ae1b4a1de37952f"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/main.ts",
+      "bytes": 5725,
+      "sha256": "3efcfe5fd816eba59be042a6e23914fd53236f861cbcfe6305dd767644c2f44c"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/preload.ts",
+      "bytes": 8548,
+      "sha256": "9a25702c3e5585d5971a9adf5c6784a7ebf8862654b6e52db13728ae3f370c4a"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/preview/BrowserSession.ts",
+      "bytes": 6624,
+      "sha256": "b3b1abc18953246a0902e0861af05bac0089da221a73ac82c0fee79da16105b0"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/preview/Manager.ts",
+      "bytes": 108042,
+      "sha256": "5e76c06a0b0cadf43044578fd654665e30d286844e5c5415911a9ff17d362521"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/preview/PlaywrightInjectedRuntime.ts",
+      "bytes": 7403,
+      "sha256": "316cbc66f9c3d0ab9b84c2360fea1f905169e1a8aec3118d6b4594cbd7501715"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/preview/WebviewPreferences.ts",
+      "bytes": 2361,
+      "sha256": "2efbe6804db3146d74cb534f6ca5ad3b2d9e92ce140528958ec0c710def81c40"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/shell/DesktopShellEnvironment.ts",
+      "bytes": 13702,
+      "sha256": "8f7eeef4844a771ff5b466acc4832064da5384cac8844a98e1a735e455fcdb4e"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/window/DesktopWindow.ts",
+      "bytes": 26526,
+      "sha256": "ac1c68514c01d9f568a6e3f69907eefe5e274a32ab31821fe9dbb882472c1c86"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/src/wsl/DesktopWslEnvironment.ts",
+      "bytes": 33900,
+      "sha256": "3ca3208b3ba5c9ffd267310f8b7553ecee413a65c204336afa83e716d94eb74f"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/desktop/vite.config.ts",
+      "bytes": 1661,
+      "sha256": "642f460adc8484a6680269fe1672044359bbf44c20a894e5bc90c0bb81b1d5f0"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/server/package.json",
+      "bytes": 1325,
+      "sha256": "2c11be75ab8863a3990f94e89358d642bd194bdfef687c999db18c34943ea85e"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/server/src/cli/config.ts",
+      "bytes": 18342,
+      "sha256": "794ec04a093c06412c56ed2107417f1cf9ea1345d3b942d52a019b11e8f39839"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/server/src/persistence/NodeSqliteClient.ts",
+      "bytes": 11699,
+      "sha256": "293a1ad1fc1efcc6f4f03c643d4504b030767569befcb46b4c32438f4e6ee5a1"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/server/src/transport/LocalTransportAuth.ts",
+      "bytes": 6781,
+      "sha256": "33a01141dadd8b2feeb600f330b7a3dc46cea479fa9c769216916d1837cb94ba"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/server/src/transport/WslBearerAuth.ts",
+      "bytes": 6899,
+      "sha256": "d257f095c2287f6dc45a4d26b3f3177440fe7c43b6a22a10cdf1d3a20ad81d5f"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/server/vite.config.ts",
+      "bytes": 1366,
+      "sha256": "4dfd30577f5b416ff31f91af9c22bb85c33b1b98cde303c045777e5a9bb02527"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/web/src/browser/ElectronBrowserHost.tsx",
+      "bytes": 3010,
+      "sha256": "4de034c164b23c825b3cf83b15505f9cfd13bfcf16050d59b4b2c6fa16515e5b"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/web/src/browser/HostedBrowserWebview.tsx",
+      "bytes": 10001,
+      "sha256": "c4c5c72cef7e6c4c4eb1031f6229edcda62adc95bd959b380efc634a8ae516e2"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/web/src/connection/platform.ts",
+      "bytes": 12077,
+      "sha256": "e94196e3bc2ed1a8a3775f0d5b05785a039fa3ca1d94a66523a20576d9b3b1fa"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/web/src/connection/storage.ts",
+      "bytes": 15876,
+      "sha256": "0b17d856d8c6312204a3039b222e3e5e22827d0c0907468f70cae04b5f749b3f"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/web/src/environments/primary/target.ts",
+      "bytes": 15172,
+      "sha256": "a4956aef049ac1c5ebc0d316ffb02740ff0622e0268029a8b7c16ae45082d359"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/apps/web/src/localApi.ts",
+      "bytes": 3912,
+      "sha256": "03efe7cae0610ad05b8f66492604d7f52ff82da7b23a967d1b45762206c23c74"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/docs/architecture/connection-runtime.md",
+      "bytes": 3821,
+      "sha256": "44b18ebd580fc48b41ec9c5d28eecdea46a761f51d04a9a02e216ca05f191f10"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/docs/architecture/overview.md",
+      "bytes": 9753,
+      "sha256": "09d1a5ee08a48c34d771054925b36b78202d03e813238cbdb7e2c73dbfa2a2be"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/docs/architecture/state-and-evidence.md",
+      "bytes": 7075,
+      "sha256": "d02f53c79b81ab8d2d1e2e5629f5a6fbe203a5394fedf1a22c6e7bbcda85e642"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/package.json",
+      "bytes": 2862,
+      "sha256": "a8d114d72d1a874aefd5875fa72c4cae59c5dc4cc1111bc2bae4406a413d7e7f"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/packages/contracts/src/ipc.ts",
+      "bytes": 38510,
+      "sha256": "e64896198c96aeda4147aacf6d598bad13a0f7425ca51e393922965e8752f348"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/local/scripts/build-desktop-artifact.ts",
+      "bytes": 60213,
+      "sha256": "be526b6a2cfa67ad5476a9fd8d7aca5c64f3ad46665c16da01ed40a26e246fdf"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/network-manifest.json",
+      "bytes": 11207,
+      "sha256": "30a161570c87f6b2b2d1ee6a9a39ae6ff7b2eb9e0bf132e70a2c86e95e89b452"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/t3-current-license.txt",
+      "bytes": 1070,
+      "sha256": "935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/t3-license-737993303d36.txt",
+      "bytes": 1070,
+      "sha256": "935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/t3-license-at-4916dad78ef8.txt",
+      "bytes": 1070,
+      "sha256": "935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/t3-license-ee7b49d638e4.txt",
+      "bytes": 1070,
+      "sha256": "935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/t3-license-history.json",
+      "bytes": 3617,
+      "sha256": "c5a3ec10260b1b2e7fffe554540a67f0f47cd951e90e976db35fb804503b3753"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/t3-main.json",
+      "bytes": 26698,
+      "sha256": "0b5abc4adfd47888519fa440c011178c57d2371b63ddc96c51a06608c6e7249f"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-capabilities.txt",
+      "bytes": 119879,
+      "sha256": "d6c1101e899e7d5d72ace7650fb22ba41f10b4170ccf0c62aff07efc1fe806aa"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-license-apache.txt",
+      "bytes": 10174,
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-license-mit.txt",
+      "bytes": 1090,
+      "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-readme.txt",
+      "bytes": 6055,
+      "sha256": "db8ff4de3e034289f335c1ae5527d41f3142b2ea9c2002967be5cf5f0e7d39d7"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-release.json",
+      "bytes": 9484,
+      "sha256": "04df606dbe358bb5ce12104229745265d51c575ab5fae11c0c0e93fa791ed37d"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-releases.json",
+      "bytes": 1618840,
+      "sha256": "ca2980ba489d0dc85537b4d803c3dbe69af3abcb7ab3f3c544954a0d84fc4bd0"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-repo.json",
+      "bytes": 6378,
+      "sha256": "f4296700a927b608a2bf68b25550bf9428d7ffe151881d44bd94d572c2df0aba"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-root.json",
+      "bytes": 21743,
+      "sha256": "cef6ea6cea40945e48baba1adf1f0eb4cb5ba2c6e799f56537b1b9830e920acc"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-sidecar.txt",
+      "bytes": 133813,
+      "sha256": "6e35ab813db3c56bc1f39cac947326537508bff0faa960ef498eeacfe22d8472"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-sign-mac.txt",
+      "bytes": 115493,
+      "sha256": "41b6070fee30e8905c0118e456054e70d120acea21f8636967f2a20f81e2089d"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-sign-windows.txt",
+      "bytes": 137556,
+      "sha256": "e0df56998972fb12d43ef6d1fb582a41d931811e5f2a9c9df1af15c83ca33e0b"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-updater.txt",
+      "bytes": 280874,
+      "sha256": "f2df3e9c1f3c34e110efa04d2034c536ed1dba9296d18c4bfc051cc958e02faf"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/tauri-webview.txt",
+      "bytes": 81209,
+      "sha256": "a1d5254ba647a704dbcfed4ac7a64cf1313a92fe1c60712a475fadd9b1e89ae1"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/wails-faq.txt",
+      "bytes": 82778,
+      "sha256": "e4975b3f2cd4c21dde539eaecc975c130ff978522162cce2c67166fc9adebba8"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/wails-license.txt",
+      "bytes": 1076,
+      "sha256": "cede95c28e6e9d67d1c1e49e8ba3c20250c7d4080c3faca1579b6732327ae40d"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/wails-repo.json",
+      "bytes": 6176,
+      "sha256": "bbe2f189201d8ae5e150a7846cbc8cf30a3cdedd71782baab41442eb990765a4"
+    },
+    {
+      "path": "/tmp/neokod-critical-review-20261004/sources/wails-status.txt",
+      "bytes": 53813,
+      "sha256": "5ff58f3196cd85ef73cc6e0c447df8f40ebbb2d3077ceda948724b058b2e6758"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "/tmp/neokod-critical-review-20261004/desktop-migration.md",
+      "words": 3449
+    }
+  ]
+}

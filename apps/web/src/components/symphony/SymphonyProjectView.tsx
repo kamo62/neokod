@@ -4,6 +4,7 @@ import {
   squashAtomCommandFailure,
 } from "@neokod/client-runtime/state/runtime";
 import type {
+  SymphonyBoardCard,
   SymphonyProject,
   SymphonyProjectBoard,
   SymphonyProjectConfiguration,
@@ -20,7 +21,7 @@ import {
   RefreshCwIcon,
   TriangleAlertIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
@@ -34,6 +35,8 @@ import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
 import { SymphonyEmptyState } from "./SymphonyEmptyState";
 import {
+  availableSymphonyImplementationProviders,
+  availableSymphonyReviewProviders,
   defaultSymphonyProjectConfiguration,
   isSymphonyProjectConfigurationComplete,
   SymphonyProjectConfigurationForm,
@@ -70,7 +73,28 @@ const trackerScope = (project: SymphonyProject): string => {
   }
 };
 
-function BoardTab({ board }: { readonly board: SymphonyProjectBoard }) {
+function BoardTab({
+  board,
+  onRefresh,
+}: {
+  readonly board: SymphonyProjectBoard;
+  readonly onRefresh: () => void;
+}) {
+  const environmentId = usePrimaryEnvironmentId();
+  const dispatchWorkItem = useAtomCommand(symphonyEnvironment.dispatchWorkItem);
+  const [dispatching, setDispatching] = useState<SymphonyBoardCard["workItemId"] | null>(null);
+
+  const dispatch = async (workItemId: SymphonyBoardCard["workItemId"]) => {
+    if (environmentId === null) return;
+    setDispatching(workItemId);
+    try {
+      await dispatchWorkItem({ environmentId, input: { workItemId } });
+      onRefresh();
+    } finally {
+      setDispatching(null);
+    }
+  };
+
   return (
     <div className="grid min-h-full min-w-[70rem] grid-cols-5 gap-4 p-6 sm:p-8">
       {board.columns.map((column) => (
@@ -112,6 +136,19 @@ function BoardTab({ board }: { readonly board: SymphonyProjectBoard }) {
                       {card.lifecycle.replaceAll("_", " ")}
                     </Badge>
                   </div>
+                  {card.lifecycle === "eligible" ||
+                  card.lifecycle === "queued" ||
+                  card.lifecycle === "retry_scheduled" ? (
+                    <Button
+                      size="sm"
+                      className="mt-3 w-full"
+                      disabled={environmentId === null || dispatching !== null}
+                      onClick={() => void dispatch(card.workItemId)}
+                    >
+                      {dispatching === card.workItemId ? <Spinner className="size-3.5" /> : null}
+                      Run now
+                    </Button>
+                  ) : null}
                 </article>
               ))
             )}
@@ -131,31 +168,35 @@ function SettingsTab({
   readonly environmentId: NonNullable<ReturnType<typeof usePrimaryEnvironmentId>>;
   readonly onSaved: () => void;
 }) {
-  const providers = useAtomValue(primaryServerProvidersAtom).filter(
-    (provider) => provider.enabled && provider.installed && provider.availability !== "unavailable",
-  );
+  const allProviders = useAtomValue(primaryServerProvidersAtom);
+  const providers = availableSymphonyImplementationProviders(allProviders);
+  const reviewProviders = availableSymphonyReviewProviders(allProviders);
   const fallback = providers[0] ?? null;
   const [configuration, setConfiguration] = useState<SymphonyProjectConfiguration | null>(
     project.configuration ?? (fallback ? defaultSymphonyProjectConfiguration(fallback) : null),
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const updateProject = useAtomCommand(symphonyEnvironment.updateProject, { reportFailure: false });
-
-  useEffect(() => {
-    setConfiguration(
-      project.configuration ?? (fallback ? defaultSymphonyProjectConfiguration(fallback) : null),
-    );
-  }, [fallback, project]);
+  const updateProject = useAtomCommand(symphonyEnvironment.updateProject, {
+    reportFailure: false,
+  });
 
   const save = async () => {
-    if (configuration === null || !isSymphonyProjectConfigurationComplete(configuration)) return;
+    if (
+      configuration === null ||
+      !isSymphonyProjectConfigurationComplete(configuration, providers, reviewProviders)
+    )
+      return;
     setSaving(true);
     setError(null);
     try {
       const result = await updateProject({
         environmentId,
-        input: { projectId: project.id, expectedRevision: project.revision, configuration },
+        input: {
+          projectId: project.id,
+          expectedRevision: project.revision,
+          configuration,
+        },
       });
       if (result._tag === "Failure") {
         if (!isAtomCommandInterrupted(result)) {
@@ -174,8 +215,8 @@ function SettingsTab({
     return (
       <SymphonyEmptyState
         icon={TriangleAlertIcon}
-        title="No coding provider"
-        description="Configure a coding provider before completing this project."
+        title="No supported execution provider"
+        description="Symphony execution currently requires an enabled Codex provider."
       />
     );
   }
@@ -192,6 +233,7 @@ function SettingsTab({
       <SymphonyProjectConfigurationForm
         value={configuration}
         providers={providers}
+        reviewProviders={reviewProviders}
         onChange={setConfiguration}
       />
       {error ? <p className="text-sm text-destructive-foreground">{error}</p> : null}
@@ -199,7 +241,10 @@ function SettingsTab({
         <Button
           size="sm"
           onClick={() => void save()}
-          disabled={saving || !isSymphonyProjectConfigurationComplete(configuration)}
+          disabled={
+            saving ||
+            !isSymphonyProjectConfigurationComplete(configuration, providers, reviewProviders)
+          }
         >
           {saving ? <Spinner className="size-3.5" /> : null}Save settings
         </Button>
@@ -217,7 +262,10 @@ export function SymphonyProjectView({ projectId }: { readonly projectId: Symphon
   const boardQuery = useEnvironmentQuery(
     environmentId === null
       ? null
-      : symphonyEnvironment.projectBoard({ environmentId, input: { projectId } }),
+      : symphonyEnvironment.projectBoard({
+          environmentId,
+          input: { projectId },
+        }),
   );
   const runsQuery = useEnvironmentQuery(
     environmentId === null || tab !== "runs"
@@ -234,8 +282,12 @@ export function SymphonyProjectView({ projectId }: { readonly projectId: Symphon
       ? null
       : symphonyExtras.history({ environmentId, input: { projectId } }),
   );
-  const startProject = useAtomCommand(symphonyEnvironment.startProject, { reportFailure: false });
-  const pauseProject = useAtomCommand(symphonyEnvironment.pauseProject, { reportFailure: false });
+  const startProject = useAtomCommand(symphonyEnvironment.startProject, {
+    reportFailure: false,
+  });
+  const pauseProject = useAtomCommand(symphonyEnvironment.pauseProject, {
+    reportFailure: false,
+  });
   const board = boardQuery.data;
 
   if (boardQuery.isPending && board === null) {
@@ -324,15 +376,8 @@ export function SymphonyProjectView({ projectId }: { readonly projectId: Symphon
             </div>
           </div>
           <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={boardQuery.refresh}
-              disabled={boardQuery.isPending}
-            >
-              <RefreshCwIcon
-                className={boardQuery.isPending ? "size-3.5 animate-spin" : "size-3.5"}
-              />
+            <Button size="sm" variant="ghost" onClick={boardQuery.refresh}>
+              <RefreshCwIcon className="size-3.5" />
               Refresh
             </Button>
             {project.status === "active" ? (
@@ -394,9 +439,10 @@ export function SymphonyProjectView({ projectId }: { readonly projectId: Symphon
       </header>
 
       <main className="min-h-0 flex-1 overflow-auto">
-        {tab === "board" ? <BoardTab board={board} /> : null}
+        {tab === "board" ? <BoardTab board={board} onRefresh={boardQuery.refresh} /> : null}
         {tab === "settings" && environmentId !== null ? (
           <SettingsTab
+            key={`${project.id}:${project.revision}`}
             project={project}
             environmentId={environmentId}
             onSaved={boardQuery.refresh}

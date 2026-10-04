@@ -1,0 +1,94 @@
+{
+  "closed": {
+    "count": 3233,
+    "distinct": 3233
+  },
+  "open": {
+    "count": 1059,
+    "distinct": 1059
+  },
+  "details": {
+    "count": 4292,
+    "distinct": 4292
+  },
+  "ledger": {
+    "count": 4292,
+    "distinct": 4292
+  },
+  "closed_open_overlap": [],
+  "detail_inventory_difference": [],
+  "ledger_inventory_difference": [],
+  "closed_outside_interval": [],
+  "merged_closed": 2562,
+  "closed_unmerged": 671,
+  "early": {
+    "total": 2305,
+    "merged": 1869
+  },
+  "incomplete": [4179, 5199, 6248, 7171, 8183, 10653, 10654, 12327],
+  "complete_with_bad_length": [],
+  "states": {
+    "closed_unmerged": 671,
+    "merged": 2562,
+    "open": 1033,
+    "open_draft": 26
+  },
+  "review_levels": {
+    "metadata_and_file_scope_triage": 4231,
+    "diff_and_local_source_comparison": 43,
+    "source_traced": 5,
+    "prior_report_cross_check": 1,
+    "selected_diff_and_local_source_comparison": 12
+  },
+  "search_leaf_intervals": [
+    {
+      "start": "2026-08-10T06-42-36Z",
+      "end": "2026-08-24T00-23-50Z",
+      "reported": 474,
+      "count": 474,
+      "distinct": 474,
+      "all_complete": true,
+      "pages": 5
+    },
+    {
+      "start": "2026-08-24T00-23-51Z",
+      "end": "2026-08-30T21-14-27Z",
+      "reported": 250,
+      "count": 250,
+      "distinct": 250,
+      "all_complete": true,
+      "pages": 3
+    },
+    {
+      "start": "2026-08-30T21-14-28Z",
+      "end": "2026-09-06T18-05-04Z",
+      "reported": 782,
+      "count": 782,
+      "distinct": 782,
+      "all_complete": true,
+      "pages": 8
+    },
+    {
+      "start": "2026-09-06T18-05-05Z",
+      "end": "2026-09-20T11-46-19Z",
+      "reported": 857,
+      "count": 857,
+      "distinct": 857,
+      "all_complete": true,
+      "pages": 9
+    },
+    {
+      "start": "2026-09-20T11-46-20Z",
+      "end": "2026-10-04T05-27-33Z",
+      "reported": 870,
+      "count": 870,
+      "distinct": 870,
+      "all_complete": true,
+      "pages": 9
+    }
+  ],
+  "raw_search_union": 3233,
+  "open_page_lengths": [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 59],
+  "classifier_path_count_discrepancies": [],
+  "leaf_count_total": 3233
+}

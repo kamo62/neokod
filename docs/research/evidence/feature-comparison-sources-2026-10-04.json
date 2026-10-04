@@ -1,0 +1,61 @@
+{
+  "capturedFrom": "Earlier frozen GitHub source archives; inspected again on 4 October",
+  "sources": [
+    {
+      "app": "superset",
+      "path": "apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/components/BoardContent/BoardContent.tsx",
+      "pin": "c711aa02da3f5625a49c58ec4035eea57b87df0a",
+      "sha256": "898128fafe501d90cd28086bd4bba3f1e58cac40b70c34874347a13e1df72993",
+      "raw_path": "/tmp/neokod-competitors-20261004/feature-comparison/superset/apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/components/BoardContent/BoardContent.tsx",
+      "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/components/BoardContent/BoardContent.tsx"
+    },
+    {
+      "app": "agent-orchestrator",
+      "path": "backend/internal/domain/kanban.go",
+      "pin": "b2461dc5955bb11b4ee1213871e6a2157e68da0e",
+      "sha256": "24a72420c45a3f2f5bd59cbcd9fea40b9c9ec661cff31f944baafb07e642eac7",
+      "raw_path": "/tmp/neokod-competitors-20261004/feature-comparison/agent-orchestrator/backend/internal/domain/kanban.go",
+      "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/domain/kanban.go"
+    },
+    {
+      "app": "agent-orchestrator",
+      "path": "backend/internal/service/session/kanban.go",
+      "pin": "b2461dc5955bb11b4ee1213871e6a2157e68da0e",
+      "sha256": "ec211cce4a321c436b536909fc30e3bfc8a7281d3035eff8918704df9638677e",
+      "raw_path": "/tmp/neokod-competitors-20261004/feature-comparison/agent-orchestrator/backend/internal/service/session/kanban.go",
+      "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/service/session/kanban.go"
+    },
+    {
+      "app": "hermes",
+      "path": "apps/desktop/src/plugins/kanban/board.tsx",
+      "pin": "64ad33e32dadbdb462468c7384aa38e5c99a1b7a",
+      "sha256": "a246fba96d2a0e5606e3a3645218f0e2720bcdd39a4e5032c39893eed4c4fbf3",
+      "raw_path": "/tmp/neokod-competitors-20261004/feature-comparison/hermes/apps/desktop/src/plugins/kanban/board.tsx",
+      "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/apps/desktop/src/plugins/kanban/board.tsx"
+    },
+    {
+      "app": "hermes",
+      "path": "apps/desktop/src/plugins/kanban/orchestration.tsx",
+      "pin": "64ad33e32dadbdb462468c7384aa38e5c99a1b7a",
+      "sha256": "4436e696ab5ef4c12bf2e9d6157d992a374f9c12c7854b68eefffdc9a6d606b7",
+      "raw_path": "/tmp/neokod-competitors-20261004/feature-comparison/hermes/apps/desktop/src/plugins/kanban/orchestration.tsx",
+      "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/apps/desktop/src/plugins/kanban/orchestration.tsx"
+    },
+    {
+      "app": "onorca",
+      "path": "src/renderer/src/components/dashboard-popout/AgentKanbanBoard.tsx",
+      "pin": "3cc5e1dac659ffd163b81b28261cd843261f4ca5",
+      "sha256": "27e7682c19da7e8b860e4f9372bed9a611fc5d3824f8fa615e017d4ce98c56b5",
+      "raw_path": "/tmp/neokod-competitors-20261004/feature-comparison/onorca/src/renderer/src/components/dashboard-popout/AgentKanbanBoard.tsx",
+      "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/renderer/src/components/dashboard-popout/AgentKanbanBoard.tsx"
+    },
+    {
+      "app": "onorca",
+      "path": "src/renderer/src/components/sidebar/WorkspaceKanbanDrawer.tsx",
+      "pin": "3cc5e1dac659ffd163b81b28261cd843261f4ca5",
+      "sha256": "e255605084a786862c43028cd5b929d98de7157bca0d0d351faf455ec113a042",
+      "raw_path": "/tmp/neokod-competitors-20261004/feature-comparison/onorca/src/renderer/src/components/sidebar/WorkspaceKanbanDrawer.tsx",
+      "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/renderer/src/components/sidebar/WorkspaceKanbanDrawer.tsx"
+    }
+  ]
+}

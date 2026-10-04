@@ -1,0 +1,968 @@
+{
+  "date": "2026-10-04",
+  "scope": "eight S/B apps; performance/product extension",
+  "status": "research complete; all Neokod implementation/acceptance proposed and unrun",
+  "patterns": [
+    {
+      "app": "omnigent",
+      "id": "O-P1",
+      "title": "Refresh the visible session scope without reopening every page",
+      "source": [
+        {
+          "app": "omnigent",
+          "path": "web/src/hooks/useScopeCache.ts",
+          "sha": "5fae3371a7f9786b9e95ab9ea1038b6227d82872",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/web/src/hooks/useScopeCache.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/omnigent/web/src/hooks/useScopeCache.ts",
+          "retrieved_at": "2026-10-04T07:01:07.593447+00:00",
+          "bytes": 6957,
+          "sha256": "127bf8c44bcdef39129f9c906b0935e935bfada3d3e1c671af63a58ab824e4eb",
+          "line": 1
+        }
+      ],
+      "callers": [
+        {
+          "app": "omnigent",
+          "path": "web/src/hooks/useSidebarData.tsx",
+          "sha": "5fae3371a7f9786b9e95ab9ea1038b6227d82872",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/web/src/hooks/useSidebarData.tsx",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/omnigent/web/src/hooks/useSidebarData.tsx",
+          "retrieved_at": "2026-10-04T07:03:03.164452+00:00",
+          "bytes": 8077,
+          "sha256": "896594949ade7d868da4f71ad44f86cca2ee509075f2cef5f11116581d76f2c3",
+          "line": 40
+        }
+      ],
+      "observed": "Initial, refresh and next-page fetches have distinct ownership. Refresh waits for a pending page before choosing a capped refresh window; disabling a scope cancels its query, while re-entry joins an existing refresh. Archived snapshots are loaded when that scope is enabled.",
+      "caveat": "The refresh cap does not cap all retained pages or total memory. Omnigent viewer mine/shared keys are not a reason to restore hosted authentication in Neokod.",
+      "neokod": [
+        "apps/web/src/components/CommandPalette.tsx",
+        "apps/web/src/components/ChatView.tsx"
+      ],
+      "proposal": "Keep sidebar and palette query ownership scoped to the local environment/project and requested active/archive window. Refresh visible summaries before deferred history; preserve selected IDs through refresh.",
+      "acceptance": "With 200 archived and 20 active threads, count cold-open/return requests and bytes separately; no unsolicited archived detail hydration. Switch scopes 100 times with delayed responses: zero old-scope results, duplicate concurrent refreshes or selected-ID losses.",
+      "issue_links": [],
+      "evidence_class": "static source; proposed Neokod experiment not executed"
+    },
+    {
+      "app": "omnigent",
+      "id": "O-P2",
+      "title": "Terminal renderer fallback with explicit teardown",
+      "source": [
+        {
+          "app": "omnigent",
+          "path": "web/src/components/blocks/TerminalSession.ts",
+          "sha": "5fae3371a7f9786b9e95ab9ea1038b6227d82872",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/web/src/components/blocks/TerminalSession.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/omnigent/web/src/components/blocks/TerminalSession.ts",
+          "retrieved_at": "2026-10-04T07:01:07.593650+00:00",
+          "bytes": 44406,
+          "sha256": "c3e2f6d3e72332b9d594650c6f1ded848a0823e8c2dee144ba73d41f6ec8df3d",
+          "line": 322
+        }
+      ],
+      "callers": [
+        {
+          "app": "omnigent",
+          "path": "web/src/components/blocks/TerminalView.tsx",
+          "sha": "5fae3371a7f9786b9e95ab9ea1038b6227d82872",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/web/src/components/blocks/TerminalView.tsx",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/omnigent/web/src/components/blocks/TerminalView.tsx",
+          "retrieved_at": "2026-10-04T07:01:07.571512+00:00",
+          "bytes": 36725,
+          "sha256": "3d582da17f8c4f8ba5f442974710ae3c23a6dc0562813321fc48ec2e99c5e47c",
+          "line": 530
+        }
+      ],
+      "observed": "TerminalSession loads an optional WebGL addon, disposes it on context loss and falls back when loading fails. Its dispose path releases the socket, observers, data/clipboard handlers, renderer and xterm. TerminalView owns construction.",
+      "caveat": "Source comments claiming faster rendering are not measurements. GPU acceleration can cost memory and fail; disposing the UI does not prove the underlying PTY was stopped. Clipboard limits and recent-input trust checks must survive renderer changes.",
+      "neokod": [
+        "apps/web/src/components/ThreadTerminalDrawer.tsx",
+        "apps/web/src/state/terminalSessions.ts"
+      ],
+      "proposal": "Profile the existing xterm surface before considering an optional renderer. Keep one terminal owner, renderer fallback and idempotent cleanup; preserve the existing 5,000-line scrollback cap.",
+      "acceptance": "Run the same ANSI/Unicode output fixture with renderer enabled, unavailable and context-lost. Across 100 attach/detach cycles, live subscription/listener counts return to baseline; input, selection, links and final screen remain correct. Record GPU/RSS and input p95, not only FPS.",
+      "issue_links": [],
+      "evidence_class": "static source; proposed Neokod experiment not executed"
+    },
+    {
+      "app": "omnigent",
+      "id": "O-P3",
+      "title": "Notify from distinct attention transitions",
+      "source": [
+        {
+          "app": "omnigent",
+          "path": "web/src/hooks/useIdleNotifications.ts",
+          "sha": "5fae3371a7f9786b9e95ab9ea1038b6227d82872",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/web/src/hooks/useIdleNotifications.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/omnigent/web/src/hooks/useIdleNotifications.ts",
+          "retrieved_at": "2026-10-04T07:01:07.559337+00:00",
+          "bytes": 21845,
+          "sha256": "aab781538d8bf12a74de906e011605d9f519b9567cbf3d698c27550bbb913dcb",
+          "line": 112
+        }
+      ],
+      "callers": [
+        {
+          "app": "omnigent",
+          "path": "web/src/shell/AppShell.tsx",
+          "sha": "5fae3371a7f9786b9e95ab9ea1038b6227d82872",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/5fae3371a7f9786b9e95ab9ea1038b6227d82872/web/src/shell/AppShell.tsx",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/omnigent/web/src/shell/AppShell.tsx",
+          "retrieved_at": "2026-10-04T07:03:03.189218+00:00",
+          "bytes": 131233,
+          "sha256": "be377c885207fbca3768c63a23dd2baffdc705be61b8dca7e9e8341a28df8c5d",
+          "line": 536
+        }
+      ],
+      "observed": "The hook tracks unread/attention baselines, pending-input and idle transitions, defers some notifications, cancels a deferred notification when activity resumes and routes clicks to a conversation. Sound deduplication is present in frozen source.",
+      "caveat": "The hook\u2019s idle body says the agent finished; idle alone cannot prove successful completion. Open issue #6205 asks for configurable event sounds, but cannot establish that this source has no sound support.",
+      "neokod": [
+        "apps/web/src/notifications/ActivityNotificationCoordinator.tsx",
+        "apps/web/src/notifications/activityNotifications.logic.ts"
+      ],
+      "proposal": "Extend the existing coordinator only with Neokod-owned event preferences and meaningful pending/input/error/settled labels. Reuse authoritative runtime projection, hydration baselines and scope identities.",
+      "acceptance": "Replay approval, input request, retry, compaction, settle, reconnect and hydration. Exactly one eligible notification per new event; zero completion notifications during retry/compaction, zero retrospective hydration alerts, correct scoped click target. Check muted, denied and browser gesture-required sound states.",
+      "issue_links": ["https://github.com/omnigent-ai/omnigent/issues/6205"],
+      "evidence_class": "static source; proposed Neokod experiment not executed"
+    },
+    {
+      "app": "paseo",
+      "id": "P-P1",
+      "title": "Stable history windows and search anchors",
+      "source": [
+        {
+          "app": "paseo",
+          "path": "packages/app/src/agent-stream/history-window.ts",
+          "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/agent-stream/history-window.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/agent-stream/history-window.ts",
+          "retrieved_at": "2026-10-04T07:01:07.561212+00:00",
+          "bytes": 1139,
+          "sha256": "93fc23ead80e43963664479695a69123cbce344a246825bb6388ca20bd54715b",
+          "line": 1
+        },
+        {
+          "app": "paseo",
+          "path": "packages/app/src/agent-stream/use-stream-history-window.ts",
+          "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/agent-stream/use-stream-history-window.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/agent-stream/use-stream-history-window.ts",
+          "retrieved_at": "2026-10-04T07:01:07.588764+00:00",
+          "bytes": 4119,
+          "sha256": "dd120a015aa7b277fc3b9411e01d3fd488bce157958bfb6b314254006bdfa190",
+          "line": 1
+        },
+        {
+          "app": "paseo",
+          "path": "packages/app/src/agent-stream/web-virtualization.ts",
+          "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/agent-stream/web-virtualization.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/agent-stream/web-virtualization.ts",
+          "retrieved_at": "2026-10-04T07:01:07.911431+00:00",
+          "bytes": 2873,
+          "sha256": "64aec237950385684c03a77c220e56d763b7426a1e09784608c395e7bee27b28",
+          "line": 1
+        }
+      ],
+      "callers": [
+        {
+          "app": "paseo",
+          "path": "packages/app/src/agent-stream/strategy-web.tsx",
+          "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/agent-stream/strategy-web.tsx",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/agent-stream/strategy-web.tsx",
+          "retrieved_at": "2026-10-04T07:03:03.167026+00:00",
+          "bytes": 47378,
+          "sha256": "0893ee4cce0603dfcedd98b607348b1c671cda15ab5ed666912e8759abd3e6a7",
+          "line": 274
+        }
+      ],
+      "observed": "The history window starts with a recent slice and expands to a user-message boundary. Its hook retains an item-ID boundary, reveals local older history before fetching remote history, and resets if the boundary disappears. The web strategy virtualises older entries above a threshold and keeps the recent region mounted.",
+      "caveat": "A whole user turn and recent region can still be large. Web DOM virtualization does not bound server history IO, raw retained data or native Android Fabric allocations. #4408 contains native OOM reports and user experiments, not a proven Neokod/web cause.",
+      "neokod": [
+        "apps/web/src/components/chat/MessagesTimeline.tsx",
+        "apps/web/src/components/ChatView.tsx"
+      ],
+      "proposal": "Preserve Neokod\u2019s existing LegendList and structural sharing. Add bounded history acquisition and stable message/sequence anchors only where profiling shows unbounded retained history or broken search jumps.",
+      "acceptance": "Use 10,000 rows including one 50,000-character streamed turn. Search an unloaded message, prepend/reconnect and resize at 390px and desktop widths: exact target and viewport position survive; count mounted nodes, rows retained, response bytes and JS/native heaps separately. No claim of a native mobile fix without a native reproduction.",
+      "issue_links": ["https://github.com/getpaseo/paseo/issues/4408"],
+      "evidence_class": "static source; proposed Neokod experiment not executed"
+    },
+    {
+      "app": "paseo",
+      "id": "P-P2",
+      "title": "Terminal snapshot lifetime and resize claims",
+      "source": [
+        {
+          "app": "paseo",
+          "path": "packages/app/src/terminal/runtime/workspace-terminal-session.ts",
+          "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/terminal/runtime/workspace-terminal-session.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/terminal/runtime/workspace-terminal-session.ts",
+          "retrieved_at": "2026-10-04T07:01:07.906706+00:00",
+          "bytes": 2511,
+          "sha256": "835d6bde72fe0f21c9e1db5c6e72a620a87ea963a65822f948b421d1adbed5db",
+          "line": 20
+        },
+        {
+          "app": "paseo",
+          "path": "packages/app/src/terminal/runtime/terminal-stream-controller.ts",
+          "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/terminal/runtime/terminal-stream-controller.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/terminal/runtime/terminal-stream-controller.ts",
+          "retrieved_at": "2026-10-04T07:01:07.933444+00:00",
+          "bytes": 5654,
+          "sha256": "00f69d4eecdadf4ced78ca672814e1597c8c309c45386970582652b1c4d38995",
+          "line": 37
+        },
+        {
+          "app": "paseo",
+          "path": "packages/app/src/components/terminal-resize-debouncer.ts",
+          "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/components/terminal-resize-debouncer.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/components/terminal-resize-debouncer.ts",
+          "retrieved_at": "2026-10-04T07:01:07.948983+00:00",
+          "bytes": 1143,
+          "sha256": "844cba1b0d0e9625e3580682e6d301e9785229e7694b10b823f8e22d68a0e0fe",
+          "line": 8
+        }
+      ],
+      "callers": [
+        {
+          "app": "paseo",
+          "path": "packages/app/src/terminal/hooks/use-workspace-terminal-session-retention.ts",
+          "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/terminal/hooks/use-workspace-terminal-session-retention.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/terminal/hooks/use-workspace-terminal-session-retention.ts",
+          "retrieved_at": "2026-10-04T07:12:42.044280+00:00",
+          "bytes": 523,
+          "sha256": "9e14e423160b2ed44718d838c7e2a01b0d684abe7b7560c188780760777b0a85",
+          "line": 7
+        },
+        {
+          "app": "paseo",
+          "path": "packages/app/src/components/terminal-emulator.tsx",
+          "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/components/terminal-emulator.tsx",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/components/terminal-emulator.tsx",
+          "retrieved_at": "2026-10-04T07:03:03.152466+00:00",
+          "bytes": 20702,
+          "sha256": "a2bc4bacbc2bfb04b0e6291dee5a1046845ef80192f8171b86e4710193cdbece",
+          "line": 468
+        },
+        {
+          "app": "paseo",
+          "path": "packages/app/src/terminal/runtime/terminal-emulator-runtime.ts",
+          "sha": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+          "url": "https://github.com/getpaseo/paseo/blob/8216e86ecb92e9b6a39422b12dde8b70a619483e/packages/app/src/terminal/runtime/terminal-emulator-runtime.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/paseo/packages/app/src/terminal/runtime/terminal-emulator-runtime.ts",
+          "retrieved_at": "2026-10-04T07:11:45.920431+00:00",
+          "bytes": 46285,
+          "sha256": "503b54078d9ceae4ad67d918940ed94f6940ff2c407fe359e081dbabafdc3101",
+          "line": 612
+        }
+      ],
+      "observed": "Workspace snapshots are keyed by scope/terminal, pruned against known terminal IDs and dropped at zero scope references. StreamController fences terminal ID/disposal, releases the previous subscription and distinguishes snapshot, restore and output. The resize debouncer preserves the latest dimensions while OR-ing claim flags. The emulator/runtime are the actual rendering and resize path; retention hook owns scope references.",
+      "caveat": "Referenced snapshots have no demonstrated byte budget. The inspected emulator/runtime path is not proof that every platform wires the same debouncer or StreamController; those exported contracts are separately reviewed. Retention is not process shutdown.",
+      "neokod": [
+        "apps/web/src/components/ThreadTerminalDrawer.tsx",
+        "apps/web/src/state/terminalSessions.ts"
+      ],
+      "proposal": "Audit existing terminal subscription ownership and resize RAF batching before adding code. Retain only required local screen snapshots, with an explicit byte/age budget and active-session exceptions visible.",
+      "acceptance": "Across 100 scope/tab switches and 100 resize bursts, no old-terminal output appears, no subscription survives its owner, and the final dimensions and explicit claim are delivered. Pruned/released snapshot bytes return to zero; active pins are reported rather than hidden behind a count cap.",
+      "issue_links": [],
+      "evidence_class": "static source; proposed Neokod experiment not executed"
+    },
+    {
+      "app": "bb",
+      "id": "B-P1",
+      "title": "Evict inactive opened-thread caches",
+      "source": [
+        {
+          "app": "bb",
+          "path": "apps/app/src/hooks/cache-owners/thread-open-cache-owner.ts",
+          "sha": "4d15c1da0a848fa4834c1e5d0480a0891683bbe9",
+          "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/app/src/hooks/cache-owners/thread-open-cache-owner.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/bb/apps/app/src/hooks/cache-owners/thread-open-cache-owner.ts",
+          "retrieved_at": "2026-10-04T07:01:07.931204+00:00",
+          "bytes": 2479,
+          "sha256": "2ff69c38250fb090e41377365e6f1f53e8dbb8abfd953cad133ec21afd98eb35",
+          "line": 16
+        }
+      ],
+      "callers": [
+        {
+          "app": "bb",
+          "path": "apps/app/src/hooks/queries/thread-queries.ts",
+          "sha": "4d15c1da0a848fa4834c1e5d0480a0891683bbe9",
+          "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/app/src/hooks/queries/thread-queries.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/bb/apps/app/src/hooks/queries/thread-queries.ts",
+          "retrieved_at": "2026-10-04T07:10:13.578631+00:00",
+          "bytes": 33501,
+          "sha256": "a4db646dd60318dc755d5934ec4d536880bc6ee6396298b89562fff473eaad89",
+          "line": 981
+        }
+      ],
+      "observed": "Opening a timeline touches an LRU-style set owned per QueryClient. It uses limits of 20 threads or 8 for a coarse pointer and removes inactive timeline/bootstrap queries; active queries survive. Open-cache GC is one hour.",
+      "caveat": "Active exceptions mean this is not a hard total-memory cap. Coarse-pointer detection is an interaction hint, not a RAM measurement. Counting threads also ignores radically different transcript sizes.",
+      "neokod": [
+        "apps/web/src/components/chat/MessagesTimeline.tsx",
+        "apps/web/src/components/ChatView.tsx"
+      ],
+      "proposal": "Measure Neokod retained closed-thread data independently of mounted virtual rows. If needed, give transcript/detail caches one owner and evict inactive data by bytes/age as well as recency; report active pins.",
+      "acceptance": "Open 100 transcripts of two distinct sizes then revisit the first. Inactive retained bytes remain within a predeclared budget, active contents are not evicted, and a cache miss refetches correctly. Separate settled heap retention from DOM row counts and server snapshots.",
+      "issue_links": [],
+      "evidence_class": "static source; proposed Neokod experiment not executed"
+    },
+    {
+      "app": "bb",
+      "id": "B-P2",
+      "title": "Current-query search results and precise message jumps",
+      "source": [
+        {
+          "app": "bb",
+          "path": "apps/app/src/lib/command-palette/palette-thread-search.ts",
+          "sha": "4d15c1da0a848fa4834c1e5d0480a0891683bbe9",
+          "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/app/src/lib/command-palette/palette-thread-search.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/bb/apps/app/src/lib/command-palette/palette-thread-search.ts",
+          "retrieved_at": "2026-10-04T07:01:07.929284+00:00",
+          "bytes": 3963,
+          "sha256": "6a627a9c761d06212410852620a57414391421ade463a54ae75f191d0343ea53",
+          "line": 1
+        },
+        {
+          "app": "bb",
+          "path": "apps/app/src/lib/command-palette/palette-thread-search-window.ts",
+          "sha": "4d15c1da0a848fa4834c1e5d0480a0891683bbe9",
+          "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/app/src/lib/command-palette/palette-thread-search-window.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/bb/apps/app/src/lib/command-palette/palette-thread-search-window.ts",
+          "retrieved_at": "2026-10-04T07:01:08.266124+00:00",
+          "bytes": 4448,
+          "sha256": "cacf03ea291e923c437ecbdf4e0bd3f327d421c3f7de5a6d79bd69bbe470bc54",
+          "line": 1
+        }
+      ],
+      "callers": [
+        {
+          "app": "bb",
+          "path": "apps/app/src/components/commands/ThreadSearchPaletteMode.tsx",
+          "sha": "4d15c1da0a848fa4834c1e5d0480a0891683bbe9",
+          "url": "https://github.com/get-bb/bb/blob/4d15c1da0a848fa4834c1e5d0480a0891683bbe9/apps/app/src/components/commands/ThreadSearchPaletteMode.tsx",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/bb/apps/app/src/components/commands/ThreadSearchPaletteMode.tsx",
+          "retrieved_at": "2026-10-04T07:03:03.143610+00:00",
+          "bytes": 19949,
+          "sha256": "36cc6de413bbde90ed7a7303cb4de6957e4f8c14245c7941e2db3d82bc8584d8",
+          "line": 106
+        }
+      ],
+      "observed": "The palette gates responses on the current debounced query, separates title and message matches, carries source sequence anchors and windows matched text with Unicode-safe highlight boundaries. It offers recent active/archive groups before searchable input.",
+      "caveat": "Text with no match is returned whole by the snippet helper; this is not a universal payload bound. #4413\u2019s closed, unmerged prototype reports responsiveness gains but unchanged SQL cost and a cold-search regression. Some follow-up probes are explicitly agent-generated; they are not independent human reproduction.",
+      "neokod": [
+        "apps/web/src/components/CommandPalette.tsx",
+        "apps/web/src/components/CommandPalette.logic.ts",
+        "apps/web/src/lib/composerPathSearchState.ts",
+        "apps/server/src/workspace/WorkspaceSearchIndex.ts"
+      ],
+      "proposal": "Keep query generations, stable result IDs and message anchors. Extend filesystem acceleration at the existing index, which already caps 25,000 entries and reports truncation. If future conversation FTS blocks the server, measure SQL/IO and event-loop responsiveness before choosing a worker. Stream independently ready mention providers only where caller contracts support it.",
+      "acceptance": "On a 10,000-path workspace, issue rapidly changing queries and one 20ms/one 1,600ms provider. Zero stale selectable results; fast results publish without the slow provider. Repeat after create/rename/delete and scope changes. Record cold/warm search p95, discovery scans, FTS cost, server health latency and truncated coverage separately; a responsiveness improvement cannot excuse an unreported cold-search regression.",
+      "issue_links": ["https://github.com/get-bb/bb/issues/4413"],
+      "evidence_class": "static source; proposed Neokod experiment not executed"
+    },
+    {
+      "app": "pi",
+      "id": "I-P1",
+      "title": "Share model refresh while retaining caller cancellation",
+      "source": [
+        {
+          "app": "pi",
+          "path": "packages/coding-agent/src/modes/interactive/model-catalog-refresh.ts",
+          "sha": "200387122ca450d6387f033949423114a270b96c",
+          "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/model-catalog-refresh.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/pi/packages/coding-agent/src/modes/interactive/model-catalog-refresh.ts",
+          "retrieved_at": "2026-10-04T07:01:08.285461+00:00",
+          "bytes": 1847,
+          "sha256": "a7a10647deaba5036019737c376ab3f73eed12703dafeb8cb8920581ec8672e2",
+          "line": 46
+        }
+      ],
+      "callers": [
+        {
+          "app": "pi",
+          "path": "packages/coding-agent/src/modes/interactive/components/model-selector.ts",
+          "sha": "200387122ca450d6387f033949423114a270b96c",
+          "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/components/model-selector.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/pi/packages/coding-agent/src/modes/interactive/components/model-selector.ts",
+          "retrieved_at": "2026-10-04T07:03:03.143546+00:00",
+          "bytes": 14708,
+          "sha256": "92d70b9faffc9febf2ce0c519c7c086938bddfc5da9ad28d819f408d54e3637e",
+          "line": 192
+        }
+      ],
+      "observed": "A WeakMap scopes one refresh to each model runtime. Callers share it, can abort their own wait independently, and abort the underlying refresh only when no waiters remain. Identity checks protect cleanup from newer requests.",
+      "caveat": "This is not evidence that all remote catalogue loads are cached indefinitely or that a provider\u2019s advertised model is installed, authenticated or executable locally.",
+      "neokod": [
+        "apps/server/src/provider/Services/ProviderRegistry.ts",
+        "apps/web/src/components/chat/ModelPickerContent.tsx"
+      ],
+      "proposal": "Keep Neokod instance-scoped availability and virtualised model rows. If simultaneous settings/picker refreshes duplicate work, coalesce by provider-instance generation and preserve per-caller cancellation plus explicit unavailable/error states.",
+      "acceptance": "With 20 concurrent refresh callers for one instance, exactly one underlying refresh; aborting one caller does not abort the others. All-caller abort cancels work; an instance/config generation change rejects old results. Two instances with the same model slug remain distinct.",
+      "issue_links": [],
+      "evidence_class": "static source; proposed Neokod experiment not executed"
+    },
+    {
+      "app": "pi",
+      "id": "I-P2",
+      "title": "Move image work off the interactive path with an explicit fallback",
+      "source": [
+        {
+          "app": "pi",
+          "path": "packages/coding-agent/src/utils/image-resize.ts",
+          "sha": "200387122ca450d6387f033949423114a270b96c",
+          "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/utils/image-resize.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/pi/packages/coding-agent/src/utils/image-resize.ts",
+          "retrieved_at": "2026-10-04T07:01:08.306180+00:00",
+          "bytes": 3898,
+          "sha256": "d93a007eb45a02b73b1a4777d193614dae5fbcadd9139c8b755ea35c1d649757",
+          "line": 26
+        },
+        {
+          "app": "pi",
+          "path": "packages/coding-agent/src/utils/image-resize-worker.ts",
+          "sha": "200387122ca450d6387f033949423114a270b96c",
+          "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/utils/image-resize-worker.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/pi/packages/coding-agent/src/utils/image-resize-worker.ts",
+          "retrieved_at": "2026-10-04T07:01:08.356163+00:00",
+          "bytes": 1315,
+          "sha256": "c77213875e45d2aea46deb67b6cc03bcfb57cba84c8a17ccc2158aa3e79873c7",
+          "line": 1
+        }
+      ],
+      "callers": [
+        {
+          "app": "pi",
+          "path": "packages/coding-agent/src/core/tools/read.ts",
+          "sha": "200387122ca450d6387f033949423114a270b96c",
+          "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/tools/read.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/pi/packages/coding-agent/src/core/tools/read.ts",
+          "retrieved_at": "2026-10-04T07:03:03.133991+00:00",
+          "bytes": 9451,
+          "sha256": "297d26092979651091f44de8862a6fd55aaf59e7252f8fb8dd3d7cb3f9771518",
+          "line": 115
+        },
+        {
+          "app": "pi",
+          "path": "packages/coding-agent/src/utils/image-process.ts",
+          "sha": "200387122ca450d6387f033949423114a270b96c",
+          "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/utils/image-process.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/pi/packages/coding-agent/src/utils/image-process.ts",
+          "retrieved_at": "2026-10-04T07:10:13.953045+00:00",
+          "bytes": 3102,
+          "sha256": "fffb65fba877607644f8028c0f24aa6e74228e15427e112ee367e7983f2a79e5",
+          "line": 72
+        }
+      ],
+      "observed": "The read tool invokes processImage, which invokes resizing. A worker receives a copied transferable buffer, reports message/error/exit and is terminated in finally. Bun packaging and URL worker loading have fallbacks; the last fallback runs in process.",
+      "caveat": "The copy can increase peak memory; each job creates a worker and the inspected code supplies no global queue or cancellation budget. In-process fallback can block. This is source architecture, not measured throughput or a Neokod attachment defect.",
+      "neokod": [
+        "apps/server/src/attachmentStore.ts",
+        "apps/server/src/imageMime.ts",
+        "apps/web/src/composerDraftStore.ts"
+      ],
+      "proposal": "Profile attachment decode/resize and large preview work at the actual current boundary. Use a bounded worker queue only for demonstrated expensive CPU work; expose failed/unsupported conversion and clean cancelled buffers instead of treating fallback as free.",
+      "acceptance": "Compare 20 matched runs with the same large JPEG/PNG and four simultaneous jobs, including worker-load failure and cancellation. Record event-loop/input p95, wall time, peak retained buffers and RSS; enforce a declared concurrency/byte budget and verify output dimensions, MIME and unchanged caller input bytes.",
+      "issue_links": [],
+      "evidence_class": "static source; proposed Neokod experiment not executed"
+    },
+    {
+      "app": "pi",
+      "id": "I-P3",
+      "title": "Wait for settled activity before terminal notifications",
+      "source": [
+        {
+          "app": "pi",
+          "path": "packages/coding-agent/examples/extensions/notify.ts",
+          "sha": "200387122ca450d6387f033949423114a270b96c",
+          "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/examples/extensions/notify.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/pi/packages/coding-agent/examples/extensions/notify.ts",
+          "retrieved_at": "2026-10-04T07:01:08.305972+00:00",
+          "bytes": 2073,
+          "sha256": "70e4333e09ce00d546c116fd2e918abf7616c70b5da6e88ba8ee21a326afd483",
+          "line": 1
+        }
+      ],
+      "callers": [
+        {
+          "app": "pi",
+          "path": "packages/coding-agent/examples/extensions/notify.ts",
+          "sha": "200387122ca450d6387f033949423114a270b96c",
+          "url": "https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/examples/extensions/notify.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/pi/packages/coding-agent/examples/extensions/notify.ts",
+          "retrieved_at": "2026-10-04T07:01:08.305972+00:00",
+          "bytes": 2073,
+          "sha256": "70e4333e09ce00d546c116fd2e918abf7616c70b5da6e88ba8ee21a326afd483",
+          "line": 1
+        }
+      ],
+      "observed": "The example extension subscribes to agent_settled rather than agent_end, because retries, compaction and follow-up work can still be pending. It sends terminal notification escape protocols or a platform-specific notification.",
+      "caveat": "An example extension is not durable delivery, permission handling or an independently verified OS implementation. Do not interpolate arbitrary agent text into shell commands. #9807\u2019s later AI-assisted benchmark points to repeated extension session projection; it does not establish a universal core-renderer bottleneck.",
+      "neokod": [
+        "apps/web/src/notifications/activityNotifications.logic.ts",
+        "apps/web/src/notifications/ActivityNotificationCoordinator.tsx",
+        "apps/web/src/components/chat/MessagesTimeline.tsx"
+      ],
+      "proposal": "Use Neokod\u2019s server-owned settled/runtime state for notifications. Measure full-history projections and third-party extension/subscriber work separately from rendering before changing LegendList or adding broad memoisation.",
+      "acceptance": "One terminal settled notification after retry/compaction chains, none on intermediate end events. Compare identical long-history interactive fixtures with optional subscribers on/off and streaming/cache-miss states; record projection call counts and time per frame. Cached results must invalidate on actual history/model/config revisions.",
+      "issue_links": ["https://github.com/earendil-works/pi/issues/9807"],
+      "evidence_class": "static source; proposed Neokod experiment not executed"
+    },
+    {
+      "app": "opencodex",
+      "id": "X-P1",
+      "title": "Defer hidden dashboard load and distinguish host visibility",
+      "source": [
+        {
+          "app": "opencodex",
+          "path": "desktop/src-tauri/src/startup.rs",
+          "sha": "06841165f884a9176d701310638b2112aca7a514",
+          "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/desktop/src-tauri/src/startup.rs",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/desktop/src-tauri/src/startup.rs",
+          "retrieved_at": "2026-10-04T07:10:13.569443+00:00",
+          "bytes": 101023,
+          "sha256": "c69c1e9181a4f5936aadea21f9d49b04346ff6d5a3f8ba2d59e8d88d7f26c874",
+          "line": 1595
+        },
+        {
+          "app": "opencodex",
+          "path": "gui/src/host-visibility.ts",
+          "sha": "06841165f884a9176d701310638b2112aca7a514",
+          "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/gui/src/host-visibility.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/gui/src/host-visibility.ts",
+          "retrieved_at": "2026-10-04T07:10:13.583585+00:00",
+          "bytes": 3204,
+          "sha256": "aaf6d8cc18c17610aeb7f97f3631950373b06c63131f276ca2664d16aa52fa6f",
+          "line": 30
+        },
+        {
+          "app": "opencodex",
+          "path": "gui/src/visibility-poll.ts",
+          "sha": "06841165f884a9176d701310638b2112aca7a514",
+          "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/gui/src/visibility-poll.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/gui/src/visibility-poll.ts",
+          "retrieved_at": "2026-10-04T07:10:13.577823+00:00",
+          "bytes": 3755,
+          "sha256": "06131be669cafd6664ca06884b7ec88a3a90ff2182e9c1ee84101abe964e0f4b",
+          "line": 57
+        }
+      ],
+      "callers": [
+        {
+          "app": "opencodex",
+          "path": "desktop/src-tauri/src/startup.rs",
+          "sha": "06841165f884a9176d701310638b2112aca7a514",
+          "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/desktop/src-tauri/src/startup.rs",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/desktop/src-tauri/src/startup.rs",
+          "retrieved_at": "2026-10-04T07:10:13.569443+00:00",
+          "bytes": 101023,
+          "sha256": "c69c1e9181a4f5936aadea21f9d49b04346ff6d5a3f8ba2d59e8d88d7f26c874",
+          "line": 1642
+        },
+        {
+          "app": "opencodex",
+          "path": "desktop/src-tauri/src/window.rs",
+          "sha": "06841165f884a9176d701310638b2112aca7a514",
+          "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/desktop/src-tauri/src/window.rs",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/desktop/src-tauri/src/window.rs",
+          "retrieved_at": "2026-10-04T07:10:13.581472+00:00",
+          "bytes": 14659,
+          "sha256": "2089bf51add10f555bd0e9ac680d57e5954e392adbebe6d876dfd6ea187daa6d",
+          "line": 136
+        }
+      ],
+      "observed": "A ready login-started hidden shell can remain on the small startup surface until open_dashboard is requested; navigation is guarded per run. Native show/hide publishes host visibility, and the web predicate combines it with document visibility. The shared poll helper stops interval timers while hidden and sends a make-up tick when visible.",
+      "caveat": "Tauri details are not Electron drop-ins. immediate:true still invokes the helper callback while hidden, and async callback overlap is not prevented by this helper. #5493 remains open: owner comments report merged implementation, while attach-time/background-request measurement gates remain outstanding.",
+      "neokod": [
+        "apps/desktop/src/window/DesktopWindow.ts",
+        "apps/desktop/src/app/DesktopLifecycle.ts",
+        "apps/web/src/notifications/ActivityNotificationCoordinator.tsx"
+      ],
+      "proposal": "Profile Neokod\u2019s existing desktop creation/load path (show:false already exists). Separate hidden shell bootstrap from heavy inactive UI hydration where useful; use Electron-owned visibility plus document visibility for optional presentation polling. Keep server jobs, health/reconnect and required notification observation alive.",
+      "acceptance": "Twenty matched cold and warm starts with 200 archived threads: measure process-ready, first actionable frame, attach time, requests and CPU. During a five-minute hidden period, presentation-only polls emit zero repeated requests; resume produces one fresh update, without duplicate timers or stopped agent/engine work. Verify actual packaged Electron platforms separately.",
+      "issue_links": ["https://github.com/lidge-jun/opencodex/issues/5493"],
+      "evidence_class": "static source; proposed Neokod experiment not executed"
+    },
+    {
+      "app": "opencodex",
+      "id": "X-P2",
+      "title": "Budget owned cache bytes and preserve summary coverage",
+      "source": [
+        {
+          "app": "opencodex",
+          "path": "src/lib/app-owned-memory.ts",
+          "sha": "06841165f884a9176d701310638b2112aca7a514",
+          "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/lib/app-owned-memory.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/src/lib/app-owned-memory.ts",
+          "retrieved_at": "2026-10-04T07:03:03.508241+00:00",
+          "bytes": 9360,
+          "sha256": "7d2efb9ffc98095a6c61d654297ee85f3873edf1cd11f3bd28b7efc3cfe42664",
+          "line": 212
+        },
+        {
+          "app": "opencodex",
+          "path": "src/server/management/usage-summary-cache.ts",
+          "sha": "06841165f884a9176d701310638b2112aca7a514",
+          "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/server/management/usage-summary-cache.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/src/server/management/usage-summary-cache.ts",
+          "retrieved_at": "2026-10-04T07:01:08.682244+00:00",
+          "bytes": 3388,
+          "sha256": "527a6a9237f85c5af51cd1281fb1ea7970f7f0939c3ee565a36953be29612456",
+          "line": 1
+        }
+      ],
+      "callers": [
+        {
+          "app": "opencodex",
+          "path": "src/server/management/logs-usage-routes.ts",
+          "sha": "06841165f884a9176d701310638b2112aca7a514",
+          "url": "https://github.com/lidge-jun/opencodex/blob/06841165f884a9176d701310638b2112aca7a514/src/server/management/logs-usage-routes.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/opencodex/src/server/management/logs-usage-routes.ts",
+          "retrieved_at": "2026-10-04T07:10:13.580673+00:00",
+          "bytes": 28438,
+          "sha256": "f491959dc9b3131050712bcda93354b153961e84f21123dda932d60f8742f1c2",
+          "line": 242
+        }
+      ],
+      "observed": "Registered stores expose retained/pinned/evictable bytes; budget enforcement evicts app-owned entries. Usage cache identity includes file identity, read limit, overlay version and time zone. Filtered summaries bypass the unfiltered cache; incomplete/truncated coverage is carried explicitly.",
+      "caveat": "JSON byte estimates and registered stores are not a hard RSS ceiling. Snapshot failures becoming zero are a source caveat, not a pattern to copy. OpenCodeX budgets are not measured appropriate Neokod budgets; unknown memory must remain unknown.",
+      "neokod": [
+        "apps/web/src/components/chat/MessagesTimeline.tsx",
+        "apps/web/src/components/files/FilePreviewPanel.tsx",
+        "apps/server/src/workspace/WorkspaceSearchIndex.ts"
+      ],
+      "proposal": "Add byte observability only at demonstrated expensive owned caches, using existing ownership boundaries. Include scope/config/file revisions in keys, distinguish pinned bytes, unknown estimates and truncated input, and prevent filtered responses contaminating broad views.",
+      "acceptance": "Open/close 100 large histories/previews and invalidate a file/config while a computation is pending. Report retained owned bytes and RSS separately; inactive entries meet a declared budget, active pins/unknown estimates are visible, stale generations never publish and truncated inputs never claim complete coverage.",
+      "issue_links": [],
+      "evidence_class": "static source; proposed Neokod experiment not executed"
+    },
+    {
+      "app": "harnessrouter",
+      "id": "H-P1",
+      "title": "Expose effective model settings and partial capabilities",
+      "source": [
+        {
+          "app": "harnessrouter",
+          "path": "ui/src/components/HarnessSettings.tsx",
+          "sha": "2826cf633b0588fa494da20fdf2828deacfb7e79",
+          "url": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/ui/src/components/HarnessSettings.tsx",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/harnessrouter/ui/src/components/HarnessSettings.tsx",
+          "retrieved_at": "2026-10-04T07:01:09.024212+00:00",
+          "bytes": 51485,
+          "sha256": "0af24844e7c5ff96419c3b19dd16cb3ab3a5089a194ac519c360e8a3a6a1d25d",
+          "line": 185
+        }
+      ],
+      "callers": [
+        {
+          "app": "harnessrouter",
+          "path": "ui/src/components/HarnessSettings.tsx",
+          "sha": "2826cf633b0588fa494da20fdf2828deacfb7e79",
+          "url": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/ui/src/components/HarnessSettings.tsx",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/harnessrouter/ui/src/components/HarnessSettings.tsx",
+          "retrieved_at": "2026-10-04T07:01:09.024212+00:00",
+          "bytes": 51485,
+          "sha256": "0af24844e7c5ff96419c3b19dd16cb3ab3a5089a194ac519c360e8a3a6a1d25d",
+          "line": 550
+        }
+      ],
+      "observed": "The settings surface consumes server model catalogue, runtime defaults and supported base-harness capabilities. Partially installed plugins can remain visible without presenting unavailable detail controls; empty/default choices can reflect effective server defaults.",
+      "caveat": "The component proves source wiring, not successful installation or executable provider/model combinations. HarnessRouter\u2019s supported provider set is not Neokod\u2019s provider matrix.",
+      "neokod": [
+        "apps/server/src/provider/Services/ProviderRegistry.ts",
+        "apps/web/src/components/chat/ModelPickerContent.tsx",
+        "apps/web/src/providerModels.ts"
+      ],
+      "proposal": "Keep model ID, provider instance, configured override, effective default and reason unavailable distinct. Explain inherited defaults and expose capabilities per installed/authenticated instance; retain meaningful partial/unknown states.",
+      "acceptance": "Exercise missing CLI, unsupported option, unauthenticated instance, refresh failure and same-slug models from two instances. Displayed effective defaults match server snapshots; unsupported choices cannot be submitted; failed refresh does not silently fabricate availability.",
+      "issue_links": [],
+      "evidence_class": "static source; proposed Neokod experiment not executed"
+    },
+    {
+      "app": "harnessrouter",
+      "id": "H-P2",
+      "title": "Truthful stopped states and explicit preview limits",
+      "source": [
+        {
+          "app": "harnessrouter",
+          "path": "ui/src/lib/conversation.ts",
+          "sha": "2826cf633b0588fa494da20fdf2828deacfb7e79",
+          "url": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/ui/src/lib/conversation.ts",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/harnessrouter/ui/src/lib/conversation.ts",
+          "retrieved_at": "2026-10-04T07:01:08.798495+00:00",
+          "bytes": 44227,
+          "sha256": "3d7b8990e6d4acc053f1c0a88224e68401f6e21923b7a26cfb364c1fa57f7a62",
+          "line": 420
+        },
+        {
+          "app": "harnessrouter",
+          "path": "ui/src/components/FilePreview.tsx",
+          "sha": "2826cf633b0588fa494da20fdf2828deacfb7e79",
+          "url": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/ui/src/components/FilePreview.tsx",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/harnessrouter/ui/src/components/FilePreview.tsx",
+          "retrieved_at": "2026-10-04T07:01:08.792060+00:00",
+          "bytes": 13845,
+          "sha256": "e3e76fc305533c6778819eb731c1ec77929ea3338eee21b43914818d94842ccb",
+          "line": 55
+        }
+      ],
+      "callers": [
+        {
+          "app": "harnessrouter",
+          "path": "ui/src/components/TaskChat.tsx",
+          "sha": "2826cf633b0588fa494da20fdf2828deacfb7e79",
+          "url": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/ui/src/components/TaskChat.tsx",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/harnessrouter/ui/src/components/TaskChat.tsx",
+          "retrieved_at": "2026-10-04T07:01:08.798679+00:00",
+          "bytes": 46893,
+          "sha256": "861b065c8f26a9aca308ad299b1f1d5d4bad34b763a5b0e1f5c5080d16e36a8d",
+          "line": 600
+        },
+        {
+          "app": "harnessrouter",
+          "path": "ui/src/components/FilePreview.tsx",
+          "sha": "2826cf633b0588fa494da20fdf2828deacfb7e79",
+          "url": "https://github.com/HarnessRouter/harnessrouter/blob/2826cf633b0588fa494da20fdf2828deacfb7e79/ui/src/components/FilePreview.tsx",
+          "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source/harnessrouter/ui/src/components/FilePreview.tsx",
+          "retrieved_at": "2026-10-04T07:01:08.792060+00:00",
+          "bytes": 13845,
+          "sha256": "e3e76fc305533c6778819eb731c1ec77929ea3338eee21b43914818d94842ccb",
+          "line": 1
+        }
+      ],
+      "observed": "TaskChat labels an incomplete turn as stopped before finishing and adds only a known max-step/timeout/interruption reason. Conversation state periodically reconciles busy conversations against authoritative turns. FilePreview selects by MIME, exposes loading/error/unsupported conversion and lazily imports spreadsheet parsing.",
+      "caveat": "Reconciliation intervals may overlap and retained conversation maps have no established byte bound. A code preview slices after full text download; spreadsheets parse whole buffers. The alive flag prevents some state updates but does not establish abort/buffer/object-URL cleanup for every late result. Do not present these as solved large-file performance.",
+      "neokod": [
+        "apps/web/src/components/chat/MessagesTimeline.tsx",
+        "apps/web/src/components/files/FilePreviewPanel.tsx",
+        "docs/architecture/state-and-evidence.md"
+      ],
+      "proposal": "Preserve unknown completion reasons and reconcile missed terminal events through existing semantic projections. Keep Neokod preview virtualization; if needed, bound transfer/decode before rendering, cancel superseded previews and show explicit unavailable/truncated states.",
+      "acceptance": "Drop the terminal SSE event, delay reconciliation, then close/switch a preview during a large binary/text response. No false success or invented stop reason; at most one reconciliation in flight per scope; zero late cross-file results or object-URL leaks. Track transfer bytes, parsed cells, retained bytes and mounted rows separately.",
+      "issue_links": [],
+      "evidence_class": "static source; proposed Neokod experiment not executed"
+    },
+    {
+      "app": "conductor",
+      "id": "C-P1",
+      "title": "Capability-aware agent modes and project setup",
+      "source": [
+        {
+          "url": "https://www.conductor.build/docs/concepts/agent-modes",
+          "evidence_class": "official documentation",
+          "retrieved_on": "2026-10-04"
+        },
+        {
+          "url": "https://www.conductor.build/docs/configure-your-project",
+          "evidence_class": "official documentation",
+          "retrieved_on": "2026-10-04"
+        }
+      ],
+      "callers": [],
+      "observed": "Official docs distinguish mode support by agent and model, and separate reviewed project settings from local overrides. Setup/run/archive scripts follow the project toolchain with workspace-specific ports.",
+      "caveat": "No public implementation was identified. Mode support, startup cost and script behaviour were not executed here; documentation does not establish internal caching. Project instructions and scripts are not authorised to run by this research.",
+      "neokod": [
+        "apps/web/src/components/chat/ModelPickerContent.tsx",
+        "apps/server/src/provider/Services/ProviderRegistry.ts",
+        "apps/server/src/symphony/Trackers/SettingsOverlay.ts"
+      ],
+      "proposal": "Use Neokod\u2019s real instance capabilities to show applicable modes and defaults. Show the origin of repository, local and server configuration; plan workspace setup as an explicit local operation rather than silently running arbitrary imported scripts.",
+      "acceptance": "A configuration-origin matrix and every locally supported provider/mode combination round-trip without hidden override changes. Unsupported modes show a reason. A 200-archived-workspace startup fixture must establish hydration/request costs locally; Conductor user complaints alone cannot identify its private startup cause.",
+      "issue_links": [],
+      "evidence_class": "official documented behaviour; private implementation/performance unverified"
+    },
+    {
+      "app": "conductor",
+      "id": "C-P2",
+      "title": "Navigate review evidence and deliver results to the owning system",
+      "source": [
+        {
+          "url": "https://www.conductor.build/docs/reference/diff-viewer",
+          "evidence_class": "official documentation",
+          "retrieved_on": "2026-10-04"
+        }
+      ],
+      "callers": [],
+      "observed": "Official docs describe file/commit diff navigation, line-specific feedback, review-comment handling, checks and guided pull-request creation.",
+      "caveat": "This is a documented workflow, not inspected diff architecture or measured rendering performance. Neokod owns its UI. GitHub review delivery does not establish tracker mutation support elsewhere.",
+      "neokod": [
+        "apps/web/src/components/files/FilePreviewPanel.tsx",
+        "apps/server/src/symphony/Trackers/Adapter.ts",
+        "apps/server/src/symphony/Trackers/Registry.ts"
+      ],
+      "proposal": "Create Neokod-owned navigation from work item to changed file, run/check evidence and existing delivery target. Preserve line/revision anchors and offer only adapter/SCM-supported result actions; use the seven-tracker intake below.",
+      "acceptance": "For each supported tracker, a result retains source identity, local run and SCM revision. Unsupported comment/status/PR actions remain explicit. A stale diff anchor never attaches feedback to a different revision; delivery has receipts or an explicit failed/unknown result, not a silent success.",
+      "issue_links": [],
+      "evidence_class": "official documented behaviour; private implementation/performance unverified"
+    },
+    {
+      "app": "maestri",
+      "id": "M-P1",
+      "title": "Search addressable local targets with explicit platform coverage",
+      "source": [
+        {
+          "url": "https://www.themaestri.app/en/docs/batuta-search",
+          "evidence_class": "official documentation",
+          "retrieved_on": "2026-10-04"
+        },
+        {
+          "url": "https://www.themaestri.app/en/docs/workspaces",
+          "evidence_class": "official documentation",
+          "retrieved_on": "2026-10-04"
+        }
+      ],
+      "callers": [],
+      "observed": "Official docs describe a keyboard palette across named targets/workspaces, contextual actions and focus restoration. Workspace docs describe macOS Spotlight integration for terminal/note content, with different Windows coverage.",
+      "caveat": "No public source or issue tracker was identified. These pages do not establish an index algorithm, resource bound or an instant-start benchmark. OS indexing can expose sensitive local content and requires deliberate scope/opt-in rules.",
+      "neokod": [
+        "apps/web/src/components/CommandPalette.tsx",
+        "apps/server/src/workspace/WorkspaceSearchIndex.ts"
+      ],
+      "proposal": "Improve Neokod-owned keyboard navigation using qualified project/thread/file targets and contextual available actions. Keep history-content indexing separate from existing path search; expose indexed coverage and exclusions. Treat OS indexing as optional per-platform work, not a portable prerequisite.",
+      "acceptance": "Two identical names in different projects remain distinguishable; Escape restores prior focus; stale targets cannot receive an action. On a 10,000-entry fixture, measure ranking/search p95 and cold index cost, show truncated/unindexed coverage and verify excluded secret paths are absent. Do not claim Windows supports a macOS-only feature.",
+      "issue_links": [],
+      "evidence_class": "official documented behaviour; private implementation/performance unverified"
+    },
+    {
+      "app": "maestri",
+      "id": "M-P2",
+      "title": "Preserve scoped drafts and pasted payload identity",
+      "source": [
+        {
+          "url": "https://www.themaestri.app/en/docs/prompt-composer",
+          "evidence_class": "official documentation",
+          "retrieved_on": "2026-10-04"
+        }
+      ],
+      "callers": [],
+      "observed": "Official docs describe target-aware mentions, folded large-paste tokens and drafts retained across target switches. Composer input can pass through when empty for terminal interactions.",
+      "caveat": "Documented folding thresholds are UI policy, not a safe storage/transport cap. No implementation, memory measurement, durable acknowledgement or provider support was independently proved.",
+      "neokod": [
+        "apps/web/src/composerDraftStore.ts",
+        "apps/web/src/lib/terminalContext.ts",
+        "apps/web/src/components/ChatView.tsx"
+      ],
+      "proposal": "Build on Neokod\u2019s existing scoped persisted draft store and terminal-context placeholders. Keep folded content tied to an immutable payload identity and undo/cut behaviour; clear the correct draft only after accepted submission, with target-specific capabilities.",
+      "acceptance": "Switch 100 scoped drafts, restart, paste/edit/cut/undo a large payload and fail/retry submission. No target crossover, payload loss or premature clearing. Compare retained draft/image bytes and persistence latency; keyboard approvals reach the intended terminal only when the composer contract permits them.",
+      "issue_links": [],
+      "evidence_class": "official documented behaviour; private implementation/performance unverified"
+    }
+  ],
+  "apps": ["omnigent", "paseo", "bb", "pi", "opencodex", "harnessrouter", "conductor", "maestri"],
+  "new_issue_captures": [
+    {
+      "repo": "omnigent-ai/omnigent",
+      "number": 6205,
+      "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/omnigent-ai--omnigent/6205.json",
+      "comments_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/omnigent-ai--omnigent/6205-comments.json",
+      "retrieved_comments_at": "2026-10-04T07:04:52.791251+00:00",
+      "returncode": 0
+    },
+    {
+      "repo": "getpaseo/paseo",
+      "number": 4408,
+      "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/getpaseo--paseo/4408.json",
+      "comments_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/getpaseo--paseo/4408-comments.json",
+      "retrieved_comments_at": "2026-10-04T07:04:52.762287+00:00",
+      "returncode": 0
+    },
+    {
+      "repo": "get-bb/bb",
+      "number": 4413,
+      "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/get-bb--bb/4413.json",
+      "comments_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/get-bb--bb/4413-comments.json",
+      "retrieved_comments_at": "2026-10-04T07:04:52.783689+00:00",
+      "returncode": 0
+    },
+    {
+      "repo": "lidge-jun/opencodex",
+      "number": 5493,
+      "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/lidge-jun--opencodex/5493.json",
+      "comments_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/lidge-jun--opencodex/5493-comments.json",
+      "retrieved_comments_at": "2026-10-04T07:04:52.743583+00:00",
+      "returncode": 0
+    },
+    {
+      "repo": "earendil-works/pi",
+      "number": 9807,
+      "raw_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/earendil-works--pi/9807.json",
+      "comments_path": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/issue-details/earendil-works--pi/9807-comments.json",
+      "retrieved_comments_at": "2026-10-04T07:04:52.794688+00:00",
+      "returncode": 0
+    }
+  ],
+  "tracker_capabilities": {
+    "existing_kinds": [
+      "github",
+      "github_projects",
+      "linear",
+      "jira",
+      "gitlab",
+      "azure_boards",
+      "asana"
+    ],
+    "identity_matrix": [
+      {
+        "kind": "github",
+        "name": "GitHub Issues",
+        "identity_scope": "Issue number string; configured owner/repository",
+        "preserve": "owner/repository/number; repository, label, assignee and open-state rules"
+      },
+      {
+        "kind": "github_projects",
+        "name": "GitHub Projects",
+        "identity_scope": "Project item ID, not issue number; configured owner/project number",
+        "preserve": "item_id plus issue_id/issue_number; draft/PR content excluded; closed content is not dispatchable in source"
+      },
+      {
+        "kind": "linear",
+        "name": "Linear",
+        "identity_scope": "Immutable UUID; configured project slug",
+        "preserve": "identifier/project slug remain native references; human key is not automatically accepted by getIssue"
+      },
+      {
+        "kind": "jira",
+        "name": "Jira",
+        "identity_scope": "Immutable issue ID after key resolution; configured project",
+        "preserve": "key remains human reference; scope/unknown blockers preserved"
+      },
+      {
+        "kind": "gitlab",
+        "name": "GitLab",
+        "identity_scope": "Project-scoped IID string; configured API host/project path",
+        "preserve": "global ID/project ID/path preserved; only opened source issues dispatchable"
+      },
+      {
+        "kind": "azure_boards",
+        "name": "Azure Boards",
+        "identity_scope": "Work-item ID string; configured organisation/project",
+        "preserve": "revision/type/project retained; terminal process states including Removed not dispatchable in source"
+      },
+      {
+        "kind": "asana",
+        "name": "Asana",
+        "identity_scope": "Task GID; configured project GID",
+        "preserve": "project membership and section GID determine scope/state; incomplete task required"
+      }
+    ],
+    "mutation_capabilities": "not established; inspected agentTools arrays empty",
+    "existing_uniqueness": ["project_id", "tracker_kind", "tracker_issue_id"],
+    "connection_scope_guard": "proposed unresolved design requirement"
+  },
+  "source_capture_manifest": "/tmp/neokod-competitors-20261004/tier-sb-sol/addendum/source-capture.json",
+  "proof_boundaries": [
+    "static public source is not runtime proof",
+    "official docs are not private implementation proof",
+    "native Android reports are not responsive-web proof",
+    "issue observations and agent-generated benchmarks are not independent Neokod measurements",
+    "all local implementation and measurable acceptance are proposed and unrun"
+  ]
+}

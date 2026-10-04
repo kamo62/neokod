@@ -1,7 +1,12 @@
 import { SYMPHONY_WS_METHODS } from "@neokod/contracts";
+import * as Stream from "effect/Stream";
 import { Atom } from "effect/unstable/reactivity";
 
-import { createEnvironmentRpcCommand, createEnvironmentRpcQueryAtomFamily } from "./runtime.ts";
+import {
+  createEnvironmentRpcCommand,
+  createEnvironmentRpcQueryAtomFamily,
+  createEnvironmentRpcSubscriptionAtomFamily,
+} from "./runtime.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 
 /**
@@ -10,9 +15,8 @@ import type { EnvironmentRegistry } from "../connection/registry.ts";
  * Query atoms for the read-only Observe surface: overview, queue, runs,
  * workflows, and tracker health. Command atoms for the FR-022 queue overrides
  * (exclude / include / local priority), which persist server-side and survive
- * restart. Live subscriptions (queue/runs updates) are added when the
- * subscription RPCs are mounted; for now the views refresh on mount and on an
- * explicit refresh interval.
+ * restart. The project board uses its subscription RPC; the remaining views
+ * refresh on mount and on an explicit interval.
  */
 export function createSymphonyEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
@@ -54,11 +58,10 @@ export function createSymphonyEnvironmentAtoms<R, E>(
       staleTimeMs: 5_000,
       refreshIntervalMs: 15_000,
     }),
-    projectBoard: createEnvironmentRpcQueryAtomFamily(runtime, {
+    projectBoard: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:symphony:projectBoard",
-      tag: SYMPHONY_WS_METHODS.getProjectBoard,
-      staleTimeMs: 2_000,
-      refreshIntervalMs: 5_000,
+      tag: SYMPHONY_WS_METHODS.subscribeProjectBoard,
+      transform: (stream) => stream.pipe(Stream.map((event) => event.board)),
     }),
     createProject: createEnvironmentRpcCommand(runtime, {
       label: "environment-command:symphony:createProject",

@@ -1,0 +1,40 @@
+- button "Switch mode": Neokod Dev
+- tablist "Sidebar view":
+  - tab "Projects" [selected]
+  - tab "All threads"
+- list:
+  - listitem:
+    - button "New thread"
+  - listitem:
+    - button "Search ⌘K"
+  - listitem:
+    - button "Home"
+- tabpanel "Projects":
+  - region "My Work":
+    - button "My Work 0" [expanded]
+  - text: Projects
+  - button
+  - button "Add project"
+  - list
+  - text: No projects yet
+- separator
+- list:
+  - listitem:
+    - button "Settings"
+- button "Resize Sidebar"
+- main:
+  - text: No active thread
+  - main:
+    - heading "Home" [level=1]
+    - paragraph: Work across your projects, all in one place.
+    - text: Running 0
+    - paragraph: Nothing here right now.
+    - text: Needs attention 0
+    - paragraph: Nothing here right now.
+    - text: Plan ready 0
+    - paragraph: Nothing here right now.
+    - text: Recent 0
+    - paragraph: Nothing here right now.
+- button "Toggle main sidebar" [pressed]: Toggle Sidebar
+- region "Notifications"
+- region "Notifications"

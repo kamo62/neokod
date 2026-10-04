@@ -1,11 +1,15 @@
 import {
   ProviderDriverKind,
   ProviderInstanceId,
+  type RepositoryIdentity,
   type SymphonyProjectConfiguration,
 } from "@neokod/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
-import { isSymphonyProjectConfigurationComplete } from "./SymphonyProjectConfigurationForm";
+import {
+  githubIssueRepositoryFromIdentity,
+  isSymphonyProjectConfigurationComplete,
+} from "./SymphonyProjectConfigurationForm";
 
 describe("Symphony project configuration", () => {
   it("requires a real tracker scope before project creation", () => {
@@ -35,5 +39,30 @@ describe("Symphony project configuration", () => {
         tracker: { kind: "jira", projectKey: "OPS" },
       }),
     ).toBe(true);
+  });
+
+  it("infers the GitHub issue repository from the Code project's Git identity", () => {
+    const identity = {
+      canonicalKey: "github.com/kamo62/neokod",
+      locator: {
+        source: "git-remote",
+        remoteName: "origin",
+        remoteUrl: "git@github.com:kamo62/neokod.git",
+      },
+      provider: "github",
+      owner: "kamo62",
+      name: "neokod",
+    } satisfies RepositoryIdentity;
+
+    expect(githubIssueRepositoryFromIdentity(identity)).toBe("kamo62/neokod");
+    expect(
+      githubIssueRepositoryFromIdentity({
+        canonicalKey: identity.canonicalKey,
+        locator: {
+          ...identity.locator,
+          remoteUrl: "https://github.com/kamo62/neokod.git",
+        },
+      }),
+    ).toBe("kamo62/neokod");
   });
 });

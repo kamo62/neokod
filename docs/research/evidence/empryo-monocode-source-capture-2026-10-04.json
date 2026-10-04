@@ -1,0 +1,386 @@
+{
+  "manifest_created_utc": "2026-10-04T12:12:58.830565+00:00",
+  "evidence": "Pinned public source/documents only. No competitor build, provider execution, SSH run, deployment or application mutation. Empryo public v2 is distinct from private current v3.",
+  "captures": [
+    {
+      "repository": "proxysoul/Empryo",
+      "sha": "28802a4f169abcc378032e0a4774bc162c12a00c",
+      "capture_directory": "/tmp/neokod-empryo-20261004-28802a4f",
+      "files": [
+        {
+          "path": "EMPRYO_V3_LICENSE.md",
+          "bytes": 7243,
+          "sha256": "9a32d8e58e8e236749b383f5239e772a00d613f4b0175113322665e9f4ab2c10",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/EMPRYO_V3_LICENSE.md"
+        },
+        {
+          "path": "LICENSE",
+          "bytes": 5016,
+          "sha256": "4ff7f88f077cbc731aae00f5d0ed0b89d211817636999d652515e5e073be816d",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/LICENSE"
+        },
+        {
+          "path": "README.md",
+          "bytes": 5340,
+          "sha256": "965820a8d16dfc437c127b0141937f005b060306998960753c54a005cfa45d74",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/README.md"
+        },
+        {
+          "path": "mintlify-docs/agents/dispatch.mdx",
+          "bytes": 2066,
+          "sha256": "745bf44645807d0de5ab0c713f0ea7517bedbc38a1dcfeb46b3629324d30bfde",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/mintlify-docs/agents/dispatch.mdx"
+        },
+        {
+          "path": "mintlify-docs/recipes/headless.mdx",
+          "bytes": 2586,
+          "sha256": "07602a13ff25fab771dd2b4d7434f41929cb7d9ffadac22f5d3058ed3d27dda7",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/mintlify-docs/recipes/headless.mdx"
+        },
+        {
+          "path": "mintlify-docs/tools/hearth.mdx",
+          "bytes": 4513,
+          "sha256": "a664bb99b767714e91b7751b63bbdb35fe2e82a98a750f697da8ecd090ff8083",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/mintlify-docs/tools/hearth.mdx"
+        },
+        {
+          "path": "package.json",
+          "bytes": 5007,
+          "sha256": "4d58975917e35b7bb6419c9c2b0244b9644926b736e3e23009d44e0abffcb01c",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/package.json"
+        },
+        {
+          "path": "src/core/agents/agent-bus.ts",
+          "bytes": 25342,
+          "sha256": "1b5e6e161852a22a32fab59a0f7582f224fa10857611166702500e08c8d6da8d",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/agents/agent-bus.ts"
+        },
+        {
+          "path": "src/core/agents/agent-results.ts",
+          "bytes": 6620,
+          "sha256": "3ce048c1fc81123dcf7aad1872e89c2ab6b73b5b110f9654a2b83a46fa6b8470",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/agents/agent-results.ts"
+        },
+        {
+          "path": "src/core/agents/agent-runner.ts",
+          "bytes": 30510,
+          "sha256": "c66d535289035c18ed6508751b14a9ab28b832e8dac81e8c3bd7bc665a77b276",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/agents/agent-runner.ts"
+        },
+        {
+          "path": "src/core/agents/subagent-tools.ts",
+          "bytes": 44303,
+          "sha256": "f3417bc87a3cb8aef99e4ca858f01f1ffa6c7d8c4b322ef5348335a0b83102e9",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/agents/subagent-tools.ts"
+        },
+        {
+          "path": "src/core/compaction/index.ts",
+          "bytes": 368,
+          "sha256": "758c65be207d5599379a4e755f0eb073ea9d34e7ca21bf3f6cbf6cf983305191",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/compaction/index.ts"
+        },
+        {
+          "path": "src/core/compaction/types.ts",
+          "bytes": 1517,
+          "sha256": "995208fdbba7ce411da69f76931707fc0d637d0665fe4db376681bb1f69cc4a1",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/compaction/types.ts"
+        },
+        {
+          "path": "src/core/compaction/working-state.ts",
+          "bytes": 5634,
+          "sha256": "102020b686195a12f2db9ad7582f6d7fbc8c561f8651d179db4615e97eecb4bc",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/compaction/working-state.ts"
+        },
+        {
+          "path": "src/core/context/manager.ts",
+          "bytes": 73852,
+          "sha256": "0cfb2e6879dca152453f44a16383299a5b2d06b9006058390d4838bf509ee95a",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/context/manager.ts"
+        },
+        {
+          "path": "src/core/coordination/WorkspaceCoordinator.ts",
+          "bytes": 12291,
+          "sha256": "189830ad50d1d10ec4bc4e06e03b3940a7cfcf20990455444068a1661f6eed53",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/coordination/WorkspaceCoordinator.ts"
+        },
+        {
+          "path": "src/core/coordination/tool-wrapper.ts",
+          "bytes": 2914,
+          "sha256": "0c3c402ac46224bae8a03bca8e1308a46b17b6aa38cf36f1dd294521043f8dde",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/coordination/tool-wrapper.ts"
+        },
+        {
+          "path": "src/core/intelligence/backends/ts-morph.ts",
+          "bytes": 111878,
+          "sha256": "ed6dcc95fe75670b4240d85c4828b34be1c6d418645aa49a1eefe16730206345",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/intelligence/backends/ts-morph.ts"
+        },
+        {
+          "path": "src/core/intelligence/repo-map.ts",
+          "bytes": 191025,
+          "sha256": "a6b27ec04f1e55b51e6c1ce04397d108aad90f4be266f94d9c07ea27ee681639",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/intelligence/repo-map.ts"
+        },
+        {
+          "path": "src/core/memory/db.ts",
+          "bytes": 51837,
+          "sha256": "73074d676611eb372c916ec9736eff1817c0cbc4caf59e84117e5f7d6f046ad0",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/memory/db.ts"
+        },
+        {
+          "path": "src/core/memory/recall.ts",
+          "bytes": 15821,
+          "sha256": "03a60097a0e4e74754f778561c458725ab652f0a79565a070ab4550a93298c80",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/memory/recall.ts"
+        },
+        {
+          "path": "src/core/sessions/manager.ts",
+          "bytes": 25736,
+          "sha256": "c0dbf5ba8a0ebf703a90e7c9b882ad90402f8a357afa2ecffe657dbbdb68f73b",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/sessions/manager.ts"
+        },
+        {
+          "path": "src/core/tools/ast-edit.ts",
+          "bytes": 14818,
+          "sha256": "4fd1cda48d352f9e2814cd15bb97cda0e31a9a58db79e75ed60ccd40022ba3c1",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/tools/ast-edit.ts"
+        },
+        {
+          "path": "src/core/workers/io-client.ts",
+          "bytes": 6048,
+          "sha256": "5eab936d3ca476ce1148339ccbd8a73a863e6cc00746282e8ca596a9c3f7c635",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/core/workers/io-client.ts"
+        },
+        {
+          "path": "src/headless/run.ts",
+          "bytes": 31002,
+          "sha256": "b827c28ba537b71074c8d40d8c47fe31549368273d05ee8ecdf612de127ffc2f",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/headless/run.ts"
+        },
+        {
+          "path": "src/hearth/bridge.ts",
+          "bytes": 32841,
+          "sha256": "97ef9cec5f1fe25db2dcff6f79d319049f7cfc35e127a1cad7e743c45d39c8bc",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hearth/bridge.ts"
+        },
+        {
+          "path": "src/hearth/claim.ts",
+          "bytes": 4073,
+          "sha256": "e64637c7cf8d9bada3632f1219caf0a44b904e3746f7bfc63db2777e33a72b22",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hearth/claim.ts"
+        },
+        {
+          "path": "src/hearth/config.ts",
+          "bytes": 9331,
+          "sha256": "5fd33399d90c60d540b0d8cad0c6bd438eebe45a84bfe86c65aa12d9bf32d304",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hearth/config.ts"
+        },
+        {
+          "path": "src/hearth/daemon.ts",
+          "bytes": 54954,
+          "sha256": "192b02e980817b73ac2cda1672d574bc18e8543f313ccaf091e14fe0b231d73d",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hearth/daemon.ts"
+        },
+        {
+          "path": "src/hearth/peer-auth.ts",
+          "bytes": 5535,
+          "sha256": "ac806744470419bd280eced016ded806a7d9d807818e76c083af507b0a4d25ec",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hearth/peer-auth.ts"
+        },
+        {
+          "path": "src/hearth/protocol.ts",
+          "bytes": 4582,
+          "sha256": "9869eac8257ed569910054c609a5b8e22035824692a642d4fce4e1dabbeebe5c",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hearth/protocol.ts"
+        },
+        {
+          "path": "src/hearth/surface-host.ts",
+          "bytes": 6509,
+          "sha256": "0b5ad231d57ffaeb0545ed56654462c75c3029248781f386b17154fb8a179b1b",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hearth/surface-host.ts"
+        },
+        {
+          "path": "src/hearth/tui-host.ts",
+          "bytes": 35808,
+          "sha256": "d7dad5793dd304c17adf5ffb61879e0317bec6f7cb616140226fc0e26e518d1e",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hearth/tui-host.ts"
+        },
+        {
+          "path": "src/hearth/workspace.ts",
+          "bytes": 7683,
+          "sha256": "069e54151ae701a392f69c36ab2f1e0dbe3f21f529bd22789273f6dad31da9b7",
+          "url": "https://github.com/proxysoul/Empryo/blob/28802a4f169abcc378032e0a4774bc162c12a00c/src/hearth/workspace.ts"
+        }
+      ]
+    },
+    {
+      "repository": "hardbeat920/monocode",
+      "sha": "271b66ded71e795e0569db77c9bbf599219c8cdc",
+      "capture_directory": "/tmp/neokod-monocode-20261004/source",
+      "files": [
+        {
+          "path": "LICENSE",
+          "bytes": 1061,
+          "sha256": "3333be61cff8f46a68a883978fff0a6a2a993c3f434396c54482413ce9f63416",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/LICENSE"
+        },
+        {
+          "path": "README.md",
+          "bytes": 9163,
+          "sha256": "92def6c2f33975bfebec4cbee52e04d24465300297ea9cd739d5f599c4b40224",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/README.md"
+        },
+        {
+          "path": "SECURITY.md",
+          "bytes": 423,
+          "sha256": "a18bb265653897541e621bd401508782e7c43057554dbdb568c5be56dba0cb88",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/SECURITY.md"
+        },
+        {
+          "path": "docs/remote-access.md",
+          "bytes": 17786,
+          "sha256": "ce37c103f6748c60e244b791594c7df3e005d922c271955a1e79c682ceb23f28",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/docs/remote-access.md"
+        },
+        {
+          "path": "host/cli.ts",
+          "bytes": 10190,
+          "sha256": "81bef8f5cfa408da1a0fbd2b190034fd6bea5cae43732ab20fa700829557cebf",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/host/cli.ts"
+        },
+        {
+          "path": "host/engine.ts",
+          "bytes": 31611,
+          "sha256": "182f2bcc2b1b6af5519d426e969b34427aaf7f0523752808a01f19c33d2bf483",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/host/engine.ts"
+        },
+        {
+          "path": "host/owner.ts",
+          "bytes": 2776,
+          "sha256": "fb19cc34d4093f15f8a51ce679a1e8f2c3c2b35e763bc4f35d772782505b0735",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/host/owner.ts"
+        },
+        {
+          "path": "host/process.ts",
+          "bytes": 7271,
+          "sha256": "30072c8ff365e2c5e1d1575fc827bb729a02d8dd3582cc0893216c129f108e72",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/host/process.ts"
+        },
+        {
+          "path": "host/server.ts",
+          "bytes": 23117,
+          "sha256": "e68654c04ecae5149dcda4b0c696b5ceb4980620c1736ab32b295b6110035428",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/host/server.ts"
+        },
+        {
+          "path": "host/store.ts",
+          "bytes": 12494,
+          "sha256": "90e1abd00fdc144db613a45e43ca4000cbc50626bbd7974bf9e9b2a42639f7fd",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/host/store.ts"
+        },
+        {
+          "path": "host/sync-transfer.ts",
+          "bytes": 3205,
+          "sha256": "4f47898ff59e4e5372d0fa70d088815e0e806306b727889c69d5f0c3f9bf9821",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/host/sync-transfer.ts"
+        },
+        {
+          "path": "host/workspace.ts",
+          "bytes": 25338,
+          "sha256": "eb4c43808083e252110c24c4459359db6218a221500caf8427390e209ac119f1",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/host/workspace.ts"
+        },
+        {
+          "path": "src/features/agent-app/model/agentApp.ts",
+          "bytes": 18140,
+          "sha256": "c18faf8808e1406946d42d210c46242c756e6afdacff958002e78348f319ddd1",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/agent-app/model/agentApp.ts"
+        },
+        {
+          "path": "src/features/connections/model/remoteCommands.ts",
+          "bytes": 5626,
+          "sha256": "1f5769c058872e641f1dd18771b16693ed798ef51a6afcaba12a5671ebf0e170",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/connections/model/remoteCommands.ts"
+        },
+        {
+          "path": "src/features/connections/model/remoteSessionActions.ts",
+          "bytes": 1164,
+          "sha256": "2b0e098fec4696bf6d6cd9d991cfa181258bc2d94f462707e00cb97923b118ef",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/connections/model/remoteSessionActions.ts"
+        },
+        {
+          "path": "src/features/connections/ui/RemoteSession.tsx",
+          "bytes": 44031,
+          "sha256": "199b2aacf77e27d0d9a6667373ec08763e998f1e296f8c408266e62323db763c",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/connections/ui/RemoteSession.tsx"
+        },
+        {
+          "path": "src/features/orchestration/model/orchestration.ts",
+          "bytes": 81441,
+          "sha256": "33547c77994d2fdc2f7ee8d8f5641e46187e0176a458f9ad1908421b2dc2f953",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/orchestration/model/orchestration.ts"
+        },
+        {
+          "path": "src/features/orchestration/model/orchestrationState.ts",
+          "bytes": 5912,
+          "sha256": "011d3c09b114e2ecf70368f48f567f5873494f74ccf2ee78257eb282aea5f4f5",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/orchestration/model/orchestrationState.ts"
+        },
+        {
+          "path": "src/features/orchestration/model/orchestrationWorkspace.ts",
+          "bytes": 3317,
+          "sha256": "d80e2e2eac3fa365b144016e2e055bb5a6c136f41752d7c6c6642edeb51ca0bc",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/orchestration/model/orchestrationWorkspace.ts"
+        },
+        {
+          "path": "src/features/orchestration/ui/OrchestrationActions.ts",
+          "bytes": 1374,
+          "sha256": "fd7ea0584e017614df77acf4e1a99dca957c02adb0cdcfe51544f524ebeccf68",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/orchestration/ui/OrchestrationActions.ts"
+        },
+        {
+          "path": "src/features/sessions/model/handoff.ts",
+          "bytes": 14154,
+          "sha256": "88d1a8550c99730075173fbc74b8ecce8e6cd2016dc355c74c8307953917f2ac",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/sessions/model/handoff.ts"
+        },
+        {
+          "path": "src/features/sessions/model/handoffTurn.ts",
+          "bytes": 1806,
+          "sha256": "c96a2c9e2526c5fb01cb85338962d72532e2806af4559757f47375fa8f86cf4f",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/sessions/model/handoffTurn.ts"
+        },
+        {
+          "path": "src/features/sessions/model/operatorCommand.ts",
+          "bytes": 1682,
+          "sha256": "9b61b938651c0bd348a2cdf08da6bc0c43b98fb83511e3649e8c5ddb2a3e9184",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src/features/sessions/model/operatorCommand.ts"
+        },
+        {
+          "path": "src-tauri/src/control.rs",
+          "bytes": 28477,
+          "sha256": "e861109e51266e238d0d2036bebb8c4f332e4be6b9916fc9a55d3493db866495",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src-tauri/src/control.rs"
+        },
+        {
+          "path": "src-tauri/src/control_cli.rs",
+          "bytes": 22794,
+          "sha256": "1808e9022ed3698c1ca17ae19d96a540dccaa929f53518ba5e821113a272fd8e",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src-tauri/src/control_cli.rs"
+        },
+        {
+          "path": "src-tauri/src/remote.rs",
+          "bytes": 24407,
+          "sha256": "82a01305c6d0975d887a1013ac3ad01c42dd58e00e408613c42ab07eb49501e7",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src-tauri/src/remote.rs"
+        },
+        {
+          "path": "src-tauri/src/remote_ssh.rs",
+          "bytes": 31145,
+          "sha256": "702336a7841bc5c6e71e18cd2368c702db362fd3a7cfb89dff3da38f5541dc8a",
+          "url": "https://github.com/hardbeat920/monocode/blob/271b66ded71e795e0569db77c9bbf599219c8cdc/src-tauri/src/remote_ssh.rs"
+        }
+      ]
+    }
+  ]
+}

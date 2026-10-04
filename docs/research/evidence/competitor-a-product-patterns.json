@@ -1,0 +1,1956 @@
+{
+  "schema_version": 1,
+  "generated_utc": "2026-10-04T07:20:04.643479+00:00",
+  "scope": "Additional finite seven-app performance/product/delivery review",
+  "proof_boundary": "Static source and current public issue/PR captures only; no application execution or implementation.",
+  "apps": [
+    {
+      "app": "onorca",
+      "repository": "stablyai/orca",
+      "frozen_sha": "3cc5e1dac659ffd163b81b28261cd843261f4ca5",
+      "license": "MIT",
+      "frozen_commit_url": "https://github.com/stablyai/orca/commit/3cc5e1dac659ffd163b81b28261cd843261f4ca5"
+    },
+    {
+      "app": "agent-orchestrator",
+      "repository": "Untrivial-ai/agent-orchestrator",
+      "frozen_sha": "b2461dc5955bb11b4ee1213871e6a2157e68da0e",
+      "license": "Apache-2.0",
+      "frozen_commit_url": "https://github.com/Untrivial-ai/agent-orchestrator/commit/b2461dc5955bb11b4ee1213871e6a2157e68da0e"
+    },
+    {
+      "app": "codex-host",
+      "repository": "BytePioneer-AI/codex-host",
+      "frozen_sha": "49d8b1c6a3d70ca9ea2024d688e68847e66dd163",
+      "license": "LGPL-3.0",
+      "frozen_commit_url": "https://github.com/BytePioneer-AI/codex-host/commit/49d8b1c6a3d70ca9ea2024d688e68847e66dd163"
+    },
+    {
+      "app": "hermes",
+      "repository": "NousResearch/hermes-agent",
+      "frozen_sha": "64ad33e32dadbdb462468c7384aa38e5c99a1b7a",
+      "license": "MIT",
+      "frozen_commit_url": "https://github.com/NousResearch/hermes-agent/commit/64ad33e32dadbdb462468c7384aa38e5c99a1b7a"
+    },
+    {
+      "app": "oh-my-pi",
+      "repository": "can1357/oh-my-pi",
+      "frozen_sha": "6d8552d7f9df1852826923f07f0eed4fe29511f3",
+      "license": "MIT",
+      "frozen_commit_url": "https://github.com/can1357/oh-my-pi/commit/6d8552d7f9df1852826923f07f0eed4fe29511f3"
+    },
+    {
+      "app": "superset",
+      "repository": "superset-sh/superset",
+      "frozen_sha": "c711aa02da3f5625a49c58ec4035eea57b87df0a",
+      "license": "Elastic License 2.0 (ELv2)",
+      "frozen_commit_url": "https://github.com/superset-sh/superset/commit/c711aa02da3f5625a49c58ec4035eea57b87df0a"
+    },
+    {
+      "app": "traycer",
+      "repository": "traycerai/traycer",
+      "frozen_sha": "745704377226b576d92b80ba421466e5c7a71fa9",
+      "license": "MIT",
+      "frozen_commit_url": "https://github.com/traycerai/traycer/commit/745704377226b576d92b80ba421466e5c7a71fa9"
+    }
+  ],
+  "findings": [
+    {
+      "app": "onorca",
+      "id": "A01",
+      "title": "Bound terminal output by consumer credit and queued bytes",
+      "decision": "Adapt the local flow-control contract.",
+      "source_behaviour": "The multiplex frame sender checks both stream and total outstanding byte windows before sending; source-range admission can reject unverifiable output. Accepted frames advance both counters. When credit is exhausted, output enters a pending queue. Shared defaults set a 512 KiB initial stream window, 2 MiB initial total window, 2 MiB/8 MiB maxima, 256 KiB pending-output cap and 48 KiB chunks. These are explicit budgets rather than an assumption that WebSocket writes drain promptly.",
+      "caveats": "This path is capability-negotiated: ackOutput=false bypasses credit checks. Source-range accounting is another negotiated feature. Sender credit alone does not prove renderer parsing, transport buffering or upstream PTY retention is bounded. Adapt the contract to Neokod\u2019s local terminal; remote/relay infrastructure is excluded. [stablyai/orca #24123](https://github.com/stablyai/orca/issues/24123) is an unconfirmed report of 230 terminal records, 235 tabs, 10,000-line scrollback and image decoding trouble in v1.4.217 on macOS 26.3.2 arm64; it does not establish credit-control failure.",
+      "timing_evidence": "Source constants and admission checks only; no throughput benchmark or local replay was run.",
+      "proposed_neokod_acceptance": "Proposed fixture: 16 local producers, one consumer stalled for 10 seconds, UTF-8 and split ANSI sequences. Instrument pending bytes, outstanding credits and process RSS; assert every configured bound, correct ordered output or an explicit replay/gap outcome, and no silent drop. Record input p95/p99 and renderer parse-task duration while unstalled; do not count a successful socket send as consumption.",
+      "source_refs": [
+        {
+          "key": "onorca:src/shared/terminal-multiplex-flow-control.ts",
+          "line": 1,
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/shared/terminal-multiplex-flow-control.ts#L1",
+          "label": "src/shared/terminal-multiplex-flow-control.ts:1"
+        },
+        {
+          "key": "onorca:src/main/runtime/rpc/methods/terminal/terminal-multiplex-stream-initialization.ts",
+          "line": 28,
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/runtime/rpc/methods/terminal/terminal-multiplex-stream-initialization.ts#L28",
+          "label": "src/main/runtime/rpc/methods/terminal/terminal-multiplex-stream-initialization.ts:28"
+        },
+        {
+          "key": "onorca:src/main/runtime/rpc/methods/terminal/terminal-multiplex-frame-delivery.ts",
+          "line": 87,
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/runtime/rpc/methods/terminal/terminal-multiplex-frame-delivery.ts#L87",
+          "label": "src/main/runtime/rpc/methods/terminal/terminal-multiplex-frame-delivery.ts:87"
+        },
+        {
+          "key": "onorca:src/main/runtime/rpc/methods/terminal/terminal-multiplex-flow-control.ts",
+          "line": 203,
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/runtime/rpc/methods/terminal/terminal-multiplex-flow-control.ts#L203",
+          "label": "src/main/runtime/rpc/methods/terminal/terminal-multiplex-flow-control.ts:203"
+        }
+      ],
+      "neokod_refs": [
+        {
+          "key": "neokod:apps/server/src/terminal/Manager.ts",
+          "line": 421,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/terminal/Manager.ts:421",
+          "label": "apps/server/src/terminal/Manager.ts:421"
+        },
+        {
+          "key": "neokod:apps/web/src/components/ThreadTerminalDrawer.tsx",
+          "line": 392,
+          "url": "/Users/kamogelo/Code/t3code/apps/web/src/components/ThreadTerminalDrawer.tsx:392",
+          "label": "apps/web/src/components/ThreadTerminalDrawer.tsx:392"
+        }
+      ],
+      "selected_issue_ids": [24123]
+    },
+    {
+      "app": "onorca",
+      "id": "A02",
+      "title": "Treat scrollback depth, retained bytes and hidden-pane resources separately",
+      "decision": "Adapt retention policy; investigate resource ownership before adding eviction.",
+      "source_behaviour": "One shared policy normalises live terminal scrollback to 1,000\u201350,000 rows, default 5,000, and defines a pending-output character cap with a 2 Mi-character floor and 120 characters per configured row. Default terminal options consume that policy; hidden-view reconstruction resolves snapshot rows through the same module so changing tabs does not silently shorten history.",
+      "caveats": "The 17.5/37.5/75 million-byte constants are legacy byte-to-row migration buckets, not current heap caps. Character accounting does not include xterm cells, WebGL textures, Wasm image decoders or every hidden view. [stablyai/orca #24123](https://github.com/stablyai/orca/issues/24123) includes a reporter decoder experiment failing at the 124th decoder in the bundled runtime, while system Node 22 survived 328. That supports a resource-budget acceptance case, not a proven root cause of all reported 635.8% renderer CPU. This source does not prove a complete lazy-image-addon policy.",
+      "timing_evidence": "Source retention bounds; reported CPU and decoder experiment are user evidence, unverified here.",
+      "proposed_neokod_acceptance": "Proposed fixture: 250 historical terminal records, 100 tab switches and a single very long line. Count live xterm/WebGL/image-addon instances separately from retained text bytes. After repeated switches, resources must return to the declared active-plus-retained budget without losing configured scrollback. Neokod already retains at most 128 inactive server sessions and uses 5,000-line renderer scrollback; line counts must be supplemented by byte and addon-memory measurements.",
+      "source_refs": [
+        {
+          "key": "onorca:src/shared/terminal-scrollback-policy.ts",
+          "line": 1,
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/shared/terminal-scrollback-policy.ts#L1",
+          "label": "src/shared/terminal-scrollback-policy.ts:1"
+        },
+        {
+          "key": "onorca:src/renderer/src/lib/pane-manager/pane-terminal-options.ts",
+          "line": 31,
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/renderer/src/lib/pane-manager/pane-terminal-options.ts#L31",
+          "label": "src/renderer/src/lib/pane-manager/pane-terminal-options.ts:31"
+        },
+        {
+          "key": "onorca:src/renderer/src/components/terminal-pane/terminal-hidden-restore-scrollback.ts",
+          "line": 6,
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/renderer/src/components/terminal-pane/terminal-hidden-restore-scrollback.ts#L6",
+          "label": "src/renderer/src/components/terminal-pane/terminal-hidden-restore-scrollback.ts:6"
+        }
+      ],
+      "neokod_refs": [
+        {
+          "key": "neokod:apps/server/src/terminal/Manager.ts",
+          "line": 81,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/terminal/Manager.ts:81",
+          "label": "apps/server/src/terminal/Manager.ts:81"
+        },
+        {
+          "key": "neokod:apps/server/src/terminal/Manager.ts",
+          "line": 855,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/terminal/Manager.ts:855",
+          "label": "apps/server/src/terminal/Manager.ts:855"
+        },
+        {
+          "key": "neokod:apps/web/src/components/ThreadTerminalDrawer.tsx",
+          "line": 392,
+          "url": "/Users/kamogelo/Code/t3code/apps/web/src/components/ThreadTerminalDrawer.tsx:392",
+          "label": "apps/web/src/components/ThreadTerminalDrawer.tsx:392"
+        }
+      ],
+      "selected_issue_ids": [24123]
+    },
+    {
+      "app": "onorca",
+      "id": "A03",
+      "title": "Track task freshness independently of worktree links and limit tracker requests",
+      "decision": "Adapt onto Neokod\u2019s existing delivery adapters.",
+      "source_behaviour": "Linear lookup chooses configured workspace clients, acquires a shared four-request permit, releases it in finally and maps the provider issue with workspace attribution. Explicit-workspace authentication failure is distinguished from trying additional clients. This is a useful identity and concurrency boundary for resolving ordinary-chat delivery requests.",
+      "caveats": "The simple FIFO permit queue has no abort handling or bounded waiting queue in this file and is Linear-specific; it is not a cross-provider rate-limit policy. [stablyai/orca #24247](https://github.com/stablyai/orca/issues/24247) reports v1.4.205 on macOS 26.5.1 showing old task status for 30 minutes or until restart even though a CLI lookup returned fresh Done/updatedAt. Correct linking therefore does not establish live status freshness; no maintainer-confirmed reproduction or fix was captured.",
+      "timing_evidence": "Four concurrent requests is a source limit, not measured tracker latency. Staleness duration is a reporter observation.",
+      "proposed_neokod_acceptance": "Resolve Linear, GitHub Issues/Projects and Azure Boards through TrackerAdapterRegistry.resolve and the existing configured connection. Test identical display keys in two scopes, token failure, cancellation of queued work, pagination and 429/backoff. Record snapshot fetchedAt/sourceUpdatedAt and prove post-change readback from the same connection; never infer external Done from an agent message or a worktree link.",
+      "source_refs": [
+        {
+          "key": "onorca:src/main/linear/linear-request-concurrency.ts",
+          "line": 1,
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/linear/linear-request-concurrency.ts#L1",
+          "label": "src/main/linear/linear-request-concurrency.ts:1"
+        },
+        {
+          "key": "onorca:src/main/linear/linear-issue-lookups.ts",
+          "line": 33,
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/linear/linear-issue-lookups.ts#L33",
+          "label": "src/main/linear/linear-issue-lookups.ts:33"
+        },
+        {
+          "key": "onorca:src/main/linear/client.ts",
+          "line": 1,
+          "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/linear/client.ts#L1",
+          "label": "src/main/linear/client.ts:1"
+        }
+      ],
+      "neokod_refs": [
+        {
+          "key": "neokod:apps/server/src/symphony/Trackers/Registry.ts",
+          "line": 72,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/Registry.ts:72",
+          "label": "apps/server/src/symphony/Trackers/Registry.ts:72"
+        },
+        {
+          "key": "neokod:apps/server/src/symphony/Trackers/Adapter.ts",
+          "line": 1,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/Adapter.ts:1",
+          "label": "apps/server/src/symphony/Trackers/Adapter.ts:1"
+        }
+      ],
+      "selected_issue_ids": [24247]
+    },
+    {
+      "app": "agent-orchestrator",
+      "id": "A04",
+      "title": "Coalesce terminal replay while bounding each parser task",
+      "decision": "Adapt the replay contract, not its pane chrome.",
+      "source_behaviour": "useTerminalSession owns attach/reconnect and gathers the initial replay behind a cover with 60 ms quiet and 750 ms cap timers. A 1 MiB duplicate buffer cap is separate from a 256 KiB xterm write-batch cap. Batches yield between writes and reveal only after parser callbacks; late replay has its own settling interval. Hidden panes continue receiving output and recovery but do not send resize or user input. XtermTerminal supplies the write callback.",
+      "caveats": "A cover can hide intermediate replay paints, but it cannot make an unbounded parser task responsive. Normal live output, server retention and xterm internals require their own bounds. Transport recovery must not create a replacement agent merely because the frontend remounts. [Untrivial-ai/agent-orchestrator #4608](https://github.com/Untrivial-ai/agent-orchestrator/issues/4608) concerns startup process retention rather than direct proof of replay performance.",
+      "timing_evidence": "The hook comment claims a 1,000-line replay formerly painted 25 intermediate frames at 16 ms and one write parsed in about 2 ms. This is an author example, not a benchmark reproduced here; the actual code additionally bounds parser batches.",
+      "proposed_neokod_acceptance": "Replay a fixed 1 MiB ANSI/Unicode fixture while typing and resizing. Assert parser writes do not exceed the selected batch size, output order and cursor state are preserved, teardown flushes or explicitly cancels pending replay, and reconnect does not spawn a second provider. Record input latency and peak duplicate-buffer bytes before/after using the same xterm and machine.",
+      "source_refs": [
+        {
+          "key": "agent-orchestrator:frontend/src/renderer/hooks/useTerminalSession.ts",
+          "line": 133,
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/frontend/src/renderer/hooks/useTerminalSession.ts#L133",
+          "label": "frontend/src/renderer/hooks/useTerminalSession.ts:133"
+        },
+        {
+          "key": "agent-orchestrator:frontend/src/renderer/hooks/useTerminalSession.ts",
+          "line": 478,
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/frontend/src/renderer/hooks/useTerminalSession.ts#L478",
+          "label": "frontend/src/renderer/hooks/useTerminalSession.ts:478"
+        },
+        {
+          "key": "agent-orchestrator:frontend/src/renderer/components/XtermTerminal.tsx",
+          "line": 1654,
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/frontend/src/renderer/components/XtermTerminal.tsx#L1654",
+          "label": "frontend/src/renderer/components/XtermTerminal.tsx:1654"
+        }
+      ],
+      "neokod_refs": [
+        {
+          "key": "neokod:apps/web/src/components/ThreadTerminalDrawer.tsx",
+          "line": 392,
+          "url": "/Users/kamogelo/Code/t3code/apps/web/src/components/ThreadTerminalDrawer.tsx:392",
+          "label": "apps/web/src/components/ThreadTerminalDrawer.tsx:392"
+        },
+        {
+          "key": "neokod:apps/server/src/terminal/Manager.ts",
+          "line": 2135,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/terminal/Manager.ts:2135",
+          "label": "apps/server/src/terminal/Manager.ts:2135"
+        }
+      ],
+      "selected_issue_ids": [4608]
+    },
+    {
+      "app": "agent-orchestrator",
+      "id": "A05",
+      "title": "Serve durable metadata before slow runtime restoration, with bounded recovery",
+      "decision": "Adapt startup ordering and measure process-retention policy separately.",
+      "source_behaviour": "Daemon startup performs ReconcileStartupSafety before accepting input, then runs ReconcileBackground after its listener is live. Safety reconstructs fences around interrupted operations. Background work lists durable sessions, reconciles live runtimes, reaps leaks and restores shutdown-saved sessions. A configurable ReconcileWorkers bound exists for live recovery. This separates usable persisted project/session metadata from slower worktree and agent recovery.",
+      "caveats": "This is not a fully lazy restart: RestoreAll still walks shutdown-saved sessions and relaunches those with restore markers. [Untrivial-ai/agent-orchestrator #4608](https://github.com/Untrivial-ai/agent-orchestrator/issues/4608) analysed 14 non-terminated Chat sessions in a 0.12.10 nightly on macOS: 13 Codex app-server processes at a burst and roughly 1.15 GiB physical app-tree memory after settling. The issue\u2019s 2.42 GB Activity Monitor attribution is explicitly low-confidence and must not be reported as daemon RSS. The frozen code is later and already has the safety/background split; no evidence captured proves the historical process-memory report fixed.",
+      "timing_evidence": "Startup ordering is source-verified; process counts and memory are reporter measurements, not a run of the frozen SHA.",
+      "proposed_neokod_acceptance": "Proposed fixture: 100 persisted idle chats, five interrupted operations and one surviving child process. Measure time to metadata-ready separately from runtime-ready. Require zero automatic idle provider launches unless the declared policy requires them; if restoration is required, assert its concurrency bound. Do not expose a writable session until its safety fence is resolved. Record child count and RSS plateau after recovery, not just the parent daemon.",
+      "source_refs": [
+        {
+          "key": "agent-orchestrator:backend/internal/daemon/daemon.go",
+          "line": 756,
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/daemon/daemon.go#L756",
+          "label": "backend/internal/daemon/daemon.go:756"
+        },
+        {
+          "key": "agent-orchestrator:backend/internal/daemon/daemon.go",
+          "line": 983,
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/daemon/daemon.go#L983",
+          "label": "backend/internal/daemon/daemon.go:983"
+        },
+        {
+          "key": "agent-orchestrator:backend/internal/session_manager/manager.go",
+          "line": 3394,
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/session_manager/manager.go#L3394",
+          "label": "backend/internal/session_manager/manager.go:3394"
+        },
+        {
+          "key": "agent-orchestrator:backend/internal/session_manager/manager.go",
+          "line": 3600,
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/session_manager/manager.go#L3600",
+          "label": "backend/internal/session_manager/manager.go:3600"
+        },
+        {
+          "key": "agent-orchestrator:backend/internal/session_manager/manager.go",
+          "line": 779,
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/session_manager/manager.go#L779",
+          "label": "backend/internal/session_manager/manager.go:779"
+        }
+      ],
+      "neokod_refs": [
+        {
+          "key": "neokod:apps/server/src/orchestration/Services/ProjectionSnapshotQuery.ts",
+          "line": 1,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Services/ProjectionSnapshotQuery.ts:1",
+          "label": "apps/server/src/orchestration/Services/ProjectionSnapshotQuery.ts:1"
+        },
+        {
+          "key": "neokod:apps/server/src/terminal/Manager.ts",
+          "line": 1184,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/terminal/Manager.ts:1184",
+          "label": "apps/server/src/terminal/Manager.ts:1184"
+        }
+      ],
+      "selected_issue_ids": [4608]
+    },
+    {
+      "app": "agent-orchestrator",
+      "id": "A06",
+      "title": "Use a narrow delivery-read port and keep PR review policy provider-aware",
+      "decision": "Reuse Neokod\u2019s richer registry rather than build a Jira-only path.",
+      "source_behaviour": "AO defines Get/List/Preflight as a read-only Tracker port with normalised issue state. A multi-tracker adapter routes by provider key and rejects unknown providers. Daemon wiring registers GitHub and GitLab. Credentials are preflighted by the chosen adapter, and richer provider metadata is deliberately outside the normalised read port.",
+      "caveats": "This source does not demonstrate Linear, Jira, GitHub Projects or Azure DevOps support; IntakeFields explicitly treats Linear/Jira as later scope. [Untrivial-ai/agent-orchestrator #6108](https://github.com/Untrivial-ai/agent-orchestrator/issues/6108) reports GitHub work remaining InReview after merge in 0.13.1 on Ubuntu 26.04.1. A collaborator could not reproduce it; the reporter later mentioned multiple GitHub accounts and unresolved PRs. Do not generalise it into a confirmed transition bug or close an item when any one PR merges.",
+      "timing_evidence": "Architectural source path plus unresolved user report; no polling-cost or transition-latency benchmark.",
+      "proposed_neokod_acceptance": "For each of Neokod\u2019s seven adapter kinds, test canonical issue reads and configured review/merge policy independently. A multiple-account fixture must use the intended connection and repository. One merged PR among several required PRs must not finish work early. Optional external writes need explicit operation capability, permission and readback; read/probe success does not imply mutation support.",
+      "source_refs": [
+        {
+          "key": "agent-orchestrator:backend/internal/ports/tracker.go",
+          "line": 9,
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/ports/tracker.go#L9",
+          "label": "backend/internal/ports/tracker.go:9"
+        },
+        {
+          "key": "agent-orchestrator:backend/internal/adapters/tracker/multi/tracker.go",
+          "line": 1,
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/adapters/tracker/multi/tracker.go#L1",
+          "label": "backend/internal/adapters/tracker/multi/tracker.go:1"
+        },
+        {
+          "key": "agent-orchestrator:backend/internal/daemon/tracker_wiring.go",
+          "line": 99,
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/daemon/tracker_wiring.go#L99",
+          "label": "backend/internal/daemon/tracker_wiring.go:99"
+        },
+        {
+          "key": "agent-orchestrator:frontend/src/renderer/components/IntakeFields.tsx",
+          "line": 26,
+          "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/frontend/src/renderer/components/IntakeFields.tsx#L26",
+          "label": "frontend/src/renderer/components/IntakeFields.tsx:26"
+        }
+      ],
+      "neokod_refs": [
+        {
+          "key": "neokod:apps/server/src/symphony/Trackers/Registry.ts",
+          "line": 72,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/Registry.ts:72",
+          "label": "apps/server/src/symphony/Trackers/Registry.ts:72"
+        },
+        {
+          "key": "neokod:apps/server/src/symphony/Trackers/Adapter.ts",
+          "line": 1,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/Adapter.ts:1",
+          "label": "apps/server/src/symphony/Trackers/Adapter.ts:1"
+        }
+      ],
+      "selected_issue_ids": [6108]
+    },
+    {
+      "app": "codex-host",
+      "id": "A07",
+      "title": "Expose history summaries and stable cursors, but bound storage work too",
+      "decision": "Adapt the response contract; do not copy its in-memory cost model.",
+      "source_behaviour": "External history supports notLoaded/summary/full item views, stable ID cursors, forward/backward traversal, a default page of 25 and maximum 100. app-server-host selects listExternalTurns or listExternalItems for the public method. Invalid cursors and limits produce explicit request errors rather than silently returning an arbitrary subset.",
+      "caveats": "The caller first materialises external history turns. Item listing flattens all turn items and can reverse/filter full arrays before applying the limit. A 100-item response is therefore not proof of bounded backend CPU or memory. History consistency under concurrent append, rewinds and deleted anchors needs its own contract. No newly captured current issue directly corroborates this performance path.",
+      "timing_evidence": "Page limits are source facts; no large-history timings were measured.",
+      "proposed_neokod_acceptance": "Use a 10,000-turn fixture, then append/rewind while walking both directions. Require no missing/duplicate IDs under the documented snapshot policy and bounded page payload. Instrument SQL rows read, allocation and projection work, not only response size. Reuse Neokod\u2019s page-bounded event/snapshot paths; introduce storage pagination only where the caller still loads a full transcript.",
+      "source_refs": [
+        {
+          "key": "codex-host:packages/host-runtime/src/external-thread-history.ts",
+          "line": 3,
+          "url": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/packages/host-runtime/src/external-thread-history.ts#L3",
+          "label": "packages/host-runtime/src/external-thread-history.ts:3"
+        },
+        {
+          "key": "codex-host:packages/host-runtime/src/external-thread-history.ts",
+          "line": 96,
+          "url": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/packages/host-runtime/src/external-thread-history.ts#L96",
+          "label": "packages/host-runtime/src/external-thread-history.ts:96"
+        },
+        {
+          "key": "codex-host:packages/host-runtime/src/app-server-host.ts",
+          "line": 4225,
+          "url": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/packages/host-runtime/src/app-server-host.ts#L4225",
+          "label": "packages/host-runtime/src/app-server-host.ts:4225"
+        }
+      ],
+      "neokod_refs": [
+        {
+          "key": "neokod:apps/server/src/orchestration/Services/OrchestrationEngine.ts",
+          "line": 26,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Services/OrchestrationEngine.ts:26",
+          "label": "apps/server/src/orchestration/Services/OrchestrationEngine.ts:26"
+        },
+        {
+          "key": "neokod:apps/server/src/orchestration/Services/ProjectionSnapshotQuery.ts",
+          "line": 1,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Services/ProjectionSnapshotQuery.ts:1",
+          "label": "apps/server/src/orchestration/Services/ProjectionSnapshotQuery.ts:1"
+        },
+        {
+          "key": "neokod:apps/web/src/components/chat/MessagesTimeline.tsx",
+          "line": 485,
+          "url": "/Users/kamogelo/Code/t3code/apps/web/src/components/chat/MessagesTimeline.tsx:485",
+          "label": "apps/web/src/components/chat/MessagesTimeline.tsx:485"
+        }
+      ],
+      "selected_issue_ids": []
+    },
+    {
+      "app": "codex-host",
+      "id": "A08",
+      "title": "Show draft capabilities without starting a provider process",
+      "decision": "Adapt provenance-labelled metadata reads; keep packaging as a separate gate.",
+      "source_behaviour": "A draft command catalog starts from adapter static commands, then inspects already loaded sessions matching harness and resolved workspace, and finally falls back to the last live catalog cache. The cache has at most 64 harness/workspace entries and ignores catalogs with no additional live commands. Inspection does not launch a new process simply to populate a menu.",
+      "caveats": "The cache is memory-only and keyed by harness plus resolved cwd, not account, executable revision or configuration generation. Refresh occurs when another live session reports a catalog; lookup itself does not establish current availability. Label cached/static capabilities and invalidate on changed provider identity. LGPL-3.0 conditions apply to direct reuse. [BytePioneer-AI/codex-host #310](https://github.com/BytePioneer-AI/codex-host/issues/310) is a separate Windows 11 v0.9.0 report of Defender quarantining codexhost.exe after install/update. It does not corroborate catalog speed or establish the binary benign.",
+      "timing_evidence": "Source process-avoidance path and cache count; no measured startup reduction. Packaging report is unconfirmed.",
+      "proposed_neokod_acceptance": "Open 100 draft chats and capability menus with providers configured but idle: require zero provider launches caused by inspection, and label static/cached/live provenance. Changing account, binary or workspace configuration must invalidate or mark stale the previous cache. Separately validate signed release/update artefact identity, expected launch-path existence and actionable integrity errors using Neokod\u2019s existing updater; never prescribe antivirus exclusions as the fix.",
+      "source_refs": [
+        {
+          "key": "codex-host:packages/host-runtime/src/live-command-catalog-cache.ts",
+          "line": 5,
+          "url": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/packages/host-runtime/src/live-command-catalog-cache.ts#L5",
+          "label": "packages/host-runtime/src/live-command-catalog-cache.ts:5"
+        },
+        {
+          "key": "codex-host:packages/host-runtime/src/app-server-host.ts",
+          "line": 3347,
+          "url": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/packages/host-runtime/src/app-server-host.ts#L3347",
+          "label": "packages/host-runtime/src/app-server-host.ts:3347"
+        },
+        {
+          "key": "codex-host:packages/host-runtime/src/app-server-host.ts",
+          "line": 3350,
+          "url": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/packages/host-runtime/src/app-server-host.ts#L3350",
+          "label": "packages/host-runtime/src/app-server-host.ts:3350"
+        }
+      ],
+      "neokod_refs": [
+        {
+          "key": "neokod:apps/desktop/src/updates/DesktopUpdates.ts",
+          "line": 1,
+          "url": "/Users/kamogelo/Code/t3code/apps/desktop/src/updates/DesktopUpdates.ts:1",
+          "label": "apps/desktop/src/updates/DesktopUpdates.ts:1"
+        },
+        {
+          "key": "neokod:apps/desktop/src/main.ts",
+          "line": 1,
+          "url": "/Users/kamogelo/Code/t3code/apps/desktop/src/main.ts:1",
+          "label": "apps/desktop/src/main.ts:1"
+        }
+      ],
+      "selected_issue_ids": [310]
+    },
+    {
+      "app": "hermes",
+      "id": "A09",
+      "title": "Restore idle background throttling after active work settles",
+      "decision": "Evaluate against Neokod\u2019s desktop policy and server-owned work projection.",
+      "source_behaviour": "Hermes registers every chat window with one stream-throttle controller. Merged renderer active-work reports disable Chromium background throttling while any turn is in flight; a 5-second trailing delay restores default throttling after work stops. A native-Wayland fullscreen exception is explicitly platform-gated. The same merged signal feeds keep-awake policy.",
+      "caveats": "One active turn unthrottles the entire chat-window fleet, so inactive windows can still consume resources. Renderer reports must clear on reload/crash; they are not authoritative evidence that backend work finished. Preserve server-owned unknown/busy state in Neokod. [NousResearch/hermes-agent #131998](https://github.com/NousResearch/hermes-agent/issues/131998) describes an idle long-history freeze, so this throttling controller must not be presented as its fix.",
+      "timing_evidence": "A source comment reports roughly 20% CPU for an idle hidden Hermes window before the policy change. No independent benchmark artefact or measurement of the frozen source was run.",
+      "proposed_neokod_acceptance": "Measure foreground/hidden/minimised CPU and wake-ups with 20 idle chats, then one active stream and final flush. Assert the idle policy returns after its declared trailing interval, no final output or notification is stranded, and crashed-window activity is cleared. Record OS/Electron/Wayland backend and battery mode; keep suspend/resume time separate from event-loop stall timing.",
+      "source_refs": [
+        {
+          "key": "hermes:apps/desktop/electron/stream-throttle.ts",
+          "line": 1,
+          "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/apps/desktop/electron/stream-throttle.ts#L1",
+          "label": "apps/desktop/electron/stream-throttle.ts:1"
+        },
+        {
+          "key": "hermes:apps/desktop/electron/main.ts",
+          "line": 18156,
+          "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/apps/desktop/electron/main.ts#L18156",
+          "label": "apps/desktop/electron/main.ts:18156"
+        }
+      ],
+      "neokod_refs": [
+        {
+          "key": "neokod:apps/desktop/src/main.ts",
+          "line": 1,
+          "url": "/Users/kamogelo/Code/t3code/apps/desktop/src/main.ts:1",
+          "label": "apps/desktop/src/main.ts:1"
+        },
+        {
+          "key": "neokod:apps/web/src/notifications/ActivityNotificationCoordinator.tsx",
+          "line": 315,
+          "url": "/Users/kamogelo/Code/t3code/apps/web/src/notifications/ActivityNotificationCoordinator.tsx:315",
+          "label": "apps/web/src/notifications/ActivityNotificationCoordinator.tsx:315"
+        }
+      ],
+      "selected_issue_ids": [131998]
+    },
+    {
+      "app": "hermes",
+      "id": "A10",
+      "title": "Search canonical history with bounded indexed projections and explicit source scope",
+      "decision": "Adapt query/projection behaviour without hiding child workstreams.",
+      "source_behaviour": "Search selects small hit projections rather than complete conversations, adds direct session-ID lookup, deduplicates lineage roots and runs database search off the asyncio event loop. Search supports source inclusion/exclusion, roles and session time bounds. FTS reads have a canonical-row fallback for stale/corrupt indexes and a bounded unindexed-gap supplement during rebuild; oversized tool bodies use bounded indexing and explicit full-body tool search.",
+      "caveats": "Fallback LIKE scans can be materially slower. The gap supplement only tops up an underfilled result page and does not prove globally correct rank merging for every partially rebuilt index. Offset pagination and lineage overfetch are not an exhaustive stable-cursor history walk. [NousResearch/hermes-agent #108003](https://github.com/NousResearch/hermes-agent/issues/108003) reports A2A/cron cluttering recents; comments show existing exclusion controls and another hard-excluded ACP source. This is a scope/visibility contract problem as well as indexing, not a reason to hide all agent children.",
+      "timing_evidence": "Source routing and bounds only; 35%/66% A2A proportions and a second 227/628 report are user dataset observations, not general product benchmarks.",
+      "proposed_neokod_acceptance": "Test 100,000 message rows with Latin/CJK, oversized tool results, archived/rewound records, parent/child lineage and an interrupted rebuild. Verify result scope and deliberate discoverability of nested workstreams, IDs and snippets, while measuring first-page p95 and loop lag separately. Make recents, search and unread counters consume one explicit inclusion policy; preserve unknown last-active evidence.",
+      "source_refs": [
+        {
+          "key": "hermes:hermes_state_search.py",
+          "line": 1062,
+          "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/hermes_state_search.py#L1062",
+          "label": "hermes_state_search.py:1062"
+        },
+        {
+          "key": "hermes:hermes_state_search.py",
+          "line": 1145,
+          "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/hermes_state_search.py#L1145",
+          "label": "hermes_state_search.py:1145"
+        },
+        {
+          "key": "hermes:hermes_cli/web_routers/sessions.py",
+          "line": 395,
+          "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/hermes_cli/web_routers/sessions.py#L395",
+          "label": "hermes_cli/web_routers/sessions.py:395"
+        }
+      ],
+      "neokod_refs": [
+        {
+          "key": "neokod:apps/server/src/orchestration/Services/ProjectionSnapshotQuery.ts",
+          "line": 1,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Services/ProjectionSnapshotQuery.ts:1",
+          "label": "apps/server/src/orchestration/Services/ProjectionSnapshotQuery.ts:1"
+        },
+        {
+          "key": "neokod:apps/web/src/components/chat/MessagesTimeline.tsx",
+          "line": 196,
+          "url": "/Users/kamogelo/Code/t3code/apps/web/src/components/chat/MessagesTimeline.tsx:196",
+          "label": "apps/web/src/components/chat/MessagesTimeline.tsx:196"
+        }
+      ],
+      "selected_issue_ids": [108003]
+    },
+    {
+      "app": "hermes",
+      "id": "A11",
+      "title": "Coalesce layout measurement and gate CSS writes on actual changes",
+      "decision": "Build within Neokod-owned composer and timeline components.",
+      "source_behaviour": "One shared ResizeObserver groups entries by handler, rather than constructing one observer per bubble/hook. The composer observes only relevant size changes, tracks emptiness/newline edges rather than every keystroke and buckets height CSS variables to 8 pixels. Cleanup removes each observed element when its last handler leaves.",
+      "caveats": "Batching observers does not eliminate all read/write layout feedback. [NousResearch/hermes-agent #131998](https://github.com/NousResearch/hermes-agent/issues/131998) reports a 55-second, 5,474-notification ResizeObserver storm in packaged Windows v0.21.5+3828.g801a902 with 1,465 messages/2.08 million characters, despite the reporter\u2019s build containing the earlier #100215 guard. No minimal reproduction or maintainer confirmation was captured. The reporter explicitly corrected a second apparent freeze to Windows Modern Standby; do not combine sleep gaps with the observer storm.",
+      "timing_evidence": "Source comment gives an author sash-drag profile: five session tiles/about 100 bubbles, 2,600 callbacks over 40 pointer moves and 977 ms script time before shared batching. This is author evidence, not our run or proof of the later issue fixed.",
+      "proposed_neokod_acceptance": "Use a 1,500-message idle history and a streaming history, resize/sash-drag at normal and fractional zoom, and type a long wrapped draft. Count observer delivery, handler calls, style/layout writes and long tasks. Assert no self-sustaining observer loop after input ends, bounded mounted rows and stable scroll anchoring. Measure the existing LegendList path before adding a new observer abstraction.",
+      "source_refs": [
+        {
+          "key": "hermes:apps/desktop/src/hooks/use-resize-observer.ts",
+          "line": 22,
+          "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/apps/desktop/src/hooks/use-resize-observer.ts#L22",
+          "label": "apps/desktop/src/hooks/use-resize-observer.ts:22"
+        },
+        {
+          "key": "hermes:apps/desktop/src/app/chat/composer/hooks/use-composer-metrics.ts",
+          "line": 53,
+          "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/apps/desktop/src/app/chat/composer/hooks/use-composer-metrics.ts#L53",
+          "label": "apps/desktop/src/app/chat/composer/hooks/use-composer-metrics.ts:53"
+        },
+        {
+          "key": "hermes:apps/desktop/src/app/chat/composer/hooks/use-composer-metrics.ts",
+          "line": 130,
+          "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/apps/desktop/src/app/chat/composer/hooks/use-composer-metrics.ts#L130",
+          "label": "apps/desktop/src/app/chat/composer/hooks/use-composer-metrics.ts:130"
+        }
+      ],
+      "neokod_refs": [
+        {
+          "key": "neokod:apps/web/src/components/chat/ChatComposer.tsx",
+          "line": 1,
+          "url": "/Users/kamogelo/Code/t3code/apps/web/src/components/chat/ChatComposer.tsx:1",
+          "label": "apps/web/src/components/chat/ChatComposer.tsx:1"
+        },
+        {
+          "key": "neokod:apps/web/src/components/chat/MessagesTimeline.tsx",
+          "line": 485,
+          "url": "/Users/kamogelo/Code/t3code/apps/web/src/components/chat/MessagesTimeline.tsx:485",
+          "label": "apps/web/src/components/chat/MessagesTimeline.tsx:485"
+        }
+      ],
+      "selected_issue_ids": [131998]
+    },
+    {
+      "app": "superset",
+      "id": "A12",
+      "title": "Bound filesystem fan-out and attach work, while keeping watcher ownership stable",
+      "decision": "Independently build the relevant backend behaviour; ELv2 reuse is conditional.",
+      "source_behaviour": "FsWatcherManager shares an attach per root, bounds remembered file paths to 10,000 and buffered events to 30,000, drains chunks of 500 with 200 ms pacing and limits concurrent nested-repository scans to four with a 3-second scan deadline. Overflow recovery uses paced rescans and generation checks. Host WatchAttachGuard serialises attaches per resolved root and backs off failed native attachments from 30 seconds to 30 minutes. Single-visible-file watches coalesce change notifications and reattach only when an atomic replacement changes the inode.",
+      "caveats": "Directory-path hints are uncapped and stated to be small; that assumption must be tested on generated directory trees. Last-listener release immediately disposes a recursive watcher, so repeated subscription changes can cause new scans. [superset-sh/superset #7877](https://github.com/superset-sh/superset/issues/7877) reports v1.30.2 Linux with about 23,300 inotify watches per worktree and burst recrawls after switches/hover; the sole automated github-actions bot comment is code triage, not human runtime reproduction. Earlier #7860/#7865 cost/thread changes do not by themselves solve ownership churn.",
+      "timing_evidence": "Source budgets; 377,000 watch-related calls and filesystem counts are reporter measurements. No watcher benchmark was run here.",
+      "proposed_neokod_acceptance": "Use a 25,000-file/5,000-directory repository, ten roots, 100 focus switches, branch checkout and event overflow. Count attaches, full scans, native handles, queued events and per-root fairness. Ordinary focus changes should not recreate the root watcher; final owner disposal must release handles. Assert explicit overflow recovery without stale descendant search results and maximum scan concurrency. Apply the same scheduling scrutiny to GitManager status/fetch work, with local status and remote calls measured separately.",
+      "source_refs": [
+        {
+          "key": "superset:packages/workspace-fs/src/watch.ts",
+          "line": 33,
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/workspace-fs/src/watch.ts#L33",
+          "label": "packages/workspace-fs/src/watch.ts:33"
+        },
+        {
+          "key": "superset:packages/workspace-fs/src/watch.ts",
+          "line": 345,
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/workspace-fs/src/watch.ts#L345",
+          "label": "packages/workspace-fs/src/watch.ts:345"
+        },
+        {
+          "key": "superset:packages/host-service/src/runtime/filesystem/watch-attach-guard.ts",
+          "line": 1,
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/host-service/src/runtime/filesystem/watch-attach-guard.ts#L1",
+          "label": "packages/host-service/src/runtime/filesystem/watch-attach-guard.ts:1"
+        },
+        {
+          "key": "superset:packages/host-service/src/runtime/filesystem/filesystem.ts",
+          "line": 40,
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/host-service/src/runtime/filesystem/filesystem.ts#L40",
+          "label": "packages/host-service/src/runtime/filesystem/filesystem.ts:40"
+        },
+        {
+          "key": "superset:packages/workspace-fs/src/watch-file.ts",
+          "line": 1,
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/workspace-fs/src/watch-file.ts#L1",
+          "label": "packages/workspace-fs/src/watch-file.ts:1"
+        },
+        {
+          "key": "superset:packages/host-service/src/events/event-bus.ts",
+          "line": 591,
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/host-service/src/events/event-bus.ts#L591",
+          "label": "packages/host-service/src/events/event-bus.ts:591"
+        }
+      ],
+      "neokod_refs": [
+        {
+          "key": "neokod:apps/server/src/workspace/WorkspaceSearchIndex.ts",
+          "line": 15,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/workspace/WorkspaceSearchIndex.ts:15",
+          "label": "apps/server/src/workspace/WorkspaceSearchIndex.ts:15"
+        },
+        {
+          "key": "neokod:apps/server/src/git/GitManager.ts",
+          "line": 1,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/git/GitManager.ts:1",
+          "label": "apps/server/src/git/GitManager.ts:1"
+        }
+      ],
+      "selected_issue_ids": [7877]
+    },
+    {
+      "app": "superset",
+      "id": "A13",
+      "title": "Render only visible file-diff sections and estimate variable height",
+      "decision": "Neokod-owned design inspiration; measure the existing diff workers first.",
+      "source_behaviour": "VirtualizedFileList uses a measured variable-height virtualizer over changed files, estimated heights that account for collapsed files, and overscan of one. InfiniteScrollView\u2019s ordered sections and commit section supply file/category/worktree context; only virtual items instantiate FileDiffSection. This bounds mounted diff sections rather than rendering every changed file at once.",
+      "caveats": "This does not prove per-file diff parsing, source fetches or hidden editor instances are bounded. A giant visible diff can still be expensive. Superset uses ELv2; do not copy UI components or assume permissive redistribution. No new selected issue directly verifies this renderer\u2019s throughput.",
+      "timing_evidence": "Source mount policy, not a measured FPS result.",
+      "proposed_neokod_acceptance": "Load 2,000 changed files plus one 100,000-line file. Measure mounted diff sections, worker queue length, tokenisation work, heap and input/scroll latency. Assert mounted work follows the viewport budget; expanding a huge file must remain cancellable and show a deliberate plain/limited view when beyond the configured budget. Neokod already has a 2\u20136 worker pool, 240 AST cache entries and a 1,000-character tokenised-line limit; verify and tune those existing facilities rather than introduce another pool.",
+      "source_refs": [
+        {
+          "key": "superset:apps/desktop/src/renderer/screens/main/components/WorkspaceView/ChangesContent/components/VirtualizedFileList/VirtualizedFileList.tsx",
+          "line": 23,
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/apps/desktop/src/renderer/screens/main/components/WorkspaceView/ChangesContent/components/VirtualizedFileList/VirtualizedFileList.tsx#L23",
+          "label": "apps/desktop/src/renderer/screens/main/components/WorkspaceView/ChangesContent/components/VirtualizedFileList/VirtualizedFileList.tsx:23"
+        },
+        {
+          "key": "superset:apps/desktop/src/renderer/screens/main/components/WorkspaceView/ChangesContent/components/InfiniteScrollView/hooks/useOrderedSections/useOrderedSections.tsx",
+          "line": 70,
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/apps/desktop/src/renderer/screens/main/components/WorkspaceView/ChangesContent/components/InfiniteScrollView/hooks/useOrderedSections/useOrderedSections.tsx#L70",
+          "label": "apps/desktop/src/renderer/screens/main/components/WorkspaceView/ChangesContent/components/InfiniteScrollView/hooks/useOrderedSections/useOrderedSections.tsx:70"
+        },
+        {
+          "key": "superset:apps/desktop/src/renderer/screens/main/components/WorkspaceView/ChangesContent/components/InfiniteScrollView/components/CommitSection/CommitSection.tsx",
+          "line": 56,
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/apps/desktop/src/renderer/screens/main/components/WorkspaceView/ChangesContent/components/InfiniteScrollView/components/CommitSection/CommitSection.tsx#L56",
+          "label": "apps/desktop/src/renderer/screens/main/components/WorkspaceView/ChangesContent/components/InfiniteScrollView/components/CommitSection/CommitSection.tsx:56"
+        }
+      ],
+      "neokod_refs": [
+        {
+          "key": "neokod:apps/web/src/components/DiffWorkerPoolProvider.tsx",
+          "line": 48,
+          "url": "/Users/kamogelo/Code/t3code/apps/web/src/components/DiffWorkerPoolProvider.tsx:48",
+          "label": "apps/web/src/components/DiffWorkerPoolProvider.tsx:48"
+        },
+        {
+          "key": "neokod:apps/web/src/components/DiffPanel.tsx",
+          "line": 1,
+          "url": "/Users/kamogelo/Code/t3code/apps/web/src/components/DiffPanel.tsx:1",
+          "label": "apps/web/src/components/DiffPanel.tsx:1"
+        }
+      ],
+      "selected_issue_ids": []
+    },
+    {
+      "app": "superset",
+      "id": "A14",
+      "title": "Keep native tasks usable independently of external delivery connections",
+      "decision": "Build deliberately in Neokod\u2019s ordinary chat and Symphony board.",
+      "source_behaviour": "At the frozen SHA, TasksView explicitly selects tasks, linear and issues source tabs. Native tasks render BoardContent/TableContent independently of the LinearIssuesContent tab; search uses a deferred query and URL/store synchronisation cancels pending navigation when filters change. This separates internal work from connection-specific data and keeps filter changes from snapping input to stale route state.",
+      "caveats": "[superset-sh/superset #7892](https://github.com/superset-sh/superset/issues/7892) is still open and reports no-Linear users seeing a connection CTA despite CLI-visible tasks. Its automated bot cites an older isLinearConnected gate. That gate is absent in our frozen TasksView; the report is historical/unconfirmed for this SHA, and changed source does not establish a shipped fix or close the issue. Hosted authentication/OAuth/trpc infrastructure is excluded. External issue support shown here is not evidence of GitHub Projects or Azure Boards adapters.",
+      "timing_evidence": "Source behaviour and version boundary only; no typing latency or runtime task visibility test was executed.",
+      "proposed_neokod_acceptance": "With no tracker connected, ordinary chat, nested workstreams and native work remain usable. Connect any one of Neokod\u2019s seven adapter kinds without hiding the others\u2019 local work. Debounced search/filter navigation must reject stale responses after scope changes. Repeat identical display IDs across scopes and ensure selection, board status and notifications all use canonical identity. Existing Symphony review/merge policy remains authoritative.",
+      "source_refs": [
+        {
+          "key": "superset:apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/TasksView.tsx",
+          "line": 78,
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/TasksView.tsx#L78",
+          "label": "apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/TasksView.tsx:78"
+        },
+        {
+          "key": "superset:apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/TasksView.tsx",
+          "line": 324,
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/TasksView.tsx#L324",
+          "label": "apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/TasksView.tsx:324"
+        },
+        {
+          "key": "superset:apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/TasksView.tsx",
+          "line": 357,
+          "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/TasksView.tsx#L357",
+          "label": "apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/TasksView.tsx:357"
+        }
+      ],
+      "neokod_refs": [
+        {
+          "key": "neokod:apps/server/src/symphony/Trackers/Registry.ts",
+          "line": 72,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/Registry.ts:72",
+          "label": "apps/server/src/symphony/Trackers/Registry.ts:72"
+        },
+        {
+          "key": "neokod:apps/server/src/symphony/HandoffService.ts",
+          "line": 490,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/HandoffService.ts:490",
+          "label": "apps/server/src/symphony/HandoffService.ts:490"
+        }
+      ],
+      "selected_issue_ids": [7892]
+    },
+    {
+      "app": "oh-my-pi",
+      "id": "A15",
+      "title": "Cache reusable filesystem walks by full semantics and invalidate mutations",
+      "decision": "Compare with the existing Neokod index before adapting a cache.",
+      "source_behaviour": "The native walker cache keys root plus full walk options, stores owned entry vectors before caller-specific filtering and permits sharing only for native local filesystems. Defaults are one-second TTL, 200 ms empty-result recheck, 16 entries and 64 MiB estimated payload. Cache hits clone outside the mutex; cancellation is checked before/after, and generation fencing prevents scans started before invalidation from reinserting stale data. Autocomplete opts in; write/delete/rename helpers invalidate paths, with both rename sides covered.",
+      "caveats": "The payload estimate excludes some heap overhead and caller clones. TTL expiry is lazy, not a background eviction guarantee. Provider-backed filesystems bypass this cache, and grep is deliberately uncached. Direct native astEdit does not call the JavaScript invalidation helpers; its host must invalidate successfully written native paths. Do not cache a search result under only a cwd when ignore/symlink/metadata semantics differ. No new issue establishes this cache\u2019s speed or stale-result correctness; [can1357/oh-my-pi #12423](https://github.com/can1357/oh-my-pi/issues/12423) concerns TUI input/scroll latency.",
+      "timing_evidence": "Source limits and architecture document; suggested benchmark commands in docs were not executed. This remains an unmeasured opportunity for Neokod.",
+      "proposed_neokod_acceptance": "Neokod already owns a per-root native FileFinder index with 25,000-entry limit and 15-minute idle TTL. First instrument repeated autocomplete/index requests rather than add a second cache. Test changing ignore files, symlink roots, write/delete/rename during an in-flight scan and an empty directory gaining its first file. Require no stale generation admitted, matching cached/uncached answers, bounded queue/concurrency and measured total heap including clones.",
+      "source_refs": [
+        {
+          "key": "oh-my-pi:docs/fs-scan-cache-architecture.md",
+          "line": 1,
+          "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/docs/fs-scan-cache-architecture.md#L1",
+          "label": "docs/fs-scan-cache-architecture.md:1"
+        },
+        {
+          "key": "oh-my-pi:crates/pi-walker/src/cache.rs",
+          "line": 119,
+          "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/crates/pi-walker/src/cache.rs#L119",
+          "label": "crates/pi-walker/src/cache.rs:119"
+        },
+        {
+          "key": "oh-my-pi:crates/pi-walker/src/cache.rs",
+          "line": 428,
+          "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/crates/pi-walker/src/cache.rs#L428",
+          "label": "crates/pi-walker/src/cache.rs:428"
+        },
+        {
+          "key": "oh-my-pi:packages/tui/src/autocomplete.ts",
+          "line": 36,
+          "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/tui/src/autocomplete.ts#L36",
+          "label": "packages/tui/src/autocomplete.ts:36"
+        },
+        {
+          "key": "oh-my-pi:packages/coding-agent/src/tools/fs-cache-invalidation.ts",
+          "line": 1,
+          "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/coding-agent/src/tools/fs-cache-invalidation.ts#L1",
+          "label": "packages/coding-agent/src/tools/fs-cache-invalidation.ts:1"
+        }
+      ],
+      "neokod_refs": [
+        {
+          "key": "neokod:apps/server/src/workspace/WorkspaceSearchIndex.ts",
+          "line": 15,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/workspace/WorkspaceSearchIndex.ts:15",
+          "label": "apps/server/src/workspace/WorkspaceSearchIndex.ts:15"
+        }
+      ],
+      "selected_issue_ids": [12423]
+    },
+    {
+      "app": "oh-my-pi",
+      "id": "A16",
+      "title": "Pace differential rendering from measured frame cost and output backlog",
+      "decision": "Adapt budgeting ideas to web/terminal rendering, not TUI appearance.",
+      "source_behaviour": "The ordinary TUI scheduler combines a 30 FPS minimum cadence with an adaptive floor derived from twice the previous frame cost, capped to avoid a single spike locking the interface. Input grace participates in the delay; native frames use terminal credit pacing instead. Frames compose a bounded viewport and record cost on every execution path. Forced startup rendering is a deliberate separate path.",
+      "caveats": "This is not a promise of 60 FPS, nor a replacement for reducing expensive per-frame work. Different provider/terminal protocols can have different paint acknowledgement semantics. [can1357/oh-my-pi #12423](https://github.com/can1357/oh-my-pi/issues/12423) is a v18.2.5 Windows 11/Bun 1.3/VS Code 1.121 report of typing lag and stutter after about 30 turns. The reporter\u2019s near-60-FPS expectation is a target, not a measured benchmark. Frozen later source is not proof of a confirmed fix.",
+      "timing_evidence": "Cadence and feedback formula are source facts; neither before/after FPS nor input latency was measured.",
+      "proposed_neokod_acceptance": "Capture input-to-paint p95/p99, long-task time, frame cost and queued output in a fixed 30/300/3,000-turn fixture with a noisy background stream. Coalesce low-priority progress updates under pressure while keeping input and authoritative completion/cancel events responsive and ordered. Publish the chosen duty-cycle/latency targets before tuning. Current evidence does not justify adding OMP\u2019s Rust/TUI renderer to Neokod.",
+      "source_refs": [
+        {
+          "key": "oh-my-pi:packages/tui/src/tui.ts",
+          "line": 892,
+          "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/tui/src/tui.ts#L892",
+          "label": "packages/tui/src/tui.ts:892"
+        },
+        {
+          "key": "oh-my-pi:packages/tui/src/tui.ts",
+          "line": 2525,
+          "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/tui/src/tui.ts#L2525",
+          "label": "packages/tui/src/tui.ts:2525"
+        },
+        {
+          "key": "oh-my-pi:packages/tui/src/tui.ts",
+          "line": 2629,
+          "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/tui/src/tui.ts#L2629",
+          "label": "packages/tui/src/tui.ts:2629"
+        }
+      ],
+      "neokod_refs": [
+        {
+          "key": "neokod:apps/web/src/components/chat/MessagesTimeline.tsx",
+          "line": 196,
+          "url": "/Users/kamogelo/Code/t3code/apps/web/src/components/chat/MessagesTimeline.tsx:196",
+          "label": "apps/web/src/components/chat/MessagesTimeline.tsx:196"
+        },
+        {
+          "key": "neokod:apps/web/src/components/ThreadTerminalDrawer.tsx",
+          "line": 392,
+          "url": "/Users/kamogelo/Code/t3code/apps/web/src/components/ThreadTerminalDrawer.tsx:392",
+          "label": "apps/web/src/components/ThreadTerminalDrawer.tsx:392"
+        }
+      ],
+      "selected_issue_ids": [12423]
+    },
+    {
+      "app": "traycer",
+      "id": "A17",
+      "title": "Size highlight caches by retained representation and stop expensive oversized blocks",
+      "decision": "Validate Neokod\u2019s existing cache; private Host performance remains unknown.",
+      "source_behaviour": "The public GUI has one theme-aware Shiki engine and caches settled React highlight trees keyed by theme/language/content fingerprint. Its MRU cache estimates ten bytes per generated HTML character and enforces a 128 MiB estimated budget. Oversized entries are excluded and blocks over 100,000 source characters fall back to plain display. Engine-load failure clears the in-flight latch so a later attempt can retry.",
+      "caveats": "The estimate is not a measured process-heap cap; React trees differ materially from strings. Highlighting is synchronous on the caller path and the first uncached large block can still block. Streaming intermediates should not enter the settled cache. Public source does not expose the private execution Host\u2019s storage/indexing or scheduling. No newly selected issue directly establishes highlight-cache performance.",
+      "timing_evidence": "Source estimated budget and cutoff; comments about earlier retained memory are author observations, not reproduced heap profiles.",
+      "proposed_neokod_acceptance": "Neokod already caches highlighted HTML with a 500-entry/50 MiB budget and avoids settled-cache writes for streaming blocks. Replay fixed small/large code blocks across theme changes and 100 history switches; measure actual heap after GC, cache estimates and first-uncached long tasks. Assert oversized/streaming policy and cache-key theme correctness, and reuse the existing highlighter/diff workers when profiling shows blocking.",
+      "source_refs": [
+        {
+          "key": "traycer:clients/gui-app/src/markdown/shiki-highlight-cache.ts",
+          "line": 42,
+          "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/markdown/shiki-highlight-cache.ts#L42",
+          "label": "clients/gui-app/src/markdown/shiki-highlight-cache.ts:42"
+        },
+        {
+          "key": "traycer:clients/gui-app/src/markdown/traycer-streaming-highlighter.ts",
+          "line": 106,
+          "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/markdown/traycer-streaming-highlighter.ts#L106",
+          "label": "clients/gui-app/src/markdown/traycer-streaming-highlighter.ts:106"
+        },
+        {
+          "key": "traycer:clients/gui-app/src/markdown/shiki-highlighter.ts",
+          "line": 12,
+          "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/markdown/shiki-highlighter.ts#L12",
+          "label": "clients/gui-app/src/markdown/shiki-highlighter.ts:12"
+        }
+      ],
+      "neokod_refs": [
+        {
+          "key": "neokod:apps/web/src/components/ChatMarkdown.tsx",
+          "line": 122,
+          "url": "/Users/kamogelo/Code/t3code/apps/web/src/components/ChatMarkdown.tsx:122",
+          "label": "apps/web/src/components/ChatMarkdown.tsx:122"
+        },
+        {
+          "key": "neokod:apps/web/src/components/ChatMarkdown.tsx",
+          "line": 647,
+          "url": "/Users/kamogelo/Code/t3code/apps/web/src/components/ChatMarkdown.tsx:647",
+          "label": "apps/web/src/components/ChatMarkdown.tsx:647"
+        }
+      ],
+      "selected_issue_ids": []
+    },
+    {
+      "app": "traycer",
+      "id": "A18",
+      "title": "Make bulk selection semantics explicit across history pages",
+      "decision": "Build selection correctness with cancellation and a bounded operation.",
+      "source_behaviour": "The frozen History panel has independently paginated data, next-page loading and local selection. selectAllVisible sets IDs from selectableItemIds rather than collecting every server page. Delete eligibility and worktree-sweep eligibility are distinct, so a selected history item is not automatically a deletable or locally owned workspace.",
+      "caveats": "[traycerai/traycer #1950](https://github.com/traycerai/traycer/issues/1950) reports Select All selecting only loaded history. The linked PR #2214 proposes walking all matching pages while preserving eligibility and cancelling on query/identity/refresh/unmount. Its current capture is open and unmerged, updated 2026-09-28; the author\u2019s 202 affected tests and an action_required CI gate are not a passed CI result. A fetch-all fix can itself be unbounded; do not port it mechanically. Private Host deletion semantics remain unavailable.",
+      "timing_evidence": "Source selection behaviour and current PR metadata; no performance measurements or deletion were run.",
+      "proposed_neokod_acceptance": "Define the action as either \u201cselect loaded\u201d or \u201cselect all matching\u201d in Neokod-owned design. For 10,000 history items across pages, change query/account while selection loads and inject a page failure. Require no stale-scope IDs, duplicate IDs, silently partial \u201call\u201d result or destructive work before a concrete target set is resolved. Measure pages/bytes/time and support cancellation; server-side bounded bulk operations may be better than loading every body.",
+      "source_refs": [
+        {
+          "key": "traycer:clients/gui-app/src/components/epics/epics-list-panel.tsx",
+          "line": 371,
+          "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/components/epics/epics-list-panel.tsx#L371",
+          "label": "clients/gui-app/src/components/epics/epics-list-panel.tsx:371"
+        },
+        {
+          "key": "traycer:clients/gui-app/src/components/epics/epics-list-panel.tsx",
+          "line": 593,
+          "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/components/epics/epics-list-panel.tsx#L593",
+          "label": "clients/gui-app/src/components/epics/epics-list-panel.tsx:593"
+        },
+        {
+          "key": "traycer:clients/gui-app/src/components/epics/epics-list-panel.tsx",
+          "line": 627,
+          "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/components/epics/epics-list-panel.tsx#L627",
+          "label": "clients/gui-app/src/components/epics/epics-list-panel.tsx:627"
+        },
+        {
+          "key": "traycer:clients/gui-app/src/hooks/home/use-history-query.ts",
+          "line": 1,
+          "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/hooks/home/use-history-query.ts#L1",
+          "label": "clients/gui-app/src/hooks/home/use-history-query.ts:1"
+        }
+      ],
+      "neokod_refs": [
+        {
+          "key": "neokod:apps/server/src/orchestration/Services/ProjectionSnapshotQuery.ts",
+          "line": 87,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Services/ProjectionSnapshotQuery.ts:87",
+          "label": "apps/server/src/orchestration/Services/ProjectionSnapshotQuery.ts:87"
+        }
+      ],
+      "selected_issue_ids": [1950]
+    },
+    {
+      "app": "traycer",
+      "id": "A19",
+      "title": "Separate notification delivery receipts from unresolved work",
+      "decision": "Adapt bounded dedupe and identity fencing; do not infer server resolution.",
+      "source_behaviour": "Public client display receipts scope delivery to user, notification ID and updatedAt, retain at most 512 notification IDs/eight versions, and increment a user generation when cleared so stale in-flight delivery can be rejected. NotificationEmissionController records a foreground display receipt and merges displayed state. Completion receipts have separate occurrence/host identities and bounded retention.",
+      "caveats": "Display/seen receipts are local suppression evidence, not authoritative resolution of a human-needed event. localStorage scans and synchronous writes have cost and failure modes. [traycerai/traycer #2029](https://github.com/traycerai/traycer/issues/2029) reports a browser.human.needed row remaining unresolved after lane deletion, with read/cleared markers insufficient to clear the badge. User SQL analysis and a second user/agent verification are not maintainer runtime reproduction. The relevant private Host deletion/resolution implementation cannot be inspected; no fix is established.",
+      "timing_evidence": "Source receipt caps and unresolved user report; no notification throughput or private Host query timing was measured.",
+      "proposed_neokod_acceptance": "Reuse ActivityNotificationCoordinator and Symphony NotificationCoordinator with canonical operation/occurrence IDs. Replay duplicate and newer-version completion events, reload, clear receipts, switch identity and delete a child lane while a genuine parent interview remains pending. Require one user-visible delivery per occurrence, no stale-identity delivery, and correct unresolved-work count from the server projection. A read badge must never complete work or silently resolve an approval.",
+      "source_refs": [
+        {
+          "key": "traycer:clients/gui-app/src/lib/notifications/app-local-display-receipts.ts",
+          "line": 7,
+          "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/lib/notifications/app-local-display-receipts.ts#L7",
+          "label": "clients/gui-app/src/lib/notifications/app-local-display-receipts.ts:7"
+        },
+        {
+          "key": "traycer:clients/gui-app/src/components/layout/bridges/notification-emission-controller.tsx",
+          "line": 40,
+          "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/components/layout/bridges/notification-emission-controller.tsx#L40",
+          "label": "clients/gui-app/src/components/layout/bridges/notification-emission-controller.tsx:40"
+        },
+        {
+          "key": "traycer:clients/gui-app/src/lib/notifications/app-local-completion-receipts.ts",
+          "line": 1,
+          "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/lib/notifications/app-local-completion-receipts.ts#L1",
+          "label": "clients/gui-app/src/lib/notifications/app-local-completion-receipts.ts:1"
+        }
+      ],
+      "neokod_refs": [
+        {
+          "key": "neokod:apps/web/src/notifications/ActivityNotificationCoordinator.tsx",
+          "line": 315,
+          "url": "/Users/kamogelo/Code/t3code/apps/web/src/notifications/ActivityNotificationCoordinator.tsx:315",
+          "label": "apps/web/src/notifications/ActivityNotificationCoordinator.tsx:315"
+        },
+        {
+          "key": "neokod:apps/server/src/symphony/NotificationCoordinator.ts",
+          "line": 1,
+          "url": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/NotificationCoordinator.ts:1",
+          "label": "apps/server/src/symphony/NotificationCoordinator.ts:1"
+        }
+      ],
+      "selected_issue_ids": [2029]
+    }
+  ],
+  "sources": [
+    {
+      "app": "onorca",
+      "path": "src/shared/terminal-multiplex-flow-control.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/onorca/src/shared/terminal-multiplex-flow-control.ts",
+      "sha256": "1044573cdf3c5c429c2ab838cc8c950f8c554ee5ec0a7ed98ef4392442094366",
+      "lines": 13,
+      "repository": "stablyai/orca",
+      "frozen_sha": "3cc5e1dac659ffd163b81b28261cd843261f4ca5",
+      "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/shared/terminal-multiplex-flow-control.ts"
+    },
+    {
+      "app": "onorca",
+      "path": "src/main/runtime/rpc/methods/terminal/terminal-multiplex-stream-initialization.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/onorca/src/main/runtime/rpc/methods/terminal/terminal-multiplex-stream-initialization.ts",
+      "sha256": "7dfa3be7cb935a19e9139e31a73fda1b47ecdf69d832effc6cc248fc81731e0a",
+      "lines": 151,
+      "repository": "stablyai/orca",
+      "frozen_sha": "3cc5e1dac659ffd163b81b28261cd843261f4ca5",
+      "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/runtime/rpc/methods/terminal/terminal-multiplex-stream-initialization.ts"
+    },
+    {
+      "app": "onorca",
+      "path": "src/main/runtime/rpc/methods/terminal/terminal-multiplex-frame-delivery.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/onorca/src/main/runtime/rpc/methods/terminal/terminal-multiplex-frame-delivery.ts",
+      "sha256": "a10626f33b803ab9d627812cefc5a7372e92e7bc9c336cea48ea6122ae72f963",
+      "lines": 153,
+      "repository": "stablyai/orca",
+      "frozen_sha": "3cc5e1dac659ffd163b81b28261cd843261f4ca5",
+      "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/runtime/rpc/methods/terminal/terminal-multiplex-frame-delivery.ts"
+    },
+    {
+      "app": "onorca",
+      "path": "src/main/runtime/rpc/methods/terminal/terminal-multiplex-flow-control.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/onorca/src/main/runtime/rpc/methods/terminal/terminal-multiplex-flow-control.ts",
+      "sha256": "e63a615d1f174e93b13ae234a8cc3030570628b5617c11079df2c3a31f7ee578",
+      "lines": 266,
+      "repository": "stablyai/orca",
+      "frozen_sha": "3cc5e1dac659ffd163b81b28261cd843261f4ca5",
+      "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/runtime/rpc/methods/terminal/terminal-multiplex-flow-control.ts"
+    },
+    {
+      "app": "neokod",
+      "path": "apps/server/src/terminal/Manager.ts",
+      "local_path": "/Users/kamogelo/Code/t3code/apps/server/src/terminal/Manager.ts",
+      "sha256": "ee98ede1e1fe1634724b54deaff7ea94d26b9aff3a55ca4971016057fc72bf51",
+      "lines": 2651,
+      "proof_boundary": "Current working-tree file, possibly dirty; content hash is authoritative, no clean-commit claim."
+    },
+    {
+      "app": "neokod",
+      "path": "apps/web/src/components/ThreadTerminalDrawer.tsx",
+      "local_path": "/Users/kamogelo/Code/t3code/apps/web/src/components/ThreadTerminalDrawer.tsx",
+      "sha256": "ac213508dee08d2aeb959a47e796094332f6133cae8667ed0f959548118f4065",
+      "lines": 1540,
+      "proof_boundary": "Current working-tree file, possibly dirty; content hash is authoritative, no clean-commit claim."
+    },
+    {
+      "app": "onorca",
+      "path": "src/shared/terminal-scrollback-policy.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/onorca/src/shared/terminal-scrollback-policy.ts",
+      "sha256": "7816c5a7540bbb3fbff61f7b3c4a89a8b331621f769b77bddd29abe06a752f17",
+      "lines": 68,
+      "repository": "stablyai/orca",
+      "frozen_sha": "3cc5e1dac659ffd163b81b28261cd843261f4ca5",
+      "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/shared/terminal-scrollback-policy.ts"
+    },
+    {
+      "app": "onorca",
+      "path": "src/renderer/src/lib/pane-manager/pane-terminal-options.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/onorca/src/renderer/src/lib/pane-manager/pane-terminal-options.ts",
+      "sha256": "1435ef6224c36ba860edba5b677718ad866763265b7ec6442623122411f6e196",
+      "lines": 76,
+      "repository": "stablyai/orca",
+      "frozen_sha": "3cc5e1dac659ffd163b81b28261cd843261f4ca5",
+      "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/renderer/src/lib/pane-manager/pane-terminal-options.ts"
+    },
+    {
+      "app": "onorca",
+      "path": "src/renderer/src/components/terminal-pane/terminal-hidden-restore-scrollback.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/onorca/src/renderer/src/components/terminal-pane/terminal-hidden-restore-scrollback.ts",
+      "sha256": "0e2eefcb971c414fcf0ab19802f4d77755ebd25610c865142b6d3d7b349562d3",
+      "lines": 13,
+      "repository": "stablyai/orca",
+      "frozen_sha": "3cc5e1dac659ffd163b81b28261cd843261f4ca5",
+      "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/renderer/src/components/terminal-pane/terminal-hidden-restore-scrollback.ts"
+    },
+    {
+      "app": "onorca",
+      "path": "src/main/linear/linear-request-concurrency.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/onorca/src/main/linear/linear-request-concurrency.ts",
+      "sha256": "1d1d990c36e56eb3171160cbe0ec46530b0c6eed5954bb508034c828116f9d32",
+      "lines": 25,
+      "repository": "stablyai/orca",
+      "frozen_sha": "3cc5e1dac659ffd163b81b28261cd843261f4ca5",
+      "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/linear/linear-request-concurrency.ts"
+    },
+    {
+      "app": "onorca",
+      "path": "src/main/linear/linear-issue-lookups.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/onorca/src/main/linear/linear-issue-lookups.ts",
+      "sha256": "22bcd2f8765977d09c7565400ca8bf7c55eb2204c2d99dd9f8cdb49267043931",
+      "lines": 177,
+      "repository": "stablyai/orca",
+      "frozen_sha": "3cc5e1dac659ffd163b81b28261cd843261f4ca5",
+      "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/linear/linear-issue-lookups.ts"
+    },
+    {
+      "app": "onorca",
+      "path": "src/main/linear/client.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/onorca/src/main/linear/client.ts",
+      "sha256": "7d116374afec739cbd127656bbcd1f1d921c15e92398a2378bb4f7100d0dfd2a",
+      "lines": 245,
+      "repository": "stablyai/orca",
+      "frozen_sha": "3cc5e1dac659ffd163b81b28261cd843261f4ca5",
+      "url": "https://github.com/stablyai/orca/blob/3cc5e1dac659ffd163b81b28261cd843261f4ca5/src/main/linear/client.ts"
+    },
+    {
+      "app": "neokod",
+      "path": "apps/server/src/symphony/Trackers/Registry.ts",
+      "local_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/Registry.ts",
+      "sha256": "60047b89e9e34a6302e3203469ecd3cd61641f67e2b6d3feb57fb94767c18d85",
+      "lines": 114,
+      "proof_boundary": "Current working-tree file, possibly dirty; content hash is authoritative, no clean-commit claim."
+    },
+    {
+      "app": "neokod",
+      "path": "apps/server/src/symphony/Trackers/Adapter.ts",
+      "local_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/Trackers/Adapter.ts",
+      "sha256": "2d99882f09236af9078e1c85a9547dfc61f16884402428faf3e0c777956f8f7a",
+      "lines": 76,
+      "proof_boundary": "Current working-tree file, possibly dirty; content hash is authoritative, no clean-commit claim."
+    },
+    {
+      "app": "agent-orchestrator",
+      "path": "frontend/src/renderer/hooks/useTerminalSession.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/agent-orchestrator/frontend/src/renderer/hooks/useTerminalSession.ts",
+      "sha256": "ed096026aac93bdd3331a883cbab6b249fbb31980955477597cdb407a6f10ff9",
+      "lines": 1008,
+      "repository": "Untrivial-ai/agent-orchestrator",
+      "frozen_sha": "b2461dc5955bb11b4ee1213871e6a2157e68da0e",
+      "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/frontend/src/renderer/hooks/useTerminalSession.ts"
+    },
+    {
+      "app": "agent-orchestrator",
+      "path": "frontend/src/renderer/components/XtermTerminal.tsx",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/agent-orchestrator/frontend/src/renderer/components/XtermTerminal.tsx",
+      "sha256": "3adc3b6d584e818e033c9e8ebb5595c2bd90eea70ef4d192aae01b6da3930c1d",
+      "lines": 2070,
+      "repository": "Untrivial-ai/agent-orchestrator",
+      "frozen_sha": "b2461dc5955bb11b4ee1213871e6a2157e68da0e",
+      "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/frontend/src/renderer/components/XtermTerminal.tsx"
+    },
+    {
+      "app": "agent-orchestrator",
+      "path": "backend/internal/daemon/daemon.go",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/agent-orchestrator/backend/internal/daemon/daemon.go",
+      "sha256": "9406c1ecff8a61cbe5a448e3a64755f5595a824e6c9819a37e10456063785d77",
+      "lines": 1163,
+      "repository": "Untrivial-ai/agent-orchestrator",
+      "frozen_sha": "b2461dc5955bb11b4ee1213871e6a2157e68da0e",
+      "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/daemon/daemon.go"
+    },
+    {
+      "app": "agent-orchestrator",
+      "path": "backend/internal/session_manager/manager.go",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/agent-orchestrator/backend/internal/session_manager/manager.go",
+      "sha256": "5ffa7ac8281e09f8a57a1c59ea6549661af9b4433094f5fd73005fed463df174",
+      "lines": 5956,
+      "repository": "Untrivial-ai/agent-orchestrator",
+      "frozen_sha": "b2461dc5955bb11b4ee1213871e6a2157e68da0e",
+      "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/session_manager/manager.go"
+    },
+    {
+      "app": "neokod",
+      "path": "apps/server/src/orchestration/Services/ProjectionSnapshotQuery.ts",
+      "local_path": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Services/ProjectionSnapshotQuery.ts",
+      "sha256": "3041e41829a93d43ebc52dcfed889863508fa9cae5bd598bbf47cc6331fb98ec",
+      "lines": 179,
+      "proof_boundary": "Current working-tree file, possibly dirty; content hash is authoritative, no clean-commit claim."
+    },
+    {
+      "app": "agent-orchestrator",
+      "path": "backend/internal/ports/tracker.go",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/agent-orchestrator/backend/internal/ports/tracker.go",
+      "sha256": "cbd3f855eed54701d1724c86d704d106697bc3ff991b56af497a93863411abbf",
+      "lines": 25,
+      "repository": "Untrivial-ai/agent-orchestrator",
+      "frozen_sha": "b2461dc5955bb11b4ee1213871e6a2157e68da0e",
+      "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/ports/tracker.go"
+    },
+    {
+      "app": "agent-orchestrator",
+      "path": "backend/internal/adapters/tracker/multi/tracker.go",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/agent-orchestrator/backend/internal/adapters/tracker/multi/tracker.go",
+      "sha256": "b454d9ad460da32aa0c40f29aaf5c19dd622eba043bd3275850304b18d10862f",
+      "lines": 90,
+      "repository": "Untrivial-ai/agent-orchestrator",
+      "frozen_sha": "b2461dc5955bb11b4ee1213871e6a2157e68da0e",
+      "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/adapters/tracker/multi/tracker.go"
+    },
+    {
+      "app": "agent-orchestrator",
+      "path": "backend/internal/daemon/tracker_wiring.go",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/agent-orchestrator/backend/internal/daemon/tracker_wiring.go",
+      "sha256": "9df9162858f563a5a87eb680124bdba06144f2aa4506290c682f8a52695658d3",
+      "lines": 192,
+      "repository": "Untrivial-ai/agent-orchestrator",
+      "frozen_sha": "b2461dc5955bb11b4ee1213871e6a2157e68da0e",
+      "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/backend/internal/daemon/tracker_wiring.go"
+    },
+    {
+      "app": "agent-orchestrator",
+      "path": "frontend/src/renderer/components/IntakeFields.tsx",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/agent-orchestrator/frontend/src/renderer/components/IntakeFields.tsx",
+      "sha256": "cbf9ab30e16f925f065fb037eb1baa18773ad360dfceada9b5ba109fbd838110",
+      "lines": 352,
+      "repository": "Untrivial-ai/agent-orchestrator",
+      "frozen_sha": "b2461dc5955bb11b4ee1213871e6a2157e68da0e",
+      "url": "https://github.com/Untrivial-ai/agent-orchestrator/blob/b2461dc5955bb11b4ee1213871e6a2157e68da0e/frontend/src/renderer/components/IntakeFields.tsx"
+    },
+    {
+      "app": "codex-host",
+      "path": "packages/host-runtime/src/external-thread-history.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/codex-host/packages/host-runtime/src/external-thread-history.ts",
+      "sha256": "34c9c8c99ee885c3eb5adef93b7f230277d86cd98e541e2b6bcb45f5c34dfd4a",
+      "lines": 200,
+      "repository": "BytePioneer-AI/codex-host",
+      "frozen_sha": "49d8b1c6a3d70ca9ea2024d688e68847e66dd163",
+      "url": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/packages/host-runtime/src/external-thread-history.ts"
+    },
+    {
+      "app": "codex-host",
+      "path": "packages/host-runtime/src/app-server-host.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/codex-host/packages/host-runtime/src/app-server-host.ts",
+      "sha256": "b5976fff050ee8d8a6983cb5171ac7200b7e6444c3bfd1334447273133587d08",
+      "lines": 5456,
+      "repository": "BytePioneer-AI/codex-host",
+      "frozen_sha": "49d8b1c6a3d70ca9ea2024d688e68847e66dd163",
+      "url": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/packages/host-runtime/src/app-server-host.ts"
+    },
+    {
+      "app": "neokod",
+      "path": "apps/server/src/orchestration/Services/OrchestrationEngine.ts",
+      "local_path": "/Users/kamogelo/Code/t3code/apps/server/src/orchestration/Services/OrchestrationEngine.ts",
+      "sha256": "a0024176d2d2e848b15920b610b10fa952dd22310fdcc5f45c9209b4fc0ec72a",
+      "lines": 82,
+      "proof_boundary": "Current working-tree file, possibly dirty; content hash is authoritative, no clean-commit claim."
+    },
+    {
+      "app": "neokod",
+      "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+      "local_path": "/Users/kamogelo/Code/t3code/apps/web/src/components/chat/MessagesTimeline.tsx",
+      "sha256": "5b35db6694cc984072613ca055f798f91643377168348119b7c971160479c661",
+      "lines": 1993,
+      "proof_boundary": "Current working-tree file, possibly dirty; content hash is authoritative, no clean-commit claim."
+    },
+    {
+      "app": "codex-host",
+      "path": "packages/host-runtime/src/live-command-catalog-cache.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/codex-host/packages/host-runtime/src/live-command-catalog-cache.ts",
+      "sha256": "6209a284568fea31d73a05c48314776d38e70e954a657dae6bc1c1def6beac8a",
+      "lines": 52,
+      "repository": "BytePioneer-AI/codex-host",
+      "frozen_sha": "49d8b1c6a3d70ca9ea2024d688e68847e66dd163",
+      "url": "https://github.com/BytePioneer-AI/codex-host/blob/49d8b1c6a3d70ca9ea2024d688e68847e66dd163/packages/host-runtime/src/live-command-catalog-cache.ts"
+    },
+    {
+      "app": "neokod",
+      "path": "apps/desktop/src/updates/DesktopUpdates.ts",
+      "local_path": "/Users/kamogelo/Code/t3code/apps/desktop/src/updates/DesktopUpdates.ts",
+      "sha256": "ad25d37b0ed6641f6356a52a2657e8216b48de8d275b7090763a6699fff645a7",
+      "lines": 796,
+      "proof_boundary": "Current working-tree file, possibly dirty; content hash is authoritative, no clean-commit claim."
+    },
+    {
+      "app": "neokod",
+      "path": "apps/desktop/src/main.ts",
+      "local_path": "/Users/kamogelo/Code/t3code/apps/desktop/src/main.ts",
+      "sha256": "3efcfe5fd816eba59be042a6e23914fd53236f861cbcfe6305dd767644c2f44c",
+      "lines": 132,
+      "proof_boundary": "Current working-tree file, possibly dirty; content hash is authoritative, no clean-commit claim."
+    },
+    {
+      "app": "hermes",
+      "path": "apps/desktop/electron/stream-throttle.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/hermes/apps/desktop/electron/stream-throttle.ts",
+      "sha256": "c7ee8bb50ae94c414b131d781b19c5f9b10b2e0cc3778e026654ca923d9ff926",
+      "lines": 183,
+      "repository": "NousResearch/hermes-agent",
+      "frozen_sha": "64ad33e32dadbdb462468c7384aa38e5c99a1b7a",
+      "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/apps/desktop/electron/stream-throttle.ts"
+    },
+    {
+      "app": "hermes",
+      "path": "apps/desktop/electron/main.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/hermes/apps/desktop/electron/main.ts",
+      "sha256": "7b977e0830ba41788d727772469050ef9cd9ba8ba040858587af8007be411f09",
+      "lines": 19864,
+      "repository": "NousResearch/hermes-agent",
+      "frozen_sha": "64ad33e32dadbdb462468c7384aa38e5c99a1b7a",
+      "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/apps/desktop/electron/main.ts"
+    },
+    {
+      "app": "neokod",
+      "path": "apps/web/src/notifications/ActivityNotificationCoordinator.tsx",
+      "local_path": "/Users/kamogelo/Code/t3code/apps/web/src/notifications/ActivityNotificationCoordinator.tsx",
+      "sha256": "96c80d1076ecc119fc1bad0512e589960c329b7e6e9329d9ace342a0c1e3d51c",
+      "lines": 340,
+      "proof_boundary": "Current working-tree file, possibly dirty; content hash is authoritative, no clean-commit claim."
+    },
+    {
+      "app": "hermes",
+      "path": "hermes_state_search.py",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/hermes/hermes_state_search.py",
+      "sha256": "e211f3d639ce2165d226b8f859c36e8157595a635f0a039ff7b102729f0930cf",
+      "lines": 1361,
+      "repository": "NousResearch/hermes-agent",
+      "frozen_sha": "64ad33e32dadbdb462468c7384aa38e5c99a1b7a",
+      "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/hermes_state_search.py"
+    },
+    {
+      "app": "hermes",
+      "path": "hermes_cli/web_routers/sessions.py",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/hermes/hermes_cli/web_routers/sessions.py",
+      "sha256": "6adc86eed4f6fc88e400023159be75122d2c7c1dbe1e43a2589328be2993289a",
+      "lines": 930,
+      "repository": "NousResearch/hermes-agent",
+      "frozen_sha": "64ad33e32dadbdb462468c7384aa38e5c99a1b7a",
+      "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/hermes_cli/web_routers/sessions.py"
+    },
+    {
+      "app": "hermes",
+      "path": "apps/desktop/src/hooks/use-resize-observer.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/hermes/apps/desktop/src/hooks/use-resize-observer.ts",
+      "sha256": "cc16298e3d1a9a6b3c822e9a976ce1a5f95c020e5b1a72de0c800c07063dab52",
+      "lines": 134,
+      "repository": "NousResearch/hermes-agent",
+      "frozen_sha": "64ad33e32dadbdb462468c7384aa38e5c99a1b7a",
+      "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/apps/desktop/src/hooks/use-resize-observer.ts"
+    },
+    {
+      "app": "hermes",
+      "path": "apps/desktop/src/app/chat/composer/hooks/use-composer-metrics.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/hermes/apps/desktop/src/app/chat/composer/hooks/use-composer-metrics.ts",
+      "sha256": "846175b51b1c41c2705b51a12365bd3a1135c168bfb03f36dcba72f109a3c033",
+      "lines": 236,
+      "repository": "NousResearch/hermes-agent",
+      "frozen_sha": "64ad33e32dadbdb462468c7384aa38e5c99a1b7a",
+      "url": "https://github.com/NousResearch/hermes-agent/blob/64ad33e32dadbdb462468c7384aa38e5c99a1b7a/apps/desktop/src/app/chat/composer/hooks/use-composer-metrics.ts"
+    },
+    {
+      "app": "neokod",
+      "path": "apps/web/src/components/chat/ChatComposer.tsx",
+      "local_path": "/Users/kamogelo/Code/t3code/apps/web/src/components/chat/ChatComposer.tsx",
+      "sha256": "eaa68696e03228e74ee4017511eb98fc8f50eaf1a2e95a22b00bcc49ac0f0371",
+      "lines": 2776,
+      "proof_boundary": "Current working-tree file, possibly dirty; content hash is authoritative, no clean-commit claim."
+    },
+    {
+      "app": "superset",
+      "path": "packages/workspace-fs/src/watch.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/superset/packages/workspace-fs/src/watch.ts",
+      "sha256": "3078ad22ddb8cc3c432e674184dabf56474ff49dd6184532ce09b0ca47ab7f52",
+      "lines": 1345,
+      "repository": "superset-sh/superset",
+      "frozen_sha": "c711aa02da3f5625a49c58ec4035eea57b87df0a",
+      "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/workspace-fs/src/watch.ts"
+    },
+    {
+      "app": "superset",
+      "path": "packages/host-service/src/runtime/filesystem/watch-attach-guard.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/superset/packages/host-service/src/runtime/filesystem/watch-attach-guard.ts",
+      "sha256": "d381c7586cdde9b3444f164bcaf4921a0e64beb27dda472c95f373124c33678a",
+      "lines": 123,
+      "repository": "superset-sh/superset",
+      "frozen_sha": "c711aa02da3f5625a49c58ec4035eea57b87df0a",
+      "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/host-service/src/runtime/filesystem/watch-attach-guard.ts"
+    },
+    {
+      "app": "superset",
+      "path": "packages/host-service/src/runtime/filesystem/filesystem.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/superset/packages/host-service/src/runtime/filesystem/filesystem.ts",
+      "sha256": "32af864e4d7281fd90951bb9ebfe6b9d51de6aaf5bd6c4368d608ef789112e95",
+      "lines": 123,
+      "repository": "superset-sh/superset",
+      "frozen_sha": "c711aa02da3f5625a49c58ec4035eea57b87df0a",
+      "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/host-service/src/runtime/filesystem/filesystem.ts"
+    },
+    {
+      "app": "superset",
+      "path": "packages/workspace-fs/src/watch-file.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/superset/packages/workspace-fs/src/watch-file.ts",
+      "sha256": "2f950f3db3cef498826a40b746d7c4b3a28fb814d3c6e6bc9b58f252120a97d6",
+      "lines": 189,
+      "repository": "superset-sh/superset",
+      "frozen_sha": "c711aa02da3f5625a49c58ec4035eea57b87df0a",
+      "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/workspace-fs/src/watch-file.ts"
+    },
+    {
+      "app": "superset",
+      "path": "packages/host-service/src/events/event-bus.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/superset/packages/host-service/src/events/event-bus.ts",
+      "sha256": "3cf56d532109f6527681c3b290c86f77bc0192133c9e8c78014689b837ecead2",
+      "lines": 668,
+      "repository": "superset-sh/superset",
+      "frozen_sha": "c711aa02da3f5625a49c58ec4035eea57b87df0a",
+      "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/packages/host-service/src/events/event-bus.ts"
+    },
+    {
+      "app": "neokod",
+      "path": "apps/server/src/workspace/WorkspaceSearchIndex.ts",
+      "local_path": "/Users/kamogelo/Code/t3code/apps/server/src/workspace/WorkspaceSearchIndex.ts",
+      "sha256": "6a3d6cd9d31beb4efdd52cc3cdaa3f1b963205a1d4df040f7d59770037840d9a",
+      "lines": 326,
+      "proof_boundary": "Current working-tree file, possibly dirty; content hash is authoritative, no clean-commit claim."
+    },
+    {
+      "app": "neokod",
+      "path": "apps/server/src/git/GitManager.ts",
+      "local_path": "/Users/kamogelo/Code/t3code/apps/server/src/git/GitManager.ts",
+      "sha256": "ac59e090650ecb71794f3fec90f528422f7000a066486c93832c57928eabe14d",
+      "lines": 2064,
+      "proof_boundary": "Current working-tree file, possibly dirty; content hash is authoritative, no clean-commit claim."
+    },
+    {
+      "app": "superset",
+      "path": "apps/desktop/src/renderer/screens/main/components/WorkspaceView/ChangesContent/components/VirtualizedFileList/VirtualizedFileList.tsx",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/superset/apps/desktop/src/renderer/screens/main/components/WorkspaceView/ChangesContent/components/VirtualizedFileList/VirtualizedFileList.tsx",
+      "sha256": "1b4d488c1b6826429b7bca347d4b0407d5af5b09f9debc71652b06133370b98f",
+      "lines": 103,
+      "repository": "superset-sh/superset",
+      "frozen_sha": "c711aa02da3f5625a49c58ec4035eea57b87df0a",
+      "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/apps/desktop/src/renderer/screens/main/components/WorkspaceView/ChangesContent/components/VirtualizedFileList/VirtualizedFileList.tsx"
+    },
+    {
+      "app": "superset",
+      "path": "apps/desktop/src/renderer/screens/main/components/WorkspaceView/ChangesContent/components/InfiniteScrollView/hooks/useOrderedSections/useOrderedSections.tsx",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/superset/apps/desktop/src/renderer/screens/main/components/WorkspaceView/ChangesContent/components/InfiniteScrollView/hooks/useOrderedSections/useOrderedSections.tsx",
+      "sha256": "5213955cb017bc1724f9103aecf631c94bf5675bdcf2f5de3c563f87dbf8776f",
+      "lines": 147,
+      "repository": "superset-sh/superset",
+      "frozen_sha": "c711aa02da3f5625a49c58ec4035eea57b87df0a",
+      "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/apps/desktop/src/renderer/screens/main/components/WorkspaceView/ChangesContent/components/InfiniteScrollView/hooks/useOrderedSections/useOrderedSections.tsx"
+    },
+    {
+      "app": "superset",
+      "path": "apps/desktop/src/renderer/screens/main/components/WorkspaceView/ChangesContent/components/InfiniteScrollView/components/CommitSection/CommitSection.tsx",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/superset/apps/desktop/src/renderer/screens/main/components/WorkspaceView/ChangesContent/components/InfiniteScrollView/components/CommitSection/CommitSection.tsx",
+      "sha256": "fb5956250b9d04d331466fa19e31659a1bba7f0b8c5c7174874fd3cda6d1f32e",
+      "lines": 69,
+      "repository": "superset-sh/superset",
+      "frozen_sha": "c711aa02da3f5625a49c58ec4035eea57b87df0a",
+      "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/apps/desktop/src/renderer/screens/main/components/WorkspaceView/ChangesContent/components/InfiniteScrollView/components/CommitSection/CommitSection.tsx"
+    },
+    {
+      "app": "neokod",
+      "path": "apps/web/src/components/DiffWorkerPoolProvider.tsx",
+      "local_path": "/Users/kamogelo/Code/t3code/apps/web/src/components/DiffWorkerPoolProvider.tsx",
+      "sha256": "2adfe18a0f9921552a5d9bfe3648d4b1162276ee3d182ea86800c97c81a4a406",
+      "lines": 84,
+      "proof_boundary": "Current working-tree file, possibly dirty; content hash is authoritative, no clean-commit claim."
+    },
+    {
+      "app": "neokod",
+      "path": "apps/web/src/components/DiffPanel.tsx",
+      "local_path": "/Users/kamogelo/Code/t3code/apps/web/src/components/DiffPanel.tsx",
+      "sha256": "b612d119153936868829b3de628fb864a700926ce5400e6dcfbcc2dd2cf45235",
+      "lines": 877,
+      "proof_boundary": "Current working-tree file, possibly dirty; content hash is authoritative, no clean-commit claim."
+    },
+    {
+      "app": "superset",
+      "path": "apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/TasksView.tsx",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/superset/apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/TasksView.tsx",
+      "sha256": "a235f1a3c47c51778de59f391dc5667218ca71d90dea319859fd3ad548302ce7",
+      "lines": 402,
+      "repository": "superset-sh/superset",
+      "frozen_sha": "c711aa02da3f5625a49c58ec4035eea57b87df0a",
+      "url": "https://github.com/superset-sh/superset/blob/c711aa02da3f5625a49c58ec4035eea57b87df0a/apps/desktop/src/renderer/routes/_authenticated/_dashboard/tasks/components/TasksView/TasksView.tsx"
+    },
+    {
+      "app": "neokod",
+      "path": "apps/server/src/symphony/HandoffService.ts",
+      "local_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/HandoffService.ts",
+      "sha256": "c09fcf7100ac3c7e476a4429857df2564ba80d274e7fea7b93a4c258458b8b96",
+      "lines": 637,
+      "proof_boundary": "Current working-tree file, possibly dirty; content hash is authoritative, no clean-commit claim."
+    },
+    {
+      "app": "oh-my-pi",
+      "path": "docs/fs-scan-cache-architecture.md",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/oh-my-pi/docs/fs-scan-cache-architecture.md",
+      "sha256": "cf3034fad01e573589d96011d9280894de33f762d315b2a7d4676e2ee7192e00",
+      "lines": 128,
+      "repository": "can1357/oh-my-pi",
+      "frozen_sha": "6d8552d7f9df1852826923f07f0eed4fe29511f3",
+      "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/docs/fs-scan-cache-architecture.md"
+    },
+    {
+      "app": "oh-my-pi",
+      "path": "crates/pi-walker/src/cache.rs",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/oh-my-pi/crates/pi-walker/src/cache.rs",
+      "sha256": "9684b5d6b5d72c23dacb1c8c103acac7ab47bce26dc19795113d791d944f227b",
+      "lines": 1059,
+      "repository": "can1357/oh-my-pi",
+      "frozen_sha": "6d8552d7f9df1852826923f07f0eed4fe29511f3",
+      "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/crates/pi-walker/src/cache.rs"
+    },
+    {
+      "app": "oh-my-pi",
+      "path": "packages/tui/src/autocomplete.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/oh-my-pi/packages/tui/src/autocomplete.ts",
+      "sha256": "66a364a3425d0d9149d5d62da0bd5e7f0758e0f6f6c8a9cf2b6d0970f4c5d995",
+      "lines": 1322,
+      "repository": "can1357/oh-my-pi",
+      "frozen_sha": "6d8552d7f9df1852826923f07f0eed4fe29511f3",
+      "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/tui/src/autocomplete.ts"
+    },
+    {
+      "app": "oh-my-pi",
+      "path": "packages/coding-agent/src/tools/fs-cache-invalidation.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/oh-my-pi/packages/coding-agent/src/tools/fs-cache-invalidation.ts",
+      "sha256": "71a6403ced1cf437497b8bc9a1fb0c9115d9f7fea8cb7c0f273e9025aebac8b7",
+      "lines": 28,
+      "repository": "can1357/oh-my-pi",
+      "frozen_sha": "6d8552d7f9df1852826923f07f0eed4fe29511f3",
+      "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/coding-agent/src/tools/fs-cache-invalidation.ts"
+    },
+    {
+      "app": "oh-my-pi",
+      "path": "packages/tui/src/tui.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/oh-my-pi/packages/tui/src/tui.ts",
+      "sha256": "7aa13ee1cfea51aec5cf85e9710f76cb7784cf794df0f77c4d6c897e39abe052",
+      "lines": 4261,
+      "repository": "can1357/oh-my-pi",
+      "frozen_sha": "6d8552d7f9df1852826923f07f0eed4fe29511f3",
+      "url": "https://github.com/can1357/oh-my-pi/blob/6d8552d7f9df1852826923f07f0eed4fe29511f3/packages/tui/src/tui.ts"
+    },
+    {
+      "app": "traycer",
+      "path": "clients/gui-app/src/markdown/shiki-highlight-cache.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/traycer/clients/gui-app/src/markdown/shiki-highlight-cache.ts",
+      "sha256": "d0c14d97fcedb73f47dd2e83ba4e0809d53a3075897568c6d981a0e997f1924a",
+      "lines": 140,
+      "repository": "traycerai/traycer",
+      "frozen_sha": "745704377226b576d92b80ba421466e5c7a71fa9",
+      "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/markdown/shiki-highlight-cache.ts"
+    },
+    {
+      "app": "traycer",
+      "path": "clients/gui-app/src/markdown/traycer-streaming-highlighter.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/traycer/clients/gui-app/src/markdown/traycer-streaming-highlighter.ts",
+      "sha256": "f963f8b2686ca7bea4ef0b5266ff320da16103ea13e72d7bc0dd82da9c887705",
+      "lines": 171,
+      "repository": "traycerai/traycer",
+      "frozen_sha": "745704377226b576d92b80ba421466e5c7a71fa9",
+      "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/markdown/traycer-streaming-highlighter.ts"
+    },
+    {
+      "app": "traycer",
+      "path": "clients/gui-app/src/markdown/shiki-highlighter.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/traycer/clients/gui-app/src/markdown/shiki-highlighter.ts",
+      "sha256": "09c7a8e3636cb9e3a2c2f2304c2894025ec879537af6c7f0e4e11fa5b326afb7",
+      "lines": 244,
+      "repository": "traycerai/traycer",
+      "frozen_sha": "745704377226b576d92b80ba421466e5c7a71fa9",
+      "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/markdown/shiki-highlighter.ts"
+    },
+    {
+      "app": "neokod",
+      "path": "apps/web/src/components/ChatMarkdown.tsx",
+      "local_path": "/Users/kamogelo/Code/t3code/apps/web/src/components/ChatMarkdown.tsx",
+      "sha256": "2863dbb532cc9464e737718b153eb74338f13594f1ce296c71787ac5c6a834dd",
+      "lines": 1562,
+      "proof_boundary": "Current working-tree file, possibly dirty; content hash is authoritative, no clean-commit claim."
+    },
+    {
+      "app": "traycer",
+      "path": "clients/gui-app/src/components/epics/epics-list-panel.tsx",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/traycer/clients/gui-app/src/components/epics/epics-list-panel.tsx",
+      "sha256": "512cd31044d0fe9e92b5570e29b636e55b981acf0089d3cd1881adcca1044cbf",
+      "lines": 2205,
+      "repository": "traycerai/traycer",
+      "frozen_sha": "745704377226b576d92b80ba421466e5c7a71fa9",
+      "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/components/epics/epics-list-panel.tsx"
+    },
+    {
+      "app": "traycer",
+      "path": "clients/gui-app/src/hooks/home/use-history-query.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/traycer/clients/gui-app/src/hooks/home/use-history-query.ts",
+      "sha256": "4d067b8b96eee70d4926ff5d256d0d6e5cf402c7461d6f6e33232e003b3bfc80",
+      "lines": 747,
+      "repository": "traycerai/traycer",
+      "frozen_sha": "745704377226b576d92b80ba421466e5c7a71fa9",
+      "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/hooks/home/use-history-query.ts"
+    },
+    {
+      "app": "traycer",
+      "path": "clients/gui-app/src/lib/notifications/app-local-display-receipts.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/traycer/clients/gui-app/src/lib/notifications/app-local-display-receipts.ts",
+      "sha256": "294b52455eb82d8f5aedcc5900974959f55c385d561830559289f061fcc2d1b6",
+      "lines": 192,
+      "repository": "traycerai/traycer",
+      "frozen_sha": "745704377226b576d92b80ba421466e5c7a71fa9",
+      "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/lib/notifications/app-local-display-receipts.ts"
+    },
+    {
+      "app": "traycer",
+      "path": "clients/gui-app/src/components/layout/bridges/notification-emission-controller.tsx",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/traycer/clients/gui-app/src/components/layout/bridges/notification-emission-controller.tsx",
+      "sha256": "940d9e3647a522bfb86eeac46aed89cf533ede7e55aa00a459174786e05f1b33",
+      "lines": 162,
+      "repository": "traycerai/traycer",
+      "frozen_sha": "745704377226b576d92b80ba421466e5c7a71fa9",
+      "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/components/layout/bridges/notification-emission-controller.tsx"
+    },
+    {
+      "app": "traycer",
+      "path": "clients/gui-app/src/lib/notifications/app-local-completion-receipts.ts",
+      "local_path": "/tmp/neokod-competitors-20261004/tier-a-sol/source/traycer/clients/gui-app/src/lib/notifications/app-local-completion-receipts.ts",
+      "sha256": "1427be37dad050da9e17e3207940c49d3a85db3cd4117f2cf3dcbd9db8c87aea",
+      "lines": 201,
+      "repository": "traycerai/traycer",
+      "frozen_sha": "745704377226b576d92b80ba421466e5c7a71fa9",
+      "url": "https://github.com/traycerai/traycer/blob/745704377226b576d92b80ba421466e5c7a71fa9/clients/gui-app/src/lib/notifications/app-local-completion-receipts.ts"
+    },
+    {
+      "app": "neokod",
+      "path": "apps/server/src/symphony/NotificationCoordinator.ts",
+      "local_path": "/Users/kamogelo/Code/t3code/apps/server/src/symphony/NotificationCoordinator.ts",
+      "sha256": "9ec0bbefdb4eae52fa402f08177d4376ae07a07977971ca90a34ca26c6580050",
+      "lines": 44,
+      "proof_boundary": "Current working-tree file, possibly dirty; content hash is authoritative, no clean-commit claim."
+    }
+  ],
+  "new_issues": [
+    {
+      "app": "onorca",
+      "repository": "stablyai/orca",
+      "number": 24123,
+      "title": "[Bug]: Opening a workspace with many historical terminals causes high renderer CPU and unhandled Sixel/Wasm allocation failure",
+      "url": "https://github.com/stablyai/orca/issues/24123",
+      "state": "open",
+      "updated_at": "2026-09-30T10:48:18Z",
+      "reported_version_platform": "v1.4.217; macOS 26.3.2 arm64",
+      "evidence_assessment": "Unconfirmed detailed user report; no comments; decoder experiment and CPU attribution are separate observations.",
+      "comments_count": 0,
+      "comments_complete": true,
+      "capture": {
+        "start_utc": "2026-10-04T07:02:41.224655+00:00",
+        "end_utc": "2026-10-04T07:02:42.415981+00:00",
+        "comments_complete": true,
+        "repository": "stablyai/orca",
+        "number": 24123
+      },
+      "raw_issue": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/onorca/24123-issue.json",
+      "raw_comments": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/onorca/24123-comments.json",
+      "raw_sha256": {
+        "24123-issue.json": "5487e0ea5d7bd920bc4dc6f21f5404fc0c34a602ae59f2fe92980024f1775a8d",
+        "24123-comments.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "24123-capture.json": "55d0738f6947f1a146ebb432453560da1899aac1421a3c929943c01800135ab5"
+      }
+    },
+    {
+      "app": "onorca",
+      "repository": "stablyai/orca",
+      "number": 24247,
+      "title": "[Bug]: Tasks page keeps a Linear issue's old status after it changes in Linear (e.g. In Review shown after Done)",
+      "url": "https://github.com/stablyai/orca/issues/24247",
+      "state": "open",
+      "updated_at": "2026-10-01T00:31:37Z",
+      "reported_version_platform": "v1.4.205; macOS 26.5.1",
+      "evidence_assessment": "User report plus fresh CLI read; no captured maintainer confirmation/fix.",
+      "comments_count": 1,
+      "comments_complete": true,
+      "capture": {
+        "start_utc": "2026-10-04T07:02:41.225207+00:00",
+        "end_utc": "2026-10-04T07:02:42.484378+00:00",
+        "comments_complete": true,
+        "repository": "stablyai/orca",
+        "number": 24247
+      },
+      "raw_issue": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/onorca/24247-issue.json",
+      "raw_comments": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/onorca/24247-comments.json",
+      "raw_sha256": {
+        "24247-issue.json": "ee39a52e60eb72fdc933a37dead80c34550927944c03fce9bcf146d669685430",
+        "24247-comments.json": "041fa47461fc38f82b756f74288c38cb450738fd30852482345b2cc3b48d3ed6",
+        "24247-capture.json": "3ba6f21d8a831cdc5cc6893b7094dee5a1ffc9c3b8b900a9d93a569c18076b1e"
+      }
+    },
+    {
+      "app": "agent-orchestrator",
+      "repository": "Untrivial-ai/agent-orchestrator",
+      "number": 4608,
+      "title": "bug(chat): eager startup restore causes resource spike and severe desktop lag",
+      "url": "https://github.com/Untrivial-ai/agent-orchestrator/issues/4608",
+      "state": "open",
+      "updated_at": "2026-10-01T14:03:09Z",
+      "reported_version_platform": "0.12.10-nightly.202608280852; macOS Darwin 27 arm64",
+      "evidence_assessment": "User profiling; collaborator discussion. 2.42 GB parent attribution explicitly low-confidence; frozen later startup split is not proven runtime fix.",
+      "comments_count": 2,
+      "comments_complete": true,
+      "capture": {
+        "start_utc": "2026-10-04T07:02:41.230411+00:00",
+        "end_utc": "2026-10-04T07:02:42.449139+00:00",
+        "comments_complete": true,
+        "repository": "Untrivial-ai/agent-orchestrator",
+        "number": 4608
+      },
+      "raw_issue": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/agent-orchestrator/4608-issue.json",
+      "raw_comments": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/agent-orchestrator/4608-comments.json",
+      "raw_sha256": {
+        "4608-issue.json": "0a4281ea25264b8b01b07c029ab76d41d92f3de37704690f176c58e88d0d8ed1",
+        "4608-comments.json": "37a7447026e992036e4b7729652a3a3a2765f7f7b9a4a81f6b7f1875508d6874",
+        "4608-capture.json": "112b78a0b65c37ab201673f3fc58f669f5c5d296698772b57a7c69569cc4fd57"
+      }
+    },
+    {
+      "app": "agent-orchestrator",
+      "repository": "Untrivial-ai/agent-orchestrator",
+      "number": 6108,
+      "title": "[Bug]: Despite merging all the PRs, the GitHub task is still marked as \u2018in review\u2019.",
+      "url": "https://github.com/Untrivial-ai/agent-orchestrator/issues/6108",
+      "state": "open",
+      "updated_at": "2026-10-02T11:06:21Z",
+      "reported_version_platform": "0.13.1; Ubuntu 26.04.1 deb",
+      "evidence_assessment": "Collaborator could not reproduce; multiple-account/unresolved-PR conditions mentioned by reporter.",
+      "comments_count": 4,
+      "comments_complete": true,
+      "capture": {
+        "start_utc": "2026-10-04T07:02:41.225292+00:00",
+        "end_utc": "2026-10-04T07:02:42.454499+00:00",
+        "comments_complete": true,
+        "repository": "Untrivial-ai/agent-orchestrator",
+        "number": 6108
+      },
+      "raw_issue": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/agent-orchestrator/6108-issue.json",
+      "raw_comments": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/agent-orchestrator/6108-comments.json",
+      "raw_sha256": {
+        "6108-issue.json": "361e4b8c7198bbdbf1f26fbfb233f22d32c34b4a1e594b9fc2d981cd497addf0",
+        "6108-comments.json": "51accb86018ea7aa9ba974ca6195cb6edf9ab24b181e42882443e937cd13498c",
+        "6108-capture.json": "f2acf063667a8859ccfaa3579b9ac34d093c9da42a9202d58580db43a4877d50"
+      }
+    },
+    {
+      "app": "codex-host",
+      "repository": "BytePioneer-AI/codex-host",
+      "number": 310,
+      "title": "[Suggestion] Sign Windows executables (Authenticode) \u2014 Defender false positive (Wacapew.A!ml) breaks startup on 0.9.0",
+      "url": "https://github.com/BytePioneer-AI/codex-host/issues/310",
+      "state": "open",
+      "updated_at": "2026-09-25T03:04:08Z",
+      "reported_version_platform": "v0.9.0; Windows 11 Home China build 26200",
+      "evidence_assessment": "Defender quarantine report; no comments; benign false-positive claim not established.",
+      "comments_count": 0,
+      "comments_complete": true,
+      "capture": {
+        "start_utc": "2026-10-04T07:02:41.226865+00:00",
+        "end_utc": "2026-10-04T07:02:42.428988+00:00",
+        "comments_complete": true,
+        "repository": "BytePioneer-AI/codex-host",
+        "number": 310
+      },
+      "raw_issue": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/codex-host/310-issue.json",
+      "raw_comments": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/codex-host/310-comments.json",
+      "raw_sha256": {
+        "310-issue.json": "063e41ea2437b15642a5c493eee080552084ad95f161a263611459f7fdc4d24c",
+        "310-comments.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "310-capture.json": "f42469894a50c262377895125b3fbc9b1542f7b8849079866a302076c1cce7aa"
+      }
+    },
+    {
+      "app": "hermes",
+      "repository": "NousResearch/hermes-agent",
+      "number": 108003,
+      "title": "Desktop sidebar recents + session search should be able to exclude A2A sessions",
+      "url": "https://github.com/NousResearch/hermes-agent/issues/108003",
+      "state": "open",
+      "updated_at": "2026-10-03T19:45:27Z",
+      "reported_version_platform": "Desktop v2026.9.24 plus about 2,091 commits in comment; macOS",
+      "evidence_assessment": "Feature/visibility report with another user dataset; existing backend source filters do not prove complete desktop controls.",
+      "comments_count": 2,
+      "comments_complete": true,
+      "capture": {
+        "start_utc": "2026-10-04T07:02:42.416448+00:00",
+        "end_utc": "2026-10-04T07:02:44.130608+00:00",
+        "comments_complete": true,
+        "repository": "NousResearch/hermes-agent",
+        "number": 108003
+      },
+      "raw_issue": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/hermes/108003-issue.json",
+      "raw_comments": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/hermes/108003-comments.json",
+      "raw_sha256": {
+        "108003-issue.json": "981c166aca9ce5b4600e42f873dc7ab0e006d9fe5eaa788cd0c1ec75d9b73033",
+        "108003-comments.json": "42547bea02db3160f5f00f7c0bbffdd45013a27303686109e52b075bd4b763ea",
+        "108003-capture.json": "ca33412cb2b7ee75aa928cc737361d6558b5c186dfcaeb7c2fd1ea1947621cca"
+      }
+    },
+    {
+      "app": "hermes",
+      "repository": "NousResearch/hermes-agent",
+      "number": 131998,
+      "title": "[Bug]: Desktop window completely dead for 55s \u2014 5,474 \"ResizeObserver loop\" notifications at a constant 100/s on a long session (reproduces after #100215)",
+      "url": "https://github.com/NousResearch/hermes-agent/issues/131998",
+      "state": "open",
+      "updated_at": "2026-10-03T04:00:34Z",
+      "reported_version_platform": "v0.21.5+3828.g801a902; Windows 11; Electron 40.10.2; Python 3.14.7",
+      "evidence_assessment": "Detailed reported logs; no comments/minimal reproduction; earlier observer guard present according to reporter, later fix not established. Second event explicitly corrected to Modern Standby.",
+      "comments_count": 0,
+      "comments_complete": true,
+      "capture": {
+        "start_utc": "2026-10-04T07:02:42.429467+00:00",
+        "end_utc": "2026-10-04T07:02:43.466215+00:00",
+        "comments_complete": true,
+        "repository": "NousResearch/hermes-agent",
+        "number": 131998
+      },
+      "raw_issue": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/hermes/131998-issue.json",
+      "raw_comments": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/hermes/131998-comments.json",
+      "raw_sha256": {
+        "131998-issue.json": "7255e8360c63a03fe3a0d869cb996b1994d18d86d3f0e3ac7ef873a1cf5fc90e",
+        "131998-comments.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "131998-capture.json": "fd7f4c4d22cd539110618513f8825b223175f3e0462726e50073150b717e7307"
+      }
+    },
+    {
+      "app": "superset",
+      "repository": "superset-sh/superset",
+      "number": 7877,
+      "title": "[perf] Linux: every workspace switch and sidebar hover re-crawls the whole worktree (bursts to 377k inotify watches)",
+      "url": "https://github.com/superset-sh/superset/issues/7877",
+      "state": "open",
+      "updated_at": "2026-09-26T12:10:40Z",
+      "reported_version_platform": "v1.30.2; Linux; issue main SHA 2370f60d",
+      "evidence_assessment": "Reported watcher counts/churn; only github-actions[bot] source triage, not human runtime reproduction; current source still releases last listener immediately.",
+      "comments_count": 1,
+      "comments_complete": true,
+      "capture": {
+        "start_utc": "2026-10-04T07:02:42.449474+00:00",
+        "end_utc": "2026-10-04T07:02:43.745682+00:00",
+        "comments_complete": true,
+        "repository": "superset-sh/superset",
+        "number": 7877
+      },
+      "raw_issue": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/superset/7877-issue.json",
+      "raw_comments": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/superset/7877-comments.json",
+      "raw_sha256": {
+        "7877-issue.json": "af48ad91eba45255c5b1620d9aa77a6e5b451f4089785525fbac4f43358e873b",
+        "7877-comments.json": "df1d8229cf21a8e1c4874d68d01218784b5b0c6e24d55b2efaaa92dd61c94f4d",
+        "7877-capture.json": "870298b230da0893865ba90c8d2a6fe71b0099540b7f041c8a0f0b53fba5c834"
+      }
+    },
+    {
+      "app": "superset",
+      "repository": "superset-sh/superset",
+      "number": 7892,
+      "title": "Tasks view hides native tasks when Linear is not connected",
+      "url": "https://github.com/superset-sh/superset/issues/7892",
+      "state": "open",
+      "updated_at": "2026-09-27T20:50:38Z",
+      "reported_version_platform": "Issue cites previous TasksView source; frozen c711aa differs",
+      "evidence_assessment": "Historical report still open; automated bot source triage. Claimed isLinearConnected gate is absent in frozen source; no shipped fix claim.",
+      "comments_count": 1,
+      "comments_complete": true,
+      "capture": {
+        "start_utc": "2026-10-04T07:02:42.454849+00:00",
+        "end_utc": "2026-10-04T07:02:43.480686+00:00",
+        "comments_complete": true,
+        "repository": "superset-sh/superset",
+        "number": 7892
+      },
+      "raw_issue": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/superset/7892-issue.json",
+      "raw_comments": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/superset/7892-comments.json",
+      "raw_sha256": {
+        "7892-issue.json": "2d4122374003ce28d9f4da5af2258c0910df40f9c804db026e9e37c549b7ac41",
+        "7892-comments.json": "32765f81aade7a783f46956365770e204df88c91bede034dea9b229363c5f601",
+        "7892-capture.json": "b8edc48b2e36f3bf8e7de9e52ae09b16c9f64878972dcf86614cb51c6f7244e4"
+      }
+    },
+    {
+      "app": "oh-my-pi",
+      "repository": "can1357/oh-my-pi",
+      "number": 12423,
+      "title": "TUI: Severe typing lag and scrolling stutter in long sessions on Windows (v18.2.5)",
+      "url": "https://github.com/can1357/oh-my-pi/issues/12423",
+      "state": "open",
+      "updated_at": "2026-09-30T21:05:03Z",
+      "reported_version_platform": "v18.2.5; Windows 11 x64; Bun 1.3; VS Code 1.121",
+      "evidence_assessment": "Unconfirmed typing/scroll report after 30+ turns; desired near-60 FPS is not measured FPS; later source cadence is 30 FPS for ordinary row renderer.",
+      "comments_count": 1,
+      "comments_complete": true,
+      "capture": {
+        "start_utc": "2026-10-04T07:02:42.484718+00:00",
+        "end_utc": "2026-10-04T07:02:43.459401+00:00",
+        "comments_complete": true,
+        "repository": "can1357/oh-my-pi",
+        "number": 12423
+      },
+      "raw_issue": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/oh-my-pi/12423-issue.json",
+      "raw_comments": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/oh-my-pi/12423-comments.json",
+      "raw_sha256": {
+        "12423-issue.json": "8e668edf171e189f923926693e788e1ded8d3c970cf7c69fb59b9a5ae77b9d32",
+        "12423-comments.json": "caf6e36e028ca84094e31e4abb4ba218c7894ea437df0b3092c4e45b66acda09",
+        "12423-capture.json": "8d3b036f5abc2adc9171e1e01a81e02454f92f1a3c29d903fa5fe040a276f206"
+      }
+    },
+    {
+      "app": "traycer",
+      "repository": "traycerai/traycer",
+      "number": 1950,
+      "title": "\u201cSelect All\u201d on History page only selects loaded items",
+      "url": "https://github.com/traycerai/traycer/issues/1950",
+      "state": "open",
+      "updated_at": "2026-09-27T22:52:08Z",
+      "reported_version_platform": "No exact release version captured",
+      "evidence_assessment": "User report corroborated by frozen selectAllVisible path. PR2214 remains open/unmerged; author test count is not passed CI.",
+      "comments_count": 1,
+      "comments_complete": true,
+      "capture": {
+        "start_utc": "2026-10-04T07:02:43.459696+00:00",
+        "end_utc": "2026-10-04T07:02:44.504402+00:00",
+        "comments_complete": true,
+        "repository": "traycerai/traycer",
+        "number": 1950
+      },
+      "raw_issue": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/traycer/1950-issue.json",
+      "raw_comments": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/traycer/1950-comments.json",
+      "raw_sha256": {
+        "1950-issue.json": "2dc3aa4eb5b262640638d7c48e56a159fb9213cd85bbed5e0fb41eca8e6fb376",
+        "1950-comments.json": "47a766c6c3cbcfd53003fb2e7b8a3d01de757733ca22912983b17e264752c03c",
+        "1950-capture.json": "6ac103a78d74cbcc54c251bc3c2aca0837769596e21f663ef815d8d6d8aa2c3d"
+      }
+    },
+    {
+      "app": "traycer",
+      "repository": "traycerai/traycer",
+      "number": 2029,
+      "title": "browser.human.needed notification survives lane deletion \u2014 permanent 'Task waiting for your approval' badge on epic",
+      "url": "https://github.com/traycerai/traycer/issues/2029",
+      "state": "open",
+      "updated_at": "2026-09-20T19:45:16Z",
+      "reported_version_platform": "No exact release version captured",
+      "evidence_assessment": "User local SQL investigation and follow-up; private Host resolution code unavailable; no maintainer-confirmed fix.",
+      "comments_count": 2,
+      "comments_complete": true,
+      "capture": {
+        "start_utc": "2026-10-04T07:02:43.466517+00:00",
+        "end_utc": "2026-10-04T07:02:44.504274+00:00",
+        "comments_complete": true,
+        "repository": "traycerai/traycer",
+        "number": 2029
+      },
+      "raw_issue": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/traycer/2029-issue.json",
+      "raw_comments": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/traycer/2029-comments.json",
+      "raw_sha256": {
+        "2029-issue.json": "4f8d62bcbdade6a1ae7f6ed2122938391d724d8e1b32227ba1f8d3f0bb2a47c8",
+        "2029-comments.json": "dc0784dd1e4c94d758ff406c702fa99200d1717ae3bca3c43b4dc514c15508c8",
+        "2029-capture.json": "4d9edff4e614052a52b6bc6c197e3a7a45684d6ef8a7ff9e0915fe6c66065869"
+      }
+    }
+  ],
+  "selected_pr_metadata": [
+    {
+      "repository": "traycerai/traycer",
+      "number": 2214,
+      "title": "fix(gui-app): select all matching History pages",
+      "url": "https://github.com/traycerai/traycer/pull/2214",
+      "state": "open",
+      "merged": false,
+      "merged_at": null,
+      "updated_at": "2026-09-28T07:28:04Z",
+      "head_sha": "85857b7c08f875e9b75610624649b2464dbb537f",
+      "base_sha": "2340dc98238e5fd20a34ffec7a2d86c5c0d33c02",
+      "raw_path": "/tmp/neokod-competitors-20261004/tier-a-sol/addendum-issues/traycer/2214-pr.json",
+      "sha256": "4cfb610392ec87c9f81567b75bf382ec1fe4793d9a72f8b9d2febcdf3ebb7326",
+      "scope": "Current metadata and full body captured; no exhaustive review/comment/CI inventory or application execution."
+    }
+  ],
+  "general_delivery_note": "Neokod already registers GitHub Issues, Jira, Linear, GitLab, Asana, Azure Boards and GitHub Projects. Use that configured registry for ordinary-chat work delivery, for example \u201cSend Linear ENG-123 to Symphony\u201d, \u201cSend Azure Boards item 456 to Symphony\u201d or \u201cSend this GitHub Projects item to Symphony\u201d. AO\u2019s small read port and OnOrca\u2019s workspace-attributed lookup are useful boundaries; they do not justify another delivery framework or a Jira-only implementation.\n\nResolve a configured connection/scope and an opaque provider item ID server-side before submission. Preserve the original human message ID/text, source thread, canonical item identity, claim/idempotency key and eventual result link. Project display keys and URLs are locators, not globally unique IDs. Existing HandoffService currently creates manual work IDs; the completed source review already identifies its ordinary-chat canonicalisation/idempotency gap. This addendum does not repeat that audit or implement a repair.\n\nRepresent adapter availability, identity, snapshot freshness and operation capability separately. Listing/reading/probing credentials is not permission to create a ticket, post a comment, change board status or merge a PR. GitHub Projects field/status mutations, Azure Boards work-item patch semantics and Linear workflow states differ and should remain inside provider adapters. Honour configured Symphony review/merge policy; multiple linked PRs and multiple accounts are explicit cases. Refresh provider state after an authorised write and show unknown/stale evidence honestly.\n\nProposed delivery acceptance is a finite matrix of the seven registered kinds: same visible key in two scopes; opaque ID normalisation; lost/duplicate pagination; cancelled queued reads; 429/backoff; stale credential generation; unavailable optional mutation; duplicate ordinary-chat submission; restart before/after durable acceptance; provider change after claim. Verify exactly one canonical work item and result link, stable workspace ownership, correct board projection and no external operation outside the declared capability/permission. Test with deterministic adapter fixtures first; no authenticated tracker operation was performed in this research.\n\nCompetitor delivery coverage is intentionally uneven: OnOrca has Linear plus other tracker-specific modules covered in the original review; AO wiring here is GitHub/GitLab and explicitly leaves Linear/Jira intake for later; Superset frozen UI has native/Linear/issues surfaces but hosted OAuth/trpc is excluded. CodexHost, Hermes, Oh My Pi and the available public Traycer source do not establish a general Linear/GitHub Projects/Azure DevOps work-delivery adapter equivalent in the reviewed paths. AI Azure OpenAI or GitLab Duo providers are not Azure Boards or GitLab work-tracker support. These are evidence gaps, not a reason to narrow Neokod\u2019s existing seven-kind scope.",
+  "proposed_gates_not_run": true,
+  "completion": {
+    "apps": 7,
+    "patterns": 19,
+    "new_issues": 12,
+    "fully_paginated_comment_sets": 12,
+    "private_host_gap": "Traycer execution Host is unavailable"
+  }
+}

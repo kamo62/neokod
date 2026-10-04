@@ -1,0 +1,101 @@
+- button "Switch mode": Neokod Dev
+- tablist "Sidebar view":
+  - tab "Projects" [selected]
+  - tab "All threads"
+- list:
+  - listitem:
+    - button "New thread"
+  - listitem:
+    - button "Search ⌘K"
+  - listitem:
+    - button "Home"
+- tabpanel "Projects":
+  - region "My Work":
+    - button "My Work 2" [expanded]
+    - text: Needs you
+    - button "Clear"
+    - button "Failed Reply with exactly AUDIT_NEW_THREAD_ACK. Do not us... neokod-functional-audit-uy22dh88": Reply with exactly AUDIT_NEW_THREAD_ACK. Do not us... neokod-functional-audit-uy22dh88
+    - button "Dismiss Reply with exactly AUDIT_NEW_THREAD_ACK. Do not us... from My Work"
+    - text: Recent
+    - button "Clear"
+    - button "Done Hi arbitrage":
+      - img "Done"
+      - text: Hi arbitrage
+    - button "Dismiss Hi from My Work"
+  - text: Projects
+  - button
+  - button "Add project"
+  - list:
+    - listitem:
+      - button "neokod-functional-audit-uy22dh88"
+      - button "Create new thread in neokod-functional-audit-uy22dh88"
+      - list:
+        - listitem:
+          - button "Failed Reply with exactly AUDIT_NEW_THREAD_ACK. Do not us... 4m ago Pin Reply with exactly AUDIT_NEW_THREAD_ACK. Do not us... Archive Reply with exactly AUDIT_NEW_THREAD_ACK. Do not us...":
+            - text: Failed Reply with exactly AUDIT_NEW_THREAD_ACK. Do not us... 4m ago
+            - button "Pin Reply with exactly AUDIT_NEW_THREAD_ACK. Do not us..."
+            - button "Archive Reply with exactly AUDIT_NEW_THREAD_ACK. Do not us..."
+    - listitem:
+      - button "arbitrage"
+      - button "Create new thread in arbitrage"
+      - list:
+        - listitem:
+          - button "Hi 18m ago Pin Hi Archive Hi":
+            - text: Hi 18m ago
+            - button "Pin Hi"
+            - button "Archive Hi"
+- separator
+- list:
+  - listitem:
+    - button "Settings"
+- button "Resize Sidebar"
+- main:
+  - button "Maximize panel"
+  - button "Toggle terminal drawer"
+  - button "Toggle right panel" [pressed]
+  - heading "Reply with exactly AUDIT_NEW_THREAD_ACK. Do not us..." [level=2]
+  - button "Set goal"
+  - button "GPT-6.1-Sol"
+  - button "Open terminal"
+  - button "Open diff"
+  - button "More thread actions"
+  - alert: "Codex provider status Codex app-server provider probe failed: Codex App Server process exited with code 1."
+  - alert:
+    - text: "ProviderAdapterProcessError: Provider adapter process error (codex) for thread 6f376a22-b08f-47fd-90bb-072281bf12db: Codex App Server process exited with code 1 at file:///Users/kamogelo/Code/t3code/apps/server/src/provider/Layers/CodexAdapter.ts:1689:15 at file:///Users/kamogelo/Code/t3code/node_modules/.pnpm/effect@4.0.0-beta.78_patch_hash=c502bc684210b707dfceb87d8fe6ad6843395af6e19cfc02cd65854898bde2c5/node_modules/effect/dist/internal/effect.js:1310:96 at ~effect/Utils/internal (file:///Users/kamogelo/Code/t3code/node_modules/.pnpm/effect@4.0.0-beta.78_patch_hash=c502bc684210b707dfceb87d8fe6ad6843395af6e19cfc02cd65854898bde2c5/node_modules/effect/dist/Utils.js:79:12) at startSession (file:///Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts:505:23) at startSession (definition) (file:///Users/kamogelo/Code/t3code/apps/server/src/provider/Layers/ProviderService.ts:704:70) at ensureSessionForThread (file:///Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts:627:12) at ensureSessionForThread (definition) (file:///Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts:357:41) at processTurnStartRequested (file:///Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts:1069:16) at processTurnStartRequested (definition) (file:///Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts:774:44) at processDomainEvent (file:///Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts:1087:5) at processDomainEvent (definition) (file:///Users/kamogelo/Code/t3code/apps/server/src/orchestration/Layers/ProviderCommandReactor.ts:1043:37) { [cause]: CodexAppServerProcessExitedError: Codex App Server process exited with code 1 at Object.onSuccess (file:///Users/kamogelo/Code/t3code/packages/effect-codex-app-server/src/_internal/stdio.ts:62:26) }"
+    - button "Dismiss error"
+  - paragraph: Reply with exactly AUDIT_NEW_THREAD_ACK. Do not use tools, modify files, or run commands.
+  - paragraph: 12:28 PM
+  - button "Copy link"
+  - region "1 tool call":
+    - button "Provider turn start failed":
+      - paragraph: Provider turn start failed
+  - textbox:
+    - paragraph
+  - text: Ask for follow-up changes or attach images
+  - button "GPT-6.1-Sol · Low"
+  - button "More composer controls"
+  - button "Send message" [disabled]
+  - text: Local checkout
+  - combobox: main
+  - separator
+  - tablist "Right panel surfaces":
+    - tab "Environment" [selected]
+    - button "Close Environment"
+    - button "Add panel surface"
+  - text: Environment neokod-functional-audit-uy22dh88
+  - paragraph: Workspace
+  - text: Current checkout
+  - separator
+  - paragraph: Branch
+  - text: main +1 -1 2 files changed
+  - separator
+  - paragraph: Actions
+  - button "Commit"
+  - button "Commit & push" [disabled]
+  - button "Push" [disabled]
+  - button "Create PR" [disabled]
+  - separator
+  - button "Compare with base" [disabled]
+- button "Toggle main sidebar" [pressed]: Toggle Sidebar
+- region "Notifications"
+- region "Notifications"
