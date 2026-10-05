@@ -7,8 +7,10 @@ import type {
 } from "@neokod/contracts";
 import { createModelSelection } from "@neokod/shared/model";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 
 import type { ProviderInstance } from "../../provider/ProviderDriver.ts";
 import { ProviderInstanceRegistry } from "../../provider/Services/ProviderInstanceRegistry.ts";
@@ -53,6 +55,9 @@ const failureResult = (input: {
   error: input.error,
   reviewedAt: input.reviewedAt,
 });
+
+/** Upper bound for one reviewer model. A provider that never answers must not hold the finalizer. */
+export const MODEL_REVIEW_TIMEOUT = Duration.minutes(10);
 
 interface ProviderSnapshot {
   readonly instance: ProviderInstance;
@@ -266,8 +271,21 @@ export const makeSymphonyModelReviewer = (
               modelSelection: createModelSelection(instance.instanceId, model),
             })
             .pipe(
+              Effect.timeoutOption(MODEL_REVIEW_TIMEOUT),
               Effect.map((generated) =>
-                normalizeCompletedResult({ instance, model, reviewedAt, generated }),
+                Option.isNone(generated)
+                  ? failureResult({
+                      model,
+                      provider: String(instance.instanceId),
+                      error: `Model review timed out after ${Duration.toMinutes(MODEL_REVIEW_TIMEOUT)} minutes.`,
+                      reviewedAt,
+                    })
+                  : normalizeCompletedResult({
+                      instance,
+                      model,
+                      reviewedAt,
+                      generated: generated.value,
+                    }),
               ),
               Effect.catch((cause) =>
                 Effect.succeed(

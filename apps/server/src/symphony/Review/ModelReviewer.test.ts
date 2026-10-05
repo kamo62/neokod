@@ -3,8 +3,10 @@ import type { EffectiveWorkflowConfig, WorkItem } from "@neokod/contracts";
 import { ProviderDriverKind, ProviderInstanceId, TextGenerationError } from "@neokod/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import type { ProviderInstance } from "../../provider/ProviderDriver.ts";
 import { ProviderInstanceRegistry } from "../../provider/Services/ProviderInstanceRegistry.ts";
@@ -315,6 +317,48 @@ describe("SymphonyModelReviewer", () => {
         detail: "The fallback bypasses the gate.",
         path: "src/gate.ts",
       });
+    }),
+  );
+
+  it.effect("fails a reviewer that never answers and does not block the others", () =>
+    Effect.gen(function* () {
+      const slow = makeInstance({
+        id: "slow_review",
+        models: ["slow-model"],
+        review: () => Effect.never,
+      });
+      const fast = makeInstance({
+        id: "fast_review",
+        models: ["fast-model"],
+        review: () => Effect.succeed({ verdict: "approve", summary: "Fast ok.", findings: [] }),
+      });
+      const fiber = yield* Effect.forkChild(
+        runReview([slow, fast], makeConfig(["slow-model", "fast-model"], "any-approve")),
+      );
+      yield* TestClock.adjust("11 minutes");
+      const result = yield* Fiber.join(fiber);
+      const slowResult = result?.reviewers.find((r) => r.model === "slow-model");
+      const fastResult = result?.reviewers.find((r) => r.model === "fast-model");
+      expect(slowResult?.status).toBe("failed");
+      expect(slowResult?.error).toContain("timed out");
+      expect(fastResult?.status).toBe("completed");
+      expect(result?.passed).toBe(true);
+    }),
+  );
+
+  it.effect("a timed-out reviewer blocks all-approve", () =>
+    Effect.gen(function* () {
+      const slow = makeInstance({
+        id: "slow_review",
+        models: ["slow-model"],
+        review: () => Effect.never,
+      });
+      const fiber = yield* Effect.forkChild(
+        runReview([slow], makeConfig(["slow-model"], "all-approve")),
+      );
+      yield* TestClock.adjust("11 minutes");
+      const result = yield* Fiber.join(fiber);
+      expect(result?.passed).toBe(false);
     }),
   );
 });

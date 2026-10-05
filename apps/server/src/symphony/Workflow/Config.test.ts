@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { ProviderDriverKind, ProviderInstanceId, ProviderInstanceRef } from "@neokod/contracts";
 
-import { resolveEffectiveConfig, WORKFLOW_DEFAULTS } from "./Config.ts";
+import { resolveEffectiveConfig, WORKFLOW_DEFAULTS, codexCommandWarning } from "./Config.ts";
 
 const providerResolver = (_model?: string): ProviderInstanceRef =>
   ProviderInstanceRef.make({
@@ -216,5 +216,16 @@ describe("resolveEnvIndirection / resolveEffectiveConfig", () => {
     });
     expect(noReviewers.config).toBeNull();
     expect(noReviewers.errors.some((error) => error.field === "review.agents")).toBe(true);
+  });
+});
+
+describe("codexCommandWarning", () => {
+  it("returns null for plain commands and a message containing app-server otherwise", () => {
+    expect(codexCommandWarning(undefined)).toBeNull();
+    expect(codexCommandWarning("codex")).toBeNull();
+    expect(codexCommandWarning("/opt/app-server-tools/codex")).toBeNull();
+    expect(codexCommandWarning("/usr/local/bin/codex --profile x")).toBeNull();
+    expect(codexCommandWarning("codex app-server")).toContain("app-server");
+    expect(codexCommandWarning("  codex   app-server  ")).toContain("app-server");
   });
 });

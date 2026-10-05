@@ -10,6 +10,7 @@ import { LiveRequests } from "./LiveRequests.ts";
 import { AgentRuntimeFactory } from "./Dispatcher.ts";
 import { TrackerAdapterRegistry } from "../Trackers/Adapter.ts";
 import { resolveTrackerAdapter, TrackerEnablement } from "../Orchestrator/TrackerEnablement.ts";
+import { codexCommandWarning } from "../Workflow/Config.ts";
 
 /**
  * Live per-config Codex agent runtime factory (Phase 2).
@@ -36,33 +37,41 @@ const makeAgentRuntimeFactory = Effect.gen(function* () {
       Effect.map((adapter) => adapter.secretEnvironmentNames()),
       Effect.catch(() => Effect.succeed([] as ReadonlyArray<string>)),
       Effect.flatMap((secretNames) =>
-        makeCodexAgentRuntime({
-          codexCommand: config.codexCommand ?? "codex",
-          codexHomePath: undefined,
-          env: process.env,
-          secretEnvironmentNames: secretNames,
-          liveRequests,
-          recordRequest: (input) =>
-            approvalService
-              .recordPending({
-                id: input.requestId,
-                requestId: input.requestId,
-                workItemId: input.workItemId,
-                runAttemptId: input.runAttemptId,
-                action: input.action,
-                scope: "once",
-                ...(input.command !== undefined ? { command: input.command } : {}),
-              })
-              .pipe(
-                Effect.asVoid,
-                Effect.catch(() => Effect.void),
-              ),
-        }).pipe(
-          Effect.mapError(() => Effect.never as never),
-          // Resolve the spawner at factory construction so the dispatcher's public
-          // boundary does not leak ChildProcessSpawner into the RPC handler.
-          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-        ),
+        Effect.gen(function* () {
+          const warning = codexCommandWarning(config.codexCommand);
+          if (warning !== null) {
+            yield* Effect.logWarning("symphony.agent.codex_command_contains_app_server", {
+              warning,
+            });
+          }
+          return yield* makeCodexAgentRuntime({
+            codexCommand: config.codexCommand ?? "codex",
+            codexHomePath: undefined,
+            env: process.env,
+            secretEnvironmentNames: secretNames,
+            liveRequests,
+            recordRequest: (input) =>
+              approvalService
+                .recordPending({
+                  id: input.requestId,
+                  requestId: input.requestId,
+                  workItemId: input.workItemId,
+                  runAttemptId: input.runAttemptId,
+                  action: input.action,
+                  scope: "once",
+                  ...(input.command !== undefined ? { command: input.command } : {}),
+                })
+                .pipe(
+                  Effect.asVoid,
+                  Effect.catch(() => Effect.void),
+                ),
+          }).pipe(
+            Effect.mapError(() => Effect.never as never),
+            // Resolve the spawner at factory construction so the dispatcher's public
+            // boundary does not leak ChildProcessSpawner into the RPC handler.
+            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+          );
+        }),
       ),
     );
   return AgentRuntimeFactory.of({ make });
