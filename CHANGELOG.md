@@ -1,3 +1,9 @@
+## 3.6.2 - 2026-10-05 (Patch)
+
+Release impact: Patch because this changes documentation only and does not change runtime behavior.
+
+- Adds the revision 8 plan with Phase 1 locked, 16 more implementation cards (82 in total), the second audit round evidence (providers, file and project APIs, terminal, git, competitor comparison) and a refreshed `HANDOFF.md` that lists what to investigate later.
+
 ## 3.6.1 - 2026-10-04 (Minor)
 
 Release impact: Minor because this adds a Run now action and corrects Symphony and clone behaviour without changing existing contracts or defaults.
