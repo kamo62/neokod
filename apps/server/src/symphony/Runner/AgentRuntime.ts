@@ -8,6 +8,7 @@ import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Scope from "effect/Scope";
@@ -21,6 +22,7 @@ import type * as EffectCodexSchema from "effect-codex-app-server/schema";
 
 import { resolveSpawnCommand } from "@neokod/shared/shell";
 import { expandHomePath } from "../../pathExpansion.ts";
+import { WORKFLOW_DEFAULTS } from "../Workflow/Config.ts";
 import { buildCodexInitializeParams } from "../../provider/Layers/CodexProvider.ts";
 import { buildRunPrompt, type ReviewFeedbackContext } from "./Prompt.ts";
 import { resolveRunnerPolicy } from "./Policy.ts";
@@ -48,6 +50,9 @@ export class AgentRuntimeSpawnError extends Error {
     this.detail = detail;
   }
 }
+
+/** `turn/interrupt` must not block cancel on a hung or dead child. */
+export const INTERRUPT_REQUEST_TIMEOUT = Duration.seconds(5);
 
 export interface AgentTurnResult {
   readonly turnId: string;
@@ -160,6 +165,7 @@ export const makeCodexAgentRuntime = (
     let threadId: string | undefined;
     let turnId: string | undefined;
     let activePid: number | null = null;
+    let requestConsumerStarted = false;
 
     const spawnAppServer = Effect.gen(function* () {
       // SPEC 15.3 env scrubbing (audit item 8 lane F): the agent child must
@@ -215,6 +221,20 @@ export const makeCodexAgentRuntime = (
         const client = activeClient ?? (yield* initialize);
         const policy = resolveRunnerPolicy(input.config);
 
+        if (!requestConsumerStarted) {
+          requestConsumerStarted = true;
+          yield* Effect.forkScoped(
+            consumeIncoming(
+              client,
+              input.runAttemptId,
+              input.workItemId,
+              liveRequests,
+              recordRequest,
+              input.config,
+            ),
+          );
+        }
+
         if (threadId === undefined) {
           const thread = yield* client
             .request("thread/start", {
@@ -253,28 +273,28 @@ export const makeCodexAgentRuntime = (
           .pipe(Effect.mapError((cause) => new AgentRuntimeSpawnError(cause.message)));
         turnId = (turn as { readonly turn: { readonly id: string } }).turn.id;
 
-        yield* Effect.forkScoped(
-          consumeIncoming(
-            client,
-            input.runAttemptId,
-            input.workItemId,
-            liveRequests,
-            recordRequest,
-            input.config,
-          ),
-        );
+        const activeThreadId = threadId;
+        const activeTurnId = turnId;
+        const completed = yield* waitForTurnCompletion(client, input.config, {
+          threadId: activeThreadId,
+          turnId: activeTurnId,
+        });
 
-        const completed = yield* waitForTurnCompletion(client, input.config);
-
-        return { turnId, threadId, completed } satisfies AgentTurnResult;
+        return {
+          turnId: activeTurnId,
+          threadId: activeThreadId,
+          completed,
+        } satisfies AgentTurnResult;
       });
 
     const interrupt: AgentRuntimeService["interrupt"] = () =>
       Effect.gen(function* () {
         if (activeClient && threadId && turnId) {
-          yield* activeClient
-            .request("turn/interrupt", { threadId, turnId })
-            .pipe(Effect.catch(() => Effect.void));
+          yield* activeClient.request("turn/interrupt", { threadId, turnId }).pipe(
+            Effect.timeoutOption(INTERRUPT_REQUEST_TIMEOUT),
+            Effect.asVoid,
+            Effect.catch(() => Effect.void),
+          );
         }
       });
 
@@ -324,7 +344,8 @@ const handleRequest = (
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
     const params = (request.params ?? {}) as Record<string, unknown>;
-    const waitTimeoutMs = config.liveRequestsWaitTimeoutMs ?? 1_800_000;
+    const waitTimeoutMs =
+      config.liveRequestsWaitTimeoutMs ?? WORKFLOW_DEFAULTS.liveRequestsWaitTimeoutMs;
     if (isApprovalRequest(request.method)) {
       const requestId = String(params.requestId ?? params.approvalId ?? request.id);
       const action = String(params.kind ?? request.method.split("/").at(-2) ?? "action");
@@ -393,45 +414,89 @@ const handleRequest = (
     }
   });
 
+export interface PinnedTurn {
+  readonly threadId: string;
+  readonly turnId: string;
+}
+export type TurnSignal =
+  | { readonly _tag: "completed" }
+  | { readonly _tag: "failed"; readonly message: string };
+
+export const classifyTurnNotification = (
+  notification: { readonly method: string; readonly params?: unknown },
+  pinned: PinnedTurn,
+): TurnSignal | null => {
+  const params = (notification.params ?? {}) as Record<string, unknown>;
+  if (notification.method === "turn/completed") {
+    const turn = (params.turn ?? {}) as {
+      id?: unknown;
+      status?: unknown;
+      error?: { message?: unknown } | null;
+    };
+    if (params.threadId !== pinned.threadId || turn.id !== pinned.turnId) return null;
+    if (turn.status === "completed") return { _tag: "completed" };
+    if (turn.status === "failed") {
+      return {
+        _tag: "failed",
+        message: typeof turn.error?.message === "string" ? turn.error.message : "Codex turn failed",
+      };
+    }
+    if (turn.status === "interrupted")
+      return { _tag: "failed", message: "Codex turn was interrupted" };
+    return null; // inProgress or unknown: keep waiting
+  }
+  if (notification.method === "error") {
+    if (params.willRetry === true) return null;
+    if (typeof params.threadId === "string" && params.threadId !== pinned.threadId) return null;
+    if (typeof params.turnId === "string" && params.turnId !== pinned.turnId) return null;
+    const error = params.error as { message?: unknown } | undefined;
+    return {
+      _tag: "failed",
+      message:
+        typeof error?.message === "string" ? error.message : "Codex app-server reported an error",
+    };
+  }
+  return null;
+};
+
 export const waitForTurnCompletion = (
   client: CodexClientService,
   config: EffectiveWorkflowConfig,
-): Effect.Effect<boolean, AgentRuntimeSpawnError, Scope.Scope> =>
+  pinned: PinnedTurn,
+): Effect.Effect<boolean, AgentRuntimeSpawnError> =>
   Effect.gen(function* () {
-    const timeout = Duration.millis(config.codexTurnTimeoutMs ?? 3_600_000);
-    const waitDeferred = yield* Deferred.make<boolean, AgentRuntimeSpawnError>();
-    yield* Effect.forkScoped(
-      Stream.runForEach(client.raw.notifications, (notification) => {
-        if (notification.method === "turn/completed") {
-          return Deferred.succeed(waitDeferred, true).pipe(Effect.asVoid);
-        }
-        if (notification.method === "error") {
-          const params = notification.params as {
-            readonly error?: { readonly message?: unknown };
-            readonly willRetry?: unknown;
-          };
-          if (params.willRetry === true) {
-            return Effect.void;
-          }
-          const message =
-            typeof params.error?.message === "string"
-              ? params.error.message
-              : "Codex app-server reported an error";
-          return Deferred.fail(waitDeferred, new AgentRuntimeSpawnError(message)).pipe(
-            Effect.asVoid,
-          );
-        }
-        return Effect.void;
-      }).pipe(Effect.catch(() => Effect.void)),
+    const timeout = Duration.millis(
+      config.codexTurnTimeoutMs ?? WORKFLOW_DEFAULTS.codexTurnTimeoutMs,
     );
-    return yield* Deferred.await(waitDeferred).pipe(
+    const outcome = yield* Deferred.make<boolean, AgentRuntimeSpawnError>();
+    const pump = yield* Stream.runForEach(client.raw.notifications, (notification) => {
+      const signal = classifyTurnNotification(notification, pinned);
+      if (signal === null) return Effect.void;
+      return (
+        signal._tag === "completed"
+          ? Deferred.succeed(outcome, true)
+          : Deferred.fail(outcome, new AgentRuntimeSpawnError(signal.message))
+      ).pipe(Effect.asVoid);
+    }).pipe(
+      // The stream completes when the app-server connection ends (step 2).
+      Effect.andThen(
+        Deferred.fail(
+          outcome,
+          new AgentRuntimeSpawnError("Codex app-server exited before the turn finished"),
+        ),
+      ),
+      Effect.catch(() => Effect.void),
+      Effect.forkChild,
+    );
+    return yield* Deferred.await(outcome).pipe(
       Effect.timeoutOption(timeout),
-      Effect.flatMap((result) =>
-        Option.match(result, {
+      Effect.flatMap(
+        Option.match({
           onNone: () => Effect.fail(new AgentRuntimeSpawnError("turn timed out")),
           onSome: (value) => Effect.succeed(value),
         }),
       ),
+      Effect.ensuring(Fiber.interrupt(pump)),
     );
   });
 

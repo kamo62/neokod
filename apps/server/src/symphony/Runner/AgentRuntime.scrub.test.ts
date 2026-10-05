@@ -37,15 +37,25 @@ describe("scrubEnvironment (SPEC 15.3)", () => {
   it.effect("executes completion notification handlers", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const notifications = yield* Queue.unbounded<{ readonly method: string }>();
+        const notifications = yield* Queue.unbounded<{
+          readonly method: string;
+          readonly params?: unknown;
+        }>();
         const client = {
           raw: { notifications: Stream.fromQueue(notifications) },
         } as unknown as Parameters<typeof waitForTurnCompletion>[0];
-        const completion = yield* waitForTurnCompletion(client, {
-          codexTurnTimeoutMs: 1_000,
-        } as Parameters<typeof waitForTurnCompletion>[1]).pipe(Effect.forkScoped);
+        const completion = yield* waitForTurnCompletion(
+          client,
+          {
+            codexTurnTimeoutMs: 1_000,
+          } as Parameters<typeof waitForTurnCompletion>[1],
+          { threadId: "thread-1", turnId: "turn-1" },
+        ).pipe(Effect.forkScoped);
 
-        yield* Queue.offer(notifications, { method: "turn/completed" });
+        yield* Queue.offer(notifications, {
+          method: "turn/completed",
+          params: { threadId: "thread-1", turn: { id: "turn-1", status: "completed" } },
+        });
 
         expect(yield* Fiber.join(completion)).toBe(true);
       }),
@@ -62,13 +72,22 @@ describe("scrubEnvironment (SPEC 15.3)", () => {
         const client = {
           raw: { notifications: Stream.fromQueue(notifications) },
         } as unknown as Parameters<typeof waitForTurnCompletion>[0];
-        const completion = yield* waitForTurnCompletion(client, {
-          codexTurnTimeoutMs: 1_000,
-        } as Parameters<typeof waitForTurnCompletion>[1]).pipe(Effect.forkScoped);
+        const completion = yield* waitForTurnCompletion(
+          client,
+          {
+            codexTurnTimeoutMs: 1_000,
+          } as Parameters<typeof waitForTurnCompletion>[1],
+          { threadId: "thread-1", turnId: "turn-1" },
+        ).pipe(Effect.forkScoped);
 
         yield* Queue.offer(notifications, {
           method: "error",
-          params: { error: { message: "out of credits" }, willRetry: false },
+          params: {
+            error: { message: "out of credits" },
+            threadId: "thread-1",
+            turnId: "turn-1",
+            willRetry: false,
+          },
         });
 
         const result = yield* Effect.result(Fiber.join(completion));

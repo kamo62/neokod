@@ -9,6 +9,7 @@
  * Test-only. Production code stays untouched.
  */
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
+import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -98,7 +99,7 @@ export const makeFakeCodexPeer = (
   Effect.gen(function* () {
     const threadId = options.threadId ?? "thread-1";
     const unanswered = new Set(options.unanswered ?? []);
-    const stdoutQueue = yield* Queue.unbounded<Uint8Array>();
+    const stdoutQueue = yield* Queue.unbounded<Uint8Array, Cause.Done<void>>();
     const clientMessages = yield* Queue.unbounded<JsonRpcMessage>();
     const received = yield* Ref.make<ReadonlyArray<JsonRpcMessage>>([]);
     const exitSignal = yield* Deferred.make<ChildProcessSpawner.ExitCode>();
@@ -193,11 +194,10 @@ export const makeFakeCodexPeer = (
       }),
     );
 
-    // `Stream.fromQueue` surfaces a queue shutdown as an interruption of
-    // the pending take in this Effect version, so map a closed queue to the
-    // end of the stream. A closed stdout therefore completes with the bytes
-    // written so far, while the exit code stays pending until `crash`.
-    const stdout = Stream.fromQueue(stdoutQueue).pipe(Stream.catchCause(() => Stream.empty));
+    // End-of-stream (not shutdown) models stdout EOF: bytes already
+    // written are still delivered before the stream completes, while the
+    // exit code stays pending until `crash`.
+    const stdout = Stream.fromQueue(stdoutQueue);
 
     const handle = ChildProcessSpawner.makeHandle({
       pid: ChildProcessSpawner.ProcessId(options.pid ?? 4242),
@@ -308,9 +308,9 @@ export const makeFakeCodexPeer = (
             },
           }).pipe(Effect.asVoid);
         }),
-      closeStdout: Queue.shutdown(stdoutQueue),
+      closeStdout: Queue.end(stdoutQueue),
       crash: (exitCode = 1) =>
-        Queue.shutdown(stdoutQueue).pipe(
+        Queue.end(stdoutQueue).pipe(
           Effect.andThen(Deferred.succeed(exitSignal, ChildProcessSpawner.ExitCode(exitCode))),
           Effect.asVoid,
         ),

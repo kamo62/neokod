@@ -430,7 +430,7 @@ The card authors read the code and found these differences from the tables in se
 
 Implementers add their own findings below, one line each, with the card ID:
 
-(none yet)
+- 1.4: consumer leak not reproduced by a test
 
 ### 0.8 Reviewer checklist
 

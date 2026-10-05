@@ -4,6 +4,7 @@ import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
@@ -359,6 +360,78 @@ it.layer(NodeServices.layer)("effect-codex-app-server protocol", (it) => {
       assert.instanceOf(error, CodexError.CodexAppServerInputStreamEndedError);
       assert.equal(error.message, "Codex App Server input stream ended.");
       assert.equal("cause" in error, false);
+    }),
+  );
+
+  it.effect("request after the input stream ended fails with the termination error", () =>
+    Effect.gen(function* () {
+      const settle = Effect.repeat(Effect.yieldNow, { times: 50 });
+      const { stdio, input } = yield* makeInMemoryStdio();
+      const termination = yield* Deferred.make<CodexError.CodexAppServerError>();
+      const transport = yield* CodexProtocol.makeCodexAppServerPatchedProtocol({
+        stdio,
+        onTermination: (error) => Deferred.succeed(termination, error).pipe(Effect.asVoid),
+      });
+
+      yield* Queue.end(input);
+      yield* Deferred.await(termination);
+      const late = yield* transport.request("x/late").pipe(Effect.forkScoped);
+      yield* settle;
+      assert.isDefined(late.pollUnsafe());
+      const lateResult = yield* Effect.result(Fiber.join(late));
+      assert.strictEqual(lateResult._tag, "Failure");
+      if (lateResult._tag === "Failure") {
+        assert.instanceOf(lateResult.failure, CodexError.CodexAppServerInputStreamEndedError);
+      }
+      const notifyError = yield* Effect.flip(transport.notify("x/late"));
+      assert.instanceOf(notifyError, CodexError.CodexAppServerInputStreamEndedError);
+    }),
+  );
+
+  it.effect("bounds the exit-status wait when stdout closes and the process stays alive", () =>
+    Effect.gen(function* () {
+      const settle = Effect.repeat(Effect.yieldNow, { times: 50 });
+      const { stdio, input } = yield* makeInMemoryStdio();
+      const termination = yield* Deferred.make<CodexError.CodexAppServerError>();
+      yield* CodexProtocol.makeCodexAppServerPatchedProtocol({
+        stdio,
+        terminationError: Effect.never,
+        onTermination: (error) => Deferred.succeed(termination, error).pipe(Effect.asVoid),
+      });
+
+      yield* Queue.end(input);
+      yield* TestClock.adjust("1 second");
+      yield* settle;
+      assert.isFalse(yield* Deferred.isDone(termination));
+      yield* TestClock.adjust("3 seconds");
+      yield* settle;
+      assert.isTrue(yield* Deferred.isDone(termination));
+      assert.instanceOf(
+        yield* Deferred.await(termination),
+        CodexError.CodexAppServerInputStreamEndedError,
+      );
+    }),
+  );
+
+  it.effect("raw streams end when the connection ends", () =>
+    Effect.gen(function* () {
+      const { stdio, input } = yield* makeInMemoryStdio();
+      const transport = yield* CodexProtocol.makeCodexAppServerPatchedProtocol({
+        stdio,
+        rawStreams: true,
+      });
+      yield* Queue.offer(
+        input,
+        encodeJsonl({
+          method: "item/agentMessage/delta",
+          params: { delta: "x", itemId: "i-1", threadId: "t-1", turnId: "u-1" },
+        }),
+      );
+      yield* Queue.end(input);
+      const notifications = yield* Stream.runCollect(transport.incomingNotifications);
+      assert.strictEqual(notifications.length, 1);
+      const requests = yield* Stream.runCollect(transport.incomingRequests);
+      assert.strictEqual(requests.length, 0);
     }),
   );
 });

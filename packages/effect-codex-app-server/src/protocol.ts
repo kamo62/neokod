@@ -1,6 +1,8 @@
 import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
@@ -98,6 +100,10 @@ function isIncomingResponse(value: unknown): value is typeof JsonRpcResponseEnve
 const encodeJsonString = Schema.encodeUnknownEffect(Schema.UnknownFromJsonString);
 const decodeJsonString = Schema.decodeUnknownEffect(Schema.UnknownFromJsonString);
 
+/** How long to wait for the child's exit status after its stdout closes before
+ *  classifying the termination as a plain end of input. */
+export const CODEX_EXIT_STATUS_WAIT = Duration.seconds(2);
+
 const encodeWireMessage = (
   message: Record<string, unknown>,
 ): Effect.Effect<string, CodexError.CodexAppServerProtocolParseError> =>
@@ -159,15 +165,16 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
     const outgoing = yield* Queue.unbounded<string, Cause.Done<void>>();
     const rawStreams = options.rawStreams === true;
     const incomingNotifications = rawStreams
-      ? yield* Queue.unbounded<CodexAppServerIncomingNotification>()
+      ? yield* Queue.unbounded<CodexAppServerIncomingNotification, Cause.Done<void>>()
       : null;
     const incomingRequests = rawStreams
-      ? yield* Queue.unbounded<CodexAppServerIncomingRequest>()
+      ? yield* Queue.unbounded<CodexAppServerIncomingRequest, Cause.Done<void>>()
       : null;
     const pending = yield* Ref.make(new Map<string, CodexAppServerPendingRequest>());
     const nextRequestId = yield* Ref.make(1);
     const remainder = yield* Ref.make("");
     const terminationHandled = yield* Ref.make(false);
+    const terminated = yield* Ref.make<CodexError.CodexAppServerError | null>(null);
 
     const logProtocol = (event: CodexAppServerProtocolLogEvent) => {
       if (event.direction === "incoming" && !options.logIncoming) {
@@ -199,9 +206,17 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
         }
         return [
           Effect.gen(function* () {
-            const error = yield* classify();
+            const error = yield* classify().pipe(
+              Effect.timeoutOption(CODEX_EXIT_STATUS_WAIT),
+              Effect.map(
+                Option.getOrElse(() => new CodexError.CodexAppServerInputStreamEndedError({})),
+              ),
+            );
+            yield* Ref.set(terminated, error); // BEFORE failing pending, so late requests see it
             yield* failAllPending(error);
             yield* Queue.end(outgoing);
+            if (incomingNotifications !== null) yield* Queue.end(incomingNotifications);
+            if (incomingRequests !== null) yield* Queue.end(incomingRequests);
             if (options.onTermination) {
               yield* options.onTermination(error);
             }
@@ -210,8 +225,13 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
         ] as const;
       }).pipe(Effect.flatten);
 
+    const failIfTerminated = Ref.get(terminated).pipe(
+      Effect.flatMap((error) => (error === null ? Effect.void : Effect.fail(error))),
+    );
+
     const offerOutgoing = (message: Record<string, unknown>) =>
       Effect.gen(function* () {
+        yield* failIfTerminated;
         yield* logProtocol({
           direction: "outgoing",
           stage: "decoded",
