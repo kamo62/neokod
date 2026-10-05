@@ -9,6 +9,7 @@
  */
 
 import * as Migrator from "effect/unstable/sql/Migrator";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as Layer from "effect/Layer";
 import * as Effect from "effect/Effect";
 
@@ -118,6 +119,76 @@ export const makeMigrationLoader = (throughId?: number) =>
     ),
   );
 
+/** Table name used by Migrator.make({}) when no `table` option is passed. */
+const MIGRATIONS_TABLE = "effect_sql_migrations";
+
+export interface AppliedMigration {
+  readonly id: number;
+  readonly name: string;
+}
+
+/** Pure comparison of the recorded history against this build. Returns one line per problem. */
+export const findMigrationIdentityProblems = (
+  applied: ReadonlyArray<AppliedMigration>,
+  entries: ReadonlyArray<readonly [number, string, unknown]> = migrationEntries,
+  throughId?: number,
+): ReadonlyArray<string> => {
+  const repoNameById = new Map(entries.map(([id, name]) => [id, name] as const));
+  const appliedIds = new Set(applied.map((row) => row.id));
+  const problems: Array<string> = [];
+  for (const row of applied) {
+    const repoName = repoNameById.get(row.id);
+    if (repoName === undefined) {
+      problems.push(
+        `id ${row.id}: the database records "${row.name}", this build has no migration with that id`,
+      );
+    } else if (repoName !== row.name) {
+      problems.push(
+        `id ${row.id}: the database records "${row.name}", this build has "${repoName}"`,
+      );
+    }
+  }
+  const latestApplied = applied.reduce((max, row) => Math.max(max, row.id), 0);
+  const gapLimit = throughId === undefined ? latestApplied : Math.min(latestApplied, throughId);
+  for (const [id, name] of entries) {
+    if (id <= gapLimit && !appliedIds.has(id)) {
+      problems.push(
+        `id ${id}: this build has "${name}", the database has no record of it (it would be skipped)`,
+      );
+    }
+  }
+  return problems;
+};
+
+export const verifyMigrationIdentity = Effect.fn("verifyMigrationIdentity")(function* (
+  throughId?: number,
+) {
+  const sql = yield* SqlClient.SqlClient;
+  const tables = yield* sql<{ readonly name: string }>`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = ${MIGRATIONS_TABLE}
+  `;
+  if (tables.length === 0) return; // fresh database, nothing recorded yet
+  const rows = yield* sql<{ readonly id: number; readonly name: string }>`
+    SELECT migration_id AS "id", name FROM effect_sql_migrations ORDER BY migration_id
+  `;
+  const problems = findMigrationIdentityProblems(
+    rows.map((row) => ({ id: Number(row.id), name: row.name })),
+    migrationEntries,
+    throughId,
+  );
+  if (problems.length === 0) return;
+  return yield* new Migrator.MigrationError({
+    kind: "BadState",
+    message: [
+      "Neokod refused to start: the migration history recorded in this database does not match this build.",
+      ...problems.slice(0, 20).map((problem) => `  - ${problem}`),
+      ...(problems.length > 20 ? [`  - and ${problems.length - 20} more`] : []),
+      "Migrations recorded under a different name or id were skipped or never run, so the schema can be incomplete. Neokod does not repair this automatically.",
+      "To repair: stop Neokod, back up state.sqlite, state.sqlite-wal and state.sqlite-shm from the state directory (<home>/userdata, or <home>/dev for a dev build), then move those three files away and start again to create a fresh database. To keep the data, start the build that created this database instead.",
+    ].join("\n"),
+  });
+});
+
 /**
  * Migrator run function - no schema dumping needed
  * Uses the base Migrator.make without platform dependencies
@@ -133,6 +204,7 @@ export interface RunMigrationsOptions {
  *
  * Creates the migrations tracking table (effect_sql_migrations) if it doesn't exist,
  * then runs any migrations with ID greater than the latest recorded migration.
+ * First verifies that every recorded (id, name) pair matches this build and that no id at or below the latest recorded id is missing; otherwise fails with `MigrationError` kind `BadState`.
  *
  * Returns array of [id, name] tuples for migrations that were run.
  *
@@ -146,6 +218,7 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
       ? "Running all migrations..."
       : `Running migrations 1 through ${toMigrationInclusive}...`,
   );
+  yield* verifyMigrationIdentity(toMigrationInclusive);
   const executedMigrations = yield* run({ loader: makeMigrationLoader(toMigrationInclusive) });
   yield* Effect.log("Migrations ran successfully").pipe(
     Effect.annotateLogs({ migrations: executedMigrations.map(([id, name]) => `${id}_${name}`) }),
