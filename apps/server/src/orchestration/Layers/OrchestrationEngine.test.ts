@@ -1306,4 +1306,80 @@ describe("OrchestrationEngine", () => {
 
     await system.dispose();
   });
+
+  it("rejects a command id that was already used for another aggregate", async () => {
+    const system = await createOrchestrationSystem();
+    const { engine } = system;
+    const createdAt = now();
+
+    await system.run(
+      engine.dispatch({
+        type: "project.create",
+        commandId: CommandId.make("cmd-reused"),
+        projectId: asProjectId("project-reuse-a"),
+        title: "A",
+        workspaceRoot: "/tmp/project-reuse-a",
+        defaultModelSelection: {
+          instanceId: ProviderInstanceId.make("codex"),
+          model: "gpt-5-codex",
+        },
+        createdAt,
+      }),
+    );
+
+    const error = await system.run(
+      engine
+        .dispatch({
+          type: "project.create",
+          commandId: CommandId.make("cmd-reused"),
+          projectId: asProjectId("project-reuse-b"),
+          title: "B",
+          workspaceRoot: "/tmp/project-reuse-b",
+          defaultModelSelection: {
+            instanceId: ProviderInstanceId.make("codex"),
+            model: "gpt-5-codex",
+          },
+          createdAt,
+        })
+        .pipe(Effect.flip),
+    );
+    expect((error as { _tag: string })._tag).toBe("OrchestrationCommandIdReusedError");
+    expect((error as { message: string }).message).toContain("project project-reuse-a");
+
+    const readModel = await system.readModel();
+    const ids = readModel.projects.map((p) => p.id);
+    expect(ids).toContain(asProjectId("project-reuse-a"));
+    expect(ids).not.toContain(asProjectId("project-reuse-b"));
+
+    await system.dispose();
+  });
+
+  it("returns the stored sequence for a retry of the same command on the same aggregate", async () => {
+    const system = await createOrchestrationSystem();
+    const { engine } = system;
+    const createdAt = now();
+    const command = {
+      type: "project.create",
+      commandId: CommandId.make("cmd-reuse-same"),
+      projectId: asProjectId("project-reuse-same"),
+      title: "Same",
+      workspaceRoot: "/tmp/project-reuse-same",
+      defaultModelSelection: {
+        instanceId: ProviderInstanceId.make("codex"),
+        model: "gpt-5-codex",
+      },
+      createdAt,
+    } as const;
+
+    const first = await system.run(engine.dispatch(command));
+    const second = await system.run(engine.dispatch(command));
+    expect(second.sequence).toBe(first.sequence);
+
+    const readModel = await system.readModel();
+    expect(
+      readModel.projects.filter((p) => p.id === asProjectId("project-reuse-same")).length,
+    ).toBe(1);
+
+    await system.dispose();
+  });
 });
