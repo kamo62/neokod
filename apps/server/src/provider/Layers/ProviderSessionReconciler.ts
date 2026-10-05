@@ -22,8 +22,9 @@ const makeProviderSessionReconciler = Effect.gen(function* () {
   const directory = yield* ProviderSessionDirectory;
 
   const reconcile: ProviderSessionReconcilerShape["reconcile"] = Effect.gen(function* () {
+    // Boot reconciliation only needs thread, latest turn and session rows.
     const [projected, liveSessions, bindings] = yield* Effect.all([
-      projectionSnapshotQuery.getSnapshot(),
+      projectionSnapshotQuery.getCommandReadModel(),
       providerService.listSessions(),
       directory.listBindings(),
     ]);
