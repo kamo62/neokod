@@ -44,6 +44,10 @@ export interface CodexAppServerPatchedProtocolOptions {
     request: CodexAppServerIncomingRequest,
   ) => Effect.Effect<unknown, CodexError.CodexAppServerError>;
   readonly onTermination?: (error: CodexError.CodexAppServerError) => Effect.Effect<void, never>;
+  /** Publish incoming requests and notifications on `incomingRequests` and
+   *  `incomingNotifications`. Default false: both streams are empty and
+   *  nothing is retained. */
+  readonly rawStreams?: boolean;
 }
 
 export interface CodexAppServerPatchedProtocol {
@@ -153,8 +157,13 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
     options: CodexAppServerPatchedProtocolOptions,
   ): Effect.fn.Return<CodexAppServerPatchedProtocol, never, Scope.Scope> {
     const outgoing = yield* Queue.unbounded<string, Cause.Done<void>>();
-    const incomingNotifications = yield* Queue.unbounded<CodexAppServerIncomingNotification>();
-    const incomingRequests = yield* Queue.unbounded<CodexAppServerIncomingRequest>();
+    const rawStreams = options.rawStreams === true;
+    const incomingNotifications = rawStreams
+      ? yield* Queue.unbounded<CodexAppServerIncomingNotification>()
+      : null;
+    const incomingRequests = rawStreams
+      ? yield* Queue.unbounded<CodexAppServerIncomingRequest>()
+      : null;
     const pending = yield* Ref.make(new Map<string, CodexAppServerPendingRequest>());
     const nextRequestId = yield* Ref.make(1);
     const remainder = yield* Ref.make("");
@@ -270,7 +279,10 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
     };
 
     const handleRequest = (request: CodexAppServerIncomingRequest) =>
-      Queue.offer(incomingRequests, request).pipe(
+      (incomingRequests === null
+        ? Effect.void
+        : Queue.offer(incomingRequests, request).pipe(Effect.asVoid)
+      ).pipe(
         Effect.andThen(
           options.onRequest
             ? options.onRequest(request).pipe(
@@ -292,7 +304,10 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
       );
 
     const handleNotification = (notification: CodexAppServerIncomingNotification) =>
-      Queue.offer(incomingNotifications, notification).pipe(
+      (incomingNotifications === null
+        ? Effect.void
+        : Queue.offer(incomingNotifications, notification).pipe(Effect.asVoid)
+      ).pipe(
         Effect.andThen(options.onNotification ? options.onNotification(notification) : Effect.void),
         Effect.asVoid,
       );
@@ -412,8 +427,10 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
       });
 
     return {
-      incomingNotifications: Stream.fromQueue(incomingNotifications),
-      incomingRequests: Stream.fromQueue(incomingRequests),
+      incomingNotifications:
+        incomingNotifications === null ? Stream.empty : Stream.fromQueue(incomingNotifications),
+      incomingRequests:
+        incomingRequests === null ? Stream.empty : Stream.fromQueue(incomingRequests),
       request,
       notify,
       respond,

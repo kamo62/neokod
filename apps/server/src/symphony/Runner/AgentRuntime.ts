@@ -164,7 +164,7 @@ export const makeCodexAgentRuntime = (
           Effect.mapError((cause) => new AgentRuntimeSpawnError(String(cause))),
         );
       activePid = Number(child.pid);
-      const clientContext = yield* CodexClient.layerChildProcess(child).pipe(
+      const clientContext = yield* CodexClient.layerChildProcess(child, { rawStreams: true }).pipe(
         Layer.build,
         Effect.provideService(Scope.Scope, scope),
       );
