@@ -78,7 +78,7 @@ const DEFAULT_TRANSITION_SOURCES: Readonly<Record<string, ReadonlyArray<string>>
   testing: ["running"],
   blocked: ["preparing", "running", "waiting_for_approval", "retry_scheduled"],
   waiting_for_approval: ["running"],
-  retry_scheduled: ["preparing", "running", "waiting_for_approval", "validation_failed"],
+  retry_scheduled: ["preparing", "running", "waiting_for_approval", "validation_failed", "testing"],
   validation_failed: ["preparing", "running", "testing", "retry_scheduled"],
   ready_for_review: [
     "preparing",

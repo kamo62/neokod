@@ -270,6 +270,18 @@ layer("WorkItemRepository lifecycle legality (plan section 19 suite 6)", (it) =>
       expect(changed).toBe(true);
     }),
   );
+
+  it.effect("a testing item can be re-scheduled for retry", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("lifecycle-5", "65", "testing");
+
+      const changed = yield* repo.transition(id, "retry_scheduled");
+      expect(changed).toBe(true);
+      const row = yield* repo.getById(id);
+      expect(row?.lifecycle).toBe("retry_scheduled");
+    }),
+  );
 });
 
 describe("WorkItemRepository two-connection contention", () => {

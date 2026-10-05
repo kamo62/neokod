@@ -82,6 +82,44 @@ export const makeExecutionFinalizer = Effect.gen(function* () {
     payload?: Record<string, unknown>,
   ) => runEvents.append(runAttemptId, eventType, payload).pipe(Effect.catch(() => Effect.void));
 
+  const settleLifecycle = (
+    input: {
+      readonly workItem: WorkItem;
+      readonly runAttemptId: RunAttemptId;
+      readonly ownerToken: string;
+      readonly generation: number;
+    },
+    lifecycle: "retry_scheduled" | "validation_failed" | "ready_for_review",
+  ) =>
+    workItems
+      .transition(input.workItem.id, lifecycle, {
+        ownerToken: input.ownerToken,
+        generation: input.generation,
+      })
+      .pipe(
+        Effect.catch((cause) =>
+          Effect.logWarning("symphony.finalizer.transition_error", {
+            workItemId: String(input.workItem.id),
+            to: lifecycle,
+            cause: String(cause),
+          }).pipe(Effect.as(false)),
+        ),
+        Effect.flatMap((moved) =>
+          moved
+            ? Effect.void
+            : Effect.logWarning("symphony.finalizer.transition_refused", {
+                workItemId: String(input.workItem.id),
+                to: lifecycle,
+              }).pipe(
+                Effect.andThen(
+                  appendEvent(input.runAttemptId, "lifecycle_transition_refused", {
+                    to: lifecycle,
+                  }),
+                ),
+              ),
+        ),
+      );
+
   const finalize: ExecutionFinalizer["Service"]["finalize"] = (input) =>
     Effect.gen(function* () {
       const now = yield* nowIso;
@@ -165,19 +203,9 @@ export const makeExecutionFinalizer = Effect.gen(function* () {
         const attemptNumber = attempt?.attemptNumber ?? 1;
         const maxAttempts = input.config.maxAttempts ?? 5;
         if (attemptNumber < maxAttempts) {
-          yield* workItems
-            .transition(input.workItem.id, "retry_scheduled", {
-              ownerToken: input.ownerToken,
-              generation: input.generation,
-            })
-            .pipe(Effect.catch(() => Effect.void));
+          yield* settleLifecycle(input, "retry_scheduled");
         } else {
-          yield* workItems
-            .transition(input.workItem.id, "validation_failed", {
-              ownerToken: input.ownerToken,
-              generation: input.generation,
-            })
-            .pipe(Effect.catch(() => Effect.void));
+          yield* settleLifecycle(input, "validation_failed");
         }
         yield* appendEvent(input.runAttemptId, "validation_failed", {
           results: validationResults.map((result) => ({
@@ -276,12 +304,7 @@ export const makeExecutionFinalizer = Effect.gen(function* () {
       yield* evidenceRepository
         .upsert(input.workItem.id, evidence)
         .pipe(Effect.catch(() => Effect.void));
-      yield* workItems
-        .transition(input.workItem.id, "ready_for_review", {
-          ownerToken: input.ownerToken,
-          generation: input.generation,
-        })
-        .pipe(Effect.catch(() => Effect.void));
+      yield* settleLifecycle(input, "ready_for_review");
       yield* appendEvent(input.runAttemptId, "evidence_assembled", {
         overallAssessment: evidence.overallAssessment,
       });
