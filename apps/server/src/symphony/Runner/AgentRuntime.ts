@@ -329,15 +329,6 @@ const handleRequest = (
       const requestId = String(params.requestId ?? params.approvalId ?? request.id);
       const action = String(params.kind ?? request.method.split("/").at(-2) ?? "action");
       const command = typeof params.command === "string" ? params.command : undefined;
-      yield* (
-        recordRequest?.({
-          requestId,
-          workItemId,
-          runAttemptId,
-          action,
-          ...(command !== undefined ? { command } : {}),
-        }).pipe(Effect.catch(() => Effect.void)) ?? Effect.void
-      );
       const deferred = yield* liveRequests
         .registerApproval({
           requestId,
@@ -349,6 +340,15 @@ const handleRequest = (
         .pipe(
           Effect.catch(() => Effect.never as Effect.Effect<Deferred.Deferred<ApprovalDecision>>),
         );
+      yield* (
+        recordRequest?.({
+          requestId,
+          workItemId,
+          runAttemptId,
+          action,
+          ...(command !== undefined ? { command } : {}),
+        }).pipe(Effect.catch(() => Effect.void)) ?? Effect.void
+      );
       const decision = yield* waitWithTimeout(deferred, Duration.millis(waitTimeoutMs)).pipe(
         Effect.catch(() => Effect.succeed("rejected" as ApprovalDecision)),
       );
@@ -361,14 +361,6 @@ const handleRequest = (
         typeof params.prompt === "string"
           ? params.prompt
           : `The agent needs your input for ${request.method}.`;
-      yield* (
-        recordRequest?.({
-          requestId,
-          workItemId,
-          runAttemptId,
-          action: "user_input",
-        }).pipe(Effect.catch(() => Effect.void)) ?? Effect.void
-      );
       const deferred = yield* liveRequests
         .registerUserInput({
           requestId,
@@ -377,6 +369,14 @@ const handleRequest = (
           prompt: promptText,
         })
         .pipe(Effect.catch(() => Effect.never as Effect.Effect<Deferred.Deferred<string>>));
+      yield* (
+        recordRequest?.({
+          requestId,
+          workItemId,
+          runAttemptId,
+          action: "user_input",
+        }).pipe(Effect.catch(() => Effect.void)) ?? Effect.void
+      );
       const answer = yield* waitWithTimeout(deferred, Duration.millis(waitTimeoutMs)).pipe(
         Effect.catch(() => Effect.succeed("")),
       );

@@ -23,7 +23,7 @@ describe("LiveRequests", () => {
       const pending = yield* service.listPending(runAttemptId);
       expect(pending).toHaveLength(1);
       expect(pending[0]?.action).toBe("command_execution");
-      yield* service.respondToApproval("req-1", "approved");
+      yield* service.respondToApproval(runAttemptId, "req-1", "approved");
       const decision = yield* Deferred.await(deferred);
       expect(decision).toBe("approved");
       const after = yield* service.listPending(runAttemptId);
@@ -40,7 +40,7 @@ describe("LiveRequests", () => {
         runAttemptId,
         prompt: "Which branch?",
       });
-      yield* service.respondToUserInput("req-2", "main");
+      yield* service.respondToUserInput(runAttemptId, "req-2", "main");
       const text = yield* Deferred.await(deferred);
       expect(text).toBe("main");
     }),
@@ -49,7 +49,9 @@ describe("LiveRequests", () => {
   it.effect("fails when responding to an unknown request", () =>
     Effect.gen(function* () {
       const service = yield* makeLiveRequests;
-      const result = yield* Effect.result(service.respondToApproval("missing", "approved"));
+      const result = yield* Effect.result(
+        service.respondToApproval(runAttemptId, "missing", "approved"),
+      );
       expect(result._tag).toBe("Failure");
       if (result._tag === "Failure") {
         expect(result.failure).toBeInstanceOf(LiveRequestNotFoundError);
@@ -120,6 +122,31 @@ describe("LiveRequests", () => {
       yield* service.settleRun(runAttemptId, "cancelled");
       const pending = yield* service.listPending(runAttemptId);
       expect(pending).toHaveLength(0);
+    }),
+  );
+
+  it.effect("keeps the same request id in two runs apart", () =>
+    Effect.gen(function* () {
+      const service = yield* makeLiveRequests;
+      const first = yield* service.registerApproval({
+        requestId: "0",
+        workItemId,
+        runAttemptId,
+        action: "command_execution",
+        prompt: "A",
+      });
+      const second = yield* service.registerApproval({
+        requestId: "0",
+        workItemId,
+        runAttemptId: otherRun,
+        action: "command_execution",
+        prompt: "B",
+      });
+      yield* service.respondToApproval(otherRun, "0", "approved");
+      expect(yield* Deferred.await(second)).toBe("approved");
+      expect(yield* Deferred.isDone(first)).toBe(false);
+      yield* service.settleRequest(runAttemptId, "0", "x");
+      expect(yield* service.listPending(runAttemptId)).toHaveLength(0);
     }),
   );
 });

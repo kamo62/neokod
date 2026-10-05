@@ -47,7 +47,7 @@ it.effect("sends exactly one reply to a command approval", () =>
         iterations += 1;
       }
       assert.strictEqual(pending.length, 1);
-      yield* liveRequests.respondToApproval("0", "approved");
+      yield* liveRequests.respondToApproval(runAttemptId, "0", "approved");
       const reply = yield* peer.awaitClientResponse(id);
       assert.strictEqual(reply.error, undefined);
       assert.notStrictEqual(reply.result, undefined);
@@ -83,7 +83,7 @@ it.effect("maps an approved command to accept on the wire", () =>
         pending = yield* liveRequests.listPending(runAttemptId);
         iterations += 1;
       }
-      yield* liveRequests.respondToApproval("0", "approved");
+      yield* liveRequests.respondToApproval(runAttemptId, "0", "approved");
       const reply = yield* peer.awaitClientResponse(id);
       assert.deepStrictEqual(reply.result, { decision: "accept" });
       yield* peer.completeTurn("completed");
@@ -118,7 +118,7 @@ it.effect("maps a rejected command to decline on the wire", () =>
         pending = yield* liveRequests.listPending(runAttemptId);
         iterations += 1;
       }
-      yield* liveRequests.respondToApproval("0", "rejected");
+      yield* liveRequests.respondToApproval(runAttemptId, "0", "rejected");
       const reply = yield* peer.awaitClientResponse(id);
       assert.deepStrictEqual(reply.result, { decision: "decline" });
       yield* peer.completeTurn("completed");
@@ -158,7 +158,7 @@ it.effect("maps an approved file change to accept on the wire", () =>
         pending = yield* liveRequests.listPending(runAttemptId);
         iterations += 1;
       }
-      yield* liveRequests.respondToApproval("0", "approved");
+      yield* liveRequests.respondToApproval(runAttemptId, "0", "approved");
       const reply = yield* peer.awaitClientResponse(id);
       assert.deepStrictEqual(reply.result, { decision: "accept" });
       yield* peer.completeTurn("completed");
@@ -231,7 +231,7 @@ it.effect("answers user input with an answers map on the wire", () =>
         pending = yield* liveRequests.listPending(runAttemptId);
         iterations += 1;
       }
-      yield* liveRequests.respondToUserInput("0", "main");
+      yield* liveRequests.respondToUserInput(runAttemptId, "0", "main");
       const reply = yield* peer.awaitClientResponse(id);
       assert.deepStrictEqual(reply.result, {
         answers: { q1: { answers: ["main"] }, q2: { answers: ["main"] } },

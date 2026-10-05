@@ -10,8 +10,8 @@ import * as Ref from "effect/Ref";
  *
  * Approvals and user-input requests are blocking server-to-client requests:
  * the agent process waits on a Deferred that lives in the orchestrator process.
- * This registry holds those Deferreds keyed by `(workItemId, runAttemptId,
- * requestId)` so the RPC layer can answer them. It is in-memory only; the
+ * This registry holds those Deferreds keyed by `(runAttemptId, requestId)`
+ * so the RPC layer can answer them. It is in-memory only; the
  * durable row (SymphonyApprovals) is a separate concern for history/audit.
  *
  * Settlement is one idempotent operation invoked on every exit path:
@@ -34,11 +34,17 @@ export interface PendingApprovalRequest {
 
 export class LiveRequestNotFoundError extends Error {
   readonly requestId: string;
+  readonly runAttemptId: string | undefined;
 
-  constructor(requestId: string) {
-    super(`No pending live request with id ${requestId}`);
+  constructor(requestId: string, runAttemptId?: string) {
+    super(
+      runAttemptId === undefined
+        ? `No pending live request with id ${requestId}`
+        : `No pending live request with id ${requestId} for run ${runAttemptId}`,
+    );
     this.name = "LiveRequestNotFoundError";
     this.requestId = requestId;
+    this.runAttemptId = runAttemptId;
   }
 }
 
@@ -68,12 +74,14 @@ export interface LiveRequestsService {
 
   /** Answer a pending approval. Fails with LiveRequestNotFoundError if absent. */
   readonly respondToApproval: (
+    runAttemptId: RunAttemptId,
     requestId: string,
     decision: ApprovalDecision,
   ) => Effect.Effect<void, LiveRequestNotFoundError>;
 
   /** Answer a pending user-input request. Fails if absent. */
   readonly respondToUserInput: (
+    runAttemptId: RunAttemptId,
     requestId: string,
     text: string,
   ) => Effect.Effect<void, LiveRequestNotFoundError>;
@@ -98,7 +106,11 @@ export interface LiveRequestsService {
    * Fail one outstanding request (approval timeout sweep). No-op when the
    * request is already settled.
    */
-  readonly settleRequest: (requestId: string, reason: string) => Effect.Effect<void>;
+  readonly settleRequest: (
+    runAttemptId: RunAttemptId,
+    requestId: string,
+    reason: string,
+  ) => Effect.Effect<void>;
 }
 
 export class LiveRequests extends Context.Service<LiveRequests, LiveRequestsService>()(
@@ -110,23 +122,22 @@ const EMPTY: Record<string, PendingApprovalRequest> = {};
 export const makeLiveRequests = Effect.gen(function* () {
   const store = yield* Ref.make<Record<string, PendingApprovalRequest>>(EMPTY);
 
-  const keyOf = (workItemId: WorkItemId, runAttemptId: RunAttemptId, requestId: string): string =>
-    `${workItemId}:${runAttemptId}:${requestId}`;
+  const keyOf = (runAttemptId: RunAttemptId, requestId: string): string =>
+    `${runAttemptId}:${requestId}`;
 
   const put = (entry: PendingApprovalRequest) =>
     Ref.update(store, (current) => ({
       ...current,
-      [keyOf(entry.workItemId, entry.runAttemptId, entry.requestId)]: entry,
+      [keyOf(entry.runAttemptId, entry.requestId)]: entry,
     }));
 
-  const removeByRequestId = (requestId: string) =>
+  const removeKey = (key: string) =>
     Ref.update(store, (current) => {
-      const next = { ...current };
-      for (const key of Object.keys(next)) {
-        if (next[key]?.requestId === requestId) {
-          delete next[key];
-        }
+      if (!(key in current)) {
+        return current;
       }
+      const next = { ...current };
+      delete next[key];
       return next;
     });
 
@@ -160,34 +171,42 @@ export const makeLiveRequests = Effect.gen(function* () {
       return deferred;
     });
 
-  const findEntry = (requestId: string) =>
+  const findEntry = (runAttemptId: RunAttemptId, requestId: string) =>
     Effect.gen(function* () {
       const current = yield* Ref.get(store);
-      const entry = Object.values(current).find((value) => value.requestId === requestId);
+      const entry = current[keyOf(runAttemptId, requestId)];
       if (entry === undefined) {
-        return yield* Effect.fail(new LiveRequestNotFoundError(requestId));
+        return yield* Effect.fail(new LiveRequestNotFoundError(requestId, String(runAttemptId)));
       }
       return entry;
     });
 
-  const respondToApproval: LiveRequestsService["respondToApproval"] = (requestId, decision) =>
+  const respondToApproval: LiveRequestsService["respondToApproval"] = (
+    runAttemptId,
+    requestId,
+    decision,
+  ) =>
     Effect.gen(function* () {
-      const entry = yield* findEntry(requestId);
+      const entry = yield* findEntry(runAttemptId, requestId);
       if (entry.kind !== "approval") {
-        return yield* Effect.fail(new LiveRequestNotFoundError(requestId));
+        return yield* Effect.fail(new LiveRequestNotFoundError(requestId, String(runAttemptId)));
       }
       yield* Deferred.succeed(entry.deferred as Deferred.Deferred<ApprovalDecision>, decision);
-      yield* removeByRequestId(requestId);
+      yield* removeKey(keyOf(runAttemptId, requestId));
     });
 
-  const respondToUserInput: LiveRequestsService["respondToUserInput"] = (requestId, text) =>
+  const respondToUserInput: LiveRequestsService["respondToUserInput"] = (
+    runAttemptId,
+    requestId,
+    text,
+  ) =>
     Effect.gen(function* () {
-      const entry = yield* findEntry(requestId);
+      const entry = yield* findEntry(runAttemptId, requestId);
       if (entry.kind !== "user_input") {
-        return yield* Effect.fail(new LiveRequestNotFoundError(requestId));
+        return yield* Effect.fail(new LiveRequestNotFoundError(requestId, String(runAttemptId)));
       }
       yield* Deferred.succeed(entry.deferred as Deferred.Deferred<string>, text);
-      yield* removeByRequestId(requestId);
+      yield* removeKey(keyOf(runAttemptId, requestId));
     });
 
   const listPending: LiveRequestsService["listPending"] = (runAttemptId) =>
@@ -223,16 +242,16 @@ export const makeLiveRequests = Effect.gen(function* () {
       });
     });
 
-  const settleRequest: LiveRequestsService["settleRequest"] = (requestId, reason) =>
+  const settleRequest: LiveRequestsService["settleRequest"] = (runAttemptId, requestId, reason) =>
     Effect.gen(function* () {
       const current = yield* Ref.get(store);
-      const entry = Object.values(current).find((value) => value.requestId === requestId);
+      const entry = current[keyOf(runAttemptId, requestId)];
       if (entry !== undefined) {
         yield* Deferred.fail(
           entry.deferred as unknown as Deferred.Deferred<unknown, Error>,
           new Error(`Request settled: ${reason}`),
         ).pipe(Effect.catch(() => Effect.void));
-        yield* removeByRequestId(requestId);
+        yield* removeKey(keyOf(runAttemptId, requestId));
       }
     });
 
