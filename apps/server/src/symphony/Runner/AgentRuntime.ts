@@ -15,6 +15,9 @@ import * as Stream from "effect/Stream";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import * as CodexClient from "effect-codex-app-server/client";
+import * as CodexErrors from "effect-codex-app-server/errors";
+import * as CodexRpc from "effect-codex-app-server/rpc";
+import type * as EffectCodexSchema from "effect-codex-app-server/schema";
 
 import { resolveSpawnCommand } from "@neokod/shared/shell";
 import { expandHomePath } from "../../pathExpansion.ts";
@@ -100,6 +103,28 @@ export const scrubEnvironment = (
   }
   return scrubbed;
 };
+
+/** The only place Symphony's decision vocabulary meets Codex's wire enum. */
+export const toCodexApprovalDecision = (
+  decision: ApprovalDecision,
+): EffectCodexSchema.CommandExecutionRequestApprovalResponse["decision"] &
+  EffectCodexSchema.FileChangeRequestApprovalResponse["decision"] =>
+  decision === "approved" ? "accept" : "decline";
+
+export const toCodexUserInputResponse = (
+  questions: unknown,
+  text: string,
+): EffectCodexSchema.ToolRequestUserInputResponse => ({
+  answers: Object.fromEntries(
+    (Array.isArray(questions) ? questions : []).flatMap((question) =>
+      typeof question === "object" &&
+      question !== null &&
+      typeof (question as { id?: unknown }).id === "string"
+        ? [[(question as { id: string }).id, { answers: [text] }] as const]
+        : [],
+    ),
+  ),
+});
 
 export interface AgentRuntimeDeps {
   readonly codexCommand: string;
@@ -264,9 +289,14 @@ interface IncomingRequest {
   readonly params?: unknown;
 }
 
-const isApprovalRequest = (method: string): boolean => method.endsWith("/requestApproval");
+const APPROVAL_METHODS: ReadonlySet<string> = new Set([
+  CodexRpc.SERVER_REQUEST_METHODS["item/commandExecution/requestApproval"],
+  CodexRpc.SERVER_REQUEST_METHODS["item/fileChange/requestApproval"],
+]);
+const isApprovalRequest = (method: string): boolean => APPROVAL_METHODS.has(method);
 
-const isUserInputRequest = (method: string): boolean => method.endsWith("/requestUserInput");
+const isUserInputRequest = (method: string): boolean =>
+  method === CodexRpc.SERVER_REQUEST_METHODS["item/tool/requestUserInput"];
 
 const consumeIncoming = (
   client: CodexClientService,
@@ -322,7 +352,9 @@ const handleRequest = (
       const decision = yield* waitWithTimeout(deferred, Duration.millis(waitTimeoutMs)).pipe(
         Effect.catch(() => Effect.succeed("rejected" as ApprovalDecision)),
       );
-      yield* client.raw.respond(request.id, { decision }).pipe(Effect.catch(() => Effect.void));
+      yield* client.raw
+        .respond(request.id, { decision: toCodexApprovalDecision(decision) })
+        .pipe(Effect.catch(() => Effect.void));
     } else if (isUserInputRequest(request.method)) {
       const requestId = String(params.requestId ?? request.id);
       const promptText =
@@ -348,9 +380,16 @@ const handleRequest = (
       const answer = yield* waitWithTimeout(deferred, Duration.millis(waitTimeoutMs)).pipe(
         Effect.catch(() => Effect.succeed("")),
       );
-      yield* client.raw.respond(request.id, { text: answer }).pipe(Effect.catch(() => Effect.void));
+      yield* client.raw
+        .respond(request.id, toCodexUserInputResponse(params.questions, answer))
+        .pipe(Effect.catch(() => Effect.void));
     } else {
-      yield* client.raw.respond(request.id, {}).pipe(Effect.catch(() => Effect.void));
+      yield* client.raw
+        .respondError(
+          request.id,
+          CodexErrors.CodexAppServerRequestError.methodNotFound(request.method),
+        )
+        .pipe(Effect.catch(() => Effect.void));
     }
   });
 
