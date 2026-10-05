@@ -46,12 +46,11 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
   readonly leakedDataListeners: Array<(data: string) => void> = [];
   readonly leakedExitListeners: Array<(event: PtyAdapter.PtyExitEvent) => void> = [];
   killed = false;
+  private readonly leakListeners: boolean;
 
-  constructor(
-    pid: number,
-    private readonly leakListeners = false,
-  ) {
+  constructor(pid: number, leakListeners = false) {
     this.pid = pid;
+    this.leakListeners = leakListeners;
   }
 
   write(data: string): void {
@@ -244,6 +243,7 @@ interface CreateManagerOptions {
   subprocessPollIntervalMs?: number;
   processKillGraceMs?: number;
   persistRetryDelayMs?: number;
+  historyByteLimit?: number;
   maxRetainedInactiveSessions?: number;
   ptyAdapter?: FakePtyAdapter;
 }
@@ -286,6 +286,9 @@ const createManager = (
         processKillGraceMs: options.processKillGraceMs ?? 1,
         ...(options.persistRetryDelayMs !== undefined
           ? { persistRetryDelayMs: options.persistRetryDelayMs }
+          : {}),
+        ...(options.historyByteLimit !== undefined
+          ? { historyByteLimit: options.historyByteLimit }
           : {}),
         ...(options.maxRetainedInactiveSessions !== undefined
           ? { maxRetainedInactiveSessions: options.maxRetainedInactiveSessions }
@@ -1150,28 +1153,31 @@ it.layer(
   );
 
   const withFlakyFileSystem = (
-    real: FileSystem.FileSystem["Service"],
+    real: Record<string, unknown>,
     shouldFail: () => boolean,
     method: "writeFileString" | "rename",
-  ) => ({
+  ): Record<string, unknown> => ({
     ...real,
-    [method]: ((...args: ReadonlyArray<never>) =>
-      shouldFail()
-        ? Effect.fail(
-            PlatformError.systemError({
-              _tag: "PermissionDenied",
-              module: "FileSystem",
-              method,
-              pathOrDescriptor: String((args as ReadonlyArray<unknown>)[0]),
-              description: "injected failure",
-            }),
-          )
-        : (real[method] as (...a: ReadonlyArray<never>) => Effect.Effect<never>)(...args)) as never,
+    [method]: (...args: Array<unknown>) => {
+      if (shouldFail()) {
+        return Effect.fail(
+          PlatformError.systemError({
+            _tag: "PermissionDenied",
+            module: "FileSystem",
+            method,
+            pathOrDescriptor: String(args[0]),
+            description: "injected failure",
+          }),
+        );
+      }
+      const original = real[method] as (...a: Array<unknown>) => Effect.Effect<unknown>;
+      return original(...args);
+    },
   });
 
   it.effect("retries a failed history write and persists it", () =>
     Effect.gen(function* () {
-      const real = yield* FileSystem.FileSystem;
+      const real = (yield* FileSystem.FileSystem) as unknown as Record<string, unknown>;
       let attempts = 0;
       const flaky = withFlakyFileSystem(real, () => attempts++ < 2, "writeFileString");
       const { manager, ptyAdapter, logsDir } = yield* createManager(5, {
@@ -1190,30 +1196,27 @@ it.layer(
 
   it.effect("never leaves a partial history file when the final rename fails", () =>
     Effect.gen(function* () {
-      const real = yield* FileSystem.FileSystem;
+      const real = (yield* FileSystem.FileSystem) as unknown as Record<string, unknown>;
+      const realWrite = real["writeFileString"] as (...a: Array<unknown>) => Effect.Effect<unknown>;
+      const realRename = real["rename"] as (...a: Array<unknown>) => Effect.Effect<unknown>;
       let failRename = false;
       let renames = 0;
       const flaky = {
         ...real,
-        writeFileString: ((...args: ReadonlyArray<never>) =>
-          (real.writeFileString as (...a: ReadonlyArray<never>) => Effect.Effect<never>)(
-            ...args,
-          )) as never,
-        rename: ((...args: ReadonlyArray<never>) => {
+        writeFileString: (...args: Array<unknown>) => realWrite(...args),
+        rename: (...args: Array<unknown>) => {
           renames += 1;
-          if (!failRename) {
-            return (real.rename as (...a: ReadonlyArray<never>) => Effect.Effect<never>)(...args);
-          }
+          if (!failRename) return realRename(...args);
           return Effect.fail(
             PlatformError.systemError({
               _tag: "PermissionDenied",
               module: "FileSystem",
               method: "rename",
-              pathOrDescriptor: String((args as ReadonlyArray<unknown>)[0]),
+              pathOrDescriptor: String(args[0]),
               description: "injected failure",
             }),
           );
-        }) as never,
+        },
       };
       const { manager, ptyAdapter, logsDir } = yield* createManager(5, {
         persistRetryDelayMs: 5,
@@ -1237,12 +1240,13 @@ it.layer(
 
   it.effect("a close retries a retained failed write", () =>
     Effect.gen(function* () {
-      const real = yield* FileSystem.FileSystem;
+      const real = (yield* FileSystem.FileSystem) as unknown as Record<string, unknown>;
+      const realWrite = real["writeFileString"] as (...a: Array<unknown>) => Effect.Effect<unknown>;
       let failWrites = true;
       let attempts = 0;
       const flaky = {
         ...real,
-        writeFileString: ((...args: ReadonlyArray<never>) => {
+        writeFileString: (...args: Array<unknown>) => {
           attempts += 1;
           if (failWrites) {
             return Effect.fail(
@@ -1250,15 +1254,13 @@ it.layer(
                 _tag: "PermissionDenied",
                 module: "FileSystem",
                 method: "writeFileString",
-                pathOrDescriptor: String((args as ReadonlyArray<unknown>)[0]),
+                pathOrDescriptor: String(args[0]),
                 description: "injected failure",
               }),
             );
           }
-          return (real.writeFileString as (...a: ReadonlyArray<never>) => Effect.Effect<never>)(
-            ...args,
-          );
-        }) as never,
+          return realWrite(...args);
+        },
       };
       const { manager, ptyAdapter } = yield* createManager(5, {
         persistRetryDelayMs: 5,
@@ -1881,5 +1883,35 @@ it.layer(
       assert.equal(process.killSignals[0], "SIGTERM");
       expect(process.killSignals).toContain("SIGKILL");
     }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it("caps history by bytes as well as lines", () => {
+    const { capHistory } = TerminalManager;
+    assert.equal(capHistory("a".repeat(5000), 5, 1000).length, 1000);
+    assert.equal(
+      capHistory("a".repeat(400) + "b".repeat(800), 5, 1000),
+      "a".repeat(200) + "b".repeat(800),
+    );
+    const euros = capHistory("é".repeat(2000), 5, 1001);
+    assert.equal(euros.length, 500);
+    assert.equal(Buffer.byteLength(euros), 1000);
+    assert.equal(capHistory("short", 5, 1000), "short");
+    assert.equal(capHistory("1\n2\n3\n4\n", 2, 1000), "3\n4\n");
+  });
+
+  it.effect("caps one newline-free line to the byte limit", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager(5, { historyByteLimit: 1000 });
+      yield* manager.open(openInput());
+      const process = ptyAdapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+      process.emitData("a".repeat(600));
+      process.emitData("b".repeat(600));
+      yield* manager.close({ threadId: "thread-1" });
+      const reopened = yield* manager.open(openInput());
+      assert.equal(reopened.history.length, 1000);
+      assert.equal(reopened.history.endsWith("b".repeat(600)), true);
+    }),
   );
 });

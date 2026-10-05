@@ -78,6 +78,7 @@ export {
 };
 
 const DEFAULT_HISTORY_LINE_LIMIT = 5_000;
+const DEFAULT_HISTORY_BYTE_LIMIT = 1024 * 1024;
 const DEFAULT_PERSIST_DEBOUNCE_MS = 40;
 const DEFAULT_PERSIST_RETRY_DELAY_MS = 100;
 const DEFAULT_SUBPROCESS_POLL_INTERVAL_MS = 1_000;
@@ -856,7 +857,7 @@ function defaultSubprocessInspectorForPlatform(platform: NodeJS.Platform) {
   });
 }
 
-function capHistory(history: string, maxLines: number): string {
+function capHistoryLines(history: string, maxLines: number): string {
   if (history.length === 0) return history;
   const hasTrailingNewline = history.endsWith("\n");
   const lines = history.split("\n");
@@ -866,6 +867,18 @@ function capHistory(history: string, maxLines: number): string {
   if (lines.length <= maxLines) return history;
   const capped = lines.slice(lines.length - maxLines).join("\n");
   return hasTrailingNewline ? `${capped}\n` : capped;
+}
+
+export function capHistory(history: string, maxLines: number, maxBytes: number): string {
+  const lineCapped = capHistoryLines(history, maxLines);
+  // A UTF-16 code unit is at most 3 UTF-8 bytes, so this skips the encoding for normal sizes.
+  if (lineCapped.length * 3 <= maxBytes) return lineCapped;
+  const bytes = Buffer.from(lineCapped, "utf8");
+  if (bytes.length <= maxBytes) return lineCapped;
+  let start = bytes.length - maxBytes;
+  // Do not start inside a multi-byte character: skip UTF-8 continuation bytes (10xxxxxx).
+  while (start < bytes.length && (bytes[start]! & 0xc0) === 0x80) start += 1;
+  return bytes.subarray(start).toString("utf8");
 }
 
 function isCsiFinalByte(codePoint: number): boolean {
@@ -1127,6 +1140,7 @@ function normalizedRuntimeEnv(
 interface TerminalManagerOptions {
   logsDir: string;
   historyLineLimit?: number;
+  historyByteLimit?: number;
   persistRetryDelayMs?: number;
   ptyAdapter: PtyAdapter.PtyAdapter["Service"];
   shellResolver?: () => string;
@@ -1168,6 +1182,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
   const logsDir = options.logsDir;
   const historyLineLimit = options.historyLineLimit ?? DEFAULT_HISTORY_LINE_LIMIT;
+  const historyByteLimit = options.historyByteLimit ?? DEFAULT_HISTORY_BYTE_LIMIT;
   const persistRetryDelayMs = options.persistRetryDelayMs ?? DEFAULT_PERSIST_RETRY_DELAY_MS;
   const PERSIST_RETRY_TIMES = 2;
   const platform = yield* HostProcessPlatform;
@@ -1450,7 +1465,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             (cause) => new TerminalHistoryError({ operation: "read", threadId, terminalId, cause }),
           ),
         );
-      const capped = capHistory(raw, historyLineLimit);
+      const capped = capHistory(raw, historyLineLimit, historyByteLimit);
       if (capped !== raw) {
         yield* fileSystem
           .writeFileString(nextPath, capped)
@@ -1490,7 +1505,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             new TerminalHistoryError({ operation: "migrate", threadId, terminalId, cause }),
         ),
       );
-    const capped = capHistory(raw, historyLineLimit);
+    const capped = capHistory(raw, historyLineLimit, historyByteLimit);
     yield* fileSystem
       .writeFileString(nextPath, capped)
       .pipe(
@@ -1683,6 +1698,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             session.history = capHistory(
               `${session.history}${sanitized.visibleText}`,
               historyLineLimit,
+              historyByteLimit,
             );
           }
           const eventStamp = advanceEventSequence(session);
