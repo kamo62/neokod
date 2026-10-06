@@ -380,6 +380,17 @@ export const makeRunDispatcher = Effect.gen(function* () {
         path: workspace.path,
         branch: workspace.branch,
       });
+      // The finalizer and the merge gate need the branch the worktree was created from.
+      yield* workItems
+        .setBaseBranch(workItemId, ownerToken, claimed.generation, workspace.baseBranch)
+        .pipe(
+          Effect.catch((cause) =>
+            Effect.logWarning("failed to record the workspace base branch on the claim", {
+              workItemId: String(workItemId),
+              cause,
+            }),
+          ),
+        );
 
       const policy = resolveRunnerPolicy(config);
       // The agent child is spawned lazily inside the first turn. Record its pid on the claim as soon as

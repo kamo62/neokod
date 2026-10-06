@@ -284,7 +284,7 @@ const makeRepository = Effect.gen(function* () {
           END,
           workspace_key = ${row.workspaceKey},
           workspace_path = ${row.workspacePath},
-          base_branch = ${row.baseBranch},
+          base_branch = COALESCE(${row.baseBranch}, base_branch),
           acceptance_criteria_json = ${row.acceptanceCriteriaJson},
           eligibility_reasons_json = ${row.eligibilityReasonsJson},
           updated_at = ${row.updatedAt},
@@ -490,6 +490,27 @@ const makeRepository = Effect.gen(function* () {
       return row.length > 0;
     });
 
+  const setBaseBranch: WorkItemRepositoryShape["setBaseBranch"] = (
+    id,
+    ownerToken,
+    generation,
+    baseBranch,
+  ) =>
+    Effect.gen(function* () {
+      const now = yield* nowIso;
+      const row = yield* sql<Schema.Schema.Type<typeof WorkItemRowSchema>>`
+        UPDATE symphony_work_items SET
+          base_branch = ${baseBranch},
+          updated_at = ${now}
+        WHERE id = ${id}
+          AND owner_token = ${ownerToken}
+          AND generation = ${generation}
+          AND lifecycle IN ('preparing', 'running', 'testing')
+        RETURNING ${cols}
+      `.pipe(Effect.mapError(toBusyOrSqlError("WorkItemRepository.setBaseBranch")));
+      return row.length > 0;
+    });
+
   const transition: WorkItemRepositoryShape["transition"] = (id, lifecycle, options) =>
     Effect.gen(function* () {
       const now = yield* nowIso;
@@ -560,6 +581,7 @@ const makeRepository = Effect.gen(function* () {
     listByLifecycle,
     claim,
     setClaimOwnerPid,
+    setBaseBranch,
     transition,
     releaseClaim,
     writeOverrides,

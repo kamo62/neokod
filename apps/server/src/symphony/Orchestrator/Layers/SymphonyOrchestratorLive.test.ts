@@ -2016,6 +2016,160 @@ layer("SymphonyOrchestrator Observe", (it) => {
     }),
   );
 
+  it.effect(
+    "approveMerge falls back to the stored PR evidence base branch for an item with none recorded",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* SymphonyOrchestrator;
+        const workItemId = WorkItemId.make("merge-legacy-1");
+        const workItems = yield* WorkItemRepository;
+        yield* seedWorkflow("wf-merge-legacy-1", "/repo/merge-legacy");
+        const workflows = yield* WorkflowRepository;
+        yield* workflows.upsert({
+          id: WorkflowId.make("wf-merge-legacy-1"),
+          repositoryPath: "/repo/merge-legacy",
+          workflowPath: "/repo/merge-legacy/WORKFLOW.md",
+          status: "active",
+          autonomy: "execute",
+          validationError: null,
+          definition: { config: {}, promptTemplate: "Implement." },
+          effectiveConfig: { ...makeConfig("/repo/merge-legacy"), autonomy: "execute" },
+          enabledAt: "2026-08-05T00:00:00.000Z",
+          createdAt: "2026-08-05T00:00:00.000Z",
+          updatedAt: "2026-08-05T00:00:00.000Z",
+        });
+        const evidence = {
+          changedFiles: [],
+          testsChanged: [],
+          commits: [],
+          validationResults: [],
+          assumptions: [],
+          risks: [],
+          unresolved: [],
+          artefacts: [],
+          pullRequest: {
+            number: 1,
+            title: "t",
+            branch: "b",
+            baseBranch: "m",
+            status: "open",
+            ciStatus: "success",
+            reviewState: "approved",
+            mergeable: "mergeable",
+            unresolvedComments: 0,
+          },
+          modelReview: null,
+          overallAssessment: "ready_for_review",
+          createdAt: "2026-08-05T00:00:00.000Z",
+        } as const;
+        yield* workItems.upsert({
+          id: workItemId,
+          mode: "symphony",
+          projectId: SymphonyProjectId.make("merge-legacy-project"),
+          objective: "Legacy merge target",
+          acceptanceCriteria: [],
+          source: { kind: "manual" },
+          trackerIssueId: "merge-legacy-1",
+          workflowId: WorkflowId.make("wf-merge-legacy-1"),
+          lifecycle: "ready_for_review",
+          priority: 1,
+          eligibilityReasons: [],
+          evidence: null,
+          workspaceKey: "issue-merge-legacy-1",
+          createdAt: "2026-08-05T00:00:00.000Z",
+          updatedAt: "2026-08-05T00:00:00.000Z",
+        });
+        const evidenceRepo = yield* EvidenceRepository;
+        yield* evidenceRepo.upsert(workItemId, evidence);
+
+        yield* setPullRequestRefresh({
+          number: 1,
+          title: "t",
+          branch: "b",
+          baseBranch: "m",
+          status: "open",
+          ciStatus: "success",
+          reviewState: "approved",
+          mergeable: "mergeable",
+          unresolvedComments: 0,
+        });
+        const merged = yield* orchestrator.approveMerge("merge-legacy-1");
+        expect(merged).toBe(true);
+        expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("ready_to_merge");
+      }),
+  );
+
+  it.effect(
+    "approveMerge refuses when neither the item nor the evidence records a base branch",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* SymphonyOrchestrator;
+        const workItemId = WorkItemId.make("merge-legacy-2");
+        const workItems = yield* WorkItemRepository;
+        yield* seedWorkflow("wf-merge-legacy-2", "/repo/merge-legacy-2");
+        const workflows = yield* WorkflowRepository;
+        yield* workflows.upsert({
+          id: WorkflowId.make("wf-merge-legacy-2"),
+          repositoryPath: "/repo/merge-legacy-2",
+          workflowPath: "/repo/merge-legacy-2/WORKFLOW.md",
+          status: "active",
+          autonomy: "execute",
+          validationError: null,
+          definition: { config: {}, promptTemplate: "Implement." },
+          effectiveConfig: { ...makeConfig("/repo/merge-legacy-2"), autonomy: "execute" },
+          enabledAt: "2026-08-05T00:00:00.000Z",
+          createdAt: "2026-08-05T00:00:00.000Z",
+          updatedAt: "2026-08-05T00:00:00.000Z",
+        });
+        const evidence = {
+          changedFiles: [],
+          testsChanged: [],
+          commits: [],
+          validationResults: [],
+          assumptions: [],
+          risks: [],
+          unresolved: [],
+          artefacts: [],
+          pullRequest: null,
+          modelReview: null,
+          overallAssessment: "ready_for_review",
+          createdAt: "2026-08-05T00:00:00.000Z",
+        } as const;
+        yield* workItems.upsert({
+          id: workItemId,
+          mode: "symphony",
+          projectId: SymphonyProjectId.make("merge-legacy-project"),
+          objective: "Legacy merge target without base",
+          acceptanceCriteria: [],
+          source: { kind: "manual" },
+          trackerIssueId: "merge-legacy-2",
+          workflowId: WorkflowId.make("wf-merge-legacy-2"),
+          lifecycle: "ready_for_review",
+          priority: 1,
+          eligibilityReasons: [],
+          evidence: null,
+          workspaceKey: "issue-merge-legacy-2",
+          createdAt: "2026-08-05T00:00:00.000Z",
+          updatedAt: "2026-08-05T00:00:00.000Z",
+        });
+        const evidenceRepo = yield* EvidenceRepository;
+        yield* evidenceRepo.upsert(workItemId, evidence);
+
+        yield* setPullRequestRefresh({
+          number: 1,
+          title: "t",
+          branch: "b",
+          baseBranch: "m",
+          status: "open",
+          ciStatus: "success",
+          reviewState: "approved",
+          mergeable: "mergeable",
+          unresolvedComments: 0,
+        });
+        expect(yield* orchestrator.approveMerge("merge-legacy-2")).toBe(false);
+      }),
+  );
+
   it.effect("approveMerge refuses a PR without host enrichment (FR-095)", () =>
     Effect.gen(function* () {
       const orchestrator = yield* SymphonyOrchestrator;

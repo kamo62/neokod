@@ -3,7 +3,7 @@ import { ProviderDriverKind, ProviderInstanceId, SymphonyProjectId } from "@neok
 import type { EffectiveWorkflowConfig, NormalizedIssue } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 
-import { projectWorkItem, workItemIdForIssue } from "./Projection.ts";
+import { projectWorkItem, resolveBaseBranch, workItemIdForIssue } from "./Projection.ts";
 
 const makeConfig = (overrides: Partial<EffectiveWorkflowConfig> = {}): EffectiveWorkflowConfig =>
   ({
@@ -49,20 +49,20 @@ const project = (issue: NormalizedIssue, config: EffectiveWorkflowConfig = makeC
   projectWorkItem(issue, config, eligibility, "2026-08-04T00:00:00Z", PROJECT_ID);
 
 describe("projectWorkItem", () => {
-  it.effect("accumulates description, branch, priority, and blocked onto one row", () =>
+  it.effect("accumulates description, priority, and blocked onto one row", () =>
     Effect.gen(function* () {
       const run = yield* project(makeIssue());
-      expect(run.baseBranch).toBe("fix-login");
+      expect(run.baseBranch).toBeUndefined();
       expect(run.priority).toBe(0);
       expect(run.blocked).toBe(true);
       expect(run.description).toBe("The login form rejects valid passwords.");
     }),
   );
 
-  it.effect("keeps branch and priority when a description is present (no short-circuit)", () =>
+  it.effect("keeps priority and blocked when a description is present", () =>
     Effect.gen(function* () {
       const run = yield* project(makeIssue({ description: "Body only." }));
-      expect(run.baseBranch).toBe("fix-login");
+      expect(run.baseBranch).toBeUndefined();
       expect(run.priority).toBe(0);
       expect(run.blocked).toBe(true);
     }),
@@ -87,5 +87,24 @@ describe("projectWorkItem", () => {
 
   it("derives a deterministic work-item id from project, tracker kind, and issue id", () => {
     expect(workItemIdForIssue(PROJECT_ID, "github", "1")).toBe("project-1:github:1");
+  });
+
+  it("resolveBaseBranch prefers the recorded dispatch branch", () => {
+    expect(
+      resolveBaseBranch({ baseBranch: "develop" }, {
+        pullRequest: { baseBranch: "main" },
+      } as never),
+    ).toBe("develop");
+  });
+
+  it("resolveBaseBranch falls back to the stored PR evidence branch", () => {
+    expect(resolveBaseBranch({}, { pullRequest: { baseBranch: "develop" } } as never)).toBe(
+      "develop",
+    );
+  });
+
+  it("resolveBaseBranch is undefined when neither records a base branch", () => {
+    expect(resolveBaseBranch({}, null)).toBeUndefined();
+    expect(resolveBaseBranch({}, { pullRequest: null } as never)).toBeUndefined();
   });
 });

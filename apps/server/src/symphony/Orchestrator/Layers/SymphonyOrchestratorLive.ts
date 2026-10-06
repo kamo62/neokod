@@ -53,7 +53,7 @@ import { WORKFLOW_DEFAULTS } from "../../Workflow/Config.ts";
 import { TrackerAdapterRegistry } from "../../Trackers/Adapter.ts";
 import { resolveTrackerAdapter, TrackerEnablement } from "../TrackerEnablement.ts";
 import { evaluateEligibility } from "../Eligibility.ts";
-import { projectWorkItem } from "../Projection.ts";
+import { projectWorkItem, resolveBaseBranch } from "../Projection.ts";
 import { nowMs, reconcileStaleClaims } from "../Reconciler.ts";
 import { isAutoDispatchBlockedStatus, retryDueAtMs } from "../Retry.ts";
 import { runStartupRecovery } from "../Recovery.ts";
@@ -247,7 +247,7 @@ const refreshIssueSnapshot = (
       description: item.description ?? null,
       priority: item.priority ?? null,
       state: "queued",
-      branchName: item.baseBranch ?? null,
+      branchName: null,
       url: null,
       assigneeId: null,
       labels: [],
@@ -1737,7 +1737,10 @@ const makeOrchestrator = Effect.gen(function* () {
             );
       const config = workflow?.effectiveConfig;
       const workspaceKey = item.workspaceKey;
-      const baseBranch = item.baseBranch;
+      const bundle = yield* evidenceRepository
+        .getByWorkItem(id)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      const baseBranch = resolveBaseBranch(item, bundle);
       if (
         config === null ||
         config === undefined ||
@@ -1758,9 +1761,6 @@ const makeOrchestrator = Effect.gen(function* () {
       if (refreshed === null) {
         return false;
       }
-      const bundle = yield* evidenceRepository
-        .getByWorkItem(id)
-        .pipe(Effect.catch(() => Effect.succeed(null)));
       if (bundle === null) {
         return false;
       }
@@ -1829,7 +1829,10 @@ const makeOrchestrator = Effect.gen(function* () {
             );
       const config = workflow?.effectiveConfig;
       const workspaceKey = item.workspaceKey;
-      const baseBranch = item.baseBranch;
+      const baseBranch = resolveBaseBranch(
+        item,
+        yield* evidenceRepository.getByWorkItem(id).pipe(Effect.catch(() => Effect.succeed(null))),
+      );
       if (
         config === null ||
         config === undefined ||

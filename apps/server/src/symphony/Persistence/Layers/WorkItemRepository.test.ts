@@ -125,6 +125,31 @@ layer("WorkItemRepository claim authority", (it) => {
     }),
   );
 
+  it.effect("setBaseBranch records the branch for the current claim only", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("workitem-base-branch-1", "bb1");
+
+      const { generation } = yield* repo.claim(id, "owner-a");
+      expect(yield* repo.setBaseBranch(id, "owner-a", generation, "develop")).toBe(true);
+      expect((yield* repo.getById(id))?.baseBranch).toBe("develop");
+      expect(yield* repo.setBaseBranch(id, "owner-a", generation + 1, "x")).toBe(false);
+    }),
+  );
+
+  it.effect("a tracker re-poll keeps the recorded base branch", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("workitem-base-branch-2", "bb2");
+
+      const { generation } = yield* repo.claim(id, "owner-a");
+      expect(yield* repo.setBaseBranch(id, "owner-a", generation, "develop")).toBe(true);
+      const rediscovered = yield* makeWorkItem("workitem-base-branch-2", "bb2", "queued");
+      yield* repo.upsert(rediscovered);
+      expect((yield* repo.getById(id))?.baseBranch).toBe("develop");
+    }),
+  );
+
   it.effect("unfenced transition succeeds without an owner check", () =>
     Effect.gen(function* () {
       const repo = yield* WorkItemRepository;

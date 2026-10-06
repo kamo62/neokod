@@ -84,6 +84,14 @@ export interface WorkItemRepositoryShape {
     pid: number,
   ) => Effect.Effect<boolean, SymphonyPersistenceError>;
 
+  /** Record the base branch the run's workspace was created from. Fenced like setClaimOwnerPid. */
+  readonly setBaseBranch: (
+    id: WorkItemId,
+    ownerToken: string,
+    generation: number,
+    baseBranch: string,
+  ) => Effect.Effect<boolean, SymphonyPersistenceError>;
+
   /**
    * Release a claim without the owner fence (reconciliation, plan 9.4/9.7).
    * Only matches rows still in `preparing` or `running`, so an already-finished

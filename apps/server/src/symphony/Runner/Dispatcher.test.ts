@@ -318,6 +318,22 @@ layer(
       expect(after?.ownerPid).toBe(4321);
     }),
   );
+
+  it.effect("records the workspace base branch on the work item", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("1031");
+      const dispatcher = yield* RunDispatcher;
+      yield* dispatcher.dispatchWorkItem({
+        workItem,
+        issue: makeIssue("1031"),
+        config: makeConfig("/repo"),
+      });
+
+      const workItems = yield* WorkItemRepository;
+      const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      expect(after?.baseBranch).toBe("main");
+    }),
+  );
 });
 
 layer(scriptedFactory(scriptedAgent(false)))("Dispatcher prepare mode failure", (it) => {
