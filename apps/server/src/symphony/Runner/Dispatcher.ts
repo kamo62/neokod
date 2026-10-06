@@ -20,7 +20,11 @@ import { WORKFLOW_DEFAULTS } from "../Workflow/Config.ts";
 import { RunEventRepository } from "../Persistence/Services/RunEventRepository.ts";
 import { RunAttemptRepository } from "../Persistence/Services/RunAttemptRepository.ts";
 import { WorkItemRepository } from "../Persistence/Services/WorkItemRepository.ts";
-import { WorkspaceManager, type SymphonyWorkspace } from "../Workspaces/Manager.ts";
+import {
+  WorkspaceManager,
+  WorkspaceOutsideRootError,
+  type SymphonyWorkspace,
+} from "../Workspaces/Manager.ts";
 import type { AgentRuntimeService } from "./AgentRuntime.ts";
 import { ExecutionFinalizer } from "./ExecutionFinalizer.ts";
 import { LiveRequests } from "./LiveRequests.ts";
@@ -232,6 +236,69 @@ export const makeRunDispatcher = Effect.gen(function* () {
       }
     });
 
+  const failEarly = (input: {
+    readonly workItemId: WorkItemId;
+    readonly ownerToken: string;
+    readonly generation: number;
+    readonly config: EffectiveWorkflowConfig;
+    readonly maxAttempts: number;
+    readonly stage: "workspace";
+    readonly error: { readonly category: string; readonly message: string };
+  }) =>
+    Effect.gen(function* () {
+      const runAttemptId = yield* makeRunAttemptId().pipe(Effect.catch(() => Effect.succeed(null)));
+      const latest = yield* runAttempts
+        .latestForWorkItem(input.workItemId)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      const attemptNumber = (latest?.attemptNumber ?? 0) + 1;
+      const now = yield* nowIso;
+      const created =
+        runAttemptId === null
+          ? false
+          : yield* runAttempts
+              .create({
+                id: runAttemptId,
+                workItemId: input.workItemId,
+                attemptNumber,
+                workspacePath: "",
+                provider: input.config.agentProvider,
+                ...(input.config.agentModel !== undefined
+                  ? { model: input.config.agentModel }
+                  : {}),
+                status: "failed",
+                startedAt: now,
+                finishedAt: now,
+                error: { ...input.error, attemptNumber },
+              })
+              .pipe(
+                Effect.as(true),
+                Effect.catch(() => Effect.succeed(false)),
+              );
+      if (runAttemptId !== null && created) {
+        yield* appendEvent(runAttemptId, "dispatch_failed_early", {
+          stage: input.stage,
+          message: input.error.message,
+        });
+        yield* markFailed(
+          runAttemptId,
+          input.workItemId,
+          input.ownerToken,
+          input.generation,
+          input.error,
+          input.maxAttempts,
+        );
+      } else {
+        // No attempt row means the retry sweep (which needs a finished attempt) could never pick the
+        // item up, so end it `failed` instead of leaving it in `preparing` or `queued`.
+        yield* workItems
+          .transition(input.workItemId, "failed", {
+            ownerToken: input.ownerToken,
+            generation: input.generation,
+          })
+          .pipe(Effect.catch(() => Effect.void));
+      }
+    });
+
   const dispatchWorkItem: RunDispatcherService["dispatchWorkItem"] = (input) =>
     Effect.gen(function* () {
       const { workItem, issue, config, reviewFeedback, workflowInstructions } = input;
@@ -246,13 +313,28 @@ export const makeRunDispatcher = Effect.gen(function* () {
         .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
       const workItemId: WorkItemId = claimed.workItem.id;
 
-      // 2. Workspace: deterministic worktree under the configured root. If
-      //    workspace creation fails, release the claim back to queued.
+      // 2. Workspace: deterministic worktree under the configured root.
       const workspace: SymphonyWorkspace = yield* workspaces
         .ensureWorkspace({ issue, config })
         .pipe(
-          Effect.mapError((cause) => new RunDispatchError(cause.message)),
-          Effect.tapError(() => releaseClaim(workItemId, ownerToken, claimed.generation)),
+          Effect.tapError((cause) =>
+            failEarly({
+              workItemId,
+              ownerToken,
+              generation: claimed.generation,
+              config,
+              maxAttempts,
+              stage: "workspace",
+              error: {
+                category:
+                  cause instanceof WorkspaceOutsideRootError ? "workflow_error" : "process_failed",
+                message: cause instanceof Error ? cause.message : String(cause),
+              },
+            }),
+          ),
+          Effect.mapError(
+            (cause) => new RunDispatchError(cause instanceof Error ? cause.message : String(cause)),
+          ),
         );
 
       // 3. Record the run attempt. Retries continue the attempt sequence so
@@ -283,11 +365,14 @@ export const makeRunDispatcher = Effect.gen(function* () {
         })
         .pipe(
           Effect.mapError((cause) => new RunDispatchError(cause.message)),
-          // A failure after claiming but before the first attempt row exists
-          // leaves the item in `preparing` with no attempt for recovery to
-          // see (REVIEW P1 #10). Release the claim so the item can be
-          // re-dispatched.
-          Effect.tapError(() => releaseClaim(workItemId, ownerToken, claimed.generation)),
+          // No attempt row can be written here (the write just failed), so end
+          // the item `failed` (legal from `preparing`) rather than looping
+          // in `queued`.
+          Effect.tapError(() =>
+            workItems
+              .transition(workItemId, "failed", { ownerToken, generation: claimed.generation })
+              .pipe(Effect.catch(() => Effect.void)),
+          ),
         );
       yield* appendEvent(runAttemptId, "issue_claimed", { workItemId: String(workItemId) });
       yield* appendEvent(runAttemptId, "workspace_created", {

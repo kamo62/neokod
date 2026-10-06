@@ -1264,6 +1264,85 @@ layer("SymphonyOrchestrator Observe", (it) => {
     }),
   );
 
+  it.effect("launches the next candidate once the head item has left the queue", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-head-queue-1", "/repo/head-queue-1");
+      const workflows = yield* WorkflowRepository;
+      yield* workflows.upsert({
+        id: WorkflowId.make("wf-head-queue-1"),
+        repositoryPath: "/repo/head-queue-1",
+        workflowPath: "/repo/head-queue-1/WORKFLOW.md",
+        status: "active",
+        autonomy: "execute",
+        validationError: null,
+        definition: { config: {}, promptTemplate: "Implement." },
+        effectiveConfig: {
+          ...makeConfig("/repo/head-queue-1"),
+          autonomy: "execute",
+        },
+        enabledAt: "2026-08-05T00:00:00.000Z",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const workItems = yield* WorkItemRepository;
+      const firstId = WorkItemId.make("head-queue-1");
+      yield* workItems.upsert({
+        id: firstId,
+        mode: "symphony",
+        projectId: SymphonyProjectId.make("head-queue-first"),
+        objective: "First",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        workflowId: WorkflowId.make("wf-head-queue-1"),
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        // Predate every other queued leftover in the shared suite database
+        // so the one-launch-per-tick scan reaches these two items first.
+        createdAt: "2020-01-01T00:00:00.000Z",
+        updatedAt: "2020-01-01T00:00:00.000Z",
+      });
+      const secondId = WorkItemId.make("head-queue-2");
+      yield* workItems.upsert({
+        id: secondId,
+        mode: "symphony",
+        projectId: SymphonyProjectId.make("head-queue-second"),
+        objective: "Second",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        workflowId: WorkflowId.make("wf-head-queue-1"),
+        lifecycle: "queued",
+        priority: 2,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2020-01-01T00:00:01.000Z",
+        updatedAt: "2020-01-01T00:00:01.000Z",
+      });
+
+      dispatchedIds.length = 0;
+      // The shared suite database holds older queued leftovers, and the
+      // one-launch-per-tick scan serves them first: tick until the head item
+      // goes, then check the second follows after the head leaves the queue.
+      for (let tick = 0; tick < 40 && !dispatchedIds.includes("head-queue-1"); tick++) {
+        yield* TestClock.adjust("5 seconds");
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+      }
+      expect(dispatchedIds).toContain("head-queue-1");
+      yield* workItems.transition(firstId, "failed", { from: ["preparing"] });
+      for (let tick = 0; tick < 40 && !dispatchedIds.includes("head-queue-2"); tick++) {
+        yield* TestClock.adjust("5 seconds");
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+      }
+      expect(dispatchedIds).toContain("head-queue-2");
+      expect(dispatchedIds.indexOf("head-queue-1")).toBeLessThan(
+        dispatchedIds.indexOf("head-queue-2"),
+      );
+    }),
+  );
+
   it.effect("per-scope pause gates dispatch for the paused workflow", () =>
     Effect.gen(function* () {
       const orchestrator = yield* SymphonyOrchestrator;
