@@ -40,7 +40,7 @@ import { AgentRuntimeSpawnError, type AgentRuntimeService } from "./AgentRuntime
 
 const makeConfig = (
   repositoryPath: string,
-  overrides: Partial<Pick<EffectiveWorkflowConfig, "autonomy" | "maxTurns">> = {},
+  overrides: Partial<Pick<EffectiveWorkflowConfig, "autonomy" | "maxTurns" | "maxAttempts">> = {},
 ): EffectiveWorkflowConfig => ({
   repositoryPath,
   workflowPath: `${repositoryPath}/WORKFLOW.md`,
@@ -316,6 +316,30 @@ layer(scriptedFactory(scriptedAgent(false)))("Dispatcher prepare mode failure", 
   );
 });
 
+layer(scriptedFactory(scriptedAgent(false)))("Dispatcher exhaustion", (it) => {
+  it.effect("exhaustion ends failed, not queued", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("1010");
+      const dispatcher = yield* RunDispatcher;
+      const runAttemptId = yield* dispatcher.dispatchWorkItem({
+        workItem,
+        issue: makeIssue("1010"),
+        config: makeConfig("/repo", { maxAttempts: 1 }),
+      });
+
+      const attempts = yield* RunAttemptRepository;
+      const attempt = yield* attempts.getById(runAttemptId).pipe(Effect.flatMap(required));
+      expect(attempt.status).toBe("failed");
+      const workItems = yield* WorkItemRepository;
+      const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      expect(after.lifecycle).toBe("failed");
+      const runEvents = yield* RunEventRepository;
+      const events = yield* runEvents.listForAttempt(runAttemptId);
+      expect(events.map((e) => e.eventType)).toContain("retries_exhausted");
+    }),
+  );
+});
+
 layer(scriptedFactory(countingIncompleteAgent().agent))("Dispatcher continuation turns", (it) => {
   it.effect("runs continuation turns up to maxTurns when the turn never completes", () =>
     Effect.gen(function* () {
@@ -491,7 +515,10 @@ layer(blockableFactory)("Dispatcher cancel", (it) => {
 
       const workItems = yield* WorkItemRepository;
       const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
-      expect(after.lifecycle).toBe("queued");
+      expect(after.lifecycle).toBe("cancelled");
+      expect((yield* workItems.listByLifecycle(["queued"])).map((i) => i.id)).not.toContain(
+        workItem.id,
+      );
     }),
   );
 });
@@ -565,7 +592,7 @@ layer(failingCancelFactory)("Dispatcher cancel race", (it) => {
       const workItems = yield* WorkItemRepository;
       const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
       expect(after.lifecycle).not.toBe("retry_scheduled");
-      expect(after.lifecycle).toBe("queued");
+      expect(after.lifecycle).toBe("cancelled");
     }),
   );
 });

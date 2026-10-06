@@ -75,6 +75,7 @@ export const seedQueuedWorkItem = (id: string) =>
       description: "Seeded for runner flow tests",
       acceptanceCriteria: [],
       source: { kind: "manual" },
+      trackerIssueId: id,
       lifecycle: "queued",
       priority: 1,
       eligibilityReasons: [],

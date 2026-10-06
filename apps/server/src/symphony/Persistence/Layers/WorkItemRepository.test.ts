@@ -282,6 +282,31 @@ layer("WorkItemRepository lifecycle legality (plan section 19 suite 6)", (it) =>
       expect(row?.lifecycle).toBe("retry_scheduled");
     }),
   );
+
+  it.effect("a preparing item can fail", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("lifecycle-6", "66", "preparing");
+
+      const changed = yield* repo.transition(id, "failed");
+      expect(changed).toBe(true);
+      const row = yield* repo.getById(id);
+      expect(row?.lifecycle).toBe("failed");
+    }),
+  );
+
+  it.effect("a failed item cannot be re-queued without an explicit from", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("lifecycle-7", "67", "preparing");
+      expect(yield* repo.transition(id, "failed")).toBe(true);
+
+      expect(yield* repo.transition(id, "queued")).toBe(false);
+      expect(yield* repo.transition(id, "queued", { from: ["failed"] })).toBe(true);
+      const row = yield* repo.getById(id);
+      expect(row?.lifecycle).toBe("queued");
+    }),
+  );
 });
 
 describe("WorkItemRepository two-connection contention", () => {

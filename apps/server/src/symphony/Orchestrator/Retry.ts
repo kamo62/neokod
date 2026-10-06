@@ -33,6 +33,17 @@ export const isRetryableCategory = (category: string): boolean => {
   return RETRYABLE_CATEGORIES.has(category);
 };
 
+/** Latest-attempt statuses after which only an explicit user dispatch may start the next attempt. */
+export const AUTO_DISPATCH_BLOCKING_STATUSES: ReadonlySet<string> = new Set([
+  "failed",
+  "user_cancelled",
+  "tracker_cancelled",
+  "workflow_error",
+  "retries_exhausted",
+]);
+export const isAutoDispatchBlockedStatus = (status: string): boolean =>
+  AUTO_DISPATCH_BLOCKING_STATUSES.has(status);
+
 /** Normal continuation retry after a clean worker exit (plan 9.5). */
 export const CONTINUATION_RETRY_DELAY_MS = 1_000;
 

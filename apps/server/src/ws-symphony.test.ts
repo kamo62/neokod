@@ -25,6 +25,8 @@ import * as WorkflowLoaderModule from "./symphony/Workflow/Loader.ts";
 const WorkflowLoaderService = WorkflowLoaderModule.WorkflowLoaderService;
 import { makeSymphonyRpcHandlers } from "./ws.ts";
 
+const dispatchCalls: Array<{ readonly workItemId: string; readonly explicit: boolean }> = [];
+
 const knownMetric = (value: number): SymphonyOverview["running"] => ({ state: "known", value });
 
 const overview = (): SymphonyOverview => ({
@@ -104,8 +106,10 @@ const fakeOrchestratorLayer = Layer.succeed(SymphonyOrchestrator, {
   excludeWorkItem: () => Effect.void,
   includeWorkItem: () => Effect.void,
   setLocalPriority: () => Effect.void,
-  dispatchWorkItem: (workItemId: string) =>
-    Effect.logInfo(`dispatched ${workItemId}`).pipe(Effect.asVoid),
+  dispatchWorkItem: (workItemId: string, options?: { readonly explicit?: boolean }) =>
+    Effect.sync(() => {
+      dispatchCalls.push({ workItemId, explicit: options?.explicit === true });
+    }).pipe(Effect.asVoid),
   cancelRun: (runAttemptId: string) =>
     Effect.logInfo(`cancelled ${runAttemptId}`).pipe(Effect.asVoid),
   listQueuesForRepository: () => Effect.succeed([]),
@@ -127,11 +131,13 @@ it.layer(fakeOrchestratorLayer.pipe(Layer.provideMerge(fakeApprovalsLayer)))(
   (it) => {
     it.effect("dispatchWorkItem calls through to the orchestrator", () =>
       Effect.gen(function* () {
+        dispatchCalls.length = 0;
         const handlers = makeSymphonyRpcHandlers();
         const handler = handlers[SYMPHONY_WS_METHODS.dispatchWorkItem];
         expect(handler).toBeDefined();
         const result = yield* Effect.scoped(handler({ workItemId: WorkItemIdValue.make("wi-1") }));
         expect(result).toEqual({ ok: true });
+        expect(dispatchCalls).toEqual([{ workItemId: "wi-1", explicit: true }]);
       }),
     );
 

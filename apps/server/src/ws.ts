@@ -1050,7 +1050,9 @@ export const makeSymphonyRpcHandlers = () => ({
       SYMPHONY_WS_METHODS.dispatchWorkItem,
       withOrchestrator(
         (orchestrator) =>
-          orchestrator.dispatchWorkItem(input.workItemId).pipe(Effect.as({ ok: true })),
+          orchestrator
+            .dispatchWorkItem(input.workItemId, { explicit: true })
+            .pipe(Effect.as({ ok: true })),
         Effect.fail(orchestratorUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },

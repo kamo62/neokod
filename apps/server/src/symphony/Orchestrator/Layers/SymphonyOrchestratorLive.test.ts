@@ -987,8 +987,10 @@ layer("SymphonyOrchestrator Observe", (it) => {
       // backoff boundary. The scan at 10s performs the dispatch; do not force
       // a later explicit tick, because this intentionally minimal mock does
       // not create the new run-attempt row that production dispatch records.
+      // The scan fans out over many queued leftovers (one latest-attempt
+      // read each), so allow several turns for the dispatch to land.
       yield* TestClock.adjust("11 seconds");
-      yield* Effect.yieldNow;
+      yield* Effect.repeat(Effect.yieldNow, { times: 50 });
       const after = yield* workItems.getById(workItemId);
       expect(after?.lifecycle).toBe("preparing");
       expect(dispatchedIds).toContain("retry-1");
@@ -1063,6 +1065,202 @@ layer("SymphonyOrchestrator Observe", (it) => {
       const after = yield* workItems.getById(workItemId);
       expect(after?.lifecycle).toBe("retry_scheduled");
       expect(dispatchedIds).not.toContain("retry-2");
+    }),
+  );
+
+  it.effect("does not auto-relaunch a queued item whose latest attempt was cancelled", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-cancel-guard-1", "/repo/cancel-guard-1");
+      const workflows = yield* WorkflowRepository;
+      yield* workflows.upsert({
+        id: WorkflowId.make("wf-cancel-guard-1"),
+        repositoryPath: "/repo/cancel-guard-1",
+        workflowPath: "/repo/cancel-guard-1/WORKFLOW.md",
+        status: "active",
+        autonomy: "execute",
+        validationError: null,
+        definition: { config: {}, promptTemplate: "Implement." },
+        effectiveConfig: {
+          ...makeConfig("/repo/cancel-guard-1"),
+          autonomy: "execute",
+        },
+        enabledAt: "2026-08-05T00:00:00.000Z",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const projectId = SymphonyProjectId.make("cancel-guard-1");
+      const workItemId = WorkItemId.make("cancel-guard-1");
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId,
+        objective: "Cancelled target",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        workflowId: WorkflowId.make("wf-cancel-guard-1"),
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const runAttempts = yield* RunAttemptRepository;
+      const recent = yield* nowIso;
+      yield* runAttempts.create({
+        id: RunAttemptId.make("run-cancel-guard-1"),
+        workItemId,
+        attemptNumber: 1,
+        workspacePath: "/ws/cancel-guard-1",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "user_cancelled",
+        startedAt: recent,
+        finishedAt: recent,
+        error: { category: "user_cancelled", message: "user cancelled" },
+      });
+
+      dispatchedIds.length = 0;
+      yield* orchestrator.dispatchWorkItem(workItemId);
+      expect(dispatchedIds).not.toContain("cancel-guard-1");
+      yield* TestClock.adjust("10 seconds");
+      expect(dispatchedIds).not.toContain("cancel-guard-1");
+    }),
+  );
+
+  it.effect("an explicit dispatch retries a failed item", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-failed-retry-1", "/repo/failed-retry-1");
+      const workflows = yield* WorkflowRepository;
+      yield* workflows.upsert({
+        id: WorkflowId.make("wf-failed-retry-1"),
+        repositoryPath: "/repo/failed-retry-1",
+        workflowPath: "/repo/failed-retry-1/WORKFLOW.md",
+        status: "active",
+        autonomy: "execute",
+        validationError: null,
+        definition: { config: {}, promptTemplate: "Implement." },
+        effectiveConfig: {
+          ...makeConfig("/repo/failed-retry-1"),
+          autonomy: "execute",
+        },
+        enabledAt: "2026-08-05T00:00:00.000Z",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const projectId = SymphonyProjectId.make("failed-retry-1");
+      const workItemId = WorkItemId.make("failed-retry-1");
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId,
+        objective: "Failed target",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        workflowId: WorkflowId.make("wf-failed-retry-1"),
+        lifecycle: "failed",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const runAttempts = yield* RunAttemptRepository;
+      const recent = yield* nowIso;
+      yield* runAttempts.create({
+        id: RunAttemptId.make("run-failed-retry-1"),
+        workItemId,
+        attemptNumber: 5,
+        workspacePath: "/ws/failed-retry-1",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "failed",
+        startedAt: recent,
+        finishedAt: recent,
+        error: { category: "agent", message: "turn failed" },
+      });
+
+      dispatchedIds.length = 0;
+      yield* orchestrator.dispatchWorkItem(workItemId, { explicit: true });
+      expect(dispatchedIds).toContain("failed-retry-1");
+      const after = yield* workItems.getById(workItemId);
+      expect(after?.lifecycle).toBe("preparing");
+    }),
+  );
+
+  it.effect("an explicit dispatch also overrides the guard for a queued item", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-cancel-override-1", "/repo/cancel-override-1");
+      const workflows = yield* WorkflowRepository;
+      yield* workflows.upsert({
+        id: WorkflowId.make("wf-cancel-override-1"),
+        repositoryPath: "/repo/cancel-override-1",
+        workflowPath: "/repo/cancel-override-1/WORKFLOW.md",
+        status: "active",
+        autonomy: "execute",
+        validationError: null,
+        definition: { config: {}, promptTemplate: "Implement." },
+        effectiveConfig: {
+          ...makeConfig("/repo/cancel-override-1"),
+          autonomy: "execute",
+        },
+        enabledAt: "2026-08-05T00:00:00.000Z",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const projectId = SymphonyProjectId.make("cancel-override-1");
+      const workItemId = WorkItemId.make("cancel-override-1");
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId,
+        objective: "Cancelled override target",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        workflowId: WorkflowId.make("wf-cancel-override-1"),
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const runAttempts = yield* RunAttemptRepository;
+      const recent = yield* nowIso;
+      yield* runAttempts.create({
+        id: RunAttemptId.make("run-cancel-override-1"),
+        workItemId,
+        attemptNumber: 1,
+        workspacePath: "/ws/cancel-override-1",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "user_cancelled",
+        startedAt: recent,
+        finishedAt: recent,
+        error: { category: "user_cancelled", message: "user cancelled" },
+      });
+
+      dispatchedIds.length = 0;
+      yield* orchestrator.dispatchWorkItem(workItemId, { explicit: true });
+      expect(dispatchedIds).toContain("cancel-override-1");
     }),
   );
 

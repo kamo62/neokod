@@ -54,7 +54,7 @@ import { resolveTrackerAdapter, TrackerEnablement } from "../TrackerEnablement.t
 import { evaluateEligibility } from "../Eligibility.ts";
 import { projectWorkItem } from "../Projection.ts";
 import { nowMs, reconcileStaleClaims } from "../Reconciler.ts";
-import { retryDueAtMs } from "../Retry.ts";
+import { isAutoDispatchBlockedStatus, retryDueAtMs } from "../Retry.ts";
 import { runStartupRecovery } from "../Recovery.ts";
 import { WorkflowLoaderService } from "../../Workflow/Loader.ts";
 import { AttentionRepository } from "../../Persistence/Services/AttentionRepository.ts";
@@ -1349,6 +1349,7 @@ const makeOrchestrator = Effect.gen(function* () {
 
   const prepareDispatch = Effect.fn("symphonyOrchestrator.prepareDispatch")(function* (
     workItemId: string,
+    options: { readonly explicit: boolean },
   ): Effect.fn.Return<PreparedDispatch | null> {
     // Advisory-lock gate: followers observe but never claim or run work.
     if (!acquiredLock) {
@@ -1372,6 +1373,19 @@ const makeOrchestrator = Effect.gen(function* () {
       if (!requeued) {
         return null;
       }
+    }
+    if (options.explicit && (item.lifecycle === "failed" || item.lifecycle === "cancelled")) {
+      // A user chose to run this item again. Leaving a terminal lifecycle needs an explicit `from`.
+      const requeued = yield* workItems
+        .transition(item.id, "queued", { from: [item.lifecycle] })
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+      if (!requeued) return null;
+    }
+    if (item.lifecycle === "queued" && !options.explicit) {
+      const latestAttempt = yield* runAttempts
+        .latestForWorkItem(item.id)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (latestAttempt !== null && isAutoDispatchBlockedStatus(latestAttempt.status)) return null;
     }
 
     const paused = yield* orchestratorState
@@ -1510,7 +1524,7 @@ const makeOrchestrator = Effect.gen(function* () {
       ) {
         continue;
       }
-      const prepared = yield* prepareDispatch(String(candidate.id));
+      const prepared = yield* prepareDispatch(String(candidate.id), { explicit: false });
       if (prepared === null) {
         continue;
       }
@@ -1523,8 +1537,8 @@ const makeOrchestrator = Effect.gen(function* () {
     }
   });
 
-  const dispatchWorkItem: SymphonyOrchestratorShape["dispatchWorkItem"] = (workItemId) =>
-    prepareDispatch(workItemId).pipe(
+  const dispatchWorkItem: SymphonyOrchestratorShape["dispatchWorkItem"] = (workItemId, options) =>
+    prepareDispatch(workItemId, { explicit: options?.explicit === true }).pipe(
       Effect.flatMap((prepared) =>
         prepared === null ? Effect.void : executePreparedDispatch(prepared),
       ),

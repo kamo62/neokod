@@ -102,7 +102,7 @@ const DEFAULT_TRANSITION_SOURCES: Readonly<Record<string, ReadonlyArray<string>>
     "waiting_for_approval",
     "retry_scheduled",
   ],
-  failed: ["running", "testing", "retry_scheduled", "validation_failed"],
+  failed: ["preparing", "running", "testing", "retry_scheduled", "validation_failed"],
 };
 
 const rowToWorkItem = (row: Schema.Schema.Type<typeof WorkItemRowSchema>): WorkItem => ({

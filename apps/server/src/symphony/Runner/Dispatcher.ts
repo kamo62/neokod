@@ -178,8 +178,8 @@ export const makeRunDispatcher = Effect.gen(function* () {
   // Mark the attempt failed unless cancellation already recorded a terminal
   // status (cancelRun wins over the interrupted turn path), then release the
   // claim: to `retry_scheduled` when the failure is retryable and attempts
-  // remain (plan 9.5, WS-M), otherwise to `queued` so a manual re-dispatch
-  // stays possible.
+  // remain (plan 9.5, WS-M), otherwise to `failed` so the scheduler never
+  // relaunches a terminal-failed item by itself.
   const markFailed = (
     runAttemptId: RunAttemptId,
     workItemId: WorkItemId,
@@ -192,6 +192,12 @@ export const makeRunDispatcher = Effect.gen(function* () {
       const attempt = yield* runAttempts
         .getById(runAttemptId)
         .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (
+        attempt !== null &&
+        (attempt.status === "user_cancelled" || attempt.status === "tracker_cancelled")
+      ) {
+        return; // cancelRun owns the item lifecycle
+      }
       const alreadyTerminal = attempt !== null && TERMINAL_STATUSES.has(attempt.status);
       const attemptNumber = attempt?.attemptNumber ?? 1;
       if (!alreadyTerminal) {
@@ -215,7 +221,14 @@ export const makeRunDispatcher = Effect.gen(function* () {
           })
           .pipe(Effect.catch(() => Effect.void));
       } else {
-        yield* releaseClaim(workItemId, ownerToken, generation);
+        yield* workItems
+          .transition(workItemId, "failed", { ownerToken, generation })
+          .pipe(Effect.catch(() => Effect.void));
+        yield* appendEvent(
+          runAttemptId,
+          isRetryableCategory(error.category) ? "retries_exhausted" : "run_failed",
+          { attemptNumber, maxAttempts, category: error.category },
+        );
       }
     });
 
@@ -541,17 +554,31 @@ export const makeRunDispatcher = Effect.gen(function* () {
       return yield* Fiber.join(fiber).pipe(Effect.catch(() => Effect.succeed(runAttemptId)));
     });
 
-  const cancelRun: RunDispatcherService["cancelRun"] = (runAttemptId) =>
+  const cancelAttempt = (runAttemptId: RunAttemptId, eventPayload: Record<string, unknown>) =>
     Effect.gen(function* () {
-      // Interrupt the active turn AND the dispatch fiber driving it, settle
-      // the run's outstanding approval/input requests (idempotent), and
-      // record the durable cancellation. The claim is released by the
-      // interrupted dispatch path's ensuring block, which keeps the work item
-      // queued (REVIEW P0: without the fiber interrupt, a cancelled run still
-      // validated, opened a PR and overwrote its own status).
-      const registered = yield* Ref.get(activeAgents).pipe(
-        Effect.map((map) => map.get(String(runAttemptId))),
-      );
+      const attempt = yield* runAttempts
+        .getById(runAttemptId)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      // 1. Persist the cancellation BEFORE interrupting anything. Every failure path then sees a
+      //    terminal attempt (markFailed returns early, the ensuring block skips its `interrupted`
+      //    write) and the item is already `cancelled` when the ensuring block releases the claim.
+      yield* runAttempts
+        .updateStatus(runAttemptId, "user_cancelled", { finishedAt: yield* nowIso })
+        .pipe(Effect.catch(() => Effect.void));
+      yield* appendEvent(runAttemptId, "user_cancelled", eventPayload);
+      if (attempt !== null) {
+        const latest = yield* runAttempts
+          .latestForWorkItem(attempt.workItemId)
+          .pipe(Effect.catch(() => Effect.succeed(null)));
+        if (latest !== null && latest.id === runAttemptId) {
+          // Unfenced (the canceller is not the claim owner) and bounded by the legality table.
+          yield* workItems
+            .transition(attempt.workItemId, "cancelled")
+            .pipe(Effect.catch(() => Effect.void));
+        }
+      }
+      // 2. Then stop the live run.
+      const registered = (yield* Ref.get(activeAgents)).get(String(runAttemptId));
       if (registered !== undefined) {
         // Interrupt the dispatch fiber FIRST (fix-lane item 6): awaiting
         // agent.interrupt() before the fiber interrupt gave markFailed a
@@ -564,11 +591,10 @@ export const makeRunDispatcher = Effect.gen(function* () {
       yield* liveRequests
         .settleRun(runAttemptId, "user cancelled")
         .pipe(Effect.catch(() => Effect.void));
-      yield* runAttempts
-        .updateStatus(runAttemptId, "user_cancelled", { finishedAt: yield* nowIso })
-        .pipe(Effect.catch(() => Effect.void));
-      yield* appendEvent(runAttemptId, "user_cancelled", {});
     });
+
+  const cancelRun: RunDispatcherService["cancelRun"] = (runAttemptId) =>
+    cancelAttempt(runAttemptId, {});
 
   const isAgentActive: RunDispatcherService["isAgentActive"] = (runAttemptId) =>
     Ref.get(activeAgents).pipe(Effect.map((map) => map.has(String(runAttemptId))));
@@ -577,20 +603,10 @@ export const makeRunDispatcher = Effect.gen(function* () {
     Effect.gen(function* () {
       const map = yield* Ref.get(activeAgents);
       let stopped = 0;
-      for (const [attemptId, registered] of map) {
-        registered.fiber.interruptUnsafe();
-        yield* registered.agent.interrupt().pipe(Effect.catch(() => Effect.void));
-        yield* liveRequests
-          .settleRun(RunAttemptId.make(attemptId), "stopped by stop-all")
-          .pipe(Effect.catch(() => Effect.void));
-        yield* runAttempts
-          .updateStatus(RunAttemptId.make(attemptId), "user_cancelled", {
-            finishedAt: yield* nowIso,
-          })
-          .pipe(Effect.catch(() => Effect.void));
-        yield* appendEvent(RunAttemptId.make(attemptId), "user_cancelled", {
-          reason: "stop_all_runs",
-        });
+      for (const [attemptId] of map) {
+        // cancelAttempt fires interruptUnsafe without awaiting; awaiting an
+        // interrupted fiber surfaces its interruption cause as an error.
+        yield* cancelAttempt(RunAttemptId.make(attemptId), { reason: "stop_all_runs" });
         stopped += 1;
       }
       return stopped;
