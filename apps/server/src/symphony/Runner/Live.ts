@@ -21,7 +21,9 @@ import { codexCommandWarning } from "../Workflow/Config.ts";
  * builds one per dispatch inside a scope. Approval requests are recorded
  * durably through the ApprovalService (WS-J2) as well as answered live.
  * SPEC 15.3 env scrubbing: the tracker's secret environment names are
- * resolved per config and stripped from the agent child's environment.
+ * resolved per config and stripped from the agent child's environment. A
+ * tracker adapter that cannot be resolved fails the dispatch: starting with
+ * an unscrubbed environment is not an option.
  */
 const makeAgentRuntimeFactory = Effect.gen(function* () {
   const liveRequests = yield* LiveRequests;
@@ -33,12 +35,16 @@ const makeAgentRuntimeFactory = Effect.gen(function* () {
     config: EffectiveWorkflowConfig,
     options?: { readonly onChildSpawned?: (pid: number) => Effect.Effect<void> },
   ) =>
-    // Secret names from the configured tracker adapter (SPEC 15.3). Any
-    // adapter that cannot be resolved contributes nothing rather than
-    // failing the dispatch.
+    // Secret names from the configured tracker adapter (SPEC 15.3). An
+    // adapter that cannot be resolved yields null, which makes the runtime
+    // refuse to spawn rather than starting with an unscrubbed environment.
     resolveTrackerAdapter(registry, enablement, config).pipe(
-      Effect.map((adapter) => adapter.secretEnvironmentNames()),
-      Effect.catch(() => Effect.succeed([] as ReadonlyArray<string>)),
+      Effect.map((adapter): ReadonlyArray<string> | null => adapter.secretEnvironmentNames()),
+      // Unknown is not "none": a null list makes the runtime refuse to spawn (fail closed).
+      Effect.tapError((cause) =>
+        Effect.logWarning("symphony.agent.secret_names_unresolved", { cause: String(cause) }),
+      ),
+      Effect.catch(() => Effect.succeed(null as ReadonlyArray<string> | null)),
       Effect.flatMap((secretNames) =>
         Effect.gen(function* () {
           const warning = codexCommandWarning(config.codexCommand);

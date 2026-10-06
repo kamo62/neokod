@@ -137,7 +137,7 @@ export interface AgentRuntimeDeps {
   readonly env: NodeJS.ProcessEnv;
   /** Environment names that MUST NOT reach the agent child (SPEC 15.3;
    * audit item 8 lane F — tracker secrets used to flow wholesale). */
-  readonly secretEnvironmentNames?: ReadonlyArray<string>;
+  readonly secretEnvironmentNames?: ReadonlyArray<string> | null;
   readonly liveRequests: LiveRequestsService;
   /** Called once, right after the app-server child is spawned, with its pid. Failures are ignored. */
   readonly onChildSpawned?: (pid: number) => Effect.Effect<void>;
@@ -170,24 +170,32 @@ export const makeCodexAgentRuntime = (
     let requestConsumerStarted = false;
 
     const spawnAppServer = Effect.gen(function* () {
+      if (deps.secretEnvironmentNames === null) {
+        return yield* Effect.fail(
+          new AgentRuntimeSpawnError(
+            "tracker credentials could not be resolved, so the agent environment cannot be scrubbed; fix the tracker configuration and retry",
+          ),
+        );
+      }
       // SPEC 15.3 env scrubbing (audit item 8 lane F): the agent child must
       // not see tracker/credential secrets. Remove every name the adapters
       // flagged from the inherited environment.
       const scrubbed = scrubEnvironment(deps.env, deps.secretEnvironmentNames ?? []);
+      // `env` is the complete child environment. `extendEnv: true` would merge `process.env` back in and undo the scrub.
       const env = {
         ...scrubbed,
         ...(deps.codexHomePath ? { CODEX_HOME: expandHomePath(deps.codexHomePath) } : {}),
       };
       const spawnCommand = yield* resolveSpawnCommand(deps.codexCommand, ["app-server"], {
         env,
-        extendEnv: true,
+        extendEnv: false,
       });
       const child = yield* spawner
         .spawn(
           ChildProcess.make(spawnCommand.command, spawnCommand.args, {
             cwd: deps.env.PWD,
             env,
-            extendEnv: true,
+            extendEnv: false,
             forceKillAfter: Duration.seconds(10),
             shell: spawnCommand.shell,
           }),

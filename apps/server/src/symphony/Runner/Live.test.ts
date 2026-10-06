@@ -2,6 +2,7 @@ import { expect, it } from "@effect/vitest";
 import type { EffectiveWorkflowConfig } from "@neokod/contracts";
 import { ProviderDriverKind, ProviderInstanceId } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
@@ -69,6 +70,43 @@ it.effect("warns once per runtime when codex.command contains app-server", () =>
       expect(logs.some((message) => message.includes("codex_command_contains_app_server"))).toBe(
         false,
       );
+    }),
+  ),
+);
+
+it.effect("fails closed when the tracker adapter cannot be resolved", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const captured: Array<unknown> = [];
+      const spawner = ChildProcessSpawner.make((command) =>
+        Effect.sync(() => {
+          captured.push(command);
+          throw new Error("captured");
+        }),
+      );
+      const factory = yield* AgentRuntimeFactory.pipe(
+        Effect.provide(
+          AgentRuntimeFactoryLive.pipe(
+            Layer.provide(LiveRequestsLive),
+            Layer.provide(Layer.succeed(ApprovalService, {} as never)),
+            Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)),
+            Layer.provide(TrackerRegistryEmptyLive),
+            Layer.provide(
+              Layer.succeed(
+                TrackerEnablement,
+                makeTrackerEnablement(() => Effect.succeed({})),
+              ),
+            ),
+          ),
+        ),
+      );
+      const runtime = yield* factory.make(makeConfig());
+      const exit = yield* Effect.exit(runtime.runTurn({} as never));
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        expect(String(exit.cause)).toContain("cannot be scrubbed");
+      }
+      expect(captured).toEqual([]);
     }),
   ),
 );
