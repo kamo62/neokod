@@ -15,6 +15,7 @@ import {
   SymphonyProjectId,
 } from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
@@ -240,6 +241,21 @@ const memoryFactory = (options: { readonly repositoryPath: string }) =>
 const registryLayer = TrackerRegistryWithFactories(new Map([["github", memoryFactory]]));
 
 const dispatchedIds: string[] = [];
+// Gate and interruption flag for the forked-dispatch tests (card 1.8): the
+// mock dispatcher can hold a run open so a test can prove the caller
+// already moved on.
+let dispatchGate: Deferred.Deferred<void> | null = null;
+const dispatchStatus = { interrupted: false, completed: false };
+
+const awaitDispatched = (id: string) =>
+  Effect.gen(function* () {
+    for (let i = 0; i < 200 && !dispatchedIds.includes(id); i++) {
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("1 millis");
+    }
+  });
+
+const settle = Effect.repeat(Effect.yieldNow, { times: 50 });
 // Captures the full dispatch input (plan FR-102-104: proves reviewFeedback
 // actually reaches the dispatcher, not just that a dispatch happened).
 const dispatchedInputs: Array<{
@@ -271,6 +287,17 @@ const mockDispatcherLayer = Layer.effect(
                   ? { workflowInstructions: input.workflowInstructions }
                   : {}),
               });
+            }),
+          ),
+          Effect.andThen(dispatchGate === null ? Effect.void : Deferred.await(dispatchGate)),
+          Effect.onInterrupt(() =>
+            Effect.sync(() => {
+              dispatchStatus.interrupted = true;
+            }),
+          ),
+          Effect.tap(() =>
+            Effect.sync(() => {
+              dispatchStatus.completed = true;
             }),
           ),
           Effect.mapError((cause) => new RunDispatchError(cause.message)),
@@ -1194,8 +1221,20 @@ layer("SymphonyOrchestrator Observe", (it) => {
 
       dispatchedIds.length = 0;
       yield* orchestrator.dispatchWorkItem(workItemId, { explicit: true });
+      // Wait for the forked dispatch WITHOUT advancing the clock (a
+      // scheduler tick would reconcile the mock-held claim straight back:
+      // the mock reports no active agent and the seeded attempt is
+      // terminal, so any tick releases it to queued).
+      for (let i = 0; i < 500 && !dispatchedIds.includes("failed-retry-1"); i++) {
+        yield* Effect.yieldNow;
+      }
       expect(dispatchedIds).toContain("failed-retry-1");
-      const after = yield* workItems.getById(workItemId);
+      // The claim runs in the forked dispatch: wait for it to land.
+      let after = yield* workItems.getById(workItemId);
+      for (let i = 0; i < 200 && after?.lifecycle !== "preparing"; i++) {
+        yield* Effect.yieldNow;
+        after = yield* workItems.getById(workItemId);
+      }
       expect(after?.lifecycle).toBe("preparing");
     }),
   );
@@ -1260,6 +1299,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
 
       dispatchedIds.length = 0;
       yield* orchestrator.dispatchWorkItem(workItemId, { explicit: true });
+      yield* awaitDispatched("cancel-override-1");
       expect(dispatchedIds).toContain("cancel-override-1");
     }),
   );
@@ -1343,6 +1383,183 @@ layer("SymphonyOrchestrator Observe", (it) => {
     }),
   );
 
+  const seedForkWorkflow = (id: string, repositoryPath: string) =>
+    Effect.gen(function* () {
+      yield* seedWorkflow(id, repositoryPath);
+      const workflows = yield* WorkflowRepository;
+      yield* workflows.upsert({
+        id: WorkflowId.make(id),
+        repositoryPath,
+        workflowPath: `${repositoryPath}/WORKFLOW.md`,
+        status: "active",
+        autonomy: "execute",
+        validationError: null,
+        definition: { config: {}, promptTemplate: "Implement." },
+        effectiveConfig: {
+          ...makeConfig(repositoryPath),
+          autonomy: "execute",
+        },
+        enabledAt: "2026-08-05T00:00:00.000Z",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+    });
+
+  const seedForkItem = (
+    id: string,
+    projectId: string,
+    workflowId: string,
+    lifecycle: "queued" | "retry_scheduled",
+  ) =>
+    Effect.gen(function* () {
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.upsert({
+        id: WorkItemId.make(id),
+        mode: "symphony",
+        projectId: SymphonyProjectId.make(projectId),
+        objective: `Fork ${id}`,
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        workflowId: WorkflowId.make(workflowId),
+        lifecycle,
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2000-01-01T00:00:00.000Z",
+        updatedAt: "2000-01-01T00:00:00.000Z",
+      });
+    });
+
+  it.effect("manual dispatch returns before the run ends and survives the caller's scope", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      yield* seedForkWorkflow("wf-fork-1", "/repo/fork-1");
+      yield* seedForkItem("fork-1", "fork-project-1", "wf-fork-1", "queued");
+      dispatchGate = yield* Deferred.make<void>();
+      dispatchStatus.interrupted = false;
+      dispatchStatus.completed = false;
+      const result = yield* Effect.scoped(
+        orchestrator.dispatchWorkItem("fork-1", { explicit: true }),
+      );
+      void result;
+      yield* awaitDispatched("fork-1");
+      yield* settle;
+      expect(dispatchStatus.interrupted).toBe(false);
+      expect(dispatchStatus.completed).toBe(false);
+      expect((yield* workItems.getById(WorkItemId.make("fork-1")))?.lifecycle).toBe("preparing");
+      yield* Deferred.succeed(dispatchGate, undefined);
+      yield* settle;
+      expect(dispatchStatus.completed).toBe(true);
+      dispatchGate = null;
+    }).pipe(
+      Effect.ensuring(
+        Effect.gen(function* () {
+          if (dispatchGate !== null) {
+            yield* Deferred.succeed(dispatchGate, undefined).pipe(Effect.catch(() => Effect.void));
+            dispatchGate = null;
+          }
+        }),
+      ),
+    ),
+  );
+
+  it.effect("a due retry does not block the scheduler tick", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedForkWorkflow("wf-fork-2", "/repo/fork-2");
+      yield* seedForkItem("fork-2", "fork-project-2", "wf-fork-2", "retry_scheduled");
+      const runAttempts = yield* RunAttemptRepository;
+      yield* runAttempts.create({
+        id: RunAttemptId.make("run-fork-2"),
+        workItemId: WorkItemId.make("fork-2"),
+        attemptNumber: 1,
+        workspacePath: "/ws/fork-2",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "failed",
+        startedAt: "1969-12-31T00:00:00.000Z",
+        finishedAt: "1969-12-31T00:00:00.000Z",
+        error: { category: "agent", message: "turn failed" },
+      });
+      dispatchGate = yield* Deferred.make<void>();
+      dispatchStatus.interrupted = false;
+      dispatchStatus.completed = false;
+      const tick = yield* orchestrator.refreshNow().pipe(Effect.forkScoped);
+      yield* settle;
+      expect(tick.pollUnsafe()).not.toBe(undefined);
+      expect(dispatchedIds.filter((id) => id.startsWith("fork-"))).toContain("fork-2");
+      yield* Deferred.succeed(dispatchGate, undefined);
+      yield* settle;
+      dispatchGate = null;
+    }).pipe(
+      Effect.ensuring(
+        Effect.gen(function* () {
+          if (dispatchGate !== null) {
+            yield* Deferred.succeed(dispatchGate, undefined).pipe(Effect.catch(() => Effect.void));
+            dispatchGate = null;
+          }
+        }),
+      ),
+    ),
+  );
+
+  it.effect("one retry launch per tick suppresses the queued launch", () =>
+    Effect.gen(function* () {
+      yield* seedForkWorkflow("wf-fork-3", "/repo/fork-3");
+      yield* seedForkItem("fork-3-retry", "fork-project-3-retry", "wf-fork-3", "retry_scheduled");
+      yield* seedForkItem("fork-3-queued", "fork-project-3-queued", "wf-fork-3", "queued");
+      const runAttempts = yield* RunAttemptRepository;
+      yield* runAttempts.create({
+        id: RunAttemptId.make("run-fork-3"),
+        workItemId: WorkItemId.make("fork-3-retry"),
+        attemptNumber: 1,
+        workspacePath: "/ws/fork-3",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "failed",
+        startedAt: "1969-12-31T00:00:00.000Z",
+        finishedAt: "1969-12-31T00:00:00.000Z",
+        error: { category: "agent", message: "turn failed" },
+      });
+      dispatchGate = yield* Deferred.make<void>();
+      dispatchStatus.interrupted = false;
+      dispatchStatus.completed = false;
+      dispatchedIds.length = 0;
+      // Older due retries from earlier tests go first (one launch per
+      // tick): tick until this test's retry launches.
+      for (let tick = 0; tick < 40 && !dispatchedIds.includes("fork-3-retry"); tick++) {
+        yield* TestClock.adjust("5 seconds");
+        yield* settle;
+      }
+      expect(dispatchedIds.filter((id) => id.startsWith("fork-"))).toEqual(["fork-3-retry"]);
+      for (let tick = 0; tick < 40 && !dispatchedIds.includes("fork-3-queued"); tick++) {
+        yield* TestClock.adjust("5 seconds");
+        yield* settle;
+      }
+      expect(dispatchedIds.filter((id) => id.startsWith("fork-"))).toEqual([
+        "fork-3-retry",
+        "fork-3-queued",
+      ]);
+      yield* Deferred.succeed(dispatchGate, undefined);
+      yield* settle;
+      dispatchGate = null;
+    }).pipe(
+      Effect.ensuring(
+        Effect.gen(function* () {
+          if (dispatchGate !== null) {
+            yield* Deferred.succeed(dispatchGate, undefined).pipe(Effect.catch(() => Effect.void));
+            dispatchGate = null;
+          }
+        }),
+      ),
+    ),
+  );
+
   it.effect("per-scope pause gates dispatch for the paused workflow", () =>
     Effect.gen(function* () {
       const orchestrator = yield* SymphonyOrchestrator;
@@ -1387,6 +1604,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
 
       yield* orchestrator.setWorkflowPaused("wf-pause-1", false);
       yield* orchestrator.dispatchWorkItem("pause-1");
+      yield* awaitDispatched("pause-1");
       expect(dispatchedIds).toContain("pause-1");
     }),
   );
@@ -1988,6 +2206,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
         dispatchedIds.length = 0;
         dispatchedInputs.length = 0;
         yield* orchestrator.dispatchWorkItem("review-fr-1");
+        yield* awaitDispatched("review-fr-1");
 
         // Claimable again: dispatchWorkItem's existing changes_requested ->
         // queued requeue let the mock dispatcher claim it straight through
@@ -2065,6 +2284,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
         dispatchedIds.length = 0;
         dispatchedInputs.length = 0;
         yield* orchestrator.dispatchWorkItem("review-fr-2");
+        yield* awaitDispatched("review-fr-2");
 
         const captured = dispatchedInputs.find((entry) => entry.workItemId === "review-fr-2");
         const reviewFeedback = captured?.reviewFeedback;

@@ -724,8 +724,8 @@ const makeOrchestrator = Effect.gen(function* () {
     // expire approval requests whose wait window elapsed. Runs on the same
     // cadence as polling.
     yield* reconcileStaleClaims({ workItems, runAttempts, runEvents, workflows, dispatcher });
-    yield* retrySweep();
-    if (allowDispatch) {
+    const retried = yield* retrySweep();
+    if (allowDispatch && !retried) {
       yield* launchNextQueuedWork();
     }
     yield* sweepExpiredApprovals(now);
@@ -777,8 +777,11 @@ const makeOrchestrator = Effect.gen(function* () {
       }
       // Re-dispatch claims the item (claim accepts retry_scheduled) and the
       // dispatcher creates the next attempt; failure releases it back here.
-      yield* dispatchWorkItem(String(item.id)).pipe(Effect.catch(() => Effect.void));
+      if (yield* launchDispatch(String(item.id), { explicit: false })) {
+        return true;
+      }
     }
+    return false;
   });
 
   const sweepExpiredApprovals = (now: string) =>
@@ -1467,6 +1470,20 @@ const makeOrchestrator = Effect.gen(function* () {
     };
   });
 
+  const launchDispatch = Effect.fn("symphonyOrchestrator.launchDispatch")(function* (
+    workItemId: string,
+    options: { readonly explicit: boolean },
+  ) {
+    const prepared = yield* prepareDispatch(workItemId, options);
+    if (prepared === null) return false;
+    yield* executePreparedDispatch(prepared).pipe(
+      Effect.scoped,
+      Effect.forkIn(dispatchScope),
+      Effect.asVoid,
+    );
+    return true;
+  });
+
   const executePreparedDispatch = Effect.fn("symphonyOrchestrator.executePreparedDispatch")(
     function* (prepared: PreparedDispatch) {
       const result = yield* Effect.result(
@@ -1524,25 +1541,14 @@ const makeOrchestrator = Effect.gen(function* () {
       ) {
         continue;
       }
-      const prepared = yield* prepareDispatch(String(candidate.id), { explicit: false });
-      if (prepared === null) {
-        continue;
+      if (yield* launchDispatch(String(candidate.id), { explicit: false })) {
+        return;
       }
-      yield* executePreparedDispatch(prepared).pipe(
-        Effect.scoped,
-        Effect.forkIn(dispatchScope),
-        Effect.asVoid,
-      );
-      return;
     }
   });
 
   const dispatchWorkItem: SymphonyOrchestratorShape["dispatchWorkItem"] = (workItemId, options) =>
-    prepareDispatch(workItemId, { explicit: options?.explicit === true }).pipe(
-      Effect.flatMap((prepared) =>
-        prepared === null ? Effect.void : executePreparedDispatch(prepared),
-      ),
-    );
+    launchDispatch(workItemId, { explicit: options?.explicit === true }).pipe(Effect.asVoid);
 
   const cancelRun: SymphonyOrchestratorShape["cancelRun"] = (runAttemptId) =>
     Effect.gen(function* () {
