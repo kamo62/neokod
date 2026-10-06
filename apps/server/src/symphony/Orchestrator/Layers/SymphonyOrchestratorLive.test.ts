@@ -15,6 +15,7 @@ import {
   SymphonyProjectId,
 } from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
+import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -2360,5 +2361,123 @@ layer("SymphonyOrchestrator Observe", (it) => {
         expect(after?.lifecycle).toBe("ready_for_review");
         expect(dispatchedIds).toEqual([]);
       }),
+  );
+});
+
+layer("SymphonyOrchestrator leadership", (it) => {
+  const seedHeldRun = (id: string) =>
+    Effect.gen(function* () {
+      const workItems = yield* WorkItemRepository;
+      const now = yield* nowIso;
+      yield* workItems.upsert({
+        id: WorkItemId.make(id),
+        mode: "symphony",
+        projectId: SymphonyProjectId.make("leadership-project"),
+        objective: `Lead ${id}`,
+        description: "Seeded for leadership tests",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: `manual-${id}`,
+        lifecycle: "running",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        claimedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const runAttempts = yield* RunAttemptRepository;
+      const startedAt = yield* nowIso;
+      const runAttemptId = RunAttemptId.make(`run-${id}`);
+      yield* runAttempts.create({
+        id: runAttemptId,
+        workItemId: WorkItemId.make(id),
+        attemptNumber: 1,
+        workspacePath: `/ws/${id}`,
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "streaming_turn",
+        startedAt,
+        finishedAt: null,
+        error: null,
+      });
+      return { workItemId: WorkItemId.make(id), runAttemptId };
+    });
+
+  let second: SymphonyOrchestrator["Service"] | null = null;
+
+  it.effect(
+    "a second orchestrator on the same database is a follower and leaves the leader's runs alone",
+    () =>
+      Effect.gen(function* () {
+        const first = yield* SymphonyOrchestrator;
+        expect((yield* first.getOverview()).orchestratorRole).toBe("leader");
+        // Run the leader's startup recovery inline BEFORE seeding: recovery
+        // moved from layer construction to the first tick, so without this the
+        // layer's background first tick races the seeds below and interrupts
+        // the freshly seeded run as if it were a crash orphan.
+        yield* first.refreshNow();
+        const { workItemId, runAttemptId } = yield* seedHeldRun("lead-1");
+        yield* seedWorkflow("wf-lead-1", "/repo/lead-1", { autonomy: "execute" });
+        // Nudge the clock so the second orchestrator mints a distinct lock
+        // token (token = pid + build millis): identical tokens can never lose
+        // a renewal race, so takeovers and demotions would be unobservable.
+        yield* TestClock.adjust("1 millis");
+        second = Context.get(
+          yield* Layer.build(Layer.fresh(SymphonyOrchestratorLive)),
+          SymphonyOrchestrator,
+        );
+        yield* Effect.repeat(Effect.yieldNow, { times: 20 });
+        expect(
+          (yield* (second as SymphonyOrchestrator["Service"]).getOverview()).orchestratorRole,
+        ).toBe("follower");
+        // Clear here (not earlier): the leader's own background first tick may
+        // still be polling concurrently, and only ticks after this point can
+        // implicate the follower.
+        pollCountsByRepository.clear();
+        yield* (second as SymphonyOrchestrator["Service"]).refreshNow();
+        const runAttempts = yield* RunAttemptRepository;
+        expect((yield* runAttempts.getById(runAttemptId))?.status).toBe("streaming_turn");
+        const runEvents = yield* RunEventRepository;
+        expect(
+          (yield* runEvents.listForAttempt(runAttemptId)).some(
+            (e) => e.eventType === "interrupted",
+          ),
+        ).toBe(false);
+        const workItems = yield* WorkItemRepository;
+        expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("running");
+        expect(pollCountsByRepository.get("/repo/lead-1")).toBe(undefined);
+      }),
+  );
+
+  it.effect("a follower takes the lock when the lease expires and then runs recovery", () =>
+    Effect.gen(function* () {
+      if (second === null) throw new Error("second orchestrator missing");
+      const { runAttemptId } = yield* seedHeldRun("lead-2");
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE symphony_orchestrator_state SET lock_expires_at = '1969-01-01T00:00:00.000Z'`;
+      yield* second.refreshNow();
+      expect((yield* second.getOverview()).orchestratorRole).toBe("leader");
+      const runAttempts = yield* RunAttemptRepository;
+      expect((yield* runAttempts.getById(runAttemptId))?.status).toBe("interrupted");
+      const first = yield* SymphonyOrchestrator;
+      yield* first.refreshNow();
+      expect((yield* first.getOverview()).orchestratorRole).toBe("follower");
+    }),
+  );
+
+  it.effect("a demoted process regains the lock on a later tick", () =>
+    Effect.gen(function* () {
+      if (second === null) throw new Error("second orchestrator missing");
+      const first = yield* SymphonyOrchestrator;
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE symphony_orchestrator_state SET lock_expires_at = '1969-01-01T00:00:00.000Z'`;
+      yield* first.refreshNow();
+      expect((yield* first.getOverview()).orchestratorRole).toBe("leader");
+      yield* second.refreshNow();
+      expect((yield* second.getOverview()).orchestratorRole).toBe("follower");
+    }),
   );
 });

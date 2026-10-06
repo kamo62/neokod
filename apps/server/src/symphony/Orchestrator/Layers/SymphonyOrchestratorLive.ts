@@ -34,6 +34,7 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
+import * as Semaphore from "effect/Semaphore";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { nowIso } from "../../Domain/Time.ts";
@@ -689,6 +690,9 @@ const makeOrchestrator = Effect.gen(function* () {
     forcePoll = false,
     allowDispatch = true,
   ) {
+    if (!(yield* ensureLeadership())) {
+      return;
+    }
     yield* reloadWorkflowFiles();
     const now = yield* nowIso;
     const active = yield* workflows
@@ -826,6 +830,37 @@ const makeOrchestrator = Effect.gen(function* () {
     });
 
   const scheduler = Effect.gen(function* () {
+    // Each tick runs in its own scope so retry-sweep dispatches release
+    // their agent-runtime resources when the run ends instead of holding
+    // them on the layer scope until server shutdown. The first tick polls all
+    // workflows immediately; later scans honor each workflow's interval.
+    yield* runTick(true).pipe(Effect.scoped);
+    yield* Effect.repeat(
+      runTick(false).pipe(Effect.scoped),
+      Schedule.fixed(SCHEDULER_SCAN_INTERVAL),
+    );
+  });
+
+  // Startup advisory lock (audit item 8 lane I; plan section 4): one server
+  // process orchestrates at a time. Acquired with a per-launch token and a
+  // lease, renewed on every tick, released on teardown. A second server that
+  // fails to acquire degrades to read-only observe (no dispatch) rather than
+  // refusing to boot.
+  const lockAcquiredAtMs = yield* Clock.currentTimeMillis;
+  const lockToken = `symphony-${process.pid}-${lockAcquiredAtMs}`;
+  const lockLeaseMs = 90_000;
+  const acquiredLock = yield* orchestratorState
+    .acquireLock({ ownerToken: lockToken, leaseMs: lockLeaseMs })
+    .pipe(Effect.catch(() => Effect.succeed(false)));
+  const holdsLockRef = yield* Ref.make(acquiredLock);
+  const recoveredRef = yield* Ref.make(false);
+  // Serializes concurrent first ticks (the scheduler's immediate tick and an
+  // explicit refreshNow racing at startup): without it both can observe an
+  // unset recovery flag and run startup recovery twice, the late run
+  // interrupting rows seeded after the early run finished.
+  const leadershipMutex = yield* Semaphore.make(1);
+
+  const recoverStartup = Effect.gen(function* () {
     // Startup recovery (plan 9.7, WS-M): mark interrupted runs from a prior
     // crash/restart, release stale claims, and re-queue retryable work.
     const maybeOwnership = yield* Effect.serviceOption(WorkspaceOwnershipRepository);
@@ -855,28 +890,45 @@ const makeOrchestrator = Effect.gen(function* () {
         ),
       ...(Option.isSome(maybeOwnership) ? { ownership: maybeOwnership.value } : {}),
     }).pipe(Effect.catch(() => Effect.void));
-    // Each tick runs in its own scope so retry-sweep dispatches release
-    // their agent-runtime resources when the run ends instead of holding
-    // them on the layer scope until server shutdown. The first tick polls all
-    // workflows immediately; later scans honor each workflow's interval.
-    yield* runTick(true).pipe(Effect.scoped);
-    yield* Effect.repeat(
-      runTick(false).pipe(Effect.scoped),
-      Schedule.fixed(SCHEDULER_SCAN_INTERVAL),
-    );
   });
 
-  // Startup advisory lock (audit item 8 lane I; plan section 4): one server
-  // process orchestrates at a time. Acquired with a per-launch token and a
-  // lease, renewed on every tick, released on teardown. A second server that
-  // fails to acquire degrades to read-only observe (no dispatch) rather than
-  // refusing to boot.
-  const lockAcquiredAtMs = yield* Clock.currentTimeMillis;
-  const lockToken = `symphony-${process.pid}-${lockAcquiredAtMs}`;
-  const lockLeaseMs = 90_000;
-  const acquiredLock = yield* orchestratorState
-    .acquireLock({ ownerToken: lockToken, leaseMs: lockLeaseMs })
-    .pipe(Effect.catch(() => Effect.succeed(false)));
+  /** Renew the lease. A refused renewal (another token owns the row) demotes this process.
+   *  A SQL error leaves the role unchanged: the state is unknown, not lost. */
+  const renewLeadership = Effect.fn("symphonyOrchestrator.renewLeadership")(function* () {
+    if (!(yield* Ref.get(holdsLockRef))) return false;
+    const renewed = yield* orchestratorState
+      .renewLock({ ownerToken: lockToken, leaseMs: lockLeaseMs })
+      .pipe(Effect.catch(() => Effect.succeed(true)));
+    if (!renewed) {
+      yield* Ref.set(holdsLockRef, false);
+      yield* Ref.set(recoveredRef, false); // recovery runs again if the lock is ever regained
+      yield* Effect.logWarning("symphony.orchestrator.leadership_lost", { lockToken });
+    }
+    return renewed;
+  });
+
+  /** True when this process may orchestrate on this tick. Retries the lock while a follower. */
+  const ensureLeadership = Effect.fn("symphonyOrchestrator.ensureLeadership")(function* () {
+    return yield* leadershipMutex.withPermits(1)(
+      Effect.gen(function* () {
+        if (yield* Ref.get(holdsLockRef)) {
+          if (!(yield* renewLeadership())) return false;
+        } else {
+          const acquired = yield* orchestratorState
+            .acquireLock({ ownerToken: lockToken, leaseMs: lockLeaseMs })
+            .pipe(Effect.catch(() => Effect.succeed(false)));
+          if (!acquired) return false;
+          yield* Ref.set(holdsLockRef, true);
+          yield* Effect.logInfo("symphony.orchestrator.leadership_acquired", { lockToken });
+        }
+        if (!(yield* Ref.get(recoveredRef))) {
+          yield* recoverStartup;
+          yield* Ref.set(recoveredRef, true);
+        }
+        return true;
+      }),
+    );
+  });
 
   const refreshNow: SymphonyOrchestratorShape["refreshNow"] = () =>
     runTick(true, false).pipe(Effect.scoped);
@@ -884,6 +936,7 @@ const makeOrchestrator = Effect.gen(function* () {
   const getOverview = (): Effect.Effect<SymphonyOverview, never> =>
     Effect.gen(function* () {
       const now = yield* nowIso;
+      const orchestratorRole = (yield* Ref.get(holdsLockRef)) ? "leader" : "follower";
       const nowInCurrentZone = DateTime.setZone(yield* DateTime.now, DateTime.zoneMakeLocal());
       const startOfTodayMs = DateTime.toEpochMillis(DateTime.startOf(nowInCurrentZone, "day"));
       const state = yield* Ref.get(stateRef);
@@ -944,6 +997,7 @@ const makeOrchestrator = Effect.gen(function* () {
         retrying,
         failedToday,
         orchestratorPaused: paused,
+        orchestratorRole,
         activeWorkflowCount: activeWorkflows,
         providerHealth: {},
         trackerHealth: Object.fromEntries(
@@ -1354,8 +1408,10 @@ const makeOrchestrator = Effect.gen(function* () {
     workItemId: string,
     options: { readonly explicit: boolean },
   ): Effect.fn.Return<PreparedDispatch | null> {
-    // Advisory-lock gate: followers observe but never claim or run work.
-    if (!acquiredLock) {
+    // Defence in depth for an explicit dispatch RPC on a follower: the tick
+    // gate above normally keeps followers out, but the RPC can arrive
+    // between ticks.
+    if (!(yield* Ref.get(holdsLockRef))) {
       return null;
     }
     const item = yield* workItems
@@ -1855,18 +1911,11 @@ const makeOrchestrator = Effect.gen(function* () {
   // initialized. This avoids a construction-time race with the first tick.
   yield* Effect.forkScoped(
     Effect.gen(function* () {
-      if (acquiredLock) {
-        yield* Effect.acquireRelease(Effect.void, () =>
-          orchestratorState.releaseLock(lockToken).pipe(Effect.catch(() => Effect.void)),
-        );
-      }
+      yield* Effect.acquireRelease(Effect.void, () =>
+        orchestratorState.releaseLock(lockToken).pipe(Effect.catch(() => Effect.void)),
+      );
       yield* Effect.forkScoped(
-        Effect.repeat(
-          orchestratorState
-            .renewLock({ ownerToken: lockToken, leaseMs: lockLeaseMs })
-            .pipe(Effect.catch(() => Effect.void)),
-          Schedule.spaced("30 seconds"),
-        ),
+        Effect.repeat(renewLeadership().pipe(Effect.asVoid), Schedule.spaced("30 seconds")),
       );
       yield* scheduler;
     }),
