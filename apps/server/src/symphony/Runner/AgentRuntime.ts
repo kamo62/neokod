@@ -139,6 +139,8 @@ export interface AgentRuntimeDeps {
    * audit item 8 lane F — tracker secrets used to flow wholesale). */
   readonly secretEnvironmentNames?: ReadonlyArray<string>;
   readonly liveRequests: LiveRequestsService;
+  /** Called once, right after the app-server child is spawned, with its pid. Failures are ignored. */
+  readonly onChildSpawned?: (pid: number) => Effect.Effect<void>;
   /** Durable request record (WS-J2); best-effort, never blocks the agent. */
   readonly recordRequest?: (input: {
     readonly requestId: string;
@@ -195,6 +197,9 @@ export const makeCodexAgentRuntime = (
           Effect.mapError((cause) => new AgentRuntimeSpawnError(String(cause))),
         );
       activePid = Number(child.pid);
+      if (deps.onChildSpawned !== undefined) {
+        yield* deps.onChildSpawned(activePid).pipe(Effect.catch(() => Effect.void));
+      }
       const clientContext = yield* CodexClient.layerChildProcess(child, { rawStreams: true }).pipe(
         Layer.build,
         Effect.provideService(Scope.Scope, scope),

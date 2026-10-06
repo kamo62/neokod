@@ -290,6 +290,36 @@ layer(scriptedFactory(scriptedAgent(true)))("Dispatcher prepare mode", (it) => {
   );
 });
 
+layer(
+  Layer.succeed(AgentRuntimeFactory, {
+    make: (_config, options) =>
+      Effect.succeed({
+        runTurn: () =>
+          ((options?.onChildSpawned?.(4321) ?? Effect.void) as Effect.Effect<void>).pipe(
+            Effect.as({ turnId: "t1", threadId: "th1", completed: true }),
+          ),
+        interrupt: () => Effect.void,
+        pid: () => Effect.succeed(null),
+      } satisfies AgentRuntimeService),
+  }),
+)("Dispatcher child pid", (it) => {
+  it.effect("records the agent child pid once it is spawned", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("1030");
+      const dispatcher = yield* RunDispatcher;
+      yield* dispatcher.dispatchWorkItem({
+        workItem,
+        issue: makeIssue("1030"),
+        config: makeConfig("/repo"),
+      });
+
+      const workItems = yield* WorkItemRepository;
+      const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      expect(after?.ownerPid).toBe(4321);
+    }),
+  );
+});
+
 layer(scriptedFactory(scriptedAgent(false)))("Dispatcher prepare mode failure", (it) => {
   it.effect(
     "marks the attempt failed and re-schedules the item when the turn does not complete",

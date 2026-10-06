@@ -29,7 +29,10 @@ const makeAgentRuntimeFactory = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const registry = yield* TrackerAdapterRegistry;
   const enablement = yield* TrackerEnablement;
-  const make = (config: EffectiveWorkflowConfig) =>
+  const make = (
+    config: EffectiveWorkflowConfig,
+    options?: { readonly onChildSpawned?: (pid: number) => Effect.Effect<void> },
+  ) =>
     // Secret names from the configured tracker adapter (SPEC 15.3). Any
     // adapter that cannot be resolved contributes nothing rather than
     // failing the dispatch.
@@ -49,6 +52,9 @@ const makeAgentRuntimeFactory = Effect.gen(function* () {
             codexHomePath: undefined,
             env: process.env,
             secretEnvironmentNames: secretNames,
+            ...(options?.onChildSpawned !== undefined
+              ? { onChildSpawned: options.onChildSpawned }
+              : {}),
             liveRequests,
             recordRequest: (input) =>
               approvalService

@@ -198,7 +198,6 @@ const SELECT_COLUMNS = `  id, project_id AS "projectId", workflow_id AS "workflo
 const ClaimRequestSchema = Schema.Struct({
   id: WorkItemId,
   ownerToken: Schema.String,
-  ownerPid: Schema.Int,
   now: Schema.String,
 });
 
@@ -304,7 +303,7 @@ const makeRepository = Effect.gen(function* () {
           lifecycle = 'preparing',
           owner_token = ${request.ownerToken},
           generation = generation + 1,
-          owner_pid = ${request.ownerPid},
+          owner_pid = NULL,
           owner_started_at = ${request.now},
           lease_expires_at = ${request.now},
           claimed_at = ${request.now},
@@ -461,7 +460,6 @@ const makeRepository = Effect.gen(function* () {
       const row = yield* claimRow({
         id,
         ownerToken,
-        ownerPid: process.pid,
         now,
       }).pipe(Effect.mapError(toBusyOrSqlError("WorkItemRepository.claim")));
       return yield* Option.match(row, {

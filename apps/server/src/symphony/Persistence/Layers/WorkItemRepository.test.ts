@@ -101,6 +101,30 @@ layer("WorkItemRepository claim authority", (it) => {
     }),
   );
 
+  it.effect("claim does not store the server pid", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("workitem-claim-pid-1", "pid1");
+
+      const { workItem } = yield* repo.claim(id, "owner-a");
+      expect(workItem.ownerPid).toBeUndefined();
+    }),
+  );
+
+  it.effect("setClaimOwnerPid records the pid only for the current owner and generation", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("workitem-claim-pid-2", "pid2");
+
+      const { generation } = yield* repo.claim(id, "owner-a");
+      expect(yield* repo.setClaimOwnerPid(id, "owner-a", generation, 4321)).toBe(true);
+      expect((yield* repo.getById(id))?.ownerPid).toBe(4321);
+      expect(yield* repo.setClaimOwnerPid(id, "owner-a", generation + 1, 9999)).toBe(false);
+      expect(yield* repo.setClaimOwnerPid(id, "other", generation, 9999)).toBe(false);
+      expect((yield* repo.getById(id))?.ownerPid).toBe(4321);
+    }),
+  );
+
   it.effect("unfenced transition succeeds without an owner check", () =>
     Effect.gen(function* () {
       const repo = yield* WorkItemRepository;

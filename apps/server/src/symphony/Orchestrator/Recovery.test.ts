@@ -11,6 +11,7 @@ import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { nowIso } from "../Domain/Time.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
@@ -215,6 +216,83 @@ layer("Recovery startup", (it) => {
       const workItems = yield* WorkItemRepository;
       const after = yield* workItems.getById(workItem.id);
       expect(after?.lifecycle).toBe("retry_scheduled");
+    }),
+  );
+
+  const runRecoveryWith = (terminateProcess: (pid: number) => Effect.Effect<void>) =>
+    Effect.gen(function* () {
+      const workItems = yield* WorkItemRepository;
+      const runAttempts = yield* RunAttemptRepository;
+      const runEvents = yield* RunEventRepository;
+      const workflows = yield* WorkflowRepository;
+      const dispatcher = yield* RunDispatcher;
+      yield* runStartupRecovery({
+        workItems,
+        runAttempts,
+        runEvents,
+        workflows,
+        dispatcher,
+        terminateProcess,
+      });
+    });
+
+  const seedClaimPid = (workItemId: WorkItemId, pid: number) =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE symphony_work_items SET owner_pid = ${pid} WHERE id = ${workItemId}`;
+    });
+
+  it.effect("signals a recorded orphan child pid", () =>
+    Effect.gen(function* () {
+      yield* seedWorkflow("/repo");
+      const workItem = makeWorkItem("3101", "running");
+      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
+      yield* seedAttempt(workItem.id, "streaming_turn");
+      yield* seedClaimPid(workItem.id, 987654);
+      const killed: Array<number> = [];
+      yield* runRecoveryWith((pid) =>
+        Effect.sync(() => {
+          killed.push(pid);
+        }),
+      );
+      expect(killed).toEqual([987654]);
+      const workItems = yield* WorkItemRepository;
+      expect((yield* workItems.getById(workItem.id))?.lifecycle).toBe("retry_scheduled");
+    }),
+  );
+
+  it.effect("does not signal the server's own pid", () =>
+    Effect.gen(function* () {
+      yield* seedWorkflow("/repo");
+      const workItem = makeWorkItem("3102", "running");
+      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
+      yield* seedAttempt(workItem.id, "streaming_turn");
+      yield* seedClaimPid(workItem.id, process.pid);
+      const killed: Array<number> = [];
+      yield* runRecoveryWith((pid) =>
+        Effect.sync(() => {
+          killed.push(pid);
+        }),
+      );
+      expect(killed).toEqual([]);
+      const workItems = yield* WorkItemRepository;
+      expect((yield* workItems.getById(workItem.id))?.lifecycle).toBe("retry_scheduled");
+    }),
+  );
+
+  it.effect("does not signal when no pid was recorded", () =>
+    Effect.gen(function* () {
+      yield* seedWorkflow("/repo");
+      const workItem = makeWorkItem("3103", "running");
+      yield* WorkItemRepository.pipe(Effect.flatMap((repo) => repo.upsert(workItem)));
+      yield* seedAttempt(workItem.id, "streaming_turn");
+      const killed: Array<number> = [];
+      yield* runRecoveryWith((pid) =>
+        Effect.sync(() => {
+          killed.push(pid);
+        }),
+      );
+      expect(killed).toEqual([]);
     }),
   );
 });

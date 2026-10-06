@@ -49,6 +49,8 @@ export interface RecoveryDeps {
     readonly workItemId: WorkItem["id"];
     readonly runAttemptId: string;
   }) => Effect.Effect<void>;
+  /** Test seam. Default signals the real process (probe with kill -0, then SIGTERM). */
+  readonly terminateProcess?: (pid: number) => Effect.Effect<void>;
 }
 
 /** A claim with no attempt row older than this is a crash orphan, not an
@@ -56,30 +58,27 @@ export interface RecoveryDeps {
 const STALL_WINDOW_MS = 5 * 60_000;
 
 /**
- * Terminate a coding-agent child that survived the server crash (audit item
- * 3; plan 8.1). The claim records the child PID; after a restart that PID is
- * an orphan (or a recycled one — checking liveness via kill(pid, 0) guards
- * that). Best-effort and non-fatal.
+ * Terminate a coding-agent child that survived the server crash (audit item 3).
+ * The claim records the agent child pid (written by the dispatcher right after
+ * spawn). Claims written by older builds hold the old server pid; those are
+ * skipped only when equal to this process's pid.
  */
-const terminateOrphanAgent = (item: WorkItem): Effect.Effect<void, never> =>
+const signalProcess = (pid: number): Effect.Effect<void> =>
+  Effect.tryPromise(() =>
+    import("node:child_process").then(({ spawnSync }) => {
+      const probe = spawnSync("kill", ["-0", String(pid)], { stdio: "ignore" });
+      if (probe.status === 0) spawnSync("kill", ["-15", String(pid)], { stdio: "ignore" });
+    }),
+  ).pipe(Effect.catch(() => Effect.void));
+
+const terminateOrphanAgent = (deps: RecoveryDeps, item: WorkItem): Effect.Effect<void, never> =>
   Effect.gen(function* () {
     const pid = item.ownerPid;
-    if (pid === null || pid === undefined || pid <= 0) {
-      return;
-    }
-    yield* Effect.tryPromise(() =>
-      // Signal 0 probes liveness without killing; SIGTERM (15) terminates.
-      // If the PID was recycled to an unrelated process, probe-then-kill can
-      // hit the wrong target, so only act when the process is a child of ours
-      // is unknowable post-crash — accept the small risk in exchange for
-      // actually stopping orphan token burn; the PID was recorded at spawn.
-      import("node:child_process").then(({ spawnSync }) => {
-        const probe = spawnSync("kill", ["-0", String(pid)], { stdio: "ignore" });
-        if (probe.status === 0) {
-          spawnSync("kill", ["-15", String(pid)], { stdio: "ignore" });
-        }
-      }),
-    ).pipe(Effect.catch(() => Effect.void));
+    // null: no child was ever recorded. process.pid: a claim written by an older build stored the server's
+    // own pid, and after a restart (same pid in a container) signalling it would kill this server.
+    // pid <= 1: never signal init.
+    if (pid === null || pid === undefined || pid <= 1 || pid === process.pid) return;
+    yield* (deps.terminateProcess ?? signalProcess)(pid);
   });
 
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
@@ -185,7 +184,7 @@ const recoverItem = (
     // Orphan adoption (audit item 3): the agent child may have survived the
     // server crash (the claim row records its PID). Terminate it before
     // releasing, so a dead run does not keep burning tokens in the background.
-    yield* terminateOrphanAgent(item);
+    yield* terminateOrphanAgent(deps, item);
     // Pending approval/input requests for a dead run are unanswerable: mark
     // them interrupted (plan 8.3.1; audit item 3). The orchestrator supplies
     // the closure so Recovery stays free of ApprovalService's type.
