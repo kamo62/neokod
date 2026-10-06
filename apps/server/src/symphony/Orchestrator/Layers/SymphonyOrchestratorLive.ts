@@ -1515,6 +1515,36 @@ const makeOrchestrator = Effect.gen(function* () {
     if (issue === null) {
       return null;
     }
+    // Re-check eligibility on the fresh issue: the stored reasons are from the last poll.
+    // Items without a tracker id use a synthetic snapshot, and review continuations may sit in a
+    // review state, so both keep the stored decision.
+    const hasTrackerIssue = item.trackerIssueId !== undefined && item.trackerIssueId.length > 0;
+    if (hasTrackerIssue && item.lifecycle !== "changes_requested") {
+      const fresh = evaluateEligibility({
+        config,
+        issue,
+        claimedIssueIds: new Set<string>(),
+        dispatchPaused: false,
+      });
+      if (!fresh.eligible) {
+        // Record why, so the queue explains it and the scheduler stops picking the item every tick.
+        // A queued item goes back to `eligible`; other lifecycles keep theirs (the upsert only moves
+        // draft, eligible and queued, see updateRow's CASE). Non-empty stored reasons make the
+        // pre-check above refuse the item until a poll finds it eligible again.
+        yield* workItems
+          .upsert({
+            ...item,
+            lifecycle: item.lifecycle === "queued" ? "eligible" : item.lifecycle,
+            eligibilityReasons: [...fresh.reasons],
+          })
+          .pipe(Effect.catch(() => Effect.void));
+        yield* Effect.logInfo("symphony.dispatch.refused_ineligible", {
+          workItemId: String(item.id),
+          reasons: fresh.reasons,
+        });
+        return null;
+      }
+    }
     const reviewFeedback = yield* buildReviewFeedback(item, config);
     const workflowInstructions = workflow.definition.promptTemplate.trim();
     return {

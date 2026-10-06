@@ -1561,6 +1561,128 @@ layer("SymphonyOrchestrator Observe", (it) => {
     ),
   );
 
+  it.effect("refuses a queued item whose tracker issue is closed", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-stale-1", "/repo/stale-1", { autonomy: "execute" });
+      const workItems = yield* WorkItemRepository;
+      const workItemId = WorkItemId.make("stale-closed-1");
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId: SymphonyProjectId.make("stale-project-1"),
+        objective: "Stale closed",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "2",
+        workflowId: WorkflowId.make("wf-stale-1"),
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      dispatchedIds.length = 0;
+      yield* orchestrator.dispatchWorkItem(workItemId);
+      expect(dispatchedIds).not.toContain("stale-closed-1");
+      const after = yield* workItems.getById(workItemId);
+      expect(after?.lifecycle).toBe("eligible");
+      expect(after?.eligibilityReasons.some((r) => r.startsWith("state_terminal:"))).toBe(true);
+    }),
+  );
+
+  it.effect("refuses a queued item whose required label was removed", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-stale-2", "/repo/stale-2", { autonomy: "execute" });
+      const workItems = yield* WorkItemRepository;
+      const workItemId = WorkItemId.make("stale-unlabelled-1");
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId: SymphonyProjectId.make("stale-project-2"),
+        objective: "Stale unlabelled",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "3",
+        workflowId: WorkflowId.make("wf-stale-2"),
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      dispatchedIds.length = 0;
+      yield* orchestrator.dispatchWorkItem(workItemId);
+      expect(dispatchedIds).not.toContain("stale-unlabelled-1");
+      const after = yield* workItems.getById(workItemId);
+      expect(after?.lifecycle).toBe("eligible");
+      expect(after?.eligibilityReasons.some((r) => r.includes("agent-ready"))).toBe(true);
+    }),
+  );
+
+  it.effect("keeps a retry_scheduled item and records the reasons", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-stale-3", "/repo/stale-3", { autonomy: "execute" });
+      const workItems = yield* WorkItemRepository;
+      const workItemId = WorkItemId.make("stale-retry-1");
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId: SymphonyProjectId.make("stale-project-3"),
+        objective: "Stale retry",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "2",
+        workflowId: WorkflowId.make("wf-stale-3"),
+        lifecycle: "retry_scheduled",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      dispatchedIds.length = 0;
+      yield* orchestrator.dispatchWorkItem(workItemId);
+      expect(dispatchedIds).not.toContain("stale-retry-1");
+      const after = yield* workItems.getById(workItemId);
+      expect(after?.lifecycle).toBe("retry_scheduled");
+      expect((after?.eligibilityReasons.length ?? 0) > 0).toBe(true);
+    }),
+  );
+
+  it.effect("does not re-check a review continuation", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-stale-4", "/repo/stale-4", { autonomy: "execute" });
+      const workItems = yield* WorkItemRepository;
+      const workItemId = WorkItemId.make("stale-review-1");
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId: SymphonyProjectId.make("stale-project-4"),
+        objective: "Stale review",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "2",
+        workflowId: WorkflowId.make("wf-stale-4"),
+        lifecycle: "changes_requested",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      dispatchedIds.length = 0;
+      yield* orchestrator.dispatchWorkItem(workItemId);
+      yield* awaitDispatched("stale-review-1");
+      expect(dispatchedIds).toContain("stale-review-1");
+    }),
+  );
+
   it.effect("per-scope pause gates dispatch for the paused workflow", () =>
     Effect.gen(function* () {
       const orchestrator = yield* SymphonyOrchestrator;
@@ -1574,7 +1696,11 @@ layer("SymphonyOrchestrator Observe", (it) => {
         autonomy: "execute",
         validationError: null,
         definition: { config: {}, promptTemplate: "Implement." },
-        effectiveConfig: { ...makeConfig("/repo/pause"), autonomy: "execute" },
+        effectiveConfig: {
+          ...makeConfig("/repo/pause"),
+          autonomy: "execute",
+          trackerRequiredLabels: [],
+        },
         enabledAt: "2026-08-05T00:00:00.000Z",
         createdAt: "2026-08-05T00:00:00.000Z",
         updatedAt: "2026-08-05T00:00:00.000Z",
