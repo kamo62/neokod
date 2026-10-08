@@ -11,18 +11,27 @@ it("formats headless serve output with the Neokod heading and local URL", () => 
   expect(
     formatHeadlessServeOutput({
       connectionString: "http://localhost:3773",
-      loopbackAuthToken: undefined,
+      accessTokenSource: undefined,
+      accessTokenFilePath: undefined,
     }),
-  ).toBe("Neokod server is ready.\nLocal URL: http://localhost:3773\n");
+  ).toBe("Neokod server is ready.\nLocal URL: http://localhost:3773");
 });
 
-it("prints the per-launch token when the loopback transport is authenticated", () => {
+it("names the token source without ever printing the token", () => {
   const output = formatHeadlessServeOutput({
     connectionString: "http://localhost:3773",
-    loopbackAuthToken: "launch-token",
+    accessTokenSource: "generated",
+    accessTokenFilePath: "/tmp/x/access-token",
   });
-  expect(output).toContain("Launch token: launch-token");
-  expect(output).toContain("not persisted");
+  expect(output).toBe(
+    [
+      "Neokod server is ready.",
+      "Local URL: http://localhost:3773",
+      "Access token: generated and stored in /tmp/x/access-token (mode 0600)",
+      "Open the URL and paste the token when asked. Read it with: cat /tmp/x/access-token",
+    ].join("\n"),
+  );
+  expect(output).not.toContain("sample-token-never-printed");
 });
 
 it("prefers localhost when no explicit host is configured", () => {

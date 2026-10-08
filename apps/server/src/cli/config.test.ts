@@ -31,6 +31,7 @@ const emptyFlags: CliServerFlags = {
   publicHost: Option.none(),
   publicOrigin: Option.none(),
   strictTransport: Option.none(),
+  accessTokenFile: Option.none(),
 };
 
 it.layer(NodeServices.layer)("cli config resolution", (it) => {
@@ -90,31 +91,166 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     }),
   );
 
-  it.effect("strict-transport mints the loopback token; default does not", () =>
-    Effect.gen(function* () {
-      const path = yield* Path.Path;
-      const baseDir = path.join(NodeOS.tmpdir(), "neokod-cli-strict-transport");
-      const env = Layer.mergeAll(
-        ConfigProvider.layer(ConfigProvider.fromEnv({ env: { NEOKOD_HOME: baseDir } })),
-        NetService.layer,
-      );
+  it.effect(
+    "web mode has a stable access token; strict-transport only toggles Host/Origin validation",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-cli-access-token-" });
+          const env = Layer.mergeAll(
+            ConfigProvider.layer(ConfigProvider.fromEnv({ env: { NEOKOD_HOME: baseDir } })),
+            NetService.layer,
+          );
 
-      // Default: serve does not mint a token, leaving the transport open.
-      const open = yield* resolveServerConfig(
-        { ...emptyFlags, mode: Option.some("web") },
-        Option.none(),
-      ).pipe(Effect.provide(env));
-      expect(open.strictTransport).toBe(false);
-      expect(open.loopbackAuthToken).toBeUndefined();
+          const first = yield* resolveServerConfig(
+            { ...emptyFlags, mode: Option.some("web") },
+            Option.none(),
+          ).pipe(Effect.provide(env));
+          expect(typeof first.loopbackAuthToken).toBe("string");
+          expect((first.loopbackAuthToken as string).length).toBeGreaterThanOrEqual(32);
+          expect(first.accessTokenSource).toBe("generated");
+          expect(first.strictTransport).toBe(false);
+          const tokenPath = path.join(baseDir, "access-token");
+          expect((yield* fs.stat(tokenPath)).mode & 0o777).toBe(0o600);
 
-      // strict-transport: a per-launch loopback token is minted.
-      const strict = yield* resolveServerConfig(
-        { ...emptyFlags, mode: Option.some("web"), strictTransport: Option.some(true) },
-        Option.none(),
-      ).pipe(Effect.provide(env));
-      expect(strict.strictTransport).toBe(true);
-      expect(typeof strict.loopbackAuthToken).toBe("string");
-    }),
+          const second = yield* resolveServerConfig(
+            { ...emptyFlags, mode: Option.some("web") },
+            Option.none(),
+          ).pipe(Effect.provide(env));
+          expect(second.loopbackAuthToken).toBe(first.loopbackAuthToken);
+          expect(second.accessTokenSource).toBe("default-file");
+
+          const strict = yield* resolveServerConfig(
+            { ...emptyFlags, mode: Option.some("web"), strictTransport: Option.some(true) },
+            Option.none(),
+          ).pipe(Effect.provide(env));
+          expect(strict.loopbackAuthToken).toBe(first.loopbackAuthToken);
+          expect(strict.strictTransport).toBe(true);
+        }),
+      ),
+  );
+
+  it.effect("NEOKOD_ACCESS_TOKEN wins over the default file and creates no file", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-cli-access-token-" });
+        const env = Layer.mergeAll(
+          ConfigProvider.layer(
+            ConfigProvider.fromEnv({
+              env: { NEOKOD_HOME: baseDir, NEOKOD_ACCESS_TOKEN: "e".repeat(32) },
+            }),
+          ),
+          NetService.layer,
+        );
+        const resolved = yield* resolveServerConfig(
+          { ...emptyFlags, mode: Option.some("web") },
+          Option.none(),
+        ).pipe(Effect.provide(env));
+        expect(resolved.loopbackAuthToken).toBe("e".repeat(32));
+        expect(resolved.accessTokenSource).toBe("env");
+        expect(yield* fs.exists(path.join(baseDir, "access-token"))).toBe(false);
+      }),
+    ),
+  );
+
+  it.effect("--access-token-file wins over env", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const dir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-cli-access-token-" });
+        const flagPath = path.join(dir, "flag-token");
+        yield* fs.writeFileString(flagPath, "f".repeat(40));
+        const env = Layer.mergeAll(
+          ConfigProvider.layer(
+            ConfigProvider.fromEnv({
+              env: { NEOKOD_HOME: dir, NEOKOD_ACCESS_TOKEN: "e".repeat(32) },
+            }),
+          ),
+          NetService.layer,
+        );
+        const resolved = yield* resolveServerConfig(
+          { ...emptyFlags, mode: Option.some("web"), accessTokenFile: Option.some(flagPath) },
+          Option.none(),
+        ).pipe(Effect.provide(env));
+        expect(resolved.loopbackAuthToken).toBe("f".repeat(40));
+        expect(resolved.accessTokenSource).toBe("flag-file");
+      }),
+    ),
+  );
+
+  it.effect("a too-short NEOKOD_ACCESS_TOKEN fails startup", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-cli-access-token-" });
+        const env = Layer.mergeAll(
+          ConfigProvider.layer(
+            ConfigProvider.fromEnv({ env: { NEOKOD_HOME: baseDir, NEOKOD_ACCESS_TOKEN: "short" } }),
+          ),
+          NetService.layer,
+        );
+        const error = yield* Effect.flip(
+          resolveServerConfig({ ...emptyFlags, mode: Option.some("web") }, Option.none()).pipe(
+            Effect.provide(env),
+          ),
+        );
+        expect(error._tag).toBe("AccessTokenError");
+      }),
+    ),
+  );
+
+  it.effect("desktop mode without a bootstrap token generates no token and no file", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-cli-access-token-" });
+        const env = Layer.mergeAll(
+          ConfigProvider.layer(ConfigProvider.fromEnv({ env: { NEOKOD_HOME: baseDir } })),
+          NetService.layer,
+        );
+        const resolved = yield* resolveServerConfig(
+          { ...emptyFlags, mode: Option.some("desktop") },
+          Option.none(),
+        ).pipe(Effect.provide(env));
+        expect(resolved.loopbackAuthToken).toBeUndefined();
+        expect(yield* fs.exists(path.join(baseDir, "access-token"))).toBe(false);
+      }),
+    ),
+  );
+
+  it.effect("read-only policy never creates the file and reuses an existing one", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-cli-access-token-" });
+        const env = Layer.mergeAll(
+          ConfigProvider.layer(ConfigProvider.fromEnv({ env: { NEOKOD_HOME: baseDir } })),
+          NetService.layer,
+        );
+        const missing = yield* resolveServerConfig(
+          { ...emptyFlags, mode: Option.some("web") },
+          Option.none(),
+          { accessTokenPolicy: "read-only" },
+        ).pipe(Effect.provide(env));
+        expect(missing.loopbackAuthToken).toBeUndefined();
+        expect(yield* fs.exists(path.join(baseDir, "access-token"))).toBe(false);
+        yield* fs.writeFileString(path.join(baseDir, "access-token"), "d".repeat(40));
+        const reused = yield* resolveServerConfig(
+          { ...emptyFlags, mode: Option.some("web") },
+          Option.none(),
+          { accessTokenPolicy: "read-only" },
+        ).pipe(Effect.provide(env));
+        expect(reused.loopbackAuthToken).toBe("d".repeat(40));
+        expect(reused.accessTokenSource).toBe("default-file");
+      }),
+    ),
   );
 
   it.effect("honors ordinary CLI flags without exposing a host override", () =>

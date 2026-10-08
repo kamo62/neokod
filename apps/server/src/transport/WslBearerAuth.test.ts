@@ -103,4 +103,31 @@ describe("WslBearerAuth", () => {
       });
     }),
   );
+
+  it.effect("rejects a same-length wrong token", () =>
+    Effect.gen(function* () {
+      const auth = yield* makeAuth("loopback", "t".repeat(40));
+      expect(
+        yield* auth.authorizeBearerHeader(`Bearer ${"x".repeat(40)}`).pipe(Effect.flip),
+      ).toMatchObject({ reason: "invalid_credential" });
+    }),
+  );
+
+  it.effect("rejects bearer with a lowercase scheme", () =>
+    Effect.gen(function* () {
+      const auth = yield* makeAuth("loopback", "t".repeat(40));
+      expect(
+        yield* auth.authorizeBearerHeader(`bearer ${"t".repeat(40)}`).pipe(Effect.flip),
+      ).toMatchObject({ reason: "invalid_credential" });
+    }),
+  );
+
+  it.effect("rejects Bearer with two spaces", () =>
+    Effect.gen(function* () {
+      const auth = yield* makeAuth("loopback", "t".repeat(40));
+      expect(
+        yield* auth.authorizeBearerHeader(`Bearer  ${"t".repeat(40)}`).pipe(Effect.flip),
+      ).toMatchObject({ reason: "invalid_credential" });
+    }),
+  );
 });

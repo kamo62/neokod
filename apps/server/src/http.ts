@@ -12,6 +12,7 @@ import {
   HttpBody,
   HttpClient,
   HttpClientResponse,
+  HttpMiddleware,
   HttpRouter,
   HttpServerResponse,
   HttpServerRequest,
@@ -38,6 +39,18 @@ export const browserApiCorsLayer = Layer.unwrap(
     const devOrigin = config.devUrl?.origin;
     // Dev uses credentialed requests from Vite or the Electron custom origin, so both must be
     // explicit. Packaged desktop omits credentials and uses Effect's default wildcard origin.
+    if (typeof config.loopbackAuthToken === "string" && config.loopbackAuthToken.length > 0) {
+      return HttpRouter.middleware(
+        HttpMiddleware.cors({
+          allowedOrigins: makeBrowserOriginPredicate(config),
+          allowedMethods: browserApiCorsAllowedMethods,
+          allowedHeaders: browserApiCorsAllowedHeaders,
+          credentials: devOrigin !== undefined,
+          maxAge: 600,
+        }),
+        { global: true },
+      );
+    }
     return HttpRouter.cors({
       ...(devOrigin
         ? { allowedOrigins: [devOrigin, ...DESKTOP_RENDERER_ORIGINS], credentials: true }
@@ -48,6 +61,21 @@ export const browserApiCorsLayer = Layer.unwrap(
     });
   }),
 );
+
+export const makeBrowserOriginPredicate =
+  (config: Pick<ServerConfig.ServerConfig["Service"], "devUrl" | "publicOrigins">) =>
+  (origin: string): boolean => {
+    if (origin === config.devUrl?.origin || DESKTOP_RENDERER_ORIGINS.includes(origin)) return true;
+    if ((config.publicOrigins ?? []).includes(origin)) return true;
+    try {
+      const url = new URL(origin);
+      return (
+        (url.protocol === "http:" || url.protocol === "https:") && isLoopbackHostname(url.hostname)
+      );
+    } catch {
+      return false;
+    }
+  };
 
 export function isLoopbackHostname(hostname: string): boolean {
   const normalizedHostname = hostname

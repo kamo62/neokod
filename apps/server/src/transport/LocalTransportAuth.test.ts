@@ -127,4 +127,13 @@ describe("LocalTransportAuth", () => {
       expect(result._tag).toBe("Failure");
     }),
   );
+
+  it.effect(
+    "with strict-transport off and a token configured, a foreign Host still passes validation (the bearer is the credential)",
+    () =>
+      withAuth({ strictTransport: false, loopbackAuthToken: "t".repeat(40) })(
+        "http://evil.example.com/",
+        {},
+      ),
+  );
 });

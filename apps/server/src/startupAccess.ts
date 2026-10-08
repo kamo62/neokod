@@ -3,11 +3,13 @@ import * as NodeOS from "node:os";
 import * as Effect from "effect/Effect";
 import { HttpServer } from "effect/unstable/http";
 
+import type { AccessTokenSource } from "./accessToken.ts";
 import { ServerConfig } from "./config.ts";
 
 export interface HeadlessServeAccessInfo {
   readonly connectionString: string;
-  readonly loopbackAuthToken: string | undefined;
+  readonly accessTokenSource: AccessTokenSource | undefined;
+  readonly accessTokenFilePath: string | undefined;
 }
 
 type NetworkInterfacesMap = ReturnType<typeof NodeOS.networkInterfaces>;
@@ -88,13 +90,21 @@ export const resolveListeningPort = (address: unknown, fallbackPort: number): nu
 
 export const formatHeadlessServeOutput = (accessInfo: HeadlessServeAccessInfo): string => {
   const lines = ["Neokod server is ready.", `Local URL: ${accessInfo.connectionString}`];
-  if (accessInfo.loopbackAuthToken !== undefined) {
-    lines.push(`Launch token: ${accessInfo.loopbackAuthToken}`);
+  if (accessInfo.accessTokenSource !== undefined) {
+    const filePath = accessInfo.accessTokenFilePath;
+    const sourceLine =
+      accessInfo.accessTokenSource === "generated" && filePath !== undefined
+        ? `generated and stored in ${filePath} (mode 0600)`
+        : accessInfo.accessTokenSource === "default-file" && filePath !== undefined
+          ? `stored in ${filePath}`
+          : accessInfo.accessTokenSource === "flag-file" && filePath !== undefined
+            ? `read from ${filePath}`
+            : "from NEOKOD_ACCESS_TOKEN";
+    lines.push(`Access token: ${sourceLine}`);
     lines.push(
-      "The web client authenticates with this token for this launch; it is not persisted.",
+      `Open the URL and paste the token when asked.${filePath !== undefined ? ` Read it with: cat ${filePath}` : ""}`,
     );
   }
-  lines.push("");
   return lines.join("\n");
 };
 
@@ -107,6 +117,7 @@ export const issueHeadlessServeAccessInfo = Effect.fn("issueHeadlessServeAccessI
   );
   return {
     connectionString,
-    loopbackAuthToken: serverConfig.loopbackAuthToken,
+    accessTokenSource: serverConfig.accessTokenSource,
+    accessTokenFilePath: serverConfig.accessTokenFilePath,
   } satisfies HeadlessServeAccessInfo;
 });

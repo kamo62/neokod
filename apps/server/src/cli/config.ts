@@ -1,7 +1,6 @@
 import * as NetService from "@neokod/shared/Net";
 import { parsePersistedServerObservabilitySettings } from "@neokod/shared/serverSettings";
 import { DesktopBackendBootstrap, PortSchema } from "@neokod/contracts";
-import * as NodeCrypto from "node:crypto";
 import * as Config from "effect/Config";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -9,12 +8,14 @@ import * as FileSystem from "effect/FileSystem";
 import * as LogLevel from "effect/LogLevel";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as SchemaIssue from "effect/SchemaIssue";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import { Argument, Flag } from "effect/unstable/cli";
 
 import { readBootstrapEnvelope } from "../bootstrap.ts";
+import { type ResolvedAccessToken, resolveAccessToken } from "../accessToken.ts";
 import * as ServerConfig from "../config.ts";
 import { expandHomePath, resolveBaseDir } from "../os-jank.ts";
 
@@ -73,6 +74,12 @@ export const publicOriginFlag = Flag.string("public-origin").pipe(
 export const strictTransportFlag = Flag.boolean("strict-transport").pipe(
   Flag.withDescription(
     "Harden the loopback transport: mint a per-launch loopback token and enforce Host/Origin validation. Opt-in and off by default (equivalent to NEOKOD_STRICT_TRANSPORT).",
+  ),
+  Flag.optional,
+);
+export const accessTokenFileFlag = Flag.string("access-token-file").pipe(
+  Flag.withDescription(
+    "Read the access token from this file (at least 32 characters). Overrides NEOKOD_ACCESS_TOKEN.",
   ),
   Flag.optional,
 );
@@ -170,6 +177,11 @@ const EnvServerConfig = Config.all({
     "T3CODE_STRICT_TRANSPORT",
     Config.boolean,
   ).pipe(Config.option, Config.map(Option.getOrUndefined)),
+  accessToken: Config.redacted("NEOKOD_ACCESS_TOKEN").pipe(
+    Config.option,
+    Config.map(Option.map(Redacted.value)),
+    Config.map(Option.getOrUndefined),
+  ),
 });
 
 export interface CliServerFlags {
@@ -185,6 +197,7 @@ export interface CliServerFlags {
   readonly publicHost: Option.Option<string>;
   readonly publicOrigin: Option.Option<string>;
   readonly strictTransport: Option.Option<boolean>;
+  readonly accessTokenFile: Option.Option<string>;
 }
 
 export interface CliProjectLocationFlags {
@@ -219,6 +232,7 @@ export const sharedServerCommandFlags = {
   publicHost: publicHostFlag,
   publicOrigin: publicOriginFlag,
   strictTransport: strictTransportFlag,
+  accessTokenFile: accessTokenFileFlag,
 } as const;
 
 const resolveOptionPrecedence = <Value>(
@@ -242,6 +256,7 @@ export const resolveServerConfig = (
   options?: {
     readonly startupPresentation?: ServerConfig.StartupPresentation;
     readonly forceAutoBootstrapProjectFromCwd?: boolean;
+    readonly accessTokenPolicy?: "generate" | "read-only";
   },
 ) =>
   Effect.gen(function* () {
@@ -262,6 +277,7 @@ export const resolveServerConfig = (
       publicHost: flags.publicHost ?? Option.none(),
       publicOrigin: flags.publicOrigin ?? Option.none(),
       strictTransport: flags.strictTransport ?? Option.none(),
+      accessTokenFile: flags.accessTokenFile ?? Option.none(),
     } satisfies CliServerFlags;
     const bootstrapFd = Option.getOrUndefined(normalizedFlags.bootstrapFd) ?? env.bootstrapFd;
     const bootstrapEnvelope =
@@ -361,15 +377,19 @@ export const resolveServerConfig = (
     );
     const bootstrapLoopbackToken =
       bootstrap?.transport === "loopback" ? bootstrap.loopbackAuthToken : undefined;
-    // Serve/start on the loopback transport without a desktop bootstrap mints
-    // a per-launch token (plan WS-A2, 13.3): it is printed and written to a
-    // loopback-only file so a browser or CLI client can authenticate. It is
-    // never persisted to a stable location.
+    const wantsAccessToken =
+      mode === "web" && transport === "loopback" && bootstrapLoopbackToken === undefined;
+    const resolvedAccessToken = wantsAccessToken
+      ? yield* resolveAccessToken({
+          baseDir,
+          envToken: env.accessToken,
+          tokenFile: Option.getOrUndefined(normalizedFlags.accessTokenFile),
+          generate: (options?.accessTokenPolicy ?? "generate") === "generate",
+        })
+      : Option.none<ResolvedAccessToken>();
     const loopbackAuthToken =
       bootstrapLoopbackToken ??
-      (strictTransport && transport === "loopback" && mode === "web"
-        ? NodeCrypto.randomBytes(24).toString("base64url")
-        : undefined);
+      Option.getOrUndefined(Option.map(resolvedAccessToken, (r) => r.token));
     const logLevel = Option.getOrElse(cliLogLevel, () => env.logLevel);
 
     const config: ServerConfig.ServerConfig["Service"] = {
@@ -403,6 +423,14 @@ export const resolveServerConfig = (
       startupPresentation,
       wslBearerToken,
       loopbackAuthToken,
+      ...(Option.isSome(resolvedAccessToken)
+        ? {
+            accessTokenSource: resolvedAccessToken.value.source,
+            ...(resolvedAccessToken.value.filePath !== undefined
+              ? { accessTokenFilePath: resolvedAccessToken.value.filePath }
+              : {}),
+          }
+        : {}),
       publicHosts: publicHost === undefined ? [] : [publicHost],
       publicOrigins: publicOrigin === undefined ? [] : [publicOrigin],
       strictTransport,
@@ -431,8 +459,10 @@ export const resolveCliProjectConfig = (
       publicHost: Option.none(),
       publicOrigin: Option.none(),
       strictTransport: Option.none(),
+      accessTokenFile: Option.none(),
     },
     cliLogLevel,
+    { accessTokenPolicy: "read-only" },
   );
 
 const DurationShorthandPattern = /^(?<value>\d+)(?<unit>ms|s|m|h|d|w)$/i;

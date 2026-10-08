@@ -954,6 +954,82 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  const TOKEN = "t".repeat(40);
+
+  it.effect("with a token, a foreign Origin gets no CORS allow-origin header", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: { loopbackAuthToken: TOKEN, publicOrigins: ["https://neokod.example.com"] },
+      });
+
+      const url = yield* getHttpServerUrl("/.well-known/neokod/environment");
+      const response = yield* fetchEffect(url, {
+        headers: { authorization: `Bearer ${TOKEN}`, origin: "https://evil.example.com" },
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers["access-control-allow-origin"], undefined);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("with a token, public, loopback and desktop origins are echoed", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: { loopbackAuthToken: TOKEN, publicOrigins: ["https://neokod.example.com"] },
+      });
+
+      const url = yield* getHttpServerUrl("/.well-known/neokod/environment");
+      for (const origin of [
+        "https://neokod.example.com",
+        "http://localhost:5733",
+        "neokod://app",
+      ]) {
+        const response = yield* fetchEffect(url, {
+          headers: { authorization: `Bearer ${TOKEN}`, origin },
+        });
+        assert.equal(response.status, 200);
+        assert.equal(response.headers["access-control-allow-origin"], origin);
+      }
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("with a token, a preflight from a foreign origin gets no allow-origin", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: { loopbackAuthToken: TOKEN, publicOrigins: ["https://neokod.example.com"] },
+      });
+
+      const url = yield* getHttpServerUrl("/.well-known/neokod/environment");
+      const response = yield* fetchEffect(url, {
+        method: "OPTIONS",
+        headers: {
+          origin: "https://evil.example.com",
+          "access-control-request-headers": "authorization",
+        },
+      });
+      assert.equal(response.headers["access-control-allow-origin"], undefined);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("with a token, the descriptor and dispatch require the bearer", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: { loopbackAuthToken: TOKEN, publicOrigins: ["https://neokod.example.com"] },
+      });
+
+      const descriptorUrl = yield* getHttpServerUrl("/.well-known/neokod/environment");
+      const descriptorResponse = yield* fetchEffect(descriptorUrl);
+      assert.equal(descriptorResponse.status, 401);
+      const descriptorBody = yield* responseJsonEffect<{ code?: string }>(descriptorResponse);
+      assert.equal(descriptorBody.code, "wsl_bearer_invalid");
+
+      // The dispatch route decodes its payload before the handler runs, so
+      // the payload-free snapshot route stands in for the bearer check here.
+      const snapshotUrl = yield* getHttpServerUrl("/api/orchestration/snapshot");
+      const snapshotResponse = yield* fetchEffect(snapshotUrl);
+      assert.equal(snapshotResponse.status, 401);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("proxies browser OTLP trace exports through the server", () =>
     Effect.gen(function* () {
       const upstreamRequests: Array<{
