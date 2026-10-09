@@ -15,6 +15,8 @@ import {
   SymphonyProjectId,
 } from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
+import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
@@ -240,6 +242,21 @@ const memoryFactory = (options: { readonly repositoryPath: string }) =>
 const registryLayer = TrackerRegistryWithFactories(new Map([["github", memoryFactory]]));
 
 const dispatchedIds: string[] = [];
+// Gate and interruption flag for the forked-dispatch tests (card 1.8): the
+// mock dispatcher can hold a run open so a test can prove the caller
+// already moved on.
+let dispatchGate: Deferred.Deferred<void> | null = null;
+const dispatchStatus = { interrupted: false, completed: false };
+
+const awaitDispatched = (id: string) =>
+  Effect.gen(function* () {
+    for (let i = 0; i < 200 && !dispatchedIds.includes(id); i++) {
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("1 millis");
+    }
+  });
+
+const settle = Effect.repeat(Effect.yieldNow, { times: 50 });
 // Captures the full dispatch input (plan FR-102-104: proves reviewFeedback
 // actually reaches the dispatcher, not just that a dispatch happened).
 const dispatchedInputs: Array<{
@@ -271,6 +288,17 @@ const mockDispatcherLayer = Layer.effect(
                   ? { workflowInstructions: input.workflowInstructions }
                   : {}),
               });
+            }),
+          ),
+          Effect.andThen(dispatchGate === null ? Effect.void : Deferred.await(dispatchGate)),
+          Effect.onInterrupt(() =>
+            Effect.sync(() => {
+              dispatchStatus.interrupted = true;
+            }),
+          ),
+          Effect.tap(() =>
+            Effect.sync(() => {
+              dispatchStatus.completed = true;
             }),
           ),
           Effect.mapError((cause) => new RunDispatchError(cause.message)),
@@ -987,8 +1015,10 @@ layer("SymphonyOrchestrator Observe", (it) => {
       // backoff boundary. The scan at 10s performs the dispatch; do not force
       // a later explicit tick, because this intentionally minimal mock does
       // not create the new run-attempt row that production dispatch records.
+      // The scan fans out over many queued leftovers (one latest-attempt
+      // read each), so allow several turns for the dispatch to land.
       yield* TestClock.adjust("11 seconds");
-      yield* Effect.yieldNow;
+      yield* Effect.repeat(Effect.yieldNow, { times: 50 });
       const after = yield* workItems.getById(workItemId);
       expect(after?.lifecycle).toBe("preparing");
       expect(dispatchedIds).toContain("retry-1");
@@ -1066,6 +1096,593 @@ layer("SymphonyOrchestrator Observe", (it) => {
     }),
   );
 
+  it.effect("does not auto-relaunch a queued item whose latest attempt was cancelled", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-cancel-guard-1", "/repo/cancel-guard-1");
+      const workflows = yield* WorkflowRepository;
+      yield* workflows.upsert({
+        id: WorkflowId.make("wf-cancel-guard-1"),
+        repositoryPath: "/repo/cancel-guard-1",
+        workflowPath: "/repo/cancel-guard-1/WORKFLOW.md",
+        status: "active",
+        autonomy: "execute",
+        validationError: null,
+        definition: { config: {}, promptTemplate: "Implement." },
+        effectiveConfig: {
+          ...makeConfig("/repo/cancel-guard-1"),
+          autonomy: "execute",
+        },
+        enabledAt: "2026-08-05T00:00:00.000Z",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const projectId = SymphonyProjectId.make("cancel-guard-1");
+      const workItemId = WorkItemId.make("cancel-guard-1");
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId,
+        objective: "Cancelled target",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        workflowId: WorkflowId.make("wf-cancel-guard-1"),
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const runAttempts = yield* RunAttemptRepository;
+      const recent = yield* nowIso;
+      yield* runAttempts.create({
+        id: RunAttemptId.make("run-cancel-guard-1"),
+        workItemId,
+        attemptNumber: 1,
+        workspacePath: "/ws/cancel-guard-1",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "user_cancelled",
+        startedAt: recent,
+        finishedAt: recent,
+        error: { category: "user_cancelled", message: "user cancelled" },
+      });
+
+      dispatchedIds.length = 0;
+      yield* orchestrator.dispatchWorkItem(workItemId);
+      expect(dispatchedIds).not.toContain("cancel-guard-1");
+      yield* TestClock.adjust("10 seconds");
+      expect(dispatchedIds).not.toContain("cancel-guard-1");
+    }),
+  );
+
+  it.effect("an explicit dispatch retries a failed item", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-failed-retry-1", "/repo/failed-retry-1");
+      const workflows = yield* WorkflowRepository;
+      yield* workflows.upsert({
+        id: WorkflowId.make("wf-failed-retry-1"),
+        repositoryPath: "/repo/failed-retry-1",
+        workflowPath: "/repo/failed-retry-1/WORKFLOW.md",
+        status: "active",
+        autonomy: "execute",
+        validationError: null,
+        definition: { config: {}, promptTemplate: "Implement." },
+        effectiveConfig: {
+          ...makeConfig("/repo/failed-retry-1"),
+          autonomy: "execute",
+        },
+        enabledAt: "2026-08-05T00:00:00.000Z",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const projectId = SymphonyProjectId.make("failed-retry-1");
+      const workItemId = WorkItemId.make("failed-retry-1");
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId,
+        objective: "Failed target",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        workflowId: WorkflowId.make("wf-failed-retry-1"),
+        lifecycle: "failed",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const runAttempts = yield* RunAttemptRepository;
+      const recent = yield* nowIso;
+      yield* runAttempts.create({
+        id: RunAttemptId.make("run-failed-retry-1"),
+        workItemId,
+        attemptNumber: 5,
+        workspacePath: "/ws/failed-retry-1",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "failed",
+        startedAt: recent,
+        finishedAt: recent,
+        error: { category: "agent", message: "turn failed" },
+      });
+
+      dispatchedIds.length = 0;
+      yield* orchestrator.dispatchWorkItem(workItemId, { explicit: true });
+      // Wait for the forked dispatch WITHOUT advancing the clock (a
+      // scheduler tick would reconcile the mock-held claim straight back:
+      // the mock reports no active agent and the seeded attempt is
+      // terminal, so any tick releases it to queued).
+      for (let i = 0; i < 500 && !dispatchedIds.includes("failed-retry-1"); i++) {
+        yield* Effect.yieldNow;
+      }
+      expect(dispatchedIds).toContain("failed-retry-1");
+      // The claim runs in the forked dispatch: wait for it to land.
+      let after = yield* workItems.getById(workItemId);
+      for (let i = 0; i < 200 && after?.lifecycle !== "preparing"; i++) {
+        yield* Effect.yieldNow;
+        after = yield* workItems.getById(workItemId);
+      }
+      expect(after?.lifecycle).toBe("preparing");
+    }),
+  );
+
+  it.effect("an explicit dispatch also overrides the guard for a queued item", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-cancel-override-1", "/repo/cancel-override-1");
+      const workflows = yield* WorkflowRepository;
+      yield* workflows.upsert({
+        id: WorkflowId.make("wf-cancel-override-1"),
+        repositoryPath: "/repo/cancel-override-1",
+        workflowPath: "/repo/cancel-override-1/WORKFLOW.md",
+        status: "active",
+        autonomy: "execute",
+        validationError: null,
+        definition: { config: {}, promptTemplate: "Implement." },
+        effectiveConfig: {
+          ...makeConfig("/repo/cancel-override-1"),
+          autonomy: "execute",
+        },
+        enabledAt: "2026-08-05T00:00:00.000Z",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const projectId = SymphonyProjectId.make("cancel-override-1");
+      const workItemId = WorkItemId.make("cancel-override-1");
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId,
+        objective: "Cancelled override target",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        workflowId: WorkflowId.make("wf-cancel-override-1"),
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const runAttempts = yield* RunAttemptRepository;
+      const recent = yield* nowIso;
+      yield* runAttempts.create({
+        id: RunAttemptId.make("run-cancel-override-1"),
+        workItemId,
+        attemptNumber: 1,
+        workspacePath: "/ws/cancel-override-1",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "user_cancelled",
+        startedAt: recent,
+        finishedAt: recent,
+        error: { category: "user_cancelled", message: "user cancelled" },
+      });
+
+      dispatchedIds.length = 0;
+      yield* orchestrator.dispatchWorkItem(workItemId, { explicit: true });
+      yield* awaitDispatched("cancel-override-1");
+      expect(dispatchedIds).toContain("cancel-override-1");
+    }),
+  );
+
+  it.effect("launches the next candidate once the head item has left the queue", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-head-queue-1", "/repo/head-queue-1");
+      const workflows = yield* WorkflowRepository;
+      yield* workflows.upsert({
+        id: WorkflowId.make("wf-head-queue-1"),
+        repositoryPath: "/repo/head-queue-1",
+        workflowPath: "/repo/head-queue-1/WORKFLOW.md",
+        status: "active",
+        autonomy: "execute",
+        validationError: null,
+        definition: { config: {}, promptTemplate: "Implement." },
+        effectiveConfig: {
+          ...makeConfig("/repo/head-queue-1"),
+          autonomy: "execute",
+        },
+        enabledAt: "2026-08-05T00:00:00.000Z",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      const workItems = yield* WorkItemRepository;
+      const firstId = WorkItemId.make("head-queue-1");
+      yield* workItems.upsert({
+        id: firstId,
+        mode: "symphony",
+        projectId: SymphonyProjectId.make("head-queue-first"),
+        objective: "First",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        workflowId: WorkflowId.make("wf-head-queue-1"),
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        // Predate every other queued leftover in the shared suite database
+        // so the one-launch-per-tick scan reaches these two items first.
+        createdAt: "2020-01-01T00:00:00.000Z",
+        updatedAt: "2020-01-01T00:00:00.000Z",
+      });
+      const secondId = WorkItemId.make("head-queue-2");
+      yield* workItems.upsert({
+        id: secondId,
+        mode: "symphony",
+        projectId: SymphonyProjectId.make("head-queue-second"),
+        objective: "Second",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        workflowId: WorkflowId.make("wf-head-queue-1"),
+        lifecycle: "queued",
+        priority: 2,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2020-01-01T00:00:01.000Z",
+        updatedAt: "2020-01-01T00:00:01.000Z",
+      });
+
+      dispatchedIds.length = 0;
+      // The shared suite database holds older queued leftovers, and the
+      // one-launch-per-tick scan serves them first: tick until the head item
+      // goes, then check the second follows after the head leaves the queue.
+      for (let tick = 0; tick < 40 && !dispatchedIds.includes("head-queue-1"); tick++) {
+        yield* TestClock.adjust("5 seconds");
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+      }
+      expect(dispatchedIds).toContain("head-queue-1");
+      yield* workItems.transition(firstId, "failed", { from: ["preparing"] });
+      for (let tick = 0; tick < 40 && !dispatchedIds.includes("head-queue-2"); tick++) {
+        yield* TestClock.adjust("5 seconds");
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+      }
+      expect(dispatchedIds).toContain("head-queue-2");
+      expect(dispatchedIds.indexOf("head-queue-1")).toBeLessThan(
+        dispatchedIds.indexOf("head-queue-2"),
+      );
+    }),
+  );
+
+  const seedForkWorkflow = (id: string, repositoryPath: string) =>
+    Effect.gen(function* () {
+      yield* seedWorkflow(id, repositoryPath);
+      const workflows = yield* WorkflowRepository;
+      yield* workflows.upsert({
+        id: WorkflowId.make(id),
+        repositoryPath,
+        workflowPath: `${repositoryPath}/WORKFLOW.md`,
+        status: "active",
+        autonomy: "execute",
+        validationError: null,
+        definition: { config: {}, promptTemplate: "Implement." },
+        effectiveConfig: {
+          ...makeConfig(repositoryPath),
+          autonomy: "execute",
+        },
+        enabledAt: "2026-08-05T00:00:00.000Z",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+    });
+
+  const seedForkItem = (
+    id: string,
+    projectId: string,
+    workflowId: string,
+    lifecycle: "queued" | "retry_scheduled",
+  ) =>
+    Effect.gen(function* () {
+      const workItems = yield* WorkItemRepository;
+      yield* workItems.upsert({
+        id: WorkItemId.make(id),
+        mode: "symphony",
+        projectId: SymphonyProjectId.make(projectId),
+        objective: `Fork ${id}`,
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        workflowId: WorkflowId.make(workflowId),
+        lifecycle,
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2000-01-01T00:00:00.000Z",
+        updatedAt: "2000-01-01T00:00:00.000Z",
+      });
+    });
+
+  it.effect("manual dispatch returns before the run ends and survives the caller's scope", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      yield* seedForkWorkflow("wf-fork-1", "/repo/fork-1");
+      yield* seedForkItem("fork-1", "fork-project-1", "wf-fork-1", "queued");
+      dispatchGate = yield* Deferred.make<void>();
+      dispatchStatus.interrupted = false;
+      dispatchStatus.completed = false;
+      const result = yield* Effect.scoped(
+        orchestrator.dispatchWorkItem("fork-1", { explicit: true }),
+      );
+      void result;
+      yield* awaitDispatched("fork-1");
+      yield* settle;
+      expect(dispatchStatus.interrupted).toBe(false);
+      expect(dispatchStatus.completed).toBe(false);
+      expect((yield* workItems.getById(WorkItemId.make("fork-1")))?.lifecycle).toBe("preparing");
+      yield* Deferred.succeed(dispatchGate, undefined);
+      yield* settle;
+      expect(dispatchStatus.completed).toBe(true);
+      dispatchGate = null;
+    }).pipe(
+      Effect.ensuring(
+        Effect.gen(function* () {
+          if (dispatchGate !== null) {
+            yield* Deferred.succeed(dispatchGate, undefined).pipe(Effect.catch(() => Effect.void));
+            dispatchGate = null;
+          }
+        }),
+      ),
+    ),
+  );
+
+  it.effect("a due retry does not block the scheduler tick", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedForkWorkflow("wf-fork-2", "/repo/fork-2");
+      yield* seedForkItem("fork-2", "fork-project-2", "wf-fork-2", "retry_scheduled");
+      const runAttempts = yield* RunAttemptRepository;
+      yield* runAttempts.create({
+        id: RunAttemptId.make("run-fork-2"),
+        workItemId: WorkItemId.make("fork-2"),
+        attemptNumber: 1,
+        workspacePath: "/ws/fork-2",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "failed",
+        startedAt: "1969-12-31T00:00:00.000Z",
+        finishedAt: "1969-12-31T00:00:00.000Z",
+        error: { category: "agent", message: "turn failed" },
+      });
+      dispatchGate = yield* Deferred.make<void>();
+      dispatchStatus.interrupted = false;
+      dispatchStatus.completed = false;
+      const tick = yield* orchestrator.refreshNow().pipe(Effect.forkScoped);
+      yield* settle;
+      expect(tick.pollUnsafe()).not.toBe(undefined);
+      expect(dispatchedIds.filter((id) => id.startsWith("fork-"))).toContain("fork-2");
+      yield* Deferred.succeed(dispatchGate, undefined);
+      yield* settle;
+      dispatchGate = null;
+    }).pipe(
+      Effect.ensuring(
+        Effect.gen(function* () {
+          if (dispatchGate !== null) {
+            yield* Deferred.succeed(dispatchGate, undefined).pipe(Effect.catch(() => Effect.void));
+            dispatchGate = null;
+          }
+        }),
+      ),
+    ),
+  );
+
+  it.effect("one retry launch per tick suppresses the queued launch", () =>
+    Effect.gen(function* () {
+      yield* seedForkWorkflow("wf-fork-3", "/repo/fork-3");
+      yield* seedForkItem("fork-3-retry", "fork-project-3-retry", "wf-fork-3", "retry_scheduled");
+      yield* seedForkItem("fork-3-queued", "fork-project-3-queued", "wf-fork-3", "queued");
+      const runAttempts = yield* RunAttemptRepository;
+      yield* runAttempts.create({
+        id: RunAttemptId.make("run-fork-3"),
+        workItemId: WorkItemId.make("fork-3-retry"),
+        attemptNumber: 1,
+        workspacePath: "/ws/fork-3",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "failed",
+        startedAt: "1969-12-31T00:00:00.000Z",
+        finishedAt: "1969-12-31T00:00:00.000Z",
+        error: { category: "agent", message: "turn failed" },
+      });
+      dispatchGate = yield* Deferred.make<void>();
+      dispatchStatus.interrupted = false;
+      dispatchStatus.completed = false;
+      dispatchedIds.length = 0;
+      // Older due retries from earlier tests go first (one launch per
+      // tick): tick until this test's retry launches.
+      for (let tick = 0; tick < 40 && !dispatchedIds.includes("fork-3-retry"); tick++) {
+        yield* TestClock.adjust("5 seconds");
+        yield* settle;
+      }
+      expect(dispatchedIds.filter((id) => id.startsWith("fork-"))).toEqual(["fork-3-retry"]);
+      for (let tick = 0; tick < 40 && !dispatchedIds.includes("fork-3-queued"); tick++) {
+        yield* TestClock.adjust("5 seconds");
+        yield* settle;
+      }
+      expect(dispatchedIds.filter((id) => id.startsWith("fork-"))).toEqual([
+        "fork-3-retry",
+        "fork-3-queued",
+      ]);
+      yield* Deferred.succeed(dispatchGate, undefined);
+      yield* settle;
+      dispatchGate = null;
+    }).pipe(
+      Effect.ensuring(
+        Effect.gen(function* () {
+          if (dispatchGate !== null) {
+            yield* Deferred.succeed(dispatchGate, undefined).pipe(Effect.catch(() => Effect.void));
+            dispatchGate = null;
+          }
+        }),
+      ),
+    ),
+  );
+
+  it.effect("refuses a queued item whose tracker issue is closed", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-stale-1", "/repo/stale-1", { autonomy: "execute" });
+      const workItems = yield* WorkItemRepository;
+      const workItemId = WorkItemId.make("stale-closed-1");
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId: SymphonyProjectId.make("stale-project-1"),
+        objective: "Stale closed",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "2",
+        workflowId: WorkflowId.make("wf-stale-1"),
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      dispatchedIds.length = 0;
+      yield* orchestrator.dispatchWorkItem(workItemId);
+      expect(dispatchedIds).not.toContain("stale-closed-1");
+      const after = yield* workItems.getById(workItemId);
+      expect(after?.lifecycle).toBe("eligible");
+      expect(after?.eligibilityReasons.some((r) => r.startsWith("state_terminal:"))).toBe(true);
+    }),
+  );
+
+  it.effect("refuses a queued item whose required label was removed", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-stale-2", "/repo/stale-2", { autonomy: "execute" });
+      const workItems = yield* WorkItemRepository;
+      const workItemId = WorkItemId.make("stale-unlabelled-1");
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId: SymphonyProjectId.make("stale-project-2"),
+        objective: "Stale unlabelled",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "3",
+        workflowId: WorkflowId.make("wf-stale-2"),
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      dispatchedIds.length = 0;
+      yield* orchestrator.dispatchWorkItem(workItemId);
+      expect(dispatchedIds).not.toContain("stale-unlabelled-1");
+      const after = yield* workItems.getById(workItemId);
+      expect(after?.lifecycle).toBe("eligible");
+      expect(after?.eligibilityReasons.some((r) => r.includes("agent-ready"))).toBe(true);
+    }),
+  );
+
+  it.effect("keeps a retry_scheduled item and records the reasons", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-stale-3", "/repo/stale-3", { autonomy: "execute" });
+      const workItems = yield* WorkItemRepository;
+      const workItemId = WorkItemId.make("stale-retry-1");
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId: SymphonyProjectId.make("stale-project-3"),
+        objective: "Stale retry",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "2",
+        workflowId: WorkflowId.make("wf-stale-3"),
+        lifecycle: "retry_scheduled",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      dispatchedIds.length = 0;
+      yield* orchestrator.dispatchWorkItem(workItemId);
+      expect(dispatchedIds).not.toContain("stale-retry-1");
+      const after = yield* workItems.getById(workItemId);
+      expect(after?.lifecycle).toBe("retry_scheduled");
+      expect((after?.eligibilityReasons.length ?? 0) > 0).toBe(true);
+    }),
+  );
+
+  it.effect("does not re-check a review continuation", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-stale-4", "/repo/stale-4", { autonomy: "execute" });
+      const workItems = yield* WorkItemRepository;
+      const workItemId = WorkItemId.make("stale-review-1");
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId: SymphonyProjectId.make("stale-project-4"),
+        objective: "Stale review",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "2",
+        workflowId: WorkflowId.make("wf-stale-4"),
+        lifecycle: "changes_requested",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      dispatchedIds.length = 0;
+      yield* orchestrator.dispatchWorkItem(workItemId);
+      yield* awaitDispatched("stale-review-1");
+      expect(dispatchedIds).toContain("stale-review-1");
+    }),
+  );
+
   it.effect("per-scope pause gates dispatch for the paused workflow", () =>
     Effect.gen(function* () {
       const orchestrator = yield* SymphonyOrchestrator;
@@ -1079,7 +1696,11 @@ layer("SymphonyOrchestrator Observe", (it) => {
         autonomy: "execute",
         validationError: null,
         definition: { config: {}, promptTemplate: "Implement." },
-        effectiveConfig: { ...makeConfig("/repo/pause"), autonomy: "execute" },
+        effectiveConfig: {
+          ...makeConfig("/repo/pause"),
+          autonomy: "execute",
+          trackerRequiredLabels: [],
+        },
         enabledAt: "2026-08-05T00:00:00.000Z",
         createdAt: "2026-08-05T00:00:00.000Z",
         updatedAt: "2026-08-05T00:00:00.000Z",
@@ -1110,6 +1731,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
 
       yield* orchestrator.setWorkflowPaused("wf-pause-1", false);
       yield* orchestrator.dispatchWorkItem("pause-1");
+      yield* awaitDispatched("pause-1");
       expect(dispatchedIds).toContain("pause-1");
     }),
   );
@@ -1392,6 +2014,160 @@ layer("SymphonyOrchestrator Observe", (it) => {
       const after = yield* workItems.getById(workItemId);
       expect(after?.lifecycle).toBe("ready_to_merge");
     }),
+  );
+
+  it.effect(
+    "approveMerge falls back to the stored PR evidence base branch for an item with none recorded",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* SymphonyOrchestrator;
+        const workItemId = WorkItemId.make("merge-legacy-1");
+        const workItems = yield* WorkItemRepository;
+        yield* seedWorkflow("wf-merge-legacy-1", "/repo/merge-legacy");
+        const workflows = yield* WorkflowRepository;
+        yield* workflows.upsert({
+          id: WorkflowId.make("wf-merge-legacy-1"),
+          repositoryPath: "/repo/merge-legacy",
+          workflowPath: "/repo/merge-legacy/WORKFLOW.md",
+          status: "active",
+          autonomy: "execute",
+          validationError: null,
+          definition: { config: {}, promptTemplate: "Implement." },
+          effectiveConfig: { ...makeConfig("/repo/merge-legacy"), autonomy: "execute" },
+          enabledAt: "2026-08-05T00:00:00.000Z",
+          createdAt: "2026-08-05T00:00:00.000Z",
+          updatedAt: "2026-08-05T00:00:00.000Z",
+        });
+        const evidence = {
+          changedFiles: [],
+          testsChanged: [],
+          commits: [],
+          validationResults: [],
+          assumptions: [],
+          risks: [],
+          unresolved: [],
+          artefacts: [],
+          pullRequest: {
+            number: 1,
+            title: "t",
+            branch: "b",
+            baseBranch: "m",
+            status: "open",
+            ciStatus: "success",
+            reviewState: "approved",
+            mergeable: "mergeable",
+            unresolvedComments: 0,
+          },
+          modelReview: null,
+          overallAssessment: "ready_for_review",
+          createdAt: "2026-08-05T00:00:00.000Z",
+        } as const;
+        yield* workItems.upsert({
+          id: workItemId,
+          mode: "symphony",
+          projectId: SymphonyProjectId.make("merge-legacy-project"),
+          objective: "Legacy merge target",
+          acceptanceCriteria: [],
+          source: { kind: "manual" },
+          trackerIssueId: "merge-legacy-1",
+          workflowId: WorkflowId.make("wf-merge-legacy-1"),
+          lifecycle: "ready_for_review",
+          priority: 1,
+          eligibilityReasons: [],
+          evidence: null,
+          workspaceKey: "issue-merge-legacy-1",
+          createdAt: "2026-08-05T00:00:00.000Z",
+          updatedAt: "2026-08-05T00:00:00.000Z",
+        });
+        const evidenceRepo = yield* EvidenceRepository;
+        yield* evidenceRepo.upsert(workItemId, evidence);
+
+        yield* setPullRequestRefresh({
+          number: 1,
+          title: "t",
+          branch: "b",
+          baseBranch: "m",
+          status: "open",
+          ciStatus: "success",
+          reviewState: "approved",
+          mergeable: "mergeable",
+          unresolvedComments: 0,
+        });
+        const merged = yield* orchestrator.approveMerge("merge-legacy-1");
+        expect(merged).toBe(true);
+        expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("ready_to_merge");
+      }),
+  );
+
+  it.effect(
+    "approveMerge refuses when neither the item nor the evidence records a base branch",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* SymphonyOrchestrator;
+        const workItemId = WorkItemId.make("merge-legacy-2");
+        const workItems = yield* WorkItemRepository;
+        yield* seedWorkflow("wf-merge-legacy-2", "/repo/merge-legacy-2");
+        const workflows = yield* WorkflowRepository;
+        yield* workflows.upsert({
+          id: WorkflowId.make("wf-merge-legacy-2"),
+          repositoryPath: "/repo/merge-legacy-2",
+          workflowPath: "/repo/merge-legacy-2/WORKFLOW.md",
+          status: "active",
+          autonomy: "execute",
+          validationError: null,
+          definition: { config: {}, promptTemplate: "Implement." },
+          effectiveConfig: { ...makeConfig("/repo/merge-legacy-2"), autonomy: "execute" },
+          enabledAt: "2026-08-05T00:00:00.000Z",
+          createdAt: "2026-08-05T00:00:00.000Z",
+          updatedAt: "2026-08-05T00:00:00.000Z",
+        });
+        const evidence = {
+          changedFiles: [],
+          testsChanged: [],
+          commits: [],
+          validationResults: [],
+          assumptions: [],
+          risks: [],
+          unresolved: [],
+          artefacts: [],
+          pullRequest: null,
+          modelReview: null,
+          overallAssessment: "ready_for_review",
+          createdAt: "2026-08-05T00:00:00.000Z",
+        } as const;
+        yield* workItems.upsert({
+          id: workItemId,
+          mode: "symphony",
+          projectId: SymphonyProjectId.make("merge-legacy-project"),
+          objective: "Legacy merge target without base",
+          acceptanceCriteria: [],
+          source: { kind: "manual" },
+          trackerIssueId: "merge-legacy-2",
+          workflowId: WorkflowId.make("wf-merge-legacy-2"),
+          lifecycle: "ready_for_review",
+          priority: 1,
+          eligibilityReasons: [],
+          evidence: null,
+          workspaceKey: "issue-merge-legacy-2",
+          createdAt: "2026-08-05T00:00:00.000Z",
+          updatedAt: "2026-08-05T00:00:00.000Z",
+        });
+        const evidenceRepo = yield* EvidenceRepository;
+        yield* evidenceRepo.upsert(workItemId, evidence);
+
+        yield* setPullRequestRefresh({
+          number: 1,
+          title: "t",
+          branch: "b",
+          baseBranch: "m",
+          status: "open",
+          ciStatus: "success",
+          reviewState: "approved",
+          mergeable: "mergeable",
+          unresolvedComments: 0,
+        });
+        expect(yield* orchestrator.approveMerge("merge-legacy-2")).toBe(false);
+      }),
   );
 
   it.effect("approveMerge refuses a PR without host enrichment (FR-095)", () =>
@@ -1711,6 +2487,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
         dispatchedIds.length = 0;
         dispatchedInputs.length = 0;
         yield* orchestrator.dispatchWorkItem("review-fr-1");
+        yield* awaitDispatched("review-fr-1");
 
         // Claimable again: dispatchWorkItem's existing changes_requested ->
         // queued requeue let the mock dispatcher claim it straight through
@@ -1788,6 +2565,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
         dispatchedIds.length = 0;
         dispatchedInputs.length = 0;
         yield* orchestrator.dispatchWorkItem("review-fr-2");
+        yield* awaitDispatched("review-fr-2");
 
         const captured = dispatchedInputs.find((entry) => entry.workItemId === "review-fr-2");
         const reviewFeedback = captured?.reviewFeedback;
@@ -1863,5 +2641,123 @@ layer("SymphonyOrchestrator Observe", (it) => {
         expect(after?.lifecycle).toBe("ready_for_review");
         expect(dispatchedIds).toEqual([]);
       }),
+  );
+});
+
+layer("SymphonyOrchestrator leadership", (it) => {
+  const seedHeldRun = (id: string) =>
+    Effect.gen(function* () {
+      const workItems = yield* WorkItemRepository;
+      const now = yield* nowIso;
+      yield* workItems.upsert({
+        id: WorkItemId.make(id),
+        mode: "symphony",
+        projectId: SymphonyProjectId.make("leadership-project"),
+        objective: `Lead ${id}`,
+        description: "Seeded for leadership tests",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: `manual-${id}`,
+        lifecycle: "running",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        claimedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const runAttempts = yield* RunAttemptRepository;
+      const startedAt = yield* nowIso;
+      const runAttemptId = RunAttemptId.make(`run-${id}`);
+      yield* runAttempts.create({
+        id: runAttemptId,
+        workItemId: WorkItemId.make(id),
+        attemptNumber: 1,
+        workspacePath: `/ws/${id}`,
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "streaming_turn",
+        startedAt,
+        finishedAt: null,
+        error: null,
+      });
+      return { workItemId: WorkItemId.make(id), runAttemptId };
+    });
+
+  let second: SymphonyOrchestrator["Service"] | null = null;
+
+  it.effect(
+    "a second orchestrator on the same database is a follower and leaves the leader's runs alone",
+    () =>
+      Effect.gen(function* () {
+        const first = yield* SymphonyOrchestrator;
+        expect((yield* first.getOverview()).orchestratorRole).toBe("leader");
+        // Run the leader's startup recovery inline BEFORE seeding: recovery
+        // moved from layer construction to the first tick, so without this the
+        // layer's background first tick races the seeds below and interrupts
+        // the freshly seeded run as if it were a crash orphan.
+        yield* first.refreshNow();
+        const { workItemId, runAttemptId } = yield* seedHeldRun("lead-1");
+        yield* seedWorkflow("wf-lead-1", "/repo/lead-1", { autonomy: "execute" });
+        // Nudge the clock so the second orchestrator mints a distinct lock
+        // token (token = pid + build millis): identical tokens can never lose
+        // a renewal race, so takeovers and demotions would be unobservable.
+        yield* TestClock.adjust("1 millis");
+        second = Context.get(
+          yield* Layer.build(Layer.fresh(SymphonyOrchestratorLive)),
+          SymphonyOrchestrator,
+        );
+        yield* Effect.repeat(Effect.yieldNow, { times: 20 });
+        expect(
+          (yield* (second as SymphonyOrchestrator["Service"]).getOverview()).orchestratorRole,
+        ).toBe("follower");
+        // Clear here (not earlier): the leader's own background first tick may
+        // still be polling concurrently, and only ticks after this point can
+        // implicate the follower.
+        pollCountsByRepository.clear();
+        yield* (second as SymphonyOrchestrator["Service"]).refreshNow();
+        const runAttempts = yield* RunAttemptRepository;
+        expect((yield* runAttempts.getById(runAttemptId))?.status).toBe("streaming_turn");
+        const runEvents = yield* RunEventRepository;
+        expect(
+          (yield* runEvents.listForAttempt(runAttemptId)).some(
+            (e) => e.eventType === "interrupted",
+          ),
+        ).toBe(false);
+        const workItems = yield* WorkItemRepository;
+        expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("running");
+        expect(pollCountsByRepository.get("/repo/lead-1")).toBe(undefined);
+      }),
+  );
+
+  it.effect("a follower takes the lock when the lease expires and then runs recovery", () =>
+    Effect.gen(function* () {
+      if (second === null) throw new Error("second orchestrator missing");
+      const { runAttemptId } = yield* seedHeldRun("lead-2");
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE symphony_orchestrator_state SET lock_expires_at = '1969-01-01T00:00:00.000Z'`;
+      yield* second.refreshNow();
+      expect((yield* second.getOverview()).orchestratorRole).toBe("leader");
+      const runAttempts = yield* RunAttemptRepository;
+      expect((yield* runAttempts.getById(runAttemptId))?.status).toBe("interrupted");
+      const first = yield* SymphonyOrchestrator;
+      yield* first.refreshNow();
+      expect((yield* first.getOverview()).orchestratorRole).toBe("follower");
+    }),
+  );
+
+  it.effect("a demoted process regains the lock on a later tick", () =>
+    Effect.gen(function* () {
+      if (second === null) throw new Error("second orchestrator missing");
+      const first = yield* SymphonyOrchestrator;
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE symphony_orchestrator_state SET lock_expires_at = '1969-01-01T00:00:00.000Z'`;
+      yield* first.refreshNow();
+      expect((yield* first.getOverview()).orchestratorRole).toBe("leader");
+      yield* second.refreshNow();
+      expect((yield* second.getOverview()).orchestratorRole).toBe("follower");
+    }),
   );
 });

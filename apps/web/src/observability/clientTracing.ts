@@ -87,6 +87,7 @@ async function applyClientTracingConfig(config: ClientTracingConfig): Promise<vo
         OtlpTracer.make({
           url: otlpTracesUrl,
           exportInterval: `${exportIntervalMs} millis`,
+          maxBatchSize: 100,
           resource: CLIENT_TRACING_RESOURCE,
         }),
       ),

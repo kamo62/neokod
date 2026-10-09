@@ -133,18 +133,22 @@ export const makeApprovalService = Effect.gen(function* () {
     });
 
   const decide = (
-    requestId: string,
+    id: string,
     decision: ApprovalDecision,
     reason: string | undefined,
   ): Effect.Effect<void, ApprovalRequestNotFoundError> =>
     Effect.gen(function* () {
-      // 1. Answer the live Deferred so the agent proceeds.
-      const liveResult = yield* Effect.result(liveRequests.respondToApproval(requestId, decision));
-      if (liveResult._tag === "Failure") {
-        return yield* Effect.fail(new ApprovalRequestNotFoundError(requestId));
+      const record = yield* repository.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
+      if (record === null || record.state !== "pending" || record.runAttemptId === undefined) {
+        return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
       }
-      // 2. Persist the durable decision (best-effort; never blocks the agent).
-      yield* repository.decide(requestId, decision).pipe(Effect.catch(() => Effect.void));
+      const live = yield* Effect.result(
+        liveRequests.respondToApproval(record.runAttemptId, record.requestId, decision),
+      );
+      if (live._tag === "Failure") {
+        return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
+      }
+      yield* repository.decide(record.id, decision).pipe(Effect.catch(() => Effect.void));
     });
 
   const approve: ApprovalServiceShape["approve"] = (requestId) =>
@@ -153,13 +157,19 @@ export const makeApprovalService = Effect.gen(function* () {
   const reject: ApprovalServiceShape["reject"] = (requestId, reason) =>
     decide(requestId, "rejected", reason);
 
-  const respondToUserInput: ApprovalServiceShape["respondToUserInput"] = (requestId, text) =>
+  const respondToUserInput: ApprovalServiceShape["respondToUserInput"] = (id, text) =>
     Effect.gen(function* () {
-      const result = yield* Effect.result(liveRequests.respondToUserInput(requestId, text));
-      if (result._tag === "Failure") {
-        return yield* Effect.fail(new ApprovalRequestNotFoundError(requestId));
+      const record = yield* repository.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
+      if (record === null || record.state !== "pending" || record.runAttemptId === undefined) {
+        return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
       }
-      yield* repository.decide(requestId, "approved").pipe(Effect.catch(() => Effect.void));
+      const result = yield* Effect.result(
+        liveRequests.respondToUserInput(record.runAttemptId, record.requestId, text),
+      );
+      if (result._tag === "Failure") {
+        return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
+      }
+      yield* repository.decide(record.id, "approved").pipe(Effect.catch(() => Effect.void));
     });
 
   const listPending: ApprovalServiceShape["listPending"] = (options) =>
@@ -171,16 +181,26 @@ export const makeApprovalService = Effect.gen(function* () {
   const expire: ApprovalServiceShape["expire"] = (id) =>
     Effect.gen(function* () {
       const record = yield* repository.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
-      const liveId = record === null ? id : record.requestId;
-      yield* liveRequests.settleRequest(liveId, "approval wait timed out");
+      if (record !== null && record.runAttemptId !== undefined) {
+        yield* liveRequests.settleRequest(
+          record.runAttemptId,
+          record.requestId,
+          "approval wait timed out",
+        );
+      }
       yield* repository.decide(id, "expired").pipe(Effect.catch(() => Effect.void));
     });
 
   const interrupt: ApprovalServiceShape["interrupt"] = (id) =>
     Effect.gen(function* () {
       const record = yield* repository.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
-      const liveId = record === null ? id : record.requestId;
-      yield* liveRequests.settleRequest(liveId, "run interrupted; approval unanswered");
+      if (record !== null && record.runAttemptId !== undefined) {
+        yield* liveRequests.settleRequest(
+          record.runAttemptId,
+          record.requestId,
+          "run interrupted; approval unanswered",
+        );
+      }
       yield* repository.decide(id, "interrupted").pipe(Effect.catch(() => Effect.void));
     });
 

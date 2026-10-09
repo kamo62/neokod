@@ -251,6 +251,15 @@ function TrackerScopeFields({
   }
 }
 
+export function ApprovalSettingsNote() {
+  return (
+    <p className="text-xs text-muted-foreground">
+      Pushing the branch and opening the pull request are not gated by an approval setting yet.
+      Merging always needs your approval, and Neokod never merges on its own.
+    </p>
+  );
+}
+
 export function SymphonyProjectConfigurationForm({
   value,
   providers,
@@ -588,24 +597,7 @@ export function SymphonyProjectConfigurationForm({
             planner, reviewer, or command-runner roles to one issue.
           </p>
 
-          <div className="grid gap-2 text-sm sm:grid-cols-3">
-            {(
-              [
-                ["approvalsBeforePush", "Approve before push"],
-                ["approvalsBeforePullRequest", "Approve before PR"],
-                ["approvalsBeforeMerge", "Approve before merge"],
-              ] as const
-            ).map(([key, label]) => (
-              <label key={key} className="flex items-center gap-2 rounded-lg border px-3 py-2">
-                <input
-                  type="checkbox"
-                  checked={value[key]}
-                  onChange={(event) => update({ [key]: event.target.checked })}
-                />
-                {label}
-              </label>
-            ))}
-          </div>
+          <ApprovalSettingsNote />
         </div>
       </details>
     </div>

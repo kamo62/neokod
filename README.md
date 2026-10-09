@@ -71,36 +71,33 @@ npm i -g neokod
 neokod serve
 ```
 
-`serve` starts the local server without opening a browser, and prints the local URL together with a per-launch token. The port defaults to 3773 and Neokod picks a different free port automatically if that one is taken:
+`serve` starts the local server without opening a browser. In web mode the server always requires an access token. The token is resolved in this order: `--access-token-file`, `NEOKOD_ACCESS_TOKEN` (both need at least 32 characters), then `<base-dir>/access-token` (mode 0600, created on first start and kept afterwards). The port defaults to 3773 and Neokod picks a different free port automatically if that one is taken. The startup output names the token source but never prints the token:
 
 ```text
 Neokod server is ready.
 Local URL: http://127.0.0.1:3773
-Launch token: <token>
-The web client authenticates with this token for this launch; it is not persisted.
+Access token: stored in /home/you/.neokod/access-token
+Open the URL and paste the token when asked. Read it with: cat /home/you/.neokod/access-token
 ```
 
-Open the printed URL with the token attached as a query parameter, for example
-`http://127.0.0.1:3773/?loopbackAuthToken=<token>`. The token is minted fresh on every launch and is
-never written to disk; if the server restarts, reload with the new URL and token it prints.
+Open the printed URL and paste the token once; the browser remembers it. A page address of the form `http://host:3773/#access-token=<token>` is also accepted and is stripped from the address bar.
 
 Running bare `neokod` (or `neokod start`) starts the same server but opens your default browser
-automatically, with the token already attached to the URL, instead of leaving you to open it by
-hand. Both accept `--port` and `--base-dir` to control the listen port and Neokod's data directory.
+automatically instead of leaving you to open it by hand. Both accept `--port` and `--base-dir` to control the listen port and Neokod's data directory. `--strict-transport` only turns on Host and Origin validation; it is unrelated to the token.
 
 ## Local access boundary
 
-Neokod is local-first, and that boundary applies the same way to Code mode and Symphony mode: both run through the same local server, with no application user account, pairing flow, or cookie. The native desktop backend and the standalone `neokod serve` listen on `127.0.0.1` and use direct HTTP and WebSocket connections. Headless `serve`/`start` launches require the per-launch bearer described above; only the legacy desktop bootstrap can run without that credential. This matches a single-user-per-machine model, like a local IDE. It is not a multi-user service.
+Neokod is local-first, and that boundary applies the same way to Code mode and Symphony mode: both run through the same local server, with no application user account, pairing flow, or cookie. The native desktop backend and the standalone `neokod serve` listen on `127.0.0.1`. HTTP uses an `Authorization: Bearer <token>` header and WebSocket upgrades use a short-lived, single-use ticket. Web-mode `serve`/`start` always require the stable access token described above; only the legacy desktop bootstrap can run without that credential. This matches a single-user-per-machine model, like a local IDE. It is not a multi-user service.
 
-The only non-loopback exception is a desktop-managed WSL backend. It listens on `0.0.0.0` inside WSL and stays fail-closed behind a desktop-generated bearer for HTTP plus short-lived, single-use WebSocket tickets. The WSL credential is delivered only through the live desktop topology and is never persisted.
+The only non-loopback exceptions are a desktop-managed WSL backend, and `neokod serve --host` with an access token (see the Tailscale section of the self-hosting guide). The WSL backend listens on `0.0.0.0` inside WSL and stays fail-closed behind a desktop-generated bearer for HTTP plus short-lived, single-use WebSocket tickets. The WSL credential is delivered only through the live desktop topology and is never persisted.
 
 ## Security posture
 
-The loopback listener validates `Host` and `Origin` on every request before any route runs, but it still trusts everything that can authenticate to it. Read this before assuming "local only" means "only I can reach it".
+The loopback listener still trusts everything that can authenticate to it. `Host` and `Origin` validation on every request is opt-in through `--strict-transport`. Read this before assuming "local only" means "only I can reach it".
 
-- `neokod serve` binds `127.0.0.1` with the `loopback` transport. Router-wide transport validation (`apps/server/src/transport/LocalTransportAuth.ts`) runs before route dispatch and before the `/ws` upgrade: it accepts loopback Hosts (`127.0.0.1`, `localhost`, `[::1]`) and loopback, dev, desktop-renderer (`neokod://app`, `neokod-dev://app`), or self Origins, and rejects anything else with a 403. Malformed or duplicated Host headers are rejected outright. Requests with no `Origin` (non-browser clients such as the desktop renderer) pass the Origin check but are still gated by the credential policy.
-- `apps/server/src/transport/WslBearerAuth.ts` resolves the credential by transport. WSL always requires its desktop-generated bearer. Loopback enforces `loopbackAuthToken` when configured: HTTP requires its bearer and WebSocket upgrades require a short-lived, single-use ticket. The checks return immediately only when the legacy desktop bootstrap supplied no loopback token.
-- `neokod serve` and `neokod start` mint a per-launch token on the loopback transport when no desktop bootstrap delivered one (plan WS-A2). The token is printed at startup and passed to the browser on the startup URL; the web client uses it as an HTTP bearer and a short-lived WebSocket ticket. It is never persisted, so the loopback listener is unauthenticated only in the legacy desktop bootstrap path.
+- With `--strict-transport`, router-wide transport validation (`apps/server/src/transport/LocalTransportAuth.ts`) runs before route dispatch and before the `/ws` upgrade: it accepts loopback Hosts (`127.0.0.1`, `localhost`, `[::1]`) and loopback, dev, desktop-renderer (`neokod://app`, `neokod-dev://app`), or self Origins, and rejects anything else with a 403. Malformed or duplicated Host headers are rejected outright. Requests with no `Origin` (non-browser clients such as the desktop renderer) pass the Origin check but are still gated by the credential policy.
+- `apps/server/src/transport/WslBearerAuth.ts` resolves the credential by transport. WSL always requires its desktop-generated bearer. Loopback requires the access-token bearer for HTTP and a short-lived, single-use ticket for WebSocket upgrades.
+- `neokod serve` and `neokod start` require the stable access token in web mode (plan WS-A2). The token comes from the flag file, the environment, or the base-dir file as described above; the startup output names the source and never prints the token. The web client uses it as an HTTP bearer and exchanges it for a short-lived WebSocket ticket. When a token is set, CORS allows only the declared public origins, the dev origin, the desktop renderer origins, and loopback origins.
 - A connection to `/ws` gets the full RPC surface. That includes reading and writing files in your workspaces (`projectsReadFile` and `projectsWriteFile`, `apps/server/src/ws.ts` near lines 1230-1260), opening and writing to interactive terminals (`terminalOpen` and `terminalWrite`, near lines 1440-1460), and dispatching the commands that drive agents under your provider credentials (`dispatchCommand`, near line 760). There is no permission layer behind the socket.
 - Host and Origin validation blocks DNS rebinding: a page that re-points its own hostname to `127.0.0.1` sends a non-loopback `Host` header, which the listener rejects before any route runs. A page can no longer call the listener as if it were the page's own backend. "I have not exposed a port, so I am safe" is still the wrong conclusion for a machine whose operator visits untrusted pages, but the rebinding vector itself is closed.
 
@@ -110,7 +107,7 @@ Keep the threat in proportion. The loopback bind does keep remote hosts out, and
 
 The [self-hosting guide](./docs/operations/self-hosting.md) describes the supported way to publish the server at a real hostname: bind loopback and put a reverse proxy with its own authentication in front. That deployment is the awkward case for the listener, because at the socket level a legitimate reverse proxy and a DNS-rebinding attack are both non-loopback. The listener rejects non-loopback `Host` headers unless you declare the public hostname explicitly: run `neokod serve --public-host <hostname> --public-origin <origin>` (or set `NEOKOD_PUBLIC_HOST` / `NEOKOD_PUBLIC_ORIGIN`). The declared pairs are accepted by the router-wide validation; everything else is still rejected with a 403.
 
-What protects a proxied deployment is the proxy's authentication, and only if its rule covers `/ws` as well as the plain HTTP routes. A policy that protects `/` but not the WebSocket upgrade leaves the entire RPC surface open while the login page suggests otherwise. The self-hosting guide covers this failure mode and how to verify the policy actually holds.
+What protects a proxied deployment is the proxy's authentication, and only if its rule covers `/ws` as well as the plain HTTP routes. A policy that protects `/` but not the WebSocket upgrade leaves the entire RPC surface open while the login page suggests otherwise. The self-hosting guide covers this failure mode and how to verify the policy actually holds. To reach the server over Tailscale instead, see [Use with Tailscale](./docs/operations/self-hosting.md#use-with-tailscale).
 
 ## Development
 

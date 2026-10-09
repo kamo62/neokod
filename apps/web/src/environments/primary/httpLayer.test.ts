@@ -4,9 +4,11 @@ import * as Effect from "effect/Effect";
 import { HttpClient } from "effect/unstable/http";
 
 import { makePrimaryEnvironmentHttpLayer } from "./httpLayer";
+import { __resetPrimaryAccessTokenForTests, storePrimaryAccessToken } from "./accessToken";
 
 describe.sequential("primary environment HTTP layer", () => {
   afterEach(() => {
+    __resetPrimaryAccessTokenForTests();
     Reflect.deleteProperty(globalThis, "window");
     vi.unstubAllGlobals();
   });
@@ -59,5 +61,30 @@ describe.sequential("primary environment HTTP layer", () => {
       const request = new Request(fetchMock.mock.calls[0]?.[0], fetchMock.mock.calls[0]?.[1]);
       expect(request.headers.get("authorization")).toBe("Bearer wsl-bearer-token");
     }).pipe(Effect.provide(makePrimaryEnvironmentHttpLayer()));
+  });
+
+  it.effect("attaches the stored token and sees a token stored after the layer was built", () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        location: {
+          href: "http://127.0.0.1:3773/settings",
+          origin: "http://127.0.0.1:3773",
+        },
+      },
+    });
+    const layer = makePrimaryEnvironmentHttpLayer();
+
+    return Effect.gen(function* () {
+      yield* HttpClient.get("http://127.0.0.1:3773/api/orchestration/shell");
+      const first = new Request(fetchMock.mock.calls[0]?.[0], fetchMock.mock.calls[0]?.[1]);
+      expect(first.headers.get("authorization")).toBeNull();
+      storePrimaryAccessToken("late");
+      yield* HttpClient.get("http://127.0.0.1:3773/api/orchestration/shell");
+      const second = new Request(fetchMock.mock.calls[1]?.[0], fetchMock.mock.calls[1]?.[1]);
+      expect(second.headers.get("authorization")).toBe("Bearer late");
+    }).pipe(Effect.provide(layer));
   });
 });

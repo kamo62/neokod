@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "@effect/vitest";
 
+import { __resetPrimaryAccessTokenForTests, storePrimaryAccessToken } from "./accessToken";
 import { readPrimaryEnvironmentTarget, resolveDesktopEnvironmentBootstrapTarget } from "./target";
 
 afterEach(() => {
+  __resetPrimaryAccessTokenForTests();
   vi.unstubAllGlobals();
 });
 
@@ -23,6 +25,20 @@ describe("browser-origin primary target boundary", () => {
       transport: { _tag: "Loopback" },
     });
   });
+
+  it("window-origin target carries the stored access token", () => {
+    vi.stubGlobal("window", {
+      location: {
+        origin: "https://neokod.example.com",
+      },
+    });
+    storePrimaryAccessToken("stored");
+
+    expect(readPrimaryEnvironmentTarget().transport).toEqual({
+      _tag: "Loopback",
+      loopbackAuthToken: "stored",
+    });
+  });
 });
 
 describe("desktop primary target boundary", () => {
@@ -36,6 +52,19 @@ describe("desktop primary target boundary", () => {
         wsBaseUrl: "ws://127.0.0.1:3773",
       }),
     ).toMatchObject({ transport: { _tag: "Loopback" } });
+  });
+
+  it("desktop loopback bootstrap forwards its token", () => {
+    expect(
+      resolveDesktopEnvironmentBootstrapTarget({
+        id: "primary",
+        label: "Local",
+        transport: "loopback",
+        httpBaseUrl: "http://127.0.0.1:3773",
+        wsBaseUrl: "ws://127.0.0.1:3773",
+        loopbackAuthToken: "desktop-token",
+      }).transport,
+    ).toEqual({ _tag: "Loopback", loopbackAuthToken: "desktop-token" });
   });
 
   it("accepts a desktop-proven WSL target with its bearer", () => {

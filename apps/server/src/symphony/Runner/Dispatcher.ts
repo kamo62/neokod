@@ -20,7 +20,11 @@ import { WORKFLOW_DEFAULTS } from "../Workflow/Config.ts";
 import { RunEventRepository } from "../Persistence/Services/RunEventRepository.ts";
 import { RunAttemptRepository } from "../Persistence/Services/RunAttemptRepository.ts";
 import { WorkItemRepository } from "../Persistence/Services/WorkItemRepository.ts";
-import { WorkspaceManager, type SymphonyWorkspace } from "../Workspaces/Manager.ts";
+import {
+  WorkspaceManager,
+  WorkspaceOutsideRootError,
+  type SymphonyWorkspace,
+} from "../Workspaces/Manager.ts";
 import type { AgentRuntimeService } from "./AgentRuntime.ts";
 import { ExecutionFinalizer } from "./ExecutionFinalizer.ts";
 import { LiveRequests } from "./LiveRequests.ts";
@@ -96,6 +100,7 @@ export class AgentRuntimeFactory extends Context.Service<
   {
     readonly make: (
       config: EffectiveWorkflowConfig,
+      options?: { readonly onChildSpawned?: (pid: number) => Effect.Effect<void> },
     ) => Effect.Effect<AgentRuntimeService, never, Scope.Scope>;
   }
 >()("neokod/symphony/Runner/Dispatcher/AgentRuntimeFactory") {}
@@ -178,8 +183,8 @@ export const makeRunDispatcher = Effect.gen(function* () {
   // Mark the attempt failed unless cancellation already recorded a terminal
   // status (cancelRun wins over the interrupted turn path), then release the
   // claim: to `retry_scheduled` when the failure is retryable and attempts
-  // remain (plan 9.5, WS-M), otherwise to `queued` so a manual re-dispatch
-  // stays possible.
+  // remain (plan 9.5, WS-M), otherwise to `failed` so the scheduler never
+  // relaunches a terminal-failed item by itself.
   const markFailed = (
     runAttemptId: RunAttemptId,
     workItemId: WorkItemId,
@@ -192,6 +197,12 @@ export const makeRunDispatcher = Effect.gen(function* () {
       const attempt = yield* runAttempts
         .getById(runAttemptId)
         .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (
+        attempt !== null &&
+        (attempt.status === "user_cancelled" || attempt.status === "tracker_cancelled")
+      ) {
+        return; // cancelRun owns the item lifecycle
+      }
       const alreadyTerminal = attempt !== null && TERMINAL_STATUSES.has(attempt.status);
       const attemptNumber = attempt?.attemptNumber ?? 1;
       if (!alreadyTerminal) {
@@ -215,7 +226,77 @@ export const makeRunDispatcher = Effect.gen(function* () {
           })
           .pipe(Effect.catch(() => Effect.void));
       } else {
-        yield* releaseClaim(workItemId, ownerToken, generation);
+        yield* workItems
+          .transition(workItemId, "failed", { ownerToken, generation })
+          .pipe(Effect.catch(() => Effect.void));
+        yield* appendEvent(
+          runAttemptId,
+          isRetryableCategory(error.category) ? "retries_exhausted" : "run_failed",
+          { attemptNumber, maxAttempts, category: error.category },
+        );
+      }
+    });
+
+  const failEarly = (input: {
+    readonly workItemId: WorkItemId;
+    readonly ownerToken: string;
+    readonly generation: number;
+    readonly config: EffectiveWorkflowConfig;
+    readonly maxAttempts: number;
+    readonly stage: "workspace";
+    readonly error: { readonly category: string; readonly message: string };
+  }) =>
+    Effect.gen(function* () {
+      const runAttemptId = yield* makeRunAttemptId().pipe(Effect.catch(() => Effect.succeed(null)));
+      const latest = yield* runAttempts
+        .latestForWorkItem(input.workItemId)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      const attemptNumber = (latest?.attemptNumber ?? 0) + 1;
+      const now = yield* nowIso;
+      const created =
+        runAttemptId === null
+          ? false
+          : yield* runAttempts
+              .create({
+                id: runAttemptId,
+                workItemId: input.workItemId,
+                attemptNumber,
+                workspacePath: "",
+                provider: input.config.agentProvider,
+                ...(input.config.agentModel !== undefined
+                  ? { model: input.config.agentModel }
+                  : {}),
+                status: "failed",
+                startedAt: now,
+                finishedAt: now,
+                error: { ...input.error, attemptNumber },
+              })
+              .pipe(
+                Effect.as(true),
+                Effect.catch(() => Effect.succeed(false)),
+              );
+      if (runAttemptId !== null && created) {
+        yield* appendEvent(runAttemptId, "dispatch_failed_early", {
+          stage: input.stage,
+          message: input.error.message,
+        });
+        yield* markFailed(
+          runAttemptId,
+          input.workItemId,
+          input.ownerToken,
+          input.generation,
+          input.error,
+          input.maxAttempts,
+        );
+      } else {
+        // No attempt row means the retry sweep (which needs a finished attempt) could never pick the
+        // item up, so end it `failed` instead of leaving it in `preparing` or `queued`.
+        yield* workItems
+          .transition(input.workItemId, "failed", {
+            ownerToken: input.ownerToken,
+            generation: input.generation,
+          })
+          .pipe(Effect.catch(() => Effect.void));
       }
     });
 
@@ -233,13 +314,28 @@ export const makeRunDispatcher = Effect.gen(function* () {
         .pipe(Effect.mapError((cause) => new RunDispatchError(cause.message)));
       const workItemId: WorkItemId = claimed.workItem.id;
 
-      // 2. Workspace: deterministic worktree under the configured root. If
-      //    workspace creation fails, release the claim back to queued.
+      // 2. Workspace: deterministic worktree under the configured root.
       const workspace: SymphonyWorkspace = yield* workspaces
         .ensureWorkspace({ issue, config })
         .pipe(
-          Effect.mapError((cause) => new RunDispatchError(cause.message)),
-          Effect.tapError(() => releaseClaim(workItemId, ownerToken, claimed.generation)),
+          Effect.tapError((cause) =>
+            failEarly({
+              workItemId,
+              ownerToken,
+              generation: claimed.generation,
+              config,
+              maxAttempts,
+              stage: "workspace",
+              error: {
+                category:
+                  cause instanceof WorkspaceOutsideRootError ? "workflow_error" : "process_failed",
+                message: cause instanceof Error ? cause.message : String(cause),
+              },
+            }),
+          ),
+          Effect.mapError(
+            (cause) => new RunDispatchError(cause instanceof Error ? cause.message : String(cause)),
+          ),
         );
 
       // 3. Record the run attempt. Retries continue the attempt sequence so
@@ -270,35 +366,48 @@ export const makeRunDispatcher = Effect.gen(function* () {
         })
         .pipe(
           Effect.mapError((cause) => new RunDispatchError(cause.message)),
-          // A failure after claiming but before the first attempt row exists
-          // leaves the item in `preparing` with no attempt for recovery to
-          // see (REVIEW P1 #10). Release the claim so the item can be
-          // re-dispatched.
-          Effect.tapError(() => releaseClaim(workItemId, ownerToken, claimed.generation)),
+          // No attempt row can be written here (the write just failed), so end
+          // the item `failed` (legal from `preparing`) rather than looping
+          // in `queued`.
+          Effect.tapError(() =>
+            workItems
+              .transition(workItemId, "failed", { ownerToken, generation: claimed.generation })
+              .pipe(Effect.catch(() => Effect.void)),
+          ),
         );
       yield* appendEvent(runAttemptId, "issue_claimed", { workItemId: String(workItemId) });
       yield* appendEvent(runAttemptId, "workspace_created", {
         path: workspace.path,
         branch: workspace.branch,
       });
-
-      const policy = resolveRunnerPolicy(config);
-      // The agent runtime is per-config; build it in the dispatch scope.
-      const agent = yield* factory.make(config);
-      // Record the agent child PID on the claim so recovery can terminate a
-      // surviving orphan after a crash (audit item 3; plan 8.1). Best-effort:
-      // the PID may not exist yet (lazy spawn) and the fence may have moved.
-      yield* agent
-        .pid()
+      // The finalizer and the merge gate need the branch the worktree was created from.
+      yield* workItems
+        .setBaseBranch(workItemId, ownerToken, claimed.generation, workspace.baseBranch)
         .pipe(
-          Effect.flatMap((pid) =>
-            pid === null
-              ? Effect.void
-              : workItems
-                  .setClaimOwnerPid(workItemId, ownerToken, claimed.generation, pid)
-                  .pipe(Effect.catch(() => Effect.void)),
+          Effect.catch((cause) =>
+            Effect.logWarning("failed to record the workspace base branch on the claim", {
+              workItemId: String(workItemId),
+              cause,
+            }),
           ),
         );
+
+      const policy = resolveRunnerPolicy(config);
+      // The agent child is spawned lazily inside the first turn. Record its pid on the claim as soon as
+      // it exists so recovery can find a surviving orphan after a crash. The claim stores no pid before that.
+      const agent = yield* factory.make(config, {
+        onChildSpawned: (pid) =>
+          workItems.setClaimOwnerPid(workItemId, ownerToken, claimed.generation, pid).pipe(
+            Effect.asVoid,
+            Effect.catch((cause) =>
+              Effect.logWarning("failed to record the agent child pid on the claim", {
+                workItemId: String(workItemId),
+                pid,
+                cause,
+              }),
+            ),
+          ),
+      });
       // PR body files land under the server's symphony logs dir when
       // available; otherwise the system temp dir (REVIEW P0: the body file
       // was never written and the path resolved to the filesystem root).
@@ -541,17 +650,31 @@ export const makeRunDispatcher = Effect.gen(function* () {
       return yield* Fiber.join(fiber).pipe(Effect.catch(() => Effect.succeed(runAttemptId)));
     });
 
-  const cancelRun: RunDispatcherService["cancelRun"] = (runAttemptId) =>
+  const cancelAttempt = (runAttemptId: RunAttemptId, eventPayload: Record<string, unknown>) =>
     Effect.gen(function* () {
-      // Interrupt the active turn AND the dispatch fiber driving it, settle
-      // the run's outstanding approval/input requests (idempotent), and
-      // record the durable cancellation. The claim is released by the
-      // interrupted dispatch path's ensuring block, which keeps the work item
-      // queued (REVIEW P0: without the fiber interrupt, a cancelled run still
-      // validated, opened a PR and overwrote its own status).
-      const registered = yield* Ref.get(activeAgents).pipe(
-        Effect.map((map) => map.get(String(runAttemptId))),
-      );
+      const attempt = yield* runAttempts
+        .getById(runAttemptId)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      // 1. Persist the cancellation BEFORE interrupting anything. Every failure path then sees a
+      //    terminal attempt (markFailed returns early, the ensuring block skips its `interrupted`
+      //    write) and the item is already `cancelled` when the ensuring block releases the claim.
+      yield* runAttempts
+        .updateStatus(runAttemptId, "user_cancelled", { finishedAt: yield* nowIso })
+        .pipe(Effect.catch(() => Effect.void));
+      yield* appendEvent(runAttemptId, "user_cancelled", eventPayload);
+      if (attempt !== null) {
+        const latest = yield* runAttempts
+          .latestForWorkItem(attempt.workItemId)
+          .pipe(Effect.catch(() => Effect.succeed(null)));
+        if (latest !== null && latest.id === runAttemptId) {
+          // Unfenced (the canceller is not the claim owner) and bounded by the legality table.
+          yield* workItems
+            .transition(attempt.workItemId, "cancelled")
+            .pipe(Effect.catch(() => Effect.void));
+        }
+      }
+      // 2. Then stop the live run.
+      const registered = (yield* Ref.get(activeAgents)).get(String(runAttemptId));
       if (registered !== undefined) {
         // Interrupt the dispatch fiber FIRST (fix-lane item 6): awaiting
         // agent.interrupt() before the fiber interrupt gave markFailed a
@@ -564,11 +687,10 @@ export const makeRunDispatcher = Effect.gen(function* () {
       yield* liveRequests
         .settleRun(runAttemptId, "user cancelled")
         .pipe(Effect.catch(() => Effect.void));
-      yield* runAttempts
-        .updateStatus(runAttemptId, "user_cancelled", { finishedAt: yield* nowIso })
-        .pipe(Effect.catch(() => Effect.void));
-      yield* appendEvent(runAttemptId, "user_cancelled", {});
     });
+
+  const cancelRun: RunDispatcherService["cancelRun"] = (runAttemptId) =>
+    cancelAttempt(runAttemptId, {});
 
   const isAgentActive: RunDispatcherService["isAgentActive"] = (runAttemptId) =>
     Ref.get(activeAgents).pipe(Effect.map((map) => map.has(String(runAttemptId))));
@@ -577,20 +699,10 @@ export const makeRunDispatcher = Effect.gen(function* () {
     Effect.gen(function* () {
       const map = yield* Ref.get(activeAgents);
       let stopped = 0;
-      for (const [attemptId, registered] of map) {
-        registered.fiber.interruptUnsafe();
-        yield* registered.agent.interrupt().pipe(Effect.catch(() => Effect.void));
-        yield* liveRequests
-          .settleRun(RunAttemptId.make(attemptId), "stopped by stop-all")
-          .pipe(Effect.catch(() => Effect.void));
-        yield* runAttempts
-          .updateStatus(RunAttemptId.make(attemptId), "user_cancelled", {
-            finishedAt: yield* nowIso,
-          })
-          .pipe(Effect.catch(() => Effect.void));
-        yield* appendEvent(RunAttemptId.make(attemptId), "user_cancelled", {
-          reason: "stop_all_runs",
-        });
+      for (const [attemptId] of map) {
+        // cancelAttempt fires interruptUnsafe without awaiting; awaiting an
+        // interrupted fiber surfaces its interruption cause as an error.
+        yield* cancelAttempt(RunAttemptId.make(attemptId), { reason: "stop_all_runs" });
         stopped += 1;
       }
       return stopped;

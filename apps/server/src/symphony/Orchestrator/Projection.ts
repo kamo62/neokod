@@ -1,5 +1,6 @@
 import type {
   EffectiveWorkflowConfig,
+  EvidenceBundle,
   NormalizedIssue,
   SymphonyProjectId,
   WorkItem,
@@ -61,15 +62,19 @@ export const projectWorkItem = Effect.fn("projectWorkItem")(function* (
   };
 
   // Fold every present field into the projected row: an issue commonly has a
-  // description AND a branch AND a priority AND blockers, and each is
-  // independently meaningful to the Queue view. These must accumulate, not
-  // short-circuit (the previous exclusive `if (…) return` dropped baseBranch,
-  // priority, and blocked for any issue with a description).
+  // description AND a priority AND blockers, and each is independently
+  // meaningful to the Queue view. These must accumulate, not short-circuit.
   return {
     ...workItem,
     ...(issue.description !== null ? { description: issue.description } : {}),
-    ...(issue.branchName !== null ? { baseBranch: issue.branchName } : {}),
     ...(issue.priority !== null ? { priority: issue.priority } : {}),
     ...(issue.blockedBy.length > 0 ? { blocked: true } : {}),
   };
 });
+
+/** Base branch for PR lookups: the one recorded at dispatch, else the base branch of the stored PR evidence
+ *  (items dispatched before the dispatch write existed). Undefined means unknown: callers must refuse. */
+export const resolveBaseBranch = (
+  item: Pick<WorkItem, "baseBranch">,
+  evidence: Pick<EvidenceBundle, "pullRequest"> | null,
+): string | undefined => item.baseBranch ?? evidence?.pullRequest?.baseBranch;

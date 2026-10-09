@@ -357,6 +357,70 @@ layer(["failed"], makePullRequest())("ExecutionFinalizer validation failure path
     }),
   );
 
+  it.effect("re-schedules an item that is in testing", () =>
+    Effect.gen(function* () {
+      const workItems = yield* WorkItemRepository;
+      const workItem = yield* seedWorkItem("6", "owner-6");
+      const moved = yield* workItems.transition(workItem.id, "running", {
+        ownerToken: "owner-6",
+        generation: 1,
+        from: ["preparing"],
+      });
+      expect(moved).toBe(true);
+      const runAttemptId = yield* seedAttempt("6");
+      const finalizer = yield* ExecutionFinalizer;
+
+      const outcome = yield* finalizer.finalize({
+        workItem,
+        issue: makeIssue("6"),
+        runAttemptId,
+        config: makeConfig(),
+        workspacePath: "/ws/6",
+        branch: "symphony/issue-6",
+        baseBranch: "main",
+        ownerToken: "owner-6",
+        generation: 1,
+      });
+
+      expect(outcome).toBe("validation_failed");
+      const after = yield* workItems.getById(workItem.id);
+      expect(after?.lifecycle).toBe("retry_scheduled");
+    }),
+  );
+
+  it.effect("records a refused lifecycle transition instead of swallowing it", () =>
+    Effect.gen(function* () {
+      const workItems = yield* WorkItemRepository;
+      const workItem = yield* seedWorkItem("7", "owner-7");
+      const moved = yield* workItems.transition(workItem.id, "running", {
+        ownerToken: "owner-7",
+        generation: 1,
+        from: ["preparing"],
+      });
+      expect(moved).toBe(true);
+      const runAttemptId = yield* seedAttempt("7");
+      const finalizer = yield* ExecutionFinalizer;
+
+      yield* finalizer.finalize({
+        workItem,
+        issue: makeIssue("7"),
+        runAttemptId,
+        config: makeConfig(),
+        workspacePath: "/ws/7",
+        branch: "symphony/issue-7",
+        baseBranch: "main",
+        ownerToken: "owner-7",
+        generation: 99,
+      });
+
+      const runEvents = yield* RunEventRepository;
+      const events = yield* runEvents.listForAttempt(runAttemptId);
+      expect(events.map((e) => e.eventType)).toContain("lifecycle_transition_refused");
+      const after = yield* workItems.getById(workItem.id);
+      expect(after?.lifecycle).not.toBe("retry_scheduled");
+    }),
+  );
+
   it.effect("lands validation_failed when attempts are exhausted", () =>
     Effect.gen(function* () {
       const workItem = yield* seedWorkItem("5", "owner-5");

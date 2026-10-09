@@ -34,6 +34,7 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
+import * as Semaphore from "effect/Semaphore";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { nowIso } from "../../Domain/Time.ts";
@@ -52,9 +53,9 @@ import { WORKFLOW_DEFAULTS } from "../../Workflow/Config.ts";
 import { TrackerAdapterRegistry } from "../../Trackers/Adapter.ts";
 import { resolveTrackerAdapter, TrackerEnablement } from "../TrackerEnablement.ts";
 import { evaluateEligibility } from "../Eligibility.ts";
-import { projectWorkItem } from "../Projection.ts";
+import { projectWorkItem, resolveBaseBranch } from "../Projection.ts";
 import { nowMs, reconcileStaleClaims } from "../Reconciler.ts";
-import { retryDueAtMs } from "../Retry.ts";
+import { isAutoDispatchBlockedStatus, retryDueAtMs } from "../Retry.ts";
 import { runStartupRecovery } from "../Recovery.ts";
 import { WorkflowLoaderService } from "../../Workflow/Loader.ts";
 import { AttentionRepository } from "../../Persistence/Services/AttentionRepository.ts";
@@ -246,7 +247,7 @@ const refreshIssueSnapshot = (
       description: item.description ?? null,
       priority: item.priority ?? null,
       state: "queued",
-      branchName: item.baseBranch ?? null,
+      branchName: null,
       url: null,
       assigneeId: null,
       labels: [],
@@ -689,6 +690,9 @@ const makeOrchestrator = Effect.gen(function* () {
     forcePoll = false,
     allowDispatch = true,
   ) {
+    if (!(yield* ensureLeadership())) {
+      return;
+    }
     yield* reloadWorkflowFiles();
     const now = yield* nowIso;
     const active = yield* workflows
@@ -724,8 +728,8 @@ const makeOrchestrator = Effect.gen(function* () {
     // expire approval requests whose wait window elapsed. Runs on the same
     // cadence as polling.
     yield* reconcileStaleClaims({ workItems, runAttempts, runEvents, workflows, dispatcher });
-    yield* retrySweep();
-    if (allowDispatch) {
+    const retried = yield* retrySweep();
+    if (allowDispatch && !retried) {
       yield* launchNextQueuedWork();
     }
     yield* sweepExpiredApprovals(now);
@@ -777,8 +781,11 @@ const makeOrchestrator = Effect.gen(function* () {
       }
       // Re-dispatch claims the item (claim accepts retry_scheduled) and the
       // dispatcher creates the next attempt; failure releases it back here.
-      yield* dispatchWorkItem(String(item.id)).pipe(Effect.catch(() => Effect.void));
+      if (yield* launchDispatch(String(item.id), { explicit: false })) {
+        return true;
+      }
     }
+    return false;
   });
 
   const sweepExpiredApprovals = (now: string) =>
@@ -823,6 +830,37 @@ const makeOrchestrator = Effect.gen(function* () {
     });
 
   const scheduler = Effect.gen(function* () {
+    // Each tick runs in its own scope so retry-sweep dispatches release
+    // their agent-runtime resources when the run ends instead of holding
+    // them on the layer scope until server shutdown. The first tick polls all
+    // workflows immediately; later scans honor each workflow's interval.
+    yield* runTick(true).pipe(Effect.scoped);
+    yield* Effect.repeat(
+      runTick(false).pipe(Effect.scoped),
+      Schedule.fixed(SCHEDULER_SCAN_INTERVAL),
+    );
+  });
+
+  // Startup advisory lock (audit item 8 lane I; plan section 4): one server
+  // process orchestrates at a time. Acquired with a per-launch token and a
+  // lease, renewed on every tick, released on teardown. A second server that
+  // fails to acquire degrades to read-only observe (no dispatch) rather than
+  // refusing to boot.
+  const lockAcquiredAtMs = yield* Clock.currentTimeMillis;
+  const lockToken = `symphony-${process.pid}-${lockAcquiredAtMs}`;
+  const lockLeaseMs = 90_000;
+  const acquiredLock = yield* orchestratorState
+    .acquireLock({ ownerToken: lockToken, leaseMs: lockLeaseMs })
+    .pipe(Effect.catch(() => Effect.succeed(false)));
+  const holdsLockRef = yield* Ref.make(acquiredLock);
+  const recoveredRef = yield* Ref.make(false);
+  // Serializes concurrent first ticks (the scheduler's immediate tick and an
+  // explicit refreshNow racing at startup): without it both can observe an
+  // unset recovery flag and run startup recovery twice, the late run
+  // interrupting rows seeded after the early run finished.
+  const leadershipMutex = yield* Semaphore.make(1);
+
+  const recoverStartup = Effect.gen(function* () {
     // Startup recovery (plan 9.7, WS-M): mark interrupted runs from a prior
     // crash/restart, release stale claims, and re-queue retryable work.
     const maybeOwnership = yield* Effect.serviceOption(WorkspaceOwnershipRepository);
@@ -852,28 +890,45 @@ const makeOrchestrator = Effect.gen(function* () {
         ),
       ...(Option.isSome(maybeOwnership) ? { ownership: maybeOwnership.value } : {}),
     }).pipe(Effect.catch(() => Effect.void));
-    // Each tick runs in its own scope so retry-sweep dispatches release
-    // their agent-runtime resources when the run ends instead of holding
-    // them on the layer scope until server shutdown. The first tick polls all
-    // workflows immediately; later scans honor each workflow's interval.
-    yield* runTick(true).pipe(Effect.scoped);
-    yield* Effect.repeat(
-      runTick(false).pipe(Effect.scoped),
-      Schedule.fixed(SCHEDULER_SCAN_INTERVAL),
-    );
   });
 
-  // Startup advisory lock (audit item 8 lane I; plan section 4): one server
-  // process orchestrates at a time. Acquired with a per-launch token and a
-  // lease, renewed on every tick, released on teardown. A second server that
-  // fails to acquire degrades to read-only observe (no dispatch) rather than
-  // refusing to boot.
-  const lockAcquiredAtMs = yield* Clock.currentTimeMillis;
-  const lockToken = `symphony-${process.pid}-${lockAcquiredAtMs}`;
-  const lockLeaseMs = 90_000;
-  const acquiredLock = yield* orchestratorState
-    .acquireLock({ ownerToken: lockToken, leaseMs: lockLeaseMs })
-    .pipe(Effect.catch(() => Effect.succeed(false)));
+  /** Renew the lease. A refused renewal (another token owns the row) demotes this process.
+   *  A SQL error leaves the role unchanged: the state is unknown, not lost. */
+  const renewLeadership = Effect.fn("symphonyOrchestrator.renewLeadership")(function* () {
+    if (!(yield* Ref.get(holdsLockRef))) return false;
+    const renewed = yield* orchestratorState
+      .renewLock({ ownerToken: lockToken, leaseMs: lockLeaseMs })
+      .pipe(Effect.catch(() => Effect.succeed(true)));
+    if (!renewed) {
+      yield* Ref.set(holdsLockRef, false);
+      yield* Ref.set(recoveredRef, false); // recovery runs again if the lock is ever regained
+      yield* Effect.logWarning("symphony.orchestrator.leadership_lost", { lockToken });
+    }
+    return renewed;
+  });
+
+  /** True when this process may orchestrate on this tick. Retries the lock while a follower. */
+  const ensureLeadership = Effect.fn("symphonyOrchestrator.ensureLeadership")(function* () {
+    return yield* leadershipMutex.withPermits(1)(
+      Effect.gen(function* () {
+        if (yield* Ref.get(holdsLockRef)) {
+          if (!(yield* renewLeadership())) return false;
+        } else {
+          const acquired = yield* orchestratorState
+            .acquireLock({ ownerToken: lockToken, leaseMs: lockLeaseMs })
+            .pipe(Effect.catch(() => Effect.succeed(false)));
+          if (!acquired) return false;
+          yield* Ref.set(holdsLockRef, true);
+          yield* Effect.logInfo("symphony.orchestrator.leadership_acquired", { lockToken });
+        }
+        if (!(yield* Ref.get(recoveredRef))) {
+          yield* recoverStartup;
+          yield* Ref.set(recoveredRef, true);
+        }
+        return true;
+      }),
+    );
+  });
 
   const refreshNow: SymphonyOrchestratorShape["refreshNow"] = () =>
     runTick(true, false).pipe(Effect.scoped);
@@ -881,6 +936,7 @@ const makeOrchestrator = Effect.gen(function* () {
   const getOverview = (): Effect.Effect<SymphonyOverview, never> =>
     Effect.gen(function* () {
       const now = yield* nowIso;
+      const orchestratorRole = (yield* Ref.get(holdsLockRef)) ? "leader" : "follower";
       const nowInCurrentZone = DateTime.setZone(yield* DateTime.now, DateTime.zoneMakeLocal());
       const startOfTodayMs = DateTime.toEpochMillis(DateTime.startOf(nowInCurrentZone, "day"));
       const state = yield* Ref.get(stateRef);
@@ -941,6 +997,7 @@ const makeOrchestrator = Effect.gen(function* () {
         retrying,
         failedToday,
         orchestratorPaused: paused,
+        orchestratorRole,
         activeWorkflowCount: activeWorkflows,
         providerHealth: {},
         trackerHealth: Object.fromEntries(
@@ -1349,9 +1406,12 @@ const makeOrchestrator = Effect.gen(function* () {
 
   const prepareDispatch = Effect.fn("symphonyOrchestrator.prepareDispatch")(function* (
     workItemId: string,
+    options: { readonly explicit: boolean },
   ): Effect.fn.Return<PreparedDispatch | null> {
-    // Advisory-lock gate: followers observe but never claim or run work.
-    if (!acquiredLock) {
+    // Defence in depth for an explicit dispatch RPC on a follower: the tick
+    // gate above normally keeps followers out, but the RPC can arrive
+    // between ticks.
+    if (!(yield* Ref.get(holdsLockRef))) {
       return null;
     }
     const item = yield* workItems
@@ -1372,6 +1432,19 @@ const makeOrchestrator = Effect.gen(function* () {
       if (!requeued) {
         return null;
       }
+    }
+    if (options.explicit && (item.lifecycle === "failed" || item.lifecycle === "cancelled")) {
+      // A user chose to run this item again. Leaving a terminal lifecycle needs an explicit `from`.
+      const requeued = yield* workItems
+        .transition(item.id, "queued", { from: [item.lifecycle] })
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+      if (!requeued) return null;
+    }
+    if (item.lifecycle === "queued" && !options.explicit) {
+      const latestAttempt = yield* runAttempts
+        .latestForWorkItem(item.id)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (latestAttempt !== null && isAutoDispatchBlockedStatus(latestAttempt.status)) return null;
     }
 
     const paused = yield* orchestratorState
@@ -1442,6 +1515,36 @@ const makeOrchestrator = Effect.gen(function* () {
     if (issue === null) {
       return null;
     }
+    // Re-check eligibility on the fresh issue: the stored reasons are from the last poll.
+    // Items without a tracker id use a synthetic snapshot, and review continuations may sit in a
+    // review state, so both keep the stored decision.
+    const hasTrackerIssue = item.trackerIssueId !== undefined && item.trackerIssueId.length > 0;
+    if (hasTrackerIssue && item.lifecycle !== "changes_requested") {
+      const fresh = evaluateEligibility({
+        config,
+        issue,
+        claimedIssueIds: new Set<string>(),
+        dispatchPaused: false,
+      });
+      if (!fresh.eligible) {
+        // Record why, so the queue explains it and the scheduler stops picking the item every tick.
+        // A queued item goes back to `eligible`; other lifecycles keep theirs (the upsert only moves
+        // draft, eligible and queued, see updateRow's CASE). Non-empty stored reasons make the
+        // pre-check above refuse the item until a poll finds it eligible again.
+        yield* workItems
+          .upsert({
+            ...item,
+            lifecycle: item.lifecycle === "queued" ? "eligible" : item.lifecycle,
+            eligibilityReasons: [...fresh.reasons],
+          })
+          .pipe(Effect.catch(() => Effect.void));
+        yield* Effect.logInfo("symphony.dispatch.refused_ineligible", {
+          workItemId: String(item.id),
+          reasons: fresh.reasons,
+        });
+        return null;
+      }
+    }
     const reviewFeedback = yield* buildReviewFeedback(item, config);
     const workflowInstructions = workflow.definition.promptTemplate.trim();
     return {
@@ -1451,6 +1554,20 @@ const makeOrchestrator = Effect.gen(function* () {
       ...(workflowInstructions.length > 0 ? { workflowInstructions } : {}),
       ...(reviewFeedback !== undefined ? { reviewFeedback } : {}),
     };
+  });
+
+  const launchDispatch = Effect.fn("symphonyOrchestrator.launchDispatch")(function* (
+    workItemId: string,
+    options: { readonly explicit: boolean },
+  ) {
+    const prepared = yield* prepareDispatch(workItemId, options);
+    if (prepared === null) return false;
+    yield* executePreparedDispatch(prepared).pipe(
+      Effect.scoped,
+      Effect.forkIn(dispatchScope),
+      Effect.asVoid,
+    );
+    return true;
   });
 
   const executePreparedDispatch = Effect.fn("symphonyOrchestrator.executePreparedDispatch")(
@@ -1510,25 +1627,14 @@ const makeOrchestrator = Effect.gen(function* () {
       ) {
         continue;
       }
-      const prepared = yield* prepareDispatch(String(candidate.id));
-      if (prepared === null) {
-        continue;
+      if (yield* launchDispatch(String(candidate.id), { explicit: false })) {
+        return;
       }
-      yield* executePreparedDispatch(prepared).pipe(
-        Effect.scoped,
-        Effect.forkIn(dispatchScope),
-        Effect.asVoid,
-      );
-      return;
     }
   });
 
-  const dispatchWorkItem: SymphonyOrchestratorShape["dispatchWorkItem"] = (workItemId) =>
-    prepareDispatch(workItemId).pipe(
-      Effect.flatMap((prepared) =>
-        prepared === null ? Effect.void : executePreparedDispatch(prepared),
-      ),
-    );
+  const dispatchWorkItem: SymphonyOrchestratorShape["dispatchWorkItem"] = (workItemId, options) =>
+    launchDispatch(workItemId, { explicit: options?.explicit === true }).pipe(Effect.asVoid);
 
   const cancelRun: SymphonyOrchestratorShape["cancelRun"] = (runAttemptId) =>
     Effect.gen(function* () {
@@ -1631,7 +1737,10 @@ const makeOrchestrator = Effect.gen(function* () {
             );
       const config = workflow?.effectiveConfig;
       const workspaceKey = item.workspaceKey;
-      const baseBranch = item.baseBranch;
+      const bundle = yield* evidenceRepository
+        .getByWorkItem(id)
+        .pipe(Effect.catch(() => Effect.succeed(null)));
+      const baseBranch = resolveBaseBranch(item, bundle);
       if (
         config === null ||
         config === undefined ||
@@ -1652,9 +1761,6 @@ const makeOrchestrator = Effect.gen(function* () {
       if (refreshed === null) {
         return false;
       }
-      const bundle = yield* evidenceRepository
-        .getByWorkItem(id)
-        .pipe(Effect.catch(() => Effect.succeed(null)));
       if (bundle === null) {
         return false;
       }
@@ -1723,7 +1829,10 @@ const makeOrchestrator = Effect.gen(function* () {
             );
       const config = workflow?.effectiveConfig;
       const workspaceKey = item.workspaceKey;
-      const baseBranch = item.baseBranch;
+      const baseBranch = resolveBaseBranch(
+        item,
+        yield* evidenceRepository.getByWorkItem(id).pipe(Effect.catch(() => Effect.succeed(null))),
+      );
       if (
         config === null ||
         config === undefined ||
@@ -1835,18 +1944,11 @@ const makeOrchestrator = Effect.gen(function* () {
   // initialized. This avoids a construction-time race with the first tick.
   yield* Effect.forkScoped(
     Effect.gen(function* () {
-      if (acquiredLock) {
-        yield* Effect.acquireRelease(Effect.void, () =>
-          orchestratorState.releaseLock(lockToken).pipe(Effect.catch(() => Effect.void)),
-        );
-      }
+      yield* Effect.acquireRelease(Effect.void, () =>
+        orchestratorState.releaseLock(lockToken).pipe(Effect.catch(() => Effect.void)),
+      );
       yield* Effect.forkScoped(
-        Effect.repeat(
-          orchestratorState
-            .renewLock({ ownerToken: lockToken, leaseMs: lockLeaseMs })
-            .pipe(Effect.catch(() => Effect.void)),
-          Schedule.spaced("30 seconds"),
-        ),
+        Effect.repeat(renewLeadership().pipe(Effect.asVoid), Schedule.spaced("30 seconds")),
       );
       yield* scheduler;
     }),

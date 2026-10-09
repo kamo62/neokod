@@ -4,6 +4,7 @@
  * Enqueues for an active or already-queued key are merged atomically instead of
  * creating duplicate queued items. `drainKey()` resolves only when that key has
  * no queued, pending, or active work left.
+ * A value whose processing fails is retained per key and merged into the next work for that key, or retried with `retryFailed`; it is not dropped.
  *
  * @module KeyedCoalescingWorker
  */
@@ -15,12 +16,16 @@ import * as TxRef from "effect/TxRef";
 export interface KeyedCoalescingWorker<K, V> {
   readonly enqueue: (key: K, value: V) => Effect.Effect<void>;
   readonly drainKey: (key: K) => Effect.Effect<void>;
+  /** Re-run a value retained after a failure, once. No-op when nothing is retained or newer work is pending
+   *  (the next take merges the retained value into that work). */
+  readonly retryFailed: (key: K) => Effect.Effect<void>;
 }
 
 interface KeyedCoalescingWorkerState<K, V> {
   readonly latestByKey: Map<K, V>;
   readonly queuedKeys: Set<K>;
   readonly activeKeys: Set<K>;
+  readonly failedByKey: Map<K, V>;
 }
 
 export const makeKeyedCoalescingWorker = <K, V, E, R>(options: {
@@ -33,10 +38,20 @@ export const makeKeyedCoalescingWorker = <K, V, E, R>(options: {
       latestByKey: new Map(),
       queuedKeys: new Set(),
       activeKeys: new Set(),
+      failedByKey: new Map(),
     });
+
+    const retainFailed = (key: K, value: V): Effect.Effect<void> =>
+      TxRef.update(stateRef, (state) => {
+        const failedByKey = new Map(state.failedByKey);
+        const existing = failedByKey.get(key);
+        failedByKey.set(key, existing === undefined ? value : options.merge(existing, value));
+        return { ...state, failedByKey };
+      }).pipe(Effect.tx);
 
     const processKey = (key: K, value: V): Effect.Effect<void, E, R> =>
       options.process(key, value).pipe(
+        Effect.tapCause(() => retainFailed(key, value)),
         Effect.flatMap(() =>
           TxRef.modify(stateRef, (state) => {
             const nextValue = state.latestByKey.get(key);
@@ -90,10 +105,14 @@ export const makeKeyedCoalescingWorker = <K, V, E, R>(options: {
           latestByKey.delete(key);
           const activeKeys = new Set(state.activeKeys);
           activeKeys.add(key);
+          const failed = state.failedByKey.get(key);
+          const merged = failed === undefined ? value : options.merge(failed, value);
+          const failedByKey = new Map(state.failedByKey);
+          failedByKey.delete(key);
 
           return [
-            { key, value } as const,
-            { ...state, latestByKey, queuedKeys, activeKeys },
+            { key, value: merged } as const,
+            { ...state, latestByKey, queuedKeys, activeKeys, failedByKey },
           ] as const;
         }).pipe(Effect.tx),
       ),
@@ -138,5 +157,29 @@ export const makeKeyedCoalescingWorker = <K, V, E, R>(options: {
         Effect.tx,
       );
 
-    return { enqueue, drainKey } satisfies KeyedCoalescingWorker<K, V>;
+    const retryFailed: KeyedCoalescingWorker<K, V>["retryFailed"] = (key) =>
+      TxRef.modify(stateRef, (state) => {
+        const failed = state.failedByKey.get(key);
+        if (
+          failed === undefined ||
+          state.latestByKey.has(key) ||
+          state.queuedKeys.has(key) ||
+          state.activeKeys.has(key)
+        ) {
+          return [false, state] as const;
+        }
+        const failedByKey = new Map(state.failedByKey);
+        failedByKey.delete(key);
+        const latestByKey = new Map(state.latestByKey);
+        latestByKey.set(key, failed);
+        const queuedKeys = new Set(state.queuedKeys);
+        queuedKeys.add(key);
+        return [true, { ...state, failedByKey, latestByKey, queuedKeys }] as const;
+      }).pipe(
+        Effect.flatMap((shouldOffer) => (shouldOffer ? TxQueue.offer(queue, key) : Effect.void)),
+        Effect.tx,
+        Effect.asVoid,
+      );
+
+    return { enqueue, drainKey, retryFailed } satisfies KeyedCoalescingWorker<K, V>;
   });

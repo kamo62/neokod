@@ -24,6 +24,8 @@ export interface CodexAppServerClientOptions {
   readonly logger?: (
     event: CodexProtocol.CodexAppServerProtocolLogEvent,
   ) => Effect.Effect<void, never>;
+  /** Raw mode. The client does not answer server requests and does not run typed handlers. The caller owns every incoming request and notification through client.raw.requests and client.raw.notifications and must answer each request with client.raw.respond or respondError. Default false (typed mode: raw streams are empty). */
+  readonly rawStreams?: boolean;
 }
 
 interface CodexAppServerClientRaw {
@@ -184,14 +186,16 @@ export const make = Effect.fn("effect-codex-app-server/CodexAppServerClient.make
       : Effect.fail(CodexError.CodexAppServerRequestError.methodNotFound(request.method));
   };
 
+  const rawStreams = options.rawStreams === true;
+
   const transport = yield* CodexProtocol.makeCodexAppServerPatchedProtocol({
     stdio,
     ...(terminationError ? { terminationError } : {}),
     ...(options.logIncoming !== undefined ? { logIncoming: options.logIncoming } : {}),
     ...(options.logOutgoing !== undefined ? { logOutgoing: options.logOutgoing } : {}),
     ...(options.logger ? { logger: options.logger } : {}),
-    onNotification: dispatchNotification,
-    onRequest: dispatchRequest,
+    rawStreams,
+    ...(rawStreams ? {} : { onNotification: dispatchNotification, onRequest: dispatchRequest }),
   });
 
   const request = <M extends CodexRpc.ClientRequestMethod>(
@@ -229,24 +233,48 @@ export const make = Effect.fn("effect-codex-app-server/CodexAppServerClient.make
     },
     request,
     notify,
-    handleServerRequest: (method, handler) =>
-      Effect.sync(() => {
+    handleServerRequest: (method, handler) => {
+      if (rawStreams) {
+        return Effect.die(
+          new Error("Codex client handlers are unavailable when rawStreams is true"),
+        );
+      }
+      return Effect.sync(() => {
         requestHandlers.set(method, handler as ServerRequestHandler);
-      }),
-    handleServerNotification: (method, handler) =>
-      Effect.sync(() => {
+      });
+    },
+    handleServerNotification: (method, handler) => {
+      if (rawStreams) {
+        return Effect.die(
+          new Error("Codex client handlers are unavailable when rawStreams is true"),
+        );
+      }
+      return Effect.sync(() => {
         const current = notificationHandlers.get(method) ?? [];
         current.push(handler as ServerNotificationHandler);
         notificationHandlers.set(method, current);
-      }),
-    handleUnknownServerRequest: (handler) =>
-      Effect.sync(() => {
+      });
+    },
+    handleUnknownServerRequest: (handler) => {
+      if (rawStreams) {
+        return Effect.die(
+          new Error("Codex client handlers are unavailable when rawStreams is true"),
+        );
+      }
+      return Effect.sync(() => {
         unknownRequestHandler = handler;
-      }),
-    handleUnknownServerNotification: (handler) =>
-      Effect.sync(() => {
+      });
+    },
+    handleUnknownServerNotification: (handler) => {
+      if (rawStreams) {
+        return Effect.die(
+          new Error("Codex client handlers are unavailable when rawStreams is true"),
+        );
+      }
+      return Effect.sync(() => {
         unknownNotificationHandler = handler;
-      }),
+      });
+    },
   });
 });
 

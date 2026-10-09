@@ -1,6 +1,9 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeSocket from "@effect/platform-node/NodeSocket";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "node:crypto";
+import * as NodeUtil from "node:util";
 import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 
 import {
@@ -37,10 +40,12 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
+import * as References from "effect/References";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { ChildProcessSpawner } from "effect/unstable/process";
@@ -61,6 +66,7 @@ import { vi } from "vite-plus/test";
 const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
 
 import * as ServerConfig from "./config.ts";
+import { issueAssetUrl } from "./assets/AssetAccess.ts";
 import { makeRoutesLayer } from "./server.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as GitManager from "./git/GitManager.ts";
@@ -954,6 +960,82 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  const TOKEN = "t".repeat(40);
+
+  it.effect("with a token, a foreign Origin gets no CORS allow-origin header", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: { loopbackAuthToken: TOKEN, publicOrigins: ["https://neokod.example.com"] },
+      });
+
+      const url = yield* getHttpServerUrl("/.well-known/neokod/environment");
+      const response = yield* fetchEffect(url, {
+        headers: { authorization: `Bearer ${TOKEN}`, origin: "https://evil.example.com" },
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers["access-control-allow-origin"], undefined);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("with a token, public, loopback and desktop origins are echoed", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: { loopbackAuthToken: TOKEN, publicOrigins: ["https://neokod.example.com"] },
+      });
+
+      const url = yield* getHttpServerUrl("/.well-known/neokod/environment");
+      for (const origin of [
+        "https://neokod.example.com",
+        "http://localhost:5733",
+        "neokod://app",
+      ]) {
+        const response = yield* fetchEffect(url, {
+          headers: { authorization: `Bearer ${TOKEN}`, origin },
+        });
+        assert.equal(response.status, 200);
+        assert.equal(response.headers["access-control-allow-origin"], origin);
+      }
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("with a token, a preflight from a foreign origin gets no allow-origin", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: { loopbackAuthToken: TOKEN, publicOrigins: ["https://neokod.example.com"] },
+      });
+
+      const url = yield* getHttpServerUrl("/.well-known/neokod/environment");
+      const response = yield* fetchEffect(url, {
+        method: "OPTIONS",
+        headers: {
+          origin: "https://evil.example.com",
+          "access-control-request-headers": "authorization",
+        },
+      });
+      assert.equal(response.headers["access-control-allow-origin"], undefined);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("with a token, the descriptor and dispatch require the bearer", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: { loopbackAuthToken: TOKEN, publicOrigins: ["https://neokod.example.com"] },
+      });
+
+      const descriptorUrl = yield* getHttpServerUrl("/.well-known/neokod/environment");
+      const descriptorResponse = yield* fetchEffect(descriptorUrl);
+      assert.equal(descriptorResponse.status, 401);
+      const descriptorBody = yield* responseJsonEffect<{ code?: string }>(descriptorResponse);
+      assert.equal(descriptorBody.code, "wsl_bearer_invalid");
+
+      // The dispatch route decodes its payload before the handler runs, so
+      // the payload-free snapshot route stands in for the bearer check here.
+      const snapshotUrl = yield* getHttpServerUrl("/api/orchestration/snapshot");
+      const snapshotResponse = yield* fetchEffect(snapshotUrl);
+      assert.equal(snapshotResponse.status, 401);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("proxies browser OTLP trace exports through the server", () =>
     Effect.gen(function* () {
       const upstreamRequests: Array<{
@@ -1238,6 +1320,230 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         assert.equal(record.resourceAttributes["service.name"], "neokod-web");
         assert.equal(record.status?.code, String(span.status.code));
       }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("rejects an OTLP trace body over 1 MiB with 413 and records nothing", () =>
+    Effect.gen(function* () {
+      const localTraceRecords: Array<unknown> = [];
+      yield* buildAppUnderTest({
+        layers: {
+          browserTraceCollector: {
+            record: (records) =>
+              Effect.sync(() => {
+                localTraceRecords.push(...records);
+              }),
+          },
+        },
+      });
+
+      const response = yield* HttpClient.post("/api/observability/v1/traces", {
+        headers: {
+          "content-type": "application/json",
+        },
+        body: HttpBody.text("x".repeat(1024 * 1024 + 1), "application/json"),
+      });
+
+      assert.equal(response.status, 413);
+      assert.deepEqual(localTraceRecords, []);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("rejects a chunked OTLP trace body over 1 MiB without recording it", () =>
+    Effect.gen(function* () {
+      const localTraceRecords: Array<unknown> = [];
+      yield* buildAppUnderTest({
+        layers: {
+          browserTraceCollector: {
+            record: (records) =>
+              Effect.sync(() => {
+                localTraceRecords.push(...records);
+              }),
+          },
+        },
+      });
+
+      const exit = yield* Effect.exit(
+        HttpClient.post("/api/observability/v1/traces", {
+          headers: {
+            "content-type": "application/json",
+          },
+          body: HttpBody.stream(
+            Stream.make(new Uint8Array(600_000), new Uint8Array(600_000)),
+            "application/json",
+          ),
+        }),
+      );
+      assert.deepEqual(localTraceRecords, []);
+      if (exit._tag === "Success") {
+        assert.equal(exit.value.status, 413);
+      }
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("accepts an OTLP trace body just under the limit", () =>
+    Effect.gen(function* () {
+      const localTraceRecords: Array<unknown> = [];
+      const payload = yield* makeBrowserOtlpPayload("client.test");
+      const resourceSpan = payload.resourceSpans[0];
+      assert.notEqual(resourceSpan, undefined);
+      if (!resourceSpan) return;
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      const baseSize = JSON.stringify(payload).length;
+      resourceSpan.resource.attributes.push({
+        key: "padding",
+        value: { stringValue: "p".repeat(1_020_000 - baseSize) },
+      });
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      const size = JSON.stringify(payload).length;
+      assert.isTrue(size >= 1_000_000 && size <= 1_040_000);
+
+      yield* buildAppUnderTest({
+        layers: {
+          browserTraceCollector: {
+            record: (records) =>
+              Effect.sync(() => {
+                localTraceRecords.push(...records);
+              }),
+          },
+        },
+      });
+
+      const response = yield* HttpClient.post("/api/observability/v1/traces", {
+        headers: {
+          "content-type": "application/json",
+        },
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        body: HttpBody.text(JSON.stringify(payload), "application/json"),
+      });
+
+      assert.equal(response.status, 204);
+      assert.equal(localTraceRecords.length, 1);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("does not log OTLP request bodies", () => {
+    const logs: Array<string> = [];
+    const logger = Logger.make(({ message, fiber }) => {
+      logs.push(
+        NodeUtil.inspect([message, fiber.getRef(References.CurrentLogAnnotations)], {
+          depth: 6,
+        }),
+      );
+    });
+    return Effect.gen(function* () {
+      const localTraceRecords: Array<unknown> = [];
+      yield* buildAppUnderTest({
+        layers: {
+          browserTraceCollector: {
+            record: (records) =>
+              Effect.sync(() => {
+                localTraceRecords.push(...records);
+              }),
+          },
+        },
+      });
+
+      const response = yield* HttpClient.post("/api/observability/v1/traces", {
+        headers: {
+          "content-type": "application/json",
+        },
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        body: HttpBody.text(JSON.stringify({ marker: "LEAKME-body-marker" }), "application/json"),
+      });
+
+      assert.equal(response.status, 204);
+      assert.isTrue(logs.some((entry) => entry.includes("Failed to decode browser OTLP traces")));
+      assert.isFalse(logs.some((entry) => entry.includes("LEAKME-body-marker")));
+    }).pipe(
+      Effect.provide(
+        Layer.merge(NodeHttpServer.layerTest, Logger.layer([logger], { mergeWithExisting: false })),
+      ),
+    );
+  });
+
+  it.effect("sends CSP, nosniff, frame and referrer headers on the app shell", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const staticDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "neokod-static-" });
+      yield* fileSystem.writeFileString(
+        path.join(staticDir, "index.html"),
+        "<html><head><script>window.__shell=1</script></head><body>shell</body></html>",
+      );
+      yield* fileSystem.writeFileString(path.join(staticDir, "app.js"), "export {};");
+      yield* buildAppUnderTest({ config: { staticDir } });
+
+      const expectedHash = `'sha256-${NodeCrypto.createHash("sha256").update("window.__shell=1").digest("base64")}'`;
+      for (const route of ["/", "/some/spa/route"]) {
+        const response = yield* fetchEffect(yield* getHttpServerUrl(route));
+        assert.equal(response.status, 200);
+        const csp = response.headers["content-security-policy"] ?? "";
+        assert.isTrue(csp.includes(expectedHash));
+        assert.isTrue(csp.includes("frame-ancestors 'none'"));
+        assert.equal(response.headers["x-frame-options"], "DENY");
+        assert.equal(response.headers["x-content-type-options"], "nosniff");
+        assert.equal(response.headers["referrer-policy"], "no-referrer");
+      }
+
+      const script = yield* fetchEffect(yield* getHttpServerUrl("/app.js"));
+      assert.equal(script.headers["x-content-type-options"], "nosniff");
+      assert.equal(script.headers["content-security-policy"], undefined);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("serves workspace html and svg assets sandboxed and as attachments", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "neokod-asset-http-" });
+      const root = yield* fileSystem.makeTempDirectoryScoped({ prefix: "neokod-asset-ws-" });
+      yield* fileSystem.writeFileString(
+        path.join(root, "report.html"),
+        '<script>new WebSocket("ws://" + location.host + "/ws")</script>',
+      );
+      yield* fileSystem.writeFileString(
+        path.join(root, "mark.svg"),
+        '<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>',
+      );
+      yield* fileSystem.writeFileString(path.join(root, "doc.pdf"), "%PDF-1.4");
+      yield* buildAppUnderTest({ config: { baseDir } });
+
+      const mintLayer = Layer.mergeAll(
+        ServerConfig.ServerConfig.layerTest(process.cwd(), baseDir),
+        WorkspacePaths.layer,
+        ProjectFaviconResolver.layer.pipe(Layer.provide(WorkspacePaths.layer)),
+        ServerSecretStore.layer.pipe(
+          Layer.provide(ServerConfig.ServerConfig.layerTest(process.cwd(), baseDir)),
+        ),
+      );
+      const mintUrl = (fileName: string) =>
+        issueAssetUrl({
+          resource: {
+            _tag: "workspace-file",
+            threadId: ThreadId.make("thread-1"),
+            path: path.join(root, fileName),
+          },
+          workspaceRoot: root,
+        }).pipe(
+          Effect.provide(mintLayer),
+          Effect.map((issued) => issued.relativeUrl),
+        );
+
+      const html = yield* fetchEffect(yield* getHttpServerUrl(yield* mintUrl("report.html")));
+      assert.equal(html.status, 200);
+      assert.isTrue((html.headers["content-type"] ?? "").startsWith("text/html"));
+      assert.equal(html.headers["content-security-policy"], "sandbox");
+      assert.equal(html.headers["content-disposition"], "attachment");
+      assert.equal(html.headers["x-content-type-options"], "nosniff");
+
+      const svg = yield* fetchEffect(yield* getHttpServerUrl(yield* mintUrl("mark.svg")));
+      assert.equal(svg.headers["content-security-policy"], "default-src 'none'; sandbox");
+      assert.equal(svg.headers["content-disposition"], "attachment");
+
+      const pdf = yield* fetchEffect(yield* getHttpServerUrl(yield* mintUrl("doc.pdf")));
+      assert.equal(pdf.headers["content-security-policy"], undefined);
+      assert.equal(pdf.headers["content-disposition"], undefined);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect("routes websocket rpc server.upsertKeybinding", () =>

@@ -78,7 +78,7 @@ const DEFAULT_TRANSITION_SOURCES: Readonly<Record<string, ReadonlyArray<string>>
   testing: ["running"],
   blocked: ["preparing", "running", "waiting_for_approval", "retry_scheduled"],
   waiting_for_approval: ["running"],
-  retry_scheduled: ["preparing", "running", "waiting_for_approval", "validation_failed"],
+  retry_scheduled: ["preparing", "running", "waiting_for_approval", "validation_failed", "testing"],
   validation_failed: ["preparing", "running", "testing", "retry_scheduled"],
   ready_for_review: [
     "preparing",
@@ -102,7 +102,7 @@ const DEFAULT_TRANSITION_SOURCES: Readonly<Record<string, ReadonlyArray<string>>
     "waiting_for_approval",
     "retry_scheduled",
   ],
-  failed: ["running", "testing", "retry_scheduled", "validation_failed"],
+  failed: ["preparing", "running", "testing", "retry_scheduled", "validation_failed"],
 };
 
 const rowToWorkItem = (row: Schema.Schema.Type<typeof WorkItemRowSchema>): WorkItem => ({
@@ -198,7 +198,6 @@ const SELECT_COLUMNS = `  id, project_id AS "projectId", workflow_id AS "workflo
 const ClaimRequestSchema = Schema.Struct({
   id: WorkItemId,
   ownerToken: Schema.String,
-  ownerPid: Schema.Int,
   now: Schema.String,
 });
 
@@ -285,7 +284,7 @@ const makeRepository = Effect.gen(function* () {
           END,
           workspace_key = ${row.workspaceKey},
           workspace_path = ${row.workspacePath},
-          base_branch = ${row.baseBranch},
+          base_branch = COALESCE(${row.baseBranch}, base_branch),
           acceptance_criteria_json = ${row.acceptanceCriteriaJson},
           eligibility_reasons_json = ${row.eligibilityReasonsJson},
           updated_at = ${row.updatedAt},
@@ -304,7 +303,7 @@ const makeRepository = Effect.gen(function* () {
           lifecycle = 'preparing',
           owner_token = ${request.ownerToken},
           generation = generation + 1,
-          owner_pid = ${request.ownerPid},
+          owner_pid = NULL,
           owner_started_at = ${request.now},
           lease_expires_at = ${request.now},
           claimed_at = ${request.now},
@@ -461,7 +460,6 @@ const makeRepository = Effect.gen(function* () {
       const row = yield* claimRow({
         id,
         ownerToken,
-        ownerPid: process.pid,
         now,
       }).pipe(Effect.mapError(toBusyOrSqlError("WorkItemRepository.claim")));
       return yield* Option.match(row, {
@@ -489,6 +487,27 @@ const makeRepository = Effect.gen(function* () {
           AND lifecycle IN ('preparing', 'running', 'testing')
         RETURNING ${cols}
       `.pipe(Effect.mapError(toBusyOrSqlError("WorkItemRepository.setClaimOwnerPid")));
+      return row.length > 0;
+    });
+
+  const setBaseBranch: WorkItemRepositoryShape["setBaseBranch"] = (
+    id,
+    ownerToken,
+    generation,
+    baseBranch,
+  ) =>
+    Effect.gen(function* () {
+      const now = yield* nowIso;
+      const row = yield* sql<Schema.Schema.Type<typeof WorkItemRowSchema>>`
+        UPDATE symphony_work_items SET
+          base_branch = ${baseBranch},
+          updated_at = ${now}
+        WHERE id = ${id}
+          AND owner_token = ${ownerToken}
+          AND generation = ${generation}
+          AND lifecycle IN ('preparing', 'running', 'testing')
+        RETURNING ${cols}
+      `.pipe(Effect.mapError(toBusyOrSqlError("WorkItemRepository.setBaseBranch")));
       return row.length > 0;
     });
 
@@ -562,6 +581,7 @@ const makeRepository = Effect.gen(function* () {
     listByLifecycle,
     claim,
     setClaimOwnerPid,
+    setBaseBranch,
     transition,
     releaseClaim,
     writeOverrides,

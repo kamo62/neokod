@@ -101,6 +101,55 @@ layer("WorkItemRepository claim authority", (it) => {
     }),
   );
 
+  it.effect("claim does not store the server pid", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("workitem-claim-pid-1", "pid1");
+
+      const { workItem } = yield* repo.claim(id, "owner-a");
+      expect(workItem.ownerPid).toBeUndefined();
+    }),
+  );
+
+  it.effect("setClaimOwnerPid records the pid only for the current owner and generation", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("workitem-claim-pid-2", "pid2");
+
+      const { generation } = yield* repo.claim(id, "owner-a");
+      expect(yield* repo.setClaimOwnerPid(id, "owner-a", generation, 4321)).toBe(true);
+      expect((yield* repo.getById(id))?.ownerPid).toBe(4321);
+      expect(yield* repo.setClaimOwnerPid(id, "owner-a", generation + 1, 9999)).toBe(false);
+      expect(yield* repo.setClaimOwnerPid(id, "other", generation, 9999)).toBe(false);
+      expect((yield* repo.getById(id))?.ownerPid).toBe(4321);
+    }),
+  );
+
+  it.effect("setBaseBranch records the branch for the current claim only", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("workitem-base-branch-1", "bb1");
+
+      const { generation } = yield* repo.claim(id, "owner-a");
+      expect(yield* repo.setBaseBranch(id, "owner-a", generation, "develop")).toBe(true);
+      expect((yield* repo.getById(id))?.baseBranch).toBe("develop");
+      expect(yield* repo.setBaseBranch(id, "owner-a", generation + 1, "x")).toBe(false);
+    }),
+  );
+
+  it.effect("a tracker re-poll keeps the recorded base branch", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("workitem-base-branch-2", "bb2");
+
+      const { generation } = yield* repo.claim(id, "owner-a");
+      expect(yield* repo.setBaseBranch(id, "owner-a", generation, "develop")).toBe(true);
+      const rediscovered = yield* makeWorkItem("workitem-base-branch-2", "bb2", "queued");
+      yield* repo.upsert(rediscovered);
+      expect((yield* repo.getById(id))?.baseBranch).toBe("develop");
+    }),
+  );
+
   it.effect("unfenced transition succeeds without an owner check", () =>
     Effect.gen(function* () {
       const repo = yield* WorkItemRepository;
@@ -268,6 +317,43 @@ layer("WorkItemRepository lifecycle legality (plan section 19 suite 6)", (it) =>
         from: ["ready_for_review"],
       });
       expect(changed).toBe(true);
+    }),
+  );
+
+  it.effect("a testing item can be re-scheduled for retry", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("lifecycle-5", "65", "testing");
+
+      const changed = yield* repo.transition(id, "retry_scheduled");
+      expect(changed).toBe(true);
+      const row = yield* repo.getById(id);
+      expect(row?.lifecycle).toBe("retry_scheduled");
+    }),
+  );
+
+  it.effect("a preparing item can fail", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("lifecycle-6", "66", "preparing");
+
+      const changed = yield* repo.transition(id, "failed");
+      expect(changed).toBe(true);
+      const row = yield* repo.getById(id);
+      expect(row?.lifecycle).toBe("failed");
+    }),
+  );
+
+  it.effect("a failed item cannot be re-queued without an explicit from", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("lifecycle-7", "67", "preparing");
+      expect(yield* repo.transition(id, "failed")).toBe(true);
+
+      expect(yield* repo.transition(id, "queued")).toBe(false);
+      expect(yield* repo.transition(id, "queued", { from: ["failed"] })).toBe(true);
+      const row = yield* repo.getById(id);
+      expect(row?.lifecycle).toBe("queued");
     }),
   );
 });

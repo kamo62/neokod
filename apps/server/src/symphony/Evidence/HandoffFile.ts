@@ -74,7 +74,11 @@ export const parseEvidenceFile = (content: string): ParsedEvidenceFile => {
     const heading = normalizeHeading(rawLine);
     if (heading !== null) {
       current = headingToSection(heading);
-      sections.set(current ?? "summary", []);
+      // Only a recognised heading starts (and resets) a section. An unknown heading ends the current
+      // section: its lines are skipped until the next recognised heading, and nothing collected so far is lost.
+      if (current !== null) {
+        sections.set(current, []);
+      }
       continue;
     }
     if (current === null) {

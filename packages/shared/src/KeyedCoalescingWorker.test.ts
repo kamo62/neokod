@@ -94,4 +94,88 @@ describe("makeKeyedCoalescingWorker", () => {
       }),
     ),
   );
+
+  it.live("retains a failed value and merges it into the next enqueue", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const processed: string[] = [];
+        const worker = yield* makeKeyedCoalescingWorker<string, string, string, never>({
+          merge: (current, next) => `${current}+${next}`,
+          process: (_key, value) =>
+            Effect.gen(function* () {
+              processed.push(value);
+              if (value === "a") return yield* Effect.fail("boom");
+            }),
+        });
+
+        yield* worker.enqueue("k", "a");
+        yield* worker.drainKey("k");
+        yield* worker.enqueue("k", "b");
+        yield* worker.drainKey("k");
+
+        expect(processed).toEqual(["a", "a+b"]);
+      }),
+    ),
+  );
+
+  it.live("retryFailed reprocesses a retained value once", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const processed: string[] = [];
+        let calls = 0;
+        const worker = yield* makeKeyedCoalescingWorker<string, string, string, never>({
+          merge: (_current, next) => next,
+          process: (_key, value) =>
+            Effect.gen(function* () {
+              calls += 1;
+              processed.push(value);
+              if (calls === 1) return yield* Effect.fail("boom");
+            }),
+        });
+
+        yield* worker.enqueue("k", "a");
+        yield* worker.drainKey("k");
+        yield* worker.retryFailed("k");
+        yield* worker.drainKey("k");
+        expect(processed).toEqual(["a", "a"]);
+        yield* worker.retryFailed("k");
+        expect(processed.length).toBe(2);
+      }),
+    ),
+  );
+
+  it.live("retryFailed does nothing while newer work is pending", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const processed: string[] = [];
+        const release = yield* Deferred.make<void>();
+        const bStarted = yield* Deferred.make<void>();
+        let first = true;
+        const worker = yield* makeKeyedCoalescingWorker<string, string, string, never>({
+          merge: (current, next) => `${current}+${next}`,
+          process: (_key, value) =>
+            Effect.gen(function* () {
+              processed.push(value);
+              if (first) {
+                first = false;
+                return yield* Effect.fail("boom");
+              }
+              if (value === "a+b") {
+                yield* Deferred.succeed(bStarted, undefined).pipe(Effect.orDie);
+                yield* Deferred.await(release);
+              }
+            }),
+        });
+
+        yield* worker.enqueue("k", "a");
+        yield* worker.drainKey("k");
+        yield* worker.enqueue("k", "b");
+        yield* Deferred.await(bStarted);
+        yield* worker.retryFailed("k");
+        yield* Deferred.succeed(release, undefined).pipe(Effect.orDie);
+        yield* worker.drainKey("k");
+        expect(processed).toEqual(["a", "a+b"]);
+      }),
+    ),
+  );
 });

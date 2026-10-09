@@ -3,28 +3,19 @@ import * as NodeOS from "node:os";
 import * as Effect from "effect/Effect";
 import { HttpServer } from "effect/unstable/http";
 
-import { ServerConfig } from "./config.ts";
+import type { AccessTokenSource } from "./accessToken.ts";
+import { ServerConfig, isLoopbackBindHost } from "./config.ts";
 
 export interface HeadlessServeAccessInfo {
   readonly connectionString: string;
-  readonly loopbackAuthToken: string | undefined;
+  readonly accessTokenSource: AccessTokenSource | undefined;
+  readonly accessTokenFilePath: string | undefined;
 }
 
 type NetworkInterfacesMap = ReturnType<typeof NodeOS.networkInterfaces>;
 
-export const isLoopbackHost = (host: string | undefined): boolean => {
-  if (!host || host.length === 0) {
-    return true;
-  }
-
-  return (
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "::1" ||
-    host === "[::1]" ||
-    host.startsWith("127.")
-  );
-};
+export const isLoopbackHost = (host: string | undefined): boolean =>
+  !host || host.length === 0 || isLoopbackBindHost(host);
 
 export const isWildcardHost = (host: string | undefined): boolean =>
   host === "0.0.0.0" || host === "::" || host === "[::]";
@@ -88,13 +79,21 @@ export const resolveListeningPort = (address: unknown, fallbackPort: number): nu
 
 export const formatHeadlessServeOutput = (accessInfo: HeadlessServeAccessInfo): string => {
   const lines = ["Neokod server is ready.", `Local URL: ${accessInfo.connectionString}`];
-  if (accessInfo.loopbackAuthToken !== undefined) {
-    lines.push(`Launch token: ${accessInfo.loopbackAuthToken}`);
+  if (accessInfo.accessTokenSource !== undefined) {
+    const filePath = accessInfo.accessTokenFilePath;
+    const sourceLine =
+      accessInfo.accessTokenSource === "generated" && filePath !== undefined
+        ? `generated and stored in ${filePath} (mode 0600)`
+        : accessInfo.accessTokenSource === "default-file" && filePath !== undefined
+          ? `stored in ${filePath}`
+          : accessInfo.accessTokenSource === "flag-file" && filePath !== undefined
+            ? `read from ${filePath}`
+            : "from NEOKOD_ACCESS_TOKEN";
+    lines.push(`Access token: ${sourceLine}`);
     lines.push(
-      "The web client authenticates with this token for this launch; it is not persisted.",
+      `Open the URL and paste the token when asked.${filePath !== undefined ? ` Read it with: cat ${filePath}` : ""}`,
     );
   }
-  lines.push("");
   return lines.join("\n");
 };
 
@@ -107,6 +106,7 @@ export const issueHeadlessServeAccessInfo = Effect.fn("issueHeadlessServeAccessI
   );
   return {
     connectionString,
-    loopbackAuthToken: serverConfig.loopbackAuthToken,
+    accessTokenSource: serverConfig.accessTokenSource,
+    accessTokenFilePath: serverConfig.accessTokenFilePath,
   } satisfies HeadlessServeAccessInfo;
 });

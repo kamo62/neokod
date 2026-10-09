@@ -830,6 +830,8 @@ export const SymphonyOverviewSchema = Schema.Struct({
     Schema.Struct({ ok: Schema.Boolean, lastPollAt: Schema.NullOr(IsoDateTime) }),
   ),
   lastTrackerPollAt: Schema.NullOr(IsoDateTime),
+  // follower: another Neokod process holds the orchestrator lock on this database; this process only observes
+  orchestratorRole: Schema.optional(Schema.Literals(["leader", "follower"])),
   activeAgentCount: SymphonyOverviewMetricSchema,
   tokenUsage: Schema.optional(TokenUsageSchema),
   generatedAt: IsoDateTime,

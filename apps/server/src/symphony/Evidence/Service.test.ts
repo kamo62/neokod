@@ -332,6 +332,25 @@ it.effect("carries token usage and duration from the run attempt", () =>
   }),
 );
 
+it.effect("a handoff file with an extra heading still counts as substantive evidence", () =>
+  Effect.gen(function* () {
+    const bundle = yield* makeEvidenceService(makeDeps()).assemble({
+      workItem: makeWorkItem(),
+      issue: makeIssue(),
+      runAttempt: makeRunAttempt(),
+      config: makeConfig(),
+      workspacePath: "/ws/key-1",
+      baseBranch: "main",
+      branch: "symphony/issue-1",
+      validationResults: [{ command: "npm test", status: "passed", exitCode: 0 }],
+      evidenceFileContent:
+        "# Implementation Summary\nImplemented it.\n\n## Validation\n- ran tests\n",
+    });
+    expect(bundle.overallAssessment).toBe("ready_for_review");
+    expect(bundle.implementationSummary).toBe("Implemented it.");
+  }),
+);
+
 it("ChangedFileEvidence does not require a status", () => {
   const file: ChangedFileEvidence = { path: "a.ts", additions: 1, deletions: 0 };
   expect(file.status).toBeUndefined();

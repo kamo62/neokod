@@ -117,7 +117,7 @@ const HttpServerLive = Layer.unwrap(
     if (!ServerConfig.isServerBindAuthorized(config)) {
       return yield* Effect.die(
         new Error(
-          "Refusing to bind the server: non-loopback hosts require the private wsl-bearer desktop bootstrap and credential.",
+          "Refusing to bind the server: a non-loopback host requires an access token or the private wsl-bearer desktop bootstrap.",
         ),
       );
     }

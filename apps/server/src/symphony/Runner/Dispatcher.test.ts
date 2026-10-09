@@ -28,6 +28,7 @@ import { RunEventRepository } from "../Persistence/Services/RunEventRepository.t
 import { RunEventRepositoryLive } from "../Persistence/Layers/RunEventRepository.ts";
 import { ApprovalRepositoryLive } from "../Persistence/Layers/ApprovalRepository.ts";
 import { WorkspaceManager } from "../Workspaces/Manager.ts";
+import { WorkspaceOutsideRootError, WorkspacePopulationError } from "../Workspaces/Manager.ts";
 import { LiveRequestsLive } from "./LiveRequests.ts";
 import {
   AgentRuntimeFactory,
@@ -40,7 +41,7 @@ import { AgentRuntimeSpawnError, type AgentRuntimeService } from "./AgentRuntime
 
 const makeConfig = (
   repositoryPath: string,
-  overrides: Partial<Pick<EffectiveWorkflowConfig, "autonomy" | "maxTurns">> = {},
+  overrides: Partial<Pick<EffectiveWorkflowConfig, "autonomy" | "maxTurns" | "maxAttempts">> = {},
 ): EffectiveWorkflowConfig => ({
   repositoryPath,
   workflowPath: `${repositoryPath}/WORKFLOW.md`,
@@ -92,6 +93,7 @@ const seedWorkItem = (id: string) =>
       description: "Seeded for dispatcher tests",
       acceptanceCriteria: [],
       source: { kind: "manual" },
+      trackerIssueId: id,
       lifecycle: "queued",
       priority: 1,
       eligibilityReasons: [],
@@ -288,6 +290,52 @@ layer(scriptedFactory(scriptedAgent(true)))("Dispatcher prepare mode", (it) => {
   );
 });
 
+layer(
+  Layer.succeed(AgentRuntimeFactory, {
+    make: (_config, options) =>
+      Effect.succeed({
+        runTurn: () =>
+          ((options?.onChildSpawned?.(4321) ?? Effect.void) as Effect.Effect<void>).pipe(
+            Effect.as({ turnId: "t1", threadId: "th1", completed: true }),
+          ),
+        interrupt: () => Effect.void,
+        pid: () => Effect.succeed(null),
+      } satisfies AgentRuntimeService),
+  }),
+)("Dispatcher child pid", (it) => {
+  it.effect("records the agent child pid once it is spawned", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("1030");
+      const dispatcher = yield* RunDispatcher;
+      yield* dispatcher.dispatchWorkItem({
+        workItem,
+        issue: makeIssue("1030"),
+        config: makeConfig("/repo"),
+      });
+
+      const workItems = yield* WorkItemRepository;
+      const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      expect(after?.ownerPid).toBe(4321);
+    }),
+  );
+
+  it.effect("records the workspace base branch on the work item", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("1031");
+      const dispatcher = yield* RunDispatcher;
+      yield* dispatcher.dispatchWorkItem({
+        workItem,
+        issue: makeIssue("1031"),
+        config: makeConfig("/repo"),
+      });
+
+      const workItems = yield* WorkItemRepository;
+      const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      expect(after?.baseBranch).toBe("main");
+    }),
+  );
+});
+
 layer(scriptedFactory(scriptedAgent(false)))("Dispatcher prepare mode failure", (it) => {
   it.effect(
     "marks the attempt failed and re-schedules the item when the turn does not complete",
@@ -313,6 +361,30 @@ layer(scriptedFactory(scriptedAgent(false)))("Dispatcher prepare mode failure", 
         const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
         expect(after.lifecycle).toBe("retry_scheduled");
       }),
+  );
+});
+
+layer(scriptedFactory(scriptedAgent(false)))("Dispatcher exhaustion", (it) => {
+  it.effect("exhaustion ends failed, not queued", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("1010");
+      const dispatcher = yield* RunDispatcher;
+      const runAttemptId = yield* dispatcher.dispatchWorkItem({
+        workItem,
+        issue: makeIssue("1010"),
+        config: makeConfig("/repo", { maxAttempts: 1 }),
+      });
+
+      const attempts = yield* RunAttemptRepository;
+      const attempt = yield* attempts.getById(runAttemptId).pipe(Effect.flatMap(required));
+      expect(attempt.status).toBe("failed");
+      const workItems = yield* WorkItemRepository;
+      const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      expect(after.lifecycle).toBe("failed");
+      const runEvents = yield* RunEventRepository;
+      const events = yield* runEvents.listForAttempt(runAttemptId);
+      expect(events.map((e) => e.eventType)).toContain("retries_exhausted");
+    }),
   );
 });
 
@@ -491,7 +563,10 @@ layer(blockableFactory)("Dispatcher cancel", (it) => {
 
       const workItems = yield* WorkItemRepository;
       const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
-      expect(after.lifecycle).toBe("queued");
+      expect(after.lifecycle).toBe("cancelled");
+      expect((yield* workItems.listByLifecycle(["queued"])).map((i) => i.id)).not.toContain(
+        workItem.id,
+      );
     }),
   );
 });
@@ -565,7 +640,116 @@ layer(failingCancelFactory)("Dispatcher cancel race", (it) => {
       const workItems = yield* WorkItemRepository;
       const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
       expect(after.lifecycle).not.toBe("retry_scheduled");
-      expect(after.lifecycle).toBe("queued");
+      expect(after.lifecycle).toBe("cancelled");
+    }),
+  );
+});
+
+const failingWorkspaceManager = (error: WorkspaceOutsideRootError | WorkspacePopulationError) =>
+  Layer.succeed(WorkspaceManager, {
+    ensureWorkspace: () => Effect.fail(error),
+    removeWorkspace: () => Effect.void,
+    hasCommittedHandoff: () => Effect.succeed(false),
+    resolvePath: () => "/ws",
+  });
+
+layer(
+  scriptedFactory(scriptedAgent(true)),
+  failingWorkspaceManager(new WorkspacePopulationError("key", "git worktree add failed")),
+)("Dispatcher early failure", (it) => {
+  it.effect("a workspace failure writes a failed attempt and schedules a retry", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("1020");
+      const dispatcher = yield* RunDispatcher;
+      const result = yield* Effect.result(
+        dispatcher.dispatchWorkItem({
+          workItem,
+          issue: makeIssue("1020"),
+          config: makeConfig("/repo", { autonomy: "execute" }),
+        }),
+      );
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(String(result.failure)).toContain("git worktree add failed");
+      }
+      const attempts = yield* RunAttemptRepository;
+      const rows = yield* attempts.listByWorkItem(workItem.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.status).toBe("failed");
+      expect(rows[0]?.attemptNumber).toBe(1);
+      expect(rows[0]?.workspacePath).toBe("");
+      expect(rows[0]?.error?.category).toBe("process_failed");
+      const workItems = yield* WorkItemRepository;
+      const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      expect(after.lifecycle).toBe("retry_scheduled");
+      const runEvents = yield* RunEventRepository;
+      const events = yield* runEvents.listForAttempt(rows[0]!.id);
+      expect(events.map((e) => e.eventType)).toContain("dispatch_failed_early");
+      expect(events.map((e) => e.eventType)).toContain("retry_scheduled");
+    }),
+  );
+
+  it.effect("a workspace failure at the attempt cap ends failed", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("1021");
+      const dispatcher = yield* RunDispatcher;
+      yield* Effect.result(
+        dispatcher.dispatchWorkItem({
+          workItem,
+          issue: makeIssue("1021"),
+          config: makeConfig("/repo", { autonomy: "execute", maxAttempts: 1 }),
+        }),
+      );
+      const attempts = yield* RunAttemptRepository;
+      const rows = yield* attempts.listByWorkItem(workItem.id);
+      expect(rows).toHaveLength(1);
+      const workItems = yield* WorkItemRepository;
+      const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      expect(after.lifecycle).toBe("failed");
+    }),
+  );
+
+  it.effect("the queue is not blocked by a failing head item", () =>
+    Effect.gen(function* () {
+      const first = yield* seedWorkItem("1022");
+      const second = yield* seedWorkItem("1023");
+      const dispatcher = yield* RunDispatcher;
+      yield* Effect.result(
+        dispatcher.dispatchWorkItem({
+          workItem: first,
+          issue: makeIssue("1022"),
+          config: makeConfig("/repo", { autonomy: "execute" }),
+        }),
+      );
+      const workItems = yield* WorkItemRepository;
+      const queued = yield* workItems.listByLifecycle(["queued"]);
+      expect(queued.map((i) => String(i.id))).toEqual([String(second.id)]);
+    }),
+  );
+});
+
+layer(
+  scriptedFactory(scriptedAgent(true)),
+  failingWorkspaceManager(new WorkspaceOutsideRootError("/x", "/root")),
+)("Dispatcher early failure outside root", (it) => {
+  it.effect("an outside-root workspace is not retried", () =>
+    Effect.gen(function* () {
+      const workItem = yield* seedWorkItem("1024");
+      const dispatcher = yield* RunDispatcher;
+      yield* Effect.result(
+        dispatcher.dispatchWorkItem({
+          workItem,
+          issue: makeIssue("1024"),
+          config: makeConfig("/repo", { autonomy: "execute" }),
+        }),
+      );
+      const attempts = yield* RunAttemptRepository;
+      const rows = yield* attempts.listByWorkItem(workItem.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.error?.category).toBe("workflow_error");
+      const workItems = yield* WorkItemRepository;
+      const after = yield* workItems.getById(workItem.id).pipe(Effect.flatMap(required));
+      expect(after.lifecycle).toBe("failed");
     }),
   );
 });

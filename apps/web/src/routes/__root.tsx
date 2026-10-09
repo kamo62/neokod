@@ -15,6 +15,7 @@ import { resolveServerBackedAppDisplayName } from "../branding.logic";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { isChunkLoadError, recoverByReload } from "../chunkLoadRecovery";
 import { AnalyticsFirstRunNotice } from "../components/AnalyticsFirstRunNotice";
+import { AccessTokenGate } from "../components/AccessTokenGate";
 import { CommandPalette } from "../components/CommandPalette";
 import { ProviderUpdateLaunchNotification } from "../components/ProviderUpdateLaunchNotification";
 import { SessionExpiredBanner } from "../components/SessionExpiredBanner";
@@ -86,6 +87,7 @@ function RootRouteView() {
       <AnchoredToastProvider>
         <DocumentTitleSync />
         <TracingBootstrap />
+        <AccessTokenGate />
         <SessionExpiredBanner />
         <ThreadSwitcherOverlay />
         <SlowRpcRequestToastCoordinator />

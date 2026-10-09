@@ -2,10 +2,12 @@ import { PRIMARY_LOCAL_ENVIRONMENT_ID } from "@neokod/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
 import {
+  primaryRegistrationSignature,
   primaryRegistrationToRetainAfterTopologyRead,
   readPrimaryEnvironmentTargetResult,
   secondaryRegistrationsToRetainAfterTopologyRead,
 } from "./platform.ts";
+import type { PrimaryEnvironmentTarget } from "../environments/primary/target.ts";
 
 describe("local platform topology cache", () => {
   const registration = {} as never;
@@ -47,5 +49,34 @@ describe("local platform topology cache", () => {
         bootstraps: [],
       }),
     ).toEqual(new Map());
+  });
+
+  it("primaryRegistrationSignature changes when the loopback token changes", () => {
+    const base: PrimaryEnvironmentTarget = {
+      source: "window-origin",
+      target: {
+        httpBaseUrl: "http://127.0.0.1:3773/",
+        wsBaseUrl: "ws://127.0.0.1:3773/",
+      },
+      transport: { _tag: "Loopback", loopbackAuthToken: "one" },
+    };
+    expect(primaryRegistrationSignature(base)).not.toBe(
+      primaryRegistrationSignature({
+        ...base,
+        transport: { _tag: "Loopback", loopbackAuthToken: "two" },
+      }),
+    );
+  });
+
+  it("primaryRegistrationSignature is stable for the same inputs", () => {
+    const target: PrimaryEnvironmentTarget = {
+      source: "window-origin",
+      target: {
+        httpBaseUrl: "http://127.0.0.1:3773/",
+        wsBaseUrl: "ws://127.0.0.1:3773/",
+      },
+      transport: { _tag: "Loopback", loopbackAuthToken: "one" },
+    };
+    expect(primaryRegistrationSignature(target)).toBe(primaryRegistrationSignature({ ...target }));
   });
 });

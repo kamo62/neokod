@@ -79,6 +79,19 @@ export class ProjectLiveServerDeclaredResponseError extends Schema.TaggedErrorCl
   }
 }
 
+const isProjectLiveServerDeclaredResponseError = Schema.is(ProjectLiveServerDeclaredResponseError);
+
+export class ProjectLiveServerUnauthorizedError extends Schema.TaggedErrorClass<ProjectLiveServerUnauthorizedError>()(
+  "ProjectLiveServerUnauthorizedError",
+  {
+    operation: Schema.Literal("callLiveServer"),
+  },
+) {
+  override get message(): string {
+    return "The running Neokod server requires an access token. Set NEOKOD_ACCESS_TOKEN or use the same --base-dir as the server.";
+  }
+}
+
 export class ProjectLiveServerUndeclaredStatusError extends Schema.TaggedErrorClass<ProjectLiveServerUndeclaredStatusError>()(
   "ProjectLiveServerUndeclaredStatusError",
   {
@@ -159,6 +172,7 @@ export class ProjectAlreadyExistsError extends Schema.TaggedErrorClass<ProjectAl
 export const ProjectCommandError = Schema.Union([
   ProjectCommandIdGenerationError,
   ProjectLiveServerDeclaredResponseError,
+  ProjectLiveServerUnauthorizedError,
   ProjectLiveServerUndeclaredStatusError,
   ProjectLiveServerRequestError,
   ProjectTitleEmptyError,
@@ -296,22 +310,26 @@ const findActiveProjectTarget = Effect.fn("findActiveProjectTarget")(function* (
   } satisfies ProjectMutationTarget;
 });
 
-const fetchLiveOrchestrationSnapshot = (origin: string) =>
+export const fetchLiveOrchestrationSnapshot = (origin: string, accessToken: string | undefined) =>
   Effect.gen(function* () {
     const client = yield* makeLiveServerClient(origin);
     return yield* client.orchestration.snapshot({
-      headers: {},
+      headers: accessToken === undefined ? {} : { authorization: `Bearer ${accessToken}` },
     });
   }).pipe(
     withProjectCliLiveServerTimeout,
     Effect.mapError(projectCommandErrorFromLiveServerRequest),
   );
 
-const dispatchLiveOrchestrationCommand = (origin: string, command: ProjectCliDispatchCommand) =>
+export const dispatchLiveOrchestrationCommand = (
+  origin: string,
+  command: ProjectCliDispatchCommand,
+  accessToken: string | undefined,
+) =>
   Effect.gen(function* () {
     const client = yield* makeLiveServerClient(origin);
     yield* client.orchestration.dispatch({
-      headers: {},
+      headers: accessToken === undefined ? {} : { authorization: `Bearer ${accessToken}` },
       payload: command,
     } as Parameters<typeof client.orchestration.dispatch>[0]);
   }).pipe(
@@ -326,14 +344,17 @@ const getOfflineSnapshot = Effect.fn("getOfflineSnapshot")(function* () {
   return yield* projectionSnapshotQuery.getCommandReadModel();
 });
 
-const tryResolveLiveProjectExecutionMode = Effect.fn("tryResolveLiveProjectExecutionMode")(
+export const tryResolveLiveProjectExecutionMode = Effect.fn("tryResolveLiveProjectExecutionMode")(
   function* (config: ServerConfig.ServerConfig["Service"]) {
     const runtimeState = yield* readPersistedServerRuntimeState(config.serverRuntimeStatePath);
     if (Option.isNone(runtimeState)) {
       return Option.none<{ readonly origin: string }>();
     }
 
-    const attempt = fetchLiveOrchestrationSnapshot(runtimeState.value.origin).pipe(
+    const attempt = fetchLiveOrchestrationSnapshot(
+      runtimeState.value.origin,
+      config.loopbackAuthToken,
+    ).pipe(
       Effect.as({
         origin: runtimeState.value.origin,
       }),
@@ -342,6 +363,12 @@ const tryResolveLiveProjectExecutionMode = Effect.fn("tryResolveLiveProjectExecu
     const attempted = yield* Effect.result(attempt);
     if (attempted._tag === "Success") {
       return Option.some(attempted.success);
+    }
+    if (
+      isProjectLiveServerDeclaredResponseError(attempted.failure) &&
+      attempted.failure.code === "wsl_bearer_invalid"
+    ) {
+      return yield* new ProjectLiveServerUnauthorizedError({ operation: "callLiveServer" });
     }
 
     yield* Effect.logDebug("Failed to connect to the persisted project CLI server.", {
@@ -379,10 +406,18 @@ const runProjectMutation = Effect.fn("runProjectMutation")(function* (
     const liveMode = yield* tryResolveLiveProjectExecutionMode(config);
 
     if (Option.isSome(liveMode)) {
-      const snapshot = yield* fetchLiveOrchestrationSnapshot(liveMode.value.origin);
+      const snapshot = yield* fetchLiveOrchestrationSnapshot(
+        liveMode.value.origin,
+        config.loopbackAuthToken,
+      );
       const output = yield* run({
         snapshot,
-        dispatch: (command) => dispatchLiveOrchestrationCommand(liveMode.value.origin, command),
+        dispatch: (command) =>
+          dispatchLiveOrchestrationCommand(
+            liveMode.value.origin,
+            command,
+            config.loopbackAuthToken,
+          ),
         mode: "live",
       });
       return yield* Console.log(output);

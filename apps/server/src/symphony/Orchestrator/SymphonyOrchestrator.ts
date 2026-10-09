@@ -125,7 +125,10 @@ export interface SymphonyOrchestratorShape {
 
   // Dispatch (Phase 2): claim -> workspace -> run turn. Only active when the
   // workflow autonomy is prepare/execute/deliver; observe never dispatches.
-  readonly dispatchWorkItem: (workItemId: string) => Effect.Effect<void, never, Scope.Scope>;
+  readonly dispatchWorkItem: (
+    workItemId: string,
+    options?: { readonly explicit?: boolean },
+  ) => Effect.Effect<void, never, Scope.Scope>;
   readonly cancelRun: (runAttemptId: string) => Effect.Effect<void, never, Scope.Scope>;
 
   // Review lifecycle (Phase 5, plan 14): review actions with their own

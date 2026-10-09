@@ -50,6 +50,8 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as SynchronizedRef from "effect/SynchronizedRef";
+import * as Schedule from "effect/Schedule";
+import type * as PlatformError from "effect/PlatformError";
 
 import * as ServerConfig from "../config.ts";
 import {
@@ -59,6 +61,7 @@ import {
 } from "../observability/Metrics.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as PortScanner from "../preview/PortScanner.ts";
+import { writeFileStringAtomically } from "../atomicWrite.ts";
 import * as PtyAdapter from "./PtyAdapter.ts";
 
 export {
@@ -75,7 +78,9 @@ export {
 };
 
 const DEFAULT_HISTORY_LINE_LIMIT = 5_000;
+const DEFAULT_HISTORY_BYTE_LIMIT = 1024 * 1024;
 const DEFAULT_PERSIST_DEBOUNCE_MS = 40;
+const DEFAULT_PERSIST_RETRY_DELAY_MS = 100;
 const DEFAULT_SUBPROCESS_POLL_INTERVAL_MS = 1_000;
 const DEFAULT_PROCESS_KILL_GRACE_MS = 1_000;
 const DEFAULT_MAX_RETAINED_INACTIVE_SESSIONS = 128;
@@ -420,10 +425,10 @@ function cleanupProcessHandles(session: TerminalSessionState): void {
 
 function enqueueProcessEvent(
   session: TerminalSessionState,
-  expectedPid: number,
+  expectedProcess: PtyAdapter.PtyProcess,
   event: PendingProcessEvent,
 ): boolean {
-  if (!session.process || session.status !== "running" || session.pid !== expectedPid) {
+  if (!session.process || session.status !== "running" || session.process !== expectedProcess) {
     return false;
   }
 
@@ -852,7 +857,7 @@ function defaultSubprocessInspectorForPlatform(platform: NodeJS.Platform) {
   });
 }
 
-function capHistory(history: string, maxLines: number): string {
+function capHistoryLines(history: string, maxLines: number): string {
   if (history.length === 0) return history;
   const hasTrailingNewline = history.endsWith("\n");
   const lines = history.split("\n");
@@ -862,6 +867,18 @@ function capHistory(history: string, maxLines: number): string {
   if (lines.length <= maxLines) return history;
   const capped = lines.slice(lines.length - maxLines).join("\n");
   return hasTrailingNewline ? `${capped}\n` : capped;
+}
+
+export function capHistory(history: string, maxLines: number, maxBytes: number): string {
+  const lineCapped = capHistoryLines(history, maxLines);
+  // A UTF-16 code unit is at most 3 UTF-8 bytes, so this skips the encoding for normal sizes.
+  if (lineCapped.length * 3 <= maxBytes) return lineCapped;
+  const bytes = Buffer.from(lineCapped, "utf8");
+  if (bytes.length <= maxBytes) return lineCapped;
+  let start = bytes.length - maxBytes;
+  // Do not start inside a multi-byte character: skip UTF-8 continuation bytes (10xxxxxx).
+  while (start < bytes.length && (bytes[start]! & 0xc0) === 0x80) start += 1;
+  return bytes.subarray(start).toString("utf8");
 }
 
 function isCsiFinalByte(codePoint: number): boolean {
@@ -1123,6 +1140,8 @@ function normalizedRuntimeEnv(
 interface TerminalManagerOptions {
   logsDir: string;
   historyLineLimit?: number;
+  historyByteLimit?: number;
+  persistRetryDelayMs?: number;
   ptyAdapter: PtyAdapter.PtyAdapter["Service"];
   shellResolver?: () => string;
   env?: NodeJS.ProcessEnv;
@@ -1163,6 +1182,9 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
   const logsDir = options.logsDir;
   const historyLineLimit = options.historyLineLimit ?? DEFAULT_HISTORY_LINE_LIMIT;
+  const historyByteLimit = options.historyByteLimit ?? DEFAULT_HISTORY_BYTE_LIMIT;
+  const persistRetryDelayMs = options.persistRetryDelayMs ?? DEFAULT_PERSIST_RETRY_DELAY_MS;
+  const PERSIST_RETRY_TIMES = 2;
   const platform = yield* HostProcessPlatform;
   // Terminals must inherit the user's full environment (minus the blocklist
   // applied in createTerminalSpawnEnv) — an allowlist here silently strips
@@ -1352,7 +1374,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const persistWorker = yield* makeKeyedCoalescingWorker<
     string,
     PersistHistoryRequest,
-    never,
+    PlatformError.PlatformError,
     never
   >({
     merge: (current, next) => ({
@@ -1369,11 +1391,21 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         return;
       }
 
-      yield* fileSystem.writeFileString(historyPath(threadId, terminalId), request.history).pipe(
-        Effect.catch((error) =>
+      yield* writeFileStringAtomically({
+        filePath: historyPath(threadId, terminalId),
+        contents: request.history,
+      }).pipe(
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
+        Effect.retry({
+          times: PERSIST_RETRY_TIMES,
+          schedule: Schedule.spaced(`${persistRetryDelayMs} millis`),
+        }),
+        Effect.tapError((error) =>
           Effect.logWarning("failed to persist terminal history", {
             threadId,
             terminalId,
+            attempts: PERSIST_RETRY_TIMES + 1,
             error,
           }),
         ),
@@ -1396,6 +1428,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     threadId: string,
     terminalId: string,
   ) {
+    yield* persistWorker.retryFailed(toSessionKey(threadId, terminalId));
     yield* persistWorker.drainKey(toSessionKey(threadId, terminalId));
   });
 
@@ -1432,7 +1465,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             (cause) => new TerminalHistoryError({ operation: "read", threadId, terminalId, cause }),
           ),
         );
-      const capped = capHistory(raw, historyLineLimit);
+      const capped = capHistory(raw, historyLineLimit, historyByteLimit);
       if (capped !== raw) {
         yield* fileSystem
           .writeFileString(nextPath, capped)
@@ -1472,7 +1505,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             new TerminalHistoryError({ operation: "migrate", threadId, terminalId, cause }),
         ),
       );
-    const capped = capHistory(raw, historyLineLimit);
+    const capped = capHistory(raw, historyLineLimit, historyByteLimit);
     yield* fileSystem
       .writeFileString(nextPath, capped)
       .pipe(
@@ -1626,11 +1659,15 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
   const drainProcessEvents = Effect.fn("terminal.drainProcessEvents")(function* (
     session: TerminalSessionState,
-    expectedPid: number,
+    expectedProcess: PtyAdapter.PtyProcess,
   ) {
     while (true) {
       const action: DrainProcessEventAction = yield* Effect.sync(() => {
-        if (session.pid !== expectedPid || !session.process || session.status !== "running") {
+        if (
+          session.process !== expectedProcess ||
+          !session.process ||
+          session.status !== "running"
+        ) {
           session.pendingProcessEvents = [];
           session.pendingProcessEventIndex = 0;
           session.processEventDrainRunning = false;
@@ -1661,6 +1698,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             session.history = capHistory(
               `${session.history}${sanitized.visibleText}`,
               historyLineLimit,
+              historyByteLimit,
             );
           }
           const eventStamp = advanceEventSequence(session);
@@ -1871,17 +1909,18 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             startedShell = spawnResult.shellLabel;
 
             const processPid = ptyProcess.pid;
+            const spawned = ptyProcess;
             const unsubscribeData = ptyProcess.onData((data) => {
-              if (!enqueueProcessEvent(session, processPid, { type: "output", data })) {
+              if (!enqueueProcessEvent(session, spawned, { type: "output", data })) {
                 return;
               }
-              runFork(drainProcessEvents(session, processPid));
+              runFork(drainProcessEvents(session, spawned));
             });
             const unsubscribeExit = ptyProcess.onExit((event) => {
-              if (!enqueueProcessEvent(session, processPid, { type: "exit", event })) {
+              if (!enqueueProcessEvent(session, spawned, { type: "exit", event })) {
                 return;
               }
-              runFork(drainProcessEvents(session, processPid));
+              runFork(drainProcessEvents(session, spawned));
             });
 
             let eventStamp: ReturnType<typeof advanceEventSequence> = {
@@ -1889,7 +1928,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
               sequence: session.eventSequence,
             };
             yield* modifyManagerState((state) => {
-              session.process = ptyProcess;
+              session.process = spawned;
               session.pid = processPid;
               session.status = "running";
               session.unsubscribeData = unsubscribeData;
@@ -2012,6 +2051,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       session: TerminalSessionState & { pid: number },
     ) {
       const terminalPid = session.pid;
+      const terminalProcess = session.process;
       const inspectResult = yield* subprocessInspector(terminalPid).pipe(
         Effect.map(Option.some),
         Effect.catch((reason) =>
@@ -2042,7 +2082,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         if (
           Option.isNone(liveSession) ||
           liveSession.value.status !== "running" ||
-          liveSession.value.pid !== terminalPid ||
+          liveSession.value.process !== terminalProcess ||
           (liveSession.value.hasRunningSubprocess === next.hasRunningSubprocess &&
             liveSession.value.childCommandLabel === nextChildLabel)
         ) {

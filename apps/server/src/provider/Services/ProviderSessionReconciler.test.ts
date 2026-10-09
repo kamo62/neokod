@@ -269,7 +269,8 @@ it.effect("dispatches terminal-turn settlement as a thread.session.set command",
     const layer = ProviderSessionReconcilerLive.pipe(
       Layer.provideMerge(
         Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
-          getSnapshot: () => Effect.succeed(projected({ turnState: "interrupted" })),
+          getCommandReadModel: () => Effect.succeed(projected({ turnState: "interrupted" })),
+          getSnapshot: () => Effect.die("getSnapshot must not be used by boot reconciliation"),
         } as unknown as ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]),
       ),
       Layer.provideMerge(

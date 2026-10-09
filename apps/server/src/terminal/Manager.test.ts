@@ -43,10 +43,14 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
   resizeFailure: unknown | undefined;
   private readonly dataListeners = new Set<(data: string) => void>();
   private readonly exitListeners = new Set<(event: PtyAdapter.PtyExitEvent) => void>();
+  readonly leakedDataListeners: Array<(data: string) => void> = [];
+  readonly leakedExitListeners: Array<(event: PtyAdapter.PtyExitEvent) => void> = [];
   killed = false;
+  private readonly leakListeners: boolean;
 
-  constructor(pid: number) {
+  constructor(pid: number, leakListeners = false) {
     this.pid = pid;
+    this.leakListeners = leakListeners;
   }
 
   write(data: string): void {
@@ -70,6 +74,10 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
 
   onData(callback: (data: string) => void): () => void {
     this.dataListeners.add(callback);
+    if (this.leakListeners) {
+      this.leakedDataListeners.push(callback);
+      return () => {};
+    }
     return () => {
       this.dataListeners.delete(callback);
     };
@@ -77,6 +85,10 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
 
   onExit(callback: (event: PtyAdapter.PtyExitEvent) => void): () => void {
     this.exitListeners.add(callback);
+    if (this.leakListeners) {
+      this.leakedExitListeners.push(callback);
+      return () => {};
+    }
     return () => {
       this.exitListeners.delete(callback);
     };
@@ -93,6 +105,18 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
       listener(event);
     }
   }
+
+  emitLeakedData(data: string): void {
+    for (const listener of this.leakedDataListeners) {
+      listener(data);
+    }
+  }
+
+  emitLeakedExit(event: PtyAdapter.PtyExitEvent): void {
+    for (const listener of this.leakedExitListeners) {
+      listener(event);
+    }
+  }
 }
 
 class FakePtyAdapter {
@@ -101,9 +125,16 @@ class FakePtyAdapter {
   readonly spawnFailures: Error[] = [];
   private readonly mode: "sync" | "async";
   private nextPid = 9000;
+  private readonly pids: number[];
+  private readonly leakListeners: boolean;
 
-  constructor(mode: "sync" | "async" = "sync") {
+  constructor(
+    mode: "sync" | "async" = "sync",
+    options: { pids?: ReadonlyArray<number>; leakListeners?: boolean } = {},
+  ) {
     this.mode = mode;
+    this.pids = [...(options.pids ?? [])];
+    this.leakListeners = options.leakListeners ?? false;
   }
 
   spawn(
@@ -120,7 +151,7 @@ class FakePtyAdapter {
         }),
       );
     }
-    const process = new FakePtyProcess(this.nextPid++);
+    const process = new FakePtyProcess(this.pids.shift() ?? this.nextPid++, this.leakListeners);
     this.processes.push(process);
     if (this.mode === "async") {
       return Effect.tryPromise({
@@ -211,6 +242,8 @@ interface CreateManagerOptions {
   }>;
   subprocessPollIntervalMs?: number;
   processKillGraceMs?: number;
+  persistRetryDelayMs?: number;
+  historyByteLimit?: number;
   maxRetainedInactiveSessions?: number;
   ptyAdapter?: FakePtyAdapter;
 }
@@ -251,6 +284,12 @@ const createManager = (
           ? { subprocessPollIntervalMs: options.subprocessPollIntervalMs }
           : {}),
         processKillGraceMs: options.processKillGraceMs ?? 1,
+        ...(options.persistRetryDelayMs !== undefined
+          ? { persistRetryDelayMs: options.persistRetryDelayMs }
+          : {}),
+        ...(options.historyByteLimit !== undefined
+          ? { historyByteLimit: options.historyByteLimit }
+          : {}),
         ...(options.maxRetainedInactiveSessions !== undefined
           ? { maxRetainedInactiveSessions: options.maxRetainedInactiveSessions }
           : {}),
@@ -1113,6 +1152,150 @@ it.layer(
       }),
   );
 
+  const withFlakyFileSystem = (
+    real: Record<string, unknown>,
+    shouldFail: () => boolean,
+    method: "writeFileString" | "rename",
+  ): Record<string, unknown> => ({
+    ...real,
+    [method]: (...args: Array<unknown>) => {
+      if (shouldFail()) {
+        return Effect.fail(
+          PlatformError.systemError({
+            _tag: "PermissionDenied",
+            module: "FileSystem",
+            method,
+            pathOrDescriptor: String(args[0]),
+            description: "injected failure",
+          }),
+        );
+      }
+      const original = real[method] as (...a: Array<unknown>) => Effect.Effect<unknown>;
+      return original(...args);
+    },
+  });
+
+  it.effect("retries a failed history write and persists it", () =>
+    Effect.gen(function* () {
+      const real = (yield* FileSystem.FileSystem) as unknown as Record<string, unknown>;
+      let attempts = 0;
+      const flaky = withFlakyFileSystem(real, () => attempts++ < 2, "writeFileString");
+      const { manager, ptyAdapter, logsDir } = yield* createManager(5, {
+        persistRetryDelayMs: 5,
+      }).pipe(Effect.provideService(FileSystem.FileSystem, flaky as never));
+      yield* manager.open(openInput());
+      const process = ptyAdapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+      process.emitData("hello\n");
+      const path = yield* Path.Path;
+      const logPath = yield* historyLogPath(logsDir).pipe(Effect.provideService(Path.Path, path));
+      yield* waitFor(readFileString(logPath).pipe(Effect.map((text) => text === "hello\n")));
+    }),
+  );
+
+  it.effect("never leaves a partial history file when the final rename fails", () =>
+    Effect.gen(function* () {
+      const real = (yield* FileSystem.FileSystem) as unknown as Record<string, unknown>;
+      const realWrite = real["writeFileString"] as (...a: Array<unknown>) => Effect.Effect<unknown>;
+      const realRename = real["rename"] as (...a: Array<unknown>) => Effect.Effect<unknown>;
+      let failRename = false;
+      let renames = 0;
+      const flaky = {
+        ...real,
+        writeFileString: (...args: Array<unknown>) => realWrite(...args),
+        rename: (...args: Array<unknown>) => {
+          renames += 1;
+          if (!failRename) return realRename(...args);
+          return Effect.fail(
+            PlatformError.systemError({
+              _tag: "PermissionDenied",
+              module: "FileSystem",
+              method: "rename",
+              pathOrDescriptor: String(args[0]),
+              description: "injected failure",
+            }),
+          );
+        },
+      };
+      const { manager, ptyAdapter, logsDir } = yield* createManager(5, {
+        persistRetryDelayMs: 5,
+      }).pipe(Effect.provideService(FileSystem.FileSystem, flaky as never));
+      yield* manager.open(openInput());
+      const process = ptyAdapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+      process.emitData("one\n");
+      const path = yield* Path.Path;
+      const logPath = yield* historyLogPath(logsDir).pipe(Effect.provideService(Path.Path, path));
+      yield* waitFor(readFileString(logPath).pipe(Effect.map((text) => text === "one\n")));
+      failRename = true;
+      renames = 0;
+      process.emitData("two\n");
+      yield* waitFor(Effect.sync(() => renames >= 3));
+      const text = yield* readFileString(logPath);
+      assert.equal(text, "one\n");
+    }),
+  );
+
+  it.effect("a close retries a retained failed write", () =>
+    Effect.gen(function* () {
+      const real = (yield* FileSystem.FileSystem) as unknown as Record<string, unknown>;
+      const realWrite = real["writeFileString"] as (...a: Array<unknown>) => Effect.Effect<unknown>;
+      let failWrites = true;
+      let attempts = 0;
+      const flaky = {
+        ...real,
+        writeFileString: (...args: Array<unknown>) => {
+          attempts += 1;
+          if (failWrites) {
+            return Effect.fail(
+              PlatformError.systemError({
+                _tag: "PermissionDenied",
+                module: "FileSystem",
+                method: "writeFileString",
+                pathOrDescriptor: String(args[0]),
+                description: "injected failure",
+              }),
+            );
+          }
+          return realWrite(...args);
+        },
+      };
+      const { manager, ptyAdapter } = yield* createManager(5, {
+        persistRetryDelayMs: 5,
+      }).pipe(Effect.provideService(FileSystem.FileSystem, flaky as never));
+      yield* manager.open(openInput());
+      const process = ptyAdapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+      process.emitData("x\n");
+      yield* waitFor(Effect.sync(() => attempts >= 3));
+      failWrites = false;
+      yield* manager.close({ threadId: "thread-1" });
+      const reopened = yield* manager.open(openInput());
+      assert.equal(reopened.history, "x\n");
+    }),
+  );
+
+  it.effect("ignores a stale exit callback from a previous process with the same pid", () =>
+    Effect.gen(function* () {
+      const ptyAdapter = new FakePtyAdapter("sync", { pids: [7000, 7000], leakListeners: true });
+      const { manager, getEvents } = yield* createManager(5, { ptyAdapter });
+      yield* manager.open(openInput());
+      yield* manager.restart(restartInput());
+      const first = ptyAdapter.processes[0];
+      expect(first).toBeDefined();
+      if (!first) return;
+      first.emitLeakedExit({ exitCode: 1, signal: 0 });
+      yield* Effect.sleep("30 millis");
+      const events = yield* getEvents;
+      expect(events.some((event) => event.type === "exited")).toBe(false);
+      const reopened = yield* manager.open(openInput());
+      assert.equal(reopened.status, "running");
+    }),
+  );
+
   it.effect("deletes history file when close(deleteHistory=true)", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter, logsDir } = yield* createManager();
@@ -1700,5 +1883,35 @@ it.layer(
       assert.equal(process.killSignals[0], "SIGTERM");
       expect(process.killSignals).toContain("SIGKILL");
     }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it("caps history by bytes as well as lines", () => {
+    const { capHistory } = TerminalManager;
+    assert.equal(capHistory("a".repeat(5000), 5, 1000).length, 1000);
+    assert.equal(
+      capHistory("a".repeat(400) + "b".repeat(800), 5, 1000),
+      "a".repeat(200) + "b".repeat(800),
+    );
+    const euros = capHistory("é".repeat(2000), 5, 1001);
+    assert.equal(euros.length, 500);
+    assert.equal(Buffer.byteLength(euros), 1000);
+    assert.equal(capHistory("short", 5, 1000), "short");
+    assert.equal(capHistory("1\n2\n3\n4\n", 2, 1000), "3\n4\n");
+  });
+
+  it.effect("caps one newline-free line to the byte limit", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager(5, { historyByteLimit: 1000 });
+      yield* manager.open(openInput());
+      const process = ptyAdapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+      process.emitData("a".repeat(600));
+      process.emitData("b".repeat(600));
+      yield* manager.close({ threadId: "thread-1" });
+      const reopened = yield* manager.open(openInput());
+      assert.equal(reopened.history.length, 1000);
+      assert.equal(reopened.history.endsWith("b".repeat(600)), true);
+    }),
   );
 });

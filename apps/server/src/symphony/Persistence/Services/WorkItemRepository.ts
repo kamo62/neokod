@@ -73,15 +73,23 @@ export interface WorkItemRepositoryShape {
 
   /**
    * Record the coding-agent child PID on a live claim (audit item 3): the
-   * claim row starts with the server PID, but orphan adoption after a crash
-   * needs the agent child's PID to terminate a surviving orphan. Only matches
-   * rows still owned by `ownerToken` at `generation`.
+   * claim row starts with no pid; once the agent child is spawned the
+   * dispatcher records the child's pid here. Only matches rows still owned
+   * by `ownerToken` at `generation`.
    */
   readonly setClaimOwnerPid: (
     id: WorkItemId,
     ownerToken: string,
     generation: number,
     pid: number,
+  ) => Effect.Effect<boolean, SymphonyPersistenceError>;
+
+  /** Record the base branch the run's workspace was created from. Fenced like setClaimOwnerPid. */
+  readonly setBaseBranch: (
+    id: WorkItemId,
+    ownerToken: string,
+    generation: number,
+    baseBranch: string,
   ) => Effect.Effect<boolean, SymphonyPersistenceError>;
 
   /**

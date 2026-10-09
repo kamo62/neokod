@@ -3,6 +3,7 @@ import { expect, it } from "@effect/vitest";
 import {
   CONTINUATION_RETRY_DELAY_MS,
   failureBackoffMs,
+  isAutoDispatchBlockedStatus,
   isRetryableCategory,
   retryDueAtMs,
 } from "./Retry.ts";
@@ -55,4 +56,19 @@ it("returns null when the finish time is unparseable", () => {
   expect(
     retryDueAtMs({ finishedAt: "garbage", attemptNumber: 1, maxRetryBackoffMs: 300_000 }),
   ).toBeNull();
+});
+
+it("blocks auto-dispatch only after terminal attempt outcomes", () => {
+  for (const status of [
+    "failed",
+    "user_cancelled",
+    "tracker_cancelled",
+    "workflow_error",
+    "retries_exhausted",
+  ]) {
+    expect(isAutoDispatchBlockedStatus(status)).toBe(true);
+  }
+  for (const status of ["interrupted", "stalled", "succeeded", "streaming_turn"]) {
+    expect(isAutoDispatchBlockedStatus(status)).toBe(false);
+  }
 });

@@ -29,6 +29,7 @@ import {
   resolveDesktopEnvironmentBootstrapTarget,
   type PrimaryEnvironmentTarget,
 } from "../environments/primary/target";
+import { reportPrimaryAccessResult } from "../environments/primary/accessToken";
 import { clearComposerDraftsEnvironment } from "../composerDraftStore";
 import { acknowledgeRpcRequest, trackRpcRequestSent } from "../rpc/requestLatencyState";
 import {
@@ -113,6 +114,7 @@ const loadPrimaryConnectionRegistration = Effect.fn(
     resolved.target.httpBaseUrl,
     resolved.transport._tag === "WslBearer" ? resolved.transport.token : loopbackAuthToken,
   );
+  reportPrimaryAccessResult("ok");
   if (resolved.transport._tag === "Loopback") {
     return new PrimaryConnectionRegistration({
       target: new PrimaryConnectionTarget({
@@ -186,6 +188,14 @@ export function readPrimaryEnvironmentTargetResult(
   }
 }
 
+export function primaryRegistrationSignature(target: PrimaryEnvironmentTarget): string {
+  const token =
+    target.transport._tag === "WslBearer"
+      ? target.transport.token
+      : (target.transport.loopbackAuthToken ?? "");
+  return `${target.transport._tag}|${target.target.httpBaseUrl}|${target.target.wsBaseUrl}|${token}`;
+}
+
 export function primaryRegistrationToRetainAfterTopologyRead(
   previous: ReadonlyMap<string, CachedPlatformRegistration>,
   topologyRead: PrimaryEnvironmentTargetRead,
@@ -206,6 +216,7 @@ const platformConnectionSourceLayer = Layer.effect(
   PlatformConnectionSource,
   Effect.gen(function* () {
     const cacheRef = yield* Ref.make(new Map<string, CachedPlatformRegistration>());
+    const unauthorizedSignature = yield* Ref.make<string | null>(null);
     const buildPlatformRegistrations = Effect.gen(function* () {
       const previous = yield* Ref.get(cacheRef);
       const next = new Map<string, CachedPlatformRegistration>();
@@ -218,17 +229,28 @@ const platformConnectionSourceLayer = Layer.effect(
         registrations.push(retainedPrimary.registration);
       } else if (primaryRead._tag === "Success" && primaryRead.target !== null) {
         const target = primaryRead.target;
-        const signature = `${target.transport._tag}|${target.target.httpBaseUrl}|${target.target.wsBaseUrl}|${target.transport._tag === "WslBearer" ? target.transport.token : ""}`;
+        const signature = primaryRegistrationSignature(target);
         const cached = previous.get(PRIMARY_LOCAL_ENVIRONMENT_ID);
+        const blockedSignature = yield* Ref.get(unauthorizedSignature);
         const registration =
           cached?.signature === signature
             ? Option.some(cached.registration)
-            : yield* loadPrimaryConnectionRegistration(target).pipe(
-                Effect.tapError((error) =>
-                  Effect.logWarning("Could not discover the primary environment.", { error }),
-                ),
-                Effect.option,
-              );
+            : blockedSignature === signature
+              ? Option.none()
+              : yield* loadPrimaryConnectionRegistration(target).pipe(
+                  Effect.tapError((error) =>
+                    error._tag === "ConnectionBlockedError" && error.reason === "authentication"
+                      ? Effect.andThen(
+                          Effect.sync(() => reportPrimaryAccessResult("unauthorized")),
+                          Ref.set(unauthorizedSignature, signature),
+                        )
+                      : Effect.void,
+                  ),
+                  Effect.tapError((error) =>
+                    Effect.logWarning("Could not discover the primary environment.", { error }),
+                  ),
+                  Effect.option,
+                );
         if (Option.isSome(registration)) {
           const entry = { signature, registration: registration.value };
           next.set(PRIMARY_LOCAL_ENVIRONMENT_ID, entry);

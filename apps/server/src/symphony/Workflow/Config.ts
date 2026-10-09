@@ -50,6 +50,12 @@ export const WORKFLOW_DEFAULTS = {
   concurrencyRepository: 2,
 } as const;
 
+/** Neokod appends `app-server` to `codex.command` itself. Returns a message when the command already contains it. */
+export const codexCommandWarning = (command: string | undefined): string | null =>
+  command !== undefined && command.trim().split(/\s+/).includes("app-server")
+    ? `codex.command "${command}" already contains "app-server". Neokod appends it, so set codex.command to the executable only (for example "codex").`
+    : null;
+
 const POLL_INTERVAL_MIN_MS = 5_000;
 const POLL_INTERVAL_MAX_MS = 3_600_000;
 

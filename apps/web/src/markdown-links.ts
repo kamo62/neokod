@@ -211,3 +211,31 @@ export function resolveMarkdownFileLinkMeta(
     ...(columnNumber !== undefined ? { column: columnNumber } : {}),
   };
 }
+
+export type MarkdownImageSource =
+  | { readonly kind: "local"; readonly src: string }
+  | { readonly kind: "remote"; readonly url: string; readonly host: string }
+  | { readonly kind: "blocked" };
+
+export function classifyMarkdownImageSource(
+  src: string | undefined,
+  context: { readonly baseUrl: string; readonly trustedOrigins: ReadonlySet<string> },
+): MarkdownImageSource {
+  if (src === undefined || src.length === 0) return { kind: "blocked" };
+  let url: URL;
+  try {
+    url = new URL(src, context.baseUrl);
+  } catch {
+    return { kind: "blocked" };
+  }
+  if (url.protocol === "http:" || url.protocol === "https:") {
+    if (context.trustedOrigins.has(url.origin)) return { kind: "local", src };
+    return { kind: "remote", url: url.href, host: url.host };
+  }
+  if (url.protocol === "data:") {
+    return /^data:image\/(?:png|jpe?g|gif|webp|avif);base64,/i.test(src)
+      ? { kind: "local", src }
+      : { kind: "blocked" };
+  }
+  return { kind: "blocked" };
+}

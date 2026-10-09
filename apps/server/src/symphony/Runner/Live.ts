@@ -10,6 +10,7 @@ import { LiveRequests } from "./LiveRequests.ts";
 import { AgentRuntimeFactory } from "./Dispatcher.ts";
 import { TrackerAdapterRegistry } from "../Trackers/Adapter.ts";
 import { resolveTrackerAdapter, TrackerEnablement } from "../Orchestrator/TrackerEnablement.ts";
+import { codexCommandWarning } from "../Workflow/Config.ts";
 
 /**
  * Live per-config Codex agent runtime factory (Phase 2).
@@ -20,7 +21,9 @@ import { resolveTrackerAdapter, TrackerEnablement } from "../Orchestrator/Tracke
  * builds one per dispatch inside a scope. Approval requests are recorded
  * durably through the ApprovalService (WS-J2) as well as answered live.
  * SPEC 15.3 env scrubbing: the tracker's secret environment names are
- * resolved per config and stripped from the agent child's environment.
+ * resolved per config and stripped from the agent child's environment. A
+ * tracker adapter that cannot be resolved fails the dispatch: starting with
+ * an unscrubbed environment is not an option.
  */
 const makeAgentRuntimeFactory = Effect.gen(function* () {
   const liveRequests = yield* LiveRequests;
@@ -28,41 +31,59 @@ const makeAgentRuntimeFactory = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const registry = yield* TrackerAdapterRegistry;
   const enablement = yield* TrackerEnablement;
-  const make = (config: EffectiveWorkflowConfig) =>
-    // Secret names from the configured tracker adapter (SPEC 15.3). Any
-    // adapter that cannot be resolved contributes nothing rather than
-    // failing the dispatch.
+  const make = (
+    config: EffectiveWorkflowConfig,
+    options?: { readonly onChildSpawned?: (pid: number) => Effect.Effect<void> },
+  ) =>
+    // Secret names from the configured tracker adapter (SPEC 15.3). An
+    // adapter that cannot be resolved yields null, which makes the runtime
+    // refuse to spawn rather than starting with an unscrubbed environment.
     resolveTrackerAdapter(registry, enablement, config).pipe(
-      Effect.map((adapter) => adapter.secretEnvironmentNames()),
-      Effect.catch(() => Effect.succeed([] as ReadonlyArray<string>)),
+      Effect.map((adapter): ReadonlyArray<string> | null => adapter.secretEnvironmentNames()),
+      // Unknown is not "none": a null list makes the runtime refuse to spawn (fail closed).
+      Effect.tapError((cause) =>
+        Effect.logWarning("symphony.agent.secret_names_unresolved", { cause: String(cause) }),
+      ),
+      Effect.catch(() => Effect.succeed(null as ReadonlyArray<string> | null)),
       Effect.flatMap((secretNames) =>
-        makeCodexAgentRuntime({
-          codexCommand: config.codexCommand ?? "codex",
-          codexHomePath: undefined,
-          env: process.env,
-          secretEnvironmentNames: secretNames,
-          liveRequests,
-          recordRequest: (input) =>
-            approvalService
-              .recordPending({
-                id: input.requestId,
-                requestId: input.requestId,
-                workItemId: input.workItemId,
-                runAttemptId: input.runAttemptId,
-                action: input.action,
-                scope: "once",
-                ...(input.command !== undefined ? { command: input.command } : {}),
-              })
-              .pipe(
-                Effect.asVoid,
-                Effect.catch(() => Effect.void),
-              ),
-        }).pipe(
-          Effect.mapError(() => Effect.never as never),
-          // Resolve the spawner at factory construction so the dispatcher's public
-          // boundary does not leak ChildProcessSpawner into the RPC handler.
-          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-        ),
+        Effect.gen(function* () {
+          const warning = codexCommandWarning(config.codexCommand);
+          if (warning !== null) {
+            yield* Effect.logWarning("symphony.agent.codex_command_contains_app_server", {
+              warning,
+            });
+          }
+          return yield* makeCodexAgentRuntime({
+            codexCommand: config.codexCommand ?? "codex",
+            codexHomePath: undefined,
+            env: process.env,
+            secretEnvironmentNames: secretNames,
+            ...(options?.onChildSpawned !== undefined
+              ? { onChildSpawned: options.onChildSpawned }
+              : {}),
+            liveRequests,
+            recordRequest: (input) =>
+              approvalService
+                .recordPending({
+                  id: input.requestId,
+                  requestId: input.requestId,
+                  workItemId: input.workItemId,
+                  runAttemptId: input.runAttemptId,
+                  action: input.action,
+                  scope: "once",
+                  ...(input.command !== undefined ? { command: input.command } : {}),
+                })
+                .pipe(
+                  Effect.asVoid,
+                  Effect.catch(() => Effect.void),
+                ),
+          }).pipe(
+            Effect.mapError(() => Effect.never as never),
+            // Resolve the spawner at factory construction so the dispatcher's public
+            // boundary does not leak ChildProcessSpawner into the RPC handler.
+            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+          );
+        }),
       ),
     );
   return AgentRuntimeFactory.of({ make });

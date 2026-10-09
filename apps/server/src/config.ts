@@ -14,6 +14,8 @@ import * as LogLevel from "effect/LogLevel";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
+import type { AccessTokenSource } from "./accessToken.ts";
+
 export const DEFAULT_PORT = 3773;
 
 export const RuntimeMode = Schema.Literals(["web", "desktop"]);
@@ -65,7 +67,7 @@ export class ServerConfig extends Context.Service<
     readonly mode: RuntimeMode;
     readonly port: number;
     readonly transport: "loopback" | "wsl-bearer";
-    readonly host: "127.0.0.1" | "0.0.0.0";
+    readonly host: string;
     readonly cwd: string;
     readonly baseDir: string;
     readonly staticDir: string | undefined;
@@ -74,13 +76,15 @@ export class ServerConfig extends Context.Service<
     readonly startupPresentation: StartupPresentation;
     readonly wslBearerToken: string | undefined;
     /**
-     * Per-launch loopback credential (PRD 17.1, plan WS-A2). When set, the
-     * loopback transport requires a bearer on HTTP and a short-lived
-     * WebSocket ticket, replacing the historical pass-through. Delivered
-     * per-launch and never persisted. Absent means the legacy loopback
-     * trust model (documented in the README) is still in effect.
+     * Access token for the HTTP bearer and the WebSocket ticket (PRD 17.1,
+     * plan WS-A2). Stable across launches for web mode: flag file,
+     * NEOKOD_ACCESS_TOKEN, or the base-dir access-token file. Per-launch
+     * only when a desktop bootstrap supplies it. Absent means the legacy
+     * loopback trust model (documented in the README) is still in effect.
      */
     readonly loopbackAuthToken: string | undefined;
+    readonly accessTokenSource?: AccessTokenSource;
+    readonly accessTokenFilePath?: string;
     /**
      * Explicitly declared public Host names and Origins accepted by the
      * router-wide Host/Origin validation (PRD 17.1, plan 13.2). A fixed
@@ -91,14 +95,15 @@ export class ServerConfig extends Context.Service<
     readonly publicHosts: ReadonlyArray<string>;
     readonly publicOrigins: ReadonlyArray<string>;
     /**
-     * When true, the loopback transport is hardened: a per-launch loopback
-     * token is minted (bearer on HTTP, ticket on WS) and router-wide
-     * Host/Origin validation is enforced. Opt-in via NEOKOD_STRICT_TRANSPORT.
-     * Default false leaves `neokod serve` open with no token so it runs behind
-     * a reverse proxy with zero config; the desktop bootstrap still supplies
-     * its own loopback token regardless of this flag.
+     * When true, the loopback transport is hardened with router-wide
+     * Host/Origin validation. Opt-in via NEOKOD_STRICT_TRANSPORT. The access
+     * token no longer depends on it: web mode always resolves one. Default
+     * false; the desktop bootstrap still supplies its own loopback token
+     * regardless of this flag.
      */
     readonly strictTransport: boolean;
+    /** Lower-cased `Tailscale-User-Login` values allowed through (NEOKOD_TAILSCALE_ALLOW_LOGINS). Empty or absent disables the check. */
+    readonly tailscaleAllowLogins?: ReadonlyArray<string>;
     readonly autoBootstrapProjectFromCwd: boolean;
     readonly logWebSocketEvents: boolean;
   }
@@ -215,11 +220,20 @@ const makeTest = Effect.fn("ServerConfig.makeTest")(function* (
   });
 });
 
+export const isLoopbackBindHost = (host: string): boolean =>
+  host === "localhost" || host === "::1" || host === "[::1]" || host.startsWith("127.");
+
 export function isServerBindAuthorized(
-  config: Pick<ServerConfig["Service"], "host" | "transport" | "wslBearerToken">,
+  config: Pick<
+    ServerConfig["Service"],
+    "host" | "transport" | "wslBearerToken" | "loopbackAuthToken"
+  >,
 ): boolean {
-  if (config.host === "127.0.0.1") return config.transport === "loopback";
-  return config.transport === "wsl-bearer" && Boolean(config.wslBearerToken?.trim());
+  if (config.transport === "wsl-bearer") {
+    return config.host === "0.0.0.0" && Boolean(config.wslBearerToken?.trim());
+  }
+  if (isLoopbackBindHost(config.host)) return true;
+  return Boolean(config.loopbackAuthToken?.trim());
 }
 
 export const layerTest = (cwd: string, baseDirOrPrefix: string | { readonly prefix: string }) =>
