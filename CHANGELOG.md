@@ -1,3 +1,14 @@
+## 3.7.0 - 2026-10-09 (Minor)
+
+Release impact: Minor because this fixes the Symphony runner and adds an access token to web mode without changing provider or tracker contracts. Upgrade note: `neokod serve` in web mode now always requires an access token, so existing browser sessions will be asked for it once.
+
+- Web mode always requires a stable access token. It comes from `--access-token-file`, `NEOKOD_ACCESS_TOKEN`, `<base-dir>/access-token` or is generated once and stored there (mode 0600). The web client asks for it once and remembers it, `#access-token=` is accepted and removed from the address, and `neokod project` sends it to a running server. A page on another origin can no longer read the snapshot or dispatch commands.
+- `--host` and `NEOKOD_HOST` allow a non-loopback bind (Tailscale, LAN) only when a token exists. Public hosts and origins accept several values, and an optional Tailscale login allowlist adds a restriction without ever replacing the token.
+- The server adds an app-shell Content-Security-Policy, nosniff and referrer headers, serves workspace SVG as an attachment and HTML under a no-script sandbox, limits the trace route to 1 MiB and stops logging request bodies. Chat Markdown no longer loads remote images automatically or asks Google for favicons.
+- Symphony runs complete and ask: approvals are answered with the wire values Codex expects and keyed by run, a failed or interrupted turn is not treated as success, cancel ends `cancelled`, exhausted retries end `failed` and are not relaunched, recovery and polling follow the orchestrator lock, the agent child no longer inherits scrubbed tracker secrets, and the workspace base branch is recorded for the merge gate.
+- Startup refuses to run when recorded migration names do not match the build, instead of silently skipping migrations. Terminal history is capped by bytes, written atomically and retried. A command id reused for another aggregate is refused. Boot reconciliation no longer loads every message.
+- Known issue: HTML assets are served as downloads, so the desktop preview does not render `.html` files. See HANDOFF.md.
+
 ## 3.6.2 - 2026-10-05 (Patch)
 
 Release impact: Patch because this changes documentation only and does not change runtime behavior.
