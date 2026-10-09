@@ -89,7 +89,7 @@ automatically instead of leaving you to open it by hand. Both accept `--port` an
 
 Neokod is local-first, and that boundary applies the same way to Code mode and Symphony mode: both run through the same local server, with no application user account, pairing flow, or cookie. The native desktop backend and the standalone `neokod serve` listen on `127.0.0.1`. HTTP uses an `Authorization: Bearer <token>` header and WebSocket upgrades use a short-lived, single-use ticket. Web-mode `serve`/`start` always require the stable access token described above; only the legacy desktop bootstrap can run without that credential. This matches a single-user-per-machine model, like a local IDE. It is not a multi-user service.
 
-The only non-loopback exception is a desktop-managed WSL backend. It listens on `0.0.0.0` inside WSL and stays fail-closed behind a desktop-generated bearer for HTTP plus short-lived, single-use WebSocket tickets. The WSL credential is delivered only through the live desktop topology and is never persisted.
+The only non-loopback exceptions are a desktop-managed WSL backend, and `neokod serve --host` with an access token (see the Tailscale section of the self-hosting guide). The WSL backend listens on `0.0.0.0` inside WSL and stays fail-closed behind a desktop-generated bearer for HTTP plus short-lived, single-use WebSocket tickets. The WSL credential is delivered only through the live desktop topology and is never persisted.
 
 ## Security posture
 
@@ -107,7 +107,7 @@ Keep the threat in proportion. The loopback bind does keep remote hosts out, and
 
 The [self-hosting guide](./docs/operations/self-hosting.md) describes the supported way to publish the server at a real hostname: bind loopback and put a reverse proxy with its own authentication in front. That deployment is the awkward case for the listener, because at the socket level a legitimate reverse proxy and a DNS-rebinding attack are both non-loopback. The listener rejects non-loopback `Host` headers unless you declare the public hostname explicitly: run `neokod serve --public-host <hostname> --public-origin <origin>` (or set `NEOKOD_PUBLIC_HOST` / `NEOKOD_PUBLIC_ORIGIN`). The declared pairs are accepted by the router-wide validation; everything else is still rejected with a 403.
 
-What protects a proxied deployment is the proxy's authentication, and only if its rule covers `/ws` as well as the plain HTTP routes. A policy that protects `/` but not the WebSocket upgrade leaves the entire RPC surface open while the login page suggests otherwise. The self-hosting guide covers this failure mode and how to verify the policy actually holds.
+What protects a proxied deployment is the proxy's authentication, and only if its rule covers `/ws` as well as the plain HTTP routes. A policy that protects `/` but not the WebSocket upgrade leaves the entire RPC surface open while the login page suggests otherwise. The self-hosting guide covers this failure mode and how to verify the policy actually holds. To reach the server over Tailscale instead, see [Use with Tailscale](./docs/operations/self-hosting.md#use-with-tailscale).
 
 ## Development
 

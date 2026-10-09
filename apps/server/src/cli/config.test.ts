@@ -13,7 +13,7 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import type { CliServerFlags } from "./config.ts";
-import { resolveServerConfig } from "./config.ts";
+import { assertServerBindAuthorized, resolveServerConfig } from "./config.ts";
 import { isServerBindAuthorized } from "../config.ts";
 
 const encodeDesktopBootstrap = Schema.encodeEffect(Schema.fromJsonString(DesktopBackendBootstrap));
@@ -28,8 +28,9 @@ const emptyFlags: CliServerFlags = {
   bootstrapFd: Option.none(),
   autoBootstrapProjectFromCwd: Option.none(),
   logWebSocketEvents: Option.none(),
-  publicHost: Option.none(),
-  publicOrigin: Option.none(),
+  host: Option.none(),
+  publicHost: [],
+  publicOrigin: [],
   strictTransport: Option.none(),
   accessTokenFile: Option.none(),
 };
@@ -253,7 +254,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     ),
   );
 
-  it.effect("honors ordinary CLI flags without exposing a host override", () =>
+  it.effect("defaults the listen host to loopback", () =>
     Effect.gen(function* () {
       const baseDir = `${NodeOS.tmpdir()}/neokod-cli-flags`;
       const resolved = yield* resolveServerConfig(
@@ -431,22 +432,227 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     ),
   );
 
-  it("fails closed for wildcard binds without the WSL transport and credential", () => {
-    expect(
-      isServerBindAuthorized({
-        host: "0.0.0.0",
-        transport: "loopback",
-        wslBearerToken: undefined,
-      }),
-    ).toBe(false);
-    expect(
-      isServerBindAuthorized({
-        host: "0.0.0.0",
-        transport: "wsl-bearer",
-        wslBearerToken: undefined,
-      }),
-    ).toBe(false);
+  it("bind authorization allows a token-gated non-loopback bind", () => {
+    const cases: ReadonlyArray<{
+      readonly host: string;
+      readonly transport: "loopback" | "wsl-bearer";
+      readonly token: string | undefined;
+      readonly expected: boolean;
+    }> = [
+      { host: "127.0.0.1", transport: "loopback", token: undefined, expected: true },
+      { host: "::1", transport: "loopback", token: undefined, expected: true },
+      { host: "100.81.180.76", transport: "loopback", token: "t".repeat(40), expected: true },
+      { host: "100.81.180.76", transport: "loopback", token: undefined, expected: false },
+      { host: "0.0.0.0", transport: "loopback", token: "   ", expected: false },
+      { host: "0.0.0.0", transport: "wsl-bearer", token: "x", expected: true },
+      { host: "127.0.0.1", transport: "wsl-bearer", token: "x", expected: false },
+    ];
+    for (const row of cases) {
+      expect(
+        isServerBindAuthorized({
+          host: row.host,
+          transport: row.transport,
+          wslBearerToken: row.transport === "wsl-bearer" ? row.token : undefined,
+          loopbackAuthToken: row.transport === "loopback" ? row.token : undefined,
+        }),
+        row.host,
+      ).toBe(row.expected);
+    }
   });
+
+  it.effect("--host binds a tailnet address", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-cli-host-" });
+        const resolved = yield* resolveServerConfig(
+          { ...emptyFlags, mode: Option.some("web"), host: Option.some("100.81.180.76") },
+          Option.none(),
+        ).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              ConfigProvider.layer(ConfigProvider.fromEnv({ env: { NEOKOD_HOME: baseDir } })),
+              NetService.layer,
+            ),
+          ),
+        );
+        expect(resolved.host).toBe("100.81.180.76");
+      }),
+    ),
+  );
+
+  it.effect("NEOKOD_HOST is used when no flag is given and the flag wins over it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-cli-host-" });
+        const envFor = (env: Record<string, string>) =>
+          Effect.provide(
+            Layer.mergeAll(ConfigProvider.layer(ConfigProvider.fromEnv({ env })), NetService.layer),
+          );
+        const fromEnv = yield* resolveServerConfig(
+          { ...emptyFlags, mode: Option.some("web") },
+          Option.none(),
+        ).pipe(envFor({ NEOKOD_HOME: baseDir, NEOKOD_HOST: "100.81.180.76" }));
+        expect(fromEnv.host).toBe("100.81.180.76");
+        const flagWins = yield* resolveServerConfig(
+          { ...emptyFlags, mode: Option.some("web"), host: Option.some("100.81.180.77") },
+          Option.none(),
+        ).pipe(envFor({ NEOKOD_HOME: baseDir, NEOKOD_HOST: "100.81.180.76" }));
+        expect(flagWins.host).toBe("100.81.180.77");
+      }),
+    ),
+  );
+
+  it.effect("the desktop bootstrap host wins over NEOKOD_HOST", () =>
+    Effect.gen(function* () {
+      const fd = yield* openBootstrapFd("loopback");
+      const resolved = yield* resolveServerConfig(
+        { ...emptyFlags, bootstrapFd: Option.some(fd) },
+        Option.none(),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(ConfigProvider.fromEnv({ env: { NEOKOD_HOST: "0.0.0.0" } })),
+            NetService.layer,
+          ),
+        ),
+      );
+      expect(resolved.host).toBe("127.0.0.1");
+    }),
+  );
+
+  it.effect("--host rejects a hostname", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-cli-host-" });
+        const error = yield* Effect.flip(
+          resolveServerConfig(
+            { ...emptyFlags, mode: Option.some("web"), host: Option.some("example.com") },
+            Option.none(),
+          ).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                ConfigProvider.layer(ConfigProvider.fromEnv({ env: { NEOKOD_HOME: baseDir } })),
+                NetService.layer,
+              ),
+            ),
+          ),
+        );
+        expect(error._tag).toBe("ServerHostInvalidError");
+      }),
+    ),
+  );
+
+  it.effect("public hosts and origins merge, normalise and de-duplicate", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-cli-host-" });
+        const resolved = yield* resolveServerConfig(
+          {
+            ...emptyFlags,
+            mode: Option.some("web"),
+            publicHost: ["A.ts.net", "b.local"],
+            publicOrigin: ["https://A.ts.net/"],
+          },
+          Option.none(),
+        ).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              ConfigProvider.layer(
+                ConfigProvider.fromEnv({
+                  env: {
+                    NEOKOD_HOME: baseDir,
+                    NEOKOD_PUBLIC_HOST: "c.example.com, a.ts.net",
+                  },
+                }),
+              ),
+              NetService.layer,
+            ),
+          ),
+        );
+        expect(resolved.publicHosts).toEqual(["a.ts.net", "b.local", "c.example.com"]);
+        expect(resolved.publicOrigins).toEqual(["https://a.ts.net"]);
+      }),
+    ),
+  );
+
+  it.effect("rejects a public origin with a path or a non-http scheme", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-cli-host-" });
+        const env = Layer.mergeAll(
+          ConfigProvider.layer(ConfigProvider.fromEnv({ env: { NEOKOD_HOME: baseDir } })),
+          NetService.layer,
+        );
+        const withPath = yield* Effect.flip(
+          resolveServerConfig(
+            { ...emptyFlags, mode: Option.some("web"), publicOrigin: ["https://a.ts.net/app"] },
+            Option.none(),
+          ).pipe(Effect.provide(env)),
+        );
+        expect(withPath._tag).toBe("ServerPublicAddressInvalidError");
+        const withScheme = yield* Effect.flip(
+          resolveServerConfig(
+            { ...emptyFlags, mode: Option.some("web"), publicOrigin: ["ftp://a.ts.net"] },
+            Option.none(),
+          ).pipe(Effect.provide(env)),
+        );
+        expect(withScheme._tag).toBe("ServerPublicAddressInvalidError");
+      }),
+    ),
+  );
+
+  it.effect("tailscale allow logins are lower-cased and conflict with a non-loopback bind", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-cli-host-" });
+        const resolved = yield* resolveServerConfig(
+          { ...emptyFlags, mode: Option.some("web") },
+          Option.none(),
+        ).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              ConfigProvider.layer(
+                ConfigProvider.fromEnv({
+                  env: {
+                    NEOKOD_HOME: baseDir,
+                    NEOKOD_TAILSCALE_ALLOW_LOGINS: "Kamo@Example.com , YOU@example.com",
+                  },
+                }),
+              ),
+              NetService.layer,
+            ),
+          ),
+        );
+        expect(resolved.tailscaleAllowLogins).toEqual(["kamo@example.com", "you@example.com"]);
+        const conflict = yield* Effect.flip(
+          assertServerBindAuthorized({ ...resolved, host: "100.81.180.76" }),
+        );
+        expect(conflict._tag).toBe("ServerConfigConflictError");
+      }),
+    ),
+  );
+
+  it.effect("assertServerBindAuthorized names the host and the missing token", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        assertServerBindAuthorized({
+          host: "100.81.180.76",
+          transport: "loopback",
+          wslBearerToken: undefined,
+          loopbackAuthToken: undefined,
+        }),
+      );
+      expect(error._tag).toBe("ServerBindRefusedError");
+      expect(error.message).toContain("100.81.180.76");
+      expect(error.message).toContain("access token");
+    }),
+  );
 
   it.effect("creates derived runtime directories", () =>
     Effect.gen(function* () {

@@ -35,7 +35,11 @@ export type EnvironmentWslBearerInvalidReason = typeof EnvironmentWslBearerInval
  * middleware rejects requests with an unexpected Host or Origin before route
  * dispatch, so a DNS-rebinding or cross-site page cannot reach any route.
  */
-export const TransportOriginInvalidReason = Schema.Literals(["invalid_host", "invalid_origin"]);
+export const TransportOriginInvalidReason = Schema.Literals([
+  "invalid_host",
+  "invalid_origin",
+  "tailscale_login_not_allowed",
+]);
 export type TransportOriginInvalidReason = typeof TransportOriginInvalidReason.Type;
 
 export class TransportOriginInvalidError extends Schema.TaggedErrorClass<TransportOriginInvalidError>()(

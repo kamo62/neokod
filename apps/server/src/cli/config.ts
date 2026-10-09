@@ -1,4 +1,5 @@
 import * as NetService from "@neokod/shared/Net";
+import * as NodeNet from "node:net";
 import { parsePersistedServerObservabilitySettings } from "@neokod/shared/serverSettings";
 import { DesktopBackendBootstrap, PortSchema } from "@neokod/contracts";
 import * as Config from "effect/Config";
@@ -59,17 +60,23 @@ export const logWebSocketEventsFlag = Flag.boolean("log-websocket-events").pipe(
   Flag.withAlias("log-ws-events"),
   Flag.optional,
 );
-export const publicHostFlag = Flag.string("public-host").pipe(
+export const hostFlag = Flag.string("host").pipe(
   Flag.withDescription(
-    "Declare a public Host name accepted by Host validation (for reverse-proxied serve).",
+    "Address to listen on: an IP literal such as a Tailscale address (100.x.y.z) or 0.0.0.0. Default 127.0.0.1. A non-loopback address requires an access token (equivalent to NEOKOD_HOST).",
   ),
   Flag.optional,
 );
+export const publicHostFlag = Flag.string("public-host").pipe(
+  Flag.withDescription(
+    "Declare a public Host name accepted by Host validation (for reverse-proxied serve). Repeatable.",
+  ),
+  Flag.atLeast(0),
+);
 export const publicOriginFlag = Flag.string("public-origin").pipe(
   Flag.withDescription(
-    "Declare a public Origin accepted by Origin validation (for reverse-proxied serve).",
+    "Declare a public Origin accepted by Origin validation (for reverse-proxied serve). Repeatable.",
   ),
-  Flag.optional,
+  Flag.atLeast(0),
 );
 export const strictTransportFlag = Flag.boolean("strict-transport").pipe(
   Flag.withDescription(
@@ -172,6 +179,11 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
+  host: Config.string("NEOKOD_HOST").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  tailscaleAllowLogins: Config.string("NEOKOD_TAILSCALE_ALLOW_LOGINS").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
   strictTransport: envConfig(
     "NEOKOD_STRICT_TRANSPORT",
     "T3CODE_STRICT_TRANSPORT",
@@ -194,8 +206,9 @@ export interface CliServerFlags {
   readonly bootstrapFd: Option.Option<number>;
   readonly autoBootstrapProjectFromCwd: Option.Option<boolean>;
   readonly logWebSocketEvents: Option.Option<boolean>;
-  readonly publicHost: Option.Option<string>;
-  readonly publicOrigin: Option.Option<string>;
+  readonly host: Option.Option<string>;
+  readonly publicHost: ReadonlyArray<string>;
+  readonly publicOrigin: ReadonlyArray<string>;
   readonly strictTransport: Option.Option<boolean>;
   readonly accessTokenFile: Option.Option<string>;
 }
@@ -229,6 +242,7 @@ export const sharedServerCommandFlags = {
   bootstrapFd: bootstrapFdFlag,
   autoBootstrapProjectFromCwd: autoBootstrapProjectFromCwdFlag,
   logWebSocketEvents: logWebSocketEventsFlag,
+  host: hostFlag,
   publicHost: publicHostFlag,
   publicOrigin: publicOriginFlag,
   strictTransport: strictTransportFlag,
@@ -249,6 +263,133 @@ const loadPersistedObservabilitySettings = Effect.fn(function* (settingsPath: st
   const raw = yield* fs.readFileString(settingsPath).pipe(Effect.orElseSucceed(() => ""));
   return parsePersistedServerObservabilitySettings(raw);
 });
+
+export class ServerHostInvalidError extends Schema.TaggedErrorClass<ServerHostInvalidError>()(
+  "ServerHostInvalidError",
+  {
+    host: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `--host must be an IP address such as 100.81.180.76 or 0.0.0.0, got "${this.host}".`;
+  }
+}
+
+export class ServerPublicAddressInvalidError extends Schema.TaggedErrorClass<ServerPublicAddressInvalidError>()(
+  "ServerPublicAddressInvalidError",
+  {
+    kind: Schema.Literals(["host", "origin"]),
+    value: Schema.String,
+  },
+) {
+  override get message(): string {
+    return this.kind === "host"
+      ? `Invalid --public-host value "${this.value}": use a bare hostname or IP without port, path or credentials.`
+      : `Invalid --public-origin value "${this.value}": use an http(s) origin without path, query or fragment.`;
+  }
+}
+
+export class ServerBindRefusedError extends Schema.TaggedErrorClass<ServerBindRefusedError>()(
+  "ServerBindRefusedError",
+  {
+    host: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `Refusing to listen on ${this.host}: a non-loopback address needs an access token. Use --mode web (default), or set NEOKOD_ACCESS_TOKEN or --access-token-file.`;
+  }
+}
+
+export class ServerConfigConflictError extends Schema.TaggedErrorClass<ServerConfigConflictError>()(
+  "ServerConfigConflictError",
+  {
+    setting: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `NEOKOD_TAILSCALE_ALLOW_LOGINS only works behind "tailscale serve" with a loopback bind. Remove it or bind 127.0.0.1.`;
+  }
+}
+
+const normalizeBindHost = (value: string): Effect.Effect<string, ServerHostInvalidError> => {
+  const trimmed = value.trim().replace(/^\[(.*)\]$/, "$1");
+  if (trimmed.length === 0 || NodeNet.isIP(trimmed) === 0) {
+    return Effect.fail(new ServerHostInvalidError({ host: value }));
+  }
+  return Effect.succeed(trimmed);
+};
+
+const normalizePublicHost = (
+  value: string,
+): Effect.Effect<string, ServerPublicAddressInvalidError> =>
+  Effect.try({
+    try: () => {
+      const url = new URL(`http://${value}`);
+      if (
+        url.port !== "" ||
+        url.pathname !== "/" ||
+        url.search !== "" ||
+        url.hash !== "" ||
+        url.username !== "" ||
+        url.password !== ""
+      ) {
+        throw new Error("public host must be bare");
+      }
+      return url.hostname.toLowerCase().replace(/^\[(.*)\]$/, "$1");
+    },
+    catch: () => new ServerPublicAddressInvalidError({ kind: "host", value }),
+  });
+
+const normalizePublicOrigin = (
+  value: string,
+): Effect.Effect<string, ServerPublicAddressInvalidError> =>
+  Effect.try({
+    try: () => {
+      const url = new URL(value);
+      if (
+        (url.protocol !== "http:" && url.protocol !== "https:") ||
+        url.pathname !== "/" ||
+        url.search !== "" ||
+        url.hash !== ""
+      ) {
+        throw new Error("public origin must be bare");
+      }
+      return url.origin;
+    },
+    catch: () => new ServerPublicAddressInvalidError({ kind: "origin", value }),
+  });
+
+const mergePublicList = (
+  flagValues: ReadonlyArray<string>,
+  envValue: string | undefined,
+): ReadonlyArray<string> => {
+  const merged = [...flagValues, ...(envValue === undefined ? [] : envValue.split(","))];
+  return merged.map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+};
+
+const dedupePublicList = (values: ReadonlyArray<string>): ReadonlyArray<string> => [
+  ...new Set(values),
+];
+
+export const assertServerBindAuthorized = (
+  config: Pick<
+    ServerConfig.ServerConfig["Service"],
+    "host" | "transport" | "wslBearerToken" | "loopbackAuthToken" | "tailscaleAllowLogins"
+  >,
+): Effect.Effect<void, ServerBindRefusedError | ServerConfigConflictError> =>
+  Effect.gen(function* () {
+    if (!ServerConfig.isServerBindAuthorized(config)) {
+      return yield* new ServerBindRefusedError({ host: config.host });
+    }
+    if (
+      (config.tailscaleAllowLogins ?? []).length > 0 &&
+      !ServerConfig.isLoopbackBindHost(config.host)
+    ) {
+      return yield* new ServerConfigConflictError({
+        setting: "NEOKOD_TAILSCALE_ALLOW_LOGINS",
+      });
+    }
+  });
 
 export const resolveServerConfig = (
   flags: CliServerFlags,
@@ -274,8 +415,9 @@ export const resolveServerConfig = (
       bootstrapFd: flags.bootstrapFd ?? Option.none(),
       autoBootstrapProjectFromCwd: flags.autoBootstrapProjectFromCwd ?? Option.none(),
       logWebSocketEvents: flags.logWebSocketEvents ?? Option.none(),
-      publicHost: flags.publicHost ?? Option.none(),
-      publicOrigin: flags.publicOrigin ?? Option.none(),
+      host: flags.host ?? Option.none(),
+      publicHost: flags.publicHost ?? [],
+      publicOrigin: flags.publicOrigin ?? [],
       strictTransport: flags.strictTransport ?? Option.none(),
       accessTokenFile: flags.accessTokenFile ?? Option.none(),
     } satisfies CliServerFlags;
@@ -365,9 +507,25 @@ export const resolveServerConfig = (
     );
     const staticDir = devUrl ? undefined : yield* ServerConfig.resolveStaticDir();
     const transport = bootstrap?.transport ?? "loopback";
-    const host = bootstrap?.host ?? "127.0.0.1";
-    const publicHost = Option.getOrUndefined(normalizedFlags.publicHost) ?? env.publicHost;
-    const publicOrigin = Option.getOrUndefined(normalizedFlags.publicOrigin) ?? env.publicOrigin;
+    const host = yield* normalizeBindHost(
+      bootstrap?.host ?? Option.getOrUndefined(normalizedFlags.host) ?? env.host ?? "127.0.0.1",
+    );
+    const publicHosts = dedupePublicList(
+      yield* Effect.forEach(
+        mergePublicList(normalizedFlags.publicHost, env.publicHost),
+        normalizePublicHost,
+      ),
+    );
+    const publicOrigins = dedupePublicList(
+      yield* Effect.forEach(
+        mergePublicList(normalizedFlags.publicOrigin, env.publicOrigin),
+        normalizePublicOrigin,
+      ),
+    );
+    const tailscaleLogins = (env.tailscaleAllowLogins ?? "")
+      .split(",")
+      .map((entry) => entry.trim().toLowerCase())
+      .filter((entry) => entry.length > 0);
     const strictTransport = Option.getOrElse(
       resolveOptionPrecedence(
         normalizedFlags.strictTransport,
@@ -431,11 +589,12 @@ export const resolveServerConfig = (
               : {}),
           }
         : {}),
-      publicHosts: publicHost === undefined ? [] : [publicHost],
-      publicOrigins: publicOrigin === undefined ? [] : [publicOrigin],
+      publicHosts,
+      publicOrigins,
       strictTransport,
       autoBootstrapProjectFromCwd,
       logWebSocketEvents,
+      ...(tailscaleLogins.length > 0 ? { tailscaleAllowLogins: tailscaleLogins } : {}),
     };
 
     return config;
@@ -456,8 +615,9 @@ export const resolveCliProjectConfig = (
       bootstrapFd: Option.none(),
       autoBootstrapProjectFromCwd: Option.none(),
       logWebSocketEvents: Option.none(),
-      publicHost: Option.none(),
-      publicOrigin: Option.none(),
+      host: Option.none(),
+      publicHost: [],
+      publicOrigin: [],
       strictTransport: Option.none(),
       accessTokenFile: Option.none(),
     },

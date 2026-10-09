@@ -12,17 +12,22 @@ machine you already administer.
 The server requires an access token in web mode. The token is resolved from
 `--access-token-file`, `NEOKOD_ACCESS_TOKEN`, or `<base-dir>/access-token`
 (mode 0600, created on first start and kept afterwards), and the startup
-output names the source without printing the token. Loopback is still the bind
-boundary. `config.ts` enforces this: a non-loopback bind is
-rejected at startup unless the private desktop WSL bootstrap supplies a bearer.
+output names the source without printing the token. Loopback is still the
+default bind. `config.ts` enforces this: a non-loopback bind is
+rejected at startup without an access token, unless the private desktop WSL
+bootstrap supplies a bearer.
 
 ```ts
-if (config.host === "127.0.0.1") return config.transport === "loopback";
-return config.transport === "wsl-bearer" && Boolean(config.wslBearerToken?.trim());
+if (config.transport === "wsl-bearer") {
+  return config.host === "0.0.0.0" && Boolean(config.wslBearerToken?.trim());
+}
+if (isLoopbackBindHost(config.host)) return true;
+return Boolean(config.loopbackAuthToken?.trim());
 ```
 
-There is deliberately no `--host` flag; a test pins that absence. So the only
-supported deployment is **bind loopback, authenticate in a reverse proxy**,
+`--host` opens a non-loopback bind for an owner-controlled address such as a
+Tailscale IP, but only with an access token. The default deployment is still
+**bind loopback, authenticate in a reverse proxy**,
 with the access token as a second factor behind the proxy.
 
 This matters more than for a typical web app. Agents spawn real shells with your
@@ -182,14 +187,41 @@ Options, best first:
 3. **Relay** from the bridge address to loopback with `socat` or a systemd
    socket unit. Adds a hop and another thing to keep running.
 
-Do not work around this by trying to bind a non-loopback address. The startup
-guard rejects it, and the guard is the reason the deployment is safe.
+## Use with Tailscale
+
+Two routes to reach the server from your tailnet, in this order. Authelia is
+not in either route, so the access token is the only credential.
+
+```
+# Route 1 (recommended): keep Neokod on loopback, let Tailscale terminate HTTPS
+neokod serve --port 3773 --strict-transport \
+  --public-host wv-htpc.<tailnet>.ts.net --public-origin https://wv-htpc.<tailnet>.ts.net
+tailscale serve --bg --https=443 http://127.0.0.1:3773
+# open https://wv-htpc.<tailnet>.ts.net and paste the access token once
+# undo: tailscale serve --https=443 off     (verify with: tailscale serve status)
+
+# Route 2: listen on the tailnet address directly (plain HTTP over the encrypted tailnet)
+neokod serve --host "$(tailscale ip -4)" --port 3773
+# open http://100.81.180.76:3773
+```
+
+Route 1 needs MagicDNS and HTTPS certificates enabled in the tailnet admin
+console. Route 2 is plain HTTP, but the hop is encrypted by WireGuard; still,
+`--host 0.0.0.0` also exposes the LAN and every other interface, so prefer the
+exact tailnet address. On route 2 the page is not a secure context, so browser
+notifications are unavailable.
+
+`NEOKOD_TAILSCALE_ALLOW_LOGINS=you@example.com` adds an extra filter that only
+works on route 1: requests without an allowed `Tailscale-User-Login` header
+are refused before the token check. It also blocks any other proxy using the
+same listener (for example the Authelia route), and it never replaces the
+token.
 
 ## Troubleshooting
 
 | Symptom                                         | Cause                                                                              |
 | ----------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Startup dies with "Refusing to bind the server" | A non-loopback host was configured. Bind loopback and proxy instead.               |
+| Startup dies with "Refusing to bind the server" | A non-loopback host was configured without an access token.                        |
 | UI loads, nothing updates, no agent output      | `/ws` is not reaching the server. Check upgrade headers and the proxy path rules.  |
 | A provider is missing from the picker           | Its CLI is not on the server's `PATH` for the service user.                        |
 | `node-pty` fails to install                     | No matching prebuild; install `python3`, `make` and a C++ compiler.                |

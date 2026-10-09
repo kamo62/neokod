@@ -67,7 +67,7 @@ export class ServerConfig extends Context.Service<
     readonly mode: RuntimeMode;
     readonly port: number;
     readonly transport: "loopback" | "wsl-bearer";
-    readonly host: "127.0.0.1" | "0.0.0.0";
+    readonly host: string;
     readonly cwd: string;
     readonly baseDir: string;
     readonly staticDir: string | undefined;
@@ -102,6 +102,8 @@ export class ServerConfig extends Context.Service<
      * regardless of this flag.
      */
     readonly strictTransport: boolean;
+    /** Lower-cased `Tailscale-User-Login` values allowed through (NEOKOD_TAILSCALE_ALLOW_LOGINS). Empty or absent disables the check. */
+    readonly tailscaleAllowLogins?: ReadonlyArray<string>;
     readonly autoBootstrapProjectFromCwd: boolean;
     readonly logWebSocketEvents: boolean;
   }
@@ -218,11 +220,20 @@ const makeTest = Effect.fn("ServerConfig.makeTest")(function* (
   });
 });
 
+export const isLoopbackBindHost = (host: string): boolean =>
+  host === "localhost" || host === "::1" || host === "[::1]" || host.startsWith("127.");
+
 export function isServerBindAuthorized(
-  config: Pick<ServerConfig["Service"], "host" | "transport" | "wslBearerToken">,
+  config: Pick<
+    ServerConfig["Service"],
+    "host" | "transport" | "wslBearerToken" | "loopbackAuthToken"
+  >,
 ): boolean {
-  if (config.host === "127.0.0.1") return config.transport === "loopback";
-  return config.transport === "wsl-bearer" && Boolean(config.wslBearerToken?.trim());
+  if (config.transport === "wsl-bearer") {
+    return config.host === "0.0.0.0" && Boolean(config.wslBearerToken?.trim());
+  }
+  if (isLoopbackBindHost(config.host)) return true;
+  return Boolean(config.loopbackAuthToken?.trim());
 }
 
 export const layerTest = (cwd: string, baseDirOrPrefix: string | { readonly prefix: string }) =>

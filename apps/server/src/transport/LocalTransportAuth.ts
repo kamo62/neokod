@@ -3,6 +3,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as NodeNet from "node:net";
 import * as Headers from "effect/unstable/http/Headers";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 
@@ -16,14 +17,21 @@ import { isLoopbackHostname } from "../http.ts";
  * before the WebSocket upgrade, so no route (API, OTLP, ticket, asset,
  * static/dev, WebSocket, MCP) is reachable with an unexpected Host or Origin.
  *
- * Host validation: loopback bind accepts `127.0.0.1:<port>`, `localhost:<port>`,
- * and `[::1]:<port>` plus any declared public host. Malformed Hosts and
- * multiple Host headers are rejected outright.
+ * Host validation: the loopback bind accepts loopback names plus any
+ * declared public host. A non-loopback bind also accepts any IP literal (an
+ * IP literal in Host cannot come from a DNS rebinding page, which needs a
+ * hostname); names such as tailnet or LAN names must be declared with
+ * --public-host. Malformed Hosts and multiple Host headers are rejected
+ * outright.
  *
  * Origin validation: dev origin(s), `neokod://app`, `neokod-dev://app`,
  * self-origin (Origin host matches the request Host), and any declared public
- * origin. Requests with no Origin (non-browser clients) pass this check; they
- * are still subject to the WS-A2 credential policy.
+ * origin. `Origin: null` is rejected on a non-loopback bind and stays
+ * accepted on the loopback bind. Requests with no Origin (non-browser
+ * clients) pass this check; they are still subject to the WS-A2 credential
+ * policy. When `tailscaleAllowLogins` is configured, the peer must be
+ * loopback and the `Tailscale-User-Login` header must name an allowed login;
+ * the header is never a credential, only an extra filter.
  */
 
 const DESKTOP_RENDERER_ORIGINS = new Set(["neokod://app", "neokod-dev://app"]);
@@ -83,6 +91,35 @@ const normalizeOriginHostname = (origin: string): string | undefined => {
   }
 };
 
+const LOOPBACK_PEER_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+
+const validateTailscaleLogin = (
+  request: HttpServerRequest.HttpServerRequest,
+  hasTailscaleAllowlist: boolean,
+  config: { readonly tailscaleAllowLogins?: ReadonlyArray<string> },
+): Effect.Effect<void, TransportOriginInvalidError> => {
+  if (!hasTailscaleAllowlist) return Effect.void;
+  const allowed = config.tailscaleAllowLogins ?? [];
+  const peer = request.remoteAddress ?? Option.none();
+  const login = Headers.get(request.headers, "tailscale-user-login").pipe(
+    Option.map((value) => value.trim().toLowerCase()),
+  );
+  if (
+    Option.isSome(peer) &&
+    LOOPBACK_PEER_ADDRESSES.has(peer.value) &&
+    Option.isSome(login) &&
+    login.value.length > 0 &&
+    allowed.includes(login.value)
+  ) {
+    return Effect.void;
+  }
+  return failInvalid(
+    "tailscale_login_not_allowed",
+    "an allowed Tailscale login",
+    Option.isSome(login) && login.value.length > 0 ? login.value : "no Tailscale-User-Login header",
+  );
+};
+
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const devOrigin = config.devUrl?.origin;
@@ -92,10 +129,6 @@ export const make = Effect.gen(function* () {
     declaredPublicHosts.length > 0 ? declaredPublicHosts.join(", ") : "loopback host";
 
   const validate = Effect.gen(function* () {
-    // Host/Origin validation is opt-in (NEOKOD_STRICT_TRANSPORT) on the loopback bind. The access token, not this check, is the credential.
-    if (!config.strictTransport) {
-      return;
-    }
     const request = yield* HttpServerRequest.HttpServerRequest;
     const requestUrl = HttpServerRequest.toURL(request);
     if (Option.isNone(requestUrl)) {
@@ -107,6 +140,13 @@ export const make = Effect.gen(function* () {
     // is the bearer token (WS-A2), enforced separately. Host/Origin validation
     // applies to the loopback transport, where a rebinding page is the threat.
     if (config.transport === "wsl-bearer") {
+      return;
+    }
+
+    const loopbackBind = ServerConfig.isLoopbackBindHost(config.host);
+    const hasTailscaleAllowlist = (config.tailscaleAllowLogins ?? []).length > 0;
+    // Host/Origin validation is opt-in (NEOKOD_STRICT_TRANSPORT) on the loopback bind. The access token, not this check, is the credential. A non-loopback bind always validates, and the Tailscale login check below always runs when configured.
+    if (!config.strictTransport && loopbackBind && !hasTailscaleAllowlist) {
       return;
     }
 
@@ -123,7 +163,8 @@ export const make = Effect.gen(function* () {
     const parsed = parseHostHeader(hostHeaderValue);
     const hostAllowed =
       isLoopbackHostname(parsed.hostname) ||
-      declaredPublicHosts.some((entry) => entry.toLowerCase() === parsed.hostname);
+      declaredPublicHosts.some((entry) => entry.toLowerCase() === parsed.hostname) ||
+      (!loopbackBind && NodeNet.isIP(parsed.hostname) !== 0);
     if (!hostAllowed) {
       return yield* failInvalid("invalid_host", expectedHostSummary, hostHeaderValue);
     }
@@ -132,18 +173,23 @@ export const make = Effect.gen(function* () {
     if (Option.isNone(originHeader) || originHeader.value.trim().length === 0) {
       // Non-browser clients carry no Origin; the WS-A2 credential policy gates
       // them instead of this check.
-      return;
+      return yield* validateTailscaleLogin(request, hasTailscaleAllowlist, config);
     }
 
     const origin = originHeader.value.trim();
+    if (origin === "null") {
+      if (!loopbackBind) {
+        return yield* failInvalid("invalid_origin", "a local or configured origin", origin);
+      }
+      return yield* validateTailscaleLogin(request, hasTailscaleAllowlist, config);
+    }
     if (
-      origin === "null" ||
       DESKTOP_RENDERER_ORIGINS.has(origin) ||
       (devOrigin !== undefined && origin === devOrigin) ||
       declaredPublicOrigins.includes(origin) ||
       origin === requestUrl.value.origin
     ) {
-      return;
+      return yield* validateTailscaleLogin(request, hasTailscaleAllowlist, config);
     }
 
     const originHostname = normalizeOriginHostname(origin);
@@ -152,7 +198,7 @@ export const make = Effect.gen(function* () {
       (isLoopbackHostname(originHostname) ||
         declaredPublicHosts.some((entry) => entry.toLowerCase() === originHostname))
     ) {
-      return;
+      return yield* validateTailscaleLogin(request, hasTailscaleAllowlist, config);
     }
 
     return yield* failInvalid("invalid_origin", "a local or configured origin", origin);

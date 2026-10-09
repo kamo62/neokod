@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import { HttpServer } from "effect/unstable/http";
 
 import type { AccessTokenSource } from "./accessToken.ts";
-import { ServerConfig } from "./config.ts";
+import { ServerConfig, isLoopbackBindHost } from "./config.ts";
 
 export interface HeadlessServeAccessInfo {
   readonly connectionString: string;
@@ -14,19 +14,8 @@ export interface HeadlessServeAccessInfo {
 
 type NetworkInterfacesMap = ReturnType<typeof NodeOS.networkInterfaces>;
 
-export const isLoopbackHost = (host: string | undefined): boolean => {
-  if (!host || host.length === 0) {
-    return true;
-  }
-
-  return (
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "::1" ||
-    host === "[::1]" ||
-    host.startsWith("127.")
-  );
-};
+export const isLoopbackHost = (host: string | undefined): boolean =>
+  !host || host.length === 0 || isLoopbackBindHost(host);
 
 export const isWildcardHost = (host: string | undefined): boolean =>
   host === "0.0.0.0" || host === "::" || host === "[::]";
