@@ -16,8 +16,9 @@ only to discard legacy connection data during the 2.0.0 migration.
 - `EnvironmentRegistry` reconciles the current platform topology and owns one
   scoped supervisor per environment.
 - `EnvironmentSupervisor` owns desired state, retries, and the current lease.
-- `ConnectionResolver` prepares a direct loopback socket or obtains a WSL
-  WebSocket ticket.
+- `ConnectionResolver` prepares a direct loopback socket, obtains a WSL
+  WebSocket ticket, or obtains a ticket for an authenticated loopback target
+  (`packages/client-runtime/src/connection/resolver.ts:39-70`).
 - `RpcSessionFactory` performs one socket attempt and initial config probe.
 - Shell and thread services own HTTP snapshots, live subscriptions, and caches.
 
@@ -28,10 +29,10 @@ overwrite newer live state.
 
 ## Access matrix
 
-| Target                          | Discovery                                       | HTTP                                | WebSocket                                                         | Persistence                                  |
-| ------------------------------- | ----------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------- | -------------------------------------------- |
-| Native primary / `neokod serve` | Loopback URL                                    | Direct, unauthenticated             | Direct `/ws`                                                      | Cache only                                   |
-| Desktop WSL                     | Current `getLocalEnvironmentBootstraps()` entry | `Authorization: Bearer <wsl token>` | Bearer-protected ticket request, then one fresh single-use ticket | Cache only; token and target are memory-only |
+| Target                          | Discovery                                       | HTTP                                | WebSocket                                                         | Persistence                                                                      |
+| ------------------------------- | ----------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Native primary / `neokod serve` | Loopback URL or window origin                   | `Authorization: Bearer <token>`     | Bearer-protected ticket request, then one fresh single-use ticket | Cache only; the token lives in the server base directory and in the browser (A2) |
+| Desktop WSL                     | Current `getLocalEnvironmentBootstraps()` entry | `Authorization: Bearer <wsl token>` | Bearer-protected ticket request, then one fresh single-use ticket | Cache only; token and target are memory-only                                     |
 
 The desktop generates a 192-bit WSL token for each WSL backend start. The WSL
 server binds `0.0.0.0`, compares bearer values in constant time, and protects
@@ -40,10 +41,13 @@ sensitive environment/orchestration HTTP. `POST
 lifetime; `/ws` deletes it on first validation, including failed expiry checks.
 The long-lived bearer is never placed in a WebSocket URL.
 
-Native primary and standalone server bootstraps carry no secret. Their HTTP and
-WebSocket paths are direct because their bind is fixed to `127.0.0.1`. A
-wildcard listener without the private WSL discriminator and token is rejected at
-startup.
+A web-mode server always requires its access token. HTTP carries
+`Authorization: Bearer <access token>` and the WebSocket upgrade exchanges the
+token for a bearer-protected single-use ticket. The token lives in the server
+base directory (`access-token`, mode 0600) and in the browser once it is
+entered. The legacy desktop bootstrap path still runs without a loopback
+token. A wildcard listener without the private WSL discriminator and token is
+rejected at startup.
 
 ## Platform and data boundary
 

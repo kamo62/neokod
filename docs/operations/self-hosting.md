@@ -9,9 +9,11 @@ machine you already administer.
 
 ## Read this before you expose it
 
-The server has **no application authentication**. Loopback is the security
-boundary, and the auth/session control plane was removed in the 2.0.0
-local-first carve-out. `config.ts` enforces this: a non-loopback bind is
+The server requires an access token in web mode. The token is resolved from
+`--access-token-file`, `NEOKOD_ACCESS_TOKEN`, or `<base-dir>/access-token`
+(mode 0600, created on first start and kept afterwards), and the startup
+output names the source without printing the token. Loopback is still the bind
+boundary. `config.ts` enforces this: a non-loopback bind is
 rejected at startup unless the private desktop WSL bootstrap supplies a bearer.
 
 ```ts
@@ -20,7 +22,8 @@ return config.transport === "wsl-bearer" && Boolean(config.wslBearerToken?.trim(
 ```
 
 There is deliberately no `--host` flag; a test pins that absence. So the only
-supported deployment is **bind loopback, authenticate in a reverse proxy**.
+supported deployment is **bind loopback, authenticate in a reverse proxy**,
+with the access token as a second factor behind the proxy.
 
 This matters more than for a typical web app. Agents spawn real shells with your
 provider credentials, so an unauthenticated route is remote code execution as the
