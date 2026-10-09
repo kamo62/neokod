@@ -61,6 +61,7 @@ import {
   serializeTableElementToMarkdown,
 } from "../markdown-clipboard";
 import {
+  classifyMarkdownImageSource,
   normalizeMarkdownLinkDestination,
   resolveMarkdownFileLinkMeta,
   rewriteMarkdownFileUriHref,
@@ -151,7 +152,7 @@ function findTaskListMarkerOffset(markdown: string, listItemStart: number): numb
   if (!match?.[1]) return null;
   return listItemStart + firstLine.indexOf(match[1]);
 }
-const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
+export const CHAT_MARKDOWN_SANITIZE_SCHEMA: Parameters<typeof rehypeSanitize>[0] = {
   ...defaultSchema,
   attributes: {
     ...defaultSchema.attributes,
@@ -162,7 +163,7 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
     ...defaultSchema.protocols,
     href: [...(defaultSchema.protocols?.href ?? []), "file"],
   },
-} satisfies Parameters<typeof rehypeSanitize>[0];
+};
 
 function extractFenceLanguage(className: string | undefined): string {
   const match = className?.match(CODE_FENCE_LANGUAGE_REGEX);
@@ -809,8 +810,53 @@ function normalizeMarkdownLinkHrefKey(href: string): string {
 
 const MARKDOWN_LINK_FAVICON_CLASS_NAME = "block size-full shrink-0 select-none";
 
-/** Hosts whose favicon request already failed this session — skip straight to the globe. */
-const failedFaviconHosts = new Set<string>();
+export const MarkdownImage = memo(function MarkdownImage({
+  src,
+  alt,
+  baseUrl,
+  trustedOrigins,
+}: {
+  src: string | undefined;
+  alt: string | undefined;
+  baseUrl: string;
+  trustedOrigins: ReadonlySet<string>;
+}) {
+  const [loaded, setLoaded] = useState(false);
+  const source = classifyMarkdownImageSource(src, { baseUrl, trustedOrigins });
+  if (source.kind === "blocked") return alt ? <span>{alt}</span> : null;
+  if (source.kind === "local" || loaded) {
+    return (
+      <img
+        src={source.kind === "local" ? source.src : source.url}
+        alt={alt ?? ""}
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        draggable={false}
+      />
+    );
+  }
+  return (
+    <span className="chat-markdown-remote-image">
+      <GlobeIcon aria-hidden className="size-3.5 shrink-0" />
+      <a href={source.url} target="_blank" rel="noopener noreferrer">
+        {alt || source.host}
+      </a>
+      <span className="chat-markdown-remote-image-host">{source.host}</span>
+      <Button type="button" variant="outline" size="xs" onClick={() => setLoaded(true)}>
+        Load image
+      </Button>
+    </span>
+  );
+});
+
+const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon() {
+  return (
+    <span className="chat-markdown-link-favicon" aria-hidden>
+      <GlobeIcon className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
+    </span>
+  );
+});
 
 function resolveExternalLinkHost(href: string | undefined): string | null {
   if (!href) return null;
@@ -822,29 +868,6 @@ function resolveExternalLinkHost(href: string | undefined): string | null {
     return null;
   }
 }
-
-const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({ host }: { host: string }) {
-  const [failedHost, setFailedHost] = useState<string | null>(null);
-  return (
-    <span className="chat-markdown-link-favicon" aria-hidden>
-      {failedHost === host || failedFaviconHosts.has(host) ? (
-        <GlobeIcon className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
-      ) : (
-        <img
-          src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`}
-          alt=""
-          loading="lazy"
-          draggable={false}
-          className={cn(MARKDOWN_LINK_FAVICON_CLASS_NAME, "rounded-sm")}
-          onError={() => {
-            failedFaviconHosts.add(host);
-            setFailedHost(host);
-          }}
-        />
-      )}
-    </span>
-  );
-});
 
 function leadingExternalLinkTextLength(text: string): number {
   const protocol = /^(?:https?:\/\/)/i.exec(text)?.[0];
@@ -942,11 +965,9 @@ function handleMarkdownFragmentClick(event: ReactMouseEvent<HTMLAnchorElement>, 
 }
 
 function MarkdownExternalLinkContent({
-  host,
   plainText,
   children,
 }: {
-  host: string;
   plainText: string | null;
   children: ReactNode;
 }) {
@@ -955,7 +976,7 @@ function MarkdownExternalLinkContent({
     return (
       <>
         <span className="chat-markdown-link-leading">
-          <MarkdownLinkFavicon host={host} />
+          <MarkdownLinkFavicon />
           {plainText.slice(0, leadingLength)}
         </span>
         {breakableExternalLinkText(plainText.slice(leadingLength))}
@@ -971,7 +992,7 @@ function MarkdownExternalLinkContent({
     return (
       <>
         <span className="chat-markdown-link-leading">
-          <MarkdownLinkFavicon host={host} />
+          <MarkdownLinkFavicon />
           {firstChild.slice(0, leadingLength)}
         </span>
         {breakableExternalLinkText(firstChild.slice(leadingLength))}
@@ -983,7 +1004,7 @@ function MarkdownExternalLinkContent({
   return (
     <>
       <span className="chat-markdown-link-leading">
-        <MarkdownLinkFavicon host={host} />
+        <MarkdownLinkFavicon />
         {firstChild}
       </span>
       {childNodes.slice(1)}
@@ -1326,8 +1347,38 @@ function ChatMarkdown({
     },
     [createAssetUrl, openPreview, preparedConnection, threadRef],
   );
+  const markdownImageBaseUrl =
+    typeof window !== "undefined" && window.location ? window.location.href : "http://localhost/";
+  const environmentHttpBaseUrl =
+    preparedConnection._tag === "Some" ? preparedConnection.value.httpBaseUrl : null;
+  const trustedImageOrigins = useMemo(() => {
+    const origins = new Set<string>();
+    try {
+      origins.add(new URL(markdownImageBaseUrl).origin);
+    } catch {
+      /* keep empty */
+    }
+    if (environmentHttpBaseUrl) {
+      try {
+        origins.add(new URL(environmentHttpBaseUrl).origin);
+      } catch {
+        /* ignore */
+      }
+    }
+    return origins;
+  }, [markdownImageBaseUrl, environmentHttpBaseUrl]);
   const markdownComponents = useMemo<Components>(
     () => ({
+      img({ node: _node, src, alt }) {
+        return (
+          <MarkdownImage
+            src={typeof src === "string" ? src : undefined}
+            alt={alt}
+            baseUrl={markdownImageBaseUrl}
+            trustedOrigins={trustedImageOrigins}
+          />
+        );
+      },
       p({ node: _node, children, ...props }) {
         return <p {...props}>{renderSkillInlineMarkdownChildren(children, skills)}</p>;
       },
@@ -1425,7 +1476,7 @@ function ChatMarkdown({
               }}
             >
               {faviconHost ? (
-                <MarkdownExternalLinkContent host={faviconHost} plainText={plainHastText(node)}>
+                <MarkdownExternalLinkContent plainText={plainHastText(node)}>
                   {children}
                 </MarkdownExternalLinkContent>
               ) : (
@@ -1524,6 +1575,7 @@ function ChatMarkdown({
       fileLinkParentSuffixByPath,
       isStreaming,
       markdownFileLinkMetaByHref,
+      markdownImageBaseUrl,
       onTaskListChange,
       openInPreferredEditor,
       openExternalLinkInPreview,
@@ -1532,6 +1584,7 @@ function ChatMarkdown({
       skills,
       text,
       threadRef,
+      trustedImageOrigins,
     ],
   );
 

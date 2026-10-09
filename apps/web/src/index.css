@@ -803,6 +803,13 @@ label:has(> select#reasoning-effort) select {
   vertical-align: -0.125em;
 }
 
+.chat-markdown .chat-markdown-remote-image {
+  @apply inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-border px-2 py-1 align-middle text-sm;
+}
+.chat-markdown .chat-markdown-remote-image-host {
+  color: var(--text-secondary);
+}
+
 .chat-markdown .chat-markdown-link-leading {
   white-space: nowrap;
 }

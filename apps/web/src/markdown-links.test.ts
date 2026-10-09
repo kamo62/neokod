@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  classifyMarkdownImageSource,
   resolveMarkdownFileLinkMeta,
   resolveMarkdownFileLinkTarget,
   rewriteMarkdownFileUriHref,
@@ -125,5 +126,70 @@ describe("resolveMarkdownFileLinkTarget", () => {
 
   it("does not treat app routes as file links", () => {
     expect(resolveMarkdownFileLinkTarget("/chat/settings")).toBeNull();
+  });
+});
+
+describe("classifyMarkdownImageSource", () => {
+  const context = {
+    baseUrl: "https://app.example/t/1",
+    trustedOrigins: new Set(["https://app.example", "http://127.0.0.1:3773"]),
+  };
+
+  it("treats same-origin and trusted asset URLs as local", () => {
+    expect(classifyMarkdownImageSource("/api/assets/abc.def/x.png", context)).toEqual({
+      kind: "local",
+      src: "/api/assets/abc.def/x.png",
+    });
+    expect(classifyMarkdownImageSource("https://app.example/a.png", context)).toEqual({
+      kind: "local",
+      src: "https://app.example/a.png",
+    });
+    expect(
+      classifyMarkdownImageSource("http://127.0.0.1:3773/api/assets/t/x.png", context),
+    ).toEqual({ kind: "local", src: "http://127.0.0.1:3773/api/assets/t/x.png" });
+  });
+
+  it("treats cross-origin http URLs as remote", () => {
+    expect(classifyMarkdownImageSource("https://evil.example/leak?q=1", context)).toEqual({
+      kind: "remote",
+      url: "https://evil.example/leak?q=1",
+      host: "evil.example",
+    });
+    expect(classifyMarkdownImageSource("//evil.example/x.png", context)).toEqual({
+      kind: "remote",
+      url: "https://evil.example/x.png",
+      host: "evil.example",
+    });
+    expect(classifyMarkdownImageSource("/\\evil.example/x.png", context)).toEqual({
+      kind: "remote",
+      url: "https://evil.example/x.png",
+      host: "evil.example",
+    });
+    expect(classifyMarkdownImageSource("http://127.0.0.1:9999/pixel", context)).toEqual({
+      kind: "remote",
+      url: "http://127.0.0.1:9999/pixel",
+      host: "127.0.0.1:9999",
+    });
+  });
+
+  it("allows only raster base64 data URLs as local", () => {
+    expect(classifyMarkdownImageSource("data:image/png;base64,AAAA", context)).toEqual({
+      kind: "local",
+      src: "data:image/png;base64,AAAA",
+    });
+    expect(classifyMarkdownImageSource("data:image/svg+xml;base64,AAAA", context)).toEqual({
+      kind: "blocked",
+    });
+  });
+
+  it("blocks dangerous protocols and empty sources", () => {
+    expect(classifyMarkdownImageSource("javascript:alert(1)", context)).toEqual({
+      kind: "blocked",
+    });
+    expect(classifyMarkdownImageSource("file:///etc/passwd", context)).toEqual({
+      kind: "blocked",
+    });
+    expect(classifyMarkdownImageSource("", context)).toEqual({ kind: "blocked" });
+    expect(classifyMarkdownImageSource(undefined, context)).toEqual({ kind: "blocked" });
   });
 });
