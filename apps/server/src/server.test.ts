@@ -1,6 +1,8 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeSocket from "@effect/platform-node/NodeSocket";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeUtil from "node:util";
 import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 
 import {
@@ -37,10 +39,12 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
+import * as References from "effect/References";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { ChildProcessSpawner } from "effect/unstable/process";
@@ -1315,6 +1319,145 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         assert.equal(record.status?.code, String(span.status.code));
       }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
+
+  it.effect("rejects an OTLP trace body over 1 MiB with 413 and records nothing", () =>
+    Effect.gen(function* () {
+      const localTraceRecords: Array<unknown> = [];
+      yield* buildAppUnderTest({
+        layers: {
+          browserTraceCollector: {
+            record: (records) =>
+              Effect.sync(() => {
+                localTraceRecords.push(...records);
+              }),
+          },
+        },
+      });
+
+      const response = yield* HttpClient.post("/api/observability/v1/traces", {
+        headers: {
+          "content-type": "application/json",
+        },
+        body: HttpBody.text("x".repeat(1024 * 1024 + 1), "application/json"),
+      });
+
+      assert.equal(response.status, 413);
+      assert.deepEqual(localTraceRecords, []);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("rejects a chunked OTLP trace body over 1 MiB without recording it", () =>
+    Effect.gen(function* () {
+      const localTraceRecords: Array<unknown> = [];
+      yield* buildAppUnderTest({
+        layers: {
+          browserTraceCollector: {
+            record: (records) =>
+              Effect.sync(() => {
+                localTraceRecords.push(...records);
+              }),
+          },
+        },
+      });
+
+      const exit = yield* Effect.exit(
+        HttpClient.post("/api/observability/v1/traces", {
+          headers: {
+            "content-type": "application/json",
+          },
+          body: HttpBody.stream(
+            Stream.make(new Uint8Array(600_000), new Uint8Array(600_000)),
+            "application/json",
+          ),
+        }),
+      );
+      assert.deepEqual(localTraceRecords, []);
+      if (exit._tag === "Success") {
+        assert.equal(exit.value.status, 413);
+      }
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("accepts an OTLP trace body just under the limit", () =>
+    Effect.gen(function* () {
+      const localTraceRecords: Array<unknown> = [];
+      const payload = yield* makeBrowserOtlpPayload("client.test");
+      const resourceSpan = payload.resourceSpans[0];
+      assert.notEqual(resourceSpan, undefined);
+      if (!resourceSpan) return;
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      const baseSize = JSON.stringify(payload).length;
+      resourceSpan.resource.attributes.push({
+        key: "padding",
+        value: { stringValue: "p".repeat(1_020_000 - baseSize) },
+      });
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      const size = JSON.stringify(payload).length;
+      assert.isTrue(size >= 1_000_000 && size <= 1_040_000);
+
+      yield* buildAppUnderTest({
+        layers: {
+          browserTraceCollector: {
+            record: (records) =>
+              Effect.sync(() => {
+                localTraceRecords.push(...records);
+              }),
+          },
+        },
+      });
+
+      const response = yield* HttpClient.post("/api/observability/v1/traces", {
+        headers: {
+          "content-type": "application/json",
+        },
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        body: HttpBody.text(JSON.stringify(payload), "application/json"),
+      });
+
+      assert.equal(response.status, 204);
+      assert.equal(localTraceRecords.length, 1);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("does not log OTLP request bodies", () => {
+    const logs: Array<string> = [];
+    const logger = Logger.make(({ message, fiber }) => {
+      logs.push(
+        NodeUtil.inspect([message, fiber.getRef(References.CurrentLogAnnotations)], {
+          depth: 6,
+        }),
+      );
+    });
+    return Effect.gen(function* () {
+      const localTraceRecords: Array<unknown> = [];
+      yield* buildAppUnderTest({
+        layers: {
+          browserTraceCollector: {
+            record: (records) =>
+              Effect.sync(() => {
+                localTraceRecords.push(...records);
+              }),
+          },
+        },
+      });
+
+      const response = yield* HttpClient.post("/api/observability/v1/traces", {
+        headers: {
+          "content-type": "application/json",
+        },
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        body: HttpBody.text(JSON.stringify({ marker: "LEAKME-body-marker" }), "application/json"),
+      });
+
+      assert.equal(response.status, 204);
+      assert.isTrue(logs.some((entry) => entry.includes("Failed to decode browser OTLP traces")));
+      assert.isFalse(logs.some((entry) => entry.includes("LEAKME-body-marker")));
+    }).pipe(
+      Effect.provide(
+        Layer.merge(NodeHttpServer.layerTest, Logger.layer([logger], { mergeWithExisting: false })),
+      ),
+    );
+  });
 
   it.effect("routes websocket rpc server.upsertKeybinding", () =>
     Effect.gen(function* () {

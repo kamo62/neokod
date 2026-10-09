@@ -7,6 +7,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Stream from "effect/Stream";
 import { cast } from "effect/Function";
 import {
   HttpBody,
@@ -19,6 +20,7 @@ import {
   HttpServerRespondable,
 } from "effect/unstable/http";
 import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
+import * as Headers from "effect/unstable/http/Headers";
 import { OtlpTracer } from "effect/unstable/observability";
 
 import * as ServerConfig from "./config.ts";
@@ -30,6 +32,7 @@ import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import { browserApiCorsAllowedHeaders, browserApiCorsAllowedMethods } from "./httpCors.ts";
 
 const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
+const OTLP_TRACES_MAX_BODY_BYTES = 1024 * 1024;
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
 const DESKTOP_RENDERER_ORIGINS = ["neokod://app", "neokod-dev://app"];
 
@@ -110,10 +113,38 @@ export const serverEnvironmentHttpApiLayer = HttpApiBuilder.group(
   }),
 );
 
+const payloadTooLargeResponse = HttpServerResponse.text("Payload too large.", {
+  status: 413,
+  headers: { connection: "close" },
+});
+
+class OtlpTracesBodyTooLargeError extends Data.TaggedError("OtlpTracesBodyTooLargeError")<{
+  readonly maxBytes: number;
+}> {}
+
+class OtlpTracesBodyInvalidError extends Data.TaggedError("OtlpTracesBodyInvalidError")<{
+  readonly reason: "invalid_json";
+}> {}
+
 class DecodeOtlpTraceRecordsError extends Data.TaggedError("DecodeOtlpTraceRecordsError")<{
   readonly cause: unknown;
-  readonly bodyJson: OtlpTracer.TraceData;
 }> {}
+
+const readBoundedRequestText = (request: HttpServerRequest.HttpServerRequest, maxBytes: number) =>
+  Effect.gen(function* () {
+    const decoder = new TextDecoder();
+    let received = 0;
+    let text = "";
+    yield* Stream.runForEach(request.stream, (chunk) => {
+      received += chunk.byteLength;
+      if (received > maxBytes) {
+        return Effect.fail(new OtlpTracesBodyTooLargeError({ maxBytes }));
+      }
+      text += decoder.decode(chunk, { stream: true });
+      return Effect.void;
+    });
+    return text + decoder.decode();
+  });
 
 export const otlpTracesProxyRouteLayer = HttpRouter.add(
   "POST",
@@ -126,17 +157,28 @@ export const otlpTracesProxyRouteLayer = HttpRouter.add(
     const otlpTracesUrl = config.otlpTracesUrl;
     const browserTraceCollector = yield* BrowserTraceCollector.BrowserTraceCollector;
     const httpClient = yield* HttpClient.HttpClient;
-    const bodyJson = cast<unknown, OtlpTracer.TraceData>(yield* request.json);
+    const declaredLength = Number(
+      Headers.get(request.headers, "content-length").pipe(Option.getOrUndefined),
+    );
+    if (Number.isFinite(declaredLength) && declaredLength > OTLP_TRACES_MAX_BODY_BYTES) {
+      return payloadTooLargeResponse;
+    }
+    const bodyText = yield* readBoundedRequestText(request, OTLP_TRACES_MAX_BODY_BYTES);
+    const bodyJson = yield* Effect.try({
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      try: () => (bodyText === "" ? null : JSON.parse(bodyText)),
+      catch: () => new OtlpTracesBodyInvalidError({ reason: "invalid_json" }),
+    }).pipe(Effect.map((parsed) => cast<unknown, OtlpTracer.TraceData>(parsed)));
 
     yield* Effect.try({
       try: () => decodeOtlpTraceRecords(bodyJson),
-      catch: (cause) => new DecodeOtlpTraceRecordsError({ cause, bodyJson }),
+      catch: (cause) => new DecodeOtlpTraceRecordsError({ cause }),
     }).pipe(
       Effect.flatMap((records) => browserTraceCollector.record(records)),
-      Effect.catch((cause) =>
+      Effect.catch((error) =>
         Effect.logWarning("Failed to decode browser OTLP traces", {
-          cause,
-          bodyJson,
+          errorName: error.cause instanceof Error ? error.cause.name : "unknown",
+          bodyBytes: bodyText.length,
         }),
       ),
     );
@@ -154,7 +196,8 @@ export const otlpTracesProxyRouteLayer = HttpRouter.add(
         Effect.as(HttpServerResponse.empty({ status: 204 })),
         Effect.tapError((cause) =>
           Effect.logWarning("Failed to export browser OTLP traces", {
-            cause,
+            reason: cause.reason._tag,
+            status: cause.response?.status,
             otlpTracesUrl,
           }),
         ),
@@ -165,6 +208,9 @@ export const otlpTracesProxyRouteLayer = HttpRouter.add(
   }).pipe(
     Effect.catchTags({
       EnvironmentWslBearerInvalidError: HttpServerRespondable.toResponse,
+      OtlpTracesBodyTooLargeError: () => Effect.succeed(payloadTooLargeResponse),
+      OtlpTracesBodyInvalidError: () =>
+        Effect.succeed(HttpServerResponse.text("Invalid JSON.", { status: 400 })),
     }),
   ),
 );
