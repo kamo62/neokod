@@ -2,6 +2,7 @@
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeSocket from "@effect/platform-node/NodeSocket";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "node:crypto";
 import * as NodeUtil from "node:util";
 import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 
@@ -65,6 +66,7 @@ import { vi } from "vite-plus/test";
 const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
 
 import * as ServerConfig from "./config.ts";
+import { issueAssetUrl } from "./assets/AssetAccess.ts";
 import { makeRoutesLayer } from "./server.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as GitManager from "./git/GitManager.ts";
@@ -1458,6 +1460,91 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       ),
     );
   });
+
+  it.effect("sends CSP, nosniff, frame and referrer headers on the app shell", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const staticDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "neokod-static-" });
+      yield* fileSystem.writeFileString(
+        path.join(staticDir, "index.html"),
+        "<html><head><script>window.__shell=1</script></head><body>shell</body></html>",
+      );
+      yield* fileSystem.writeFileString(path.join(staticDir, "app.js"), "export {};");
+      yield* buildAppUnderTest({ config: { staticDir } });
+
+      const expectedHash = `'sha256-${NodeCrypto.createHash("sha256").update("window.__shell=1").digest("base64")}'`;
+      for (const route of ["/", "/some/spa/route"]) {
+        const response = yield* fetchEffect(yield* getHttpServerUrl(route));
+        assert.equal(response.status, 200);
+        const csp = response.headers["content-security-policy"] ?? "";
+        assert.isTrue(csp.includes(expectedHash));
+        assert.isTrue(csp.includes("frame-ancestors 'none'"));
+        assert.equal(response.headers["x-frame-options"], "DENY");
+        assert.equal(response.headers["x-content-type-options"], "nosniff");
+        assert.equal(response.headers["referrer-policy"], "no-referrer");
+      }
+
+      const script = yield* fetchEffect(yield* getHttpServerUrl("/app.js"));
+      assert.equal(script.headers["x-content-type-options"], "nosniff");
+      assert.equal(script.headers["content-security-policy"], undefined);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("serves workspace html and svg assets sandboxed and as attachments", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "neokod-asset-http-" });
+      const root = yield* fileSystem.makeTempDirectoryScoped({ prefix: "neokod-asset-ws-" });
+      yield* fileSystem.writeFileString(
+        path.join(root, "report.html"),
+        '<script>new WebSocket("ws://" + location.host + "/ws")</script>',
+      );
+      yield* fileSystem.writeFileString(
+        path.join(root, "mark.svg"),
+        '<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>',
+      );
+      yield* fileSystem.writeFileString(path.join(root, "doc.pdf"), "%PDF-1.4");
+      yield* buildAppUnderTest({ config: { baseDir } });
+
+      const mintLayer = Layer.mergeAll(
+        ServerConfig.ServerConfig.layerTest(process.cwd(), baseDir),
+        WorkspacePaths.layer,
+        ProjectFaviconResolver.layer.pipe(Layer.provide(WorkspacePaths.layer)),
+        ServerSecretStore.layer.pipe(
+          Layer.provide(ServerConfig.ServerConfig.layerTest(process.cwd(), baseDir)),
+        ),
+      );
+      const mintUrl = (fileName: string) =>
+        issueAssetUrl({
+          resource: {
+            _tag: "workspace-file",
+            threadId: ThreadId.make("thread-1"),
+            path: path.join(root, fileName),
+          },
+          workspaceRoot: root,
+        }).pipe(
+          Effect.provide(mintLayer),
+          Effect.map((issued) => issued.relativeUrl),
+        );
+
+      const html = yield* fetchEffect(yield* getHttpServerUrl(yield* mintUrl("report.html")));
+      assert.equal(html.status, 200);
+      assert.isTrue((html.headers["content-type"] ?? "").startsWith("text/html"));
+      assert.equal(html.headers["content-security-policy"], "sandbox");
+      assert.equal(html.headers["content-disposition"], "attachment");
+      assert.equal(html.headers["x-content-type-options"], "nosniff");
+
+      const svg = yield* fetchEffect(yield* getHttpServerUrl(yield* mintUrl("mark.svg")));
+      assert.equal(svg.headers["content-security-policy"], "default-src 'none'; sandbox");
+      assert.equal(svg.headers["content-disposition"], "attachment");
+
+      const pdf = yield* fetchEffect(yield* getHttpServerUrl(yield* mintUrl("doc.pdf")));
+      assert.equal(pdf.headers["content-security-policy"], undefined);
+      assert.equal(pdf.headers["content-disposition"], undefined);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
 
   it.effect("routes websocket rpc server.upsertKeybinding", () =>
     Effect.gen(function* () {

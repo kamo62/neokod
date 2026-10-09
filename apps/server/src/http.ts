@@ -1,4 +1,5 @@
 import Mime from "@effect/platform-node/Mime";
+import * as NodeCrypto from "node:crypto";
 import { EnvironmentHttpApi } from "@neokod/contracts";
 import { decodeOtlpTraceRecords } from "@neokod/shared/observability";
 import * as Data from "effect/Data";
@@ -215,6 +216,73 @@ export const otlpTracesProxyRouteLayer = HttpRouter.add(
   ),
 );
 
+const ASSET_BASE_HEADERS = {
+  "Cache-Control": "private, max-age=3600",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+} as const;
+
+export function assetResponseHeaders(filePath: string): Record<string, string> {
+  const dot = filePath.lastIndexOf(".");
+  const extension = dot < 0 ? "" : filePath.slice(dot).toLowerCase();
+  if (extension === ".pdf") return { ...ASSET_BASE_HEADERS };
+  if (extension === ".html" || extension === ".htm") {
+    return {
+      ...ASSET_BASE_HEADERS,
+      "Content-Security-Policy": "sandbox",
+      "Content-Disposition": "attachment",
+    };
+  }
+  if (extension === ".svg") {
+    return {
+      ...ASSET_BASE_HEADERS,
+      "Content-Security-Policy": "default-src 'none'; sandbox",
+      "Content-Disposition": "attachment",
+    };
+  }
+  return { ...ASSET_BASE_HEADERS, "Content-Security-Policy": "default-src 'none'; sandbox" };
+}
+
+export function inlineScriptHashes(html: string): ReadonlyArray<string> {
+  const hashes: Array<string> = [];
+  for (const match of html.matchAll(/<script(?![^>]*\ssrc\s*=)[^>]*>([\s\S]*?)<\/script>/gi)) {
+    const source = match[1] ?? "";
+    if (source.trim().length === 0) continue;
+    hashes.push(
+      `'sha256-${NodeCrypto.createHash("sha256").update(source, "utf8").digest("base64")}'`,
+    );
+  }
+  return hashes;
+}
+
+export function appShellContentSecurityPolicy(scriptHashes: ReadonlyArray<string>): string {
+  return [
+    "default-src 'self'",
+    ["script-src 'self' 'wasm-unsafe-eval'", ...scriptHashes].join(" "),
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https: http:",
+    "font-src 'self' data:",
+    "connect-src 'self' ws: wss: https: http:",
+    "worker-src 'self' blob:",
+    "manifest-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join("; ");
+}
+
+const STATIC_BASE_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+} as const;
+
+export const appShellHeaders = (html: string): Record<string, string> => ({
+  ...STATIC_BASE_HEADERS,
+  "Content-Security-Policy": appShellContentSecurityPolicy(inlineScriptHashes(html)),
+  "X-Frame-Options": "DENY",
+});
+
 export const assetRouteLayer = HttpRouter.add(
   "GET",
   `${ASSET_ROUTE_PREFIX}/*`,
@@ -240,10 +308,7 @@ export const assetRouteLayer = HttpRouter.add(
     }
     return yield* HttpServerResponse.file(asset.path, {
       status: 200,
-      headers: {
-        "Cache-Control": "private, max-age=3600",
-        "X-Content-Type-Options": "nosniff",
-      },
+      headers: assetResponseHeaders(asset.path),
     }).pipe(
       Effect.orElseSucceed(() => HttpServerResponse.text("Internal Server Error", { status: 500 })),
     );
@@ -322,6 +387,7 @@ export const staticAndDevRouteLayer = HttpRouter.add(
       return HttpServerResponse.uint8Array(indexData, {
         status: 200,
         contentType: "text/html; charset=utf-8",
+        headers: appShellHeaders(new TextDecoder().decode(indexData)),
       });
     }
 
@@ -331,9 +397,18 @@ export const staticAndDevRouteLayer = HttpRouter.add(
       return HttpServerResponse.text("Internal Server Error", { status: 500 });
     }
 
+    if (contentType.startsWith("text/html")) {
+      return HttpServerResponse.uint8Array(data, {
+        status: 200,
+        contentType,
+        headers: appShellHeaders(new TextDecoder().decode(data)),
+      });
+    }
+
     return HttpServerResponse.uint8Array(data, {
       status: 200,
       contentType,
+      headers: { ...STATIC_BASE_HEADERS },
     });
   }),
 );
