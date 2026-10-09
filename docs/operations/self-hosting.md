@@ -217,6 +217,12 @@ are refused before the token check. It also blocks any other proxy using the
 same listener (for example the Authelia route), and it never replaces the
 token.
 
+These are plain `tailscale` shell commands; there is no helper package to
+install. A deleted `packages/tailscale` helper exists only in history and
+stays deleted: the `tailscale serve` lifecycle belongs to the owner, and an
+RPC that changes network exposure would widen a leaked token from agents on
+this box to re-publishing the box.
+
 ## Troubleshooting
 
 | Symptom                                         | Cause                                                                              |
