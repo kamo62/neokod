@@ -3,6 +3,10 @@ import { useCallback, useMemo, useState } from "react";
 import type { DesktopWslState } from "@neokod/contracts";
 
 import { applyWslEnableSelection } from "./ConnectionsSettings.logic";
+import {
+  clearPrimaryAccessToken,
+  readPrimaryAccessToken,
+} from "~/environments/primary/accessToken";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import {
   AlertDialog,
@@ -235,6 +239,28 @@ export function ConnectionsSettings() {
     );
   };
 
+  const forgetAccessTokenRow = () => {
+    if (readPrimaryAccessToken() === undefined) return null;
+    return (
+      <SettingsRow
+        title="Access token"
+        description="Saved in this browser for this server."
+        control={
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={() => {
+              clearPrimaryAccessToken();
+              window.location.reload();
+            }}
+          >
+            Forget
+          </Button>
+        }
+      />
+    );
+  };
+
   return (
     <SettingsPageContainer>
       <SettingsSection title="This environment">
@@ -258,6 +284,7 @@ export function ConnectionsSettings() {
               : "Loopback access is direct and limited to this machine."
           }
         />
+        {usesBrowserOrigin || desktopBridge === undefined ? forgetAccessTokenRow() : null}
         {desktopBridge ? renderWslRow() : null}
       </SettingsSection>
 

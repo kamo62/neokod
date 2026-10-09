@@ -16,6 +16,22 @@ export {
 export { PrimaryEnvironmentHttpClient } from "./httpClient";
 
 export {
+  ACCESS_TOKEN_STORAGE_KEY,
+  __resetPrimaryAccessTokenForTests,
+  checkPrimaryAccessToken,
+  clearPrimaryAccessToken,
+  initializePrimaryAccessToken,
+  readPrimaryAccessGate,
+  readPrimaryAccessToken,
+  reportPrimaryAccessResult,
+  storePrimaryAccessToken,
+  subscribePrimaryAccessGate,
+  subscribePrimaryAccessToken,
+  type PrimaryAccessGate,
+  type PrimaryAccessTokenCheck,
+} from "./accessToken";
+
+export {
   DesktopEnvironmentBootstrapIncompleteError,
   isDesktopEnvironmentBootstrapIncompleteError,
   isPrimaryEnvironmentProtocolUnsupportedError,

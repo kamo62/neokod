@@ -1,6 +1,8 @@
 import { PRIMARY_LOCAL_ENVIRONMENT_ID, type DesktopEnvironmentBootstrap } from "@neokod/contracts";
 import * as Schema from "effect/Schema";
 
+import { readPrimaryAccessToken } from "./accessToken";
+
 const PrimaryEnvironmentTargetSource = Schema.Literals([
   "configured",
   "window-origin",
@@ -102,20 +104,6 @@ const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
 
 const browserOrigin = (): string | undefined =>
   typeof window === "undefined" ? undefined : window.location.origin;
-
-/**
- * Read the per-launch loopback token delivered by the server on the startup
- * URL (plan WS-A2, 13.3). The server appends `?loopbackAuthToken=...` when it
- * mints a token for `neokod serve`; the renderer uses it to authenticate the
- * loopback connection (HTTP bearer + WebSocket ticket). It is never persisted.
- */
-const readLoopbackAuthTokenFromWindow = (): string | undefined => {
-  if (typeof window === "undefined") {
-    return undefined;
-  }
-  const token = new URLSearchParams(window.location.search).get("loopbackAuthToken");
-  return token !== null && token.length > 0 ? token : undefined;
-};
 
 function getDesktopLocalEnvironmentBootstrap(): DesktopEnvironmentBootstrap | null {
   // The primary (Windows-native) backend keeps the "primary" id. The
@@ -255,7 +243,12 @@ function validateTargetUrls(input: {
     return {
       source: input.source,
       target: { httpBaseUrl: httpUrl.toString(), wsBaseUrl: wsUrl.toString() },
-      transport: { _tag: "Loopback" },
+      transport: {
+        _tag: "Loopback",
+        ...(bootstrap.transport === "loopback" && bootstrap.loopbackAuthToken !== undefined
+          ? { loopbackAuthToken: bootstrap.loopbackAuthToken }
+          : {}),
+      },
     };
   }
   if (
@@ -392,7 +385,7 @@ function resolveConfiguredPrimaryTarget(): PrimaryEnvironmentTarget | null {
       ? swapBaseUrlProtocol(configuredHttpBaseUrl, "wss:", "http-base-url")
       : swapBaseUrlProtocol(configuredHttpBaseUrl!, "ws:", "http-base-url"));
 
-  const loopbackAuthToken = readLoopbackAuthTokenFromWindow();
+  const loopbackAuthToken = readPrimaryAccessToken();
   return validateTargetUrls({
     source: "configured",
     httpBaseUrl: normalizeBaseUrl(resolvedHttpBaseUrl, "configured", "http-base-url"),
@@ -426,7 +419,7 @@ function resolveWindowOriginPrimaryTarget(): PrimaryEnvironmentTarget {
       protocol: url.protocol,
     });
   }
-  const loopbackAuthToken = readLoopbackAuthTokenFromWindow();
+  const loopbackAuthToken = readPrimaryAccessToken();
   return validateTargetUrls({
     source: "window-origin",
     httpBaseUrl,
