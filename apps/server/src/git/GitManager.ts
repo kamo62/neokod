@@ -45,7 +45,7 @@ import {
 import { GitManagerError, GitPullRequestMaterializationError } from "@neokod/contracts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
-import { extractBranchNameFromRemoteRef } from "./remoteRefs.ts";
+import { extractBranchNameFromRemoteRef, parseRemoteNamesInGitOrder } from "./remoteRefs.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import type { GitManagerServiceError } from "@neokod/contracts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
@@ -97,7 +97,8 @@ const TOAST_DESCRIPTION_MAX = 72;
 const STATUS_RESULT_CACHE_TTL = Duration.seconds(1);
 const STATUS_RESULT_CACHE_CAPACITY = 2_048;
 const PR_LOOKUP_CACHE_TTL = Duration.minutes(2);
-const PR_LOOKUP_FAILURE_TTL = Duration.seconds(20);
+const PR_LOOKUP_FAILURE_BASE_TTL = Duration.minutes(2);
+const PR_LOOKUP_FAILURE_MAX_TTL = Duration.minutes(30);
 const PR_LOOKUP_CACHE_CAPACITY = 2_048;
 type StripProgressContext<T> = T extends any ? Omit<T, "actionId" | "cwd" | "action"> : never;
 type GitActionProgressPayload = StripProgressContext<GitActionProgressEvent>;
@@ -497,6 +498,12 @@ function appendUnique(values: string[], next: string | null | undefined): void {
   values.push(trimmed);
 }
 
+export function prLookupFailureTtl(failureStreak: number): Duration.Duration {
+  const exponent = Math.max(0, failureStreak - 1);
+  const backoffMs = Duration.toMillis(PR_LOOKUP_FAILURE_BASE_TTL) * Math.pow(2, exponent);
+  return Duration.min(Duration.millis(backoffMs), PR_LOOKUP_FAILURE_MAX_TTL);
+}
+
 function toStatusPr(pr: PullRequestInfo): {
   number: number;
   title: string;
@@ -829,6 +836,52 @@ export const make = Effect.gen(function* () {
   // back to a null upstreamRef.
   const prLookupCacheKey = (cwd: string, details: { branch: string; upstreamRef: string | null }) =>
     [cwd, details.branch, details.upstreamRef ?? "", String(prLookupEpoch(cwd))].join("\u0000");
+  const prLookupFailureStreakByKey = new Map<string, number>();
+  const nextPrLookupFailureStreak = (key: string) => {
+    const failureStreak = (prLookupFailureStreakByKey.get(key) ?? 0) + 1;
+    if (
+      !prLookupFailureStreakByKey.has(key) &&
+      prLookupFailureStreakByKey.size >= PR_LOOKUP_CACHE_CAPACITY
+    ) {
+      const oldestKey = prLookupFailureStreakByKey.keys().next().value;
+      if (oldestKey !== undefined) {
+        prLookupFailureStreakByKey.delete(oldestKey);
+      }
+    }
+    prLookupFailureStreakByKey.set(key, failureStreak);
+    return failureStreak;
+  };
+  const isUnpublishedBranch = Effect.fn("isUnpublishedBranch")(function* (
+    cwd: string,
+    details: { branch: string; upstreamRef: string | null },
+  ) {
+    if (details.upstreamRef !== null) {
+      return false;
+    }
+
+    const remoteNames = parseRemoteNamesInGitOrder(
+      (yield* gitCore.execute({
+        operation: "GitManager.isUnpublishedBranch.remoteNames",
+        cwd,
+        args: ["remote"],
+      })).stdout,
+    );
+    if (remoteNames.length === 0) {
+      return true;
+    }
+
+    const expectedRemoteRefs = new Set(
+      remoteNames.map((remoteName) => `refs/remotes/${remoteName}/${details.branch}`),
+    );
+    const remoteRefs = yield* gitCore.execute({
+      operation: "GitManager.isUnpublishedBranch.remoteRefs",
+      cwd,
+      args: ["for-each-ref", "--format=%(refname)", ...expectedRemoteRefs],
+    });
+    return !remoteRefs.stdout
+      .split("\n")
+      .some((remoteRef) => expectedRemoteRefs.has(remoteRef.trim()));
+  });
   const prLookupCache = yield* Cache.makeWith(
     (key: string) => {
       const [cwd = "", branch = "", upstreamRef = ""] = key.split("\u0000");
@@ -838,7 +891,10 @@ export const make = Effect.gen(function* () {
       };
       return resolveBranchHeadContext(cwd, details).pipe(
         Effect.flatMap((headContext) =>
-          findLatestPrForHeadContext(cwd, headContext).pipe(
+          isUnpublishedBranch(cwd, details).pipe(
+            Effect.flatMap((unpublished) =>
+              unpublished ? Effect.succeed(null) : findLatestPrForHeadContext(cwd, headContext),
+            ),
             Effect.map((latest) => ({ latest, headContext })),
           ),
         ),
@@ -846,7 +902,13 @@ export const make = Effect.gen(function* () {
     },
     {
       capacity: PR_LOOKUP_CACHE_CAPACITY,
-      timeToLive: (exit) => (Exit.isSuccess(exit) ? PR_LOOKUP_CACHE_TTL : PR_LOOKUP_FAILURE_TTL),
+      timeToLive: (exit, key) => {
+        if (Exit.isSuccess(exit)) {
+          prLookupFailureStreakByKey.delete(key);
+          return PR_LOOKUP_CACHE_TTL;
+        }
+        return prLookupFailureTtl(nextPrLookupFailureStreak(key));
+      },
     },
   );
   // A transient lookup failure (rate limit, network blip) must not clear an
