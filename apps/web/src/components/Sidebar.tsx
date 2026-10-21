@@ -210,6 +210,7 @@ import {
   resolveSidebarWorkerBadge,
   resolveThreadRowClassName,
   resolveThreadStatusPill,
+  resolveThreadWorkspacePath,
   runBulkThreadDeletes,
   orderItemsByPreferredIds,
   shouldClearThreadSelectionOnMouseDown,
@@ -1195,6 +1196,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   );
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const serverConfigs = useServerConfigs();
+  const allProjects = useProjects();
   const deleteProject = useAtomCommand(projectEnvironment.delete, {
     reportFailure: false,
   });
@@ -2225,11 +2227,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       const threadKey = scopedThreadKey(threadRef);
       const thread = sidebarThreadByKeyRef.current.get(threadKey) ?? null;
       if (!thread) return;
-      const threadProject = memberProjectByScopedKey.get(
-        scopedProjectKey(scopeProjectRef(thread.environmentId, thread.projectId)),
-      );
-      const threadWorkspacePath =
-        thread.worktreePath ?? threadProject?.workspaceRoot ?? project.workspaceRoot ?? null;
+      const threadWorkspacePath = resolveThreadWorkspacePath({
+        thread,
+        projects: allProjects,
+      });
       const isPinned = useUiStateStore.getState().pinnedThreadKeys.includes(threadKey);
       const clicked = await api.contextMenu.show(
         [
@@ -2303,12 +2304,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     },
     [
       appSettingsConfirmThreadDelete,
+      allProjects,
       copyPathToClipboard,
       copyThreadIdToClipboard,
       deleteThread,
       markThreadUnread,
-      memberProjectByScopedKey,
-      project.workspaceRoot,
       startThreadRename,
     ],
   );
