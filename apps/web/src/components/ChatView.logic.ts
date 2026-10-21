@@ -367,26 +367,36 @@ export type QueuedDispatchSettlement = "remove_entry" | "mark_unconfirmed" | "ma
 /**
  * Decides what happens to a queued entry after one dispatch attempt.
  *
- * The entry owns its text until the composer has it or the send was accepted.
- * An outcome that may have been accepted must stay under its stable identity:
- * converting it into an ordinary draft would allow a fresh-id resend.
+ * The entry owns its text and identity until the send is accepted. A failed
+ * attempt is never converted back into an ordinary draft: a claim record can
+ * be lost after an earlier attempt was accepted, so an unavailable history is
+ * not evidence that the server never accepted the command. The entry stays in
+ * the queue under the same identity; only acceptance (or an acknowledgement
+ * from the thread) releases it.
  */
 export function decideQueuedDispatchSettlement(input: {
   readonly outcome: SendOutcome;
-  readonly composerStillHoldsText: boolean;
   readonly previousDispatchState: QueuedDispatchState;
 }): QueuedDispatchSettlement {
   if (input.outcome === "accepted") return "remove_entry";
   if (input.outcome === "unknown") return "mark_unconfirmed";
-  if (input.outcome === "not_attempted") {
-    // Never turn a claimed entry back into an automatically dispatchable one:
-    // an unreflected blocker could otherwise retry in a loop.
-    return input.previousDispatchState === "unconfirmed" ? "mark_unconfirmed" : "mark_failed";
-  }
-  // `not_sent`. A known local failure on a retry cannot resolve an earlier
-  // attempt whose command may already have been accepted.
-  if (input.previousDispatchState === "unconfirmed") return "mark_unconfirmed";
-  return input.composerStillHoldsText ? "remove_entry" : "mark_failed";
+  // `not_sent` and `not_attempted` prove only that this attempt stopped before
+  // the turn. A previous failed record can stay "failed"; an entry with no such
+  // record has unavailable history, so it must not claim to be definitely
+  // unsent. Neither state is replayed automatically.
+  return input.previousDispatchState === "failed" ? "mark_failed" : "mark_unconfirmed";
+}
+
+/**
+ * A queued send owns its text and identity until the send is accepted.
+ * Restoring it into the ordinary draft would discard that identity and allow a
+ * fresh-id resend of a command whose acceptance history may be unavailable.
+ * Ordinary direct sends keep restoring the composer on failure.
+ */
+export function shouldRestoreComposerDraftAfterFailure(input: {
+  readonly queuedDispatch: boolean;
+}): boolean {
+  return !input.queuedDispatch;
 }
 
 /**
@@ -430,10 +440,18 @@ export interface ResolvedSendIdentity {
 /**
  * Identity for one queued dispatch attempt.
  *
- * The first attempt derives both ids from the already-saved queue entry, so a
- * claim that never reached persistent browser storage cannot replay under a
- * fresh identity and duplicate a send the server already accepted. An unknown
- * earlier attempt keeps its identity. Only a definitive failure starts over.
+ * Every attempt for a queue entry reuses the identity already recorded for it,
+ * or the deterministic identity derived from the entry's immutable id. The
+ * identity is never regenerated. A claim that never reached browser storage can
+ * therefore replay under the same command id, and the server's receipt
+ * deduplicates it even when local history cannot prove whether the original
+ * attempt was accepted.
+ *
+ * `failed` currently means only a local `not_sent`/`not_attempted` outcome; a
+ * generic server error stays `unknown`. If an affirmative, definitive rejection
+ * is ever classified, its replacement identity must be derived deterministically
+ * from the persisted failed record rather than generated randomly, because the
+ * same failed record can be restored repeatedly after a lost claim.
  */
 export interface QueuedDispatchAttemptIdentity {
   readonly messageId: string;
@@ -458,12 +476,10 @@ export function resolveQueuedDispatchAttempt(input: {
     readonly attemptedAt: string;
     readonly state: QueuedDispatchState;
   } | null;
-  readonly freshMessageId: string;
-  readonly freshCommandId: string;
   readonly now: string;
 }): QueuedDispatchAttemptIdentity {
   const previous = input.previousDispatch;
-  if (previous !== null && previous.state !== "failed") {
+  if (previous !== null) {
     return {
       messageId: previous.messageId,
       commandId: previous.commandId,
@@ -471,13 +487,6 @@ export function resolveQueuedDispatchAttempt(input: {
       // before that field existed fall back to the first attempt time, never
       // to the time the message was queued.
       messageCreatedAt: previous.messageCreatedAt ?? previous.attemptedAt,
-    };
-  }
-  if (previous?.state === "failed") {
-    return {
-      messageId: input.freshMessageId,
-      commandId: input.freshCommandId,
-      messageCreatedAt: input.now,
     };
   }
   return {
@@ -533,40 +542,17 @@ export function isComposerDraftEmpty(input: {
   );
 }
 
-/**
- * True when the original target's durable draft holds exactly the text a
- * failed queued send restored: the text and no live attachments. The queue can
- * then release its entry because the composer owns the content.
- */
-export function composerDraftHoldsQueuedText(
-  input: {
-    readonly prompt: string;
-    readonly imageCount: number;
-    readonly terminalContextCount: number;
-    readonly elementContextCount: number;
-    readonly previewAnnotationCount: number;
-    readonly reviewCommentCount: number;
-  },
-  text: string,
-): boolean {
-  return (
-    input.prompt === text &&
-    input.imageCount === 0 &&
-    input.terminalContextCount === 0 &&
-    input.elementContextCount === 0 &&
-    input.previewAnnotationCount === 0 &&
-    input.reviewCommentCount === 0
-  );
-}
-
 interface QueueEntryWithDispatch {
   readonly id: string;
   readonly dispatch: { readonly messageId: string } | null;
 }
 
 /**
- * Queue entries whose send identity already appears in the thread have been
- * accepted by the server; their local claim can be released without replaying.
+ * Queue entries whose stable send identity already appears in the thread have
+ * been accepted by the server; their local claim can be released without
+ * replaying. An entry with no claim still has a deterministic identity derived
+ * from its immutable id, so available history can acknowledge an attempt whose
+ * claim record was lost before it could be persisted.
  */
 export function selectAcknowledgedQueuedMessageIds(input: {
   readonly queuedMessages: ReadonlyArray<QueueEntryWithDispatch>;
@@ -574,8 +560,8 @@ export function selectAcknowledgedQueuedMessageIds(input: {
 }): string[] {
   const acknowledged: string[] = [];
   for (const entry of input.queuedMessages) {
-    const dispatch = entry.dispatch;
-    if (dispatch && input.messageIds.has(dispatch.messageId)) {
+    const messageId = entry.dispatch?.messageId ?? queuedDispatchMessageId(entry.id);
+    if (input.messageIds.has(messageId)) {
       acknowledged.push(entry.id);
     }
   }

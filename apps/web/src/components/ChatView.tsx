@@ -235,7 +235,6 @@ import {
   canRetryUnconfirmedQueuedMessage,
   classifyDispatchFailure,
   collectUserMessageBlobPreviewUrls,
-  composerDraftHoldsQueuedText,
   createLocalDispatchSnapshot,
   decideQueuedDispatchSettlement,
   deriveComposerSendState,
@@ -259,6 +258,7 @@ import {
   revokeUserMessagePreviewUrls,
   selectAcknowledgedQueuedMessageIds,
   type SendOutcome,
+  shouldRestoreComposerDraftAfterFailure,
   upsertOptimisticUserMessage,
   waitForStartedServerThread,
 } from "./ChatView.logic";
@@ -4087,8 +4087,6 @@ function ChatViewContent(props: ChatViewProps) {
        * or otherwise disturb a newer draft that the visible composer owns.
        */
       promptOverride?: string;
-      /** Preserve an earlier unknown attempt even if this retry never left the client. */
-      preserveUnknownOnFailure?: boolean;
     },
   ): Promise<SendOutcome> => {
     e?.preventDefault();
@@ -4165,8 +4163,9 @@ function ChatViewContent(props: ChatViewProps) {
       });
       const shouldRestorePlanDraft =
         outcome !== "accepted" &&
-        (options?.queuedDispatch === undefined ||
-          (options?.preserveUnknownOnFailure !== true && outcome === "not_sent"));
+        shouldRestoreComposerDraftAfterFailure({
+          queuedDispatch: options?.queuedDispatch !== undefined,
+        });
       if (shouldRestorePlanDraft) {
         restoreComposerDraftSnapshot(draftTargetForFollowUp, draftSnapshot);
       }
@@ -4470,7 +4469,6 @@ function ChatViewContent(props: ChatViewProps) {
           : "not_sent";
       const outcome: SendOutcome = failureKind === "unknown" ? "unknown" : "not_sent";
       const isQueuedDispatch = options?.queuedDispatch !== undefined;
-      const preserveUnknown = isQueuedDispatch && options?.preserveUnknownOnFailure === true;
       // A queued entry keeps its own copy of the text, so a failed attempt can
       // always drop the optimistic row by its stable id. This also prevents a
       // retry from appending a second row with the same id.
@@ -4483,7 +4481,12 @@ function ChatViewContent(props: ChatViewProps) {
           return removeOptimisticUserMessage(existing, messageIdForSend);
         });
       }
-      const shouldRestore = isQueuedDispatch ? failureKind !== "unknown" && !preserveUnknown : true;
+      // Never release a queued entry back into the ordinary draft. Its send
+      // identity lives on the entry; a local failure does not prove that an
+      // earlier attempt, whose claim may have been lost, was not accepted.
+      const shouldRestore = shouldRestoreComposerDraftAfterFailure({
+        queuedDispatch: isQueuedDispatch,
+      });
       if (shouldRestore) {
         const restored = restoreComposerDraftSnapshot(composerDraftTarget, {
           prompt: promptForSend,
@@ -4559,27 +4562,12 @@ function ChatViewContent(props: ChatViewProps) {
       return;
     }
 
-    const previouslyUnconfirmed = previousDispatch?.state === "unconfirmed";
-    // Decide ownership from the original target's persisted draft, never from
-    // whichever composer refs happen to be visible after navigation.
+    // Decide ownership from the queue entry, never from whichever composer
+    // refs happen to be visible after navigation. A failed local attempt keeps
+    // the entry and its identity; only acceptance releases it.
     const settle = (outcome: SendOutcome) => {
-      const targetDraft = useComposerDraftStore.getState().getComposerDraft(target);
-      const targetHoldsText = targetDraft
-        ? composerDraftHoldsQueuedText(
-            {
-              prompt: targetDraft.prompt,
-              imageCount: targetDraft.images.length,
-              terminalContextCount: targetDraft.terminalContexts.length,
-              elementContextCount: targetDraft.elementContexts.length,
-              previewAnnotationCount: targetDraft.previewAnnotations.length,
-              reviewCommentCount: targetDraft.reviewComments.length,
-            },
-            text,
-          )
-        : false;
       const decision = decideQueuedDispatchSettlement({
         outcome,
-        composerStillHoldsText: targetHoldsText,
         previousDispatchState: previousDispatch?.state ?? "none",
       });
       if (decision === "remove_entry") {
@@ -4594,8 +4582,6 @@ function ChatViewContent(props: ChatViewProps) {
     const attemptIdentity = resolveQueuedDispatchAttempt({
       queuedMessageId,
       previousDispatch,
-      freshMessageId: newMessageId(),
-      freshCommandId: CommandId.make(randomHex(16)),
       now: new Date().toISOString(),
     });
     const claim = await claimQueuedComposerMessageDispatch(
@@ -4632,7 +4618,6 @@ function ChatViewContent(props: ChatViewProps) {
       bypassQueue: true,
       queuedDispatch: dispatchIdentity,
       promptOverride: text,
-      preserveUnknownOnFailure: previouslyUnconfirmed,
     })
       .then(settle, () => settle("unknown"))
       .finally(() => {
@@ -4724,7 +4709,6 @@ function ChatViewContent(props: ChatViewProps) {
     // render's values already, and including it would redefine the effect's
     // identity every render without changing when it should run. Dispatch
     // blockers are listed so clearing one retries a retained entry.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     phase,
     composerDraftIsEmpty,

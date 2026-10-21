@@ -19,7 +19,6 @@ import {
   canDispatchQueuedMessage,
   canRetryUnconfirmedQueuedMessage,
   classifyDispatchFailure,
-  composerDraftHoldsQueuedText,
   createLocalDispatchSnapshot,
   decideQueuedDispatchSettlement,
   deriveComposerSendState,
@@ -28,6 +27,7 @@ import {
   hasServerAcknowledgedLocalDispatch,
   isComposerDraftEmpty,
   partitionQueuedMessages,
+  queuedDispatchMessageId,
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
   removeOptimisticUserMessage,
@@ -35,6 +35,7 @@ import {
   resolveSendEnvMode,
   resolveSendIdentity,
   selectAcknowledgedQueuedMessageIds,
+  shouldRestoreComposerDraftAfterFailure,
   shouldWriteThreadErrorToCurrentServerThread,
   upsertOptimisticUserMessage,
 } from "./ChatView.logic";
@@ -591,12 +592,12 @@ describe("classifyDispatchFailure", () => {
 describe("decideQueuedDispatchSettlement", () => {
   const firstAttempt = { previousDispatchState: "none" as const };
   const retry = { previousDispatchState: "unconfirmed" as const };
+  const failedRetry = { previousDispatchState: "failed" as const };
 
   it("removes the entry once the send accepted the text", () => {
     expect(
       decideQueuedDispatchSettlement({
         outcome: "accepted",
-        composerStillHoldsText: false,
         ...firstAttempt,
       }),
     ).toBe("remove_entry");
@@ -606,64 +607,64 @@ describe("decideQueuedDispatchSettlement", () => {
     expect(
       decideQueuedDispatchSettlement({
         outcome: "unknown",
-        composerStillHoldsText: true,
         ...firstAttempt,
       }),
     ).toBe("mark_unconfirmed");
   });
 
-  it("marks a first attempt that definitely did not leave the client as failed", () => {
+  it("keeps a first attempt whose history is unavailable unconfirmed, not failed", () => {
+    // A lost claim restores `dispatch: null`. This attempt may not have left
+    // the client, but an earlier attempt under the same deterministic identity
+    // may already have been accepted, so it must stay retryable under that
+    // identity rather than become a fresh-id draft.
     expect(
       decideQueuedDispatchSettlement({
         outcome: "not_sent",
-        composerStillHoldsText: false,
         ...firstAttempt,
       }),
-    ).toBe("mark_failed");
-  });
-
-  it("marks a first attempt that was never attempted as failed", () => {
+    ).toBe("mark_unconfirmed");
     expect(
       decideQueuedDispatchSettlement({
         outcome: "not_attempted",
-        composerStillHoldsText: false,
         ...firstAttempt,
       }),
-    ).toBe("mark_failed");
-  });
-
-  it("removes the entry when a definitive local failure restored the text", () => {
-    expect(
-      decideQueuedDispatchSettlement({
-        outcome: "not_sent",
-        composerStillHoldsText: true,
-        ...firstAttempt,
-      }),
-    ).toBe("remove_entry");
+    ).toBe("mark_unconfirmed");
   });
 
   it("keeps a retry unconfirmed when this attempt never reached the command", () => {
     expect(
       decideQueuedDispatchSettlement({
         outcome: "not_sent",
-        composerStillHoldsText: true,
         ...retry,
       }),
     ).toBe("mark_unconfirmed");
     expect(
       decideQueuedDispatchSettlement({
         outcome: "not_attempted",
-        composerStillHoldsText: false,
         ...retry,
       }),
     ).toBe("mark_unconfirmed");
+  });
+
+  it("keeps a repeated local failure failed without releasing its identity", () => {
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "not_sent",
+        ...failedRetry,
+      }),
+    ).toBe("mark_failed");
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "not_attempted",
+        ...failedRetry,
+      }),
+    ).toBe("mark_failed");
   });
 
   it("keeps a retry unconfirmed after a generic dispatch error", () => {
     expect(
       decideQueuedDispatchSettlement({
         outcome: "unknown",
-        composerStillHoldsText: true,
         ...retry,
       }),
     ).toBe("mark_unconfirmed");
@@ -701,14 +702,19 @@ describe("canRetryUnconfirmedQueuedMessage", () => {
 describe("resolveQueuedDispatchAttempt", () => {
   const queuedMessageId = "queue-entry-1";
   const firstAttemptAt = "2026-10-21T10:00:00.000Z";
+  const failedDispatch = {
+    messageId: `queued-message:${queuedMessageId}`,
+    commandId: `queued-command:${queuedMessageId}`,
+    messageCreatedAt: firstAttemptAt,
+    attemptedAt: firstAttemptAt,
+    state: "failed" as const,
+  };
 
   it("derives the first attempt ids from the saved queue entry", () => {
     expect(
       resolveQueuedDispatchAttempt({
         queuedMessageId,
         previousDispatch: null,
-        freshMessageId: "fresh-message",
-        freshCommandId: "fresh-command",
         now: firstAttemptAt,
       }),
     ).toEqual({
@@ -722,15 +728,11 @@ describe("resolveQueuedDispatchAttempt", () => {
     const replay = resolveQueuedDispatchAttempt({
       queuedMessageId,
       previousDispatch: null,
-      freshMessageId: "another-message",
-      freshCommandId: "another-command",
       now: "2026-10-21T12:00:00.000Z",
     });
     const first = resolveQueuedDispatchAttempt({
       queuedMessageId,
       previousDispatch: null,
-      freshMessageId: "fresh-message",
-      freshCommandId: "fresh-command",
       now: firstAttemptAt,
     });
 
@@ -750,8 +752,6 @@ describe("resolveQueuedDispatchAttempt", () => {
           attemptedAt: "2026-10-21T09:59:00.000Z",
           state: "unconfirmed",
         },
-        freshMessageId: "fresh-message",
-        freshCommandId: "fresh-command",
         now: "2026-10-21T12:00:00.000Z",
       }),
     ).toEqual({
@@ -771,33 +771,41 @@ describe("resolveQueuedDispatchAttempt", () => {
           attemptedAt: firstAttemptAt,
           state: "unconfirmed",
         },
-        freshMessageId: "fresh-message",
-        freshCommandId: "fresh-command",
         now: "2026-10-21T12:00:00.000Z",
       }).messageCreatedAt,
     ).toBe(firstAttemptAt);
   });
 
-  it("starts a definitive failed attempt over with fresh ids", () => {
-    expect(
-      resolveQueuedDispatchAttempt({
-        queuedMessageId,
-        previousDispatch: {
-          messageId: "queued-message",
-          commandId: "queued-command",
-          messageCreatedAt: firstAttemptAt,
-          attemptedAt: firstAttemptAt,
-          state: "failed",
-        },
-        freshMessageId: "fresh-message",
-        freshCommandId: "fresh-command",
-        now: "2026-10-21T12:00:00.000Z",
-      }),
-    ).toEqual({
-      messageId: "fresh-message",
-      commandId: "fresh-command",
-      messageCreatedAt: "2026-10-21T12:00:00.000Z",
+  it("reconstructs an accepted manual retry from the restored failed record", () => {
+    // The retry was accepted under this identity and its replacement claim was
+    // lost; the storage snapshot fell back to the failed record.
+    const reconstructed = resolveQueuedDispatchAttempt({
+      queuedMessageId,
+      previousDispatch: failedDispatch,
+      now: "2026-10-21T12:00:00.000Z",
     });
+
+    expect(reconstructed).toEqual({
+      messageId: failedDispatch.messageId,
+      commandId: failedDispatch.commandId,
+      messageCreatedAt: firstAttemptAt,
+    });
+  });
+
+  it("reconstructs the same identity every time the same failed record is restored", () => {
+    const first = resolveQueuedDispatchAttempt({
+      queuedMessageId,
+      previousDispatch: failedDispatch,
+      now: "2026-10-21T12:00:00.000Z",
+    });
+    const second = resolveQueuedDispatchAttempt({
+      queuedMessageId,
+      previousDispatch: failedDispatch,
+      now: "2026-10-21T18:00:00.000Z",
+    });
+
+    expect(first).toEqual(second);
+    expect(first.messageId).not.toBe(queuedDispatchMessageId(`${queuedMessageId}-other`));
   });
 });
 
@@ -845,6 +853,35 @@ describe("resolveSendIdentity", () => {
       commandId: null,
       messageCreatedAt: "2026-10-21T11:00:00.000Z",
     });
+  });
+
+  it("keeps a reconstructed plan follow-up identity and first attempt time stable", () => {
+    const reconstructed = resolveQueuedDispatchAttempt({
+      queuedMessageId: "queue-entry-plan",
+      previousDispatch: {
+        messageId: "queued-message:queue-entry-plan",
+        commandId: "queued-command:queue-entry-plan",
+        messageCreatedAt: "2026-10-21T09:30:00.000Z",
+        attemptedAt: "2026-10-21T09:30:00.000Z",
+        state: "failed",
+      },
+      now: "2026-10-21T12:00:00.000Z",
+    });
+    const first = resolveSendIdentity({
+      queuedDispatch: reconstructed,
+      newMessageId: "ordinary-1",
+      now: "2026-10-21T12:00:00.000Z",
+    });
+    const second = resolveSendIdentity({
+      queuedDispatch: reconstructed,
+      newMessageId: "ordinary-2",
+      now: "2026-10-21T18:00:00.000Z",
+    });
+
+    expect(first).toEqual(second);
+    expect(first.messageId).toBe("queued-message:queue-entry-plan");
+    expect(first.commandId).toBe("queued-command:queue-entry-plan");
+    expect(first.messageCreatedAt).toBe("2026-10-21T09:30:00.000Z");
   });
 });
 
@@ -922,22 +959,16 @@ describe("canAutoDispatchQueuedMessage", () => {
   });
 });
 
-describe("composerDraftHoldsQueuedText", () => {
-  const empty = {
-    prompt: "",
-    imageCount: 0,
-    terminalContextCount: 0,
-    elementContextCount: 0,
-    previewAnnotationCount: 0,
-    reviewCommentCount: 0,
-  };
+describe("shouldRestoreComposerDraftAfterFailure", () => {
+  it("never restores a queued dispatch into the ordinary draft", () => {
+    // Restoring would discard the entry's send identity. A local failure does
+    // not prove that an earlier attempt, whose claim may have been lost, was
+    // not accepted, so the queue keeps the content and identity instead.
+    expect(shouldRestoreComposerDraftAfterFailure({ queuedDispatch: true })).toBe(false);
+  });
 
-  it("only treats the restored text alone as queue-owned", () => {
-    expect(composerDraftHoldsQueuedText({ ...empty, prompt: "queued" }, "queued")).toBe(true);
-    expect(composerDraftHoldsQueuedText({ ...empty, prompt: "newer" }, "queued")).toBe(false);
-    expect(
-      composerDraftHoldsQueuedText({ ...empty, prompt: "queued", imageCount: 1 }, "queued"),
-    ).toBe(false);
+  it("keeps ordinary direct sends restoring the composer on failure", () => {
+    expect(shouldRestoreComposerDraftAfterFailure({ queuedDispatch: false })).toBe(true);
   });
 });
 
@@ -966,10 +997,48 @@ describe("selectAcknowledgedQueuedMessageIds", () => {
     ).toEqual(["q-accepted"]);
   });
 
-  it("never releases an entry with no recorded dispatch identity", () => {
+  it("releases an entry with no claim when its derived identity is already in history", () => {
+    // The first claim was lost before it reached storage, but the server
+    // accepted the send under the deterministic identity and reported it back.
     expect(
       selectAcknowledgedQueuedMessageIds({
-        queuedMessages: [entry("q-legacy", null)],
+        queuedMessages: [entry("q-lost-claim", null)],
+        messageIds: new Set([
+          queuedDispatchMessageId("q-lost-claim"),
+          queuedDispatchMessageId("some-other-entry"),
+        ]),
+      }),
+    ).toEqual(["q-lost-claim"]);
+  });
+
+  it("releases a restored failed record whose accepted retry identity is in history", () => {
+    // The manual retry was accepted under the record's reconstructed identity,
+    // then its replacement claim was lost and storage restored the failed
+    // record. History acknowledgement must still release that entry.
+    const queuedMessageId = "q-retry-accepted";
+    const accepted = resolveQueuedDispatchAttempt({
+      queuedMessageId,
+      previousDispatch: {
+        messageId: `queued-message:${queuedMessageId}`,
+        commandId: `queued-command:${queuedMessageId}`,
+        attemptedAt: now,
+        state: "failed",
+      },
+      now: "2026-10-21T12:00:00.000Z",
+    });
+
+    expect(
+      selectAcknowledgedQueuedMessageIds({
+        queuedMessages: [{ id: queuedMessageId, dispatch: { messageId: accepted.messageId } }],
+        messageIds: new Set([accepted.messageId]),
+      }),
+    ).toEqual([queuedMessageId]);
+  });
+
+  it("does not release an entry with no claim when history has no matching identity", () => {
+    expect(
+      selectAcknowledgedQueuedMessageIds({
+        queuedMessages: [entry("q-lost-claim", null)],
         messageIds: new Set(["anything"]),
       }),
     ).toEqual([]);

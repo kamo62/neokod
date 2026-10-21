@@ -2070,20 +2070,24 @@ describe("composerDraftStore queued dispatch claims", () => {
     expect(retryClaim.identity.messageCreatedAt).toBe(firstClaim.identity.messageCreatedAt);
   });
 
-  it("starts a fresh identity after a definitively failed attempt", async () => {
+  it("keeps the recorded identity after a failed attempt", async () => {
     const queuedMessageId = storeModule.useComposerDraftStore
       .getState()
       .addQueuedMessage(threadRef, "carry on")!;
-    await storeModule.useComposerDraftStore
+    const firstClaim = await storeModule.useComposerDraftStore
       .getState()
       .claimQueuedMessageDispatch(threadRef, queuedMessageId, {
         messageId: "message-1",
         commandId: "command-1",
       });
+    if (firstClaim.status !== "claimed") throw new Error("expected a claimed dispatch");
     storeModule.useComposerDraftStore
       .getState()
       .markQueuedMessageDispatchFailed(threadRef, queuedMessageId);
 
+    // The caller resolved a retry identity from the failed record. The store
+    // keeps the recorded identity even if a different one is supplied, so a
+    // restored failed record cannot turn into an unrelated fresh id.
     const retryClaim = await storeModule.useComposerDraftStore
       .getState()
       .claimQueuedMessageDispatch(threadRef, queuedMessageId, {
@@ -2094,15 +2098,52 @@ describe("composerDraftStore queued dispatch claims", () => {
     expect(retryClaim).toEqual({
       status: "claimed",
       identity: {
-        messageId: "message-2",
-        commandId: "command-2",
-        messageCreatedAt: expect.any(String),
+        messageId: "message-1",
+        commandId: "command-1",
+        messageCreatedAt: firstClaim.identity.messageCreatedAt,
       },
     });
     expect(
       storeModule.useComposerDraftStore.getState().getComposerDraft(threadRef)?.queuedMessages[0]
         ?.dispatch,
-    ).toMatchObject({ messageId: "message-2", commandId: "command-2", state: "in_flight" });
+    ).toMatchObject({ messageId: "message-1", commandId: "command-1", state: "in_flight" });
+  });
+
+  it("reuses the same failed-record identity across repeated reconstructions", async () => {
+    const queuedMessageId = storeModule.useComposerDraftStore
+      .getState()
+      .addQueuedMessage(threadRef, "carry on")!;
+    const firstClaim = await storeModule.useComposerDraftStore
+      .getState()
+      .claimQueuedMessageDispatch(threadRef, queuedMessageId, {
+        messageId: "message-1",
+        commandId: "command-1",
+      });
+    if (firstClaim.status !== "claimed") throw new Error("expected a claimed dispatch");
+    storeModule.useComposerDraftStore
+      .getState()
+      .markQueuedMessageDispatchFailed(threadRef, queuedMessageId);
+
+    const firstRetry = await storeModule.useComposerDraftStore
+      .getState()
+      .claimQueuedMessageDispatch(threadRef, queuedMessageId, {
+        messageId: "message-1",
+        commandId: "command-1",
+      });
+    storeModule.useComposerDraftStore
+      .getState()
+      .markQueuedMessageDispatchFailed(threadRef, queuedMessageId);
+    const secondRetry = await storeModule.useComposerDraftStore
+      .getState()
+      .claimQueuedMessageDispatch(threadRef, queuedMessageId, {
+        messageId: "message-1",
+        commandId: "command-1",
+      });
+
+    expect(firstRetry).toEqual(secondRetry);
+    expect(firstRetry.status).toBe("claimed");
+    if (firstRetry.status !== "claimed" || secondRetry.status !== "claimed") return;
+    expect(secondRetry.identity).toEqual(firstClaim.identity);
   });
 
   it("keeps the queue and reverts a claim that could not be written", async () => {

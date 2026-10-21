@@ -121,9 +121,9 @@ export interface ComposerImageAttachment extends Omit<ChatImageAttachment, "prev
  * A claim is "persisted" only when it has been accepted into browser storage.
  * That is acceptance by the storage backend, not proof that the operating
  * system flushed it to disk: a force-kill before the browser writes its cache
- * can still lose it. Queued sends therefore derive their first-attempt ids from
- * the saved queue entry, so a lost claim replays under the same ids and the
- * server receipt cannot accept a second copy.
+ * can still lose it. Queued sends therefore derive their logical send identity
+ * from the saved queue entry, so a lost claim replays under the same ids and
+ * the server receipt cannot accept a second copy.
  *
  * The claim outlives the component that started the send so a remount cannot
  * dispatch the same entry twice. `in_flight` is live-process state; a renderer
@@ -612,8 +612,10 @@ interface ComposerDraftStoreState {
     queuedMessageId: string,
   ) => void;
   /**
-   * Marks a claim whose command was definitively not accepted. The text stays
-   * queued, is never auto-replayed, and a retry uses fresh ids.
+   * Marks a claim whose current attempt stopped locally (`not_sent` or
+   * `not_attempted`). The text stays queued, is never auto-replayed, and a
+   * retry keeps the entry's identity so a lost claim cannot lead to a second
+   * accepted copy.
    */
   markQueuedMessageDispatchFailed: (
     threadRef: ComposerThreadTarget,
@@ -3575,28 +3577,31 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             // The first attempt's timestamp is stable across retries. Legacy
             // claims predate the field; their `attemptedAt` is the first
             // attempt time.
-            const messageCreatedAt =
-              entry.dispatch?.state === "unconfirmed"
-                ? (entry.dispatch.messageCreatedAt ??
-                  identity.messageCreatedAt ??
-                  entry.dispatch.attemptedAt)
-                : (identity.messageCreatedAt ?? attemptedAt);
-            // Only an unknown earlier attempt must keep its identity. A known
-            // failure was not accepted, so a retry starts with fresh ids.
-            const dispatch: QueuedComposerMessageDispatch =
-              entry.dispatch?.state === "unconfirmed"
-                ? {
-                    ...entry.dispatch,
-                    messageCreatedAt,
-                    state: "in_flight",
-                  }
-                : {
-                    messageId: identity.messageId,
-                    commandId: identity.commandId,
-                    attemptedAt,
-                    messageCreatedAt,
-                    state: "in_flight",
-                  };
+            const messageCreatedAt = entry.dispatch
+              ? (entry.dispatch.messageCreatedAt ??
+                identity.messageCreatedAt ??
+                entry.dispatch.attemptedAt)
+              : (identity.messageCreatedAt ?? attemptedAt);
+            // Once an entry has a dispatch record, that identity is the
+            // entry's logical send identity and is retained for every state.
+            // Replacing a failed record with a random identity would make an
+            // accepted retry impossible to reconstruct after a lost claim.
+            // A future affirmative rejection that genuinely needs a new
+            // identity would have to derive it deterministically from this
+            // record and be added here deliberately.
+            const dispatch: QueuedComposerMessageDispatch = entry.dispatch
+              ? {
+                  ...entry.dispatch,
+                  messageCreatedAt,
+                  state: "in_flight",
+                }
+              : {
+                  messageId: identity.messageId,
+                  commandId: identity.commandId,
+                  attemptedAt,
+                  messageCreatedAt,
+                  state: "in_flight",
+                };
             claimState.identity = {
               messageId: dispatch.messageId,
               commandId: dispatch.commandId,
