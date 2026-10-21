@@ -1,9 +1,10 @@
 import {
   type ApprovalRequestId,
+  CommandId,
   DEFAULT_MODEL,
   defaultInstanceIdForDriver,
   type EnvironmentId,
-  type MessageId,
+  MessageId,
   type ModelSelection,
   type ProjectScript,
   type ProjectId,
@@ -168,8 +169,10 @@ import {
 import { buildDraftThreadRouteParams } from "../threadRoutes";
 import {
   type ComposerImageAttachment,
+  type ComposerThreadTarget,
   type DraftThreadEnvMode,
   EMPTY_QUEUED_MESSAGES,
+  composerTargetKey,
   useComposerDraftStore,
   type DraftId,
 } from "../composerDraftStore";
@@ -227,14 +230,15 @@ import {
   buildExpiredTerminalContextToastCopy,
   buildLocalDraftThread,
   buildThreadTurnInterruptInput,
+  canAutoDispatchQueuedMessage,
   canDispatchQueuedMessage,
   collectUserMessageBlobPreviewUrls,
+  composerDraftHoldsQueuedText,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
   deriveActiveToolLabel,
   hasServerAcknowledgedLocalDispatch,
   getStartedThreadModelChangeBlockReason,
-  isComposerDraftEmpty,
   LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
   LastInvokedScriptByProjectSchema,
   type LocalDispatchSnapshot,
@@ -246,6 +250,7 @@ import {
   resolveSendEnvMode,
   revokeBlobPreviewUrl,
   revokeUserMessagePreviewUrls,
+  selectAcknowledgedQueuedMessageIds,
   type SendOutcome,
   settleQueuedDispatch,
   waitForStartedServerThread,
@@ -1067,7 +1072,7 @@ function ChatViewContent(props: ChatViewProps) {
     () => new Map(environments.map((environment) => [environment.environmentId, environment])),
     [environments],
   );
-  const composerDraftTarget: ScopedThreadRef | DraftId =
+  const composerDraftTarget: ComposerThreadTarget =
     routeKind === "server" ? routeThreadRef : props.draftId;
   const serverThread = useThread(routeKind === "server" ? routeThreadRef : null);
   const markThreadVisited = useUiStateStore((store) => store.markThreadVisited);
@@ -1104,18 +1109,6 @@ function ChatViewContent(props: ChatViewProps) {
   const composerActiveProvider = useComposerDraftStore(
     (store) => store.getComposerDraft(composerDraftTarget)?.activeProvider ?? null,
   );
-  const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
-  const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
-  const setComposerDraftTerminalContexts = useComposerDraftStore(
-    (store) => store.setTerminalContexts,
-  );
-  const setComposerDraftElementContexts = useComposerDraftStore(
-    (store) => store.setElementContexts,
-  );
-  const setComposerDraftPreviewAnnotations = useComposerDraftStore(
-    (store) => store.setPreviewAnnotations,
-  );
-  const setComposerDraftReviewComments = useComposerDraftStore((store) => store.setReviewComments);
   const setComposerDraftModelSelection = useComposerDraftStore((store) => store.setModelSelection);
   const setComposerDraftRuntimeMode = useComposerDraftStore((store) => store.setRuntimeMode);
   const setComposerDraftInteractionMode = useComposerDraftStore(
@@ -1130,6 +1123,13 @@ function ChatViewContent(props: ChatViewProps) {
   );
   const addQueuedComposerMessage = useComposerDraftStore((store) => store.addQueuedMessage);
   const removeQueuedComposerMessage = useComposerDraftStore((store) => store.removeQueuedMessage);
+  const claimQueuedComposerMessageDispatch = useComposerDraftStore(
+    (store) => store.claimQueuedMessageDispatch,
+  );
+  const markQueuedComposerMessageUnconfirmed = useComposerDraftStore(
+    (store) => store.markQueuedMessageDispatchUnconfirmed,
+  );
+  const restoreComposerContent = useComposerDraftStore((store) => store.restoreComposerContent);
   // Whether the live draft (independent of the queue) has anything staged.
   // Gates both auto-dispatch and manual steer so neither ever overwrites or
   // clears content the user hasn't sent yet.
@@ -1137,7 +1137,7 @@ function ChatViewContent(props: ChatViewProps) {
     const draft = store.getComposerDraft(composerDraftTarget);
     if (!draft) return true;
     return (
-      draft.prompt.trim().length === 0 &&
+      draft.prompt.length === 0 &&
       draft.images.length === 0 &&
       draft.persistedAttachments.length === 0 &&
       draft.terminalContexts.length === 0 &&
@@ -4022,27 +4022,39 @@ function ChatViewContent(props: ChatViewProps) {
     readonly reviewComments: ReadonlyArray<ReviewCommentContext>;
   }
 
-  const restoreComposerDraftSnapshot = (snapshot: ComposerDraftSnapshot) => {
-    promptRef.current = snapshot.prompt;
-    composerImagesRef.current = [...snapshot.images];
-    composerTerminalContextsRef.current = [...snapshot.terminalContexts];
-    composerElementContextsRef.current = [...snapshot.elementContexts];
-    setComposerDraftPrompt(composerDraftTarget, snapshot.prompt);
-    addComposerDraftImages(composerDraftTarget, [...snapshot.images]);
-    setComposerDraftTerminalContexts(composerDraftTarget, [...snapshot.terminalContexts]);
-    setComposerDraftElementContexts(composerDraftTarget, [...snapshot.elementContexts]);
-    setComposerDraftPreviewAnnotations(composerDraftTarget, [...snapshot.previewAnnotations]);
-    setComposerDraftReviewComments(composerDraftTarget, [...snapshot.reviewComments]);
-    composerRef.current?.resetCursorState({
-      cursor: collapseExpandedComposerCursor(snapshot.prompt, snapshot.prompt.length),
-      prompt: snapshot.prompt,
-      detectTrigger: true,
-    });
+  // Restores into the target that owned the send, never into whichever
+  // composer happens to be on screen. The store write only happens while that
+  // target's durable draft is still empty, so a newer draft is never
+  // overwritten. The live refs and cursor move only when the target is still
+  // the current route.
+  const restoreComposerDraftSnapshot = (
+    target: ComposerThreadTarget,
+    snapshot: ComposerDraftSnapshot,
+  ): boolean => {
+    const restored = restoreComposerContent(target, snapshot, { onlyIfEmpty: true });
+    if (!restored) {
+      return false;
+    }
+    if (composerTargetKey(target) === composerTargetKey(composerDraftTargetRef.current)) {
+      promptRef.current = snapshot.prompt;
+      composerImagesRef.current = [...snapshot.images];
+      composerTerminalContextsRef.current = [...snapshot.terminalContexts];
+      composerElementContextsRef.current = [...snapshot.elementContexts];
+      composerRef.current?.resetCursorState({
+        cursor: collapseExpandedComposerCursor(snapshot.prompt, snapshot.prompt.length),
+        prompt: snapshot.prompt,
+        detectTrigger: true,
+      });
+    }
+    return true;
   };
 
   const onSend = async (
     e?: { preventDefault: () => void },
-    options?: { bypassQueue?: boolean },
+    options?: {
+      bypassQueue?: boolean;
+      queuedDispatch?: { readonly messageId: string; readonly commandId: string };
+    },
   ): Promise<SendOutcome> => {
     e?.preventDefault();
     if (
@@ -4111,21 +4123,7 @@ function ChatViewContent(props: ChatViewProps) {
         interactionMode: followUp.interactionMode,
       });
       if (outcome === "rejected" && composerDraftTargetRef.current === draftTargetForFollowUp) {
-        const currentDraft = useComposerDraftStore
-          .getState()
-          .getComposerDraft(draftTargetForFollowUp);
-        if (
-          isComposerDraftEmpty({
-            prompt: promptRef.current,
-            imageCount: composerImagesRef.current.length,
-            terminalContextCount: composerTerminalContextsRef.current.length,
-            elementContextCount: composerElementContextsRef.current.length,
-            previewAnnotationCount: currentDraft?.previewAnnotations.length ?? 0,
-            reviewCommentCount: currentDraft?.reviewComments.length ?? 0,
-          })
-        ) {
-          restoreComposerDraftSnapshot(draftSnapshot);
-        }
+        restoreComposerDraftSnapshot(draftTargetForFollowUp, draftSnapshot);
       }
       return outcome === "accepted" ? "accepted" : "failed";
     }
@@ -4219,7 +4217,9 @@ function ChatViewContent(props: ChatViewProps) {
       messageTextWithPreviewAnnotations,
       composerReviewCommentsSnapshot,
     );
-    const messageIdForSend = newMessageId();
+    const messageIdForSend = options?.queuedDispatch
+      ? MessageId.make(options.queuedDispatch.messageId)
+      : newMessageId();
     const messageCreatedAt = new Date().toISOString();
     const outgoingMessageText = formatOutgoingPrompt({
       provider: ctxSelectedProvider,
@@ -4386,6 +4386,9 @@ function ChatViewContent(props: ChatViewProps) {
         environmentId,
         input: {
           threadId: threadIdForSend,
+          ...(options?.queuedDispatch
+            ? { commandId: CommandId.make(options.queuedDispatch.commandId) }
+            : {}),
           message: {
             messageId: messageIdForSend,
             role: "user",
@@ -4408,17 +4411,15 @@ function ChatViewContent(props: ChatViewProps) {
     }
 
     if (failure !== null) {
-      const currentDraft = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
-      if (
-        isComposerDraftEmpty({
-          prompt: promptRef.current,
-          imageCount: composerImagesRef.current.length,
-          terminalContextCount: composerTerminalContextsRef.current.length,
-          elementContextCount: composerElementContextsRef.current.length,
-          previewAnnotationCount: currentDraft?.previewAnnotations.length ?? 0,
-          reviewCommentCount: currentDraft?.reviewComments.length ?? 0,
-        })
-      ) {
+      const restored = restoreComposerDraftSnapshot(composerDraftTarget, {
+        prompt: promptForSend,
+        images: composerImagesSnapshot.map(cloneComposerImageForRetry),
+        terminalContexts: composerTerminalContextsSnapshot,
+        elementContexts: composerElementContextsSnapshot,
+        previewAnnotations: composerPreviewAnnotationsSnapshot,
+        reviewComments: composerReviewCommentsSnapshot,
+      });
+      if (restored) {
         setOptimisticUserMessages((existing) => {
           const removed = existing.filter((message) => message.id === messageIdForSend);
           for (const message of removed) {
@@ -4426,14 +4427,6 @@ function ChatViewContent(props: ChatViewProps) {
           }
           const next = existing.filter((message) => message.id !== messageIdForSend);
           return next.length === existing.length ? existing : next;
-        });
-        restoreComposerDraftSnapshot({
-          prompt: promptForSend,
-          images: composerImagesSnapshot.map(cloneComposerImageForRetry),
-          terminalContexts: composerTerminalContextsSnapshot,
-          elementContexts: composerElementContextsSnapshot,
-          previewAnnotations: composerPreviewAnnotationsSnapshot,
-          reviewComments: composerReviewCommentsSnapshot,
         });
       }
       if (!isAtomCommandInterrupted(failure)) {
@@ -4451,12 +4444,27 @@ function ChatViewContent(props: ChatViewProps) {
     return turnStartSucceeded ? "accepted" : "failed";
   };
 
-  // Guards re-entrant dispatch of a queued message: set for the span between
-  // handing its text to `onSend` and that call settling, which covers the
-  // window before `phase` has had a chance to flip to "running".
+  // Guards re-entrant dispatch inside one component lifetime. The durable
+  // claim in the draft store is the cross-remount authority: it is set before
+  // `onSend` and cleared only when that invocation settles.
   const dispatchingQueuedMessageRef = useRef(false);
 
-  const dispatchQueuedMessage = (queuedMessageId: string, text: string) => {
+  const dispatchQueuedMessage = (
+    queuedMessageId: string,
+    text: string,
+    options?: { readonly allowUnconfirmed?: boolean },
+  ) => {
+    const target = composerDraftTarget;
+    const queuedMessage = queuedComposerMessages.find((entry) => entry.id === queuedMessageId);
+    if (!queuedMessage) {
+      return;
+    }
+    if (queuedMessage.dispatch?.state === "in_flight") {
+      return;
+    }
+    if (queuedMessage.dispatch?.state === "unconfirmed" && options?.allowUnconfirmed !== true) {
+      return;
+    }
     if (
       !canDispatchQueuedMessage({
         hasActiveThread: activeThread !== null && activeThread !== undefined,
@@ -4464,23 +4472,52 @@ function ChatViewContent(props: ChatViewProps) {
         isConnecting,
         environmentUnavailable: Boolean(activeEnvironmentUnavailable),
         sendInFlight: sendInFlightRef.current,
+        hasPendingUserInput: Boolean(activePendingProgress),
       })
     ) {
       return;
     }
+
     dispatchingQueuedMessageRef.current = true;
+    // Reuse the entry's identity on an explicit retry. The server's durable
+    // command receipt makes that retry idempotent even if the first attempt
+    // was accepted but its acknowledgement was lost.
+    const dispatchIdentity = claimQueuedComposerMessageDispatch(target, queuedMessageId, {
+      messageId: queuedMessage.dispatch?.messageId ?? newMessageId(),
+      commandId: queuedMessage.dispatch?.commandId ?? CommandId.make(randomHex(16)),
+    });
+    if (!dispatchIdentity) {
+      dispatchingQueuedMessageRef.current = false;
+      return;
+    }
     promptRef.current = text;
-    // Take the outcome from this invocation's own send. A shared outcome ref
-    // would let an unrelated send decide whether this queue entry survives.
+    // Decide ownership from the original target's durable draft, never from
+    // whichever composer refs happen to be visible after navigation.
     const settle = (outcome: SendOutcome) => {
-      const composerStillHoldsText = promptRef.current === text;
-      if (settleQueuedDispatch({ outcome, composerStillHoldsText }) === "remove_entry") {
-        removeQueuedComposerMessage(composerDraftTarget, queuedMessageId);
-      } else if (composerStillHoldsText) {
-        promptRef.current = "";
+      const targetDraft = useComposerDraftStore.getState().getComposerDraft(target);
+      const targetHoldsText = targetDraft
+        ? composerDraftHoldsQueuedText(
+            {
+              prompt: targetDraft.prompt,
+              imageCount: targetDraft.images.length,
+              terminalContextCount: targetDraft.terminalContexts.length,
+              elementContextCount: targetDraft.elementContexts.length,
+              previewAnnotationCount: targetDraft.previewAnnotations.length,
+              reviewCommentCount: targetDraft.reviewComments.length,
+            },
+            text,
+          )
+        : false;
+      if (
+        settleQueuedDispatch({ outcome, composerStillHoldsText: targetHoldsText }) ===
+        "remove_entry"
+      ) {
+        removeQueuedComposerMessage(target, queuedMessageId);
+      } else {
+        markQueuedComposerMessageUnconfirmed(target, queuedMessageId);
       }
     };
-    void onSend(undefined, { bypassQueue: true })
+    void onSend(undefined, { bypassQueue: true, queuedDispatch: dispatchIdentity })
       .then(settle, () => settle("attempted"))
       .finally(() => {
         dispatchingQueuedMessageRef.current = false;
@@ -4495,9 +4532,33 @@ function ChatViewContent(props: ChatViewProps) {
   const steerQueuedMessage = (queuedMessageId: string) => {
     if (phase !== "running" || !composerDraftIsEmpty) return;
     const message = queuedComposerMessages.find((entry) => entry.id === queuedMessageId);
-    if (!message) return;
+    if (!message || message.dispatch !== null) return;
     dispatchQueuedMessage(queuedMessageId, message.text);
   };
+
+  // An unconfirmed entry is never replayed automatically. Its stable identity
+  // makes an explicit retry safe; the user decides when to make that call.
+  const retryQueuedMessage = (queuedMessageId: string) => {
+    if (phase === "running" || !composerDraftIsEmpty) return;
+    const message = queuedComposerMessages.find((entry) => entry.id === queuedMessageId);
+    if (!message || message.dispatch?.state !== "unconfirmed") return;
+    dispatchQueuedMessage(queuedMessageId, message.text, { allowUnconfirmed: true });
+  };
+
+  // A queued send whose stable message id appears in the thread has been
+  // accepted by the server. Releasing the entry here is an acknowledgement,
+  // not an inference from the absence of evidence.
+  useEffect(() => {
+    if (!activeThread || activeThread.messages.length === 0) return;
+    const messageIds = new Set(activeThread.messages.map((message) => message.id));
+    const acknowledged = selectAcknowledgedQueuedMessageIds({
+      queuedMessages: queuedComposerMessages,
+      messageIds,
+    });
+    for (const queuedMessageId of acknowledged) {
+      removeQueuedComposerMessage(composerDraftTarget, queuedMessageId);
+    }
+  }, [activeThread, composerDraftTarget, queuedComposerMessages, removeQueuedComposerMessage]);
 
   // Drains the queue one message at a time: once the turn a message was
   // queued behind has settled and the live draft is clear, send the oldest
@@ -4509,12 +4570,36 @@ function ChatViewContent(props: ChatViewProps) {
     if (!composerDraftIsEmpty) return;
     const next = queuedComposerMessages[0];
     if (!next) return;
+    if (
+      !canAutoDispatchQueuedMessage({
+        dispatchState: next.dispatch?.state ?? "none",
+        hasActiveThread: activeThread !== null && activeThread !== undefined,
+        isSendBusy,
+        isConnecting,
+        environmentUnavailable: Boolean(activeEnvironmentUnavailable),
+        sendInFlight: sendInFlightRef.current,
+        hasPendingUserInput: Boolean(activePendingProgress),
+      })
+    ) {
+      return;
+    }
     dispatchQueuedMessage(next.id, next.text);
     // dispatchQueuedMessage intentionally omitted: it closes over the latest
     // render's values already, and including it would redefine the effect's
-    // identity every render without changing when it should run.
+    // identity every render without changing when it should run. Dispatch
+    // blockers are listed so clearing one retries a retained entry.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, composerDraftIsEmpty, queuedComposerMessages, composerDraftTarget]);
+  }, [
+    phase,
+    composerDraftIsEmpty,
+    queuedComposerMessages,
+    composerDraftTarget,
+    activeThread,
+    isSendBusy,
+    isConnecting,
+    activeEnvironmentUnavailable,
+    activePendingProgress,
+  ]);
 
   const onInterrupt = async () => {
     if (!activeThread) return;
@@ -5538,6 +5623,7 @@ function ChatViewContent(props: ChatViewProps) {
                       setThreadError={setThreadError}
                       onExpandImage={onExpandTimelineImage}
                       onSteerQueuedMessage={steerQueuedMessage}
+                      onRetryQueuedMessage={retryQueuedMessage}
                     />
                   </div>
                 </div>

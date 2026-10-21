@@ -10,7 +10,11 @@ import {
   type TurnId,
 } from "@neokod/contracts";
 import { type ChatMessage, type SessionPhase, type Thread } from "../types";
-import { type ComposerImageAttachment, type DraftThreadState } from "../composerDraftStore";
+import {
+  type ComposerImageAttachment,
+  type DraftThreadState,
+  type QueuedComposerMessage,
+} from "../composerDraftStore";
 import * as Schema from "effect/Schema";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentThreadDetails } from "../state/threads";
@@ -290,14 +294,33 @@ export function canDispatchQueuedMessage(input: {
   readonly isConnecting: boolean;
   readonly environmentUnavailable: boolean;
   readonly sendInFlight: boolean;
+  readonly hasPendingUserInput?: boolean;
 }): boolean {
   return (
     input.hasActiveThread &&
     !input.isSendBusy &&
     !input.isConnecting &&
     !input.environmentUnavailable &&
-    !input.sendInFlight
+    !input.sendInFlight &&
+    input.hasPendingUserInput !== true
   );
+}
+
+/**
+ * Automatic drain waits for an entry that no send has claimed. Claimed entries
+ * are owned by the send that took them, even after the component that started
+ * it remounts.
+ */
+export function canAutoDispatchQueuedMessage(input: {
+  readonly dispatchState: "none" | "in_flight" | "unconfirmed";
+  readonly hasActiveThread: boolean;
+  readonly isSendBusy: boolean;
+  readonly isConnecting: boolean;
+  readonly environmentUnavailable: boolean;
+  readonly sendInFlight: boolean;
+  readonly hasPendingUserInput?: boolean;
+}): boolean {
+  return input.dispatchState === "none" && canDispatchQueuedMessage(input);
 }
 
 export type SendOutcome = "not_attempted" | "attempted" | "accepted" | "failed";
@@ -333,6 +356,77 @@ export function isComposerDraftEmpty(input: {
     input.previewAnnotationCount === 0 &&
     input.reviewCommentCount === 0
   );
+}
+
+/**
+ * True when the original target's durable draft holds exactly the text a
+ * failed queued send restored: the text and no live attachments. The queue can
+ * then release its entry because the composer owns the content.
+ */
+export function composerDraftHoldsQueuedText(
+  input: {
+    readonly prompt: string;
+    readonly imageCount: number;
+    readonly terminalContextCount: number;
+    readonly elementContextCount: number;
+    readonly previewAnnotationCount: number;
+    readonly reviewCommentCount: number;
+  },
+  text: string,
+): boolean {
+  return (
+    input.prompt === text &&
+    input.imageCount === 0 &&
+    input.terminalContextCount === 0 &&
+    input.elementContextCount === 0 &&
+    input.previewAnnotationCount === 0 &&
+    input.reviewCommentCount === 0
+  );
+}
+
+interface QueueEntryWithDispatch {
+  readonly id: string;
+  readonly dispatch: { readonly messageId: string } | null;
+}
+
+/**
+ * Queue entries whose send identity already appears in the thread have been
+ * accepted by the server; their local claim can be released without replaying.
+ */
+export function selectAcknowledgedQueuedMessageIds(input: {
+  readonly queuedMessages: ReadonlyArray<QueueEntryWithDispatch>;
+  readonly messageIds: ReadonlySet<string>;
+}): string[] {
+  const acknowledged: string[] = [];
+  for (const entry of input.queuedMessages) {
+    const dispatch = entry.dispatch;
+    if (dispatch && input.messageIds.has(dispatch.messageId)) {
+      acknowledged.push(entry.id);
+    }
+  }
+  return acknowledged;
+}
+
+/**
+ * Splits queued messages into those the normal queue list may control and
+ * those whose send is already in flight/unknown. Pending entries keep their
+ * durable text but expose no Remove/Steer controls that would imply they can
+ * still be cancelled or steered.
+ */
+export function partitionQueuedMessages(messages: ReadonlyArray<QueuedComposerMessage>): {
+  dispatchable: QueuedComposerMessage[];
+  pending: QueuedComposerMessage[];
+} {
+  const dispatchable: QueuedComposerMessage[] = [];
+  const pending: QueuedComposerMessage[] = [];
+  for (const message of messages) {
+    if (message.dispatch === null) {
+      dispatchable.push(message);
+    } else {
+      pending.push(message);
+    }
+  }
+  return { dispatchable, pending };
 }
 
 export function buildExpiredTerminalContextToastCopy(

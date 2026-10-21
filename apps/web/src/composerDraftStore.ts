@@ -99,6 +99,24 @@ export interface ComposerImageAttachment extends Omit<ChatImageAttachment, "prev
 }
 
 /**
+ * Durable claim for a queued message that has been handed to the send path.
+ *
+ * The claim outlives the component that started the send so a remount cannot
+ * dispatch the same entry twice. `in_flight` is live-process state; a page
+ * reload hydrates it as `unconfirmed` because the promise that could confirm
+ * the outcome no longer exists. `messageId` and `commandId` are stable across
+ * retries: the server deduplicates a repeated command id, so an explicit retry
+ * cannot create a second user message.
+ */
+export const QueuedComposerMessageDispatch = Schema.Struct({
+  messageId: Schema.String,
+  commandId: Schema.String,
+  attemptedAt: Schema.String,
+  state: Schema.Literals(["in_flight", "unconfirmed"]),
+});
+export type QueuedComposerMessageDispatch = typeof QueuedComposerMessageDispatch.Type;
+
+/**
  * A follow-up message submitted while a turn is running. Queued messages
  * dispatch automatically, oldest first, once the turn they were queued
  * behind settles: see `ChatView.tsx`'s queue-drain effect.
@@ -107,6 +125,7 @@ export const PersistedQueuedComposerMessage = Schema.Struct({
   id: Schema.String,
   text: Schema.String,
   createdAt: Schema.String,
+  dispatch: Schema.optionalKey(QueuedComposerMessageDispatch),
 });
 export type PersistedQueuedComposerMessage = typeof PersistedQueuedComposerMessage.Type;
 const isPersistedQueuedComposerMessage = Schema.is(PersistedQueuedComposerMessage);
@@ -115,6 +134,8 @@ export interface QueuedComposerMessage {
   id: string;
   text: string;
   createdAt: string;
+  /** `null` until a send claims the entry; never silently replayed afterwards. */
+  dispatch: QueuedComposerMessageDispatch | null;
 }
 
 const PersistedTerminalContextDraft = Schema.Struct({
@@ -343,7 +364,20 @@ interface ProjectDraftSession extends DraftSessionState {
  * Raw `ThreadId` is intentionally excluded so callers cannot drop environment
  * identity for real threads.
  */
-type ComposerThreadTarget = ScopedThreadRef | DraftId;
+export type ComposerThreadTarget = ScopedThreadRef | DraftId;
+
+/**
+ * Composer content captured before a send, restored only when the original
+ * target's durable draft is still empty.
+ */
+export interface ComposerDraftContentSnapshot {
+  readonly prompt: string;
+  readonly images: ReadonlyArray<ComposerImageAttachment>;
+  readonly terminalContexts: ReadonlyArray<TerminalContextDraft>;
+  readonly elementContexts: ReadonlyArray<ElementContextDraft>;
+  readonly previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
+  readonly reviewComments: ReadonlyArray<ReviewCommentContext>;
+}
 
 /**
  * Persisted store for composer content plus draft-session metadata.
@@ -511,6 +545,30 @@ interface ComposerDraftStoreState {
   /** Appends a follow-up to the queue and returns its generated id. */
   addQueuedMessage: (threadRef: ComposerThreadTarget, text: string) => string | null;
   removeQueuedMessage: (threadRef: ComposerThreadTarget, queuedMessageId: string) => void;
+  /**
+   * Claims a queued entry for one send invocation. Returns the stable identity
+   * to use (the existing one for an unconfirmed retry), or `null` when the
+   * entry is missing or already claimed in this process.
+   */
+  claimQueuedMessageDispatch: (
+    threadRef: ComposerThreadTarget,
+    queuedMessageId: string,
+    identity: { readonly messageId: string; readonly commandId: string },
+  ) => { readonly messageId: string; readonly commandId: string } | null;
+  /** Moves a live claim to the honest "outcome unknown" state. */
+  markQueuedMessageDispatchUnconfirmed: (
+    threadRef: ComposerThreadTarget,
+    queuedMessageId: string,
+  ) => void;
+  /**
+   * Restores composer content into the original target, optionally only when
+   * that target's durable draft is still empty. Returns whether it wrote.
+   */
+  restoreComposerContent: (
+    threadRef: ComposerThreadTarget,
+    content: ComposerDraftContentSnapshot,
+    options?: { readonly onlyIfEmpty?: boolean },
+  ) => boolean;
   clearPersistedAttachments: (threadRef: ComposerThreadTarget) => void;
   syncPersistedAttachments: (
     threadRef: ComposerThreadTarget,
@@ -699,6 +757,19 @@ function normalizeTerminalContextsForThread(
   }
 
   return normalizedContexts;
+}
+
+function isDraftContentEmpty(draft: ComposerThreadDraftState): boolean {
+  return (
+    draft.prompt.length === 0 &&
+    draft.images.length === 0 &&
+    draft.nonPersistedImageIds.length === 0 &&
+    draft.persistedAttachments.length === 0 &&
+    draft.terminalContexts.length === 0 &&
+    draft.elementContexts.length === 0 &&
+    draft.previewAnnotations.length === 0 &&
+    draft.reviewComments.length === 0
+  );
 }
 
 function shouldRemoveDraft(draft: ComposerThreadDraftState): boolean {
@@ -1230,7 +1301,7 @@ function logicalProjectDraftKey(logicalProjectKey: string): string {
  * Draft sessions are keyed by `DraftId`. Real threads are keyed by
  * `ScopedThreadRef` so environment identity is always preserved.
  */
-function composerTargetKey(target: ScopedThreadRef | DraftId): string {
+export function composerTargetKey(target: ScopedThreadRef | DraftId): string {
   if (typeof target === "string") {
     return target.trim();
   }
@@ -1946,7 +2017,12 @@ function partializeComposerDraftStoreState(
         : {}),
       ...(draft.queuedMessages.length > 0
         ? {
-            queuedMessages: draft.queuedMessages.map((message) => ({ ...message })),
+            queuedMessages: draft.queuedMessages.map((message) => ({
+              id: message.id,
+              text: message.text,
+              createdAt: message.createdAt,
+              ...(message.dispatch ? { dispatch: { ...message.dispatch } } : {}),
+            })),
           }
         : {}),
       ...(hasModelData
@@ -2192,7 +2268,21 @@ function toHydratedThreadDraft(
     previewAnnotations:
       persistedDraft.previewAnnotations?.map((annotation) => ({ ...annotation })) ?? [],
     reviewComments: persistedDraft.reviewComments?.map((comment) => ({ ...comment })) ?? [],
-    queuedMessages: persistedDraft.queuedMessages?.map((message) => ({ ...message })) ?? [],
+    queuedMessages:
+      persistedDraft.queuedMessages?.map((message) => ({
+        id: message.id,
+        text: message.text,
+        createdAt: message.createdAt,
+        dispatch: message.dispatch
+          ? {
+              ...message.dispatch,
+              // A live claim cannot survive the process that made it. Report
+              // the outcome as unknown instead of replaying it silently.
+              state:
+                message.dispatch.state === "in_flight" ? "unconfirmed" : message.dispatch.state,
+            }
+          : null,
+      })) ?? [],
     modelSelectionByProvider,
     activeProvider,
     runtimeMode: persistedDraft.runtimeMode ?? null,
@@ -3324,6 +3414,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             id: randomUUID(),
             text: trimmed,
             createdAt: new Date().toISOString(),
+            dispatch: null,
           };
           set((state) => {
             const existing = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();
@@ -3355,6 +3446,101 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             else nextDraftsByThreadKey[threadKey] = nextDraft;
             return { draftsByThreadKey: nextDraftsByThreadKey };
           });
+        },
+        claimQueuedMessageDispatch: (threadRef, queuedMessageId, identity) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef);
+          if (!threadKey || !queuedMessageId) return null;
+          let claimedIdentity: { messageId: string; commandId: string } | null = null;
+          set((state) => {
+            const current = state.draftsByThreadKey[threadKey];
+            if (!current) return state;
+            const index = current.queuedMessages.findIndex((entry) => entry.id === queuedMessageId);
+            if (index === -1) return state;
+            const entry = current.queuedMessages[index];
+            if (!entry) return state;
+            if (entry.dispatch?.state === "in_flight") {
+              return state;
+            }
+            const dispatch: QueuedComposerMessageDispatch = entry.dispatch
+              ? {
+                  ...entry.dispatch,
+                  state: "in_flight",
+                }
+              : {
+                  messageId: identity.messageId,
+                  commandId: identity.commandId,
+                  attemptedAt: new Date().toISOString(),
+                  state: "in_flight",
+                };
+            claimedIdentity = {
+              messageId: dispatch.messageId,
+              commandId: dispatch.commandId,
+            };
+            const queuedMessages = [...current.queuedMessages];
+            queuedMessages[index] = { ...entry, dispatch };
+            return {
+              draftsByThreadKey: {
+                ...state.draftsByThreadKey,
+                [threadKey]: { ...current, queuedMessages },
+              },
+            };
+          });
+          return claimedIdentity;
+        },
+        markQueuedMessageDispatchUnconfirmed: (threadRef, queuedMessageId) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef);
+          if (!threadKey || !queuedMessageId) return;
+          set((state) => {
+            const current = state.draftsByThreadKey[threadKey];
+            if (!current) return state;
+            const index = current.queuedMessages.findIndex((entry) => entry.id === queuedMessageId);
+            if (index === -1) return state;
+            const entry = current.queuedMessages[index];
+            if (!entry?.dispatch || entry.dispatch.state === "unconfirmed") {
+              return state;
+            }
+            const queuedMessages = [...current.queuedMessages];
+            queuedMessages[index] = {
+              ...entry,
+              dispatch: { ...entry.dispatch, state: "unconfirmed" },
+            };
+            return {
+              draftsByThreadKey: {
+                ...state.draftsByThreadKey,
+                [threadKey]: { ...current, queuedMessages },
+              },
+            };
+          });
+        },
+        restoreComposerContent: (threadRef, content, options) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef);
+          if (!threadKey) return false;
+          let restored = false;
+          set((state) => {
+            const current = state.draftsByThreadKey[threadKey];
+            if (options?.onlyIfEmpty === true && current && !isDraftContentEmpty(current)) {
+              return state;
+            }
+            restored = true;
+            const nextDraft: ComposerThreadDraftState = {
+              ...(current ?? createEmptyThreadDraft()),
+              prompt: content.prompt,
+              images: [...content.images],
+              nonPersistedImageIds: [],
+              persistedAttachments: [],
+              terminalContexts: [...content.terminalContexts],
+              elementContexts: [...content.elementContexts],
+              previewAnnotations: [...content.previewAnnotations],
+              reviewComments: [...content.reviewComments],
+            };
+            return {
+              draftsByThreadKey: {
+                ...state.draftsByThreadKey,
+                [threadKey]: nextDraft,
+              },
+            };
+          });
+          return restored;
         },
         clearPersistedAttachments: (threadRef) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";

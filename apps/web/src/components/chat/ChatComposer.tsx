@@ -43,7 +43,11 @@ import {
   replaceTextRange,
   resolveSlashCommandAction,
 } from "../../composer-logic";
-import { deriveComposerSendState, readFileAsDataUrl } from "../ChatView.logic";
+import {
+  deriveComposerSendState,
+  partitionQueuedMessages,
+  readFileAsDataUrl,
+} from "../ChatView.logic";
 import {
   type ComposerImageAttachment,
   type DraftId,
@@ -110,6 +114,7 @@ import { toastManager } from "../ui/toast";
 import {
   BotIcon,
   CircleAlertIcon,
+  CornerDownRightIcon,
   ListTodoIcon,
   PencilRulerIcon,
   type LucideIcon,
@@ -556,6 +561,8 @@ export interface ChatComposerProps {
   onExpandImage: (preview: ExpandedImagePreview) => void;
   /** Promotes a queued follow-up into the running turn immediately. */
   onSteerQueuedMessage: (queuedMessageId: string) => void;
+  /** Explicitly retries a queued send whose outcome is unconfirmed. */
+  onRetryQueuedMessage: (queuedMessageId: string) => void;
 }
 
 // --------------------------------------------------------------------------
@@ -629,6 +636,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setThreadError,
     onExpandImage,
     onSteerQueuedMessage,
+    onRetryQueuedMessage,
   } = props;
 
   // ------------------------------------------------------------------
@@ -645,6 +653,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const requestRailPopover = useWorkspaceRailUiStore((state) => state.requestOpen);
   const composerReviewComments = composerDraft.reviewComments;
   const composerQueuedMessages = composerDraft.queuedMessages;
+  const { dispatchable: dispatchableQueuedMessages, pending: pendingQueuedMessages } = useMemo(
+    () => partitionQueuedMessages(composerQueuedMessages),
+    [composerQueuedMessages],
+  );
   const nonPersistedComposerImageIds = composerDraft.nonPersistedImageIds;
 
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
@@ -2553,15 +2565,68 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               !isComposerApprovalState &&
               pendingUserInputs.length === 0 &&
               composerQueuedMessages.length > 0 && (
-                <ComposerQueuedMessages
-                  messages={composerQueuedMessages}
-                  canSteer={phase === "running" && composerDraftIsEmpty}
-                  onRemove={(queuedMessageId) =>
-                    removeQueuedComposerMessage(composerDraftTarget, queuedMessageId)
-                  }
-                  onSteer={onSteerQueuedMessage}
-                  className="mb-2"
-                />
+                <div className="mb-2 flex flex-col gap-0.5">
+                  {pendingQueuedMessages.length > 0 && (
+                    <div className="flex flex-col gap-0.5" data-chat-composer-queue-pending="true">
+                      {pendingQueuedMessages.map((message) => {
+                        const dispatchState = message.dispatch?.state ?? "in_flight";
+                        return (
+                          <div
+                            key={message.id}
+                            className="flex min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1"
+                            title={message.text}
+                          >
+                            <CornerDownRightIcon
+                              className="size-3.5 shrink-0 text-muted-foreground/50"
+                              aria-hidden
+                            />
+                            <span className="min-w-0 flex-1 truncate text-ui-sm text-muted-foreground">
+                              {message.text}
+                            </span>
+                            <span className="shrink-0 text-[11px] text-muted-foreground/70">
+                              {dispatchState === "in_flight" ? "Sending…" : "Not confirmed"}
+                            </span>
+                            {dispatchState === "unconfirmed" &&
+                            phase === "ready" &&
+                            composerDraftIsEmpty ? (
+                              <button
+                                type="button"
+                                onClick={() => onRetryQueuedMessage(message.id)}
+                                className="inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+                              >
+                                Send again
+                              </button>
+                            ) : null}
+                            {dispatchState === "unconfirmed" ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-xs"
+                                className="shrink-0 text-muted-foreground/60 hover:text-foreground"
+                                onClick={() =>
+                                  removeQueuedComposerMessage(composerDraftTarget, message.id)
+                                }
+                                aria-label="Remove unconfirmed queued message"
+                              >
+                                <XIcon className="size-3" />
+                              </Button>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {dispatchableQueuedMessages.length > 0 && (
+                    <ComposerQueuedMessages
+                      messages={dispatchableQueuedMessages}
+                      canSteer={phase === "running" && composerDraftIsEmpty}
+                      onRemove={(queuedMessageId) =>
+                        removeQueuedComposerMessage(composerDraftTarget, queuedMessageId)
+                      }
+                      onSteer={onSteerQueuedMessage}
+                    />
+                  )}
+                </div>
               )}
 
             <div className="relative min-w-0">

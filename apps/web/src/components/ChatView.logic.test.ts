@@ -2,21 +2,26 @@ import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId, TurnId } from "
 import { describe, expect, it } from "vite-plus/test";
 
 import type { Thread } from "../types";
+import type { QueuedComposerMessage } from "../composerDraftStore";
 import {
   MAX_HIDDEN_MOUNTED_PREVIEW_THREADS,
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   buildExpiredTerminalContextToastCopy,
   buildThreadTurnInterruptInput,
+  canAutoDispatchQueuedMessage,
   canDispatchQueuedMessage,
+  composerDraftHoldsQueuedText,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
   deriveActiveToolLabel,
   getStartedThreadModelChangeBlockReason,
   hasServerAcknowledgedLocalDispatch,
   isComposerDraftEmpty,
+  partitionQueuedMessages,
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
   resolveSendEnvMode,
+  selectAcknowledgedQueuedMessageIds,
   settleQueuedDispatch,
   shouldWriteThreadErrorToCurrentServerThread,
 } from "./ChatView.logic";
@@ -582,5 +587,120 @@ describe("isComposerDraftEmpty", () => {
     expect(isComposerDraftEmpty({ ...empty, elementContextCount: 1 })).toBe(false);
     expect(isComposerDraftEmpty({ ...empty, previewAnnotationCount: 1 })).toBe(false);
     expect(isComposerDraftEmpty({ ...empty, reviewCommentCount: 1 })).toBe(false);
+  });
+});
+
+describe("canAutoDispatchQueuedMessage", () => {
+  const clear = {
+    hasActiveThread: true,
+    isSendBusy: false,
+    isConnecting: false,
+    environmentUnavailable: false,
+    sendInFlight: false,
+  };
+
+  it("only auto-dispatches an unclaimed entry once every blocker clears", () => {
+    expect(canAutoDispatchQueuedMessage({ ...clear, dispatchState: "none" })).toBe(true);
+    expect(canAutoDispatchQueuedMessage({ ...clear, dispatchState: "in_flight" })).toBe(false);
+    expect(canAutoDispatchQueuedMessage({ ...clear, dispatchState: "unconfirmed" })).toBe(false);
+  });
+
+  it("reacts to each cleared transport blocker for an unclaimed entry", () => {
+    const blockedCases = [
+      { ...clear, dispatchState: "none" as const, hasActiveThread: false },
+      { ...clear, dispatchState: "none" as const, isSendBusy: true },
+      { ...clear, dispatchState: "none" as const, isConnecting: true },
+      { ...clear, dispatchState: "none" as const, environmentUnavailable: true },
+      { ...clear, dispatchState: "none" as const, sendInFlight: true },
+      { ...clear, dispatchState: "none" as const, hasPendingUserInput: true },
+    ];
+    for (const blocked of blockedCases) {
+      expect(canAutoDispatchQueuedMessage(blocked)).toBe(false);
+    }
+    expect(canAutoDispatchQueuedMessage({ ...clear, dispatchState: "none" })).toBe(true);
+  });
+});
+
+describe("composerDraftHoldsQueuedText", () => {
+  const empty = {
+    prompt: "",
+    imageCount: 0,
+    terminalContextCount: 0,
+    elementContextCount: 0,
+    previewAnnotationCount: 0,
+    reviewCommentCount: 0,
+  };
+
+  it("only treats the restored text alone as queue-owned", () => {
+    expect(composerDraftHoldsQueuedText({ ...empty, prompt: "queued" }, "queued")).toBe(true);
+    expect(composerDraftHoldsQueuedText({ ...empty, prompt: "newer" }, "queued")).toBe(false);
+    expect(
+      composerDraftHoldsQueuedText({ ...empty, prompt: "queued", imageCount: 1 }, "queued"),
+    ).toBe(false);
+  });
+});
+
+describe("selectAcknowledgedQueuedMessageIds", () => {
+  const entry = (id: string, messageId: string | null) => ({
+    id,
+    dispatch: messageId
+      ? {
+          messageId,
+          commandId: `command-${messageId}`,
+          attemptedAt: now,
+          state: "unconfirmed" as const,
+        }
+      : null,
+  });
+
+  it("releases only entries whose stable message id the server has reported", () => {
+    expect(
+      selectAcknowledgedQueuedMessageIds({
+        queuedMessages: [
+          entry("q-accepted", "message-accepted"),
+          entry("q-no-ack", "message-unknown"),
+        ],
+        messageIds: new Set(["message-accepted"]),
+      }),
+    ).toEqual(["q-accepted"]);
+  });
+
+  it("never releases an entry with no recorded dispatch identity", () => {
+    expect(
+      selectAcknowledgedQueuedMessageIds({
+        queuedMessages: [entry("q-legacy", null)],
+        messageIds: new Set(["anything"]),
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("partitionQueuedMessages", () => {
+  const queued = (
+    id: string,
+    state: "in_flight" | "unconfirmed" | null,
+  ): QueuedComposerMessage => ({
+    id,
+    text: id,
+    createdAt: now,
+    dispatch:
+      state === null
+        ? null
+        : {
+            messageId: `message-${id}`,
+            commandId: `command-${id}`,
+            attemptedAt: now,
+            state,
+          },
+  });
+
+  it("keeps claimed entries out of the list that exposes Remove and Steer", () => {
+    const result = partitionQueuedMessages([
+      queued("ready", null),
+      queued("sending", "in_flight"),
+      queued("unknown", "unconfirmed"),
+    ]);
+    expect(result.dispatchable.map((entry) => entry.id)).toEqual(["ready"]);
+    expect(result.pending.map((entry) => entry.id)).toEqual(["sending", "unknown"]);
   });
 });
