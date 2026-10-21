@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Symphony layout exploration · Neokod design prototype</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="shared.js"></script>
+    <style>
+      .ix {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 36px 24px 64px;
+      }
+      .ix h1 {
+        font-size: 22px;
+        font-weight: 650;
+        letter-spacing: -0.4px;
+      }
+      .ix .lede {
+        margin-top: 8px;
+        max-width: 66ch;
+        font-size: var(--fs-lead);
+        line-height: 1.55;
+        color: var(--text-2);
+      }
+      .ix .facts {
+        margin-top: 14px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 16px;
+        color: var(--text-2);
+        font-size: var(--fs-meta);
+      }
+      .concepts {
+        list-style: none;
+        margin: 28px 0 0;
+        padding: 0;
+        border-top: 1px solid var(--line);
+      }
+      .concept {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr) auto;
+        gap: 24px;
+        align-items: start;
+        padding: 22px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .wire {
+        width: 220px;
+        height: 132px;
+        border-radius: var(--radius);
+        background: var(--panel);
+        box-shadow: var(--elev);
+      }
+      .wire .w-line {
+        fill: var(--line);
+      }
+      .wire .w-strong {
+        fill: var(--line-strong);
+      }
+      .wire .w-text {
+        fill: var(--text-3);
+      }
+      .wire .w-attn {
+        fill: var(--attn-mark);
+      }
+      .wire .w-acc {
+        fill: var(--accent);
+      }
+      .wire .w-edge {
+        stroke: var(--text-3);
+        fill: none;
+        stroke-width: 1.2;
+      }
+      .wire .w-node {
+        fill: var(--elevated);
+        stroke: var(--line-strong);
+      }
+      .wire .w-panel {
+        fill: var(--elevated);
+      }
+      .concept h2 {
+        font-size: 16px;
+        font-weight: 600;
+        letter-spacing: -0.2px;
+      }
+      .concept h2 a {
+        color: var(--text);
+      }
+      .concept .role {
+        margin-top: 2px;
+        color: var(--text-2);
+      }
+      .concept dl {
+        display: grid;
+        grid-template-columns: 92px minmax(0, 1fr);
+        gap: 4px 12px;
+        margin: 12px 0 0;
+        max-width: 62ch;
+      }
+      .concept dt {
+        color: var(--text-3);
+      }
+      .concept dd {
+        margin: 0;
+      }
+      .open-btn {
+        align-self: center;
+      }
+      .ix .foot {
+        margin-top: 24px;
+        color: var(--text-2);
+        max-width: 70ch;
+      }
+      .ix .foot p + p {
+        margin-top: 8px;
+      }
+      @media (max-width: 760px) {
+        .concept {
+          grid-template-columns: 1fr;
+          gap: 12px;
+        }
+        .open-btn {
+          align-self: start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="index.html"><span class="brand-mark">N</span>Neokod</a>
+      <nav class="crumbs" aria-label="Location">
+        <span data-ic="chevronRight"></span>
+        <span class="hide-narrow">Symphony</span>
+        <span data-ic="chevronRight" data-ic-class="hide-narrow"></span>
+        <strong>Layout exploration</strong>
+      </nav>
+      <span class="spacer"></span>
+      <span class="notice"><span data-ic="eye"></span>Design prototype · Sample data</span>
+      <button
+        class="btn ghost icon"
+        type="button"
+        data-theme-toggle
+        aria-label="Toggle theme"
+      ></button>
+    </header>
+
+    <main class="ix">
+      <h1>Three layouts for Symphony, without the board</h1>
+      <p class="lede">
+        Each concept puts a different thing at the centre of the screen. They share the same sample
+        work item, statuses and evidence rules, so you can compare structure rather than styling.
+        None has been chosen.
+      </p>
+      <p class="facts">
+        <span>Sample task NEO-4821, Preserve queued sends across reconnects</span>
+        <span>Attempt 3, head <code>7f3a9c2</code></span>
+        <span>One open decision, D-3</span>
+      </p>
+
+      <ol class="concepts">
+        <li class="concept">
+          <svg class="wire" viewBox="0 0 220 132" aria-hidden="true">
+            <rect x="8" y="8" width="38" height="116" rx="4" class="w-line" />
+            <rect x="52" y="8" width="96" height="22" rx="3" class="w-attn" opacity=".35" />
+            <rect x="52" y="36" width="96" height="6" rx="2" class="w-strong" />
+            <rect x="52" y="48" width="96" height="6" rx="2" class="w-line" />
+            <rect x="52" y="60" width="96" height="6" rx="2" class="w-line" />
+            <rect x="52" y="72" width="96" height="6" rx="2" class="w-line" />
+            <rect x="52" y="84" width="96" height="6" rx="2" class="w-line" />
+            <rect x="52" y="96" width="96" height="6" rx="2" class="w-line" />
+            <rect x="154" y="8" width="58" height="116" rx="4" class="w-panel" />
+            <rect x="160" y="16" width="46" height="26" rx="3" class="w-attn" opacity=".5" />
+            <rect x="160" y="50" width="40" height="4" rx="2" class="w-line" />
+            <rect x="160" y="58" width="46" height="4" rx="2" class="w-line" />
+            <rect x="160" y="66" width="34" height="4" rx="2" class="w-line" />
+          </svg>
+          <div>
+            <h2><a href="runs.html">A. Runs</a></h2>
+            <p class="role">Run-first operating view. Candidate default for daily operations.</p>
+            <dl>
+              <dt>Centre</dt>
+              <dd>
+                A searchable list of runs, with Needs you pinned above it and a side panel for the
+                selected run.
+              </dd>
+              <dt>Good at</dt>
+              <dd>Many runs at once, fast triage, one clear blocker and next step per run.</dd>
+              <dt>Weaker at</dt>
+              <dd>
+                Showing how the stages, packages and repair rounds inside one run relate to each
+                other.
+              </dd>
+            </dl>
+          </div>
+          <a class="btn open-btn" href="runs.html">Open runs</a>
+        </li>
+
+        <li class="concept">
+          <svg class="wire" viewBox="0 0 220 132" aria-hidden="true">
+            <rect x="8" y="8" width="150" height="10" rx="2" class="w-line" />
+            <path
+              d="M24 70 H46 M66 70 C80 70 76 40 90 40 M66 70 C80 70 76 100 90 100 M110 40 C120 40 118 70 128 70 M110 100 C120 100 118 70 128 70"
+              class="w-edge"
+            />
+            <rect x="12" y="62" width="12" height="16" rx="3" class="w-node" />
+            <rect x="46" y="62" width="20" height="16" rx="3" class="w-node" />
+            <rect x="90" y="32" width="20" height="16" rx="3" class="w-node" />
+            <rect x="90" y="92" width="20" height="16" rx="3" class="w-node" />
+            <rect x="90" y="92" width="20" height="16" rx="3" class="w-attn" opacity=".4" />
+            <rect x="128" y="62" width="22" height="16" rx="3" class="w-node" />
+            <rect x="8" y="118" width="150" height="6" rx="2" class="w-line" />
+            <rect x="164" y="8" width="48" height="116" rx="4" class="w-panel" />
+            <rect x="170" y="16" width="36" height="4" rx="2" class="w-strong" />
+            <rect x="170" y="26" width="30" height="4" rx="2" class="w-line" />
+            <rect x="170" y="34" width="36" height="4" rx="2" class="w-line" />
+          </svg>
+          <div>
+            <h2><a href="workflow.html">B. Workflow map</a></h2>
+            <p class="role">
+              Workflow-first map for one work item. Candidate detailed execution view.
+            </p>
+            <dl>
+              <dt>Centre</dt>
+              <dd>
+                A stage map from Intake to PR: two parallel packages, critics and testers, a bounded
+                two-round review, and a human merge gate. An inspector shows the selected step.
+              </dd>
+              <dt>Good at</dt>
+              <dd>
+                Explaining where one run is stuck, what was sent back and which agent did what.
+              </dd>
+              <dt>Weaker at</dt>
+              <dd>Overview of many runs. Runs are reached through a small switcher.</dd>
+            </dl>
+          </div>
+          <a class="btn open-btn" href="workflow.html">Open map</a>
+        </li>
+
+        <li class="concept">
+          <svg class="wire" viewBox="0 0 220 132" aria-hidden="true">
+            <rect x="8" y="8" width="34" height="116" rx="4" class="w-line" />
+            <rect x="50" y="12" width="70" height="8" rx="2" class="w-strong" />
+            <rect x="50" y="28" width="100" height="4" rx="2" class="w-line" />
+            <rect x="50" y="36" width="96" height="4" rx="2" class="w-line" />
+            <rect x="50" y="48" width="100" height="30" rx="3" class="w-panel" />
+            <rect x="58" y="58" width="16" height="10" rx="2" class="w-line" />
+            <rect x="84" y="58" width="16" height="10" rx="2" class="w-line" />
+            <rect x="110" y="58" width="16" height="10" rx="2" class="w-attn" opacity=".5" />
+            <rect x="50" y="86" width="100" height="4" rx="2" class="w-line" />
+            <rect x="50" y="94" width="88" height="4" rx="2" class="w-line" />
+            <rect x="160" y="8" width="52" height="116" rx="4" class="w-panel" />
+            <rect x="166" y="16" width="40" height="4" rx="2" class="w-strong" />
+            <rect x="170" y="28" width="30" height="4" rx="2" class="w-line" />
+            <rect x="176" y="36" width="24" height="4" rx="2" class="w-line" />
+            <rect x="176" y="44" width="24" height="4" rx="2" class="w-line" />
+          </svg>
+          <div>
+            <h2><a href="planning.html">C. Plan and decisions</a></h2>
+            <p class="role">
+              Plan-and-decisions workspace with a compact run and agent rail. Candidate planning
+              surface.
+            </p>
+            <dl>
+              <dt>Centre</dt>
+              <dd>
+                The canonical plan, editable with revisions, beside a Decisions view that keeps
+                draft answer, saved decision and execution approval separate.
+              </dd>
+              <dt>Good at</dt>
+              <dd>
+                Recording why work is shaped the way it is, and making sure no edit or answer
+                silently starts work.
+              </dd>
+              <dt>Weaker at</dt>
+              <dd>Live operations. It assumes you already know which run you are planning.</dd>
+            </dl>
+          </div>
+          <a class="btn open-btn" href="planning.html">Open plan</a>
+        </li>
+      </ol>
+
+      <div class="foot">
+        <p>
+          The concepts can complement one another later. This page compares them as candidates for
+          the primary layout. Rationale, tokens, status rules and limits are in
+          <a href="DESIGN.md">DESIGN.md</a>.
+        </p>
+        <p class="faint">
+          Static HTML, CSS and JavaScript. No network, tracker, server or agent is connected.
+          Actions change local demo state only and reset on reload or with Reset demo.
+        </p>
+      </div>
+    </main>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>

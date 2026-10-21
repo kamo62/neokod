@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Symphony workflow map · Concept B · Neokod design prototype</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="workflow.css" />
+    <script src="shared.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#map-scroll">Skip to workflow map</a>
+    <div class="app">
+      <header class="topbar">
+        <a class="brand" href="index.html"><span class="brand-mark">N</span>Neokod</a>
+        <nav class="crumbs" aria-label="Location">
+          <span data-ic="chevronRight"></span>
+          <span class="hide-narrow">Symphony</span>
+          <span data-ic="chevronRight" data-ic-class="hide-narrow"></span>
+          <strong>Workflow map</strong>
+        </nav>
+        <span class="spacer"></span>
+        <nav class="concept-nav" aria-label="Design concepts">
+          <a href="runs.html">Runs</a>
+          <a href="workflow.html" aria-current="page">Workflow map</a>
+          <a href="planning.html">Plan and decisions</a>
+        </nav>
+        <span class="notice"><span data-ic="eye"></span>Design prototype · Sample data</span>
+        <button class="btn ghost sm" type="button" id="reset-demo">Reset demo</button>
+        <button
+          class="btn ghost icon"
+          type="button"
+          data-theme-toggle
+          aria-label="Toggle theme"
+        ></button>
+      </header>
+
+      <div class="w-subbar">
+        <div class="w-pop-anchor">
+          <button
+            type="button"
+            class="w-switch"
+            id="run-switch"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-controls="run-pop"
+          >
+            <span id="run-switch-label"></span>
+            <span data-ic="chevronDown"></span>
+          </button>
+          <div class="w-pop" id="run-pop" hidden>
+            <p class="label">Active runs</p>
+            <div id="run-pop-list"></div>
+            <p class="demo-note">
+              Only NEO-4821 has a detailed sample map. Other runs show their stage outline.
+            </p>
+          </div>
+        </div>
+        <div class="w-facts" id="run-facts"></div>
+        <span class="spacer"></span>
+        <div class="w-pop-anchor">
+          <button
+            type="button"
+            class="btn sm"
+            id="attn-btn"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-controls="attn-pop"
+          ></button>
+          <div class="w-pop right" id="attn-pop" hidden>
+            <p class="label">Needs you, all runs</p>
+            <div id="attn-pop-list"></div>
+          </div>
+        </div>
+        <div class="w-tools" role="group" aria-label="Map view">
+          <button type="button" class="btn sm" id="fold-btn" aria-pressed="false"></button>
+          <span class="w-sep" aria-hidden="true"></span>
+          <button
+            type="button"
+            class="btn ghost icon"
+            id="zoom-out"
+            aria-label="Zoom out"
+            title="Zoom out (−)"
+          >
+            <span data-ic="minus"></span>
+          </button>
+          <output class="w-zoom" id="zoom-val" aria-live="polite">100%</output>
+          <button
+            type="button"
+            class="btn ghost icon"
+            id="zoom-in"
+            aria-label="Zoom in"
+            title="Zoom in (+)"
+          >
+            <span data-ic="plus"></span>
+          </button>
+          <button type="button" class="btn ghost sm" id="zoom-fit" title="Fit map (F)">
+            <span data-ic="fit"></span>Fit
+          </button>
+          <button type="button" class="btn ghost sm" id="zoom-reset" title="Actual size (0)">
+            100%
+          </button>
+        </div>
+      </div>
+
+      <div class="w-main">
+        <div class="w-canvas">
+          <div class="w-scroll" id="map-scroll" tabindex="-1">
+            <svg
+              id="map"
+              role="group"
+              aria-label="Workflow map"
+              xmlns="http://www.w3.org/2000/svg"
+            ></svg>
+          </div>
+          <p class="w-keys demo-note" aria-hidden="true">
+            <span class="kbd">Tab</span> into the map, <span class="kbd">←</span
+            ><span class="kbd">→</span><span class="kbd">↑</span><span class="kbd">↓</span> move
+            between steps, <span class="kbd">+</span><span class="kbd">−</span> zoom,
+            <span class="kbd">F</span> fit. Drag the background to pan.
+          </p>
+        </div>
+        <aside class="w-inspector" id="inspector" aria-label="Step inspector" tabindex="-1"></aside>
+      </div>
+
+      <footer class="w-foot">
+        <nav class="w-stepper" id="stepper" aria-label="Stages"></nav>
+        <div class="w-legend" aria-label="Legend">
+          <span
+            ><svg width="26" height="8" aria-hidden="true">
+              <path d="M1 4h24" class="edge e-done" /></svg
+            >Done</span
+          >
+          <span
+            ><svg width="26" height="8" aria-hidden="true">
+              <path d="M1 4h24" class="edge e-pending" /></svg
+            >Not yet</span
+          >
+          <span
+            ><svg width="26" height="8" aria-hidden="true">
+              <path d="M1 4h24" class="edge e-returned" /></svg
+            >Sent back</span
+          >
+          <span
+            ><svg width="26" height="8" aria-hidden="true">
+              <path d="M1 4h24" class="edge e-blocked" /></svg
+            >Blocked on you</span
+          >
+          <span
+            ><svg width="16" height="12" aria-hidden="true">
+              <rect x="1" y="1" width="14" height="10" rx="4" class="lg-agent" /></svg
+            >Agent step</span
+          >
+          <span
+            ><svg width="16" height="12" aria-hidden="true">
+              <rect x="1" y="1" width="14" height="10" rx="1" class="lg-host" /></svg
+            >Host check</span
+          >
+          <span
+            ><svg width="16" height="12" aria-hidden="true">
+              <rect x="1" y="1" width="14" height="10" rx="4" class="lg-human" /></svg
+            >Human gate</span
+          >
+        </div>
+      </footer>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="fixtures.js"></script>
+    <script src="workflow-data.js"></script>
+    <script src="workflow.js"></script>
+  </body>
+</html>

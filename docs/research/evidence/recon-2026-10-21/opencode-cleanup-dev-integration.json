@@ -1,0 +1,37 @@
+{
+  "commit": "6b6c1f06e",
+  "base": "ec84861d5",
+  "scope": "reviewed OpenCode bounded command cleanup merge; design prototypes remain separate",
+  "focusedTests": {
+    "result": "pass",
+    "files": 2,
+    "tests": 43,
+    "log": "merged-opencode-runtime-tests.log"
+  },
+  "rootCheck": {
+    "result": "pass",
+    "errors": 0,
+    "warnings": 36
+  },
+  "rootTypecheck": "pass",
+  "builds": "not run",
+  "nativeWindows": "unverified",
+  "sourceReview": "Sol final worker correction closed; merged-dev Sol and onboard Opus review running",
+  "guardPreservation": {
+    "apps/server/src/provider/Drivers/OpenCodeDriver.ts": {
+      "before": "4a0b1d21997e5593f25c30c0d4a0f501b0ba84c3",
+      "after": "4a0b1d21997e5593f25c30c0d4a0f501b0ba84c3",
+      "unchanged": true
+    },
+    "apps/server/src/provider/Drivers/OpenCodeDriver.test.ts": {
+      "before": "1fc4445c28c8c3bd17775c1bee2b916329fb3850",
+      "after": "1fc4445c28c8c3bd17775c1bee2b916329fb3850",
+      "unchanged": true
+    },
+    "apps/server/src/provider/providerMaintenanceRunner.test.ts": {
+      "before": "c213e94fa1621633d1eff1783c977f5a65be0908",
+      "after": "c213e94fa1621633d1eff1783c977f5a65be0908",
+      "unchanged": true
+    }
+  }
+}
