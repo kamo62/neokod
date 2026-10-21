@@ -1,0 +1,631 @@
+[
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "680152e27b2a961686389ca69a1557cbb2c55f08",
+    "path": "apps/server/src/mcp/toolkits/orchestrator/handlers.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/apps/server/src/mcp/toolkits/orchestrator/handlers.ts",
+    "bytes": 6293,
+    "sha256": "b3534e11bf4ee383683cf408de68f2479885b586079845426a7e84e855015b2c"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "680152e27b2a961686389ca69a1557cbb2c55f08",
+    "path": "apps/server/src/orchestration-v2/DelegatedTaskQuestionReactor.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/apps/server/src/orchestration-v2/DelegatedTaskQuestionReactor.ts",
+    "bytes": 7402,
+    "sha256": "ff73b1a07d30f9f1f528b4829bdf9020211c1043c31defbc88cb7f971361b545"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "680152e27b2a961686389ca69a1557cbb2c55f08",
+    "path": "apps/server/src/orchestration-v2/RestartContinuation.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/apps/server/src/orchestration-v2/RestartContinuation.ts",
+    "bytes": 11969,
+    "sha256": "c42a36283ee5a17db49831dd3f132715efc88c607c1df74e2dbd6cd048c7b3ce"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "680152e27b2a961686389ca69a1557cbb2c55f08",
+    "path": "apps/server/src/orchestration-v2/ContextHandoffDelivery.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/apps/server/src/orchestration-v2/ContextHandoffDelivery.ts",
+    "bytes": 6868,
+    "sha256": "1ae53a79b5ff4840db8b337e15289de5bffce55b9cd3a0ce83f22a58008d374e"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "680152e27b2a961686389ca69a1557cbb2c55f08",
+    "path": "apps/server/src/orchestration-v2/ProviderTurnStartService.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/apps/server/src/orchestration-v2/ProviderTurnStartService.ts",
+    "bytes": 53610,
+    "sha256": "3a7388a45176010ea8a1b64c78d5120c2641a503a67164462643211da2d96834"
+  },
+  {
+    "repo": "getpaseo/paseo",
+    "sha": "e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+    "path": "docs/connected-hosts.md",
+    "url": "https://github.com/getpaseo/paseo/blob/e522e6ea8e25140d2ef0c819986175ad6d6379b8/docs/connected-hosts.md",
+    "bytes": 6527,
+    "sha256": "029ad02c42023c8a4ccf40b41d21d443402a2a93c13d9e26fd6139e194e39234"
+  },
+  {
+    "repo": "getpaseo/paseo",
+    "sha": "e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+    "path": "packages/server/src/server/agent/mcp-server.ts",
+    "url": "https://github.com/getpaseo/paseo/blob/e522e6ea8e25140d2ef0c819986175ad6d6379b8/packages/server/src/server/agent/mcp-server.ts",
+    "bytes": 1833,
+    "sha256": "26ae9bd3656bae5f7cd730e5b9c7a1958e11850f021dbd3e29d16a41c1ec954b"
+  },
+  {
+    "repo": "getpaseo/paseo",
+    "sha": "e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+    "path": "packages/server/src/server/connected-hosts/index.ts",
+    "url": "https://github.com/getpaseo/paseo/blob/e522e6ea8e25140d2ef0c819986175ad6d6379b8/packages/server/src/server/connected-hosts/index.ts",
+    "bytes": 19616,
+    "sha256": "ad3a925c2ebe82affed3804c9081c480213795afa8ed2f1285f53833bcf11236"
+  },
+  {
+    "repo": "getpaseo/paseo",
+    "sha": "e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+    "path": "packages/server/src/server/bootstrap.ts",
+    "url": "https://github.com/getpaseo/paseo/blob/e522e6ea8e25140d2ef0c819986175ad6d6379b8/packages/server/src/server/bootstrap.ts",
+    "bytes": 74526,
+    "sha256": "4bb84989fe05ca5c4b92546e926940142af8086e377567704a2042bc1d16a1b3"
+  },
+  {
+    "repo": "getpaseo/paseo",
+    "sha": "e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+    "path": "packages/server/src/server/agent/providers/opencode/v2/timeline.ts",
+    "url": "https://github.com/getpaseo/paseo/blob/e522e6ea8e25140d2ef0c819986175ad6d6379b8/packages/server/src/server/agent/providers/opencode/v2/timeline.ts",
+    "bytes": 9306,
+    "sha256": "d86960a69b70e174577974dcff16062d6fb640919402a822bc44fdd8d5c74302"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "path": "apps/server/src/projectAgent/Layers/ProjectAgentService.ts",
+    "url": "https://github.com/Emanuele-web04/synara/blob/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/projectAgent/Layers/ProjectAgentService.ts",
+    "bytes": 308027,
+    "sha256": "596e69b1c534fa5715f87e98a4c124d64033b5f42c3d0ac2e6fb249278f87066"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "path": "apps/server/src/agentGateway/hubWorkGateway.ts",
+    "url": "https://github.com/Emanuele-web04/synara/blob/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/agentGateway/hubWorkGateway.ts",
+    "bytes": 16964,
+    "sha256": "b8d8e6f784f46ca5908ce1bae577082bb26e3b97a40b285673f47f2c3caec8be"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "path": "apps/web/src/components/chat/group/HubPendingApprovals.tsx",
+    "url": "https://github.com/Emanuele-web04/synara/blob/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/web/src/components/chat/group/HubPendingApprovals.tsx",
+    "bytes": 4938,
+    "sha256": "a327decdccdf9992aa266fb4cb8a64a9d04a1a3444d3ad0a88d7cf44d8374030"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "path": "apps/server/src/provider/Layers/OpenCodeAdapter.ts",
+    "url": "https://github.com/Emanuele-web04/synara/blob/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/provider/Layers/OpenCodeAdapter.ts",
+    "bytes": 201324,
+    "sha256": "e3f91f20740566ae751e33be1d74442008b145e376b338833dba07512fe538b1"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "path": "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts",
+    "url": "https://github.com/Emanuele-web04/synara/blob/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts",
+    "bytes": 185096,
+    "sha256": "34432e40af6ff5d689af2721cba9279867252e0ce3ff2a997af1d7394dd86b66"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+    "path": "docs/hubs.md",
+    "url": "https://github.com/Emanuele-web04/synara/blob/299fd573b1d6520c323a87c78d30be74e87e53e1/docs/hubs.md",
+    "bytes": 25711,
+    "sha256": "a486958000b29bb0c76eb4d316914edcd5f126ec45e9e98354b54305c33434aa"
+  },
+  {
+    "repo": "hardbeat920/monocode",
+    "sha": "74b8139c41e7235e7535bdc8ba60e63705351d3c",
+    "path": "host/service.ts",
+    "url": "https://github.com/hardbeat920/monocode/blob/74b8139c41e7235e7535bdc8ba60e63705351d3c/host/service.ts",
+    "bytes": 11164,
+    "sha256": "a6118a14e5815c6cc859fe3cc30d24f8e4979fb6d7337d2763710eabd80c7ed3"
+  },
+  {
+    "repo": "hardbeat920/monocode",
+    "sha": "74b8139c41e7235e7535bdc8ba60e63705351d3c",
+    "path": "host/child-backend.ts",
+    "url": "https://github.com/hardbeat920/monocode/blob/74b8139c41e7235e7535bdc8ba60e63705351d3c/host/child-backend.ts",
+    "bytes": 16204,
+    "sha256": "9f036466381be7187ef5bc7a7afbecd9c734c224bf1d59f1e6fa694af1878d2c"
+  },
+  {
+    "repo": "hardbeat920/monocode",
+    "sha": "74b8139c41e7235e7535bdc8ba60e63705351d3c",
+    "path": "src/integrations/harness/providers/opencode/opencodeClient.ts",
+    "url": "https://github.com/hardbeat920/monocode/blob/74b8139c41e7235e7535bdc8ba60e63705351d3c/src/integrations/harness/providers/opencode/opencodeClient.ts",
+    "bytes": 24418,
+    "sha256": "e276b42a48b9b94291e36985859cda0bc77c78fd767f1a7ddcdce8db0e036ea4"
+  },
+  {
+    "repo": "hardbeat920/monocode",
+    "sha": "74b8139c41e7235e7535bdc8ba60e63705351d3c",
+    "path": "src/features/orchestration/model/orchestration.ts",
+    "url": "https://github.com/hardbeat920/monocode/blob/74b8139c41e7235e7535bdc8ba60e63705351d3c/src/features/orchestration/model/orchestration.ts",
+    "bytes": 81441,
+    "sha256": "33547c77994d2fdc2f7ee8d8f5641e46187e0176a458f9ad1908421b2dc2f953"
+  },
+  {
+    "repo": "hardbeat920/monocode",
+    "sha": "74b8139c41e7235e7535bdc8ba60e63705351d3c",
+    "path": "src/features/orchestration/model/orchestrationState.ts",
+    "url": "https://github.com/hardbeat920/monocode/blob/74b8139c41e7235e7535bdc8ba60e63705351d3c/src/features/orchestration/model/orchestrationState.ts",
+    "bytes": 5912,
+    "sha256": "011d3c09b114e2ecf70368f48f567f5873494f74ccf2ee78257eb282aea5f4f5"
+  },
+  {
+    "repo": "hardbeat920/monocode",
+    "sha": "74b8139c41e7235e7535bdc8ba60e63705351d3c",
+    "path": "mobile/src/features/notifications/SessionNotifications.tsx",
+    "url": "https://github.com/hardbeat920/monocode/blob/74b8139c41e7235e7535bdc8ba60e63705351d3c/mobile/src/features/notifications/SessionNotifications.tsx",
+    "bytes": 5875,
+    "sha256": "fec513cc3399ff6f17c804762d9ef13e155e35e58d1d86868d10eb4923aa7bd8"
+  },
+  {
+    "repo": "lidge-jun/opencodex",
+    "sha": "994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+    "path": "README.md",
+    "url": "https://github.com/lidge-jun/opencodex/blob/994d15e8a3d071e231ff0de41eab9dfbee8817aa/README.md",
+    "bytes": 26504,
+    "sha256": "7de59d49abc8ebc0220c914af9edd6d45699178bc93e1e45c5da30f6a05a5203"
+  },
+  {
+    "repo": "lidge-jun/opencodex",
+    "sha": "994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+    "path": "src/service/orchestration.ts",
+    "url": "https://github.com/lidge-jun/opencodex/blob/994d15e8a3d071e231ff0de41eab9dfbee8817aa/src/service/orchestration.ts",
+    "bytes": 32757,
+    "sha256": "517d271a91ef9179ae314f9472bc4a1cefef6f3b83916c14b1f845568fb3878b"
+  },
+  {
+    "repo": "lidge-jun/opencodex",
+    "sha": "994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+    "path": "gui/src/pages/use-subagent-delegation.ts",
+    "url": "https://github.com/lidge-jun/opencodex/blob/994d15e8a3d071e231ff0de41eab9dfbee8817aa/gui/src/pages/use-subagent-delegation.ts",
+    "bytes": 4315,
+    "sha256": "69f4ed30c23974cf99da3c40b2e443024c75c9795e1fcdbcdd43e895910b8595"
+  },
+  {
+    "repo": "lidge-jun/opencodex",
+    "sha": "994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+    "path": "gui/src/components/subagents-workspace/SubagentsWorkspace.tsx",
+    "url": "https://github.com/lidge-jun/opencodex/blob/994d15e8a3d071e231ff0de41eab9dfbee8817aa/gui/src/components/subagents-workspace/SubagentsWorkspace.tsx",
+    "bytes": 10487,
+    "sha256": "16e0a9d67257e37d2b9b1d44919c2fad035b44bc773345c09343db7f5900d032"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "6507e7b1d22aa49398d6b04f29d39e99f86f3ee8",
+    "path": "omnigent/runner/subagent_recovery.py",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/6507e7b1d22aa49398d6b04f29d39e99f86f3ee8/omnigent/runner/subagent_recovery.py",
+    "bytes": 10981,
+    "sha256": "9c3315a9ac6f0d3360eafcb9167f92e1c46aac836d9c82645f634919bf110acf"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "6507e7b1d22aa49398d6b04f29d39e99f86f3ee8",
+    "path": "omnigent/server/child_session_recovery.py",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/6507e7b1d22aa49398d6b04f29d39e99f86f3ee8/omnigent/server/child_session_recovery.py",
+    "bytes": 14182,
+    "sha256": "742a65ee72bfc18efc531e4320bdb8431279d53c8014b3f695b09741082cc2c3"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "6507e7b1d22aa49398d6b04f29d39e99f86f3ee8",
+    "path": "omnigent/runner/subagent_work.py",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/6507e7b1d22aa49398d6b04f29d39e99f86f3ee8/omnigent/runner/subagent_work.py",
+    "bytes": 49807,
+    "sha256": "78b45190028179a405ddbda6088958ebb4ea92d205aa3647330f29b0abce8533"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "6507e7b1d22aa49398d6b04f29d39e99f86f3ee8",
+    "path": "omnigent/host/connect.py",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/6507e7b1d22aa49398d6b04f29d39e99f86f3ee8/omnigent/host/connect.py",
+    "bytes": 257868,
+    "sha256": "a86d1832039f8f565ea65124d6301c30372ed8b121e25fec2a7e9651d9b65492"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "6507e7b1d22aa49398d6b04f29d39e99f86f3ee8",
+    "path": "omnigent/runtime/subagent_block_notifier.py",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/6507e7b1d22aa49398d6b04f29d39e99f86f3ee8/omnigent/runtime/subagent_block_notifier.py",
+    "bytes": 22900,
+    "sha256": "110df5a162b44eb7588921da57116069de063b6e16e123509e690d2a938df379"
+  },
+  {
+    "repo": "proxysoul/Empryo",
+    "sha": "c27dac116d2ee1637abfc6634bebf08b5c379454",
+    "path": "README.md",
+    "url": "https://github.com/proxysoul/Empryo/blob/c27dac116d2ee1637abfc6634bebf08b5c379454/README.md",
+    "bytes": 5340,
+    "sha256": "965820a8d16dfc437c127b0141937f005b060306998960753c54a005cfa45d74"
+  },
+  {
+    "repo": "proxysoul/Empryo",
+    "sha": "c27dac116d2ee1637abfc6634bebf08b5c379454",
+    "path": "src/core/agents/subagent-tools.ts",
+    "url": "https://github.com/proxysoul/Empryo/blob/c27dac116d2ee1637abfc6634bebf08b5c379454/src/core/agents/subagent-tools.ts",
+    "bytes": 44303,
+    "sha256": "f3417bc87a3cb8aef99e4ca858f01f1ffa6c7d8c4b322ef5348335a0b83102e9"
+  },
+  {
+    "repo": "aicodeking/pandacode",
+    "sha": "48c4de0874299172777e19ed347a75fc0f80851c",
+    "path": "src/generative-ui-components.ts",
+    "url": "https://github.com/aicodeking/pandacode/blob/48c4de0874299172777e19ed347a75fc0f80851c/src/generative-ui-components.ts",
+    "bytes": 37126,
+    "sha256": "c877bf7b757697114fbc312ed9527ae10b3ee49660796b7a59579b34391241fe"
+  },
+  {
+    "repo": "aicodeking/pandacode",
+    "sha": "48c4de0874299172777e19ed347a75fc0f80851c",
+    "path": "src/generative-ui.ts",
+    "url": "https://github.com/aicodeking/pandacode/blob/48c4de0874299172777e19ed347a75fc0f80851c/src/generative-ui.ts",
+    "bytes": 5756,
+    "sha256": "b7417eff6faa7cefae1f699b125b31de20318acfa2b045e82c3a637998629074"
+  },
+  {
+    "repo": "aicodeking/pandacode",
+    "sha": "48c4de0874299172777e19ed347a75fc0f80851c",
+    "path": "src-tauri/src/architect.rs",
+    "url": "https://github.com/aicodeking/pandacode/blob/48c4de0874299172777e19ed347a75fc0f80851c/src-tauri/src/architect.rs",
+    "bytes": 93911,
+    "sha256": "0870d937d9f92cd8b84d6f4376bb83ab230b218d44a5b187740156d630f93e0d"
+  },
+  {
+    "repo": "aicodeking/pandacode",
+    "sha": "48c4de0874299172777e19ed347a75fc0f80851c",
+    "path": "src-tauri/src/providers/pi.rs",
+    "url": "https://github.com/aicodeking/pandacode/blob/48c4de0874299172777e19ed347a75fc0f80851c/src-tauri/src/providers/pi.rs",
+    "bytes": 27521,
+    "sha256": "e87210a5736a3fa94a99a186a2b1a5a03d0a706aa9a1c78493da8909f6ab3337"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "680152e27b2a961686389ca69a1557cbb2c55f08",
+    "path": "apps/server/src/orchestration-v2/Orchestrator.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/apps/server/src/orchestration-v2/Orchestrator.ts",
+    "bytes": 461131,
+    "sha256": "bb0741f1adb2ec934f1ef74d420f5849730b58dad21de54fc96516b28331fce1",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "680152e27b2a961686389ca69a1557cbb2c55f08",
+    "path": "apps/server/src/orchestration-v2/ThreadLaunchService.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/apps/server/src/orchestration-v2/ThreadLaunchService.ts",
+    "bytes": 43674,
+    "sha256": "26b7d870a3c0baf202349b8dce5ef89f2058a3a68c07af4542863cb4a8f4a46a",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "680152e27b2a961686389ca69a1557cbb2c55f08",
+    "path": "apps/server/src/orchestration-v2/EventSink.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/apps/server/src/orchestration-v2/EventSink.ts",
+    "bytes": 39320,
+    "sha256": "c4213f9a229b75d54834b3430204b2e84ba6f0dd53e07b41c97d4b93229a2000",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "680152e27b2a961686389ca69a1557cbb2c55f08",
+    "path": "apps/server/src/mcp/OrchestratorMcpService.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/apps/server/src/mcp/OrchestratorMcpService.ts",
+    "bytes": 115143,
+    "sha256": "cc4b2733e5d9dcf46ecd414d9ee44b21ca9d55027bdfe99588f2385a174de6d4",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "getpaseo/paseo",
+    "sha": "e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+    "path": "packages/server/src/server/connected-hosts/session.ts",
+    "url": "https://github.com/getpaseo/paseo/blob/e522e6ea8e25140d2ef0c819986175ad6d6379b8/packages/server/src/server/connected-hosts/session.ts",
+    "bytes": 8851,
+    "sha256": "1f687621e6bab7c07928cb485aefa0f7de16bf46d6b43ee6dd7bef3450793668",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "getpaseo/paseo",
+    "sha": "e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+    "path": "packages/server/src/server/connected-hosts/link.ts",
+    "url": "https://github.com/getpaseo/paseo/blob/e522e6ea8e25140d2ef0c819986175ad6d6379b8/packages/server/src/server/connected-hosts/link.ts",
+    "bytes": 7659,
+    "sha256": "6733afd8e402751b87926435018881a68285f2d4f6e8f41d0d3c72b36219a141",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "hardbeat920/monocode",
+    "sha": "74b8139c41e7235e7535bdc8ba60e63705351d3c",
+    "path": "src/app/hooks/useMonoHabits.ts",
+    "url": "https://github.com/hardbeat920/monocode/blob/74b8139c41e7235e7535bdc8ba60e63705351d3c/src/app/hooks/useMonoHabits.ts",
+    "bytes": 10194,
+    "sha256": "acee09d11a049f7d714b445c5e901a62f73eae12da41159e2f34e6382e519f53",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "hardbeat920/monocode",
+    "sha": "74b8139c41e7235e7535bdc8ba60e63705351d3c",
+    "path": "src-tauri/src/mono.rs",
+    "url": "https://github.com/hardbeat920/monocode/blob/74b8139c41e7235e7535bdc8ba60e63705351d3c/src-tauri/src/mono.rs",
+    "bytes": 18075,
+    "sha256": "a35ec52f21057f78c40fd889a1c9db239e09e8060b135c340629b35dd8abb648",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "aicodeking/pandacode",
+    "sha": "48c4de0874299172777e19ed347a75fc0f80851c",
+    "path": "src-tauri/src/providers/deepseek.rs",
+    "url": "https://github.com/aicodeking/pandacode/blob/48c4de0874299172777e19ed347a75fc0f80851c/src-tauri/src/providers/deepseek.rs",
+    "bytes": 11828,
+    "sha256": "8b723ac25d3eefea7f9b050ead9ba03a8a40c53b32f74344661d6ab6188643cf",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "aicodeking/pandacode",
+    "sha": "48c4de0874299172777e19ed347a75fc0f80851c",
+    "path": "releases/0.3.12.md",
+    "url": "https://github.com/aicodeking/pandacode/blob/48c4de0874299172777e19ed347a75fc0f80851c/releases/0.3.12.md",
+    "bytes": 3179,
+    "sha256": "cb6207d389337ffeb0e5c785808ae2b83dfac67c031c293bde80fc456756798f",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "lidge-jun/opencodex",
+    "sha": "994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+    "path": "src/codex/features.ts",
+    "url": "https://github.com/lidge-jun/opencodex/blob/994d15e8a3d071e231ff0de41eab9dfbee8817aa/src/codex/features.ts",
+    "bytes": 80370,
+    "sha256": "f2b9162ea799e2f9f94653c38ac69214e128d90c7fcb803e03f669658f146451",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "lidge-jun/opencodex",
+    "sha": "994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+    "path": "src/server/management/link-enrollment.ts",
+    "url": "https://github.com/lidge-jun/opencodex/blob/994d15e8a3d071e231ff0de41eab9dfbee8817aa/src/server/management/link-enrollment.ts",
+    "bytes": 15932,
+    "sha256": "cf83aecdb918d4400c6d4a226d9342281d48c6bfd26a6a536c3715f9930b4cf4",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "lidge-jun/opencodex",
+    "sha": "994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+    "path": "src/link/remote-probe.ts",
+    "url": "https://github.com/lidge-jun/opencodex/blob/994d15e8a3d071e231ff0de41eab9dfbee8817aa/src/link/remote-probe.ts",
+    "bytes": 2297,
+    "sha256": "dafa575b312f099b453722e348a850cd78084074a36e32513d75441e2360d88c",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "lidge-jun/opencodex",
+    "sha": "2945ebb364b90ad2e0f3fe71e69a375045aec39d",
+    "path": "src/remote/features.ts",
+    "url": "https://github.com/lidge-jun/opencodex/blob/2945ebb364b90ad2e0f3fe71e69a375045aec39d/src/remote/features.ts",
+    "bytes": 3176,
+    "sha256": "f95b2f75c1e0c495e09edd4b91847e37b848e142b431ed4f62f77c974b0cd983",
+    "snapshot": "merged-dev-only"
+  },
+  {
+    "repo": "lidge-jun/opencodex",
+    "sha": "b50cc8050f25fe4b31f81d7d3aceeba4f430fcaf",
+    "path": "src/quota-pool/assemble.ts",
+    "url": "https://github.com/lidge-jun/opencodex/blob/b50cc8050f25fe4b31f81d7d3aceeba4f430fcaf/src/quota-pool/assemble.ts",
+    "bytes": 16696,
+    "sha256": "8e1c547cf4d897cdbc1fd03d4b6ca5b2954046ff40e41db0927ae9ab9011e161",
+    "snapshot": "merged-dev-only"
+  },
+  {
+    "repo": "lidge-jun/opencodex",
+    "sha": "b50cc8050f25fe4b31f81d7d3aceeba4f430fcaf",
+    "path": "src/quota-pool/contract.ts",
+    "url": "https://github.com/lidge-jun/opencodex/blob/b50cc8050f25fe4b31f81d7d3aceeba4f430fcaf/src/quota-pool/contract.ts",
+    "bytes": 1974,
+    "sha256": "49fcdd1bcdb98c429c9048505aa5e05acb05afa0641ee2566f89a8854f3f4b9f",
+    "snapshot": "merged-dev-only"
+  },
+  {
+    "repo": "lidge-jun/opencodex",
+    "sha": "b50cc8050f25fe4b31f81d7d3aceeba4f430fcaf",
+    "path": "src/server/management/quota-pool-routes.ts",
+    "url": "https://github.com/lidge-jun/opencodex/blob/b50cc8050f25fe4b31f81d7d3aceeba4f430fcaf/src/server/management/quota-pool-routes.ts",
+    "bytes": 1148,
+    "sha256": "0da8e32d345457fc97e050a3341df10b16a2bfa7ae8b3e023968d4f9169ca4af",
+    "snapshot": "merged-dev-only"
+  },
+  {
+    "repo": "omnigent-ai/omnigent",
+    "sha": "6507e7b1d22aa49398d6b04f29d39e99f86f3ee8",
+    "path": "omnigent/server/subagent_activity.py",
+    "url": "https://github.com/omnigent-ai/omnigent/blob/6507e7b1d22aa49398d6b04f29d39e99f86f3ee8/omnigent/server/subagent_activity.py",
+    "bytes": 13654,
+    "sha256": "976e3b9edc956228bcb74c5647c1afc2ca3c521588840693a1d5bbedce903c86",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "goat-si/goat",
+    "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+    "path": "README.md",
+    "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/README.md",
+    "bytes": 8983,
+    "sha256": "9578dc5cb232bcefa6d5497ca8c7a33050d712efefc1f1ee03ce3ecf8282aea6",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "goat-si/goat",
+    "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+    "path": "docs/internals/resource-telemetry.md",
+    "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/docs/internals/resource-telemetry.md",
+    "bytes": 3164,
+    "sha256": "5a1ae94d39243f539dcdc6d87a089ee435bdfd922cba4148505aac6262026fc1",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "goat-si/goat",
+    "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+    "path": "docs/user/fleet-goals.md",
+    "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/docs/user/fleet-goals.md",
+    "bytes": 2905,
+    "sha256": "d9702fabefbbb30b872264459e0411ba7ca132e9a6e86809910e2322dff7f254",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "goat-si/goat",
+    "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+    "path": "apps/web/src/components/fleet/FleetConsole.tsx",
+    "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/apps/web/src/components/fleet/FleetConsole.tsx",
+    "bytes": 21862,
+    "sha256": "90d8696ad60245a1221359bb8e836d017fe1745e5d499210c725afce6905ffe4",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "goat-si/goat",
+    "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+    "path": "apps/web/src/components/fleet/fleetTelemetry.ts",
+    "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/apps/web/src/components/fleet/fleetTelemetry.ts",
+    "bytes": 20660,
+    "sha256": "d93ae447ec6fc7b42d6e890de9a737ca65a33ec50c9d81fc22517d06b2692d69",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "goat-si/goat",
+    "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+    "path": "apps/server/src/fleet/goals/GoalController.ts",
+    "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/apps/server/src/fleet/goals/GoalController.ts",
+    "bytes": 33320,
+    "sha256": "e13191e3913caa31d58f78825136033ce8eb708ae953344d14ffa8c5527c4424",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "goat-si/goat",
+    "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+    "path": "apps/server/src/fleet/goals/GoalWorkerRuntime.ts",
+    "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/apps/server/src/fleet/goals/GoalWorkerRuntime.ts",
+    "bytes": 21331,
+    "sha256": "43c32b1cf11299b5a27dbe48945430ff8f9f985dc228f95a5753aff7f9f7fd5b",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "goat-si/goat",
+    "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+    "path": "apps/server/src/fleet/health/Rescheduler.ts",
+    "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/apps/server/src/fleet/health/Rescheduler.ts",
+    "bytes": 19911,
+    "sha256": "4f257a9d328f4df466c81b35ca9ba6201fc0e3db209d891a6a32fb6909f76179",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "goat-si/goat",
+    "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+    "path": "apps/server/src/fleet/resources/Placement.ts",
+    "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/apps/server/src/fleet/resources/Placement.ts",
+    "bytes": 6674,
+    "sha256": "73fb22a4e0980a3c47295fb342fdac589465326e485dee0f54a09eb2544cf8fd",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "goat-si/goat",
+    "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+    "path": "packages/contracts/src/resourceTelemetry.ts",
+    "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/packages/contracts/src/resourceTelemetry.ts",
+    "bytes": 18751,
+    "sha256": "f0befa58f9ba3e41d202c5d230ca0f3d182120c2c7c2a8f9c1a34bfd6daf5fc7",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "goat-si/goat",
+    "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+    "path": "apps/server/src/fleet/goals/GoalStore.ts",
+    "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/apps/server/src/fleet/goals/GoalStore.ts",
+    "bytes": 29400,
+    "sha256": "d8d16da54638dde2c42bcda30d0ca41659ed185fa843b3e130f7ebaa83edd890",
+    "snapshot": "default-head"
+  },
+  {
+    "repo": "goat-si/goat",
+    "sha": "fa83f4fd56d7d247c1d976a5f787294fbe5c4037",
+    "path": "apps/web/src/state/fleetHostMetrics.ts",
+    "url": "https://github.com/goat-si/goat/blob/fa83f4fd56d7d247c1d976a5f787294fbe5c4037/apps/web/src/state/fleetHostMetrics.ts",
+    "bytes": 6208,
+    "sha256": "469eac3a8ce477757b536ae31cacf07f1b84ffd980953e80397b7c835cc72456",
+    "snapshot": "merged-dev-only"
+  },
+  {
+    "repo": "pingdotgg/t3code",
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/server/src/orchestration-v2/Orchestrator.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/orchestration-v2/Orchestrator.ts",
+    "bytes": 459236,
+    "sha256": "96f6062a3444b7bb3990619738653ebc3a537fd4e79666e64665f228aeb122bd",
+    "snapshot": "primary-build"
+  },
+  {
+    "repo": "goat-si/goat",
+    "sha": "1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+    "path": "apps/web/src/components/fleet/fleetTelemetry.ts",
+    "url": "https://github.com/goat-si/goat/blob/1c2231239a1f1d14b4d52d32afa60a51467c3c64/apps/web/src/components/fleet/fleetTelemetry.ts",
+    "bytes": 20660,
+    "sha256": "d93ae447ec6fc7b42d6e890de9a737ca65a33ec50c9d81fc22517d06b2692d69",
+    "snapshot": "primary-build"
+  },
+  {
+    "repo": "goat-si/goat",
+    "sha": "1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+    "path": "apps/server/src/fleet/goals/GoalController.ts",
+    "url": "https://github.com/goat-si/goat/blob/1c2231239a1f1d14b4d52d32afa60a51467c3c64/apps/server/src/fleet/goals/GoalController.ts",
+    "bytes": 33320,
+    "sha256": "e13191e3913caa31d58f78825136033ce8eb708ae953344d14ffa8c5527c4424",
+    "snapshot": "primary-build"
+  },
+  {
+    "repo": "goat-si/goat",
+    "sha": "1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+    "path": "apps/server/src/fleet/goals/GoalWorkerRuntime.ts",
+    "url": "https://github.com/goat-si/goat/blob/1c2231239a1f1d14b4d52d32afa60a51467c3c64/apps/server/src/fleet/goals/GoalWorkerRuntime.ts",
+    "bytes": 21331,
+    "sha256": "43c32b1cf11299b5a27dbe48945430ff8f9f985dc228f95a5753aff7f9f7fd5b",
+    "snapshot": "primary-build"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+    "path": "apps/server/src/projectAgent/Layers/ProjectAgentService.ts",
+    "url": "https://github.com/Emanuele-web04/synara/blob/39a745feaccf942f43aae154373fe375a20a0e4d/apps/server/src/projectAgent/Layers/ProjectAgentService.ts",
+    "bytes": 308027,
+    "sha256": "596e69b1c534fa5715f87e98a4c124d64033b5f42c3d0ac2e6fb249278f87066",
+    "snapshot": "primary-build"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+    "path": "apps/web/src/components/chat/group/HubPendingApprovals.tsx",
+    "url": "https://github.com/Emanuele-web04/synara/blob/39a745feaccf942f43aae154373fe375a20a0e4d/apps/web/src/components/chat/group/HubPendingApprovals.tsx",
+    "bytes": 4938,
+    "sha256": "a327decdccdf9992aa266fb4cb8a64a9d04a1a3444d3ad0a88d7cf44d8374030",
+    "snapshot": "primary-build"
+  },
+  {
+    "repo": "Emanuele-web04/synara",
+    "sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+    "path": "apps/server/src/provider/Layers/OpenCodeAdapter.ts",
+    "url": "https://github.com/Emanuele-web04/synara/blob/39a745feaccf942f43aae154373fe375a20a0e4d/apps/server/src/provider/Layers/OpenCodeAdapter.ts",
+    "bytes": 201324,
+    "sha256": "e3f91f20740566ae751e33be1d74442008b145e376b338833dba07512fe538b1",
+    "snapshot": "primary-build"
+  }
+]

@@ -1,0 +1,48 @@
+{
+  "OrchestratorInc/agent-orchestrator": {
+    "nightly": {
+      "tag": "v0.14.4-nightly.202610201803",
+      "url": "https://github.com/OrchestratorInc/agent-orchestrator/releases/tag/v0.14.4-nightly.202610201803",
+      "source_sha": "10d15d6744599d4017c8b3623c45eed939062403",
+      "published_at": "2026-10-20T18:36:17Z",
+      "source_binding": "Release body Build details links exact source; full-SHA target; downloadable installers."
+    }
+  },
+  "get-bb/bb": {
+    "nightly": {
+      "tag": "desktop-nightly",
+      "url": "https://github.com/get-bb/bb/releases/tag/desktop-nightly",
+      "source_sha": "9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+      "published_at": "2026-07-30T12:07:50Z",
+      "updated_at": "2026-10-20T18:14:48Z",
+      "version": "0.46.2-nightly.39468754795.1",
+      "source_binding": "Updater manifest version embeds run ID, run exact head SHA matches moving tag, desktop publish job succeeded. Overall run failed in iOS only; do not call all-platform build passing.",
+      "run_url": "https://github.com/get-bb/bb/actions/runs/39468754795"
+    }
+  },
+  "stablyai/orca": {
+    "hourly": {
+      "tag": "v1.4.238-hourly.202610211431",
+      "url": "https://github.com/stablyai/orca-hourly/releases/tag/v1.4.238-hourly.202610211431",
+      "source_sha": "fd8b2dc3a7c557be940e635327f461229cef1644",
+      "published_at": "2026-10-21T14:39:08Z",
+      "source_binding": "Release body links full canonical source SHA; workflow builds pinned ref; release contains downloadable updater/installers."
+    },
+    "daily": {
+      "tag": "v1.4.234-daily.202610201847",
+      "url": "https://github.com/stablyai/orca-daily/releases/tag/v1.4.234-daily.202610201847",
+      "source_sha": "3e4ceb1515e73988f823432512670e1fc64c264c",
+      "published_at": "2026-10-20T18:55:51Z",
+      "source_binding": "Release body links full canonical source SHA; workflow builds pinned ref; release contains downloadable updater/installers."
+    }
+  },
+  "superset-sh/superset": {
+    "canary": {
+      "tag": "desktop-canary",
+      "url": "https://github.com/superset-sh/superset/releases/tag/desktop-canary",
+      "source_sha": "aca8060379e7b00fe7b57c3c2173856c80290af0",
+      "published_at": "2026-10-21T13:02:24Z",
+      "source_binding": "Release body exact Build commit plus installers; mutable tag separately resolved in original pins."
+    }
+  }
+}

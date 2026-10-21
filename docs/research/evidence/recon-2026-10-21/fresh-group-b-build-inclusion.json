@@ -1,0 +1,699 @@
+[
+  {
+    "repository": "OrchestratorInc/agent-orchestrator",
+    "channel": "nightly",
+    "tag": "v0.14.4-nightly.202610201803",
+    "source_sha": "10d15d6744599d4017c8b3623c45eed939062403",
+    "pr": 6090,
+    "merge_sha": "f6a9cbfdf41768e187e6cff965cb3c0da72f65c8",
+    "comparison_url": "https://github.com/OrchestratorInc/agent-orchestrator/compare/f6a9cbfdf41768e187e6cff965cb3c0da72f65c8...10d15d6744599d4017c8b3623c45eed939062403",
+    "comparison": {
+      "ahead_by": 205,
+      "base_commit": "f6a9cbfdf41768e187e6cff965cb3c0da72f65c8",
+      "behind_by": 0,
+      "merge_base_commit": "f6a9cbfdf41768e187e6cff965cb3c0da72f65c8",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "OrchestratorInc/agent-orchestrator",
+    "channel": "nightly",
+    "tag": "v0.14.4-nightly.202610201803",
+    "source_sha": "10d15d6744599d4017c8b3623c45eed939062403",
+    "pr": 6163,
+    "merge_sha": "168f09b748f0de61f950d838ff4a6b50b9f3589b",
+    "comparison_url": "https://github.com/OrchestratorInc/agent-orchestrator/compare/168f09b748f0de61f950d838ff4a6b50b9f3589b...10d15d6744599d4017c8b3623c45eed939062403",
+    "comparison": {
+      "ahead_by": 326,
+      "base_commit": "168f09b748f0de61f950d838ff4a6b50b9f3589b",
+      "behind_by": 0,
+      "merge_base_commit": "168f09b748f0de61f950d838ff4a6b50b9f3589b",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "OrchestratorInc/agent-orchestrator",
+    "channel": "nightly",
+    "tag": "v0.14.4-nightly.202610201803",
+    "source_sha": "10d15d6744599d4017c8b3623c45eed939062403",
+    "pr": 6201,
+    "merge_sha": "7b7db96413e6a396a10afbcada0e2fd04a994ad8",
+    "comparison_url": "https://github.com/OrchestratorInc/agent-orchestrator/compare/7b7db96413e6a396a10afbcada0e2fd04a994ad8...10d15d6744599d4017c8b3623c45eed939062403",
+    "comparison": {
+      "ahead_by": 319,
+      "base_commit": "7b7db96413e6a396a10afbcada0e2fd04a994ad8",
+      "behind_by": 0,
+      "merge_base_commit": "7b7db96413e6a396a10afbcada0e2fd04a994ad8",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "OrchestratorInc/agent-orchestrator",
+    "channel": "nightly",
+    "tag": "v0.14.4-nightly.202610201803",
+    "source_sha": "10d15d6744599d4017c8b3623c45eed939062403",
+    "pr": 6359,
+    "merge_sha": "cc0b31bca63423d76281b8565379ee3edc19bf68",
+    "comparison_url": "https://github.com/OrchestratorInc/agent-orchestrator/compare/cc0b31bca63423d76281b8565379ee3edc19bf68...10d15d6744599d4017c8b3623c45eed939062403",
+    "comparison": {
+      "ahead_by": 265,
+      "base_commit": "cc0b31bca63423d76281b8565379ee3edc19bf68",
+      "behind_by": 0,
+      "merge_base_commit": "cc0b31bca63423d76281b8565379ee3edc19bf68",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "OrchestratorInc/agent-orchestrator",
+    "channel": "nightly",
+    "tag": "v0.14.4-nightly.202610201803",
+    "source_sha": "10d15d6744599d4017c8b3623c45eed939062403",
+    "pr": 6514,
+    "merge_sha": "1cb8416eba29a4bee6a69141e45a1819db45eeb7",
+    "comparison_url": "https://github.com/OrchestratorInc/agent-orchestrator/compare/1cb8416eba29a4bee6a69141e45a1819db45eeb7...10d15d6744599d4017c8b3623c45eed939062403",
+    "comparison": {
+      "ahead_by": 145,
+      "base_commit": "1cb8416eba29a4bee6a69141e45a1819db45eeb7",
+      "behind_by": 0,
+      "merge_base_commit": "1cb8416eba29a4bee6a69141e45a1819db45eeb7",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "OrchestratorInc/agent-orchestrator",
+    "channel": "nightly",
+    "tag": "v0.14.4-nightly.202610201803",
+    "source_sha": "10d15d6744599d4017c8b3623c45eed939062403",
+    "pr": 6547,
+    "merge_sha": "95dd4d712d5b6026cc00d59fd0dd63aea5c4e66e",
+    "comparison_url": "https://github.com/OrchestratorInc/agent-orchestrator/compare/95dd4d712d5b6026cc00d59fd0dd63aea5c4e66e...10d15d6744599d4017c8b3623c45eed939062403",
+    "comparison": {
+      "ahead_by": 163,
+      "base_commit": "95dd4d712d5b6026cc00d59fd0dd63aea5c4e66e",
+      "behind_by": 0,
+      "merge_base_commit": "95dd4d712d5b6026cc00d59fd0dd63aea5c4e66e",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "OrchestratorInc/agent-orchestrator",
+    "channel": "nightly",
+    "tag": "v0.14.4-nightly.202610201803",
+    "source_sha": "10d15d6744599d4017c8b3623c45eed939062403",
+    "pr": 6562,
+    "merge_sha": "8a5bacc8381a4231683772564986962a38cff80a",
+    "comparison_url": "https://github.com/OrchestratorInc/agent-orchestrator/compare/8a5bacc8381a4231683772564986962a38cff80a...10d15d6744599d4017c8b3623c45eed939062403",
+    "comparison": {
+      "ahead_by": 119,
+      "base_commit": "8a5bacc8381a4231683772564986962a38cff80a",
+      "behind_by": 0,
+      "merge_base_commit": "8a5bacc8381a4231683772564986962a38cff80a",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "OrchestratorInc/agent-orchestrator",
+    "channel": "nightly",
+    "tag": "v0.14.4-nightly.202610201803",
+    "source_sha": "10d15d6744599d4017c8b3623c45eed939062403",
+    "pr": 6717,
+    "merge_sha": "b1b2a690eb66488ebc00e6426c3d8d05ce77e063",
+    "comparison_url": "https://github.com/OrchestratorInc/agent-orchestrator/compare/b1b2a690eb66488ebc00e6426c3d8d05ce77e063...10d15d6744599d4017c8b3623c45eed939062403",
+    "comparison": {
+      "ahead_by": 5,
+      "base_commit": "b1b2a690eb66488ebc00e6426c3d8d05ce77e063",
+      "behind_by": 0,
+      "merge_base_commit": "b1b2a690eb66488ebc00e6426c3d8d05ce77e063",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "OrchestratorInc/agent-orchestrator",
+    "channel": "nightly",
+    "tag": "v0.14.4-nightly.202610201803",
+    "source_sha": "10d15d6744599d4017c8b3623c45eed939062403",
+    "pr": 6999,
+    "merge_sha": "3a0c3b21e2489a74b614f2a4408da1922c31f008",
+    "comparison_url": "https://github.com/OrchestratorInc/agent-orchestrator/compare/3a0c3b21e2489a74b614f2a4408da1922c31f008...10d15d6744599d4017c8b3623c45eed939062403",
+    "comparison": {
+      "ahead_by": 0,
+      "base_commit": "3a0c3b21e2489a74b614f2a4408da1922c31f008",
+      "behind_by": 6,
+      "merge_base_commit": "10d15d6744599d4017c8b3623c45eed939062403",
+      "status": "behind"
+    },
+    "included": false
+  },
+  {
+    "repository": "get-bb/bb",
+    "channel": "nightly",
+    "tag": "desktop-nightly",
+    "source_sha": "9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+    "pr": 4947,
+    "merge_sha": "be68bf357b3428161bd83f57dda427a9b58094ca",
+    "comparison_url": "https://github.com/get-bb/bb/compare/be68bf357b3428161bd83f57dda427a9b58094ca...9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+    "comparison": {
+      "ahead_by": 471,
+      "base_commit": "be68bf357b3428161bd83f57dda427a9b58094ca",
+      "behind_by": 0,
+      "merge_base_commit": "be68bf357b3428161bd83f57dda427a9b58094ca",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "get-bb/bb",
+    "channel": "nightly",
+    "tag": "desktop-nightly",
+    "source_sha": "9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+    "pr": 5207,
+    "merge_sha": "5fa79cde78628ce257df82bfbf7faf20947d4f1c",
+    "comparison_url": "https://github.com/get-bb/bb/compare/5fa79cde78628ce257df82bfbf7faf20947d4f1c...9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+    "comparison": {
+      "ahead_by": 285,
+      "base_commit": "5fa79cde78628ce257df82bfbf7faf20947d4f1c",
+      "behind_by": 0,
+      "merge_base_commit": "5fa79cde78628ce257df82bfbf7faf20947d4f1c",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "get-bb/bb",
+    "channel": "nightly",
+    "tag": "desktop-nightly",
+    "source_sha": "9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+    "pr": 5578,
+    "merge_sha": "cafba7afaa2f5410e11ee2ed494357f21d8781b6",
+    "comparison_url": "https://github.com/get-bb/bb/compare/cafba7afaa2f5410e11ee2ed494357f21d8781b6...9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+    "comparison": {
+      "ahead_by": 129,
+      "base_commit": "cafba7afaa2f5410e11ee2ed494357f21d8781b6",
+      "behind_by": 0,
+      "merge_base_commit": "cafba7afaa2f5410e11ee2ed494357f21d8781b6",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "get-bb/bb",
+    "channel": "nightly",
+    "tag": "desktop-nightly",
+    "source_sha": "9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+    "pr": 5675,
+    "merge_sha": "3722a482be5bc56fb38fc518647321d393b53184",
+    "comparison_url": "https://github.com/get-bb/bb/compare/3722a482be5bc56fb38fc518647321d393b53184...9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+    "comparison": {
+      "ahead_by": 5,
+      "base_commit": "3722a482be5bc56fb38fc518647321d393b53184",
+      "behind_by": 0,
+      "merge_base_commit": "3722a482be5bc56fb38fc518647321d393b53184",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "get-bb/bb",
+    "channel": "nightly",
+    "tag": "desktop-nightly",
+    "source_sha": "9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+    "pr": 5775,
+    "merge_sha": "a6ba06b7283697eae97afb8ce2805f93d5b8da90",
+    "comparison_url": "https://github.com/get-bb/bb/compare/a6ba06b7283697eae97afb8ce2805f93d5b8da90...9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+    "comparison": {
+      "ahead_by": 24,
+      "base_commit": "a6ba06b7283697eae97afb8ce2805f93d5b8da90",
+      "behind_by": 0,
+      "merge_base_commit": "a6ba06b7283697eae97afb8ce2805f93d5b8da90",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "get-bb/bb",
+    "channel": "nightly",
+    "tag": "desktop-nightly",
+    "source_sha": "9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+    "pr": 5812,
+    "merge_sha": "8f2af05033d2bce4b99ddd117ea88421f5e1f5d3",
+    "comparison_url": "https://github.com/get-bb/bb/compare/8f2af05033d2bce4b99ddd117ea88421f5e1f5d3...9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+    "comparison": {
+      "ahead_by": 18,
+      "base_commit": "8f2af05033d2bce4b99ddd117ea88421f5e1f5d3",
+      "behind_by": 0,
+      "merge_base_commit": "8f2af05033d2bce4b99ddd117ea88421f5e1f5d3",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "get-bb/bb",
+    "channel": "nightly",
+    "tag": "desktop-nightly",
+    "source_sha": "9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+    "pr": 5816,
+    "merge_sha": "2f23958dbdf7660d3dc0543461ce1ce6d5a3ccf2",
+    "comparison_url": "https://github.com/get-bb/bb/compare/2f23958dbdf7660d3dc0543461ce1ce6d5a3ccf2...9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+    "comparison": {
+      "ahead_by": 14,
+      "base_commit": "2f23958dbdf7660d3dc0543461ce1ce6d5a3ccf2",
+      "behind_by": 0,
+      "merge_base_commit": "2f23958dbdf7660d3dc0543461ce1ce6d5a3ccf2",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "get-bb/bb",
+    "channel": "nightly",
+    "tag": "desktop-nightly",
+    "source_sha": "9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+    "pr": 5959,
+    "merge_sha": "04bdce8111ca3dbdd136c63fad3e36f56e5814c0",
+    "comparison_url": "https://github.com/get-bb/bb/compare/04bdce8111ca3dbdd136c63fad3e36f56e5814c0...9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+    "comparison": {
+      "ahead_by": 0,
+      "base_commit": "04bdce8111ca3dbdd136c63fad3e36f56e5814c0",
+      "behind_by": 60,
+      "merge_base_commit": "9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+      "status": "behind"
+    },
+    "included": false
+  },
+  {
+    "repository": "get-bb/bb",
+    "channel": "nightly",
+    "tag": "desktop-nightly",
+    "source_sha": "9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+    "pr": 5995,
+    "merge_sha": "2bf7cd6c16857d64418189898660abe9f5c79ac7",
+    "comparison_url": "https://github.com/get-bb/bb/compare/2bf7cd6c16857d64418189898660abe9f5c79ac7...9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+    "comparison": {
+      "ahead_by": 0,
+      "base_commit": "2bf7cd6c16857d64418189898660abe9f5c79ac7",
+      "behind_by": 62,
+      "merge_base_commit": "9ecb9bcbb4e8ad096d50f566b6f3201c08eb82ac",
+      "status": "behind"
+    },
+    "included": false
+  },
+  {
+    "repository": "stablyai/orca",
+    "channel": "hourly",
+    "tag": "v1.4.238-hourly.202610211431",
+    "source_sha": "fd8b2dc3a7c557be940e635327f461229cef1644",
+    "pr": 22972,
+    "merge_sha": "9fdd90ffa7721e145f1353ad9fb9df2f70c31f43",
+    "comparison_url": "https://github.com/stablyai/orca/compare/9fdd90ffa7721e145f1353ad9fb9df2f70c31f43...fd8b2dc3a7c557be940e635327f461229cef1644",
+    "comparison": {
+      "ahead_by": 2604,
+      "base_commit": "9fdd90ffa7721e145f1353ad9fb9df2f70c31f43",
+      "behind_by": 0,
+      "merge_base_commit": "9fdd90ffa7721e145f1353ad9fb9df2f70c31f43",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "stablyai/orca",
+    "channel": "hourly",
+    "tag": "v1.4.238-hourly.202610211431",
+    "source_sha": "fd8b2dc3a7c557be940e635327f461229cef1644",
+    "pr": 25078,
+    "merge_sha": "dd39dcba5f99710251bac1a33392bb41a1fd3945",
+    "comparison_url": "https://github.com/stablyai/orca/compare/dd39dcba5f99710251bac1a33392bb41a1fd3945...fd8b2dc3a7c557be940e635327f461229cef1644",
+    "comparison": {
+      "ahead_by": 2748,
+      "base_commit": "dd39dcba5f99710251bac1a33392bb41a1fd3945",
+      "behind_by": 0,
+      "merge_base_commit": "dd39dcba5f99710251bac1a33392bb41a1fd3945",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "stablyai/orca",
+    "channel": "hourly",
+    "tag": "v1.4.238-hourly.202610211431",
+    "source_sha": "fd8b2dc3a7c557be940e635327f461229cef1644",
+    "pr": 26501,
+    "merge_sha": "5f134d8f011740f6058c747aca3a940b4531e212",
+    "comparison_url": "https://github.com/stablyai/orca/compare/5f134d8f011740f6058c747aca3a940b4531e212...fd8b2dc3a7c557be940e635327f461229cef1644",
+    "comparison": {
+      "ahead_by": 1552,
+      "base_commit": "5f134d8f011740f6058c747aca3a940b4531e212",
+      "behind_by": 0,
+      "merge_base_commit": "5f134d8f011740f6058c747aca3a940b4531e212",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "stablyai/orca",
+    "channel": "hourly",
+    "tag": "v1.4.238-hourly.202610211431",
+    "source_sha": "fd8b2dc3a7c557be940e635327f461229cef1644",
+    "pr": 28424,
+    "merge_sha": "e43f3e7e04596b0bd13bb854445ed10db416bcb6",
+    "comparison_url": "https://github.com/stablyai/orca/compare/e43f3e7e04596b0bd13bb854445ed10db416bcb6...fd8b2dc3a7c557be940e635327f461229cef1644",
+    "comparison": {
+      "ahead_by": 569,
+      "base_commit": "e43f3e7e04596b0bd13bb854445ed10db416bcb6",
+      "behind_by": 0,
+      "merge_base_commit": "e43f3e7e04596b0bd13bb854445ed10db416bcb6",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "stablyai/orca",
+    "channel": "hourly",
+    "tag": "v1.4.238-hourly.202610211431",
+    "source_sha": "fd8b2dc3a7c557be940e635327f461229cef1644",
+    "pr": 28455,
+    "merge_sha": "a5b96a1f8dc88254bcf006da0178c423c7b264d4",
+    "comparison_url": "https://github.com/stablyai/orca/compare/a5b96a1f8dc88254bcf006da0178c423c7b264d4...fd8b2dc3a7c557be940e635327f461229cef1644",
+    "comparison": {
+      "ahead_by": 746,
+      "base_commit": "a5b96a1f8dc88254bcf006da0178c423c7b264d4",
+      "behind_by": 0,
+      "merge_base_commit": "a5b96a1f8dc88254bcf006da0178c423c7b264d4",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "stablyai/orca",
+    "channel": "hourly",
+    "tag": "v1.4.238-hourly.202610211431",
+    "source_sha": "fd8b2dc3a7c557be940e635327f461229cef1644",
+    "pr": 28467,
+    "merge_sha": "38131048b10ef7a5526ef16a76adf74901c8a10a",
+    "comparison_url": "https://github.com/stablyai/orca/compare/38131048b10ef7a5526ef16a76adf74901c8a10a...fd8b2dc3a7c557be940e635327f461229cef1644",
+    "comparison": {
+      "ahead_by": 749,
+      "base_commit": "38131048b10ef7a5526ef16a76adf74901c8a10a",
+      "behind_by": 0,
+      "merge_base_commit": "38131048b10ef7a5526ef16a76adf74901c8a10a",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "stablyai/orca",
+    "channel": "hourly",
+    "tag": "v1.4.238-hourly.202610211431",
+    "source_sha": "fd8b2dc3a7c557be940e635327f461229cef1644",
+    "pr": 28649,
+    "merge_sha": "b9fa92bbd0960ee7a9fa972ad038cc890d279550",
+    "comparison_url": "https://github.com/stablyai/orca/compare/b9fa92bbd0960ee7a9fa972ad038cc890d279550...fd8b2dc3a7c557be940e635327f461229cef1644",
+    "comparison": {
+      "ahead_by": 718,
+      "base_commit": "b9fa92bbd0960ee7a9fa972ad038cc890d279550",
+      "behind_by": 0,
+      "merge_base_commit": "b9fa92bbd0960ee7a9fa972ad038cc890d279550",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "stablyai/orca",
+    "channel": "hourly",
+    "tag": "v1.4.238-hourly.202610211431",
+    "source_sha": "fd8b2dc3a7c557be940e635327f461229cef1644",
+    "pr": 30396,
+    "merge_sha": "4a33cd8e7308a362be793006f3ae411ab6e3aaaf",
+    "comparison_url": "https://github.com/stablyai/orca/compare/4a33cd8e7308a362be793006f3ae411ab6e3aaaf...fd8b2dc3a7c557be940e635327f461229cef1644",
+    "comparison": {
+      "ahead_by": 337,
+      "base_commit": "4a33cd8e7308a362be793006f3ae411ab6e3aaaf",
+      "behind_by": 0,
+      "merge_base_commit": "4a33cd8e7308a362be793006f3ae411ab6e3aaaf",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "stablyai/orca",
+    "channel": "hourly",
+    "tag": "v1.4.238-hourly.202610211431",
+    "source_sha": "fd8b2dc3a7c557be940e635327f461229cef1644",
+    "pr": 30403,
+    "merge_sha": "43abd59f3dbe3439abf8d4c517e79f5d8fd1593d",
+    "comparison_url": "https://github.com/stablyai/orca/compare/43abd59f3dbe3439abf8d4c517e79f5d8fd1593d...fd8b2dc3a7c557be940e635327f461229cef1644",
+    "comparison": {
+      "ahead_by": 353,
+      "base_commit": "43abd59f3dbe3439abf8d4c517e79f5d8fd1593d",
+      "behind_by": 0,
+      "merge_base_commit": "43abd59f3dbe3439abf8d4c517e79f5d8fd1593d",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "stablyai/orca",
+    "channel": "hourly",
+    "tag": "v1.4.238-hourly.202610211431",
+    "source_sha": "fd8b2dc3a7c557be940e635327f461229cef1644",
+    "pr": 30421,
+    "merge_sha": "04ce3d389116c1795d71934f7685c5781b9e87fc",
+    "comparison_url": "https://github.com/stablyai/orca/compare/04ce3d389116c1795d71934f7685c5781b9e87fc...fd8b2dc3a7c557be940e635327f461229cef1644",
+    "comparison": {
+      "ahead_by": 537,
+      "base_commit": "04ce3d389116c1795d71934f7685c5781b9e87fc",
+      "behind_by": 0,
+      "merge_base_commit": "04ce3d389116c1795d71934f7685c5781b9e87fc",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "stablyai/orca",
+    "channel": "hourly",
+    "tag": "v1.4.238-hourly.202610211431",
+    "source_sha": "fd8b2dc3a7c557be940e635327f461229cef1644",
+    "pr": 30427,
+    "merge_sha": "f8a5d3e2841c08fb2fe12e46991f66d3424473b7",
+    "comparison_url": "https://github.com/stablyai/orca/compare/f8a5d3e2841c08fb2fe12e46991f66d3424473b7...fd8b2dc3a7c557be940e635327f461229cef1644",
+    "comparison": {
+      "ahead_by": 535,
+      "base_commit": "f8a5d3e2841c08fb2fe12e46991f66d3424473b7",
+      "behind_by": 0,
+      "merge_base_commit": "f8a5d3e2841c08fb2fe12e46991f66d3424473b7",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "stablyai/orca",
+    "channel": "hourly",
+    "tag": "v1.4.238-hourly.202610211431",
+    "source_sha": "fd8b2dc3a7c557be940e635327f461229cef1644",
+    "pr": 30576,
+    "merge_sha": "e7b60c155b7793c4a05c97b8d827d49f25c32b47",
+    "comparison_url": "https://github.com/stablyai/orca/compare/e7b60c155b7793c4a05c97b8d827d49f25c32b47...fd8b2dc3a7c557be940e635327f461229cef1644",
+    "comparison": {
+      "ahead_by": 470,
+      "base_commit": "e7b60c155b7793c4a05c97b8d827d49f25c32b47",
+      "behind_by": 0,
+      "merge_base_commit": "e7b60c155b7793c4a05c97b8d827d49f25c32b47",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "stablyai/orca",
+    "channel": "hourly",
+    "tag": "v1.4.238-hourly.202610211431",
+    "source_sha": "fd8b2dc3a7c557be940e635327f461229cef1644",
+    "pr": 31461,
+    "merge_sha": "abce679f88630f42f441330ffea8241278e39506",
+    "comparison_url": "https://github.com/stablyai/orca/compare/abce679f88630f42f441330ffea8241278e39506...fd8b2dc3a7c557be940e635327f461229cef1644",
+    "comparison": {
+      "ahead_by": 5,
+      "base_commit": "abce679f88630f42f441330ffea8241278e39506",
+      "behind_by": 0,
+      "merge_base_commit": "abce679f88630f42f441330ffea8241278e39506",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "stablyai/orca",
+    "channel": "hourly",
+    "tag": "v1.4.238-hourly.202610211431",
+    "source_sha": "fd8b2dc3a7c557be940e635327f461229cef1644",
+    "pr": 31482,
+    "merge_sha": "c149395c20caac972e9913fe8809e107b31c101f",
+    "comparison_url": "https://github.com/stablyai/orca/compare/c149395c20caac972e9913fe8809e107b31c101f...fd8b2dc3a7c557be940e635327f461229cef1644",
+    "comparison": {
+      "ahead_by": 6,
+      "base_commit": "c149395c20caac972e9913fe8809e107b31c101f",
+      "behind_by": 0,
+      "merge_base_commit": "c149395c20caac972e9913fe8809e107b31c101f",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "superset-sh/superset",
+    "channel": "canary",
+    "tag": "desktop-canary",
+    "source_sha": "aca8060379e7b00fe7b57c3c2173856c80290af0",
+    "pr": 8199,
+    "merge_sha": "66e170b2b14be4e7c541c206f1c1cc6b2f055d31",
+    "comparison_url": "https://github.com/superset-sh/superset/compare/66e170b2b14be4e7c541c206f1c1cc6b2f055d31...aca8060379e7b00fe7b57c3c2173856c80290af0",
+    "comparison": {
+      "ahead_by": 320,
+      "base_commit": "66e170b2b14be4e7c541c206f1c1cc6b2f055d31",
+      "behind_by": 0,
+      "merge_base_commit": "66e170b2b14be4e7c541c206f1c1cc6b2f055d31",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "superset-sh/superset",
+    "channel": "canary",
+    "tag": "desktop-canary",
+    "source_sha": "aca8060379e7b00fe7b57c3c2173856c80290af0",
+    "pr": 8207,
+    "merge_sha": "29081492bb150dcbeaf017f494081e8d4ca074c0",
+    "comparison_url": "https://github.com/superset-sh/superset/compare/29081492bb150dcbeaf017f494081e8d4ca074c0...aca8060379e7b00fe7b57c3c2173856c80290af0",
+    "comparison": {
+      "ahead_by": 304,
+      "base_commit": "29081492bb150dcbeaf017f494081e8d4ca074c0",
+      "behind_by": 0,
+      "merge_base_commit": "29081492bb150dcbeaf017f494081e8d4ca074c0",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "superset-sh/superset",
+    "channel": "canary",
+    "tag": "desktop-canary",
+    "source_sha": "aca8060379e7b00fe7b57c3c2173856c80290af0",
+    "pr": 8341,
+    "merge_sha": "9ef452d03f2e9dfe5785cb7a08cf2aae70f99758",
+    "comparison_url": "https://github.com/superset-sh/superset/compare/9ef452d03f2e9dfe5785cb7a08cf2aae70f99758...aca8060379e7b00fe7b57c3c2173856c80290af0",
+    "comparison": {
+      "ahead_by": 233,
+      "base_commit": "9ef452d03f2e9dfe5785cb7a08cf2aae70f99758",
+      "behind_by": 0,
+      "merge_base_commit": "9ef452d03f2e9dfe5785cb7a08cf2aae70f99758",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "superset-sh/superset",
+    "channel": "canary",
+    "tag": "desktop-canary",
+    "source_sha": "aca8060379e7b00fe7b57c3c2173856c80290af0",
+    "pr": 8396,
+    "merge_sha": "5441959c2ed74063cfd636d6fa3f4704a83a0eca",
+    "comparison_url": "https://github.com/superset-sh/superset/compare/5441959c2ed74063cfd636d6fa3f4704a83a0eca...aca8060379e7b00fe7b57c3c2173856c80290af0",
+    "comparison": {
+      "ahead_by": 177,
+      "base_commit": "5441959c2ed74063cfd636d6fa3f4704a83a0eca",
+      "behind_by": 0,
+      "merge_base_commit": "5441959c2ed74063cfd636d6fa3f4704a83a0eca",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "superset-sh/superset",
+    "channel": "canary",
+    "tag": "desktop-canary",
+    "source_sha": "aca8060379e7b00fe7b57c3c2173856c80290af0",
+    "pr": 8406,
+    "merge_sha": "00ede324dced54e7b8e7a50ea74e2e1a4e4780c2",
+    "comparison_url": "https://github.com/superset-sh/superset/compare/00ede324dced54e7b8e7a50ea74e2e1a4e4780c2...aca8060379e7b00fe7b57c3c2173856c80290af0",
+    "comparison": {
+      "ahead_by": 190,
+      "base_commit": "00ede324dced54e7b8e7a50ea74e2e1a4e4780c2",
+      "behind_by": 0,
+      "merge_base_commit": "00ede324dced54e7b8e7a50ea74e2e1a4e4780c2",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "superset-sh/superset",
+    "channel": "canary",
+    "tag": "desktop-canary",
+    "source_sha": "aca8060379e7b00fe7b57c3c2173856c80290af0",
+    "pr": 8458,
+    "merge_sha": "9e58bdbad216bda9767717fdfcb289f42091e288",
+    "comparison_url": "https://github.com/superset-sh/superset/compare/9e58bdbad216bda9767717fdfcb289f42091e288...aca8060379e7b00fe7b57c3c2173856c80290af0",
+    "comparison": {
+      "ahead_by": 169,
+      "base_commit": "9e58bdbad216bda9767717fdfcb289f42091e288",
+      "behind_by": 0,
+      "merge_base_commit": "9e58bdbad216bda9767717fdfcb289f42091e288",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "superset-sh/superset",
+    "channel": "canary",
+    "tag": "desktop-canary",
+    "source_sha": "aca8060379e7b00fe7b57c3c2173856c80290af0",
+    "pr": 8466,
+    "merge_sha": "c2acd72b5ad26fa98e5f4fbcc720feea55acc8a8",
+    "comparison_url": "https://github.com/superset-sh/superset/compare/c2acd72b5ad26fa98e5f4fbcc720feea55acc8a8...aca8060379e7b00fe7b57c3c2173856c80290af0",
+    "comparison": {
+      "ahead_by": 165,
+      "base_commit": "c2acd72b5ad26fa98e5f4fbcc720feea55acc8a8",
+      "behind_by": 0,
+      "merge_base_commit": "c2acd72b5ad26fa98e5f4fbcc720feea55acc8a8",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "superset-sh/superset",
+    "channel": "canary",
+    "tag": "desktop-canary",
+    "source_sha": "aca8060379e7b00fe7b57c3c2173856c80290af0",
+    "pr": 8585,
+    "merge_sha": "866b43f85121dc8f71559e909a6a0cecc5f4eff0",
+    "comparison_url": "https://github.com/superset-sh/superset/compare/866b43f85121dc8f71559e909a6a0cecc5f4eff0...aca8060379e7b00fe7b57c3c2173856c80290af0",
+    "comparison": {
+      "ahead_by": 9,
+      "base_commit": "866b43f85121dc8f71559e909a6a0cecc5f4eff0",
+      "behind_by": 0,
+      "merge_base_commit": "866b43f85121dc8f71559e909a6a0cecc5f4eff0",
+      "status": "ahead"
+    },
+    "included": true
+  },
+  {
+    "repository": "superset-sh/superset",
+    "channel": "canary",
+    "tag": "desktop-canary",
+    "source_sha": "aca8060379e7b00fe7b57c3c2173856c80290af0",
+    "pr": 8714,
+    "merge_sha": "aca8060379e7b00fe7b57c3c2173856c80290af0",
+    "comparison_url": "https://github.com/superset-sh/superset/compare/aca8060379e7b00fe7b57c3c2173856c80290af0...aca8060379e7b00fe7b57c3c2173856c80290af0",
+    "comparison": {
+      "ahead_by": 0,
+      "base_commit": "aca8060379e7b00fe7b57c3c2173856c80290af0",
+      "behind_by": 0,
+      "merge_base_commit": "aca8060379e7b00fe7b57c3c2173856c80290af0",
+      "status": "identical"
+    },
+    "included": true
+  }
+]

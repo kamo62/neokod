@@ -1,0 +1,9 @@
+{
+  "verified_at": "2026-10-21T15:10:04.579238+00:00",
+  "metadata_pr_count": 4997,
+  "selected_pr_detail_captures": 39,
+  "pinned_source_files": 74,
+  "build_ancestry_checks": 43,
+  "errors": [],
+  "verification": "JSON parsing, metadata census reconciliation, source hash read-back and GitHub build-ancestry metadata only; no competitor execution"
+}

@@ -1,0 +1,109 @@
+{
+  "captured_at": "2026-10-21T14:19:50.736581+00:00",
+  "neokod_head": "e69716d23501230d755087a07c91c50691eb47a3",
+  "pandacode_head": "d9c1ac0284db3de24890b3af6e04933ca588fca6",
+  "provider": "Claude Code",
+  "requested_model": "claude-sonnet-5-5",
+  "effort": "high",
+  "session_id": "817c55cc-a37c-46c6-a887-b64a1da4d45f",
+  "status": "source_research_completed",
+  "images": [
+    {
+      "reference": 1,
+      "file": "flow-reference-1.jpg",
+      "description": "Delivery pipeline with design critique, parallel implementation/testing, integration, review and human merge",
+      "sha256": "e0ed723d370838ce961e0df186f3f62a7abfd7d7a81adbf64a6fd93848074737",
+      "bytes": 74318,
+      "provenance": "User-supplied screenshot; original system and behaviour unverified"
+    },
+    {
+      "reference": 2,
+      "file": "flow-reference-2.jpg",
+      "description": "Generate, self-verify, independent review, automated checks, bounded repair or human escalation",
+      "sha256": "4cbe4b997dabff99af2e602c07c6c021bea5c74022b5a62af2ac3b5dd0c3e310",
+      "bytes": 63812,
+      "provenance": "User-supplied screenshot; original system and behaviour unverified"
+    },
+    {
+      "reference": 3,
+      "file": "flow-reference-3.jpg",
+      "description": "Parent-child agent tree with per-node state, provider, model, cost and elapsed time",
+      "sha256": "d6032c2bf3a22ca0518b8b4a9dd4980427b0b8f3e4973ecac3cea8fb69a6e95b",
+      "bytes": 89849,
+      "provenance": "User-supplied screenshot; original system and behaviour unverified"
+    }
+  ],
+  "baseline_unrelated_dirty_paths": [
+    "apps/server/src/http.ts",
+    "apps/server/src/http.test.ts",
+    "apps/server/src/server.test.ts"
+  ],
+  "completed_at": "2026-10-21T14:27:32.183111+00:00",
+  "observed_response_models": ["claude-sonnet-5-5"],
+  "result_error": false,
+  "result_subtype": "success",
+  "permission_denials": [],
+  "model_usage_keys": ["claude-sonnet-5-5"],
+  "sonnet_output_sha256": "f22b67b07cfa9406aa825947d6444c624bc461784d51f5ca43e75f806a972eb7",
+  "raw_provider_output": "/tmp/neokod-recon-2026-10-21/sonnet-authenticated-stream.jsonl",
+  "source_class": "Static source inspection and GitHub issue/PR queries. No application runtime proof.",
+  "checks": {
+    "vp run typecheck": {
+      "exit_code": 0,
+      "log": "/tmp/neokod-recon-2026-10-21/typecheck.log"
+    },
+    "vp check": {
+      "exit_code": 0,
+      "errors": 0,
+      "warnings": 30,
+      "log": "/tmp/neokod-recon-2026-10-21/check.log"
+    },
+    "documentation_links_and_pins": {
+      "passed": true,
+      "pandacode_source_links": 37
+    },
+    "original_image_hashes": {
+      "passed": true
+    },
+    "unrelated_dirty_paths_preserved": {
+      "passed": true
+    },
+    "git diff --check": {
+      "exit_code": 0
+    }
+  },
+  "neokod_inspected_file_hashes": {
+    "README.md": "58763a94d596035dbd8da3b9408796240a16569f60c99b286eb894d714b56a9c",
+    "AGENTS.md": "67a67b3b4811eb2dadc44da1bb3e07e6a31ebdc3bd21065bad198b0f9f6565b2",
+    "HANDOFF.md": "ca9711f0e80eb158f9e651a2e8dd46a3c62bfd07d9802c0b0b05c2bd5ad897f2",
+    ".plans/20-orchestration-direction.md": "a6bf649b005e0e40ee5607c423a7901bfb0764a67adba36dd403fb080ffb5e4f",
+    "docs/architecture/state-and-evidence.md": "d02f53c79b81ab8d2d1e2e5629f5a6fbe203a5394fedf1a22c6e7bbcda85e642",
+    "docs/architecture/symphony.md": "d3cb4aa05828cb8186b61176ac15a95216ba1d6fee2f10ecec3097c3dcee8433",
+    "docs/operations/self-hosting.md": "5c6bc318079397e814b608b4d34e22a6765764775ec4ab06b722587e989dd95c",
+    "packages/client-runtime/src/connection/model.ts": "480ff96f3f4f092c63bc5c7b052c3f4e4745ab3de39a023b833b43253dcee835",
+    "packages/client-runtime/src/connection/catalog.ts": "41f613b2de9ad700fc9b9422d2c39df0810cdb4745ea00b66b45a1074f2f0753",
+    "apps/server/src/symphony/Review/ModelReviewer.ts": "a5933a1442312e479f8df35de3dc6f43bf00b18c729a5f3c1cd812aca4aff180",
+    "apps/server/src/symphony/Runner/Dispatcher.ts": "5ce7d15b300e8c326addba60a5bf96bc50e7e46f0999a26eb9e9412eda53dedc",
+    "apps/server/src/symphony/Runner/ExecutionFinalizer.ts": "af3d8ea8dfb404f7d193e7cc770b1cfdaa95e4613e448beae9349d172b5391ea",
+    "apps/server/src/symphony/Orchestrator/Layers/SymphonyOrchestratorLive.ts": "da1b2472e1c43d6f5b8fd63f0071844a10b162aabd7e81dcf3c82fa49f343542"
+  },
+  "unrelated_dirty_file_hashes": {
+    "apps/server/src/http.ts": "555ef216539b16f9196fc88154877fa8bb75ef78df772424fb2ed0adbfede1c0",
+    "apps/server/src/http.test.ts": "a5403af71e97b3e20fb81d3ab2d54480ffb7e40a4f3640569456112e61c137ad",
+    "apps/server/src/server.test.ts": "994a38e6306fc3412a12bcb9199a70edd74fde1dda4581409969345cc33ce603"
+  },
+  "pandacode_inspected_file_hashes": {
+    "LICENSE": "a4a21ef99e8ff51728dd1f00114a7429b8431cba527e969c585589db166b2f75",
+    "README.md": "17e38cb2f2a5d555535709a8b26570e9783a4e67796636e8b2c2441e732e119a",
+    "docs/architect-workers.md": "d250ec616b27262b7cd27d5357bc9ca810fa5b345145601f278d1f1ae01f0606",
+    "docs/bots.md": "67eb8be96a42cf73245ddbcf358271b54b81c1d889f4d1bd6f118bc209455edd",
+    "src-tauri/src/architect.rs": "12c560f11eeef3ecef168092dad7b1c4660c753e4bf416ce9bb7f3a18e4731bf",
+    "src-tauri/src/bots/gateway.rs": "7e2e66147a3ca19fef7248ec46f27c2dc9f50482181ff703515234231fb38c9f",
+    "src-tauri/src/bots/channels/web.rs": "8ae319eec37f45daec56a14ae9cb05c3db810a40e5eb0678366e5e4d29a819d2"
+  },
+  "verification_environment": {
+    "node": "26.11.1",
+    "declared_engine": "^24.13.1",
+    "limitation": "Checks passed on installed Node 26; Node 24 was not available or validated."
+  }
+}

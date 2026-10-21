@@ -1,0 +1,506 @@
+{
+  "proof_class": "Bounded provider compatibility metadata appendix, not a full provider PR census or implementation assessment. Closed Claude/Copilot runtime internals are not exposed by these public repository PRs.",
+  "providers": [
+    {
+      "repository": "anomalyco/opencode",
+      "captured_at": "2026-10-21T15:08:34.724479+00:00",
+      "coverage": "Newest merged PR metadata and release/channel records only; no full provider PR census or semantic review.",
+      "source": {
+        "sha": "f7577a1f65b465b35b0dcb30b23f22c14e3b5460",
+        "url": "https://github.com/anomalyco/opencode/commit/f7577a1f65b465b35b0dcb30b23f22c14e3b5460",
+        "default_branch": "dev"
+      },
+      "newest_captured_releases": [
+        {
+          "tag_name": "v1.19.3",
+          "prerelease": false,
+          "published_at": "2026-10-16T12:31:52Z",
+          "html_url": "https://github.com/anomalyco/opencode/releases/tag/v1.19.3",
+          "target_commitish": "60c9be092129745688bb3c3a752affc6cbd66ede"
+        },
+        {
+          "tag_name": "v1.19.2",
+          "prerelease": false,
+          "published_at": "2026-10-16T02:30:38Z",
+          "html_url": "https://github.com/anomalyco/opencode/releases/tag/v1.19.2",
+          "target_commitish": "3be039593a9a2cbe44f9578e37ac2bd789768262"
+        },
+        {
+          "tag_name": "v1.19.1",
+          "prerelease": false,
+          "published_at": "2026-10-15T19:19:45Z",
+          "html_url": "https://github.com/anomalyco/opencode/releases/tag/v1.19.1",
+          "target_commitish": "d320177aa4cb93d63b6462acd6efca0ee037dedf"
+        },
+        {
+          "tag_name": "v1.19.0",
+          "prerelease": false,
+          "published_at": "2026-10-11T01:39:22Z",
+          "html_url": "https://github.com/anomalyco/opencode/releases/tag/v1.19.0",
+          "target_commitish": "add9b4ba5adfb895934cb1bf46f590342cec68d2"
+        }
+      ],
+      "newest_captured_merged_prs": [
+        {
+          "number": 57735,
+          "title": "feat(server): start hosted GPT-Live on the connected OpenCode Console",
+          "html_url": "https://github.com/anomalyco/opencode/pull/57735",
+          "merged_at": "2026-10-21T14:55:16Z",
+          "merge_commit_sha": "f7577a1f65b465b35b0dcb30b23f22c14e3b5460",
+          "base": "dev"
+        },
+        {
+          "number": 57811,
+          "title": "fix(app): show the session header location as icons",
+          "html_url": "https://github.com/anomalyco/opencode/pull/57811",
+          "merged_at": "2026-10-21T14:31:58Z",
+          "merge_commit_sha": "17332b6b3ddcdfa35c169f67648cc842380531c8",
+          "base": "beta"
+        },
+        {
+          "number": 57792,
+          "title": "chore(function): remove unauthenticated feishu bridge route",
+          "html_url": "https://github.com/anomalyco/opencode/pull/57792",
+          "merged_at": "2026-10-21T13:54:12Z",
+          "merge_commit_sha": "0c6be8694894dc96b87c5a7b773d52e57ddaa1b2",
+          "base": "dev"
+        },
+        {
+          "number": 57801,
+          "title": "fix(app): resolve inline file links before cold transcript reveal",
+          "html_url": "https://github.com/anomalyco/opencode/pull/57801",
+          "merged_at": "2026-10-21T13:43:31Z",
+          "merge_commit_sha": "60e105161c6fd307ff4a5baabaeb6b259544e97f",
+          "base": "beta"
+        },
+        {
+          "number": 57798,
+          "title": "ci: remove the /oc workflow from this repository",
+          "html_url": "https://github.com/anomalyco/opencode/pull/57798",
+          "merged_at": "2026-10-21T13:32:18Z",
+          "merge_commit_sha": "b2f83b580f9389d4c7ffece1ac47c9bbc6b0a72f",
+          "base": "dev"
+        },
+        {
+          "number": 57793,
+          "title": "ci: remove the duplicate-issues workflow",
+          "html_url": "https://github.com/anomalyco/opencode/pull/57793",
+          "merged_at": "2026-10-21T13:29:36Z",
+          "merge_commit_sha": "c3712e0c7a2d7f8d288f8b9875ae026146910a4c",
+          "base": "dev"
+        },
+        {
+          "number": 57795,
+          "title": "ci: scope pr-management down to the contributor label",
+          "html_url": "https://github.com/anomalyco/opencode/pull/57795",
+          "merged_at": "2026-10-21T13:29:13Z",
+          "merge_commit_sha": "914136348d51c7c92fe65d218498329de1e5c430",
+          "base": "dev"
+        },
+        {
+          "number": 57796,
+          "title": "ci: remove the /review workflow",
+          "html_url": "https://github.com/anomalyco/opencode/pull/57796",
+          "merged_at": "2026-10-21T13:28:53Z",
+          "merge_commit_sha": "578d422ee601ff3694fb2eedfa72eff0858e5415",
+          "base": "dev"
+        },
+        {
+          "number": 57791,
+          "title": "fix(app): separate location row from composer",
+          "html_url": "https://github.com/anomalyco/opencode/pull/57791",
+          "merged_at": "2026-10-21T13:21:08Z",
+          "merge_commit_sha": "916b9e8c7fea9744c78efa55efa991238f3f0de5",
+          "base": "beta"
+        },
+        {
+          "number": 57790,
+          "title": "fix(session-ui): use yellow 900 for cancelled notices in light mode",
+          "html_url": "https://github.com/anomalyco/opencode/pull/57790",
+          "merged_at": "2026-10-21T13:10:44Z",
+          "merge_commit_sha": "0b0a60cdf6976c4cb893f6ceadb258a888bb1e86",
+          "base": "beta"
+        }
+      ]
+    },
+    {
+      "repository": "anthropics/claude-code",
+      "captured_at": "2026-10-21T15:08:34.724957+00:00",
+      "coverage": "Newest merged PR metadata and release/channel records only; no full provider PR census or semantic review.",
+      "source": {
+        "sha": "d014fc0fa64280540728772fc84063918ed185cc",
+        "url": "https://github.com/anthropics/claude-code/commit/d014fc0fa64280540728772fc84063918ed185cc",
+        "default_branch": "main"
+      },
+      "newest_captured_releases": [
+        {
+          "tag_name": "v2.1.306",
+          "prerelease": false,
+          "published_at": "2026-10-21T03:16:31Z",
+          "html_url": "https://github.com/anthropics/claude-code/releases/tag/v2.1.306",
+          "target_commitish": "main"
+        },
+        {
+          "tag_name": "v2.1.305",
+          "prerelease": false,
+          "published_at": "2026-10-20T20:46:50Z",
+          "html_url": "https://github.com/anthropics/claude-code/releases/tag/v2.1.305",
+          "target_commitish": "main"
+        },
+        {
+          "tag_name": "v2.1.304",
+          "prerelease": false,
+          "published_at": "2026-10-19T21:34:39Z",
+          "html_url": "https://github.com/anthropics/claude-code/releases/tag/v2.1.304",
+          "target_commitish": "main"
+        },
+        {
+          "tag_name": "v2.1.303",
+          "prerelease": false,
+          "published_at": "2026-10-18T22:26:54Z",
+          "html_url": "https://github.com/anthropics/claude-code/releases/tag/v2.1.303",
+          "target_commitish": "main"
+        }
+      ],
+      "newest_captured_merged_prs": [
+        {
+          "number": 100293,
+          "title": "Add a HIPAA settings example to examples/settings (settings-hipaa.json, managed-mcp-hipaa.json, README-hipaa.md)",
+          "html_url": "https://github.com/anthropics/claude-code/pull/100293",
+          "merged_at": "2026-10-09T16:16:37Z",
+          "merge_commit_sha": "3f349d410faf6980872f799975bb4fc307e88bb8",
+          "base": "main"
+        },
+        {
+          "number": 99206,
+          "title": "diff: the docked pane starts at its header, under the engine's own head row",
+          "html_url": "https://github.com/anthropics/claude-code/pull/99206",
+          "merged_at": "2026-10-07T00:13:58Z",
+          "merge_commit_sha": "765f236fe1bfcc678e0ec59af9170fb7d6771a3a",
+          "base": "main"
+        },
+        {
+          "number": 98555,
+          "title": "diff: the dialog opens every file it lists, and says nothing when closed",
+          "html_url": "https://github.com/anthropics/claude-code/pull/98555",
+          "merged_at": "2026-10-01T05:23:05Z",
+          "merge_commit_sha": "6160717d8994f236ab381cf534fc1cde5347c12f",
+          "base": "main"
+        },
+        {
+          "number": 98357,
+          "title": "diff: the pane notices a finished merge by itself, and stays quiet on an unusual branch name",
+          "html_url": "https://github.com/anthropics/claude-code/pull/98357",
+          "merged_at": "2026-09-30T19:36:32Z",
+          "merge_commit_sha": "525d3b35312636cf8c001ecb3df2be0324a48b43",
+          "base": "main"
+        },
+        {
+          "number": 98445,
+          "title": "diff: the pane reads every file's hunks with one git process, where it started one per file",
+          "html_url": "https://github.com/anthropics/claude-code/pull/98445",
+          "merged_at": "2026-09-30T19:36:23Z",
+          "merge_commit_sha": "292c5b8971bee74b816019aa1d092d8fc37c7707",
+          "base": "main"
+        },
+        {
+          "number": 98374,
+          "title": "diff: the pane reads the diff again after a rebase that finished",
+          "html_url": "https://github.com/anthropics/claude-code/pull/98374",
+          "merged_at": "2026-09-30T19:35:44Z",
+          "merge_commit_sha": "9778ad7c09eeefc854efdd79f6ea779976a47c8b",
+          "base": "main"
+        },
+        {
+          "number": 97952,
+          "title": "ci: security hardening for GitHub Actions workflows that call Claude",
+          "html_url": "https://github.com/anthropics/claude-code/pull/97952",
+          "merged_at": "2026-09-30T06:30:05Z",
+          "merge_commit_sha": "732e167ee9d71296b4b63d6f529ac1334513826a",
+          "base": "main"
+        },
+        {
+          "number": 98275,
+          "title": "agents-md: send the AGENTS.md loaded line to the debug log",
+          "html_url": "https://github.com/anthropics/claude-code/pull/98275",
+          "merged_at": "2026-09-30T01:03:20Z",
+          "merge_commit_sha": "2282079d6ac8824ec4b72a432a03e0c636e0512f",
+          "base": "main"
+        },
+        {
+          "number": 97241,
+          "title": "sec-default: the system prompt's sections continue past the user tier",
+          "html_url": "https://github.com/anthropics/claude-code/pull/97241",
+          "merged_at": "2026-09-29T19:39:25Z",
+          "merge_commit_sha": "684800b206824dfd0cc8a876e8604b20f72c3617",
+          "base": "main"
+        },
+        {
+          "number": 98080,
+          "title": "sec-default: a settings deny rule holds over an allow or ask from a plugin the person installed",
+          "html_url": "https://github.com/anthropics/claude-code/pull/98080",
+          "merged_at": "2026-09-29T19:07:08Z",
+          "merge_commit_sha": "16da1ecd3ff1e18a0522248f20bce52726e653ff",
+          "base": "main"
+        }
+      ]
+    },
+    {
+      "repository": "github/copilot-cli",
+      "captured_at": "2026-10-21T15:08:34.724807+00:00",
+      "coverage": "Newest merged PR metadata and release/channel records only; no full provider PR census or semantic review.",
+      "source": {
+        "sha": "c66d206a3b37d29ec082d4d42e8f4b99a0839c25",
+        "url": "https://github.com/github/copilot-cli/commit/c66d206a3b37d29ec082d4d42e8f4b99a0839c25",
+        "default_branch": "main"
+      },
+      "newest_captured_releases": [
+        {
+          "tag_name": "v1.0.102-1",
+          "prerelease": true,
+          "published_at": "2026-10-21T04:45:12Z",
+          "html_url": "https://github.com/github/copilot-cli/releases/tag/v1.0.102-1",
+          "target_commitish": "main"
+        },
+        {
+          "tag_name": "v1.0.102-0",
+          "prerelease": true,
+          "published_at": "2026-10-21T02:47:48Z",
+          "html_url": "https://github.com/github/copilot-cli/releases/tag/v1.0.102-0",
+          "target_commitish": "main"
+        },
+        {
+          "tag_name": "v1.0.101",
+          "prerelease": false,
+          "published_at": "2026-10-20T18:49:53Z",
+          "html_url": "https://github.com/github/copilot-cli/releases/tag/v1.0.101",
+          "target_commitish": "main"
+        },
+        {
+          "tag_name": "v1.0.101-1",
+          "prerelease": true,
+          "published_at": "2026-10-20T15:04:42Z",
+          "html_url": "https://github.com/github/copilot-cli/releases/tag/v1.0.101-1",
+          "target_commitish": "main"
+        }
+      ],
+      "newest_captured_merged_prs": [
+        {
+          "number": 4827,
+          "title": "build(deps): bump actions/stale from 9.1.0 to 11.0.0",
+          "html_url": "https://github.com/github/copilot-cli/pull/4827",
+          "merged_at": "2026-09-13T02:07:59Z",
+          "merge_commit_sha": "b49df25cafe802d2012876c8703332064237c7e3",
+          "base": "main"
+        },
+        {
+          "number": 4828,
+          "title": "build(deps): bump actions/github-script from 7.1.0 to 9.0.0",
+          "html_url": "https://github.com/github/copilot-cli/pull/4828",
+          "merged_at": "2026-09-13T02:06:38Z",
+          "merge_commit_sha": "a08a6e9612db24dd64ac2c862bf939074f8d57c9",
+          "base": "main"
+        },
+        {
+          "number": 4808,
+          "title": "Pin GitHub Actions to commit SHAs",
+          "html_url": "https://github.com/github/copilot-cli/pull/4808",
+          "merged_at": "2026-09-12T15:46:36Z",
+          "merge_commit_sha": "7ea621658b521884401c71acedc979fd89936fdc",
+          "base": "main"
+        },
+        {
+          "number": 4786,
+          "title": "Revise notice regarding third-party services",
+          "html_url": "https://github.com/github/copilot-cli/pull/4786",
+          "merged_at": "2026-09-10T15:15:58Z",
+          "merge_commit_sha": "1032cd05bee5d1f7950b82e873c91a6b1ddb5c69",
+          "base": "main"
+        },
+        {
+          "number": 4762,
+          "title": "install: report unsupported operating systems",
+          "html_url": "https://github.com/github/copilot-cli/pull/4762",
+          "merged_at": "2026-09-08T03:20:56Z",
+          "merge_commit_sha": "678556120d8aac8ba83cac22eb30703c1aa1903e",
+          "base": "main"
+        },
+        {
+          "number": 4497,
+          "title": "Handle fork PR associations in invalid-label writer",
+          "html_url": "https://github.com/github/copilot-cli/pull/4497",
+          "merged_at": "2026-08-29T02:27:34Z",
+          "merge_commit_sha": "024bf28728f3cc82365e0143f44d071ebafbce4d",
+          "base": "main"
+        },
+        {
+          "number": 4607,
+          "title": "Prepare public prerelease v1.0.81-11",
+          "html_url": "https://github.com/github/copilot-cli/pull/4607",
+          "merged_at": "2026-08-26T00:22:29Z",
+          "merge_commit_sha": "65006ce22099563526dcaca743451e99e9d834f7",
+          "base": "main"
+        },
+        {
+          "number": 4449,
+          "title": "Migrate pull request automation away from pull_request_target",
+          "html_url": "https://github.com/github/copilot-cli/pull/4449",
+          "merged_at": "2026-08-14T20:20:01Z",
+          "merge_commit_sha": "3f9c5e1ce792150a852804132e2b08c58e9a8e95",
+          "base": "main"
+        },
+        {
+          "number": 2381,
+          "title": "install: add fish shell support for PATH configuration",
+          "html_url": "https://github.com/github/copilot-cli/pull/2381",
+          "merged_at": "2026-03-29T13:28:04Z",
+          "merge_commit_sha": "9c1a0ae7493c60bd329169ebedd2248b2bfbc371",
+          "base": "main"
+        },
+        {
+          "number": 2380,
+          "title": "install: use EXIT trap for temp directory cleanup",
+          "html_url": "https://github.com/github/copilot-cli/pull/2380",
+          "merged_at": "2026-03-29T13:27:06Z",
+          "merge_commit_sha": "a503500e81733b09b44a154fa22205b7a61c67e4",
+          "base": "main"
+        }
+      ]
+    },
+    {
+      "repository": "openai/codex",
+      "captured_at": "2026-10-21T15:08:34.728614+00:00",
+      "coverage": "Newest merged PR metadata and release/channel records only; no full provider PR census or semantic review.",
+      "source": {
+        "sha": "a6839a481223fb5faab539a9eb2b7174ae29e560",
+        "url": "https://github.com/openai/codex/commit/a6839a481223fb5faab539a9eb2b7174ae29e560",
+        "default_branch": "main"
+      },
+      "newest_captured_releases": [
+        {
+          "tag_name": "rust-v0.164.0-alpha.9",
+          "prerelease": true,
+          "published_at": "2026-10-21T14:12:01Z",
+          "html_url": "https://github.com/openai/codex/releases/tag/rust-v0.164.0-alpha.9",
+          "target_commitish": "main"
+        },
+        {
+          "tag_name": "rust-v0.164.0-alpha.8",
+          "prerelease": true,
+          "published_at": "2026-10-20T22:15:45Z",
+          "html_url": "https://github.com/openai/codex/releases/tag/rust-v0.164.0-alpha.8",
+          "target_commitish": "main"
+        },
+        {
+          "tag_name": "rust-v0.164.0-alpha.7",
+          "prerelease": true,
+          "published_at": "2026-10-20T13:47:31Z",
+          "html_url": "https://github.com/openai/codex/releases/tag/rust-v0.164.0-alpha.7",
+          "target_commitish": "main"
+        },
+        {
+          "tag_name": "rust-v0.164.0-alpha.6",
+          "prerelease": true,
+          "published_at": "2026-10-19T22:48:51Z",
+          "html_url": "https://github.com/openai/codex/releases/tag/rust-v0.164.0-alpha.6",
+          "target_commitish": "main"
+        }
+      ],
+      "newest_captured_merged_prs": [
+        {
+          "number": 55913,
+          "title": "Skip conversation scoring superseded by newer scores and history",
+          "html_url": "https://github.com/openai/codex/pull/55913",
+          "merged_at": "2026-10-21T14:44:07Z",
+          "merge_commit_sha": "a6839a481223fb5faab539a9eb2b7174ae29e560",
+          "base": "main"
+        },
+        {
+          "number": 55883,
+          "title": "Expand enterprise MCP authorization lifecycle test coverage",
+          "html_url": "https://github.com/openai/codex/pull/55883",
+          "merged_at": "2026-10-21T12:39:27Z",
+          "merge_commit_sha": "d138398cef7d49e46fe33f1d0ddbd2ca0ed16aa4",
+          "base": "main"
+        },
+        {
+          "number": 55859,
+          "title": "Fix enterprise MCP credential selection and reauthentication",
+          "html_url": "https://github.com/openai/codex/pull/55859",
+          "merged_at": "2026-10-21T10:41:18Z",
+          "merge_commit_sha": "c419fd01a70dd1d05356da443ac44328bda2e6f4",
+          "base": "main"
+        },
+        {
+          "number": 55856,
+          "title": "Bound managed app-server and updater stderr logging",
+          "html_url": "https://github.com/openai/codex/pull/55856",
+          "merged_at": "2026-10-21T10:31:28Z",
+          "merge_commit_sha": "6bae551093d24ad6539a7daba2d9a13b80b28d15",
+          "base": "main"
+        },
+        {
+          "number": 55848,
+          "title": "Pause relay test time while inspecting handshake diagnostics",
+          "html_url": "https://github.com/openai/codex/pull/55848",
+          "merged_at": "2026-10-21T09:57:43Z",
+          "merge_commit_sha": "4faf60f1265a495a68fd792701c60fa334714683",
+          "base": "main"
+        },
+        {
+          "number": 55847,
+          "title": "Bound retained turn analytics and clean up closed threads",
+          "html_url": "https://github.com/openai/codex/pull/55847",
+          "merged_at": "2026-10-21T09:54:51Z",
+          "merge_commit_sha": "21b1f5f5344db8adb6eb1be6a2e61f6085fdc8f8",
+          "base": "main"
+        },
+        {
+          "number": 55846,
+          "title": "Measure Guardian review latency once with a monotonic clock",
+          "html_url": "https://github.com/openai/codex/pull/55846",
+          "merged_at": "2026-10-21T09:53:01Z",
+          "merge_commit_sha": "2213359bd33f9ffc818e3aeb534faf47544293bc",
+          "base": "main"
+        },
+        {
+          "number": 55804,
+          "title": "Add a critical-path utility for exclusive duration attribution",
+          "html_url": "https://github.com/openai/codex/pull/55804",
+          "merged_at": "2026-10-21T07:33:28Z",
+          "merge_commit_sha": "af91f6ef2cd66ead278ebe7d5751973eef430aee",
+          "base": "main"
+        },
+        {
+          "number": 55733,
+          "title": "Box session metadata and compaction payloads in `RolloutItem`",
+          "html_url": "https://github.com/openai/codex/pull/55733",
+          "merged_at": "2026-10-21T02:41:22Z",
+          "merge_commit_sha": "c7234c1174b27d9c55199fba0d546dc27d1b0415",
+          "base": "main"
+        },
+        {
+          "number": 55725,
+          "title": "Preserve code cell response metadata in rollout traces",
+          "html_url": "https://github.com/openai/codex/pull/55725",
+          "merged_at": "2026-10-21T02:03:04Z",
+          "merge_commit_sha": "d571eaf1f61d0d93a797506335a99a9950ffe37b",
+          "base": "main"
+        }
+      ]
+    }
+  ],
+  "opencode_v2_registry": {
+    "dist_tags": {
+      "reserved": "0.0.0-reserved",
+      "beta": "0.0.0-beta-19507",
+      "latest": "2.1.2",
+      "dev": "0.0.0-dev-21458"
+    },
+    "repository": {
+      "url": "git+https://github.com/anomalyco/opencode.git",
+      "type": "git"
+    },
+    "source_mapping": "No gitHead returned for latest npm version; latest package and dev head are not asserted identical."
+  }
+}

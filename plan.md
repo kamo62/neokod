@@ -1,4 +1,6 @@
-# Neokod plan, 4 October 2026 (revision 8)
+# Neokod plan, revision 10 (updated 21 October 2026)
+
+Current direction and acceptance contract: revision 10, 21 October 2026, section 16. The latest execution instruction is section 16.8: parallel DeepSeek ACP lanes, no builds, commit/push to dev for Sol 6.1 and Opus review. Sections 16.4 to 16.7 supersede conflicting historical order and handoff-reuse assumptions. Owner priority is core app reliability, then working thread orchestration and Symphony with selected stage/review/tree UI, then mobile and other-machine access. Implementation uses DeepSeek V4.1 Flash through OpenCode ACP. The earlier revisions remain below as decision history.
 
 Status: implementation roadmap remains open. The owner has committed Symphony handler/settings/type fixes; expanded browser audit W9 is partially complete, with confirmed defects and explicit blockers. This audit delivered documentation and evidence, not application fixes. This is the canonical plan. It replaces the first version (kept for provenance at `docs/research/plan-codex-original-2026-10-04.md`) and replaces `.plans/22-neokod-action-plan.md`, which was folded in here. [Plan 20](.plans/20-orchestration-direction.md) keeps the architecture rationale. Update this file instead of creating another roadmap.
 
@@ -21,6 +23,8 @@ This section is for the person implementing (a smaller model is expected) and fo
 - Every card ends with unverified items. The card authors read the code but did not compile or run any new snippet. Treat snippets as strong suggestions. If a snippet does not typecheck, fix it using the surrounding code. Do not change the design the card describes without asking.
 
 ### 0.2 Rules for the implementer
+
+Owner update, 21 October: section 16.8 controls the current parallel DeepSeek workflow. No builds are authorised. Commit and push completed implementation to `dev` for Sol 6.1 and Opus review; do not merge to `main` or trigger a release. Existing check results are retained with their scope.
 
 1. Work on a branch per wave from `main`, never on `main`. Stage explicit paths (`git add path`), never `git add -A`, `git add .` or `git commit -a`. Never push to `main`. Open a pull request.
 2. Write the test first and confirm it fails on the base code. Then make the change. A card whose test passes before the change is wrong, so stop and report.
@@ -431,6 +435,8 @@ The card authors read the code and found these differences from the tables in se
 Implementers add their own findings below, one line each, with the card ID:
 
 - 1.4: consumer leak not reproduced by a test
+- X-1: a timeout cannot interrupt an uninterruptible FIFO open; regression fixtures use an independent native watchdog to release a broken open and bound failure time.
+- X-2: the suggested UTF-8 tail heuristic discarded malformed bytes at the preview boundary. Fatal streaming decoding preserves valid incomplete tails while rejecting malformed bytes actually read; three boundary regressions fail before the correction and pass afterwards.
 
 ### 0.8 Reviewer checklist
 
@@ -1146,3 +1152,333 @@ Competitor comparison (answers the question whether the earlier comparison cover
 ### 14.5 What round 2 did not cover
 
 Windows and Linux desktop, the Electron preview and updater, Cursor, Grok (not installed on the test machine), Codex (its launcher shim fails on this machine), Claude beyond the usage-limit turn, OpenCode 2 end to end, DeepSeek, `rename` and `delete` file RPCs (they do not exist), and real GitHub pull request flows. These are in `HANDOFF.md`.
+
+## 15. Revision 9: mobile access and delivery flows (21 October 2026)
+
+Append-only. This adds no Phase 1 card and does not reopen section 14.1. Items attach to existing work and are Phase 2 or later. These are follow-up slices within W5/W6, not new implementation cards. After Phase 1, prioritise direct own-machine access and its phone companion ahead of deeper multi-agent execution. Evidence is in `docs/research/feature-verdicts-2026-10-04.md`, Revision 3. Nothing here is implemented or runtime-proven.
+
+### 15.1 Mobile and other machines
+
+Order follows the research recommendation: phone browser against one pinned host first.
+
+| ID  | Work                                                                                                                                                     | Depends on                                                                                          | Finite gate                                                                                                                                                                                                                         |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M-0 | Record a phone-browser pass during the 14.2 item 7 exercise. No code.                                                                                    | 1C (A1, A1b, A1c, A2, B1)                                                                           | Checklist recorded as observed or not observed: load over Route 1, token entry, thread list, open a thread, answer an approval through the existing path, lock the screen and resume.                                               |
+| M-1 | Phone-fit monitor, approve, follow-up and stop path. Host label on every screen.                                                                         | M-0, B-7                                                                                            | Computer Use verifies the actions and host label on a phone-sized touch surface; a physical phone proves screen-lock/resume and reconnect. Viewport checks alone are insufficient.                                                  |
+| M-2 | Command receipts for phone mutations: command ID plus observed revision.                                                                                 | 1B approval identity cards; existing orchestration command identity. H-0 applies to launch evidence | Tests: duplicate send returns one receipt and one effect; reused ID with a different payload conflicts; approval after resolution is refused with current state; lost reply shows unknown then converges; no resend under a new ID. |
+| M-3 | Browser saved servers using W5 persistence. Assess per-device revocation only if the phone proof demonstrates a need beyond rotating the existing token. | W5 slices 2 and 3 (B2, B2b, B3, B3b)                                                                | Saved credentials stay out of logs; app-generated persistent links do not carry them; an offline host shows unknown with last observed time.                                                                                        |
+| M-4 | Assess an installable web app after the phone proof. Web Push is a separate later scope decision.                                                        | M-1                                                                                                 | Demonstrate home-screen launch and reconnection if added; no offline mutation replay. Push remains deferred pending a scoped design.                                                                                                |
+| M-5 | Decide native app and bot transport.                                                                                                                     | M-0 to M-3 evidence                                                                                 | Written decision citing the proof results. A bot, if built, is notification with link only unless approvals bind request ID, digest and expiry.                                                                                     |
+
+Moving an accepted task stays in the W5 continuation protocol. Phone approvals apply to it only after M-2.
+
+### 15.2 Delivery flows (Symphony first)
+
+| ID  | Work                                                                                                                                                                                                   | Depends on                        | Finite gate                                                                                                                                                                                                                                       |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D-1 | Stamp validation and evidence with exact HEAD SHA and clean-tree flag. One pure "all clear" predicate shared by merge gating.                                                                          | 1B complete                       | Tests: commit after a pass is not clear; unknown CI is not clear; review at an older head is not clear.                                                                                                                                           |
+| D-2 | Failure classification, repair-round counter (proposed 2, within existing attempt/turn limits), escalation to human, cancel scope.                                                                     | D-1, H0 harness, 1.x cancel cards | H0 scenarios: resolvable failure repairs within budget then escalates; same signature twice escalates; cancel mid-repair leaves no late writes.                                                                                                   |
+| D-3 | Review facets: name each `review.agents` entry's facet, record per-facet findings against head, fix then re-review.                                                                                    | D-1                               | Facet results show head SHA; superseded results are marked; no new runtime.                                                                                                                                                                       |
+| D-4 | Read-only stage and evidence projection on the Symphony run page.                                                                                                                                      | D-1, B-6, B-7                     | Pure table-driven tests for unknown, stale and superseded states. No new tables unless a test shows a need.                                                                                                                                       |
+| D-5 | Work-node projection (lineage, dependency, evidence). Share semantics between Code and Symphony; show existing Symphony stages first, and agent lineage only where W6 defines authoritative child IDs. | D-4, W6                           | Pure tests: count distinct agent nodes once; stage nodes are not agents; preserve orphaned, unknown and offline evidence; sum attributed costs once with separate actual, estimated and missing coverage.                                         |
+| D-6 | Optional bounded design/critic turns, then assess parallel packages separately.                                                                                                                        | D-1 to D-4 proven                 | A sequential critic can use existing generation/turn calls with a digest and round cap. Parallel packages remain unscheduled until per-package worktrees, serialised integration, tree-wide limits and cancellation are proven (plan 20 point 6). |
+
+## 16. Revision 10: core app, Symphony and selected workflow UI first (21 October 2026)
+
+The owner changed the delivery order after the recon: “Let’s get the core app working and symphony with some of the UI I showed you and then the other stuff”. This supersedes revision 9's priority for remote/mobile work ahead of deeper Symphony work. It does not discard that research.
+
+1. Finish core app reliability using the outstanding Phase 1 cards. Preserve the already implemented 1A guards, 1B runner and 1C access work. Continue with 1D data safety, then 1E provider/recovery work.
+2. Deliver orchestration inside ordinary Code threads using W6's bounded app-managed children and durable results, alongside Symphony's issue-to-run, approval, validation, review and PR path. Bring forward the existing board/run/Attention cards needed to use Symphony. Use the supplied images for a stage view, bounded repair/review presentation and truthful agent lineage where actual child evidence exists. Parallel role packages are not prerequisites for this UI.
+3. Resume saved machines, mobile companion, cross-machine task continuation and other deferred features after the core, thread-orchestration and Symphony acceptance gates pass.
+
+### 16.1 Current execution state
+
+| Work                                           | Status and evidence                                                                                                                                              |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 1A / 1B / 1C                             | Implementations present in the current branch history (32 cards). This is not a claim that the full main-build or live-deployment exit gates passed.             |
+| Phase 1D                                       | In progress in the isolated `work/core-symphony` checkout, starting with X-1/X-2 file safety and U-01/U-02 save correctness.                                     |
+| Phase 1E                                       | Outstanding after 1D.                                                                                                                                            |
+| Orchestrator inside Code threads               | Explicitly included by the owner's follow-up. W6 supplies the existing design; the provider-native Subagents panel alone does not fulfil app-managed delegation. |
+| Symphony board, stage/review UI and acceptance | Outstanding after the core correctness dependencies. Reuse B-1 to B-10 and section 15.2; keep one canonical plan.                                                |
+| Mobile and other-machine access                | Deferred by this owner decision. Existing access security remains a core requirement.                                                                            |
+
+The original checkout's HTTP-preview edits and research remain preserved. Implementation uses `/Users/kamogelo/.codex/worktrees/core-symphony/t3code`, starting from `e69716d23501230d755087a07c91c50691eb47a3`. Checks and remaining limitations are recorded here as work completes.
+
+### 16.2 Thread orchestration and implementation provider
+
+The owner clarified: “What about the orchestrator within the threads like T3Code has? I’d like Deepseek V4.1 Flash New via OpenCode ACP to do the implementation please”. Thread orchestration is an explicit delivery requirement alongside Symphony, rather than a mobile follow-up. Retain Neokod's existing engine and implement W6's ordinary `code_child` threads with server-owned parent/child identities, a depth cap of one, bounded concurrent children, inherited permission ceilings, durable cancellation and restart reconciliation, and attributed results queued after the parent's active turn. Show provider/model and observed state in the thread's child view; preserve unknown or orphaned evidence and do not fabricate costs or activity. This is distinct from Symphony scheduling tracker work.
+
+The previous Luna implementers stopped with test-only diffs, preserved for review. The selected implementer is now OpenCode ACP 2.0.32 with `deepseek/deepseek-flash`, advertised by its ACP model catalogue as “DeepSeek V4.1 Flash 1017”. ACP accepted that session model and completed a real smoke turn on 21 October 2026. No alternative model was used for that turn. Main-task integration and independent Sol review remain separate from implementation. This selection configures the development implementer; Neokod's shipped OpenCode adapter still uses its documented SDK/HTTP path, and changing that adapter to ACP is not implied by this instruction.
+
+Implementation evidence is under `/tmp/neokod-core-symphony-2026-10-21/acp/`. DeepSeek has implemented X-1, X-2, U-01, U-02, U-02b and U-03 in the isolated working tree. Review and verification status are in 16.5. Ordinary-thread orchestration and the Symphony visual work are not implemented by this batch.
+
+### 16.3 Freshness gate and additional fleet reference
+
+The owner requires the newest merged PRs for all compared tools to be considered before retaining the comparison's recommendations. Refresh every public repository's default-branch head, recent merged PR census and relevant implementations since the 4 October snapshots; include release/nightly state and retain branch, merge date and source permalinks. For closed or partially public products, check official releases and documentation and keep the implementation gap explicit. A metadata refresh is not a semantic review of every PR. Revision 4 of the existing feature-verdict report owns the consolidated results and coverage limits.
+
+The owner clarified that nightly builds are the comparison baseline. Prefer each product's newest identifiable nightly or preview channel, record its build identifier and source revision, and state where that mapping is unavailable. Stable release lag does not exclude a capability from the comparison. A merged dev PR still needs channel evidence before it is described as included in a particular nightly.
+
+The [21 October GOAT post](https://x.com/claudeebum/status/2112820600570081651) is an additional reference for W5's later fleet overview. Inspected video frames show machine-level CPU, memory and load, sampled time, quota, connection alerts, a host filter and thread rows. Keep a machine topology distinct from an agent lineage tree and from Symphony's delivery gates. Pinned GOAT Fleet source correspondence is now established in report revision 4. The demonstrated hosts and runtime behaviour remain publisher evidence, not our execution proof. Captured evidence is in `docs/research/evidence/recon-2026-10-21/tweet-2112820600570081651-manifest.json`.
+
+The first ordinary-Code orchestration slice can proceed independently of GitHub tracker intake. It must use durable request identity, atomic admission, permission narrowing, a recoverable launch intent and idempotent run-keyed result delivery. The current Subagents panel and browser-owned composer queue do not provide those controls. Write the bounded implementation card against the refreshed source findings before assigning this cross-cutting work; retain W6's caps and restart/stop acceptance gates.
+
+### 16.4 Product design decision: agent-initiated managed children (21 October 2026)
+
+The owner asked what T3 Code does for delegation and authorised comparing implementations and choosing one design. The pinned T3 nightly is [v0.1.2-nightly.20261021.3473](https://github.com/pingdotgg/t3code/releases/tag/v0.1.2-nightly.20261021.3473), `1688f965682d331da16a8c39f049592361f69c8d`. In it, delegation starts from the ordinary conversation. The running agent receives scoped MCP tools and app-written instructions and decides to delegate. Manual controls only open, inspect and stop existing children. No Delegate button or mode was found in the inspected surfaces.
+
+**Decision.** Neokod's entry is the same: an ordinary prompt, with the agent calling a small scoped tool catalogue (`child_capabilities`, `child_start`, `child_status`, `child_stop`, later `child_answer`) on the existing local MCP server. No manual button or mode switch is required. Existing children get Open, Stop and Deliver-results actions and a parent/child tree showing provider, model, state, elapsed time and cost only when known.
+
+**Synthesis roles.**
+
+- T3 supplies the tool shape, deterministic admission, result pinning and stop reconciliation.
+- Synara supplies child approvals shown in the parent view.
+- Orca supplies the split between command accepted and turn running.
+- Hermes supplies server-owned admission with a policy snapshot.
+- GOAT informs permission ceilings and attempted interruption after uncertain launch; Neokod preserves unknown/orphaned evidence until closure is confirmed.
+- AO's reset-retry consent is deferred.
+
+**Neokod's own choices.**
+
+- Completion results are queued behind the active parent turn and never steer it. T3 steers where the provider supports it, so this is a deliberate difference.
+- Depth cap 1. Bounded concurrency (planning defaults: 3 per parent, 6 per environment).
+- Inherited permission ceiling, with the runtime-mode rank not treated as a provider permission guarantee.
+- Isolated worktree by default.
+- Durable launch intent, pinned result and restart reconciliation to "unknown" instead of success.
+- Storage is a new per-target table. The shared piece is a schema-only delegation contract plus pure lifecycle logic. `HandoffService.delegateFromThread` and the H-1 table are not reused.
+
+**Links.**
+
+- Slices W6-C1 to W6-C6 attach to the existing W6 children paragraph and add no Phase 1 card. The complete technical brief and acceptance criteria are in 16.6 below.
+- H-0 to H-6b are unchanged and do not block ordinary children.
+- D-5 reads the shared logic. D-6 is unchanged.
+- X-5 and X-7 supply stop references. X-3 keeps the reset-retry references.
+- Plan section 12 child cost stays unknown until usage work lands.
+- 16.2 stands: DeepSeek V4.1 Flash via OpenCode ACP implements, Sol reviews, and the main task integrates and verifies.
+
+**Status.** Outstanding and unimplemented. Core-first order is preserved: Phase 1D is in progress, 1E follows, and W6-C1 to C3 start after the core exit gate. No further owner approval is needed for that authorised sequence. Only after the W6-C3 closure, stop and restart tests and one successful observed live OpenCode run may the feature be reported as working. `ws.ts` edits wait for X-2 and U-02b. T3's source facts are static inspection only. No competitor orchestration runtime was run, and Neokod delegation-tool exposure is unverified for every provider.
+
+### 16.5 DeepSeek assignment and core acceptance
+
+The development implementer is actual `deepseek/deepseek-flash` through `opencode acp` 2.0.32. The catalogue labels it DeepSeek V4.1 Flash 1017. The requested “Flash New” label was not substituted with a different provider; the actual provider/model selection and assistant-message metadata were checked. Claude Sonnet 5.5 high supplies source comparison/design, Sol supplies independent review when available, and the main task owns integration and final verification.
+
+#### Already sent and implemented in the isolated working tree
+
+| Card  | Instruction sent to DeepSeek                                                                                                                                                           | Acceptance and current evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| X-1   | Reject non-regular file reads without blocking the server's worker pool.                                                                                                               | FIFO fixture rejects promptly and subsequent reads work. Native watchdog bounds the fail-first probe. Included in the workspace suite.                                                                                                                                                                                                                                                                                                                                                            |
+| X-2   | Canonical containment, contained atomic writes, preserve in-root symlinks/modes, cap UTF-8 writes at 10 MiB, reject directory/FIFO targets.                                            | Outside/dangling symlinks reject; valid BOM/CRLF round-trip; incomplete final UTF-8 code point is distinguished from invalid encoding. Review found and DeepSeek corrected an invalid-prefix bug. 28 workspace tests at that revision, 48 atomic-write caller tests and 2 contract tests passed. Path validation is not an OS-level atomic compare-and-swap guarantee.                                                                                                                            |
+| U-01  | Make truncated previews read-only in source and rendered Markdown, including task checkboxes and optimistic updates.                                                                   | No write can be scheduled through the coordinator; banner and checkbox availability follow truncation. Existing focused preview tests pass.                                                                                                                                                                                                                                                                                                                                                       |
+| U-02  | Track confirmed save revision; do not replay an already acknowledged save on unmount; retain newer edits and allow failed saves to retry.                                              | Acknowledgement/disposal/deferred-save tests passed.                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| U-02b | Return content hashes, compare the observed hash before writing, preserve external changes and the user's buffer, stop automatic retry on conflict, provide explicit Reload/Overwrite. | 35 workspace tests, 23 web tests and 2 contract tests passed before the review correction. DeepSeek then moved the confirmed local baseline to panel ownership across source/rendered remounts; 24 focused web tests and web typecheck passed. The latest regression failed because the new baseline class was absent, not because it reproduced a behavioural assertion against the old implementation. A complete panel close/reopen during an in-flight save remains outside that remount fix. |
+| U-03  | Validate diff cwd against registered live project/worktree roots and remove the client fallback to an unrelated repository.                                                            | 11 focused review tests passed; server/web typechecks passed; one server layer/router smoke passed. The server test layer required four lines of repository wiring. No real Git-driver or live UI proof is claimed.                                                                                                                                                                                                                                                                               |
+
+The ordered brief in 16.6 and the core/Symphony gates were sent to DeepSeek in a separate read-only ACP handoff (`direction-handoff`) on 21 October. It was explicitly told not to start another slice during this report delivery. DeepSeek acknowledged the brief and its gates without making edits. The retained handoff evidence records the actual session/model. Its two documentation observations (C2 minimum stop versus C4 controls, and stale revision metadata) were corrected.
+
+These paths span `apps/server/src/workspace/`, `atomicWrite.ts`, `review/ReviewService.ts`, `server.ts`, `server.test.ts`, `ws.ts`; `packages/contracts/src/project.ts`; and the existing web file-save/preview/query-state modules and `DiffPanel.tsx`. The three unrelated HTTP-preview edits in the original checkout are preserved.
+
+#### Review and verification boundary
+
+- Independent Sol review accepted X-1/U-01/U-02, X-2 including its UTF-8 correction, and U-03. Sol identified the U-02b stale-baseline problem. The final U-02b correction has focused checks but its independent re-review was unavailable because the review workspace ran out of credits. It remains a delivery gate; do not call that review passed.
+- After the final U-02b correction, root `vp check`, `vp lint` and `vp run typecheck` all passed under Node 24.22.1. `vp check` reported zero errors and 30 warnings. Logs: `/tmp/neokod-core-symphony-2026-10-21/root-{check,lint,typecheck}-final-report.log`. These gates do not supply missing independent review or runtime evidence.
+- U-02b's initial implementation did not record a fail-first test before production edits. This is a chronology deviation from section 0.2. Do not retrospectively claim test-first evidence. The later correction's fail-first log demonstrates a missing API, with the narrower proof stated above.
+- The existing core batch is committed as `48a22a6d5` for dev review. No release, deployment, full-suite main-build exit, browser conflict interaction or live tracker-to-PR completion is claimed. An isolated development server and disposable Git fixture were started; launch alone does not prove the flows.
+
+#### Next core work, before W6 launch
+
+Finish Phase 1D's U-04, S-01, S-02, U-06, U-07, U-11, X-9, X-10 and X-11, using their existing cards and acceptance criteria. Verified-hold cards need evidence, not invented edits. Then complete Phase 1E's X-3, X-4, X-5, X-6, 2.2, 2.3, X-7 and X-14. Preserve the card order where callers overlap.
+
+Core acceptance remains section 14.2: applicable focused regressions and required root gates on Node 24, safe file/git/secret handling, honest provider failure and restart settlement, isolated client/runtime probes, and the authorised throwaway Symphony tracker fixture. Any deployment or publication step requires its separately authorised delivery boundary. Do not treat existing 32-card history or this six-card batch as completion of all 55 cards.
+
+### 16.6 Technical implementation brief for W6-C1 to W6-C6
+
+This section is the concrete brief to be handed to DeepSeek after the core gate. It replaces the historical W6 dependency that incorrectly put ordinary children behind GitHub handoff and the historical suggestion to reuse H-1 storage. It does not authorise jumping ahead of core work.
+
+Audience: DeepSeek V4.1 Flash via OpenCode ACP. This is the ordered implementation contract after the core exit gate; do not start these slices during the current core batch. Follow `AGENTS.md`: reuse existing code, no new framework or protocol, `vp check` and `vp run typecheck` before any completion claim.
+
+#### Outcome and honesty rule
+
+A user types "use two agents to investigate and implement this" in a normal Code thread. The running agent calls scoped MCP tools. Neokod creates a durable child thread, runs it, pins its result, and queues that result back to the parent. There is no Delegate button and no mode switch.
+
+- W6-C1 is a foundation commit. It does not count as the feature.
+- The feature claim is allowed only after W6-C3's closure, stop and restart tests pass and one live OpenCode run is observed successfully. A tree UI alone never counts.
+- Stop and report each gap in the list below. Do not paper over any of them.
+
+#### What exists (verified in this checkout)
+
+- `apps/server/src/mcp/McpHttpServer.ts:206-217` registers preview toolkits only. `server.ts:350` composes it with `McpSessionRegistry.layer`.
+- `McpInvocationContext.ts:10`: `McpCapability = "preview"`. `requireMcpCapability` fails with a preview-specific error.
+- `McpSessionRegistry.ts:117` hard-codes `capabilities: new Set(["preview"])`. Credentials are in memory, one per thread, with a 30-minute idle timeout and an 8-hour lifetime (`:55-56`).
+- `ProviderService.ts:273` `prepareMcpSession` runs at `:579` and `:777`, and clears at `:1075`.
+- Adapters that read the MCP session: `ClaudeAdapter.ts:3668`, `CodexAdapter.ts:1613`, `KiroAdapter.ts:615`, `GrokAdapter.ts:573`, `CursorAdapter.ts:536`, `OpenCodeAdapter.ts:1172`. OpenCode skips `mcp.add` for an external server (`:1173`).
+- Engine: `OrchestrationEngine.ts:140-163` deduplicates by `commandId` plus aggregate and does not compare payloads. `getByCommandId` is on `persistence/Services/OrchestrationCommandReceipts.ts`.
+- Commands in `packages/contracts/src/orchestration.ts`: `thread.create` (`:628`), `thread.turn.start` (`:717`), `thread.turn.interrupt` (`:757`), `thread.approval.respond` (`:765`), `thread.user-input.respond` (`:774`), `thread.session.stop` (`:791`), `thread.activity.append` (`:888`). Messages may only be `role: "user"` on turn start.
+- `thread.turn.start` defaults `runtimeMode` to `full-access` (`:729`), and so does `ThreadCreatedPayload` (`:1005`).
+- The thread aggregate has no parent or child field. Runtime items already include `delegated-task` (`:342`).
+- `ws.ts:1434` `dispatchBootstrapTurnStart` uses random `serverCommandId`s inside a closure. It is not idempotent and not reusable. `ws.ts` is currently dirty with X-2 work.
+- `GitWorkflowService.ts:67` `createWorktree` and `:82` `removeWorktree`.
+- The first-turn branch rename acts only on temporary branch names (`ProviderCommandReactor.ts:686`).
+- Migrations run to 041. Allocate the next free number at implementation time and check plan cards 04 and 05 for reserved numbers.
+
+#### Design
+
+**Shared contract.** New `packages/contracts/src/delegation.ts`, schema-only:
+
+- `DelegationState`: `accepted | preparing_workspace | launching | running | result_available | stopping | stopped | interrupted | failed | launch_unknown | not_started | orphaned`.
+- `DelegationReceipt`, `DelegationResult` and `DelegationCapabilities`.
+- Evidence-typed fields (`known | unknown | unavailable`, per `docs/architecture/state-and-evidence.md`).
+
+Do not add a general state machine or duplicate the existing engine. Add only the pure lifecycle projections required by the slices. Pure lifecycle logic goes in `packages/shared/src/delegation/` with an explicit subpath export and an injected clock. Storage is per target. The `code_child` storage is new. Do not touch `symphony_delegation_requests` or `delegateFromThread`.
+
+**Tools** (second MCP toolkit under `apps/server/src/mcp/toolkits/delegation/`, registered next to preview in `McpHttpServer.ts`):
+
+- `child_capabilities`: enabled provider instances, models and options from the provider registry, whether each can be a child (with reason), parent depth, limits and active count. Workspace support is also listed: `worktree` when a recorded parent HEAD is available, otherwise unavailable with a reason. `shared` is unavailable in C1 to C3; setup scripts are "not run".
+- `child_start`: `clientRequestId` (required, 1 to 128 characters), `task` (self-contained brief, bounded), optional `role`, `provider`, `model`, `modelOptions`, `workspace` (`worktree` only in C1 to C3; shared-checkout support requires a later separately accepted policy), `runtimeMode`.
+- `child_status`: current state, effective settings, attention flags and the pinned result.
+- `child_stop`.
+- C2 must include working `child_stop` before exposing `child_start`. Later slices add `child_answer` and enriched question/approval routing.
+
+**Capability and identity.** Extend `McpCapability` to `"preview" | "delegation"` and generalise the unavailable error. `issue` takes the capability set. `ProviderService.prepareMcpSession` grants `delegation` only when all of these hold:
+
+- the provider is on a provider allowlist (below);
+- the thread is not itself a managed child;
+- the parent is not in plan mode.
+
+The handler re-checks all three at call time from the read model. Resolve the parent's active turn there too. `session.activeTurnId` must be non-null, the session not stopping, and `providerInstanceId` equal to the scope's.
+
+**Admission** (serialised by one semaphore plus a SQL transaction):
+
+- `taskId` and `childThreadId` derive from a hash of (environmentId, parentThreadId, requestKey).
+- A replay with the same payload hash returns the existing receipt (`replay: true`). A different payload hash returns `request_conflict`.
+- Reject `cap_reached` (3 active per parent, 6 per environment, constants in one module) and `depth_exceeded`. There is no hidden admission queue in this slice.
+- Store a policy snapshot in the row.
+
+**Permissions.**
+
+- Child mode defaults to the parent's current effective mode. A request above the parent's rank is rejected. Rank is only a preliminary ceiling check: provider/mode support must also be affirmatively known, and plan-mode admission is refused. Every command sets `runtimeMode` explicitly, and one test asserts that none omits it.
+- A provider not in the table `managedChild/providerSupport.ts` for the requested mode is rejected, never downgraded or upgraded.
+- The record keeps requested mode, effective mode and `providerEnforced: "unverified"`.
+- Children get no `delegation` capability, so depth 1 holds by construction.
+
+**Launch** (each step uses a deterministic command ID, and the row records the step before it runs):
+
+1. Insert the row as `accepted`.
+2. If `worktree`: record the owned deterministic path, base SHA and branch, set `preparing_workspace`, then `GitWorkflowService.createWorktree` from the parent's HEAD with a non-temporary branch name derived from the task. Uncommitted parent edits are not copied, and the result says so.
+3. `thread.create` in the same project.
+4. Persist `launching` and the deterministic turn-start command ID before dispatching `thread.turn.start`.
+5. `running` only on positive evidence (child session `running` or a latest turn in `running`).
+6. If dispatch fails after a turn may have started, attempt interruption. Record failure only after authoritative closure; otherwise retain `launch_unknown` or `orphaned`, with `mayStillBeRunning`. Never erase evidence of a potentially live child.
+
+Do not reuse `ws.ts` bootstrap.
+
+**Result.**
+
+- On the first settlement of the original child turn, pin the final assistant message as the result. UTF-8-safe, capped at 16,000 bytes, with a `truncated` flag.
+- Search for an existing truncation helper first, and add one with tests in `packages/shared` only if none exists.
+- Later child turns never reopen the pinned task.
+
+**Wake delivery (queue only, never steer).** A wake mailbox lives in the task table or an adjacent one.
+
+- Deliver when the parent session is `ready` or `idle` and the latest turn is `completed` (or there is none).
+- Dispatch `thread.turn.start` on the parent with a deterministic message ID.
+- Pair it with a `thread.activity.append` of kind `managed-child.wake` that carries the message ID and task ID, so the UI can render the message as attributed. The message text itself is fenced and names its source.
+- Coalesce multiple ready results into one cohort within the 16,000-byte shared budget.
+- Hold delivery when the parent was stopped, interrupted or errored. Show "result waiting" and offer an explicit "Deliver results" action that uses the same idempotent path.
+- A failed delivery retries with a capped attempt count and backoff.
+
+**Questions and approvals** (W6-C4; minimum stale-safe stop is required in C2). A pending child `user-input` queues a question wake carrying `childThreadId` plus `requestId`. `child_answer` dispatches `thread.user-input.respond` on the child. Approvals are never answerable by the parent agent. Derive an authoritative attempt/session identity or add lifecycle-generation fencing before a parent-view approval action can respond. A stale request must be rejected; until then Open child is the only approval action. They are shown with the child's identity and answered by the human through `thread.approval.respond` on the child thread.
+
+**Stop.**
+
+- `child_stop` and the UI Stop persist `stopping`, dispatch `thread.turn.interrupt` and then `thread.session.stop` on the child, and record `stopped` only on engine evidence.
+- Unconfirmed after a timeout means `orphaned` with `mayStillBeRunning`.
+- Stop before any session exists is terminal immediately.
+- Parent interrupt, archive and session stop leave children running and hold wakes.
+- Parent delete (extend `ThreadDeletionReactor`) stops children and waits for confirmation before removing tracking or worktree data. Unconfirmed stop blocks destructive cleanup and preserves orphan evidence. Required in C2 before exposing launch.
+
+**Restart reconcile** (at startup, from rows):
+
+- `accepted` or `preparing_workspace` becomes `not_started` with an idempotent Retry. Reconcile a possibly created deterministic worktree before reuse or cleanup. Nothing launches automatically.
+- `launching` is checked against the engine receipt and the child shell. No evidence means `launch_unknown`, with no automatic resend.
+- `running` with a dead session becomes `interrupted` evidence, not `completed`.
+- A wake in `delivering` is settled through `getByCommandId` on its deterministic ID.
+
+**Tree UI** (W6-C5, `apps/web/**` only). A "Managed children" section in the existing right-panel area, separate from the provider-native `SubagentsPanel`.
+
+- Row fields: title, requested and effective provider and model, workspace kind and branch, lifecycle (use one authoritative shared projection; inspect `SubagentsPanel.logic.ts` for surface conventions only), attention (approval or input), elapsed (ticks while active, frozen when terminal, "last observed" when orphaned), and cost.
+- Cost is `unknown` ("not reported") for now, with no totals.
+- Row actions are limited to Open, Stop and Deliver results.
+- A short availability line comes from a capabilities query ("delegation available" or the specific reason it is not).
+- Read-only RPC and atoms follow the existing `packages/client-runtime` patterns. The `ws.ts` registration waits until X-2 and U-02b are committed.
+
+#### Slices
+
+| Slice                                 | Content                                                                                                  | Files (new unless noted)                                                                                                                                                                                                     | Depends on                                                 | Acceptance                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| W6-C1 foundation                      | Contract, shared logic, table and repository                                                             | `contracts/src/delegation.ts` (+ export), `shared/src/delegation/*`, next-numbered migration, `persistence/Services                                                                                                          | Layers/ManagedChildTasks.ts`, `Migrations.ts` entry        | none                                                                                                                                                                                                                                                                                                                                                                                                        | Pure table-driven tests (unknown, orphaned, frozen elapsed, evidence unions); repository tests; migration test. Commit as "foundation, no behaviour" |
+| W6-C2 admit, launch and stop          | Capability issuance, toolkit, service, minimum stop/delete safety                                        | `mcp/McpInvocationContext.ts`, `McpSessionRegistry.ts`, `mcp/McpHttpServer.ts`, `ProviderService.ts` (small), `server.ts` (wiring), `mcp/toolkits/delegation/*`, `managedChild/ManagedChildService.ts`, `providerSupport.ts` | C1                                                         | HTTP-level MCP tests (pattern: `McpHttpServer.test.ts`). Replay, conflict, caps, depth, plan-mode refusal, rank rejection, Kiro unsupported, no command omits `runtimeMode`. Engine test with a fake provider. Stop before/after launch and delete-with-unconfirmed-stop tests; launch remains disabled until these pass. Live layer-boot probe after wiring (green suites do not prove the composed graph) |
+| W6-C3 result and wake                 | Observer reactor, result pin, wake mailbox, restart reconcile                                            | `managedChild/ManagedChildObserver.ts`, `WakeDelivery.ts`                                                                                                                                                                    | C2                                                         | Closure test: parent turn calls `child_start`, child completes, parent receives exactly one wake turn. Kill during launch and during delivery: no duplicate, states `launch_unknown` or `not_started`. Held delivery after parent interrupt. Then one successful live OpenCode run, including durable result return. Unavailable or failed live evidence leaves the feature unverified                      |
+| W6-C4 questions and enriched controls | `child_answer`, attributed questions and stale-safe approval controls                                    | `managedChild/*`, `toolkits/delegation/*`, `ThreadDeletionReactor.ts` (small)                                                                                                                                                | C3                                                         | Stop settles to `stopped` or `orphaned`. Late completion after stop cannot mutate a settled task. Parent cannot approve                                                                                                                                                                                                                                                                                     |
+| W6-C5 tree UI                         | Read RPC, atoms, panel                                                                                   | `apps/web/**`, `client-runtime`, `contracts/rpc.ts`, `ws.ts` (last, small)                                                                                                                                                   | pure parts after C1; RPC after C3; `ws.ts` after X-2/U-02b | Logic tests only for lifecycle and cost-unknown. Computer Use or browser check for Open, Stop and Deliver                                                                                                                                                                                                                                                                                                   |
+| W6-C6 expansion                       | Live probes for Claude and Codex, instruction injection, wait mode, setup scripts, shared-checkout rules | per probe                                                                                                                                                                                                                    | C3                                                         | Add a provider to the allowlist only with a recorded live probe: tool visible, call round-trips, mode behaviour observed                                                                                                                                                                                                                                                                                    |
+
+Slices C1 to C3 are strictly ordered. UI logic in C5 may proceed in parallel after C1 using fixtures, in disjoint `apps/web` files.
+
+#### Initial provider support
+
+- Parent allowlist for C2 and C3: OpenCode (non-external server) only, since it is the route that can be exercised end to end.
+- Claude and Codex have MCP wiring but no recorded round trip. Add them in C6.
+- Kiro, Cursor and Grok have wiring but are unsupported until probed. Kiro is additionally limited to `approval-required`.
+- Copilot: no `McpProviderSession` reference exists in `apps/server/src/provider/Layers`. Its runtime may live elsewhere, so verify before reporting it supported or unsupported.
+- `child_capabilities` states each reason plainly. It never implies parity.
+
+#### Stop and report these gaps (do not work around them)
+
+1. No instruction-injection channel for providers was found in Neokod's adapters beyond MCP config. If none exists, usage guidance rests on tool descriptions. Report this.
+2. No provider-declared runtime-mode support matrix exists. Build the small table from adapter behaviour and mark it unverified.
+3. MCP credentials expire (8 hours, 30-minute idle). A long session loses the tools silently, and there is no refresh.
+4. OpenCode on an external server gets no MCP, so delegation is unavailable there.
+5. Neokod approvals have no lifecycle generation (thread plus request ID only).
+6. No reliable per-thread usage source was found, so cost stays unknown.
+7. Worktree setup scripts do not run in this feature's first slices.
+8. Wake turns must be `role: "user"`. Attribution is by fenced text plus the paired activity. A first-class message origin would be a contract and migration change, which is deferred.
+9. Two servers on one base-dir would defeat the process-local semaphore. Note it, and rely on the unique constraints.
+10. First-turn title generation may replace the child's title. Pass a title seed, and test it.
+
+#### Out of scope
+
+Automatic usage-reset retry, any steering of the parent, scheduled tasks, workflows, T3's `create_threads` and `t3_thread_*` tools, shared-checkout parallel writers, parallel packages, cross-machine children and any change to `delegateFromThread`.
+
+### 16.7 Symphony visual delivery and release gates
+
+Use the existing B-1 to B-10 cards, H-0 to H-6b and D-1 to D-6 in their dependency order. The chosen visual design is Neokod's own implementation of the supplied references, not a port of another app's UI.
+
+| Delivery                            | Technical scope                                                                                                                         | Acceptance                                                                                                                                                                                                                                              |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Usable Symphony board and Attention | Server-derived board states, run details, pending approval/input identity, B-6/B-7 before orphan-view removal B-10.                     | A fixture issue dispatches into its own worktree; the UI opens the correct run; approval/rejection/cancel/retry act on the current attempt and remain correct after reconnect. Missing data remains unknown.                                            |
+| Stage and evidence view, image 1    | D-1/D-3/D-4 project configured stages from actual run evidence. Validation/review carry exact head SHA, clean-tree evidence and source. | A new commit supersedes earlier validation/review; unknown CI cannot become green; the displayed gate matches the server's decision. Stage nodes are not counted as agents.                                                                             |
+| Bounded repair/review loop, image 2 | Self-check, independent review and automated checks; at most two repair rounds within existing attempt/turn limits.                     | A resolvable fixture repairs from the current head. Budget exhaustion, repeated failure signature or unknown evidence escalates with evidence. Late results from cancelled attempts cannot reopen work. Merge remains a human/configured-policy action. |
+| Agent lineage, image 3              | D-5 consumes authoritative managed-child IDs and separately labelled observed native lineage.                                           | Parent/child navigation, Open and Stop reach the correct thread. Provider/model and elapsed time follow known evidence; terminal elapsed freezes; orphaned rows say last observed; unknown cost is not zero. UI checked through Computer Use.           |
+| Chat to Symphony                    | H-series retains explicit Send to Symphony and GitHub Issues intake, independent of ordinary Code children.                             | Durable request replay returns one work item; scope/attempt/result identity survives restart; the originating chat receives one attributed result.                                                                                                      |
+| Full delivery proof                 | Disposable repository and data directory, real client, fake provider for fault injection, then one live provider/tracker fixture.       | Record issue → worktree → agent → UI approval → validation/review → PR with exact revisions and evidence. Failure and cancellation never create a success PR. Claim only the runtime steps actually observed.                                           |
+
+Parallel writing packages, cross-machine children and a richer design/critic graph remain deferred D-6 work. Mobile, saved machines and GOAT-style fleet telemetry follow the core, ordinary-thread and Symphony gates. When resumed, use token-gated owner-direct connections and pin the target machine before work is accepted; no hosted pairing or relay is introduced by this plan.
+
+Release acceptance: scoped independent review, required root gates, relevant runtime and visual evidence, task-owned commits following card boundaries, and the repository's canonical changelog/version policy before an authorised PR or publication. Do not change package versions independently of the release mechanism. The report/plan update alone requires no version change. The implemented core batch adds the canonical unreleased Patch entry 3.7.1; package manifests remain release-managed.
+
+### 16.8 Parallel DeepSeek lanes and dev review (owner update, 21 October 2026)
+
+The owner authorised multiple DeepSeek V4.1 agents through OpenCode ACP, then instructed: “No, don’t do the builds. When the work is done; commit and push the code. Try to merge to a dev branch please which Sol 6.1 and Opus will review”. This supersedes proposals to build centrally or in each worker checkout. No build, packaging, Electron compilation, CI build dispatch, release or deployment is authorised in this batch. Focused tests, formatting, lint and typechecks remain source checks, not build evidence.
+
+| Lane                        | Actual implementer and scope                                                          | Ownership and acceptance                                                                                                                                                                                                                           | Integration                                                                                                                                                                                                                                                                                                                                                                         |
+| --------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Existing core batch         | DeepSeek ACP; X-1/X-2/U-01/U-02/U-02b/U-03                                            | Existing file safety/save/diff paths in 16.5. Final web suite 24 passed; root checks passed before the new lanes. Pending review is not represented as accepted.                                                                                   | `work/core-symphony`, now based on current `origin/main` `f2ad1498d47ffe9c76c6069f04e56fee206cfc74`. Treat the interdependent file-write/save changes as one reviewable batch commit; the paths overlap too heavily to split retrospectively without manufacturing intermediate evidence. This is an explicit exception to 0.2's per-card commit rule for this existing batch only. |
+| U-04 secret safety          | Separate real ACP session `ses_ea0e2ef51ffeGjnsMdBagsoxec`, `deepseek/deepseek-flash` | `settings/ProviderInstanceCard.tsx`, new `providerEnvironmentDraft.ts` and focused tests only. No server or shared draft-input edits. Detached stored secrets cannot publish empty replacements; restore and explicit replacement remain possible. | Branch `work/core-u04-secret-safety`, isolated managed worktree `core-provider-secret/t3code`. Main reviews and integrates the exact diff, then the branch can be committed/pushed.                                                                                                                                                                                                 |
+| S-01 / S-02 settings safety | Separate real ACP session `ses_ea0e2ebb3ffeDfbh0aDx5E6G5O`, `deepseek/deepseek-flash` | `hooks/useCommitOnBlur.ts`, `ui/draft-input.tsx`, Symphony configuration/view/draft modules and focused tests only. Preserve DraftInput's existing API for U-04. No settings/provider-secret files. Full acceptance stays in the S-01/S-02 cards.  | Branch `work/core-s01-s02-settings-safety`, isolated managed worktree `core-symphony-settings/t3code`. Separate commits for the two disjoint card path sets.                                                                                                                                                                                                                        |
+
+Both new worktrees use their own frozen offline dependency install, completed in 48 seconds from the warm cache. Dependencies are not symlinked between checkouts, so one worker's tests do not silently resolve another checkout's workspace packages. No lockfile changes are permitted. The workers were explicitly instructed not to build. Main alone owns shared integration, canonical documents, changelog, final checks and Git publication; worker Git writes are serialised with that integration.
+
+The integration target is `dev`. Check the remote before creating it; preserve an existing dev branch and merge normally without force-push. Push feature branches and merge completed slices into dev, leave main untouched, and request source review on the exact resulting commit from actual Sol 6.1 and Claude Opus. Record requested and effective reviewer model, findings and unavailable evidence. If an account cannot run a reviewer, do not silently substitute another model or claim its review passed.
+
+The repository's current CI build is triggered on main pushes or pull requests, not dev pushes. Do not dispatch workflows or open a build-triggering PR while this no-build instruction applies. A normal ready-for-review PR may use a CI-skip commit marker with its reason documented, preserving the owner's no-build requirement. Do not mark unbuilt code as runtime-verified.
+
+Acceptance for this delivery batch: exact task-owned diffs committed; remote feature branches and dev contain the intended commits; no unrelated HTTP-preview changes; no force push or main mutation; no build invoked; Sol/Opus review results or precise availability failures retained; report and plan reflect completed, outstanding and blocked work. Any reviewer fix returns to the responsible DeepSeek lane and is checked only for the affected behaviour.

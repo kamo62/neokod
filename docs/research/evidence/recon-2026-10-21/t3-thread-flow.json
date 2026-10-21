@@ -1,0 +1,305 @@
+{
+  "captured_at": "2026-10-21T15:22:40.435340+00:00",
+  "repo": "pingdotgg/t3code",
+  "nightly": "v0.1.2-nightly.20261021.3473",
+  "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+  "proof": "static pinned source",
+  "finding_count": 10,
+  "findings": [
+    {
+      "id": "entry",
+      "verdict": "Ordinary conversation is the orchestration entry point; dedicated Delegate task button is not the observed T3 flow.",
+      "detail": "The user requests work/parallel work in the ordinary composer; the running agent chooses tools. Existing composer controls choose provider/model/options, Plan/Default, runtime mode, send/queue/steer, interrupt/resume and plan implementation in a new thread. Inspected SettingsPanels and provider settings expose no special orchestrator mode/delegate toggle. Native tools can add harness-specific commands; this is not evidence of a product-owned Delegate button.",
+      "evidence": [
+        {
+          "path": "packages/provider-core/src/server/orchestrationInstructions.ts",
+          "line": 8,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/packages/provider-core/src/server/orchestrationInstructions.ts#L8"
+        },
+        {
+          "path": "apps/server/src/mcp/toolkits/orchestrator/tools.ts",
+          "line": 66,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/mcp/toolkits/orchestrator/tools.ts#L66"
+        },
+        {
+          "path": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
+          "line": 26,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/ComposerPrimaryActions.tsx#L26"
+        },
+        {
+          "path": "apps/web/src/components/chat/ComposerFooterControls.tsx",
+          "line": 33,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/ComposerFooterControls.tsx#L33"
+        },
+        {
+          "path": "apps/web/src/components/chat/useComposerMenuItems.ts",
+          "line": 47,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/useComposerMenuItems.ts#L47"
+        }
+      ]
+    },
+    {
+      "id": "instructions",
+      "verdict": "T3 injects explicit app-owned delegation instructions and scoped MCP tools into normal provider sessions.",
+      "detail": "prepareMcpSession normally grants orchestration/worktree/pull-requests capability; configureMcp=false is an internal option, not an inspected user orchestration mode. Codex uses numbered additional-context application entries to survive mode-prompt replacement and per-entry limits. ACP wraps the first relevant prompt and repeats when mode/tool availability changes; native slash commands are kept at the start. OpenCode v2 adds the shared orchestration system prompt. This establishes wiring in source, not that every provider actually exposes or follows the tools.",
+      "evidence": [
+        {
+          "path": "apps/server/src/orchestration-v2/ProviderSessionManager.ts",
+          "line": 435,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/orchestration-v2/ProviderSessionManager.ts#L435"
+        },
+        {
+          "path": "apps/server/src/provider/CodexDeveloperInstructions.ts",
+          "line": 207,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/provider/CodexDeveloperInstructions.ts#L207"
+        },
+        {
+          "path": "packages/provider-core/src/server/orchestrationInstructions.ts",
+          "line": 137,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/packages/provider-core/src/server/orchestrationInstructions.ts#L137"
+        },
+        {
+          "path": "packages/provider-acp/src/server/adapter.ts",
+          "line": 7158,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/packages/provider-acp/src/server/adapter.ts#L7158"
+        },
+        {
+          "path": "packages/provider-opencode/src/server/v2/adapter.ts",
+          "line": 3139,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/packages/provider-opencode/src/server/v2/adapter.ts#L3139"
+        }
+      ]
+    },
+    {
+      "id": "choice",
+      "verdict": "Agent chooses native versus managed delegation using live capabilities and explicit instructions.",
+      "detail": "Prefer native same-provider subagents only if they support the selected model and no model options are requested/inherited. Otherwise use delegate_task for same-provider models/options, cross-provider tasks, explicitly app-owned tasks or isolated worktrees. orchestrator_capabilities uses the composer catalog, including custom models/options. Top-level t3_thread_launch/create_threads require an explicit request for separate conversations. Each independent review round gets a fresh task and retry-stable clientRequestId; backing childThreadId is not the identity of that review round. ACP tool absence has a documented acp-mcp-call transport fallback, not ad hoc shell spawning.",
+      "evidence": [
+        {
+          "path": "packages/provider-core/src/server/orchestrationInstructions.ts",
+          "line": 12,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/packages/provider-core/src/server/orchestrationInstructions.ts#L12"
+        },
+        {
+          "path": "packages/provider-core/src/server/orchestrationInstructions.ts",
+          "line": 42,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/packages/provider-core/src/server/orchestrationInstructions.ts#L42"
+        },
+        {
+          "path": "apps/server/src/mcp/toolkits/orchestrator/tools.ts",
+          "line": 66,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/mcp/toolkits/orchestrator/tools.ts#L66"
+        },
+        {
+          "path": "apps/server/src/mcp/OrchestratorMcpService.ts",
+          "line": 1970,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/mcp/OrchestratorMcpService.ts#L1970"
+        }
+      ]
+    },
+    {
+      "id": "admit",
+      "verdict": "MCP admission binds a managed child to the active calling parent run and durable identities.",
+      "detail": "loadThreadCaller resolves the credential scope; delegateTask requires an active parent run with root node and matching provider instance. Stable command ID derives from scope/request key and replays accepted receipts. Target provider readiness/enablement, model and options are resolved before dispatch. delegated_task.request validates active/not-stopping parent and parent-node membership; derives deterministic child thread/task node/message/item IDs; persists app-owned subagent, execution node and timeline item. This is stronger than merely inserting a visual child row.",
+      "evidence": [
+        {
+          "path": "apps/server/src/mcp/OrchestratorMcpService.ts",
+          "line": 2049,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/mcp/OrchestratorMcpService.ts#L2049"
+        },
+        {
+          "path": "apps/server/src/mcp/OrchestratorMcpService.ts",
+          "line": 2094,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/mcp/OrchestratorMcpService.ts#L2094"
+        },
+        {
+          "path": "apps/server/src/orchestration-v2/Orchestrator.ts",
+          "line": 6879,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/orchestration-v2/Orchestrator.ts#L6879"
+        },
+        {
+          "path": "apps/server/src/orchestration-v2/Orchestrator.ts",
+          "line": 6947,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/orchestration-v2/Orchestrator.ts#L6947"
+        }
+      ]
+    },
+    {
+      "id": "choices",
+      "verdict": "Model, workspace and modes are tool arguments resolved by the server, not only prose in the child prompt.",
+      "detail": "Task is self-contained; optional role is appended to its prompt, and parent history is not copied. Provider/model inherit; cross-provider model defaults to advertised catalog entry. Options inherit only for the same provider+model; explicit entries merge/override and empty clears. Shared checkout is the default. isolation=worktree resolves parent local HEAD, verifies that the project root contains that commit, creates/prepares a child worktree and runs setup before start; uncommitted edits are not copied. Runtime mode inherits or narrows by ranked enum and provider-supported modes; Plan cannot escalate to Default. The contract explicitly says rank does not guarantee equivalent provider permissions or a read-only child. Do not infer a safe capability lattice from this ranking.",
+      "evidence": [
+        {
+          "path": "packages/contracts/src/orchestratorMcp.ts",
+          "line": 164,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/packages/contracts/src/orchestratorMcp.ts#L164"
+        },
+        {
+          "path": "apps/server/src/mcp/OrchestratorMcpService.ts",
+          "line": 590,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/mcp/OrchestratorMcpService.ts#L590"
+        },
+        {
+          "path": "apps/server/src/mcp/OrchestratorMcpService.ts",
+          "line": 1343,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/mcp/OrchestratorMcpService.ts#L1343"
+        },
+        {
+          "path": "apps/server/src/mcp/OrchestratorMcpService.ts",
+          "line": 2094,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/mcp/OrchestratorMcpService.ts#L2094"
+        }
+      ]
+    },
+    {
+      "id": "status",
+      "verdict": "Child status and results have durable task/run identities independent of visual thread state.",
+      "detail": "delegate_task returns taskId, childThreadId, original childRunId/node, provider/model/options, workState, pending question/approval and result. workState separates working, waiting_for_children and result_available; finished own turn is not task completion while nested work remains. Published original summary remains stable; later child turns have separate latestTerminal fields and do not reopen the old task. task_status may acknowledge automatic result delivery.",
+      "evidence": [
+        {
+          "path": "packages/contracts/src/orchestratorMcp.ts",
+          "line": 198,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/packages/contracts/src/orchestratorMcp.ts#L198"
+        },
+        {
+          "path": "apps/server/src/mcp/toolkits/orchestrator/tools.ts",
+          "line": 79,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/mcp/toolkits/orchestrator/tools.ts#L79"
+        },
+        {
+          "path": "apps/server/src/mcp/OrchestratorMcpService.ts",
+          "line": 1428,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/mcp/OrchestratorMcpService.ts#L1428"
+        },
+        {
+          "path": "apps/server/src/orchestration-v2/Orchestrator.ts",
+          "line": 10571,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/orchestration-v2/Orchestrator.ts#L10571"
+        }
+      ]
+    },
+    {
+      "id": "questions",
+      "verdict": "A child question wakes the parent, while approval authority remains with its existing holder.",
+      "detail": "A pending child user_input creates a deterministic attributed notification queued after active parent work, instructing the agent to read/respond by childThreadId+requestId when the answer follows from the brief/user instructions, or ask the user. Recovery revisits pending questions; resolved requests cancel obsolete queued wakes. mode=wait ends early for blocking question or pending approval without cancelling the child. Pending approval identity is informational: fresh request must be read in the child; parent pending-request tools answer questions and grant no human approval authority.",
+      "evidence": [
+        {
+          "path": "apps/server/src/orchestration-v2/DelegatedTaskQuestionReactor.ts",
+          "line": 33,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/orchestration-v2/DelegatedTaskQuestionReactor.ts#L33"
+        },
+        {
+          "path": "packages/contracts/src/orchestratorMcp.ts",
+          "line": 218,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/packages/contracts/src/orchestratorMcp.ts#L218"
+        },
+        {
+          "path": "apps/server/src/mcp/toolkits/orchestrator/tools.ts",
+          "line": 68,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/mcp/toolkits/orchestrator/tools.ts#L68"
+        }
+      ]
+    },
+    {
+      "id": "return",
+      "verdict": "Async child completion returns to the same parent automatically; bounded wait is optional.",
+      "detail": "Default async sets completionWake=always; wait uses settled_only so its tool response normally returns the result. Wait timeout is parent wait budget only, not child cancellation; incomplete wait upgrades wake policy so later completion still wakes the parent. Parent result cohorts retain delivery identity/state, coalesce children and use inline attributed summaries within a 16,000-byte shared budget with task_status fallback. Notification delivery steers active providers where supported or queues otherwise. Agent instructions say to end the turn rather than spawn watcher/poll loops. Archived/deleted parents and closed cohorts dispose delivery; restart recovery scopes open cohorts, not every historical result.",
+      "evidence": [
+        {
+          "path": "apps/server/src/mcp/OrchestratorMcpService.ts",
+          "line": 2150,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/mcp/OrchestratorMcpService.ts#L2150"
+        },
+        {
+          "path": "apps/server/src/mcp/OrchestratorMcpService.ts",
+          "line": 2181,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/mcp/OrchestratorMcpService.ts#L2181"
+        },
+        {
+          "path": "apps/server/src/orchestration-v2/Orchestrator.ts",
+          "line": 612,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/orchestration-v2/Orchestrator.ts#L612"
+        },
+        {
+          "path": "apps/server/src/orchestration-v2/Orchestrator.ts",
+          "line": 10360,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/orchestration-v2/Orchestrator.ts#L10360"
+        }
+      ]
+    },
+    {
+      "id": "manual",
+      "verdict": "Manual controls inspect and stop existing work; they are not the initiation mechanism.",
+      "detail": "Timeline subagent rows expose title/status/elapsed/model/workspace details and open the child. Thread relationships groups active and previous agents, opens parent/child threads, and offers Stop subagent when permitted. App-owned children have normal backing threads; provider-native subagents cannot accept ordinary messages and replace the composer with ProviderSubagentBar, with approvals/questions on their top-level parent. The normal composer still has Stop generation, queue/steer and plan-in-new-thread controls.",
+      "evidence": [
+        {
+          "path": "apps/web/src/components/chat/V2LifecycleRow.tsx",
+          "line": 492,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/V2LifecycleRow.tsx#L492"
+        },
+        {
+          "path": "apps/web/src/components/chat/ThreadRelationshipsControl.tsx",
+          "line": 254,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/ThreadRelationshipsControl.tsx#L254"
+        },
+        {
+          "path": "apps/web/src/components/chat/ThreadRelationshipsControl.tsx",
+          "line": 367,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/ThreadRelationshipsControl.tsx#L367"
+        },
+        {
+          "path": "apps/web/src/components/chat/ThreadRelationshipsControl.tsx",
+          "line": 660,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/ThreadRelationshipsControl.tsx#L660"
+        },
+        {
+          "path": "apps/web/src/components/chat/TimelineWorkEntryRow.tsx",
+          "line": 467,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/TimelineWorkEntryRow.tsx#L467"
+        },
+        {
+          "path": "apps/web/src/components/ChatView.tsx",
+          "line": 2378,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/ChatView.tsx#L2378"
+        }
+      ]
+    },
+    {
+      "id": "stop",
+      "verdict": "Agent cancellation and manual stop reach durable stop paths with nested work handling.",
+      "detail": "task_cancel is parent-scoped, first checks every descendant against the caller modes, disposes completion delivery, issues thread.stop for the backing child and stops nested delegated tasks plus applicable queued turns. Manual relationship stop passes threadId+subagentId through the normal interrupt command, which resolves native/app-owned stop paths. Cancelled unbound app-owned tasks are terminally reconciled so an orphaned visible row does not stay running. Stop generation of a parent and explicit cancellation of a chosen child are different controls; do not claim one always means the other.",
+      "evidence": [
+        {
+          "path": "apps/server/src/mcp/OrchestratorMcpService.ts",
+          "line": 2230,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/mcp/OrchestratorMcpService.ts#L2230"
+        },
+        {
+          "path": "apps/server/src/mcp/OrchestratorMcpService.ts",
+          "line": 2275,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/mcp/OrchestratorMcpService.ts#L2275"
+        },
+        {
+          "path": "apps/server/src/orchestration-v2/Orchestrator.ts",
+          "line": 9413,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/orchestration-v2/Orchestrator.ts#L9413"
+        },
+        {
+          "path": "apps/server/src/orchestration-v2/Orchestrator.ts",
+          "line": 9902,
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/orchestration-v2/Orchestrator.ts#L9902"
+        }
+      ]
+    }
+  ],
+  "recommendation": [
+    "Follow the user\u2019s requested ordinary-thread experience: a prompt such as \u201cuse two agents to investigate and implement this\u201d is sufficient initiation. Expose a small, discoverable managed-delegation tool catalog plus provider instructions and live model/options discovery to the running agent; no required mode switch or dedicated Delegate button is justified by this T3 evidence.",
+    "Keep the user\u2019s supplied tree as a Neokod-owned view of durable task identity: parent task/run, child attempt/thread/workspace/model, working/waiting/result/unknown status, open/details and Stop. Keep provider-native children visibly distinguishable from managed tasks; do not relabel existing activity cards as managed orchestration.",
+    "For the first W6 slice, admit one managed Code child from an active Code parent through the existing engine: stable request/task identity, validated provider/model/options and effective permission ceiling, explicit shared/worktree policy, durable launch/acceptance/recovery state, terminal result pin, idempotent parent wake, question routing and nested cancellation. Start with the provider route actually supported; advertise unavailable capabilities honestly. Source intent should be adapted to local engine contracts, not copied as an entire V2 replacement.",
+    "Retain Symphony as a separately chosen tracker/workflow route and board. Existing delegateFromThread creates a manual Symphony item; it is not the ordinary Code managed-child flow. \u201cSend to Symphony\u201d should remain an explicit linked transfer with its own acceptance/evidence requirements.",
+    "Claude Sonnet synthesis may compare T3, Synara, Paseo, GOAT and other implementations to choose concrete mechanisms for Neokod\u2019s unique design before DeepSeek implements. This report supplies source facts and a bounded product recommendation, not implementation authorisation or a claim that any upstream policy is already enforced locally."
+  ],
+  "local_head": "e69716d23501230d755087a07c91c50691eb47a3",
+  "no_runtime_or_tests": true,
+  "no_canonical_or_application_edits": true
+}

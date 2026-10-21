@@ -1,0 +1,32 @@
+{
+  "captured_at": "2026-10-21T14:51:04.575527+00:00",
+  "post_url": "https://x.com/claudeebum/status/2112820600570081651",
+  "retrieval": "https://api.fxtwitter.com/claudeebum/status/2112820600570081651",
+  "post_date": "2026-10-21T08:17:40Z",
+  "evidence_class": "Post JSON and visual inspection of video frames at 1, 6 and 11 seconds. Publisher demonstration, not executed product proof.",
+  "observed": "GOAT Fleet UI shows multiple hosts, running/needs-you/reported counts, CPU/memory/load, sampled time, account quota, unreachable-host alerts, machine filter and per-host thread rows.",
+  "source_identity": "Source correspondence established by pinned FleetConsole.tsx and fleetTelemetry.ts in goat-si/goat, the OpenCodeX quota contract, and publisher attribution. GOAT nightly runtime source 1c2231239a1f1d14b4d52d32afa60a51467c3c64; distribution repository goat-si/goat-releases. This does not independently validate the demonstrated seven machines.",
+  "files": [
+    {
+      "path": "tweet-2112820600570081651.json",
+      "sha256": "824932139186fe34551a423738cd6cf600c741f4ded67fc171681ea4e50d0824"
+    },
+    {
+      "path": "tweet-frame-1.jpg",
+      "sha256": "ed6271565c84ece7df7ec041ebdbace16f700876c55900b3b99f621ea60d713a"
+    },
+    {
+      "path": "tweet-frame-6.jpg",
+      "sha256": "d3c5856fafa66407627a41fe7f1a16f9852e97ab4a15ec2e211f3eec348452f9"
+    },
+    {
+      "path": "tweet-frame-11.jpg",
+      "sha256": "4ab6e451fc57d387ea01433c8771010b6eda97b471a763c54ed48d269b024418"
+    },
+    {
+      "path": "tweet-2112820600570081651-response.raw",
+      "sha256": "7a2c28b12ae1a1706de32ff66cee7653ce03fc99ee049c7c4da8a351751d5b3a",
+      "role": "Original unmodified retrieval response; .json is a formatted readable copy."
+    }
+  ]
+}

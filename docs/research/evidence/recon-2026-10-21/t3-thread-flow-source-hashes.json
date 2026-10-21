@@ -1,0 +1,415 @@
+[
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "docs/orchestration-v2/orchestrator-mcp-server.md",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/docs/orchestration-v2/orchestrator-mcp-server.md",
+    "sha256": "b95e5381057829dafc1b842bdd96266ed20fa49c93208384389dfc2867acf00e",
+    "bytes": 24718
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "packages/provider-core/src/server/orchestrationInstructions.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/packages/provider-core/src/server/orchestrationInstructions.ts",
+    "sha256": "1f24864aaf88a8aa54beed757ea46b0bba5a162a8f28d858475af71e77c0dce9",
+    "bytes": 13479
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "packages/provider-core/src/server/runtimeInstructions.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/packages/provider-core/src/server/runtimeInstructions.ts",
+    "sha256": "6484685dfca4ab3c7e092f9ca039a361a1a1ec58d1856a4644fb79ea3d94c4f8",
+    "bytes": 2602
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "packages/contracts/src/orchestratorMcp.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/packages/contracts/src/orchestratorMcp.ts",
+    "sha256": "9ebe8ace27066973674a54ff55ecc33802cd1230d133bce89bc127891f200a52",
+    "bytes": 28329
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/server/src/mcp/toolkits/orchestrator/tools.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/mcp/toolkits/orchestrator/tools.ts",
+    "sha256": "3a81035b72a2f0ad5d8de4d9472668fdd356ff076fc1369cfecd193ae7c41b48",
+    "bytes": 22976
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/server/src/mcp/toolkits/orchestrator/handlers.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/mcp/toolkits/orchestrator/handlers.ts",
+    "sha256": "95ecdc93f6f4b5e1eb94cae3d1d3b65c6fed0884960b10eb599ec953581d923f",
+    "bytes": 6281
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/server/src/mcp/OrchestratorMcpService.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/mcp/OrchestratorMcpService.ts",
+    "sha256": "848666c84f731b77e143a469c2462e449bfd4fe192719e3459435559bbe69389",
+    "bytes": 110999
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/server/src/orchestration-v2/Orchestrator.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/orchestration-v2/Orchestrator.ts",
+    "sha256": "96f6062a3444b7bb3990619738653ebc3a537fd4e79666e64665f228aeb122bd",
+    "bytes": 459236
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/server/src/orchestration-v2/ThreadLaunchService.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/orchestration-v2/ThreadLaunchService.ts",
+    "sha256": "26b7d870a3c0baf202349b8dce5ef89f2058a3a68c07af4542863cb4a8f4a46a",
+    "bytes": 43674
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/server/src/orchestration-v2/DelegatedTaskQuestionReactor.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/orchestration-v2/DelegatedTaskQuestionReactor.ts",
+    "sha256": "ff73b1a07d30f9f1f528b4829bdf9020211c1043c31defbc88cb7f971361b545",
+    "bytes": 7402
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/server/src/provider/CodexDeveloperInstructions.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/provider/CodexDeveloperInstructions.ts",
+    "sha256": "d7fa4e284681ee48cc7bc460b35151913497954599782f9ccc115fcca2cf3fb6",
+    "bytes": 14368
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/routes/settings.general.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/routes/settings.general.tsx",
+    "sha256": "0282d289ca52a6222cdc04b5fa92f064ed91c163548eddd0913e5cd9df5ce99a",
+    "bytes": 309
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/settings/ProviderSettingsPanel.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/settings/ProviderSettingsPanel.tsx",
+    "sha256": "f54c69f4967da52f3275f52c2d9eee53d269955d91c0de09ef34205ae04421cf",
+    "bytes": 54252
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/settings/ProviderSettingsForm.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/settings/ProviderSettingsForm.tsx",
+    "sha256": "daad54a6419522335587762fd0bbd544c14209b4e31133f58068d61f0857d44d",
+    "bytes": 20487
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/settings/SessionPermissions.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/settings/SessionPermissions.tsx",
+    "sha256": "d27b5c08fc178beec7d670b39f2c6e094f8c7c5ee2e0a563f08192ad90e45f7e",
+    "bytes": 1502
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/ChatComposer.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/ChatComposer.tsx",
+    "sha256": "fa456d5c80bed20e4f9fb2fbd79f4ba81dca78ba5e2b7c8a31caaaa9283d9cf7",
+    "bytes": 251346
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/ComposerFooterControls.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/ComposerFooterControls.tsx",
+    "sha256": "12ef25d71cd59813c4bfd35eca82edbc06722eef4024c00e7cfde6351d8750fe",
+    "bytes": 11400
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/ComposerPrimaryActions.tsx",
+    "sha256": "66047dc37136ae354a9eb37c9e0d124b068c798281a937a145822ade106996c9",
+    "bytes": 15030
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/CompactComposerControlsMenu.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/CompactComposerControlsMenu.tsx",
+    "sha256": "259f99340f5b34fde1b2cb0ab2953ce9d18f66108342c3a3559c886f5dbbe4f5",
+    "bytes": 3270
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/ComposerCommandMenu.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/ComposerCommandMenu.tsx",
+    "sha256": "7103a425dc0af46931e230ce3cbc488e4ce69e61727f57248d9ee51c57bc7967",
+    "bytes": 8979
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/useComposerMenuItems.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/useComposerMenuItems.ts",
+    "sha256": "af2e6370b88e4de23b2faf5c5f6f60cb67fdca082fc855b3b0791c89c268c814",
+    "bytes": 13258
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/ProviderSubagentBar.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/ProviderSubagentBar.tsx",
+    "sha256": "d6be99010e845d58a305d9cee725b1c41a91f38eef6713774b3e11b4d739cc7c",
+    "bytes": 3219
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/SubagentTooltipContent.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/SubagentTooltipContent.tsx",
+    "sha256": "c313e873982950665f1303adafa670d2ecaeb278ea2a62d1f2c155687694c520",
+    "bytes": 7557
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "packages/client-runtime/src/state/threadSubagents.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/packages/client-runtime/src/state/threadSubagents.ts",
+    "sha256": "646c3d1dfa0591fe81594dbbea4ba24c78d8ad1c3335e145eec4802bff5616cc",
+    "bytes": 3324
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "packages/client-runtime/src/state/subagentRuntime.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/packages/client-runtime/src/state/subagentRuntime.ts",
+    "sha256": "35f918a80d38076c34868e73b0b47940b30d6102de156da30bdfd727879a14c3",
+    "bytes": 15325
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "packages/client-runtime/src/state/subagentDisplay.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/packages/client-runtime/src/state/subagentDisplay.ts",
+    "sha256": "2fd4d7e2092179c266a5bf81ce029067a8942600ce4c2d69d7705fa20369006f",
+    "bytes": 4665
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/MessagesTimeline.logic.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/MessagesTimeline.logic.ts",
+    "sha256": "037cc1180e6b0821d2c35a9c598bb6d39c949f7f09cce10cbb382062e694758b",
+    "bytes": 84134
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/TimelineWorkEntryRow.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/TimelineWorkEntryRow.tsx",
+    "sha256": "c1ed3d297dc19a41ad99e1f6c713ad1526eda602cfc01100d89e084c08ec84d5",
+    "bytes": 22228
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/MessagesTimeline.tsx",
+    "sha256": "6972e36d660ef7b26a48acba8d2313ca0100e7de1d64a4493d325b8cc5c0034d",
+    "bytes": 51377
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/TimelineV2EventRow.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/TimelineV2EventRow.tsx",
+    "sha256": "bb7595d78548ed1c16dd4a25266f3b7c1428b3401fae008e37305fc8c55d1e49",
+    "bytes": 12612
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/V2LifecycleRow.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/V2LifecycleRow.tsx",
+    "sha256": "8b185e71ceeaf6a21f4b5af6704090cbd3157be1fc91a09b4f485f9a94f152fe",
+    "bytes": 23812
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/Sidebar.logic.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/Sidebar.logic.ts",
+    "sha256": "33aa08773ef9f1f8d43de850cafdbb2df35e108e359f9081956e5ee19685a038",
+    "bytes": 43749
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/timelineRowContext.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/timelineRowContext.ts",
+    "sha256": "76aa3eba51e1817cae782bd746cef824ddccd4be9cb7deab1bdaa7120ba7cb6e",
+    "bytes": 4017
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/state/entities.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/state/entities.ts",
+    "sha256": "f70b5cc09b676043a21cb6e99eed9de73ea02acfdcffddcfa7cb3d213b7a6995",
+    "bytes": 14381
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/ThreadLineageWorkflowRow.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/ThreadLineageWorkflowRow.tsx",
+    "sha256": "0d78bb57737587fa83b2058f494d724500f70867db8a733c3038d65360745aa2",
+    "bytes": 9807
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/ThreadRelationshipsControl.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/ThreadRelationshipsControl.tsx",
+    "sha256": "f3572b407969f922f991729366ab462607420c793b217df870feb3e0496f6efc",
+    "bytes": 29187
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/server/src/orchestration-v2/ProviderSessionManager.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/orchestration-v2/ProviderSessionManager.ts",
+    "sha256": "7cb7cde77cfb6477ac121df1c0982638cab15e414890b4970bb801ab7db47bf0",
+    "bytes": 107514
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/TimelineWorkEntryRow.logic.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/TimelineWorkEntryRow.logic.ts",
+    "sha256": "deef118f3780111c70ee54bbb9c587174f29f0a0872ce953e61c209c28279e40",
+    "bytes": 7477
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/ThreadActivityBanners.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/ThreadActivityBanners.tsx",
+    "sha256": "c18daaa475392ff989bdcd3f1c7a080fa3e5a95d786dbda87306506ab6591e9c",
+    "bytes": 7008
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/server/src/orchestration-v2/ProviderTurnStartService.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/orchestration-v2/ProviderTurnStartService.ts",
+    "sha256": "3a7388a45176010ea8a1b64c78d5120c2641a503a67164462643211da2d96834",
+    "bytes": 53610
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/sidebar/SidebarThreadRow.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/sidebar/SidebarThreadRow.tsx",
+    "sha256": "e584bfaf1340048c9c0a36e473b20082d73793c50c13e2ef9af97ba4b8948b8b",
+    "bytes": 67510
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/ChatView.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/ChatView.tsx",
+    "sha256": "8cbb289bae2fad7eae86dac4bc6b26704dedd7446fba28a589ebc23e407daeb0",
+    "bytes": 300641
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/session-logic.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/session-logic.ts",
+    "sha256": "9475144d51acba1d32d53542399935933fa058786250b325cb603910219e478b",
+    "bytes": 39097
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/test-fixtures.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/test-fixtures.ts",
+    "sha256": "92d02ee1380fe6c59fcf0316987bd9184f51abbe2c79be6715594a0df7d8ab0f",
+    "bytes": 7018
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/V2LifecycleRow.logic.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/V2LifecycleRow.logic.ts",
+    "sha256": "d6feb5a3203277fdbbea52042a100c5e630e4389bea942cf5cccbce5d90350fa",
+    "bytes": 1040
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/TimelineV2EventRow.logic.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/TimelineV2EventRow.logic.ts",
+    "sha256": "d94f2154455f4f3a5241919ae74c63c07d906975fd5a20b69273d95a70febd55",
+    "bytes": 3849
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/settings/SettingsPanels.logic.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/settings/SettingsPanels.logic.ts",
+    "sha256": "a113ccb331ab9c36cb9eff8b7e8e7fbd752ea77491aee589b9cdd41ef2842c54",
+    "bytes": 9722
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/settings/SettingsPanels.tsx",
+    "sha256": "45f380a5f7a51f3fc5e343c22ac6537cc50ec3118915bef8a5d02f82dd1a6a42",
+    "bytes": 77959
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/WorkflowOpeningBlock.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/WorkflowOpeningBlock.tsx",
+    "sha256": "bd14da441841516303aedeb8dfadd491523ff7969e22a9c413d7198f5b0b4a24",
+    "bytes": 9105
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/AgentElapsed.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/AgentElapsed.tsx",
+    "sha256": "856a709d5e99f0a301287970f73de7a861e39444a29128cd388890bce714d568",
+    "bytes": 2312
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/ThreadNotificationCoordinator.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/ThreadNotificationCoordinator.tsx",
+    "sha256": "2f36b13efa346b70fe62c9597bd5ad2a28179064619a90b2d5d970818f1e6df5",
+    "bytes": 9231
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/V2ItemInspector.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/V2ItemInspector.tsx",
+    "sha256": "48ff738dd55fd892d0c38ecc67bd1531b3ca166d63ebe8e46cd4947d58a4ae74",
+    "bytes": 16301
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/ServerUpdateAction.tsx",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/ServerUpdateAction.tsx",
+    "sha256": "fd97bc85aa3bcd10f0fb4c70e3ff6c2985ae43d43d1f478392f44734b2dfbea3",
+    "bytes": 12435
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/web/src/components/chat/agentSpawnSummary.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/web/src/components/chat/agentSpawnSummary.ts",
+    "sha256": "27bb15eab364de51c9ecf8ffbce29028a8b7401c55d26db014a122efb066d876",
+    "bytes": 2220
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/server/src/orchestration-v2/ThreadManagementService.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/orchestration-v2/ThreadManagementService.ts",
+    "sha256": "832b6d193971bf464f0cd23c5b456740f7873bf30496565c94024b3f64d56536",
+    "bytes": 46610
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "packages/provider-acp/src/server/adapter.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/packages/provider-acp/src/server/adapter.ts",
+    "sha256": "164f861594e4e87d1ba22c735f430fa25b923d5b2275047006576682ad77c49c",
+    "bytes": 368873
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "packages/provider-opencode/src/server/v2/adapter.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/packages/provider-opencode/src/server/v2/adapter.ts",
+    "sha256": "492283ae07e82bbf5883581109e07cfd5c2ecb3d5bd7fd3a57e3fbc1a60688b6",
+    "bytes": 162352
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "packages/provider-pi/src/server/adapter.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/packages/provider-pi/src/server/adapter.ts",
+    "sha256": "921e4729b08199b1e6bfb96335bb73eeb1750f10069513b89ac9210fb923c4fe",
+    "bytes": 138221
+  },
+  {
+    "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+    "path": "apps/server/src/orchestration-v2/NotificationMailbox.ts",
+    "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/orchestration-v2/NotificationMailbox.ts",
+    "sha256": "939cdc00d78761efa9599342b08f59f03c76781e1c2a2ef464a15ab874e2751c",
+    "bytes": 1343
+  }
+]

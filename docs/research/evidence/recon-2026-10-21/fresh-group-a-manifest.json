@@ -1,0 +1,2696 @@
+{
+  "created_at": "2026-10-21T15:07:52.265732+00:00",
+  "scope": "Authenticated GitHub metadata census with bounded selected semantic source review; no competitor execution/build/tests",
+  "window": "Merged 2026-10-04 through 2026-10-21 inclusive, as returned at per-repo capture_end",
+  "proof_class": "source/static + GitHub metadata",
+  "metadata_pr_count": 4997,
+  "selected_pr_detail_captures": 39,
+  "limitations": [
+    "PR census is metadata coverage, not semantic review of every PR.",
+    "Large compare endpoints are capped at 300 files and first 100 commit records; source-window.json records those limits.",
+    "Release listing checks up to 100 current release records; pins record latest stable and prerelease returned.",
+    "Default head, releases and PR census were captured separately; later merges can fall outside the frozen head.",
+    "Complete non-truncated current trees were inspected for source discovery; pinned source files are a focused selection.",
+    "No build, provider session, remote/mobile runtime, restart, or visual interaction was executed."
+  ],
+  "repositories": [
+    {
+      "repo": "pingdotgg/t3code",
+      "default_branch": "main",
+      "head_sha": "680152e27b2a961686389ca69a1557cbb2c55f08",
+      "head_committed_at": "2026-10-21T13:40:43Z",
+      "head_url": "https://github.com/pingdotgg/t3code/commit/680152e27b2a961686389ca69a1557cbb2c55f08",
+      "release_pins": [
+        {
+          "tag": "v0.1.1",
+          "prerelease": false,
+          "published_at": "2026-10-21T02:29:41Z",
+          "target_commitish": "fe27e8e3dc12dcbb108e9a28fd9b8cb65f34ae92",
+          "sha": "fe27e8e3dc12dcbb108e9a28fd9b8cb65f34ae92",
+          "url": "https://github.com/pingdotgg/t3code/releases/tag/v0.1.1"
+        },
+        {
+          "tag": "v0.1.2-nightly.20261021.3473",
+          "prerelease": true,
+          "published_at": "2026-10-21T10:59:13Z",
+          "target_commitish": "1688f965682d331da16a8c39f049592361f69c8d",
+          "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+          "url": "https://github.com/pingdotgg/t3code/releases/tag/v0.1.2-nightly.20261021.3473"
+        }
+      ],
+      "census": {
+        "capture_end": "2026-10-21T14:55:56.706227+00:00",
+        "partitions": [
+          {
+            "query": "repo:pingdotgg/t3code is:pr is:merged merged:2026-10-04",
+            "count": 67,
+            "captured": 67,
+            "pages": 1
+          },
+          {
+            "query": "repo:pingdotgg/t3code is:pr is:merged merged:2026-10-05",
+            "count": 78,
+            "captured": 78,
+            "pages": 1
+          },
+          {
+            "query": "repo:pingdotgg/t3code is:pr is:merged merged:2026-10-06",
+            "count": 105,
+            "captured": 105,
+            "pages": 2
+          },
+          {
+            "query": "repo:pingdotgg/t3code is:pr is:merged merged:2026-10-07",
+            "count": 66,
+            "captured": 66,
+            "pages": 1
+          },
+          {
+            "query": "repo:pingdotgg/t3code is:pr is:merged merged:2026-10-08",
+            "count": 98,
+            "captured": 98,
+            "pages": 1
+          },
+          {
+            "query": "repo:pingdotgg/t3code is:pr is:merged merged:2026-10-09",
+            "count": 72,
+            "captured": 72,
+            "pages": 1
+          },
+          {
+            "query": "repo:pingdotgg/t3code is:pr is:merged merged:2026-10-10",
+            "count": 124,
+            "captured": 124,
+            "pages": 2
+          },
+          {
+            "query": "repo:pingdotgg/t3code is:pr is:merged merged:2026-10-11",
+            "count": 106,
+            "captured": 106,
+            "pages": 2
+          },
+          {
+            "query": "repo:pingdotgg/t3code is:pr is:merged merged:2026-10-12",
+            "count": 67,
+            "captured": 67,
+            "pages": 1
+          },
+          {
+            "query": "repo:pingdotgg/t3code is:pr is:merged merged:2026-10-13",
+            "count": 46,
+            "captured": 46,
+            "pages": 1
+          },
+          {
+            "query": "repo:pingdotgg/t3code is:pr is:merged merged:2026-10-14",
+            "count": 113,
+            "captured": 113,
+            "pages": 2
+          },
+          {
+            "query": "repo:pingdotgg/t3code is:pr is:merged merged:2026-10-15",
+            "count": 82,
+            "captured": 82,
+            "pages": 1
+          },
+          {
+            "query": "repo:pingdotgg/t3code is:pr is:merged merged:2026-10-16",
+            "count": 46,
+            "captured": 46,
+            "pages": 1
+          },
+          {
+            "query": "repo:pingdotgg/t3code is:pr is:merged merged:2026-10-17",
+            "count": 391,
+            "captured": 391,
+            "pages": 4
+          },
+          {
+            "query": "repo:pingdotgg/t3code is:pr is:merged merged:2026-10-18",
+            "count": 301,
+            "captured": 301,
+            "pages": 4
+          },
+          {
+            "query": "repo:pingdotgg/t3code is:pr is:merged merged:2026-10-19",
+            "count": 266,
+            "captured": 266,
+            "pages": 3
+          },
+          {
+            "query": "repo:pingdotgg/t3code is:pr is:merged merged:2026-10-20",
+            "count": 448,
+            "captured": 448,
+            "pages": 5
+          },
+          {
+            "query": "repo:pingdotgg/t3code is:pr is:merged merged:2026-10-21",
+            "count": 133,
+            "captured": 133,
+            "pages": 2
+          }
+        ],
+        "count": 2609,
+        "unique_count": 2609,
+        "metadata_census_only": true
+      },
+      "base_branch_counts": {
+        "main": 2304,
+        "refactor/settings-split-authorized-clients": 1,
+        "refactor/settings-split-connections-logic": 1,
+        "refactor/settings-split-background-activity": 1,
+        "refactor/settings-split-appearance": 1,
+        "refactor/settings-split-typography": 1,
+        "refactor/settings-split-archived": 1,
+        "refactor/chatview-draft-environment-routing": 1,
+        "refactor/chatview-activity-banners": 1,
+        "refactor/chatview-system-banners": 1,
+        "refactor/chatview-timeline-follow": 1,
+        "refactor/chatview-right-panel": 1,
+        "refactor/chatview-terminal-drawers": 1,
+        "refactor/chatview-helpers": 1,
+        "refactor/chat-markdown-links": 1,
+        "refactor/chat-markdown-tables": 1,
+        "refactor/chat-markdown-mermaid": 1,
+        "refactor/chat-markdown-code-blocks": 1,
+        "refactor/split-pull-requests-speed-mode": 1,
+        "refactor/split-pull-requests-thin-route": 1,
+        "refactor/split-pull-requests-list-hooks": 1,
+        "refactor/split-pull-requests-list-groups": 1,
+        "refactor/split-pull-requests-detail-hook": 1,
+        "refactor/split-pull-requests-detail-actions": 1,
+        "refactor/split-pull-requests-detail-header": 1,
+        "refactor/split-pull-requests": 1,
+        "refactor/sidebar-thread-row-file": 1,
+        "refactor/chat-composer-stable-controls": 1,
+        "refactor/chat-composer-footer-controls": 1,
+        "refactor/chat-composer-resting-previews": 1,
+        "refactor/chat-composer-attachments": 1,
+        "refactor/command-palette-project-items": 1,
+        "refactor/command-palette-thread-items": 1,
+        "refactor/command-palette-theme-items": 1,
+        "refactor/messages-timeline-assistant-event-rows": 1,
+        "refactor/messages-timeline-user-message-rows": 1,
+        "refactor/messages-timeline-work-group-rows": 1,
+        "refactor/messages-timeline-work-entry-rows": 1,
+        "refactor/messages-timeline-minimap": 1,
+        "tests/no-real-time-wait": 1,
+        "tests/no-wall-clock": 1,
+        "tests/no-frame-waits": 1,
+        "tests/guardrails-base": 1,
+        "duo/navigation": 1,
+        "test/web-test-audit": 8,
+        "device/eas-host": 1,
+        "device/expo-access": 1,
+        "device/host-config-union": 1,
+        "device/webrtc-stream": 1,
+        "device/host-owns-device-ops": 1,
+        "t3/pr-stack-etag-revalidation": 1,
+        "t3code/relay-cloudflare-rate-limit": 1,
+        "effect-fn/clients": 1,
+        "effect-fn/tooling": 1,
+        "effect-fn/transports": 1,
+        "effect-fn/server-domains": 1,
+        "effect-fn/orchestration-services": 1,
+        "effect-fn/orchestration-storage": 1,
+        "effect-fn/server-providers": 1,
+        "effect-fn/provider-adapters": 1,
+        "effect-fn/provider-runtime": 1,
+        "effect-fn/shared": 1,
+        "effect-fn/conventions": 1,
+        "ds-adoption/connection-choice-rows": 1,
+        "ds-adoption/pull-request-actions": 1,
+        "ds-adoption/thread-actions": 1,
+        "ds-adoption/preview-actions": 1,
+        "ds-adoption/settings-connection-actions": 1,
+        "ds-adoption/shared-action-buttons": 1,
+        "ds-adoption/license-rows": 1,
+        "ds-adoption/cache-rows": 1,
+        "ds-adoption/project-actions": 1,
+        "ds-adoption/legal-controls": 1,
+        "perf/mobile-render-10": 1,
+        "perf/mobile-render-9": 1,
+        "perf/mobile-compile-8": 1,
+        "perf/mobile-compile-7": 1,
+        "perf/mobile-compile-6": 1,
+        "perf/mobile-compile-5": 1,
+        "perf/mobile-compile-4": 1,
+        "perf/mobile-compile-3": 1,
+        "perf/mobile-compile-2": 1,
+        "perf/mobile-compile-1": 1,
+        "fix/workflow-member-transcript-stream": 1,
+        "perf/mobile-compiler-cloud": 1,
+        "perf/mobile-compiler-usage": 1,
+        "perf/mobile-react-compiler": 1,
+        "t3/v1-cleanup-1-drop-tables": 1,
+        "rc/71-terminal-drawer": 1,
+        "rc/70-pull-request-panel": 1,
+        "rc/69-theme-color-picker": 1,
+        "rc/68-resize-drag": 1,
+        "rc/66-snapshot-settings": 1,
+        "rc/64-integrations-settings": 1,
+        "rc/63-capture-shortcut-config": 1,
+        "rc/62-acp-session-management": 1,
+        "rc/61-project-settings-panel": 1,
+        "rc/60-device-hosts-settings": 1,
+        "rc/59-diagnostics-settings": 1,
+        "rc/58-storage-settings": 1,
+        "rc/57-provider-setup-section": 1,
+        "rc/56-notification-settings": 1,
+        "rc/55-snapshot-setup-dialog": 1,
+        "rc/54-project-script-settings": 1,
+        "rc/53-device-host-connection-checks": 1,
+        "rc/52-telemetry-export-settings": 1,
+        "rc/51-usage-provider-settings": 1,
+        "rc/50-source-control-host-settings": 1,
+        "rc/49-github-account-settings": 1,
+        "rc/48-github-token-settings": 1,
+        "rc/47-link-pull-request-dialog": 1,
+        "rc/46-pull-request-thread-links": 1,
+        "rc/45-pull-request-review-annotations": 1,
+        "rc/44-pull-request-actions": 1,
+        "rc/43-cloud-environment-connect-list": 1,
+        "rc/42-ssh-password-prompt": 1,
+        "rc/41-device-panel": 1,
+        "rc/40-device-setup": 1,
+        "rc/38-media-video-player": 1,
+        "rc/37-provider-updates-action": 1,
+        "rc/36-sidebar-update-pill": 1,
+        "rc/35-file-browser-panel": 1,
+        "rc/34-usedirectoryentries": 1,
+        "rc/33-provider-update-rows": 1,
+        "rc/32-usage-page": 1,
+        "rc/31-attachment-file-preview": 1,
+        "rc/30-server-update-action": 1,
+        "rc/29-command-palette": 1,
+        "rc/28-browser-preview-view": 1,
+        "rc/27-queued-runs-control": 1,
+        "rc/26-settings-hooks": 1,
+        "rc/25-usetheme": 1,
+        "rc/24-uselocalstorage": 1,
+        "rc/23-pull-request-code-tab-compiles-with-": 1,
+        "rc/22-thread-actions-compile-without-manua": 1,
+        "rc/21-welcome-wizard-keeps-its-auto-select": 1,
+        "rc/20-diff-panel-reads-its-loader-and-coll": 1,
+        "rc/19-branch-toolbar-label-measuring-reads": 1,
+        "rc/18-snapshot-coordinator-keeps-the-last-": 1,
+        "rc/17-browser-viewport-resize-checks-its-s": 1,
+        "rc/16-useliverefresh-reads-its-callback-th": 1,
+        "rc/15-viewed-file-tracking-passes-its-flus": 1,
+        "rc/14-sidebar-retained-git-status-lives-in": 1,
+        "rc/13-pairing-surfaces-read-their-url-toke": 1,
+        "rc/12-usecopytoclipboard-reads-its-options": 1,
+        "rc/11-panel-presence-keeps-its-retained-va": 1,
+        "rc/10-theme-editor": 1,
+        "rc/09-project-icon-picker": 1,
+        "rc/08-source-control-action-hooks": 1,
+        "rc/07-query-hooks": 1,
+        "rc/06-thread-notifications": 1,
+        "rc/05-toggle-groups": 1,
+        "rc/04-asset-url-hooks": 1,
+        "rc/03-server-browser-surface": 1,
+        "rc/02-composer-editor": 1,
+        "rc/01-tooltips": 1,
+        "chatview-split/chatview-effects": 1,
+        "chatview-split/timeline-compiles": 1,
+        "chatview-split/composer-compiles": 1,
+        "chatview-split/sidebar-compiles": 1,
+        "chatview-split/chat-shortcuts": 1,
+        "chatview-split/provider-identity": 1,
+        "chatview-split/compile-chatview": 1,
+        "chatview-split/compiler-unblock": 1,
+        "chatview-split/send-phases": 1,
+        "chatview-split/worktree-setup": 1,
+        "chatview-split/panel-surfaces": 1,
+        "chatview-split/preview-panel": 1,
+        "chatview-split/proactive-panels": 1,
+        "chatview-split/pull-requests": 1,
+        "chatview-split/queue": 1,
+        "chatview-split/usage-limits": 1,
+        "chatview-split/pending-requests-compiled": 1,
+        "chatview-split/compiler-ratchet": 1,
+        "chatview-split/terminal-actions": 1,
+        "chatview-split/terminal-components": 1,
+        "chatview-split/pending-requests": 1,
+        "feat/mobile-custom-segmented-control": 1,
+        "t3/db-compaction-2-doctor": 1,
+        "t3/db-compaction-1-background": 1,
+        "t3/ci-sticky-deps": 1,
+        "t3/ci-merge-small-jobs": 1,
+        "t3/ci-cache-chromium": 1,
+        "t3/smart-ci-workflow-gating": 1,
+        "takeover/android-sdk": 1,
+        "t3/mobile-ds-action-sheets": 1,
+        "t3/mobile-ds-native-slider": 1,
+        "t3/mobile-ds-toolbar-api": 1,
+        "t3/mobile-ds-loading-adoption": 1,
+        "t3/mobile-ds-remaining-alerts": 1,
+        "t3/mobile-ds-settings-alerts": 1,
+        "t3/mobile-ds-dialog-alerts": 1,
+        "t3/mobile-ds-control-tokens": 1,
+        "t3/mobile-ds-app-bar-adoption": 1,
+        "t3/mobile-ds-native-app-bar": 1,
+        "t3/mobile-ds-tokens": 1,
+        "t3/mobile-ds-feedback": 1,
+        "t3/mobile-ds-chrome": 1,
+        "t3/mobile-ds-segmented": 5,
+        "t3/mobile-ds-presentations": 1,
+        "t3/mobile-ds-menus": 1,
+        "t3/mobile-ds-input-actions": 1,
+        "t3/mobile-native-control-themes": 1,
+        "t3/mobile-native-theme-host": 1,
+        "t3/mobile-ds-catalog": 1,
+        "t3/mobile-ds-buttons": 1,
+        "t3/mobile-ds-action-rows": 1,
+        "t3/mobile-ds-toggle-rows": 1,
+        "t3/mobile-ds-list-rows": 1,
+        "t3/mobile-theme-audit-and-fixes": 1,
+        "t3/plan-mobile-pull-request-flow": 1,
+        "v2/oc2-7-continuation-wake-identity": 1,
+        "t3code/rebuild-mobile-app-swift": 1,
+        "t3/sc-capability-gated-actions": 1,
+        "t3/sc-reference-parsing": 1,
+        "t3/sc-web-clients": 1,
+        "t3/sc-runtime-mobile-clients": 1,
+        "t3/sc-client-definitions": 1,
+        "t3/sc-kind-brand": 1,
+        "fix/sidebar-width-scoped-vars": 1,
+        "fix/terminal-height-survives-window": 1,
+        "fix/resize-drag-same-frame": 1,
+        "fix/resize-observer-flush": 1,
+        "t3/host-home-directory": 1,
+        "t3/source-control-pullrequest-github-capabilities": 1,
+        "t3/source-control-gitmanager-capabilities": 1,
+        "t3/usage-antigravity-reader": 1,
+        "t3/usage-cursor-reader": 1,
+        "t3/usage-opencode-reader": 1,
+        "t3/usage-transcript-readers": 1,
+        "t3/source-control-bitbucket": 1,
+        "t3/source-control-gitlab": 1,
+        "t3/source-control-azure-devops": 1,
+        "t3/source-control-forgejo": 1,
+        "t3/source-control-packages": 1,
+        "t3/provider-core-services": 1,
+        "t3/provider-core-conventions": 1,
+        "t3/provider-model-catalog": 1,
+        "t3/provider-acp-core": 1,
+        "t3/provider-cursor": 1,
+        "t3/provider-opencode": 1,
+        "t3/provider-packages-settings": 1,
+        "t3/provider-packages-core": 1,
+        "t3code/mobile-perf/reuse-settled-sort": 1,
+        "t3code/mobile-perf/update-native-git-header": 1,
+        "t3code/mobile-perf/refresh-git-after-reconnect": 1,
+        "t3code/mobile-perf/stop-git-sheet-refresh-loop": 1,
+        "t3code/mobile-perf/collect-ui-runtime-on-memory-warning": 1,
+        "t3code/mobile-perf/skip-empty-thread-key-lookups": 1,
+        "t3code/mobile-perf/reduce-move-index-allocations": 1,
+        "t3code/mobile-perf/skip-unused-home-project-sort": 1,
+        "t3code/mobile-perf/skip-disabled-showcase": 1,
+        "t3code/mobile-perf/reuse-shell-row-encoding": 1,
+        "t3code/mobile-perf/lazy-thread-move-availability": 1,
+        "t3code/mobile-perf/stop-stream-git-refresh": 1,
+        "t3code/mobile-perf/pause-hidden-thread-timers": 1,
+        "t3code/mobile-perf/compact-thread-snapshots": 1,
+        "t3code/github-fold-repository-api": 1,
+        "t3code/github-graphql-helpers": 1,
+        "t3code/github-api-naming": 1,
+        "t3code/browser-setup-absolute-path": 1,
+        "t3code/auth-terminal-read-scope": 1,
+        "t3code/auth-diagnostics-scope": 1,
+        "t3code/auth-preview-scope": 1,
+        "t3code/auth-filesystem-scopes": 1,
+        "t3code/auth-source-control-scope": 1,
+        "t3code/auth-environment-scopes": 1,
+        "t3code/auth-pairing-scopes": 1,
+        "t3code/mcp/oauth-sign-in": 1,
+        "t3code/mcp/declared-access": 1,
+        "julius/privacy-policy-telemetry": 1,
+        "julius/telemetry-desktop-env": 1,
+        "t3code/github-account-settings": 1,
+        "t3code/github-api-source-control": 1,
+        "t3code/github-api-pr-cli": 1,
+        "t3code/github-api-transport": 1,
+        "t3code/cloudlink-helpers": 1,
+        "t3code/mcp-oauth/copy-url": 1,
+        "relay-tunnels/offline-reason": 1,
+        "relay-tunnels/sweep-throughput": 1,
+        "relay-tunnels/legacy-cleanup": 1,
+        "relay-tunnels/sweep-metrics": 1,
+        "relay-tunnels/mode-bindings": 1,
+        "t3/desktop-bootstrap-1-stop-retrying": 1,
+        "t3code/webhooks-web": 1,
+        "t3code/webhooks-mobile": 1,
+        "t3code/webhooks-relay": 1,
+        "t3code/webhooks-server": 1,
+        "t3code/html-embeds-takeover": 2,
+        "t3code/acp-typed-elicitation": 1,
+        "t3code/local-acp-provider-support": 1,
+        "t3code/mobile-perf/cache-encoding": 1,
+        "t3code/connection-routes": 1,
+        "release/mobile-1.4": 1
+      },
+      "source_window": {
+        "base": "ee7b49d638e412590b09b415cc48399d51644b60",
+        "head": "680152e27b2a961686389ca69a1557cbb2c55f08",
+        "compare_url": "https://github.com/pingdotgg/t3code/compare/ee7b49d638e412590b09b415cc48399d51644b60...680152e27b2a961686389ca69a1557cbb2c55f08",
+        "status": "ahead",
+        "ahead_by": 2568,
+        "total_commits": 2568,
+        "captured_commit_page": 100,
+        "captured_files": 300,
+        "files_may_be_capped": true
+      },
+      "verdict": "changed: material ordinary-thread orchestration reliability work",
+      "selected_prs": [
+        {
+          "number": 22117,
+          "title": "fix(server): deliver subagent results without history handoffs",
+          "url": "https://github.com/pingdotgg/t3code/pull/22117",
+          "merged": true,
+          "merged_at": "2026-10-20T07:03:05Z",
+          "base_branch": "main",
+          "base_sha_at_query": "a9af48a3d2a0a9e1b728767b5feebc39f3f0aa73",
+          "head_sha": "47bff2651defa47f071ea35c220afb8c8c6bc1ea",
+          "merge_sha": "4f5ff17172c5f2bde61a09aafb23011ae4d38538",
+          "changed_files": 5,
+          "captured_file_records": 5,
+          "focus": "Child results now use attributed inline summaries (16,000-byte cap with task_status fallback), consuming their result transfer without cross-provider history handoffs.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 22653,
+          "title": "fix(server): Stop on a delegate always clears it, even when it is stuck",
+          "url": "https://github.com/pingdotgg/t3code/pull/22653",
+          "merged": true,
+          "merged_at": "2026-10-21T06:27:08Z",
+          "base_branch": "main",
+          "base_sha_at_query": "61e2747f2ea801c58bb40c11dfec7acf2d80e2f4",
+          "head_sha": "5e2dcc091cb6f8f165d5f22e64d11603f9be434e",
+          "merge_sha": "6a6c84f9906cbdfa7f533fecfc39ce18c2f4c273",
+          "changed_files": 5,
+          "captured_file_records": 5,
+          "focus": "Stop clears stranded unbound app-owned delegated tasks, terminal timestamps and completion-delivery state; bound child runs retain their own settlement path.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 22709,
+          "title": "fix(server): delegates finish when their leftover work settles, and Grok commands stop holding runs open",
+          "url": "https://github.com/pingdotgg/t3code/pull/22709",
+          "merged": true,
+          "merged_at": "2026-10-21T07:20:54Z",
+          "base_branch": "main",
+          "base_sha_at_query": "a93b03c8a5a888cfa7fac1fd6cb7a814221adf72",
+          "head_sha": "77ddef92d751e1933181fa1f8bd18209b03ca066",
+          "merge_sha": "163bdeaa119f32bf92f25d2841048b808df542a5",
+          "changed_files": 7,
+          "captured_file_records": 7,
+          "focus": "App-owned delegate finalisation listens for provider-thread/subagent changes and waits for leftover delegated/background work to settle.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 19102,
+          "title": "feat(server): run delegated tasks in separate worktrees",
+          "url": "https://github.com/pingdotgg/t3code/pull/19102",
+          "merged": true,
+          "merged_at": "2026-10-14T00:39:03Z",
+          "base_branch": "main",
+          "base_sha_at_query": "8d7523248964ec7b37cc08f91e15122def171821",
+          "head_sha": "f9013fa07159d8411f16a7679f9bcb544280eadf",
+          "merge_sha": "25629a76a0458bdeb707483722894158af090b41",
+          "changed_files": 15,
+          "captured_file_records": 15,
+          "focus": "Adds explicit separate-worktree child launch strategy through existing thread launch/MCP paths.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 19631,
+          "title": "fix(server): restarts no longer stall on old subagent result deliveries",
+          "url": "https://github.com/pingdotgg/t3code/pull/19631",
+          "merged": true,
+          "merged_at": "2026-10-14T22:53:08Z",
+          "base_branch": "main",
+          "base_sha_at_query": "348f217a853dd4a23d7fa4834dedb05f545c2075",
+          "head_sha": "edbfce1e04833dbe70e5372ca08abaed3d9275e1",
+          "merge_sha": "22af947e0d353c9e89c6db2a268836baa71bece5",
+          "changed_files": 2,
+          "captured_file_records": 2,
+          "focus": "Restart result recovery loads delivery messages from the current open cohort instead of historical cohorts.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 19521,
+          "title": "fix(server): a delegated task's question now wakes its parent agent",
+          "url": "https://github.com/pingdotgg/t3code/pull/19521",
+          "merged": true,
+          "merged_at": "2026-10-15T03:17:49Z",
+          "base_branch": "main",
+          "base_sha_at_query": "bf8ffe81a63c82d3de5fbaa9991fd5f30034a452",
+          "head_sha": "35ba9631bece433070f626efdc432bd3725119f4",
+          "merge_sha": "fdacb3a3804bb535e8f5c7b733c4445e8567ea62",
+          "changed_files": 5,
+          "captured_file_records": 5,
+          "focus": "Child questions queue an attributed parent wake, recover pending questions and cancel obsolete queued wakes.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 19759,
+          "title": "fix(server): stop shipping delegated task results twice",
+          "url": "https://github.com/pingdotgg/t3code/pull/19759",
+          "merged": true,
+          "merged_at": "2026-10-19T23:31:47Z",
+          "base_branch": "main",
+          "base_sha_at_query": "673c5e3b3c85a7f2cd2df9ed73d6b712328378c6",
+          "head_sha": "d6730339ca8e322f378d5c15c58881de6f622cd1",
+          "merge_sha": "3eaebac0f94d5044d97112164c579963c41baf75",
+          "changed_files": 3,
+          "captured_file_records": 3,
+          "focus": "task_status stops duplicating result shipping.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 20025,
+          "title": "fix(server): delegated completions preserve finished parent runs",
+          "url": "https://github.com/pingdotgg/t3code/pull/20025",
+          "merged": true,
+          "merged_at": "2026-10-20T04:51:26Z",
+          "base_branch": "main",
+          "base_sha_at_query": "fd8dd51654f855dbf4e23c457701f5088c59b689",
+          "head_sha": "c4dafc71445dc7d43e5a24795fe8971efebd8253",
+          "merge_sha": "e27de4ead0d5e84890ba8f3faa32fdbe3defe110",
+          "changed_files": 3,
+          "captured_file_records": 3,
+          "focus": "Completion events no longer mutate already-finished parent runs.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        }
+      ],
+      "implication": "Adapt result identity, bounded summary delivery, terminal stop settlement and scoped recovery into W6. Treat these as upstream backend intent only. The census contains additional ACP/OpenCode changes that were not semantically inspected here.",
+      "pinned_sources": [
+        {
+          "repo": "pingdotgg/t3code",
+          "sha": "680152e27b2a961686389ca69a1557cbb2c55f08",
+          "path": "apps/server/src/mcp/toolkits/orchestrator/handlers.ts",
+          "url": "https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/apps/server/src/mcp/toolkits/orchestrator/handlers.ts",
+          "bytes": 6293,
+          "sha256": "b3534e11bf4ee383683cf408de68f2479885b586079845426a7e84e855015b2c"
+        },
+        {
+          "repo": "pingdotgg/t3code",
+          "sha": "680152e27b2a961686389ca69a1557cbb2c55f08",
+          "path": "apps/server/src/orchestration-v2/DelegatedTaskQuestionReactor.ts",
+          "url": "https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/apps/server/src/orchestration-v2/DelegatedTaskQuestionReactor.ts",
+          "bytes": 7402,
+          "sha256": "ff73b1a07d30f9f1f528b4829bdf9020211c1043c31defbc88cb7f971361b545"
+        },
+        {
+          "repo": "pingdotgg/t3code",
+          "sha": "680152e27b2a961686389ca69a1557cbb2c55f08",
+          "path": "apps/server/src/orchestration-v2/RestartContinuation.ts",
+          "url": "https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/apps/server/src/orchestration-v2/RestartContinuation.ts",
+          "bytes": 11969,
+          "sha256": "c42a36283ee5a17db49831dd3f132715efc88c607c1df74e2dbd6cd048c7b3ce"
+        },
+        {
+          "repo": "pingdotgg/t3code",
+          "sha": "680152e27b2a961686389ca69a1557cbb2c55f08",
+          "path": "apps/server/src/orchestration-v2/ContextHandoffDelivery.ts",
+          "url": "https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/apps/server/src/orchestration-v2/ContextHandoffDelivery.ts",
+          "bytes": 6868,
+          "sha256": "1ae53a79b5ff4840db8b337e15289de5bffce55b9cd3a0ce83f22a58008d374e"
+        },
+        {
+          "repo": "pingdotgg/t3code",
+          "sha": "680152e27b2a961686389ca69a1557cbb2c55f08",
+          "path": "apps/server/src/orchestration-v2/ProviderTurnStartService.ts",
+          "url": "https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/apps/server/src/orchestration-v2/ProviderTurnStartService.ts",
+          "bytes": 53610,
+          "sha256": "3a7388a45176010ea8a1b64c78d5120c2641a503a67164462643211da2d96834"
+        },
+        {
+          "repo": "pingdotgg/t3code",
+          "sha": "680152e27b2a961686389ca69a1557cbb2c55f08",
+          "path": "apps/server/src/orchestration-v2/Orchestrator.ts",
+          "url": "https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/apps/server/src/orchestration-v2/Orchestrator.ts",
+          "bytes": 461131,
+          "sha256": "bb0741f1adb2ec934f1ef74d420f5849730b58dad21de54fc96516b28331fce1",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "pingdotgg/t3code",
+          "sha": "680152e27b2a961686389ca69a1557cbb2c55f08",
+          "path": "apps/server/src/orchestration-v2/ThreadLaunchService.ts",
+          "url": "https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/apps/server/src/orchestration-v2/ThreadLaunchService.ts",
+          "bytes": 43674,
+          "sha256": "26b7d870a3c0baf202349b8dce5ef89f2058a3a68c07af4542863cb4a8f4a46a",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "pingdotgg/t3code",
+          "sha": "680152e27b2a961686389ca69a1557cbb2c55f08",
+          "path": "apps/server/src/orchestration-v2/EventSink.ts",
+          "url": "https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/apps/server/src/orchestration-v2/EventSink.ts",
+          "bytes": 39320,
+          "sha256": "c4213f9a229b75d54834b3430204b2e84ba6f0dd53e07b41c97d4b93229a2000",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "pingdotgg/t3code",
+          "sha": "680152e27b2a961686389ca69a1557cbb2c55f08",
+          "path": "apps/server/src/mcp/OrchestratorMcpService.ts",
+          "url": "https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/apps/server/src/mcp/OrchestratorMcpService.ts",
+          "bytes": 115143,
+          "sha256": "cc4b2733e5d9dcf46ecd414d9ee44b21ca9d55027bdfe99588f2385a174de6d4",
+          "snapshot": "default-head"
+        }
+      ],
+      "primary_channel": {
+        "kind": "nightly",
+        "tag": "v0.1.2-nightly.20261021.3473",
+        "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+        "published_at": "2026-10-21T10:59:13Z",
+        "url": "https://github.com/pingdotgg/t3code/releases/tag/v0.1.2-nightly.20261021.3473"
+      },
+      "build_inclusion": [
+        {
+          "number": 22117,
+          "merge_sha": "4f5ff17172c5f2bde61a09aafb23011ae4d38538",
+          "build_sha": "1688f965682d331da16a8c39f049592361f69c8d",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/pingdotgg/t3code/compare/4f5ff17172c5f2bde61a09aafb23011ae4d38538...1688f965682d331da16a8c39f049592361f69c8d",
+          "merge_base_sha": "4f5ff17172c5f2bde61a09aafb23011ae4d38538",
+          "error": null
+        },
+        {
+          "number": 22653,
+          "merge_sha": "6a6c84f9906cbdfa7f533fecfc39ce18c2f4c273",
+          "build_sha": "1688f965682d331da16a8c39f049592361f69c8d",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/pingdotgg/t3code/compare/6a6c84f9906cbdfa7f533fecfc39ce18c2f4c273...1688f965682d331da16a8c39f049592361f69c8d",
+          "merge_base_sha": "6a6c84f9906cbdfa7f533fecfc39ce18c2f4c273",
+          "error": null
+        },
+        {
+          "number": 22709,
+          "merge_sha": "163bdeaa119f32bf92f25d2841048b808df542a5",
+          "build_sha": "1688f965682d331da16a8c39f049592361f69c8d",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/pingdotgg/t3code/compare/163bdeaa119f32bf92f25d2841048b808df542a5...1688f965682d331da16a8c39f049592361f69c8d",
+          "merge_base_sha": "163bdeaa119f32bf92f25d2841048b808df542a5",
+          "error": null
+        },
+        {
+          "number": 19102,
+          "merge_sha": "25629a76a0458bdeb707483722894158af090b41",
+          "build_sha": "1688f965682d331da16a8c39f049592361f69c8d",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/pingdotgg/t3code/compare/25629a76a0458bdeb707483722894158af090b41...1688f965682d331da16a8c39f049592361f69c8d",
+          "merge_base_sha": "25629a76a0458bdeb707483722894158af090b41",
+          "error": null
+        },
+        {
+          "number": 19631,
+          "merge_sha": "22af947e0d353c9e89c6db2a268836baa71bece5",
+          "build_sha": "1688f965682d331da16a8c39f049592361f69c8d",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/pingdotgg/t3code/compare/22af947e0d353c9e89c6db2a268836baa71bece5...1688f965682d331da16a8c39f049592361f69c8d",
+          "merge_base_sha": "22af947e0d353c9e89c6db2a268836baa71bece5",
+          "error": null
+        },
+        {
+          "number": 19521,
+          "merge_sha": "fdacb3a3804bb535e8f5c7b733c4445e8567ea62",
+          "build_sha": "1688f965682d331da16a8c39f049592361f69c8d",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/pingdotgg/t3code/compare/fdacb3a3804bb535e8f5c7b733c4445e8567ea62...1688f965682d331da16a8c39f049592361f69c8d",
+          "merge_base_sha": "fdacb3a3804bb535e8f5c7b733c4445e8567ea62",
+          "error": null
+        },
+        {
+          "number": 19759,
+          "merge_sha": "3eaebac0f94d5044d97112164c579963c41baf75",
+          "build_sha": "1688f965682d331da16a8c39f049592361f69c8d",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/pingdotgg/t3code/compare/3eaebac0f94d5044d97112164c579963c41baf75...1688f965682d331da16a8c39f049592361f69c8d",
+          "merge_base_sha": "3eaebac0f94d5044d97112164c579963c41baf75",
+          "error": null
+        },
+        {
+          "number": 20025,
+          "merge_sha": "e27de4ead0d5e84890ba8f3faa32fdbe3defe110",
+          "build_sha": "1688f965682d331da16a8c39f049592361f69c8d",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/pingdotgg/t3code/compare/e27de4ead0d5e84890ba8f3faa32fdbe3defe110...1688f965682d331da16a8c39f049592361f69c8d",
+          "merge_base_sha": "e27de4ead0d5e84890ba8f3faa32fdbe3defe110",
+          "error": null
+        }
+      ],
+      "primary_build_sources": [
+        {
+          "repo": "pingdotgg/t3code",
+          "sha": "1688f965682d331da16a8c39f049592361f69c8d",
+          "path": "apps/server/src/orchestration-v2/Orchestrator.ts",
+          "url": "https://github.com/pingdotgg/t3code/blob/1688f965682d331da16a8c39f049592361f69c8d/apps/server/src/orchestration-v2/Orchestrator.ts",
+          "bytes": 459236,
+          "sha256": "96f6062a3444b7bb3990619738653ebc3a537fd4e79666e64665f228aeb122bd",
+          "snapshot": "primary-build"
+        }
+      ],
+      "primary_verdict": "Latest nightly includes all eight selected orchestration fixes. Primary nightly verdict is upgraded: bounded result handoff, parent question wake, stop settlement and recovery improvements are present in its source."
+    },
+    {
+      "repo": "getpaseo/paseo",
+      "default_branch": "main",
+      "head_sha": "e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+      "head_committed_at": "2026-10-21T14:44:53Z",
+      "head_url": "https://github.com/getpaseo/paseo/commit/e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+      "release_pins": [
+        {
+          "tag": "v0.12.0",
+          "prerelease": false,
+          "published_at": "2026-10-19T07:07:47Z",
+          "target_commitish": "main",
+          "sha": "cafe4b01c8522ff39560241c5deb01427dc8dc5b",
+          "url": "https://github.com/getpaseo/paseo/releases/tag/v0.12.0"
+        },
+        {
+          "tag": "v0.12.0-beta.3",
+          "prerelease": true,
+          "published_at": "2026-10-18T11:10:21Z",
+          "target_commitish": "main",
+          "sha": "cc748dfe12590675eb9803d52a0ffddbe964a905",
+          "url": "https://github.com/getpaseo/paseo/releases/tag/v0.12.0-beta.3"
+        }
+      ],
+      "census": {
+        "capture_end": "2026-10-21T14:52:05.168310+00:00",
+        "partitions": [
+          {
+            "query": "repo:getpaseo/paseo is:pr is:merged merged:2026-10-04..2026-10-21",
+            "count": 348,
+            "captured": 348,
+            "pages": 4
+          }
+        ],
+        "count": 348,
+        "unique_count": 348,
+        "metadata_census_only": true
+      },
+      "base_branch_counts": {
+        "main": 347,
+        "daemon-registry/design": 1
+      },
+      "source_window": {
+        "base": "8216e86ecb92e9b6a39422b12dde8b70a619483e",
+        "head": "e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+        "compare_url": "https://github.com/getpaseo/paseo/compare/8216e86ecb92e9b6a39422b12dde8b70a619483e...e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+        "status": "ahead",
+        "ahead_by": 405,
+        "total_commits": 405,
+        "captured_commit_page": 100,
+        "captured_files": 300,
+        "files_may_be_capped": true
+      },
+      "verdict": "changed: cross-daemon delegation now implemented on default head",
+      "selected_prs": [
+        {
+          "number": 7370,
+          "title": "Connect saved hosts and delegate agents across daemons",
+          "url": "https://github.com/getpaseo/paseo/pull/7370",
+          "merged": true,
+          "merged_at": "2026-10-21T09:10:47Z",
+          "base_branch": "main",
+          "base_sha_at_query": "5d70bf064548e22c4bcedbc4c701fb0f8fac94c0",
+          "head_sha": "3d70176c0aa66515fc791372bbdde6194a627ec6",
+          "merge_sha": "91dca5702b10e9320ca5b71f22f3026bfaacae99",
+          "changed_files": 86,
+          "captured_file_records": 86,
+          "focus": "Connected-host registry and isolated routed sessions; serverId-qualified remote agent create/prompt/read/status; authority intersects link grants, no second hop and no reverse access from saving a host. Disconnects can report outcome unknown. This merged after v0.12.0.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 7573,
+          "title": "Fix agents showing running after daemon restart",
+          "url": "https://github.com/getpaseo/paseo/pull/7573",
+          "merged": true,
+          "merged_at": "2026-10-21T11:28:31Z",
+          "base_branch": "main",
+          "base_sha_at_query": "5878680f7f632f70e875a8fceaf8f5125df63d5a",
+          "head_sha": "5d6904e83911d5baf2e6fcb437b014174558620a",
+          "merge_sha": "23c4df4818d8a3c7dfcdc70ba93f5670ec9ce334",
+          "changed_files": 4,
+          "captured_file_records": 4,
+          "focus": "Startup closes persisted running/initializing agent records before consumers load, and Claude shutdown avoids waiting indefinitely on interrupt.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 6008,
+          "title": "Cover child completion before create_agent returns",
+          "url": "https://github.com/getpaseo/paseo/pull/6008",
+          "merged": true,
+          "merged_at": "2026-10-14T00:05:44Z",
+          "base_branch": "main",
+          "base_sha_at_query": "12aaded6c5da2b859db92cfc861d4857dc6185f6",
+          "head_sha": "f88b781215a46665c0cf7fa4aa5ea1c230d26771",
+          "merge_sha": "b1a638482d3f26a2e3c767f14d62cd0c791e715a",
+          "changed_files": 1,
+          "captured_file_records": 1,
+          "focus": "Test-only regression for child completion arriving before create_agent returns; not a newly proved runtime fix.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 6262,
+          "title": "Long OpenCode v2 streams no longer exhaust the daemon's memory",
+          "url": "https://github.com/getpaseo/paseo/pull/6262",
+          "merged": true,
+          "merged_at": "2026-10-15T16:28:08Z",
+          "base_branch": "main",
+          "base_sha_at_query": "d6d4084a06ce1cacb014ad512bd346eefdd8943f",
+          "head_sha": "602b46314b2bb13c377428c912e0e5df4639326d",
+          "merge_sha": "d172d060a5b7a1e49583f05d0ee331599b1d1b27",
+          "changed_files": 3,
+          "captured_file_records": 3,
+          "focus": "OpenCode v2 timeline detaches retained suffix strings using UTF-16LE Buffer copies to avoid retaining large parent strings while preserving code units.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 7589,
+          "title": "fix(app): make the Explorer tab rail usable on phones",
+          "url": "https://github.com/getpaseo/paseo/pull/7589",
+          "merged": true,
+          "merged_at": "2026-10-21T14:44:53Z",
+          "base_branch": "main",
+          "base_sha_at_query": "1e0a9d5af078c1f8c52cec950ae967d324cc8f90",
+          "head_sha": "0e2cd73c87ed682cd87753b974b71741bcb6c93f",
+          "merge_sha": "e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+          "changed_files": 15,
+          "captured_file_records": 15,
+          "focus": "Phone Explorer tab rail/overflow layout changes exist in source; no mobile runtime inspection.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        }
+      ],
+      "implication": "Upgrade remote-delegation verdict from local-only daemon orchestration. Useful later direct-host identity, scoped grant and outcome-unknown reference; do not import hosted transport or assume stable release contains this.",
+      "pinned_sources": [
+        {
+          "repo": "getpaseo/paseo",
+          "sha": "e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+          "path": "docs/connected-hosts.md",
+          "url": "https://github.com/getpaseo/paseo/blob/e522e6ea8e25140d2ef0c819986175ad6d6379b8/docs/connected-hosts.md",
+          "bytes": 6527,
+          "sha256": "029ad02c42023c8a4ccf40b41d21d443402a2a93c13d9e26fd6139e194e39234"
+        },
+        {
+          "repo": "getpaseo/paseo",
+          "sha": "e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+          "path": "packages/server/src/server/agent/mcp-server.ts",
+          "url": "https://github.com/getpaseo/paseo/blob/e522e6ea8e25140d2ef0c819986175ad6d6379b8/packages/server/src/server/agent/mcp-server.ts",
+          "bytes": 1833,
+          "sha256": "26ae9bd3656bae5f7cd730e5b9c7a1958e11850f021dbd3e29d16a41c1ec954b"
+        },
+        {
+          "repo": "getpaseo/paseo",
+          "sha": "e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+          "path": "packages/server/src/server/connected-hosts/index.ts",
+          "url": "https://github.com/getpaseo/paseo/blob/e522e6ea8e25140d2ef0c819986175ad6d6379b8/packages/server/src/server/connected-hosts/index.ts",
+          "bytes": 19616,
+          "sha256": "ad3a925c2ebe82affed3804c9081c480213795afa8ed2f1285f53833bcf11236"
+        },
+        {
+          "repo": "getpaseo/paseo",
+          "sha": "e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+          "path": "packages/server/src/server/bootstrap.ts",
+          "url": "https://github.com/getpaseo/paseo/blob/e522e6ea8e25140d2ef0c819986175ad6d6379b8/packages/server/src/server/bootstrap.ts",
+          "bytes": 74526,
+          "sha256": "4bb84989fe05ca5c4b92546e926940142af8086e377567704a2042bc1d16a1b3"
+        },
+        {
+          "repo": "getpaseo/paseo",
+          "sha": "e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+          "path": "packages/server/src/server/agent/providers/opencode/v2/timeline.ts",
+          "url": "https://github.com/getpaseo/paseo/blob/e522e6ea8e25140d2ef0c819986175ad6d6379b8/packages/server/src/server/agent/providers/opencode/v2/timeline.ts",
+          "bytes": 9306,
+          "sha256": "d86960a69b70e174577974dcff16062d6fb640919402a822bc44fdd8d5c74302"
+        },
+        {
+          "repo": "getpaseo/paseo",
+          "sha": "e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+          "path": "packages/server/src/server/connected-hosts/session.ts",
+          "url": "https://github.com/getpaseo/paseo/blob/e522e6ea8e25140d2ef0c819986175ad6d6379b8/packages/server/src/server/connected-hosts/session.ts",
+          "bytes": 8851,
+          "sha256": "1f687621e6bab7c07928cb485aefa0f7de16bf46d6b43ee6dd7bef3450793668",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "getpaseo/paseo",
+          "sha": "e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+          "path": "packages/server/src/server/connected-hosts/link.ts",
+          "url": "https://github.com/getpaseo/paseo/blob/e522e6ea8e25140d2ef0c819986175ad6d6379b8/packages/server/src/server/connected-hosts/link.ts",
+          "bytes": 7659,
+          "sha256": "6733afd8e402751b87926435018881a68285f2d4f6e8f41d0d3c72b36219a141",
+          "snapshot": "default-head"
+        }
+      ],
+      "primary_channel": {
+        "kind": "latest published prerelease (not labelled nightly)",
+        "tag": "v0.12.0-beta.3",
+        "sha": "cc748dfe12590675eb9803d52a0ffddbe964a905",
+        "published_at": "2026-10-18T11:10:21Z",
+        "url": "https://github.com/getpaseo/paseo/releases/tag/v0.12.0-beta.3"
+      },
+      "build_inclusion": [
+        {
+          "number": 7370,
+          "merge_sha": "91dca5702b10e9320ca5b71f22f3026bfaacae99",
+          "build_sha": "cc748dfe12590675eb9803d52a0ffddbe964a905",
+          "status": "behind",
+          "included": false,
+          "compare_url": "https://github.com/getpaseo/paseo/compare/91dca5702b10e9320ca5b71f22f3026bfaacae99...cc748dfe12590675eb9803d52a0ffddbe964a905",
+          "merge_base_sha": "cc748dfe12590675eb9803d52a0ffddbe964a905",
+          "error": null
+        },
+        {
+          "number": 7573,
+          "merge_sha": "23c4df4818d8a3c7dfcdc70ba93f5670ec9ce334",
+          "build_sha": "cc748dfe12590675eb9803d52a0ffddbe964a905",
+          "status": "behind",
+          "included": false,
+          "compare_url": "https://github.com/getpaseo/paseo/compare/23c4df4818d8a3c7dfcdc70ba93f5670ec9ce334...cc748dfe12590675eb9803d52a0ffddbe964a905",
+          "merge_base_sha": "cc748dfe12590675eb9803d52a0ffddbe964a905",
+          "error": null
+        },
+        {
+          "number": 6008,
+          "merge_sha": "b1a638482d3f26a2e3c767f14d62cd0c791e715a",
+          "build_sha": "cc748dfe12590675eb9803d52a0ffddbe964a905",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/getpaseo/paseo/compare/b1a638482d3f26a2e3c767f14d62cd0c791e715a...cc748dfe12590675eb9803d52a0ffddbe964a905",
+          "merge_base_sha": "b1a638482d3f26a2e3c767f14d62cd0c791e715a",
+          "error": null
+        },
+        {
+          "number": 6262,
+          "merge_sha": "d172d060a5b7a1e49583f05d0ee331599b1d1b27",
+          "build_sha": "cc748dfe12590675eb9803d52a0ffddbe964a905",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/getpaseo/paseo/compare/d172d060a5b7a1e49583f05d0ee331599b1d1b27...cc748dfe12590675eb9803d52a0ffddbe964a905",
+          "merge_base_sha": "d172d060a5b7a1e49583f05d0ee331599b1d1b27",
+          "error": null
+        },
+        {
+          "number": 7589,
+          "merge_sha": "e522e6ea8e25140d2ef0c819986175ad6d6379b8",
+          "build_sha": "cc748dfe12590675eb9803d52a0ffddbe964a905",
+          "status": "behind",
+          "included": false,
+          "compare_url": "https://github.com/getpaseo/paseo/compare/e522e6ea8e25140d2ef0c819986175ad6d6379b8...cc748dfe12590675eb9803d52a0ffddbe964a905",
+          "merge_base_sha": "cc748dfe12590675eb9803d52a0ffddbe964a905",
+          "error": null
+        }
+      ],
+      "primary_build_sources": [],
+      "primary_verdict": "Latest beta includes OpenCode v2 timeline fix and early-child-completion test. Cross-host delegation #7370, startup closure #7573 and phone Explorer #7589 are latest source changes beyond both this beta and the stable release; retain as source-build candidates."
+    },
+    {
+      "repo": "Emanuele-web04/synara",
+      "default_branch": "main",
+      "head_sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+      "head_committed_at": "2026-10-18T12:28:42Z",
+      "head_url": "https://github.com/Emanuele-web04/synara/commit/299fd573b1d6520c323a87c78d30be74e87e53e1",
+      "release_pins": [
+        {
+          "tag": "v1.0.7",
+          "prerelease": false,
+          "published_at": "2026-10-17T19:33:32Z",
+          "target_commitish": "b8cf9382d36ac1120b3fe16241cfd96189a9a71e",
+          "sha": "b8cf9382d36ac1120b3fe16241cfd96189a9a71e",
+          "url": "https://github.com/Emanuele-web04/synara/releases/tag/v1.0.7"
+        },
+        {
+          "tag": "v1.0.6-remote.26",
+          "prerelease": true,
+          "published_at": "2026-10-18T13:09:25Z",
+          "target_commitish": "39a745feaccf942f43aae154373fe375a20a0e4d",
+          "sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+          "url": "https://github.com/Emanuele-web04/synara/releases/tag/v1.0.6-remote.26"
+        }
+      ],
+      "census": {
+        "capture_end": "2026-10-21T14:52:03.151309+00:00",
+        "partitions": [
+          {
+            "query": "repo:Emanuele-web04/synara is:pr is:merged merged:2026-10-04..2026-10-21",
+            "count": 276,
+            "captured": 276,
+            "pages": 3
+          }
+        ],
+        "count": 276,
+        "unique_count": 276,
+        "metadata_census_only": true
+      },
+      "base_branch_counts": {
+        "main": 276
+      },
+      "source_window": {
+        "base": "5f2ee77ae9fc60993db47e81419c1171a99a5c32",
+        "head": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+        "compare_url": "https://github.com/Emanuele-web04/synara/compare/5f2ee77ae9fc60993db47e81419c1171a99a5c32...299fd573b1d6520c323a87c78d30be74e87e53e1",
+        "status": "ahead",
+        "ahead_by": 518,
+        "total_commits": 518,
+        "captured_commit_page": 100,
+        "captured_files": 300,
+        "files_may_be_capped": true
+      },
+      "verdict": "changed: Hub lifecycle, approval surface and OpenCode recovery strengthened",
+      "selected_prs": [
+        {
+          "number": 1975,
+          "title": "fix(hubs): settle completed workers outside Git workspaces",
+          "url": "https://github.com/Emanuele-web04/synara/pull/1975",
+          "merged": true,
+          "merged_at": "2026-10-18T12:28:43Z",
+          "base_branch": "main",
+          "base_sha_at_query": "b8cf9382d36ac1120b3fe16241cfd96189a9a71e",
+          "head_sha": "920d400bb41393a7fc7ddc269dd9d7a50335316b",
+          "merge_sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+          "changed_files": 7,
+          "captured_file_records": 7,
+          "focus": "Non-git Hub workers emit durable worker.completed receipts scoped to admitted turn identity instead of waiting for git checkpoint/diff completion; explicit worktree still requires a git repository.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 1741,
+          "title": "fix(subagents): preserve child lifecycle and scope resumed outcomes",
+          "url": "https://github.com/Emanuele-web04/synara/pull/1741",
+          "merged": true,
+          "merged_at": "2026-10-10T18:35:11Z",
+          "base_branch": "main",
+          "base_sha_at_query": "3e3e41c3b312ad95f62c33b155354b099bf36e2e",
+          "head_sha": "33262702321d1927d07ac498b93a12d4249b036a",
+          "merge_sha": "e709d4d7c37bab0a85c8f2739ff0f56c265aa9a0",
+          "changed_files": 31,
+          "captured_file_records": 31,
+          "focus": "Provider-native children preserve spawning-child source lineage, prompt titles and bounded visibility; capped children continue running with a parent notice. Broader PR also addresses resumed-outcome scope; review here focused on ingestion paths.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 1704,
+          "title": "fix(hubs): resolve worker approvals from the coordinator chat",
+          "url": "https://github.com/Emanuele-web04/synara/pull/1704",
+          "merged": true,
+          "merged_at": "2026-10-10T16:01:59Z",
+          "base_branch": "main",
+          "base_sha_at_query": "6f54f53c66348a9a19c65779daaabd96113773eb",
+          "head_sha": "f85d302e4a6a3255b7f5bfe42615bf67305b3f53",
+          "merge_sha": "a493b73222d009ec077158055c29463d29e5dbc5",
+          "changed_files": 4,
+          "captured_file_records": 4,
+          "focus": "Hub child approvals render within coordinator chat and respond using child thread ID, request ID and lifecycle generation.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 1833,
+          "title": "feat(hubs): promote Hubs and Library to Stable",
+          "url": "https://github.com/Emanuele-web04/synara/pull/1833",
+          "merged": true,
+          "merged_at": "2026-10-11T18:26:02Z",
+          "base_branch": "main",
+          "base_sha_at_query": "7003742f0b7208556a8ad74c317bd70ced6fbefc",
+          "head_sha": "f12381292b8dbb7b2cca67a5ca0aecebe7388fb9",
+          "merge_sha": "25b55b0bec0914d81e4db54b27f953721b067b29",
+          "changed_files": 24,
+          "captured_file_records": 24,
+          "focus": "Hubs and Library lose beta feature gates in source/docs; stability label is not runtime reliability proof.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 1797,
+          "title": "fix(opencode): complete stopped-session recovery and cleanup (#1160)",
+          "url": "https://github.com/Emanuele-web04/synara/pull/1797",
+          "merged": true,
+          "merged_at": "2026-10-17T18:05:21Z",
+          "base_branch": "main",
+          "base_sha_at_query": "fc6fd90c1f3854719ef83fcdb3ee7e57a8437986",
+          "head_sha": "9bd56665c4be59d80b2ebb9e73c64201593a4165",
+          "merge_sha": "e27ef03c89f2896c2c2fa0be3a44d71e781db776",
+          "changed_files": 4,
+          "captured_file_records": 4,
+          "focus": "OpenCode stop cleanup is ensured even when abort is cancelled; stopped retained contexts fail hasSession, and ProviderService checks runtime activity before adoption.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        }
+      ],
+      "implication": "Useful ordinary-thread child approval UX intent and strict lifecycle-generation routing; worker completion evidence must be independent of git state. Remote prerelease is a separate pin, not evidence that all remote work is on main.",
+      "pinned_sources": [
+        {
+          "repo": "Emanuele-web04/synara",
+          "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+          "path": "apps/server/src/projectAgent/Layers/ProjectAgentService.ts",
+          "url": "https://github.com/Emanuele-web04/synara/blob/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/projectAgent/Layers/ProjectAgentService.ts",
+          "bytes": 308027,
+          "sha256": "596e69b1c534fa5715f87e98a4c124d64033b5f42c3d0ac2e6fb249278f87066"
+        },
+        {
+          "repo": "Emanuele-web04/synara",
+          "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+          "path": "apps/server/src/agentGateway/hubWorkGateway.ts",
+          "url": "https://github.com/Emanuele-web04/synara/blob/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/agentGateway/hubWorkGateway.ts",
+          "bytes": 16964,
+          "sha256": "b8d8e6f784f46ca5908ce1bae577082bb26e3b97a40b285673f47f2c3caec8be"
+        },
+        {
+          "repo": "Emanuele-web04/synara",
+          "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+          "path": "apps/web/src/components/chat/group/HubPendingApprovals.tsx",
+          "url": "https://github.com/Emanuele-web04/synara/blob/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/web/src/components/chat/group/HubPendingApprovals.tsx",
+          "bytes": 4938,
+          "sha256": "a327decdccdf9992aa266fb4cb8a64a9d04a1a3444d3ad0a88d7cf44d8374030"
+        },
+        {
+          "repo": "Emanuele-web04/synara",
+          "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+          "path": "apps/server/src/provider/Layers/OpenCodeAdapter.ts",
+          "url": "https://github.com/Emanuele-web04/synara/blob/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/provider/Layers/OpenCodeAdapter.ts",
+          "bytes": 201324,
+          "sha256": "e3f91f20740566ae751e33be1d74442008b145e376b338833dba07512fe538b1"
+        },
+        {
+          "repo": "Emanuele-web04/synara",
+          "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+          "path": "apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts",
+          "url": "https://github.com/Emanuele-web04/synara/blob/299fd573b1d6520c323a87c78d30be74e87e53e1/apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts",
+          "bytes": 185096,
+          "sha256": "34432e40af6ff5d689af2721cba9279867252e0ce3ff2a997af1d7394dd86b66"
+        },
+        {
+          "repo": "Emanuele-web04/synara",
+          "sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+          "path": "docs/hubs.md",
+          "url": "https://github.com/Emanuele-web04/synara/blob/299fd573b1d6520c323a87c78d30be74e87e53e1/docs/hubs.md",
+          "bytes": 25711,
+          "sha256": "a486958000b29bb0c76eb4d316914edcd5f126ec45e9e98354b54305c33434aa"
+        }
+      ],
+      "primary_channel": {
+        "kind": "latest published prerelease (not labelled nightly)",
+        "tag": "v1.0.6-remote.26",
+        "sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+        "published_at": "2026-10-18T13:09:25Z",
+        "url": "https://github.com/Emanuele-web04/synara/releases/tag/v1.0.6-remote.26"
+      },
+      "build_inclusion": [
+        {
+          "number": 1975,
+          "merge_sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+          "build_sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/Emanuele-web04/synara/compare/299fd573b1d6520c323a87c78d30be74e87e53e1...39a745feaccf942f43aae154373fe375a20a0e4d",
+          "merge_base_sha": "299fd573b1d6520c323a87c78d30be74e87e53e1",
+          "error": null
+        },
+        {
+          "number": 1741,
+          "merge_sha": "e709d4d7c37bab0a85c8f2739ff0f56c265aa9a0",
+          "build_sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/Emanuele-web04/synara/compare/e709d4d7c37bab0a85c8f2739ff0f56c265aa9a0...39a745feaccf942f43aae154373fe375a20a0e4d",
+          "merge_base_sha": "e709d4d7c37bab0a85c8f2739ff0f56c265aa9a0",
+          "error": null
+        },
+        {
+          "number": 1704,
+          "merge_sha": "a493b73222d009ec077158055c29463d29e5dbc5",
+          "build_sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/Emanuele-web04/synara/compare/a493b73222d009ec077158055c29463d29e5dbc5...39a745feaccf942f43aae154373fe375a20a0e4d",
+          "merge_base_sha": "a493b73222d009ec077158055c29463d29e5dbc5",
+          "error": null
+        },
+        {
+          "number": 1833,
+          "merge_sha": "25b55b0bec0914d81e4db54b27f953721b067b29",
+          "build_sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/Emanuele-web04/synara/compare/25b55b0bec0914d81e4db54b27f953721b067b29...39a745feaccf942f43aae154373fe375a20a0e4d",
+          "merge_base_sha": "25b55b0bec0914d81e4db54b27f953721b067b29",
+          "error": null
+        },
+        {
+          "number": 1797,
+          "merge_sha": "e27ef03c89f2896c2c2fa0be3a44d71e781db776",
+          "build_sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/Emanuele-web04/synara/compare/e27ef03c89f2896c2c2fa0be3a44d71e781db776...39a745feaccf942f43aae154373fe375a20a0e4d",
+          "merge_base_sha": "e27ef03c89f2896c2c2fa0be3a44d71e781db776",
+          "error": null
+        }
+      ],
+      "primary_build_sources": [
+        {
+          "repo": "Emanuele-web04/synara",
+          "sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+          "path": "apps/server/src/projectAgent/Layers/ProjectAgentService.ts",
+          "url": "https://github.com/Emanuele-web04/synara/blob/39a745feaccf942f43aae154373fe375a20a0e4d/apps/server/src/projectAgent/Layers/ProjectAgentService.ts",
+          "bytes": 308027,
+          "sha256": "596e69b1c534fa5715f87e98a4c124d64033b5f42c3d0ac2e6fb249278f87066",
+          "snapshot": "primary-build"
+        },
+        {
+          "repo": "Emanuele-web04/synara",
+          "sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+          "path": "apps/web/src/components/chat/group/HubPendingApprovals.tsx",
+          "url": "https://github.com/Emanuele-web04/synara/blob/39a745feaccf942f43aae154373fe375a20a0e4d/apps/web/src/components/chat/group/HubPendingApprovals.tsx",
+          "bytes": 4938,
+          "sha256": "a327decdccdf9992aa266fb4cb8a64a9d04a1a3444d3ad0a88d7cf44d8374030",
+          "snapshot": "primary-build"
+        },
+        {
+          "repo": "Emanuele-web04/synara",
+          "sha": "39a745feaccf942f43aae154373fe375a20a0e4d",
+          "path": "apps/server/src/provider/Layers/OpenCodeAdapter.ts",
+          "url": "https://github.com/Emanuele-web04/synara/blob/39a745feaccf942f43aae154373fe375a20a0e4d/apps/server/src/provider/Layers/OpenCodeAdapter.ts",
+          "bytes": 201324,
+          "sha256": "e3f91f20740566ae751e33be1d74442008b145e376b338833dba07512fe538b1",
+          "snapshot": "primary-build"
+        }
+      ],
+      "primary_verdict": "Latest remote prerelease includes all five selected Hub/native-child/OpenCode fixes. Primary prerelease verdict is upgraded; no runtime claim."
+    },
+    {
+      "repo": "hardbeat920/monocode",
+      "default_branch": "main",
+      "head_sha": "74b8139c41e7235e7535bdc8ba60e63705351d3c",
+      "head_committed_at": "2026-10-21T08:26:09Z",
+      "head_url": "https://github.com/hardbeat920/monocode/commit/74b8139c41e7235e7535bdc8ba60e63705351d3c",
+      "release_pins": [
+        {
+          "tag": "v0.16.0",
+          "prerelease": false,
+          "published_at": "2026-10-19T13:08:45Z",
+          "target_commitish": "main",
+          "sha": "7508feaee84db638fb7a7c146d9f15de5d0f3689",
+          "url": "https://github.com/hardbeat920/monocode/releases/tag/v0.16.0"
+        }
+      ],
+      "census": {
+        "capture_end": "2026-10-21T14:51:51.106578+00:00",
+        "partitions": [
+          {
+            "query": "repo:hardbeat920/monocode is:pr is:merged merged:2026-10-04..2026-10-21",
+            "count": 87,
+            "captured": 87,
+            "pages": 1
+          }
+        ],
+        "count": 87,
+        "unique_count": 87,
+        "metadata_census_only": true
+      },
+      "base_branch_counts": {
+        "main": 87
+      },
+      "source_window": {
+        "base": "271b66ded71e795e0569db77c9bbf599219c8cdc",
+        "head": "74b8139c41e7235e7535bdc8ba60e63705351d3c",
+        "compare_url": "https://github.com/hardbeat920/monocode/compare/271b66ded71e795e0569db77c9bbf599219c8cdc...74b8139c41e7235e7535bdc8ba60e63705351d3c",
+        "status": "ahead",
+        "ahead_by": 328,
+        "total_commits": 328,
+        "captured_commit_page": 100,
+        "captured_files": 300,
+        "files_may_be_capped": true
+      },
+      "verdict": "changed: OpenCode 2, Linux remote host and Android operation",
+      "selected_prs": [
+        {
+          "number": 434,
+          "title": "feat(opencode): support OpenCode 2.x servers",
+          "url": "https://github.com/hardbeat920/monocode/pull/434",
+          "merged": true,
+          "merged_at": "2026-10-08T06:46:32Z",
+          "base_branch": "main",
+          "base_sha_at_query": "1c532697609924c1ee00bf11ee5b250881b4211f",
+          "head_sha": "bc51a9de1abc2a8d1d0062d30ebb75961efa15c8",
+          "merge_sha": "0eb2773ec4f18c0533d5253ea6d4627cd5795299",
+          "changed_files": 19,
+          "captured_file_records": 19,
+          "focus": "OpenCode v1/v2 client paths distinguish session configuration, permission/form replies, interrupt and inbox admission; v2 fork is moved and destination verified before exposing it, otherwise deleted.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 990,
+          "title": "Run the remote host on Linux without systemd",
+          "url": "https://github.com/hardbeat920/monocode/pull/990",
+          "merged": true,
+          "merged_at": "2026-10-14T19:40:12Z",
+          "base_branch": "main",
+          "base_sha_at_query": "904289f497f7f87fa5cdb604ceeef1b16fe1deaf",
+          "head_sha": "7c158b086274d196f832bb88b0cbfa84eef4b86d",
+          "merge_sha": "5c21f014d4bdaa766b260b8d120174ad60358c2f",
+          "changed_files": 6,
+          "captured_file_records": 6,
+          "focus": "Linux hosts without systemd launch detached with private logs and reconnect-time probing. This fallback has no automatic process restart.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 1083,
+          "title": "Fix Android pairing permissions and session notifications",
+          "url": "https://github.com/hardbeat920/monocode/pull/1083",
+          "merged": true,
+          "merged_at": "2026-10-20T09:09:18Z",
+          "base_branch": "main",
+          "base_sha_at_query": "7508feaee84db638fb7a7c146d9f15de5d0f3689",
+          "head_sha": "02b5997a881f59ce10915c5d5fd64b9ce7ce9d2c",
+          "merge_sha": "41dd21f74a9dec0512965b699dc6e107cb681038",
+          "changed_files": 5,
+          "captured_file_records": 5,
+          "focus": "Android session notification channel precedes permission requests; prompting respects canAskAgain and Settings return updates denial state.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 773,
+          "title": "Add persistent Mono agents with memory and scheduled habits",
+          "url": "https://github.com/hardbeat920/monocode/pull/773",
+          "merged": true,
+          "merged_at": "2026-10-06T14:18:05Z",
+          "base_branch": "main",
+          "base_sha_at_query": "5aef862304b78133e078faacbf86406f2e9a9b8f",
+          "head_sha": "bed921a5a7d74abc79c43c01225112ea58e439db",
+          "merge_sha": "850be653809ee3e0b243d1ad7a39aff27a64ea83",
+          "changed_files": 158,
+          "captured_file_records": 158,
+          "focus": "Persistent Mono habits/memory and scheduled habit workflow are implemented. Focused hooks/Rust source review, not the whole 158-file PR.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        }
+      ],
+      "implication": "Keep as remote/mobile reference. Existing durable orchestration receipt model was inspected at current head but not established as new in this window. No mobile pairing, background delivery or unattended habit runtime proof.",
+      "pinned_sources": [
+        {
+          "repo": "hardbeat920/monocode",
+          "sha": "74b8139c41e7235e7535bdc8ba60e63705351d3c",
+          "path": "host/service.ts",
+          "url": "https://github.com/hardbeat920/monocode/blob/74b8139c41e7235e7535bdc8ba60e63705351d3c/host/service.ts",
+          "bytes": 11164,
+          "sha256": "a6118a14e5815c6cc859fe3cc30d24f8e4979fb6d7337d2763710eabd80c7ed3"
+        },
+        {
+          "repo": "hardbeat920/monocode",
+          "sha": "74b8139c41e7235e7535bdc8ba60e63705351d3c",
+          "path": "host/child-backend.ts",
+          "url": "https://github.com/hardbeat920/monocode/blob/74b8139c41e7235e7535bdc8ba60e63705351d3c/host/child-backend.ts",
+          "bytes": 16204,
+          "sha256": "9f036466381be7187ef5bc7a7afbecd9c734c224bf1d59f1e6fa694af1878d2c"
+        },
+        {
+          "repo": "hardbeat920/monocode",
+          "sha": "74b8139c41e7235e7535bdc8ba60e63705351d3c",
+          "path": "src/integrations/harness/providers/opencode/opencodeClient.ts",
+          "url": "https://github.com/hardbeat920/monocode/blob/74b8139c41e7235e7535bdc8ba60e63705351d3c/src/integrations/harness/providers/opencode/opencodeClient.ts",
+          "bytes": 24418,
+          "sha256": "e276b42a48b9b94291e36985859cda0bc77c78fd767f1a7ddcdce8db0e036ea4"
+        },
+        {
+          "repo": "hardbeat920/monocode",
+          "sha": "74b8139c41e7235e7535bdc8ba60e63705351d3c",
+          "path": "src/features/orchestration/model/orchestration.ts",
+          "url": "https://github.com/hardbeat920/monocode/blob/74b8139c41e7235e7535bdc8ba60e63705351d3c/src/features/orchestration/model/orchestration.ts",
+          "bytes": 81441,
+          "sha256": "33547c77994d2fdc2f7ee8d8f5641e46187e0176a458f9ad1908421b2dc2f953"
+        },
+        {
+          "repo": "hardbeat920/monocode",
+          "sha": "74b8139c41e7235e7535bdc8ba60e63705351d3c",
+          "path": "src/features/orchestration/model/orchestrationState.ts",
+          "url": "https://github.com/hardbeat920/monocode/blob/74b8139c41e7235e7535bdc8ba60e63705351d3c/src/features/orchestration/model/orchestrationState.ts",
+          "bytes": 5912,
+          "sha256": "011d3c09b114e2ecf70368f48f567f5873494f74ccf2ee78257eb282aea5f4f5"
+        },
+        {
+          "repo": "hardbeat920/monocode",
+          "sha": "74b8139c41e7235e7535bdc8ba60e63705351d3c",
+          "path": "mobile/src/features/notifications/SessionNotifications.tsx",
+          "url": "https://github.com/hardbeat920/monocode/blob/74b8139c41e7235e7535bdc8ba60e63705351d3c/mobile/src/features/notifications/SessionNotifications.tsx",
+          "bytes": 5875,
+          "sha256": "fec513cc3399ff6f17c804762d9ef13e155e35e58d1d86868d10eb4923aa7bd8"
+        },
+        {
+          "repo": "hardbeat920/monocode",
+          "sha": "74b8139c41e7235e7535bdc8ba60e63705351d3c",
+          "path": "src/app/hooks/useMonoHabits.ts",
+          "url": "https://github.com/hardbeat920/monocode/blob/74b8139c41e7235e7535bdc8ba60e63705351d3c/src/app/hooks/useMonoHabits.ts",
+          "bytes": 10194,
+          "sha256": "acee09d11a049f7d714b445c5e901a62f73eae12da41159e2f34e6382e519f53",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "hardbeat920/monocode",
+          "sha": "74b8139c41e7235e7535bdc8ba60e63705351d3c",
+          "path": "src-tauri/src/mono.rs",
+          "url": "https://github.com/hardbeat920/monocode/blob/74b8139c41e7235e7535bdc8ba60e63705351d3c/src-tauri/src/mono.rs",
+          "bytes": 18075,
+          "sha256": "a35ec52f21057f78c40fd889a1c9db239e09e8060b135c340629b35dd8abb648",
+          "snapshot": "default-head"
+        }
+      ],
+      "primary_channel": {
+        "kind": "no nightly/prerelease returned; latest stable available",
+        "tag": "v0.16.0",
+        "sha": "7508feaee84db638fb7a7c146d9f15de5d0f3689",
+        "published_at": "2026-10-19T13:08:45Z",
+        "url": "https://github.com/hardbeat920/monocode/releases/tag/v0.16.0"
+      },
+      "build_inclusion": [
+        {
+          "number": 434,
+          "merge_sha": "0eb2773ec4f18c0533d5253ea6d4627cd5795299",
+          "build_sha": "7508feaee84db638fb7a7c146d9f15de5d0f3689",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/hardbeat920/monocode/compare/0eb2773ec4f18c0533d5253ea6d4627cd5795299...7508feaee84db638fb7a7c146d9f15de5d0f3689",
+          "merge_base_sha": "0eb2773ec4f18c0533d5253ea6d4627cd5795299",
+          "error": null
+        },
+        {
+          "number": 990,
+          "merge_sha": "5c21f014d4bdaa766b260b8d120174ad60358c2f",
+          "build_sha": "7508feaee84db638fb7a7c146d9f15de5d0f3689",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/hardbeat920/monocode/compare/5c21f014d4bdaa766b260b8d120174ad60358c2f...7508feaee84db638fb7a7c146d9f15de5d0f3689",
+          "merge_base_sha": "5c21f014d4bdaa766b260b8d120174ad60358c2f",
+          "error": null
+        },
+        {
+          "number": 1083,
+          "merge_sha": "41dd21f74a9dec0512965b699dc6e107cb681038",
+          "build_sha": "7508feaee84db638fb7a7c146d9f15de5d0f3689",
+          "status": "behind",
+          "included": false,
+          "compare_url": "https://github.com/hardbeat920/monocode/compare/41dd21f74a9dec0512965b699dc6e107cb681038...7508feaee84db638fb7a7c146d9f15de5d0f3689",
+          "merge_base_sha": "7508feaee84db638fb7a7c146d9f15de5d0f3689",
+          "error": null
+        },
+        {
+          "number": 773,
+          "merge_sha": "850be653809ee3e0b243d1ad7a39aff27a64ea83",
+          "build_sha": "7508feaee84db638fb7a7c146d9f15de5d0f3689",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/hardbeat920/monocode/compare/850be653809ee3e0b243d1ad7a39aff27a64ea83...7508feaee84db638fb7a7c146d9f15de5d0f3689",
+          "merge_base_sha": "850be653809ee3e0b243d1ad7a39aff27a64ea83",
+          "error": null
+        }
+      ],
+      "primary_build_sources": [],
+      "primary_verdict": "No nightly/prerelease found in release listing. Latest stable includes OpenCode 2, no-systemd host and Mono habit work; Android notification fix is newer default-head source."
+    },
+    {
+      "repo": "lidge-jun/opencodex",
+      "default_branch": "main",
+      "head_sha": "994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+      "head_committed_at": "2026-10-21T12:09:31Z",
+      "head_url": "https://github.com/lidge-jun/opencodex/commit/994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+      "release_pins": [
+        {
+          "tag": "v2.90.0",
+          "prerelease": false,
+          "published_at": "2026-10-21T13:04:33Z",
+          "target_commitish": "994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+          "sha": "994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+          "url": "https://github.com/lidge-jun/opencodex/releases/tag/v2.90.0"
+        },
+        {
+          "tag": "v2.78.0-preview.20261005",
+          "prerelease": true,
+          "published_at": "2026-10-05T10:24:55Z",
+          "target_commitish": "04e175f7e912b6073bce3997affc3867bde6a749",
+          "sha": "04e175f7e912b6073bce3997affc3867bde6a749",
+          "url": "https://github.com/lidge-jun/opencodex/releases/tag/v2.78.0-preview.20261005"
+        }
+      ],
+      "census": {
+        "capture_end": "2026-10-21T14:55:45.125356+00:00",
+        "partitions": [
+          {
+            "query": "repo:lidge-jun/opencodex is:pr is:merged merged:2026-10-04..2026-10-21",
+            "count": 475,
+            "captured": 475,
+            "pages": 5
+          }
+        ],
+        "count": 475,
+        "unique_count": 475,
+        "metadata_census_only": true
+      },
+      "base_branch_counts": {
+        "dev": 454,
+        "main": 17,
+        "fix/7098-thinking-binding-recovery": 1,
+        "preview": 3
+      },
+      "source_window": {
+        "base": "06841165f884a9176d701310638b2112aca7a514",
+        "head": "994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+        "compare_url": "https://github.com/lidge-jun/opencodex/compare/06841165f884a9176d701310638b2112aca7a514...994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+        "status": "ahead",
+        "ahead_by": 639,
+        "total_commits": 639,
+        "captured_commit_page": 100,
+        "captured_files": 300,
+        "files_may_be_capped": true
+      },
+      "verdict": "changed: Codex policy on main; GOAT telemetry contract only on dev",
+      "selected_prs": [
+        {
+          "number": 7476,
+          "title": "feat(management): passive GET /api/quota-pool (ocx.quota-pool/1 producer)",
+          "url": "https://github.com/lidge-jun/opencodex/pull/7476",
+          "merged": true,
+          "merged_at": "2026-10-21T13:16:13Z",
+          "base_branch": "dev",
+          "base_sha_at_query": "845ac6b875db3b8f4d4ea0ab70e6b80d4dc6e4c0",
+          "head_sha": "3a7db3ee98bb35e11923b47295c4c2da417c528a",
+          "merge_sha": "b50cc8050f25fe4b31f81d7d3aceeba4f430fcaf",
+          "changed_files": 22,
+          "captured_file_records": 22,
+          "focus": "Dev-only passive GET /api/quota-pool producer implements ocx.quota-pool/1 for GOAT. Unknown quota fields are omitted, windows include source/observedAt, stable opaque account identity. Query refresh is ignored; response is no-store; read failure returns unavailable.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 7477,
+          "title": "feat(readyz): advertise peer features from one registry",
+          "url": "https://github.com/lidge-jun/opencodex/pull/7477",
+          "merged": true,
+          "merged_at": "2026-10-21T13:16:54Z",
+          "base_branch": "dev",
+          "base_sha_at_query": "845ac6b875db3b8f4d4ea0ab70e6b80d4dc6e4c0",
+          "head_sha": "62bd42cf3b453527126f27bcb2d98192eb7da81d",
+          "merge_sha": "2945ebb364b90ad2e0f3fe71e69a375045aec39d",
+          "changed_files": 19,
+          "captured_file_records": 19,
+          "focus": "Dev-only readyz feature registry advertises quota-pool/1 and relay capabilities using bounded capability IDs.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 6955,
+          "title": "fix(link): verify Child runtime relay and add fingerprint-bound CLI enrollment",
+          "url": "https://github.com/lidge-jun/opencodex/pull/6955",
+          "merged": true,
+          "merged_at": "2026-10-11T17:46:14Z",
+          "base_branch": "dev",
+          "base_sha_at_query": "862b8f1c80f0fb643bb5746939f89decef0f8f8f",
+          "head_sha": "bfdfcb2c0c054f764db73f45b5b5ec79d8b1cc18",
+          "merge_sha": "34bf006fd9b75677cf4a53969339edf624e593a9",
+          "changed_files": 41,
+          "captured_file_records": 41,
+          "focus": "Remote CLI enrollment/probe pins and verifies host identity/fingerprint before relay use.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 7128,
+          "title": "fix(codex): carry canonical subagent limits across modes (#7125)",
+          "url": "https://github.com/lidge-jun/opencodex/pull/7128",
+          "merged": true,
+          "merged_at": "2026-10-15T18:05:59Z",
+          "base_branch": "dev",
+          "base_sha_at_query": "6fa42285f5749bb0044bdcaf0d777cbabc3ddb64",
+          "head_sha": "7208c11cddcc2585e25d2be7a21e688026c3a63f",
+          "merge_sha": "359d31b26cc013d99bcc6615a8ef168fbe948d75",
+          "changed_files": 37,
+          "captured_file_records": 37,
+          "focus": "Canonical Codex agents max_concurrent_threads_per_session with legacy alias handling and guarded migration across v1/v2 modes.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        }
+      ],
+      "implication": "All four selected PRs targeted dev. The older enrollment/config implementations are present in frozen main source; #7476/#7477 are absent from the complete main tree and only pinned at their dev merge SHAs. GOAT is a distinct repo, not a renamed OpenCodeX UI.",
+      "pinned_sources": [
+        {
+          "repo": "lidge-jun/opencodex",
+          "sha": "994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+          "path": "README.md",
+          "url": "https://github.com/lidge-jun/opencodex/blob/994d15e8a3d071e231ff0de41eab9dfbee8817aa/README.md",
+          "bytes": 26504,
+          "sha256": "7de59d49abc8ebc0220c914af9edd6d45699178bc93e1e45c5da30f6a05a5203"
+        },
+        {
+          "repo": "lidge-jun/opencodex",
+          "sha": "994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+          "path": "src/service/orchestration.ts",
+          "url": "https://github.com/lidge-jun/opencodex/blob/994d15e8a3d071e231ff0de41eab9dfbee8817aa/src/service/orchestration.ts",
+          "bytes": 32757,
+          "sha256": "517d271a91ef9179ae314f9472bc4a1cefef6f3b83916c14b1f845568fb3878b"
+        },
+        {
+          "repo": "lidge-jun/opencodex",
+          "sha": "994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+          "path": "gui/src/pages/use-subagent-delegation.ts",
+          "url": "https://github.com/lidge-jun/opencodex/blob/994d15e8a3d071e231ff0de41eab9dfbee8817aa/gui/src/pages/use-subagent-delegation.ts",
+          "bytes": 4315,
+          "sha256": "69f4ed30c23974cf99da3c40b2e443024c75c9795e1fcdbcdd43e895910b8595"
+        },
+        {
+          "repo": "lidge-jun/opencodex",
+          "sha": "994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+          "path": "gui/src/components/subagents-workspace/SubagentsWorkspace.tsx",
+          "url": "https://github.com/lidge-jun/opencodex/blob/994d15e8a3d071e231ff0de41eab9dfbee8817aa/gui/src/components/subagents-workspace/SubagentsWorkspace.tsx",
+          "bytes": 10487,
+          "sha256": "16e0a9d67257e37d2b9b1d44919c2fad035b44bc773345c09343db7f5900d032"
+        },
+        {
+          "repo": "lidge-jun/opencodex",
+          "sha": "994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+          "path": "src/codex/features.ts",
+          "url": "https://github.com/lidge-jun/opencodex/blob/994d15e8a3d071e231ff0de41eab9dfbee8817aa/src/codex/features.ts",
+          "bytes": 80370,
+          "sha256": "f2b9162ea799e2f9f94653c38ac69214e128d90c7fcb803e03f669658f146451",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "lidge-jun/opencodex",
+          "sha": "994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+          "path": "src/server/management/link-enrollment.ts",
+          "url": "https://github.com/lidge-jun/opencodex/blob/994d15e8a3d071e231ff0de41eab9dfbee8817aa/src/server/management/link-enrollment.ts",
+          "bytes": 15932,
+          "sha256": "cf83aecdb918d4400c6d4a226d9342281d48c6bfd26a6a536c3715f9930b4cf4",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "lidge-jun/opencodex",
+          "sha": "994d15e8a3d071e231ff0de41eab9dfbee8817aa",
+          "path": "src/link/remote-probe.ts",
+          "url": "https://github.com/lidge-jun/opencodex/blob/994d15e8a3d071e231ff0de41eab9dfbee8817aa/src/link/remote-probe.ts",
+          "bytes": 2297,
+          "sha256": "dafa575b312f099b453722e348a850cd78084074a36e32513d75441e2360d88c",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "lidge-jun/opencodex",
+          "sha": "2945ebb364b90ad2e0f3fe71e69a375045aec39d",
+          "path": "src/remote/features.ts",
+          "url": "https://github.com/lidge-jun/opencodex/blob/2945ebb364b90ad2e0f3fe71e69a375045aec39d/src/remote/features.ts",
+          "bytes": 3176,
+          "sha256": "f95b2f75c1e0c495e09edd4b91847e37b848e142b431ed4f62f77c974b0cd983",
+          "snapshot": "merged-dev-only"
+        },
+        {
+          "repo": "lidge-jun/opencodex",
+          "sha": "b50cc8050f25fe4b31f81d7d3aceeba4f430fcaf",
+          "path": "src/quota-pool/assemble.ts",
+          "url": "https://github.com/lidge-jun/opencodex/blob/b50cc8050f25fe4b31f81d7d3aceeba4f430fcaf/src/quota-pool/assemble.ts",
+          "bytes": 16696,
+          "sha256": "8e1c547cf4d897cdbc1fd03d4b6ca5b2954046ff40e41db0927ae9ab9011e161",
+          "snapshot": "merged-dev-only"
+        },
+        {
+          "repo": "lidge-jun/opencodex",
+          "sha": "b50cc8050f25fe4b31f81d7d3aceeba4f430fcaf",
+          "path": "src/quota-pool/contract.ts",
+          "url": "https://github.com/lidge-jun/opencodex/blob/b50cc8050f25fe4b31f81d7d3aceeba4f430fcaf/src/quota-pool/contract.ts",
+          "bytes": 1974,
+          "sha256": "49fcdd1bcdb98c429c9048505aa5e05acb05afa0641ee2566f89a8854f3f4b9f",
+          "snapshot": "merged-dev-only"
+        },
+        {
+          "repo": "lidge-jun/opencodex",
+          "sha": "b50cc8050f25fe4b31f81d7d3aceeba4f430fcaf",
+          "path": "src/server/management/quota-pool-routes.ts",
+          "url": "https://github.com/lidge-jun/opencodex/blob/b50cc8050f25fe4b31f81d7d3aceeba4f430fcaf/src/server/management/quota-pool-routes.ts",
+          "bytes": 1148,
+          "sha256": "0da8e32d345457fc97e050a3341df10b16a2bfa7ae8b3e023968d4f9169ca4af",
+          "snapshot": "merged-dev-only"
+        }
+      ],
+      "primary_channel": {
+        "kind": "latest published prerelease (not labelled nightly)",
+        "tag": "v2.78.0-preview.20261005",
+        "sha": "04e175f7e912b6073bce3997affc3867bde6a749",
+        "published_at": "2026-10-05T10:24:55Z",
+        "url": "https://github.com/lidge-jun/opencodex/releases/tag/v2.78.0-preview.20261005"
+      },
+      "latest_source_build_channel": {
+        "kind": "README-supported source install from dev",
+        "sha": "2945ebb364b90ad2e0f3fe71e69a375045aec39d",
+        "committed_at": "2026-10-21T13:16:53Z",
+        "proof": "README.md lines 217-241; not a published nightly artifact"
+      },
+      "build_inclusion": [
+        {
+          "number": 7476,
+          "merge_sha": "b50cc8050f25fe4b31f81d7d3aceeba4f430fcaf",
+          "build_sha": "04e175f7e912b6073bce3997affc3867bde6a749",
+          "status": "diverged",
+          "included": false,
+          "compare_url": "https://github.com/lidge-jun/opencodex/compare/b50cc8050f25fe4b31f81d7d3aceeba4f430fcaf...04e175f7e912b6073bce3997affc3867bde6a749",
+          "merge_base_sha": "0511f458f12674f63bf3b629a0523cee246d33a0",
+          "error": null
+        },
+        {
+          "number": 7477,
+          "merge_sha": "2945ebb364b90ad2e0f3fe71e69a375045aec39d",
+          "build_sha": "04e175f7e912b6073bce3997affc3867bde6a749",
+          "status": "diverged",
+          "included": false,
+          "compare_url": "https://github.com/lidge-jun/opencodex/compare/2945ebb364b90ad2e0f3fe71e69a375045aec39d...04e175f7e912b6073bce3997affc3867bde6a749",
+          "merge_base_sha": "0511f458f12674f63bf3b629a0523cee246d33a0",
+          "error": null
+        },
+        {
+          "number": 6955,
+          "merge_sha": "34bf006fd9b75677cf4a53969339edf624e593a9",
+          "build_sha": "04e175f7e912b6073bce3997affc3867bde6a749",
+          "status": "diverged",
+          "included": false,
+          "compare_url": "https://github.com/lidge-jun/opencodex/compare/34bf006fd9b75677cf4a53969339edf624e593a9...04e175f7e912b6073bce3997affc3867bde6a749",
+          "merge_base_sha": "0511f458f12674f63bf3b629a0523cee246d33a0",
+          "error": null
+        },
+        {
+          "number": 7128,
+          "merge_sha": "359d31b26cc013d99bcc6615a8ef168fbe948d75",
+          "build_sha": "04e175f7e912b6073bce3997affc3867bde6a749",
+          "status": "diverged",
+          "included": false,
+          "compare_url": "https://github.com/lidge-jun/opencodex/compare/359d31b26cc013d99bcc6615a8ef168fbe948d75...04e175f7e912b6073bce3997affc3867bde6a749",
+          "merge_base_sha": "0511f458f12674f63bf3b629a0523cee246d33a0",
+          "error": null
+        }
+      ],
+      "source_build_inclusion": [
+        {
+          "number": 7476,
+          "merge_sha": "b50cc8050f25fe4b31f81d7d3aceeba4f430fcaf",
+          "build_sha": "2945ebb364b90ad2e0f3fe71e69a375045aec39d",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/lidge-jun/opencodex/compare/b50cc8050f25fe4b31f81d7d3aceeba4f430fcaf...2945ebb364b90ad2e0f3fe71e69a375045aec39d",
+          "merge_base_sha": "b50cc8050f25fe4b31f81d7d3aceeba4f430fcaf",
+          "error": null
+        },
+        {
+          "number": 7477,
+          "merge_sha": "2945ebb364b90ad2e0f3fe71e69a375045aec39d",
+          "build_sha": "2945ebb364b90ad2e0f3fe71e69a375045aec39d",
+          "status": "identical",
+          "included": true,
+          "compare_url": "https://github.com/lidge-jun/opencodex/compare/2945ebb364b90ad2e0f3fe71e69a375045aec39d...2945ebb364b90ad2e0f3fe71e69a375045aec39d",
+          "merge_base_sha": "2945ebb364b90ad2e0f3fe71e69a375045aec39d",
+          "error": null
+        },
+        {
+          "number": 6955,
+          "merge_sha": "34bf006fd9b75677cf4a53969339edf624e593a9",
+          "build_sha": "2945ebb364b90ad2e0f3fe71e69a375045aec39d",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/lidge-jun/opencodex/compare/34bf006fd9b75677cf4a53969339edf624e593a9...2945ebb364b90ad2e0f3fe71e69a375045aec39d",
+          "merge_base_sha": "34bf006fd9b75677cf4a53969339edf624e593a9",
+          "error": null
+        },
+        {
+          "number": 7128,
+          "merge_sha": "359d31b26cc013d99bcc6615a8ef168fbe948d75",
+          "build_sha": "2945ebb364b90ad2e0f3fe71e69a375045aec39d",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/lidge-jun/opencodex/compare/359d31b26cc013d99bcc6615a8ef168fbe948d75...2945ebb364b90ad2e0f3fe71e69a375045aec39d",
+          "merge_base_sha": "359d31b26cc013d99bcc6615a8ef168fbe948d75",
+          "error": null
+        }
+      ],
+      "primary_build_sources": [],
+      "primary_verdict": "Latest published preview is 5 October and excludes all four selected newer PRs. Official README supports latest-dev source install: frozen dev 2945ebb364b90ad2e0f3fe71e69a375045aec39d includes all four, including GOAT quota-pool/feature contracts. These capabilities count for the source-build comparison; they are not in a newer published nightly we could verify."
+    },
+    {
+      "repo": "omnigent-ai/omnigent",
+      "default_branch": "main",
+      "head_sha": "6507e7b1d22aa49398d6b04f29d39e99f86f3ee8",
+      "head_committed_at": "2026-10-21T14:45:07Z",
+      "head_url": "https://github.com/omnigent-ai/omnigent/commit/6507e7b1d22aa49398d6b04f29d39e99f86f3ee8",
+      "release_pins": [
+        {
+          "tag": "v0.19.0",
+          "prerelease": false,
+          "published_at": "2026-10-20T17:40:48Z",
+          "target_commitish": "main",
+          "sha": "d43340fec4e7d2d767f319d715e84aa82f4d1bc8",
+          "url": "https://github.com/omnigent-ai/omnigent/releases/tag/v0.19.0"
+        }
+      ],
+      "census": {
+        "capture_end": "2026-10-21T14:52:50.732880+00:00",
+        "partitions": [
+          {
+            "query": "repo:omnigent-ai/omnigent is:pr is:merged merged:2026-10-04..2026-10-21",
+            "count": 820,
+            "captured": 820,
+            "pages": 9
+          }
+        ],
+        "count": 820,
+        "unique_count": 820,
+        "metadata_census_only": true
+      },
+      "base_branch_counts": {
+        "main": 791,
+        "resolve-agent/checked-e15ee11cb8ad3409ea50b91d8032d20f": 1,
+        "stack/host-dedupe-by-workspace": 1,
+        "harry-yao/claude-timeout-generation-20261017": 1,
+        "harry-yao/kpi3-native-input-ownership-20261016": 1,
+        "fanzeyi/android-oidc-lifecycle": 1,
+        "fanzeyi/android-oidc-connect": 1,
+        "fanzeyi/android-oidc-credentials": 1,
+        "fanzeyi/android-oidc-refactor": 1,
+        "fanzeyi/android-explicit-connect-requests": 1,
+        "fanzeyi/android-auth-debug-menu": 1,
+        "fanzeyi/android-workspace-lifecycle": 1,
+        "fanzeyi/android-workspace-session-bootstrap": 1,
+        "fanzeyi/android-databricks-credentials": 1,
+        "fanzeyi/android-databricks-oauth-core": 1,
+        "fanzeyi/android-workspace-auth-classification": 1,
+        "dhruvgupta/mcp-registry-gateway-prototype": 1,
+        "fanzeyi/ios-oidc-refactor": 1,
+        "fanzeyi/ios-oidc-server": 1,
+        "dhruvgupta/git-stack-3-gitlab": 1,
+        "dhruvgupta/git-stack-2-github": 1,
+        "dhruvgupta/omni-8460-reusable-custom-agent-installation": 1,
+        "dhruvgupta/omni-8460-share-agent-rows": 1,
+        "fanzeyi/desktop-server-name": 1,
+        "fanzeyi/desktop-oidc-browser-signin": 1,
+        "fanzeyi/desktop-auth-refactor": 1,
+        "fanzeyi/manifest-server-name": 1,
+        "fanzeyi/resilience-codex": 1,
+        "fanzeyi/resilience-scenarios-host": 1,
+        "fanzeyi/resilience-scenarios": 1
+      },
+      "source_window": {
+        "base": "5fae3371a7f9786b9e95ab9ea1038b6227d82872",
+        "head": "6507e7b1d22aa49398d6b04f29d39e99f86f3ee8",
+        "compare_url": "https://github.com/omnigent-ai/omnigent/compare/5fae3371a7f9786b9e95ab9ea1038b6227d82872...6507e7b1d22aa49398d6b04f29d39e99f86f3ee8",
+        "status": "ahead",
+        "ahead_by": 815,
+        "total_commits": 815,
+        "captured_commit_page": 100,
+        "captured_files": 300,
+        "files_may_be_capped": true
+      },
+      "verdict": "changed: native completion truth, independent-child wake and host launch failures",
+      "selected_prs": [
+        {
+          "number": 10030,
+          "title": "fix(host): answer the server when the launch handler raises",
+          "url": "https://github.com/omnigent-ai/omnigent/pull/10030",
+          "merged": true,
+          "merged_at": "2026-10-21T14:45:09Z",
+          "base_branch": "main",
+          "base_sha_at_query": "b4b08f5c7d530b249c34c36ec1622ff3119bd7da",
+          "head_sha": "dca219e1bc009defd2a397955cab6cdf13b0f251",
+          "merge_sha": "6507e7b1d22aa49398d6b04f29d39e99f86f3ee8",
+          "changed_files": 4,
+          "captured_file_records": 4,
+          "focus": "Host launch exceptions before process spawn return explicit failure; exceptions after spawn do not falsely report launch failure because the child may still connect.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 9612,
+          "title": "fix(runner): wake Codex parents for independent child sessions",
+          "url": "https://github.com/omnigent-ai/omnigent/pull/9612",
+          "merged": true,
+          "merged_at": "2026-10-19T20:24:40Z",
+          "base_branch": "main",
+          "base_sha_at_query": "b02696072b1c8a4a99aceeef65b68e18dc174373",
+          "head_sha": "7ea2208e77fe2a5e1631fd25d9ef0e71a8541f72",
+          "merge_sha": "f1bab8ce5c15a9c99399b369ff7502057d3726df",
+          "changed_files": 5,
+          "captured_file_records": 5,
+          "focus": "Independent-child parent wake selection excludes Codex-native wrapper completions; wrapper labels recover from server state.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 9365,
+          "title": "Fix duplicate native subagent completion notices",
+          "url": "https://github.com/omnigent-ai/omnigent/pull/9365",
+          "merged": true,
+          "merged_at": "2026-10-07T06:10:11Z",
+          "base_branch": "main",
+          "base_sha_at_query": "db4a34f32b2ced50f0e19ffc82e33a2c13e22d80",
+          "head_sha": "66db2d9c09827eacebf52d8a0ff5adf93f4a2faf",
+          "merge_sha": "72bbbc57b930b5f1ea420ed85a74f94bcd94deaa",
+          "changed_files": 5,
+          "captured_file_records": 5,
+          "focus": "Native runner completion acknowledges prompt delivery rather than child completion; explicit native completion dedupes by preceding real request, skipping context-only turns. This narrows the previous idle-completion caveat for these branches.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 9192,
+          "title": "test(mas): cover subagent restart recovery races",
+          "url": "https://github.com/omnigent-ai/omnigent/pull/9192",
+          "merged": true,
+          "merged_at": "2026-10-06T07:29:14Z",
+          "base_branch": "main",
+          "base_sha_at_query": "2587e801d1a76a1bb9e06cee081ba495f3bb98cb",
+          "head_sha": "62894c67bbf265da7d0c5079b92afb87bd394c50",
+          "merge_sha": "2bcadc42b16a5e6eea4bd0ae3a6ec71f52f7bc74",
+          "changed_files": 1,
+          "captured_file_records": 1,
+          "focus": "Test-only restart recovery race regressions. No pass claim; current recovery source retains undelivered results until inbox exists and skips delivered results.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        }
+      ],
+      "implication": "Useful acceptance-versus-execution and native-versus-managed-child distinctions. Does not establish that every harness now requires explicit completion or that the complete product is race-free.",
+      "pinned_sources": [
+        {
+          "repo": "omnigent-ai/omnigent",
+          "sha": "6507e7b1d22aa49398d6b04f29d39e99f86f3ee8",
+          "path": "omnigent/runner/subagent_recovery.py",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/6507e7b1d22aa49398d6b04f29d39e99f86f3ee8/omnigent/runner/subagent_recovery.py",
+          "bytes": 10981,
+          "sha256": "9c3315a9ac6f0d3360eafcb9167f92e1c46aac836d9c82645f634919bf110acf"
+        },
+        {
+          "repo": "omnigent-ai/omnigent",
+          "sha": "6507e7b1d22aa49398d6b04f29d39e99f86f3ee8",
+          "path": "omnigent/server/child_session_recovery.py",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/6507e7b1d22aa49398d6b04f29d39e99f86f3ee8/omnigent/server/child_session_recovery.py",
+          "bytes": 14182,
+          "sha256": "742a65ee72bfc18efc531e4320bdb8431279d53c8014b3f695b09741082cc2c3"
+        },
+        {
+          "repo": "omnigent-ai/omnigent",
+          "sha": "6507e7b1d22aa49398d6b04f29d39e99f86f3ee8",
+          "path": "omnigent/runner/subagent_work.py",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/6507e7b1d22aa49398d6b04f29d39e99f86f3ee8/omnigent/runner/subagent_work.py",
+          "bytes": 49807,
+          "sha256": "78b45190028179a405ddbda6088958ebb4ea92d205aa3647330f29b0abce8533"
+        },
+        {
+          "repo": "omnigent-ai/omnigent",
+          "sha": "6507e7b1d22aa49398d6b04f29d39e99f86f3ee8",
+          "path": "omnigent/host/connect.py",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/6507e7b1d22aa49398d6b04f29d39e99f86f3ee8/omnigent/host/connect.py",
+          "bytes": 257868,
+          "sha256": "a86d1832039f8f565ea65124d6301c30372ed8b121e25fec2a7e9651d9b65492"
+        },
+        {
+          "repo": "omnigent-ai/omnigent",
+          "sha": "6507e7b1d22aa49398d6b04f29d39e99f86f3ee8",
+          "path": "omnigent/runtime/subagent_block_notifier.py",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/6507e7b1d22aa49398d6b04f29d39e99f86f3ee8/omnigent/runtime/subagent_block_notifier.py",
+          "bytes": 22900,
+          "sha256": "110df5a162b44eb7588921da57116069de063b6e16e123509e690d2a938df379"
+        },
+        {
+          "repo": "omnigent-ai/omnigent",
+          "sha": "6507e7b1d22aa49398d6b04f29d39e99f86f3ee8",
+          "path": "omnigent/server/subagent_activity.py",
+          "url": "https://github.com/omnigent-ai/omnigent/blob/6507e7b1d22aa49398d6b04f29d39e99f86f3ee8/omnigent/server/subagent_activity.py",
+          "bytes": 13654,
+          "sha256": "976e3b9edc956228bcb74c5647c1afc2ca3c521588840693a1d5bbedce903c86",
+          "snapshot": "default-head"
+        }
+      ],
+      "primary_channel": {
+        "kind": "no nightly/prerelease returned; latest stable available",
+        "tag": "v0.19.0",
+        "sha": "d43340fec4e7d2d767f319d715e84aa82f4d1bc8",
+        "published_at": "2026-10-20T17:40:48Z",
+        "url": "https://github.com/omnigent-ai/omnigent/releases/tag/v0.19.0"
+      },
+      "build_inclusion": [
+        {
+          "number": 10030,
+          "merge_sha": "6507e7b1d22aa49398d6b04f29d39e99f86f3ee8",
+          "build_sha": "d43340fec4e7d2d767f319d715e84aa82f4d1bc8",
+          "status": "diverged",
+          "included": false,
+          "compare_url": "https://github.com/omnigent-ai/omnigent/compare/6507e7b1d22aa49398d6b04f29d39e99f86f3ee8...d43340fec4e7d2d767f319d715e84aa82f4d1bc8",
+          "merge_base_sha": "71fb9694ecf4b54b37919fbb1acd575dfd28243f",
+          "error": null
+        },
+        {
+          "number": 9612,
+          "merge_sha": "f1bab8ce5c15a9c99399b369ff7502057d3726df",
+          "build_sha": "d43340fec4e7d2d767f319d715e84aa82f4d1bc8",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/omnigent-ai/omnigent/compare/f1bab8ce5c15a9c99399b369ff7502057d3726df...d43340fec4e7d2d767f319d715e84aa82f4d1bc8",
+          "merge_base_sha": "f1bab8ce5c15a9c99399b369ff7502057d3726df",
+          "error": null
+        },
+        {
+          "number": 9365,
+          "merge_sha": "72bbbc57b930b5f1ea420ed85a74f94bcd94deaa",
+          "build_sha": "d43340fec4e7d2d767f319d715e84aa82f4d1bc8",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/omnigent-ai/omnigent/compare/72bbbc57b930b5f1ea420ed85a74f94bcd94deaa...d43340fec4e7d2d767f319d715e84aa82f4d1bc8",
+          "merge_base_sha": "72bbbc57b930b5f1ea420ed85a74f94bcd94deaa",
+          "error": null
+        },
+        {
+          "number": 9192,
+          "merge_sha": "2bcadc42b16a5e6eea4bd0ae3a6ec71f52f7bc74",
+          "build_sha": "d43340fec4e7d2d767f319d715e84aa82f4d1bc8",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/omnigent-ai/omnigent/compare/2bcadc42b16a5e6eea4bd0ae3a6ec71f52f7bc74...d43340fec4e7d2d767f319d715e84aa82f4d1bc8",
+          "merge_base_sha": "2bcadc42b16a5e6eea4bd0ae3a6ec71f52f7bc74",
+          "error": null
+        }
+      ],
+      "primary_build_sources": [],
+      "primary_verdict": "No nightly/prerelease found. Latest stable includes independent-child wake, native completion truth and recovery tests; the host pre-spawn failure fix is newer default-head source."
+    },
+    {
+      "repo": "proxysoul/Empryo",
+      "default_branch": "main",
+      "head_sha": "c27dac116d2ee1637abfc6634bebf08b5c379454",
+      "head_committed_at": "2026-10-16T01:22:56Z",
+      "head_url": "https://github.com/proxysoul/Empryo/commit/c27dac116d2ee1637abfc6634bebf08b5c379454",
+      "release_pins": [
+        {
+          "tag": "v2.20.25",
+          "prerelease": false,
+          "published_at": "2026-07-12T15:16:08Z",
+          "target_commitish": "main",
+          "sha": "c691a2386a25a9a0225cc6d14dabd85c6a75d23c",
+          "url": "https://github.com/proxysoul/Empryo/releases/tag/v2.20.25"
+        }
+      ],
+      "census": {
+        "capture_end": "2026-10-21T14:52:06.152458+00:00",
+        "partitions": [
+          {
+            "query": "repo:proxysoul/Empryo is:pr is:merged merged:2026-10-04..2026-10-21",
+            "count": 0,
+            "captured": 0,
+            "pages": 1
+          }
+        ],
+        "count": 0,
+        "unique_count": 0,
+        "metadata_census_only": true
+      },
+      "base_branch_counts": {},
+      "source_window": {
+        "base": "28802a4f169abcc378032e0a4774bc162c12a00c",
+        "head": "c27dac116d2ee1637abfc6634bebf08b5c379454",
+        "compare_url": "https://github.com/proxysoul/Empryo/compare/28802a4f169abcc378032e0a4774bc162c12a00c...c27dac116d2ee1637abfc6634bebf08b5c379454",
+        "status": "ahead",
+        "ahead_by": 1,
+        "total_commits": 1,
+        "captured_commit_page": 1,
+        "captured_files": 6,
+        "files_may_be_capped": false
+      },
+      "verdict": "unchanged: public orchestration source verdict",
+      "selected_prs": [],
+      "implication": "No merged PRs since 4 October; baseline-to-head is one direct commit touching six locale files only. Public subagent tooling remains the inspected implementation; README private-v3 claims remain outside public-source proof.",
+      "pinned_sources": [
+        {
+          "repo": "proxysoul/Empryo",
+          "sha": "c27dac116d2ee1637abfc6634bebf08b5c379454",
+          "path": "README.md",
+          "url": "https://github.com/proxysoul/Empryo/blob/c27dac116d2ee1637abfc6634bebf08b5c379454/README.md",
+          "bytes": 5340,
+          "sha256": "965820a8d16dfc437c127b0141937f005b060306998960753c54a005cfa45d74"
+        },
+        {
+          "repo": "proxysoul/Empryo",
+          "sha": "c27dac116d2ee1637abfc6634bebf08b5c379454",
+          "path": "src/core/agents/subagent-tools.ts",
+          "url": "https://github.com/proxysoul/Empryo/blob/c27dac116d2ee1637abfc6634bebf08b5c379454/src/core/agents/subagent-tools.ts",
+          "bytes": 44303,
+          "sha256": "f3417bc87a3cb8aef99e4ca858f01f1ffa6c7d8c4b322ef5348335a0b83102e9"
+        }
+      ],
+      "primary_channel": {
+        "kind": "no nightly/prerelease returned; latest stable available",
+        "tag": "v2.20.25",
+        "sha": "c691a2386a25a9a0225cc6d14dabd85c6a75d23c",
+        "published_at": "2026-07-12T15:16:08Z",
+        "url": "https://github.com/proxysoul/Empryo/releases/tag/v2.20.25"
+      },
+      "build_inclusion": [],
+      "primary_build_sources": [],
+      "primary_verdict": "No nightly/prerelease found. Latest public release predates this window. Public default-head orchestration verdict remains unchanged; locale-only direct delta."
+    },
+    {
+      "repo": "aicodeking/pandacode",
+      "default_branch": "main",
+      "head_sha": "48c4de0874299172777e19ed347a75fc0f80851c",
+      "head_committed_at": "2026-10-21T14:26:59Z",
+      "head_url": "https://github.com/aicodeking/pandacode/commit/48c4de0874299172777e19ed347a75fc0f80851c",
+      "release_pins": [
+        {
+          "tag": "v0.3.12",
+          "prerelease": false,
+          "published_at": "2026-10-21T14:44:51Z",
+          "target_commitish": "48c4de0874299172777e19ed347a75fc0f80851c",
+          "sha": "48c4de0874299172777e19ed347a75fc0f80851c",
+          "url": "https://github.com/aicodeking/pandacode/releases/tag/v0.3.12"
+        }
+      ],
+      "census": {
+        "capture_end": "2026-10-21T14:52:07.041679+00:00",
+        "partitions": [
+          {
+            "query": "repo:aicodeking/pandacode is:pr is:merged merged:2026-10-04..2026-10-21",
+            "count": 4,
+            "captured": 4,
+            "pages": 1
+          }
+        ],
+        "count": 4,
+        "unique_count": 4,
+        "metadata_census_only": true
+      },
+      "base_branch_counts": {
+        "main": 4
+      },
+      "source_window": {
+        "base": "d9c1ac0284db3de24890b3af6e04933ca588fca6",
+        "head": "48c4de0874299172777e19ed347a75fc0f80851c",
+        "compare_url": "https://github.com/aicodeking/pandacode/compare/d9c1ac0284db3de24890b3af6e04933ca588fca6...48c4de0874299172777e19ed347a75fc0f80851c",
+        "status": "ahead",
+        "ahead_by": 2,
+        "total_commits": 2,
+        "captured_commit_page": 2,
+        "captured_files": 43,
+        "files_may_be_capped": false
+      },
+      "verdict": "changed since same-day capture: direct-commit DeepSeek ACP harness",
+      "selected_prs": [
+        {
+          "number": 28,
+          "title": "feat: document reader in the inspector and generative UI in threads",
+          "url": "https://github.com/aicodeking/pandacode/pull/28",
+          "merged": true,
+          "merged_at": "2026-10-21T13:44:52Z",
+          "base_branch": "main",
+          "base_sha_at_query": "e86dae66893b2549312a05c1ce364bcefb7d4e27",
+          "head_sha": "4bdd32d9853de4a31ba810d1262a80f56ac97f81",
+          "merge_sha": "d9c1ac0284db3de24890b3af6e04933ca588fca6",
+          "changed_files": 20,
+          "captured_file_records": 20,
+          "focus": "Document reader plus bounded generative UI JSON components and constrained HTML/CSS. Tree/timeline components are rendered agent content; actions fill the composer. They do not prove a durable managed-agent execution tree.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 17,
+          "title": "feat: add Pi coding-agent provider support",
+          "url": "https://github.com/aicodeking/pandacode/pull/17",
+          "merged": true,
+          "merged_at": "2026-10-21T10:10:21Z",
+          "base_branch": "main",
+          "base_sha_at_query": "d29004dffe6f610390fda33573aa4051e6050edb",
+          "head_sha": "c01c00465cf73695aefa214fddcd7ca12b281d18",
+          "merge_sha": "390ec22e951c25423ad9b95646480eb38f7e3ef6",
+          "changed_files": 40,
+          "captured_file_records": 40,
+          "focus": "Pi harness/provider integration added.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        },
+        {
+          "number": 18,
+          "title": "fix: keep the transcript pinned on send; add Send now and Steer to queued messages",
+          "url": "https://github.com/aicodeking/pandacode/pull/18",
+          "merged": true,
+          "merged_at": "2026-10-21T00:14:39Z",
+          "base_branch": "main",
+          "base_sha_at_query": "cd6ae2fe0e6230264f0efe75a4759b5e0b04de70",
+          "head_sha": "a113a9dbf29f1e647a5d076a2bb62d27e66925d9",
+          "merge_sha": "8fa6ce34bcfd437eba570c786bfc2ca0cb59b51f",
+          "changed_files": 5,
+          "captured_file_records": 5,
+          "focus": "Thread queue Send now/Steer actions added; source review does not establish durable server-owned queue/restart controls.",
+          "scope": "selected relevant source/patches, not a complete PR audit"
+        }
+      ],
+      "implication": "All three selected PRs predate the earlier 21 October snapshot. The exact new delta is two direct commits: DeepSeek CLI ACP provider plus release 0.3.12. No 4 October PandaCode source baseline exists in the old report. Architect cancellation/recovery verdict is not upgraded by this delta.",
+      "pinned_sources": [
+        {
+          "repo": "aicodeking/pandacode",
+          "sha": "48c4de0874299172777e19ed347a75fc0f80851c",
+          "path": "src/generative-ui-components.ts",
+          "url": "https://github.com/aicodeking/pandacode/blob/48c4de0874299172777e19ed347a75fc0f80851c/src/generative-ui-components.ts",
+          "bytes": 37126,
+          "sha256": "c877bf7b757697114fbc312ed9527ae10b3ee49660796b7a59579b34391241fe"
+        },
+        {
+          "repo": "aicodeking/pandacode",
+          "sha": "48c4de0874299172777e19ed347a75fc0f80851c",
+          "path": "src/generative-ui.ts",
+          "url": "https://github.com/aicodeking/pandacode/blob/48c4de0874299172777e19ed347a75fc0f80851c/src/generative-ui.ts",
+          "bytes": 5756,
+          "sha256": "b7417eff6faa7cefae1f699b125b31de20318acfa2b045e82c3a637998629074"
+        },
+        {
+          "repo": "aicodeking/pandacode",
+          "sha": "48c4de0874299172777e19ed347a75fc0f80851c",
+          "path": "src-tauri/src/architect.rs",
+          "url": "https://github.com/aicodeking/pandacode/blob/48c4de0874299172777e19ed347a75fc0f80851c/src-tauri/src/architect.rs",
+          "bytes": 93911,
+          "sha256": "0870d937d9f92cd8b84d6f4376bb83ab230b218d44a5b187740156d630f93e0d"
+        },
+        {
+          "repo": "aicodeking/pandacode",
+          "sha": "48c4de0874299172777e19ed347a75fc0f80851c",
+          "path": "src-tauri/src/providers/pi.rs",
+          "url": "https://github.com/aicodeking/pandacode/blob/48c4de0874299172777e19ed347a75fc0f80851c/src-tauri/src/providers/pi.rs",
+          "bytes": 27521,
+          "sha256": "e87210a5736a3fa94a99a186a2b1a5a03d0a706aa9a1c78493da8909f6ab3337"
+        },
+        {
+          "repo": "aicodeking/pandacode",
+          "sha": "48c4de0874299172777e19ed347a75fc0f80851c",
+          "path": "src-tauri/src/providers/deepseek.rs",
+          "url": "https://github.com/aicodeking/pandacode/blob/48c4de0874299172777e19ed347a75fc0f80851c/src-tauri/src/providers/deepseek.rs",
+          "bytes": 11828,
+          "sha256": "8b723ac25d3eefea7f9b050ead9ba03a8a40c53b32f74344661d6ab6188643cf",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "aicodeking/pandacode",
+          "sha": "48c4de0874299172777e19ed347a75fc0f80851c",
+          "path": "releases/0.3.12.md",
+          "url": "https://github.com/aicodeking/pandacode/blob/48c4de0874299172777e19ed347a75fc0f80851c/releases/0.3.12.md",
+          "bytes": 3179,
+          "sha256": "cb6207d389337ffeb0e5c785808ae2b83dfac67c031c293bde80fc456756798f",
+          "snapshot": "default-head"
+        }
+      ],
+      "primary_channel": {
+        "kind": "no nightly/prerelease returned; latest stable available",
+        "tag": "v0.3.12",
+        "sha": "48c4de0874299172777e19ed347a75fc0f80851c",
+        "published_at": "2026-10-21T14:44:51Z",
+        "url": "https://github.com/aicodeking/pandacode/releases/tag/v0.3.12"
+      },
+      "build_inclusion": [
+        {
+          "number": 28,
+          "merge_sha": "d9c1ac0284db3de24890b3af6e04933ca588fca6",
+          "build_sha": "48c4de0874299172777e19ed347a75fc0f80851c",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/aicodeking/pandacode/compare/d9c1ac0284db3de24890b3af6e04933ca588fca6...48c4de0874299172777e19ed347a75fc0f80851c",
+          "merge_base_sha": "d9c1ac0284db3de24890b3af6e04933ca588fca6",
+          "error": null
+        },
+        {
+          "number": 17,
+          "merge_sha": "390ec22e951c25423ad9b95646480eb38f7e3ef6",
+          "build_sha": "48c4de0874299172777e19ed347a75fc0f80851c",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/aicodeking/pandacode/compare/390ec22e951c25423ad9b95646480eb38f7e3ef6...48c4de0874299172777e19ed347a75fc0f80851c",
+          "merge_base_sha": "390ec22e951c25423ad9b95646480eb38f7e3ef6",
+          "error": null
+        },
+        {
+          "number": 18,
+          "merge_sha": "8fa6ce34bcfd437eba570c786bfc2ca0cb59b51f",
+          "build_sha": "48c4de0874299172777e19ed347a75fc0f80851c",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/aicodeking/pandacode/compare/8fa6ce34bcfd437eba570c786bfc2ca0cb59b51f...48c4de0874299172777e19ed347a75fc0f80851c",
+          "merge_base_sha": "8fa6ce34bcfd437eba570c786bfc2ca0cb59b51f",
+          "error": null
+        }
+      ],
+      "primary_build_sources": [],
+      "primary_verdict": "No nightly/prerelease found. Latest stable/source head includes DeepSeek ACP direct-commit addition and all three selected PRs."
+    },
+    {
+      "repo": "goat-si/goat",
+      "identity": "Separate public GOAT repository, named by OpenCodeX contract.ts; tweet author says they developed GOAT and OpenCodeX. GOAT README identifies T3 Code fork.",
+      "default_branch": "main",
+      "head_sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+      "head_committed_at": "2026-10-20T02:31:31Z",
+      "head_url": "https://github.com/goat-si/goat/commit/8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+      "dev_head_sha": "45f5ca03f6139e52965f132b9ce5d0324495dd6a",
+      "dev_head_committed_at": "2026-10-21T14:57:41Z",
+      "release_pins": [
+        {
+          "tag": "v0.1.1-nightly.20261020.205",
+          "prerelease": true,
+          "published_at": "2026-10-20T13:33:47Z",
+          "target_commitish": "main",
+          "distribution_repo": "goat-si/goat-releases",
+          "distribution_tag_sha": "45c30ba4dba7c3f81efed3185f018f04be65b34e",
+          "source_sha": "1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+          "source_pin_proof": "distribution-runtime.json",
+          "url": "https://github.com/goat-si/goat-releases/releases/tag/v0.1.1-nightly.20261020.205"
+        }
+      ],
+      "release_gaps": "Source repo releases and tags are empty. Official README points to goat-si/goat-releases. All four distribution releases returned are prereleases; no stable release. Runtime JSON maps latest nightly to source SHA; this is not the distribution repo tag SHA.",
+      "census": {
+        "capture_end": "2026-10-21T15:03:17.646183+00:00",
+        "partitions": [
+          {
+            "query": "repo:goat-si/goat is:pr is:merged merged:2026-10-04..2026-10-21",
+            "count": 378,
+            "captured": 378,
+            "pages": 4
+          }
+        ],
+        "count": 378,
+        "unique_count": 378,
+        "metadata_census_only": true
+      },
+      "base_branch_counts": {
+        "dev": 375,
+        "main": 3
+      },
+      "source_window": {
+        "base": null,
+        "head": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+        "reason": "New identity; no 4 October GOAT source baseline; no baseline comparison claimed"
+      },
+      "verdict": "new distinct identity: source-backed fleet telemetry and local goal reconciliation",
+      "selected_prs": [
+        {
+          "number": 470,
+          "title": "feat(web): Fleet telemetry console with live host analytics, loaded after the graph paints",
+          "url": "https://github.com/goat-si/goat/pull/470",
+          "merged": true,
+          "merged_at": "2026-10-20T00:06:39Z",
+          "base_branch": "dev",
+          "base_sha_at_query": "71628fe59132efd405d28f56f4d137bcebcddf23",
+          "head_sha": "2750d8a2daddba6d51dac52f490f8144d3989af8",
+          "merge_sha": "8cba4228f6ce2bcea632e85a381f10fc513f07ff",
+          "changed_files": 12,
+          "captured_file_records": 12,
+          "focus": "Fleet analytics console renders actual host CPU/memory/load, native quota and stale/unreachable status. Bounded 40-sample/10-minute history uses client receipt time for ages and does not count cached readings as new. Main source contains this implementation.",
+          "scope": "selected relevant source/patches, not complete PR audit"
+        },
+        {
+          "number": 553,
+          "title": "feat(server): fleet goals with a reconcile controller (agentic-k8s T1)",
+          "url": "https://github.com/goat-si/goat/pull/553",
+          "merged": true,
+          "merged_at": "2026-10-20T00:08:29Z",
+          "base_branch": "dev",
+          "base_sha_at_query": "8cba4228f6ce2bcea632e85a381f10fc513f07ff",
+          "head_sha": "d345a6a31aeff43e1766ea570b64af1fc62daa81",
+          "merge_sha": "73f6f038bdc3e5f00f2ac6e7d59b4582face8228",
+          "changed_files": 43,
+          "captured_file_records": 43,
+          "focus": "Local fleet goal reconcile controller persists goals/workers/actions, claims actions transactionally before dispatch, recovers uncertain launches by deterministic identity and caps work. Main source contains it.",
+          "scope": "selected relevant source/patches, not complete PR audit"
+        },
+        {
+          "number": 576,
+          "title": "fix(server): fleet goals stay local-only and resume usage-limited workers",
+          "url": "https://github.com/goat-si/goat/pull/576",
+          "merged": true,
+          "merged_at": "2026-10-20T00:18:54Z",
+          "base_branch": "dev",
+          "base_sha_at_query": "f4d94ea111e7e1969bcf010692ae52630806a9f8",
+          "head_sha": "ec5d502be26b0b7de65319647de91fdcd3e5fed6",
+          "merge_sha": "d68e5e1bb90be599f4aa651a012424e1a2a52d78",
+          "changed_files": 10,
+          "captured_file_records": 10,
+          "focus": "Corrects fleet goals to local-only workers, rechecks owner authority and resumes usage-limited workers after reset. Does not implement autonomous cross-host goal workers.",
+          "scope": "selected relevant source/patches, not complete PR audit"
+        },
+        {
+          "number": 673,
+          "title": "fix(fleet): one slow host no longer blanks every host's metrics",
+          "url": "https://github.com/goat-si/goat/pull/673",
+          "merged": true,
+          "merged_at": "2026-10-21T09:52:04Z",
+          "base_branch": "dev",
+          "base_sha_at_query": "58a29e259f48e0de00f571672cce7225424d58ad",
+          "head_sha": "b1935676cb607c76e01181f0e8803cf5da6cf42f",
+          "merge_sha": "fa83f4fd56d7d247c1d976a5f787294fbe5c4037",
+          "changed_files": 8,
+          "captured_file_records": 8,
+          "focus": "Dev-only after frozen main: separates own-machine telemetry from remote fan-out so one slow host cannot blank every host, retaining per-environment last-known evidence.",
+          "scope": "selected relevant source/patches, not complete PR audit"
+        },
+        {
+          "number": 569,
+          "title": "fix: restart-stuck runs, origin-report wait defects, and dev tooling (B5)",
+          "url": "https://github.com/goat-si/goat/pull/569",
+          "merged": true,
+          "merged_at": "2026-10-19T23:58:17Z",
+          "base_branch": "dev",
+          "base_sha_at_query": "911f15eac50d819d1a414e6657c2f12d25733420",
+          "head_sha": "bb3ccae582b51a7c56193fb24267a6ac13c887fc",
+          "merge_sha": "a1dba6c40770be5e84128caa773359b418ddc13f",
+          "changed_files": 17,
+          "captured_file_records": 17,
+          "focus": "Tracks a live provider root turn reported before start-call failure and interrupts it before marking failure, avoiding a stranded native turn. Focused RunExecutionService patch inspection.",
+          "scope": "selected relevant source/patches, not complete PR audit"
+        },
+        {
+          "number": 545,
+          "title": "feat(server): fleet limits, placement, and model fallback chains",
+          "url": "https://github.com/goat-si/goat/pull/545",
+          "merged": true,
+          "merged_at": "2026-10-19T23:48:50Z",
+          "base_branch": "dev",
+          "base_sha_at_query": "b7d41d2e10d50eb29bc64a548ae9a4d97a529637",
+          "head_sha": "243226d227f9f4d8fb3c486a75f0d8e54353cc5d",
+          "merge_sha": "a4e9da828395388752e44796a152c8ef0e06e127",
+          "changed_files": 29,
+          "captured_file_records": 29,
+          "focus": "Fleet limits, quota-aware placement and model fallback source. Main contains Placement; its presence does not override the explicit local-only goal-worker guard.",
+          "scope": "selected relevant source/patches, not complete PR audit"
+        }
+      ],
+      "implication": "Useful owner-controlled host visibility and honest sampled/stale/unknown presentation. Keep remote delegation separate from goal-controller capability. Do not import hosted cloud features. OpenCodeX quota-pool producer is dev-only; referenced GOAT decoder path is absent at frozen GOAT dev (404), so end-to-end integration remains unproved.",
+      "pinned_sources": [
+        {
+          "repo": "goat-si/goat",
+          "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+          "path": "README.md",
+          "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/README.md",
+          "bytes": 8983,
+          "sha256": "9578dc5cb232bcefa6d5497ca8c7a33050d712efefc1f1ee03ce3ecf8282aea6",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "goat-si/goat",
+          "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+          "path": "docs/internals/resource-telemetry.md",
+          "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/docs/internals/resource-telemetry.md",
+          "bytes": 3164,
+          "sha256": "5a1ae94d39243f539dcdc6d87a089ee435bdfd922cba4148505aac6262026fc1",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "goat-si/goat",
+          "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+          "path": "docs/user/fleet-goals.md",
+          "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/docs/user/fleet-goals.md",
+          "bytes": 2905,
+          "sha256": "d9702fabefbbb30b872264459e0411ba7ca132e9a6e86809910e2322dff7f254",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "goat-si/goat",
+          "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+          "path": "apps/web/src/components/fleet/FleetConsole.tsx",
+          "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/apps/web/src/components/fleet/FleetConsole.tsx",
+          "bytes": 21862,
+          "sha256": "90d8696ad60245a1221359bb8e836d017fe1745e5d499210c725afce6905ffe4",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "goat-si/goat",
+          "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+          "path": "apps/web/src/components/fleet/fleetTelemetry.ts",
+          "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/apps/web/src/components/fleet/fleetTelemetry.ts",
+          "bytes": 20660,
+          "sha256": "d93ae447ec6fc7b42d6e890de9a737ca65a33ec50c9d81fc22517d06b2692d69",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "goat-si/goat",
+          "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+          "path": "apps/server/src/fleet/goals/GoalController.ts",
+          "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/apps/server/src/fleet/goals/GoalController.ts",
+          "bytes": 33320,
+          "sha256": "e13191e3913caa31d58f78825136033ce8eb708ae953344d14ffa8c5527c4424",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "goat-si/goat",
+          "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+          "path": "apps/server/src/fleet/goals/GoalWorkerRuntime.ts",
+          "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/apps/server/src/fleet/goals/GoalWorkerRuntime.ts",
+          "bytes": 21331,
+          "sha256": "43c32b1cf11299b5a27dbe48945430ff8f9f985dc228f95a5753aff7f9f7fd5b",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "goat-si/goat",
+          "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+          "path": "apps/server/src/fleet/health/Rescheduler.ts",
+          "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/apps/server/src/fleet/health/Rescheduler.ts",
+          "bytes": 19911,
+          "sha256": "4f257a9d328f4df466c81b35ca9ba6201fc0e3db209d891a6a32fb6909f76179",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "goat-si/goat",
+          "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+          "path": "apps/server/src/fleet/resources/Placement.ts",
+          "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/apps/server/src/fleet/resources/Placement.ts",
+          "bytes": 6674,
+          "sha256": "73fb22a4e0980a3c47295fb342fdac589465326e485dee0f54a09eb2544cf8fd",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "goat-si/goat",
+          "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+          "path": "packages/contracts/src/resourceTelemetry.ts",
+          "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/packages/contracts/src/resourceTelemetry.ts",
+          "bytes": 18751,
+          "sha256": "f0befa58f9ba3e41d202c5d230ca0f3d182120c2c7c2a8f9c1a34bfd6daf5fc7",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "goat-si/goat",
+          "sha": "8d743bbc36f5b85348c4af6025bb814ef850d3cf",
+          "path": "apps/server/src/fleet/goals/GoalStore.ts",
+          "url": "https://github.com/goat-si/goat/blob/8d743bbc36f5b85348c4af6025bb814ef850d3cf/apps/server/src/fleet/goals/GoalStore.ts",
+          "bytes": 29400,
+          "sha256": "d8d16da54638dde2c42bcda30d0ca41659ed185fa843b3e130f7ebaa83edd890",
+          "snapshot": "default-head"
+        },
+        {
+          "repo": "goat-si/goat",
+          "sha": "fa83f4fd56d7d247c1d976a5f787294fbe5c4037",
+          "path": "apps/web/src/state/fleetHostMetrics.ts",
+          "url": "https://github.com/goat-si/goat/blob/fa83f4fd56d7d247c1d976a5f787294fbe5c4037/apps/web/src/state/fleetHostMetrics.ts",
+          "bytes": 6208,
+          "sha256": "469eac3a8ce477757b536ae31cacf07f1b84ffd980953e80397b7c835cc72456",
+          "snapshot": "merged-dev-only"
+        }
+      ],
+      "primary_channel": {
+        "kind": "nightly",
+        "tag": "v0.1.1-nightly.20261020.205",
+        "sha": "1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+        "published_at": "2026-10-20T13:33:47Z",
+        "url": "https://github.com/goat-si/goat-releases/releases/tag/v0.1.1-nightly.20261020.205"
+      },
+      "build_inclusion": [
+        {
+          "number": 470,
+          "merge_sha": "8cba4228f6ce2bcea632e85a381f10fc513f07ff",
+          "build_sha": "1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/goat-si/goat/compare/8cba4228f6ce2bcea632e85a381f10fc513f07ff...1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+          "merge_base_sha": "8cba4228f6ce2bcea632e85a381f10fc513f07ff",
+          "error": null
+        },
+        {
+          "number": 553,
+          "merge_sha": "73f6f038bdc3e5f00f2ac6e7d59b4582face8228",
+          "build_sha": "1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/goat-si/goat/compare/73f6f038bdc3e5f00f2ac6e7d59b4582face8228...1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+          "merge_base_sha": "73f6f038bdc3e5f00f2ac6e7d59b4582face8228",
+          "error": null
+        },
+        {
+          "number": 576,
+          "merge_sha": "d68e5e1bb90be599f4aa651a012424e1a2a52d78",
+          "build_sha": "1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/goat-si/goat/compare/d68e5e1bb90be599f4aa651a012424e1a2a52d78...1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+          "merge_base_sha": "d68e5e1bb90be599f4aa651a012424e1a2a52d78",
+          "error": null
+        },
+        {
+          "number": 673,
+          "merge_sha": "fa83f4fd56d7d247c1d976a5f787294fbe5c4037",
+          "build_sha": "1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+          "status": "behind",
+          "included": false,
+          "compare_url": "https://github.com/goat-si/goat/compare/fa83f4fd56d7d247c1d976a5f787294fbe5c4037...1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+          "merge_base_sha": "1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+          "error": null
+        },
+        {
+          "number": 569,
+          "merge_sha": "a1dba6c40770be5e84128caa773359b418ddc13f",
+          "build_sha": "1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/goat-si/goat/compare/a1dba6c40770be5e84128caa773359b418ddc13f...1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+          "merge_base_sha": "a1dba6c40770be5e84128caa773359b418ddc13f",
+          "error": null
+        },
+        {
+          "number": 545,
+          "merge_sha": "a4e9da828395388752e44796a152c8ef0e06e127",
+          "build_sha": "1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+          "status": "ahead",
+          "included": true,
+          "compare_url": "https://github.com/goat-si/goat/compare/a4e9da828395388752e44796a152c8ef0e06e127...1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+          "merge_base_sha": "a4e9da828395388752e44796a152c8ef0e06e127",
+          "error": null
+        }
+      ],
+      "primary_build_sources": [
+        {
+          "repo": "goat-si/goat",
+          "sha": "1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+          "path": "apps/web/src/components/fleet/fleetTelemetry.ts",
+          "url": "https://github.com/goat-si/goat/blob/1c2231239a1f1d14b4d52d32afa60a51467c3c64/apps/web/src/components/fleet/fleetTelemetry.ts",
+          "bytes": 20660,
+          "sha256": "d93ae447ec6fc7b42d6e890de9a737ca65a33ec50c9d81fc22517d06b2692d69",
+          "snapshot": "primary-build"
+        },
+        {
+          "repo": "goat-si/goat",
+          "sha": "1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+          "path": "apps/server/src/fleet/goals/GoalController.ts",
+          "url": "https://github.com/goat-si/goat/blob/1c2231239a1f1d14b4d52d32afa60a51467c3c64/apps/server/src/fleet/goals/GoalController.ts",
+          "bytes": 33320,
+          "sha256": "e13191e3913caa31d58f78825136033ce8eb708ae953344d14ffa8c5527c4424",
+          "snapshot": "primary-build"
+        },
+        {
+          "repo": "goat-si/goat",
+          "sha": "1c2231239a1f1d14b4d52d32afa60a51467c3c64",
+          "path": "apps/server/src/fleet/goals/GoalWorkerRuntime.ts",
+          "url": "https://github.com/goat-si/goat/blob/1c2231239a1f1d14b4d52d32afa60a51467c3c64/apps/server/src/fleet/goals/GoalWorkerRuntime.ts",
+          "bytes": 21331,
+          "sha256": "43c32b1cf11299b5a27dbe48945430ff8f9f985dc228f95a5753aff7f9f7fd5b",
+          "snapshot": "primary-build"
+        }
+      ],
+      "primary_verdict": "Latest official nightly source 1c2231239a1f1d14b4d52d32afa60a51467c3c64 includes Fleet console, goal controller, local-only/usage-reset guard, placement and provider-start cleanup. It excludes 21 October slow-host isolation #673, which exists on dev. The sampled/stale telemetry and local goal-controller capability count in the primary nightly verdict."
+    }
+  ],
+  "pinned_source_file_count": 74,
+  "goat_identity_evidence": [
+    "goat-tweet.json",
+    "goat-repo-lookup.json",
+    "goat-si__goat/source/README.md",
+    "lidge-jun__opencodex/merged-dev-source/src/quota-pool/contract.ts"
+  ]
+}
