@@ -1,4 +1,4 @@
-import { type ChangeEvent, type KeyboardEvent, useRef, useState } from "react";
+import { type ChangeEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 
 export type CommitOnBlurOptions = {
   /**
@@ -36,6 +36,22 @@ export function useCommitOnBlur<
 >(value: string, onCommit: (next: string) => void, options: CommitOnBlurOptions = {}) {
   const [draft, setDraft] = useState<string | null>(null);
   const beganEdit = useRef(false);
+  const discardEdit = useRef(options.onDiscardEdit);
+
+  useEffect(() => {
+    discardEdit.current = options.onDiscardEdit;
+  }, [options.onDiscardEdit]);
+
+  // Navigating away can unmount a focused field without a blur. Its buffered
+  // text is gone, so the owner must not keep claiming an edit it no longer has.
+  useEffect(
+    () => () => {
+      if (!beganEdit.current) return;
+      beganEdit.current = false;
+      discardEdit.current?.();
+    },
+    [],
+  );
 
   return {
     value: draft ?? value,
