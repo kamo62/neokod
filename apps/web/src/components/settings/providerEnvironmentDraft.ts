@@ -82,8 +82,16 @@ export function reconcileEnvironmentRows(
         : storedSecretNames.has(name)
           ? name
           : undefined;
+    // A row without a stored link keeps its pristine shape unless it
+    // previously claimed a redacted value. A blank row must not gain
+    // `valueRedacted: false`, which publishableEnvironment treats as a
+    // property-defined non-pristine row and rejects.
     const valueRedacted =
-      storedName !== undefined && row.value === "" && row.sensitive && name === storedName;
+      storedName === undefined
+        ? row.valueRedacted === undefined
+          ? undefined
+          : false
+        : row.value === "" && row.sensitive && name === storedName;
     const storedUnchanged =
       storedName === undefined ? row.stored === undefined : row.stored?.name === storedName;
 
@@ -94,7 +102,7 @@ export function reconcileEnvironmentRows(
     return {
       ...rest,
       ...(storedName !== undefined ? { stored: { name: storedName } } : {}),
-      valueRedacted,
+      ...(valueRedacted !== undefined ? { valueRedacted } : {}),
     };
   });
 

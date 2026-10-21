@@ -15,7 +15,6 @@ import {
   DEFAULT_SERVER_SETTINGS,
   type EnvironmentId,
   ServerSettings,
-  ServerSettingsMutationId,
   type ServerSettingsPatch,
 } from "@neokod/contracts";
 import {
@@ -32,6 +31,7 @@ import { primaryServerSettingsAtom, serverEnvironment } from "~/state/server";
 import { usePrimaryEnvironment } from "~/state/environments";
 import { useAtomCommand } from "~/state/use-atom-command";
 import {
+  prepareServerSettingsMutation,
   projectServerSettingsAcknowledgement,
   selectAuthoritativeServerSettings,
   type ServerSettingsAcknowledgementProjection,
@@ -429,15 +429,25 @@ function useUpdateSettingsTarget(
       emitSettingsMutationChange(entry);
 
       const operation = entry.queue.then(async () => {
-        const baseSettings = selectAuthoritativeServerSettings(
-          entry.streamedSettings ?? streamedSettings,
-          entry.acknowledgement,
-        );
-        const mutationId = ServerSettingsMutationId.make(
-          `settings:${environmentId}:${baseSettings.revision}:${requestSequence}`,
-        );
+        const preparation = prepareServerSettingsMutation({
+          environmentId,
+          requestSequence,
+          streamedSettings: entry.streamedSettings ?? streamedSettings,
+          acknowledgement: entry.acknowledgement,
+          patch: serverPatch,
+        });
+        const baseRevision =
+          preparation.status === "ready"
+            ? preparation.baseSettings.revision
+            : preparation.baseRevision;
 
         try {
+          if (preparation.status === "rejected") {
+            entry.failure = preparation.reason;
+            entry.failureRevision = baseRevision;
+            return;
+          }
+          const { baseSettings, mutationId } = preparation;
           const result = await persistServerSettings({
             environmentId,
             input: {
@@ -477,7 +487,7 @@ function useUpdateSettingsTarget(
         } catch (failure) {
           entry.failure =
             failure instanceof Error ? failure.message : "Server settings could not be saved.";
-          entry.failureRevision = baseSettings.revision;
+          entry.failureRevision = baseRevision;
         } finally {
           entry.pendingCount = Math.max(0, entry.pendingCount - 1);
           emitSettingsMutationChange(entry);
