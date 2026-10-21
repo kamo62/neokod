@@ -6,6 +6,7 @@ import {
   clearProjectFileQueryData,
   confirmProjectFileQueryData,
   getOptimisticProjectFileQueryData,
+  recordProjectFileContentHash,
   resolveProjectFileQueryData,
   setProjectFileQueryData,
 } from "./projectFilesQueryState";
@@ -47,5 +48,29 @@ describe("project files queries", () => {
     expect(
       confirmProjectFileQueryData(environmentId, "/repo", "convex.json", '{"nodeVersion":"22"}'),
     ).toBe(true);
+  });
+
+  it("keeps the confirmed hash across edits and adopts the next saved hash", () => {
+    vi.stubGlobal("window", {});
+    setProjectFileQueryData(
+      environmentId,
+      "/repo",
+      "convex.json",
+      '{"nodeVersion":"20"}',
+      "hash-from-read",
+    );
+    expect(
+      getOptimisticProjectFileQueryData(environmentId, "/repo", "convex.json")?.contentHash,
+    ).toBe("hash-from-read");
+
+    setProjectFileQueryData(environmentId, "/repo", "convex.json", '{"nodeVersion":"22"}');
+    expect(
+      getOptimisticProjectFileQueryData(environmentId, "/repo", "convex.json")?.contentHash,
+    ).toBe("hash-from-read");
+
+    recordProjectFileContentHash(environmentId, "/repo", "convex.json", "hash-from-save");
+    expect(
+      getOptimisticProjectFileQueryData(environmentId, "/repo", "convex.json")?.contentHash,
+    ).toBe("hash-from-save");
   });
 });

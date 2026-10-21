@@ -1,3 +1,11 @@
+## 3.7.1 - 2026-10-21 (Patch)
+
+Release impact: Patch because this corrects unsafe workspace reads/writes, editor save handling and diff-root selection. This is unreleased dev work; builds and release publication have not been performed.
+
+- Reject non-regular workspace reads without blocking the server, contain writes by canonical path, preserve in-root file symlinks and file modes during atomic replacement, cap UTF-8 writes, and reject invalid UTF-8 without hiding malformed prefixes at the read boundary.
+- Prevent saving truncated previews or replaying acknowledged editor buffers. Conditional content-hash writes preserve external edits and show an explicit Reload/Overwrite conflict flow; confirmed local hashes survive source/rendered editor remounts.
+- Permit diff previews for registered live projects/worktrees while rejecting unregistered roots, and remove the client fallback that could show another repository's diff.
+
 ## 3.7.0 - 2026-10-09 (Minor)
 
 Release impact: Minor because this fixes the Symphony runner and adds an access token to web mode without changing provider or tracker contracts. Upgrade note: `neokod serve` in web mode now always requires an access token, so existing browser sessions will be asked for it once.

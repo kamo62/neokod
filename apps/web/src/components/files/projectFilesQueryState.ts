@@ -45,16 +45,61 @@ export function setProjectFileQueryData(
   cwd: string,
   relativePath: string,
   contents: string,
+  contentHash?: string,
 ): void {
-  appAtomRegistry.set(optimisticFileAtom(environmentId, cwd, relativePath), {
+  const atom = optimisticFileAtom(environmentId, cwd, relativePath);
+  // The hash belongs to the last confirmed disk content, not to the edited
+  // buffer, so carry it forward until a save confirms a new baseline.
+  const nextContentHash = contentHash ?? appAtomRegistry.get(atom)?.data.contentHash;
+  appAtomRegistry.set(atom, {
     confirmedAgainst: undefined,
     data: {
       relativePath,
       contents,
       byteLength: new TextEncoder().encode(contents).byteLength,
       truncated: false,
+      ...(nextContentHash === undefined ? {} : { contentHash: nextContentHash }),
     },
   });
+}
+
+/** Records the hash returned by a confirmed write against the optimistic buffer. */
+export function recordProjectFileContentHash(
+  environmentId: EnvironmentId,
+  cwd: string,
+  relativePath: string,
+  contentHash: string,
+): void {
+  const atom = optimisticFileAtom(environmentId, cwd, relativePath);
+  const optimisticFile = appAtomRegistry.get(atom);
+  if (optimisticFile === null || optimisticFile === undefined) return;
+  if (optimisticFile.data.contentHash === contentHash) return;
+  appAtomRegistry.set(atom, {
+    ...optimisticFile,
+    data: { ...optimisticFile.data, contentHash },
+  });
+}
+
+/**
+ * Drops the optimistic buffer, re-reads the file from disk and returns the
+ * authoritative read so callers can remount editors on a fresh hash.
+ */
+export async function reloadProjectFileQueryData(
+  environmentId: EnvironmentId,
+  cwd: string,
+  relativePath: string,
+): Promise<ProjectReadFileResult | null> {
+  const queryAtom = getProjectFileQueryAtom(environmentId, cwd, relativePath);
+  appAtomRegistry.refresh(queryAtom);
+  const result = await executeAtomQuery(appAtomRegistry, queryAtom, {
+    reportDefect: false,
+    reportFailure: false,
+  });
+  // Only discard the local buffer after the disk read succeeded; a failed
+  // reload keeps the unsaved edits available for Retry or Overwrite.
+  if (result._tag !== "Success") return null;
+  clearProjectFileQueryData(environmentId, cwd, relativePath);
+  return result.value;
 }
 
 export function getOptimisticProjectFileQueryData(

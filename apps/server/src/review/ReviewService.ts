@@ -14,6 +14,8 @@ import {
 } from "@neokod/contracts";
 
 import * as ServerConfig from "../config.ts";
+import { ProjectionProjectRepository } from "../persistence/Services/ProjectionProjects.ts";
+import { ProjectionThreadRepository } from "../persistence/Services/ProjectionThreads.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 
@@ -32,6 +34,8 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const vcsRegistry = yield* VcsDriverRegistry.VcsDriverRegistry;
   const git = yield* GitVcsDriver.GitVcsDriver;
+  const projects = yield* ProjectionProjectRepository;
+  const threads = yield* ProjectionThreadRepository;
 
   const canonicalizePath = (value: string) => {
     const resolvedPath = path.resolve(value);
@@ -57,6 +61,35 @@ export const make = Effect.gen(function* () {
     return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
   };
 
+  const registeredRoots = (cwd: string) =>
+    Effect.gen(function* () {
+      const rows = yield* projects.listAll();
+      const live = rows.filter((project) => project.deletedAt === null);
+      const worktrees = yield* Effect.forEach(
+        live,
+        (project) => threads.listByProjectId({ projectId: project.projectId }),
+        { concurrency: 1 },
+      );
+      return [
+        ...live.map((project) => project.workspaceRoot),
+        ...worktrees
+          .flat()
+          .flatMap((thread) =>
+            thread.deletedAt === null && thread.worktreePath !== null ? [thread.worktreePath] : [],
+          ),
+      ];
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new VcsRepositoryDetectionError({
+            operation: "ReviewService.assertWorkspaceBoundCwd.registeredRoots",
+            cwd,
+            detail: "Failed to read registered project roots.",
+            cause,
+          }),
+      ),
+    );
+
   const assertWorkspaceBoundCwd = Effect.fn("ReviewService.assertWorkspaceBoundCwd")(function* (
     cwd: string,
   ) {
@@ -70,10 +103,17 @@ export const make = Effect.gen(function* () {
       return;
     }
 
+    const roots = yield* registeredRoots(cwd);
+    const canonicalRoots = yield* Effect.forEach(roots, canonicalizePath, { concurrency: 1 });
+    if (canonicalRoots.some((root) => isWithinRoot(candidate, root))) {
+      return;
+    }
+
     return yield* new VcsRepositoryDetectionError({
       operation: "ReviewService.getDiffPreview",
       cwd,
-      detail: "Review diff preview cwd must stay within the configured workspace root.",
+      detail:
+        "Review diff preview cwd must be inside the server workspace, a registered project or one of its worktrees.",
     });
   });
 

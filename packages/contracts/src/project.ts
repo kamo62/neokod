@@ -127,6 +127,8 @@ export const ProjectReadFileResult = Schema.Struct({
   contents: Schema.String,
   byteLength: NonNegativeInt,
   truncated: Schema.Boolean,
+  /** sha256 hex of the full file bytes; absent when the read was truncated. */
+  contentHash: Schema.optional(Schema.String),
 });
 export type ProjectReadFileResult = typeof ProjectReadFileResult.Type;
 
@@ -135,6 +137,8 @@ export const ProjectFileFailure = Schema.Literals([
   "resolved_path_outside_root",
   "path_not_file",
   "binary_file",
+  "file_too_large",
+  "file_changed_on_disk",
   "operation_failed",
 ]);
 export type ProjectFileFailure = typeof ProjectFileFailure.Type;
@@ -191,11 +195,15 @@ export const ProjectWriteFileInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   relativePath: TrimmedNonEmptyString.check(Schema.isMaxLength(PROJECT_WRITE_FILE_PATH_MAX_LENGTH)),
   contents: Schema.String,
+  /** When present, the write is refused if the disk content hash differs. */
+  expectedHash: Schema.optional(Schema.String),
 });
 export type ProjectWriteFileInput = typeof ProjectWriteFileInput.Type;
 
 export const ProjectWriteFileResult = Schema.Struct({
   relativePath: TrimmedNonEmptyString,
+  /** sha256 hex of the UTF-8 bytes just written. */
+  contentHash: Schema.optional(Schema.String),
 });
 export type ProjectWriteFileResult = typeof ProjectWriteFileResult.Type;
 

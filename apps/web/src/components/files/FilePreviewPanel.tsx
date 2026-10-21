@@ -25,6 +25,7 @@ import { resolveDiffThemeName } from "~/lib/diffRendering";
 import { cn } from "~/lib/utils";
 import { isPreviewSupportedInRuntime } from "~/previewStateStore";
 import { resolvePathLinkTarget } from "~/terminal-links";
+import { Button } from "~/components/ui/button";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Toggle } from "~/components/ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
@@ -52,11 +53,13 @@ import { installFileEditorDismissal } from "./fileEditorDismissal";
 import { LocalCommentAnnotation } from "./LocalCommentAnnotation";
 import { projectFileCacheKey } from "./fileContentRevision";
 import { fileBreadcrumbs } from "./filePath";
-import { isMarkdownPreviewFile, setMarkdownTaskChecked } from "./filePreviewMode";
-import { FileSaveCoordinator } from "./fileSaveCoordinator";
+import { decideMarkdownTaskToggle, isMarkdownPreviewFile } from "./filePreviewMode";
+import { FileSaveBaseline, FileSaveCoordinator, isFileChangedOnDisk } from "./fileSaveCoordinator";
 import {
   confirmProjectFileQueryData,
   getOptimisticProjectFileQueryData,
+  recordProjectFileContentHash,
+  reloadProjectFileQueryData,
   setProjectFileQueryData,
   useProjectFileQuery,
 } from "./projectFilesQueryState";
@@ -247,11 +250,16 @@ interface EditableFileSurfaceProps {
   relativePath: string;
   composerDraftTarget: ScopedThreadRef | DraftId;
   contents: string;
+  baseline: FileSaveBaseline;
+  conflicted: boolean;
   resolvedTheme: "light" | "dark";
   revealRequestId: number;
   wordWrap: boolean;
   onPostRender: FilePostRender;
   onPendingChange: (relativePath: string, pending: boolean) => void;
+  onConflict: () => void;
+  onConflictResolved: () => void;
+  onReloadFile: (relativePath: string) => void;
 }
 
 interface FileSelectionOverride {
@@ -264,30 +272,96 @@ function useFileSaveCoordinator({
   cwd,
   relativePath,
   onPendingChange,
+  onConflict,
+  writable,
+  baseline,
+  conflicted,
 }: Pick<
   EditableFileSurfaceProps,
-  "environmentId" | "cwd" | "relativePath" | "onPendingChange"
->): FileSaveCoordinator {
+  "environmentId" | "cwd" | "relativePath" | "onPendingChange" | "onConflict"
+> & {
+  writable: boolean;
+  baseline: FileSaveBaseline;
+  conflicted: boolean;
+}) {
   const writeFile = useAtomCommand(projectEnvironment.writeFile);
+  const writableRef = useRef(writable);
+  writableRef.current = writable;
+  const conflictedRef = useRef(conflicted);
+  conflictedRef.current = conflicted;
   const coordinator = useMemo(
     () =>
       new FileSaveCoordinator({
         debounceMs: FILE_SAVE_DEBOUNCE_MS,
         onPendingChange: (pending) => onPendingChange(relativePath, pending),
+        canWrite: () => writableRef.current,
+        initiallyConflicted: conflictedRef.current,
+        isConflict: isFileChangedOnDisk,
+        onConflict,
         persist: (nextContents) =>
-          writeFile({
-            environmentId,
-            input: { cwd, relativePath, contents: nextContents },
+          baseline.persist(nextContents, {
+            write: ({ contents, expectedHash }) =>
+              writeFile({
+                environmentId,
+                input: {
+                  cwd,
+                  relativePath,
+                  contents,
+                  ...(expectedHash === undefined ? {} : { expectedHash }),
+                },
+              }),
+            confirmedHash: (value) => value.contentHash,
+            onConfirmedHash: (contentHash) =>
+              recordProjectFileContentHash(environmentId, cwd, relativePath, contentHash),
           }),
         onConfirmed: (confirmedContents) => {
           confirmProjectFileQueryData(environmentId, cwd, relativePath, confirmedContents);
         },
       }),
-    [cwd, environmentId, onPendingChange, relativePath, writeFile],
+    [baseline, cwd, environmentId, onConflict, onPendingChange, relativePath, writeFile],
   );
 
+  useEffect(() => {
+    if (conflicted) coordinator.markConflicted();
+  }, [conflicted, coordinator]);
   useEffect(() => () => coordinator.dispose(), [coordinator]);
-  return coordinator;
+
+  const getExpectedHash = useCallback(() => baseline.expectedHash, [baseline]);
+  const overwrite = useCallback(
+    (contents: string) => {
+      // Only an explicit Overwrite may drop the precondition. The caller passes
+      // the current buffer, so the unconditional write targets what is shown.
+      baseline.clear();
+      coordinator.resolveConflict();
+      coordinator.change(contents);
+    },
+    [baseline, coordinator],
+  );
+
+  return useMemo(
+    () => ({ coordinator, getExpectedHash, overwrite }),
+    [coordinator, getExpectedHash, overwrite],
+  );
+}
+
+function FileConflictBanner({
+  onReload,
+  onOverwrite,
+}: {
+  onReload: () => void;
+  onOverwrite: () => void;
+}) {
+  return (
+    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-warning/20 bg-warning/8 px-3 py-1.5 text-[11px] text-warning-foreground">
+      <span className="min-w-0 flex-1">This file changed on disk. Your edits are not saved.</span>
+      <Button size="xs" variant="outline" onClick={onReload}>
+        Reload from disk
+      </Button>
+      <Button size="xs" variant="destructive-outline" onClick={onOverwrite}>
+        Overwrite
+      </Button>
+    </div>
+  );
 }
 
 function EditableFileSurface({
@@ -296,11 +370,16 @@ function EditableFileSurface({
   relativePath,
   composerDraftTarget,
   contents,
+  baseline,
+  conflicted,
   resolvedTheme,
   revealRequestId,
   wordWrap,
   onPostRender,
   onPendingChange,
+  onConflict,
+  onConflictResolved,
+  onReloadFile,
 }: EditableFileSurfaceProps) {
   const addReviewComment = useComposerDraftStore((store) => store.addReviewComment);
   const removeReviewComment = useComposerDraftStore((store) => store.removeReviewComment);
@@ -321,13 +400,30 @@ function EditableFileSurface({
     cwd,
     relativePath,
     onPendingChange,
+    onConflict,
+    writable: true,
+    baseline,
+    conflicted,
   });
+  const handleReload = useCallback(() => onReloadFile(relativePath), [onReloadFile, relativePath]);
+  const handleOverwrite = useCallback(() => {
+    const latestContents =
+      getOptimisticProjectFileQueryData(environmentId, cwd, relativePath)?.contents ?? contents;
+    saveCoordinator.overwrite(latestContents);
+    onConflictResolved();
+  }, [contents, cwd, environmentId, onConflictResolved, relativePath, saveCoordinator]);
   const editor = useMemo(
     () =>
       new Editor<FileCommentAnnotationGroup>({
         onChange: (file, nextLineAnnotations) => {
-          setProjectFileQueryData(environmentId, cwd, relativePath, file.contents);
-          saveCoordinator.change(file.contents);
+          setProjectFileQueryData(
+            environmentId,
+            cwd,
+            relativePath,
+            file.contents,
+            saveCoordinator.getExpectedHash(),
+          );
+          saveCoordinator.coordinator.change(file.contents);
           if (nextLineAnnotations) {
             const remapped = remapFileCommentAnnotations(
               nextLineAnnotations as FileCommentLineAnnotation[],
@@ -497,57 +593,62 @@ function EditableFileSurface({
   );
 
   return (
-    <EditorProvider editor={editor}>
-      <div ref={surfaceRef} className="flex min-h-0 flex-1">
-        <Virtualizer
-          className="file-preview-virtualizer min-h-0 flex-1 overflow-auto"
-          config={{
-            overscrollSize: 600,
-            intersectionObserverMargin: 1200,
-          }}
-        >
-          <File<FileCommentAnnotationGroup>
-            file={{
-              name: relativePath,
-              contents,
-              cacheKey: projectFileCacheKey(cwd, relativePath, contents),
+    <div className="flex min-h-0 flex-1 flex-col">
+      {conflicted ? (
+        <FileConflictBanner onReload={handleReload} onOverwrite={handleOverwrite} />
+      ) : null}
+      <EditorProvider editor={editor}>
+        <div ref={surfaceRef} className="flex min-h-0 flex-1">
+          <Virtualizer
+            className="file-preview-virtualizer min-h-0 flex-1 overflow-auto"
+            config={{
+              overscrollSize: 600,
+              intersectionObserverMargin: 1200,
             }}
-            options={{
-              disableFileHeader: true,
-              enableGutterUtility: !hasOpenCommentForm,
-              enableLineSelection: !hasOpenCommentForm,
-              onGutterUtilityClick: setSelectedRange,
-              onLineSelectionChange: setSelectedRange,
-              onLineSelectionEnd: handleLineSelectionEnd,
-              overflow: wordWrap ? "wrap" : "scroll",
-              theme: resolveDiffThemeName(resolvedTheme),
-              themeType: resolvedTheme,
-              unsafeCSS: FILE_LINK_REVEAL_UNSAFE_CSS,
-              onPostRender: handlePostRender,
-            }}
-            selectedLines={selectedRange}
-            lineAnnotations={lineAnnotations}
-            renderAnnotation={(annotation) => (
-              <div className="py-1">
-                {annotation.metadata.entries.map((entry) => (
-                  <LocalCommentAnnotation
-                    key={entry.id}
-                    kind={entry.kind}
-                    rangeLabel={formatFileCommentRange(entry.startLine, entry.endLine)}
-                    text={entry.text}
-                    onCancel={() => removeAnnotationEntry(entry.id)}
-                    onComment={(text) => submitAnnotationEntry(entry.id, text)}
-                    onDelete={() => removeAnnotationEntry(entry.id)}
-                  />
-                ))}
-              </div>
-            )}
-            className="min-h-full"
-            contentEditable
-          />
-        </Virtualizer>
-      </div>
-    </EditorProvider>
+          >
+            <File<FileCommentAnnotationGroup>
+              file={{
+                name: relativePath,
+                contents,
+                cacheKey: projectFileCacheKey(cwd, relativePath, contents),
+              }}
+              options={{
+                disableFileHeader: true,
+                enableGutterUtility: !hasOpenCommentForm,
+                enableLineSelection: !hasOpenCommentForm,
+                onGutterUtilityClick: setSelectedRange,
+                onLineSelectionChange: setSelectedRange,
+                onLineSelectionEnd: handleLineSelectionEnd,
+                overflow: wordWrap ? "wrap" : "scroll",
+                theme: resolveDiffThemeName(resolvedTheme),
+                themeType: resolvedTheme,
+                unsafeCSS: FILE_LINK_REVEAL_UNSAFE_CSS,
+                onPostRender: handlePostRender,
+              }}
+              selectedLines={selectedRange}
+              lineAnnotations={lineAnnotations}
+              renderAnnotation={(annotation) => (
+                <div className="py-1">
+                  {annotation.metadata.entries.map((entry) => (
+                    <LocalCommentAnnotation
+                      key={entry.id}
+                      kind={entry.kind}
+                      rangeLabel={formatFileCommentRange(entry.startLine, entry.endLine)}
+                      text={entry.text}
+                      onCancel={() => removeAnnotationEntry(entry.id)}
+                      onComment={(text) => submitAnnotationEntry(entry.id, text)}
+                      onDelete={() => removeAnnotationEntry(entry.id)}
+                    />
+                  ))}
+                </div>
+              )}
+              className="min-h-full"
+              contentEditable
+            />
+          </Virtualizer>
+        </div>
+      </EditorProvider>
+    </div>
   );
 }
 
@@ -556,8 +657,14 @@ function RenderedMarkdownSurface({
   cwd,
   relativePath,
   contents,
+  baseline,
+  conflicted,
   threadRef,
   onPendingChange,
+  onConflict,
+  onConflictResolved,
+  onReloadFile,
+  truncated,
 }: Omit<
   EditableFileSurfaceProps,
   | "resolvedTheme"
@@ -568,32 +675,68 @@ function RenderedMarkdownSurface({
   | "onPostRender"
 > & {
   threadRef: ScopedThreadRef;
+  truncated: boolean;
 }) {
   const saveCoordinator = useFileSaveCoordinator({
     environmentId,
     cwd,
     relativePath,
     onPendingChange,
+    onConflict,
+    writable: !truncated,
+    baseline,
+    conflicted,
   });
 
+  const handleReload = useCallback(() => onReloadFile(relativePath), [onReloadFile, relativePath]);
+  const handleOverwrite = useCallback(() => {
+    const latestContents =
+      getOptimisticProjectFileQueryData(environmentId, cwd, relativePath)?.contents ?? contents;
+    saveCoordinator.overwrite(latestContents);
+    onConflictResolved();
+  }, [contents, cwd, environmentId, onConflictResolved, relativePath, saveCoordinator]);
+
+  const handleTaskListChange = ({
+    markerOffset,
+    checked,
+  }: {
+    markerOffset: number;
+    checked: boolean;
+  }) => {
+    const currentContents =
+      getOptimisticProjectFileQueryData(environmentId, cwd, relativePath)?.contents ?? contents;
+    const decision = decideMarkdownTaskToggle({
+      truncated,
+      currentContents,
+      markerOffset,
+      checked,
+    });
+    if (decision.kind !== "write") return;
+    setProjectFileQueryData(
+      environmentId,
+      cwd,
+      relativePath,
+      decision.contents,
+      saveCoordinator.getExpectedHash(),
+    );
+    saveCoordinator.coordinator.change(decision.contents);
+  };
+
   return (
-    <ScrollArea className="min-h-0 flex-1">
-      <ChatMarkdown
-        text={contents}
-        cwd={cwd}
-        threadRef={threadRef}
-        className="mx-auto max-w-4xl px-6 py-5"
-        onTaskListChange={({ markerOffset, checked }) => {
-          const currentContents =
-            getOptimisticProjectFileQueryData(environmentId, cwd, relativePath)?.contents ??
-            contents;
-          const nextContents = setMarkdownTaskChecked(currentContents, markerOffset, checked);
-          if (nextContents === currentContents) return;
-          setProjectFileQueryData(environmentId, cwd, relativePath, nextContents);
-          saveCoordinator.change(nextContents);
-        }}
-      />
-    </ScrollArea>
+    <div className="flex min-h-0 flex-1 flex-col">
+      {conflicted ? (
+        <FileConflictBanner onReload={handleReload} onOverwrite={handleOverwrite} />
+      ) : null}
+      <ScrollArea className="min-h-0 flex-1">
+        <ChatMarkdown
+          text={contents}
+          cwd={cwd}
+          threadRef={threadRef}
+          className="mx-auto max-w-4xl px-6 py-5"
+          onTaskListChange={truncated ? undefined : handleTaskListChange}
+        />
+      </ScrollArea>
+    </div>
   );
 }
 
@@ -631,11 +774,57 @@ export default function FilePreviewPanel({
     reportFailure: false,
   });
   const file = useProjectFileQuery(environmentId, cwd, relativePath);
+  // One baseline per open file, owned above the editor surfaces so a
+  // source/rendered remount keeps a save acknowledgement from the old surface.
+  const saveBaselineKey = JSON.stringify([environmentId, cwd, relativePath]);
+  const saveBaselineRef = useRef<{ key: string; baseline: FileSaveBaseline } | null>(null);
+  if (saveBaselineRef.current?.key !== saveBaselineKey) {
+    saveBaselineRef.current = {
+      key: saveBaselineKey,
+      baseline: new FileSaveBaseline(relativePath === null ? undefined : file.data?.contentHash),
+    };
+  }
+  const saveBaseline = saveBaselineRef.current.baseline;
+  if (relativePath !== null) saveBaseline.adoptInitialHash(file.data?.contentHash);
   const [explorerOpen, setExplorerOpen] = useState(initialExplorerOpen);
   const [markdownView, setMarkdownView] = useState<{
     path: string | null;
     revealRequestId: number | null;
   }>({ path: null, revealRequestId: null });
+  const [conflictPath, setConflictPath] = useState<string | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const handleConflict = useCallback(() => {
+    if (relativePath) setConflictPath(relativePath);
+  }, [relativePath]);
+  const handleConflictResolved = useCallback(() => {
+    setConflictPath((current) => (current === relativePath ? null : current));
+  }, [relativePath]);
+  const handleReloadFile = useCallback(
+    (path: string) => {
+      void (async () => {
+        const data = await reloadProjectFileQueryData(environmentId, cwd, path);
+        // Keep the conflict banner when the reload itself fails; the local
+        // edits remain unsaved and the next write must still be refused.
+        if (data === null) return;
+        setConflictPath((current) => (current === path ? null : current));
+        // Reload discards the local buffer, so it is no longer pending.
+        onPendingChange(path, false);
+        // Explicit reload adopts the disk hash as the new baseline. Replace the
+        // owner so an acknowledgement from an old surface cannot overwrite it.
+        const reloadedKey = JSON.stringify([environmentId, cwd, path]);
+        if (saveBaselineRef.current?.key === reloadedKey) {
+          saveBaselineRef.current = {
+            key: reloadedKey,
+            baseline: new FileSaveBaseline(data.contentHash),
+          };
+        }
+        // Remount the surface only once the authoritative read (and its hash)
+        // is available, so the new editor cannot adopt a stale baseline.
+        setReloadNonce((current) => current + 1);
+      })();
+    },
+    [cwd, environmentId, onPendingChange],
+  );
   const breadcrumbRef = useRef<HTMLDivElement>(null);
   const isMarkdown = relativePath ? isMarkdownPreviewFile(relativePath) : false;
   const renderMarkdown =
@@ -809,6 +998,7 @@ export default function FilePreviewPanel({
       {relativePath && file.data?.truncated ? (
         <div className="shrink-0 border-b border-warning/20 bg-warning/8 px-3 py-1.5 text-[11px] text-warning-foreground">
           Preview limited to the first 1 MB of a {file.data.byteLength.toLocaleString()} byte file.
+          {isMarkdown && renderMarkdown ? " Task checkboxes are read-only." : null}
         </div>
       ) : null}
       <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -829,12 +1019,19 @@ export default function FilePreviewPanel({
           ) : relativePath && file.data ? (
             isMarkdown && renderMarkdown ? (
               <RenderedMarkdownSurface
+                key={`${relativePath}:${reloadNonce}`}
                 environmentId={environmentId}
                 cwd={cwd}
                 relativePath={relativePath}
                 threadRef={threadRef}
                 contents={file.data.contents}
+                baseline={saveBaseline}
+                conflicted={conflictPath === relativePath}
+                truncated={file.data.truncated}
                 onPendingChange={onPendingChange}
+                onConflict={handleConflict}
+                onConflictResolved={handleConflictResolved}
+                onReloadFile={handleReloadFile}
               />
             ) : file.data.truncated ? (
               <Virtualizer
@@ -864,17 +1061,22 @@ export default function FilePreviewPanel({
               </Virtualizer>
             ) : (
               <EditableFileSurface
-                key={`${relativePath}:${resolvedTheme}`}
+                key={`${relativePath}:${resolvedTheme}:${reloadNonce}`}
                 environmentId={environmentId}
                 cwd={cwd}
                 relativePath={relativePath}
                 composerDraftTarget={composerDraftTarget}
                 contents={file.data.contents}
+                baseline={saveBaseline}
+                conflicted={conflictPath === relativePath}
                 resolvedTheme={resolvedTheme}
                 revealRequestId={revealRequestId}
                 wordWrap={wordWrap}
                 onPostRender={onFilePostRender}
                 onPendingChange={onPendingChange}
+                onConflict={handleConflict}
+                onConflictResolved={handleConflictResolved}
+                onReloadFile={handleReloadFile}
               />
             )
           ) : null}

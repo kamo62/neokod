@@ -5,7 +5,11 @@ import {
   normalizeFileCommentRange,
   remapFileCommentAnnotations,
 } from "./fileCommentAnnotations";
-import { isMarkdownPreviewFile, setMarkdownTaskChecked } from "./filePreviewMode";
+import {
+  decideMarkdownTaskToggle,
+  isMarkdownPreviewFile,
+  setMarkdownTaskChecked,
+} from "./filePreviewMode";
 
 describe("file comment annotations", () => {
   it("normalizes and formats selected line ranges", () => {
@@ -78,5 +82,53 @@ describe("setMarkdownTaskChecked", () => {
   it("leaves the document unchanged for a stale or invalid marker offset", () => {
     expect(setMarkdownTaskChecked(markdown, 0, true)).toBe(markdown);
     expect(setMarkdownTaskChecked(markdown, 200, true)).toBe(markdown);
+  });
+});
+
+describe("decideMarkdownTaskToggle", () => {
+  it("blocks task toggles for truncated Markdown", () => {
+    expect(
+      decideMarkdownTaskToggle({
+        truncated: true,
+        currentContents: "- [ ] A\n",
+        markerOffset: 2,
+        checked: true,
+      }),
+    ).toEqual({ kind: "blocked_truncated" });
+  });
+
+  it("returns changed contents for a writable task toggle", () => {
+    expect(
+      decideMarkdownTaskToggle({
+        truncated: false,
+        currentContents: "- [ ] A\n",
+        markerOffset: 2,
+        checked: true,
+      }),
+    ).toEqual({ kind: "write", contents: "- [x] A\n" });
+  });
+
+  it("does not write when the marker offset is stale", () => {
+    expect(
+      decideMarkdownTaskToggle({
+        truncated: false,
+        currentContents: "- [ ] A\n",
+        markerOffset: 0,
+        checked: true,
+      }),
+    ).toEqual({ kind: "unchanged" });
+  });
+
+  it("never writes a truncated prefix from a file over 1 MB", () => {
+    const currentContents = "- [ ] A\n" + "x".repeat(1_120_000);
+
+    expect(
+      decideMarkdownTaskToggle({
+        truncated: true,
+        currentContents,
+        markerOffset: 2,
+        checked: true,
+      }),
+    ).toEqual({ kind: "blocked_truncated" });
   });
 });

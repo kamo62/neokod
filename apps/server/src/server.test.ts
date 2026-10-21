@@ -99,6 +99,8 @@ import * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
+import { ProjectionProjectRepository } from "./persistence/Services/ProjectionProjects.ts";
+import { ProjectionThreadRepository } from "./persistence/Services/ProjectionThreads.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as ServerSecretStore from "./secrets/ServerSecretStore.ts";
 import * as WslBearerAuth from "./transport/WslBearerAuth.ts";
@@ -504,6 +506,8 @@ const buildAppUnderTest = (options?: {
       : ReviewService.layer.pipe(
           Layer.provideMerge(gitVcsDriverLayer),
           Layer.provide(vcsDriverRegistryLayer),
+          Layer.provide(Layer.mock(ProjectionProjectRepository)({})),
+          Layer.provide(Layer.mock(ProjectionThreadRepository)({})),
         );
     const vcsStatusBroadcasterLayer = options?.layers?.vcsStatusBroadcaster
       ? Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({

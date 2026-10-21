@@ -63,5 +63,25 @@ describe("project RPC errors", () => {
     expect(writeError.message).toBe("Legacy project write failure.");
     expect(writeError.relativePath).toBeUndefined();
     expect(writeError.failure).toBeUndefined();
+
+    const tooLargeWriteError = decodeWriteError({
+      _tag: "ProjectWriteFileError",
+      cwd: "/workspace",
+      relativePath: "big.txt",
+      failure: "file_too_large",
+      message: "Workspace file 'big.txt' is 10485762 bytes, over the 10485760 byte write limit.",
+    });
+    expect(tooLargeWriteError.failure).toBe("file_too_large");
+    expect(tooLargeWriteError.relativePath).toBe("big.txt");
+
+    const changedWriteError = decodeWriteError({
+      _tag: "ProjectWriteFileError",
+      cwd: "/workspace",
+      relativePath: "notes.md",
+      failure: "file_changed_on_disk",
+      message: "Workspace file 'notes.md' changed on disk since it was read.",
+    });
+    expect(changedWriteError.failure).toBe("file_changed_on_disk");
+    expect(changedWriteError.relativePath).toBe("notes.md");
   });
 });
