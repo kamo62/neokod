@@ -34,6 +34,7 @@ import { cn } from "~/lib/utils";
 import {
   getMenuActionDisabledReason,
   resolveConflictBlockReason,
+  resolveOperationInProgressNotice,
   type GitActionIconName,
   type GitActionMenuItem,
   type GitQuickAction,
@@ -1015,6 +1016,11 @@ export default function GitActionsControl({
               {resolveConflictBlockReason(gitStatus) && (
                 <p className="px-2 py-1.5 text-xs text-warning">
                   {resolveConflictBlockReason(gitStatus)}
+                </p>
+              )}
+              {resolveOperationInProgressNotice(gitStatus) && (
+                <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                  {resolveOperationInProgressNotice(gitStatus)}
                 </p>
               )}
               {gitStatus?.refName === null && (

@@ -26,7 +26,12 @@ import { readLocalApi } from "../localApi";
 import { readEnvironmentThreadRefs, readProject, readThreadShell } from "../state/entities";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
-import { planWorktreeCleanup } from "../worktreeCleanup";
+import {
+  finalizeThreadDeletion,
+  planWorktreeCleanup,
+  toWorktreeRemovalState,
+  worktreeStatesEqual,
+} from "../worktreeCleanup";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { useClientSettings } from "./useSettings";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -304,59 +309,123 @@ export function useThreadActions() {
           continue;
         }
 
-        const plan = planWorktreeCleanup(inspectResult.value);
+        let inspection = inspectResult.value;
+        let plan = planWorktreeCleanup(inspection);
         if (plan.kind === "keep") {
           continue;
         }
-        const localApi = readLocalApi();
-        if (!localApi) {
-          continue;
-        }
-        const confirmed = await settlePromise(() => localApi.dialogs.confirm(plan.confirmMessage));
-        if (confirmed._tag === "Failure") {
-          firstFailure ??= asCleanupFailure(confirmed);
-          continue;
-        }
-        if (!confirmed.value) {
-          continue;
-        }
-        if (plan.discardMessage !== null) {
-          const discarded = await settlePromise(() =>
-            localApi.dialogs.confirm(plan.discardMessage!),
-          );
-          if (discarded._tag === "Failure") {
-            firstFailure ??= asCleanupFailure(discarded);
-            continue;
+
+        let removed = false;
+        let removalFailure: WorktreeCleanupFailure | null = null;
+        // A link or commit can appear while the dialogs are open. The server
+        // rejects that stale evidence; re-inspect and ask again once.
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          if (plan.kind !== "prompt") {
+            break;
           }
-          if (!discarded.value) {
-            continue;
+          const promptPlan = plan;
+          const localApi = readLocalApi();
+          if (!localApi) {
+            break;
+          }
+          const confirmed = await settlePromise(() =>
+            localApi.dialogs.confirm(promptPlan.confirmMessage),
+          );
+          if (confirmed._tag === "Failure") {
+            firstFailure ??= asCleanupFailure(confirmed);
+            break;
+          }
+          if (!confirmed.value) {
+            break;
+          }
+          if (promptPlan.discardMessage !== null) {
+            const discarded = await settlePromise(() =>
+              localApi.dialogs.confirm(promptPlan.discardMessage!),
+            );
+            if (discarded._tag === "Failure") {
+              firstFailure ??= asCleanupFailure(discarded);
+              break;
+            }
+            if (!discarded.value) {
+              break;
+            }
+          }
+
+          const removeResult = await removeWorktree({
+            environmentId: candidate.environmentId,
+            input: {
+              cwd: candidate.projectCwd,
+              path: candidate.worktreePath,
+              force: promptPlan.discardMessage !== null,
+              deleteBranch: true,
+              expectedState: toWorktreeRemovalState(inspection),
+            },
+          });
+          if (removeResult._tag === "Success") {
+            removed = true;
+            break;
+          }
+          if (isAtomCommandInterrupted(removeResult)) {
+            removalFailure = asCleanupFailure(removeResult);
+            break;
+          }
+
+          const reinspectResult = await inspectWorktree({
+            environmentId: candidate.environmentId,
+            input: {
+              cwd: candidate.projectCwd,
+              path: candidate.worktreePath,
+              excludeThreadIds: group.map((item) => item.threadId),
+            },
+          });
+          if (reinspectResult._tag !== "Success") {
+            toastManager.add(
+              stackedThreadToast({
+                type: "info",
+                title: "Worktree kept",
+                description: `Could not re-inspect ${candidate.worktreePath}. The worktree was kept.`,
+              }),
+            );
+            removalFailure = asCleanupFailure(removeResult);
+            break;
+          }
+          const nextPlan = planWorktreeCleanup(reinspectResult.value);
+          if (nextPlan.kind === "keep") {
+            toastManager.add(
+              stackedThreadToast({
+                type: "info",
+                title: "Worktree kept",
+                description: `Another thread now uses ${candidate.worktreePath}. The worktree was kept.`,
+              }),
+            );
+            break;
+          }
+          if (
+            worktreeStatesEqual(
+              toWorktreeRemovalState(inspection),
+              toWorktreeRemovalState(reinspectResult.value),
+            )
+          ) {
+            removalFailure = asCleanupFailure(removeResult);
+            break;
+          }
+          inspection = reinspectResult.value;
+          plan = nextPlan;
+          if (attempt === 1) {
+            removalFailure = asCleanupFailure(removeResult);
           }
         }
 
-        const removeResult = await removeWorktree({
-          environmentId: candidate.environmentId,
-          input: {
-            cwd: candidate.projectCwd,
-            path: candidate.worktreePath,
-            force: plan.discardMessage !== null,
-            deleteBranch: true,
-          },
-        });
-        const refreshResult =
-          removeResult._tag === "Success"
-            ? await refreshVcsStatus({
-                environmentId: candidate.environmentId,
-                input: { cwd: candidate.projectCwd },
-              })
-            : null;
-        const cleanupFailure =
-          removeResult._tag === "Failure"
-            ? removeResult
-            : refreshResult?._tag === "Failure"
-              ? refreshResult
-              : null;
-        if (cleanupFailure) {
-          const error = squashAtomCommandFailure(cleanupFailure);
+        if (removed) {
+          const refreshResult = await refreshVcsStatus({
+            environmentId: candidate.environmentId,
+            input: { cwd: candidate.projectCwd },
+          });
+          if (refreshResult._tag === "Failure") {
+            firstFailure ??= asCleanupFailure(refreshResult);
+          }
+        } else if (removalFailure) {
+          const error = squashAtomCommandFailure(removalFailure);
           const message =
             error instanceof Error ? error.message : "Unknown error removing worktree.";
           console.error("Failed to remove orphaned worktree after thread deletion", {
@@ -369,10 +438,10 @@ export function useThreadActions() {
             stackedThreadToast({
               type: "error",
               title: "Thread deleted, but worktree removal failed",
-              description: `Could not remove ${candidate.worktreePath}. ${message}`,
+              description: `The worktree was kept at ${candidate.worktreePath}. ${message}`,
             }),
           );
-          firstFailure ??= asCleanupFailure(cleanupFailure);
+          firstFailure ??= removalFailure;
         }
       }
       return firstFailure;
@@ -490,8 +559,15 @@ export function useThreadActions() {
       if (opts.deferWorktreeCleanup || candidate === null) {
         return deleteResult;
       }
-      const failure = await cleanupWorktrees([candidate]);
-      return failure ?? deleteResult;
+      // The thread is deleted. Cleanup reports its own warning and keeps the
+      // worktree on failure; it must not be reported as a failed deletion.
+      const outcome = await finalizeThreadDeletion({
+        deletion: deleteResult,
+        deletionSucceeded: true,
+        candidates: [candidate],
+        cleanup: cleanupWorktrees,
+      });
+      return outcome.deletion;
     },
     [
       cleanupWorktrees,

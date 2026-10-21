@@ -27,6 +27,7 @@ import {
   ResolvedKeybindingRule,
   ThreadId,
   TurnId,
+  type VcsWorktreeGitState,
   WS_METHODS,
   WsRpcGroup,
   EditorId,
@@ -2408,8 +2409,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 path: "/tmp/wt",
                 exists: false,
                 refName: null,
+                headSha: null,
                 changedFileCount: 0,
                 untrackedFileCount: 0,
+                ignoredFileCount: 0,
                 localOnlyCommitCount: 0,
                 branchReclaimable: false,
               }),
@@ -2537,6 +2540,17 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           client[WS_METHODS.vcsRemoveWorktree]({
             cwd: "/tmp/repo",
             path: "/tmp/wt",
+            expectedState: {
+              path: "/tmp/wt",
+              exists: false,
+              refName: null,
+              headSha: null,
+              changedFileCount: 0,
+              untrackedFileCount: 0,
+              ignoredFileCount: 0,
+              localOnlyCommitCount: 0,
+              branchReclaimable: false,
+            },
           }),
         ),
       );
@@ -2573,6 +2587,152 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         ),
       );
       assert.equal(diffPreview.sources[0]?.diff, "dirty-diff");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("enforces fresh worktree removal evidence at the websocket boundary", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-ws-worktree-removal-" });
+      const realWorktree = path.join(root, "real", "worktree");
+      yield* fs.makeDirectory(realWorktree, { recursive: true });
+      const aliasRoot = path.join(root, "alias");
+      yield* fs.symlink(path.join(root, "real"), aliasRoot);
+
+      const defaultReadModel = makeDefaultOrchestrationReadModel();
+      const aliasedProjectId = ProjectId.make("project-aliased-workspace");
+      const aliasedReadModel = {
+        ...defaultReadModel,
+        projects: [
+          {
+            ...defaultReadModel.projects[0]!,
+            id: aliasedProjectId,
+            workspaceRoot: path.join(aliasRoot, "worktree"),
+          },
+        ],
+        threads: [
+          {
+            ...defaultReadModel.threads[0]!,
+            projectId: aliasedProjectId,
+            worktreePath: null,
+          },
+        ],
+      };
+      let readModel: ReturnType<typeof makeDefaultOrchestrationReadModel> = defaultReadModel;
+      let inspectState: VcsWorktreeGitState = {
+        path: realWorktree,
+        exists: true,
+        refName: "neokod/abcd1234",
+        headSha: "head-b",
+        changedFileCount: 0,
+        untrackedFileCount: 0,
+        ignoredFileCount: 0,
+        localOnlyCommitCount: 0,
+        branchReclaimable: true,
+      };
+      let removeCalls = 0;
+      const removeInputs: Array<
+        Parameters<GitVcsDriver.GitVcsDriver["Service"]["removeWorktree"]>[0]
+      > = [];
+
+      yield* buildAppUnderTest({
+        layers: {
+          gitVcsDriver: {
+            inspectWorktree: () => Effect.succeed(inspectState),
+            removeWorktree: (input) =>
+              Effect.sync(() => {
+                removeCalls += 1;
+                removeInputs.push(input);
+              }),
+          },
+          projectionSnapshotQuery: {
+            getCommandReadModel: () => Effect.succeed(readModel),
+          },
+        },
+      });
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const expectedState: VcsWorktreeGitState = {
+        path: realWorktree,
+        exists: true,
+        refName: "neokod/abcd1234",
+        headSha: "head-b",
+        changedFileCount: 0,
+        untrackedFileCount: 0,
+        ignoredFileCount: 0,
+        localOnlyCommitCount: 0,
+        branchReclaimable: true,
+      };
+      const remove = (overrides: {
+        expectedState?: typeof expectedState | null;
+        force?: boolean;
+      }) =>
+        Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[WS_METHODS.vcsRemoveWorktree]({
+              cwd: root,
+              path: realWorktree,
+              ...(overrides.expectedState === null
+                ? {}
+                : { expectedState: overrides.expectedState ?? expectedState }),
+              ...(overrides.force !== undefined ? { force: overrides.force } : {}),
+            }),
+          ),
+        ).pipe(Effect.result);
+
+      const noEvidence = yield* remove({ expectedState: null });
+      assertTrue(noEvidence._tag === "Failure");
+      assert.equal(removeCalls, 0);
+
+      readModel = aliasedReadModel;
+      const survivor = yield* remove({});
+      assertTrue(survivor._tag === "Failure");
+      if (survivor._tag === "Failure") {
+        assert.match(survivor.failure.message, /used by 1 thread/);
+      }
+      assert.equal(removeCalls, 0);
+
+      readModel = defaultReadModel;
+      const stale = yield* remove({
+        expectedState: { ...expectedState, headSha: "head-a" },
+      });
+      assertTrue(stale._tag === "Failure");
+      assert.equal(removeCalls, 0);
+
+      inspectState = {
+        ...inspectState,
+        refName: null,
+        headSha: "detached-head",
+        localOnlyCommitCount: 1,
+        branchReclaimable: false,
+      };
+      const staleLoss = yield* remove({
+        expectedState: {
+          ...expectedState,
+          refName: null,
+          headSha: "detached-head",
+          localOnlyCommitCount: 0,
+          branchReclaimable: false,
+        },
+      });
+      assertTrue(staleLoss._tag === "Failure");
+      assert.equal(removeCalls, 0);
+
+      inspectState = { ...expectedState, ignoredFileCount: 1 };
+      const missingDiscard = yield* remove({
+        expectedState: { ...expectedState, ignoredFileCount: 1 },
+      });
+      assertTrue(missingDiscard._tag === "Failure");
+      assert.equal(removeCalls, 0);
+
+      const removed = yield* remove({
+        expectedState: { ...expectedState, ignoredFileCount: 1 },
+        force: true,
+      });
+      assertTrue(removed._tag === "Success");
+      assert.equal(removeCalls, 1);
+      assert.equal(removeInputs[0]?.force, true);
+      assert.equal(removeInputs[0]?.expectedState?.ignoredFileCount, 1);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

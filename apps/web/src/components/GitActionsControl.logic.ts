@@ -58,6 +58,12 @@ const OPERATION_IN_PROGRESS_LABELS = {
   revert: "Revert",
 } as const;
 
+/**
+ * Reasons that must disable commit/push/PR. A resolved merge, cherry-pick or
+ * revert stays committable so the operation can be concluded; only unmerged
+ * paths and a rebase block. Other operations are shown as an informational
+ * notice by `resolveOperationInProgressNotice`.
+ */
 export function resolveConflictBlockReason(gitStatus: VcsStatusResult | null): string | null {
   const count = gitStatus?.unmergedPaths?.length ?? 0;
   if (count > 0) {
@@ -66,10 +72,15 @@ export function resolveConflictBlockReason(gitStatus: VcsStatusResult | null): s
   if (gitStatus?.operationInProgress === "rebase") {
     return "Rebase in progress. Finish or abort it in the terminal.";
   }
-  if (gitStatus?.operationInProgress) {
-    return `${OPERATION_IN_PROGRESS_LABELS[gitStatus.operationInProgress]} in progress.`;
-  }
   return null;
+}
+
+export function resolveOperationInProgressNotice(gitStatus: VcsStatusResult | null): string | null {
+  const operation = gitStatus?.operationInProgress;
+  if (!operation || operation === "rebase") {
+    return null;
+  }
+  return `${OPERATION_IN_PROGRESS_LABELS[operation]} in progress.`;
 }
 
 export function buildGitActionProgressStages(input: {

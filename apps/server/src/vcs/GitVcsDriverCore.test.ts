@@ -787,6 +787,47 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("reports revert in progress", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* writeTextFile(cwd, "c.txt", "one\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "one"]);
+        const revertTarget = yield* git(cwd, ["rev-parse", "HEAD"]);
+        yield* writeTextFile(cwd, "c.txt", "two\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "two"]);
+        yield* runGitAllowFailure(cwd, ["revert", "--no-edit", revertTarget]);
+        assert.equal(yield* git(cwd, ["branch", "--show-current"]), initialBranch);
+
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const status = yield* driver.statusDetailsLocal(cwd);
+
+        assert.equal(status.operationInProgress, "revert");
+      }),
+    );
+
+    it.effect("reports merge state when the per-worktree git directory contains a newline", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const pathService = yield* Path.Path;
+        const cwd = pathService.join(yield* makeTmpDir(), "repo\nwith-newline");
+        yield* fileSystem.makeDirectory(cwd, { recursive: true });
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* createDivergedCommits(cwd, initialBranch);
+        const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "linked");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({ cwd, path: worktreePath, refName: "side" });
+        yield* runGitAllowFailure(worktreePath, ["merge", initialBranch]);
+
+        const status = yield* driver.statusDetailsLocal(worktreePath);
+
+        assert.equal(status.operationInProgress, "merge");
+        assert.deepEqual(status.unmergedPaths, ["c.txt"]);
+      }),
+    );
+
     it.effect("reports no operation on a clean repo", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();
@@ -797,6 +838,79 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
 
         assert.equal(status.operationInProgress, undefined);
         assert.equal(status.unmergedPaths, undefined);
+      }),
+    );
+  });
+
+  describe("commit operation safety", () => {
+    it.effect("refuses selected-file commits during a merge and keeps the merge state", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* git(cwd, ["checkout", "-b", "side"]);
+        yield* writeTextFile(cwd, "c.txt", "side\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "side change"]);
+        yield* git(cwd, ["checkout", initialBranch]);
+        yield* writeTextFile(cwd, "c.txt", "main\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "main change"]);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.execute({
+          operation: "GitVcsDriver.test.merge",
+          cwd,
+          args: ["merge", "side"],
+          allowNonZeroExit: true,
+        });
+        const mergeHeadBefore = yield* git(cwd, ["rev-parse", "--verify", "MERGE_HEAD"]);
+
+        const error = yield* driver.prepareCommitContext(cwd, ["c.txt"]).pipe(Effect.flip);
+
+        assert.include(error.detail, "Cannot commit selected files while a merge is in progress");
+        assert.equal(yield* git(cwd, ["rev-parse", "--verify", "MERGE_HEAD"]), mergeHeadBefore);
+
+        yield* writeTextFile(cwd, "c.txt", "resolved\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        const prepared = yield* driver.prepareCommitContext(cwd);
+        assert.notEqual(prepared, null);
+        yield* driver.commit(cwd, "Merge side", "");
+        const parents = yield* git(cwd, ["rev-list", "--parents", "-n", "1", "HEAD"]);
+        assert.equal(parents.split(" ").length, 3);
+      }),
+    );
+
+    it.effect("refuses selected-file commits during a cherry-pick and keeps the state", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* git(cwd, ["checkout", "-b", "side"]);
+        yield* writeTextFile(cwd, "c.txt", "side\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "side change"]);
+        const sideCommit = yield* git(cwd, ["rev-parse", "HEAD"]);
+        yield* git(cwd, ["checkout", initialBranch]);
+        yield* writeTextFile(cwd, "c.txt", "main\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "main change"]);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.execute({
+          operation: "GitVcsDriver.test.cherryPick",
+          cwd,
+          args: ["cherry-pick", sideCommit],
+          allowNonZeroExit: true,
+        });
+        const cherryPickHeadBefore = yield* git(cwd, ["rev-parse", "--verify", "CHERRY_PICK_HEAD"]);
+
+        const error = yield* driver.prepareCommitContext(cwd, ["c.txt"]).pipe(Effect.flip);
+
+        assert.include(
+          error.detail,
+          "Cannot commit selected files while a cherry-pick is in progress",
+        );
+        assert.equal(
+          yield* git(cwd, ["rev-parse", "--verify", "CHERRY_PICK_HEAD"]),
+          cherryPickHeadBefore,
+        );
       }),
     );
   });
@@ -903,8 +1017,10 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
 
         assert.equal(state.exists, true);
         assert.equal(state.refName, "neokod/abcd1234");
+        assert.equal(state.headSha, yield* git(worktreePath, ["rev-parse", "HEAD"]));
         assert.equal(state.changedFileCount, 1);
         assert.equal(state.untrackedFileCount, 1);
+        assert.equal(state.ignoredFileCount, 0);
         assert.equal(state.localOnlyCommitCount, 1);
         assert.equal(state.branchReclaimable, false);
       }),
@@ -934,6 +1050,33 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("inspectWorktree reports ignored files that a non-force removal deletes", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* writeTextFile(cwd, ".gitignore", "*.secret\n");
+        yield* git(cwd, ["add", ".gitignore"]);
+        yield* git(cwd, ["commit", "-m", "ignore secrets"]);
+        const pathService = yield* Path.Path;
+        const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "ignored-tree");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: initialBranch,
+          newRefName: "neokod/abcd1234",
+        });
+        yield* writeTextFile(worktreePath, "private.secret", "private\n");
+
+        const state = yield* driver.inspectWorktree({ cwd, path: worktreePath });
+
+        assert.equal(state.changedFileCount, 0);
+        assert.equal(state.untrackedFileCount, 0);
+        assert.equal(state.ignoredFileCount, 1);
+        assert.equal(state.branchReclaimable, true);
+      }),
+    );
+
     it.effect("inspectWorktree reports a missing path as not existing", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();
@@ -946,6 +1089,8 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
 
         assert.equal(state.exists, false);
         assert.equal(state.refName, null);
+        assert.equal(state.headSha, null);
+        assert.equal(state.ignoredFileCount, 0);
         assert.equal(state.changedFileCount, 0);
         assert.equal(state.branchReclaimable, false);
       }),

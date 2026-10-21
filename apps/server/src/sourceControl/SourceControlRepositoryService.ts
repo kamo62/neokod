@@ -234,6 +234,19 @@ export const make = Effect.gen(function* () {
         operation: "publishRepository",
         provider: input.provider,
       });
+      // Refuse before creating the remote so an unresolved merge cannot be
+      // published by this caller either.
+      yield* git.assertNoUnmergedPaths(input.cwd).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SourceControlRepositoryError({
+              operation: "publishRepository",
+              provider: providerKind,
+              detail: cause.message,
+              cause,
+            }),
+        ),
+      );
       const provider = yield* providers.get(providerKind);
       const urls = yield* provider.createRepository({
         cwd: input.cwd,

@@ -213,6 +213,14 @@ describe("resolveEnvironmentContextualActions", () => {
     assert.equal(commitPush?.disabledReason, "Worktree is clean. Make changes before committing.");
   });
 
+  it("keeps commit & push enabled for a resolved merge", () => {
+    const commitPush = commitPushAction(
+      status({ hasWorkingTreeChanges: true, operationInProgress: "merge" }),
+    );
+    assert.equal(commitPush?.disabled, false);
+    assert.equal(commitPush?.disabledReason, null);
+  });
+
   it("enables commit & push without an upstream when a primary remote can create one", () => {
     // First push of a new branch: no upstream yet, but a primary remote is
     // configured, so commit_push can still create + push it in one step.

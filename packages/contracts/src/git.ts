@@ -156,11 +156,25 @@ export const GitPreparePullRequestThreadInput = Schema.Struct({
 });
 export type GitPreparePullRequestThreadInput = typeof GitPreparePullRequestThreadInput.Type;
 
+export const VcsWorktreeGitState = Schema.Struct({
+  path: TrimmedNonEmptyStringSchema,
+  exists: Schema.Boolean,
+  refName: Schema.NullOr(TrimmedNonEmptyStringSchema),
+  headSha: Schema.NullOr(TrimmedNonEmptyStringSchema),
+  changedFileCount: NonNegativeInt,
+  untrackedFileCount: NonNegativeInt,
+  ignoredFileCount: NonNegativeInt,
+  localOnlyCommitCount: NonNegativeInt,
+  branchReclaimable: Schema.Boolean,
+});
+export type VcsWorktreeGitState = typeof VcsWorktreeGitState.Type;
+
 export const VcsRemoveWorktreeInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
   path: TrimmedNonEmptyStringSchema,
   force: Schema.optional(Schema.Boolean),
   deleteBranch: Schema.optional(Schema.Boolean),
+  expectedState: Schema.optional(VcsWorktreeGitState),
 });
 export type VcsRemoveWorktreeInput = typeof VcsRemoveWorktreeInput.Type;
 
@@ -170,17 +184,6 @@ export const VcsInspectWorktreeInput = Schema.Struct({
   excludeThreadIds: Schema.optional(Schema.Array(ThreadId)),
 });
 export type VcsInspectWorktreeInput = typeof VcsInspectWorktreeInput.Type;
-
-export const VcsWorktreeGitState = Schema.Struct({
-  path: TrimmedNonEmptyStringSchema,
-  exists: Schema.Boolean,
-  refName: Schema.NullOr(TrimmedNonEmptyStringSchema),
-  changedFileCount: NonNegativeInt,
-  untrackedFileCount: NonNegativeInt,
-  localOnlyCommitCount: NonNegativeInt,
-  branchReclaimable: Schema.Boolean,
-});
-export type VcsWorktreeGitState = typeof VcsWorktreeGitState.Type;
 
 export const VcsWorktreeLinkedThread = Schema.Struct({
   threadId: ThreadId,

@@ -1789,6 +1789,33 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     }),
   );
 
+  it.effect("pushCurrentBranch refuses unmerged paths without touching the remote", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
+      yield* initRepo(repoDir);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["checkout", "-b", "side"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "side\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "side change"]);
+      yield* runGit(repoDir, ["checkout", "main"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "main\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "main change"]);
+      yield* runGit(repoDir, ["merge", "side"], true);
+
+      const driver = yield* GitVcsDriver.GitVcsDriver;
+      const error = yield* driver
+        .pushCurrentBranch(repoDir, null, { remoteName: "origin" })
+        .pipe(Effect.flip);
+
+      expect(error._tag).toBe("GitUnmergedPathsError");
+      const remoteRefs = yield* runGit(remoteDir, ["show-ref"], true);
+      expect(remoteRefs.stdout.trim()).toBe("");
+    }),
+  );
+
   it.effect("refuses commit while the merge has unmerged paths", () =>
     Effect.gen(function* () {
       const repoDir = yield* makeTempDir("neokod-git-manager-");

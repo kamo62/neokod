@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE, type Thread } from "./types";
 import {
+  finalizeThreadDeletion,
   formatWorktreePathForDisplay,
   getOrphanedWorktreePathForThread,
   planWorktreeCleanup,
@@ -96,8 +97,10 @@ describe("planWorktreeCleanup", () => {
       path: "/tmp/repo/worktrees/neokod-abcd1234",
       exists: true,
       refName: "neokod/abcd1234",
+      headSha: "abcd1234abcd1234abcd1234abcd1234abcd1234",
       changedFileCount: 0,
       untrackedFileCount: 0,
+      ignoredFileCount: 0,
       localOnlyCommitCount: 0,
       branchReclaimable: true,
       linkedThreads: [],
@@ -138,6 +141,15 @@ describe("planWorktreeCleanup", () => {
     expect(plan.discardMessage).toContain("This cannot be undone.");
   });
 
+  it("requires a discard confirm when only ignored files would be deleted", () => {
+    const plan = planWorktreeCleanup(makeInspect({ ignoredFileCount: 2, branchReclaimable: true }));
+    expect(plan.kind).toBe("prompt");
+    if (plan.kind !== "prompt") return;
+    expect(plan.confirmMessage).toContain("2 ignored files");
+    expect(plan.discardMessage).not.toBeNull();
+    expect(plan.discardMessage).toContain("2 ignored files");
+  });
+
   it("flags unreachable commits on a detached HEAD", () => {
     const plan = planWorktreeCleanup(
       makeInspect({ refName: null, localOnlyCommitCount: 3, branchReclaimable: false }),
@@ -158,6 +170,45 @@ describe("planWorktreeCleanup", () => {
     expect(plan.confirmMessage).toContain(
       "Branch neokod/abcd1234 is kept (1 commit exist only on it).",
     );
+  });
+});
+
+describe("finalizeThreadDeletion", () => {
+  it("keeps a successful thread deletion when worktree cleanup fails", async () => {
+    const cleanupFailure = { message: "worktree kept" };
+    let cleanupCalls = 0;
+
+    const outcome = await finalizeThreadDeletion({
+      deletion: { _tag: "Success" as const, value: "deleted" },
+      deletionSucceeded: true,
+      candidates: ["candidate"],
+      cleanup: async () => {
+        cleanupCalls += 1;
+        return cleanupFailure;
+      },
+    });
+
+    expect(outcome.deletion).toEqual({ _tag: "Success", value: "deleted" });
+    expect(outcome.cleanupFailure).toBe(cleanupFailure);
+    expect(cleanupCalls).toBe(1);
+  });
+
+  it("does not run worktree cleanup when the deletion failed", async () => {
+    let cleanupCalls = 0;
+
+    const outcome = await finalizeThreadDeletion({
+      deletion: { _tag: "Failure" as const },
+      deletionSucceeded: false,
+      candidates: ["candidate"],
+      cleanup: async () => {
+        cleanupCalls += 1;
+        return null;
+      },
+    });
+
+    expect(outcome.deletion).toEqual({ _tag: "Failure" });
+    expect(outcome.cleanupFailure).toBeNull();
+    expect(cleanupCalls).toBe(0);
   });
 });
 

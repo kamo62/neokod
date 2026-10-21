@@ -1,4 +1,4 @@
-import type { VcsInspectWorktreeResult } from "@neokod/contracts";
+import type { VcsInspectWorktreeResult, VcsWorktreeGitState } from "@neokod/contracts";
 
 import type { ThreadShell } from "./types";
 
@@ -19,7 +19,8 @@ export function planWorktreeCleanup(inspect: VcsInspectWorktreeResult): Worktree
     return { kind: "keep" };
   }
 
-  const dirty = inspect.changedFileCount + inspect.untrackedFileCount > 0;
+  const dirty =
+    inspect.changedFileCount + inspect.untrackedFileCount + inspect.ignoredFileCount > 0;
   const lostCommits = inspect.refName === null && inspect.localOnlyCommitCount > 0;
   const confirmLines = ["This thread is the only one linked to this worktree:", inspect.path];
 
@@ -40,8 +41,12 @@ export function planWorktreeCleanup(inspect: VcsInspectWorktreeResult): Worktree
   }
 
   if (dirty) {
+    const ignored =
+      inspect.ignoredFileCount > 0
+        ? `, ${inspect.ignoredFileCount} ignored file${pluralSuffix(inspect.ignoredFileCount)}`
+        : "";
     confirmLines.push(
-      `Uncommitted work: ${inspect.changedFileCount} changed file${pluralSuffix(inspect.changedFileCount)}, ${inspect.untrackedFileCount} untracked file${pluralSuffix(inspect.untrackedFileCount)}.`,
+      `Uncommitted work: ${inspect.changedFileCount} changed file${pluralSuffix(inspect.changedFileCount)}, ${inspect.untrackedFileCount} untracked file${pluralSuffix(inspect.untrackedFileCount)}${ignored}.`,
     );
   }
   confirmLines.push("", "Delete the worktree too?");
@@ -59,6 +64,11 @@ export function planWorktreeCleanup(inspect: VcsInspectWorktreeResult): Worktree
         `${inspect.untrackedFileCount} untracked file${pluralSuffix(inspect.untrackedFileCount)}`,
       );
     }
+    if (inspect.ignoredFileCount > 0) {
+      lossParts.push(
+        `${inspect.ignoredFileCount} ignored file${pluralSuffix(inspect.ignoredFileCount)}`,
+      );
+    }
     if (lostCommits) {
       lossParts.push(
         `${inspect.localOnlyCommitCount} commit${pluralSuffix(inspect.localOnlyCommitCount)} not on any branch`,
@@ -72,6 +82,54 @@ export function planWorktreeCleanup(inspect: VcsInspectWorktreeResult): Worktree
     confirmMessage: confirmLines.join("\n"),
     discardMessage,
   };
+}
+
+/**
+ * A successful thread deletion stays successful even when worktree cleanup
+ * fails. Cleanup is reported separately so a kept worktree does not look like
+ * a failed deletion or skip the deletion's metadata cleanup.
+ */
+export async function finalizeThreadDeletion<Deletion, Candidate, CleanupFailure>(input: {
+  readonly deletion: Deletion;
+  readonly deletionSucceeded: boolean;
+  readonly candidates: readonly Candidate[] | null;
+  readonly cleanup: (candidates: readonly Candidate[]) => Promise<CleanupFailure | null>;
+}): Promise<{ readonly deletion: Deletion; readonly cleanupFailure: CleanupFailure | null }> {
+  if (!input.deletionSucceeded || input.candidates === null || input.candidates.length === 0) {
+    return { deletion: input.deletion, cleanupFailure: null };
+  }
+  const cleanupFailure = await input.cleanup(input.candidates);
+  return { deletion: input.deletion, cleanupFailure };
+}
+
+export function toWorktreeRemovalState(inspect: VcsInspectWorktreeResult): VcsWorktreeGitState {
+  return {
+    path: inspect.path,
+    exists: inspect.exists,
+    refName: inspect.refName,
+    headSha: inspect.headSha,
+    changedFileCount: inspect.changedFileCount,
+    untrackedFileCount: inspect.untrackedFileCount,
+    ignoredFileCount: inspect.ignoredFileCount,
+    localOnlyCommitCount: inspect.localOnlyCommitCount,
+    branchReclaimable: inspect.branchReclaimable,
+  };
+}
+
+export function worktreeStatesEqual(
+  left: VcsWorktreeGitState,
+  right: VcsWorktreeGitState,
+): boolean {
+  return (
+    left.refName === right.refName &&
+    left.headSha === right.headSha &&
+    left.exists === right.exists &&
+    left.changedFileCount === right.changedFileCount &&
+    left.untrackedFileCount === right.untrackedFileCount &&
+    left.ignoredFileCount === right.ignoredFileCount &&
+    left.localOnlyCommitCount === right.localOnlyCommitCount &&
+    left.branchReclaimable === right.branchReclaimable
+  );
 }
 
 function normalizeWorktreePath(path: string | null): string | null {

@@ -11,6 +11,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 
 import {
   GitCommandError,
+  type GitUnmergedPathsError,
   VcsProcessExitError,
   type VcsSwitchRefInput,
   type VcsSwitchRefResult,
@@ -200,6 +201,9 @@ export class GitVcsDriver extends Context.Service<
     readonly status: (input: VcsStatusInput) => Effect.Effect<VcsStatusResult, GitCommandError>;
     readonly statusDetails: (cwd: string) => Effect.Effect<GitStatusDetails, GitCommandError>;
     readonly statusDetailsLocal: (cwd: string) => Effect.Effect<GitStatusDetails, GitCommandError>;
+    readonly assertNoUnmergedPaths: (
+      cwd: string,
+    ) => Effect.Effect<void, GitCommandError | GitUnmergedPathsError>;
     readonly statusDetailsRemote: (
       cwd: string,
       options?: GitRemoteStatusOptions,
@@ -218,7 +222,7 @@ export class GitVcsDriver extends Context.Service<
       cwd: string,
       fallbackBranch: string | null,
       options?: { readonly remoteName?: string | null },
-    ) => Effect.Effect<GitPushResult, GitCommandError>;
+    ) => Effect.Effect<GitPushResult, GitCommandError | GitUnmergedPathsError>;
     readonly readRangeContext: (
       cwd: string,
       baseRef: string,

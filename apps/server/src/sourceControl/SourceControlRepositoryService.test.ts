@@ -7,7 +7,11 @@ import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
-import { GitCommandError, SourceControlProviderError } from "@neokod/contracts";
+import {
+  GitCommandError,
+  GitUnmergedPathsError,
+  SourceControlProviderError,
+} from "@neokod/contracts";
 
 import * as ServerConfig from "../config.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
@@ -68,6 +72,7 @@ function makeLayer(input: {
     Layer.provide(
       Layer.mock(GitVcsDriver.GitVcsDriver)({
         execute: () => Effect.succeed(processOutput()),
+        assertNoUnmergedPaths: () => Effect.void,
         ensureRemote: () => Effect.succeed("origin"),
         pushCurrentBranch: () =>
           Effect.succeed({
@@ -321,6 +326,63 @@ it.effect("publishes by creating the repository, adding a remote, and pushing up
           pushCurrentBranch: (cwd, _fallbackBranch, options) =>
             Effect.sync(() => {
               pushCalls.push({ cwd, remoteName: options?.remoteName });
+              return {
+                status: "pushed" as const,
+                branch: "feature/remote-v1",
+                upstreamBranch: "origin/feature/remote-v1",
+                setUpstream: true,
+              };
+            }),
+        },
+      }),
+    ),
+  );
+});
+
+it.effect("refuses to create or push a repository while merge conflicts are unmerged", () => {
+  let createCalls = 0;
+  let pushCalls = 0;
+  const provider = makeProvider({
+    createRepository: () =>
+      Effect.sync(() => {
+        createCalls += 1;
+        return CLONE_URLS;
+      }),
+  });
+
+  return Effect.gen(function* () {
+    const service = yield* SourceControlRepositoryService.SourceControlRepositoryService;
+    const error = yield* service
+      .publishRepository({
+        cwd: "/workspace",
+        provider: "github",
+        repository: "octocat/neokod",
+        visibility: "private",
+        remoteName: "origin",
+        protocol: "ssh",
+      })
+      .pipe(Effect.flip);
+
+    assert.equal(error.operation, "publishRepository");
+    assert.match(error.detail, /Resolve merge conflicts/);
+    assert.equal(createCalls, 0);
+    assert.equal(pushCalls, 0);
+  }).pipe(
+    Effect.provide(
+      makeLayer({
+        provider,
+        git: {
+          assertNoUnmergedPaths: () =>
+            Effect.fail(
+              new GitUnmergedPathsError({
+                cwd: "/workspace",
+                operationInProgress: "merge",
+                unmergedPaths: ["README.md"],
+              }),
+            ),
+          pushCurrentBranch: () =>
+            Effect.sync(() => {
+              pushCalls += 1;
               return {
                 status: "pushed" as const,
                 branch: "feature/remote-v1",

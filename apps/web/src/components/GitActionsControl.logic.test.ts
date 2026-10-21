@@ -7,6 +7,7 @@ import {
   resolveAutoFeatureBranchName,
   resolveConflictBlockReason,
   resolveDefaultBranchActionDialogCopy,
+  resolveOperationInProgressNotice,
   resolveLiveThreadBranchUpdate,
   resolveQuickAction,
   resolveThreadBranchUpdate,
@@ -901,6 +902,36 @@ describe("when: a merge or rebase is in progress", () => {
 
   it("resolveConflictBlockReason returns null on a clean status", () => {
     assert.equal(resolveConflictBlockReason(status()), null);
+  });
+
+  it("keeps a resolved merge committable and reports it as informational", () => {
+    const resolvedMerge = status({
+      hasWorkingTreeChanges: true,
+      operationInProgress: "merge",
+      aheadCount: 1,
+    });
+    assert.equal(resolveConflictBlockReason(resolvedMerge), null);
+    assert.equal(resolveOperationInProgressNotice(resolvedMerge), "Merge in progress.");
+
+    const items = buildMenuItems(resolvedMerge, false);
+    assert.equal(items.find((item) => item.id === "commit")?.disabled, false);
+    assert.equal(items.find((item) => item.id === "push")?.disabled, false);
+
+    const quick = resolveQuickAction(resolvedMerge, false);
+    assert.notEqual(quick.kind, "show_hint");
+    assert.equal(quick.disabled, false);
+  });
+
+  it("keeps a resolved cherry-pick and revert committable", () => {
+    for (const operationInProgress of ["cherry-pick", "revert"] as const) {
+      const resolved = status({ hasWorkingTreeChanges: true, operationInProgress });
+      assert.equal(resolveConflictBlockReason(resolved), null);
+      assert.match(resolveOperationInProgressNotice(resolved) ?? "", /in progress/);
+      assert.equal(
+        buildMenuItems(resolved, false).find((item) => item.id === "commit")?.disabled,
+        false,
+      );
+    }
   });
 });
 

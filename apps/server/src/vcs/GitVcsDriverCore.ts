@@ -21,6 +21,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import {
   GitCommandError,
+  GitUnmergedPathsError,
   type ReviewDiffPreviewInput,
   type ReviewDiffPreviewSource,
   type VcsRef,
@@ -43,6 +44,7 @@ import {
   parseRemoteRefWithRemoteNames,
 } from "../git/remoteRefs.ts";
 import { ServerConfig } from "../config.ts";
+import { makeWorkspaceIdentityResolver } from "./WorkspaceIdentity.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 1_000_000;
@@ -687,38 +689,19 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   const { worktreesDir } = yield* ServerConfig;
   const crypto = yield* Crypto.Crypto;
   const hostPlatform = yield* HostProcessPlatform;
-
-  const resolvePhysicalPath = Effect.fn("resolvePhysicalPath")(function* (value: string) {
-    const missingSegments: string[] = [];
-    let candidate = path.resolve(value);
-    while (true) {
-      const resolved = yield* fileSystem.realPath(candidate).pipe(
-        Effect.map(Option.some),
-        Effect.catch((error) =>
-          error.reason._tag === "NotFound" ? Effect.succeed(Option.none()) : Effect.fail(error),
-        ),
-      );
-      if (Option.isSome(resolved)) {
-        return path.join(resolved.value, ...missingSegments);
-      }
-      const parent = path.dirname(candidate);
-      if (parent === candidate) {
-        return candidate;
-      }
-      missingSegments.unshift(path.basename(candidate));
-      candidate = parent;
-    }
+  const resolveWorkspaceIdentity = makeWorkspaceIdentityResolver({
+    fileSystem,
+    path,
+    hostPlatform,
   });
 
   const findWorktreeRegistration = Effect.fn("findWorktreeRegistration")(function* (
     output: string,
     target: string,
   ) {
-    const normalizePath = (value: string) =>
-      hostPlatform === "win32" ? value.toLowerCase() : value;
-    const targetPath = normalizePath(yield* resolvePhysicalPath(target));
+    const targetPath = yield* resolveWorkspaceIdentity(target);
     for (const entry of parseGitWorktreePorcelain(output)) {
-      if (normalizePath(yield* resolvePhysicalPath(entry.path)) === targetPath) {
+      if ((yield* resolveWorkspaceIdentity(entry.path)) === targetPath) {
         return entry;
       }
     }
@@ -1413,6 +1396,42 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     return branchLastCommit;
   });
 
+  const readOperationInProgress = Effect.fn("readOperationInProgress")(function* (cwd: string) {
+    // One unambiguous path: a linked worktree's administrative directory.
+    // Splitting several `--git-path` outputs on newlines breaks when the
+    // repository path itself contains a newline.
+    const gitDirResult = yield* executeGit(
+      "GitVcsDriver.statusDetails.gitDir",
+      cwd,
+      ["rev-parse", "--path-format=absolute", "--git-dir"],
+      { timeoutMs: 5_000, allowNonZeroExit: true },
+    );
+    if (gitDirResult.exitCode !== 0) {
+      return undefined;
+    }
+    const gitDir = gitDirResult.stdout.replace(/\r?\n$/, "");
+    if (gitDir.length === 0) {
+      return undefined;
+    }
+    const statePath = (name: string) => path.join(gitDir, name);
+    if (
+      (yield* fileSystem.exists(statePath("rebase-merge"))) ||
+      (yield* fileSystem.exists(statePath("rebase-apply")))
+    ) {
+      return "rebase" as const;
+    }
+    if (yield* fileSystem.exists(statePath("MERGE_HEAD"))) {
+      return "merge" as const;
+    }
+    if (yield* fileSystem.exists(statePath("CHERRY_PICK_HEAD"))) {
+      return "cherry-pick" as const;
+    }
+    if (yield* fileSystem.exists(statePath("REVERT_HEAD"))) {
+      return "revert" as const;
+    }
+    return undefined;
+  });
+
   const readStatusDetailsLocal = Effect.fn("readStatusDetailsLocal")(function* (cwd: string) {
     const statusResult = yield* executeGitWithStableDiagnostics(
       "GitVcsDriver.statusDetails.status",
@@ -1449,50 +1468,6 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       });
     }
 
-    const readOperationInProgress = Effect.gen(function* () {
-      const pathsResult = yield* executeGit(
-        "GitVcsDriver.statusDetails.gitPaths",
-        cwd,
-        [
-          "rev-parse",
-          "--git-path",
-          "rebase-merge",
-          "--git-path",
-          "rebase-apply",
-          "--git-path",
-          "MERGE_HEAD",
-          "--git-path",
-          "CHERRY_PICK_HEAD",
-          "--git-path",
-          "REVERT_HEAD",
-        ],
-        { timeoutMs: 5_000, allowNonZeroExit: true },
-      );
-      if (pathsResult.exitCode !== 0) {
-        return undefined;
-      }
-      const [rebaseMerge, rebaseApply, mergeHead, cherryPickHead, revertHead] = pathsResult.stdout
-        .split("\n")
-        .map((value) => path.resolve(cwd, value.trim()));
-      const exists = (value: string | undefined) =>
-        value === undefined
-          ? Effect.succeed(false)
-          : fileSystem.exists(value).pipe(Effect.orElseSucceed(() => false));
-      if ((yield* exists(rebaseMerge)) || (yield* exists(rebaseApply))) {
-        return "rebase" as const;
-      }
-      if (yield* exists(mergeHead)) {
-        return "merge" as const;
-      }
-      if (yield* exists(cherryPickHead)) {
-        return "cherry-pick" as const;
-      }
-      if (yield* exists(revertHead)) {
-        return "revert" as const;
-      }
-      return undefined;
-    }).pipe(Effect.orElseSucceed(() => undefined));
-
     const [
       unstagedNumstatStdout,
       stagedNumstatStdout,
@@ -1516,7 +1491,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           },
         ),
         originRemoteExists(cwd).pipe(Effect.orElseSucceed(() => false)),
-        readOperationInProgress,
+        readOperationInProgress(cwd).pipe(Effect.orElseSucceed(() => undefined)),
       ],
       { concurrency: "unbounded" },
     );
@@ -1634,6 +1609,22 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     };
   });
 
+  const assertNoUnmergedPaths: GitVcsDriver.GitVcsDriver["Service"]["assertNoUnmergedPaths"] =
+    Effect.fn("assertNoUnmergedPaths")(function* (cwd) {
+      const details = yield* readStatusDetailsLocal(cwd);
+      const unmergedPaths = details.unmergedPaths ?? [];
+      if (unmergedPaths.length === 0) {
+        return;
+      }
+      return yield* new GitUnmergedPathsError({
+        cwd,
+        ...(details.operationInProgress
+          ? { operationInProgress: details.operationInProgress }
+          : {}),
+        unmergedPaths: [...unmergedPaths],
+      });
+    });
+
   const statusDetailsLocal: GitVcsDriver.GitVcsDriver["Service"]["statusDetailsLocal"] = Effect.fn(
     "statusDetailsLocal",
   )(function* (cwd) {
@@ -1693,6 +1684,37 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   const prepareCommitContext: GitVcsDriver.GitVcsDriver["Service"]["prepareCommitContext"] =
     Effect.fn("prepareCommitContext")(function* (cwd, filePaths) {
       if (filePaths && filePaths.length > 0) {
+        // An unscoped `git reset` clears MERGE_HEAD, CHERRY_PICK_HEAD and
+        // REVERT_HEAD. Refuse selected-file commits during those operations
+        // before the reset can drop the operation state.
+        const operationInProgress = yield* readOperationInProgress(cwd).pipe(
+          Effect.mapError(
+            (cause) =>
+              new GitCommandError({
+                ...gitCommandContext({
+                  operation: "GitVcsDriver.prepareCommitContext.operation",
+                  cwd,
+                  args: ["rev-parse", "--path-format=absolute", "--git-dir"],
+                }),
+                detail: "Unable to determine whether a Git operation is in progress.",
+                cause,
+              }),
+          ),
+        );
+        if (
+          operationInProgress === "merge" ||
+          operationInProgress === "cherry-pick" ||
+          operationInProgress === "revert"
+        ) {
+          return yield* new GitCommandError({
+            ...gitCommandContext({
+              operation: "GitVcsDriver.prepareCommitContext.operation",
+              cwd,
+              args: [],
+            }),
+            detail: `Cannot commit selected files while a ${operationInProgress} is in progress. Commit all resolved changes to conclude it.`,
+          });
+        }
         yield* runGit("GitVcsDriver.prepareCommitContext.reset", cwd, ["reset"]).pipe(
           Effect.catchTags({
             GitCommandError: () => Effect.void,
@@ -1770,6 +1792,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   const pushCurrentBranch: GitVcsDriver.GitVcsDriver["Service"]["pushCurrentBranch"] = Effect.fn(
     "pushCurrentBranch",
   )(function* (cwd, fallbackBranch, options) {
+    yield* assertNoUnmergedPaths(cwd);
     const details = yield* statusDetails(cwd);
     const branch = details.branch ?? fallbackBranch;
     if (!branch) {
@@ -2656,8 +2679,10 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         path: input.path,
         exists: false,
         refName: null,
+        headSha: null,
         changedFileCount: 0,
         untrackedFileCount: 0,
+        ignoredFileCount: 0,
         localOnlyCommitCount: 0,
         branchReclaimable: false,
       };
@@ -2666,7 +2691,14 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const statusResult = yield* executeGit(
       "GitVcsDriver.inspectWorktree.status",
       input.path,
-      ["status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=normal"],
+      [
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--no-renames",
+        "--untracked-files=normal",
+        "--ignored=matching",
+      ],
       { timeoutMs: 15_000, allowNonZeroExit: true },
     );
     if (statusResult.exitCode !== 0) {
@@ -2684,10 +2716,13 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     }
     let changedFileCount = 0;
     let untrackedFileCount = 0;
+    let ignoredFileCount = 0;
     for (const entry of statusResult.stdout.split("\0")) {
       if (entry.length === 0) continue;
       if (entry.startsWith("??")) {
         untrackedFileCount += 1;
+      } else if (entry.startsWith("!!")) {
+        ignoredFileCount += 1;
       } else {
         changedFileCount += 1;
       }
@@ -2696,12 +2731,26 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const branchResult = yield* executeGit(
       "GitVcsDriver.inspectWorktree.branch",
       input.path,
-      ["symbolic-ref", "--quiet", "--short", "HEAD"],
+      ["symbolic-ref", "--quiet", "HEAD"],
       { timeoutMs: 15_000, allowNonZeroExit: true },
     );
-    const refName =
+    const branchRef =
       branchResult.exitCode === 0 && branchResult.stdout.trim().length > 0
         ? branchResult.stdout.trim()
+        : "";
+    const refName = branchRef.startsWith("refs/heads/")
+      ? branchRef.slice("refs/heads/".length)
+      : null;
+
+    const headResult = yield* executeGit(
+      "GitVcsDriver.inspectWorktree.head",
+      input.path,
+      ["rev-parse", "--verify", "HEAD"],
+      { timeoutMs: 15_000, allowNonZeroExit: true },
+    );
+    const headSha =
+      headResult.exitCode === 0 && headResult.stdout.trim().length > 0
+        ? headResult.stdout.trim()
         : null;
 
     const revListArgs =
@@ -2736,15 +2785,28 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         stderrLength: commitCountResult.stderr.length,
       });
     }
-    const parsedCount = Number.parseInt(commitCountResult.stdout.trim(), 10);
-    const localOnlyCommitCount = Number.isNaN(parsedCount) ? 0 : parsedCount;
+    const rawCommitCount = commitCountResult.stdout.trim();
+    if (!/^\d+$/.test(rawCommitCount)) {
+      return yield* new GitCommandError({
+        ...gitCommandContext({
+          operation: "GitVcsDriver.inspectWorktree.localOnlyCommits",
+          cwd: input.path,
+          args: revListArgs,
+        }),
+        detail: "Unable to parse the count of commits that exist only on this worktree's branch.",
+        stdoutLength: commitCountResult.stdout.length,
+      });
+    }
+    const localOnlyCommitCount = Number.parseInt(rawCommitCount, 10);
 
     return {
       path: input.path,
       exists: true,
       refName,
+      headSha,
       changedFileCount,
       untrackedFileCount,
+      ignoredFileCount,
       localOnlyCommitCount,
       branchReclaimable:
         refName !== null &&
@@ -2765,7 +2827,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         const branchResult = yield* executeGit(
           "GitVcsDriver.removeWorktree.readBranch",
           input.path,
-          ["symbolic-ref", "--quiet", "--short", "HEAD"],
+          ["symbolic-ref", "--quiet", "HEAD"],
           { timeoutMs: 15_000, allowNonZeroExit: true },
         );
         if (branchResult.exitCode !== 0) {
@@ -2774,18 +2836,18 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         const headResult = yield* executeGit(
           "GitVcsDriver.removeWorktree.readHead",
           input.path,
-          ["rev-parse", "HEAD"],
+          ["rev-parse", "--verify", "HEAD"],
           { timeoutMs: 15_000, allowNonZeroExit: true },
         );
         if (headResult.exitCode !== 0) {
           return null;
         }
-        const refName = branchResult.stdout.trim();
+        const branchRef = branchResult.stdout.trim();
         const headSha = headResult.stdout.trim();
-        if (refName.length === 0 || headSha.length === 0) {
+        if (!branchRef.startsWith("refs/heads/") || headSha.length === 0) {
           return null;
         }
-        return { refName, headSha };
+        return { refName: branchRef.slice("refs/heads/".length), headSha };
       }).pipe(Effect.orElseSucceed(() => null));
 
     const reclaimBranch = (branch: { readonly refName: string; readonly headSha: string }) =>
@@ -3159,6 +3221,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     statusDetails,
     statusDetailsLocal,
     statusDetailsRemote,
+    assertNoUnmergedPaths,
     prepareCommitContext,
     commit,
     pushCurrentBranch,
