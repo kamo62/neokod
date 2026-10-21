@@ -5,6 +5,7 @@ import {
   environmentRowNeedsValue,
   makeEnvironmentDraftRow,
   publishableEnvironment,
+  reconcileEnvironmentRows,
 } from "./providerEnvironmentDraft";
 
 const storedSecret = () =>
@@ -65,5 +66,87 @@ describe("stored provider environment secrets", () => {
   it("a new empty sensitive row is published as today", () => {
     const row = makeEnvironmentDraftRow({ name: "", value: "", sensitive: true }, 0);
     expect(publishableEnvironment([row])).toEqual([]);
+  });
+
+  it("does not re-link a stored secret after it was replaced under another name", () => {
+    const mounted = storedSecret();
+    const renamed = applyEnvironmentRowPatch(mounted, { name: "OTHER_KEY" });
+    const replaced = applyEnvironmentRowPatch(renamed, { value: "replacement" });
+    expect(publishableEnvironment([replaced])).toEqual([
+      { name: "OTHER_KEY", value: "replacement", sensitive: true, valueRedacted: false },
+    ]);
+
+    // Successful save acknowledgement: the server removed API_KEY and now
+    // reports OTHER_KEY as the stored, redacted secret.
+    const acknowledgedEnvironment = [
+      { name: "OTHER_KEY", value: "", sensitive: true, valueRedacted: true },
+    ] as const;
+    const [acknowledged] = reconcileEnvironmentRows([replaced], acknowledgedEnvironment);
+    expect(acknowledged?.stored).toEqual({ name: "OTHER_KEY" });
+
+    const cleared = applyEnvironmentRowPatch(acknowledged!, { value: "" });
+    expect(publishableEnvironment([cleared])).toEqual([
+      { name: "OTHER_KEY", value: "", sensitive: true, valueRedacted: true },
+    ]);
+
+    const restored = applyEnvironmentRowPatch(cleared, { name: "API_KEY" });
+    expect(environmentRowNeedsValue(restored)).toBe(true);
+    expect(publishableEnvironment([restored])).toBeNull();
+    expect(
+      publishableEnvironment([restored])?.some(
+        (variable) => variable.name === "API_KEY" && variable.valueRedacted === true,
+      ) ?? false,
+    ).toBe(false);
+  });
+
+  it("keeps failed-save secret ownership until the replacement is acknowledged", () => {
+    const failedSave = applyEnvironmentRowPatch(
+      applyEnvironmentRowPatch(storedSecret(), { name: "OTHER_KEY" }),
+      { value: "replacement" },
+    );
+    const [stillStored] = reconcileEnvironmentRows(
+      [failedSave],
+      [{ name: "API_KEY", value: "", sensitive: true, valueRedacted: true }],
+    );
+    expect(stillStored?.stored).toEqual({ name: "API_KEY" });
+
+    const cleared = applyEnvironmentRowPatch(stillStored!, { value: "" });
+    const restored = applyEnvironmentRowPatch(cleared, { name: "API_KEY" });
+    expect(environmentRowNeedsValue(restored)).toBe(false);
+    expect(publishableEnvironment([restored])).toEqual([
+      { name: "API_KEY", value: "", sensitive: true, valueRedacted: true },
+    ]);
+  });
+
+  it("keeps an ordinary unchanged stored secret linked across other environment changes", () => {
+    const row = storedSecret();
+    const [reconciled] = reconcileEnvironmentRows(
+      [row],
+      [
+        { name: "API_KEY", value: "", sensitive: true, valueRedacted: true },
+        { name: "BASE_URL", value: "https://example.test", sensitive: false },
+      ],
+    );
+    expect(reconciled).toBe(row);
+  });
+
+  it("drops stored ownership when the authoritative environment no longer has the secret", () => {
+    const [detached] = reconcileEnvironmentRows(
+      [storedSecret()],
+      [{ name: "OTHER_KEY", value: "", sensitive: true, valueRedacted: true }],
+    );
+    expect(detached?.stored).toBeUndefined();
+    expect(detached?.valueRedacted).toBe(false);
+    expect(environmentRowNeedsValue(detached!)).toBe(true);
+    expect(publishableEnvironment([detached!])).toBeNull();
+  });
+
+  it("blocks publishing a named sensitive row with neither a stored link nor a value", () => {
+    const named = applyEnvironmentRowPatch(
+      makeEnvironmentDraftRow({ name: "", value: "", sensitive: true }, 0),
+      { name: "API_KEY" },
+    );
+    expect(environmentRowNeedsValue(named)).toBe(true);
+    expect(publishableEnvironment([named])).toBeNull();
   });
 });
