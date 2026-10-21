@@ -655,6 +655,198 @@ describeOnPosix("startOpenCodeServerProcess spawner ownership", () => {
   });
 });
 
+const currentTimeMillis = Effect.clockWith((clock) => clock.currentTimeMillis);
+
+const waitForFixturePid = (pidPath: string, timeoutMs: number) =>
+  Effect.gen(function* () {
+    const deadline = (yield* currentTimeMillis) + timeoutMs;
+    for (;;) {
+      const pid = readFixturePid(pidPath);
+      if (pid !== undefined) return pid;
+      if ((yield* currentTimeMillis) >= deadline) return undefined;
+      yield* Effect.sleep("20 millis");
+    }
+  });
+
+// Best-effort SIGKILL for a disposable fixture group. Every pid passed here was
+// recorded by a fixture this test spawned, and the liveness check keeps the
+// signal off a pid that has already exited.
+const killFixtureGroup = (pid: number | undefined): void => {
+  if (pid === undefined || !isProcessAlive(pid)) return;
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch {
+    killFixture(pid);
+  }
+};
+
+/**
+ * External watchdog for a forked effect that owns a real, disposable fixture.
+ *
+ * The effect under test may be waiting on cleanup that never settles. Polling
+ * completion from the test (rather than wrapping the effect in another timeout,
+ * which would inherit the same blocked finalizer) lets the deadline fire: the
+ * watchdog SIGKILLs the owned fixture so the effect can settle, and reports
+ * `watchdog_expired`. The test then fails on that recorded outcome instead of
+ * hanging the runner.
+ */
+const watchForCompletion = (input: {
+  readonly done: Deferred.Deferred<void>;
+  readonly fixturePid: () => number | undefined;
+  readonly boundMs: number;
+}) =>
+  Effect.gen(function* () {
+    const deadline = (yield* currentTimeMillis) + input.boundMs;
+    while (!(yield* Deferred.isDone(input.done))) {
+      if ((yield* currentTimeMillis) >= deadline) {
+        killFixtureGroup(input.fixturePid());
+        return "watchdog_expired" as const;
+      }
+      yield* Effect.sleep("25 millis");
+    }
+    return "settled" as const;
+  });
+
+describeOnPosix("bounded command cleanup", () => {
+  it.live("settles interruption of a command that ignores SIGTERM", () => {
+    const directory = makeFixtureDirectory();
+    const versionPidPath = NodePath.join(directory, "version.pid");
+    const fixturePath = writeExecutableFixture(directory, "hung-version-opencode.sh", [
+      "#!/bin/sh",
+      // This probe never answers and ignores SIGTERM, like a CLI blocked before
+      // it can print `--version`. Only a bounded TERM-to-KILL escalation can
+      // stop it; the spawner's own cleanup waits on the exit signal forever.
+      "trap '' TERM",
+      `echo $$ > "${versionPidPath}"`,
+      "while :; do sleep 1; done",
+    ]);
+    let fixturePid: number | undefined;
+
+    return Effect.gen(function* () {
+      const runtime = yield* OpenCodeRuntime;
+      const done = yield* Deferred.make<void>();
+      const command = yield* runtime
+        .runOpenCodeCommand({
+          binaryPath: fixturePath,
+          args: ["--version"],
+          environment: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: directory },
+        })
+        .pipe(
+          Effect.onExit(() => Deferred.succeed(done, void 0)),
+          Effect.forkChild,
+        );
+
+      fixturePid = yield* waitForFixturePid(versionPidPath, 2_000);
+      expect(fixturePid, "the fixture must record its pid").toBeDefined();
+
+      const startedAtMs = yield* currentTimeMillis;
+      // Interrupt exactly as a caller timer does. `Fiber.interrupt` waits for
+      // the command's finalizers, so this measures the cleanup bound too.
+      yield* Effect.sleep("25 millis").pipe(
+        Effect.andThen(Fiber.interrupt(command)),
+        Effect.forkChild,
+      );
+
+      const outcome = yield* watchForCompletion({
+        done,
+        fixturePid: () => fixturePid,
+        boundMs: 5_000,
+      });
+      const exit = yield* Fiber.await(command);
+      const elapsedMs = (yield* currentTimeMillis) - startedAtMs;
+
+      expect(outcome, "command interruption must settle without the watchdog").toBe("settled");
+      expect(Exit.hasInterrupts(exit)).toBe(true);
+      // One SIGTERM grace window, then SIGKILL and its exit wait: about a
+      // second, well inside the 5s watchdog and not an unbounded wait.
+      expect(elapsedMs).toBeLessThan(4_000);
+      expect(
+        isProcessAlive(fixturePid!),
+        "the interrupted command must not leave an owned fixture running",
+      ).toBe(false);
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          killFixtureGroup(fixturePid ?? readFixturePid(versionPidPath));
+          NodeFS.rmSync(directory, { recursive: true, force: true });
+        }),
+      ),
+      Effect.provide(runtimeLayerWithRealSpawner()),
+    );
+  });
+
+  it.live("starts the server after a SIGTERM-ignoring --version probe is bounded", () => {
+    const directory = makeFixtureDirectory();
+    const versionPidPath = NodePath.join(directory, "version.pid");
+    const serverPidPath = NodePath.join(directory, "server.pid");
+    const fixturePath = writeExecutableFixture(directory, "hung-probe-opencode.sh", [
+      "#!/bin/sh",
+      'if [ "$1" = "--version" ]; then',
+      // The probe hangs and ignores TERM; the runtime must still reach its
+      // unknown-version fallback and start the server.
+      "  trap '' TERM",
+      `  echo $$ > "${versionPidPath}"`,
+      "  while :; do sleep 1; done",
+      "fi",
+      `echo $$ > "${serverPidPath}"`,
+      `echo 'opencode server listening on ${SERVER_URL}'`,
+      "trap 'exit 0' TERM",
+      "while :; do sleep 1; done",
+    ]);
+    let versionPid: number | undefined;
+
+    return Effect.gen(function* () {
+      const runtime = yield* OpenCodeRuntime;
+      const done = yield* Deferred.make<void>();
+      const startup = yield* runtime
+        .startOpenCodeServerProcess({
+          binaryPath: fixturePath,
+          port: 4097,
+          environment: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: directory },
+        })
+        .pipe(
+          Effect.scoped,
+          Effect.onExit(() => Deferred.succeed(done, void 0)),
+          Effect.forkChild,
+        );
+
+      versionPid = yield* waitForFixturePid(versionPidPath, 2_000);
+      expect(versionPid, "the probe fixture must record its pid").toBeDefined();
+
+      const startedAtMs = yield* currentTimeMillis;
+      const outcome = yield* watchForCompletion({
+        done,
+        fixturePid: () => versionPid,
+        boundMs: 9_000,
+      });
+      const exit = yield* Fiber.await(startup);
+      const elapsedMs = (yield* currentTimeMillis) - startedAtMs;
+
+      expect(outcome, "startup must settle without the watchdog").toBe("settled");
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (Exit.isSuccess(exit)) {
+        expect(exit.value.url).toBe(SERVER_URL);
+      }
+      // The 5s probe budget plus one SIGTERM grace window and the prompt
+      // SIGKILL exit: about six seconds, so the bound is deliberately not 5s.
+      expect(elapsedMs).toBeLessThan(9_000);
+      expect(
+        isProcessAlive(versionPid!),
+        "the timed-out probe must be terminated, not left as an untracked process",
+      ).toBe(false);
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          killFixtureGroup(versionPid ?? readFixturePid(versionPidPath));
+          killFixtureGroup(readFixturePid(serverPidPath));
+          NodeFS.rmSync(directory, { recursive: true, force: true });
+        }),
+      ),
+      Effect.provide(runtimeLayerWithRealSpawner()),
+    );
+  });
+});
+
 interface FakeGroupState {
   alive: boolean;
   readonly signals: Array<NodeJS.Signals>;

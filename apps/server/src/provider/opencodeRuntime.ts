@@ -17,6 +17,7 @@ import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -31,7 +32,7 @@ import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { isWindowsCommandNotFound } from "../processRunner.ts";
-import { collectStreamAsString } from "./providerSnapshot.ts";
+import { collectStreamAsString, escalateChildTermination } from "./providerSnapshot.ts";
 import * as NetService from "@neokod/shared/Net";
 import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import {
@@ -121,6 +122,16 @@ const DEFAULT_HOSTNAME = "127.0.0.1";
 const OPENCODE_GROUP_TERM_GRACE = "1 second";
 const OPENCODE_GROUP_KILL_SETTLE_POLLS = 20;
 const OPENCODE_GROUP_KILL_SETTLE_INTERVAL = "50 millis";
+
+/**
+ * Grace for each stage of stopping a one-shot command child (`--version`).
+ *
+ * The caller's probe timeout bounds command collection only; terminating the
+ * child adds up to this window for SIGTERM and the same window again for the
+ * exit wait after SIGKILL. A version probe can therefore settle about two
+ * seconds after its nominal timeout, plus scheduling.
+ */
+const OPENCODE_COMMAND_TERM_GRACE = Duration.seconds(1);
 
 export interface OpenCodeProcessGroupTerminationInput {
   readonly pgid: number;
@@ -323,6 +334,12 @@ export interface OpenCodeRuntimeShape {
     readonly hostname?: string;
     readonly timeoutMs?: number;
   }) => Effect.Effect<OpenCodeServerConnection, OpenCodeRuntimeError, Scope.Scope>;
+  /**
+   * Runs a one-shot command and collects its output. Interruption (including a
+   * caller timeout) terminates the child with a bounded TERM-to-KILL escalation
+   * and a bounded exit wait, so callers never wait on the spawner's own
+   * unbounded cleanup.
+   */
   readonly runOpenCodeCommand: (input: {
     readonly binaryPath: string;
     readonly args: ReadonlyArray<string>;
@@ -471,6 +488,41 @@ function ensureRuntimeError(
     : new OpenCodeRuntimeError({ operation, detail, cause });
 }
 
+/**
+ * Stop a command child within a bounded window and report what could not be
+ * stopped.
+ *
+ * {@link escalateChildTermination} bounds the signal delivery and the wait for
+ * the exit signal: SIGTERM, at most one grace window, then SIGKILL, at most one
+ * more. A child that survives even SIGKILL is logged rather than awaited
+ * forever, because the alternative is a caller timeout that never settles and
+ * no evidence that the process is still alive.
+ *
+ * This needs no birth-token guard like the server path: the signals go through
+ * the live spawner handle for a child this process just spawned, and only while
+ * that handle still reports it running. The ledger guard exists for servers
+ * whose pid survives a Neokod crash; a command's ownership ends with the call.
+ */
+const releaseOpenCodeCommandChild = (
+  child: ChildProcessSpawner.ChildProcessHandle,
+): Effect.Effect<void> =>
+  escalateChildTermination(child, OPENCODE_COMMAND_TERM_GRACE).pipe(
+    Effect.andThen(
+      child.isRunning.pipe(
+        // Unknown liveness stays unknown: it is not proof that the child stopped.
+        Effect.orElseSucceed(() => true),
+        Effect.flatMap((running) =>
+          running
+            ? Effect.logWarning(
+                "OpenCode command process survived SIGTERM and SIGKILL; it may still be running",
+                { pid: Number(child.pid) },
+              )
+            : Effect.void,
+        ),
+      ),
+    ),
+  );
+
 const makeOpenCodeRuntime = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const netService = yield* NetService.NetService;
@@ -482,11 +534,28 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
   const runOpenCodeCommand: OpenCodeRuntimeShape["runOpenCodeCommand"] = (input) =>
     Effect.gen(function* () {
       const spawnCommand = yield* resolveCommand(input.binaryPath, input.args, input.environment);
-      const child = yield* spawner.spawn(
-        ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-          shell: spawnCommand.shell,
-          ...(input.environment ? { env: input.environment } : { extendEnv: true }),
-        }),
+      // The Node spawner registers its own scope finalizer, which sends SIGTERM
+      // and then waits for the exit signal with no bound. `forceKillAfter` only
+      // times the signal send, not that wait, so a command that ignores SIGTERM
+      // (for example a `--version` probe stuck before it can answer) parks the
+      // finalizer, and the caller's timeout keeps waiting for the interrupted
+      // fibre to finish. That finalizer also signals the process group without
+      // an ownership check when the child exited non-zero. Give the command a
+      // private scope this runtime never closes, so the finalizer can never run,
+      // and make the `acquireRelease` below the only cleanup owner. It bounds
+      // termination and the exit wait; the private scope holds no OS resources
+      // of its own.
+      const spawnScope = yield* Scope.make();
+      const child = yield* Effect.acquireRelease(
+        spawner
+          .spawn(
+            ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+              shell: spawnCommand.shell,
+              ...(input.environment ? { env: input.environment } : { extendEnv: true }),
+            }),
+          )
+          .pipe(Effect.provideService(Scope.Scope, spawnScope)),
+        releaseOpenCodeCommandChild,
       );
       const [stdout, stderr, code] = yield* Effect.all(
         [collectStreamAsString(child.stdout), collectStreamAsString(child.stderr), child.exitCode],
@@ -505,6 +574,9 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
         code: exitCode,
       } satisfies OpenCodeCommandResult;
     }).pipe(
+      // The `acquireRelease` above must run its bounded cleanup when this
+      // command completes or is interrupted, not when the caller's ambient
+      // scope eventually closes.
       Effect.scoped,
       Effect.mapError((cause) =>
         ensureRuntimeError(
