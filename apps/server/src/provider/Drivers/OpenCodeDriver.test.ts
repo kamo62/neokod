@@ -100,6 +100,7 @@ describe("supportsOpenCodeSymphonyCodeReview", () => {
 const versionStdoutState = vi.hoisted(() => ({
   value: "opencode v2.0.32\n",
   hang: false,
+  fail: false,
   onHangStarted: null as (() => void) | null,
 }));
 const versionCommandCalls: Array<{
@@ -116,6 +117,9 @@ const fakeRuntime: OpenCodeRuntimeShape = {
       if (versionStdoutState.hang) {
         versionStdoutState.onHangStarted?.();
         return Effect.never;
+      }
+      if (versionStdoutState.fail) {
+        return Effect.die(new Error("opencode --version failed"));
       }
       return Effect.sync(() => ({
         stdout: versionStdoutState.value,
@@ -250,6 +254,44 @@ describe("OpenCodeDriver command-time maintenance guard", () => {
     }).pipe(Effect.provide(driverTestLayer), Effect.scoped),
   );
 
+  it.effect("blocks the captured update when the current major cannot be parsed", () =>
+    Effect.gen(function* () {
+      versionStdoutState.value = "opencode version unknown\n";
+      const instance = yield* createOpenCodeInstance({
+        instanceId: "opencode_guard_unparseable",
+        enabled: true,
+      });
+      const verifyStillApplicable = openCodeUpdateGuard(instance);
+
+      const blockedReason = yield* verifyStillApplicable;
+      expect(blockedReason).toContain("could not verify the installed OpenCode major");
+      expect(blockedReason).toContain("retry");
+    }).pipe(Effect.provide(driverTestLayer), Effect.scoped),
+  );
+
+  it.effect("blocks the captured update when the version probe fails", () =>
+    Effect.gen(function* () {
+      versionStdoutState.fail = true;
+      const instance = yield* createOpenCodeInstance({
+        instanceId: "opencode_guard_probe_failed",
+        enabled: true,
+      });
+      const verifyStillApplicable = openCodeUpdateGuard(instance);
+
+      const blockedReason = yield* verifyStillApplicable;
+      expect(blockedReason).toContain("could not verify the installed OpenCode major");
+      expect(blockedReason).toContain("retry");
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          versionStdoutState.fail = false;
+        }),
+      ),
+      Effect.provide(driverTestLayer),
+      Effect.scoped,
+    ),
+  );
+
   it.effect("does not guard an external server from the local CLI", () =>
     Effect.gen(function* () {
       versionCommandCalls.length = 0;
@@ -303,12 +345,15 @@ describe("OpenCodeDriver command-time maintenance guard", () => {
       yield* TestClock.adjust(exceedTimeout);
       const instance = yield* Fiber.join(instanceFiber);
 
-      // A timed-out probe is unverified, not an unsupported install.
+      // A timed-out probe is unverified, not an unsupported install: hydration
+      // keeps the previous fallback so the provider still appears.
       expect(instance.symphonyCodeReview).toBe(true);
       expect(instance.snapshot.maintenanceCapabilities.update).not.toBeNull();
 
       // The command-time revalidation uses the same bound, so maintenance
-      // cannot hang on the same executable.
+      // cannot hang on the same executable. An unknown major is not
+      // affirmative evidence that the captured 1.x updater is safe, so the
+      // destructive command is refused with a retryable reason.
       const guardStart: { resolve: () => void } = { resolve: () => {} };
       const guardStarted = new Promise<void>((resolve) => {
         guardStart.resolve = resolve;
@@ -318,11 +363,14 @@ describe("OpenCodeDriver command-time maintenance guard", () => {
       yield* Effect.promise(() => guardStarted);
       yield* TestClock.adjust(exceedTimeout);
 
-      expect(yield* Fiber.join(guardFiber)).toBeNull();
+      const blockedReason = yield* Fiber.join(guardFiber);
+      expect(blockedReason).toContain("could not verify the installed OpenCode major");
+      expect(blockedReason).toContain("retry");
     }).pipe(
       Effect.ensuring(
         Effect.sync(() => {
           versionStdoutState.hang = false;
+          versionStdoutState.fail = false;
           versionStdoutState.onHangStarted = null;
         }),
       ),

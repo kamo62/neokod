@@ -27,6 +27,8 @@ import {
   ProviderVersionCache,
   type ProviderMaintenanceCapabilities,
 } from "./providerMaintenance.ts";
+import { openCodeUpdateBlockedReason } from "./Drivers/OpenCodeDriver.ts";
+import { classifyOpenCodeVersion, type OpenCodeVersion } from "./openCodeVersion.ts";
 const isServerProviderUpdateError = Schema.is(ServerProviderUpdateError);
 
 const CODEX_DRIVER = ProviderDriverKind.make("codex");
@@ -322,7 +324,7 @@ describe("providerMaintenanceRunner", () => {
           Effect.succeed(
             withCommandTimeGuard(
               lifecycleFor(provider),
-              Effect.succeed("Update blocked. OpenCode v2.0.32 is installed."),
+              Effect.succeed(openCodeUpdateBlockedReason(classifyOpenCodeVersion("2.0.32"))),
             ),
           ),
       });
@@ -361,7 +363,12 @@ describe("providerMaintenanceRunner", () => {
       const updater = yield* makeTestRunner({
         ...registry,
         getProviderMaintenanceCapabilitiesForInstance: (_instanceId, provider) =>
-          Effect.succeed(withCommandTimeGuard(lifecycleFor(provider), Effect.succeed(null))),
+          Effect.succeed(
+            withCommandTimeGuard(
+              lifecycleFor(provider),
+              Effect.succeed(openCodeUpdateBlockedReason(classifyOpenCodeVersion("1.18.15"))),
+            ),
+          ),
       });
 
       const result = yield* updater.updateProvider(OPENCODE_DRIVER);
@@ -373,6 +380,54 @@ describe("providerMaintenanceRunner", () => {
         },
       ]);
       assert.strictEqual(result.providers[0]?.updateState?.status, "succeeded");
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          NonWindowsPlatform,
+          latestVersionHttpClient("0.0.0"),
+          mockSpawnerLayer((command, args) => {
+            calls.push({ command, args });
+            return { stdout: "updated" };
+          }),
+        ),
+      ),
+    );
+  });
+
+  it.effect("refuses the captured updater when the command-time probe is unknown", () => {
+    const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
+    return Effect.gen(function* () {
+      const probeVersionRef = yield* Ref.make<OpenCodeVersion | null>(null);
+      const { registry, updateStatesRef } = yield* makeRegistry(baseOpenCodeProvider);
+      const updater = yield* makeTestRunner({
+        ...registry,
+        getProviderMaintenanceCapabilitiesForInstance: (_instanceId, provider) =>
+          Effect.succeed(
+            withCommandTimeGuard(
+              lifecycleFor(provider),
+              Ref.get(probeVersionRef).pipe(Effect.map(openCodeUpdateBlockedReason)),
+            ),
+          ),
+      });
+
+      const result = yield* Effect.exit(updater.updateProvider(OPENCODE_DRIVER));
+
+      assert.strictEqual(Exit.isFailure(result), true);
+      if (Exit.isFailure(result)) {
+        const error = Cause.squash(result.cause);
+        assert.strictEqual(isServerProviderUpdateError(error), true);
+        if (isServerProviderUpdateError(error)) {
+          assert.include(error.reason, "could not verify the installed OpenCode major");
+          assert.include(error.reason, "retry");
+        }
+      }
+      assert.deepStrictEqual(calls, []);
+      assert.deepStrictEqual(
+        (yield* Ref.get(updateStatesRef)).map((state) => state.status),
+        ["queued"],
+      );
+      const providersAfterRejection = yield* registry.getProviders;
+      assert.strictEqual(providersAfterRejection[0]?.updateState, undefined);
     }).pipe(
       Effect.provide(
         Layer.mergeAll(
