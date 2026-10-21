@@ -1560,6 +1560,7 @@ function makeRuntimeAdapterLayer(input: {
   readonly liveness: { value: CopilotRuntimeLiveness };
   readonly calls: { restarts: number; probes: number };
 }) {
+  let settleSessions: Effect.Effect<void> = Effect.void;
   return Layer.unwrap(
     Effect.sync(() => {
       client = makeCopilotClientTestDouble();
@@ -1572,10 +1573,18 @@ function makeRuntimeAdapterLayer(input: {
               input.calls.probes += 1;
               return input.liveness.value;
             }),
-            restartIfDead: Effect.sync(() => {
-              input.calls.restarts += 1;
-              return true;
-            }),
+            restartIfDead: Effect.suspend(() => settleSessions).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  input.calls.restarts += 1;
+                }),
+              ),
+              Effect.as(true),
+            ),
+            registerSettlement: (settle) =>
+              Effect.sync(() => {
+                settleSessions = settle;
+              }),
           },
         }),
       );

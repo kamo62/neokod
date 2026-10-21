@@ -109,9 +109,15 @@ export interface CopilotAdapterLiveOptions {
   /**
    * Liveness/restart handle for the shared Copilot client. Absent in tests
    * and for callers that do not own the runtime; when absent no watchdog
-   * runs and the abort path only surfaces failures.
+   * runs and the abort path only surfaces failures. The adapter registers its
+   * session settlement with the runtime, so every replacement path (provider
+   * refresh, watchdog, send/abort recovery) closes turns and requests before
+   * the SDK disconnects them.
    */
-  readonly runtime?: Pick<CopilotRuntimeSupervisor, "probe" | "restartIfDead">;
+  readonly runtime?: Pick<
+    CopilotRuntimeSupervisor,
+    "probe" | "restartIfDead" | "registerSettlement"
+  >;
 }
 
 interface PendingApproval {
@@ -554,7 +560,6 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
   const fileSystem = yield* FileSystem.FileSystem;
   const serverConfig = yield* ServerConfig;
   const crypto = yield* Crypto.Crypto;
-  const adapterScope = yield* Effect.scope;
   const nativeEventLogger =
     options?.nativeEventLogger ??
     (options?.nativeEventLogPath !== undefined
@@ -655,12 +660,16 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
     });
 
   /**
-   * Settle every live session after the shared runtime process died. Order
-   * matters: the turn must close before `runtime.error` and `session.exited`,
-   * and `runtime.error` carries no `turnId` so ingestion cannot re-assert the
-   * settled turn as active.
+   * Settle every live session after the shared runtime process died. This runs
+   * from the supervisor immediately before it replaces the runtime, so it must
+   * not request a restart itself (that would re-enter the restart permit).
+   *
+   * Order matters: the turn must close before `runtime.error` and
+   * `session.exited`, and `runtime.error` carries no `turnId` so ingestion
+   * cannot re-assert the settled turn as active.
    */
-  const handleRuntimeLost = Effect.fn("handleRuntimeLost")(function* (reason: string) {
+  const settleSessionsAfterRuntimeLoss = Effect.fn("settleSessionsAfterRuntimeLoss")(function* () {
+    const reason = COPILOT_RUNTIME_LOST_MESSAGE;
     for (const ctx of Array.from(sessions.values())) {
       if (ctx.stopped) continue;
       yield* settlePendingApprovalsAsCancelled(ctx.pendingApprovals);
@@ -690,13 +699,19 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       });
       yield* stopSessionInternal(ctx, { reason });
     }
-    if (options?.runtime) {
-      yield* options.runtime.restartIfDead.pipe(Effect.ignore, Effect.forkIn(adapterScope));
-    }
   });
 
   const runtime = options?.runtime;
   if (runtime) {
+    yield* runtime.registerSettlement(
+      settleSessionsAfterRuntimeLoss().pipe(
+        Effect.catchCause((cause) =>
+          Effect.logError("Failed to settle GitHub Copilot sessions before runtime replacement.", {
+            cause,
+          }),
+        ),
+      ),
+    );
     yield* Effect.forever(
       Effect.sleep(COPILOT_RUNTIME_LIVENESS_INTERVAL).pipe(
         Effect.andThen(
@@ -706,9 +721,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
             )
               ? runtime.probe.pipe(
                   Effect.flatMap((state) =>
-                    state === "dead"
-                      ? handleRuntimeLost(COPILOT_RUNTIME_LOST_MESSAGE)
-                      : Effect.void,
+                    state === "dead" ? runtime.restartIfDead.pipe(Effect.asVoid) : Effect.void,
                   ),
                 )
               : Effect.void,
@@ -1751,9 +1764,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
                 runtime
                   ? runtime.probe.pipe(
                       Effect.flatMap((state) =>
-                        state === "dead"
-                          ? handleRuntimeLost(COPILOT_RUNTIME_LOST_MESSAGE)
-                          : Effect.void,
+                        state === "dead" ? runtime.restartIfDead.pipe(Effect.asVoid) : Effect.void,
                       ),
                     )
                   : Effect.void,
@@ -1786,8 +1797,9 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       if (Result.isFailure(aborted)) {
         if (runtime && (yield* runtime.probe) === "dead") {
           // The stop request is satisfied: the runtime is gone, so the turn
-          // cannot continue and is settled as failed below.
-          yield* handleRuntimeLost(COPILOT_RUNTIME_LOST_MESSAGE);
+          // cannot continue. The supervisor settles the session and replaces
+          // the runtime before this returns.
+          yield* runtime.restartIfDead.pipe(Effect.asVoid);
           return;
         }
         return yield* toRequestError(threadId, "session/abort", aborted.failure);

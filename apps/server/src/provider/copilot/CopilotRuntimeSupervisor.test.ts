@@ -12,6 +12,7 @@ import {
 interface FakeRuntime {
   readonly client: CopilotRuntimeClient;
   readonly calls: { ping: number; start: number; forceStop: number };
+  readonly order: Array<string>;
   readonly setDead: (dead: boolean) => void;
 }
 
@@ -21,8 +22,10 @@ function makeFakeRuntime(options?: {
 }): FakeRuntime {
   let dead = true;
   const calls = { ping: 0, start: 0, forceStop: 0 };
+  const order: Array<string> = [];
   return {
     calls,
+    order,
     setDead: (next) => {
       dead = next;
     },
@@ -38,6 +41,7 @@ function makeFakeRuntime(options?: {
       },
       start: () => {
         calls.start += 1;
+        order.push("start");
         if (options?.startFailure) {
           return Promise.reject(new Error(options.startFailure));
         }
@@ -46,6 +50,7 @@ function makeFakeRuntime(options?: {
       },
       forceStop: () => {
         calls.forceStop += 1;
+        order.push("forceStop");
         return Promise.resolve();
       },
     },
@@ -97,6 +102,46 @@ describe("CopilotRuntimeSupervisor", () => {
       expect(runtime.calls.forceStop).toBe(0);
       expect(runtime.calls.start).toBe(0);
       expect(yield* SubscriptionRef.get(supervisor.restartCount)).toBe(0);
+    }),
+  );
+
+  it.effect("settles sessions once before replacing a dead runtime", () =>
+    Effect.gen(function* () {
+      const runtime = makeFakeRuntime();
+      const supervisor = yield* makeCopilotRuntimeSupervisor(runtime.client);
+      let settlements = 0;
+      yield* supervisor.registerSettlement(
+        Effect.sync(() => {
+          settlements += 1;
+          runtime.order.push("settle");
+        }),
+      );
+
+      const results = yield* Effect.all([supervisor.restartIfDead, supervisor.restartIfDead], {
+        concurrency: 2,
+      });
+
+      expect(results.filter(Boolean)).toHaveLength(1);
+      expect(settlements).toBe(1);
+      expect(runtime.order).toEqual(["settle", "forceStop", "start"]);
+    }),
+  );
+
+  it.effect("does not settle sessions when the runtime is alive", () =>
+    Effect.gen(function* () {
+      const runtime = makeFakeRuntime();
+      runtime.setDead(false);
+      const supervisor = yield* makeCopilotRuntimeSupervisor(runtime.client);
+      let settlements = 0;
+      yield* supervisor.registerSettlement(
+        Effect.sync(() => {
+          settlements += 1;
+        }),
+      );
+
+      expect(yield* supervisor.restartIfDead).toBe(false);
+      expect(settlements).toBe(0);
+      expect(runtime.order).toEqual([]);
     }),
   );
 
