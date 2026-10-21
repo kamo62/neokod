@@ -482,19 +482,20 @@ describe("discoverOwnedTtyProcessGroups / confirmOwnedTtyProcessGroup", () => {
       const groups = yield* discoverOwnedTtyProcessGroups(
         { rows, tty: "ttys900", ownPid: 50 },
         tokenReader({ 9000: "shell-born", 7002: "group-born", 7003: "group-born-2" }),
+        () => Effect.succeed(table(rows)),
       );
       expect(groups).toEqual([
         {
           pgid: 9000,
           tty: "ttys900",
-          anchors: [{ pid: 9000, birthToken: "shell-born" }],
+          anchors: [{ pid: 9000, birthToken: "shell-born", tty: "ttys900" }],
         },
         {
           pgid: 7001,
           tty: "ttys900",
           anchors: [
-            { pid: 7002, birthToken: "group-born" },
-            { pid: 7003, birthToken: "group-born-2" },
+            { pid: 7002, birthToken: "group-born", tty: "ttys900" },
+            { pid: 7003, birthToken: "group-born-2", tty: "ttys900" },
           ],
         },
       ]);
@@ -506,6 +507,7 @@ describe("discoverOwnedTtyProcessGroups / confirmOwnedTtyProcessGroup", () => {
       const group = (yield* discoverOwnedTtyProcessGroups(
         { rows, tty: "ttys900", ownPid: 50 },
         tokenReader({ 9000: "shell-born", 7002: "group-born" }),
+        () => Effect.succeed(table(rows)),
       )).find((candidate) => candidate.pgid === 7001);
       if (!group) throw new Error("expected background group");
 
@@ -529,6 +531,56 @@ describe("discoverOwnedTtyProcessGroups / confirmOwnedTtyProcessGroup", () => {
         tokenReader({}),
       );
       expect(vanished).toEqual({ status: "revoked", reason: "group_replaced" });
+    }),
+  );
+
+  it.effect("drops an anchor whose pid moved to another tty before capture", () =>
+    Effect.gen(function* () {
+      // The snapshot still shows 7002 in group 7001 on the terminal tty. By the
+      // time its birth token is read, the original group is gone and the pid has
+      // been recycled onto an unrelated tty, so the token belongs to the
+      // replacement. A fresh membership read must reject that anchor.
+      const groups = yield* discoverOwnedTtyProcessGroups(
+        { rows, tty: "ttys900", ownPid: 50 },
+        tokenReader({ 9000: "shell-born", 7002: "replacement-born" }),
+        () =>
+          Effect.succeed(
+            table([
+              { pid: 9000, pgid: 9000, tty: "ttys900" },
+              { pid: 7002, pgid: 7001, tty: "ttys901" },
+              { pid: 50, pgid: 50, tty: "ttys900" },
+            ]),
+          ),
+      );
+      expect(groups.map((group) => group.pgid)).toEqual([9000]);
+    }),
+  );
+
+  it.effect("fails closed when fresh membership cannot be read", () =>
+    Effect.gen(function* () {
+      const groups = yield* discoverOwnedTtyProcessGroups(
+        { rows, tty: "ttys900", ownPid: 50 },
+        tokenReader({ 9000: "shell-born", 7002: "group-born" }),
+        () => Effect.succeed({ kind: "unavailable", detail: "ps_unavailable" }),
+      );
+      expect(groups).toEqual([]);
+    }),
+  );
+
+  it.effect("revokes a matching anchor that now controls another tty", () =>
+    Effect.gen(function* () {
+      // Even if an anchor was captured for the replacement, the pre-signal
+      // check must reject a fresh row that no longer belongs to the terminal.
+      const check = yield* confirmOwnedTtyProcessGroup(
+        {
+          pgid: 7001,
+          tty: "ttys900",
+          anchors: [{ pid: 7002, birthToken: "replacement-born", tty: "ttys900" }],
+        },
+        table([{ pid: 7002, pgid: 7001, tty: "ttys901" }]),
+        tokenReader({ 7002: "replacement-born" }),
+      );
+      expect(check).toEqual({ status: "revoked", reason: "member_recycled" });
     }),
   );
 });

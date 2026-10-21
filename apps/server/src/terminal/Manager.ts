@@ -44,6 +44,7 @@ import {
   posixProcessGroupSignaller,
   readProcessTable,
   terminateProcessGroup,
+  validateProcessBirthIdentity,
   validateTerminalOwnership,
   type ProcessBirthReader,
   type ProcessGroupSignaller,
@@ -1369,7 +1370,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     if (!isGroupSignalingSupported(platform)) return "fallback" as const;
     if (ownership === null) {
       yield* Effect.logWarning(
-        "terminal process ownership was not captured; falling back to pty pid signal",
+        "terminal process ownership was not captured; pty pid signal requires birth evidence",
         { threadId, terminalId, terminalPid: process.pid },
       );
       return "fallback" as const;
@@ -1407,10 +1408,10 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         });
         return "refused" as const;
       case "unverifiable":
-        // Missing `ps`/birth evidence: keep the legacy single-pid fallback, but
-        // never discover tty groups from unproven evidence.
+        // Missing `ps`/birth evidence: no tty groups are discovered from
+        // unproven evidence; the pid path below must re-prove birth identity.
         yield* Effect.logWarning(
-          "cannot verify terminal process ownership; falling back to pty pid signal",
+          "cannot verify terminal tty ownership; only an identity-checked pty pid signal is attempted",
           {
             threadId,
             terminalId,
@@ -1428,10 +1429,11 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     const groups = yield* discoverOwnedTtyProcessGroups(
       { rows: table.rows, tty: validation.tty, ownPid: globalThis.process.pid },
       processBirthReader,
+      readTable,
     );
     if (groups.length === 0) {
       yield* Effect.logWarning(
-        "no anchored tty process groups discovered; falling back to pty pid signal",
+        "no anchored tty process groups discovered; only an identity-checked pty pid signal is attempted",
         { threadId, terminalId, terminalPid: process.pid, tty: validation.tty },
       );
       return "fallback" as const;
@@ -1483,6 +1485,83 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     return "handled" as const;
   });
 
+  /**
+   * Prove the pty pid still belongs to the shell captured at spawn, immediately
+   * before a pid signal. On POSIX the pty adapter signals a bare numeric pid, so
+   * missing or stale birth evidence means the pid may have been recycled and
+   * nothing may be sent.
+   */
+  const confirmPtyPidOwnership = Effect.fn("terminal.confirmPtyPidOwnership")(function* (
+    process: PtyAdapter.PtyProcess,
+    threadId: string,
+    terminalId: string,
+    ownership: TerminalOwnershipEvidence | null,
+    phase: "term" | "kill",
+  ): Effect.fn.Return<boolean> {
+    if (ownership === null) {
+      yield* Effect.logWarning("refusing pty pid signal without terminal ownership evidence", {
+        threadId,
+        terminalId,
+        terminalPid: process.pid,
+        phase,
+      });
+      return false;
+    }
+    if (ownership.shellBirthToken === null || ownership.shellBirthToken.trim().length === 0) {
+      yield* Effect.logWarning("refusing pty pid signal without a captured birth token", {
+        threadId,
+        terminalId,
+        terminalPid: process.pid,
+        shellPid: ownership.shellPid,
+        phase,
+      });
+      return false;
+    }
+    if (ownership.shellPid !== process.pid) {
+      yield* Effect.logWarning("refusing pty pid signal for a different shell pid", {
+        threadId,
+        terminalId,
+        terminalPid: process.pid,
+        shellPid: ownership.shellPid,
+        phase,
+      });
+      return false;
+    }
+    const birth = yield* validateProcessBirthIdentity(
+      { pid: process.pid, persistedBirthToken: ownership.shellBirthToken },
+      processBirthReader,
+    );
+    switch (birth.status) {
+      case "confirmed":
+        return true;
+      case "process_gone":
+        yield* Effect.logWarning("terminal shell already exited; skipping pty pid signal", {
+          threadId,
+          terminalId,
+          terminalPid: process.pid,
+          phase,
+        });
+        return false;
+      case "recycled":
+        yield* Effect.logWarning("refusing pty pid signal: pid was recycled", {
+          threadId,
+          terminalId,
+          terminalPid: process.pid,
+          phase,
+        });
+        return false;
+      case "unverifiable":
+        yield* Effect.logWarning("refusing pty pid signal: birth identity unverifiable", {
+          threadId,
+          terminalId,
+          terminalPid: process.pid,
+          phase,
+          reason: birth.reason,
+        });
+        return false;
+    }
+  });
+
   const runKillEscalation = Effect.fn("terminal.runKillEscalation")(function* (
     process: PtyAdapter.PtyProcess,
     threadId: string,
@@ -1491,6 +1570,18 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   ) {
     const groupResult = yield* terminateOwnedTtyGroups(process, threadId, terminalId, ownership);
     if (groupResult !== "fallback") {
+      return;
+    }
+
+    // Windows has no POSIX birth/tty evidence: node-pty's own kill is bound to
+    // the console process list, so keep that platform path unchanged. On POSIX
+    // the pid signal is numeric, so re-prove identity before TERM and again
+    // before KILL; otherwise skip with the diagnostic above.
+    const requiresBirthProof = isGroupSignalingSupported(platform);
+    if (
+      requiresBirthProof &&
+      !(yield* confirmPtyPidOwnership(process, threadId, terminalId, ownership, "term"))
+    ) {
       return;
     }
 
@@ -1518,6 +1609,13 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     }
 
     yield* Effect.sleep(processKillGraceMs);
+
+    if (
+      requiresBirthProof &&
+      !(yield* confirmPtyPidOwnership(process, threadId, terminalId, ownership, "kill"))
+    ) {
+      return;
+    }
 
     yield* Effect.try({
       try: () => process.kill("SIGKILL"),
