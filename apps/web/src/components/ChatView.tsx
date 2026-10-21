@@ -8,6 +8,7 @@ import {
   type ProjectScript,
   type ProjectId,
   type ProviderApprovalDecision,
+  type PreviewAnnotationPayload,
   ProviderInstanceId,
   type ServerProvider,
   type ResolvedKeybindingsConfig,
@@ -233,6 +234,7 @@ import {
   deriveActiveToolLabel,
   hasServerAcknowledgedLocalDispatch,
   getStartedThreadModelChangeBlockReason,
+  isComposerDraftEmpty,
   LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
   LastInvokedScriptByProjectSchema,
   type LocalDispatchSnapshot,
@@ -1163,6 +1165,8 @@ function ChatViewContent(props: ChatViewProps) {
   const composerImagesRef = useRef<ComposerImageAttachment[]>([]);
   const composerTerminalContextsRef = useRef<TerminalContextDraft[]>([]);
   const composerElementContextsRef = useRef<ElementContextDraft[]>([]);
+  const composerDraftTargetRef = useRef(composerDraftTarget);
+  composerDraftTargetRef.current = composerDraftTarget;
   const localComposerRef = useRef<ChatComposerHandle | null>(null);
   const composerRef = useComposerHandleContext() ?? localComposerRef;
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -4009,6 +4013,33 @@ function ChatViewContent(props: ChatViewProps) {
     ],
   );
 
+  interface ComposerDraftSnapshot {
+    readonly prompt: string;
+    readonly images: ReadonlyArray<ComposerImageAttachment>;
+    readonly terminalContexts: ReadonlyArray<TerminalContextDraft>;
+    readonly elementContexts: ReadonlyArray<ElementContextDraft>;
+    readonly previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
+    readonly reviewComments: ReadonlyArray<ReviewCommentContext>;
+  }
+
+  const restoreComposerDraftSnapshot = (snapshot: ComposerDraftSnapshot) => {
+    promptRef.current = snapshot.prompt;
+    composerImagesRef.current = [...snapshot.images];
+    composerTerminalContextsRef.current = [...snapshot.terminalContexts];
+    composerElementContextsRef.current = [...snapshot.elementContexts];
+    setComposerDraftPrompt(composerDraftTarget, snapshot.prompt);
+    addComposerDraftImages(composerDraftTarget, [...snapshot.images]);
+    setComposerDraftTerminalContexts(composerDraftTarget, [...snapshot.terminalContexts]);
+    setComposerDraftElementContexts(composerDraftTarget, [...snapshot.elementContexts]);
+    setComposerDraftPreviewAnnotations(composerDraftTarget, [...snapshot.previewAnnotations]);
+    setComposerDraftReviewComments(composerDraftTarget, [...snapshot.reviewComments]);
+    composerRef.current?.resetCursorState({
+      cursor: collapseExpandedComposerCursor(snapshot.prompt, snapshot.prompt.length),
+      prompt: snapshot.prompt,
+      detectTrigger: true,
+    });
+  };
+
   const onSend = async (
     e?: { preventDefault: () => void },
     options?: { bypassQueue?: boolean },
@@ -4060,14 +4091,43 @@ function ChatViewContent(props: ChatViewProps) {
         draftText: trimmed,
         planMarkdown: activeProposedPlan.planMarkdown,
       });
+      const draftTargetForFollowUp = composerDraftTarget;
+      const draftSnapshot: ComposerDraftSnapshot = {
+        prompt: promptForSend,
+        images: [...composerImages],
+        terminalContexts: [...composerTerminalContexts],
+        elementContexts: [...composerElementContexts],
+        previewAnnotations: [...composerPreviewAnnotations],
+        reviewComments: [...composerReviewComments],
+      };
       promptRef.current = "";
+      composerImagesRef.current = [];
+      composerTerminalContextsRef.current = [];
+      composerElementContextsRef.current = [];
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
-      await onSubmitPlanFollowUp({
+      const outcome = await onSubmitPlanFollowUp({
         text: followUp.text,
         interactionMode: followUp.interactionMode,
       });
-      return "not_attempted";
+      if (outcome === "rejected" && composerDraftTargetRef.current === draftTargetForFollowUp) {
+        const currentDraft = useComposerDraftStore
+          .getState()
+          .getComposerDraft(draftTargetForFollowUp);
+        if (
+          isComposerDraftEmpty({
+            prompt: promptRef.current,
+            imageCount: composerImagesRef.current.length,
+            terminalContextCount: composerTerminalContextsRef.current.length,
+            elementContextCount: composerElementContextsRef.current.length,
+            previewAnnotationCount: currentDraft?.previewAnnotations.length ?? 0,
+            reviewCommentCount: currentDraft?.reviewComments.length ?? 0,
+          })
+        ) {
+          restoreComposerDraftSnapshot(draftSnapshot);
+        }
+      }
+      return outcome === "accepted" ? "accepted" : "failed";
     }
     const standaloneSlashCommand =
       composerImages.length === 0 &&
@@ -4348,15 +4408,16 @@ function ChatViewContent(props: ChatViewProps) {
     }
 
     if (failure !== null) {
+      const currentDraft = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
       if (
-        promptRef.current.length === 0 &&
-        composerImagesRef.current.length === 0 &&
-        composerTerminalContextsRef.current.length === 0 &&
-        composerElementContextsRef.current.length === 0 &&
-        (useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.previewAnnotations
-          .length ?? 0) === 0 &&
-        (useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.reviewComments
-          .length ?? 0) === 0
+        isComposerDraftEmpty({
+          prompt: promptRef.current,
+          imageCount: composerImagesRef.current.length,
+          terminalContextCount: composerTerminalContextsRef.current.length,
+          elementContextCount: composerElementContextsRef.current.length,
+          previewAnnotationCount: currentDraft?.previewAnnotations.length ?? 0,
+          reviewCommentCount: currentDraft?.reviewComments.length ?? 0,
+        })
       ) {
         setOptimisticUserMessages((existing) => {
           const removed = existing.filter((message) => message.id === messageIdForSend);
@@ -4366,21 +4427,13 @@ function ChatViewContent(props: ChatViewProps) {
           const next = existing.filter((message) => message.id !== messageIdForSend);
           return next.length === existing.length ? existing : next;
         });
-        promptRef.current = promptForSend;
-        const retryComposerImages = composerImagesSnapshot.map(cloneComposerImageForRetry);
-        composerImagesRef.current = retryComposerImages;
-        composerTerminalContextsRef.current = composerTerminalContextsSnapshot;
-        composerElementContextsRef.current = composerElementContextsSnapshot;
-        setComposerDraftPrompt(composerDraftTarget, promptForSend);
-        addComposerDraftImages(composerDraftTarget, retryComposerImages);
-        setComposerDraftTerminalContexts(composerDraftTarget, composerTerminalContextsSnapshot);
-        setComposerDraftElementContexts(composerDraftTarget, composerElementContextsSnapshot);
-        setComposerDraftPreviewAnnotations(composerDraftTarget, composerPreviewAnnotationsSnapshot);
-        setComposerDraftReviewComments(composerDraftTarget, composerReviewCommentsSnapshot);
-        composerRef.current?.resetCursorState({
-          cursor: collapseExpandedComposerCursor(promptForSend, promptForSend.length),
+        restoreComposerDraftSnapshot({
           prompt: promptForSend,
-          detectTrigger: true,
+          images: composerImagesSnapshot.map(cloneComposerImageForRetry),
+          terminalContexts: composerTerminalContextsSnapshot,
+          elementContexts: composerElementContextsSnapshot,
+          previewAnnotations: composerPreviewAnnotationsSnapshot,
+          reviewComments: composerReviewCommentsSnapshot,
         });
       }
       if (!isAtomCommandInterrupted(failure)) {
@@ -4647,7 +4700,7 @@ function ChatViewContent(props: ChatViewProps) {
     }: {
       text: string;
       interactionMode: "default" | "plan";
-    }) => {
+    }): Promise<"accepted" | "rejected"> => {
       if (
         !activeThread ||
         !isServerThread ||
@@ -4655,17 +4708,17 @@ function ChatViewContent(props: ChatViewProps) {
         isConnecting ||
         sendInFlightRef.current
       ) {
-        return;
+        return "rejected";
       }
 
       const trimmed = text.trim();
       if (!trimmed) {
-        return;
+        return "rejected";
       }
 
       const sendCtx = composerRef.current?.getSendContext();
       if (!sendCtx) {
-        return;
+        return "rejected";
       }
       const {
         selectedProvider: ctxSelectedProvider,
@@ -4773,7 +4826,7 @@ function ChatViewContent(props: ChatViewProps) {
           }
         }
         sendInFlightRef.current = false;
-        return;
+        return "accepted";
       }
 
       setOptimisticUserMessages((existing) =>
@@ -4788,6 +4841,7 @@ function ChatViewContent(props: ChatViewProps) {
       }
       sendInFlightRef.current = false;
       resetLocalDispatch();
+      return "rejected";
     },
     [
       activeThread,

@@ -13,6 +13,7 @@ import {
   deriveActiveToolLabel,
   getStartedThreadModelChangeBlockReason,
   hasServerAcknowledgedLocalDispatch,
+  isComposerDraftEmpty,
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
   resolveSendEnvMode,
@@ -560,5 +561,26 @@ describe("settleQueuedDispatch", () => {
     expect(settleQueuedDispatch({ outcome: "failed", composerStillHoldsText: false })).toBe(
       "keep_entry",
     );
+  });
+});
+
+describe("isComposerDraftEmpty", () => {
+  const empty = {
+    prompt: "",
+    imageCount: 0,
+    terminalContextCount: 0,
+    elementContextCount: 0,
+    previewAnnotationCount: 0,
+    reviewCommentCount: 0,
+  };
+
+  it("is empty only when the prompt and every attachment class are empty", () => {
+    expect(isComposerDraftEmpty(empty)).toBe(true);
+    expect(isComposerDraftEmpty({ ...empty, prompt: "draft" })).toBe(false);
+    expect(isComposerDraftEmpty({ ...empty, imageCount: 1 })).toBe(false);
+    expect(isComposerDraftEmpty({ ...empty, terminalContextCount: 1 })).toBe(false);
+    expect(isComposerDraftEmpty({ ...empty, elementContextCount: 1 })).toBe(false);
+    expect(isComposerDraftEmpty({ ...empty, previewAnnotationCount: 1 })).toBe(false);
+    expect(isComposerDraftEmpty({ ...empty, reviewCommentCount: 1 })).toBe(false);
   });
 });

@@ -317,6 +317,24 @@ export function settleQueuedDispatch(input: {
   return "keep_entry";
 }
 
+export function isComposerDraftEmpty(input: {
+  readonly prompt: string;
+  readonly imageCount: number;
+  readonly terminalContextCount: number;
+  readonly elementContextCount: number;
+  readonly previewAnnotationCount: number;
+  readonly reviewCommentCount: number;
+}): boolean {
+  return (
+    input.prompt.length === 0 &&
+    input.imageCount === 0 &&
+    input.terminalContextCount === 0 &&
+    input.elementContextCount === 0 &&
+    input.previewAnnotationCount === 0 &&
+    input.reviewCommentCount === 0
+  );
+}
+
 export function buildExpiredTerminalContextToastCopy(
   expiredTerminalContextCount: number,
   variant: "omitted" | "empty",
