@@ -11,6 +11,7 @@ import {
   OpenCodeServerLedgerEntry,
   type ObservedProcess,
   type ProcessInspector,
+  type ProcessObservation,
 } from "./OpenCodeServerLedger.ts";
 
 const OWNER_START = "Sun Oct  4 22:04:25 2026";
@@ -29,6 +30,8 @@ interface FakeInspector {
   ignoreTerm: boolean;
   /** When true, inspecting the recorded server pid fails instead of answering. */
   failObserve: boolean;
+  /** Pids whose inspection reports unknown evidence instead of present/absent. */
+  readonly unknownObservePids: Set<number>;
   /** When true, reading the group members fails instead of answering. */
   failObserveGroup: boolean;
   /** When true, the group-liveness probe fails instead of answering. */
@@ -47,15 +50,24 @@ const makeFakeInspector = (): FakeInspector => {
     signals,
     ignoreTerm: false,
     failObserve: false,
+    unknownObservePids: new Set<number>(),
     failObserveGroup: false,
     failGroupExists: false,
     inspector: {
-      observe: (pid) =>
-        Effect.suspend(() => {
+      observe: (pid): Effect.Effect<ProcessObservation> =>
+        Effect.suspend((): Effect.Effect<ProcessObservation> => {
           if (fake.failObserve && pid === 500) {
             return Effect.die(new Error("inspection unavailable"));
           }
-          return Effect.sync(() => processes.get(pid));
+          if (fake.unknownObservePids.has(pid)) {
+            return Effect.succeed({ state: "unknown" as const });
+          }
+          return Effect.sync(() => {
+            const process = processes.get(pid);
+            return process === undefined
+              ? { state: "absent" as const }
+              : { state: "present" as const, process };
+          });
         }),
       observeGroup: (pgid) =>
         Effect.suspend(() => {
@@ -220,7 +232,8 @@ it.layer(NodeServices.layer)("OpenCodeServerLedger", (it) => {
       const firstLedger = yield* makeLedger({ fake: first, stateDir, ownerPid: 100 });
       yield* Effect.asVoid(firstLedger.track({ pid: 500, port: 4100, args: SERVER_ARGS }));
 
-      // The old owner is gone; only the orphaned server group remains.
+      // The old owner is gone; only the orphaned server group remains. The
+      // inspector answers `absent` for its pid, which is affirmative evidence.
       const second = makeFakeInspector();
       addServer(second);
       const secondLedger = yield* makeLedger({ fake: second, stateDir, ownerPid: 101 });
@@ -228,6 +241,29 @@ it.layer(NodeServices.layer)("OpenCodeServerLedger", (it) => {
 
       assert.deepStrictEqual(second.signals, [{ pgid: 500, signal: "SIGTERM" }]);
       assert.strictEqual(yield* fs.exists(entryPath(stateDir)), false);
+    }),
+  );
+
+  it.effect("keeps the entry when the owner's identity cannot be observed", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const stateDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-ledger-" });
+      const first = makeFakeInspector();
+      addOwner(first);
+      addServer(first);
+      const firstLedger = yield* makeLedger({ fake: first, stateDir, ownerPid: 100 });
+      yield* Effect.asVoid(firstLedger.track({ pid: 500, port: 4100, args: SERVER_ARGS }));
+
+      // The probe cannot answer for the owner. That is unknown evidence, not
+      // proof that the owner died, so its live child must not be reaped.
+      const second = makeFakeInspector();
+      addServer(second);
+      second.unknownObservePids.add(100);
+      const secondLedger = yield* makeLedger({ fake: second, stateDir, ownerPid: 101 });
+      yield* secondLedger.reapOrphans;
+
+      assert.deepStrictEqual(second.signals, []);
+      assert.strictEqual(yield* fs.exists(entryPath(stateDir)), true);
     }),
   );
 
@@ -516,7 +552,7 @@ it.layer(NodeServices.layer)("OpenCodeServerLedger", (it) => {
       const stateDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-ledger-" });
       const fake = makeFakeInspector();
       const inspector: ProcessInspector = {
-        observe: () => Effect.succeed(undefined),
+        observe: () => Effect.succeed({ state: "unknown" as const }),
         observeGroup: () => Effect.succeed([]),
         groupExists: () => Effect.succeed(false),
         signalGroup: () => Effect.void,

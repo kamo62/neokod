@@ -1,9 +1,11 @@
+import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
@@ -54,11 +56,24 @@ export interface ObservedProcess {
 }
 
 /**
+ * Result of inspecting one pid.
+ *
+ * `absent` is affirmative evidence that no process currently holds the pid.
+ * `unknown` means the inspection could not answer, for example because the
+ * platform is unsupported or a probe failed. Reaping decisions must not
+ * conflate the two: an unobservable owner may still be alive.
+ */
+export type ProcessObservation =
+  | { readonly state: "present"; readonly process: ObservedProcess }
+  | { readonly state: "absent" }
+  | { readonly state: "unknown"; readonly detail?: string };
+
+/**
  * Process inspection boundary. Tests drive the ledger through a synthetic map
  * so no real process is ever observed or signalled.
  */
 export interface ProcessInspector {
-  readonly observe: (pid: number) => Effect.Effect<ObservedProcess | undefined>;
+  readonly observe: (pid: number) => Effect.Effect<ProcessObservation>;
   readonly observeGroup: (pgid: number) => Effect.Effect<ReadonlyArray<ObservedProcess>>;
   readonly groupExists: (pgid: number) => Effect.Effect<boolean>;
   readonly signalGroup: (pgid: number, signal: NodeJS.Signals) => Effect.Effect<void>;
@@ -130,25 +145,65 @@ const parseLinuxStat = (
   return { state, ppid, pgid, startTime };
 };
 
+const isNotFoundCause = (cause: Cause.Cause<unknown>): boolean => {
+  const squashed = Cause.squash(cause);
+  if (isErrnoCode(squashed, "ENOENT")) {
+    return true;
+  }
+  if (squashed instanceof PlatformError.PlatformError) {
+    return (
+      squashed.reason._tag === "NotFound" ||
+      ("cause" in squashed.reason && isErrnoCode(squashed.reason.cause, "ENOENT"))
+    );
+  }
+  return false;
+};
+
+type TextRead =
+  | { readonly state: "present"; readonly text: string }
+  | { readonly state: "absent" }
+  | { readonly state: "unknown"; readonly detail: string };
+
+const readTextFile = (fs: FileSystem.FileSystem, filePath: string): Effect.Effect<TextRead> =>
+  fs.readFileString(filePath).pipe(
+    Effect.map((text) => ({ state: "present", text }) as const),
+    Effect.catchCause((cause) =>
+      Effect.succeed(
+        isNotFoundCause(cause)
+          ? ({ state: "absent" } as const)
+          : ({ state: "unknown", detail: "read_failed" } as const),
+      ),
+    ),
+  );
+
 const readLinuxObservedProcess = (
   fs: FileSystem.FileSystem,
   pid: number,
-): Effect.Effect<ObservedProcess | undefined> =>
+): Effect.Effect<ProcessObservation> =>
   Effect.gen(function* () {
-    const stat = yield* fs.readFileString(`/proc/${pid}/stat`);
-    const parsed = parseLinuxStat(stat);
-    if (parsed === undefined) {
-      return undefined;
+    const statFile = yield* readTextFile(fs, `/proc/${pid}/stat`);
+    if (statFile.state !== "present") {
+      return statFile;
     }
-    const cmdline = yield* fs.readFileString(`/proc/${pid}/cmdline`);
+    const parsed = parseLinuxStat(statFile.text);
+    if (parsed === undefined) {
+      return { state: "unknown", detail: "unparsable_stat" } as const;
+    }
+    const cmdlineFile = yield* readTextFile(fs, `/proc/${pid}/cmdline`);
+    if (cmdlineFile.state !== "present") {
+      return cmdlineFile;
+    }
     return {
-      pid,
-      pgid: parsed.pgid,
-      startTime: parsed.startTime,
-      command: cmdline.split("\u0000").join(" ").trim(),
-      zombie: parsed.state === "Z",
-    };
-  }).pipe(Effect.catchCause(() => Effect.succeed(undefined)));
+      state: "present",
+      process: {
+        pid,
+        pgid: parsed.pgid,
+        startTime: parsed.startTime,
+        command: cmdlineFile.text.split("\u0000").join(" ").trim(),
+        zombie: parsed.state === "Z",
+      },
+    } as const;
+  });
 
 const PS_LINE_PATTERN =
   /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(\w{3} \w{3} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4})\s+(.*)$/;
@@ -185,7 +240,12 @@ export const makeSystemProcessInspector: Effect.Effect<
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const platform = yield* HostProcessPlatform;
 
-  const runPs = (args: ReadonlyArray<string>): Effect.Effect<string | undefined> =>
+  type PsOutput =
+    | { readonly state: "present"; readonly stdout: string }
+    | { readonly state: "absent" }
+    | { readonly state: "unknown"; readonly detail: string };
+
+  const runPs = (args: ReadonlyArray<string>): Effect.Effect<PsOutput> =>
     Effect.gen(function* () {
       const child = yield* spawner.spawn(
         ChildProcess.make("/bin/ps", args, {
@@ -194,29 +254,54 @@ export const makeSystemProcessInspector: Effect.Effect<
           stdin: "ignore",
         }),
       );
-      const [stdout] = yield* Effect.all([collectStreamAsString(child.stdout), child.exitCode], {
-        concurrency: "unbounded",
-      });
-      return stdout;
+      const [stdout, code] = yield* Effect.all(
+        [collectStreamAsString(child.stdout), child.exitCode],
+        {
+          concurrency: "unbounded",
+        },
+      );
+      const exitCode = Number(code);
+      if (exitCode === 0) {
+        return { state: "present", stdout } as const;
+      }
+      // `ps -p <pid>` exits non-zero with empty output when the pid is absent.
+      // Any other non-zero exit is a failed probe, not proof of absence.
+      return stdout.trim().length === 0
+        ? ({ state: "absent" } as const)
+        : ({ state: "unknown", detail: `ps_exit_${exitCode}` } as const);
     }).pipe(
       Effect.scoped,
       Effect.timeoutOption("5 seconds"),
-      Effect.map(Option.getOrUndefined),
-      Effect.catchCause(() => Effect.succeed(undefined)),
+      Effect.map((result) =>
+        Option.isNone(result)
+          ? ({ state: "unknown", detail: "ps_timeout" } as const)
+          : result.value,
+      ),
+      Effect.catchCause(() =>
+        Effect.succeed({ state: "unknown", detail: "ps_unavailable" } as const),
+      ),
     );
 
-  const observe = (pid: number): Effect.Effect<ObservedProcess | undefined> => {
+  const observe = (pid: number): Effect.Effect<ProcessObservation> => {
     if (platform === "win32") {
-      return Effect.succeed(undefined);
+      return Effect.succeed({ state: "unknown", detail: "unsupported_platform" } as const);
     }
     if (platform === "linux") {
       return readLinuxObservedProcess(fs, pid);
     }
     if (platform !== "darwin") {
-      return Effect.succeed(undefined);
+      return Effect.succeed({ state: "unknown", detail: "unsupported_platform" } as const);
     }
     return runPs(["-ww", "-o", "pid=,pgid=,stat=,lstart=,args=", "-p", String(pid)]).pipe(
-      Effect.map((output) => (output === undefined ? undefined : parsePsOutput(output)[0])),
+      Effect.map((output) => {
+        if (output.state !== "present") {
+          return output;
+        }
+        const observed = parsePsOutput(output.stdout)[0];
+        return observed === undefined
+          ? ({ state: "unknown", detail: "ps_output_unparsed" } as const)
+          : ({ state: "present", process: observed } as const);
+      }),
     );
   };
 
@@ -236,8 +321,8 @@ export const makeSystemProcessInspector: Effect.Effect<
             continue;
           }
           const observed = yield* readLinuxObservedProcess(fs, pid);
-          if (observed !== undefined && observed.pgid === pgid) {
-            members.push(observed);
+          if (observed.state === "present" && observed.process.pgid === pgid) {
+            members.push(observed.process);
           }
         }
         return members;
@@ -247,7 +332,9 @@ export const makeSystemProcessInspector: Effect.Effect<
       return Effect.succeed([]);
     }
     return runPs(["-A", "-ww", "-o", "pid=,pgid=,stat=,lstart=,args="]).pipe(
-      Effect.map((output) => (output === undefined ? [] : parsePsOutput(output, pgid))),
+      Effect.map((output) =>
+        output.state === "present" ? parsePsOutput(output.stdout, pgid) : [],
+      ),
     );
   };
 
@@ -424,9 +511,10 @@ const revalidateGroupIdentity = (
         }),
       ),
     );
-    const leader = yield* inspector
+    const leaderObservation = yield* inspector
       .observe(entry.pid)
-      .pipe(Effect.catchCause(() => Effect.succeed(undefined)));
+      .pipe(Effect.catchCause(() => Effect.succeed({ state: "unknown" } as const)));
+    const leader = leaderObservation.state === "present" ? leaderObservation.process : undefined;
 
     const candidates = [...(members ?? []), ...(leader === undefined ? [] : [leader])];
     if (candidates.length === 0) {
@@ -444,19 +532,20 @@ const stopOrphan = (
   inspector: ProcessInspector,
 ): Effect.Effect<OrphanStopOutcome> =>
   Effect.gen(function* () {
-    const observed = yield* inspector.observe(entry.pid);
-    if (observed === undefined) {
-      // No identity from the inspector is unknown evidence, not proof of exit.
-      // Only a missing process group proves this orphan is gone.
+    const observation = yield* inspector.observe(entry.pid);
+    if (observation.state !== "present") {
+      // A missing or unobservable identity is not proof of exit, and only a
+      // missing process group proves this orphan is gone.
       if ((yield* observeGroupPresence(entry, inspector)) === "gone") {
         return "exited";
       }
       yield* Effect.logWarning(
         "Keeping an OpenCode server ledger entry because its process identity could not be observed",
-        { pgid: entry.pgid, pid: entry.pid, port: entry.port },
+        { pgid: entry.pgid, pid: entry.pid, port: entry.port, observation: observation.state },
       );
       return "unresolved";
     }
+    const observed = observation.process;
     if (observed.zombie) {
       // The leader has exited but the group it anchored may not have.
       if ((yield* observeGroupPresence(entry, inspector)) === "gone") {
@@ -547,7 +636,8 @@ export const make = (
     const { stateDir, inspector, ownerPid = process.pid } = options;
     const directory = path.join(stateDir, LEDGER_DIRECTORY);
     const entryPath = (pgid: number) => path.join(directory, `${pgid}.json`);
-    const owner = yield* inspector.observe(ownerPid);
+    const ownerObservation = yield* inspector.observe(ownerPid);
+    const owner = ownerObservation.state === "present" ? ownerObservation.process : undefined;
 
     const track: OpenCodeServerLedgerShape["track"] = (server) =>
       Effect.gen(function* () {
@@ -565,7 +655,9 @@ export const make = (
         }
 
         const pgid = server.pid;
-        const leader = yield* inspector.observe(pgid);
+        const leaderObservation = yield* inspector.observe(pgid);
+        const leader =
+          leaderObservation.state === "present" ? leaderObservation.process : undefined;
         const members =
           leader !== undefined && !leader.zombie && leader.pgid === pgid
             ? [leader]
@@ -634,16 +726,32 @@ export const make = (
           yield* removeEntryFile(fs, filePath);
           return;
         }
-        const currentOwner = yield* inspector.observe(entry.owner.pid);
-        if (
-          currentOwner !== undefined &&
-          !currentOwner.zombie &&
-          currentOwner.startTime === entry.owner.startTime
-        ) {
-          // A second Neokod server on the same base directory is still alive;
-          // its children are not orphans.
+        const ownerObservation = yield* inspector.observe(entry.owner.pid);
+        if (ownerObservation.state === "unknown") {
+          // An unreadable owner probe is not proof that the owner died. Its
+          // child may still be live, so keep the durable evidence.
+          yield* Effect.logWarning(
+            "Keeping an OpenCode server ledger entry because its owner's identity could not be observed",
+            {
+              filePath,
+              pgid: entry.pgid,
+              pid: entry.pid,
+              port: entry.port,
+              reason: ownerObservation.detail,
+            },
+          );
           return;
         }
+        if (ownerObservation.state === "present") {
+          const currentOwner = ownerObservation.process;
+          if (!currentOwner.zombie && currentOwner.startTime === entry.owner.startTime) {
+            // A second Neokod server on the same base directory is still alive;
+            // its children are not orphans.
+            return;
+          }
+        }
+        // The owner is confirmed absent, a zombie, or a different process that
+        // reused its pid. Only then may its child be treated as an orphan.
         const outcome = yield* stopOrphan(entry, inspector);
         if (outcome === "exited" || outcome === "stale") {
           yield* removeEntryFile(fs, filePath);
