@@ -15,6 +15,7 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as Result from "effect/Result";
+import * as Scheduler from "effect/Scheduler";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
@@ -558,6 +559,7 @@ const waitForNextTickPhase = Effect.promise(
 const makeLaunchErrorSpawner = (input: {
   readonly error: Error;
   readonly onSpawn?: () => void;
+  readonly onDeliver?: () => void;
   readonly onKill?: () => void;
   readonly onUnobserved?: () => void;
 }) =>
@@ -569,6 +571,7 @@ const makeLaunchErrorSpawner = (input: {
         input.onUnobserved?.();
         return;
       }
+      input.onDeliver?.();
       child.emit("error", input.error);
     });
     return asTaskkillChild(child);
@@ -754,6 +757,69 @@ describe("Windows taskkill worker launch boundary", () => {
       // A worker that never launched must not be signalled through the handle.
       expect(terminateCalls).toBe(0);
     });
+  });
+
+  it.effect("settles a launch error delivered during a scheduler yield after spawn", () => {
+    let unobserved = false;
+    let terminateCalls = 0;
+    let yieldAfterSpawn = false;
+    let didYield = false;
+    let continuationReached = false;
+    let errorDeliveredBeforeContinuation = false;
+    const launchError = Object.assign(new Error("spawn taskkill EACCES"), { code: "EACCES" });
+    const spawner = makeLaunchErrorSpawner({
+      error: launchError,
+      onSpawn: () => {
+        yieldAfterSpawn = true;
+      },
+      onDeliver: () => {
+        errorDeliveredBeforeContinuation = !continuationReached;
+      },
+      onKill: () => {
+        terminateCalls += 1;
+      },
+      onUnobserved: () => {
+        unobserved = true;
+      },
+    });
+    // Yield once, immediately after the native spawn callback returns. The
+    // launch error is queued on the next tick, so it arrives before the
+    // generator continuation but after that callback.
+    const scheduler: Scheduler.Scheduler = {
+      executionMode: "async",
+      makeDispatcher: () => new Scheduler.MixedScheduler().makeDispatcher(),
+      shouldYield: () => {
+        if (!yieldAfterSpawn) {
+          return false;
+        }
+        yieldAfterSpawn = false;
+        didYield = true;
+        return true;
+      },
+    };
+
+    return Effect.gen(function* () {
+      const worker = yield* spawner.spawn(4242);
+      continuationReached = true;
+      yield* waitForNextTickPhase;
+
+      expect(didYield).toBe(true);
+      expect(errorDeliveredBeforeContinuation).toBe(true);
+      expect(unobserved).toBe(false);
+      const first = yield* worker.exitCode.pipe(Effect.result);
+      const second = yield* worker.exitCode.pipe(Effect.result);
+
+      expect(Result.isFailure(first)).toBe(true);
+      expect(Result.isFailure(second)).toBe(true);
+      if (Result.isFailure(first) && Result.isFailure(second)) {
+        expect(first.failure.detail).toContain("EACCES");
+        expect(second.failure.detail).toBe(first.failure.detail);
+      }
+      expect(yield* worker.isRunning).toBe(false);
+      yield* worker.terminate;
+      // A worker that never launched must not be signalled through the handle.
+      expect(terminateCalls).toBe(0);
+    }).pipe(Effect.provideService(Scheduler.Scheduler, scheduler));
   });
 
   it.effect("replays an exit already observed when spawn returns", () => {

@@ -552,77 +552,87 @@ export type WindowsTaskkillChildSpawn = (
  * same command twice.
  *
  * A missing or denied executable is not a synchronous throw: `spawn` returns a
- * handle and emits `error` on a later tick. The settlement and its observers
- * are therefore installed in the same synchronous turn that `spawn` returns.
- * Installing them lazily from the first waiter would miss that error and let
- * Node treat it as an uncaught exception. One settlement is kept and replayed
- * to every bounded wait and to cancellation.
+ * handle and emits `error` on a later tick. Spawn, settlement creation, observer
+ * attachment and handle construction therefore happen inside one synchronous
+ * `Effect.try` callback that returns a fully observed handle. The Effect runtime
+ * can yield between that callback and the generator continuation, so attaching
+ * observers after `yield*` would leave a window where a launch error is
+ * unobserved and Node treats it as an uncaught exception. One settlement is
+ * kept and replayed to every bounded wait and to cancellation.
  */
 const spawnWindowsTaskkillWorker = (
   spawnChildProcess: WindowsTaskkillChildSpawn,
   pid: number,
 ): Effect.Effect<WindowsTaskkillWorkerHandle, WindowsTaskkillWorkerError> =>
   Effect.gen(function* () {
-    const child = yield* Effect.try({
-      try: () =>
-        spawnChildProcess(windowsTaskkillExecutable(), ["/pid", String(pid), "/T", "/F"], {
-          shell: false,
-          stdio: "ignore",
-          windowsHide: true,
-        }),
+    // The settlement exists before the native child, so the synchronous
+    // callback can complete observation without another suspension.
+    const settlement = yield* Deferred.make<number, WindowsTaskkillWorkerError>();
+
+    return yield* Effect.try({
+      try: () => {
+        const child = spawnChildProcess(
+          windowsTaskkillExecutable(),
+          ["/pid", String(pid), "/T", "/F"],
+          {
+            shell: false,
+            stdio: "ignore",
+            windowsHide: true,
+          },
+        );
+
+        const settle = (result: Exit.Exit<number, WindowsTaskkillWorkerError>) => {
+          Deferred.doneUnsafe(settlement, result);
+        };
+        const onExit = (code: number | null) => {
+          settle(Exit.succeed(code ?? -1));
+        };
+        const onError = (cause: Error) => {
+          settle(Exit.fail(new WindowsTaskkillWorkerError({ detail: cause.message })));
+        };
+
+        // Keep the error observer installed for the child's lifetime: after a
+        // terminal result the settlement ignores further completions, but a
+        // late `error` event must still be consumed rather than crash the process.
+        child.once("exit", onExit);
+        child.once("error", onError);
+        // `spawn` can return a process that has already exited before the
+        // observers were attached; the replay must retain that outcome too.
+        if (child.exitCode !== null || child.signalCode !== null) {
+          settle(Exit.succeed(child.exitCode ?? -1));
+        }
+
+        return {
+          pid: child.pid,
+          isRunning: Effect.sync(
+            () =>
+              !Deferred.isDoneUnsafe(settlement) &&
+              child.exitCode === null &&
+              child.signalCode === null,
+          ),
+          exitCode: Deferred.await(settlement),
+          // `child.kill` targets this worker's owned native handle. On Windows
+          // Node terminates that process directly, so cancellation cannot
+          // recurse into another taskkill.
+          terminate: Effect.sync(() => {
+            if (
+              Deferred.isDoneUnsafe(settlement) ||
+              child.exitCode !== null ||
+              child.signalCode !== null
+            ) {
+              return;
+            }
+            try {
+              child.kill("SIGKILL");
+            } catch {
+              // The worker exited between the check and the signal.
+            }
+          }),
+        } satisfies WindowsTaskkillWorkerHandle;
+      },
       catch: (cause) =>
         new WindowsTaskkillWorkerError({ detail: `Could not start taskkill: ${String(cause)}` }),
     });
-
-    const settlement = Deferred.makeUnsafe<number, WindowsTaskkillWorkerError>();
-    const settle = (result: Exit.Exit<number, WindowsTaskkillWorkerError>) => {
-      Deferred.doneUnsafe(settlement, result);
-    };
-    const onExit = (code: number | null) => {
-      settle(Exit.succeed(code ?? -1));
-    };
-    const onError = (cause: Error) => {
-      settle(Exit.fail(new WindowsTaskkillWorkerError({ detail: cause.message })));
-    };
-
-    // Keep the error observer installed for the child's lifetime: after a
-    // terminal result the settlement ignores further completions, but a late
-    // `error` event must still be consumed rather than crash the process.
-    child.once("exit", onExit);
-    child.once("error", onError);
-    // `spawn` can return a process that has already exited before the
-    // observers were attached; the replay must retain that outcome too.
-    if (child.exitCode !== null || child.signalCode !== null) {
-      settle(Exit.succeed(child.exitCode ?? -1));
-    }
-
-    return {
-      pid: child.pid,
-      isRunning: Effect.sync(
-        () =>
-          !Deferred.isDoneUnsafe(settlement) &&
-          child.exitCode === null &&
-          child.signalCode === null,
-      ),
-      exitCode: Deferred.await(settlement),
-      // `child.kill` targets this worker's owned native handle. On Windows
-      // Node terminates that process directly, so cancellation cannot
-      // recurse into another taskkill.
-      terminate: Effect.sync(() => {
-        if (
-          Deferred.isDoneUnsafe(settlement) ||
-          child.exitCode !== null ||
-          child.signalCode !== null
-        ) {
-          return;
-        }
-        try {
-          child.kill("SIGKILL");
-        } catch {
-          // The worker exited between the check and the signal.
-        }
-      }),
-    } satisfies WindowsTaskkillWorkerHandle;
   });
 
 /**
