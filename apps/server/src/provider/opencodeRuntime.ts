@@ -34,6 +34,14 @@ import { isWindowsCommandNotFound } from "../processRunner.ts";
 import { collectStreamAsString } from "./providerSnapshot.ts";
 import * as NetService from "@neokod/shared/Net";
 import { HostProcessPlatform } from "@neokod/shared/hostProcess";
+import {
+  captureProcessBirthToken,
+  posixProcessBirthReader,
+  posixProcessGroupSignaller,
+  validateProcessBirthIdentity,
+  type ProcessBirthReader,
+  type ProcessGroupSignaller,
+} from "@neokod/shared/processGroup";
 import { resolveSpawnCommand } from "@neokod/shared/shell";
 import { OpenCodeServerLedger } from "./OpenCodeServerLedger.ts";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.UnknownFromJsonString);
@@ -101,6 +109,89 @@ const OPENCODE_SERVER_TIMEOUT_MS = parseOpenCodeServerTimeoutMs(
   process.env.NEOKOD_OPENCODE_SERVER_TIMEOUT_MS,
 );
 const DEFAULT_HOSTNAME = "127.0.0.1";
+
+const OPENCODE_GROUP_TERM_GRACE = "1 second";
+const OPENCODE_GROUP_KILL_SETTLE_POLLS = 20;
+const OPENCODE_GROUP_KILL_SETTLE_INTERVAL = "50 millis";
+
+export interface OpenCodeProcessGroupTerminationInput {
+  readonly pgid: number;
+  /** Recycle-resistant leader birth token captured immediately after spawn. */
+  readonly birthToken: string | null;
+}
+
+export interface OpenCodeProcessGroupTerminationDependencies {
+  readonly signaller: ProcessGroupSignaller;
+  readonly birthReader: ProcessBirthReader;
+}
+
+/**
+ * TERM-to-KILL escalation for a spawned OpenCode server group.
+ *
+ * A bare pgid is not proof that the group is still ours: the original group can
+ * exit during the grace window and the kernel can reuse its id. Before the
+ * escalated signal the leader's recorded birth token must still match the live
+ * process, otherwise nothing more is signalled and the caller keeps the ledger
+ * evidence for a later, fully verified reaping attempt.
+ */
+export const terminateOpenCodeProcessGroup = (
+  input: OpenCodeProcessGroupTerminationInput,
+  dependencies: OpenCodeProcessGroupTerminationDependencies,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const term = yield* dependencies.signaller.signalGroup(input.pgid, "SIGTERM");
+    if (term === "no_such_group") {
+      return;
+    }
+    if (term !== "sent") {
+      yield* Effect.logWarning("Could not send SIGTERM to an OpenCode server process group", {
+        pgid: input.pgid,
+        result: term,
+      });
+    }
+    yield* Effect.sleep(OPENCODE_GROUP_TERM_GRACE);
+    if (!(yield* dependencies.signaller.isGroupAlive(input.pgid))) {
+      return;
+    }
+
+    const validation = yield* validateProcessBirthIdentity(
+      { pid: input.pgid, persistedBirthToken: input.birthToken },
+      dependencies.birthReader,
+    );
+    if (validation.status !== "confirmed") {
+      yield* Effect.logWarning(
+        "Refusing to send SIGKILL to an OpenCode server process group whose birth identity is not confirmed; keeping its ledger entry",
+        {
+          pgid: input.pgid,
+          identity: validation.status,
+          ...(validation.status === "unverifiable" ? { reason: validation.reason } : {}),
+        },
+      );
+      return;
+    }
+
+    const kill = yield* dependencies.signaller.signalGroup(input.pgid, "SIGKILL");
+    if (kill === "no_such_group") {
+      return;
+    }
+    if (kill !== "sent") {
+      yield* Effect.logWarning("Could not send SIGKILL to an OpenCode server process group", {
+        pgid: input.pgid,
+        result: kill,
+      });
+      return;
+    }
+    for (let poll = 0; poll < OPENCODE_GROUP_KILL_SETTLE_POLLS; poll++) {
+      if (!(yield* dependencies.signaller.isGroupAlive(input.pgid))) {
+        return;
+      }
+      yield* Effect.sleep(OPENCODE_GROUP_KILL_SETTLE_INTERVAL);
+    }
+    yield* Effect.logWarning(
+      "OpenCode server process group survived SIGKILL; keeping its ledger entry",
+      { pgid: input.pgid },
+    );
+  });
 export interface OpenCodeServerProcess {
   readonly url: string;
   readonly exitCode: Effect.Effect<number, never>;
@@ -463,22 +554,43 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
           ),
         );
 
-      const killOpenCodeProcessGroup = (signal: NodeJS.Signals) =>
-        hostPlatform === "win32"
-          ? child.kill({ killSignal: signal, forceKillAfter: "1 second" }).pipe(Effect.asVoid)
-          : Effect.sync(() => {
-              try {
-                process.kill(-Number(child.pid), signal);
-              } catch {
-                // The direct child may already have exited after starting the
-                // server; the process group kill is best-effort cleanup for
-                // any serve process left in that group.
-              }
-            });
-      const terminateChild = killOpenCodeProcessGroup("SIGTERM").pipe(
-        Effect.andThen(Effect.sleep("1 second")),
-        Effect.andThen(killOpenCodeProcessGroup("SIGKILL")),
-        Effect.ignore,
+      const childPid = Number(child.pid);
+      const birthToken =
+        hostPlatform === "win32" ? null : yield* captureProcessBirthToken(childPid);
+      const terminateChild = Effect.gen(function* () {
+        if (hostPlatform === "win32") {
+          yield* child.kill({ killSignal: "SIGTERM", forceKillAfter: "1 second" }).pipe(
+            Effect.asVoid,
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Could not send SIGTERM to the OpenCode server child", {
+                pid: childPid,
+                cause,
+              }),
+            ),
+          );
+          yield* Effect.sleep("1 second");
+          yield* child.kill({ killSignal: "SIGKILL", forceKillAfter: "1 second" }).pipe(
+            Effect.asVoid,
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Could not send SIGKILL to the OpenCode server child", {
+                pid: childPid,
+                cause,
+              }),
+            ),
+          );
+          return;
+        }
+        yield* terminateOpenCodeProcessGroup(
+          { pgid: childPid, birthToken },
+          { signaller: posixProcessGroupSignaller, birthReader: posixProcessBirthReader },
+        );
+      }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning(
+            "Could not terminate the OpenCode server process group; keeping its ledger entry",
+            { pid: childPid, cause },
+          ),
+        ),
       );
       // Record the process group so a later boot can find and stop it after a
       // hard crash of this server. The forget action is folded into the

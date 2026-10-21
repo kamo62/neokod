@@ -8,6 +8,7 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { HostProcessPlatform } from "@neokod/shared/hostProcess";
+import type { ProcessBirthReader, ProcessGroupSignaller } from "@neokod/shared/processGroup";
 import { SpawnExecutableResolution } from "@neokod/shared/shell";
 
 import {
@@ -16,6 +17,7 @@ import {
   OpenCodeRuntimeError,
   OpenCodeRuntimeLive,
   parseOpenCodeServerTimeoutMs,
+  terminateOpenCodeProcessGroup,
 } from "./opencodeRuntime.ts";
 import { OpenCodeServerLedger, type OpenCodeServerLedgerShape } from "./OpenCodeServerLedger.ts";
 
@@ -313,5 +315,87 @@ describe("startOpenCodeServerProcess shutdown ordering", () => {
       // succeeding, or a failed spawn record would leak a live child.
       expect(events.filter((event) => event === "terminate")).toHaveLength(2);
     }).pipe(Effect.provide(runtimeLayerWith(makeOrderingSpawner(events), failingLedger)));
+  });
+});
+
+interface FakeGroupState {
+  alive: boolean;
+  readonly signals: Array<NodeJS.Signals>;
+}
+
+const makeFakeGroupSignaller = (state: FakeGroupState): ProcessGroupSignaller => ({
+  signalGroup: (_pgid, signal) =>
+    Effect.sync(() => {
+      state.signals.push(signal);
+      return "sent" as const;
+    }),
+  isGroupAlive: () => Effect.sync(() => state.alive),
+});
+
+const runGroupTermination = (
+  birthReader: ProcessBirthReader,
+  state: FakeGroupState,
+  birthToken: string | null = "captured-birth-token",
+) =>
+  Effect.gen(function* () {
+    const fiber = yield* terminateOpenCodeProcessGroup(
+      { pgid: 500, birthToken },
+      { signaller: makeFakeGroupSignaller(state), birthReader },
+    ).pipe(Effect.forkChild);
+    for (let round = 0; round < 10; round++) {
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("1 second");
+    }
+    yield* Fiber.join(fiber);
+  });
+
+describe("terminateOpenCodeProcessGroup", () => {
+  it.effect("escalates only after the birth identity is still confirmed", () => {
+    const state: FakeGroupState = { alive: true, signals: [] };
+    const birthReader: ProcessBirthReader = {
+      readBirthToken: () => Effect.succeed({ kind: "token", token: "captured-birth-token" }),
+    };
+
+    return runGroupTermination(birthReader, state).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          expect(state.signals).toEqual(["SIGTERM", "SIGKILL"]);
+        }),
+      ),
+    );
+  });
+
+  it.effect("refuses SIGKILL when the recorded leader was reused", () => {
+    const state: FakeGroupState = { alive: true, signals: [] };
+    const birthReader: ProcessBirthReader = {
+      readBirthToken: () => Effect.succeed({ kind: "token", token: "replacement-birth-token" }),
+    };
+
+    return runGroupTermination(birthReader, state).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          // The group is still alive, but it no longer proves it is ours:
+          // escalation must fail closed and leave the ledger evidence intact.
+          expect(state.signals).toEqual(["SIGTERM"]);
+        }),
+      ),
+    );
+  });
+
+  it.effect("refuses SIGKILL when the leader is gone but the group survives", () => {
+    const state: FakeGroupState = { alive: true, signals: [] };
+    const birthReader: ProcessBirthReader = {
+      readBirthToken: () => Effect.succeed({ kind: "no_such_process" }),
+    };
+
+    return runGroupTermination(birthReader, state).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          // A missing leader is not proof that the group is gone, and the
+          // remaining members have no verified identity.
+          expect(state.signals).toEqual(["SIGTERM"]);
+        }),
+      ),
+    );
   });
 });

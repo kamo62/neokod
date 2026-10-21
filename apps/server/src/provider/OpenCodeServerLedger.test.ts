@@ -29,8 +29,14 @@ interface FakeInspector {
   ignoreTerm: boolean;
   /** When true, inspecting the recorded server pid fails instead of answering. */
   failObserve: boolean;
+  /** When true, reading the group members fails instead of answering. */
+  failObserveGroup: boolean;
+  /** When true, the group-liveness probe fails instead of answering. */
+  failGroupExists: boolean;
   /** When set, signalling the group fails before any signal is recorded. */
   failSignal?: Error;
+  /** Hook used to simulate a group exiting and its id being reused after SIGTERM. */
+  onTerm?: () => void;
 }
 
 const makeFakeInspector = (): FakeInspector => {
@@ -41,6 +47,8 @@ const makeFakeInspector = (): FakeInspector => {
     signals,
     ignoreTerm: false,
     failObserve: false,
+    failObserveGroup: false,
+    failGroupExists: false,
     inspector: {
       observe: (pid) =>
         Effect.suspend(() => {
@@ -50,9 +58,19 @@ const makeFakeInspector = (): FakeInspector => {
           return Effect.sync(() => processes.get(pid));
         }),
       observeGroup: (pgid) =>
-        Effect.sync(() => [...processes.values()].filter((entry) => entry.pgid === pgid)),
+        Effect.suspend(() => {
+          if (fake.failObserveGroup) {
+            return Effect.die(new Error("group inspection unavailable"));
+          }
+          return Effect.sync(() => [...processes.values()].filter((entry) => entry.pgid === pgid));
+        }),
       groupExists: (pgid) =>
-        Effect.sync(() => [...processes.values()].some((entry) => entry.pgid === pgid)),
+        Effect.suspend(() => {
+          if (fake.failGroupExists) {
+            return Effect.die(new Error("group liveness unavailable"));
+          }
+          return Effect.sync(() => [...processes.values()].some((entry) => entry.pgid === pgid));
+        }),
       signalGroup: (pgid, signal) =>
         Effect.suspend(() => {
           if (fake.failSignal !== undefined) {
@@ -66,6 +84,9 @@ const makeFakeInspector = (): FakeInspector => {
                   processes.delete(pid);
                 }
               }
+            }
+            if (signal === "SIGTERM") {
+              fake.onTerm?.();
             }
           });
         }),
@@ -133,7 +154,7 @@ it.layer(NodeServices.layer)("OpenCodeServerLedger", (it) => {
     }),
   );
 
-  it.effect("forgets the entry after a graceful stop", () =>
+  it.effect("forgets the entry after the group is confirmed gone", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const stateDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-ledger-" });
@@ -144,8 +165,48 @@ it.layer(NodeServices.layer)("OpenCodeServerLedger", (it) => {
 
       const forget = yield* ledger.track({ pid: 500, port: 4100, args: SERVER_ARGS });
       assert.strictEqual(yield* fs.exists(entryPath(stateDir)), true);
+      // The runtime has already run its termination sequence; simulate the
+      // group actually exiting before the finalizer asks to forget it.
+      fake.processes.delete(500);
       yield* forget;
       assert.strictEqual(yield* fs.exists(entryPath(stateDir)), false);
+    }),
+  );
+
+  it.effect("keeps the entry when forgetting while the group is still alive", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const stateDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-ledger-" });
+      const fake = makeFakeInspector();
+      addOwner(fake);
+      addServer(fake);
+      const ledger = yield* makeLedger({ fake, stateDir, ownerPid: 100 });
+
+      const forget = yield* ledger.track({ pid: 500, port: 4100, args: SERVER_ARGS });
+      // The termination attempt failed or the group ignored it: liveness is
+      // present, so the evidence must survive for the next boot to retry.
+      yield* forget;
+
+      assert.strictEqual(yield* fs.exists(entryPath(stateDir)), true);
+    }),
+  );
+
+  it.effect("keeps the entry when group liveness is unknown during forget", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const stateDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-ledger-" });
+      const fake = makeFakeInspector();
+      addOwner(fake);
+      addServer(fake);
+      const ledger = yield* makeLedger({ fake, stateDir, ownerPid: 100 });
+
+      const forget = yield* ledger.track({ pid: 500, port: 4100, args: SERVER_ARGS });
+      fake.failGroupExists = true;
+      yield* forget;
+
+      // An unavailable probe is not proof of exit. Removing here would destroy
+      // the only durable record of a process that may still be running.
+      assert.strictEqual(yield* fs.exists(entryPath(stateDir)), true);
     }),
   );
 
@@ -259,6 +320,76 @@ it.layer(NodeServices.layer)("OpenCodeServerLedger", (it) => {
       ]);
       // SIGKILL was delivered but the group never left the process table, so
       // its exit is unconfirmed and the evidence must survive for a retry.
+      assert.strictEqual(yield* fs.exists(entryPath(stateDir)), true);
+    }),
+  );
+
+  it.effect("does not escalate when the group identity changes after SIGTERM", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const stateDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-ledger-" });
+      const first = makeFakeInspector();
+      addOwner(first);
+      addServer(first);
+      const firstLedger = yield* makeLedger({ fake: first, stateDir, ownerPid: 100 });
+      yield* Effect.asVoid(firstLedger.track({ pid: 500, port: 4100, args: SERVER_ARGS }));
+
+      const second = makeFakeInspector();
+      second.ignoreTerm = true;
+      addServer(second);
+      // The original group exits during the grace window and the kernel reuses
+      // its id for an unrelated group. Liveness alone still reports a group.
+      second.onTerm = () => {
+        second.processes.delete(500);
+        second.processes.set(700, {
+          pid: 700,
+          pgid: 500,
+          startTime: "Sun Oct  4 23:30:00 2026",
+          command: "/bin/other",
+          zombie: false,
+        });
+      };
+      const secondLedger = yield* makeLedger({ fake: second, stateDir, ownerPid: 101 });
+      const reaping = yield* secondLedger.reapOrphans.pipe(Effect.forkChild);
+      for (let tick = 0; tick < 120; tick++) {
+        yield* TestClock.adjust("50 millis");
+        yield* Effect.yieldNow;
+      }
+      yield* Fiber.join(reaping);
+
+      // The replacement group must never receive SIGKILL, and the evidence
+      // must survive because the original group's exit was not confirmed.
+      assert.deepStrictEqual(second.signals, [{ pgid: 500, signal: "SIGTERM" }]);
+      assert.strictEqual(yield* fs.exists(entryPath(stateDir)), true);
+    }),
+  );
+
+  it.effect("does not escalate when the group identity is unavailable after SIGTERM", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const stateDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-ledger-" });
+      const first = makeFakeInspector();
+      addOwner(first);
+      addServer(first);
+      const firstLedger = yield* makeLedger({ fake: first, stateDir, ownerPid: 100 });
+      yield* Effect.asVoid(firstLedger.track({ pid: 500, port: 4100, args: SERVER_ARGS }));
+
+      const second = makeFakeInspector();
+      second.ignoreTerm = true;
+      addServer(second);
+      second.onTerm = () => {
+        second.failObserveGroup = true;
+        second.failObserve = true;
+      };
+      const secondLedger = yield* makeLedger({ fake: second, stateDir, ownerPid: 101 });
+      const reaping = yield* secondLedger.reapOrphans.pipe(Effect.forkChild);
+      for (let tick = 0; tick < 120; tick++) {
+        yield* TestClock.adjust("50 millis");
+        yield* Effect.yieldNow;
+      }
+      yield* Fiber.join(reaping);
+
+      assert.deepStrictEqual(second.signals, [{ pgid: 500, signal: "SIGTERM" }]);
       assert.strictEqual(yield* fs.exists(entryPath(stateDir)), true);
     }),
   );

@@ -66,8 +66,8 @@ export interface ProcessInspector {
 
 export interface OpenCodeServerLedgerShape {
   /**
-   * Records a spawned server group and returns the effect that forgets the
-   * entry after a graceful stop. Tracking never fails a spawn.
+   * Records a spawned server group and returns the effect that removes the
+   * entry only once the group is confirmed gone. Tracking never fails a spawn.
    */
   readonly track: (server: {
     readonly pid: number;
@@ -347,6 +347,98 @@ const waitForGroupExit = (
     return false;
   });
 
+type GroupOwnership = "owned" | "gone" | "changed" | "unknown";
+
+const sameProcessIdentity = (left: ObservedProcess, right: ObservedProcess): boolean =>
+  left.pid === right.pid &&
+  left.pgid === right.pgid &&
+  left.startTime === right.startTime &&
+  left.command === right.command;
+
+/**
+ * Snapshot the identity of every non-zombie member in the group, but only when
+ * the listing still contains the leader that was just validated. If the
+ * listing does not contain that leader, the group may already have exited and
+ * had its id reused, so the snapshot must not contribute any other proof.
+ */
+const captureGroupIdentityProof = (
+  entry: OpenCodeServerLedgerEntry,
+  leader: ObservedProcess,
+  inspector: ProcessInspector,
+): Effect.Effect<ReadonlyArray<ObservedProcess>> =>
+  inspector.observeGroup(entry.pgid).pipe(
+    Effect.map((members) => {
+      const stillContainsLeader = members.some((member) => sameProcessIdentity(leader, member));
+      if (!stillContainsLeader) {
+        return [leader] as ReadonlyArray<ObservedProcess>;
+      }
+      return [
+        leader,
+        ...members.filter(
+          (member) => member.pgid === entry.pgid && !member.zombie && member.pid !== leader.pid,
+        ),
+      ];
+    }),
+    Effect.catchCause((cause) =>
+      Effect.gen(function* () {
+        yield* Effect.logWarning(
+          "Could not snapshot the OpenCode server process group members before signalling",
+          { pgid: entry.pgid, pid: entry.pid, cause },
+        );
+        return [leader] as ReadonlyArray<ObservedProcess>;
+      }),
+    ),
+  );
+
+/**
+ * Revalidate the live group against the identity proof captured before the
+ * first signal. Repeated liveness is not identity: a group can exit and the
+ * kernel can reuse its id, so at least one current member must still match the
+ * recorded pid, start time and command before another signal is sent.
+ */
+const revalidateGroupIdentity = (
+  entry: OpenCodeServerLedgerEntry,
+  proof: ReadonlyArray<ObservedProcess>,
+  inspector: ProcessInspector,
+): Effect.Effect<GroupOwnership> =>
+  Effect.gen(function* () {
+    const presence = yield* observeGroupPresence(entry, inspector);
+    if (presence === "gone") {
+      return "gone" as const;
+    }
+    if (presence === "unknown") {
+      return "unknown" as const;
+    }
+
+    const members = yield* inspector.observeGroup(entry.pgid).pipe(
+      Effect.map((observed) =>
+        observed.filter((member) => member.pgid === entry.pgid && !member.zombie),
+      ),
+      Effect.catchCause((cause) =>
+        Effect.gen(function* () {
+          yield* Effect.logWarning(
+            "Could not re-read the OpenCode server process group members before signalling",
+            { pgid: entry.pgid, pid: entry.pid, cause },
+          );
+          return undefined;
+        }),
+      ),
+    );
+    const leader = yield* inspector
+      .observe(entry.pid)
+      .pipe(Effect.catchCause(() => Effect.succeed(undefined)));
+
+    const candidates = [...(members ?? []), ...(leader === undefined ? [] : [leader])];
+    if (candidates.length === 0) {
+      return "unknown" as const;
+    }
+    return candidates.some((candidate) =>
+      proof.some((original) => sameProcessIdentity(original, candidate)),
+    )
+      ? ("owned" as const)
+      : ("changed" as const);
+  });
+
 const stopOrphan = (
   entry: OpenCodeServerLedgerEntry,
   inspector: ProcessInspector,
@@ -390,6 +482,18 @@ const stopOrphan = (
       });
       return "stale";
     }
+    const proof = yield* captureGroupIdentityProof(entry, observed, inspector);
+    const beforeTerm = yield* revalidateGroupIdentity(entry, proof, inspector);
+    if (beforeTerm === "gone") {
+      return "exited";
+    }
+    if (beforeTerm !== "owned") {
+      yield* Effect.logWarning(
+        "Skipping SIGTERM for an OpenCode server orphan whose group identity changed or could not be reverified",
+        { pgid: entry.pgid, pid: entry.pid, port: entry.port, identity: beforeTerm },
+      );
+      return "unresolved";
+    }
     yield* Effect.logWarning("Stopping an OpenCode server orphaned by a previous Neokod server", {
       pgid: entry.pgid,
       pid: entry.pid,
@@ -399,7 +503,20 @@ const stopOrphan = (
     if (yield* waitForGroupExit(entry, inspector)) {
       return "exited";
     }
-    // A group that never emptied cannot have had its id reused while we polled.
+    // The group survived the grace window. It may still be ours, but it may
+    // also have exited and had its id reused while we polled, so revalidate the
+    // original identity before escalating instead of trusting liveness alone.
+    const beforeKill = yield* revalidateGroupIdentity(entry, proof, inspector);
+    if (beforeKill === "gone") {
+      return "exited";
+    }
+    if (beforeKill !== "owned") {
+      yield* Effect.logWarning(
+        "Refusing to send SIGKILL to an OpenCode server orphan whose group identity changed or could not be reverified; keeping its ledger entry",
+        { pgid: entry.pgid, pid: entry.pid, port: entry.port, identity: beforeKill },
+      );
+      return "unresolved";
+    }
     yield* inspector.signalGroup(entry.pgid, "SIGKILL");
     if (yield* waitForGroupExit(entry, inspector)) {
       return "exited";
@@ -475,7 +592,17 @@ export const make = (
           filePath,
           contents: `${encodeEntry(entry)}\n`,
         });
-        return removeEntryFile(fs, filePath);
+        return Effect.gen(function* () {
+          const presence = yield* observeGroupPresence(entry, inspector);
+          if (presence === "gone") {
+            yield* removeEntryFile(fs, filePath);
+            return;
+          }
+          yield* Effect.logWarning(
+            "Keeping an OpenCode server ledger entry because its group exit is not confirmed",
+            { filePath, pgid, pid: entry.pid, port: entry.port, presence },
+          );
+        });
       }).pipe(
         Effect.provideService(FileSystem.FileSystem, fs),
         Effect.provideService(Path.Path, path),
