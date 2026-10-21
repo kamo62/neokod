@@ -40,12 +40,21 @@ export interface FileSaveBaselinePersistOptions<A, E> {
  * cannot fall back to a stale read hash while an earlier surface save is still
  * in flight. Server reads only seed the baseline before the first local
  * confirmation; an external write keeps the old baseline and must conflict.
+ * An explicit overwrite drops the precondition for good, so a rerender cannot
+ * reseed it from a stale read before the unconditional write lands.
  */
 export class FileSaveBaseline {
   private contentHash: string | undefined;
+  /**
+   * True once the hash is authoritative: seeded by a read, acknowledged by a
+   * local write, or deliberately dropped for an explicit overwrite. A rerender
+   * must not reseed a hash after either of the last two.
+   */
+  private seeded: boolean;
 
   constructor(initialHash: string | undefined) {
     this.contentHash = initialHash;
+    this.seeded = initialHash !== undefined;
   }
 
   get expectedHash(): string | undefined {
@@ -53,12 +62,18 @@ export class FileSaveBaseline {
   }
 
   adoptInitialHash(contentHash: string | undefined): void {
-    if (this.contentHash === undefined) this.contentHash = contentHash;
+    if (this.seeded) return;
+    this.contentHash = contentHash;
+    if (contentHash !== undefined) this.seeded = true;
   }
 
-  /** Drops the precondition for an explicit Overwrite. */
+  /**
+   * Drops the precondition for an explicit Overwrite. Marking the baseline as
+   * seeded stops a rerender from adopting a stale read hash before the write.
+   */
   clear(): void {
     this.contentHash = undefined;
+    this.seeded = true;
   }
 
   async persist<A, E>(
@@ -73,6 +88,7 @@ export class FileSaveBaseline {
       const contentHash = options.confirmedHash(result.value);
       if (contentHash !== undefined) {
         this.contentHash = contentHash;
+        this.seeded = true;
         options.onConfirmedHash?.(contentHash);
       }
     }

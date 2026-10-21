@@ -247,6 +247,50 @@ describe("FileSaveCoordinator", () => {
     });
   });
 
+  it("keeps an explicit overwrite unconditional when the panel rerenders", async () => {
+    vi.useFakeTimers();
+    const baseline = new FileSaveBaseline("hash-from-read");
+    const write = vi
+      .fn<
+        (input: {
+          contents: string;
+          expectedHash: string | undefined;
+        }) => Promise<AtomCommandResult<{ contentHash: string }, never>>
+      >()
+      .mockResolvedValueOnce(AsyncResult.success({ contentHash: "hash-after-overwrite" }))
+      .mockResolvedValueOnce(AsyncResult.success({ contentHash: "hash-after-next-write" }));
+    const onConfirmedHash = vi.fn();
+    const persist = (contents: string) =>
+      baseline.persist(contents, {
+        write,
+        confirmedHash: (value) => value.contentHash,
+        onConfirmedHash,
+      });
+    const coordinator = new FileSaveCoordinator({
+      debounceMs: 500,
+      persist,
+      onPendingChange: vi.fn(),
+      onConfirmed: vi.fn(),
+    });
+
+    // Overwrite drops the precondition, then clearing the conflict banner
+    // rerenders the panel while the file query still holds the stale read hash.
+    baseline.clear();
+    baseline.adoptInitialHash("hash-from-read");
+    coordinator.change("overwritten");
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(write).toHaveBeenCalledWith({ contents: "overwritten", expectedHash: undefined });
+    expect(onConfirmedHash).toHaveBeenCalledWith("hash-after-overwrite");
+
+    coordinator.change("next");
+    await vi.advanceTimersByTimeAsync(500);
+    expect(write).toHaveBeenLastCalledWith({
+      contents: "next",
+      expectedHash: "hash-after-overwrite",
+    });
+  });
+
   it("does not rewrite a saved buffer on dispose", async () => {
     vi.useFakeTimers();
     const persist = vi.fn().mockResolvedValue(AsyncResult.success(undefined));
