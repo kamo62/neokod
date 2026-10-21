@@ -34,6 +34,13 @@ import {
 } from "@neokod/contracts";
 import { makeKeyedCoalescingWorker } from "@neokod/shared/KeyedCoalescingWorker";
 import { HostProcessPlatform } from "@neokod/shared/hostProcess";
+import {
+  listControllingTtyProcessGroups,
+  makeProvenGroupIdentity,
+  posixProcessGroupSignaller,
+  terminateProcessGroup,
+  type ProcessGroupSignaller,
+} from "@neokod/shared/processGroup";
 import { getTerminalLabel } from "@neokod/shared/terminalLabels";
 import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
@@ -1148,6 +1155,9 @@ interface TerminalManagerOptions {
   subprocessInspector?: TerminalSubprocessInspector;
   subprocessPollIntervalMs?: number;
   processKillGraceMs?: number;
+  /** Process-group ids to terminate for a terminal pid. Default: groups sharing the pty's controlling tty. */
+  processGroupLister?: (terminalPid: number) => Effect.Effect<ReadonlyArray<number>>;
+  processGroupSignaller?: ProcessGroupSignaller;
   maxRetainedInactiveSessions?: number;
   registerTerminalProcesses?: (input: {
     readonly threadId: string;
@@ -1202,6 +1212,10 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const subprocessPollIntervalMs =
     options.subprocessPollIntervalMs ?? DEFAULT_SUBPROCESS_POLL_INTERVAL_MS;
   const processKillGraceMs = options.processKillGraceMs ?? DEFAULT_PROCESS_KILL_GRACE_MS;
+  const processGroupLister =
+    options.processGroupLister ??
+    ((terminalPid: number) => listControllingTtyProcessGroups(terminalPid, platform));
+  const processGroupSignaller = options.processGroupSignaller ?? posixProcessGroupSignaller;
   const maxRetainedInactiveSessions =
     options.maxRetainedInactiveSessions ?? DEFAULT_MAX_RETAINED_INACTIVE_SESSIONS;
   const registerTerminalProcesses = options.registerTerminalProcesses ?? (() => Effect.void);
@@ -1304,6 +1318,36 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     threadId: string,
     terminalId: string,
   ) {
+    const groupIds = yield* processGroupLister(process.pid);
+    if (groupIds.length > 0) {
+      const outcomes = yield* Effect.forEach(
+        groupIds,
+        (pgid) => {
+          // The ids come from a live process-table snapshot of the pty's own
+          // tty, and a group id cannot be reused while the group has members,
+          // so signalling -pgid right after the snapshot is safe. An id that
+          // cannot be proven is skipped, never signalled.
+          const proven = makeProvenGroupIdentity({ pid: pgid, pgid, spawnedAtMs: 0, platform });
+          return proven.ok
+            ? terminateProcessGroup(proven.identity, {
+                graceMs: processKillGraceMs,
+                signaller: processGroupSignaller,
+              })
+            : Effect.succeed({ status: "unsupported_platform" } as const);
+        },
+        { concurrency: "unbounded" },
+      );
+      const failed = outcomes.filter((outcome) => outcome.status === "termination_failed");
+      if (failed.length > 0) {
+        yield* Effect.logWarning("terminal process groups survived SIGKILL", {
+          threadId,
+          terminalId,
+          failed,
+        });
+      }
+      return;
+    }
+
     const terminated = yield* Effect.try({
       try: () => process.kill("SIGTERM"),
       catch: (cause) =>

@@ -1,6 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off - the POSIX birth-identity reader
 // shells out to `ps` to read a spawned process's OS start time.
 import * as NodeChildProcess from "node:child_process";
+import * as NodeUtil from "node:util";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 
@@ -526,3 +527,79 @@ export const planValidatedOrphanTermination = (
         return { action: "skip", reason: "birth_identity_unverifiable" };
     }
   });
+
+// ---------------------------------------------------------------------------
+// Controlling-tty discovery (terminals that own an interactive pty)
+// ---------------------------------------------------------------------------
+
+export interface PsPidPgidTtyRow {
+  readonly pid: number;
+  readonly pgid: number;
+  readonly tty: string;
+}
+
+/** Parse `ps -A -o pid=,pgid=,tty=` output. Lines that do not have three columns are ignored. */
+export const parsePsPidPgidTty = (stdout: string): ReadonlyArray<PsPidPgidTtyRow> => {
+  const rows: Array<PsPidPgidTtyRow> = [];
+  for (const line of stdout.split("\n")) {
+    const [pidText, pgidText, tty] = line.trim().split(/\s+/);
+    const pid = Number(pidText);
+    const pgid = Number(pgidText);
+    if (!Number.isInteger(pid) || !Number.isInteger(pgid) || tty === undefined) continue;
+    rows.push({ pid, pgid, tty });
+  }
+  return rows;
+};
+
+const NO_CONTROLLING_TTY = new Set(["?", "??", "-"]);
+
+/**
+ * Process-group ids of every process that shares the controlling tty of
+ * `rootPid` (the pty child, which is the session leader). Excludes the
+ * server's own group. Returns [] when the root is not in the table or has no
+ * tty, so callers fall back instead of signalling a broad or unknown set.
+ */
+export const selectControllingTtyProcessGroups = (
+  rows: ReadonlyArray<PsPidPgidTtyRow>,
+  input: { readonly rootPid: number; readonly ownPid: number },
+): ReadonlyArray<number> => {
+  const root = rows.find((row) => row.pid === input.rootPid);
+  if (root === undefined || NO_CONTROLLING_TTY.has(root.tty)) return [];
+  const ownGroup = rows.find((row) => row.pid === input.ownPid)?.pgid;
+  const groups = new Set<number>();
+  for (const row of rows) {
+    if (row.tty !== root.tty || row.pgid <= 1 || row.pgid === ownGroup) continue;
+    groups.add(row.pgid);
+  }
+  return [...groups];
+};
+
+const execFileText = NodeUtil.promisify(NodeChildProcess.execFile);
+
+/**
+ * Groups sharing the controlling tty of `rootPid`, read from a live process
+ * table snapshot. POSIX only: returns [] on unsupported platforms, for an
+ * invalid root pid, or when `ps` is missing/fails, so the caller can keep its
+ * single-pid fallback rather than guessing which unrelated groups to signal.
+ */
+export const listControllingTtyProcessGroups = (
+  rootPid: number,
+  platform: NodeJS.Platform,
+): Effect.Effect<ReadonlyArray<number>> =>
+  !isGroupSignalingSupported(platform) || !Number.isInteger(rootPid) || rootPid <= 1
+    ? Effect.succeed([])
+    : Effect.tryPromise(() =>
+        execFileText("ps", ["-A", "-o", "pid=,pgid=,tty="], {
+          encoding: "utf8",
+          maxBuffer: 16 * 1024 * 1024,
+          timeout: 3_000,
+        }),
+      ).pipe(
+        Effect.map(({ stdout }) =>
+          selectControllingTtyProcessGroups(parsePsPidPgidTty(stdout), {
+            rootPid,
+            ownPid: process.pid,
+          }),
+        ),
+        Effect.orElseSucceed(() => []),
+      );

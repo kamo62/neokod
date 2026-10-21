@@ -9,10 +9,13 @@ import * as NodeChildProcess from "node:child_process";
 import {
   DEFAULT_GROUP_TERM_GRACE_MS,
   isGroupSignalingSupported,
+  listControllingTtyProcessGroups,
   makeProvenGroupIdentity,
+  parsePsPidPgidTty,
   planOrphanGroupTermination,
   posixProcessGroupSignaller,
   type ProcessGroupSignaller,
+  selectControllingTtyProcessGroups,
   terminateProcessGroup,
 } from "./processGroup.ts";
 
@@ -254,4 +257,57 @@ describe("constants", () => {
   it("defaults the escalation grace to the spec value", () => {
     expect(DEFAULT_GROUP_TERM_GRACE_MS).toBe(10_000);
   });
+});
+
+describe("parsePsPidPgidTty", () => {
+  it("skips malformed lines", () => {
+    const rows = parsePsPidPgidTty("  100   100 ttys009\n  101   101 ??\nnot a row\n\n");
+    expect(rows).toEqual([
+      { pid: 100, pgid: 100, tty: "ttys009" },
+      { pid: 101, pgid: 101, tty: "??" },
+    ]);
+  });
+});
+
+describe("selectControllingTtyProcessGroups", () => {
+  const sharedTtyRows = [
+    { pid: 100, pgid: 100, tty: "ttys009" },
+    { pid: 101, pgid: 101, tty: "ttys009" },
+    { pid: 103, pgid: 102, tty: "ttys009" },
+    { pid: 200, pgid: 200, tty: "ttys010" },
+    { pid: 300, pgid: 300, tty: "??" },
+    { pid: 50, pgid: 50, tty: "ttys001" },
+    { pid: 400, pgid: 50, tty: "ttys009" },
+  ];
+
+  it("returns every group on the shell's tty except the server's own group", () => {
+    const groups = selectControllingTtyProcessGroups(sharedTtyRows, {
+      rootPid: 100,
+      ownPid: 50,
+    });
+    expect([...groups].sort((left, right) => left - right)).toEqual([100, 101, 102]);
+  });
+
+  it("fails closed when the root is absent or has no controlling tty", () => {
+    expect(selectControllingTtyProcessGroups(sharedTtyRows, { rootPid: 999, ownPid: 50 })).toEqual(
+      [],
+    );
+    expect(selectControllingTtyProcessGroups(sharedTtyRows, { rootPid: 300, ownPid: 50 })).toEqual(
+      [],
+    );
+    expect(
+      selectControllingTtyProcessGroups([{ pid: 1, pgid: 1, tty: "-" }], {
+        rootPid: 1,
+        ownPid: 50,
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("listControllingTtyProcessGroups", () => {
+  it.effect("does nothing on win32", () =>
+    Effect.gen(function* () {
+      expect(yield* listControllingTtyProcessGroups(1234, "win32")).toEqual([]);
+    }),
+  );
 });
