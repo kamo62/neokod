@@ -9,8 +9,11 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   applySavedDraft,
+  beginEditDraft,
   editDraft,
+  endEditDraft,
   isDraftDirty,
+  type ProjectSettingsDraft,
   reconcileDraft,
   savedDraft,
   startDraft,
@@ -107,6 +110,57 @@ describe("project settings draft", () => {
 
     expect(sync).toBe("changed_elsewhere");
     expect(reconciled.value).toEqual(edited);
+  });
+
+  it("keeps the edit baseline when a buffered keystroke precedes an external change", () => {
+    const original = makeConfiguration({ maxTurns: 20 });
+    const externallyChanged = makeConfiguration({ maxTurns: 30 });
+    const buffered = makeConfiguration({ maxTurns: 40 });
+    const draft = startDraft(makeProject(1, original), null)!;
+    // The input owns uncommitted keystrokes, but the store still holds the
+    // last committed configuration until blur parses the text.
+    const editing = { ...draft, editing: true } satisfies ProjectSettingsDraft;
+
+    const beforeBlur = reconcileDraft(editing, makeProject(2, externallyChanged), null);
+
+    expect(beforeBlur.sync).toBe("changed_elsewhere");
+    expect(beforeBlur.draft.baseRevision).toBe(1);
+
+    // Blur commits the buffered text against the revision the edit started on.
+    const afterBlur = reconcileDraft(
+      editDraft(beforeBlur.draft, buffered),
+      makeProject(2, externallyChanged),
+      null,
+    );
+
+    expect(afterBlur.sync).toBe("changed_elsewhere");
+    expect(afterBlur.draft.baseRevision).toBe(1);
+    expect(afterBlur.draft.value).toEqual(buffered);
+  });
+
+  it("claims ownership on the first buffered keystroke without committing it", () => {
+    const draft = startDraft(makeProject(1, makeConfiguration()), null)!;
+
+    const editing = beginEditDraft(draft);
+
+    expect(isDraftDirty(editing)).toBe(true);
+    expect(editing.value).toEqual(draft.value);
+    expect(editing.baseRevision).toBe(draft.baseRevision);
+
+    const released = endEditDraft(editing);
+    expect(released.editing).toBe(false);
+    expect(isDraftDirty(released)).toBe(false);
+  });
+
+  it("keeps buffered ownership when a save response arrives before blur", () => {
+    const configuration = makeConfiguration({ maxTurns: 20 });
+    const editing = beginEditDraft(startDraft(makeProject(1, configuration), null)!);
+
+    const applied = applySavedDraft(editing, makeProject(2, configuration));
+
+    expect(applied).not.toBeNull();
+    expect(applied!.editing).toBe(true);
+    expect(applied!.baseRevision).toBe(2);
   });
 
   it("savedDraft is clean and uses the returned revision", () => {

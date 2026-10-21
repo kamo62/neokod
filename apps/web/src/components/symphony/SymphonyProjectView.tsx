@@ -42,7 +42,9 @@ import {
 } from "./SymphonyProjectConfigurationForm";
 import {
   applySavedDraft,
+  beginEditDraft,
   editDraft,
+  endEditDraft,
   isDraftDirty,
   reconcileDraft,
   startDraft,
@@ -229,6 +231,16 @@ function SettingsTab({
     }
   };
 
+  const beginBufferedEdit = () => {
+    if (draft === null || draft.editing) return;
+    setDraft(project.id, beginEditDraft(draft));
+  };
+
+  const discardBufferedEdit = () => {
+    if (draft === null || !draft.editing) return;
+    setDraft(project.id, endEditDraft(draft));
+  };
+
   if (draft === null) {
     return (
       <SymphonyEmptyState
@@ -278,6 +290,8 @@ function SettingsTab({
         providers={providers}
         reviewProviders={reviewProviders}
         onChange={(value) => setDraft(project.id, editDraft(draft, value))}
+        onBeginEdit={beginBufferedEdit}
+        onDiscardEdit={discardBufferedEdit}
       />
       {error ? <p className="text-sm text-destructive-foreground">{error}</p> : null}
       <div className="flex justify-end">
@@ -489,6 +503,7 @@ export function SymphonyProjectView({ projectId }: { readonly projectId: Symphon
         {tab === "board" ? <BoardTab board={board} onRefresh={boardQuery.refresh} /> : null}
         {tab === "settings" && environmentId !== null ? (
           <SettingsTab
+            key={project.id}
             project={project}
             environmentId={environmentId}
             onSaved={boardQuery.refresh}

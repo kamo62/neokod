@@ -9,6 +9,8 @@ import { Textarea } from "./textarea";
 export type DraftInputProps = Omit<InputProps, "value" | "onChange" | "defaultValue"> & {
   readonly value: string;
   readonly onCommit: (next: string) => void;
+  readonly onBeginEdit?: (() => void) | undefined;
+  readonly onDiscardEdit?: (() => void) | undefined;
 };
 
 /**
@@ -18,8 +20,14 @@ export type DraftInputProps = Omit<InputProps, "value" | "onChange" | "defaultVa
  * round-trip, which otherwise makes fields backed by a server-hydrated
  * value feel laggy.
  */
-export function DraftInput({ value, onCommit, ...rest }: DraftInputProps) {
-  const bag = useCommitOnBlur(value, onCommit);
+export function DraftInput({
+  value,
+  onCommit,
+  onBeginEdit,
+  onDiscardEdit,
+  ...rest
+}: DraftInputProps) {
+  const bag = useCommitOnBlur(value, onCommit, { onBeginEdit, onDiscardEdit });
   return <Input {...rest} {...bag} />;
 }
 
@@ -29,6 +37,8 @@ export type DraftTextareaProps = Omit<
 > & {
   readonly value: string;
   readonly onCommit: (next: string) => void;
+  readonly onBeginEdit?: (() => void) | undefined;
+  readonly onDiscardEdit?: (() => void) | undefined;
 };
 
 /**
@@ -36,7 +46,17 @@ export type DraftTextareaProps = Omit<
  * `onCommit` only on blur. Enter inserts a newline, so multi-line values
  * keep their line breaks while the parent only sees committed text.
  */
-export function DraftTextarea({ value, onCommit, ...rest }: DraftTextareaProps) {
-  const bag = useCommitOnBlur<HTMLTextAreaElement>(value, onCommit, { commitOnEnter: false });
+export function DraftTextarea({
+  value,
+  onCommit,
+  onBeginEdit,
+  onDiscardEdit,
+  ...rest
+}: DraftTextareaProps) {
+  const bag = useCommitOnBlur<HTMLTextAreaElement>(value, onCommit, {
+    commitOnEnter: false,
+    onBeginEdit,
+    onDiscardEdit,
+  });
   return <Textarea {...rest} {...bag} />;
 }
