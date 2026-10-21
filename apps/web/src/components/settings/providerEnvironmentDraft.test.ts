@@ -141,6 +141,23 @@ describe("stored provider environment secrets", () => {
     expect(publishableEnvironment([detached!])).toBeNull();
   });
 
+  it("keeps a pristine blank row publishable through reconciliation", () => {
+    // Add a blank row, then edit another row: every row goes through
+    // reconciliation against the stored environment before publishing.
+    const blank = makeEnvironmentDraftRow({ name: "", value: "", sensitive: true }, 1);
+    const edited = applyEnvironmentRowPatch(storedSecret(), { value: "replacement" });
+    const reconciled = reconcileEnvironmentRows(
+      [edited, blank],
+      [{ name: "API_KEY", value: "", sensitive: true, valueRedacted: true }],
+    );
+
+    expect(reconciled[1]).toBe(blank);
+    expect(reconciled[1]).not.toHaveProperty("valueRedacted");
+    expect(publishableEnvironment(reconciled)).toEqual([
+      { name: "API_KEY", value: "replacement", sensitive: true, valueRedacted: false },
+    ]);
+  });
+
   it("blocks publishing a named sensitive row with neither a stored link nor a value", () => {
     const named = applyEnvironmentRowPatch(
       makeEnvironmentDraftRow({ name: "", value: "", sensitive: true }, 0),
