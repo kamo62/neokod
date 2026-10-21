@@ -9,6 +9,8 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   githubIssueRepositoryFromIdentity,
   isSymphonyProjectConfigurationComplete,
+  parseCommaList,
+  parseLineList,
 } from "./SymphonyProjectConfigurationForm";
 
 describe("Symphony project configuration", () => {
@@ -39,6 +41,18 @@ describe("Symphony project configuration", () => {
         tracker: { kind: "jira", projectKey: "OPS" },
       }),
     ).toBe(true);
+  });
+
+  it("keeps spaces and commas inside a validation command", () => {
+    expect(parseLineList("npm test\npnpm run a,b\n\n  vp check  ")).toEqual([
+      "npm test",
+      "pnpm run a,b",
+      "vp check",
+    ]);
+  });
+
+  it("splits labels and states on commas and newlines", () => {
+    expect(parseCommaList("bug, ready\nagent,")).toEqual(["bug", "ready", "agent"]);
   });
 
   it("infers the GitHub issue repository from the Code project's Git identity", () => {

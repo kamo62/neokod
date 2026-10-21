@@ -10,6 +10,7 @@ import { parseGitHubRepositoryNameWithOwnerFromRemoteUrl } from "@neokod/shared/
 import { XIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
+import { DraftInput, DraftTextarea } from "../ui/draft-input";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
@@ -172,9 +173,17 @@ export const defaultSymphonyProjectConfiguration = (
   approvalsBeforeMerge: true,
 });
 
-const splitList = (value: string) =>
-  value
+/** Labels and states: one item per comma or newline. */
+export const parseCommaList = (text: string): string[] =>
+  text
     .split(/[\n,]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+/** Commands: one item per line, commas are part of the command. */
+export const parseLineList = (text: string): string[] =>
+  text
+    .split("\n")
     .map((part) => part.trim())
     .filter(Boolean);
 
@@ -532,41 +541,37 @@ export function SymphonyProjectConfigurationForm({
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label>Required labels</Label>
-              <Input
+              <DraftInput
                 nativeInput
                 value={value.trackerRequiredLabels.join(", ")}
-                onChange={(event) =>
-                  update({ trackerRequiredLabels: splitList(event.target.value) })
-                }
+                onCommit={(text) => update({ trackerRequiredLabels: parseCommaList(text) })}
               />
             </div>
             <div className="space-y-1.5">
               <Label>Active states</Label>
-              <Input
+              <DraftInput
                 nativeInput
                 value={value.trackerActiveStates.join(", ")}
-                onChange={(event) => update({ trackerActiveStates: splitList(event.target.value) })}
+                onCommit={(text) => update({ trackerActiveStates: parseCommaList(text) })}
               />
             </div>
             <div className="space-y-1.5">
               <Label>Terminal states</Label>
-              <Input
+              <DraftInput
                 nativeInput
                 value={value.trackerTerminalStates.join(", ")}
-                onChange={(event) =>
-                  update({ trackerTerminalStates: splitList(event.target.value) })
-                }
+                onCommit={(text) => update({ trackerTerminalStates: parseCommaList(text) })}
               />
             </div>
           </div>
 
           <div className="space-y-1.5">
             <Label>Validation commands</Label>
-            <textarea
-              className="min-h-24 w-full resize-y rounded-lg border border-input bg-background p-3 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            <DraftTextarea
+              className="min-h-24 font-mono text-xs"
               placeholder="One command per line"
               value={value.validationRequired.join("\n")}
-              onChange={(event) => update({ validationRequired: splitList(event.target.value) })}
+              onCommit={(text) => update({ validationRequired: parseLineList(text) })}
             />
           </div>
 
