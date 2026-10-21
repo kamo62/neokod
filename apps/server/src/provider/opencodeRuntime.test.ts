@@ -1,5 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off - fixtures use synchronous temp files and paths
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import type * as NodeChildProcess from "node:child_process";
+import * as NodeEvents from "node:events";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -12,6 +14,7 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
+import * as Result from "effect/Result";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
@@ -22,6 +25,7 @@ import { SpawnExecutableResolution } from "@neokod/shared/shell";
 
 import {
   buildOpenCodeServerEnvironment,
+  makeWindowsTaskkillSpawner,
   OpenCodeRuntime,
   OpenCodeRuntimeError,
   OpenCodeRuntimeLive,
@@ -516,6 +520,60 @@ const makeRunningCommandHandle = (onKill: () => void) =>
 const hangCommandUntilInterrupted = (onKill: () => void) =>
   ChildProcessSpawner.make(() => Effect.succeed(makeRunningCommandHandle(onKill)));
 
+type FakeTaskkillChild = NodeEvents.EventEmitter & {
+  pid: number | undefined;
+  exitCode: number | null;
+  signalCode: NodeJS.Signals | null;
+  kill: (signal?: NodeJS.Signals | number) => boolean;
+};
+
+const makeFakeTaskkillChild = (
+  input: { readonly exitCode?: number | null; readonly onKill?: () => void } = {},
+): FakeTaskkillChild => {
+  const child = new NodeEvents.EventEmitter() as FakeTaskkillChild;
+  child.pid = undefined;
+  child.exitCode = input.exitCode ?? null;
+  child.signalCode = null;
+  child.kill = () => {
+    input.onKill?.();
+    return false;
+  };
+  return child;
+};
+
+const asTaskkillChild = (child: FakeTaskkillChild) =>
+  child as unknown as NodeChildProcess.ChildProcess;
+
+const waitForNextTickPhase = Effect.promise(
+  () => new Promise<void>((resolve) => setImmediate(resolve)),
+);
+
+/**
+ * A launch failure at the native boundary. Node reports it through the
+ * `error` event on a later tick, after `spawn` has returned and before any
+ * caller has necessarily subscribed to the worker's exit. The fixture refuses
+ * to emit when no observer is installed, which turns a missed error into an
+ * assertion instead of a host crash.
+ */
+const makeLaunchErrorSpawner = (input: {
+  readonly error: Error;
+  readonly onSpawn?: () => void;
+  readonly onKill?: () => void;
+  readonly onUnobserved?: () => void;
+}) =>
+  makeWindowsTaskkillSpawner(() => {
+    input.onSpawn?.();
+    const child = makeFakeTaskkillChild(input.onKill ? { onKill: input.onKill } : {});
+    process.nextTick(() => {
+      if (child.listenerCount("error") === 0) {
+        input.onUnobserved?.();
+        return;
+      }
+      child.emit("error", input.error);
+    });
+    return asTaskkillChild(child);
+  });
+
 describe("runOpenCodeCommand Windows cleanup", () => {
   it.effect("does not start a taskkill worker for a command that already exited", () => {
     let workerSpawns = 0;
@@ -644,6 +702,119 @@ describe("runOpenCodeCommand Windows cleanup", () => {
         .join(" ");
       expect(logs).toContain("termination worker did not settle");
       expect(logs).toContain("9001");
+    }).pipe(
+      Effect.provide(
+        runtimeLayerWith(
+          hangCommandUntilInterrupted(() => {
+            commandKills += 1;
+          }),
+          NOOP_LEDGER,
+          windowsTaskkill,
+        ),
+      ),
+      Effect.withLogger(logger),
+    );
+  });
+});
+
+describe("Windows taskkill worker launch boundary", () => {
+  it.effect("settles a launch error delivered before the first wait", () => {
+    let unobserved = false;
+    let terminateCalls = 0;
+    const launchError = Object.assign(new Error("spawn taskkill EACCES"), { code: "EACCES" });
+    const spawner = makeLaunchErrorSpawner({
+      error: launchError,
+      onKill: () => {
+        terminateCalls += 1;
+      },
+      onUnobserved: () => {
+        unobserved = true;
+      },
+    });
+
+    return Effect.gen(function* () {
+      const worker = yield* spawner.spawn(4242);
+      // Deliver the queued launch error before the first `exitCode` wait.
+      yield* waitForNextTickPhase;
+
+      expect(unobserved).toBe(false);
+      const first = yield* worker.exitCode.pipe(Effect.result);
+      const second = yield* worker.exitCode.pipe(Effect.result);
+
+      // Both the bounded wait and the cancellation path read the same held
+      // settlement instead of installing a listener after the event fired.
+      expect(Result.isFailure(first)).toBe(true);
+      expect(Result.isFailure(second)).toBe(true);
+      if (Result.isFailure(first) && Result.isFailure(second)) {
+        expect(first.failure.detail).toContain("EACCES");
+        expect(second.failure.detail).toBe(first.failure.detail);
+      }
+      expect(yield* worker.isRunning).toBe(false);
+      yield* worker.terminate;
+      // A worker that never launched must not be signalled through the handle.
+      expect(terminateCalls).toBe(0);
+    });
+  });
+
+  it.effect("replays an exit already observed when spawn returns", () => {
+    const spawner = makeWindowsTaskkillSpawner(() =>
+      asTaskkillChild(makeFakeTaskkillChild({ exitCode: 7 })),
+    );
+
+    return Effect.gen(function* () {
+      const worker = yield* spawner.spawn(4242);
+
+      expect(yield* worker.isRunning).toBe(false);
+      expect(yield* worker.exitCode).toBe(7);
+      expect(yield* worker.exitCode).toBe(7);
+    });
+  });
+});
+
+describe("runOpenCodeCommand Windows launch failure", () => {
+  it.effect("reports an unknown command state when taskkill cannot launch", () => {
+    const logMessages: Array<unknown> = [];
+    const logger = Logger.make<unknown, void>((options) => {
+      logMessages.push(options.message);
+    });
+    const launchError = Object.assign(new Error("spawn taskkill EACCES"), { code: "EACCES" });
+    let workerSpawns = 0;
+    let terminateCalls = 0;
+    let commandKills = 0;
+    let unobserved = false;
+    const windowsTaskkill = makeLaunchErrorSpawner({
+      error: launchError,
+      onSpawn: () => {
+        workerSpawns += 1;
+      },
+      onKill: () => {
+        terminateCalls += 1;
+      },
+      onUnobserved: () => {
+        unobserved = true;
+      },
+    });
+
+    return Effect.gen(function* () {
+      const runtime = yield* OpenCodeRuntime;
+      const command = yield* runtime
+        .runOpenCodeCommand({ binaryPath: "fake-opencode", args: ["--version"] })
+        .pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+
+      yield* Fiber.interrupt(command);
+      yield* waitForNextTickPhase;
+
+      expect(unobserved).toBe(false);
+      expect(workerSpawns).toBe(1);
+      expect(terminateCalls).toBe(0);
+      expect(commandKills).toBe(0);
+      const logs = logMessages
+        .map((message) => (typeof message === "string" ? message : JSON.stringify(message)))
+        .join(" ");
+      expect(logs).toContain("state is unknown");
+      expect(logs).toContain("worker_failed");
+      expect(logs).toContain("EACCES");
     }).pipe(
       Effect.provide(
         runtimeLayerWith(

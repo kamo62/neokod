@@ -534,65 +534,107 @@ const windowsTaskkillExecutable = (): string => {
 };
 
 /**
+ * Native spawn boundary for the Windows termination worker. Injecting this
+ * narrow surface lets tests reproduce a real launch failure (missing or denied
+ * executable) without running `taskkill`; production uses
+ * `child_process.spawn`.
+ */
+export type WindowsTaskkillChildSpawn = (
+  command: string,
+  args: ReadonlyArray<string>,
+  options: NodeChildProcess.SpawnOptions,
+) => NodeChildProcess.ChildProcess;
+
+/**
  * Start one `taskkill /pid <pid> /T /F` worker without a shell and retain its
  * native handle. `/T /F` is already the forced tree termination, so the POSIX
  * TERM-then-KILL escalation must not run here: both signals would launch the
  * same command twice.
+ *
+ * A missing or denied executable is not a synchronous throw: `spawn` returns a
+ * handle and emits `error` on a later tick. The settlement and its observers
+ * are therefore installed in the same synchronous turn that `spawn` returns.
+ * Installing them lazily from the first waiter would miss that error and let
+ * Node treat it as an uncaught exception. One settlement is kept and replayed
+ * to every bounded wait and to cancellation.
  */
 const spawnWindowsTaskkillWorker = (
+  spawnChildProcess: WindowsTaskkillChildSpawn,
   pid: number,
 ): Effect.Effect<WindowsTaskkillWorkerHandle, WindowsTaskkillWorkerError> =>
-  Effect.try({
-    try: () =>
-      NodeChildProcess.spawn(windowsTaskkillExecutable(), ["/pid", String(pid), "/T", "/F"], {
-        shell: false,
-        stdio: "ignore",
-        windowsHide: true,
-      }),
-    catch: (cause) =>
-      new WindowsTaskkillWorkerError({ detail: `Could not start taskkill: ${String(cause)}` }),
-  }).pipe(
-    Effect.map((child) => {
-      const exitCode = Effect.callback<number, WindowsTaskkillWorkerError>((resume) => {
-        if (child.exitCode !== null) {
-          resume(Effect.succeed(child.exitCode));
+  Effect.gen(function* () {
+    const child = yield* Effect.try({
+      try: () =>
+        spawnChildProcess(windowsTaskkillExecutable(), ["/pid", String(pid), "/T", "/F"], {
+          shell: false,
+          stdio: "ignore",
+          windowsHide: true,
+        }),
+      catch: (cause) =>
+        new WindowsTaskkillWorkerError({ detail: `Could not start taskkill: ${String(cause)}` }),
+    });
+
+    const settlement = Deferred.makeUnsafe<number, WindowsTaskkillWorkerError>();
+    const settle = (result: Exit.Exit<number, WindowsTaskkillWorkerError>) => {
+      Deferred.doneUnsafe(settlement, result);
+    };
+    const onExit = (code: number | null) => {
+      settle(Exit.succeed(code ?? -1));
+    };
+    const onError = (cause: Error) => {
+      settle(Exit.fail(new WindowsTaskkillWorkerError({ detail: cause.message })));
+    };
+
+    // Keep the error observer installed for the child's lifetime: after a
+    // terminal result the settlement ignores further completions, but a late
+    // `error` event must still be consumed rather than crash the process.
+    child.once("exit", onExit);
+    child.once("error", onError);
+    // `spawn` can return a process that has already exited before the
+    // observers were attached; the replay must retain that outcome too.
+    if (child.exitCode !== null || child.signalCode !== null) {
+      settle(Exit.succeed(child.exitCode ?? -1));
+    }
+
+    return {
+      pid: child.pid,
+      isRunning: Effect.sync(
+        () =>
+          !Deferred.isDoneUnsafe(settlement) &&
+          child.exitCode === null &&
+          child.signalCode === null,
+      ),
+      exitCode: Deferred.await(settlement),
+      // `child.kill` targets this worker's owned native handle. On Windows
+      // Node terminates that process directly, so cancellation cannot
+      // recurse into another taskkill.
+      terminate: Effect.sync(() => {
+        if (
+          Deferred.isDoneUnsafe(settlement) ||
+          child.exitCode !== null ||
+          child.signalCode !== null
+        ) {
           return;
         }
-        let settled = false;
-        const settle = (effect: Effect.Effect<number, WindowsTaskkillWorkerError>) => {
-          if (settled) return;
-          settled = true;
-          resume(effect);
-        };
-        const onExit = (code: number | null) => settle(Effect.succeed(code ?? -1));
-        const onError = (cause: Error) =>
-          settle(Effect.fail(new WindowsTaskkillWorkerError({ detail: cause.message })));
-        child.once("exit", onExit);
-        child.once("error", onError);
-        return Effect.sync(() => {
-          child.off("exit", onExit);
-          child.off("error", onError);
-        });
-      });
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          // The worker exited between the check and the signal.
+        }
+      }),
+    } satisfies WindowsTaskkillWorkerHandle;
+  });
 
-      return {
-        pid: child.pid,
-        isRunning: Effect.sync(() => child.exitCode === null && child.signalCode === null),
-        exitCode,
-        // `child.kill` targets this worker's owned native handle. On Windows
-        // Node terminates that process directly, so cancellation cannot
-        // recurse into another taskkill.
-        terminate: Effect.sync(() => {
-          if (child.exitCode !== null || child.signalCode !== null) return;
-          try {
-            child.kill("SIGKILL");
-          } catch {
-            // The worker exited between the check and the signal.
-          }
-        }),
-      } satisfies WindowsTaskkillWorkerHandle;
-    }),
-  );
+/**
+ * Build the worker spawner around an injectable native spawn. The production
+ * reference below uses `child_process.spawn`; tests substitute the boundary to
+ * deliver launch errors deterministically without touching a real taskkill.
+ */
+export const makeWindowsTaskkillSpawner = (
+  spawnChildProcess: WindowsTaskkillChildSpawn,
+): WindowsTaskkillSpawnerShape => ({
+  spawn: (pid) => spawnWindowsTaskkillWorker(spawnChildProcess, pid),
+});
 
 /**
  * Injectable so tests can exercise worker settlement without running taskkill
@@ -600,7 +642,12 @@ const spawnWindowsTaskkillWorker = (
  */
 export const WindowsTaskkillSpawner = Context.Reference<WindowsTaskkillSpawnerShape>(
   "neokod/provider/opencodeWindowsTaskkillSpawner",
-  { defaultValue: () => ({ spawn: spawnWindowsTaskkillWorker }) },
+  {
+    defaultValue: () =>
+      makeWindowsTaskkillSpawner((command, args, options) =>
+        NodeChildProcess.spawn(command, args, options),
+      ),
+  },
 );
 
 type WindowsTaskkillAwait =
@@ -646,18 +693,28 @@ const cancelWindowsTaskkillWorker = (
       yield* worker.terminate;
     }
     const after = yield* awaitWindowsTaskkillWorker(worker);
-    return after.state === "exited"
-      ? ({
-          state: "unknown",
-          workerPid: worker.pid,
-          reason,
-        } as const)
-      : ({
-          state: "unknown",
-          workerPid: worker.pid,
-          reason: "worker_did_not_settle",
-          ...(after.state === "failed" ? { detail: after.detail } : {}),
-        } as const);
+    if (after.state === "exited") {
+      return {
+        state: "unknown",
+        workerPid: worker.pid,
+        reason,
+      } as const;
+    }
+    if (after.state === "failed") {
+      // A launch error is the worker's outcome, not a failure to settle: the
+      // worker never ran, so the command's state stays unknown.
+      return {
+        state: "unknown",
+        workerPid: worker.pid,
+        reason: "worker_failed",
+        detail: after.detail,
+      } as const;
+    }
+    return {
+      state: "unknown",
+      workerPid: worker.pid,
+      reason: "worker_did_not_settle",
+    } as const;
   });
 
 const settleWindowsTaskkillWorker = (
