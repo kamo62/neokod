@@ -1,0 +1,51 @@
+{
+  "capturedAt": "2026-10-21T16:42:49.174658+00:00",
+  "repository": "dominikmartn/harp",
+  "headAndLatestReleaseSource": "bad92b3fee6224941c9de92eaa3968a53e61ae6b",
+  "latestRelease": {
+    "tag": "v0.1.3",
+    "publishedAt": "2026-10-21T10:29:54Z",
+    "url": "https://github.com/dominikmartn/harp/releases/tag/v0.1.3"
+  },
+  "nightly": "No prerelease/nightly in ten-release listing; four releases returned",
+  "mergedPRs": {
+    "count": 0,
+    "query": "repo:dominikmartn/harp is:pr is:merged",
+    "limit": 100,
+    "coverage": "Current GitHub search response, changes instead present as direct commits/release notes"
+  },
+  "visualEvidence": "Inspected published hero-dark.png and sidebar-dark.png, no app run",
+  "sources": [
+    {
+      "path": "app/src/workspace/view/vertical_tabs.rs",
+      "url": "https://github.com/dominikmartn/harp/blob/bad92b3fee6224941c9de92eaa3968a53e61ae6b/app/src/workspace/view/vertical_tabs.rs",
+      "sha256": "168935437799ff5a383f08263c624d7db7635cc87f434da323f88cbb95d5a95e"
+    },
+    {
+      "path": "app/src/workspace/view/vertical_tabs_tests.rs",
+      "url": "https://github.com/dominikmartn/harp/blob/bad92b3fee6224941c9de92eaa3968a53e61ae6b/app/src/workspace/view/vertical_tabs_tests.rs",
+      "sha256": "f79a71a7cb31a694d87682be03a9fdf6ebe220aa8dd83f9c77a004b96dbcfed5"
+    },
+    {
+      "path": "app/src/workspace/view/vertical_tabs/telemetry.rs",
+      "url": "https://github.com/dominikmartn/harp/blob/bad92b3fee6224941c9de92eaa3968a53e61ae6b/app/src/workspace/view/vertical_tabs/telemetry.rs",
+      "sha256": "b7c38090d8dd23d3a52294b2a2a0148b799eb9b12d367bf5f3bd7641645b91e5"
+    },
+    {
+      "path": "images/hero-dark.png",
+      "url": "https://github.com/dominikmartn/harp/blob/bad92b3fee6224941c9de92eaa3968a53e61ae6b/images/hero-dark.png",
+      "sha256": "19e0a6caf1e1a9034ec80181cc622fd3d792272819fa7b0b80663eb2b95cd948"
+    },
+    {
+      "path": "images/sidebar-dark.png",
+      "url": "https://github.com/dominikmartn/harp/blob/bad92b3fee6224941c9de92eaa3968a53e61ae6b/images/sidebar-dark.png",
+      "sha256": "ff7c620132c12d53dd8996f4c1c6af630a1fb1d9de199c135de79c89c277379b"
+    },
+    {
+      "path": "docs/limit-rings.md",
+      "url": "https://github.com/dominikmartn/harp/blob/bad92b3fee6224941c9de92eaa3968a53e61ae6b/docs/limit-rings.md",
+      "sha256": "143f808bd6f8b9a9179617f3ceff7ca08a2e427865df478b17f6fed20ab683f8"
+    }
+  ],
+  "opusReview": "Requested by owner; brief prepared; incomplete session limit, not approved"
+}

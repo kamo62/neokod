@@ -4,9 +4,12 @@ Release impact: Patch because this corrects unsafe workspace reads/writes, edito
 
 - Reject non-regular workspace reads without blocking the server, contain writes by canonical path, preserve in-root file symlinks and file modes during atomic replacement, cap UTF-8 writes, and reject invalid UTF-8 without hiding malformed prefixes at the read boundary.
 - Prevent saving truncated previews or replaying acknowledged editor buffers. Conditional content-hash writes preserve external edits and show an explicit Reload/Overwrite conflict flow; confirmed local hashes survive source/rendered editor remounts.
+- Settle Copilot turns and pending requests when its CLI dies, serialise runtime recovery and surface abort failures.
+- Treat Claude error-bearing success envelopes as failures, retain per-window allowance rejections across sessions, preserve unknown reset evidence and surface provider limits.
+- Authenticate each spawned OpenCode server with a fresh password, scrub internal host variables, settle stop requests once and preserve process-ledger evidence until exit is confirmed.
+- Stop proven background process groups sharing a closed terminal’s controlling TTY; retain identity evidence and refuse unsafe signalling when ownership is unknown.
 - Permit diff previews for registered live projects/worktrees while rejecting unregistered roots, and remove the client fallback that could show another repository's diff.
-
-- Preserve stored provider secrets when their redacted rows are renamed or made non-sensitive until a replacement value is entered.
+- Preserve stored provider secrets when their redacted rows are renamed or made non-sensitive until a replacement value is entered; reject stale queued secret references before persistence.
 - Buffer Symphony list text until blur, preserve validation-command commas/newlines, and retain per-project settings drafts across status updates and tab changes with explicit conflict handling.
 
 ## 3.7.0 - 2026-10-09 (Minor)

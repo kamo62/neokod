@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-10-21T15:51:59.326380+00:00",
+  "capturedAt": "2026-10-21T16:43:42.295654+00:00",
   "integrationBranch": "dev",
   "firstReviewedSourceCommit": "5e53f76b967ceb1ecb5c125fedd794dd920a2577",
   "lanes": [
@@ -16,7 +16,7 @@
         "providerID": "deepseek",
         "variant": "default"
       },
-      "state": "implemented and feature branch pushed",
+      "state": "worker completed; central integration and acceptance in plan16.8",
       "builds": "not run; prohibited by owner"
     },
     {
@@ -32,7 +32,7 @@
         "providerID": "deepseek",
         "variant": "default"
       },
-      "state": "implemented and feature branch pushed",
+      "state": "worker completed; central integration and acceptance in plan16.8",
       "builds": "not run; prohibited by owner"
     },
     {
@@ -48,7 +48,7 @@
         "providerID": "deepseek",
         "variant": "default"
       },
-      "state": "running; not complete",
+      "state": "worker completed; central integration and acceptance in plan16.8",
       "builds": "not run; prohibited by owner"
     },
     {
@@ -64,7 +64,7 @@
         "providerID": "deepseek",
         "variant": "default"
       },
-      "state": "running; not complete",
+      "state": "worker completed; central integration and acceptance in plan16.8",
       "builds": "not run; prohibited by owner"
     },
     {
@@ -80,7 +80,7 @@
         "providerID": "deepseek",
         "variant": "default"
       },
-      "state": "running; not complete",
+      "state": "worker completed; central integration and acceptance in plan16.8",
       "builds": "not run; prohibited by owner"
     },
     {
@@ -96,7 +96,7 @@
         "providerID": "deepseek",
         "variant": "default"
       },
-      "state": "running; not complete",
+      "state": "worker completed; central integration and acceptance in plan16.8",
       "builds": "not run; prohibited by owner"
     },
     {
@@ -107,8 +107,236 @@
         "version": "2.0.32"
       },
       "requestedModel": "deepseek/deepseek-flash",
-      "effectiveAssistantModel": null,
-      "state": "running; not complete",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "worker completed; central integration and acceptance in plan16.8",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "secret-review-fix",
+      "sessionId": "ses_ea0ceff24ffeVXsgIhOl8vKK7O",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "worker completed; central integration and acceptance in plan16.8",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "symphony-review-fix",
+      "sessionId": "ses_ea0ceffcaffemOG63TA6i9kcjq",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "worker completed; central integration and acceptance in plan16.8",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "opencode-review-fix",
+      "sessionId": "ses_ea0c72f5dffeebLFx6vrXsWdrF",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "worker completed; central integration and acceptance in plan16.8",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "terminal-review-fix",
+      "sessionId": "ses_ea0c72f5effe2ZDo1rd30AVVj0",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "worker completed and merged; later source review and acceptance in plan16.8",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "claude-review-fix",
+      "sessionId": "ses_ea0c72f39ffeDLK3DLSS8fPPFi",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "worker completed; central integration and acceptance in plan16.8",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "copilot-review-fix",
+      "sessionId": "ses_ea0bf84aeffefAWRUIUrhPX33Z",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "worker completed and merged; later source review and acceptance in plan16.8",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "focused-buffer-fix",
+      "sessionId": "ses_ea0bf849fffeFXq4yG0oo5n6BC",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "worker completed and merged; later source review and acceptance in plan16.8",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "opencode-shutdown-proof",
+      "sessionId": "ses_ea0c11e97ffeIIEFhw0Y86KT3A",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "worker completed and merged; later source review and acceptance in plan16.8",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "secret-queue-fix",
+      "sessionId": "ses_ea0bf84dbffeJqHSoj2BX3adw7",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "worker completed and merged; later source review and acceptance in plan16.8",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "terminal-closure-fix",
+      "sessionId": "ses_ea0b64681ffeDjWytfphakr1oR",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "worker completed and merged; central review acceptance in plan16.8",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "opencode-term-guard",
+      "sessionId": "ses_ea0b64768ffeJbM3zd5v95JJfG",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "worker completed and merged; central review acceptance in plan16.8",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "opencode-ps-proof",
+      "sessionId": "ses_ea0b000c2ffenqTOX9LiulEYHn",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "completed and merged",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "opencode-stop-order",
+      "sessionId": "ses_ea0ae85b4ffeF2c3x0p9rWNku4",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "running; not accepted",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "opencode2-guard",
+      "sessionId": "ses_ea0ac3b51ffeMllZO9DzocciE8",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "running; not accepted",
       "builds": "not run; prohibited by owner"
     }
   ],
@@ -118,13 +346,78 @@
       "actual": "gpt-6.1-sol",
       "effort": "high",
       "sessionId": "01a15f25-9c7a-7813-ab42-f3be160f05e2",
-      "state": "running; actual model verified in turn context"
+      "state": "completed; four findings",
+      "report": "sol-first-dev-review.md"
     },
     {
       "requested": "claude-opus-5-5",
       "actual": "claude-opus-5-5",
       "effort": "high",
-      "state": "running; actual model verified in assistant metadata"
+      "state": "incomplete; session usage limit",
+      "sessionId": "409d9a9c-4ec4-4afd-b113-a9fbb3f94be7",
+      "report": "opus-first-dev-review-partial.md"
+    },
+    {
+      "requested": "gpt-6.1-sol",
+      "actual": "gpt-6.1-sol",
+      "effort": "high",
+      "sessionId": "01a15f32-09e9-7090-a85e-c2ed9e5d094b",
+      "state": "completed; three findings; overwrite closed",
+      "report": "sol-provider-terminal-delta-review.md",
+      "sourceCommit": "97b37c6f71602efa23585d4eedc8bbac2d2800b5"
+    },
+    {
+      "requested": "gpt-6.1-sol",
+      "actual": "gpt-6.1-sol",
+      "effort": "high",
+      "sessionId": "01a15f39-6bc3-7a01-be6d-e709e224e970",
+      "state": "completed; four findings",
+      "sourceCommit": "8d6271f88284e2c9e4a792efeabbe627f7acc675",
+      "report": "sol-settings-copilot-review.md"
+    },
+    {
+      "requested": "gpt-6.1-sol",
+      "actual": "gpt-6.1-sol",
+      "effort": "high",
+      "sessionId": "01a15f43-1944-7ec1-8d5d-9e9ba554e83e",
+      "state": "completed; Claude allowance findings closed; two terminal ownership gaps",
+      "sourceCommit": "cc477c2371e541d22e1fe13fbe04856c40881a64",
+      "report": "sol-terminal-claude-closure-review.md"
+    },
+    {
+      "requested": "gpt-6.1-sol",
+      "actual": "gpt-6.1-sol",
+      "effort": "high",
+      "sessionId": "01a15f4a-b854-7a53-a310-a37832415d17",
+      "state": "completed; no actionable findings in correction deltas; four original findings closed in source",
+      "sourceCommit": "a08ec69d2bbcabbde2bdfd02f5109c9e10cc2a5a",
+      "report": "sol-settings-closure-review.md"
+    },
+    {
+      "requested": "gpt-6.1-sol",
+      "actual": "gpt-6.1-sol",
+      "effort": "high",
+      "sessionId": "01a15f49-af7b-7190-b255-80a32a7a846f",
+      "state": "completed; five source findings and pinned v2 compatibility review",
+      "sourceCommit": "618d645692745da055982cb8b04532c3cdc528b6",
+      "report": "sol-opencode-v2-review.md"
+    },
+    {
+      "requested": "gpt-6.1-sol",
+      "actual": "gpt-6.1-sol",
+      "effort": "high",
+      "sessionId": "01a15f52-c3a8-7c72-a943-974db138ae15",
+      "state": "completed; no actionable findings in two terminal closure corrections",
+      "sourceCommit": "8d7c69c994d9be5dc9642d8bd66c321c35a135d3",
+      "report": "sol-terminal-final-review.md"
     }
-  ]
+  ],
+  "latestIntegratedSourceCommit": "e7c510f50498824b1366a2af94758b2426c6c5e3",
+  "rootChecks": {
+    "sourceCommit": "e7c510f50498824b1366a2af94758b2426c6c5e3",
+    "vpCheck": "exit 0; 0 errors, 30 warnings",
+    "vpRunTypecheck": "exit 0; existing suggestion diagnostics",
+    "builds": "not run; prohibited",
+    "runtime": "not established"
+  }
 }
