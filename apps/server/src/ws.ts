@@ -38,6 +38,7 @@ import {
   FilesystemBrowseError,
   AssetWorkspaceContextNotFoundError,
   AssetWorkspaceContextResolutionError,
+  GitCommandError,
   ThreadId,
   type TerminalAttachStreamEvent,
   type TerminalError,
@@ -155,6 +156,10 @@ const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchComma
 const isSymphonyError = Schema.is(SymphonyError);
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+
+function trimTrailingSeparators(path: string): string {
+  return path.replace(/[\\/]+$/, "");
+}
 
 function unexpectedCompatibilityError(error: never): never {
   throw new Error(`Unhandled compatibility error: ${String(error)}`);
@@ -2358,6 +2363,38 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             WS_METHODS.vcsRemoveWorktree,
             gitWorkflow.removeWorktree(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+            { "rpc.aggregate": "vcs" },
+          ),
+        [WS_METHODS.vcsInspectWorktree]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.vcsInspectWorktree,
+            Effect.gen(function* () {
+              const state = yield* gitWorkflow.inspectWorktree(input);
+              const readModel = yield* projectionSnapshotQuery.getCommandReadModel().pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new GitCommandError({
+                      operation: "ws.vcsInspectWorktree",
+                      command: "read model",
+                      cwd: input.cwd,
+                      detail: "Unable to list the threads that use this worktree.",
+                      cause,
+                    }),
+                ),
+              );
+              const excluded = new Set<string>(input.excludeThreadIds ?? []);
+              const target = trimTrailingSeparators(input.path);
+              const linkedThreads = readModel.threads
+                .filter(
+                  (thread) =>
+                    thread.deletedAt === null &&
+                    thread.worktreePath !== null &&
+                    trimTrailingSeparators(thread.worktreePath) === target &&
+                    !excluded.has(thread.id),
+                )
+                .map((thread) => ({ threadId: thread.id, title: thread.title }));
+              return { ...state, linkedThreads };
+            }),
             { "rpc.aggregate": "vcs" },
           ),
         [WS_METHODS.vcsCreateRef]: (input) =>

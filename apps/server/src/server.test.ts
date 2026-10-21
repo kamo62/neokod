@@ -2403,6 +2403,16 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 worktree: { path: "/tmp/wt", refName: "feature/demo" },
               }),
             removeWorktree: () => Effect.void,
+            inspectWorktree: () =>
+              Effect.succeed({
+                path: "/tmp/wt",
+                exists: false,
+                refName: null,
+                changedFileCount: 0,
+                untrackedFileCount: 0,
+                localOnlyCommitCount: 0,
+                branchReclaimable: false,
+              }),
             createRef: (input) => Effect.succeed({ refName: input.refName }),
             switchRef: (input) => Effect.succeed({ refName: input.refName }),
           },

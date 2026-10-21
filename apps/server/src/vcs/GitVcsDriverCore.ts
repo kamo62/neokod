@@ -25,7 +25,11 @@ import {
   type ReviewDiffPreviewSource,
   type VcsRef,
 } from "@neokod/contracts";
-import { dedupeRemoteBranchesWithLocalMatches, normalizeGitRemoteUrl } from "@neokod/shared/git";
+import {
+  dedupeRemoteBranchesWithLocalMatches,
+  normalizeGitRemoteUrl,
+  WORKTREE_BRANCH_PREFIX,
+} from "@neokod/shared/git";
 import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import { compactTraceAttributes } from "@neokod/shared/observability";
 import { decodeJsonResult } from "@neokod/shared/schemaJson";
@@ -2455,9 +2459,222 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       input.branch,
     ]);
 
+  const inspectWorktree: GitVcsDriver.GitVcsDriver["Service"]["inspectWorktree"] = Effect.fn(
+    "inspectWorktree",
+  )(function* (input) {
+    const exists = yield* fileSystem.exists(input.path).pipe(
+      Effect.mapError(
+        (cause) =>
+          new GitCommandError({
+            ...gitCommandContext({
+              operation: "GitVcsDriver.inspectWorktree.exists",
+              cwd: input.path,
+              args: [],
+            }),
+            detail: "Unable to determine whether the worktree path exists.",
+            cause,
+          }),
+      ),
+    );
+    if (!exists) {
+      return {
+        path: input.path,
+        exists: false,
+        refName: null,
+        changedFileCount: 0,
+        untrackedFileCount: 0,
+        localOnlyCommitCount: 0,
+        branchReclaimable: false,
+      };
+    }
+
+    const statusResult = yield* executeGit(
+      "GitVcsDriver.inspectWorktree.status",
+      input.path,
+      ["status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=normal"],
+      { timeoutMs: 15_000, allowNonZeroExit: true },
+    );
+    if (statusResult.exitCode !== 0) {
+      return yield* new GitCommandError({
+        ...gitCommandContext({
+          operation: "GitVcsDriver.inspectWorktree.status",
+          cwd: input.path,
+          args: ["status"],
+        }),
+        detail: "Unable to read the worktree status.",
+        ...(statusResult.exitCode === null ? {} : { exitCode: statusResult.exitCode }),
+        stdoutLength: statusResult.stdout.length,
+        stderrLength: statusResult.stderr.length,
+      });
+    }
+    let changedFileCount = 0;
+    let untrackedFileCount = 0;
+    for (const entry of statusResult.stdout.split("\0")) {
+      if (entry.length === 0) continue;
+      if (entry.startsWith("??")) {
+        untrackedFileCount += 1;
+      } else {
+        changedFileCount += 1;
+      }
+    }
+
+    const branchResult = yield* executeGit(
+      "GitVcsDriver.inspectWorktree.branch",
+      input.path,
+      ["symbolic-ref", "--quiet", "--short", "HEAD"],
+      { timeoutMs: 15_000, allowNonZeroExit: true },
+    );
+    const refName =
+      branchResult.exitCode === 0 && branchResult.stdout.trim().length > 0
+        ? branchResult.stdout.trim()
+        : null;
+
+    const revListArgs =
+      refName === null
+        ? ["rev-list", "--count", "--max-count=1000", "HEAD", "--not", "--branches", "--remotes"]
+        : [
+            "rev-list",
+            "--count",
+            "--max-count=1000",
+            "HEAD",
+            "--not",
+            `--exclude=${refName}`,
+            "--branches",
+            "--remotes",
+          ];
+    const commitCountResult = yield* executeGit(
+      "GitVcsDriver.inspectWorktree.localOnlyCommits",
+      input.path,
+      revListArgs,
+      { timeoutMs: 15_000, allowNonZeroExit: true },
+    );
+    if (commitCountResult.exitCode !== 0) {
+      return yield* new GitCommandError({
+        ...gitCommandContext({
+          operation: "GitVcsDriver.inspectWorktree.localOnlyCommits",
+          cwd: input.path,
+          args: revListArgs,
+        }),
+        detail: "Unable to count commits that exist only on this worktree's branch.",
+        ...(commitCountResult.exitCode === null ? {} : { exitCode: commitCountResult.exitCode }),
+        stdoutLength: commitCountResult.stdout.length,
+        stderrLength: commitCountResult.stderr.length,
+      });
+    }
+    const parsedCount = Number.parseInt(commitCountResult.stdout.trim(), 10);
+    const localOnlyCommitCount = Number.isNaN(parsedCount) ? 0 : parsedCount;
+
+    return {
+      path: input.path,
+      exists: true,
+      refName,
+      changedFileCount,
+      untrackedFileCount,
+      localOnlyCommitCount,
+      branchReclaimable:
+        refName !== null &&
+        refName.startsWith(`${WORKTREE_BRANCH_PREFIX}/`) &&
+        localOnlyCommitCount === 0,
+    };
+  });
+
   const removeWorktree: GitVcsDriver.GitVcsDriver["Service"]["removeWorktree"] = Effect.fn(
     "removeWorktree",
   )(function* (input) {
+    const readBranchForReclaim = () =>
+      Effect.gen(function* () {
+        const exists = yield* fileSystem.exists(input.path);
+        if (!exists) {
+          return null;
+        }
+        const branchResult = yield* executeGit(
+          "GitVcsDriver.removeWorktree.readBranch",
+          input.path,
+          ["symbolic-ref", "--quiet", "--short", "HEAD"],
+          { timeoutMs: 15_000, allowNonZeroExit: true },
+        );
+        if (branchResult.exitCode !== 0) {
+          return null;
+        }
+        const headResult = yield* executeGit(
+          "GitVcsDriver.removeWorktree.readHead",
+          input.path,
+          ["rev-parse", "HEAD"],
+          { timeoutMs: 15_000, allowNonZeroExit: true },
+        );
+        if (headResult.exitCode !== 0) {
+          return null;
+        }
+        const refName = branchResult.stdout.trim();
+        const headSha = headResult.stdout.trim();
+        if (refName.length === 0 || headSha.length === 0) {
+          return null;
+        }
+        return { refName, headSha };
+      }).pipe(Effect.orElseSucceed(() => null));
+
+    const reclaimBranch = (branch: { readonly refName: string; readonly headSha: string }) =>
+      Effect.gen(function* () {
+        if (!branch.refName.startsWith(`${WORKTREE_BRANCH_PREFIX}/`)) {
+          return;
+        }
+        const listResult = yield* executeGit(
+          "GitVcsDriver.removeWorktree.reclaim.list",
+          input.cwd,
+          ["worktree", "list", "--porcelain"],
+          { timeoutMs: 15_000, allowNonZeroExit: true },
+        );
+        if (listResult.exitCode !== 0) {
+          return;
+        }
+        if (
+          listResult.stdout
+            .split("\n")
+            .map((line) => line.trim())
+            .includes(`branch refs/heads/${branch.refName}`)
+        ) {
+          return;
+        }
+        const countResult = yield* executeGit(
+          "GitVcsDriver.removeWorktree.reclaim.count",
+          input.cwd,
+          [
+            "rev-list",
+            "--count",
+            "--max-count=1",
+            `refs/heads/${branch.refName}`,
+            "--not",
+            `--exclude=${branch.refName}`,
+            "--branches",
+            "--remotes",
+          ],
+          { timeoutMs: 15_000, allowNonZeroExit: true },
+        );
+        if (countResult.exitCode !== 0 || countResult.stdout.trim() !== "0") {
+          return;
+        }
+        const deleteResult = yield* executeGit(
+          "GitVcsDriver.removeWorktree.reclaim.delete",
+          input.cwd,
+          ["update-ref", "-d", `refs/heads/${branch.refName}`, branch.headSha],
+          { timeoutMs: 15_000, allowNonZeroExit: true },
+        );
+        if (deleteResult.exitCode !== 0) {
+          yield* Effect.logWarning("Git worktree branch reclaim was refused", {
+            refName: branch.refName,
+            stderr: deleteResult.stderr.trim(),
+          });
+        }
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.logWarning("Git worktree branch reclaim failed", {
+            refName: branch.refName,
+            error,
+          }),
+        ),
+      );
+
+    const branchForReclaim = input.deleteBranch === true ? yield* readBranchForReclaim() : null;
     const args = ["worktree", "remove"];
     if (input.force) {
       args.push("--force");
@@ -2468,6 +2685,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       allowNonZeroExit: true,
     });
     if (removeResult.exitCode === 0) {
+      if (branchForReclaim !== null) {
+        yield* reclaimBranch(branchForReclaim);
+      }
       return;
     }
 
@@ -2762,6 +2982,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     fetchRemoteTrackingBranch,
     setBranchUpstream,
     removeWorktree,
+    inspectWorktree,
     renameBranch,
     createRef,
     switchRef,

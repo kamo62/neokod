@@ -160,8 +160,39 @@ export const VcsRemoveWorktreeInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
   path: TrimmedNonEmptyStringSchema,
   force: Schema.optional(Schema.Boolean),
+  deleteBranch: Schema.optional(Schema.Boolean),
 });
 export type VcsRemoveWorktreeInput = typeof VcsRemoveWorktreeInput.Type;
+
+export const VcsInspectWorktreeInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  path: TrimmedNonEmptyStringSchema,
+  excludeThreadIds: Schema.optional(Schema.Array(ThreadId)),
+});
+export type VcsInspectWorktreeInput = typeof VcsInspectWorktreeInput.Type;
+
+export const VcsWorktreeGitState = Schema.Struct({
+  path: TrimmedNonEmptyStringSchema,
+  exists: Schema.Boolean,
+  refName: Schema.NullOr(TrimmedNonEmptyStringSchema),
+  changedFileCount: NonNegativeInt,
+  untrackedFileCount: NonNegativeInt,
+  localOnlyCommitCount: NonNegativeInt,
+  branchReclaimable: Schema.Boolean,
+});
+export type VcsWorktreeGitState = typeof VcsWorktreeGitState.Type;
+
+export const VcsWorktreeLinkedThread = Schema.Struct({
+  threadId: ThreadId,
+  title: TrimmedNonEmptyStringSchema,
+});
+export type VcsWorktreeLinkedThread = typeof VcsWorktreeLinkedThread.Type;
+
+export const VcsInspectWorktreeResult = Schema.Struct({
+  ...VcsWorktreeGitState.fields,
+  linkedThreads: Schema.Array(VcsWorktreeLinkedThread),
+});
+export type VcsInspectWorktreeResult = typeof VcsInspectWorktreeResult.Type;
 
 export const VcsCreateRefInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,

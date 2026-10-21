@@ -25,6 +25,8 @@ import {
   type VcsListRefsResult,
   type VcsPullResult,
   type VcsRemoveWorktreeInput,
+  type VcsInspectWorktreeInput,
+  type VcsWorktreeGitState,
   type VcsStatusInput,
   type VcsStatusResult,
 } from "@neokod/contracts";
@@ -253,6 +255,9 @@ export class GitVcsDriver extends Context.Service<
     readonly removeWorktree: (
       input: VcsRemoveWorktreeInput,
     ) => Effect.Effect<void, GitCommandError>;
+    readonly inspectWorktree: (
+      input: VcsInspectWorktreeInput,
+    ) => Effect.Effect<VcsWorktreeGitState, GitCommandError>;
     readonly renameBranch: (
       input: GitRenameBranchInput,
     ) => Effect.Effect<GitRenameBranchResult, GitCommandError>;

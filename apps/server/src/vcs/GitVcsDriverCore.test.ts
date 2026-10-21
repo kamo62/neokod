@@ -794,6 +794,167 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         assert.include(error.detail.toLowerCase(), "locked");
       }),
     );
+
+    it.effect("inspectWorktree reports changed, untracked and local-only counts", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "inspect-me");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: initialBranch,
+          newRefName: "neokod/abcd1234",
+        });
+
+        yield* writeTextFile(worktreePath, "README.md", "# changed\n");
+        yield* writeTextFile(worktreePath, "new.txt", "untracked\n");
+        yield* writeTextFile(worktreePath, "committed.txt", "committed\n");
+        yield* git(worktreePath, ["add", "committed.txt"]);
+        yield* git(worktreePath, ["commit", "-m", "worktree commit"]);
+
+        const state = yield* driver.inspectWorktree({ cwd, path: worktreePath });
+
+        assert.equal(state.exists, true);
+        assert.equal(state.refName, "neokod/abcd1234");
+        assert.equal(state.changedFileCount, 1);
+        assert.equal(state.untrackedFileCount, 1);
+        assert.equal(state.localOnlyCommitCount, 1);
+        assert.equal(state.branchReclaimable, false);
+      }),
+    );
+
+    it.effect("inspectWorktree treats a fresh neokod branch as reclaimable", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "clean-tree");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: initialBranch,
+          newRefName: "neokod/abcd1234",
+        });
+
+        const state = yield* driver.inspectWorktree({ cwd, path: worktreePath });
+
+        assert.equal(state.exists, true);
+        assert.equal(state.changedFileCount, 0);
+        assert.equal(state.untrackedFileCount, 0);
+        assert.equal(state.localOnlyCommitCount, 0);
+        assert.equal(state.branchReclaimable, true);
+      }),
+    );
+
+    it.effect("inspectWorktree reports a missing path as not existing", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const missingPath = pathService.join(yield* makeTmpDir("git-worktrees-"), "gone");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+
+        const state = yield* driver.inspectWorktree({ cwd, path: missingPath });
+
+        assert.equal(state.exists, false);
+        assert.equal(state.refName, null);
+        assert.equal(state.changedFileCount, 0);
+        assert.equal(state.branchReclaimable, false);
+      }),
+    );
+
+    it.effect("removeWorktree with deleteBranch deletes a reclaimable neokod branch", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "reclaim-me");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: initialBranch,
+          newRefName: "neokod/abcd1234",
+        });
+
+        yield* driver.removeWorktree({ cwd, path: worktreePath, deleteBranch: true });
+
+        assert.equal(yield* git(cwd, ["branch", "--list", "neokod/abcd1234"]), "");
+      }),
+    );
+
+    it.effect("removeWorktree with deleteBranch keeps a branch that has unique commits", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const worktreePath = pathService.join(
+          yield* makeTmpDir("git-worktrees-"),
+          "unique-commits",
+        );
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: initialBranch,
+          newRefName: "neokod/abcd1234",
+        });
+        yield* writeTextFile(worktreePath, "unique.txt", "unique\n");
+        yield* git(worktreePath, ["add", "unique.txt"]);
+        yield* git(worktreePath, ["commit", "-m", "unique worktree commit"]);
+
+        yield* driver.removeWorktree({ cwd, path: worktreePath, deleteBranch: true });
+
+        assert.notEqual(yield* git(cwd, ["branch", "--list", "neokod/abcd1234"]), "");
+      }),
+    );
+
+    it.effect("removeWorktree with deleteBranch keeps non-neokod branches", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "user-branch");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: initialBranch,
+          newRefName: "feature/keep",
+        });
+
+        yield* driver.removeWorktree({ cwd, path: worktreePath, deleteBranch: true });
+
+        assert.notEqual(yield* git(cwd, ["branch", "--list", "feature/keep"]), "");
+      }),
+    );
+
+    it.effect("removeWorktree without force refuses a dirty worktree", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "dirty-tree");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: initialBranch,
+          newRefName: "neokod/abcd1234",
+        });
+        yield* writeTextFile(worktreePath, "README.md", "# dirty\n");
+
+        const error = yield* driver.removeWorktree({ cwd, path: worktreePath }).pipe(Effect.flip);
+        const fileSystem = yield* FileSystem.FileSystem;
+
+        assert.include(error.detail, "contains modified or untracked files");
+        assert.equal(yield* fileSystem.exists(worktreePath), true);
+      }),
+    );
   });
 
   describe("remote operations", () => {
