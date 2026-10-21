@@ -66,14 +66,21 @@ describe("CopilotDriver", () => {
 
 const copilotSdkState = vi.hoisted(() => ({
   startFailureMessage: undefined as string | undefined,
+  pingDead: false,
   callOrder: [] as Array<string>,
-  clients: [] as Array<{ startCalls: number; stopCalls: number; options: unknown }>,
+  clients: [] as Array<{
+    startCalls: number;
+    stopCalls: number;
+    forceStopCalls: number;
+    options: unknown;
+  }>,
 }));
 
 vi.mock("@github/copilot-sdk", () => {
   class CopilotClient {
     startCalls = 0;
     stopCalls = 0;
+    forceStopCalls = 0;
 
     options: unknown;
 
@@ -87,12 +94,25 @@ vi.mock("@github/copilot-sdk", () => {
       if (copilotSdkState.startFailureMessage) {
         return Promise.reject(new Error(copilotSdkState.startFailureMessage));
       }
+      copilotSdkState.pingDead = false;
       return Promise.resolve();
     }
 
     stop(): Promise<void> {
       this.stopCalls += 1;
       copilotSdkState.callOrder.push("client.stop");
+      return Promise.resolve();
+    }
+
+    ping(): Promise<unknown> {
+      return copilotSdkState.pingDead
+        ? Promise.reject(new Error("Connection is closed."))
+        : Promise.resolve({ protocolVersion: "test" });
+    }
+
+    forceStop(): Promise<void> {
+      this.forceStopCalls += 1;
+      copilotSdkState.callOrder.push("client.forceStop");
       return Promise.resolve();
     }
 
@@ -213,6 +233,36 @@ describe("CopilotDriver — lifecycle", () => {
       NodeAssert.equal(created.length, 1, "expected exactly one CopilotClient to be constructed");
       NodeAssert.equal(created[0]!.startCalls, 1);
     }),
+  );
+
+  it.effect("restarts a dead runtime when the snapshot refreshes", () =>
+    Effect.gen(function* () {
+      const before = copilotSdkState.clients.length;
+      const instance = yield* CopilotDriver.create(
+        makeCreateInput({
+          instanceId: ProviderInstanceId.make("githubCopilot_restart_on_refresh"),
+          enabled: true,
+        }),
+      ).pipe(Effect.provide(testLayer), Effect.scoped);
+      const created = copilotSdkState.clients[before]!;
+
+      // Settle the initial background refresh before simulating the death.
+      yield* instance.snapshot.refresh;
+      NodeAssert.equal(created.startCalls, 1);
+
+      copilotSdkState.pingDead = true;
+      yield* instance.snapshot.refresh;
+
+      NodeAssert.equal(created.forceStopCalls, 1);
+      NodeAssert.equal(created.startCalls, 2);
+      NodeAssert.equal(copilotSdkState.pingDead, false);
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          copilotSdkState.pingDead = false;
+        }),
+      ),
+    ),
   );
 
   it.effect("does not construct or start the runtime when the instance is disabled", () =>

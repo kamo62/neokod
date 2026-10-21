@@ -29,6 +29,8 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { HostProcessArchitecture, HostProcessPlatform } from "@neokod/shared/hostProcess";
 import { ServerConfig } from "../../config.ts";
@@ -60,6 +62,7 @@ import {
 } from "./CopilotEnvironment.ts";
 import { checkCopilotProviderStatus, makePendingCopilotProvider } from "./CopilotProvider.ts";
 import { resolveBundledCopilotRuntime } from "./CopilotRuntime.ts";
+import { makeCopilotRuntimeSupervisor } from "./CopilotRuntimeSupervisor.ts";
 import { makeCopilotTextGeneration } from "./CopilotTextGeneration.ts";
 import { getStoredGithubToken } from "./GithubDeviceLogin.ts";
 
@@ -181,16 +184,22 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
         );
       }
 
+      // A disabled instance owns no started runtime, so it gets no supervisor.
+      const runtime = effectiveConfig.enabled
+        ? yield* makeCopilotRuntimeSupervisor(client)
+        : undefined;
       const maintenanceCapabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(UPDATE);
 
       const adapterOptions = {
         instanceId,
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
+        ...(runtime ? { runtime } : {}),
       };
       const adapter = yield* makeCopilotAdapter(client, effectiveConfig, adapterOptions);
       const textGeneration = yield* makeCopilotTextGeneration(client);
 
-      const checkProvider = checkCopilotProviderStatus(effectiveConfig, client, gitHubToken).pipe(
+      const checkProvider = (runtime ? runtime.restartIfDead : Effect.void).pipe(
+        Effect.andThen(checkCopilotProviderStatus(effectiveConfig, client, gitHubToken)),
         Effect.map(stampIdentity),
         Effect.provideService(Path.Path, path),
       );
@@ -216,6 +225,17 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
             }),
         ),
       );
+
+      if (runtime) {
+        // An adapter-triggered restart changes availability without a
+        // settings change; republish the snapshot so Settings returns to
+        // ready instead of waiting for the 5 minute refresh.
+        yield* SubscriptionRef.changes(runtime.restartCount).pipe(
+          Stream.drop(1),
+          Stream.runForEach(() => snapshot.refresh),
+          Effect.forkScoped,
+        );
+      }
 
       return {
         instanceId,

@@ -1,6 +1,6 @@
 import * as NodeAssert from "node:assert/strict";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { it } from "@effect/vitest";
+import { expect, it } from "@effect/vitest";
 import type {
   CopilotSession,
   PermissionRequestResult,
@@ -18,21 +18,26 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import { beforeEach } from "vite-plus/test";
+import * as TestClock from "effect/testing/TestClock";
+import { beforeEach, describe } from "vite-plus/test";
 
 import { ServerConfig } from "../../config.ts";
+import { ProviderAdapterRequestError } from "../Errors.ts";
 import type { CopilotAdapterShape } from "./CopilotAdapter.ts";
 import { makeCopilotAdapter } from "./CopilotAdapter.ts";
 import { mapCopilotTodosToPlanSteps, normalizeCopilotTodoStatus } from "./CopilotAdapter.ts";
+import type { CopilotRuntimeLiveness } from "./CopilotRuntimeSupervisor.ts";
 
 class CopilotAdapterTag extends Context.Service<CopilotAdapterTag, CopilotAdapterShape>()(
   "neokod/provider/copilot/CopilotAdapter.test/CopilotAdapterTag",
 ) {}
 
 const asThreadId = (value: string): ThreadId => ThreadId.make(value);
+const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
 const PROVIDER = ProviderDriverKind.make("githubCopilot");
 const INSTANCE_ID = ProviderInstanceId.make("githubCopilot");
 
@@ -1549,6 +1554,258 @@ it.layer(CopilotAdapterTestLayer)("CopilotAdapterLive", (it) => {
       }
     }),
   );
+});
+
+function makeRuntimeAdapterLayer(input: {
+  readonly liveness: { value: CopilotRuntimeLiveness };
+  readonly calls: { restarts: number; probes: number };
+}) {
+  return Layer.unwrap(
+    Effect.sync(() => {
+      client = makeCopilotClientTestDouble();
+      return Layer.effect(
+        CopilotAdapterTag,
+        makeCopilotAdapter(client, testCopilotSettings, {
+          instanceId: INSTANCE_ID,
+          runtime: {
+            probe: Effect.sync(() => {
+              input.calls.probes += 1;
+              return input.liveness.value;
+            }),
+            restartIfDead: Effect.sync(() => {
+              input.calls.restarts += 1;
+              return true;
+            }),
+          },
+        }),
+      );
+    }),
+  ).pipe(
+    Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
+    Layer.provideMerge(NodeServices.layer),
+  );
+}
+
+function startRuntimeTestSession(threadId: ThreadId) {
+  return Effect.gen(function* () {
+    const adapter = yield* CopilotAdapterTag;
+    yield* adapter.startSession({
+      provider: PROVIDER,
+      threadId,
+      cwd: "/tmp/project",
+      runtimeMode: "full-access",
+    });
+    return adapter;
+  });
+}
+
+function collectWithinOneSecond<A>(
+  fiber: Fiber.Fiber<ReadonlyArray<A>, never>,
+): Effect.Effect<Option.Option<ReadonlyArray<A>>> {
+  return Effect.gen(function* () {
+    const raced = yield* Fiber.join(fiber).pipe(Effect.timeoutOption("1 second"), Effect.forkChild);
+    yield* TestClock.adjust("1 second");
+    return yield* Fiber.join(raced);
+  });
+}
+
+describe("CopilotAdapterLive — runtime loss", () => {
+  it.effect("settles a running turn as failed when the runtime dies", () => {
+    const liveness: { value: CopilotRuntimeLiveness } = { value: "alive" };
+    const calls = { restarts: 0, probes: 0 };
+    return Effect.gen(function* () {
+      const threadId = asThreadId("thread-runtime-lost");
+      const adapter = yield* startRuntimeTestSession(threadId);
+      yield* adapter.sendTurn({ threadId, input: "keep going" });
+
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter(
+          (event) =>
+            event.threadId === threadId &&
+            (event.type === "turn.completed" ||
+              event.type === "runtime.error" ||
+              event.type === "session.exited"),
+        ),
+        Stream.take(3),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      liveness.value = "dead";
+      yield* TestClock.adjust("3 seconds");
+      const collected = yield* collectWithinOneSecond(eventsFiber);
+      expect(Option.isSome(collected)).toBe(true);
+      const events = Array.from(Option.getOrThrow(collected));
+
+      expect(events.map((event) => event.type)).toEqual([
+        "turn.completed",
+        "runtime.error",
+        "session.exited",
+      ]);
+      const completed = events[0]!;
+      expect(completed.type).toBe("turn.completed");
+      if (completed.type === "turn.completed") {
+        expect(completed.payload.state).toBe("failed");
+        expect(completed.payload.errorMessage).toContain(
+          "GitHub Copilot runtime exited unexpectedly",
+        );
+      }
+      const runtimeError = events[1]!;
+      expect(runtimeError.type).toBe("runtime.error");
+      expect(runtimeError.turnId).toBeUndefined();
+      if (runtimeError.type === "runtime.error") {
+        expect(runtimeError.payload.class).toBe("transport_error");
+        expect(runtimeError.payload.detail).toEqual({ kind: "runtime_lost" });
+      }
+      const exited = events[2]!;
+      expect(exited.type).toBe("session.exited");
+      if (exited.type === "session.exited") {
+        expect(exited.payload.exitKind).toBe("error");
+      }
+
+      expect(yield* adapter.hasSession(threadId)).toBe(false);
+      yield* Effect.yieldNow;
+      expect(calls.restarts).toBe(1);
+    }).pipe(Effect.provide(makeRuntimeAdapterLayer({ liveness, calls })));
+  });
+
+  it.effect("does not ping while no turn is active", () => {
+    const liveness: { value: CopilotRuntimeLiveness } = { value: "dead" };
+    const calls = { restarts: 0, probes: 0 };
+    return Effect.gen(function* () {
+      const threadId = asThreadId("thread-runtime-idle");
+      yield* startRuntimeTestSession(threadId);
+
+      yield* TestClock.adjust("30 seconds");
+
+      expect(calls.probes).toBe(0);
+      expect(calls.restarts).toBe(0);
+    }).pipe(Effect.provide(makeRuntimeAdapterLayer({ liveness, calls })));
+  });
+
+  it.effect("surfaces an abort failure on a live runtime", () => {
+    const liveness: { value: CopilotRuntimeLiveness } = { value: "alive" };
+    const calls = { restarts: 0, probes: 0 };
+    return Effect.gen(function* () {
+      const threadId = asThreadId("thread-abort-live");
+      const adapter = yield* startRuntimeTestSession(threadId);
+      yield* adapter.sendTurn({ threadId, input: "keep going" });
+      Object.assign(latestSession(), {
+        abort: async () => {
+          throw new Error("boom");
+        },
+      });
+
+      const completedFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId && event.type === "turn.completed"),
+        Stream.runHead,
+        Effect.forkChild,
+      );
+
+      const error = yield* adapter.interruptTurn(threadId).pipe(Effect.flip);
+      expect(isProviderAdapterRequestError(error)).toBe(true);
+      if (isProviderAdapterRequestError(error)) {
+        expect(error.method).toBe("session/abort");
+      }
+
+      const outcomeFiber = yield* Fiber.join(completedFiber).pipe(
+        Effect.timeoutOption("10 millis"),
+        Effect.forkChild,
+      );
+      yield* TestClock.adjust("10 millis");
+      expect(Option.isNone(yield* Fiber.join(outcomeFiber))).toBe(true);
+      yield* Fiber.interrupt(completedFiber);
+      expect(yield* adapter.hasSession(threadId)).toBe(true);
+    }).pipe(Effect.provide(makeRuntimeAdapterLayer({ liveness, calls })));
+  });
+
+  it.effect("treats an abort failure on a dead runtime as a settled turn", () => {
+    const liveness: { value: CopilotRuntimeLiveness } = { value: "dead" };
+    const calls = { restarts: 0, probes: 0 };
+    return Effect.gen(function* () {
+      const threadId = asThreadId("thread-abort-dead");
+      const adapter = yield* startRuntimeTestSession(threadId);
+      yield* adapter.sendTurn({ threadId, input: "keep going" });
+      Object.assign(latestSession(), {
+        abort: async () => {
+          throw new Error("Connection is closed.");
+        },
+      });
+
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter(
+          (event) =>
+            event.threadId === threadId &&
+            (event.type === "turn.completed" ||
+              event.type === "runtime.error" ||
+              event.type === "session.exited"),
+        ),
+        Stream.take(3),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.interruptTurn(threadId);
+      const collected = yield* collectWithinOneSecond(eventsFiber);
+      expect(Option.isSome(collected)).toBe(true);
+      const events = Array.from(Option.getOrThrow(collected));
+
+      expect(events.map((event) => event.type)).toEqual([
+        "turn.completed",
+        "runtime.error",
+        "session.exited",
+      ]);
+      const completed = events[0]!;
+      if (completed.type === "turn.completed") {
+        expect(completed.payload.state).toBe("failed");
+      }
+      expect(yield* adapter.hasSession(threadId)).toBe(false);
+    }).pipe(Effect.provide(makeRuntimeAdapterLayer({ liveness, calls })));
+  });
+
+  it.effect("fails the started turn when send hits a dead runtime", () => {
+    const liveness: { value: CopilotRuntimeLiveness } = { value: "dead" };
+    const calls = { restarts: 0, probes: 0 };
+    return Effect.gen(function* () {
+      const threadId = asThreadId("thread-send-dead");
+      const adapter = yield* startRuntimeTestSession(threadId);
+      Object.assign(latestSession(), {
+        send: async () => {
+          throw new Error("Connection is closed.");
+        },
+      });
+
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter(
+          (event) =>
+            event.threadId === threadId &&
+            (event.type === "turn.started" || event.type === "turn.completed"),
+        ),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      const error = yield* adapter.sendTurn({ threadId, input: "hello" }).pipe(Effect.flip);
+      expect(isProviderAdapterRequestError(error)).toBe(true);
+      if (isProviderAdapterRequestError(error)) {
+        expect(error.method).toBe("session/send");
+      }
+
+      const collected = yield* collectWithinOneSecond(eventsFiber);
+      expect(Option.isSome(collected)).toBe(true);
+      const events = Array.from(Option.getOrThrow(collected));
+      expect(events.map((event) => event.type)).toEqual(["turn.started", "turn.completed"]);
+      const completed = events[1]!;
+      if (completed.type === "turn.completed") {
+        expect(completed.payload.state).toBe("failed");
+        expect(completed.payload.errorMessage).toContain(
+          "GitHub Copilot runtime exited unexpectedly",
+        );
+      }
+      expect(yield* adapter.hasSession(threadId)).toBe(false);
+    }).pipe(Effect.provide(makeRuntimeAdapterLayer({ liveness, calls })));
+  });
 });
 
 beforeEach(() => {
