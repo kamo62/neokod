@@ -1,0 +1,18 @@
+{
+  "sessionId": "ses_ea0986fc6ffeTqolhA70Z2Hn15",
+  "agentInfo": {
+    "name": "OpenCode",
+    "version": "2.0.32"
+  },
+  "requestedModel": "github-copilot/claude-opus-5.5",
+  "actualAssistantModel": {
+    "providerID": "github-copilot",
+    "id": "claude-opus-5.5",
+    "variant": "high"
+  },
+  "state": "completed; scoped design and source report; not approval of pending corrections",
+  "sourceCommit": "2f70e8bf2",
+  "directAttempt": "99bcfa03-6a75-46ee-9fb7-a76f9dfadd21 session usage limit",
+  "ownerFallbackAuthorised": true,
+  "builds": "not run"
+}
