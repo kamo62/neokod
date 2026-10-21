@@ -198,6 +198,10 @@ export const CopilotDriver: ProviderDriver<CopilotSettings, CopilotDriverEnv> = 
       const adapter = yield* makeCopilotAdapter(client, effectiveConfig, adapterOptions);
       const textGeneration = yield* makeCopilotTextGeneration(client);
 
+      // Every refresh path replaces a dead runtime through the supervisor,
+      // which settles adapter-owned sessions before `forceStop`. A manual or
+      // scheduled refresh therefore cannot strand an active turn or a pending
+      // approval when it wins the race against the adapter watchdog.
       const checkProvider = (runtime ? runtime.restartIfDead : Effect.void).pipe(
         Effect.andThen(checkCopilotProviderStatus(effectiveConfig, client, gitHubToken)),
         Effect.map(stampIdentity),

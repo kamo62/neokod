@@ -4,14 +4,17 @@ import { it } from "@effect/vitest";
 import {
   CopilotSettings,
   ProviderDriverKind,
+  type ProviderRuntimeEvent,
   ProviderInstanceId,
   ThreadId,
 } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
+import * as Stream from "effect/Stream";
 import { describe, vi } from "vite-plus/test";
 
 import { ServerConfig } from "../../config.ts";
@@ -68,6 +71,7 @@ const copilotSdkState = vi.hoisted(() => ({
   startFailureMessage: undefined as string | undefined,
   pingDead: false,
   callOrder: [] as Array<string>,
+  sessionConfigs: [] as Array<Record<string, unknown>>,
   clients: [] as Array<{
     startCalls: number;
     stopCalls: number;
@@ -116,11 +120,14 @@ vi.mock("@github/copilot-sdk", () => {
       return Promise.resolve();
     }
 
-    createSession(): Promise<{
+    createSession(config: Record<string, unknown>): Promise<{
       readonly sessionId: string;
       readonly on: (eventType: string, handler: (event: unknown) => void) => () => void;
       readonly disconnect: () => Promise<void>;
+      readonly send: (options: unknown) => Promise<string>;
+      readonly abort: () => Promise<void>;
     }> {
+      copilotSdkState.sessionConfigs.push(config);
       const sessionId = `fake-session-${copilotSdkState.callOrder.length}`;
       return Promise.resolve({
         sessionId,
@@ -129,11 +136,13 @@ vi.mock("@github/copilot-sdk", () => {
           copilotSdkState.callOrder.push(`session.disconnect:${sessionId}`);
           return Promise.resolve();
         },
+        send: () => Promise.resolve(`fake-message-${sessionId}`),
+        abort: () => Promise.resolve(),
       });
     }
 
-    resumeSession(): ReturnType<CopilotClient["createSession"]> {
-      return this.createSession();
+    resumeSession(config: Record<string, unknown>): ReturnType<CopilotClient["createSession"]> {
+      return this.createSession(config);
     }
 
     getStatus(): Promise<{ readonly version: string }> {
@@ -176,6 +185,17 @@ const testLayer = ServerConfig.layerTest(process.cwd(), {
   Layer.provideMerge(ServerSettingsService.layerTest()),
   Layer.provideMerge(Layer.succeed(ProviderEventLoggers, NoOpProviderEventLoggers)),
 );
+
+const shellPermissionRequest = {
+  kind: "shell" as const,
+  canOfferSessionApproval: false,
+  commands: [{ identifier: "ls", readOnly: true }],
+  fullCommandText: "ls",
+  hasWriteFileRedirection: false,
+  intention: "List the working directory",
+  possiblePaths: [],
+  possibleUrls: [],
+};
 
 describe("CopilotDriver — lifecycle", () => {
   it.effect("uses the bundled native runtime when no custom path is configured", () =>
@@ -263,6 +283,152 @@ describe("CopilotDriver — lifecycle", () => {
         }),
       ),
     ),
+  );
+
+  it.live(
+    "settles an active turn and pending request when a refresh replaces a dead runtime",
+    () => {
+      const instanceId = ProviderInstanceId.make("githubCopilot_refresh_settles_sessions");
+      const threadId = ThreadId.make("thread-refresh-settles-sessions");
+      const sleepReal = (millis: number) => Effect.sleep(`${millis} millis`);
+
+      return Effect.gen(function* () {
+        // The instance scope must stay open for the whole test: `Effect.scoped`
+        // would close it as soon as `create` returns, shutting down the
+        // adapter's event queue before the test can observe settlement.
+        const scope = yield* Scope.make("sequential");
+        return yield* Effect.gen(function* () {
+          const before = copilotSdkState.clients.length;
+          const instance = yield* CopilotDriver.create(
+            makeCreateInput({ instanceId, enabled: true }),
+          ).pipe(Effect.provide(testLayer), Effect.provideService(Scope.Scope, scope));
+          const created = copilotSdkState.clients[before]!;
+          const adapter = instance.adapter;
+
+          // Settle the initial background refresh before simulating the death.
+          yield* instance.snapshot.refresh;
+          NodeAssert.equal(created.startCalls, 1);
+
+          const events: Array<ProviderRuntimeEvent> = [];
+          yield* adapter.streamEvents.pipe(
+            Stream.runForEach((event) =>
+              Effect.sync(() => {
+                events.push(event);
+              }),
+            ),
+            Effect.forkScoped,
+          );
+
+          yield* adapter.startSession({
+            provider: ProviderDriverKind.make("githubCopilot"),
+            threadId,
+            cwd: process.cwd(),
+            runtimeMode: "approval-required",
+          });
+          const sent = yield* adapter.sendTurn({ threadId, input: "list the directory" });
+
+          const config = copilotSdkState.sessionConfigs[copilotSdkState.sessionConfigs.length - 1];
+          const onPermissionRequest = config?.onPermissionRequest as
+            | ((request: unknown) => Promise<unknown>)
+            | undefined;
+          NodeAssert.ok(
+            onPermissionRequest,
+            "expected the adapter to register a permission handler",
+          );
+          const pendingRequest = yield* Effect.promise(() =>
+            onPermissionRequest(shellPermissionRequest),
+          ).pipe(Effect.forkChild);
+
+          const waitFor = (predicate: (event: ProviderRuntimeEvent) => boolean) =>
+            Effect.gen(function* () {
+              for (let attempt = 0; attempt < 200; attempt++) {
+                if (events.some(predicate)) return true;
+                yield* sleepReal(10);
+              }
+              return false;
+            });
+
+          NodeAssert.ok(
+            yield* waitFor(
+              (event) => event.threadId === threadId && event.type === "request.opened",
+            ),
+            "expected the pending approval request to open before the runtime dies",
+          );
+
+          // The child dies and the provider refresh wins the race against the
+          // adapter watchdog: the replacement must settle the adapter's
+          // sessions before `forceStop` disconnects them.
+          copilotSdkState.pingDead = true;
+          yield* instance.snapshot.refresh;
+          NodeAssert.equal(created.forceStopCalls, 1);
+          NodeAssert.equal(created.startCalls, 2);
+
+          NodeAssert.ok(
+            yield* waitFor(
+              (event) => event.threadId === threadId && event.type === "turn.completed",
+            ),
+            "expected the in-flight turn to settle when the refresh replaced the runtime",
+          );
+          const permissionResult = yield* Fiber.join(pendingRequest);
+          NodeAssert.deepEqual(permissionResult, {
+            kind: "reject",
+            feedback: "Request cancelled by user.",
+          });
+
+          // A later healthy refresh must not re-emit terminal events.
+          yield* instance.snapshot.refresh;
+          yield* sleepReal(50);
+
+          const threadEvents = events.filter((event) => event.threadId === threadId);
+          const turnCompleted = threadEvents.filter((event) => event.type === "turn.completed");
+          NodeAssert.equal(turnCompleted.length, 1, "expected the old turn to settle exactly once");
+          const completed = turnCompleted[0]!;
+          NodeAssert.equal(completed.type, "turn.completed");
+          if (completed.type === "turn.completed") {
+            NodeAssert.equal(completed.turnId, sent.turnId);
+            NodeAssert.equal(completed.payload.state, "failed");
+          }
+          const requestResolved = threadEvents.filter((event) => event.type === "request.resolved");
+          NodeAssert.equal(requestResolved.length, 1);
+          const resolved = requestResolved[0]!;
+          if (resolved.type === "request.resolved") {
+            NodeAssert.equal(resolved.payload.decision, "cancel");
+          }
+          NodeAssert.equal(
+            threadEvents.filter((event) => event.type === "session.exited").length,
+            1,
+          );
+          NodeAssert.equal(
+            yield* adapter.hasSession(threadId),
+            false,
+            "old session must be removed",
+          );
+
+          // A fresh message recovers on the replacement runtime.
+          yield* adapter.startSession({
+            provider: ProviderDriverKind.make("githubCopilot"),
+            threadId,
+            cwd: process.cwd(),
+            runtimeMode: "approval-required",
+          });
+          const recovered = yield* adapter.sendTurn({ threadId, input: "try again" });
+          NodeAssert.notEqual(recovered.turnId, sent.turnId);
+          NodeAssert.equal(yield* adapter.hasSession(threadId), true);
+          NodeAssert.equal(created.startCalls, 2);
+        }).pipe(
+          Effect.ensuring(
+            Scope.close(scope, Exit.void).pipe(
+              Effect.ignore,
+              Effect.andThen(
+                Effect.sync(() => {
+                  copilotSdkState.pingDead = false;
+                }),
+              ),
+            ),
+          ),
+        );
+      });
+    },
   );
 
   it.effect("does not construct or start the runtime when the instance is disabled", () =>
