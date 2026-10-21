@@ -4122,7 +4122,7 @@ function ChatViewContent(props: ChatViewProps) {
         text: followUp.text,
         interactionMode: followUp.interactionMode,
       });
-      if (outcome === "rejected" && composerDraftTargetRef.current === draftTargetForFollowUp) {
+      if (outcome === "rejected") {
         restoreComposerDraftSnapshot(draftTargetForFollowUp, draftSnapshot);
       }
       return outcome === "accepted" ? "accepted" : "failed";
