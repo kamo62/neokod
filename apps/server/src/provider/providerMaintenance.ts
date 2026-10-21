@@ -48,6 +48,16 @@ export interface ProviderMaintenanceCommandAction {
   readonly executable: string;
   readonly args: ReadonlyArray<string>;
   readonly lockKey: string;
+  /**
+   * Optional command-time revalidation.
+   *
+   * Capabilities are resolved when a driver instance is created, but the
+   * installed CLI can change while Neokod is running. A provider whose update
+   * command was chosen from the install it saw at creation attaches this
+   * effect so the command is re-checked immediately before it is spawned.
+   * Resolving `null` allows the update; a message blocks it with that reason.
+   */
+  readonly verifyStillApplicable?: Effect.Effect<string | null>;
 }
 
 export interface ProviderMaintenanceCapabilityResolutionOptions {

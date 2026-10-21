@@ -304,6 +304,15 @@ export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
         reason: "This provider does not support one-click updates.",
       });
     }
+    // Capabilities are resolved when the driver instance is created, so the
+    // chosen update command can describe an install that no longer exists
+    // (for example OpenCode 1.x upgraded to 2.x while Neokod is running).
+    // Providers attach a command-time revalidation that must run before the
+    // captured command touches the install; a blocked reason stops it here.
+    const blockedReason = update.verifyStillApplicable ? yield* update.verifyStillApplicable : null;
+    if (blockedReason !== null) {
+      return yield* new ServerProviderUpdateError({ provider, reason: blockedReason });
+    }
 
     const setUpdateState = (state: ServerProviderUpdateState | null) =>
       providerRegistry.setProviderMaintenanceActionState({

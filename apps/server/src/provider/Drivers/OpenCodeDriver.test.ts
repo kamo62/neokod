@@ -95,12 +95,19 @@ describe("supportsOpenCodeSymphonyCodeReview", () => {
 });
 
 const versionStdoutState = vi.hoisted(() => ({ value: "opencode v2.0.32\n" }));
+const versionCommandCalls: Array<{
+  readonly binaryPath: string;
+  readonly args: ReadonlyArray<string>;
+}> = [];
 
 const fakeRuntime: OpenCodeRuntimeShape = {
   startOpenCodeServerProcess: () => Effect.die("unexpected server start"),
   connectToOpenCodeServer: () => Effect.die("unexpected server connection"),
-  runOpenCodeCommand: () =>
-    Effect.succeed({ stdout: versionStdoutState.value, stderr: "", code: 0 }),
+  runOpenCodeCommand: (input) =>
+    Effect.sync(() => {
+      versionCommandCalls.push({ binaryPath: input.binaryPath, args: input.args });
+      return { stdout: versionStdoutState.value, stderr: "", code: 0 };
+    }),
   createOpenCodeSdkClient: () => ({}) as never,
   loadOpenCodeInventory: () => Effect.die("unexpected inventory read"),
 };
@@ -157,6 +164,108 @@ describe("OpenCodeDriver version capability wiring", () => {
       const snapshot = yield* awaitSnapshot(instance, (candidate) => candidate.status === "error");
       expect(snapshot.version).toBe("2.0.32");
       expect(snapshot.message).toContain("OpenCode 2 is not supported yet");
+    }).pipe(Effect.provide(driverTestLayer), Effect.scoped),
+  );
+});
+
+const createOpenCodeInstance = (input: {
+  readonly instanceId: string;
+  readonly enabled: boolean;
+  readonly serverUrl?: string;
+}) =>
+  OpenCodeDriver.create({
+    instanceId: ProviderInstanceId.make(input.instanceId),
+    displayName: undefined,
+    accentColor: undefined,
+    environment: [],
+    enabled: input.enabled,
+    config: decodeOpenCodeSettings({
+      enabled: input.enabled,
+      ...(input.serverUrl ? { serverUrl: input.serverUrl } : {}),
+    }),
+  });
+
+/**
+ * Read the command-time revalidation the driver attaches to the update it
+ * captured at creation. Fails the test when the driver offers no update at all.
+ */
+const openCodeUpdateGuard = (instance: ProviderInstance): Effect.Effect<string | null> => {
+  const update = instance.snapshot.maintenanceCapabilities.update;
+  if (update === null || update.verifyStillApplicable === undefined) {
+    throw new Error("expected a command-time OpenCode update guard");
+  }
+  return update.verifyStillApplicable;
+};
+
+describe("OpenCodeDriver command-time maintenance guard", () => {
+  it.effect(
+    "blocks the captured 1.x updater when the CLI becomes OpenCode 2 before the update runs",
+    () =>
+      Effect.gen(function* () {
+        versionCommandCalls.length = 0;
+        versionStdoutState.value = "opencode 1.18.15\n";
+        const instance = yield* createOpenCodeInstance({
+          instanceId: "opencode_guard_upgrade",
+          enabled: true,
+        });
+        expect(instance.snapshot.maintenanceCapabilities.update).not.toBeNull();
+        const verifyStillApplicable = openCodeUpdateGuard(instance);
+        const probesBeforeUpdate = versionCommandCalls.length;
+
+        versionStdoutState.value = "opencode v2.0.32\n";
+        const blockedReason = yield* verifyStillApplicable;
+
+        expect(versionCommandCalls.length).toBeGreaterThan(probesBeforeUpdate);
+        expect(versionCommandCalls.at(-1)?.args).toEqual(["--version"]);
+        expect(blockedReason).toContain("OpenCode v2.0.32");
+        expect(blockedReason).toContain("install OpenCode 1.x");
+      }).pipe(Effect.provide(driverTestLayer), Effect.scoped),
+  );
+
+  it.effect("allows the captured update while the CLI is still OpenCode 1.x", () =>
+    Effect.gen(function* () {
+      versionStdoutState.value = "opencode 1.18.15\n";
+      const instance = yield* createOpenCodeInstance({
+        instanceId: "opencode_guard_supported",
+        enabled: true,
+      });
+      const verifyStillApplicable = openCodeUpdateGuard(instance);
+
+      expect(yield* verifyStillApplicable).toBeNull();
+    }).pipe(Effect.provide(driverTestLayer), Effect.scoped),
+  );
+
+  it.effect("does not guard an external server from the local CLI", () =>
+    Effect.gen(function* () {
+      versionCommandCalls.length = 0;
+      versionStdoutState.value = "opencode 1.18.15\n";
+      const instance = yield* createOpenCodeInstance({
+        instanceId: "opencode_guard_external",
+        enabled: true,
+        serverUrl: "http://127.0.0.1:4096",
+      });
+
+      expect(versionCommandCalls).toEqual([]);
+      expect(
+        instance.snapshot.maintenanceCapabilities.update?.verifyStillApplicable,
+      ).toBeUndefined();
+    }).pipe(Effect.provide(driverTestLayer), Effect.scoped),
+  );
+
+  it.effect("keeps a disabled local instance from spawning until maintenance is requested", () =>
+    Effect.gen(function* () {
+      versionCommandCalls.length = 0;
+      versionStdoutState.value = "opencode 1.18.15\n";
+      const instance = yield* createOpenCodeInstance({
+        instanceId: "opencode_guard_disabled",
+        enabled: false,
+      });
+      const verifyStillApplicable = openCodeUpdateGuard(instance);
+
+      expect(versionCommandCalls).toEqual([]);
+
+      versionStdoutState.value = "opencode v2.0.32\n";
+      expect(yield* verifyStillApplicable).toContain("OpenCode v2.0.32");
     }).pipe(Effect.provide(driverTestLayer), Effect.scoped),
   );
 });

@@ -34,7 +34,7 @@ import {
 } from "../Layers/OpenCodeProvider.ts";
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
-import { OpenCodeRuntime } from "../opencodeRuntime.ts";
+import { OpenCodeRuntime, type OpenCodeRuntimeShape } from "../opencodeRuntime.ts";
 import {
   defaultProviderContinuationIdentity,
   type ProviderDriver,
@@ -52,6 +52,7 @@ import {
 } from "../providerMaintenance.ts";
 import {
   classifyOpenCodeVersion,
+  formatOpenCodeUnsupportedVersionMessage,
   parseOpenCodeVersionOutput,
   type OpenCodeVersion,
 } from "../openCodeVersion.ts";
@@ -106,6 +107,57 @@ export function resolveOpenCodeMaintenanceCapabilities(input: {
 
 export function supportsOpenCodeSymphonyCodeReview(knownVersion: OpenCodeVersion | null): boolean {
   return knownVersion === null || knownVersion.supported;
+}
+
+/**
+ * Probe the local CLI for its banner version.
+ *
+ * A failed or unparseable probe resolves `null` and never changes behaviour on
+ * its own: only an affirmatively classified unsupported major is blocked.
+ */
+function probeOpenCodeVersion(input: {
+  readonly runtime: OpenCodeRuntimeShape;
+  readonly binaryPath: string;
+  readonly environment: NodeJS.ProcessEnv;
+}): Effect.Effect<OpenCodeVersion | null> {
+  return input.runtime
+    .runOpenCodeCommand({
+      binaryPath: input.binaryPath,
+      args: ["--version"],
+      environment: input.environment,
+    })
+    .pipe(
+      Effect.map((result) => {
+        const parsed = parseOpenCodeVersionOutput(result.stdout);
+        return parsed ? classifyOpenCodeVersion(parsed) : null;
+      }),
+      Effect.catchCause((cause) =>
+        Effect.logDebug("Could not verify the OpenCode CLI version", {
+          binaryPath: input.binaryPath,
+          cause: Cause.pretty(cause),
+        }).pipe(Effect.as(null)),
+      ),
+    );
+}
+
+/**
+ * The updater chosen at driver creation describes the CLI that was installed
+ * then. A user can upgrade to OpenCode 2 while Neokod is running, and the
+ * captured 1.x package or native updater would then replace that install with
+ * 1.x on the next maintenance invocation. Re-probe at command time and block
+ * the captured command when the CLI is now an unsupported major.
+ */
+function guardOpenCodeMaintenanceCapabilities(input: {
+  readonly capabilities: ProviderMaintenanceCapabilities;
+  readonly verify: Effect.Effect<string | null>;
+}): ProviderMaintenanceCapabilities {
+  if (input.capabilities.update === null) {
+    return input.capabilities;
+  }
+  return {
+    ...input.capabilities,
+    update: { ...input.capabilities.update, verifyStillApplicable: input.verify },
+  };
 }
 
 export type OpenCodeDriverEnv =
@@ -169,32 +221,40 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
       // local binary.
       const knownVersion =
         enabled && !isExternalServer
-          ? yield* openCodeRuntime
-              .runOpenCodeCommand({
-                binaryPath: effectiveConfig.binaryPath,
-                args: ["--version"],
-                environment: processEnv,
-              })
-              .pipe(
-                Effect.map((result) => {
-                  const parsed = parseOpenCodeVersionOutput(result.stdout);
-                  return parsed ? classifyOpenCodeVersion(parsed) : null;
-                }),
-                Effect.catchCause((cause) =>
-                  Effect.logDebug("Could not verify the OpenCode CLI version", {
-                    binaryPath: effectiveConfig.binaryPath,
-                    cause: Cause.pretty(cause),
-                  }).pipe(Effect.as(null)),
-                ),
-              )
+          ? yield* probeOpenCodeVersion({
+              runtime: openCodeRuntime,
+              binaryPath: effectiveConfig.binaryPath,
+              environment: processEnv,
+            })
           : null;
-      const maintenanceCapabilities = resolveOpenCodeMaintenanceCapabilities({
+      const resolvedMaintenanceCapabilities = resolveOpenCodeMaintenanceCapabilities({
         knownVersion,
         fallback: yield* resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
           binaryPath: effectiveConfig.binaryPath,
           env: processEnv,
         }),
       });
+      // A configured external server's protocol is never inferred from the
+      // local binary, and maintenance must not read or replace a local CLI on
+      // its behalf. Local instances re-verify the CLI when an update is
+      // actually requested, so a v1 install upgraded to v2 while Neokod was
+      // running cannot be replaced by the captured 1.x updater.
+      const maintenanceCapabilities = isExternalServer
+        ? resolvedMaintenanceCapabilities
+        : guardOpenCodeMaintenanceCapabilities({
+            capabilities: resolvedMaintenanceCapabilities,
+            verify: probeOpenCodeVersion({
+              runtime: openCodeRuntime,
+              binaryPath: effectiveConfig.binaryPath,
+              environment: processEnv,
+            }).pipe(
+              Effect.map((currentVersion) =>
+                currentVersion !== null && !currentVersion.supported
+                  ? `Update blocked. ${formatOpenCodeUnsupportedVersionMessage(currentVersion)}`
+                  : null,
+              ),
+            ),
+          });
 
       const adapter = yield* makeOpenCodeAdapter(effectiveConfig, {
         instanceId,
