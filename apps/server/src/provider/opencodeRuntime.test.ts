@@ -365,7 +365,7 @@ describe("terminateOpenCodeProcessGroup", () => {
     );
   });
 
-  it.effect("refuses SIGKILL when the recorded leader was reused", () => {
+  it.effect("refuses every signal when the recorded leader was reused", () => {
     const state: FakeGroupState = { alive: true, signals: [] };
     const birthReader: ProcessBirthReader = {
       readBirthToken: () => Effect.succeed({ kind: "token", token: "replacement-birth-token" }),
@@ -374,15 +374,16 @@ describe("terminateOpenCodeProcessGroup", () => {
     return runGroupTermination(birthReader, state).pipe(
       Effect.tap(() =>
         Effect.sync(() => {
-          // The group is still alive, but it no longer proves it is ours:
-          // escalation must fail closed and leave the ledger evidence intact.
-          expect(state.signals).toEqual(["SIGTERM"]);
+          // A live group whose leader no longer matches the recorded birth
+          // token may be a recycled pgid. Even the first signal must fail
+          // closed and leave the ledger evidence intact.
+          expect(state.signals).toEqual([]);
         }),
       ),
     );
   });
 
-  it.effect("refuses SIGKILL when the leader is gone but the group survives", () => {
+  it.effect("refuses every signal when the leader is gone but the group survives", () => {
     const state: FakeGroupState = { alive: true, signals: [] };
     const birthReader: ProcessBirthReader = {
       readBirthToken: () => Effect.succeed({ kind: "no_such_process" }),
@@ -391,9 +392,26 @@ describe("terminateOpenCodeProcessGroup", () => {
     return runGroupTermination(birthReader, state).pipe(
       Effect.tap(() =>
         Effect.sync(() => {
-          // A missing leader is not proof that the group is gone, and the
+          // A missing leader is not proof that the group is ours, and the
           // remaining members have no verified identity.
-          expect(state.signals).toEqual(["SIGTERM"]);
+          expect(state.signals).toEqual([]);
+        }),
+      ),
+    );
+  });
+
+  it.effect("refuses every signal when the birth identity is unavailable", () => {
+    const state: FakeGroupState = { alive: true, signals: [] };
+    const birthReader: ProcessBirthReader = {
+      readBirthToken: () => Effect.succeed({ kind: "unavailable", detail: "ps_failed" }),
+    };
+
+    return runGroupTermination(birthReader, state).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          // An unreadable identity is unknown evidence, not permission to
+          // signal a group that may belong to another process.
+          expect(state.signals).toEqual([]);
         }),
       ),
     );

@@ -129,16 +129,40 @@ export interface OpenCodeProcessGroupTerminationDependencies {
  * TERM-to-KILL escalation for a spawned OpenCode server group.
  *
  * A bare pgid is not proof that the group is still ours: the original group can
- * exit during the grace window and the kernel can reuse its id. Before the
- * escalated signal the leader's recorded birth token must still match the live
- * process, otherwise nothing more is signalled and the caller keeps the ledger
- * evidence for a later, fully verified reaping attempt.
+ * exit and the kernel can reuse its id before shutdown even starts. Every
+ * signal therefore requires the leader's recorded birth token to still match
+ * the live process. An unknown or changed identity fails closed, sends nothing,
+ * and leaves the ledger evidence for a later, fully verified reaping attempt.
  */
 export const terminateOpenCodeProcessGroup = (
   input: OpenCodeProcessGroupTerminationInput,
   dependencies: OpenCodeProcessGroupTerminationDependencies,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
+    const confirmOwnership = (signal: NodeJS.Signals) =>
+      validateProcessBirthIdentity(
+        { pid: input.pgid, persistedBirthToken: input.birthToken },
+        dependencies.birthReader,
+      ).pipe(
+        Effect.tap((validation) =>
+          validation.status === "confirmed"
+            ? Effect.void
+            : Effect.logWarning(
+                `Refusing to send ${signal} to an OpenCode server process group whose birth identity is not confirmed; keeping its ledger entry`,
+                {
+                  pgid: input.pgid,
+                  identity: validation.status,
+                  ...(validation.status === "unverifiable" ? { reason: validation.reason } : {}),
+                },
+              ),
+        ),
+      );
+
+    const beforeTerm = yield* confirmOwnership("SIGTERM");
+    if (beforeTerm.status !== "confirmed") {
+      return;
+    }
+
     const term = yield* dependencies.signaller.signalGroup(input.pgid, "SIGTERM");
     if (term === "no_such_group") {
       return;
@@ -154,19 +178,8 @@ export const terminateOpenCodeProcessGroup = (
       return;
     }
 
-    const validation = yield* validateProcessBirthIdentity(
-      { pid: input.pgid, persistedBirthToken: input.birthToken },
-      dependencies.birthReader,
-    );
-    if (validation.status !== "confirmed") {
-      yield* Effect.logWarning(
-        "Refusing to send SIGKILL to an OpenCode server process group whose birth identity is not confirmed; keeping its ledger entry",
-        {
-          pgid: input.pgid,
-          identity: validation.status,
-          ...(validation.status === "unverifiable" ? { reason: validation.reason } : {}),
-        },
-      );
+    const beforeKill = yield* confirmOwnership("SIGKILL");
+    if (beforeKill.status !== "confirmed") {
       return;
     }
 
