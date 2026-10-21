@@ -7,16 +7,23 @@ import * as Ref from "effect/Ref";
 import * as NodeChildProcess from "node:child_process";
 
 import {
+  captureTerminalOwnership,
+  confirmOwnedTtyProcessGroup,
   DEFAULT_GROUP_TERM_GRACE_MS,
+  discoverOwnedTtyProcessGroups,
   isGroupSignalingSupported,
   listControllingTtyProcessGroups,
   makeProvenGroupIdentity,
   parsePsPidPgidTty,
   planOrphanGroupTermination,
   posixProcessGroupSignaller,
-  type ProcessGroupSignaller,
+  readProcessTable,
   selectControllingTtyProcessGroups,
   terminateProcessGroup,
+  validateTerminalOwnership,
+  type ProcessBirthReader,
+  type ProcessGroupSignaller,
+  type ProcessTableResult,
 } from "./processGroup.ts";
 
 describe("isGroupSignalingSupported", () => {
@@ -308,6 +315,278 @@ describe("listControllingTtyProcessGroups", () => {
   it.effect("does nothing on win32", () =>
     Effect.gen(function* () {
       expect(yield* listControllingTtyProcessGroups(1234, "win32")).toEqual([]);
+    }),
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Terminal ownership revalidation
+// ---------------------------------------------------------------------------
+
+const tokenReader = (tokens: Readonly<Record<number, string>>): ProcessBirthReader => ({
+  readBirthToken: (pid) => {
+    const token = tokens[pid];
+    return Effect.succeed(
+      token === undefined
+        ? ({ kind: "no_such_process" } as const)
+        : ({ kind: "token", token } as const),
+    );
+  },
+});
+
+const table = (rows: ReadonlyArray<{ pid: number; pgid: number; tty: string }>) =>
+  ({ kind: "rows", rows }) as const satisfies ProcessTableResult;
+
+const terminalEvidence = (
+  overrides: Partial<Parameters<typeof validateTerminalOwnership>[0]> = {},
+) =>
+  ({
+    shellPid: 9000,
+    shellBirthToken: "shell-born",
+    controllingTty: "ttys900",
+    capturedAtMs: 0,
+    platform: "linux",
+    ...overrides,
+  }) as const;
+
+describe("validateTerminalOwnership", () => {
+  it.effect("rejects a recycled shell pid even when the tty name matches", () =>
+    Effect.gen(function* () {
+      const result = yield* validateTerminalOwnership(
+        terminalEvidence(),
+        table([{ pid: 9000, pgid: 9000, tty: "ttys900" }]),
+        tokenReader({ 9000: "shell-born-later" }),
+      );
+      expect(result).toEqual({ status: "recycled" });
+    }),
+  );
+
+  it.effect("rejects a recycled shell pid whose replacement controls another tty", () =>
+    Effect.gen(function* () {
+      const result = yield* validateTerminalOwnership(
+        terminalEvidence(),
+        table([{ pid: 9000, pgid: 9000, tty: "ttys901" }]),
+        tokenReader({ 9000: "shell-born-later" }),
+      );
+      expect(result).toEqual({ status: "recycled" });
+    }),
+  );
+
+  it.effect("rejects a same-process shell that now controls a different tty", () =>
+    Effect.gen(function* () {
+      const result = yield* validateTerminalOwnership(
+        terminalEvidence(),
+        table([{ pid: 9000, pgid: 9000, tty: "ttys901" }]),
+        tokenReader({ 9000: "shell-born" }),
+      );
+      expect(result).toEqual({ status: "tty_mismatch", tty: "ttys901" });
+    }),
+  );
+
+  it.effect("confirms the same process on the captured tty", () =>
+    Effect.gen(function* () {
+      const result = yield* validateTerminalOwnership(
+        terminalEvidence(),
+        table([{ pid: 9000, pgid: 9000, tty: "ttys900" }]),
+        tokenReader({ 9000: "shell-born" }),
+      );
+      expect(result).toEqual({ status: "confirmed", tty: "ttys900" });
+    }),
+  );
+
+  it.effect(
+    "fails closed without a birth token, when the shell is gone, or when ps is missing",
+    () =>
+      Effect.gen(function* () {
+        const noToken = yield* validateTerminalOwnership(
+          terminalEvidence({ shellBirthToken: null }),
+          table([{ pid: 9000, pgid: 9000, tty: "ttys900" }]),
+          tokenReader({}),
+        );
+        expect(noToken).toEqual({ status: "unverifiable", reason: "no_birth_token" });
+
+        const gone = yield* validateTerminalOwnership(
+          terminalEvidence(),
+          table([]),
+          tokenReader({}),
+        );
+        expect(gone).toEqual({ status: "process_gone" });
+
+        const missingPs = yield* validateTerminalOwnership(
+          terminalEvidence(),
+          { kind: "unavailable", detail: "ps_unavailable" },
+          tokenReader({ 9000: "shell-born" }),
+        );
+        expect(missingPs).toEqual({ status: "unverifiable", reason: "table_unavailable" });
+      }),
+  );
+});
+
+describe("readProcessTable", () => {
+  it.effect("reports unavailable instead of an empty table on win32", () =>
+    Effect.gen(function* () {
+      expect(yield* readProcessTable("win32")).toEqual({
+        kind: "unavailable",
+        detail: "unsupported_platform",
+      });
+    }),
+  );
+});
+
+describe("captureTerminalOwnership", () => {
+  it.effect("captures the birth token and tty without inventing missing evidence", () =>
+    Effect.gen(function* () {
+      const evidence = yield* captureTerminalOwnership(
+        { pid: 9000, platform: "linux", capturedAtMs: 5 },
+        {
+          birthReader: tokenReader({ 9000: "shell-born" }),
+          ttyReader: { readTty: () => Effect.succeed({ kind: "tty", tty: "ttys900" }) },
+        },
+      );
+      expect(evidence).toEqual({
+        shellPid: 9000,
+        shellBirthToken: "shell-born",
+        controllingTty: "ttys900",
+        capturedAtMs: 5,
+        platform: "linux",
+      });
+    }),
+  );
+
+  it.effect("leaves unsupported platforms without evidence", () =>
+    Effect.gen(function* () {
+      const evidence = yield* captureTerminalOwnership(
+        { pid: 9000, platform: "win32", capturedAtMs: 5 },
+        {
+          birthReader: tokenReader({ 9000: "shell-born" }),
+          ttyReader: { readTty: () => Effect.succeed({ kind: "tty", tty: "ttys900" }) },
+        },
+      );
+      expect(evidence.shellBirthToken).toBeNull();
+      expect(evidence.controllingTty).toBeNull();
+    }),
+  );
+});
+
+describe("discoverOwnedTtyProcessGroups / confirmOwnedTtyProcessGroup", () => {
+  const rows = [
+    { pid: 9000, pgid: 9000, tty: "ttys900" },
+    { pid: 7002, pgid: 7001, tty: "ttys900" },
+    { pid: 7003, pgid: 7001, tty: "ttys900" },
+    { pid: 50, pgid: 50, tty: "ttys900" },
+    { pid: 200, pgid: 200, tty: "ttys901" },
+  ];
+
+  it.effect("anchors discovered groups by member birth token and excludes the server group", () =>
+    Effect.gen(function* () {
+      const groups = yield* discoverOwnedTtyProcessGroups(
+        { rows, tty: "ttys900", ownPid: 50 },
+        tokenReader({ 9000: "shell-born", 7002: "group-born", 7003: "group-born-2" }),
+      );
+      expect(groups).toEqual([
+        {
+          pgid: 9000,
+          tty: "ttys900",
+          anchors: [{ pid: 9000, birthToken: "shell-born" }],
+        },
+        {
+          pgid: 7001,
+          tty: "ttys900",
+          anchors: [
+            { pid: 7002, birthToken: "group-born" },
+            { pid: 7003, birthToken: "group-born-2" },
+          ],
+        },
+      ]);
+    }),
+  );
+
+  it.effect("confirms while an anchor still matches and revokes once the group is replaced", () =>
+    Effect.gen(function* () {
+      const group = (yield* discoverOwnedTtyProcessGroups(
+        { rows, tty: "ttys900", ownPid: 50 },
+        tokenReader({ 9000: "shell-born", 7002: "group-born" }),
+      )).find((candidate) => candidate.pgid === 7001);
+      if (!group) throw new Error("expected background group");
+
+      const confirmed = yield* confirmOwnedTtyProcessGroup(
+        group,
+        table(rows),
+        tokenReader({ 7002: "group-born" }),
+      );
+      expect(confirmed).toEqual({ status: "confirmed" });
+
+      const revoked = yield* confirmOwnedTtyProcessGroup(
+        group,
+        table(rows),
+        tokenReader({ 7002: "replacement-born" }),
+      );
+      expect(revoked).toEqual({ status: "revoked", reason: "group_replaced" });
+
+      const vanished = yield* confirmOwnedTtyProcessGroup(
+        group,
+        table(rows.filter((row) => row.pid !== 7002)),
+        tokenReader({}),
+      );
+      expect(vanished).toEqual({ status: "revoked", reason: "group_replaced" });
+    }),
+  );
+});
+
+describe("terminateProcessGroup ownership guard", () => {
+  it.live("stops before SIGTERM when ownership is already revoked", () =>
+    Effect.gen(function* () {
+      const { signaller, calls } = yield* fakeSignaller({
+        aliveAfterTerm: false,
+        aliveAfterKill: false,
+      });
+      const outcome = yield* terminateProcessGroup(provenIdentity("linux"), {
+        signaller,
+        graceMs: 1,
+        confirmOwnership: () =>
+          Effect.succeed({ status: "revoked", reason: "group_replaced" } as const),
+      });
+      expect(outcome).toEqual({ status: "ownership_revoked", detail: "group_replaced" });
+      expect(yield* Ref.get(calls)).toEqual([]);
+    }),
+  );
+
+  it.live("does not escalate to SIGKILL when ownership is revoked after SIGTERM", () =>
+    Effect.gen(function* () {
+      const { signaller, calls } = yield* fakeSignaller({
+        aliveAfterTerm: true,
+        aliveAfterKill: false,
+      });
+      const checks = yield* Ref.make(0);
+      const outcome = yield* terminateProcessGroup(provenIdentity("linux"), {
+        signaller,
+        graceMs: 1,
+        confirmOwnership: () =>
+          Ref.modify(checks, (count) => [
+            count === 0
+              ? ({ status: "confirmed" } as const)
+              : ({ status: "revoked", reason: "member_recycled" } as const),
+            count + 1,
+          ]),
+      });
+      expect(outcome).toEqual({ status: "ownership_revoked", detail: "member_recycled" });
+      expect(yield* Ref.get(calls)).toEqual(["SIGTERM"]);
+    }),
+  );
+
+  it.live("escalates normally when ownership stays confirmed", () =>
+    Effect.gen(function* () {
+      const { signaller, calls } = yield* fakeSignaller({
+        aliveAfterTerm: true,
+        aliveAfterKill: false,
+      });
+      const outcome = yield* terminateProcessGroup(provenIdentity("linux"), {
+        signaller,
+        graceMs: 1,
+        confirmOwnership: () => Effect.succeed({ status: "confirmed" } as const),
+      });
+      expect(outcome).toEqual({ status: "escalated_kill" });
+      expect(yield* Ref.get(calls)).toEqual(["SIGTERM", "SIGKILL"]);
     }),
   );
 });

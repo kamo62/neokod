@@ -9,7 +9,12 @@ import {
   type TerminalRestartInput,
 } from "@neokod/contracts";
 import { HostProcessPlatform } from "@neokod/shared/hostProcess";
-import type { ProcessGroupSignaller } from "@neokod/shared/processGroup";
+import type {
+  ProcessBirthReader,
+  ProcessGroupSignaller,
+  ProcessTableResult,
+  TerminalOwnershipEvidence,
+} from "@neokod/shared/processGroup";
 import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -234,6 +239,41 @@ const multiTerminalHistoryLogPath = (
     }),
   );
 
+const scriptedBirthReader = (
+  tokens: Readonly<Record<number, ReadonlyArray<string>>>,
+): ProcessBirthReader => {
+  const remaining = new Map<number, Array<string>>();
+  for (const [pid, sequence] of Object.entries(tokens)) {
+    remaining.set(Number(pid), [...sequence]);
+  }
+  return {
+    readBirthToken: (pid) =>
+      Effect.sync(() => {
+        const sequence = remaining.get(pid);
+        if (sequence === undefined) return { kind: "no_such_process" } as const;
+        const token = sequence[0];
+        if (token === undefined) return { kind: "no_such_process" } as const;
+        if (sequence.length > 1) sequence.shift();
+        return { kind: "token", token } as const;
+      }),
+  };
+};
+
+const terminalOwnership = (
+  shellPid: number,
+  overrides: Partial<TerminalOwnershipEvidence> = {},
+): TerminalOwnershipEvidence => ({
+  shellPid,
+  shellBirthToken: "shell-born",
+  controllingTty: "ttys900",
+  capturedAtMs: 0,
+  platform: "linux",
+  ...overrides,
+});
+
+const processTable = (rows: ReadonlyArray<{ pid: number; pgid: number; tty: string }>) =>
+  Effect.succeed<ProcessTableResult>({ kind: "rows", rows });
+
 interface CreateManagerOptions {
   shellResolver?: () => string;
   env?: NodeJS.ProcessEnv;
@@ -244,7 +284,11 @@ interface CreateManagerOptions {
   }>;
   subprocessPollIntervalMs?: number;
   processKillGraceMs?: number;
-  processGroupLister?: (terminalPid: number) => Effect.Effect<ReadonlyArray<number>>;
+  terminalOwnershipCapture?: (
+    terminalPid: number,
+  ) => Effect.Effect<TerminalOwnershipEvidence | null>;
+  processTableReader?: () => Effect.Effect<ProcessTableResult>;
+  processBirthReader?: ProcessBirthReader;
   processGroupSignaller?: ProcessGroupSignaller;
   persistRetryDelayMs?: number;
   historyByteLimit?: number;
@@ -288,8 +332,13 @@ const createManager = (
           ? { subprocessPollIntervalMs: options.subprocessPollIntervalMs }
           : {}),
         processKillGraceMs: options.processKillGraceMs ?? 1,
-        processGroupLister:
-          options.processGroupLister ?? (() => Effect.succeed<ReadonlyArray<number>>([])),
+        terminalOwnershipCapture: options.terminalOwnershipCapture ?? (() => Effect.succeed(null)),
+        ...(options.processTableReader !== undefined
+          ? { processTableReader: options.processTableReader }
+          : {}),
+        ...(options.processBirthReader !== undefined
+          ? { processBirthReader: options.processBirthReader }
+          : {}),
         ...(options.processGroupSignaller !== undefined
           ? { processGroupSignaller: options.processGroupSignaller }
           : {}),
@@ -1438,12 +1487,145 @@ it.layer(
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
-  it.effect("terminates every process group reported for the terminal", () => {
-    const calls: Array<[number, NodeJS.Signals]> = [];
-    return Effect.gen(function* () {
+  it.effect("refuses to signal when the shell pid was reused before discovery", () =>
+    Effect.gen(function* () {
+      if ((yield* HostProcessPlatform) === "win32") return;
+      const calls: Array<[number, NodeJS.Signals]> = [];
       const { manager, ptyAdapter } = yield* createManager(5, {
         processKillGraceMs: 10,
-        processGroupLister: () => Effect.succeed([7001, 7002]),
+        terminalOwnershipCapture: (pid) =>
+          Effect.succeed(terminalOwnership(pid, { shellBirthToken: "shell-born-1" })),
+        processTableReader: () =>
+          processTable([
+            // The recorded pid now belongs to a different process that controls
+            // a different tty. Discovery must not adopt that tty.
+            { pid: 9000, pgid: 9000, tty: "ttys901" },
+            { pid: globalThis.process.pid, pgid: 4242, tty: "??" },
+          ]),
+        processBirthReader: scriptedBirthReader({ 9000: ["shell-born-2"] }),
+        processGroupSignaller: {
+          signalGroup: (pgid, signal) =>
+            Effect.sync(() => {
+              calls.push([pgid, signal]);
+              return "sent" as const;
+            }),
+          isGroupAlive: () => Effect.succeed(true),
+        },
+      });
+      yield* manager.open(openInput());
+      yield* manager.close({ threadId: "thread-1" });
+      yield* Effect.sleep("100 millis");
+
+      expect(calls).toEqual([]);
+      // Neither the replacement tty groups nor the recycled pid were signalled.
+      expect(ptyAdapter.processes[0]?.killSignals).toEqual([]);
+    }),
+  );
+
+  it.effect("refuses to signal a discovered group replaced before SIGTERM", () =>
+    Effect.gen(function* () {
+      if ((yield* HostProcessPlatform) === "win32") return;
+      const calls: Array<[number, NodeJS.Signals]> = [];
+      const { manager, ptyAdapter } = yield* createManager(5, {
+        processKillGraceMs: 20,
+        terminalOwnershipCapture: (pid) => Effect.succeed(terminalOwnership(pid)),
+        processTableReader: () =>
+          processTable([
+            { pid: 9000, pgid: 9000, tty: "ttys900" },
+            { pid: 7002, pgid: 7001, tty: "ttys900" },
+            { pid: globalThis.process.pid, pgid: 4242, tty: "??" },
+          ]),
+        // Discovery reads "group-born-1"; the guard before TERM reads
+        // "group-born-2", proving the group id was released and reused.
+        processBirthReader: scriptedBirthReader({
+          9000: ["shell-born"],
+          7002: ["group-born-1", "group-born-2"],
+        }),
+        processGroupSignaller: {
+          signalGroup: (pgid, signal) =>
+            Effect.sync(() => {
+              calls.push([pgid, signal]);
+              return "sent" as const;
+            }),
+          isGroupAlive: () => Effect.succeed(false),
+        },
+      });
+      yield* manager.open(openInput());
+      yield* manager.close({ threadId: "thread-1" });
+
+      // The owned shell group still terminates normally; wait for it so the
+      // revoked background group has also completed its guard.
+      yield* waitFor(
+        Effect.sync(() => calls.some(([pgid, signal]) => pgid === 9000 && signal === "SIGTERM")),
+        "2000 millis",
+      );
+      yield* Effect.sleep("50 millis");
+
+      expect(calls.filter(([pgid]) => pgid === 7001)).toEqual([]);
+      expect(ptyAdapter.processes[0]?.killSignals).toEqual([]);
+    }),
+  );
+
+  it.effect("refuses to escalate a discovered group replaced before SIGKILL", () =>
+    Effect.gen(function* () {
+      if ((yield* HostProcessPlatform) === "win32") return;
+      const calls: Array<[number, NodeJS.Signals]> = [];
+      const { manager, ptyAdapter } = yield* createManager(5, {
+        processKillGraceMs: 20,
+        terminalOwnershipCapture: (pid) => Effect.succeed(terminalOwnership(pid)),
+        processTableReader: () =>
+          processTable([
+            { pid: 9000, pgid: 9000, tty: "ttys900" },
+            { pid: 7002, pgid: 7001, tty: "ttys900" },
+            { pid: globalThis.process.pid, pgid: 4242, tty: "??" },
+          ]),
+        // Discovery and the pre-TERM guard see the original process; the
+        // pre-KILL guard sees a replacement that reused the pid and group.
+        processBirthReader: scriptedBirthReader({
+          9000: ["shell-born"],
+          7002: ["group-born-1", "group-born-1", "group-born-2"],
+        }),
+        processGroupSignaller: {
+          signalGroup: (pgid, signal) =>
+            Effect.sync(() => {
+              calls.push([pgid, signal]);
+              return "sent" as const;
+            }),
+          // The background group ignores TERM so escalation is attempted.
+          isGroupAlive: (pgid) => Effect.succeed(pgid === 7001),
+        },
+      });
+      yield* manager.open(openInput());
+      yield* manager.close({ threadId: "thread-1" });
+
+      yield* waitFor(
+        Effect.sync(() => calls.some(([pgid, signal]) => pgid === 7001 && signal === "SIGTERM")),
+        "2000 millis",
+      );
+      yield* Effect.sleep("100 millis");
+
+      expect(calls.filter(([pgid]) => pgid === 7001)).toEqual([[7001, "SIGTERM"]]);
+      expect(ptyAdapter.processes[0]?.killSignals).toEqual([]);
+    }),
+  );
+
+  it.effect("terminates an owned background group with anchored identity", () =>
+    Effect.gen(function* () {
+      if ((yield* HostProcessPlatform) === "win32") return;
+      const calls: Array<[number, NodeJS.Signals]> = [];
+      const { manager, ptyAdapter } = yield* createManager(5, {
+        processKillGraceMs: 20,
+        terminalOwnershipCapture: (pid) => Effect.succeed(terminalOwnership(pid)),
+        processTableReader: () =>
+          processTable([
+            { pid: 9000, pgid: 9000, tty: "ttys900" },
+            { pid: 7002, pgid: 7001, tty: "ttys900" },
+            { pid: globalThis.process.pid, pgid: 4242, tty: "??" },
+          ]),
+        processBirthReader: scriptedBirthReader({
+          9000: ["shell-born"],
+          7002: ["group-born"],
+        }),
         processGroupSignaller: {
           signalGroup: (pgid, signal) =>
             Effect.sync(() => {
@@ -1457,51 +1639,15 @@ it.layer(
       yield* manager.close({ threadId: "thread-1" });
 
       yield* waitFor(
-        Effect.sync(() => calls.length === 2),
+        Effect.sync(() => calls.some(([pgid, signal]) => pgid === 7001 && signal === "SIGTERM")),
         "2000 millis",
       );
 
-      expect(calls.map(([pgid]) => pgid).sort()).toEqual([7001, 7002]);
-      expect(calls.every(([, signal]) => signal === "SIGTERM")).toBe(true);
+      expect(calls.filter(([pgid]) => pgid === 7001)).toEqual([[7001, "SIGTERM"]]);
+      // Owned group cleanup does not fall back to a pid-only signal.
       expect(ptyAdapter.processes[0]?.killSignals).toEqual([]);
-    });
-  });
-
-  it.effect("escalates to SIGKILL per group when a group survives SIGTERM", () => {
-    const calls: Array<[number, NodeJS.Signals]> = [];
-    return Effect.gen(function* () {
-      const { manager, ptyAdapter } = yield* createManager(5, {
-        processKillGraceMs: 10,
-        processGroupLister: () => Effect.succeed([7001, 7002]),
-        processGroupSignaller: {
-          signalGroup: (pgid, signal) =>
-            Effect.sync(() => {
-              calls.push([pgid, signal]);
-              return "sent" as const;
-            }),
-          isGroupAlive: (pgid) =>
-            Effect.sync(
-              () => !calls.some(([group, signal]) => group === pgid && signal === "SIGKILL"),
-            ),
-        },
-      });
-      yield* manager.open(openInput());
-      yield* manager.close({ threadId: "thread-1" });
-
-      yield* waitFor(
-        Effect.sync(() => calls.length === 4),
-        "2000 millis",
-      );
-
-      for (const pgid of [7001, 7002]) {
-        expect(calls.filter(([group]) => group === pgid).map(([, signal]) => signal)).toEqual([
-          "SIGTERM",
-          "SIGKILL",
-        ]);
-      }
-      expect(ptyAdapter.processes[0]?.killSignals).toEqual([]);
-    });
-  });
+    }),
+  );
 
   it.effect("publishes closed events when terminals are explicitly closed", () =>
     Effect.gen(function* () {

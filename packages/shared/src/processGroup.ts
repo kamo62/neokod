@@ -209,14 +209,42 @@ export type ProcessGroupTerminationOutcome =
   | { readonly status: "escalated_kill" }
   /** Platform cannot signal groups safely; nothing was signalled. */
   | { readonly status: "unsupported_platform" }
+  /**
+   * Ownership could no longer be confirmed before a signal (or escalation), so
+   * no further signal was sent. The group id may have been recycled.
+   */
+  | { readonly status: "ownership_revoked"; readonly detail: string }
   /** The group survived TERM and KILL, or signalling failed. */
   | { readonly status: "termination_failed"; readonly detail: string };
+
+/**
+ * Ownership check run immediately before every signal (TERM and the KILL
+ * escalation). A group identity proves the id was well formed at discovery;
+ * this check proves the live group still contains a process captured then.
+ */
+export type ProcessGroupOwnershipCheck =
+  | { readonly status: "confirmed" }
+  | {
+      readonly status: "revoked";
+      readonly reason:
+        | "group_missing"
+        | "group_replaced"
+        | "member_recycled"
+        | "reader_unavailable"
+        | "table_unavailable";
+    };
 
 export interface TerminateGroupOptions {
   readonly graceMs?: number;
   readonly killSignal?: NodeJS.Signals;
   readonly forceSignal?: NodeJS.Signals;
   readonly signaller?: ProcessGroupSignaller;
+  /**
+   * Revalidate live group ownership before TERM and again before KILL. When it
+   * reports `revoked` the escalation stops without signalling: the originally
+   * owned group may have exited and its id been reused by an unrelated group.
+   */
+  readonly confirmOwnership?: () => Effect.Effect<ProcessGroupOwnershipCheck>;
 }
 
 const waitForGroupExit = Effect.fn("waitForGroupExit")(function* (
@@ -252,6 +280,20 @@ export const terminateProcessGroup = (
     const killSignal = options.killSignal ?? "SIGTERM";
     const forceSignal = options.forceSignal ?? "SIGKILL";
     const { pgid } = identity;
+    const confirmOwnership = options.confirmOwnership;
+    const ownershipRevoked = (check: ProcessGroupOwnershipCheck & { readonly status: "revoked" }) =>
+      Effect.gen(function* () {
+        yield* Effect.logWarning("refusing to signal process group: ownership not confirmed", {
+          pgid,
+          reason: check.reason,
+        });
+        return { status: "ownership_revoked", detail: check.reason } as const;
+      });
+
+    if (confirmOwnership !== undefined) {
+      const check = yield* confirmOwnership();
+      if (check.status === "revoked") return yield* ownershipRevoked(check);
+    }
 
     const term = yield* signaller.signalGroup(pgid, killSignal);
     if (term === "no_such_group") {
@@ -260,6 +302,13 @@ export const terminateProcessGroup = (
 
     if (yield* waitForGroupExit(signaller, pgid, graceMs)) {
       return { status: "terminated" } as const;
+    }
+
+    // The group survived TERM. Revalidate before escalating: it may have exited
+    // and had its id reused while the grace window was open.
+    if (confirmOwnership !== undefined) {
+      const check = yield* confirmOwnership();
+      if (check.status === "revoked") return yield* ownershipRevoked(check);
     }
 
     const kill = yield* signaller.signalGroup(pgid, forceSignal);
@@ -365,6 +414,40 @@ export interface ProcessBirthReader {
   readonly readBirthToken: (pid: number) => Effect.Effect<ProcessBirthResult>;
 }
 
+type PsTextResult =
+  | { readonly kind: "text"; readonly text: string }
+  | { readonly kind: "no_such_process" }
+  | { readonly kind: "unavailable"; readonly detail?: string };
+
+/**
+ * Read a single `ps` column for a pid. `ps` exits non-zero with empty stdout
+ * when the pid does not exist; a spawn-level failure (for example a missing
+ * `ps` binary) is `unavailable` so callers fail closed rather than assume the
+ * process is gone.
+ */
+const readPsColumn = (pid: number, column: string): PsTextResult => {
+  try {
+    const out = NodeChildProcess.execFileSync("ps", ["-o", `${column}=`, "-p", String(pid)], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (out.length === 0) return { kind: "no_such_process" } as const;
+    return { kind: "text", text: out } as const;
+  } catch (error) {
+    const code = errnoCode(error);
+    if (code !== undefined) {
+      return { kind: "unavailable", detail: code } as const;
+    }
+    const status = (error as { readonly status?: unknown }).status;
+    const stdout = (error as { readonly stdout?: unknown }).stdout;
+    const stdoutText = typeof stdout === "string" ? stdout.trim() : "";
+    if (typeof status === "number" && stdoutText.length === 0) {
+      return { kind: "no_such_process" } as const;
+    }
+    return { kind: "unavailable", detail: "ps_failed" } as const;
+  }
+};
+
 /**
  * POSIX birth reader. `ps -o lstart= -p <pid>` prints the process start time
  * with no header; `ps` exits non-zero (status 1) with empty stdout when the
@@ -375,35 +458,22 @@ export interface ProcessBirthReader {
 export const posixProcessBirthReader: ProcessBirthReader = {
   readBirthToken: (pid) =>
     Effect.sync(() => {
-      try {
-        const out = NodeChildProcess.execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], {
-          encoding: "utf8",
-          stdio: ["ignore", "pipe", "ignore"],
-        }).trim();
-        if (out.length === 0) return { kind: "no_such_process" } as const;
-        return { kind: "token", token: out } as const;
-      } catch (error) {
-        const code = errnoCode(error);
-        if (code !== undefined) {
-          // Spawn-level failure (e.g. ENOENT: `ps` not found): cannot tell.
-          return { kind: "unavailable", detail: code } as const;
-        }
-        const status = (error as { readonly status?: unknown }).status;
-        const stdout = (error as { readonly stdout?: unknown }).stdout;
-        const stdoutText = typeof stdout === "string" ? stdout.trim() : "";
-        // `ps` ran and exited non-zero with no output: the pid is not found.
-        if (typeof status === "number" && stdoutText.length === 0) {
-          return { kind: "no_such_process" } as const;
-        }
-        return { kind: "unavailable", detail: "ps_failed" } as const;
+      const result = readPsColumn(pid, "lstart");
+      switch (result.kind) {
+        case "no_such_process":
+          return result;
+        case "unavailable":
+          return result;
+        case "text":
+          return { kind: "token", token: result.text } as const;
       }
     }),
 };
 
 /**
  * Capture the birth token for a freshly spawned pid, best-effort. Returns the
- * token string, or `null` when it cannot be read (the identity is then only
- * provenance and can never be used to authorize a later signal).
+ * token string, or `null` when it cannot be read; a missing token is unknown
+ * evidence and later ownership checks fail closed rather than guessing.
  */
 export const captureProcessBirthToken = (
   pid: number,
@@ -452,6 +522,301 @@ export const validateProcessBirthIdentity = (
           ? ({ status: "confirmed" } as const)
           : ({ status: "recycled" } as const);
     }
+  });
+
+// ---------------------------------------------------------------------------
+// Terminal ownership evidence (pty shell + controlling tty captured at spawn)
+// ---------------------------------------------------------------------------
+
+const NO_CONTROLLING_TTY = new Set(["?", "??", "-"]);
+
+export type ProcessTtyResult =
+  /** The process has a controlling tty (`ttys003`, `pts/0`, ...). */
+  | { readonly kind: "tty"; readonly tty: string }
+  /** The process exists but has no controlling tty. */
+  | { readonly kind: "no_tty" }
+  /** No process with that pid exists. */
+  | { readonly kind: "no_such_process" }
+  /** The reader could not determine the answer (tool missing, error). */
+  | { readonly kind: "unavailable"; readonly detail?: string };
+
+export interface ProcessTtyReader {
+  /** Read the controlling tty name for a live pid. Never throws. */
+  readonly readTty: (pid: number) => Effect.Effect<ProcessTtyResult>;
+}
+
+/** POSIX controlling-tty reader (`ps -o tty= -p <pid>`). */
+export const posixProcessTtyReader: ProcessTtyReader = {
+  readTty: (pid) =>
+    Effect.sync(() => {
+      const result = readPsColumn(pid, "tty");
+      switch (result.kind) {
+        case "no_such_process":
+          return result;
+        case "unavailable":
+          return result;
+        case "text":
+          return NO_CONTROLLING_TTY.has(result.text)
+            ? ({ kind: "no_tty" } as const)
+            : ({ kind: "tty", tty: result.text } as const);
+      }
+    }),
+};
+
+/**
+ * Ownership evidence captured while the pty shell is known to be the process
+ * neokod just spawned. Later cleanup must revalidate this evidence instead of
+ * trusting a pid on its own: a recycled pid could point at an unrelated
+ * process whose tty (or group) must never be signalled.
+ */
+export interface TerminalOwnershipEvidence {
+  /** The pty shell pid recorded at spawn. */
+  readonly shellPid: number;
+  /** Recycle-resistant birth token of the shell, captured at spawn. */
+  readonly shellBirthToken: string | null;
+  /** Controlling tty name of the shell at spawn (`ttys003`, `pts/0`, ...). */
+  readonly controllingTty: string | null;
+  /** Wall-clock capture time in ms; provenance only. */
+  readonly capturedAtMs: number;
+  /** Platform the terminal was spawned on. */
+  readonly platform: NodeJS.Platform;
+}
+
+export interface TerminalOwnershipReadDeps {
+  readonly birthReader?: ProcessBirthReader;
+  readonly ttyReader?: ProcessTtyReader;
+}
+
+/**
+ * Capture the shell pid's birth token and controlling tty immediately after a
+ * pty spawn. Missing fields stay `null` (unknown evidence), which later
+ * disables group discovery rather than guessing.
+ */
+export const captureTerminalOwnership = (
+  input: {
+    readonly pid: number;
+    readonly platform: NodeJS.Platform;
+    readonly capturedAtMs?: number;
+  },
+  deps: TerminalOwnershipReadDeps = {},
+): Effect.Effect<TerminalOwnershipEvidence> =>
+  Effect.gen(function* () {
+    const capturedAtMs =
+      input.capturedAtMs ?? (yield* Effect.clockWith((clock) => clock.currentTimeMillis));
+    const base = {
+      shellPid: input.pid,
+      capturedAtMs,
+      platform: input.platform,
+    };
+    if (
+      !isGroupSignalingSupported(input.platform) ||
+      !Number.isInteger(input.pid) ||
+      input.pid <= 1
+    ) {
+      return {
+        ...base,
+        shellBirthToken: null,
+        controllingTty: null,
+      } as const;
+    }
+    const birthReader = deps.birthReader ?? posixProcessBirthReader;
+    const ttyReader = deps.ttyReader ?? posixProcessTtyReader;
+    const shellBirthToken = yield* captureProcessBirthToken(input.pid, birthReader);
+    const ttyResult = yield* ttyReader.readTty(input.pid);
+    return {
+      ...base,
+      shellBirthToken,
+      controllingTty: ttyResult.kind === "tty" ? ttyResult.tty : null,
+    } as const;
+  });
+
+export type TerminalOwnershipValidation =
+  /** The live shell is the same process and still controls the captured tty. */
+  | { readonly status: "confirmed"; readonly tty: string }
+  /** No process with the shell pid exists. */
+  | { readonly status: "process_gone" }
+  /** The pid now points at a different process: it was recycled. */
+  | { readonly status: "recycled" }
+  /** The shell is the same process but now controls a different tty. */
+  | { readonly status: "tty_mismatch"; readonly tty: string | null }
+  /** Cannot decide, so no group may be discovered or signalled. */
+  | {
+      readonly status: "unverifiable";
+      readonly reason:
+        | "unsupported_platform"
+        | "invalid_pid"
+        | "no_birth_token"
+        | "no_controlling_tty"
+        | "table_unavailable"
+        | "shell_row_missing"
+        | "reader_unavailable";
+    };
+
+/** Live process-table snapshot used to prove tty membership. */
+export type ProcessTableResult =
+  | { readonly kind: "rows"; readonly rows: ReadonlyArray<PsPidPgidTtyRow> }
+  | { readonly kind: "unavailable"; readonly detail: string };
+
+/**
+ * Revalidate captured terminal ownership against the live process table and
+ * birth identity. Fails closed for every state that cannot prove the shell is
+ * still the process neokod spawned and still controls the captured tty.
+ */
+export const validateTerminalOwnership = (
+  evidence: TerminalOwnershipEvidence,
+  table: ProcessTableResult,
+  reader: ProcessBirthReader = posixProcessBirthReader,
+): Effect.Effect<TerminalOwnershipValidation> =>
+  Effect.gen(function* () {
+    if (!isGroupSignalingSupported(evidence.platform)) {
+      return { status: "unverifiable", reason: "unsupported_platform" } as const;
+    }
+    if (!Number.isInteger(evidence.shellPid) || evidence.shellPid <= 1) {
+      return { status: "unverifiable", reason: "invalid_pid" } as const;
+    }
+    if (evidence.shellBirthToken === null || evidence.shellBirthToken.trim().length === 0) {
+      return { status: "unverifiable", reason: "no_birth_token" } as const;
+    }
+    const birth = yield* validateProcessBirthIdentity(
+      { pid: evidence.shellPid, persistedBirthToken: evidence.shellBirthToken },
+      reader,
+    );
+    switch (birth.status) {
+      case "process_gone":
+        return { status: "process_gone" } as const;
+      case "recycled":
+        return { status: "recycled" } as const;
+      case "unverifiable":
+        return { status: "unverifiable", reason: "reader_unavailable" } as const;
+      case "confirmed":
+        break;
+    }
+    if (evidence.controllingTty === null) {
+      return { status: "unverifiable", reason: "no_controlling_tty" } as const;
+    }
+    if (table.kind === "unavailable") {
+      return { status: "unverifiable", reason: "table_unavailable" } as const;
+    }
+    const shellRow = table.rows.find((row) => row.pid === evidence.shellPid);
+    if (shellRow === undefined) {
+      return { status: "unverifiable", reason: "shell_row_missing" } as const;
+    }
+    if (shellRow.tty !== evidence.controllingTty) {
+      return { status: "tty_mismatch", tty: shellRow.tty } as const;
+    }
+    return { status: "confirmed", tty: evidence.controllingTty } as const;
+  });
+
+// ---------------------------------------------------------------------------
+// Terminal-owned process groups (discovery + revalidation before signalling)
+// ---------------------------------------------------------------------------
+
+export interface ProcessGroupAnchor {
+  /** A member pid observed in the group at discovery. */
+  readonly pid: number;
+  /** Birth token of that member, captured at discovery. */
+  readonly birthToken: string;
+}
+
+export interface OwnedTtyProcessGroup {
+  readonly pgid: number;
+  readonly tty: string;
+  /**
+   * Members whose birth identity was readable at discovery. Before each signal
+   * at least one anchor must still exist with the same pgid and birth token:
+   * that proves the group id was not recycled. Groups without anchors are
+   * excluded, never signalled on numeric equality alone.
+   */
+  readonly anchors: ReadonlyArray<ProcessGroupAnchor>;
+}
+
+/**
+ * Groups sharing a validated terminal tty, with birth-token anchors for the
+ * members that could be read. Pure over the supplied snapshot; POSIX-free so it
+ * can be tested deterministically.
+ */
+export const discoverOwnedTtyProcessGroups = (
+  input: {
+    readonly rows: ReadonlyArray<PsPidPgidTtyRow>;
+    readonly tty: string;
+    readonly ownPid: number;
+  },
+  reader: ProcessBirthReader = posixProcessBirthReader,
+): Effect.Effect<ReadonlyArray<OwnedTtyProcessGroup>> =>
+  Effect.gen(function* () {
+    const ownGroup = input.rows.find((row) => row.pid === input.ownPid)?.pgid;
+    const membersByGroup = new Map<number, Array<number>>();
+    for (const row of input.rows) {
+      if (row.tty !== input.tty || row.pgid <= 1 || row.pgid === ownGroup) continue;
+      if (row.pid === input.ownPid) continue;
+      const members = membersByGroup.get(row.pgid) ?? [];
+      members.push(row.pid);
+      membersByGroup.set(row.pgid, members);
+    }
+
+    const groups: Array<OwnedTtyProcessGroup> = [];
+    for (const [pgid, members] of membersByGroup) {
+      const anchors: Array<ProcessGroupAnchor> = [];
+      for (const pid of members) {
+        const birth = yield* reader.readBirthToken(pid);
+        if (birth.kind === "token" && birth.token.trim().length > 0) {
+          anchors.push({ pid, birthToken: birth.token });
+        }
+      }
+      if (anchors.length > 0) {
+        groups.push({ pgid, tty: input.tty, anchors });
+      }
+    }
+    return groups;
+  });
+
+/**
+ * Confirm a discovered group still contains at least one of its anchors with
+ * the same pgid and birth token. This is the pre-signal guard: it fails closed
+ * when the group vanished, a pid was recycled, or the evidence cannot be read.
+ */
+export const confirmOwnedTtyProcessGroup = (
+  group: OwnedTtyProcessGroup,
+  table: ProcessTableResult,
+  reader: ProcessBirthReader = posixProcessBirthReader,
+): Effect.Effect<ProcessGroupOwnershipCheck> =>
+  Effect.gen(function* () {
+    if (table.kind === "unavailable") {
+      return { status: "revoked", reason: "table_unavailable" } as const;
+    }
+    let sawReaderUnavailable = false;
+    let sawMismatch = false;
+    for (const anchor of group.anchors) {
+      const row = table.rows.find((candidate) => candidate.pid === anchor.pid);
+      if (row === undefined) {
+        sawMismatch = true;
+        continue;
+      }
+      if (row.pgid !== group.pgid) {
+        sawMismatch = true;
+        continue;
+      }
+      const birth = yield* reader.readBirthToken(anchor.pid);
+      switch (birth.kind) {
+        case "unavailable":
+          sawReaderUnavailable = true;
+          break;
+        case "no_such_process":
+          sawMismatch = true;
+          break;
+        case "token":
+          if (birth.token.trim() === anchor.birthToken.trim()) {
+            return { status: "confirmed" } as const;
+          }
+          sawMismatch = true;
+          break;
+      }
+    }
+    if (sawMismatch) return { status: "revoked", reason: "group_replaced" } as const;
+    if (sawReaderUnavailable) {
+      return { status: "revoked", reason: "reader_unavailable" } as const;
+    }
+    return { status: "revoked", reason: "group_missing" } as const;
   });
 
 // ---------------------------------------------------------------------------
@@ -551,8 +916,6 @@ export const parsePsPidPgidTty = (stdout: string): ReadonlyArray<PsPidPgidTtyRow
   return rows;
 };
 
-const NO_CONTROLLING_TTY = new Set(["?", "??", "-"]);
-
 /**
  * Process-group ids of every process that shares the controlling tty of
  * `rootPid` (the pty child, which is the session leader). Excludes the
@@ -577,6 +940,25 @@ export const selectControllingTtyProcessGroups = (
 const execFileText = NodeUtil.promisify(NodeChildProcess.execFile);
 
 /**
+ * Read a snapshot of the live process table (`pid`, `pgid`, `tty`). POSIX
+ * only; `unavailable` on unsupported platforms or when `ps` is missing/fails,
+ * so callers fail closed instead of guessing which groups to signal.
+ */
+export const readProcessTable = (platform: NodeJS.Platform): Effect.Effect<ProcessTableResult> =>
+  !isGroupSignalingSupported(platform)
+    ? Effect.succeed({ kind: "unavailable", detail: "unsupported_platform" } as const)
+    : Effect.tryPromise(() =>
+        execFileText("ps", ["-A", "-o", "pid=,pgid=,tty="], {
+          encoding: "utf8",
+          maxBuffer: 16 * 1024 * 1024,
+          timeout: 3_000,
+        }),
+      ).pipe(
+        Effect.map(({ stdout }) => ({ kind: "rows", rows: parsePsPidPgidTty(stdout) }) as const),
+        Effect.orElseSucceed(() => ({ kind: "unavailable", detail: "ps_unavailable" }) as const),
+      );
+
+/**
  * Groups sharing the controlling tty of `rootPid`, read from a live process
  * table snapshot. POSIX only: returns [] on unsupported platforms, for an
  * invalid root pid, or when `ps` is missing/fails, so the caller can keep its
@@ -588,18 +970,13 @@ export const listControllingTtyProcessGroups = (
 ): Effect.Effect<ReadonlyArray<number>> =>
   !isGroupSignalingSupported(platform) || !Number.isInteger(rootPid) || rootPid <= 1
     ? Effect.succeed([])
-    : Effect.tryPromise(() =>
-        execFileText("ps", ["-A", "-o", "pid=,pgid=,tty="], {
-          encoding: "utf8",
-          maxBuffer: 16 * 1024 * 1024,
-          timeout: 3_000,
-        }),
-      ).pipe(
-        Effect.map(({ stdout }) =>
-          selectControllingTtyProcessGroups(parsePsPidPgidTty(stdout), {
-            rootPid,
-            ownPid: process.pid,
-          }),
+    : readProcessTable(platform).pipe(
+        Effect.map((table) =>
+          table.kind === "rows"
+            ? selectControllingTtyProcessGroups(table.rows, {
+                rootPid,
+                ownPid: process.pid,
+              })
+            : [],
         ),
-        Effect.orElseSucceed(() => []),
       );
