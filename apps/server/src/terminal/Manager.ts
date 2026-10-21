@@ -35,15 +35,25 @@ import {
 import { makeKeyedCoalescingWorker } from "@neokod/shared/KeyedCoalescingWorker";
 import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import {
-  listControllingTtyProcessGroups,
+  captureTerminalOwnership,
+  confirmOwnedTtyProcessGroup,
+  discoverOwnedTtyProcessGroups,
+  isGroupSignalingSupported,
   makeProvenGroupIdentity,
+  posixProcessBirthReader,
   posixProcessGroupSignaller,
+  readProcessTable,
   terminateProcessGroup,
+  validateTerminalOwnership,
+  type ProcessBirthReader,
   type ProcessGroupSignaller,
+  type ProcessTableResult,
+  type TerminalOwnershipEvidence,
 } from "@neokod/shared/processGroup";
 import { getTerminalLabel } from "@neokod/shared/terminalLabels";
 import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Encoding from "effect/Encoding";
 import * as Equal from "effect/Equal";
@@ -260,6 +270,8 @@ export interface TerminalSessionState {
   cols: number;
   rows: number;
   process: PtyAdapter.PtyProcess | null;
+  /** Ownership captured when the pty shell spawned; revalidated before signals. */
+  ownership: TerminalOwnershipEvidence | null;
   unsubscribeData: (() => void) | null;
   unsubscribeExit: (() => void) | null;
   hasRunningSubprocess: boolean;
@@ -1155,8 +1167,14 @@ interface TerminalManagerOptions {
   subprocessInspector?: TerminalSubprocessInspector;
   subprocessPollIntervalMs?: number;
   processKillGraceMs?: number;
-  /** Process-group ids to terminate for a terminal pid. Default: groups sharing the pty's controlling tty. */
-  processGroupLister?: (terminalPid: number) => Effect.Effect<ReadonlyArray<number>>;
+  /** Capture shell birth identity and controlling tty immediately after pty spawn. */
+  terminalOwnershipCapture?: (
+    terminalPid: number,
+  ) => Effect.Effect<TerminalOwnershipEvidence | null>;
+  /** Live process table snapshot used to revalidate tty ownership before signals. */
+  processTableReader?: () => Effect.Effect<ProcessTableResult>;
+  /** Birth-token reader used for group anchors and shell revalidation. */
+  processBirthReader?: ProcessBirthReader;
   processGroupSignaller?: ProcessGroupSignaller;
   maxRetainedInactiveSessions?: number;
   registerTerminalProcesses?: (input: {
@@ -1212,9 +1230,30 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const subprocessPollIntervalMs =
     options.subprocessPollIntervalMs ?? DEFAULT_SUBPROCESS_POLL_INTERVAL_MS;
   const processKillGraceMs = options.processKillGraceMs ?? DEFAULT_PROCESS_KILL_GRACE_MS;
-  const processGroupLister =
-    options.processGroupLister ??
-    ((terminalPid: number) => listControllingTtyProcessGroups(terminalPid, platform));
+  // The pty child can be observed by `ps` for a few milliseconds before it
+  // finishes acquiring its controlling tty, so retry the spawn-time capture
+  // briefly instead of recording permanently unknown tty evidence.
+  const captureOwnershipWithRetry = (
+    terminalPid: number,
+    remaining: number,
+  ): Effect.Effect<TerminalOwnershipEvidence> =>
+    captureTerminalOwnership({ pid: terminalPid, platform }).pipe(
+      Effect.flatMap((evidence) =>
+        (evidence.shellBirthToken !== null && evidence.controllingTty !== null) || remaining <= 0
+          ? Effect.succeed(evidence)
+          : Effect.sleep(Duration.millis(10)).pipe(
+              Effect.andThen(captureOwnershipWithRetry(terminalPid, remaining - 1)),
+            ),
+      ),
+    );
+  const captureOwnership =
+    options.terminalOwnershipCapture ??
+    ((terminalPid: number) =>
+      isGroupSignalingSupported(platform)
+        ? captureOwnershipWithRetry(terminalPid, 19)
+        : captureTerminalOwnership({ pid: terminalPid, platform }));
+  const readTable = options.processTableReader ?? (() => readProcessTable(platform));
+  const processBirthReader = options.processBirthReader ?? posixProcessBirthReader;
   const processGroupSignaller = options.processGroupSignaller ?? posixProcessGroupSignaller;
   const maxRetainedInactiveSessions =
     options.maxRetainedInactiveSessions ?? DEFAULT_MAX_RETAINED_INACTIVE_SESSIONS;
@@ -1313,38 +1352,145 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     });
   });
 
+  /**
+   * Try to terminate every process group that shares the tty of a pty whose
+   * ownership was captured at spawn. Returns:
+   *  - `handled`: group cleanup ran (signals were validated per group);
+   *  - `fallback`: groups could not be discovered safely, use the pty pid path;
+   *  - `refused`: ownership evidence says the pid/tty was reused, so NO signal
+   *    may be sent, including the pid fallback.
+   */
+  const terminateOwnedTtyGroups = Effect.fn("terminal.terminateOwnedTtyGroups")(function* (
+    process: PtyAdapter.PtyProcess,
+    threadId: string,
+    terminalId: string,
+    ownership: TerminalOwnershipEvidence | null,
+  ): Effect.fn.Return<"handled" | "fallback" | "refused"> {
+    if (!isGroupSignalingSupported(platform)) return "fallback" as const;
+    if (ownership === null) {
+      yield* Effect.logWarning(
+        "terminal process ownership was not captured; falling back to pty pid signal",
+        { threadId, terminalId, terminalPid: process.pid },
+      );
+      return "fallback" as const;
+    }
+
+    const table = yield* readTable();
+    const validation = yield* validateTerminalOwnership(ownership, table, processBirthReader);
+    switch (validation.status) {
+      case "recycled":
+      case "tty_mismatch":
+        // Evidence proves the pid (or the tty we recorded) now belongs to a
+        // different process. Neither tty groups nor the pid may be signalled.
+        yield* Effect.logWarning(
+          "refusing to signal terminal tty process groups: ownership evidence changed",
+          {
+            threadId,
+            terminalId,
+            terminalPid: process.pid,
+            shellPid: ownership.shellPid,
+            status: validation.status,
+            ...(validation.status === "tty_mismatch"
+              ? { expectedTty: ownership.controllingTty, actualTty: validation.tty }
+              : {}),
+          },
+        );
+        return "refused" as const;
+      case "process_gone":
+        // The shell is gone and its pid may be reused at any moment; sending a
+        // pid signal here could kill an unrelated process.
+        yield* Effect.logWarning("terminal shell exited before cleanup; skipping signals", {
+          threadId,
+          terminalId,
+          terminalPid: process.pid,
+          shellPid: ownership.shellPid,
+        });
+        return "refused" as const;
+      case "unverifiable":
+        // Missing `ps`/birth evidence: keep the legacy single-pid fallback, but
+        // never discover tty groups from unproven evidence.
+        yield* Effect.logWarning(
+          "cannot verify terminal process ownership; falling back to pty pid signal",
+          {
+            threadId,
+            terminalId,
+            terminalPid: process.pid,
+            shellPid: ownership.shellPid,
+            reason: validation.reason,
+          },
+        );
+        return "fallback" as const;
+      case "confirmed":
+        break;
+    }
+
+    if (table.kind !== "rows") return "fallback" as const;
+    const groups = yield* discoverOwnedTtyProcessGroups(
+      { rows: table.rows, tty: validation.tty, ownPid: globalThis.process.pid },
+      processBirthReader,
+    );
+    if (groups.length === 0) {
+      yield* Effect.logWarning(
+        "no anchored tty process groups discovered; falling back to pty pid signal",
+        { threadId, terminalId, terminalPid: process.pid, tty: validation.tty },
+      );
+      return "fallback" as const;
+    }
+
+    const outcomes = yield* Effect.forEach(
+      groups,
+      (group) => {
+        const proven = makeProvenGroupIdentity({
+          pid: group.pgid,
+          pgid: group.pgid,
+          spawnedAtMs: 0,
+          platform,
+        });
+        if (!proven.ok) {
+          return Effect.succeed(null);
+        }
+        return terminateProcessGroup(proven.identity, {
+          graceMs: processKillGraceMs,
+          signaller: processGroupSignaller,
+          // Revalidate the group's birth anchors immediately before TERM and
+          // again before KILL: a group id can be released and reused between
+          // discovery and either signal.
+          confirmOwnership: () =>
+            readTable().pipe(
+              Effect.flatMap((fresh) =>
+                confirmOwnedTtyProcessGroup(group, fresh, processBirthReader),
+              ),
+            ),
+        });
+      },
+      { concurrency: "unbounded" },
+    );
+
+    const incomplete = outcomes.filter(
+      (outcome) =>
+        outcome !== null &&
+        (outcome.status === "termination_failed" || outcome.status === "ownership_revoked"),
+    );
+    if (incomplete.length > 0) {
+      yield* Effect.logWarning("terminal process group cleanup incomplete", {
+        threadId,
+        terminalId,
+        terminalPid: process.pid,
+        tty: validation.tty,
+        incomplete,
+      });
+    }
+    return "handled" as const;
+  });
+
   const runKillEscalation = Effect.fn("terminal.runKillEscalation")(function* (
     process: PtyAdapter.PtyProcess,
     threadId: string,
     terminalId: string,
+    ownership: TerminalOwnershipEvidence | null,
   ) {
-    const groupIds = yield* processGroupLister(process.pid);
-    if (groupIds.length > 0) {
-      const outcomes = yield* Effect.forEach(
-        groupIds,
-        (pgid) => {
-          // The ids come from a live process-table snapshot of the pty's own
-          // tty, and a group id cannot be reused while the group has members,
-          // so signalling -pgid right after the snapshot is safe. An id that
-          // cannot be proven is skipped, never signalled.
-          const proven = makeProvenGroupIdentity({ pid: pgid, pgid, spawnedAtMs: 0, platform });
-          return proven.ok
-            ? terminateProcessGroup(proven.identity, {
-                graceMs: processKillGraceMs,
-                signaller: processGroupSignaller,
-              })
-            : Effect.succeed({ status: "unsupported_platform" } as const);
-        },
-        { concurrency: "unbounded" },
-      );
-      const failed = outcomes.filter((outcome) => outcome.status === "termination_failed");
-      if (failed.length > 0) {
-        yield* Effect.logWarning("terminal process groups survived SIGKILL", {
-          threadId,
-          terminalId,
-          failed,
-        });
-      }
+    const groupResult = yield* terminateOwnedTtyGroups(process, threadId, terminalId, ownership);
+    if (groupResult !== "fallback") {
       return;
     }
 
@@ -1397,8 +1543,9 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     process: PtyAdapter.PtyProcess,
     threadId: string,
     terminalId: string,
+    ownership: TerminalOwnershipEvidence | null,
   ) {
-    const fiber = yield* runKillEscalation(process, threadId, terminalId).pipe(
+    const fiber = yield* runKillEscalation(process, threadId, terminalId, ownership).pipe(
       Effect.ensuring(
         modifyManagerState((state) => {
           if (!state.killFibers.has(process)) {
@@ -1761,6 +1908,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         cleanupProcessHandles(session);
         session.process = null;
         session.pid = null;
+        session.ownership = null;
         session.hasRunningSubprocess = false;
         session.childCommandLabel = null;
         session.status = "exited";
@@ -1827,12 +1975,14 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const stopProcess = Effect.fn("terminal.stopProcess")(function* (session: TerminalSessionState) {
     const process = session.process;
     if (!process) return;
+    const ownership = session.ownership;
 
     const updatedAt = yield* nowIso;
     yield* modifyManagerState((state) => {
       cleanupProcessHandles(session);
       session.process = null;
       session.pid = null;
+      session.ownership = null;
       session.hasRunningSubprocess = false;
       session.childCommandLabel = null;
       session.status = "exited";
@@ -1849,7 +1999,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       threadId: session.threadId,
       terminalId: session.terminalId,
     });
-    yield* startKillEscalation(process, session.threadId, session.terminalId);
+    yield* startKillEscalation(process, session.threadId, session.terminalId, ownership);
     yield* evictInactiveSessionsIfNeeded();
   });
 
@@ -1941,6 +2091,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
     let ptyProcess: PtyAdapter.PtyProcess | null = null;
     let startedShell: string | null = null;
+    let spawnedOwnership: TerminalOwnershipEvidence | null = null;
 
     const startResult = yield* Effect.result(
       increment(terminalSessionsTotal, { lifecycle: eventType }).pipe(
@@ -1967,6 +2118,8 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
               runFork(drainProcessEvents(session, spawned));
             });
 
+            // Mark the session running before the (possibly retried) ownership
+            // capture so pty output keeps draining while evidence is gathered.
             let eventStamp: ReturnType<typeof advanceEventSequence> = {
               updatedAt: session.updatedAt,
               sequence: session.eventSequence,
@@ -1974,6 +2127,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             yield* modifyManagerState((state) => {
               session.process = spawned;
               session.pid = processPid;
+              session.ownership = null;
               session.status = "running";
               session.unsubscribeData = unsubscribeData;
               session.unsubscribeExit = unsubscribeExit;
@@ -1988,6 +2142,30 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
               sequence: eventStamp.sequence,
               snapshot: snapshot(session),
             });
+
+            // Capture ownership while the pty shell is still the process we
+            // just spawned. Cleanup later revalidates this evidence instead of
+            // trusting a possibly recycled pid.
+            const ownership = yield* captureOwnership(processPid).pipe(
+              Effect.catchCause((cause) =>
+                Effect.logWarning("failed to capture terminal process ownership", {
+                  threadId: session.threadId,
+                  terminalId: session.terminalId,
+                  terminalPid: processPid,
+                  cause,
+                }).pipe(Effect.as(null)),
+              ),
+            );
+            spawnedOwnership = ownership;
+            if (ownership !== null) {
+              yield* modifyManagerState((state) => {
+                if (session.process !== spawned || session.status !== "running") {
+                  return [undefined, state] as const;
+                }
+                session.ownership = ownership;
+                return [undefined, state] as const;
+              });
+            }
           }),
         ),
       ),
@@ -2000,7 +2178,12 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     {
       const error = startResult.failure;
       if (ptyProcess) {
-        yield* startKillEscalation(ptyProcess, session.threadId, session.terminalId);
+        yield* startKillEscalation(
+          ptyProcess,
+          session.threadId,
+          session.terminalId,
+          spawnedOwnership,
+        );
       }
 
       yield* modifyManagerState((state) => {
@@ -2008,6 +2191,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         session.status = "error";
         session.pid = null;
         session.process = null;
+        session.ownership = null;
         session.hasRunningSubprocess = false;
         session.childCommandLabel = null;
         session.pendingProcessEvents = [];
@@ -2198,7 +2382,12 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         cleanupProcessHandles(session);
         if (!session.process) return;
         yield* clearKillFiber(session.process);
-        yield* runKillEscalation(session.process, session.threadId, session.terminalId);
+        yield* runKillEscalation(
+          session.process,
+          session.threadId,
+          session.terminalId,
+          session.ownership,
+        );
       });
 
       yield* Effect.forEach(sessions, cleanupSession, {
@@ -2238,6 +2427,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         cols,
         rows,
         process: null,
+        ownership: null,
         unsubscribeData: null,
         unsubscribeExit: null,
         hasRunningSubprocess: false,
@@ -2650,6 +2840,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             cols,
             rows,
             process: null,
+            ownership: null,
             unsubscribeData: null,
             unsubscribeExit: null,
             hasRunningSubprocess: false,
