@@ -4,13 +4,19 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";
+import * as Sink from "effect/Sink";
+import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
+import { ChildProcessSpawner } from "effect/unstable/process";
+import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 
 import {
   make,
+  makeSystemProcessInspector,
   OpenCodeServerLedgerEntry,
   type ObservedProcess,
   type ProcessInspector,
+  type ProcessObservation,
 } from "./OpenCodeServerLedger.ts";
 
 const OWNER_START = "Sun Oct  4 22:04:25 2026";
@@ -29,6 +35,8 @@ interface FakeInspector {
   ignoreTerm: boolean;
   /** When true, inspecting the recorded server pid fails instead of answering. */
   failObserve: boolean;
+  /** Pids whose inspection reports unknown evidence instead of present/absent. */
+  readonly unknownObservePids: Set<number>;
   /** When true, reading the group members fails instead of answering. */
   failObserveGroup: boolean;
   /** When true, the group-liveness probe fails instead of answering. */
@@ -47,15 +55,24 @@ const makeFakeInspector = (): FakeInspector => {
     signals,
     ignoreTerm: false,
     failObserve: false,
+    unknownObservePids: new Set<number>(),
     failObserveGroup: false,
     failGroupExists: false,
     inspector: {
-      observe: (pid) =>
-        Effect.suspend(() => {
+      observe: (pid): Effect.Effect<ProcessObservation> =>
+        Effect.suspend((): Effect.Effect<ProcessObservation> => {
           if (fake.failObserve && pid === 500) {
             return Effect.die(new Error("inspection unavailable"));
           }
-          return Effect.sync(() => processes.get(pid));
+          if (fake.unknownObservePids.has(pid)) {
+            return Effect.succeed({ state: "unknown" as const });
+          }
+          return Effect.sync(() => {
+            const process = processes.get(pid);
+            return process === undefined
+              ? { state: "absent" as const }
+              : { state: "present" as const, process };
+          });
         }),
       observeGroup: (pgid) =>
         Effect.suspend(() => {
@@ -117,6 +134,63 @@ const addServer = (fake: FakeInspector, overrides?: Partial<ObservedProcess>) =>
 };
 
 const entryPath = (stateDir: string) => `${stateDir}/opencode-servers/500.json`;
+
+/** Minimal ChildProcess command view for assertions, as in processRunner.test.ts. */
+const asChildProcessCommand = (command: unknown) =>
+  command as { readonly command: string; readonly args: ReadonlyArray<string> };
+
+interface FakePsResult {
+  readonly code: number;
+  readonly stdout?: string;
+  readonly stderr?: string;
+}
+
+/**
+ * Drives the real system inspector on the darwin branch with a synthetic
+ * `/bin/ps`, so the test covers the actual evidence boundary without observing
+ * or signalling any live process.
+ */
+const observeWithFakePs = (
+  result: FakePsResult,
+): Effect.Effect<
+  {
+    readonly observation: ProcessObservation;
+    readonly spawns: ReadonlyArray<{
+      readonly command: string;
+      readonly args: ReadonlyArray<string>;
+    }>;
+  },
+  never,
+  FileSystem.FileSystem
+> =>
+  Effect.gen(function* () {
+    const spawns: Array<{ readonly command: string; readonly args: ReadonlyArray<string> }> = [];
+    const spawner = ChildProcessSpawner.make((command) =>
+      Effect.sync(() => {
+        const parsed = asChildProcessCommand(command);
+        spawns.push({ command: parsed.command, args: parsed.args });
+        return ChildProcessSpawner.makeHandle({
+          pid: ChildProcessSpawner.ProcessId(1),
+          exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(result.code)),
+          isRunning: Effect.succeed(false),
+          kill: () => Effect.void,
+          unref: Effect.succeed(Effect.void),
+          stdin: Sink.drain,
+          stdout: Stream.encodeText(Stream.make(result.stdout ?? "")),
+          stderr: Stream.encodeText(Stream.make(result.stderr ?? "")),
+          all: Stream.empty,
+          getInputFd: () => Sink.drain,
+          getOutputFd: () => Stream.empty,
+        });
+      }),
+    );
+    const inspector = yield* makeSystemProcessInspector.pipe(
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      Effect.provideService(HostProcessPlatform, "darwin"),
+    );
+    const observation = yield* inspector.observe(500);
+    return { observation, spawns };
+  });
 
 const makeLedger = (options: {
   readonly fake: FakeInspector;
@@ -220,7 +294,8 @@ it.layer(NodeServices.layer)("OpenCodeServerLedger", (it) => {
       const firstLedger = yield* makeLedger({ fake: first, stateDir, ownerPid: 100 });
       yield* Effect.asVoid(firstLedger.track({ pid: 500, port: 4100, args: SERVER_ARGS }));
 
-      // The old owner is gone; only the orphaned server group remains.
+      // The old owner is gone; only the orphaned server group remains. The
+      // inspector answers `absent` for its pid, which is affirmative evidence.
       const second = makeFakeInspector();
       addServer(second);
       const secondLedger = yield* makeLedger({ fake: second, stateDir, ownerPid: 101 });
@@ -228,6 +303,29 @@ it.layer(NodeServices.layer)("OpenCodeServerLedger", (it) => {
 
       assert.deepStrictEqual(second.signals, [{ pgid: 500, signal: "SIGTERM" }]);
       assert.strictEqual(yield* fs.exists(entryPath(stateDir)), false);
+    }),
+  );
+
+  it.effect("keeps the entry when the owner's identity cannot be observed", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const stateDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-ledger-" });
+      const first = makeFakeInspector();
+      addOwner(first);
+      addServer(first);
+      const firstLedger = yield* makeLedger({ fake: first, stateDir, ownerPid: 100 });
+      yield* Effect.asVoid(firstLedger.track({ pid: 500, port: 4100, args: SERVER_ARGS }));
+
+      // The probe cannot answer for the owner. That is unknown evidence, not
+      // proof that the owner died, so its live child must not be reaped.
+      const second = makeFakeInspector();
+      addServer(second);
+      second.unknownObservePids.add(100);
+      const secondLedger = yield* makeLedger({ fake: second, stateDir, ownerPid: 101 });
+      yield* secondLedger.reapOrphans;
+
+      assert.deepStrictEqual(second.signals, []);
+      assert.strictEqual(yield* fs.exists(entryPath(stateDir)), true);
     }),
   );
 
@@ -463,6 +561,60 @@ it.layer(NodeServices.layer)("OpenCodeServerLedger", (it) => {
     }),
   );
 
+  it.effect("treats a clean ps no-match as proof of absence", () =>
+    Effect.gen(function* () {
+      // `ps -p <pid>` on Darwin exits 1 with no rows and no diagnostic when no
+      // process matches the selection.
+      const { observation, spawns } = yield* observeWithFakePs({
+        code: 1,
+        stdout: "",
+        stderr: "",
+      });
+
+      assert.deepStrictEqual(spawns, [
+        {
+          command: "/bin/ps",
+          args: ["-ww", "-o", "pid=,pgid=,stat=,lstart=,args=", "-p", "500"],
+        },
+      ]);
+      assert.deepStrictEqual(observation, { state: "absent" });
+    }),
+  );
+
+  it.effect("keeps a failed ps probe as unknown evidence", () =>
+    Effect.gen(function* () {
+      // A genuine ps failure: exit 2 with an empty stdout and a diagnostic on
+      // stderr. Empty stdout alone must never be read as proof the pid is gone.
+      const { observation, spawns } = yield* observeWithFakePs({
+        code: 2,
+        stdout: "",
+        stderr: "ps: illegal option -- w\nusage: ps ...",
+      });
+
+      assert.deepStrictEqual(spawns, [
+        {
+          command: "/bin/ps",
+          args: ["-ww", "-o", "pid=,pgid=,stat=,lstart=,args=", "-p", "500"],
+        },
+      ]);
+      assert.deepStrictEqual(observation, { state: "unknown", detail: "ps_exit_2" });
+    }),
+  );
+
+  it.effect("does not treat a failed no-match-exit probe with a diagnostic as absence", () =>
+    Effect.gen(function* () {
+      // The no-match status only proves absence when ps stayed silent. A
+      // diagnostic means the probe failed, whatever the exit status was.
+      const { observation } = yield* observeWithFakePs({
+        code: 1,
+        stdout: "",
+        stderr: "ps: cannot read process table",
+      });
+
+      assert.deepStrictEqual(observation, { state: "unknown", detail: "ps_exit_1" });
+    }),
+  );
+
   it.effect("ignores entries recorded for another state directory", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -516,7 +668,7 @@ it.layer(NodeServices.layer)("OpenCodeServerLedger", (it) => {
       const stateDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-ledger-" });
       const fake = makeFakeInspector();
       const inspector: ProcessInspector = {
-        observe: () => Effect.succeed(undefined),
+        observe: () => Effect.succeed({ state: "unknown" as const }),
         observeGroup: () => Effect.succeed([]),
         groupExists: () => Effect.succeed(false),
         signalGroup: () => Effect.void,
