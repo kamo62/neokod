@@ -117,8 +117,9 @@ export function supportsOpenCodeSymphonyCodeReview(knownVersion: OpenCodeVersion
  * The probe is bounded because it runs while the provider registry hydrates and
  * again immediately before maintenance: an executable that never answers
  * `--version` must not hold server start or an update. A timed-out, failed or
- * unparseable probe resolves `null` and never changes behaviour on its own:
- * only an affirmatively classified unsupported major is blocked.
+ * unparseable probe resolves `null` (unknown). Provider hydration keeps its
+ * existing unverified fallback; the command-time maintenance guard treats that
+ * unknown result as a refusal because an update is destructive.
  */
 function probeOpenCodeVersion(input: {
   readonly runtime: OpenCodeRuntimeShape;
@@ -152,22 +153,45 @@ function probeOpenCodeVersion(input: {
 }
 
 /**
+ * Decide whether the updater captured at driver creation may run against the
+ * CLI currently on disk.
+ *
+ * An update is destructive and can replace the user's install, so only an
+ * affirmatively classified supported major may proceed. A missing, failed,
+ * unparseable or timed-out probe is unknown evidence, not permission: it
+ * blocks the capture and asks for a retry once the CLI can be classified.
+ */
+export function openCodeUpdateBlockedReason(version: OpenCodeVersion | null): string | null {
+  if (version === null) {
+    return "Update blocked. Neokod could not verify the installed OpenCode major. Check that `opencode --version` reports a version, then retry.";
+  }
+  if (!version.supported) {
+    return `Update blocked. ${formatOpenCodeUnsupportedVersionMessage(version)}`;
+  }
+  return null;
+}
+
+/**
  * The updater chosen at driver creation describes the CLI that was installed
  * then. A user can upgrade to OpenCode 2 while Neokod is running, and the
  * captured 1.x package or native updater would then replace that install with
  * 1.x on the next maintenance invocation. Re-probe at command time and block
- * the captured command when the CLI is now an unsupported major.
+ * the captured command unless the CLI is still an affirmatively supported
+ * major.
  */
 function guardOpenCodeMaintenanceCapabilities(input: {
   readonly capabilities: ProviderMaintenanceCapabilities;
-  readonly verify: Effect.Effect<string | null>;
+  readonly verify: Effect.Effect<OpenCodeVersion | null>;
 }): ProviderMaintenanceCapabilities {
   if (input.capabilities.update === null) {
     return input.capabilities;
   }
   return {
     ...input.capabilities,
-    update: { ...input.capabilities.update, verifyStillApplicable: input.verify },
+    update: {
+      ...input.capabilities.update,
+      verifyStillApplicable: input.verify.pipe(Effect.map(openCodeUpdateBlockedReason)),
+    },
   };
 }
 
@@ -258,13 +282,7 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
               runtime: openCodeRuntime,
               binaryPath: effectiveConfig.binaryPath,
               environment: processEnv,
-            }).pipe(
-              Effect.map((currentVersion) =>
-                currentVersion !== null && !currentVersion.supported
-                  ? `Update blocked. ${formatOpenCodeUnsupportedVersionMessage(currentVersion)}`
-                  : null,
-              ),
-            ),
+            }),
           });
 
       const adapter = yield* makeOpenCodeAdapter(effectiveConfig, {
