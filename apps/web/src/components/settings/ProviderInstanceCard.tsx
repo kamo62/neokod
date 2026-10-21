@@ -51,6 +51,7 @@ import {
   environmentRowNeedsValue,
   makeEnvironmentDraftRow,
   publishableEnvironment,
+  reconcileEnvironmentRows,
   type EnvironmentDraftRow,
 } from "./providerEnvironmentDraft";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
@@ -152,6 +153,17 @@ function ProviderEnvironmentSection(props: {
     props.environment.map(makeEnvironmentDraftRow),
   );
 
+  // Stored-secret ownership follows the server's redacted environment, not
+  // the draft that produced the save. Without this, a successful A -> B
+  // replacement leaves the mounted row linked to the removed A, and restoring
+  // the old name re-publishes a redacted A that no longer exists.
+  useEffect(() => {
+    setRows((current) => reconcileEnvironmentRows(current, props.environment));
+  }, [props.environment]);
+
+  const reconcileRows = (nextRows: ReadonlyArray<EnvironmentDraftRow>) =>
+    reconcileEnvironmentRows(nextRows, props.environment);
+
   const publishRows = (nextRows: ReadonlyArray<EnvironmentDraftRow>) => {
     const published = publishableEnvironment(nextRows);
     if (published !== null) props.onChange(published);
@@ -161,15 +173,15 @@ function ProviderEnvironmentSection(props: {
     id: string,
     patch: Partial<Omit<EnvironmentDraftRow, "id" | "stored">>,
   ) => {
-    const nextRows = rows.map((row) =>
-      row.id === id ? applyEnvironmentRowPatch(row, patch) : row,
+    const nextRows = reconcileRows(
+      rows.map((row) => (row.id === id ? applyEnvironmentRowPatch(row, patch) : row)),
     );
     setRows(nextRows);
     publishRows(nextRows);
   };
 
   const removeVariable = (id: string) => {
-    const nextRows = rows.filter((row) => row.id !== id);
+    const nextRows = reconcileRows(rows.filter((row) => row.id !== id));
     setRows(nextRows);
     publishRows(nextRows);
   };

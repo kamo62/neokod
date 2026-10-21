@@ -49,12 +49,66 @@ export function applyEnvironmentRowPatch(
   return merged;
 }
 
+/**
+ * Reconcile draft rows with the stored secrets the server currently reports.
+ *
+ * A row only keeps a stored-secret link while that name is still present in
+ * the authoritative environment as a redacted sensitive variable. When a
+ * replacement was acknowledged under a new name, the link moves to that name;
+ * when the name is gone, the link is dropped so restoring the old name cannot
+ * re-publish `valueRedacted` for a secret that no longer exists.
+ *
+ * Row drafts (name, value, sensitive) are never rewritten here, so a failed
+ * save keeps whatever the user typed and keeps ownership of the still-stored
+ * original secret.
+ */
+export function reconcileEnvironmentRows(
+  rows: ReadonlyArray<EnvironmentDraftRow>,
+  environment: ReadonlyArray<ProviderInstanceEnvironmentVariable>,
+): ReadonlyArray<EnvironmentDraftRow> {
+  const storedSecretNames = new Set<string>();
+  for (const variable of environment) {
+    if (variable.sensitive && variable.valueRedacted === true) {
+      storedSecretNames.add(variable.name.trim());
+    }
+  }
+
+  let changed = false;
+  const reconciled = rows.map((row) => {
+    const name = row.name.trim();
+    const storedName =
+      row.stored !== undefined && storedSecretNames.has(row.stored.name)
+        ? row.stored.name
+        : storedSecretNames.has(name)
+          ? name
+          : undefined;
+    const valueRedacted =
+      storedName !== undefined && row.value === "" && row.sensitive && name === storedName;
+    const storedUnchanged =
+      storedName === undefined ? row.stored === undefined : row.stored?.name === storedName;
+
+    if (storedUnchanged && row.valueRedacted === valueRedacted) return row;
+
+    changed = true;
+    const { stored: _stored, valueRedacted: _valueRedacted, ...rest } = row;
+    return {
+      ...rest,
+      ...(storedName !== undefined ? { stored: { name: storedName } } : {}),
+      valueRedacted,
+    };
+  });
+
+  return changed ? reconciled : rows;
+}
+
 export function environmentRowNeedsValue(row: EnvironmentDraftRow): boolean {
-  return (
-    row.stored !== undefined &&
-    row.value === "" &&
-    (!row.sensitive || row.name.trim() !== row.stored.name)
-  );
+  if (row.stored !== undefined) {
+    return row.value === "" && (!row.sensitive || row.name.trim() !== row.stored.name);
+  }
+  // A named sensitive row without an authoritative stored link has no secret
+  // to preserve. Require a value instead of publishing an empty sensitive
+  // variable, which the server treats as "remove any secret under this name".
+  return row.sensitive && row.value === "" && row.name.trim().length > 0;
 }
 
 export function publishableEnvironment(
@@ -74,6 +128,12 @@ export function publishableEnvironment(
         return null;
       }
       continue;
+    }
+    if (
+      row.valueRedacted === true &&
+      (row.value !== "" || !row.sensitive || row.stored?.name !== name)
+    ) {
+      return null;
     }
     const { id: _id, stored: _stored, ...rest } = row;
     published.push({ ...rest, name });
