@@ -86,6 +86,10 @@ export function projectRuntimeItemClosure(input: {
   }
 
   const syntheticState = closure.syntheticState;
+  // Tracking loss ends an orphaned item at its last observation, not at the
+  // recovery or reconciliation event that noticed the loss. The latter still
+  // orders this closure through `lastSequence`.
+  const completedAt = syntheticState === "orphaned" ? item.updatedAt : input.closedAt;
   return {
     ...item,
     syntheticState,
@@ -94,7 +98,7 @@ export function projectRuntimeItemClosure(input: {
     mayStillBeRunning: syntheticState === "orphaned",
     syntheticEventId: input.syntheticEventId,
     updatedAt: input.closedAt,
-    completedAt: input.closedAt,
+    completedAt,
     lastSequence: input.sequence,
   };
 }
@@ -206,8 +210,20 @@ export function planRuntimeItemClosures(input: {
   readonly terminationGuaranteed: boolean;
   readonly boundaryEventId: EventId;
   readonly closedAt: string;
+  /**
+   * Fence for a bounded settlement. Items opened, or last observed, after this
+   * timestamp belong to newer evidence and stay active. Session-wide startup
+   * recovery omits it because no newer live evidence can exist there.
+   */
+  readonly observedNoLaterThan?: string;
 }): ReadonlyArray<RuntimeItemSyntheticClosure> {
   return input.items.flatMap((item) => {
+    if (
+      input.observedNoLaterThan !== undefined &&
+      (item.startedAt > input.observedNoLaterThan || item.updatedAt > input.observedNoLaterThan)
+    ) {
+      return [];
+    }
     const boundaryMatches =
       item.sessionId === input.sessionId &&
       (input.boundary === "session" ||

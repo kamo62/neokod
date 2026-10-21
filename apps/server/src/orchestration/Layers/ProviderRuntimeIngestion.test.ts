@@ -816,7 +816,13 @@ describe("ProviderRuntimeIngestion", () => {
     );
 
     expect(await harness.runtimeItems()).toMatchObject([
-      { effectiveState: "orphaned", mayStillBeRunning: true },
+      {
+        effectiveState: "orphaned",
+        mayStillBeRunning: true,
+        // The approval's own last observation ends the orphaned interval; the
+        // session update at 00:04 is only when recovery noticed it.
+        completedAt: "2026-01-01T00:03:01.000Z",
+      },
     ]);
     const resolved = thread.activities.find((activity) => activity.kind === "approval.resolved");
     expect(resolved?.payload).toMatchObject({
@@ -874,6 +880,88 @@ describe("ProviderRuntimeIngestion", () => {
     expect(await harness.runtimeItems()).toMatchObject([
       { effectiveState: "active", mayStillBeRunning: false },
     ]);
+  });
+
+  it("fences newer items for a bounded interruption and closes them on a later boot recovery", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-interrupted-mixed");
+
+    for (const [runtimeItemId, observedAt] of [
+      ["approval-old", "2026-01-01T00:03:01.000Z"],
+      ["approval-newer", "2026-01-01T00:05:00.000Z"],
+    ] as const) {
+      await harness.run(
+        harness.engine.dispatch({
+          type: "thread.runtime-item.observe",
+          commandId: CommandId.make(`mixed-observe-${runtimeItemId}`),
+          threadId,
+          observation: {
+            runtimeItemId: RuntimeItemId.make(runtimeItemId),
+            providerItemId: null,
+            sessionId: RuntimeSessionId.make("session-1"),
+            kind: "approval",
+            scope: "turn",
+            turnId,
+            providerState: "active",
+            label: "Approve command",
+            providerEventId: EventId.make(`mixed-provider-event-${runtimeItemId}`),
+            observedAt,
+          },
+          createdAt: observedAt,
+        }),
+      );
+    }
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("mixed-session-set"),
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: "2026-01-01T00:04:00.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:04:00.000Z",
+      }),
+    );
+
+    await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "approval.resolved"),
+    );
+    await harness.drain();
+
+    // The bounded live event closes the older approval only.
+    const afterBounded = await harness.runtimeItems();
+    expect(afterBounded.find((item) => item.runtimeItemId === "approval-old")?.effectiveState).toBe(
+      "orphaned",
+    );
+    expect(
+      afterBounded.find((item) => item.runtimeItemId === "approval-newer")?.effectiveState,
+    ).toBe("active");
+
+    // A later unbounded startup recovery shares the session update time but
+    // closes a different item set. Its command id must not collide with the
+    // bounded one, or receipt dedup would leave the newer approval active.
+    await harness.start();
+    await waitForThread(
+      harness.readModel,
+      (entry) =>
+        entry.activities.filter((activity) => activity.kind === "approval.resolved").length >= 2,
+    );
+
+    const afterRecovery = await harness.runtimeItems();
+    expect(
+      afterRecovery.find((item) => item.runtimeItemId === "approval-old")?.effectiveState,
+    ).toBe("orphaned");
+    expect(
+      afterRecovery.find((item) => item.runtimeItemId === "approval-newer")?.effectiveState,
+    ).toBe("orphaned");
   });
 
   it("scrubs absolute paths from runtime.error text", async () => {

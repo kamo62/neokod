@@ -176,6 +176,67 @@ describe("RuntimeItemProjection", () => {
     expect(closure).toMatchObject({ syntheticState: state, activity: { kind: activityKind } });
   });
 
+  it("leaves items opened after the session update active in the same session", () => {
+    const older = activeItem();
+    const newer = projectRuntimeItemObservation({
+      existing: null,
+      threadId,
+      observation: {
+        ...observation(),
+        runtimeItemId: RuntimeItemId.make("approval-newer"),
+        kind: "approval",
+        label: "Approve command",
+        observedAt: "2026-04-01T00:02:00.000Z",
+      },
+      sequence: 2,
+    });
+
+    const closures = planRuntimeItemClosures({
+      items: [older, newer],
+      boundary: "session",
+      sessionId,
+      turnId: null,
+      outcome: "stopped",
+      terminationGuaranteed: false,
+      boundaryEventId: EventId.make("bounded-session-closure"),
+      closedAt: "2026-04-01T00:03:00.000Z",
+      observedNoLaterThan: "2026-04-01T00:01:00.000Z",
+    });
+
+    expect(closures.map((closure) => closure.runtimeItemId)).toEqual([older.runtimeItemId]);
+  });
+
+  it("freezes an orphaned item at its last observation, not the recovery time", () => {
+    const item = activeItem("session");
+    const closedAt = "2026-04-01T00:30:00.000Z";
+    const [closure] = planRuntimeItemClosures({
+      items: [item],
+      boundary: "session",
+      sessionId,
+      turnId: null,
+      outcome: "stopped",
+      terminationGuaranteed: false,
+      boundaryEventId: EventId.make("orphaned-session-closure"),
+      closedAt,
+    });
+    if (!closure) throw new Error("expected an orphaned closure");
+
+    const projected = projectRuntimeItemClosure({
+      item,
+      closure,
+      syntheticEventId: EventId.make("orphaned-session-event"),
+      closedAt,
+      sequence: 9,
+    });
+
+    expect(projected.syntheticState).toBe("orphaned");
+    // Last observed evidence ends the orphaned interval; the recovery event
+    // still owns ordering through `lastSequence` and `updatedAt`.
+    expect(projected.completedAt).toBe(item.updatedAt);
+    expect(projected.updatedAt).toBe(closedAt);
+    expect(projected.lastSequence).toBe(9);
+  });
+
   it("does not close an item from an older session generation", () => {
     const item = activeItem();
     expect(

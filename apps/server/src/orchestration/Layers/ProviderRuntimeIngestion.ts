@@ -883,6 +883,7 @@ const make = Effect.gen(function* () {
     readonly commandId: CommandId;
     readonly boundaryEventId: EventId;
     readonly closedAt: string;
+    readonly observedNoLaterThan?: string;
   }) {
     const items = yield* projectionRuntimeItemRepository.listByThreadId({
       threadId: input.threadId,
@@ -896,6 +897,9 @@ const make = Effect.gen(function* () {
       terminationGuaranteed: input.terminationGuaranteed,
       boundaryEventId: input.boundaryEventId,
       closedAt: input.closedAt,
+      ...(input.observedNoLaterThan === undefined
+        ? {}
+        : { observedNoLaterThan: input.observedNoLaterThan }),
     });
     if (closures.length === 0) return;
     yield* orchestrationEngine.dispatch({
@@ -914,7 +918,7 @@ const make = Effect.gen(function* () {
     readonly threadId: ThreadId;
     readonly status: "stopped" | "interrupted" | "error";
     readonly updatedAt: string;
-    readonly startedNoLaterThan?: string;
+    readonly observedNoLaterThan?: string;
   }) {
     const items = yield* projectionRuntimeItemRepository.listByThreadId({
       threadId: input.threadId,
@@ -924,14 +928,29 @@ const make = Effect.gen(function* () {
         .filter((item) => item.effectiveState === "active")
         .filter(
           (item) =>
-            input.startedNoLaterThan === undefined || item.startedAt <= input.startedNoLaterThan,
+            input.observedNoLaterThan === undefined ||
+            (item.startedAt <= input.observedNoLaterThan &&
+              item.updatedAt <= input.observedNoLaterThan),
         )
         .map((item) => item.sessionId),
     );
     yield* Effect.forEach(
       sessionIds,
       (sessionId) => {
-        const boundaryId = `reconcile:runtime-items:${input.threadId}:session:${sessionId}:${input.status}:${input.updatedAt}`;
+        // A bounded live closure and a later unbounded startup recovery may
+        // share the same session update time but close different item sets.
+        // Distinct command ids keep receipt dedup from dropping the later one.
+        const boundaryId = [
+          "reconcile:runtime-items",
+          input.threadId,
+          "session",
+          sessionId,
+          input.status,
+          input.updatedAt,
+          input.observedNoLaterThan === undefined
+            ? "unbounded"
+            : `bounded:${input.observedNoLaterThan}`,
+        ].join(":");
         return closeRuntimeItems({
           threadId: input.threadId,
           sessionId,
@@ -942,6 +961,9 @@ const make = Effect.gen(function* () {
           commandId: CommandId.make(boundaryId),
           boundaryEventId: EventId.make(boundaryId),
           closedAt: input.updatedAt,
+          ...(input.observedNoLaterThan === undefined
+            ? {}
+            : { observedNoLaterThan: input.observedNoLaterThan }),
         });
       },
       { concurrency: 1, discard: true },
@@ -2098,7 +2120,7 @@ const make = Effect.gen(function* () {
           threadId: event.payload.threadId,
           status: "interrupted",
           updatedAt: event.payload.session.updatedAt,
-          startedNoLaterThan: event.payload.session.updatedAt,
+          observedNoLaterThan: event.payload.session.updatedAt,
         })
       : Effect.void;
 
