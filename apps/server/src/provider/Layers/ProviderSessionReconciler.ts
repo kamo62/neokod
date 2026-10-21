@@ -91,10 +91,14 @@ const makeProviderSessionReconciler = Effect.gen(function* () {
           runtimeMode: action.runtimeMode,
           activeTurnId: null,
           lastError: action.lastError,
-          // A recovered turn freezes at its last observation. `createdAt` stays
-          // on the server clock so the recovery event keeps server-owned order.
-          updatedAt: action.lastObservedAt ?? now,
+          // The session update is server-owned: it orders the recovery event
+          // and bounds live runtime-item closure. The turn's own completion
+          // travels separately below.
+          updatedAt: now,
         },
+        ...(action.lastObservedAt !== undefined
+          ? { latestTurnCompletedAt: action.lastObservedAt }
+          : {}),
         createdAt: now,
       });
     }

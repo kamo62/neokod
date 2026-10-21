@@ -309,9 +309,9 @@ export function applyThreadDetailEvent(
                 ...thread.latestTurn,
                 state: settledTurnState,
                 // A running turn's completedAt can only hold a mid-turn
-                // placeholder checkpoint timestamp — the session leaving
-                // "running" is the authoritative turn end.
-                completedAt: event.payload.session.updatedAt,
+                // placeholder checkpoint timestamp. Recovery can freeze it at
+                // the last observation instead of the event time.
+                completedAt: event.payload.latestTurnCompletedAt ?? event.payload.session.updatedAt,
               }
             : thread.latestTurn;
 

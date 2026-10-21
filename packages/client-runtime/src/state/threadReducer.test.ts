@@ -380,6 +380,50 @@ describe("applyThreadDetailEvent", () => {
       }
     });
 
+    it("uses the recovered turn completion instead of the session update time", () => {
+      const threadWithRunningTurn: OrchestrationThread = {
+        ...baseThread,
+        latestTurn: {
+          turnId: TurnId.make("turn-1"),
+          state: "running",
+          requestedAt: "2026-04-01T07:00:00.000Z",
+          startedAt: "2026-04-01T07:00:00.000Z",
+          completedAt: null,
+          assistantMessageId: MessageId.make("msg-3"),
+        },
+      };
+
+      const result = applyThreadDetailEvent(threadWithRunningTurn, {
+        ...baseEventFields,
+        sequence: 10,
+        occurredAt: "2026-04-02T08:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.session-set",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "interrupted",
+            providerName: "claude",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: "2026-04-02T08:00:00.000Z",
+          },
+          latestTurnCompletedAt: "2026-04-01T08:00:00.000Z",
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.latestTurn?.state).toBe("interrupted");
+        // The turn ends at the last observation, not when recovery ran.
+        expect(result.thread.latestTurn?.completedAt).toBe("2026-04-01T08:00:00.000Z");
+        expect(result.thread.session?.updatedAt).toBe("2026-04-02T08:00:00.000Z");
+      }
+    });
+
     it("updates session and latestTurn for a running session", () => {
       const result = applyThreadDetailEvent(baseThread, {
         ...baseEventFields,

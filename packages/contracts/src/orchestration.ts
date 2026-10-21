@@ -841,6 +841,12 @@ const ThreadSessionSetCommand = Schema.Struct({
   commandId: CommandId,
   threadId: ThreadId,
   session: OrchestrationSession,
+  /**
+   * Completion time for the running turn this session update settles. Recovery
+   * uses it to freeze a turn at its last observation while `session.updatedAt`
+   * and event ordering stay on the server clock.
+   */
+  latestTurnCompletedAt: Schema.optional(IsoDateTime),
   createdAt: IsoDateTime,
 });
 
@@ -1121,6 +1127,7 @@ export const ThreadSessionStopRequestedPayload = Schema.Struct({
 export const ThreadSessionSetPayload = Schema.Struct({
   threadId: ThreadId,
   session: OrchestrationSession,
+  latestTurnCompletedAt: Schema.optional(IsoDateTime),
 });
 
 export const ThreadProposedPlanUpsertedPayload = Schema.Struct({

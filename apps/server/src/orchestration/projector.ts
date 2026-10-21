@@ -496,9 +496,9 @@ export function projectEvent(
                       ...thread.latestTurn,
                       state: settledTurnState,
                       // A running turn's completedAt can only hold a mid-turn
-                      // placeholder checkpoint timestamp — the session leaving
-                      // "running" is the authoritative turn end.
-                      completedAt: session.updatedAt,
+                      // placeholder checkpoint timestamp. Recovery can freeze
+                      // it at the last observation instead of the event time.
+                      completedAt: payload.latestTurnCompletedAt ?? session.updatedAt,
                     }
                   : thread.latestTurn,
             updatedAt: event.occurredAt,

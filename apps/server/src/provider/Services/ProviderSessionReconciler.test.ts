@@ -456,10 +456,11 @@ it.effect("settles a crashed running binding before dispatching the session", ()
     assert.equal(command.session.status, "interrupted");
     assert.equal(command.session.activeTurnId, null);
     assert.equal(command.session.lastError, HOST_LOST_SESSION_ERROR);
-    // The turn freezes at the last persisted observation. The event itself is
-    // still ordered by the server clock, which is strictly later.
-    assert.equal(command.session.updatedAt, "2026-07-26T23:58:00.000Z");
-    assert.notEqual(command.createdAt, command.session.updatedAt);
+    // The turn freezes at the last persisted observation. The session update
+    // and event stay on the server clock.
+    assert.equal(command.session.updatedAt, command.createdAt);
+    assert.equal(command.latestTurnCompletedAt, "2026-07-26T23:58:00.000Z");
+    assert.notEqual(command.latestTurnCompletedAt, command.createdAt);
   }),
 );
 
@@ -523,7 +524,8 @@ it.effect("repairs only the session when the host_lost binding write already sur
     assert.equal(command.session.status, "interrupted");
     assert.equal(command.session.lastError, HOST_LOST_SESSION_ERROR);
     // The original orphan observation, not this boot's clock, ends the turn.
-    assert.equal(command.session.updatedAt, "2026-07-26T23:58:00.000Z");
-    assert.notEqual(command.createdAt, command.session.updatedAt);
+    assert.equal(command.session.updatedAt, command.createdAt);
+    assert.equal(command.latestTurnCompletedAt, "2026-07-26T23:58:00.000Z");
+    assert.notEqual(command.latestTurnCompletedAt, command.createdAt);
   }),
 );

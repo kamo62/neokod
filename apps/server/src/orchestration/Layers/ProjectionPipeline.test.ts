@@ -1835,8 +1835,9 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
               runtimeMode: "full-access",
               activeTurnId: null,
               lastError: "recovered after restart",
-              updatedAt: lastObservedAt,
+              updatedAt: recoveredAt,
             },
+            latestTurnCompletedAt: lastObservedAt,
           },
         });
         yield* projectionPipeline.bootstrap;
