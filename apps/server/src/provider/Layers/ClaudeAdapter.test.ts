@@ -2038,16 +2038,15 @@ describe("ClaudeAdapterLive", () => {
   });
 
   it.effect("X3 ends a usage-limit result as a failed turn with the reset time", () => {
-    const rateLimitChanges: Array<
-      ReadonlyArray<{
-        readonly rateLimitType: string;
-        readonly resetsAtEpochSeconds: number | undefined;
-      }>
-    > = [];
+    const rateLimitChanges: Array<{
+      readonly status: string;
+      readonly rateLimitType: string;
+      readonly resetsAtEpochSeconds: number | undefined;
+    }> = [];
     const harness = makeHarness({
-      onRateLimitChange: (rejected) =>
+      onRateLimitChange: (change) =>
         Effect.sync(() => {
-          rateLimitChanges.push(rejected);
+          rateLimitChanges.push(change);
         }),
     });
     return Effect.gen(function* () {
@@ -2156,9 +2155,11 @@ describe("ClaudeAdapterLive", () => {
       const listed = (yield* adapter.listSessions())[0];
       assert.equal(listed?.status, "ready");
       assert.include(listed?.lastError, "session limit");
-      assert.deepEqual(rateLimitChanges.at(-1), [
-        { rateLimitType: "five_hour", resetsAtEpochSeconds: 1791145800 },
-      ]);
+      assert.deepEqual(rateLimitChanges.at(-1), {
+        status: "rejected",
+        rateLimitType: "five_hour",
+        resetsAtEpochSeconds: 1791145800,
+      });
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
@@ -2166,16 +2167,15 @@ describe("ClaudeAdapterLive", () => {
   });
 
   it.effect("X3 clears the rate-limit state after a successful turn", () => {
-    const rateLimitChanges: Array<
-      ReadonlyArray<{
-        readonly rateLimitType: string;
-        readonly resetsAtEpochSeconds: number | undefined;
-      }>
-    > = [];
+    const rateLimitChanges: Array<{
+      readonly status: string;
+      readonly rateLimitType: string;
+      readonly resetsAtEpochSeconds: number | undefined;
+    }> = [];
     const harness = makeHarness({
-      onRateLimitChange: (rejected) =>
+      onRateLimitChange: (change) =>
         Effect.sync(() => {
-          rateLimitChanges.push(rejected);
+          rateLimitChanges.push(change);
         }),
     });
     return Effect.gen(function* () {
@@ -2212,9 +2212,11 @@ describe("ClaudeAdapterLive", () => {
         uuid: "result-clear-1",
       } as unknown as SDKMessage);
       yield* drainSdkMessages;
-      assert.deepEqual(rateLimitChanges.at(-1), [
-        { rateLimitType: "five_hour", resetsAtEpochSeconds: 1791145800 },
-      ]);
+      assert.deepEqual(rateLimitChanges.at(-1), {
+        status: "rejected",
+        rateLimitType: "five_hour",
+        resetsAtEpochSeconds: 1791145800,
+      });
 
       yield* adapter.sendTurn({
         threadId: session.threadId,
@@ -2231,7 +2233,11 @@ describe("ClaudeAdapterLive", () => {
       } as unknown as SDKMessage);
       yield* drainSdkMessages;
 
-      assert.deepEqual(rateLimitChanges.at(-1), []);
+      assert.deepEqual(rateLimitChanges.at(-1), {
+        status: "allowed",
+        rateLimitType: "five_hour",
+        resetsAtEpochSeconds: undefined,
+      });
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),

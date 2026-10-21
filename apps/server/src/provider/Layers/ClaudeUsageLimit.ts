@@ -220,13 +220,16 @@ export function describeClaudeCliResultFailure(stdout: string): string | undefin
 /** Key: `rateLimitType`, or `"unknown"` when the CLI omitted it. */
 export type RejectedRateLimits = ReadonlyMap<string, number | undefined>;
 
+/** One rate-limit report for a single window, scoped to one session event. */
+export interface ClaudeRateLimitReport {
+  readonly status: string;
+  readonly rateLimitType?: string | undefined;
+  readonly resetsAt?: number | undefined;
+}
+
 export function updateRejectedRateLimits(
   previous: RejectedRateLimits,
-  info: {
-    status: string;
-    rateLimitType?: string | undefined;
-    resetsAt?: number | undefined;
-  },
+  info: ClaudeRateLimitReport,
 ): RejectedRateLimits {
   const next = new Map(previous);
   const key = info.rateLimitType ?? "unknown";
@@ -238,14 +241,40 @@ export function updateRejectedRateLimits(
   return next;
 }
 
-/** Latest known reset strictly after `nowSeconds`. Unknown resets are ignored. */
+/**
+ * Drops known-reset rejections once their reset has passed. Unknown-reset
+ * rejections stay: only an explicit `allowed` report for that window clears
+ * them, because the evidence never claimed when it would recover.
+ */
+export function pruneExpiredRejectedRateLimits(
+  rejected: RejectedRateLimits,
+  nowSeconds: number,
+): RejectedRateLimits {
+  let next: Map<string, number | undefined> | undefined;
+  for (const [rateLimitType, resetsAt] of rejected) {
+    if (resetsAt !== undefined && resetsAt <= nowSeconds) {
+      next ??= new Map(rejected);
+      next.delete(rateLimitType);
+    }
+  }
+  return next ?? rejected;
+}
+
+/**
+ * Latest known reset strictly after `nowSeconds`. Returns `undefined` while any
+ * rejected window has an unknown reset: that unresolved window may outlast the
+ * known one, so borrowing the known timestamp would misstate the recovery.
+ */
 export function latestRejectedResetSeconds(
   rejected: RejectedRateLimits,
   nowSeconds: number,
 ): number | undefined {
   let latest: number | undefined;
   for (const resetsAt of rejected.values()) {
-    if (typeof resetsAt === "number" && resetsAt > nowSeconds) {
+    if (resetsAt === undefined) {
+      return undefined;
+    }
+    if (resetsAt > nowSeconds) {
       latest = latest === undefined ? resetsAt : Math.max(latest, resetsAt);
     }
   }
@@ -255,7 +284,9 @@ export function latestRejectedResetSeconds(
 /**
  * Projects rejected rate-limit reports into a provider limit. A report with an
  * unknown reset still proves the window is rejected; it does not prove when the
- * window resets, so `resetsAt` stays absent.
+ * window resets, so `resetsAt` stays absent. While any live window has an
+ * unknown reset the aggregate must not borrow another window's timestamp:
+ * expiring at that timestamp would hide the unresolved rejection.
  */
 export function providerLimitFromRejected(
   rejected: RejectedRateLimits,
@@ -271,6 +302,15 @@ export function providerLimitFromRejected(
   const [first] = live;
   if (first === undefined) {
     return null;
+  }
+
+  const unresolved = live.find(([, resetsAt]) => resetsAt === undefined);
+  if (unresolved !== undefined) {
+    return {
+      kind: "usage_limit",
+      window: unresolved[0],
+      observedAt: toIsoUtc(nowMs),
+    };
   }
 
   let latest: { readonly rateLimitType: string; readonly resetsAt: number } | undefined;

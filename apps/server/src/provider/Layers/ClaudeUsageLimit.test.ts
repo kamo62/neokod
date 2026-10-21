@@ -12,6 +12,7 @@ import {
   describeClaudeCliResultFailure,
   latestRejectedResetSeconds,
   providerLimitFromRejected,
+  pruneExpiredRejectedRateLimits,
   updateRejectedRateLimits,
   type RejectedRateLimits,
 } from "./ClaudeUsageLimit.ts";
@@ -235,6 +236,15 @@ describe("rejected rate limits", () => {
     expect(latestRejectedResetSeconds(rejected, 3500)).toBeUndefined();
   });
 
+  it("does not borrow a known reset while an unresolved window is rejected", () => {
+    const rejected: RejectedRateLimits = new Map([
+      ["five_hour", 3000],
+      ["seven_day_opus", undefined],
+    ]);
+
+    expect(latestRejectedResetSeconds(rejected, 1500)).toBeUndefined();
+  });
+
   it("builds a provider limit from rejected windows", () => {
     const rejected: RejectedRateLimits = new Map([
       ["five_hour", 2000],
@@ -259,10 +269,96 @@ describe("rejected rate limits", () => {
     });
   });
 
+  it("does not borrow a sibling window's known reset for an unresolved rejection", () => {
+    const rejected: RejectedRateLimits = new Map([
+      ["seven_day_opus", undefined],
+      ["five_hour", 2000],
+    ]);
+
+    expect(providerLimitFromRejected(rejected, 1500 * 1000)).toEqual({
+      kind: "usage_limit",
+      window: "seven_day_opus",
+      observedAt: "1970-01-01T00:25:00.000Z",
+    });
+  });
+
+  it("keeps the unresolved window after the known-reset sibling has passed", () => {
+    const rejected: RejectedRateLimits = new Map([
+      ["seven_day_opus", undefined],
+      ["five_hour", 1000],
+    ]);
+
+    expect(providerLimitFromRejected(rejected, 1500 * 1000)).toEqual({
+      kind: "usage_limit",
+      window: "seven_day_opus",
+      observedAt: "1970-01-01T00:25:00.000Z",
+    });
+  });
+
+  it("retains another session's rejection when a different window is allowed", () => {
+    // Session A reports seven_day_opus rejected. Session B only reports that
+    // five_hour is allowed; B's view must not erase A's evidence.
+    let retained: RejectedRateLimits = new Map();
+    retained = updateRejectedRateLimits(retained, {
+      status: "rejected",
+      rateLimitType: "seven_day_opus",
+      resetsAt: 3000,
+    });
+    retained = updateRejectedRateLimits(retained, {
+      status: "allowed",
+      rateLimitType: "five_hour",
+    });
+
+    expect(providerLimitFromRejected(retained, 1500 * 1000)).toEqual({
+      kind: "usage_limit",
+      window: "seven_day_opus",
+      resetsAt: "1970-01-01T00:50:00.000Z",
+      observedAt: "1970-01-01T00:25:00.000Z",
+    });
+  });
+
+  it("clears a window only on its own explicit allowed report", () => {
+    let retained: RejectedRateLimits = new Map([
+      ["seven_day_opus", undefined],
+      ["five_hour", 3000],
+    ]);
+    retained = updateRejectedRateLimits(retained, {
+      status: "allowed_warning",
+      rateLimitType: "five_hour",
+    });
+
+    expect(providerLimitFromRejected(retained, 1500 * 1000)).toEqual({
+      kind: "usage_limit",
+      window: "seven_day_opus",
+      observedAt: "1970-01-01T00:25:00.000Z",
+    });
+  });
+
   it("returns null once every rejected reset is in the past", () => {
     const rejected: RejectedRateLimits = new Map([["five_hour", 1000]]);
 
     expect(providerLimitFromRejected(rejected, 1500 * 1000)).toBeNull();
+  });
+});
+
+describe("pruneExpiredRejectedRateLimits", () => {
+  it("drops known-expired windows but keeps unknown-reset evidence", () => {
+    const rejected: RejectedRateLimits = new Map([
+      ["five_hour", 1000],
+      ["seven_day", 2000],
+      ["seven_day_opus", undefined],
+    ]);
+
+    expect([...pruneExpiredRejectedRateLimits(rejected, 1500)]).toEqual([
+      ["seven_day", 2000],
+      ["seven_day_opus", undefined],
+    ]);
+  });
+
+  it("returns the same map when nothing has expired", () => {
+    const rejected: RejectedRateLimits = new Map([["five_hour", 2000]]);
+
+    expect(pruneExpiredRejectedRateLimits(rejected, 1500)).toBe(rejected);
   });
 });
 

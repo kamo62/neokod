@@ -257,15 +257,17 @@ export interface ClaudeAdapterLiveOptions {
   readonly nativeEventLogPath?: string;
   readonly nativeEventLogger?: EventNdjsonLogger;
   /**
-   * Reports every change to the rejected rate-limit windows so the driver can
-   * project a structured provider limit. Empty means no rejected window.
+   * Reports one rate-limit window change so the driver can retain evidence per
+   * provider instance. Reports are per window: `rejected` records or refreshes
+   * that window, `allowed`/`allowed_warning` clears only that window. The
+   * driver merges reports from every session, so a session with no rejected
+   * windows must not publish its empty map.
    */
-  readonly onRateLimitChange?: (
-    rejected: ReadonlyArray<{
-      readonly rateLimitType: string;
-      readonly resetsAtEpochSeconds: number | undefined;
-    }>,
-  ) => Effect.Effect<void>;
+  readonly onRateLimitChange?: (change: {
+    readonly status: string;
+    readonly rateLimitType: string;
+    readonly resetsAtEpochSeconds: number | undefined;
+  }) => Effect.Effect<void>;
 }
 
 function isUuid(value: string): boolean {
@@ -2764,9 +2766,20 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
 
     if (status === "completed" && context.rejectedRateLimits.size > 0) {
-      // A completed turn proves the rejected window no longer blocks work.
+      // A completed turn proves the windows this session had seen rejected no
+      // longer block its work. Clear only those windows: another session may
+      // hold evidence for a different window that is still rejected.
+      const cleared = [...context.rejectedRateLimits.keys()];
       context.rejectedRateLimits = new Map();
-      yield* options?.onRateLimitChange?.([]) ?? Effect.void;
+      for (const rateLimitType of cleared) {
+        yield* (
+          options?.onRateLimitChange?.({
+            status: "allowed",
+            rateLimitType,
+            resetsAtEpochSeconds: undefined,
+          }) ?? Effect.void
+        );
+      }
     }
 
     yield* completeTurn(context, status, errorMessage, message);
@@ -3098,6 +3111,16 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           rateLimitType: info.rateLimitType,
           resetsAt: info.resetsAt,
         });
+        // Publish only the window this event names. Sending the session's
+        // whole map would let a session with no rejected windows erase
+        // another session's still-valid evidence at the provider instance.
+        yield* (
+          options?.onRateLimitChange?.({
+            status: info.status,
+            rateLimitType: info.rateLimitType ?? "unknown",
+            resetsAtEpochSeconds: info.resetsAt,
+          }) ?? Effect.void
+        );
       }
       yield* offerRuntimeEvent({
         ...base,
@@ -3106,14 +3129,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           rateLimits: message,
         },
       });
-      yield* (
-        options?.onRateLimitChange?.(
-          [...context.rejectedRateLimits].map(([rateLimitType, resetsAtEpochSeconds]) => ({
-            rateLimitType,
-            resetsAtEpochSeconds,
-          })),
-        ) ?? Effect.void
-      );
       return;
     }
   });
