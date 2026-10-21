@@ -7,7 +7,6 @@ import type {
   SymphonyBoardCard,
   SymphonyProject,
   SymphonyProjectBoard,
-  SymphonyProjectConfiguration,
   SymphonyProjectId,
 } from "@neokod/contracts";
 import { useNavigate } from "@tanstack/react-router";
@@ -41,6 +40,14 @@ import {
   isSymphonyProjectConfigurationComplete,
   SymphonyProjectConfigurationForm,
 } from "./SymphonyProjectConfigurationForm";
+import {
+  applySavedDraft,
+  editDraft,
+  isDraftDirty,
+  reconcileDraft,
+  startDraft,
+} from "./projectSettingsDraft";
+import { useProjectSettingsDraftStore } from "./projectSettingsDraftStore";
 
 type ProjectTab = "board" | "runs" | "attention" | "history" | "settings";
 
@@ -172,19 +179,23 @@ function SettingsTab({
   const providers = availableSymphonyImplementationProviders(allProviders);
   const reviewProviders = availableSymphonyReviewProviders(allProviders);
   const fallback = providers[0] ?? null;
-  const [configuration, setConfiguration] = useState<SymphonyProjectConfiguration | null>(
-    project.configuration ?? (fallback ? defaultSymphonyProjectConfiguration(fallback) : null),
-  );
+  const storedDraft = useProjectSettingsDraftStore((state) => state.drafts[project.id]);
+  const setDraft = useProjectSettingsDraftStore((state) => state.setDraft);
+  const clearDraft = useProjectSettingsDraftStore((state) => state.clearDraft);
+  const fallbackConfig = fallback ? defaultSymphonyProjectConfiguration(fallback) : null;
+  const reconciled = storedDraft ? reconcileDraft(storedDraft, project, fallbackConfig) : null;
+  const draft = reconciled?.draft ?? startDraft(project, fallbackConfig);
+  const sync = reconciled?.sync ?? "clean";
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const updateProject = useAtomCommand(symphonyEnvironment.updateProject, {
     reportFailure: false,
   });
 
-  const save = async () => {
+  const save = async (expectedRevision: number) => {
     if (
-      configuration === null ||
-      !isSymphonyProjectConfigurationComplete(configuration, providers, reviewProviders)
+      draft === null ||
+      !isSymphonyProjectConfigurationComplete(draft.value, providers, reviewProviders)
     )
       return;
     setSaving(true);
@@ -194,8 +205,8 @@ function SettingsTab({
         environmentId,
         input: {
           projectId: project.id,
-          expectedRevision: project.revision,
-          configuration,
+          expectedRevision,
+          configuration: draft.value,
         },
       });
       if (result._tag === "Failure") {
@@ -205,13 +216,20 @@ function SettingsTab({
         }
         return;
       }
+      const saved = applySavedDraft(
+        useProjectSettingsDraftStore.getState().drafts[project.id],
+        result.value,
+      );
+      if (saved !== null) {
+        setDraft(project.id, saved);
+      }
       onSaved();
     } finally {
       setSaving(false);
     }
   };
 
-  if (configuration === null) {
+  if (draft === null) {
     return (
       <SymphonyEmptyState
         icon={TriangleAlertIcon}
@@ -230,20 +248,46 @@ function SettingsTab({
           stay global.
         </p>
       </div>
+      {sync === "changed_elsewhere" ? (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive-foreground">
+          <p>These settings changed elsewhere after you started editing.</p>
+          <p className="mt-1 text-muted-foreground">
+            Reload to use the server copy and discard your edits, or save your edits to overwrite
+            it.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={saving}
+              onClick={() => {
+                setError(null);
+                clearDraft(project.id);
+              }}
+            >
+              Reload
+            </Button>
+            <Button size="sm" disabled={saving} onClick={() => void save(project.revision)}>
+              Save my edits
+            </Button>
+          </div>
+        </div>
+      ) : null}
       <SymphonyProjectConfigurationForm
-        value={configuration}
+        value={draft.value}
         providers={providers}
         reviewProviders={reviewProviders}
-        onChange={setConfiguration}
+        onChange={(value) => setDraft(project.id, editDraft(draft, value))}
       />
       {error ? <p className="text-sm text-destructive-foreground">{error}</p> : null}
       <div className="flex justify-end">
         <Button
           size="sm"
-          onClick={() => void save()}
+          onClick={() => void save(draft.baseRevision)}
           disabled={
             saving ||
-            !isSymphonyProjectConfigurationComplete(configuration, providers, reviewProviders)
+            sync === "changed_elsewhere" ||
+            !isSymphonyProjectConfigurationComplete(draft.value, providers, reviewProviders)
           }
         >
           {saving ? <Spinner className="size-3.5" /> : null}Save settings
@@ -259,6 +303,8 @@ export function SymphonyProjectView({ projectId }: { readonly projectId: Symphon
   const [tab, setTab] = useState<ProjectTab>("board");
   const [action, setAction] = useState<"start" | "pause" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const settingsDraft = useProjectSettingsDraftStore((state) => state.drafts[projectId]);
+  const settingsDraftDirty = settingsDraft !== undefined && isDraftDirty(settingsDraft);
   const boardQuery = useEnvironmentQuery(
     environmentId === null
       ? null
@@ -433,6 +479,7 @@ export function SymphonyProjectView({ projectId }: { readonly projectId: Symphon
               onClick={() => setTab(item.value)}
             >
               {item.label}
+              {item.value === "settings" && settingsDraftDirty ? " •" : null}
             </button>
           ))}
         </nav>
@@ -442,7 +489,6 @@ export function SymphonyProjectView({ projectId }: { readonly projectId: Symphon
         {tab === "board" ? <BoardTab board={board} onRefresh={boardQuery.refresh} /> : null}
         {tab === "settings" && environmentId !== null ? (
           <SettingsTab
-            key={`${project.id}:${project.revision}`}
             project={project}
             environmentId={environmentId}
             onSaved={boardQuery.refresh}
