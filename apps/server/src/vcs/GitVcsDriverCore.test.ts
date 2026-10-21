@@ -201,7 +201,7 @@ it.effect("prunes an exact stale registration after its worktree directory is go
     }).pipe(Effect.provide(layer));
 
     assert.deepStrictEqual(commands, [
-      ["worktree", "remove", "--force", worktreePath],
+      ["worktree", "remove", "--force", "--", worktreePath],
       ["worktree", "list", "--porcelain", "-z"],
       ["worktree", "prune", "--expire", "now"],
       ["worktree", "list", "--porcelain", "-z"],
@@ -1037,6 +1037,125 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
 
         assert.include(error.detail, "contains modified or untracked files");
         assert.equal(yield* fileSystem.exists(worktreePath), true);
+      }),
+    );
+  });
+
+  describe("argument safety", () => {
+    it.effect("switchRef rejects option-like names and keeps local changes", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        yield* writeTextFile(cwd, "README.md", "# modified\n");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+
+        for (const refName of ["-f", "--upload-pack=x", "a..b", "a b"]) {
+          const error = yield* driver.switchRef({ cwd, refName }).pipe(Effect.flip);
+          assert.equal(error.operation, "GitVcsDriver.switchRef");
+          assert.isTrue(error.detail.length > 0);
+          assert.equal(yield* git(cwd, ["status", "--porcelain"]), "M README.md");
+        }
+      }),
+    );
+
+    it.effect("switchRef and createRef accept slash and unicode names", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+
+        yield* driver.createRef({ cwd, refName: "feature/ünï", switchRef: true });
+        assert.equal(yield* git(cwd, ["branch", "--show-current"]), "feature/ünï");
+        yield* driver.switchRef({ cwd, refName: initialBranch });
+        yield* driver.switchRef({ cwd, refName: "feature/ünï" });
+        assert.equal(yield* git(cwd, ["branch", "--show-current"]), "feature/ünï");
+      }),
+    );
+
+    it.effect("createRef rejects -f without creating a branch", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const before = yield* git(cwd, ["branch", "--list"]);
+
+        const error = yield* driver.createRef({ cwd, refName: "-f" }).pipe(Effect.flip);
+
+        assert.equal(error.operation, "GitVcsDriver.createRef");
+        assert.equal(yield* git(cwd, ["branch", "--list"]), before);
+      }),
+    );
+
+    it.effect("createWorktree rejects option-like names and creates nothing", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const parent = yield* makeTmpDir("git-worktrees-");
+        const fileSystem = yield* FileSystem.FileSystem;
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+
+        const refError = yield* driver
+          .createWorktree({
+            cwd,
+            path: pathService.join(parent, "ref-option"),
+            refName: "--detach",
+          })
+          .pipe(Effect.flip);
+        assert.equal(refError.operation, "GitVcsDriver.createWorktree");
+        assert.equal(yield* fileSystem.exists(pathService.join(parent, "ref-option")), false);
+
+        const branchError = yield* driver
+          .createWorktree({
+            cwd,
+            path: pathService.join(parent, "new-ref-option"),
+            refName: initialBranch,
+            newRefName: "-b",
+          })
+          .pipe(Effect.flip);
+        assert.equal(branchError.operation, "GitVcsDriver.createWorktree");
+        assert.equal(yield* fileSystem.exists(pathService.join(parent, "new-ref-option")), false);
+      }),
+    );
+
+    it.effect(
+      "createWorktree and removeWorktree accept a destination that starts with a dash",
+      () =>
+        Effect.gen(function* () {
+          const cwd = yield* makeTmpDir();
+          const { initialBranch } = yield* initRepoWithCommit(cwd);
+          const pathService = yield* Path.Path;
+          const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "-wt");
+          const driver = yield* GitVcsDriver.GitVcsDriver;
+
+          yield* driver.createWorktree({
+            cwd,
+            path: worktreePath,
+            refName: initialBranch,
+            newRefName: "feature/dash-path",
+          });
+          assert.equal(yield* git(worktreePath, ["branch", "--show-current"]), "feature/dash-path");
+
+          yield* driver.removeWorktree({ cwd, path: worktreePath });
+          const fileSystem = yield* FileSystem.FileSystem;
+          assert.equal(yield* fileSystem.exists(worktreePath), false);
+        }),
+    );
+
+    it.effect("readRangeContext does not treat baseRef as an option", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const fileSystem = yield* FileSystem.FileSystem;
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const outputPath = `${cwd}/pwn`;
+
+        const error = yield* driver
+          .readRangeContext(cwd, `--output=${outputPath}`)
+          .pipe(Effect.flip);
+
+        assert.equal(error.operation, "GitVcsDriver.readRangeContext");
+        assert.equal(yield* fileSystem.exists(`${outputPath}..HEAD`), false);
       }),
     );
   });

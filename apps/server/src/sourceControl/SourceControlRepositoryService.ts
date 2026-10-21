@@ -20,6 +20,7 @@ import {
 } from "@neokod/contracts";
 
 import { ServerConfig } from "../config.ts";
+import { validateGitArgumentValue } from "@neokod/shared/git";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as SourceControlProviderRegistry from "./SourceControlProviderRegistry.ts";
 const isSourceControlRepositoryError = Schema.is(SourceControlRepositoryError);
@@ -203,10 +204,19 @@ export const make = Effect.gen(function* () {
       });
     }
 
+    const cloneUrlProblem = validateGitArgumentValue(remoteUrl, "Clone URL");
+    if (cloneUrlProblem !== null) {
+      return yield* new SourceControlRepositoryError({
+        operation: "cloneRepository",
+        provider,
+        detail: cloneUrlProblem,
+      });
+    }
+
     yield* git.execute({
       operation: "SourceControlRepositoryService.cloneRepository",
       cwd: preparedDestination.parentPath,
-      args: ["clone", remoteUrl, preparedDestination.directoryName],
+      args: ["clone", "--", remoteUrl, preparedDestination.directoryName],
       timeoutMs: 120_000,
       maxOutputBytes: 256 * 1024,
     });

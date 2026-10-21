@@ -13,6 +13,51 @@ import { detectSourceControlProviderFromRemoteUrl } from "./sourceControl.ts";
 export const WORKTREE_BRANCH_PREFIX = "neokod";
 const TEMP_WORKTREE_BRANCH_PATTERN = new RegExp(`^${WORKTREE_BRANCH_PREFIX}\\/[0-9a-f]{8}$`);
 
+// Git 2.24 added `--end-of-options`; all other invocations rely on these pure
+// validators plus `--`, which work on every git version the driver supports.
+const FORBIDDEN_REF_CHARACTERS = [" ", "~", "^", ":", "?", "*", "[", "\\"];
+
+function hasControlCharacter(value: string): boolean {
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0;
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
+}
+
+/** Returns a human readable problem, or null when `value` is safe to pass as a git ref or remote name. */
+export function validateGitRefName(value: string, label = "Ref name"): string | null {
+  if (value.length === 0) return `${label} is required.`;
+  if (value.length > 255) return `${label} is longer than 255 characters.`;
+  if (value.startsWith("-")) return `${label} must not start with '-'.`;
+  if (hasControlCharacter(value)) return `${label} contains a control character.`;
+  if (FORBIDDEN_REF_CHARACTERS.some((character) => value.includes(character))) {
+    return `${label} contains an unsupported character.`;
+  }
+  if (value.includes("..")) return `${label} must not contain '..'.`;
+  if (value.includes("@{")) return `${label} must not contain '@{'.`;
+  if (value === "@") return `${label} must not be '@'.`;
+  if (value.startsWith("/") || value.endsWith("/")) {
+    return `${label} must not start or end with '/'.`;
+  }
+  if (value.includes("//")) return `${label} must not contain '//'.`;
+  if (value.endsWith(".")) return `${label} must not end with '.'.`;
+  if (
+    value.split("/").some((component) => component.startsWith(".") || component.endsWith(".lock"))
+  ) {
+    return `${label} contains an invalid path component.`;
+  }
+  return null;
+}
+
+/** For revisions, URLs and similar free text that go on a git command line (no ref grammar). */
+export function validateGitArgumentValue(value: string, label: string): string | null {
+  if (value.length === 0) return `${label} is required.`;
+  if (value.startsWith("-")) return `${label} must not start with '-'.`;
+  if (hasControlCharacter(value)) return `${label} contains a control character.`;
+  return null;
+}
+
 /**
  * Sanitize an arbitrary string into a valid, lowercase git refName fragment.
  * Strips quotes, collapses separators, limits to 64 chars.

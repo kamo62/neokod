@@ -7,6 +7,8 @@ import {
   isTemporaryWorktreeBranch,
   normalizeGitRemoteUrl,
   parseGitHubRepositoryNameWithOwnerFromRemoteUrl,
+  validateGitArgumentValue,
+  validateGitRefName,
   WORKTREE_BRANCH_PREFIX,
 } from "./git.ts";
 
@@ -75,6 +77,70 @@ describe("isTemporaryWorktreeBranch", () => {
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/feature/demo`)).toBe(false);
     expect(isTemporaryWorktreeBranch("main")).toBe(false);
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/deadbeef-extra`)).toBe(false);
+  });
+});
+
+describe("validateGitRefName", () => {
+  it("accepts ordinary names", () => {
+    for (const name of [
+      "main",
+      "feature/x",
+      "release-1.2",
+      "origin/main",
+      "neokod/abcd1234",
+      "é",
+      "feature/ünï",
+      "a@b",
+    ]) {
+      expect(validateGitRefName(name)).toBeNull();
+    }
+  });
+
+  it("rejects option-like and malformed names", () => {
+    const rejected = [
+      "-f",
+      "--upload-pack=x",
+      "-",
+      "a..b",
+      "a b",
+      "a\tb",
+      "a~1",
+      "a^",
+      "a:b",
+      "a?",
+      "a*",
+      "a[",
+      "a\\b",
+      "a@{b",
+      "@",
+      "a.lock",
+      "a/.hidden",
+      "a/",
+      "/a",
+      "a//b",
+      "a.",
+      "",
+      "a".repeat(256),
+      "\u0000",
+      "\u007f",
+    ];
+    for (const name of rejected) {
+      expect(validateGitRefName(name), name).not.toBeNull();
+    }
+    expect(validateGitRefName("-f")).toContain("'-'");
+  });
+});
+
+describe("validateGitArgumentValue", () => {
+  it("allows revisions and urls", () => {
+    for (const value of ["origin/main", "HEAD~3", "https://x/y.git"]) {
+      expect(validateGitArgumentValue(value, "Value")).toBeNull();
+    }
+  });
+
+  it("rejects options and embedded newlines", () => {
+    expect(validateGitArgumentValue("--output=/tmp/x", "Value")).not.toBeNull();
+    expect(validateGitArgumentValue("a\nb", "Value")).not.toBeNull();
   });
 });
 

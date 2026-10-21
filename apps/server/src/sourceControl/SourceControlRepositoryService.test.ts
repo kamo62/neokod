@@ -179,9 +179,45 @@ it.effect("clones a looked-up repository into the requested destination", () =>
       assert.deepStrictEqual(cloneCalls, [
         {
           cwd: parent,
-          args: ["clone", CLONE_URLS.url, "neokod"],
+          args: ["clone", "--", CLONE_URLS.url, "neokod"],
         },
       ]);
+    }).pipe(
+      Effect.provide(
+        makeLayer({
+          git: {
+            execute: (input) =>
+              Effect.sync(() => {
+                cloneCalls.push({ cwd: input.cwd, args: input.args });
+                return processOutput();
+              }),
+          },
+        }),
+      ),
+    );
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect("rejects a clone URL that starts with a dash", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const parent = yield* fs.makeTempDirectoryScoped({
+      prefix: "neokod-source-control-clone-reject-",
+    });
+    const cloneCalls: Array<{ cwd: string; args: ReadonlyArray<string> }> = [];
+
+    yield* Effect.gen(function* () {
+      const service = yield* SourceControlRepositoryService.SourceControlRepositoryService;
+      const error = yield* Effect.flip(
+        service.cloneRepository({
+          remoteUrl: "--upload-pack=touch PWNED",
+          destinationPath: `${parent}/neokod`,
+        }),
+      );
+
+      assert.strictEqual(error.operation, "cloneRepository");
+      assert.match(error.detail, /must not start with '-'/);
+      assert.deepStrictEqual(cloneCalls, []);
     }).pipe(
       Effect.provide(
         makeLayer({
