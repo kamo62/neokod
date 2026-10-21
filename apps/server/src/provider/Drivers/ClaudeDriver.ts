@@ -12,12 +12,7 @@
  *
  * @module provider/Drivers/ClaudeDriver
  */
-import {
-  ClaudeSettings,
-  ProviderDriverKind,
-  type ServerProvider,
-  type ServerProviderLimit,
-} from "@neokod/contracts";
+import { ClaudeSettings, ProviderDriverKind, type ServerProvider } from "@neokod/contracts";
 import * as Cache from "effect/Cache";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
@@ -37,7 +32,13 @@ import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderDriverError } from "../Errors.ts";
 import { makeClaudeAdapter } from "../Layers/ClaudeAdapter.ts";
-import { applyClaudeLimit, providerLimitFromRejected } from "../Layers/ClaudeUsageLimit.ts";
+import {
+  applyClaudeLimit,
+  providerLimitFromRejected,
+  pruneExpiredRejectedRateLimits,
+  updateRejectedRateLimits,
+  type RejectedRateLimits,
+} from "../Layers/ClaudeUsageLimit.ts";
 import {
   checkClaudeProviderStatus,
   makePendingClaudeProvider,
@@ -162,27 +163,33 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         accentColor,
         continuationGroupKey,
       });
-      // The adapter reports rejected windows; this ref is the live limit the
-      // snapshot surface publishes. `null` means no rejected window.
-      const providerLimit = yield* SubscriptionRef.make<ServerProviderLimit | null>(null);
+      // Rejected windows reported by any session of this provider instance.
+      // The adapter reports per-window changes (not each session's whole map)
+      // so one session's empty or partial view cannot erase another session's
+      // still-valid rejection. Evidence survives until its window is reported
+      // allowed or its known reset passes; polling re-projects this map so an
+      // unknown-reset window is never expired by a sibling window's timestamp.
+      const rejectedRateLimits = yield* SubscriptionRef.make<RejectedRateLimits>(new Map());
 
       const adapterOptions = {
         instanceId,
         environment: processEnv,
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
-        onRateLimitChange: (
-          rejected: ReadonlyArray<{
-            readonly rateLimitType: string;
-            readonly resetsAtEpochSeconds: number | undefined;
-          }>,
-        ) =>
+        onRateLimitChange: (change: {
+          readonly status: string;
+          readonly rateLimitType: string;
+          readonly resetsAtEpochSeconds: number | undefined;
+        }) =>
           Effect.gen(function* () {
-            const nowMs = yield* Clock.currentTimeMillis;
-            yield* SubscriptionRef.set(
-              providerLimit,
-              providerLimitFromRejected(
-                new Map(rejected.map((entry) => [entry.rateLimitType, entry.resetsAtEpochSeconds])),
-                nowMs,
+            const nowSeconds = Math.floor((yield* Clock.currentTimeMillis) / 1000);
+            yield* SubscriptionRef.update(rejectedRateLimits, (previous) =>
+              pruneExpiredRejectedRateLimits(
+                updateRejectedRateLimits(previous, {
+                  status: change.status,
+                  rateLimitType: change.rateLimitType,
+                  resetsAt: change.resetsAtEpochSeconds,
+                }),
+                nowSeconds,
               ),
             );
           }),
@@ -225,21 +232,32 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         checkProvider,
         enrichSnapshot: ({ settings, snapshot, publishSnapshot }) =>
           Effect.gen(function* () {
-            const initial = yield* SubscriptionRef.get(providerLimit);
+            const nowMs = yield* Clock.currentTimeMillis;
+            const evidence = pruneExpiredRejectedRateLimits(
+              yield* SubscriptionRef.get(rejectedRateLimits),
+              nowMs / 1000,
+            );
             yield* publishSnapshot(
-              applyClaudeLimit(snapshot, initial, yield* Clock.currentTimeMillis),
+              applyClaudeLimit(snapshot, providerLimitFromRejected(evidence, nowMs), nowMs),
             );
             const enriched = yield* enrichProviderSnapshotWithVersionAdvisory(
               snapshot,
               maintenanceCapabilities,
               { enableProviderUpdateChecks: settings.enableProviderUpdateChecks },
             ).pipe(Effect.provideService(HttpClient.HttpClient, httpClient));
-            yield* SubscriptionRef.changes(providerLimit).pipe(
-              Stream.runForEach((limit) =>
+            yield* SubscriptionRef.changes(rejectedRateLimits).pipe(
+              Stream.runForEach((current) =>
                 Clock.currentTimeMillis.pipe(
-                  Effect.flatMap((nowMs) =>
-                    publishSnapshot(applyClaudeLimit(enriched, limit, nowMs)),
-                  ),
+                  Effect.flatMap((refreshNowMs) => {
+                    const live = pruneExpiredRejectedRateLimits(current, refreshNowMs / 1000);
+                    return publishSnapshot(
+                      applyClaudeLimit(
+                        enriched,
+                        providerLimitFromRejected(live, refreshNowMs),
+                        refreshNowMs,
+                      ),
+                    );
+                  }),
                 ),
               ),
             );

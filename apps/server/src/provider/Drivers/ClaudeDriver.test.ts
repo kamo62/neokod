@@ -2,8 +2,9 @@ import * as NodeTimersPromises from "node:timers/promises";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
-import { ClaudeSettings, ProviderInstanceId } from "@neokod/contracts";
+import { ClaudeSettings, ProviderInstanceId, type ServerProvider } from "@neokod/contracts";
 import * as Duration from "effect/Duration";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -18,6 +19,7 @@ import { layerTest as serverConfigLayerTest } from "../../config.ts";
 import { layerTest as serverSettingsLayerTest } from "../../serverSettings.ts";
 import { NoOpProviderEventLoggers, ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { ClaudeDriver, claudeCapabilitiesProbeCacheTimeToLive } from "./ClaudeDriver.ts";
+import type { ProviderInstance } from "../ProviderDriver.ts";
 
 // The stickiness bug lived in the cache `ClaudeDriver.create` builds, not in
 // any cache a test could assemble for itself, so the regression test below
@@ -25,6 +27,20 @@ import { ClaudeDriver, claudeCapabilitiesProbeCacheTimeToLive } from "./ClaudeDr
 // the one lookup that would otherwise spawn a Claude Agent SDK subprocess,
 // and the stub is where consecutive misses are counted.
 const capabilitiesProbeState = vi.hoisted(() => ({ lookups: 0 }));
+const adapterOptionsState = vi.hoisted(() => ({
+  onRateLimitChange: undefined as unknown,
+}));
+
+vi.mock("../Layers/ClaudeAdapter.ts", async () => {
+  const EffectModule = await import("effect/Effect");
+  return {
+    makeClaudeAdapter: (_settings: unknown, options: { readonly onRateLimitChange?: unknown }) =>
+      EffectModule.sync(() => {
+        adapterOptionsState.onRateLimitChange = options.onRateLimitChange;
+        return {} as never;
+      }),
+  };
+});
 
 vi.mock("../Layers/ClaudeProvider.ts", async (importOriginal) => {
   const original = await importOriginal<typeof import("../Layers/ClaudeProvider.ts")>();
@@ -127,6 +143,122 @@ describe("ClaudeDriver capabilities cache", () => {
       // now it expires immediately, so a refresh must probe again.
       yield* instance.snapshot.refresh;
       assert.strictEqual(capabilitiesProbeState.lookups, 2);
+    }).pipe(Effect.provide(driverTestLayer), Effect.scoped),
+  );
+});
+
+interface RateLimitChange {
+  readonly status: string;
+  readonly rateLimitType: string;
+  readonly resetsAtEpochSeconds: number | undefined;
+}
+
+const reportRateLimit = (change: RateLimitChange) => {
+  const callback = adapterOptionsState.onRateLimitChange as
+    | ((change: RateLimitChange) => Effect.Effect<void>)
+    | undefined;
+  assert.ok(callback, "driver did not install onRateLimitChange");
+  return callback(change);
+};
+
+const awaitSnapshot = (
+  instance: ProviderInstance,
+  predicate: (snapshot: ServerProvider) => boolean,
+): Effect.Effect<ServerProvider> =>
+  Effect.gen(function* () {
+    for (let i = 0; i < 10_000; i += 1) {
+      const snapshot = yield* instance.snapshot.getSnapshot;
+      if (predicate(snapshot)) return snapshot;
+      yield* yieldToNodeEventLoop;
+    }
+    return yield* Effect.die("expected snapshot was not published");
+  });
+
+const createDriverInstance = (instanceId: string) =>
+  ClaudeDriver.create({
+    instanceId: ProviderInstanceId.make(instanceId),
+    displayName: undefined,
+    accentColor: undefined,
+    environment: [],
+    enabled: true,
+    config: decodeClaudeSettings({ enabled: true }),
+  }).pipe(Effect.provide(claudeCliSpawnerLayer));
+
+describe("ClaudeDriver rejected rate-limit evidence", () => {
+  it.effect("keeps session A's rejected window when session B allows another window", () =>
+    Effect.gen(function* () {
+      adapterOptionsState.onRateLimitChange = undefined;
+      const instance = yield* createDriverInstance("claudeAgent_rate_limit_cross_session");
+      const resetAt = Math.floor((yield* Clock.currentTimeMillis) / 1000) + 3_600;
+
+      yield* reportRateLimit({
+        status: "rejected",
+        rateLimitType: "seven_day_opus",
+        resetsAtEpochSeconds: resetAt,
+      });
+      yield* awaitSnapshot(instance, (snapshot) => snapshot.limit?.window === "seven_day_opus");
+
+      // Session B has no rejected windows of its own and reports five_hour
+      // allowed. Its report must not replace the provider-instance evidence.
+      yield* reportRateLimit({
+        status: "allowed",
+        rateLimitType: "five_hour",
+        resetsAtEpochSeconds: undefined,
+      });
+      yield* yieldToNodeEventLoop;
+
+      const snapshot = yield* instance.snapshot.getSnapshot;
+      assert.strictEqual(snapshot.limit?.window, "seven_day_opus");
+      assert.strictEqual(snapshot.status, "warning");
+    }).pipe(Effect.provide(driverTestLayer), Effect.scoped),
+  );
+
+  it.effect("does not let a known-reset window expire an unknown-reset rejection", () =>
+    Effect.gen(function* () {
+      adapterOptionsState.onRateLimitChange = undefined;
+      const instance = yield* createDriverInstance("claudeAgent_rate_limit_mixed_reset");
+      const resetAt = Math.floor((yield* Clock.currentTimeMillis) / 1000) + 3_600;
+
+      yield* reportRateLimit({
+        status: "rejected",
+        rateLimitType: "seven_day_opus",
+        resetsAtEpochSeconds: undefined,
+      });
+      yield* reportRateLimit({
+        status: "rejected",
+        rateLimitType: "five_hour",
+        resetsAtEpochSeconds: resetAt,
+      });
+
+      const snapshot = yield* awaitSnapshot(
+        instance,
+        (current) => current.limit?.window === "seven_day_opus",
+      );
+      assert.strictEqual(snapshot.limit?.resetsAt, undefined);
+      assert.strictEqual(snapshot.status, "warning");
+    }).pipe(Effect.provide(driverTestLayer), Effect.scoped),
+  );
+
+  it.effect("clears the card after an explicit allowed report for the last window", () =>
+    Effect.gen(function* () {
+      adapterOptionsState.onRateLimitChange = undefined;
+      const instance = yield* createDriverInstance("claudeAgent_rate_limit_allowed");
+      const resetAt = Math.floor((yield* Clock.currentTimeMillis) / 1000) + 3_600;
+
+      yield* reportRateLimit({
+        status: "rejected",
+        rateLimitType: "five_hour",
+        resetsAtEpochSeconds: resetAt,
+      });
+      yield* awaitSnapshot(instance, (snapshot) => snapshot.limit?.window === "five_hour");
+
+      yield* reportRateLimit({
+        status: "allowed",
+        rateLimitType: "five_hour",
+        resetsAtEpochSeconds: undefined,
+      });
+      const cleared = yield* awaitSnapshot(instance, (snapshot) => snapshot.limit === undefined);
+      assert.strictEqual(cleared.limit, undefined);
     }).pipe(Effect.provide(driverTestLayer), Effect.scoped),
   );
 });
