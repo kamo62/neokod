@@ -45,6 +45,7 @@ import {
   resolveClaudeEffort,
 } from "../provider/Layers/ClaudeProvider.ts";
 import { makeClaudeEnvironment } from "../provider/Drivers/ClaudeHome.ts";
+import { describeClaudeCliResultFailure } from "../provider/Layers/ClaudeUsageLimit.ts";
 
 const CLAUDE_TIMEOUT_MS = 180_000;
 
@@ -205,6 +206,11 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
         ],
         { concurrency: "unbounded" },
       );
+
+      const cliFailure = describeClaudeCliResultFailure(stdout);
+      if (cliFailure !== undefined) {
+        return yield* new TextGenerationError({ operation, detail: cliFailure });
+      }
 
       if (exitCode !== 0) {
         const stderrDetail = stderr.trim();

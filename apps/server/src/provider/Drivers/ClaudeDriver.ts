@@ -12,8 +12,14 @@
  *
  * @module provider/Drivers/ClaudeDriver
  */
-import { ClaudeSettings, ProviderDriverKind, type ServerProvider } from "@neokod/contracts";
+import {
+  ClaudeSettings,
+  ProviderDriverKind,
+  type ServerProvider,
+  type ServerProviderLimit,
+} from "@neokod/contracts";
 import * as Cache from "effect/Cache";
+import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -21,6 +27,8 @@ import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
@@ -29,6 +37,7 @@ import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderDriverError } from "../Errors.ts";
 import { makeClaudeAdapter } from "../Layers/ClaudeAdapter.ts";
+import { applyClaudeLimit, providerLimitFromRejected } from "../Layers/ClaudeUsageLimit.ts";
 import {
   checkClaudeProviderStatus,
   makePendingClaudeProvider,
@@ -153,11 +162,30 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         accentColor,
         continuationGroupKey,
       });
+      // The adapter reports rejected windows; this ref is the live limit the
+      // snapshot surface publishes. `null` means no rejected window.
+      const providerLimit = yield* SubscriptionRef.make<ServerProviderLimit | null>(null);
 
       const adapterOptions = {
         instanceId,
         environment: processEnv,
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
+        onRateLimitChange: (
+          rejected: ReadonlyArray<{
+            readonly rateLimitType: string;
+            readonly resetsAtEpochSeconds: number | undefined;
+          }>,
+        ) =>
+          Effect.gen(function* () {
+            const nowMs = yield* Clock.currentTimeMillis;
+            yield* SubscriptionRef.set(
+              providerLimit,
+              providerLimitFromRejected(
+                new Map(rejected.map((entry) => [entry.rateLimitType, entry.resetsAtEpochSeconds])),
+                nowMs,
+              ),
+            );
+          }),
       };
       const adapter = yield* makeClaudeAdapter(effectiveConfig, adapterOptions);
       const textGeneration = yield* makeClaudeTextGeneration(effectiveConfig, processEnv);
@@ -196,12 +224,26 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
           makePendingClaudeProvider(settings.provider).pipe(Effect.map(stampIdentity)),
         checkProvider,
         enrichSnapshot: ({ settings, snapshot, publishSnapshot }) =>
-          enrichProviderSnapshotWithVersionAdvisory(snapshot, maintenanceCapabilities, {
-            enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
-          }).pipe(
-            Effect.provideService(HttpClient.HttpClient, httpClient),
-            Effect.flatMap((enrichedSnapshot) => publishSnapshot(enrichedSnapshot)),
-          ),
+          Effect.gen(function* () {
+            const initial = yield* SubscriptionRef.get(providerLimit);
+            yield* publishSnapshot(
+              applyClaudeLimit(snapshot, initial, yield* Clock.currentTimeMillis),
+            );
+            const enriched = yield* enrichProviderSnapshotWithVersionAdvisory(
+              snapshot,
+              maintenanceCapabilities,
+              { enableProviderUpdateChecks: settings.enableProviderUpdateChecks },
+            ).pipe(Effect.provideService(HttpClient.HttpClient, httpClient));
+            yield* SubscriptionRef.changes(providerLimit).pipe(
+              Stream.runForEach((limit) =>
+                Clock.currentTimeMillis.pipe(
+                  Effect.flatMap((nowMs) =>
+                    publishSnapshot(applyClaudeLimit(enriched, limit, nowMs)),
+                  ),
+                ),
+              ),
+            );
+          }),
         refreshInterval: SNAPSHOT_REFRESH_INTERVAL,
       }).pipe(
         Effect.mapError(

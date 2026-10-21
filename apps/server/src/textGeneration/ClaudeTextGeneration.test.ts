@@ -1,4 +1,4 @@
-import { ClaudeSettings, ProviderInstanceId } from "@neokod/contracts";
+import { ClaudeSettings, ProviderInstanceId, TextGenerationError } from "@neokod/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -318,27 +318,69 @@ it.layer(ClaudeTextGenerationTestLayer)("ClaudeTextGeneration", (it) => {
     }),
   );
 
-  it.effect("falls back when Claude thread title normalization becomes whitespace-only", () =>
+  it.effect("fails text generation when the Claude result reports a usage limit", () =>
     withFakeClaudeEnv(
       {
         output: JSON.stringify({
-          structured_output: {
-            title: '  """   """  ',
-          },
+          type: "result",
+          subtype: "success",
+          is_error: true,
+          api_error_status: 429,
+          terminal_reason: "api_error",
+          result: "You've hit your session limit · resets 10:30pm (Africa/Johannesburg)",
         }),
       },
       (textGeneration) =>
         Effect.gen(function* () {
-          const generated = yield* textGeneration.generateThreadTitle({
-            cwd: process.cwd(),
-            message: "Name this thread.",
-            modelSelection: {
-              instanceId: ProviderInstanceId.make("claudeAgent"),
-              model: "claude-sonnet-4-6",
-            },
-          });
+          const error = yield* textGeneration
+            .generateCommitMessage({
+              cwd: process.cwd(),
+              branch: "feature/claude-effect",
+              stagedSummary: "M README.md",
+              stagedPatch: "diff --git a/README.md b/README.md",
+              modelSelection: {
+                instanceId: ProviderInstanceId.make("claudeAgent"),
+                model: "claude-sonnet-4-6",
+              },
+            })
+            .pipe(Effect.flip);
 
-          expect(generated.title).toBe("New thread");
+          expect(error).toBeInstanceOf(TextGenerationError);
+          expect(error.detail).toContain("session limit");
+        }),
+    ),
+  );
+
+  it.effect("keeps the Claude usage-limit text when the CLI also exits non-zero", () =>
+    withFakeClaudeEnv(
+      {
+        output: JSON.stringify({
+          type: "result",
+          subtype: "success",
+          is_error: true,
+          api_error_status: 429,
+          terminal_reason: "api_error",
+          result: "You've hit your session limit · resets 10:30pm (Africa/Johannesburg)",
+        }),
+        exitCode: 1,
+      },
+      (textGeneration) =>
+        Effect.gen(function* () {
+          const error = yield* textGeneration
+            .generateCommitMessage({
+              cwd: process.cwd(),
+              branch: "feature/claude-effect",
+              stagedSummary: "M README.md",
+              stagedPatch: "diff --git a/README.md b/README.md",
+              modelSelection: {
+                instanceId: ProviderInstanceId.make("claudeAgent"),
+                model: "claude-sonnet-4-6",
+              },
+            })
+            .pipe(Effect.flip);
+
+          expect(error).toBeInstanceOf(TextGenerationError);
+          expect(error.detail).toContain("session limit");
         }),
     ),
   );

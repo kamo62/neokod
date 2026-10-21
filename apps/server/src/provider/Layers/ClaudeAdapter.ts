@@ -39,6 +39,7 @@ import {
   type ThreadTokenUsageSnapshot,
   type ProviderUserInputAnswers,
   type RuntimeContentStreamKind,
+  type RuntimeErrorClass,
   RuntimeItemId,
   RuntimeRequestId,
   RuntimeTaskId,
@@ -88,6 +89,14 @@ import {
 } from "../Errors.ts";
 import { type ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import { stoppedConfirmed } from "../providerStopOutcome.ts";
+import {
+  claudeResultFailure,
+  isAbortedClaudeResult,
+  latestRejectedResetSeconds,
+  updateRejectedRateLimits,
+  type ClaudeResultFailure,
+  type RejectedRateLimits,
+} from "./ClaudeUsageLimit.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.UnknownFromJsonString);
 const decodeUnknownJsonStringExit = Schema.decodeUnknownExit(Schema.UnknownFromJsonString);
@@ -221,6 +230,10 @@ interface ClaudeSessionContext {
   compactionBaseline: ClaudeCompactionBaseline | undefined;
   lastAssistantUuid: string | undefined;
   lastThreadStartedId: string | undefined;
+  /** Synthetic assistant text for the next API failure, kept out of the transcript. */
+  lastApiError: { readonly code: string; readonly text: string | undefined } | undefined;
+  /** Rate-limit windows the CLI currently reports as rejected. */
+  rejectedRateLimits: RejectedRateLimits;
   stopped: boolean;
   interruptedTurnIds: Set<TurnId>;
 }
@@ -243,6 +256,16 @@ export interface ClaudeAdapterLiveOptions {
   }) => ClaudeQueryRuntime;
   readonly nativeEventLogPath?: string;
   readonly nativeEventLogger?: EventNdjsonLogger;
+  /**
+   * Reports every change to the rejected rate-limit windows so the driver can
+   * project a structured provider limit. Empty means no rejected window.
+   */
+  readonly onRateLimitChange?: (
+    rejected: ReadonlyArray<{
+      readonly rateLimitType: string;
+      readonly resetsAtEpochSeconds: number | undefined;
+    }>,
+  ) => Effect.Effect<void>;
 }
 
 function isUuid(value: string): boolean {
@@ -1072,9 +1095,17 @@ const buildUserMessageEffect = Effect.fn("buildUserMessageEffect")(function* (
   return buildUserMessage({ sdkContent });
 });
 
-function turnStatusFromResult(result: SDKResultMessage): ProviderRuntimeTurnStatus {
+function turnStatusFromResult(
+  result: SDKResultMessage,
+  failure: ClaudeResultFailure | undefined,
+): ProviderRuntimeTurnStatus {
   if (result.subtype === "success") {
-    return "completed";
+    // An explicit abort arrives with `subtype: "success"`. It is an
+    // interruption, never a completed or failed turn.
+    if (isAbortedClaudeResult(result)) {
+      return "interrupted";
+    }
+    return failure === undefined ? "completed" : "failed";
   }
 
   const errors = resultErrorsText(result);
@@ -1759,6 +1790,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     context: ClaudeSessionContext,
     message: string,
     cause?: unknown,
+    errorClass: RuntimeErrorClass = "provider_error",
   ) {
     if (cause !== undefined) {
       void cause;
@@ -1774,7 +1806,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       ...(turnState ? { turnId: asCanonicalTurnId(turnState.turnId) } : {}),
       payload: {
         message,
-        class: "provider_error",
+        class: errorClass,
         ...(cause !== undefined ? { detail: cause } : {}),
       },
       providerRefs: nativeProviderRefs(context),
@@ -2589,7 +2621,17 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     context: ClaudeSessionContext,
     message: SDKMessage,
   ) {
-    if (message.type !== "assistant" || message.error !== undefined) {
+    if (message.type !== "assistant") {
+      return;
+    }
+    if (message.error !== undefined) {
+      // The CLI renders API failures as a synthetic assistant message. Keep it
+      // out of the transcript and keep its text for the failing result that
+      // follows.
+      if (message.parent_tool_use_id === null) {
+        const text = extractAssistantTextBlocks(message).join("\n").trim();
+        context.lastApiError = { code: message.error, text: text.length > 0 ? text : undefined };
+      }
       return;
     }
 
@@ -2690,11 +2732,41 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       return;
     }
 
-    const status = turnStatusFromResult(message);
-    const errorMessage = message.subtype === "success" ? undefined : message.errors[0];
+    const nowSeconds = Math.floor(DateTime.toEpochMillis(yield* DateTime.now) / 1000);
+    const resetsAtEpochSeconds = latestRejectedResetSeconds(context.rejectedRateLimits, nowSeconds);
+    const failure = claudeResultFailure(message, {
+      ...(context.lastApiError !== undefined ? { assistantError: context.lastApiError } : {}),
+      ...(resetsAtEpochSeconds !== undefined ? { resetsAtEpochSeconds } : {}),
+    });
+    const status = turnStatusFromResult(message, failure);
+    const errorMessage =
+      failure?.message ?? (message.subtype === "success" ? undefined : message.errors[0]);
+    context.lastApiError = undefined;
 
     if (status === "failed") {
-      yield* emitRuntimeError(context, errorMessage ?? "Claude turn failed.");
+      yield* emitRuntimeError(
+        context,
+        errorMessage ?? "Claude turn failed.",
+        failure !== undefined
+          ? {
+              kind: failure.kind,
+              ...(failure.resetsAt !== undefined ? { resetsAt: failure.resetsAt } : {}),
+              ...(failure.apiErrorStatus !== undefined
+                ? { apiErrorStatus: failure.apiErrorStatus }
+                : {}),
+              ...(failure.terminalReason !== undefined
+                ? { terminalReason: failure.terminalReason }
+                : {}),
+            }
+          : undefined,
+        failure?.kind === "auth" ? "permission_error" : "provider_error",
+      );
+    }
+
+    if (status === "completed" && context.rejectedRateLimits.size > 0) {
+      // A completed turn proves the rejected window no longer blocks work.
+      context.rejectedRateLimits = new Map();
+      yield* options?.onRateLimitChange?.([]) ?? Effect.void;
     }
 
     yield* completeTurn(context, status, errorMessage, message);
@@ -3017,6 +3089,16 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
 
     if (message.type === "rate_limit_event") {
+      // A rejected report is real evidence even when it carries no reset; a
+      // bare 429 result without this event must not fabricate one.
+      const info = message.rate_limit_info;
+      if (info !== undefined) {
+        context.rejectedRateLimits = updateRejectedRateLimits(context.rejectedRateLimits, {
+          status: info.status,
+          rateLimitType: info.rateLimitType,
+          resetsAt: info.resetsAt,
+        });
+      }
       yield* offerRuntimeEvent({
         ...base,
         type: "account.rate-limits.updated",
@@ -3024,6 +3106,14 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           rateLimits: message,
         },
       });
+      yield* (
+        options?.onRateLimitChange?.(
+          [...context.rejectedRateLimits].map(([rateLimitType, resetsAtEpochSeconds]) => ({
+            rateLimitType,
+            resetsAtEpochSeconds,
+          })),
+        ) ?? Effect.void
+      );
       return;
     }
   });
@@ -3786,6 +3876,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         compactionBaseline: undefined,
         lastAssistantUuid: resumeState?.resumeSessionAt,
         lastThreadStartedId: undefined,
+        lastApiError: undefined,
+        rejectedRateLimits: new Map(),
         stopped: false,
         interruptedTurnIds: new Set(),
       };
@@ -3917,6 +4009,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
     const turnId = steeringTurnState?.turnId ?? TurnId.make(yield* randomUUIDv4);
     if (steeringTurnState === null) {
+      context.lastApiError = undefined;
       const turnState: ClaudeTurnState = {
         turnId,
         startedAt: yield* nowIso,
