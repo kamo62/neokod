@@ -1,4 +1,5 @@
 import * as NodeURL from "node:url";
+import * as NodeCrypto from "node:crypto";
 
 import type { ChatAttachment, ProviderApprovalDecision, RuntimeMode } from "@neokod/contracts";
 import {
@@ -34,9 +35,40 @@ import { collectStreamAsString } from "./providerSnapshot.ts";
 import * as NetService from "@neokod/shared/Net";
 import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import { resolveSpawnCommand } from "@neokod/shared/shell";
+import { OpenCodeServerLedger } from "./OpenCodeServerLedger.ts";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.UnknownFromJsonString);
 
 const OPENCODE_SERVER_READY_PREFIX = "opencode server listening";
+const OPENCODE_SERVER_USERNAME = "opencode";
+
+/**
+ * Names removed from the child's environment: Neokod-internal configuration and
+ * any inherited OpenCode auth that would shadow the per-spawn password.
+ *
+ * Provider API keys, `HOME`, `PATH`, `XDG_*` and `OPENCODE_CONFIG_*` pass
+ * through because OpenCode needs them to find its config and credentials.
+ */
+const OPENCODE_CHILD_ENV_DENY_PREFIXES = ["NEOKOD_", "T3CODE_"] as const;
+const OPENCODE_CHILD_ENV_DENY_NAMES = new Set([
+  "OPENCODE_SERVER_PASSWORD",
+  "OPENCODE_SERVER_USERNAME",
+  "OPENCODE_PASSWORD",
+]);
+
+export function buildOpenCodeServerEnvironment(
+  base: NodeJS.ProcessEnv,
+  serverPassword: string,
+): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [name, value] of Object.entries(base)) {
+    if (value === undefined) continue;
+    if (OPENCODE_CHILD_ENV_DENY_NAMES.has(name)) continue;
+    if (OPENCODE_CHILD_ENV_DENY_PREFIXES.some((prefix) => name.startsWith(prefix))) continue;
+    env[name] = value;
+  }
+  env.OPENCODE_SERVER_PASSWORD = serverPassword;
+  return env;
+}
 /**
  * Budget for `opencode serve` to spawn and announce its listening URL.
  *
@@ -72,12 +104,14 @@ const DEFAULT_HOSTNAME = "127.0.0.1";
 export interface OpenCodeServerProcess {
   readonly url: string;
   readonly exitCode: Effect.Effect<number, never>;
+  readonly serverPassword?: string;
 }
 
 export interface OpenCodeServerConnection {
   readonly url: string;
   readonly exitCode: Effect.Effect<number, never> | null;
   readonly external: boolean;
+  readonly serverPassword?: string;
 }
 
 const OPENCODE_RUNTIME_ERROR_TAG = "OpenCodeRuntimeError";
@@ -325,6 +359,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const netService = yield* NetService.NetService;
   const hostPlatform = yield* HostProcessPlatform;
+  const ledger = yield* OpenCodeServerLedger;
   const resolveCommand = (command: string, args: ReadonlyArray<string>, env?: NodeJS.ProcessEnv) =>
     resolveSpawnCommand(command, args, env ? { env } : {});
 
@@ -386,23 +421,34 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
         ));
       const timeoutMs = input.timeoutMs ?? OPENCODE_SERVER_TIMEOUT_MS;
       const args = ["serve", `--hostname=${hostname}`, `--port=${port}`];
-      const spawnCommand = yield* resolveCommand(input.binaryPath, args, input.environment);
+      // The password lives only in the child environment, never in argv where
+      // any local `ps` could read it. `extendEnv: false` is required because
+      // the spawner otherwise merges the parent environment back over `env`,
+      // restoring the names the scrub just removed.
+      const serverPassword = NodeCrypto.randomBytes(32).toString("base64url");
+      const childEnvironment = buildOpenCodeServerEnvironment(
+        input.environment ?? process.env,
+        serverPassword,
+      );
+      const spawnCommand = yield* resolveCommand(input.binaryPath, args, childEnvironment);
 
       const child = yield* spawner
         .spawn(
           ChildProcess.make(spawnCommand.command, spawnCommand.args, {
             detached: hostPlatform !== "win32",
             shell: spawnCommand.shell,
-            // The caller's environment must reach opencode untouched. This
-            // spawn used to write OPENCODE_CONFIG_CONTENT="{}" after the
-            // spread, which silently replaced a value the operator had
-            // exported. It was never a way to run opencode without a config:
-            // opencode loads its global and project config first and merges
-            // this variable as one more source on top, so "{}" only ever
-            // applied an empty overlay. Nothing here needs a config-less
-            // opencode either; the whitelist/blacklist handling in
-            // OpenCodeProvider.flattenOpenCodeModels reads the real config.
-            ...(input.environment ? { env: input.environment } : { extendEnv: true }),
+            // The caller's environment reaches opencode with Neokod-internal
+            // names and inherited OpenCode auth removed. This spawn used to
+            // write OPENCODE_CONFIG_CONTENT="{}" after the spread, which
+            // silently replaced a value the operator had exported. It was
+            // never a way to run opencode without a config: opencode loads its
+            // global and project config first and merges this variable as one
+            // more source on top, so "{}" only ever applied an empty overlay.
+            // Nothing here needs a config-less opencode either; the
+            // whitelist/blacklist handling in OpenCodeProvider.flattenOpenCodeModels
+            // reads the real config.
+            env: childEnvironment,
+            extendEnv: false,
           }),
         )
         .pipe(
@@ -435,6 +481,14 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
         Effect.ignore,
       );
       yield* Scope.addFinalizer(runtimeScope, terminateChild);
+
+      // Record the process group so a later boot can find and stop it after a
+      // hard crash of this server. Finalizers run in reverse order, so `forget`
+      // runs before the kill above; that is acceptable because the entry only
+      // matters while the owner is alive. A crash between the two leaves an
+      // entry whose owner is dead, which the next start reaps and verifies.
+      const forget = yield* ledger.track({ pid: Number(child.pid), port, args });
+      yield* Scope.addFinalizer(runtimeScope, forget);
 
       const stdoutRef = yield* Ref.make("");
       const stderrRef = yield* Ref.make("");
@@ -528,6 +582,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
           Effect.map(Number),
           Effect.orElseSucceed(() => 0),
         ),
+        serverPassword,
       } satisfies OpenCodeServerProcess;
     });
 
@@ -553,6 +608,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
         url: server.url,
         exitCode: server.exitCode,
         external: false,
+        ...(server.serverPassword !== undefined ? { serverPassword: server.serverPassword } : {}),
       })),
     );
   };
@@ -564,7 +620,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
       ...(input.serverPassword
         ? {
             headers: {
-              Authorization: `Basic ${Buffer.from(`opencode:${input.serverPassword}`, "utf8").toString("base64")}`,
+              Authorization: `Basic ${Buffer.from(`${OPENCODE_SERVER_USERNAME}:${input.serverPassword}`, "utf8").toString("base64")}`,
             },
           }
         : {}),

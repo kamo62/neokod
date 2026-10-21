@@ -10,6 +10,7 @@ import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import { SpawnExecutableResolution } from "@neokod/shared/shell";
 
 import {
+  buildOpenCodeServerEnvironment,
   OpenCodeRuntime,
   OpenCodeRuntimeError,
   OpenCodeRuntimeLive,
@@ -40,6 +41,33 @@ describe("parseOpenCodeServerTimeoutMs", () => {
     for (const raw of ["", "   ", "abc", "15s", "1.5", "1e999", "9007199254740993"]) {
       expect(parseOpenCodeServerTimeoutMs(raw)).toBe(DEFAULT_TIMEOUT_MS);
     }
+  });
+});
+
+describe("buildOpenCodeServerEnvironment", () => {
+  it("drops NEOKOD_, T3CODE_ and inherited OpenCode auth names", () => {
+    const env = buildOpenCodeServerEnvironment(
+      {
+        HOME: "/home/operator",
+        PATH: "/usr/bin",
+        NEOKOD_ACCESS_TOKEN: "secret",
+        T3CODE_MODE: "dev",
+        OPENCODE_SERVER_PASSWORD: "legacy-password",
+        OPENCODE_SERVER_USERNAME: "someone",
+        OPENCODE_PASSWORD: "newer-password",
+        OPENCODE_CONFIG_CONTENT: "{}",
+        ANTHROPIC_API_KEY: "provider-key",
+      },
+      "spawned-password",
+    );
+
+    expect(env).toEqual({
+      HOME: "/home/operator",
+      PATH: "/usr/bin",
+      OPENCODE_CONFIG_CONTENT: "{}",
+      ANTHROPIC_API_KEY: "provider-key",
+      OPENCODE_SERVER_PASSWORD: "spawned-password",
+    });
   });
 });
 
@@ -159,27 +187,69 @@ describe("startOpenCodeServerProcess environment passthrough", () => {
         });
 
         expect(captured).toHaveLength(1);
-        // Exact match: nothing injected, and the caller's environment
-        // (including HOME, which opencode needs to find its config and
-        // auth state) reaches the child as-is.
+        // Exact match: nothing injected beyond the per-spawn password, and the
+        // caller's environment (including HOME, which opencode needs to find
+        // its config and auth state) reaches the child as-is.
         expect(captured[0]?.options.env).toEqual({
           HOME: "/home/operator",
           PATH: "/usr/bin",
+          OPENCODE_SERVER_PASSWORD: expect.any(String),
         });
       }).pipe(Effect.provide(runtimeLayerWith(makeCapturingSpawner(captured))));
     },
   );
 
-  it.effect("inherits the parent environment wholesale when no environment is given", () => {
+  it.effect("uses the scrubbed process environment when none is given", () => {
     const captured: Array<CapturedSpawn> = [];
+    const previousSecret = process.env.NEOKOD_TEST_SECRET;
+    const previousOpenCodePassword = process.env.OPENCODE_PASSWORD;
     return Effect.gen(function* () {
+      process.env.NEOKOD_TEST_SECRET = "x";
+      process.env.OPENCODE_PASSWORD = "inherited";
       yield* startServerAndSettle();
 
       expect(captured).toHaveLength(1);
-      // No override object at all: the child extends the parent process
-      // environment, so an operator-exported OPENCODE_CONFIG_CONTENT wins.
-      expect(captured[0]?.options.env).toBeUndefined();
-      expect(captured[0]?.options.extendEnv).toBe(true);
+      // The scrub must also apply when the caller passes no environment: the
+      // spawner used to merge the parent environment back over the child env.
+      expect(captured[0]?.options.extendEnv).toBe(false);
+      expect(captured[0]?.options.env?.NEOKOD_TEST_SECRET).toBeUndefined();
+      expect(captured[0]?.options.env?.OPENCODE_PASSWORD).toBeUndefined();
+      expect(captured[0]?.options.env?.PATH).toBe(process.env.PATH);
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (previousSecret === undefined) {
+            delete process.env.NEOKOD_TEST_SECRET;
+          } else {
+            process.env.NEOKOD_TEST_SECRET = previousSecret;
+          }
+          if (previousOpenCodePassword === undefined) {
+            delete process.env.OPENCODE_PASSWORD;
+          } else {
+            process.env.OPENCODE_PASSWORD = previousOpenCodePassword;
+          }
+        }),
+      ),
+      Effect.provide(runtimeLayerWith(makeCapturingSpawner(captured))),
+    );
+  });
+
+  it.effect("generates a distinct password per spawn and keeps it out of argv", () => {
+    const captured: Array<CapturedSpawn> = [];
+    return Effect.gen(function* () {
+      const first = yield* startServerAndSettle({ HOME: "/home/operator" });
+      const second = yield* startServerAndSettle({ HOME: "/home/operator" });
+
+      expect(typeof first.serverPassword).toBe("string");
+      expect(typeof second.serverPassword).toBe("string");
+      expect(first.serverPassword?.length ?? 0).toBeGreaterThanOrEqual(40);
+      expect(first.serverPassword, "each spawned server needs its own credential").not.toBe(
+        second.serverPassword,
+      );
+      expect(captured[0]?.options.env?.OPENCODE_SERVER_PASSWORD).toBe(first.serverPassword);
+      expect(captured[1]?.options.env?.OPENCODE_SERVER_PASSWORD).toBe(second.serverPassword);
+      expect(captured[0]?.args.join(" ")).not.toContain(first.serverPassword);
+      expect(captured[1]?.args.join(" ")).not.toContain(second.serverPassword);
     }).pipe(Effect.provide(runtimeLayerWith(makeCapturingSpawner(captured))));
   });
 });

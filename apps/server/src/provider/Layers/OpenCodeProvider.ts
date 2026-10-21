@@ -432,13 +432,16 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
           serverUrl: openCodeSettings.serverUrl,
           environment: resolvedEnvironment,
         });
+        // Keep the user's configured password for an external server and use
+        // the generated one for a server this process spawned.
+        const clientPassword = isExternalServer
+          ? openCodeSettings.serverPassword
+          : server.serverPassword;
         return yield* openCodeRuntime.loadOpenCodeInventory(
           openCodeRuntime.createOpenCodeSdkClient({
             baseUrl: server.url,
             directory: cwd,
-            ...(isExternalServer && openCodeSettings.serverPassword
-              ? { serverPassword: openCodeSettings.serverPassword }
-              : {}),
+            ...(clientPassword ? { serverPassword: clientPassword } : {}),
           }),
         );
       }).pipe(

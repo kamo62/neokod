@@ -114,6 +114,7 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
       return {
         url,
         exitCode: Effect.never,
+        serverPassword: "spawned-password",
       };
     }),
   connectToOpenCodeServer: ({ serverUrl }) =>
@@ -135,6 +136,7 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
         url,
         exitCode: null,
         external: Boolean(serverUrl),
+        ...(serverUrl ? {} : { serverPassword: "spawned-password" }),
       };
     }),
   runOpenCodeCommand: () => Effect.succeed({ stdout: "", stderr: "", code: 0 }),
@@ -258,6 +260,14 @@ const openCodeAdapterTestSettings = Schema.decodeSync(OpenCodeSettings)({
   serverPassword: "secret-password",
 });
 
+// A spawned-server configuration: the settings password must be ignored in
+// favour of the password generated for that child process.
+const openCodeLocalServerTestSettings = Schema.decodeSync(OpenCodeSettings)({
+  binaryPath: "fake-opencode",
+  serverUrl: "",
+  serverPassword: "configured-password-must-not-be-used",
+});
+
 const OpenCodeAdapterTestLayer = Layer.effect(
   OpenCodeAdapter,
   makeOpenCodeAdapter(openCodeAdapterTestSettings),
@@ -372,6 +382,32 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       ]);
     }),
   );
+
+  it.effect("spawned local server clients authenticate with the generated password", () => {
+    const adapterLayer = Layer.effect(
+      OpenCodeAdapter,
+      makeOpenCodeAdapter(openCodeLocalServerTestSettings),
+    ).pipe(
+      Layer.provideMerge(Layer.succeed(OpenCodeRuntime, OpenCodeRuntimeTestDouble)),
+      Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
+      Layer.provideMerge(ServerSettingsService.layerTest()),
+      Layer.provideMerge(providerSessionDirectoryTestLayer),
+      Layer.provideMerge(NodeServices.layer),
+    );
+
+    return Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId: asThreadId("thread-opencode-local-password"),
+        runtimeMode: "full-access",
+      });
+
+      NodeAssert.deepEqual(runtimeMock.state.authHeaders, [
+        `Basic ${btoa("opencode:spawned-password")}`,
+      ]);
+    }).pipe(Effect.provide(adapterLayer));
+  });
 
   it.effect("stops a configured-server session without trying to own server lifecycle", () =>
     Effect.gen(function* () {

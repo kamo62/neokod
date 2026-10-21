@@ -1240,10 +1240,13 @@ export function makeOpenCodeAdapter(
                 serverUrl,
                 ...(options?.environment ? { environment: options.environment } : {}),
               });
+              // A spawned server uses the password generated for that process;
+              // an external server keeps the user's configured one.
+              const clientPassword = server.external ? serverPassword : server.serverPassword;
               const client = openCodeRuntime.createOpenCodeSdkClient({
                 baseUrl: server.url,
                 directory,
-                ...(server.external && serverPassword ? { serverPassword } : {}),
+                ...(clientPassword ? { serverPassword: clientPassword } : {}),
               });
               const mcpSession = McpProviderSession.readMcpProviderSession(input.threadId);
               if (mcpSession && !server.external) {
