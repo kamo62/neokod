@@ -17,6 +17,7 @@ import {
   OpenCodeRuntimeError,
   OpenCodeRuntimeLive,
   parseOpenCodeServerTimeoutMs,
+  parseOpenCodeServerUrlFromOutput,
   terminateOpenCodeProcessGroup,
 } from "./opencodeRuntime.ts";
 import { OpenCodeServerLedger, type OpenCodeServerLedgerShape } from "./OpenCodeServerLedger.ts";
@@ -45,6 +46,24 @@ describe("parseOpenCodeServerTimeoutMs", () => {
     for (const raw of ["", "   ", "abc", "15s", "1.5", "1e999", "9007199254740993"]) {
       expect(parseOpenCodeServerTimeoutMs(raw)).toBe(DEFAULT_TIMEOUT_MS);
     }
+  });
+});
+
+describe("parseOpenCodeServerUrlFromOutput", () => {
+  it("accepts the OpenCode 1.x readiness banner", () => {
+    expect(parseOpenCodeServerUrlFromOutput(`opencode server listening on ${SERVER_URL}\n`)).toBe(
+      SERVER_URL,
+    );
+  });
+
+  it("accepts the OpenCode 2 readiness banner without implying v2 support", () => {
+    expect(parseOpenCodeServerUrlFromOutput(`server listening on ${SERVER_URL}\n`)).toBe(
+      SERVER_URL,
+    );
+  });
+
+  it("ignores unrelated output", () => {
+    expect(parseOpenCodeServerUrlFromOutput("starting opencode\n")).toBeNull();
   });
 });
 
@@ -120,22 +139,48 @@ function makeServerHandle(onKill?: () => void) {
   });
 }
 
-const makeCapturingSpawner = (captured: Array<CapturedSpawn>) =>
+const makeCommandHandle = (stdout: string) =>
+  ChildProcessSpawner.makeHandle({
+    pid: ChildProcessSpawner.ProcessId(1),
+    exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
+    isRunning: Effect.succeed(false),
+    kill: () => Effect.void,
+    unref: Effect.succeed(Effect.void),
+    stdin: Sink.drain,
+    stdout: Stream.encodeText(Stream.make(stdout)),
+    stderr: Stream.empty,
+    all: Stream.empty,
+    getInputFd: () => Sink.drain,
+    getOutputFd: () => Stream.empty,
+  });
+
+const makeCapturingSpawner = (
+  captured: Array<CapturedSpawn>,
+  versionStdout = "opencode 1.14.19\n",
+) =>
   ChildProcessSpawner.make((command) =>
     Effect.sync(() => {
-      captured.push(command as unknown as CapturedSpawn);
-      return makeServerHandle();
+      const capturedCommand = command as unknown as CapturedSpawn;
+      captured.push(capturedCommand);
+      return capturedCommand.args.includes("--version")
+        ? makeCommandHandle(versionStdout)
+        : makeServerHandle();
     }),
   );
+
+const capturedServerSpawns = (captured: ReadonlyArray<CapturedSpawn>) =>
+  captured.filter((spawn) => spawn.args.includes("serve"));
 
 // Records the order of shutdown effects. The runtime kills through the fake
 // handle, and the fake ledger records when the entry is forgotten.
 const makeOrderingSpawner = (events: Array<string>) =>
-  ChildProcessSpawner.make(() =>
+  ChildProcessSpawner.make((command) =>
     Effect.succeed(
-      makeServerHandle(() => {
-        events.push("terminate");
-      }),
+      (command as unknown as CapturedSpawn).args.includes("--version")
+        ? makeCommandHandle("opencode 1.14.19\n")
+        : makeServerHandle(() => {
+            events.push("terminate");
+          }),
     ),
   );
 
@@ -201,11 +246,12 @@ describe("startOpenCodeServerProcess environment passthrough", () => {
       });
 
       expect(server.url).toBe(SERVER_URL);
-      expect(captured).toHaveLength(1);
+      const serverSpawn = capturedServerSpawns(captured)[0];
+      expect(serverSpawn).toBeDefined();
       // The forced empty config used to win over the spread here, so the
       // operator's exported value was replaced with "{}" before the child
       // ever saw it.
-      expect(captured[0]?.options.env?.OPENCODE_CONFIG_CONTENT).toBe(configContent);
+      expect(serverSpawn?.options.env?.OPENCODE_CONFIG_CONTENT).toBe(configContent);
     }).pipe(Effect.provide(runtimeLayerWith(makeCapturingSpawner(captured))));
   });
 
@@ -219,11 +265,12 @@ describe("startOpenCodeServerProcess environment passthrough", () => {
           PATH: "/usr/bin",
         });
 
-        expect(captured).toHaveLength(1);
+        const serverSpawn = capturedServerSpawns(captured)[0];
+        expect(serverSpawn).toBeDefined();
         // Exact match: nothing injected beyond the per-spawn password, and the
         // caller's environment (including HOME, which opencode needs to find
         // its config and auth state) reaches the child as-is.
-        expect(captured[0]?.options.env).toEqual({
+        expect(serverSpawn?.options.env).toEqual({
           HOME: "/home/operator",
           PATH: "/usr/bin",
           OPENCODE_SERVER_PASSWORD: expect.any(String),
@@ -241,13 +288,14 @@ describe("startOpenCodeServerProcess environment passthrough", () => {
       process.env.OPENCODE_PASSWORD = "inherited";
       yield* startServerAndSettle();
 
-      expect(captured).toHaveLength(1);
+      const serverSpawn = capturedServerSpawns(captured)[0];
+      expect(serverSpawn).toBeDefined();
       // The scrub must also apply when the caller passes no environment: the
       // spawner used to merge the parent environment back over the child env.
-      expect(captured[0]?.options.extendEnv).toBe(false);
-      expect(captured[0]?.options.env?.NEOKOD_TEST_SECRET).toBeUndefined();
-      expect(captured[0]?.options.env?.OPENCODE_PASSWORD).toBeUndefined();
-      expect(captured[0]?.options.env?.PATH).toBe(process.env.PATH);
+      expect(serverSpawn?.options.extendEnv).toBe(false);
+      expect(serverSpawn?.options.env?.NEOKOD_TEST_SECRET).toBeUndefined();
+      expect(serverSpawn?.options.env?.OPENCODE_PASSWORD).toBeUndefined();
+      expect(serverSpawn?.options.env?.PATH).toBe(process.env.PATH);
     }).pipe(
       Effect.ensuring(
         Effect.sync(() => {
@@ -279,11 +327,37 @@ describe("startOpenCodeServerProcess environment passthrough", () => {
       expect(first.serverPassword, "each spawned server needs its own credential").not.toBe(
         second.serverPassword,
       );
-      expect(captured[0]?.options.env?.OPENCODE_SERVER_PASSWORD).toBe(first.serverPassword);
-      expect(captured[1]?.options.env?.OPENCODE_SERVER_PASSWORD).toBe(second.serverPassword);
-      expect(captured[0]?.args.join(" ")).not.toContain(first.serverPassword);
-      expect(captured[1]?.args.join(" ")).not.toContain(second.serverPassword);
+      const [firstServerSpawn, secondServerSpawn] = capturedServerSpawns(captured);
+      expect(firstServerSpawn?.options.env?.OPENCODE_SERVER_PASSWORD).toBe(first.serverPassword);
+      expect(secondServerSpawn?.options.env?.OPENCODE_SERVER_PASSWORD).toBe(second.serverPassword);
+      for (const spawn of captured) {
+        expect(spawn.args.join(" ")).not.toContain(first.serverPassword);
+        expect(spawn.args.join(" ")).not.toContain(second.serverPassword);
+      }
     }).pipe(Effect.provide(runtimeLayerWith(makeCapturingSpawner(captured))));
+  });
+});
+
+describe("startOpenCodeServerProcess version guard", () => {
+  it.effect("refuses to launch the OpenCode 2 HTTP server", () => {
+    const captured: Array<CapturedSpawn> = [];
+    return Effect.gen(function* () {
+      const exit = yield* Effect.exit(startServerAndSettle());
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(capturedServerSpawns(captured)).toHaveLength(0);
+      expect(captured.map((spawn) => spawn.args.join(" "))).toEqual(["--version"]);
+    }).pipe(Effect.provide(runtimeLayerWith(makeCapturingSpawner(captured, "opencode v2.0.32\n"))));
+  });
+
+  it.effect("still launches the supported OpenCode 1.x HTTP server", () => {
+    const captured: Array<CapturedSpawn> = [];
+    return Effect.gen(function* () {
+      const server = yield* startServerAndSettle();
+
+      expect(server.url).toBe(SERVER_URL);
+      expect(capturedServerSpawns(captured)).toHaveLength(1);
+    }).pipe(Effect.provide(runtimeLayerWith(makeCapturingSpawner(captured, "opencode 1.18.15\n"))));
   });
 });
 

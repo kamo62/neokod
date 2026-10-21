@@ -13,8 +13,9 @@
  * @module provider/Drivers/OpenCodeDriver
  */
 import { OpenCodeSettings, ProviderDriverKind, type ServerProvider } from "@neokod/contracts";
-import * as Duration from "effect/Duration";
+import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -43,10 +44,17 @@ import type { ServerProviderDraft } from "../providerSnapshot.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import {
   enrichProviderSnapshotWithVersionAdvisory,
+  makeManualOnlyProviderMaintenanceCapabilities,
   makePackageManagedProviderMaintenanceResolver,
   normalizeCommandPath,
   resolveProviderMaintenanceCapabilitiesEffect,
+  type ProviderMaintenanceCapabilities,
 } from "../providerMaintenance.ts";
+import {
+  classifyOpenCodeVersion,
+  parseOpenCodeVersionOutput,
+  type OpenCodeVersion,
+} from "../openCodeVersion.ts";
 import {
   haveProviderSnapshotSettingsChanged,
   makeProviderSnapshotSettingsSource,
@@ -76,6 +84,29 @@ const UPDATE = makePackageManagedProviderMaintenanceResolver({
     isCommandPath: isOpenCodeNativeCommandPath,
   },
 });
+
+/**
+ * A known OpenCode 2 install must not be offered the 1.x package or native
+ * updater: both would replace the user's v2 CLI with a downgrade. There is no
+ * v2 updater in this change, so manual maintenance is the honest capability.
+ * An unverified install keeps the existing resolver behaviour.
+ */
+export function resolveOpenCodeMaintenanceCapabilities(input: {
+  readonly knownVersion: OpenCodeVersion | null;
+  readonly fallback: ProviderMaintenanceCapabilities;
+}): ProviderMaintenanceCapabilities {
+  if (input.knownVersion === null || input.knownVersion.supported) {
+    return input.fallback;
+  }
+  return makeManualOnlyProviderMaintenanceCapabilities({
+    provider: input.fallback.provider,
+    packageName: null,
+  });
+}
+
+export function supportsOpenCodeSymphonyCodeReview(knownVersion: OpenCodeVersion | null): boolean {
+  return knownVersion === null || knownVersion.supported;
+}
 
 export type OpenCodeDriverEnv =
   | ChildProcessSpawner.ChildProcessSpawner
@@ -131,9 +162,38 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
         continuationGroupKey: continuationIdentity.continuationKey,
       });
       const effectiveConfig = { ...config, enabled } satisfies OpenCodeSettings;
-      const maintenanceCapabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
-        binaryPath: effectiveConfig.binaryPath,
-        env: processEnv,
+      const isExternalServer = effectiveConfig.serverUrl.trim().length > 0;
+      // Only enabled local instances are probed. Disabled instances must not
+      // spawn the CLI merely because the registry materialized them, and a
+      // configured external server's protocol is never inferred from the
+      // local binary.
+      const knownVersion =
+        enabled && !isExternalServer
+          ? yield* openCodeRuntime
+              .runOpenCodeCommand({
+                binaryPath: effectiveConfig.binaryPath,
+                args: ["--version"],
+                environment: processEnv,
+              })
+              .pipe(
+                Effect.map((result) => {
+                  const parsed = parseOpenCodeVersionOutput(result.stdout);
+                  return parsed ? classifyOpenCodeVersion(parsed) : null;
+                }),
+                Effect.catchCause((cause) =>
+                  Effect.logDebug("Could not verify the OpenCode CLI version", {
+                    binaryPath: effectiveConfig.binaryPath,
+                    cause: Cause.pretty(cause),
+                  }).pipe(Effect.as(null)),
+                ),
+              )
+          : null;
+      const maintenanceCapabilities = resolveOpenCodeMaintenanceCapabilities({
+        knownVersion,
+        fallback: yield* resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
+          binaryPath: effectiveConfig.binaryPath,
+          env: processEnv,
+        }),
       });
 
       const adapter = yield* makeOpenCodeAdapter(effectiveConfig, {
@@ -187,7 +247,7 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
         displayName,
         accentColor,
         enabled,
-        symphonyCodeReview: true,
+        symphonyCodeReview: supportsOpenCodeSymphonyCodeReview(knownVersion),
         snapshot,
         adapter,
         textGeneration,

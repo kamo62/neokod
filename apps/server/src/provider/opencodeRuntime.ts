@@ -44,9 +44,16 @@ import {
 } from "@neokod/shared/processGroup";
 import { resolveSpawnCommand } from "@neokod/shared/shell";
 import { OpenCodeServerLedger } from "./OpenCodeServerLedger.ts";
+import {
+  classifyOpenCodeVersion,
+  formatOpenCodeUnsupportedVersionMessage,
+  parseOpenCodeVersionOutput,
+} from "./openCodeVersion.ts";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.UnknownFromJsonString);
 
-const OPENCODE_SERVER_READY_PREFIX = "opencode server listening";
+// OpenCode 1.x names its own banner; v2 prints the generic one. Parsing both
+// keeps startup diagnostics usable without claiming that v2 is supported.
+const OPENCODE_SERVER_READY_PREFIXES = ["opencode server listening", "server listening"] as const;
 const OPENCODE_SERVER_USERNAME = "opencode";
 
 /**
@@ -313,9 +320,9 @@ export interface OpenCodeRuntimeShape {
   ) => Effect.Effect<OpenCodeInventory, OpenCodeRuntimeError>;
 }
 
-function parseServerUrlFromOutput(output: string): string | null {
+export function parseOpenCodeServerUrlFromOutput(output: string): string | null {
   for (const line of output.split("\n")) {
-    if (!line.startsWith(OPENCODE_SERVER_READY_PREFIX)) {
+    if (!OPENCODE_SERVER_READY_PREFIXES.some((prefix) => line.startsWith(prefix))) {
       continue;
     }
     const match = line.match(/on\s+(https?:\/\/[^\s]+)/);
@@ -490,8 +497,51 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
       ),
     );
 
+  /**
+   * Refuse to launch a local OpenCode 2 HTTP server before the child exists.
+   *
+   * The provider status check normally rejects v2 first, but adapters and
+   * text generation can start a server without refreshing that snapshot.
+   * A failed or unparseable version probe preserves the existing behaviour:
+   * only an affirmatively classified unsupported major is blocked.
+   */
+  const assertSupportedOpenCodeVersion = (input: {
+    readonly binaryPath: string;
+    readonly environment?: NodeJS.ProcessEnv;
+  }) =>
+    Effect.gen(function* () {
+      const versionExit = yield* Effect.exit(
+        runOpenCodeCommand({
+          binaryPath: input.binaryPath,
+          args: ["--version"],
+          ...(input.environment ? { environment: input.environment } : {}),
+        }),
+      );
+      if (Exit.isFailure(versionExit)) {
+        yield* Effect.logDebug(
+          "Could not verify the OpenCode CLI version before starting its server; continuing without a version guard",
+          { binaryPath: input.binaryPath, cause: Cause.squash(versionExit.cause) },
+        );
+        return;
+      }
+
+      const parsed = parseOpenCodeVersionOutput(versionExit.value.stdout);
+      const knownVersion = parsed ? classifyOpenCodeVersion(parsed) : null;
+      if (knownVersion && !knownVersion.supported) {
+        return yield* new OpenCodeRuntimeError({
+          operation: "startOpenCodeServerProcess",
+          detail: formatOpenCodeUnsupportedVersionMessage(knownVersion),
+        });
+      }
+    });
+
   const startOpenCodeServerProcess: OpenCodeRuntimeShape["startOpenCodeServerProcess"] = (input) =>
     Effect.gen(function* () {
+      yield* assertSupportedOpenCodeVersion({
+        binaryPath: input.binaryPath,
+        ...(input.environment !== undefined ? { environment: input.environment } : {}),
+      });
+
       // Bind this server's lifetime to the caller's scope. When the caller's
       // scope closes, the spawned child is killed and all associated fibers
       // are interrupted automatically — no `close()` method needed.
@@ -619,7 +669,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
       const setReadyFromStdoutChunk = (chunk: string) =>
         Ref.updateAndGet(stdoutRef, (stdout) => `${stdout}${chunk}`).pipe(
           Effect.flatMap((nextStdout) => {
-            const parsed = parseServerUrlFromOutput(nextStdout);
+            const parsed = parseOpenCodeServerUrlFromOutput(nextStdout);
             return parsed
               ? Deferred.succeed(readyDeferred, parsed).pipe(Effect.ignore)
               : Effect.void;
