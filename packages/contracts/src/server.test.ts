@@ -87,6 +87,46 @@ describe("ServerProvider", () => {
     });
   });
 
+  it("decodes an optional provider usage limit", () => {
+    const parsed = decodeServerProvider({
+      ...baseProviderSnapshot,
+      limit: {
+        kind: "usage_limit",
+        window: "five_hour",
+        resetsAt: "2026-10-04T20:30:00.000Z",
+        observedAt: "2026-10-04T20:00:00.000Z",
+      },
+    });
+
+    expect(parsed.limit).toEqual({
+      kind: "usage_limit",
+      window: "five_hour",
+      resetsAt: "2026-10-04T20:30:00.000Z",
+      observedAt: "2026-10-04T20:00:00.000Z",
+    });
+  });
+
+  it("leaves the usage limit absent for snapshots without one", () => {
+    const parsed = decodeServerProvider(baseProviderSnapshot);
+
+    expect(parsed.limit).toBeUndefined();
+  });
+
+  it("decodes a provider usage limit with an unknown reset", () => {
+    const parsed = decodeServerProvider({
+      ...baseProviderSnapshot,
+      limit: {
+        kind: "usage_limit",
+        observedAt: "2026-10-04T20:00:00.000Z",
+      },
+    });
+
+    expect(parsed.limit).toEqual({
+      kind: "usage_limit",
+      observedAt: "2026-10-04T20:00:00.000Z",
+    });
+  });
+
   it("defaults one-click update support when decoding older advisory snapshots", () => {
     const parsed = decodeServerProvider({
       instanceId: "codex",

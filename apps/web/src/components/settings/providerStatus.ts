@@ -57,6 +57,19 @@ export function getProviderSummary(
       detail: provider.message ?? "CLI not detected on PATH.",
     };
   }
+  if (provider.limit) {
+    const resets = provider.limit.resetsAt
+      ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(
+          new Date(provider.limit.resetsAt),
+        )
+      : null;
+    return {
+      headline: "Usage limit reached",
+      detail: resets
+        ? `Resets ${resets}.`
+        : (provider.message ?? "Try again after the limit resets."),
+    };
+  }
   if (provider.auth.status === "authenticated") {
     const authLabel = provider.auth.label ?? provider.auth.type;
     return {

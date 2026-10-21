@@ -170,6 +170,19 @@ export const ServerProviderUsage = Schema.Struct({
 });
 export type ServerProviderUsage = typeof ServerProviderUsage.Type;
 
+/**
+ * A provider allowance that is currently blocking work. Optional and additive:
+ * older producers omit it, and its absence means no limit was observed — not
+ * that an allowance is available.
+ */
+export const ServerProviderLimit = Schema.Struct({
+  kind: Schema.Literals(["usage_limit"]),
+  window: Schema.optional(TrimmedNonEmptyString),
+  resetsAt: Schema.optional(IsoDateTime),
+  observedAt: IsoDateTime,
+});
+export type ServerProviderLimit = typeof ServerProviderLimit.Type;
+
 export const ServerProvider = Schema.Struct({
   // Routing key for the configured instance this snapshot represents. This
   // is the only stable identity consumers may use for provider routing.
@@ -191,6 +204,7 @@ export const ServerProvider = Schema.Struct({
   checkedAt: IsoDateTime,
   message: Schema.optional(TrimmedNonEmptyString),
   usage: Schema.optional(ServerProviderUsage),
+  limit: Schema.optional(ServerProviderLimit),
   // Optional for back-compat: every legacy producer omits this field and
   // an absent value is interpreted as `"available"` by consumers (see
   // `isProviderAvailable`). New `ProviderInstanceRegistry` outputs set it

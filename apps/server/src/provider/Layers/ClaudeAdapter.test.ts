@@ -168,6 +168,7 @@ function makeHarness(config?: {
   readonly baseDir?: string;
   readonly claudeConfig?: Partial<ClaudeSettings>;
   readonly instanceId?: ProviderInstanceId;
+  readonly onRateLimitChange?: ClaudeAdapterLiveOptions["onRateLimitChange"];
 }) {
   const query = new FakeClaudeQuery();
   let createInput:
@@ -193,6 +194,7 @@ function makeHarness(config?: {
           nativeEventLogPath: config.nativeEventLogPath,
         }
       : {}),
+    ...(config?.onRateLimitChange ? { onRateLimitChange: config.onRateLimitChange } : {}),
   };
 
   return {
@@ -2025,6 +2027,305 @@ describe("ClaudeAdapterLive", () => {
       } as unknown as SDKMessage);
       yield* drainSdkMessages;
       assert.equal(events.filter((event) => event.type === "turn.completed").length, 1);
+      assert.equal(
+        events.some((event) => event.type === "runtime.error"),
+        false,
+      );
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("X3 ends a usage-limit result as a failed turn with the reset time", () => {
+    const rateLimitChanges: Array<
+      ReadonlyArray<{
+        readonly rateLimitType: string;
+        readonly resetsAtEpochSeconds: number | undefined;
+      }>
+    > = [];
+    const harness = makeHarness({
+      onRateLimitChange: (rejected) =>
+        Effect.sync(() => {
+          rateLimitChanges.push(rejected);
+        }),
+    });
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const events: Array<ProviderRuntimeEvent> = [];
+      yield* Stream.runForEach(adapter.streamEvents, (event) =>
+        Effect.sync(() => events.push(event)),
+      ).pipe(Effect.forkChild);
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "A",
+        attachments: [],
+      });
+      const limitText = "You've hit your session limit · resets 10:30pm (Africa/Johannesburg)";
+      harness.query.emit({
+        type: "rate_limit_event",
+        rate_limit_info: {
+          status: "rejected",
+          resetsAt: 1791145800,
+          rateLimitType: "five_hour",
+          overageStatus: "rejected",
+          overageDisabledReason: "out_of_credits",
+          isUsingOverage: false,
+        },
+        uuid: "rl-1",
+        session_id: "sdk-1",
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "assistant",
+        message: {
+          id: "msg-limit",
+          model: "<synthetic>",
+          role: "assistant",
+          type: "message",
+          stop_reason: "stop_sequence",
+          content: [{ type: "text", text: limitText }],
+          usage: { input_tokens: 0, output_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        error: "rate_limit",
+        uuid: "as-1",
+        session_id: "sdk-1",
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        api_error_status: 429,
+        terminal_reason: "api_error",
+        stop_reason: "stop_sequence",
+        result: limitText,
+        duration_ms: 1456,
+        duration_api_ms: 0,
+        num_turns: 1,
+        total_cost_usd: 0,
+        usage: { input_tokens: 0, output_tokens: 0 },
+        modelUsage: {},
+        permission_denials: [],
+        uuid: "res-1",
+        session_id: "sdk-1",
+      } as unknown as SDKMessage);
+      yield* drainSdkMessages;
+
+      const completed = events.filter((event) => event.type === "turn.completed");
+      assert.equal(completed.length, 1);
+      const turnCompleted = completed[0];
+      assert.equal(turnCompleted?.type, "turn.completed");
+      if (turnCompleted?.type === "turn.completed") {
+        assert.equal(turnCompleted.payload.state, "failed");
+        assert.include(turnCompleted.payload.errorMessage, "session limit");
+      }
+
+      const runtimeErrors = events.filter((event) => event.type === "runtime.error");
+      assert.equal(runtimeErrors.length, 1);
+      const runtimeError = runtimeErrors[0];
+      assert.equal(runtimeError?.type, "runtime.error");
+      if (runtimeError?.type === "runtime.error") {
+        assert.equal(runtimeError.payload.message, limitText);
+        assert.deepEqual(runtimeError.payload.detail, {
+          kind: "usage_limit",
+          resetsAt: "2026-10-04T20:30:00.000Z",
+          apiErrorStatus: 429,
+          terminalReason: "api_error",
+        });
+      }
+
+      assert.equal(
+        events.some((event) => event.type === "content.delta"),
+        false,
+      );
+      assert.equal(
+        events.some(
+          (event) =>
+            event.type === "item.completed" &&
+            event.payload.itemType === "assistant_message" &&
+            event.payload.detail?.includes("session limit") === true,
+        ),
+        false,
+      );
+
+      const listed = (yield* adapter.listSessions())[0];
+      assert.equal(listed?.status, "ready");
+      assert.include(listed?.lastError, "session limit");
+      assert.deepEqual(rateLimitChanges.at(-1), [
+        { rateLimitType: "five_hour", resetsAtEpochSeconds: 1791145800 },
+      ]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("X3 clears the rate-limit state after a successful turn", () => {
+    const rateLimitChanges: Array<
+      ReadonlyArray<{
+        readonly rateLimitType: string;
+        readonly resetsAtEpochSeconds: number | undefined;
+      }>
+    > = [];
+    const harness = makeHarness({
+      onRateLimitChange: (rejected) =>
+        Effect.sync(() => {
+          rateLimitChanges.push(rejected);
+        }),
+    });
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      yield* Stream.runForEach(adapter.streamEvents, () => Effect.void).pipe(Effect.forkChild);
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "A",
+        attachments: [],
+      });
+      harness.query.emit({
+        type: "rate_limit_event",
+        rate_limit_info: {
+          status: "rejected",
+          resetsAt: 1791145800,
+          rateLimitType: "five_hour",
+        },
+        uuid: "rl-clear-1",
+        session_id: "sdk-clear",
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        api_error_status: 429,
+        terminal_reason: "api_error",
+        result: "Rate limited",
+        session_id: "sdk-clear",
+        uuid: "result-clear-1",
+      } as unknown as SDKMessage);
+      yield* drainSdkMessages;
+      assert.deepEqual(rateLimitChanges.at(-1), [
+        { rateLimitType: "five_hour", resetsAtEpochSeconds: 1791145800 },
+      ]);
+
+      yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "B",
+        attachments: [],
+      });
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "done",
+        session_id: "sdk-clear",
+        uuid: "result-clear-2",
+      } as unknown as SDKMessage);
+      yield* drainSdkMessages;
+
+      assert.deepEqual(rateLimitChanges.at(-1), []);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("X3 fails a 529 result without an assistant error message", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const events: Array<ProviderRuntimeEvent> = [];
+      yield* Stream.runForEach(adapter.streamEvents, (event) =>
+        Effect.sync(() => events.push(event)),
+      ).pipe(Effect.forkChild);
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "A",
+        attachments: [],
+      });
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        api_error_status: 529,
+        terminal_reason: "api_error",
+        result: "Overloaded",
+        session_id: "sdk-529",
+        uuid: "result-529",
+      } as unknown as SDKMessage);
+      yield* drainSdkMessages;
+
+      const completed = events.filter((event) => event.type === "turn.completed");
+      assert.equal(completed.length, 1);
+      const turnCompleted = completed[0];
+      if (turnCompleted?.type === "turn.completed") {
+        assert.equal(turnCompleted.payload.state, "failed");
+        assert.equal(turnCompleted.payload.errorMessage, "Overloaded");
+      }
+      const runtimeError = events.find((event) => event.type === "runtime.error");
+      assert.equal(runtimeError?.type, "runtime.error");
+      if (runtimeError?.type === "runtime.error") {
+        assert.equal(runtimeError.payload.message, "Overloaded");
+        assert.deepEqual(runtimeError.payload.detail, {
+          kind: "overloaded",
+          apiErrorStatus: 529,
+          terminalReason: "api_error",
+        });
+      }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("X3 keeps an aborted successful result as interrupted", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const events: Array<ProviderRuntimeEvent> = [];
+      yield* Stream.runForEach(adapter.streamEvents, (event) =>
+        Effect.sync(() => events.push(event)),
+      ).pipe(Effect.forkChild);
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "A",
+        attachments: [],
+      });
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        terminal_reason: "aborted_streaming",
+        result: "",
+        session_id: "sdk-abort",
+        uuid: "result-abort-success",
+      } as unknown as SDKMessage);
+      yield* drainSdkMessages;
+
+      const completed = events.filter((event) => event.type === "turn.completed");
+      assert.equal(completed.length, 1);
+      const turnCompleted = completed[0];
+      if (turnCompleted?.type === "turn.completed") {
+        assert.equal(turnCompleted.payload.state, "interrupted");
+      }
       assert.equal(
         events.some((event) => event.type === "runtime.error"),
         false,
