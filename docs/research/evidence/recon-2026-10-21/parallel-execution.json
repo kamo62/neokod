@@ -1,0 +1,130 @@
+{
+  "capturedAt": "2026-10-21T15:51:59.326380+00:00",
+  "integrationBranch": "dev",
+  "firstReviewedSourceCommit": "5e53f76b967ceb1ecb5c125fedd794dd920a2577",
+  "lanes": [
+    {
+      "lane": "u04",
+      "sessionId": "ses_ea0e2ef51ffeGjnsMdBagsoxec",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "implemented and feature branch pushed",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "settings",
+      "sessionId": "ses_ea0e2ebb3ffeDfbh0aDx5E6G5O",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "implemented and feature branch pushed",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "claude-recovery",
+      "sessionId": "ses_ea0daf7a2ffezBf39cH3geK9lo",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "running; not complete",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "copilot-recovery",
+      "sessionId": "ses_ea0daf68affeX61Mt5zf1VTnqv",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "running; not complete",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "opencode-cleanup",
+      "sessionId": "ses_ea0daf6fdffeO0AQ6o583Q51AU",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "running; not complete",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "terminal-cleanup",
+      "sessionId": "ses_ea0daf749ffeAihs2b3ZemWFEV",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "running; not complete",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "save-review-fix",
+      "sessionId": "ses_ea0d76727ffeShcTE1cLWnblyd",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": null,
+      "state": "running; not complete",
+      "builds": "not run; prohibited by owner"
+    }
+  ],
+  "reviewers": [
+    {
+      "requested": "gpt-6.1-sol",
+      "actual": "gpt-6.1-sol",
+      "effort": "high",
+      "sessionId": "01a15f25-9c7a-7813-ab42-f3be160f05e2",
+      "state": "running; actual model verified in turn context"
+    },
+    {
+      "requested": "claude-opus-5-5",
+      "actual": "claude-opus-5-5",
+      "effort": "high",
+      "state": "running; actual model verified in assistant metadata"
+    }
+  ]
+}

@@ -6,6 +6,9 @@ Release impact: Patch because this corrects unsafe workspace reads/writes, edito
 - Prevent saving truncated previews or replaying acknowledged editor buffers. Conditional content-hash writes preserve external edits and show an explicit Reload/Overwrite conflict flow; confirmed local hashes survive source/rendered editor remounts.
 - Permit diff previews for registered live projects/worktrees while rejecting unregistered roots, and remove the client fallback that could show another repository's diff.
 
+- Preserve stored provider secrets when their redacted rows are renamed or made non-sensitive until a replacement value is entered.
+- Buffer Symphony list text until blur, preserve validation-command commas/newlines, and retain per-project settings drafts across status updates and tab changes with explicit conflict handling.
+
 ## 3.7.0 - 2026-10-09 (Minor)
 
 Release impact: Minor because this fixes the Symphony runner and adds an access token to web mode without changing provider or tracker contracts. Upgrade note: `neokod serve` in web mode now always requires an access token, so existing browser sessions will be asked for it once.
