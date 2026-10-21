@@ -47,6 +47,7 @@ import { OpenCodeServerLedger } from "./OpenCodeServerLedger.ts";
 import {
   classifyOpenCodeVersion,
   formatOpenCodeUnsupportedVersionMessage,
+  OPENCODE_VERSION_PROBE_TIMEOUT,
   parseOpenCodeVersionOutput,
 } from "./openCodeVersion.ts";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.UnknownFromJsonString);
@@ -519,7 +520,9 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
    *
    * The provider status check normally rejects v2 first, but adapters and
    * text generation can start a server without refreshing that snapshot.
-   * A failed or unparseable version probe preserves the existing behaviour:
+   * The probe is bounded by {@link OPENCODE_VERSION_PROBE_TIMEOUT}: an
+   * executable that never answers `--version` must not hold server startup.
+   * A timed-out, failed or unparseable probe preserves the existing behaviour:
    * only an affirmatively classified unsupported major is blocked.
    */
   const assertSupportedOpenCodeVersion = (input: {
@@ -532,7 +535,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
           binaryPath: input.binaryPath,
           args: ["--version"],
           ...(input.environment ? { environment: input.environment } : {}),
-        }),
+        }).pipe(Effect.timeoutOption(OPENCODE_VERSION_PROBE_TIMEOUT)),
       );
       if (Exit.isFailure(versionExit)) {
         yield* Effect.logDebug(
@@ -541,8 +544,15 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
         );
         return;
       }
+      if (Option.isNone(versionExit.value)) {
+        yield* Effect.logDebug(
+          "OpenCode CLI version probe timed out before starting its server; continuing without a version guard",
+          { binaryPath: input.binaryPath },
+        );
+        return;
+      }
 
-      const parsed = parseOpenCodeVersionOutput(versionExit.value.stdout);
+      const parsed = parseOpenCodeVersionOutput(versionExit.value.value.stdout);
       const knownVersion = parsed ? classifyOpenCodeVersion(parsed) : null;
       if (knownVersion && !knownVersion.supported) {
         return yield* new OpenCodeRuntimeError({

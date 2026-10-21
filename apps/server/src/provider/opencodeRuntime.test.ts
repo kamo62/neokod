@@ -6,6 +6,8 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -27,6 +29,7 @@ import {
   terminateOpenCodeProcessGroup,
 } from "./opencodeRuntime.ts";
 import { OpenCodeServerLedger, type OpenCodeServerLedgerShape } from "./OpenCodeServerLedger.ts";
+import { OPENCODE_VERSION_PROBE_TIMEOUT } from "./openCodeVersion.ts";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
@@ -160,6 +163,23 @@ const makeCommandHandle = (stdout: string) =>
     getOutputFd: () => Stream.empty,
   });
 
+// A command that never produces output and never exits, like an executable
+// blocked before it can answer `--version`. Only the probe timeout can settle it.
+const makeHangingCommandHandle = () =>
+  ChildProcessSpawner.makeHandle({
+    pid: ChildProcessSpawner.ProcessId(1),
+    exitCode: Effect.never,
+    isRunning: Effect.succeed(true),
+    kill: () => Effect.void,
+    unref: Effect.succeed(Effect.void),
+    stdin: Sink.drain,
+    stdout: Stream.never,
+    stderr: Stream.never,
+    all: Stream.empty,
+    getInputFd: () => Sink.drain,
+    getOutputFd: () => Stream.empty,
+  });
+
 const makeCapturingSpawner = (
   captured: Array<CapturedSpawn>,
   versionStdout = "opencode 1.14.19\n",
@@ -171,6 +191,23 @@ const makeCapturingSpawner = (
       return capturedCommand.args.includes("--version")
         ? makeCommandHandle(versionStdout)
         : makeServerHandle();
+    }),
+  );
+
+// A CLI whose `--version` never answers. The server command still behaves.
+const makeHangingVersionSpawner = (
+  captured: Array<CapturedSpawn>,
+  versionSpawned: Deferred.Deferred<void>,
+) =>
+  ChildProcessSpawner.make((command) =>
+    Effect.gen(function* () {
+      const capturedCommand = command as unknown as CapturedSpawn;
+      captured.push(capturedCommand);
+      if (capturedCommand.args.includes("--version")) {
+        yield* Deferred.succeed(versionSpawned, void 0);
+        return makeHangingCommandHandle();
+      }
+      return makeServerHandle();
     }),
   );
 
@@ -371,6 +408,41 @@ describe("startOpenCodeServerProcess version guard", () => {
       expect(capturedServerSpawns(captured)).toHaveLength(1);
     }).pipe(Effect.provide(runtimeLayerWith(makeCapturingSpawner(captured, "opencode 1.18.15\n"))));
   });
+
+  it.effect("starts the server after a hung --version probe times out", () => {
+    const captured: Array<CapturedSpawn> = [];
+    const versionSpawned = Deferred.makeUnsafe<void>();
+    return Effect.gen(function* () {
+      const runtime = yield* OpenCodeRuntime;
+      const fiber = yield* runtime
+        .startOpenCodeServerProcess({ binaryPath: "fake-opencode", port: 4097 })
+        .pipe(Effect.scoped, Effect.forkChild);
+      yield* Deferred.await(versionSpawned);
+
+      // The fake CLI never answers `--version`. One millisecond before the
+      // bound, startup must still be waiting on the probe rather than serving.
+      yield* TestClock.adjust(
+        Duration.millis(Duration.toMillis(OPENCODE_VERSION_PROBE_TIMEOUT) - 1),
+      );
+      yield* Effect.yieldNow;
+      expect(captured.map((spawn) => spawn.args.join(" "))).toEqual(["--version"]);
+      expect(fiber.pollUnsafe()).toBeUndefined();
+
+      // At the bound the probe resolves unknown and the supported server starts
+      // through its normal path.
+      yield* TestClock.adjust("1 millis");
+      yield* Effect.yieldNow;
+      expect(capturedServerSpawns(captured)).toHaveLength(1);
+      for (let round = 0; round < 5; round++) {
+        yield* Effect.yieldNow;
+        yield* TestClock.adjust("1 second");
+      }
+      const server = yield* Fiber.join(fiber);
+
+      expect(server.url).toBe(SERVER_URL);
+      expect(capturedServerSpawns(captured)).toHaveLength(1);
+    }).pipe(Effect.provide(runtimeLayerWith(makeHangingVersionSpawner(captured, versionSpawned))));
+  });
 });
 
 describe("startOpenCodeServerProcess shutdown ordering", () => {
@@ -463,6 +535,14 @@ describeOnPosix("startOpenCodeServerProcess spawner ownership", () => {
     const leaderPidPath = NodePath.join(directory, "leader.pid");
     const fixturePath = writeExecutableFixture(directory, "failing-opencode.sh", [
       "#!/bin/sh",
+      // The runtime probes `--version` before spawning the server. Answer it as
+      // a supported CLI would, so only the failing server path is exercised;
+      // otherwise the probe's own non-zero exit becomes a second process-group
+      // shutdown outside the server ownership this test covers.
+      'if [ "$1" = "--version" ]; then',
+      "  echo 'opencode 1.18.15'",
+      "  exit 0",
+      "fi",
       `echo $$ > "${leaderPidPath}"`,
       "exit 7",
     ]);
@@ -523,6 +603,13 @@ describeOnPosix("startOpenCodeServerProcess spawner ownership", () => {
     const serverPidPath = NodePath.join(directory, "server.pid");
     const fixturePath = writeExecutableFixture(directory, "healthy-opencode.sh", [
       "#!/bin/sh",
+      // The runtime probes `--version` before spawning the server. Without this
+      // branch the probe would run the long-lived server loop and only settle
+      // on its timeout, so answer the probe as a supported CLI does.
+      'if [ "$1" = "--version" ]; then',
+      "  echo 'opencode 1.18.15'",
+      "  exit 0",
+      "fi",
       `echo $$ > "${serverPidPath}"`,
       "echo 'opencode server listening on http://127.0.0.1:4097'",
       "trap 'exit 0' TERM",
