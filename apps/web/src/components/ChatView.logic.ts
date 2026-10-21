@@ -279,6 +279,44 @@ export function deriveComposerSendState(options: {
   };
 }
 
+/**
+ * A queued message may only be handed to `onSend` when the composer is in a
+ * state where that call can actually attempt a send. Otherwise the queue must
+ * keep the entry: `onSend` returns without touching the draft.
+ */
+export function canDispatchQueuedMessage(input: {
+  readonly hasActiveThread: boolean;
+  readonly isSendBusy: boolean;
+  readonly isConnecting: boolean;
+  readonly environmentUnavailable: boolean;
+  readonly sendInFlight: boolean;
+}): boolean {
+  return (
+    input.hasActiveThread &&
+    !input.isSendBusy &&
+    !input.isConnecting &&
+    !input.environmentUnavailable &&
+    !input.sendInFlight
+  );
+}
+
+export type SendOutcome = "not_attempted" | "attempted" | "accepted" | "failed";
+
+/**
+ * Decides who still owns a queued message's text after a dispatch attempt.
+ * `accepted` means the send took it. `failed` means the send put it back into
+ * the live composer, so the queue can release it. Everything else, including
+ * a send that threw before settling, keeps the queued entry.
+ */
+export function settleQueuedDispatch(input: {
+  readonly outcome: SendOutcome;
+  readonly composerStillHoldsText: boolean;
+}): "remove_entry" | "keep_entry" {
+  if (input.outcome === "accepted") return "remove_entry";
+  if (input.outcome === "failed" && input.composerStillHoldsText) return "remove_entry";
+  return "keep_entry";
+}
+
 export function buildExpiredTerminalContextToastCopy(
   expiredTerminalContextCount: number,
   variant: "omitted" | "empty",

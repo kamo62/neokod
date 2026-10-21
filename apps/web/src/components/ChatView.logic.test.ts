@@ -7,6 +7,7 @@ import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   buildExpiredTerminalContextToastCopy,
   buildThreadTurnInterruptInput,
+  canDispatchQueuedMessage,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
   deriveActiveToolLabel,
@@ -15,6 +16,7 @@ import {
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
   resolveSendEnvMode,
+  settleQueuedDispatch,
   shouldWriteThreadErrorToCurrentServerThread,
 } from "./ChatView.logic";
 
@@ -505,5 +507,58 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
     expect(hasServerAcknowledgedLocalDispatch({ ...common, hasPendingApproval: true })).toBe(true);
     expect(hasServerAcknowledgedLocalDispatch({ ...common, hasPendingUserInput: true })).toBe(true);
     expect(hasServerAcknowledgedLocalDispatch({ ...common, threadError: "failed" })).toBe(true);
+  });
+});
+
+describe("canDispatchQueuedMessage", () => {
+  const clear = {
+    hasActiveThread: true,
+    isSendBusy: false,
+    isConnecting: false,
+    environmentUnavailable: false,
+    sendInFlight: false,
+  };
+
+  it("dispatches only when every send blocker is clear", () => {
+    expect(canDispatchQueuedMessage(clear)).toBe(true);
+  });
+
+  it("keeps the entry while the thread, transport or a send is unavailable", () => {
+    expect(canDispatchQueuedMessage({ ...clear, hasActiveThread: false })).toBe(false);
+    expect(canDispatchQueuedMessage({ ...clear, isSendBusy: true })).toBe(false);
+    expect(canDispatchQueuedMessage({ ...clear, isConnecting: true })).toBe(false);
+    expect(canDispatchQueuedMessage({ ...clear, environmentUnavailable: true })).toBe(false);
+    expect(canDispatchQueuedMessage({ ...clear, sendInFlight: true })).toBe(false);
+  });
+});
+
+describe("settleQueuedDispatch", () => {
+  it("keeps the entry when the send was not attempted or never reached a result", () => {
+    expect(settleQueuedDispatch({ outcome: "not_attempted", composerStillHoldsText: false })).toBe(
+      "keep_entry",
+    );
+    expect(settleQueuedDispatch({ outcome: "attempted", composerStillHoldsText: false })).toBe(
+      "keep_entry",
+    );
+  });
+
+  it("removes the entry once the send accepted the text", () => {
+    expect(settleQueuedDispatch({ outcome: "accepted", composerStillHoldsText: false })).toBe(
+      "remove_entry",
+    );
+  });
+
+  it("removes the entry when a failed send restored the text into the composer", () => {
+    expect(settleQueuedDispatch({ outcome: "failed", composerStillHoldsText: true })).toBe(
+      "remove_entry",
+    );
+  });
+
+  it("keeps the entry when a failed send did not restore the text", () => {
+    // The composer holds newer user text, so dropping the queued entry would
+    // discard the queued message.
+    expect(settleQueuedDispatch({ outcome: "failed", composerStillHoldsText: false })).toBe(
+      "keep_entry",
+    );
   });
 });
