@@ -1114,18 +1114,49 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
     }),
   );
 
-  it.effect("a new turn clears the interrupt mark", () =>
-    Effect.gen(function* () {
+  it.effect("keeps the next turn active when the previous abort error arrives late", () => {
+    const lateAbortEchoGate = createDeferred();
+    return Effect.gen(function* () {
       const adapter = yield* OpenCodeAdapter;
-      const threadId = asThreadId("thread-stop-new-turn-clears-mark");
+      const threadId = asThreadId("thread-stop-late-abort-error");
       runtimeMock.state.holdSubscribedEventsUntilPrompt = true;
+      // The fake releases the delayed sequence only after the second prompt is
+      // accepted, mirroring an abort HTTP acknowledgement that beats the SSE
+      // error delivery.
       runtimeMock.state.eventsAfterAbortAfterPrompts = 2;
       runtimeMock.state.eventsAfterAbort = [
+        {
+          // A status queued before the abort can also be delivered late. It
+          // must not release the abort mark before the terminal echo itself.
+          type: "session.status",
+          properties: {
+            sessionID: "http://127.0.0.1:9999/session",
+            status: { type: "busy" },
+          },
+        },
         {
           type: "session.error",
           properties: {
             sessionID: "http://127.0.0.1:9999/session",
             error: { name: "MessageAbortedError", data: { message: "Aborted" } },
+          },
+        },
+      ];
+      runtimeMock.state.holdLateAbortEcho = true;
+      runtimeMock.state.lateAbortEchoGate = lateAbortEchoGate;
+      runtimeMock.state.eventsAfterAbortResponse = [
+        {
+          type: "session.status",
+          properties: {
+            sessionID: "http://127.0.0.1:9999/session",
+            status: { type: "busy" },
+          },
+        },
+        {
+          type: "session.error",
+          properties: {
+            sessionID: "http://127.0.0.1:9999/session",
+            error: { data: { message: "provider exploded" } },
           },
         },
       ];
@@ -1146,6 +1177,13 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       });
       yield* adapter.interruptTurn(threadId, firstTurn.turnId);
 
+      const interrupted = yield* waitForThreadEvents(
+        collected,
+        (events) => events.some((event) => event.type === "turn.completed"),
+        2_000,
+      );
+      NodeAssert.equal(interrupted, true, "Stop must settle the first turn");
+
       const secondTurn = yield* adapter.sendTurn({
         threadId,
         input: "Second",
@@ -1155,13 +1193,34 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         },
       });
 
-      const settled = yield* waitForThreadEvents(
+      // The abort response already closed the first turn. The delayed
+      // MessageAbortedError must be drained as that turn's echo, not settle the
+      // second turn that the user just started.
+      yield* sleepReal(200);
+      let events = yield* Ref.get(collected);
+      NodeAssert.equal(
+        events.filter((event) => event.type === "turn.completed").length,
+        1,
+        "the late abort echo must not settle the second turn",
+      );
+      NodeAssert.equal(
+        events.filter((event) => event.type === "runtime.error").length,
+        0,
+        "the late abort echo must not surface as a provider failure",
+      );
+      let session = (yield* adapter.listSessions()).find((entry) => entry.threadId === threadId);
+      NodeAssert.equal(session?.status, "running");
+      NodeAssert.equal(String(session?.activeTurnId), String(secondTurn.turnId));
+
+      lateAbortEchoGate.resolve();
+
+      const failed = yield* waitForThreadEvents(
         collected,
-        (events) => events.filter((event) => event.type === "turn.completed").length === 2,
+        (current) => current.filter((event) => event.type === "turn.completed").length === 2,
         2_000,
       );
-      NodeAssert.equal(settled, true);
-      const events = yield* Ref.get(collected);
+      NodeAssert.equal(failed, true, "a genuine error for the second turn must still settle it");
+      events = yield* Ref.get(collected);
       const completed = events.filter((event) => event.type === "turn.completed");
       NodeAssert.equal(completed.length, 2);
       const secondCompleted = completed[1];
@@ -1171,10 +1230,119 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       NodeAssert.equal(String(secondCompleted.turnId), String(secondTurn.turnId));
       NodeAssert.deepEqual(secondCompleted.payload, {
         state: "failed",
-        errorMessage: "Aborted",
+        errorMessage: "provider exploded",
       });
-    }),
-  );
+      NodeAssert.equal(
+        events.filter((event) => event.type === "runtime.error").length,
+        1,
+        "only the genuine second-turn error may surface",
+      );
+      NodeAssert.deepEqual(runtimeMock.state.abortCalls, ["http://127.0.0.1:9999/session"]);
+    }).pipe(Effect.ensuring(Effect.sync(() => lateAbortEchoGate.resolve())));
+  });
+
+  it.effect("keeps the next turn active when the previous idle echo arrives late", () => {
+    const lateAbortEchoGate = createDeferred();
+    return Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-stop-late-idle");
+      runtimeMock.state.holdSubscribedEventsUntilPrompt = true;
+      runtimeMock.state.eventsAfterAbortAfterPrompts = 2;
+      runtimeMock.state.eventsAfterAbort = [
+        {
+          type: "session.status",
+          properties: {
+            sessionID: "http://127.0.0.1:9999/session",
+            status: { type: "idle" },
+          },
+        },
+      ];
+      runtimeMock.state.holdLateAbortEcho = true;
+      runtimeMock.state.lateAbortEchoGate = lateAbortEchoGate;
+      runtimeMock.state.eventsAfterAbortResponse = [
+        {
+          type: "session.status",
+          properties: {
+            sessionID: "http://127.0.0.1:9999/session",
+            status: { type: "busy" },
+          },
+        },
+        {
+          type: "session.status",
+          properties: {
+            sessionID: "http://127.0.0.1:9999/session",
+            status: { type: "idle" },
+          },
+        },
+      ];
+      const collected = yield* collectThreadEvents(adapter, threadId);
+
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const firstTurn = yield* adapter.sendTurn({
+        threadId,
+        input: "First",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("opencode"),
+          model: "openai/gpt-5",
+        },
+      });
+      yield* adapter.interruptTurn(threadId, firstTurn.turnId);
+
+      const interrupted = yield* waitForThreadEvents(
+        collected,
+        (events) => events.some((event) => event.type === "turn.completed"),
+        2_000,
+      );
+      NodeAssert.equal(interrupted, true, "Stop must settle the first turn");
+
+      const secondTurn = yield* adapter.sendTurn({
+        threadId,
+        input: "Second",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("opencode"),
+          model: "openai/gpt-5",
+        },
+      });
+
+      yield* sleepReal(200);
+      let events = yield* Ref.get(collected);
+      NodeAssert.equal(
+        events.filter((event) => event.type === "turn.completed").length,
+        1,
+        "the late idle echo must not complete the second turn",
+      );
+      let session = (yield* adapter.listSessions()).find((entry) => entry.threadId === threadId);
+      NodeAssert.equal(session?.status, "running");
+      NodeAssert.equal(String(session?.activeTurnId), String(secondTurn.turnId));
+
+      lateAbortEchoGate.resolve();
+
+      const completedSecond = yield* waitForThreadEvents(
+        collected,
+        (current) => current.filter((event) => event.type === "turn.completed").length === 2,
+        2_000,
+      );
+      NodeAssert.equal(completedSecond, true, "the second turn's own idle must complete it");
+      events = yield* Ref.get(collected);
+      const completed = events.filter((event) => event.type === "turn.completed");
+      NodeAssert.equal(completed.length, 2);
+      const secondCompleted = completed[1];
+      if (secondCompleted?.type !== "turn.completed") {
+        throw new Error("Expected a second turn.completed event");
+      }
+      NodeAssert.equal(String(secondCompleted.turnId), String(secondTurn.turnId));
+      NodeAssert.deepEqual(secondCompleted.payload, { state: "completed" });
+      NodeAssert.equal(
+        events.filter((event) => event.type === "runtime.error").length,
+        0,
+        "the late idle echo must not surface as a provider failure",
+      );
+    }).pipe(Effect.ensuring(Effect.sync(() => lateAbortEchoGate.resolve())));
+  });
 
   it.effect("resolves pending permissions on interrupt", () =>
     Effect.gen(function* () {

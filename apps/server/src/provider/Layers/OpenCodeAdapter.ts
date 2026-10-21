@@ -84,12 +84,27 @@ interface OpenCodeSessionContext {
   activeVariant: string | undefined;
   /**
    * Set when Neokod asked OpenCode to abort: the turn id requested by the user,
-   * or `"adapter"` for the adapter's own retry-loop abort. Cleared when a fresh
-   * turn starts. OpenCode echoes the abort as a `MessageAbortedError` or an
-   * `idle` status, and either may arrive before `session.abort` returns, so the
-   * mark must exist before the request is sent.
+   * or `"adapter"` for the adapter's own retry-loop abort. The mark must exist
+   * before the request is sent because the echo can beat `session.abort`.
+   *
+   * The mark is deliberately NOT cleared when a fresh turn starts. OpenCode's
+   * `session.error` and `session.status` events carry no turn id, so a terminal
+   * echo delivered after the abort response would otherwise be attributed to
+   * the new turn and fail or complete it. The mark is cleared only once a
+   * terminal echo has been observed and the new turn's own stream then proves
+   * the abort sequence has drained: OpenCode publishes the user message before
+   * its run loop and the `busy` status at the start of it, both after the abort
+   * completes, and the event stream is ordered. See `abortTerminalObserved`.
    */
   abortRequestedTurnId: TurnId | "adapter" | undefined;
+  /**
+   * Whether a terminal event (`MessageAbortedError` or an `idle` status) for
+   * `abortRequestedTurnId` has been observed. A new turn's own stream progress
+   * releases the abort mark only after this is set: before that, a `busy` or
+   * user-message event already queued from the aborted turn must not be read as
+   * proof that the abort sequence has drained.
+   */
+  abortTerminalObserved: boolean;
   /**
    * One-shot guard flipped by `stopOpenCodeContext` / `emitUnexpectedExit`.
    * The session lifecycle is owned by `sessionScope`; this Ref exists only
@@ -805,8 +820,10 @@ export function makeOpenCodeAdapter(
      * `false` without emitting anything. The thread returns to idle with a
      * neutral `interrupted` turn state and no red runtime error.
      *
-     * `expectedTurnId` lets an echo settle only the turn it belongs to, so a
-     * stale echo cannot clear a newer turn that started in the meantime.
+     * `expectedTurnId` is a defensive guard for direct callers: settlement only
+     * applies when the active turn still matches. It is not the cross-turn
+     * mechanism; `abortRequestedTurnId` and the stream drain in
+     * `handleSubscribedEvent` retain a late abort echo's attribution instead.
      */
     const settleInterruptedTurn = Effect.fn("settleInterruptedTurn")(function* (
       context: OpenCodeSessionContext,
@@ -834,6 +851,12 @@ export function makeOpenCodeAdapter(
       return true;
     });
 
+    /** Record an abort Neokod is about to request; its echo may beat the response. */
+    const requestAbort = (context: OpenCodeSessionContext, turnId: TurnId | "adapter"): void => {
+      context.abortRequestedTurnId = turnId;
+      context.abortTerminalObserved = false;
+    };
+
     const handleSubscribedEvent = Effect.fn("handleSubscribedEvent")(function* (
       context: OpenCodeSessionContext,
       event: OpenCodeSubscribedEvent,
@@ -856,6 +879,27 @@ export function makeOpenCodeAdapter(
           payload: event,
         },
       });
+
+      // A fresh turn can be admitted while the previous turn's abort terminal
+      // sequence is still in flight. Neither `session.error` nor
+      // `session.status` carries a turn id, so the abort mark survives the new
+      // turn's admission. Once a terminal echo has actually been observed, the
+      // next event that can only belong to the new turn (its user message
+      // update or its `busy` status) proves the ordered stream has drained past
+      // the aborted turn, so the mark can be released.
+      const isNewTurnStreamProgress =
+        (event.type === "session.status" && event.properties.status.type === "busy") ||
+        (event.type === "message.updated" && event.properties.info.role === "user");
+      if (
+        isNewTurnStreamProgress &&
+        context.abortTerminalObserved &&
+        context.abortRequestedTurnId !== undefined &&
+        turnId !== undefined &&
+        context.abortRequestedTurnId !== turnId
+      ) {
+        context.abortRequestedTurnId = undefined;
+        context.abortTerminalObserved = false;
+      }
 
       switch (event.type) {
         case "message.updated": {
@@ -1093,7 +1137,7 @@ export function makeOpenCodeAdapter(
                 // Mark the abort this adapter is about to send. Its echo is a
                 // MessageAbortedError for a turn that is already settled; without
                 // the mark it would emit a second runtime.error.
-                context.abortRequestedTurnId = "adapter";
+                requestAbort(context, "adapter");
                 yield* runOpenCodeSdk("session.abort", () =>
                   context.client.session.abort({ sessionID: context.openCodeSessionId }),
                 ).pipe(Effect.ignore({ log: true }));
@@ -1115,14 +1159,30 @@ export function makeOpenCodeAdapter(
             break;
           }
 
-          if (event.properties.status.type === "idle" && turnId) {
-            // If idle is the abort's echo, the user asked for this stop and the
-            // turn must read interrupted even though idle won the race against
-            // the abort response (and any later MessageAbortedError). Route it
-            // through the shared interrupted closure so pending approvals and
-            // questions are resolved exactly once; a late echo then no-ops.
-            if (context.abortRequestedTurnId === turnId) {
+          if (event.properties.status.type === "idle") {
+            // If idle is the abort's echo for the active turn, the user asked
+            // for this stop and the turn must read interrupted even though idle
+            // won the race against the abort response (and any later
+            // MessageAbortedError). Route it through the shared interrupted
+            // closure so pending approvals and questions are resolved exactly
+            // once; a late echo then no-ops.
+            if (
+              context.abortRequestedTurnId !== undefined &&
+              context.abortRequestedTurnId === turnId
+            ) {
               yield* settleInterruptedTurn(context, event, turnId);
+              context.abortTerminalObserved = true;
+              break;
+            }
+            // A terminal idle for a turn Neokod already aborted can still be
+            // delivered after the next turn was admitted but before that turn
+            // produced any event of its own. It cannot be the new turn's
+            // completion, so draining it keeps the new turn active.
+            if (context.abortRequestedTurnId !== undefined) {
+              context.abortTerminalObserved = true;
+              break;
+            }
+            if (!turnId) {
               break;
             }
             context.activeTurnId = undefined;
@@ -1143,14 +1203,29 @@ export function makeOpenCodeAdapter(
         }
 
         case "session.error": {
-          if (
-            isMessageAbortedError(event.properties.error) &&
-            context.abortRequestedTurnId !== undefined
-          ) {
-            // The abort Neokod requested, not an unrelated cancellation. This
-            // no-ops when interruptTurn or idle already settled the turn.
-            yield* settleInterruptedTurn(context, event);
-            break;
+          if (isMessageAbortedError(event.properties.error)) {
+            if (
+              context.abortRequestedTurnId !== undefined &&
+              context.abortRequestedTurnId === turnId
+            ) {
+              // The abort Neokod requested for this turn, not an unrelated
+              // cancellation. This no-ops when interruptTurn or idle already
+              // settled the turn.
+              yield* settleInterruptedTurn(context, event, turnId);
+              context.abortTerminalObserved = true;
+              break;
+            }
+            if (
+              context.abortRequestedTurnId !== undefined &&
+              context.abortRequestedTurnId !== turnId
+            ) {
+              // Late echo of a turn Neokod already aborted and settled. The
+              // abort mark is still held because the new turn has not produced
+              // its own stream event yet, so this error belongs to the earlier
+              // turn and must not fail the active one.
+              context.abortTerminalObserved = true;
+              break;
+            }
           }
           yield* settleSessionFailure(context, {
             message: sessionErrorMessage(event.properties.error),
@@ -1349,6 +1424,7 @@ export function makeOpenCodeAdapter(
           activeAgent: undefined,
           activeVariant: undefined,
           abortRequestedTurnId: undefined,
+          abortTerminalObserved: false,
           stopped: yield* Ref.make(false),
           sessionScope: started.sessionScope,
         };
@@ -1436,9 +1512,10 @@ export function makeOpenCodeAdapter(
       );
 
       if (steeringTurnId === undefined) {
-        // A fresh turn is not the one Neokod asked to abort, even if a late
-        // echo from the previous Stop arrives while this turn is running.
-        context.abortRequestedTurnId = undefined;
+        // Keep any abort mark from the previous turn: its terminal echo may
+        // still be in flight and must be attributed to that turn. The mark is
+        // released by the first event that proves this turn's stream started
+        // (see `handleSubscribedEvent`).
         yield* emit({
           ...(yield* buildEventBase({ threadId: input.threadId, turnId })),
           type: "turn.started",
@@ -1507,7 +1584,7 @@ export function makeOpenCodeAdapter(
         // Mark before the request: OpenCode can deliver the abort echo
         // (session.error or idle) while session.abort is still in flight.
         if (targetTurnId !== undefined) {
-          context.abortRequestedTurnId = targetTurnId;
+          requestAbort(context, targetTurnId);
         }
         yield* runOpenCodeSdk("session.abort", () =>
           context.client.session.abort({ sessionID: context.openCodeSessionId }),
