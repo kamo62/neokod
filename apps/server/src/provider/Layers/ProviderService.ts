@@ -441,6 +441,16 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       readonly lastRuntimeEvent?: string;
       readonly lastRuntimeEventAt?: string;
     },
+    options?: {
+      /**
+       * Only a newly accepted session or turn proves the previous stop is
+       * over. Snapshots of sessions that already exist (for example the
+       * shutdown sweep) must keep unresolved stop evidence, otherwise a crash
+       * before the next durable write erases the only barrier the next process
+       * can find.
+       */
+      readonly clearStopEvidence?: boolean;
+    },
   ) =>
     Effect.gen(function* () {
       const providerInstanceId = yield* requireBindingInstanceId(
@@ -462,7 +472,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
             ...extra,
             ...(runtimeSessionId === undefined ? {} : { runtimeSessionId }),
           }),
-          ...FRESH_RUNTIME_PAYLOAD,
+          ...(options?.clearStopEvidence === true ? FRESH_RUNTIME_PAYLOAD : {}),
         },
       });
     });
@@ -572,6 +582,8 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           yield* upsertSessionBinding(
             { ...existing, providerInstanceId: bindingInstanceId },
             input.binding.threadId,
+            undefined,
+            { clearStopEvidence: true },
           );
           yield* analytics.record("provider.session.recovered", {
             provider: existing.provider,
@@ -616,6 +628,8 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       yield* upsertSessionBinding(
         { ...resumed, providerInstanceId: bindingInstanceId },
         input.binding.threadId,
+        undefined,
+        { clearStopEvidence: true },
       );
       yield* analytics.record("provider.session.recovered", {
         provider: resumed.provider,
@@ -817,9 +831,14 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           threadId,
           currentInstanceId: resolvedInstanceId,
         });
-        yield* upsertSessionBinding(sessionWithInstance, threadId, {
-          modelSelection: input.modelSelection,
-        });
+        yield* upsertSessionBinding(
+          sessionWithInstance,
+          threadId,
+          {
+            modelSelection: input.modelSelection,
+          },
+          { clearStopEvidence: true },
+        );
         yield* analytics.record("provider.session.started", {
           provider: sessionWithInstance.provider,
           runtimeMode: input.runtimeMode,
@@ -1051,6 +1070,30 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           "provider.kind": routed.adapter.provider,
           "provider.thread_id": input.threadId,
         });
+
+        const persistedOutcome = readPersistedStopOutcome(routed.binding.runtimePayload);
+        // An inactive `host_lost` binding has no locally owned teardown. It is
+        // already an observation that the previous process vanished, so an
+        // explicit Stop only confirms that observation. Writing a fresh
+        // `stop_requested` here would erase the durable outcome between the two
+        // writes, and a crash in that window would let a later reaper report a
+        // confirmed stop with no evidence about the orphan.
+        if (!routed.isActive && isHostLostStopOutcome(persistedOutcome)) {
+          yield* clearMcpSession(input.threadId);
+          yield* emitStopUpdated({
+            provider: routed.adapter.provider,
+            instanceId: routed.instanceId,
+            threadId: input.threadId,
+            phase: "settled",
+            outcome: persistedOutcome,
+          });
+          yield* analytics.record("provider.session.stopped", {
+            provider: routed.adapter.provider,
+            outcome: persistedOutcome.status,
+          });
+          return persistedOutcome;
+        }
+
         // Fence the thread first, then durably record intent before any
         // provider/process side effect. A failed intent write releases the
         // in-memory fence because no stop was attempted; every later failure
@@ -1075,7 +1118,6 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           phase: "stop_requested",
         });
 
-        const persistedOutcome = readPersistedStopOutcome(routed.binding.runtimePayload);
         const outcome = routed.isActive
           ? yield* routed.adapter
               .stopSession(routed.threadId)
@@ -1291,6 +1333,10 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       ).pipe(Effect.map((sessionsByAdapter) => sessionsByAdapter.flatMap((sessions) => sessions)));
 
       // Ensure adapter-only sessions have a durable binding before the sweep.
+      // This is a snapshot of sessions that already exist, not an accepted
+      // start, so it must keep any unresolved stop evidence. A crash after this
+      // write but before the next stop intent then still leaves the next
+      // process a durable barrier.
       yield* Effect.forEach(activeSessions, (session) =>
         Effect.flatMap(nowIso, (lastRuntimeEventAt) =>
           upsertSessionBinding(session, session.threadId, {

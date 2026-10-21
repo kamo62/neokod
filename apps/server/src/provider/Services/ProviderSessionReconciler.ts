@@ -7,7 +7,10 @@ import type {
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 
-import type { ProviderRuntimeBinding } from "./ProviderSessionDirectory.ts";
+import type {
+  ProviderRuntimeBinding,
+  ProviderRuntimeBindingWithMetadata,
+} from "./ProviderSessionDirectory.ts";
 import { isHostLostStopOutcome, readPersistedStopOutcome } from "../providerStopOutcome.ts";
 
 export interface ProviderSessionReconcileAction {
@@ -19,6 +22,13 @@ export interface ProviderSessionReconcileAction {
   readonly status: OrchestrationSession["status"];
   readonly lastError: string | null;
   readonly bindingSettlement?: "host_lost";
+  /**
+   * When recovery settles a turn that was running when the server died, this
+   * is the last moment we actually observed the turn. Event ordering still
+   * comes from the server clock, but the turn's completion must not absorb the
+   * downtime between that observation and this boot.
+   */
+  readonly lastObservedAt?: string;
 }
 
 /** Shown on a thread whose provider session was lost with the server process. */
@@ -28,7 +38,7 @@ export const HOST_LOST_SESSION_ERROR =
 export interface ProviderSessionReconcileInputs {
   readonly projected: OrchestrationReadModel;
   readonly liveSessions: ReadonlyArray<ProviderSession>;
-  readonly bindings: ReadonlyArray<ProviderRuntimeBinding>;
+  readonly bindings: ReadonlyArray<ProviderRuntimeBindingWithMetadata>;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -126,19 +136,23 @@ export const planProviderSessionReconciliation = ({
     }
 
     if (binding.status === "stopped" || binding.status === "error") {
+      const persistedOutcome = readPersistedStopOutcome(binding.runtimePayload);
       return [
         {
           ...action,
           status: "interrupted",
+          lastObservedAt:
+            persistedOutcome?.status === "stopped_confirmed" ||
+            persistedOutcome?.status === "orphan_possible"
+              ? persistedOutcome.stoppedAt
+              : binding.lastSeenAt,
           // The binding may already carry the host-loss warning from a boot that
           // crashed between writing the binding and dispatching the session. The
           // payload has no `activeTurnId` then, so recover the warning from the
           // persisted outcome instead of reporting the turn with no explanation.
           lastError:
             exactBindingError(binding, turn.turnId) ??
-            (isHostLostStopOutcome(readPersistedStopOutcome(binding.runtimePayload))
-              ? HOST_LOST_SESSION_ERROR
-              : null),
+            (isHostLostStopOutcome(persistedOutcome) ? HOST_LOST_SESSION_ERROR : null),
         },
       ];
     }
@@ -155,6 +169,9 @@ export const planProviderSessionReconciliation = ({
         status: "interrupted",
         lastError: HOST_LOST_SESSION_ERROR,
         bindingSettlement: "host_lost",
+        // The binding's last write is the last observation this process holds.
+        // The turn ended when that evidence did, not when this boot ran.
+        lastObservedAt: binding.lastSeenAt,
       },
     ];
   });

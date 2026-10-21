@@ -75,6 +75,8 @@ const makeProviderSessionReconciler = Effect.gen(function* () {
         }
       }
 
+      const now = DateTime.formatIso(yield* DateTime.now);
+
       yield* orchestrationEngine.dispatch({
         type: "thread.session.set",
         commandId: CommandId.make(yield* crypto.randomUUIDv4),
@@ -89,9 +91,11 @@ const makeProviderSessionReconciler = Effect.gen(function* () {
           runtimeMode: action.runtimeMode,
           activeTurnId: null,
           lastError: action.lastError,
-          updatedAt: DateTime.formatIso(yield* DateTime.now),
+          // A recovered turn freezes at its last observation. `createdAt` stays
+          // on the server clock so the recovery event keeps server-owned order.
+          updatedAt: action.lastObservedAt ?? now,
         },
-        createdAt: DateTime.formatIso(yield* DateTime.now),
+        createdAt: now,
       });
     }
 

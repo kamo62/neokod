@@ -732,6 +732,21 @@ it.effect(
       const directoryLayer = ProviderSessionDirectoryLive.pipe(
         Layer.provide(runtimeRepositoryLayer),
       );
+      // Record durable writes so the explicit-Stop path can prove it never
+      // erases the host_lost outcome between the intent and settlement writes.
+      const bindingWrites: ProviderSessionDirectory.ProviderRuntimeBinding[] = [];
+      const recordingDirectoryLayer = Layer.effect(
+        ProviderSessionDirectory.ProviderSessionDirectory,
+        Effect.map(ProviderSessionDirectory.ProviderSessionDirectory, (directory) =>
+          ProviderSessionDirectory.ProviderSessionDirectory.of({
+            ...directory,
+            upsert: (binding) =>
+              Effect.sync(() => {
+                bindingWrites.push(binding);
+              }).pipe(Effect.andThen(directory.upsert(binding))),
+          }),
+        ),
+      ).pipe(Layer.provide(directoryLayer));
       const codex = makeFakeCodexAdapter();
       const registry = makeAdapterRegistryMock({
         [CODEX_DRIVER]: codex.adapter,
@@ -770,7 +785,7 @@ it.effect(
 
       const providerLayer = makeProviderServiceLive().pipe(
         Layer.provide(Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, registry)),
-        Layer.provide(directoryLayer),
+        Layer.provide(recordingDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
         Layer.provide(AnalyticsService.layerTest),
         Layer.provide(
@@ -793,6 +808,29 @@ it.effect(
           stopped.status === "orphan_possible" ? stopped.reason : undefined,
           "host_lost",
         );
+        // No durable write may occur before the settlement: a crash after an
+        // intent write would otherwise erase the orphan outcome. A pure
+        // confirmation of existing evidence writes nothing.
+        assert.deepEqual(bindingWrites, []);
+        const runtimeRepository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+        const afterStop = yield* runtimeRepository.getByThreadId({ threadId: hostLostThread });
+        assert.equal(Option.isSome(afterStop), true);
+        if (Option.isSome(afterStop)) {
+          const payload = afterStop.value.runtimePayload;
+          assert.equal(
+            payload !== null && typeof payload === "object" && !Array.isArray(payload),
+            true,
+          );
+          if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+            assert.equal("stopPhase" in payload ? payload.stopPhase : undefined, "settled");
+            assert.deepEqual("stopOutcome" in payload ? payload.stopOutcome : undefined, {
+              status: "orphan_possible",
+              stoppedAt: "2026-07-26T23:58:00.000Z",
+              reason: "host_lost",
+              knownExternalRunIds: [],
+            });
+          }
+        }
 
         const started = yield* provider.startSession(hostLostThread, {
           provider: CODEX_DRIVER,
@@ -1763,6 +1801,114 @@ stopAllRouting.layer("ProviderServiceLive structured stop-all", (it) => {
     }),
   );
 });
+
+it.effect("preserves unresolved stop evidence when the shutdown snapshot runs", () =>
+  Effect.gen(function* () {
+    const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+      Layer.provide(SqlitePersistenceMemory),
+    );
+    const directoryLayer = ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer));
+    const codex = makeFakeCodexAdapter();
+    const registry = makeAdapterRegistryMock({
+      [CODEX_DRIVER]: codex.adapter,
+    });
+    const threadId = asThreadId("thread-stop-all-preserves-unresolved");
+    // Simulate dying between the pre-sweep snapshot and the next durable stop
+    // intent: the snapshot write succeeds, the intent write does not.
+    let allowedWrites = Number.POSITIVE_INFINITY;
+    const guardedDirectoryLayer = Layer.effect(
+      ProviderSessionDirectory.ProviderSessionDirectory,
+      Effect.map(ProviderSessionDirectory.ProviderSessionDirectory, (directory) =>
+        ProviderSessionDirectory.ProviderSessionDirectory.of({
+          ...directory,
+          upsert: (binding) => {
+            if (binding.threadId === threadId) {
+              if (allowedWrites <= 0) {
+                return Effect.fail(
+                  new ProviderValidationError({
+                    operation: "ProviderService.test.stopAllSnapshot",
+                    issue: "simulated crash before the stop intent",
+                  }),
+                );
+              }
+              allowedWrites -= 1;
+            }
+            return directory.upsert(binding);
+          },
+        }),
+      ),
+    ).pipe(Layer.provide(directoryLayer));
+
+    const providerLayer = makeProviderServiceLive().pipe(
+      Layer.provide(Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, registry)),
+      Layer.provideMerge(guardedDirectoryLayer),
+      Layer.provide(defaultServerSettingsLayer),
+      Layer.provide(AnalyticsService.layerTest),
+      Layer.provide(
+        Layer.succeed(
+          ProviderEventLoggers.ProviderEventLoggers,
+          ProviderEventLoggers.NoOpProviderEventLoggers,
+        ),
+      ),
+      Layer.provideMerge(runtimeRepositoryLayer),
+      Layer.provideMerge(NodeServices.layer),
+    );
+
+    yield* Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const runtimeRepository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+
+      yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        cwd: "/tmp/project-stop-all-preserves-unresolved",
+        runtimeMode: "full-access",
+      });
+      // A previous stop attempt failed while the adapter kept its session.
+      // The unresolved outcome is still the durable barrier.
+      yield* directory.upsert({
+        threadId,
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        status: "error",
+        runtimePayload: {
+          stopPhase: "settled",
+          stopOutcome: stopFailed("process_group_termination_failed", "previous attempt"),
+          stopRequestedAt: "2026-01-01T00:00:02.000Z",
+        },
+      });
+
+      // Only the pre-sweep snapshot may write. The stop intent then fails,
+      // leaving the binding exactly as the snapshot left it.
+      allowedWrites = 1;
+      const result = yield* provider.stopAllSessions();
+
+      assert.equal(result.failed.length, 1);
+      assert.equal(result.failed[0]?.sessionId, threadId);
+
+      const binding = yield* runtimeRepository.getByThreadId({ threadId });
+      assert.equal(Option.isSome(binding), true);
+      if (Option.isSome(binding)) {
+        const payload = binding.value.runtimePayload;
+        assert.equal(
+          payload !== null && typeof payload === "object" && !Array.isArray(payload),
+          true,
+        );
+        if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+          // The snapshot must not clear what the next process needs to find.
+          assert.equal("stopPhase" in payload ? payload.stopPhase : undefined, "settled");
+          assert.deepEqual("stopOutcome" in payload ? payload.stopOutcome : undefined, {
+            status: "stop_failed",
+            reason: "process_group_termination_failed",
+            detail: "previous attempt",
+          });
+        }
+      }
+    }).pipe(Effect.provide(providerLayer));
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
 
 const fanout = makeProviderServiceLayer();
 fanout.layer("ProviderServiceLive fanout", (it) => {

@@ -1749,6 +1749,117 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
     }),
   );
 
+  it.effect(
+    "freezes a recovered turn at the session's last observation, not the recovery event time",
+    () =>
+      Effect.gen(function* () {
+        const projectionPipeline = yield* OrchestrationProjectionPipeline;
+        const eventStore = yield* OrchestrationEventStore;
+        const sql = yield* SqlClient.SqlClient;
+        const startedAt = "2026-01-01T00:00:00.000Z";
+        const lastObservedAt = "2026-01-01T00:05:00.000Z";
+        const recoveredAt = "2026-01-02T08:00:00.000Z";
+        const threadId = ThreadId.make("thread-recovered-turn-completion");
+        const turnId = TurnId.make("turn-recovered-completion");
+
+        yield* eventStore.append({
+          type: "thread.created",
+          eventId: EventId.make("evt-recovered-turn-created"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: startedAt,
+          commandId: CommandId.make("cmd-recovered-turn-created"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-recovered-turn-created"),
+          metadata: {},
+          payload: {
+            threadId,
+            projectId: ProjectId.make("project-recovered-turn"),
+            title: "Recovered turn",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("codex"),
+              model: "gpt-5-codex",
+            },
+            runtimeMode: "full-access",
+            branch: null,
+            worktreePath: null,
+            createdAt: startedAt,
+            updatedAt: startedAt,
+          },
+        });
+
+        yield* eventStore.append({
+          type: "thread.session-set",
+          eventId: EventId.make("evt-recovered-turn-running"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: startedAt,
+          commandId: CommandId.make("cmd-recovered-turn-running"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-recovered-turn-running"),
+          metadata: {},
+          payload: {
+            threadId,
+            session: {
+              threadId,
+              status: "running",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: turnId,
+              lastError: null,
+              updatedAt: startedAt,
+            },
+          },
+        });
+        yield* projectionPipeline.bootstrap;
+
+        // Boot recovery arrives the next day, but the last evidence we hold
+        // ended five minutes into the turn. The event keeps its server clock
+        // position; only the turn's completion freezes at the observation.
+        yield* eventStore.append({
+          type: "thread.session-set",
+          eventId: EventId.make("evt-recovered-turn-interrupted"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: recoveredAt,
+          commandId: CommandId.make("cmd-recovered-turn-interrupted"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-recovered-turn-interrupted"),
+          metadata: {},
+          payload: {
+            threadId,
+            session: {
+              threadId,
+              status: "interrupted",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: null,
+              lastError: "recovered after restart",
+              updatedAt: lastObservedAt,
+            },
+          },
+        });
+        yield* projectionPipeline.bootstrap;
+
+        const turnRows = yield* sql<{
+          readonly state: string;
+          readonly completedAt: string | null;
+        }>`
+          SELECT state, completed_at AS "completedAt"
+          FROM projection_turns
+          WHERE thread_id = ${threadId} AND turn_id = ${turnId}
+        `;
+        assert.deepEqual(turnRows, [{ state: "interrupted", completedAt: lastObservedAt }]);
+
+        const threadRows = yield* sql<{ readonly updatedAt: string }>`
+          SELECT updated_at AS "updatedAt"
+          FROM projection_threads
+          WHERE thread_id = ${threadId}
+        `;
+        assert.deepEqual(threadRows, [{ updatedAt: recoveredAt }]);
+      }),
+  );
+
   it.effect("settles a superseded running turn when a new turn becomes active", () =>
     Effect.gen(function* () {
       const projectionPipeline = yield* OrchestrationProjectionPipeline;

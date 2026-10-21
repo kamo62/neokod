@@ -16,12 +16,18 @@ const FILE_URL = /\bfile:\/\/[^\s'"<>]+/gi;
 /**
  * Non-file URLs are opaque tokens, not filesystem paths. They are protected
  * before path scrubbing so a query such as `?path=/Users/me/x` stays intact.
+ *
+ * A single quote is a valid URL character (for example `O'Reilly`), so it may
+ * continue a token when URL content follows. A quote that closes a surrounding
+ * quote is followed by whitespace, punctuation or the end of the token and is
+ * left outside the protected range.
  */
-const NON_FILE_URL = /\b(?:https?|wss?|ftps?|ssh|git\+ssh|git|mailto|urn|data|blob):[^\s<>"']+/gi;
+const NON_FILE_URL =
+  /\b(?:https?|wss?|ftps?|ssh|git\+ssh|git|mailto|urn|data|blob):(?:[^\s<>"']|'(?=[^\s<>"']))+/gi;
 const URL_PLACEHOLDER = /\uE000url:(\d+)\uE001/g;
 
 const QUOTED_ABSOLUTE_PATH =
-  /(['"])((?:[A-Za-z]:[\\/]|\\\\|\/\/|\/(?![/\s])|~[\\/]|\$HOME[\\/]|%USERPROFILE%[\\/])(?:(?!\1).)*)\1/g;
+  /(['"`])((?:[A-Za-z]:[\\/]|\\\\|\/\/|\/(?![/\s])|~[\\/]|\$HOME[\\/]|%USERPROFILE%[\\/])(?:(?!\1).)*)\1/g;
 const WINDOWS_PATH =
   /(?<![A-Za-z0-9])(?:[A-Za-z]:[\\/]|\\\\[^\\\s'"<>|]+\\|~[\\/]|\$HOME[\\/]|%USERPROFILE%[\\/])[^\s'"<>|]*/g;
 // A leading `/` at a token boundary. Excluded characters keep relative paths

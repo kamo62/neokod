@@ -91,12 +91,13 @@ const projected = (input?: {
 
 const stoppedBinding = (
   runtimePayload: unknown = { activeTurnId: null },
-): ProviderSessionDirectory.ProviderRuntimeBinding => ({
+): ProviderSessionDirectory.ProviderRuntimeBindingWithMetadata => ({
   threadId,
   provider,
   providerInstanceId,
   status: "stopped" as const,
   runtimePayload,
+  lastSeenAt: "2026-07-26T23:50:00.000Z",
 });
 
 const providerSession = {
@@ -126,6 +127,7 @@ it("plans one interrupted settlement only for an authoritative stopped binding",
         runtimeMode: "full-access",
         status: "interrupted",
         lastError: null,
+        lastObservedAt: "2026-07-26T23:50:00.000Z",
       },
     ],
   );
@@ -249,6 +251,7 @@ it("plans a host_lost settlement for a running or starting binding with no live 
           status: "interrupted",
           lastError: HOST_LOST_SESSION_ERROR,
           bindingSettlement: "host_lost",
+          lastObservedAt: "2026-07-26T23:50:00.000Z",
         },
       ],
     );
@@ -276,6 +279,9 @@ it("keeps a host_lost warning when the binding survived but the session dispatch
 
   assert.equal(action?.status, "interrupted");
   assert.equal(action?.lastError, HOST_LOST_SESSION_ERROR);
+  // The persisted orphan observation ends the turn, not the binding's later
+  // rewrite during the previous boot.
+  assert.equal(action?.lastObservedAt, "2026-07-26T23:59:00.000Z");
   // The binding is already settled; only the missing session update remains.
   assert.equal(action?.bindingSettlement, undefined);
 });
@@ -450,6 +456,10 @@ it.effect("settles a crashed running binding before dispatching the session", ()
     assert.equal(command.session.status, "interrupted");
     assert.equal(command.session.activeTurnId, null);
     assert.equal(command.session.lastError, HOST_LOST_SESSION_ERROR);
+    // The turn freezes at the last persisted observation. The event itself is
+    // still ordered by the server clock, which is strictly later.
+    assert.equal(command.session.updatedAt, "2026-07-26T23:58:00.000Z");
+    assert.notEqual(command.createdAt, command.session.updatedAt);
   }),
 );
 
@@ -512,5 +522,8 @@ it.effect("repairs only the session when the host_lost binding write already sur
     if (command?.type !== "thread.session.set") return;
     assert.equal(command.session.status, "interrupted");
     assert.equal(command.session.lastError, HOST_LOST_SESSION_ERROR);
+    // The original orphan observation, not this boot's clock, ends the turn.
+    assert.equal(command.session.updatedAt, "2026-07-26T23:58:00.000Z");
+    assert.notEqual(command.createdAt, command.session.updatedAt);
   }),
 );

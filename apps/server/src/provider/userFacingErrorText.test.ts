@@ -48,11 +48,26 @@ describe("scrubErrorText", () => {
     expect(scrubErrorText("read ~/.ssh/id_ed25519")).toBe("read [path]/id_ed25519");
     expect(scrubErrorText("read $HOME/secret/file")).toBe("read [path]/file");
     expect(scrubErrorText("read /home/kamogelo/private")).toBe("read [path]/private");
+    expect(scrubErrorText("ENOENT: open `/Users/alice/private/a.txt`")).toBe(
+      "ENOENT: open `[path]/a.txt`",
+    );
   });
 
   it("leaves URLs, ids and punctuation-bearing relative paths alone", () => {
     const text =
       "GET https://api.example.com/v1/models?path=/Users/me/x&q=src/(generated)/deep/file.ts failed for anthropic/claude-3 in src/(generated)/deep/file.ts";
+    expect(scrubErrorText(text)).toBe(text);
+  });
+
+  it("preserves valid apostrophes inside URL queries", () => {
+    const url = "https://api.example.com/v1?name=O'Reilly&redirect=/docs/api";
+    expect(scrubErrorText(`GET ${url} failed`)).toBe(`GET ${url} failed`);
+    expect(scrubErrorText(`'${url}'`)).toBe(`'${url}'`);
+    expect(scrubErrorText(`"${url}"`)).toBe(`"${url}"`);
+  });
+
+  it("leaves backtick-quoted relative paths alone", () => {
+    const text = "run `src/(generated)/deep/file.ts` and `pnpm --filter @neokod/web test`";
     expect(scrubErrorText(text)).toBe(text);
   });
 
