@@ -6,15 +6,18 @@ import {
   ProviderInstanceId,
   type ServerProvider,
 } from "@neokod/contracts";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 import { vi } from "vite-plus/test";
 
 import { layerTest as serverConfigLayerTest } from "../../config.ts";
 import { layerTest as serverSettingsLayerTest } from "../../serverSettings.ts";
-import { classifyOpenCodeVersion } from "../openCodeVersion.ts";
+import { classifyOpenCodeVersion, OPENCODE_VERSION_PROBE_TIMEOUT } from "../openCodeVersion.ts";
 import { makeProviderMaintenanceCapabilities } from "../providerMaintenance.ts";
 import { NoOpProviderEventLoggers, ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import type { ProviderInstance } from "../ProviderDriver.ts";
@@ -94,7 +97,11 @@ describe("supportsOpenCodeSymphonyCodeReview", () => {
   });
 });
 
-const versionStdoutState = vi.hoisted(() => ({ value: "opencode v2.0.32\n" }));
+const versionStdoutState = vi.hoisted(() => ({
+  value: "opencode v2.0.32\n",
+  hang: false,
+  onHangStarted: null as (() => void) | null,
+}));
 const versionCommandCalls: Array<{
   readonly binaryPath: string;
   readonly args: ReadonlyArray<string>;
@@ -104,9 +111,17 @@ const fakeRuntime: OpenCodeRuntimeShape = {
   startOpenCodeServerProcess: () => Effect.die("unexpected server start"),
   connectToOpenCodeServer: () => Effect.die("unexpected server connection"),
   runOpenCodeCommand: (input) =>
-    Effect.sync(() => {
+    Effect.suspend(() => {
       versionCommandCalls.push({ binaryPath: input.binaryPath, args: input.args });
-      return { stdout: versionStdoutState.value, stderr: "", code: 0 };
+      if (versionStdoutState.hang) {
+        versionStdoutState.onHangStarted?.();
+        return Effect.never;
+      }
+      return Effect.sync(() => ({
+        stdout: versionStdoutState.value,
+        stderr: "",
+        code: 0,
+      }));
     }),
   createOpenCodeSdkClient: () => ({}) as never,
   loadOpenCodeInventory: () => Effect.die("unexpected inventory read"),
@@ -267,5 +282,52 @@ describe("OpenCodeDriver command-time maintenance guard", () => {
       versionStdoutState.value = "opencode v2.0.32\n";
       expect(yield* verifyStillApplicable).toContain("OpenCode v2.0.32");
     }).pipe(Effect.provide(driverTestLayer), Effect.scoped),
+  );
+
+  it.effect("bounds a hung --version probe and keeps the unverified fallback", () =>
+    Effect.gen(function* () {
+      const exceedTimeout = Duration.millis(Duration.toMillis(OPENCODE_VERSION_PROBE_TIMEOUT) + 1);
+      versionStdoutState.hang = true;
+      const probeStart: { resolve: () => void } = { resolve: () => {} };
+      const probeStarted = new Promise<void>((resolve) => {
+        probeStart.resolve = resolve;
+      });
+      versionStdoutState.onHangStarted = probeStart.resolve;
+
+      // Hydration must not wait forever for a CLI that never answers --version.
+      const instanceFiber = yield* createOpenCodeInstance({
+        instanceId: "opencode_probe_timeout",
+        enabled: true,
+      }).pipe(Effect.forkScoped);
+      yield* Effect.promise(() => probeStarted);
+      yield* TestClock.adjust(exceedTimeout);
+      const instance = yield* Fiber.join(instanceFiber);
+
+      // A timed-out probe is unverified, not an unsupported install.
+      expect(instance.symphonyCodeReview).toBe(true);
+      expect(instance.snapshot.maintenanceCapabilities.update).not.toBeNull();
+
+      // The command-time revalidation uses the same bound, so maintenance
+      // cannot hang on the same executable.
+      const guardStart: { resolve: () => void } = { resolve: () => {} };
+      const guardStarted = new Promise<void>((resolve) => {
+        guardStart.resolve = resolve;
+      });
+      versionStdoutState.onHangStarted = guardStart.resolve;
+      const guardFiber = yield* openCodeUpdateGuard(instance).pipe(Effect.forkScoped);
+      yield* Effect.promise(() => guardStarted);
+      yield* TestClock.adjust(exceedTimeout);
+
+      expect(yield* Fiber.join(guardFiber)).toBeNull();
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          versionStdoutState.hang = false;
+          versionStdoutState.onHangStarted = null;
+        }),
+      ),
+      Effect.provide(driverTestLayer),
+      Effect.scoped,
+    ),
   );
 });

@@ -18,6 +18,7 @@ import * as Crypto from "effect/Crypto";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { HttpClient } from "effect/unstable/http";
@@ -53,6 +54,7 @@ import {
 import {
   classifyOpenCodeVersion,
   formatOpenCodeUnsupportedVersionMessage,
+  OPENCODE_VERSION_PROBE_TIMEOUT,
   parseOpenCodeVersionOutput,
   type OpenCodeVersion,
 } from "../openCodeVersion.ts";
@@ -112,8 +114,11 @@ export function supportsOpenCodeSymphonyCodeReview(knownVersion: OpenCodeVersion
 /**
  * Probe the local CLI for its banner version.
  *
- * A failed or unparseable probe resolves `null` and never changes behaviour on
- * its own: only an affirmatively classified unsupported major is blocked.
+ * The probe is bounded because it runs while the provider registry hydrates and
+ * again immediately before maintenance: an executable that never answers
+ * `--version` must not hold server start or an update. A timed-out, failed or
+ * unparseable probe resolves `null` and never changes behaviour on its own:
+ * only an affirmatively classified unsupported major is blocked.
  */
 function probeOpenCodeVersion(input: {
   readonly runtime: OpenCodeRuntimeShape;
@@ -127,10 +132,16 @@ function probeOpenCodeVersion(input: {
       environment: input.environment,
     })
     .pipe(
-      Effect.map((result) => {
-        const parsed = parseOpenCodeVersionOutput(result.stdout);
-        return parsed ? classifyOpenCodeVersion(parsed) : null;
-      }),
+      Effect.timeoutOption(OPENCODE_VERSION_PROBE_TIMEOUT),
+      Effect.map((result) =>
+        Option.match(result, {
+          onNone: () => null,
+          onSome: (value) => {
+            const parsed = parseOpenCodeVersionOutput(value.stdout);
+            return parsed ? classifyOpenCodeVersion(parsed) : null;
+          },
+        }),
+      ),
       Effect.catchCause((cause) =>
         Effect.logDebug("Could not verify the OpenCode CLI version", {
           binaryPath: input.binaryPath,

@@ -315,7 +315,7 @@ describe("providerMaintenanceRunner", () => {
   it.effect("blocks an update whose command-time guard rejects the current install", () => {
     const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
     return Effect.gen(function* () {
-      const { registry, updateStatesRef } = yield* makeRegistry(baseOpenCodeProvider);
+      const { registry } = yield* makeRegistry(baseOpenCodeProvider);
       const updater = yield* makeTestRunner({
         ...registry,
         getProviderMaintenanceCapabilitiesForInstance: (_instanceId, provider) =>
@@ -338,7 +338,8 @@ describe("providerMaintenanceRunner", () => {
         }
       }
       assert.deepStrictEqual(calls, []);
-      assert.deepStrictEqual(yield* Ref.get(updateStatesRef), []);
+      const providersAfterRejection = yield* registry.getProviders;
+      assert.strictEqual(providersAfterRejection[0]?.updateState, undefined);
     }).pipe(
       Effect.provide(
         Layer.mergeAll(
@@ -643,6 +644,103 @@ describe("providerMaintenanceRunner", () => {
         "install -g @openai/codex@latest",
         "install -g opencode-ai@latest",
       ]);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          NonWindowsPlatform,
+          latestVersionHttpClient("0.0.0"),
+          mockSpawnerLayer((_command, args) => {
+            calls.push(args.join(" "));
+            if (calls.length === 1) {
+              firstStartedLatch.resolve();
+              return {
+                stdout: "updated",
+                exitCode: Effect.promise(() => releaseFirst).pipe(
+                  Effect.as(ChildProcessSpawner.ExitCode(0)),
+                ),
+              };
+            }
+            return { stdout: "updated" };
+          }),
+        ),
+      ),
+    );
+  });
+
+  it.effect("rechecks the command-time guard after queueing and blocks the legacy updater", () => {
+    const firstStartedLatch: { resolve: () => void } = { resolve: () => {} };
+    const releaseFirstLatch: { resolve: () => void } = { resolve: () => {} };
+    const firstStarted = new Promise<void>((resolve) => {
+      firstStartedLatch.resolve = resolve;
+    });
+    const releaseFirst = new Promise<void>((resolve) => {
+      releaseFirstLatch.resolve = resolve;
+    });
+    const calls: Array<string> = [];
+    return Effect.gen(function* () {
+      const versionRef = yield* Ref.make("1.18.15");
+      const { registry } = yield* makeRegistry([baseProvider, baseOpenCodeProvider]);
+      const updater = yield* makeTestRunner({
+        ...registry,
+        getProviderMaintenanceCapabilitiesForInstance: (_instanceId, provider) =>
+          Effect.succeed(
+            provider === OPENCODE_DRIVER
+              ? withCommandTimeGuard(
+                  lifecycleFor(provider),
+                  Ref.get(versionRef).pipe(
+                    Effect.map((version) =>
+                      version.startsWith("2.")
+                        ? `Update blocked. OpenCode v${version} is installed.`
+                        : null,
+                    ),
+                  ),
+                )
+              : lifecycleFor(provider),
+          ),
+      });
+
+      const first = yield* updater.updateProvider(CODEX_DRIVER).pipe(Effect.forkScoped);
+      yield* Effect.promise(() => firstStarted);
+
+      const second = yield* updater
+        .updateProvider(OPENCODE_DRIVER)
+        .pipe(Effect.exit, Effect.forkScoped);
+      let queuedStatus: string | undefined;
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const providers = yield* registry.getProviders;
+        queuedStatus = providers.find((provider) => provider.instanceId === OPENCODE_INSTANCE_ID)
+          ?.updateState?.status;
+        if (queuedStatus === "queued") {
+          break;
+        }
+        yield* Effect.yieldNow;
+      }
+      assert.strictEqual(queuedStatus, "queued");
+
+      // The CLI is replaced after this update was enqueued but before it
+      // acquires the shared npm lock. The guard must read this value at
+      // execution time, not at enqueue time.
+      yield* Ref.set(versionRef, "2.0.32");
+
+      releaseFirstLatch.resolve();
+      yield* Fiber.join(first);
+      const secondExit = yield* Fiber.join(second);
+
+      assert.strictEqual(Exit.isFailure(secondExit), true);
+      if (Exit.isFailure(secondExit)) {
+        const error = Cause.squash(secondExit.cause);
+        assert.strictEqual(isServerProviderUpdateError(error), true);
+        if (isServerProviderUpdateError(error)) {
+          assert.include(error.reason, "OpenCode v2.0.32");
+        }
+      }
+      assert.deepStrictEqual(calls, ["install -g @openai/codex@latest"]);
+      const providersAfterRejection = yield* registry.getProviders;
+      assert.strictEqual(
+        providersAfterRejection.find((provider) => provider.instanceId === OPENCODE_INSTANCE_ID)
+          ?.updateState,
+        undefined,
+      );
     }).pipe(
       Effect.provide(
         Layer.mergeAll(
