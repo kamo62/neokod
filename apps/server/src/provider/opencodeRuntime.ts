@@ -1,4 +1,5 @@
 import * as NodeURL from "node:url";
+import * as NodeCrypto from "node:crypto";
 
 import type { ChatAttachment, ProviderApprovalDecision, RuntimeMode } from "@neokod/contracts";
 import {
@@ -33,10 +34,49 @@ import { isWindowsCommandNotFound } from "../processRunner.ts";
 import { collectStreamAsString } from "./providerSnapshot.ts";
 import * as NetService from "@neokod/shared/Net";
 import { HostProcessPlatform } from "@neokod/shared/hostProcess";
+import {
+  captureProcessBirthToken,
+  posixProcessBirthReader,
+  posixProcessGroupSignaller,
+  validateProcessBirthIdentity,
+  type ProcessBirthReader,
+  type ProcessGroupSignaller,
+} from "@neokod/shared/processGroup";
 import { resolveSpawnCommand } from "@neokod/shared/shell";
+import { OpenCodeServerLedger } from "./OpenCodeServerLedger.ts";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.UnknownFromJsonString);
 
 const OPENCODE_SERVER_READY_PREFIX = "opencode server listening";
+const OPENCODE_SERVER_USERNAME = "opencode";
+
+/**
+ * Names removed from the child's environment: Neokod-internal configuration and
+ * any inherited OpenCode auth that would shadow the per-spawn password.
+ *
+ * Provider API keys, `HOME`, `PATH`, `XDG_*` and `OPENCODE_CONFIG_*` pass
+ * through because OpenCode needs them to find its config and credentials.
+ */
+const OPENCODE_CHILD_ENV_DENY_PREFIXES = ["NEOKOD_", "T3CODE_"] as const;
+const OPENCODE_CHILD_ENV_DENY_NAMES = new Set([
+  "OPENCODE_SERVER_PASSWORD",
+  "OPENCODE_SERVER_USERNAME",
+  "OPENCODE_PASSWORD",
+]);
+
+export function buildOpenCodeServerEnvironment(
+  base: NodeJS.ProcessEnv,
+  serverPassword: string,
+): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [name, value] of Object.entries(base)) {
+    if (value === undefined) continue;
+    if (OPENCODE_CHILD_ENV_DENY_NAMES.has(name)) continue;
+    if (OPENCODE_CHILD_ENV_DENY_PREFIXES.some((prefix) => name.startsWith(prefix))) continue;
+    env[name] = value;
+  }
+  env.OPENCODE_SERVER_PASSWORD = serverPassword;
+  return env;
+}
 /**
  * Budget for `opencode serve` to spawn and announce its listening URL.
  *
@@ -69,15 +109,100 @@ const OPENCODE_SERVER_TIMEOUT_MS = parseOpenCodeServerTimeoutMs(
   process.env.NEOKOD_OPENCODE_SERVER_TIMEOUT_MS,
 );
 const DEFAULT_HOSTNAME = "127.0.0.1";
+
+const OPENCODE_GROUP_TERM_GRACE = "1 second";
+const OPENCODE_GROUP_KILL_SETTLE_POLLS = 20;
+const OPENCODE_GROUP_KILL_SETTLE_INTERVAL = "50 millis";
+
+export interface OpenCodeProcessGroupTerminationInput {
+  readonly pgid: number;
+  /** Recycle-resistant leader birth token captured immediately after spawn. */
+  readonly birthToken: string | null;
+}
+
+export interface OpenCodeProcessGroupTerminationDependencies {
+  readonly signaller: ProcessGroupSignaller;
+  readonly birthReader: ProcessBirthReader;
+}
+
+/**
+ * TERM-to-KILL escalation for a spawned OpenCode server group.
+ *
+ * A bare pgid is not proof that the group is still ours: the original group can
+ * exit during the grace window and the kernel can reuse its id. Before the
+ * escalated signal the leader's recorded birth token must still match the live
+ * process, otherwise nothing more is signalled and the caller keeps the ledger
+ * evidence for a later, fully verified reaping attempt.
+ */
+export const terminateOpenCodeProcessGroup = (
+  input: OpenCodeProcessGroupTerminationInput,
+  dependencies: OpenCodeProcessGroupTerminationDependencies,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const term = yield* dependencies.signaller.signalGroup(input.pgid, "SIGTERM");
+    if (term === "no_such_group") {
+      return;
+    }
+    if (term !== "sent") {
+      yield* Effect.logWarning("Could not send SIGTERM to an OpenCode server process group", {
+        pgid: input.pgid,
+        result: term,
+      });
+    }
+    yield* Effect.sleep(OPENCODE_GROUP_TERM_GRACE);
+    if (!(yield* dependencies.signaller.isGroupAlive(input.pgid))) {
+      return;
+    }
+
+    const validation = yield* validateProcessBirthIdentity(
+      { pid: input.pgid, persistedBirthToken: input.birthToken },
+      dependencies.birthReader,
+    );
+    if (validation.status !== "confirmed") {
+      yield* Effect.logWarning(
+        "Refusing to send SIGKILL to an OpenCode server process group whose birth identity is not confirmed; keeping its ledger entry",
+        {
+          pgid: input.pgid,
+          identity: validation.status,
+          ...(validation.status === "unverifiable" ? { reason: validation.reason } : {}),
+        },
+      );
+      return;
+    }
+
+    const kill = yield* dependencies.signaller.signalGroup(input.pgid, "SIGKILL");
+    if (kill === "no_such_group") {
+      return;
+    }
+    if (kill !== "sent") {
+      yield* Effect.logWarning("Could not send SIGKILL to an OpenCode server process group", {
+        pgid: input.pgid,
+        result: kill,
+      });
+      return;
+    }
+    for (let poll = 0; poll < OPENCODE_GROUP_KILL_SETTLE_POLLS; poll++) {
+      if (!(yield* dependencies.signaller.isGroupAlive(input.pgid))) {
+        return;
+      }
+      yield* Effect.sleep(OPENCODE_GROUP_KILL_SETTLE_INTERVAL);
+    }
+    yield* Effect.logWarning(
+      "OpenCode server process group survived SIGKILL; keeping its ledger entry",
+      { pgid: input.pgid },
+    );
+  });
 export interface OpenCodeServerProcess {
   readonly url: string;
   readonly exitCode: Effect.Effect<number, never>;
+  readonly serverPassword?: string;
 }
 
 export interface OpenCodeServerConnection {
   readonly url: string;
   readonly exitCode: Effect.Effect<number, never> | null;
   readonly external: boolean;
+  readonly serverPassword?: string;
 }
 
 const OPENCODE_RUNTIME_ERROR_TAG = "OpenCodeRuntimeError";
@@ -325,6 +450,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const netService = yield* NetService.NetService;
   const hostPlatform = yield* HostProcessPlatform;
+  const ledger = yield* OpenCodeServerLedger;
   const resolveCommand = (command: string, args: ReadonlyArray<string>, env?: NodeJS.ProcessEnv) =>
     resolveSpawnCommand(command, args, env ? { env } : {});
 
@@ -386,23 +512,34 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
         ));
       const timeoutMs = input.timeoutMs ?? OPENCODE_SERVER_TIMEOUT_MS;
       const args = ["serve", `--hostname=${hostname}`, `--port=${port}`];
-      const spawnCommand = yield* resolveCommand(input.binaryPath, args, input.environment);
+      // The password lives only in the child environment, never in argv where
+      // any local `ps` could read it. `extendEnv: false` is required because
+      // the spawner otherwise merges the parent environment back over `env`,
+      // restoring the names the scrub just removed.
+      const serverPassword = NodeCrypto.randomBytes(32).toString("base64url");
+      const childEnvironment = buildOpenCodeServerEnvironment(
+        input.environment ?? process.env,
+        serverPassword,
+      );
+      const spawnCommand = yield* resolveCommand(input.binaryPath, args, childEnvironment);
 
       const child = yield* spawner
         .spawn(
           ChildProcess.make(spawnCommand.command, spawnCommand.args, {
             detached: hostPlatform !== "win32",
             shell: spawnCommand.shell,
-            // The caller's environment must reach opencode untouched. This
-            // spawn used to write OPENCODE_CONFIG_CONTENT="{}" after the
-            // spread, which silently replaced a value the operator had
-            // exported. It was never a way to run opencode without a config:
-            // opencode loads its global and project config first and merges
-            // this variable as one more source on top, so "{}" only ever
-            // applied an empty overlay. Nothing here needs a config-less
-            // opencode either; the whitelist/blacklist handling in
-            // OpenCodeProvider.flattenOpenCodeModels reads the real config.
-            ...(input.environment ? { env: input.environment } : { extendEnv: true }),
+            // The caller's environment reaches opencode with Neokod-internal
+            // names and inherited OpenCode auth removed. This spawn used to
+            // write OPENCODE_CONFIG_CONTENT="{}" after the spread, which
+            // silently replaced a value the operator had exported. It was
+            // never a way to run opencode without a config: opencode loads its
+            // global and project config first and merges this variable as one
+            // more source on top, so "{}" only ever applied an empty overlay.
+            // Nothing here needs a config-less opencode either; the
+            // whitelist/blacklist handling in OpenCodeProvider.flattenOpenCodeModels
+            // reads the real config.
+            env: childEnvironment,
+            extendEnv: false,
           }),
         )
         .pipe(
@@ -417,24 +554,63 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
           ),
         );
 
-      const killOpenCodeProcessGroup = (signal: NodeJS.Signals) =>
-        hostPlatform === "win32"
-          ? child.kill({ killSignal: signal, forceKillAfter: "1 second" }).pipe(Effect.asVoid)
-          : Effect.sync(() => {
-              try {
-                process.kill(-Number(child.pid), signal);
-              } catch {
-                // The direct child may already have exited after starting the
-                // server; the process group kill is best-effort cleanup for
-                // any serve process left in that group.
-              }
-            });
-      const terminateChild = killOpenCodeProcessGroup("SIGTERM").pipe(
-        Effect.andThen(Effect.sleep("1 second")),
-        Effect.andThen(killOpenCodeProcessGroup("SIGKILL")),
-        Effect.ignore,
+      const childPid = Number(child.pid);
+      const birthToken =
+        hostPlatform === "win32" ? null : yield* captureProcessBirthToken(childPid);
+      const terminateChild = Effect.gen(function* () {
+        if (hostPlatform === "win32") {
+          yield* child.kill({ killSignal: "SIGTERM", forceKillAfter: "1 second" }).pipe(
+            Effect.asVoid,
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Could not send SIGTERM to the OpenCode server child", {
+                pid: childPid,
+                cause,
+              }),
+            ),
+          );
+          yield* Effect.sleep("1 second");
+          yield* child.kill({ killSignal: "SIGKILL", forceKillAfter: "1 second" }).pipe(
+            Effect.asVoid,
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Could not send SIGKILL to the OpenCode server child", {
+                pid: childPid,
+                cause,
+              }),
+            ),
+          );
+          return;
+        }
+        yield* terminateOpenCodeProcessGroup(
+          { pgid: childPid, birthToken },
+          { signaller: posixProcessGroupSignaller, birthReader: posixProcessBirthReader },
+        );
+      }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning(
+            "Could not terminate the OpenCode server process group; keeping its ledger entry",
+            { pid: childPid, cause },
+          ),
+        ),
       );
-      yield* Scope.addFinalizer(runtimeScope, terminateChild);
+      // Record the process group so a later boot can find and stop it after a
+      // hard crash of this server. The forget action is folded into the
+      // termination finalizer instead of being registered separately:
+      // finalizers run in reverse order, so a separate `forget` would remove
+      // the durable evidence before the child was terminated. A crash between
+      // those two would leave a detached child with no record. Filling the
+      // forget action in after tracking returns also preserves immediate
+      // cleanup when tracking fails or is interrupted.
+      const forgetRef = yield* Ref.make<Effect.Effect<void>>(Effect.void);
+      yield* Scope.addFinalizer(
+        runtimeScope,
+        Effect.gen(function* () {
+          yield* terminateChild;
+          const forget = yield* Ref.get(forgetRef);
+          yield* forget;
+        }),
+      );
+      const forget = yield* ledger.track({ pid: Number(child.pid), port, args });
+      yield* Ref.set(forgetRef, forget);
 
       const stdoutRef = yield* Ref.make("");
       const stderrRef = yield* Ref.make("");
@@ -528,6 +704,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
           Effect.map(Number),
           Effect.orElseSucceed(() => 0),
         ),
+        serverPassword,
       } satisfies OpenCodeServerProcess;
     });
 
@@ -553,6 +730,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
         url: server.url,
         exitCode: server.exitCode,
         external: false,
+        ...(server.serverPassword !== undefined ? { serverPassword: server.serverPassword } : {}),
       })),
     );
   };
@@ -564,7 +742,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
       ...(input.serverPassword
         ? {
             headers: {
-              Authorization: `Basic ${Buffer.from(`opencode:${input.serverPassword}`, "utf8").toString("base64")}`,
+              Authorization: `Basic ${Buffer.from(`${OPENCODE_SERVER_USERNAME}:${input.serverPassword}`, "utf8").toString("base64")}`,
             },
           }
         : {}),

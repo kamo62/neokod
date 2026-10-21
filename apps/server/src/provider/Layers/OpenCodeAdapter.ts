@@ -83,6 +83,14 @@ interface OpenCodeSessionContext {
   activeAgent: string | undefined;
   activeVariant: string | undefined;
   /**
+   * Set when Neokod asked OpenCode to abort: the turn id requested by the user,
+   * or `"adapter"` for the adapter's own retry-loop abort. Cleared when a fresh
+   * turn starts. OpenCode echoes the abort as a `MessageAbortedError` or an
+   * `idle` status, and either may arrive before `session.abort` returns, so the
+   * mark must exist before the request is sent.
+   */
+  abortRequestedTurnId: TurnId | "adapter" | undefined;
+  /**
    * One-shot guard flipped by `stopOpenCodeContext` / `emitUnexpectedExit`.
    * The session lifecycle is owned by `sessionScope`; this Ref exists only
    * so concurrent callers can race the transition safely via `getAndSet`.
@@ -374,6 +382,15 @@ function sessionErrorMessage(error: unknown): string {
   return typeof message === "string" && message.trim().length > 0
     ? message
     : "OpenCode session failed.";
+}
+
+function isMessageAbortedError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    error.name === "MessageAbortedError"
+  );
 }
 
 /**
@@ -681,6 +698,50 @@ export function makeOpenCodeAdapter(
     });
 
     /**
+     * Resolve everything still pending for a turn that is ending. Used by both
+     * terminal failure and user interrupt: the session can no longer receive a
+     * normal reply, so permissions use the existing cancel outcome and
+     * questions resolve with no answers.
+     */
+    const resolvePendingRequests = Effect.fn("resolvePendingRequests")(function* (
+      context: OpenCodeSessionContext,
+      turnId: TurnId | undefined,
+      raw: unknown,
+    ) {
+      const pendingPermissions = [...context.pendingPermissions.values()];
+      const pendingQuestions = [...context.pendingQuestions.keys()];
+      context.pendingPermissions.clear();
+      context.pendingQuestions.clear();
+      for (const request of pendingPermissions) {
+        yield* emit({
+          ...(yield* buildEventBase({
+            threadId: context.session.threadId,
+            turnId,
+            requestId: request.id,
+            raw,
+          })),
+          type: "request.resolved",
+          payload: {
+            requestType: mapPermissionToRequestType(request.permission),
+            decision: "cancel",
+          },
+        });
+      }
+      for (const requestId of pendingQuestions) {
+        yield* emit({
+          ...(yield* buildEventBase({
+            threadId: context.session.threadId,
+            turnId,
+            requestId,
+            raw,
+          })),
+          type: "user-input.resolved",
+          payload: { answers: {} },
+        });
+      }
+    });
+
+    /**
      * Terminal failure path shared by `session.error` and terminal retry
      * classification: resolve everything pending, mark the provider session
      * errored, and settle the active turn as failed. Leaving the "running"
@@ -697,40 +758,8 @@ export function makeOpenCodeAdapter(
     ) {
       const { message, detail, raw } = input;
       const activeTurnId = context.activeTurnId;
-      const pendingPermissions = [...context.pendingPermissions.values()];
-      const pendingQuestions = [...context.pendingQuestions.keys()];
-      context.pendingPermissions.clear();
-      context.pendingQuestions.clear();
       context.activeTurnId = undefined;
-      // A dead session cannot receive a normal reply, so use the existing
-      // cancel outcome to clear permissions; questions resolve with no answers.
-      for (const request of pendingPermissions) {
-        yield* emit({
-          ...(yield* buildEventBase({
-            threadId: context.session.threadId,
-            turnId: activeTurnId,
-            requestId: request.id,
-            raw,
-          })),
-          type: "request.resolved",
-          payload: {
-            requestType: mapPermissionToRequestType(request.permission),
-            decision: "cancel",
-          },
-        });
-      }
-      for (const requestId of pendingQuestions) {
-        yield* emit({
-          ...(yield* buildEventBase({
-            threadId: context.session.threadId,
-            turnId: activeTurnId,
-            requestId,
-            raw,
-          })),
-          type: "user-input.resolved",
-          payload: { answers: {} },
-        });
-      }
+      yield* resolvePendingRequests(context, activeTurnId, raw);
       yield* updateProviderSession(
         context,
         {
@@ -764,6 +793,37 @@ export function makeOpenCodeAdapter(
           class: "provider_error",
           detail,
         },
+      });
+    });
+
+    /**
+     * Settlement for a Stop Neokod itself requested. The abort echo can arrive
+     * as `MessageAbortedError` or as an `idle` status, in either order, so this
+     * is idempotent: the first caller settles and clears `activeTurnId`, and a
+     * late echo is a no-op. The thread returns to idle with a neutral
+     * `interrupted` turn state and no red runtime error.
+     */
+    const settleInterruptedTurn = Effect.fn("settleInterruptedTurn")(function* (
+      context: OpenCodeSessionContext,
+      raw: unknown,
+    ) {
+      const turnId = context.activeTurnId;
+      if (turnId === undefined) {
+        return;
+      }
+      context.activeTurnId = undefined;
+      context.activeAgent = undefined;
+      context.activeVariant = undefined;
+      yield* resolvePendingRequests(context, turnId, raw);
+      yield* updateProviderSession(
+        context,
+        { status: "ready" },
+        { clearActiveTurnId: true, clearLastError: true },
+      );
+      yield* emit({
+        ...(yield* buildEventBase({ threadId: context.session.threadId, turnId, raw })),
+        type: "turn.completed",
+        payload: { state: "interrupted" },
       });
     });
 
@@ -1023,6 +1083,10 @@ export function makeOpenCodeAdapter(
                   detail: event.properties.status,
                   raw: event,
                 });
+                // Mark the abort this adapter is about to send. Its echo is a
+                // MessageAbortedError for a turn that is already settled; without
+                // the mark it would emit a second runtime.error.
+                context.abortRequestedTurnId = "adapter";
                 yield* runOpenCodeSdk("session.abort", () =>
                   context.client.session.abort({ sessionID: context.openCodeSessionId }),
                 ).pipe(Effect.ignore({ log: true }));
@@ -1045,6 +1109,9 @@ export function makeOpenCodeAdapter(
           }
 
           if (event.properties.status.type === "idle" && turnId) {
+            // If idle is the abort's echo, the user asked for this stop and the
+            // turn must read interrupted even though idle won the race.
+            const state = context.abortRequestedTurnId === turnId ? "interrupted" : "completed";
             context.activeTurnId = undefined;
             yield* updateProviderSession(context, { status: "ready" }, { clearActiveTurnId: true });
             yield* emit({
@@ -1055,7 +1122,7 @@ export function makeOpenCodeAdapter(
               })),
               type: "turn.completed",
               payload: {
-                state: "completed",
+                state,
               },
             });
           }
@@ -1063,6 +1130,15 @@ export function makeOpenCodeAdapter(
         }
 
         case "session.error": {
+          if (
+            isMessageAbortedError(event.properties.error) &&
+            context.abortRequestedTurnId !== undefined
+          ) {
+            // The abort Neokod requested, not an unrelated cancellation. This
+            // no-ops when interruptTurn or idle already settled the turn.
+            yield* settleInterruptedTurn(context, event);
+            break;
+          }
           yield* settleSessionFailure(context, {
             message: sessionErrorMessage(event.properties.error),
             detail: event.properties.error,
@@ -1164,10 +1240,13 @@ export function makeOpenCodeAdapter(
                 serverUrl,
                 ...(options?.environment ? { environment: options.environment } : {}),
               });
+              // A spawned server uses the password generated for that process;
+              // an external server keeps the user's configured one.
+              const clientPassword = server.external ? serverPassword : server.serverPassword;
               const client = openCodeRuntime.createOpenCodeSdkClient({
                 baseUrl: server.url,
                 directory,
-                ...(server.external && serverPassword ? { serverPassword } : {}),
+                ...(clientPassword ? { serverPassword: clientPassword } : {}),
               });
               const mcpSession = McpProviderSession.readMcpProviderSession(input.threadId);
               if (mcpSession && !server.external) {
@@ -1256,6 +1335,7 @@ export function makeOpenCodeAdapter(
           activeTurnId: undefined,
           activeAgent: undefined,
           activeVariant: undefined,
+          abortRequestedTurnId: undefined,
           stopped: yield* Ref.make(false),
           sessionScope: started.sessionScope,
         };
@@ -1343,6 +1423,9 @@ export function makeOpenCodeAdapter(
       );
 
       if (steeringTurnId === undefined) {
+        // A fresh turn is not the one Neokod asked to abort, even if a late
+        // echo from the previous Stop arrives while this turn is running.
+        context.abortRequestedTurnId = undefined;
         yield* emit({
           ...(yield* buildEventBase({ threadId: input.threadId, turnId })),
           type: "turn.started",
@@ -1407,20 +1490,32 @@ export function makeOpenCodeAdapter(
     const interruptTurn: OpenCodeAdapterShape["interruptTurn"] = Effect.fn("interruptTurn")(
       function* (threadId, turnId) {
         const context = ensureSessionContext(sessions, threadId);
+        const targetTurnId = turnId ?? context.activeTurnId;
+        // Mark before the request: OpenCode can deliver the abort echo
+        // (session.error or idle) while session.abort is still in flight.
+        if (targetTurnId !== undefined) {
+          context.abortRequestedTurnId = targetTurnId;
+        }
         yield* runOpenCodeSdk("session.abort", () =>
           context.client.session.abort({ sessionID: context.openCodeSessionId }),
         ).pipe(Effect.mapError(toRequestError));
-        if (turnId ?? context.activeTurnId) {
+        if (targetTurnId !== undefined) {
+          // Ingestion uses turn.aborted as a turn-boundary closure signal for
+          // runtime items, so it must be emitted even though the turn also
+          // reaches `turn.completed` with the interrupted state.
           yield* emit({
             ...(yield* buildEventBase({
               threadId,
-              turnId: turnId ?? context.activeTurnId,
+              turnId: targetTurnId,
             })),
             type: "turn.aborted",
             payload: {
               reason: "Interrupted by user.",
             },
           });
+          if (context.activeTurnId === targetTurnId) {
+            yield* settleInterruptedTurn(context, undefined);
+          }
         }
       },
     );
