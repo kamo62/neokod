@@ -9,6 +9,7 @@ import {
   type TerminalRestartInput,
 } from "@neokod/contracts";
 import { HostProcessPlatform } from "@neokod/shared/hostProcess";
+import type { ProcessGroupSignaller } from "@neokod/shared/processGroup";
 import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -28,6 +29,7 @@ import { expect } from "vite-plus/test";
 
 import * as ProcessRunner from "../processRunner.ts";
 import * as TerminalManager from "./Manager.ts";
+import * as NodePtyAdapter from "./NodePtyAdapter.ts";
 import * as PtyAdapter from "./PtyAdapter.ts";
 
 class WaitForConditionError extends Data.TaggedError("WaitForConditionError")<{
@@ -242,6 +244,8 @@ interface CreateManagerOptions {
   }>;
   subprocessPollIntervalMs?: number;
   processKillGraceMs?: number;
+  processGroupLister?: (terminalPid: number) => Effect.Effect<ReadonlyArray<number>>;
+  processGroupSignaller?: ProcessGroupSignaller;
   persistRetryDelayMs?: number;
   historyByteLimit?: number;
   maxRetainedInactiveSessions?: number;
@@ -284,6 +288,11 @@ const createManager = (
           ? { subprocessPollIntervalMs: options.subprocessPollIntervalMs }
           : {}),
         processKillGraceMs: options.processKillGraceMs ?? 1,
+        processGroupLister:
+          options.processGroupLister ?? (() => Effect.succeed<ReadonlyArray<number>>([])),
+        ...(options.processGroupSignaller !== undefined
+          ? { processGroupSignaller: options.processGroupSignaller }
+          : {}),
         ...(options.persistRetryDelayMs !== undefined
           ? { persistRetryDelayMs: options.persistRetryDelayMs }
           : {}),
@@ -481,6 +490,49 @@ it.layer(
     Effect.flatMap(Effect.service(FileSystem.FileSystem), (fs) =>
       fs.writeFileString(filePath, contents),
     );
+
+  const isProcessAlive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const readPidFile = (filePath: string) =>
+    readFileString(filePath).pipe(
+      Effect.map((text) => Number.parseInt(text.trim(), 10)),
+      Effect.orElseSucceed(() => Number.NaN),
+    );
+
+  const startBashManager = (dir: string) =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const adapter = yield* NodePtyAdapter.make();
+      return yield* TerminalManager.makeWithOptions({
+        logsDir: path.join(dir, "logs"),
+        ptyAdapter: adapter,
+        shellResolver: () => "/bin/bash",
+        env: {
+          PATH: process.env.PATH ?? "/usr/bin:/bin",
+          HOME: dir,
+          TERM: "xterm",
+        },
+        processKillGraceMs: 200,
+      });
+    });
+
+  const killLeftovers = (pids: ReadonlyArray<number>) =>
+    Effect.sync(() => {
+      for (const pid of pids) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // already gone
+        }
+      }
+    });
 
   it.effect("reports a missing cwd without an artificial cause", () =>
     Effect.gen(function* () {
@@ -1386,6 +1438,71 @@ it.layer(
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
+  it.effect("terminates every process group reported for the terminal", () => {
+    const calls: Array<[number, NodeJS.Signals]> = [];
+    return Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager(5, {
+        processKillGraceMs: 10,
+        processGroupLister: () => Effect.succeed([7001, 7002]),
+        processGroupSignaller: {
+          signalGroup: (pgid, signal) =>
+            Effect.sync(() => {
+              calls.push([pgid, signal]);
+              return "sent" as const;
+            }),
+          isGroupAlive: () => Effect.succeed(false),
+        },
+      });
+      yield* manager.open(openInput());
+      yield* manager.close({ threadId: "thread-1" });
+
+      yield* waitFor(
+        Effect.sync(() => calls.length === 2),
+        "2000 millis",
+      );
+
+      expect(calls.map(([pgid]) => pgid).sort()).toEqual([7001, 7002]);
+      expect(calls.every(([, signal]) => signal === "SIGTERM")).toBe(true);
+      expect(ptyAdapter.processes[0]?.killSignals).toEqual([]);
+    });
+  });
+
+  it.effect("escalates to SIGKILL per group when a group survives SIGTERM", () => {
+    const calls: Array<[number, NodeJS.Signals]> = [];
+    return Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager(5, {
+        processKillGraceMs: 10,
+        processGroupLister: () => Effect.succeed([7001, 7002]),
+        processGroupSignaller: {
+          signalGroup: (pgid, signal) =>
+            Effect.sync(() => {
+              calls.push([pgid, signal]);
+              return "sent" as const;
+            }),
+          isGroupAlive: (pgid) =>
+            Effect.sync(
+              () => !calls.some(([group, signal]) => group === pgid && signal === "SIGKILL"),
+            ),
+        },
+      });
+      yield* manager.open(openInput());
+      yield* manager.close({ threadId: "thread-1" });
+
+      yield* waitFor(
+        Effect.sync(() => calls.length === 4),
+        "2000 millis",
+      );
+
+      for (const pgid of [7001, 7002]) {
+        expect(calls.filter(([group]) => group === pgid).map(([, signal]) => signal)).toEqual([
+          "SIGTERM",
+          "SIGKILL",
+        ]);
+      }
+      expect(ptyAdapter.processes[0]?.killSignals).toEqual([]);
+    });
+  });
+
   it.effect("publishes closed events when terminals are explicitly closed", () =>
     Effect.gen(function* () {
       const { manager, getEvents } = yield* createManager();
@@ -1884,6 +2001,89 @@ it.layer(
       expect(process.killSignals).toContain("SIGKILL");
     }).pipe(Effect.provide(TestClock.layer())),
   );
+
+  it.effect("closing a terminal kills its background jobs", () => {
+    const pids: number[] = [];
+    return Effect.gen(function* () {
+      if ((yield* HostProcessPlatform) === "win32") return;
+      const fs = yield* FileSystem.FileSystem;
+      if (!(yield* fs.exists("/bin/bash"))) return;
+
+      const path = yield* Path.Path;
+      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-terminal-bg-" });
+      const manager = yield* startBashManager(dir);
+      const write = (data: string) =>
+        manager.write({ threadId: "thread-1", terminalId: DEFAULT_TERMINAL_ID, data });
+
+      yield* manager.open(openInput({ cwd: dir }));
+      yield* write("sleep 300 & echo $! > a.pid\n");
+      yield* write("nohup sleep 301 >/dev/null 2>&1 & echo $! > b.pid\n");
+      yield* write("(sleep 302 & echo $! > c.pid)\n");
+
+      yield* waitFor(
+        Effect.gen(function* () {
+          const parsed = yield* Effect.forEach(["a.pid", "b.pid", "c.pid"], (file) =>
+            readPidFile(path.join(dir, file)),
+          );
+          if (parsed.every((pid) => Number.isInteger(pid) && pid > 0)) {
+            pids.splice(0, pids.length, ...parsed);
+            return true;
+          }
+          return false;
+        }),
+        "5000 millis",
+      );
+
+      expect(pids.every(isProcessAlive)).toBe(true);
+
+      yield* manager.close({ threadId: "thread-1", deleteHistory: true });
+
+      yield* waitFor(
+        Effect.sync(() => pids.length === 3 && pids.every((pid) => !isProcessAlive(pid))),
+        "8000 millis",
+      );
+    }).pipe(Effect.ensuring(killLeftovers(pids)));
+  });
+
+  it.effect("closing the manager scope kills background jobs", () => {
+    const pids: number[] = [];
+    return Effect.gen(function* () {
+      if ((yield* HostProcessPlatform) === "win32") return;
+      const fs = yield* FileSystem.FileSystem;
+      if (!(yield* fs.exists("/bin/bash"))) return;
+
+      const path = yield* Path.Path;
+      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-terminal-bg-scope-" });
+      const scope = yield* Scope.make("sequential");
+      const manager = yield* startBashManager(dir).pipe(Effect.provideService(Scope.Scope, scope));
+      yield* manager.open(openInput({ cwd: dir }));
+      yield* manager.write({
+        threadId: "thread-1",
+        terminalId: DEFAULT_TERMINAL_ID,
+        data: "sleep 303 & echo $! > a.pid\n",
+      });
+
+      yield* waitFor(
+        Effect.gen(function* () {
+          const pid = yield* readPidFile(path.join(dir, "a.pid"));
+          if (Number.isInteger(pid) && pid > 0) {
+            pids.splice(0, pids.length, pid);
+            return true;
+          }
+          return false;
+        }),
+        "5000 millis",
+      );
+      expect(isProcessAlive(pids[0] ?? 0)).toBe(true);
+
+      yield* Scope.close(scope, Exit.void);
+
+      yield* waitFor(
+        Effect.sync(() => pids.length === 1 && !isProcessAlive(pids[0] ?? 0)),
+        "8000 millis",
+      );
+    }).pipe(Effect.ensuring(killLeftovers(pids)));
+  });
 
   it("caps history by bytes as well as lines", () => {
     const { capHistory } = TerminalManager;
