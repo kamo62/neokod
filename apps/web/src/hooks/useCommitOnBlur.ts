@@ -1,4 +1,4 @@
-import { type ChangeEvent, type KeyboardEvent, useState } from "react";
+import { type ChangeEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 
 export type CommitOnBlurOptions = {
   /**
@@ -6,6 +6,13 @@ export type CommitOnBlurOptions = {
    * Enter must insert a newline instead. Defaults to true.
    */
   readonly commitOnEnter?: boolean;
+  /**
+   * Called once when the first keystroke starts a buffered edit, before the
+   * text is committed. Lets an owner claim the edit at its starting revision.
+   */
+  readonly onBeginEdit?: (() => void) | undefined;
+  /** Called on blur when a buffered edit ends without a changed value. */
+  readonly onDiscardEdit?: (() => void) | undefined;
 };
 
 /**
@@ -28,20 +35,46 @@ export function useCommitOnBlur<
   E extends HTMLInputElement | HTMLTextAreaElement = HTMLInputElement,
 >(value: string, onCommit: (next: string) => void, options: CommitOnBlurOptions = {}) {
   const [draft, setDraft] = useState<string | null>(null);
+  const beganEdit = useRef(false);
+  const discardEdit = useRef(options.onDiscardEdit);
+
+  useEffect(() => {
+    discardEdit.current = options.onDiscardEdit;
+  }, [options.onDiscardEdit]);
+
+  // Navigating away can unmount a focused field without a blur. Its buffered
+  // text is gone, so the owner must not keep claiming an edit it no longer has.
+  useEffect(
+    () => () => {
+      if (!beganEdit.current) return;
+      beganEdit.current = false;
+      discardEdit.current?.();
+    },
+    [],
+  );
 
   return {
     value: draft ?? value,
     onChange: (event: ChangeEvent<E>) => {
+      if (!beganEdit.current) {
+        beganEdit.current = true;
+        options.onBeginEdit?.();
+      }
       setDraft(event.target.value);
     },
     onFocus: () => {
+      beganEdit.current = false;
       setDraft(value);
     },
     onBlur: () => {
       const next = draft ?? value;
+      const began = beganEdit.current;
+      beganEdit.current = false;
       setDraft(null);
       if (next !== value) {
         onCommit(next);
+      } else if (began) {
+        options.onDiscardEdit?.();
       }
     },
     onKeyDown: (event: KeyboardEvent<E>) => {

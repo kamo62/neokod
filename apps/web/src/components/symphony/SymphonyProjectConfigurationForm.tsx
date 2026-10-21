@@ -274,12 +274,16 @@ export function SymphonyProjectConfigurationForm({
   providers,
   reviewProviders,
   onChange,
+  onBeginEdit,
+  onDiscardEdit,
   repositoryWasDetected = false,
 }: {
   readonly value: SymphonyProjectConfiguration;
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly reviewProviders: ReadonlyArray<ServerProvider>;
   readonly onChange: (value: SymphonyProjectConfiguration) => void;
+  readonly onBeginEdit?: (() => void) | undefined;
+  readonly onDiscardEdit?: (() => void) | undefined;
   readonly repositoryWasDetected?: boolean;
 }) {
   const update = (patch: Partial<SymphonyProjectConfiguration>) => onChange({ ...value, ...patch });
@@ -545,6 +549,8 @@ export function SymphonyProjectConfigurationForm({
                 nativeInput
                 value={value.trackerRequiredLabels.join(", ")}
                 onCommit={(text) => update({ trackerRequiredLabels: parseCommaList(text) })}
+                onBeginEdit={onBeginEdit}
+                onDiscardEdit={onDiscardEdit}
               />
             </div>
             <div className="space-y-1.5">
@@ -553,6 +559,8 @@ export function SymphonyProjectConfigurationForm({
                 nativeInput
                 value={value.trackerActiveStates.join(", ")}
                 onCommit={(text) => update({ trackerActiveStates: parseCommaList(text) })}
+                onBeginEdit={onBeginEdit}
+                onDiscardEdit={onDiscardEdit}
               />
             </div>
             <div className="space-y-1.5">
@@ -561,6 +569,8 @@ export function SymphonyProjectConfigurationForm({
                 nativeInput
                 value={value.trackerTerminalStates.join(", ")}
                 onCommit={(text) => update({ trackerTerminalStates: parseCommaList(text) })}
+                onBeginEdit={onBeginEdit}
+                onDiscardEdit={onDiscardEdit}
               />
             </div>
           </div>
@@ -572,6 +582,8 @@ export function SymphonyProjectConfigurationForm({
               placeholder="One command per line"
               value={value.validationRequired.join("\n")}
               onCommit={(text) => update({ validationRequired: parseLineList(text) })}
+              onBeginEdit={onBeginEdit}
+              onDiscardEdit={onDiscardEdit}
             />
           </div>
 

@@ -18,6 +18,13 @@ export interface ProjectSettingsDraft {
   readonly initial: SymphonyProjectConfiguration;
   /** What the user has now. */
   readonly value: SymphonyProjectConfiguration;
+  /**
+   * True while a buffered field has uncommitted keystrokes. `value` still holds
+   * the last committed configuration, but ownership starts on the first
+   * keystroke so reconciliation cannot adopt a newer server baseline
+   * underneath the focused input before blur parses the text.
+   */
+  readonly editing: boolean;
 }
 
 export type DraftSync = "clean" | "dirty" | "changed_elsewhere";
@@ -37,18 +44,33 @@ export function startDraft(
     serverBase: project.configuration,
     initial,
     value: initial,
+    editing: false,
   };
 }
 
 export function isDraftDirty(draft: ProjectSettingsDraft): boolean {
-  return !Equal.equals(draft.value, draft.initial);
+  return draft.editing || !Equal.equals(draft.value, draft.initial);
 }
 
+/**
+ * Take ownership on the first buffered keystroke, before the text is parsed.
+ * The committed value and revision baseline stay untouched until blur.
+ */
+export function beginEditDraft(draft: ProjectSettingsDraft): ProjectSettingsDraft {
+  return draft.editing ? draft : { ...draft, editing: true };
+}
+
+/** Commit or discard the buffered text; the draft is owned by its value again. */
 export function editDraft(
   draft: ProjectSettingsDraft,
   value: SymphonyProjectConfiguration,
 ): ProjectSettingsDraft {
-  return { ...draft, value };
+  return { ...draft, value, editing: false };
+}
+
+/** Release ownership when a buffered field blurred without a change to commit. */
+export function endEditDraft(draft: ProjectSettingsDraft): ProjectSettingsDraft {
+  return draft.editing ? { ...draft, editing: false } : draft;
 }
 
 /**
@@ -93,6 +115,7 @@ export function savedDraft(project: SymphonyProject): ProjectSettingsDraft | nul
     serverBase: project.configuration,
     initial: project.configuration,
     value: project.configuration,
+    editing: false,
   };
 }
 
@@ -110,5 +133,6 @@ export function applySavedDraft(
   const saved = savedDraft(project);
   if (saved === null) return current ?? null;
   if (current === null || current === undefined) return saved;
-  return Equal.equals(current.value, saved.value) ? saved : { ...saved, value: current.value };
+  if (!current.editing && Equal.equals(current.value, saved.value)) return saved;
+  return { ...saved, value: current.value, editing: current.editing };
 }
