@@ -12,6 +12,7 @@ import {
   type ProviderSessionReaperShape,
 } from "../Services/ProviderSessionReaper.ts";
 import { ProviderService } from "../Services/ProviderService.ts";
+import { isHostLostStopOutcome, readPersistedStopOutcome } from "../providerStopOutcome.ts";
 
 const DEFAULT_INACTIVITY_THRESHOLD_MS = 30 * 60 * 1000;
 const DEFAULT_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
@@ -40,6 +41,18 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
 
       for (const binding of bindings) {
         if (binding.status === "stopped") {
+          continue;
+        }
+
+        // A boot-time `host_lost` observation records that the previous server
+        // vanished. No stop is pending here, and calling stopSession would fence
+        // the thread without making the surviving process any more knowable.
+        // Leave the persisted warning and evidence untouched.
+        if (isHostLostStopOutcome(readPersistedStopOutcome(binding.runtimePayload))) {
+          yield* Effect.logDebug("provider.session.reaper.skipped-host-lost", {
+            threadId: binding.threadId,
+            provider: binding.provider,
+          });
           continue;
         }
 

@@ -61,14 +61,18 @@ import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
 import * as ProviderAdapterRegistry from "../Services/ProviderAdapterRegistry.ts";
 import * as ProviderService from "../Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "../Services/ProviderSessionDirectory.ts";
-import { stoppedConfirmed, stopFailed } from "../providerStopOutcome.ts";
+import {
+  isHostLostStopOutcome,
+  readPersistedStopOutcome,
+  stoppedConfirmed,
+  stopFailed,
+} from "../providerStopOutcome.ts";
 import { type EventNdjsonLogger } from "./EventNdjsonLogger.ts";
 import * as ProviderEventLoggers from "./ProviderEventLoggers.ts";
 import * as AnalyticsService from "../../telemetry/AnalyticsService.ts";
 import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 import * as McpSessionRegistry from "../../mcp/McpSessionRegistry.ts";
 const isModelSelection = Schema.is(ModelSelection);
-const isProviderStopOutcome = Schema.is(ProviderStopOutcome);
 const isRuntimeSessionId = Schema.is(RuntimeSessionId);
 
 /**
@@ -163,6 +167,18 @@ function toRuntimePayloadFromSession(
   };
 }
 
+/**
+ * A live session or a newly dispatched turn is new evidence, not a continuation
+ * of the previous stop. The directory merges runtime payloads, so these fields
+ * must be explicitly cleared or a boot-time `host_lost` (or a pending
+ * `stop_requested`) would survive into the fresh binding.
+ */
+const FRESH_RUNTIME_PAYLOAD = {
+  stopPhase: null,
+  stopOutcome: null,
+  stopRequestedAt: null,
+} as const;
+
 function readPersistedRuntimeSessionId(
   runtimePayload: ProviderSessionDirectory.ProviderRuntimeBinding["runtimePayload"],
 ): RuntimeSessionId | undefined {
@@ -195,16 +211,6 @@ function readPersistedCwd(
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function readPersistedStopOutcome(
-  runtimePayload: ProviderSessionDirectory.ProviderRuntimeBinding["runtimePayload"],
-): ProviderStopOutcome | undefined {
-  if (!runtimePayload || typeof runtimePayload !== "object" || Array.isArray(runtimePayload)) {
-    return undefined;
-  }
-  const rawOutcome = "stopOutcome" in runtimePayload ? runtimePayload.stopOutcome : undefined;
-  return isProviderStopOutcome(rawOutcome) ? rawOutcome : undefined;
-}
-
 function hasUnresolvedStop(binding: ProviderSessionDirectory.ProviderRuntimeBinding): boolean {
   if (
     binding.runtimePayload &&
@@ -216,7 +222,14 @@ function hasUnresolvedStop(binding: ProviderSessionDirectory.ProviderRuntimeBind
     return true;
   }
   const outcome = readPersistedStopOutcome(binding.runtimePayload);
-  return outcome !== undefined && outcome.status !== "stopped_confirmed";
+  // `host_lost` is an observation made at boot, not a stop this process owns.
+  // Keeping it as a barrier would block every later session or turn forever.
+  // Other unresolved outcomes still fence the thread until a stop settles.
+  return (
+    outcome !== undefined &&
+    outcome.status !== "stopped_confirmed" &&
+    !isHostLostStopOutcome(outcome)
+  );
 }
 
 const dieOnMissingBindingInstanceId = (
@@ -444,10 +457,13 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         runtimeMode: session.runtimeMode,
         status: toRuntimeStatus(session),
         ...(session.resumeCursor !== undefined ? { resumeCursor: session.resumeCursor } : {}),
-        runtimePayload: toRuntimePayloadFromSession(session, {
-          ...extra,
-          ...(runtimeSessionId === undefined ? {} : { runtimeSessionId }),
-        }),
+        runtimePayload: {
+          ...toRuntimePayloadFromSession(session, {
+            ...extra,
+            ...(runtimeSessionId === undefined ? {} : { runtimeSessionId }),
+          }),
+          ...FRESH_RUNTIME_PAYLOAD,
+        },
       });
     });
 
@@ -874,6 +890,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         ...(turn.resumeCursor !== undefined ? { resumeCursor: turn.resumeCursor } : {}),
         runtimePayload: {
           ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
+          ...FRESH_RUNTIME_PAYLOAD,
           activeTurnId: turn.turnId,
           lastRuntimeEvent: "provider.sendTurn",
           lastRuntimeEventAt: yield* nowIso,
@@ -1092,7 +1109,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           phase: "settled",
           outcome,
         });
-        releaseBarrier = outcome.status === "stopped_confirmed";
+        releaseBarrier = outcome.status === "stopped_confirmed" || isHostLostStopOutcome(outcome);
         yield* analytics.record("provider.session.stopped", {
           provider: routed.adapter.provider,
           outcome: outcome.status,

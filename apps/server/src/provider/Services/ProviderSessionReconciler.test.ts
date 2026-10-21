@@ -21,6 +21,7 @@ import {
   planProviderSessionReconciliation,
   ProviderSessionReconciler,
 } from "./ProviderSessionReconciler.ts";
+import { orphanPossible } from "../providerStopOutcome.ts";
 import { ProviderSessionReconcilerLive } from "../Layers/ProviderSessionReconciler.ts";
 
 const threadId = ThreadId.make("thread-reconcile");
@@ -254,6 +255,31 @@ it("plans a host_lost settlement for a running or starting binding with no live 
   }
 });
 
+it("keeps a host_lost warning when the binding survived but the session dispatch did not", () => {
+  const action = planProviderSessionReconciliation({
+    projected: projected(),
+    liveSessions: [],
+    bindings: [
+      {
+        ...stoppedBinding({
+          activeTurnId: null,
+          stopPhase: "settled",
+          stopOutcome: orphanPossible({
+            stoppedAt: "2026-07-26T23:59:00.000Z",
+            reason: "host_lost",
+          }),
+        }),
+        status: "error" as const,
+      },
+    ],
+  })[0];
+
+  assert.equal(action?.status, "interrupted");
+  assert.equal(action?.lastError, HOST_LOST_SESSION_ERROR);
+  // The binding is already settled; only the missing session update remains.
+  assert.equal(action?.bindingSettlement, undefined);
+});
+
 it("leaves a running binding alone while a live session exists", () => {
   assert.deepStrictEqual(
     planProviderSessionReconciliation({
@@ -369,7 +395,14 @@ it.effect("settles a crashed running binding before dispatching the session", ()
       ),
       Layer.provideMerge(
         Layer.succeed(ProviderSessionDirectory.ProviderSessionDirectory, {
-          listBindings: () => Effect.succeed([{ ...stoppedBinding(), status: "running" as const }]),
+          listBindings: () =>
+            Effect.succeed([
+              {
+                ...stoppedBinding(),
+                status: "running" as const,
+                lastSeenAt: "2026-07-26T23:58:00.000Z",
+              },
+            ]),
           upsert: (binding: ProviderSessionDirectory.ProviderRuntimeBinding) =>
             Effect.sync(() => {
               order.push("binding");
@@ -407,7 +440,7 @@ it.effect("settles a crashed running binding before dispatching the session", ()
     assert.equal(runtimePayload?.activeTurnId, null);
     assert.equal(runtimePayload?.stopPhase, "settled");
     assert.equal(runtimePayload?.stopOutcome?.status, "orphan_possible");
-    assert.equal(typeof runtimePayload?.stopOutcome?.stoppedAt, "string");
+    assert.equal(runtimePayload?.stopOutcome?.stoppedAt, "2026-07-26T23:58:00.000Z");
     assert.equal(runtimePayload?.stopOutcome?.reason, "host_lost");
     assert.deepStrictEqual(runtimePayload?.stopOutcome?.knownExternalRunIds, []);
 
@@ -416,6 +449,68 @@ it.effect("settles a crashed running binding before dispatching the session", ()
     if (command?.type !== "thread.session.set") return;
     assert.equal(command.session.status, "interrupted");
     assert.equal(command.session.activeTurnId, null);
+    assert.equal(command.session.lastError, HOST_LOST_SESSION_ERROR);
+  }),
+);
+
+it.effect("repairs only the session when the host_lost binding write already survived", () =>
+  Effect.gen(function* () {
+    const commands: OrchestrationCommand[] = [];
+    let upsertCalled = false;
+    const settledBinding = {
+      ...stoppedBinding({
+        activeTurnId: null,
+        stopPhase: "settled",
+        stopOutcome: orphanPossible({
+          stoppedAt: "2026-07-26T23:58:00.000Z",
+          reason: "host_lost",
+        }),
+      }),
+      status: "error" as const,
+      lastSeenAt: "2026-07-26T23:58:00.000Z",
+    };
+    const layer = ProviderSessionReconcilerLive.pipe(
+      Layer.provideMerge(
+        Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
+          getCommandReadModel: () => Effect.succeed(projected()),
+          getSnapshot: () => Effect.die("getSnapshot must not be used by boot reconciliation"),
+        } as unknown as ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]),
+      ),
+      Layer.provideMerge(
+        Layer.succeed(OrchestrationEngine.OrchestrationEngineService, {
+          dispatch: (command: OrchestrationCommand) => {
+            commands.push(command);
+            return Effect.succeed({ sequence: 2 });
+          },
+        } as unknown as OrchestrationEngine.OrchestrationEngineService["Service"]),
+      ),
+      Layer.provideMerge(
+        Layer.succeed(ProviderSessionDirectory.ProviderSessionDirectory, {
+          listBindings: () => Effect.succeed([settledBinding]),
+          upsert: () =>
+            Effect.sync(() => {
+              upsertCalled = true;
+            }),
+        } as unknown as ProviderSessionDirectory.ProviderSessionDirectory["Service"]),
+      ),
+      Layer.provideMerge(
+        Layer.succeed(ProviderService.ProviderService, {
+          listSessions: () => Effect.succeed([]),
+        } as unknown as ProviderService.ProviderService["Service"]),
+      ),
+      Layer.provideMerge(NodeServices.layer),
+    );
+
+    const reconciler = yield* ProviderSessionReconciler.pipe(Effect.provide(layer));
+    yield* reconciler.reconcile;
+
+    // A repeated boot must not rewrite settled evidence, but it must still
+    // repair the session update that the previous boot crashed before sending.
+    assert.equal(upsertCalled, false);
+    const command = commands[0];
+    assert.equal(command?.type, "thread.session.set");
+    if (command?.type !== "thread.session.set") return;
+    assert.equal(command.session.status, "interrupted");
     assert.equal(command.session.lastError, HOST_LOST_SESSION_ERROR);
   }),
 );

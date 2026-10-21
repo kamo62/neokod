@@ -56,7 +56,10 @@ const makeProviderSessionReconciler = Effect.gen(function* () {
                 activeTurnId: null,
                 stopPhase: "settled",
                 stopOutcome: orphanPossible({
-                  stoppedAt: DateTime.formatIso(yield* DateTime.now),
+                  // The last persisted observation is the honest end of the
+                  // evidence we hold. Boot time is when recovery ran, not when
+                  // the lost turn or its items were last seen.
+                  stoppedAt: binding.lastSeenAt,
                   reason: "host_lost",
                 }),
               },

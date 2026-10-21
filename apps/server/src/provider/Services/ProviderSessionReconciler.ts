@@ -8,6 +8,7 @@ import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 
 import type { ProviderRuntimeBinding } from "./ProviderSessionDirectory.ts";
+import { isHostLostStopOutcome, readPersistedStopOutcome } from "../providerStopOutcome.ts";
 
 export interface ProviderSessionReconcileAction {
   readonly threadId: OrchestrationReadModel["threads"][number]["id"];
@@ -129,7 +130,15 @@ export const planProviderSessionReconciliation = ({
         {
           ...action,
           status: "interrupted",
-          lastError: exactBindingError(binding, turn.turnId),
+          // The binding may already carry the host-loss warning from a boot that
+          // crashed between writing the binding and dispatching the session. The
+          // payload has no `activeTurnId` then, so recover the warning from the
+          // persisted outcome instead of reporting the turn with no explanation.
+          lastError:
+            exactBindingError(binding, turn.turnId) ??
+            (isHostLostStopOutcome(readPersistedStopOutcome(binding.runtimePayload))
+              ? HOST_LOST_SESSION_ERROR
+              : null),
         },
       ];
     }

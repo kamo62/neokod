@@ -39,6 +39,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import {
   ProviderAdapterRequestError,
   ProviderAdapterSessionNotFoundError,
+  ProviderStoppingError,
   ProviderUnsupportedError,
   ProviderValidationError,
   type ProviderAdapterError,
@@ -59,6 +60,7 @@ import {
 import * as ServerSettings from "../../serverSettings.ts";
 import * as AnalyticsService from "../../telemetry/AnalyticsService.ts";
 import { makeAdapterRegistryMock } from "../testUtils/providerAdapterRegistryMock.ts";
+import { orphanPossible, stopFailed } from "../providerStopOutcome.ts";
 
 const defaultServerSettingsLayer = ServerSettings.ServerSettingsService.layerTest();
 
@@ -713,6 +715,124 @@ it.effect("ProviderServiceLive keeps persisted resumable sessions on startup", (
 
     NodeFS.rmSync(tempDir, { recursive: true, force: true });
   }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect(
+  "ProviderServiceLive lets a host_lost binding start fresh without losing other stop barriers",
+  () =>
+    Effect.gen(function* () {
+      const tempDir = NodeFS.mkdtempSync(
+        NodePath.join(NodeOS.tmpdir(), "neokod-provider-host-lost-"),
+      );
+      const dbPath = NodePath.join(tempDir, "orchestration.sqlite");
+      const persistenceLayer = makeSqlitePersistenceLive(dbPath);
+      const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+        Layer.provide(persistenceLayer),
+      );
+      const directoryLayer = ProviderSessionDirectoryLive.pipe(
+        Layer.provide(runtimeRepositoryLayer),
+      );
+      const codex = makeFakeCodexAdapter();
+      const registry = makeAdapterRegistryMock({
+        [CODEX_DRIVER]: codex.adapter,
+      });
+      const hostLostThread = asThreadId("thread-host-lost-barrier");
+      const stopFailedThread = asThreadId("thread-stop-failed-barrier");
+
+      yield* Effect.gen(function* () {
+        const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+        yield* directory.upsert({
+          threadId: hostLostThread,
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          status: "error",
+          runtimePayload: {
+            activeTurnId: null,
+            stopPhase: "settled",
+            stopRequestedAt: "2026-07-26T23:58:00.000Z",
+            stopOutcome: orphanPossible({
+              stoppedAt: "2026-07-26T23:58:00.000Z",
+              reason: "host_lost",
+            }),
+          },
+        });
+        yield* directory.upsert({
+          threadId: stopFailedThread,
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          status: "error",
+          runtimePayload: {
+            stopPhase: "settled",
+            stopOutcome: stopFailed("process_group_termination_failed", "group remained alive"),
+          },
+        });
+      }).pipe(Effect.provide(directoryLayer));
+
+      const providerLayer = makeProviderServiceLive().pipe(
+        Layer.provide(Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, registry)),
+        Layer.provide(directoryLayer),
+        Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(AnalyticsService.layerTest),
+        Layer.provide(
+          Layer.succeed(
+            ProviderEventLoggers.ProviderEventLoggers,
+            ProviderEventLoggers.NoOpProviderEventLoggers,
+          ),
+        ),
+        Layer.provideMerge(runtimeRepositoryLayer),
+      );
+
+      yield* Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        // An explicit Stop on a host_lost binding has no locally owned
+        // teardown. It must preserve the uncertainty without fencing the
+        // thread, so a later fresh session can start in the same process.
+        const stopped = yield* provider.stopSession({ threadId: hostLostThread });
+        assert.equal(stopped.status, "orphan_possible");
+        assert.equal(
+          stopped.status === "orphan_possible" ? stopped.reason : undefined,
+          "host_lost",
+        );
+
+        const started = yield* provider.startSession(hostLostThread, {
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          threadId: hostLostThread,
+          runtimeMode: "full-access",
+        });
+        assert.equal(started.threadId, hostLostThread);
+
+        const blocked = yield* provider
+          .startSession(stopFailedThread, {
+            provider: CODEX_DRIVER,
+            providerInstanceId: codexInstanceId,
+            threadId: stopFailedThread,
+            runtimeMode: "full-access",
+          })
+          .pipe(Effect.flip);
+        assert.equal(blocked._tag, "ProviderStoppingError");
+        assert.instanceOf(blocked, ProviderStoppingError);
+
+        const repository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+        const binding = yield* repository.getByThreadId({ threadId: hostLostThread });
+        assert.equal(Option.isSome(binding), true);
+        if (Option.isSome(binding)) {
+          assert.equal(binding.value.status, "running");
+          const payload = binding.value.runtimePayload;
+          assert.equal(
+            payload !== null && typeof payload === "object" && !Array.isArray(payload),
+            true,
+          );
+          if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+            assert.equal("stopPhase" in payload ? payload.stopPhase : "missing", null);
+            assert.equal("stopOutcome" in payload ? payload.stopOutcome : "missing", null);
+            assert.equal("stopRequestedAt" in payload ? payload.stopRequestedAt : "missing", null);
+          }
+        }
+      }).pipe(Effect.provide(providerLayer));
+
+      NodeFS.rmSync(tempDir, { recursive: true, force: true });
+    }).pipe(Effect.provide(NodeServices.layer)),
 );
 
 it.effect(
