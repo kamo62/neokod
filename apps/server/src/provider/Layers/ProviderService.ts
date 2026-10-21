@@ -53,6 +53,7 @@ import {
 } from "../../observability/Metrics.ts";
 import {
   type ProviderAdapterError,
+  ProviderSessionNotRecoverableError,
   ProviderValidationError,
   ProviderStoppingError,
 } from "../Errors.ts";
@@ -566,10 +567,10 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       }
 
       if (!hasResumeCursor) {
-        return yield* toValidationError(
-          input.operation,
-          `Cannot recover thread '${input.binding.threadId}' because no provider resume state is persisted.`,
-        );
+        return yield* new ProviderSessionNotRecoverableError({
+          operation: input.operation,
+          threadId: input.binding.threadId,
+        });
       }
 
       const persistedCwd = readPersistedCwd(input.binding.runtimePayload);

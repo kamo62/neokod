@@ -31,6 +31,7 @@ import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@neokod/shared/DrainableWorker";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
+import { scrubErrorText } from "../../provider/userFacingErrorText.ts";
 import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import { ProjectionRuntimeItemRepository } from "../../persistence/Services/ProjectionRuntimeItems.ts";
 import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
@@ -67,6 +68,7 @@ type TurnStartRequestedDomainEvent = Extract<
   OrchestrationEvent,
   { type: "thread.turn-start-requested" }
 >;
+type SessionSetDomainEvent = Extract<OrchestrationEvent, { type: "thread.session-set" }>;
 
 type RuntimeIngestionInput =
   | {
@@ -75,7 +77,7 @@ type RuntimeIngestionInput =
     }
   | {
       source: "domain";
-      event: TurnStartRequestedDomainEvent;
+      event: TurnStartRequestedDomainEvent | SessionSetDomainEvent;
     };
 
 function toTurnId(value: TurnId | string | undefined): TurnId | undefined {
@@ -560,7 +562,7 @@ function runtimeEventToActivities(
           kind: "runtime.error",
           summary: "Runtime error",
           payload: {
-            message: truncateDetail(event.payload.message),
+            message: truncateDetail(scrubErrorText(event.payload.message)),
           },
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
@@ -906,6 +908,44 @@ const make = Effect.gen(function* () {
       closures,
       createdAt: input.closedAt,
     });
+  });
+
+  const closeItemsOfSettledSession = Effect.fn("closeItemsOfSettledSession")(function* (input: {
+    readonly threadId: ThreadId;
+    readonly status: "stopped" | "interrupted" | "error";
+    readonly updatedAt: string;
+    readonly startedNoLaterThan?: string;
+  }) {
+    const items = yield* projectionRuntimeItemRepository.listByThreadId({
+      threadId: input.threadId,
+    });
+    const sessionIds = new Set(
+      items
+        .filter((item) => item.effectiveState === "active")
+        .filter(
+          (item) =>
+            input.startedNoLaterThan === undefined || item.startedAt <= input.startedNoLaterThan,
+        )
+        .map((item) => item.sessionId),
+    );
+    yield* Effect.forEach(
+      sessionIds,
+      (sessionId) => {
+        const boundaryId = `reconcile:runtime-items:${input.threadId}:session:${sessionId}:${input.status}:${input.updatedAt}`;
+        return closeRuntimeItems({
+          threadId: input.threadId,
+          sessionId,
+          boundary: "session",
+          turnId: null,
+          outcome: input.status === "error" ? "failed" : "stopped",
+          terminationGuaranteed: false,
+          commandId: CommandId.make(boundaryId),
+          boundaryEventId: EventId.make(boundaryId),
+          closedAt: input.updatedAt,
+        });
+      },
+      { concurrency: 1, discard: true },
+    );
   });
 
   const turnMessageIdsByTurnKey = yield* Cache.make<string, Set<MessageId>>({
@@ -1638,10 +1678,14 @@ const make = Effect.gen(function* () {
                 : activeTurnId;
         const lastError =
           event.type === "session.state.changed" && event.payload.state === "error"
-            ? (event.payload.reason ?? thread.session?.lastError ?? "Provider session error")
+            ? event.payload.reason !== undefined
+              ? scrubErrorText(event.payload.reason)
+              : (thread.session?.lastError ?? "Provider session error")
             : event.type === "turn.completed" &&
                 normalizeRuntimeTurnState(event.payload.state) === "failed"
-              ? (event.payload.errorMessage ?? thread.session?.lastError ?? "Turn failed")
+              ? event.payload.errorMessage !== undefined
+                ? scrubErrorText(event.payload.errorMessage)
+                : (thread.session?.lastError ?? "Turn failed")
               : status === "ready"
                 ? null
                 : (thread.session?.lastError ?? null);
@@ -1958,7 +2002,7 @@ const make = Effect.gen(function* () {
       }
 
       if (event.type === "runtime.error") {
-        const runtimeErrorMessage = event.payload.message;
+        const runtimeErrorMessage = scrubErrorText(event.payload.message);
 
         const shouldApplyRuntimeError = !STRICT_PROVIDER_LIFECYCLE_GUARD
           ? true
@@ -2048,7 +2092,15 @@ const make = Effect.gen(function* () {
       ).pipe(Effect.asVoid);
     });
 
-  const processDomainEvent = (_event: TurnStartRequestedDomainEvent) => Effect.void;
+  const processDomainEvent = (event: TurnStartRequestedDomainEvent | SessionSetDomainEvent) =>
+    event.type === "thread.session-set" && event.payload.session.status === "interrupted"
+      ? closeItemsOfSettledSession({
+          threadId: event.payload.threadId,
+          status: "interrupted",
+          updatedAt: event.payload.session.updatedAt,
+          startedNoLaterThan: event.payload.session.updatedAt,
+        })
+      : Effect.void;
 
   const processInput = (input: RuntimeIngestionInput) =>
     input.source === "runtime" ? processRuntimeEvent(input.event) : processDomainEvent(input.event);
@@ -2094,26 +2146,11 @@ const make = Effect.gen(function* () {
               session.status === "interrupted" ||
               session.status === "error")
           ) {
-            const outcome = session.status === "error" ? "failed" : "stopped";
-            const sessionIds = new Set(activeItems.map((item) => item.sessionId));
-            yield* Effect.forEach(
-              sessionIds,
-              (sessionId) => {
-                const boundaryId = `reconcile:runtime-items:${thread.id}:session:${sessionId}:${session.status}:${session.updatedAt}`;
-                return closeRuntimeItems({
-                  threadId: thread.id,
-                  sessionId,
-                  boundary: "session",
-                  turnId: null,
-                  outcome,
-                  terminationGuaranteed: false,
-                  commandId: CommandId.make(boundaryId),
-                  boundaryEventId: EventId.make(boundaryId),
-                  closedAt: session.updatedAt,
-                });
-              },
-              { concurrency: 1 },
-            ).pipe(Effect.asVoid);
+            yield* closeItemsOfSettledSession({
+              threadId: thread.id,
+              status: session.status,
+              updatedAt: session.updatedAt,
+            });
             return;
           }
 
@@ -2193,7 +2230,10 @@ const make = Effect.gen(function* () {
       );
       yield* Effect.forkScoped(
         Stream.runForEach(orchestrationEngine.streamDomainEvents, (event) => {
-          if (event.type !== "thread.turn-start-requested") {
+          if (
+            event.type !== "thread.turn-start-requested" &&
+            !(event.type === "thread.session-set" && event.payload.session.status === "interrupted")
+          ) {
             return Effect.void;
           }
           return worker.enqueue({ source: "domain", event });

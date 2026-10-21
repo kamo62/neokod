@@ -768,6 +768,153 @@ describe("ProviderRuntimeIngestion", () => {
     expect(reused.map((item) => item.effectiveState)).toEqual(["stopped", "active"]);
   });
 
+  it("closes active approvals when the session is set to interrupted", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-interrupted-approval");
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.runtime-item.observe",
+        commandId: CommandId.make("interrupted-approval-observe"),
+        threadId,
+        observation: {
+          runtimeItemId: RuntimeItemId.make("approval-1"),
+          providerItemId: null,
+          sessionId: RuntimeSessionId.make("session-1"),
+          kind: "approval",
+          scope: "turn",
+          turnId,
+          providerState: "active",
+          label: "Approve command",
+          providerEventId: EventId.make("interrupted-approval-provider-event"),
+          observedAt: "2026-01-01T00:03:01.000Z",
+        },
+        createdAt: "2026-01-01T00:03:01.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("interrupted-approval-session-set"),
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: "2026-01-01T00:04:00.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:04:00.000Z",
+      }),
+    );
+
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "approval.resolved"),
+    );
+
+    expect(await harness.runtimeItems()).toMatchObject([
+      { effectiveState: "orphaned", mayStillBeRunning: true },
+    ]);
+    const resolved = thread.activities.find((activity) => activity.kind === "approval.resolved");
+    expect(resolved?.payload).toMatchObject({
+      requestId: "approval-1",
+      synthetic: true,
+    });
+  });
+
+  it("does not close items observed after the interrupted session update", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-interrupted-approval-newer");
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.runtime-item.observe",
+        commandId: CommandId.make("newer-approval-observe"),
+        threadId,
+        observation: {
+          runtimeItemId: RuntimeItemId.make("approval-newer"),
+          providerItemId: null,
+          sessionId: RuntimeSessionId.make("session-1"),
+          kind: "approval",
+          scope: "turn",
+          turnId,
+          providerState: "active",
+          label: "Approve command",
+          providerEventId: EventId.make("newer-approval-provider-event"),
+          observedAt: "2026-01-01T00:05:00.000Z",
+        },
+        createdAt: "2026-01-01T00:05:00.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("newer-approval-session-set"),
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: "2026-01-01T00:04:00.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:04:00.000Z",
+      }),
+    );
+
+    await waitForThread(harness.readModel, (entry) => entry.session?.status === "interrupted");
+    await harness.drain();
+
+    expect(await harness.runtimeItems()).toMatchObject([
+      { effectiveState: "active", mayStillBeRunning: false },
+    ]);
+  });
+
+  it("scrubs absolute paths from runtime.error text", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+    const scrubbed = "ENOENT: open '[path]/crash.txt'";
+
+    harness.emit({
+      type: "runtime.error",
+      eventId: asEventId("evt-runtime-error-scrub"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-runtime-error-scrub"),
+      createdAt: now,
+      payload: {
+        message: "ENOENT: open '/Users/kamogelo/Code/t3code/crash.txt'",
+      },
+    });
+
+    const thread = await waitForThread(
+      harness.readModel,
+      (entry) =>
+        entry.session?.lastError === scrubbed &&
+        entry.activities.some(
+          (activity) =>
+            activity.id === "evt-runtime-error-scrub" &&
+            typeof activity.payload === "object" &&
+            activity.payload !== null &&
+            (activity.payload as { message?: unknown }).message === scrubbed,
+        ),
+    );
+    expect(thread.session?.lastError).toBe(scrubbed);
+    expect(
+      (
+        thread.activities.find((activity) => activity.id === "evt-runtime-error-scrub")?.payload as
+          | { message?: unknown }
+          | undefined
+      )?.message,
+    ).toBe(scrubbed);
+  });
+
   it("maps turn started/completed events into thread session updates", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";

@@ -1165,6 +1165,43 @@ routing.layer("ProviderServiceLive routing", (it) => {
     }),
   );
 
+  it.effect(
+    "fails interruptTurn with ProviderSessionNotRecoverableError when the binding has no resume cursor",
+    () =>
+      Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        const threadId = asThreadId("thread-not-recoverable");
+        routing.codex.startSession.mockImplementationOnce(() =>
+          Effect.succeed({
+            provider: CODEX_DRIVER,
+            providerInstanceId: codexInstanceId,
+            status: "ready" as const,
+            runtimeMode: "full-access" as const,
+            threadId,
+            cwd: "/tmp/project",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          }),
+        );
+
+        const session = yield* provider.startSession(threadId, {
+          provider: ProviderDriverKind.make("codex"),
+          providerInstanceId: codexInstanceId,
+          threadId,
+          cwd: "/tmp/project",
+          runtimeMode: "full-access",
+        });
+        yield* routing.codex.stopAll();
+
+        const failure = yield* Effect.flip(provider.interruptTurn({ threadId: session.threadId }));
+        assert.equal(failure._tag, "ProviderSessionNotRecoverableError");
+        if (failure._tag !== "ProviderSessionNotRecoverableError") return;
+        assert.equal(failure.threadId, "thread-not-recoverable");
+        assert.notInclude(failure.message, "thread-not-recoverable");
+        assert.notInclude(failure.message, "/");
+      }),
+  );
+
   it.effect("recovers stale claudeAgent sessions for sendTurn using persisted cwd", () =>
     Effect.gen(function* () {
       const provider = yield* ProviderService.ProviderService;

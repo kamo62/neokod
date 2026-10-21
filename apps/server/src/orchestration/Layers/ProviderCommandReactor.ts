@@ -30,7 +30,11 @@ import { makeDrainableWorker } from "@neokod/shared/DrainableWorker";
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
 import { increment, orchestrationEventsProcessedTotal } from "../../observability/Metrics.ts";
 import { ProviderAdapterRequestError } from "../../provider/Errors.ts";
-import type { ProviderServiceError } from "../../provider/Errors.ts";
+import {
+  ProviderSessionNotRecoverableError,
+  type ProviderServiceError,
+} from "../../provider/Errors.ts";
+import { userFacingFailureDetail } from "../../provider/userFacingErrorText.ts";
 import { TextGeneration } from "../../textGeneration/TextGeneration.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { ProviderRegistry } from "../../provider/Services/ProviderRegistry.ts";
@@ -44,6 +48,7 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
+const isProviderSessionNotRecoverableError = Schema.is(ProviderSessionNotRecoverableError);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 
 type ProviderIntentEvent = Extract<
@@ -122,6 +127,15 @@ function findProviderAdapterRequestError(
 ): ProviderAdapterRequestError | undefined {
   const failReason = cause.reasons.find(Cause.isFailReason);
   return isProviderAdapterRequestError(failReason?.error) ? failReason.error : undefined;
+}
+
+function findSessionNotRecoverableError(
+  cause: Cause.Cause<unknown>,
+): ProviderSessionNotRecoverableError | undefined {
+  const error = Cause.findErrorOption(cause);
+  return Option.isSome(error) && isProviderSessionNotRecoverableError(error.value)
+    ? error.value
+    : undefined;
 }
 
 function isUnknownPendingApprovalRequestError(cause: Cause.Cause<ProviderServiceError>): boolean {
@@ -257,16 +271,16 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  const formatFailureDetail = (cause: Cause.Cause<unknown>): string => {
-    const failReason = cause.reasons.find(Cause.isFailReason);
-    const providerError = isProviderAdapterRequestError(failReason?.error)
-      ? failReason.error
-      : undefined;
-    if (providerError) {
-      return providerError.detail;
-    }
-    return Cause.pretty(cause);
-  };
+  const describeFailure = (input: {
+    readonly operation: string;
+    readonly threadId: ThreadId;
+    readonly cause: Cause.Cause<unknown>;
+  }) =>
+    Effect.logWarning("provider.command.failed", {
+      operation: input.operation,
+      threadId: input.threadId,
+      cause: Cause.pretty(input.cause),
+    }).pipe(Effect.as(userFacingFailureDetail(input.cause)));
 
   const setThreadSession = (input: {
     readonly threadId: ThreadId;
@@ -309,6 +323,30 @@ const make = Effect.gen(function* () {
       createdAt: input.createdAt,
     });
   });
+
+  const settleUnrecoverableSession = (input: {
+    readonly threadId: ThreadId;
+    readonly message: string;
+    readonly createdAt: string;
+  }) =>
+    Effect.gen(function* () {
+      const session = (yield* resolveThread(input.threadId))?.session;
+      if (!session || (session.status !== "running" && session.status !== "starting")) return;
+      yield* Effect.logInfo("provider.session.unrecoverable-settled", {
+        threadId: input.threadId,
+      });
+      yield* setThreadSession({
+        threadId: input.threadId,
+        session: {
+          ...session,
+          status: "interrupted",
+          activeTurnId: null,
+          lastError: input.message,
+          updatedAt: DateTime.formatIso(yield* DateTime.now),
+        },
+        createdAt: input.createdAt,
+      });
+    });
 
   const resolveProject = Effect.fnUntraced(function* (projectId: ProjectId) {
     return yield* projectionSnapshotQuery
@@ -832,23 +870,30 @@ const make = Effect.gen(function* () {
       if (Cause.hasInterruptsOnly(cause)) {
         return Effect.void;
       }
-      const detail = formatFailureDetail(cause);
-      return setThreadSessionErrorOnTurnStartFailure({
+      return describeFailure({
+        operation: "turn-start",
         threadId: event.payload.threadId,
-        detail,
-        createdAt: event.payload.createdAt,
+        cause,
       }).pipe(
-        Effect.flatMap(() =>
-          appendProviderFailureActivity({
+        Effect.flatMap((detail) =>
+          setThreadSessionErrorOnTurnStartFailure({
             threadId: event.payload.threadId,
-            kind: "provider.turn.start.failed",
-            summary: "Provider turn start failed",
             detail,
-            turnId: null,
             createdAt: event.payload.createdAt,
-          }),
+          }).pipe(
+            Effect.flatMap(() =>
+              appendProviderFailureActivity({
+                threadId: event.payload.threadId,
+                kind: "provider.turn.start.failed",
+                summary: "Provider turn start failed",
+                detail,
+                turnId: null,
+                createdAt: event.payload.createdAt,
+              }),
+            ),
+            Effect.asVoid,
+          ),
         ),
-        Effect.asVoid,
       );
     };
 
@@ -908,16 +953,32 @@ const make = Effect.gen(function* () {
 
     // Orchestration turn ids are not provider turn ids, so interrupt by session.
     yield* providerService.interruptTurn({ threadId: event.payload.threadId }).pipe(
-      Effect.catchCause((cause) =>
-        appendProviderFailureActivity({
+      Effect.catchCause((cause) => {
+        const notRecoverable = findSessionNotRecoverableError(cause);
+        if (notRecoverable !== undefined) {
+          return settleUnrecoverableSession({
+            threadId: event.payload.threadId,
+            message: notRecoverable.message,
+            createdAt: event.payload.createdAt,
+          });
+        }
+        return describeFailure({
+          operation: "interrupt-turn",
           threadId: event.payload.threadId,
-          kind: "provider.turn.interrupt.failed",
-          summary: "Provider turn interrupt failed",
-          detail: Cause.pretty(cause),
-          turnId: event.payload.turnId ?? null,
-          createdAt: event.payload.createdAt,
-        }),
-      ),
+          cause,
+        }).pipe(
+          Effect.flatMap((detail) =>
+            appendProviderFailureActivity({
+              threadId: event.payload.threadId,
+              kind: "provider.turn.interrupt.failed",
+              summary: "Provider turn interrupt failed",
+              detail,
+              turnId: event.payload.turnId ?? null,
+              createdAt: event.payload.createdAt,
+            }),
+          ),
+        );
+      }),
     );
   });
 
@@ -948,19 +1009,56 @@ const make = Effect.gen(function* () {
         decision: event.payload.decision,
       })
       .pipe(
-        Effect.catchCause((cause) =>
-          appendProviderFailureActivity({
+        Effect.catchCause((cause) => {
+          const notRecoverable = findSessionNotRecoverableError(cause);
+          if (notRecoverable !== undefined) {
+            return appendProviderFailureActivity({
+              threadId: event.payload.threadId,
+              kind: "provider.approval.respond.failed",
+              summary: "Provider approval response failed",
+              detail: stalePendingRequestDetail("approval", event.payload.requestId),
+              turnId: null,
+              createdAt: event.payload.createdAt,
+              requestId: event.payload.requestId,
+            }).pipe(
+              Effect.andThen(
+                settleUnrecoverableSession({
+                  threadId: event.payload.threadId,
+                  message: notRecoverable.message,
+                  createdAt: event.payload.createdAt,
+                }),
+              ),
+            );
+          }
+          if (isUnknownPendingApprovalRequestError(cause)) {
+            return appendProviderFailureActivity({
+              threadId: event.payload.threadId,
+              kind: "provider.approval.respond.failed",
+              summary: "Provider approval response failed",
+              detail: stalePendingRequestDetail("approval", event.payload.requestId),
+              turnId: null,
+              createdAt: event.payload.createdAt,
+              requestId: event.payload.requestId,
+            });
+          }
+          return describeFailure({
+            operation: "approval-response",
             threadId: event.payload.threadId,
-            kind: "provider.approval.respond.failed",
-            summary: "Provider approval response failed",
-            detail: isUnknownPendingApprovalRequestError(cause)
-              ? stalePendingRequestDetail("approval", event.payload.requestId)
-              : Cause.pretty(cause),
-            turnId: null,
-            createdAt: event.payload.createdAt,
-            requestId: event.payload.requestId,
-          }),
-        ),
+            cause,
+          }).pipe(
+            Effect.flatMap((detail) =>
+              appendProviderFailureActivity({
+                threadId: event.payload.threadId,
+                kind: "provider.approval.respond.failed",
+                summary: "Provider approval response failed",
+                detail,
+                turnId: null,
+                createdAt: event.payload.createdAt,
+                requestId: event.payload.requestId,
+              }),
+            ),
+          );
+        }),
       );
   });
 
@@ -992,19 +1090,56 @@ const make = Effect.gen(function* () {
           answers: event.payload.answers,
         })
         .pipe(
-          Effect.catchCause((cause) =>
-            appendProviderFailureActivity({
+          Effect.catchCause((cause) => {
+            const notRecoverable = findSessionNotRecoverableError(cause);
+            if (notRecoverable !== undefined) {
+              return appendProviderFailureActivity({
+                threadId: event.payload.threadId,
+                kind: "provider.user-input.respond.failed",
+                summary: "Provider user input response failed",
+                detail: stalePendingRequestDetail("user-input", event.payload.requestId),
+                turnId: null,
+                createdAt: event.payload.createdAt,
+                requestId: event.payload.requestId,
+              }).pipe(
+                Effect.andThen(
+                  settleUnrecoverableSession({
+                    threadId: event.payload.threadId,
+                    message: notRecoverable.message,
+                    createdAt: event.payload.createdAt,
+                  }),
+                ),
+              );
+            }
+            if (isUnknownPendingUserInputRequestError(cause)) {
+              return appendProviderFailureActivity({
+                threadId: event.payload.threadId,
+                kind: "provider.user-input.respond.failed",
+                summary: "Provider user input response failed",
+                detail: stalePendingRequestDetail("user-input", event.payload.requestId),
+                turnId: null,
+                createdAt: event.payload.createdAt,
+                requestId: event.payload.requestId,
+              });
+            }
+            return describeFailure({
+              operation: "user-input-response",
               threadId: event.payload.threadId,
-              kind: "provider.user-input.respond.failed",
-              summary: "Provider user input response failed",
-              detail: isUnknownPendingUserInputRequestError(cause)
-                ? stalePendingRequestDetail("user-input", event.payload.requestId)
-                : Cause.pretty(cause),
-              turnId: null,
-              createdAt: event.payload.createdAt,
-              requestId: event.payload.requestId,
-            }),
-          ),
+              cause,
+            }).pipe(
+              Effect.flatMap((detail) =>
+                appendProviderFailureActivity({
+                  threadId: event.payload.threadId,
+                  kind: "provider.user-input.respond.failed",
+                  summary: "Provider user input response failed",
+                  detail,
+                  turnId: null,
+                  createdAt: event.payload.createdAt,
+                  requestId: event.payload.requestId,
+                }),
+              ),
+            );
+          }),
         );
     },
   );
