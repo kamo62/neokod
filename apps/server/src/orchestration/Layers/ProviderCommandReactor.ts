@@ -531,7 +531,10 @@ const make = Effect.gen(function* () {
         return yield* new ProviderAdapterRequestError({
           provider: preferredProvider,
           method: "thread.turn.start",
-          detail: `This thread's folder no longer exists: ${effectiveCwd}. Move it back, or create a new thread in the project's current location.`,
+          // Do not interpolate the path: the user-facing detail is persisted
+          // and must stay safe even before the error sanitiser sees it.
+          detail:
+            "This thread's folder no longer exists. Move it back to its previous location, or create a new thread in the project's current location.",
         });
       }
     }

@@ -503,7 +503,7 @@ describe("ProviderCommandReactor", () => {
       expect(harness.startSession.mock.calls.length).toBe(startSessionCallsBefore);
 
       // Surfaces as a provider.turn.start.failed activity, which is the panel
-      // the user reads, and it names the folder rather than the provider.
+      // the user reads. The path is not repeated in the stored detail.
       const readModel = yield* Effect.promise(() => harness.readModel());
       const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-moved"));
       const failure = (thread?.activities ?? []).find(
@@ -511,8 +511,9 @@ describe("ProviderCommandReactor", () => {
       );
       expect(failure, "expected a provider.turn.start.failed activity").toBeDefined();
       const detail = (failure?.payload as { readonly detail?: string } | undefined)?.detail ?? "";
-      expect(detail).toContain(`[path]/${NodePath.basename(missingRoot)}`);
+      expect(detail).toContain("folder no longer exists");
       expect(detail).not.toContain(missingRoot);
+      expect(detail).not.toContain("[path]");
       // The provider must not be blamed for a filesystem problem.
       expect(detail).not.toContain("spawn");
     }),

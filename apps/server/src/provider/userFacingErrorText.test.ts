@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { ProviderAdapterRequestError, ProviderValidationError } from "./Errors.ts";
 import {
   GENERIC_INTERNAL_ERROR_DETAIL,
+  REDACTED_ERROR_DETAIL,
   scrubErrorText,
   userFacingFailureDetail,
 } from "./userFacingErrorText.ts";
@@ -26,12 +27,46 @@ describe("scrubErrorText", () => {
       ),
     ).toBe("ENOENT: no such file or directory, open '[path]/crash.txt'");
     expect(scrubErrorText("C:\\Users\\me\\proj\\a.txt missing")).toBe("[path]/a.txt missing");
+    expect(scrubErrorText("C:/Users/me/proj/a.txt missing")).toBe("[path]/a.txt missing");
+    expect(scrubErrorText("\\\\server\\share\\deep\\a.txt missing")).toBe("[path]/a.txt missing");
+    expect(scrubErrorText("//server/share/deep/a.txt missing")).toBe("[path]/a.txt missing");
     expect(scrubErrorText("see file:///Users/me/x.mjs:1:2")).toBe("see [path]");
   });
 
-  it("leaves URLs, ids and relative paths alone", () => {
-    const text = "GET https://api.example.com/v1/models failed for anthropic/claude-3 in src/a.ts";
+  it("covers root files, colon-adjacent paths, quoted spaces and home paths", () => {
+    expect(scrubErrorText("read /etc/passwd first")).toBe("read [path]/passwd first");
+    expect(scrubErrorText("open /Users/me/a.ts:12:3")).toBe("open [path]/a.ts:12:3");
+    expect(scrubErrorText("open '/Users/me/My Documents/file.txt' failed")).toBe(
+      "open '[path]/file.txt' failed",
+    );
+    expect(scrubErrorText('"C:\\Program Files\\App\\a.txt" missing')).toBe(
+      '"[path]/a.txt" missing',
+    );
+    expect(scrubErrorText("open '\\\\server\\share\\My Folder\\a.txt'")).toBe(
+      "open '[path]/a.txt'",
+    );
+    expect(scrubErrorText("read ~/.ssh/id_ed25519")).toBe("read [path]/id_ed25519");
+    expect(scrubErrorText("read $HOME/secret/file")).toBe("read [path]/file");
+    expect(scrubErrorText("read /home/kamogelo/private")).toBe("read [path]/private");
+  });
+
+  it("leaves URLs, ids and punctuation-bearing relative paths alone", () => {
+    const text =
+      "GET https://api.example.com/v1/models?path=/Users/me/x&q=src/(generated)/deep/file.ts failed for anthropic/claude-3 in src/(generated)/deep/file.ts";
     expect(scrubErrorText(text)).toBe(text);
+  });
+
+  it("keeps ordinary at language and only strips stack frames", () => {
+    expect(scrubErrorText("Retry at most 3 times")).toBe("Retry at most 3 times");
+    expect(
+      scrubErrorText(
+        "failed\n    at Object.<anonymous> (/Users/me/a.js:1:2)\n    at async Worker.process (node:internal/worker:123:4)",
+      ),
+    ).toBe("failed");
+  });
+
+  it("returns a non-empty fallback when every line was a stack frame", () => {
+    expect(scrubErrorText("  \n    at foo (/Users/me/a.ts:1:2)\n")).toBe(REDACTED_ERROR_DETAIL);
   });
 });
 
