@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Sink from "effect/Sink";
@@ -16,6 +17,7 @@ import {
   OpenCodeRuntimeLive,
   parseOpenCodeServerTimeoutMs,
 } from "./opencodeRuntime.ts";
+import { OpenCodeServerLedger, type OpenCodeServerLedgerShape } from "./OpenCodeServerLedger.ts";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
@@ -100,12 +102,12 @@ const SERVER_URL = "http://127.0.0.1:4097";
 
 // A handle that behaves like a healthy `opencode serve`: it announces its
 // listening URL on stdout and then stays alive until the scope kills it.
-function makeServerHandle() {
+function makeServerHandle(onKill?: () => void) {
   return ChildProcessSpawner.makeHandle({
     pid: ChildProcessSpawner.ProcessId(1),
     exitCode: Effect.never,
     isRunning: Effect.succeed(true),
-    kill: () => Effect.void,
+    kill: () => Effect.sync(() => onKill?.()),
     unref: Effect.succeed(Effect.void),
     stdin: Sink.drain,
     stdout: Stream.encodeText(Stream.make(`opencode server listening on ${SERVER_URL}\n`)),
@@ -124,16 +126,45 @@ const makeCapturingSpawner = (captured: Array<CapturedSpawn>) =>
     }),
   );
 
+// Records the order of shutdown effects. The runtime kills through the fake
+// handle, and the fake ledger records when the entry is forgotten.
+const makeOrderingSpawner = (events: Array<string>) =>
+  ChildProcessSpawner.make(() =>
+    Effect.succeed(
+      makeServerHandle(() => {
+        events.push("terminate");
+      }),
+    ),
+  );
+
+const makeRecordingLedger = (events: Array<string>): OpenCodeServerLedgerShape => ({
+  track: () =>
+    Effect.sync(() => {
+      events.push("track");
+      return Effect.sync(() => {
+        events.push("forget");
+      });
+    }),
+});
+
+const NOOP_LEDGER: OpenCodeServerLedgerShape = {
+  track: () => Effect.succeed(Effect.void),
+};
+
 // The platform is pinned to win32 so the shutdown finalizer goes through
 // `child.kill` on the fake handle instead of `process.kill(-pid)`, which
 // would signal a real process group on the host running the tests. The
 // executable resolver is stubbed out so the win32 path never scans the
 // real filesystem for a fake binary.
-const runtimeLayerWith = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) =>
+const runtimeLayerWith = (
+  spawner: ChildProcessSpawner.ChildProcessSpawner["Service"],
+  ledger: OpenCodeServerLedgerShape = NOOP_LEDGER,
+) =>
   OpenCodeRuntimeLive.pipe(
     Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)),
     Layer.provide(Layer.succeed(HostProcessPlatform, "win32")),
     Layer.provide(Layer.succeed(SpawnExecutableResolution, () => undefined)),
+    Layer.provide(Layer.succeed(OpenCodeServerLedger, ledger)),
   );
 
 // Closing the server scope sleeps one second between SIGTERM and SIGKILL.
@@ -251,5 +282,36 @@ describe("startOpenCodeServerProcess environment passthrough", () => {
       expect(captured[0]?.args.join(" ")).not.toContain(first.serverPassword);
       expect(captured[1]?.args.join(" ")).not.toContain(second.serverPassword);
     }).pipe(Effect.provide(runtimeLayerWith(makeCapturingSpawner(captured))));
+  });
+});
+
+describe("startOpenCodeServerProcess shutdown ordering", () => {
+  it.effect("terminates the process before forgetting its ledger entry", () => {
+    const events: Array<string> = [];
+    return Effect.gen(function* () {
+      yield* startServerAndSettle();
+
+      // Scope finalizers run last-in-first-out. Forgetting before termination
+      // would drop the only durable evidence of a child that a crash could
+      // still leave running, so the kill must settle first.
+      expect(events).toEqual(["track", "terminate", "terminate", "forget"]);
+    }).pipe(
+      Effect.provide(runtimeLayerWith(makeOrderingSpawner(events), makeRecordingLedger(events))),
+    );
+  });
+
+  it.effect("still terminates the child when tracking fails", () => {
+    const events: Array<string> = [];
+    const failingLedger: OpenCodeServerLedgerShape = {
+      track: () => Effect.die(new Error("ledger unavailable")),
+    };
+    return Effect.gen(function* () {
+      const exit = yield* Effect.exit(startServerAndSettle());
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      // Registration of the shutdown finalizer must not depend on tracking
+      // succeeding, or a failed spawn record would leak a live child.
+      expect(events.filter((event) => event === "terminate")).toHaveLength(2);
+    }).pipe(Effect.provide(runtimeLayerWith(makeOrderingSpawner(events), failingLedger)));
   });
 });

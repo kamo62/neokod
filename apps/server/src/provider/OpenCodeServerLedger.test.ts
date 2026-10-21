@@ -27,6 +27,10 @@ interface FakeInspector {
   readonly signals: Array<{ readonly pgid: number; readonly signal: NodeJS.Signals }>;
   /** When true, SIGTERM leaves the group in the map to exercise escalation. */
   ignoreTerm: boolean;
+  /** When true, inspecting the recorded server pid fails instead of answering. */
+  failObserve: boolean;
+  /** When set, signalling the group fails before any signal is recorded. */
+  failSignal?: Error;
 }
 
 const makeFakeInspector = (): FakeInspector => {
@@ -36,22 +40,34 @@ const makeFakeInspector = (): FakeInspector => {
     processes,
     signals,
     ignoreTerm: false,
+    failObserve: false,
     inspector: {
-      observe: (pid) => Effect.sync(() => processes.get(pid)),
+      observe: (pid) =>
+        Effect.suspend(() => {
+          if (fake.failObserve && pid === 500) {
+            return Effect.die(new Error("inspection unavailable"));
+          }
+          return Effect.sync(() => processes.get(pid));
+        }),
       observeGroup: (pgid) =>
         Effect.sync(() => [...processes.values()].filter((entry) => entry.pgid === pgid)),
       groupExists: (pgid) =>
         Effect.sync(() => [...processes.values()].some((entry) => entry.pgid === pgid)),
       signalGroup: (pgid, signal) =>
-        Effect.sync(() => {
-          signals.push({ pgid, signal });
-          if (signal === "SIGTERM" && !fake.ignoreTerm) {
-            for (const [pid, entry] of processes) {
-              if (entry.pgid === pgid) {
-                processes.delete(pid);
+        Effect.suspend(() => {
+          if (fake.failSignal !== undefined) {
+            return Effect.die(fake.failSignal);
+          }
+          return Effect.sync(() => {
+            signals.push({ pgid, signal });
+            if (signal === "SIGTERM" && !fake.ignoreTerm) {
+              for (const [pid, entry] of processes) {
+                if (entry.pgid === pgid) {
+                  processes.delete(pid);
+                }
               }
             }
-          }
+          });
         }),
     },
   };
@@ -231,7 +247,7 @@ it.layer(NodeServices.layer)("OpenCodeServerLedger", (it) => {
       addServer(second);
       const secondLedger = yield* makeLedger({ fake: second, stateDir, ownerPid: 101 });
       const reaping = yield* secondLedger.reapOrphans.pipe(Effect.forkChild);
-      for (let tick = 0; tick < 60; tick++) {
+      for (let tick = 0; tick < 120; tick++) {
         yield* TestClock.adjust("50 millis");
         yield* Effect.yieldNow;
       }
@@ -241,6 +257,78 @@ it.layer(NodeServices.layer)("OpenCodeServerLedger", (it) => {
         { pgid: 500, signal: "SIGTERM" },
         { pgid: 500, signal: "SIGKILL" },
       ]);
+      // SIGKILL was delivered but the group never left the process table, so
+      // its exit is unconfirmed and the evidence must survive for a retry.
+      assert.strictEqual(yield* fs.exists(entryPath(stateDir)), true);
+    }),
+  );
+
+  it.effect("keeps the entry when the orphaned group survives SIGKILL", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const stateDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-ledger-" });
+      const first = makeFakeInspector();
+      addOwner(first);
+      addServer(first);
+      const firstLedger = yield* makeLedger({ fake: first, stateDir, ownerPid: 100 });
+      yield* Effect.asVoid(firstLedger.track({ pid: 500, port: 4100, args: SERVER_ARGS }));
+
+      const second = makeFakeInspector();
+      second.ignoreTerm = true;
+      addServer(second);
+      const secondLedger = yield* makeLedger({ fake: second, stateDir, ownerPid: 101 });
+      const reaping = yield* secondLedger.reapOrphans.pipe(Effect.forkChild);
+      for (let tick = 0; tick < 120; tick++) {
+        yield* TestClock.adjust("50 millis");
+        yield* Effect.yieldNow;
+      }
+      yield* Fiber.join(reaping);
+
+      assert.strictEqual(yield* fs.exists(entryPath(stateDir)), true);
+    }),
+  );
+
+  it.effect("keeps the entry when the group cannot be signalled", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const stateDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-ledger-" });
+      const first = makeFakeInspector();
+      addOwner(first);
+      addServer(first);
+      const firstLedger = yield* makeLedger({ fake: first, stateDir, ownerPid: 100 });
+      yield* Effect.asVoid(firstLedger.track({ pid: 500, port: 4100, args: SERVER_ARGS }));
+
+      const second = makeFakeInspector();
+      second.failSignal = new Error("EPERM");
+      addServer(second);
+      const secondLedger = yield* makeLedger({ fake: second, stateDir, ownerPid: 101 });
+      yield* secondLedger.reapOrphans;
+
+      assert.deepStrictEqual(second.signals, []);
+      assert.strictEqual(yield* fs.exists(entryPath(stateDir)), true);
+    }),
+  );
+
+  it.effect("keeps the entry when process inspection is unavailable", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const stateDir = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-ledger-" });
+      const first = makeFakeInspector();
+      addOwner(first);
+      addServer(first);
+      const firstLedger = yield* makeLedger({ fake: first, stateDir, ownerPid: 100 });
+      yield* Effect.asVoid(firstLedger.track({ pid: 500, port: 4100, args: SERVER_ARGS }));
+
+      const second = makeFakeInspector();
+      second.failObserve = true;
+      addServer(second);
+      const secondLedger = yield* makeLedger({ fake: second, stateDir, ownerPid: 101 });
+      yield* secondLedger.reapOrphans;
+
+      // Unavailable inspection is not proof of exit: keep the record instead
+      // of converting an unknown outcome into a successful stop.
+      assert.deepStrictEqual(second.signals, []);
+      assert.strictEqual(yield* fs.exists(entryPath(stateDir)), true);
     }),
   );
 

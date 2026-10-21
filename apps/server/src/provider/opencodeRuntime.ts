@@ -480,15 +480,25 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
         Effect.andThen(killOpenCodeProcessGroup("SIGKILL")),
         Effect.ignore,
       );
-      yield* Scope.addFinalizer(runtimeScope, terminateChild);
-
       // Record the process group so a later boot can find and stop it after a
-      // hard crash of this server. Finalizers run in reverse order, so `forget`
-      // runs before the kill above; that is acceptable because the entry only
-      // matters while the owner is alive. A crash between the two leaves an
-      // entry whose owner is dead, which the next start reaps and verifies.
+      // hard crash of this server. The forget action is folded into the
+      // termination finalizer instead of being registered separately:
+      // finalizers run in reverse order, so a separate `forget` would remove
+      // the durable evidence before the child was terminated. A crash between
+      // those two would leave a detached child with no record. Filling the
+      // forget action in after tracking returns also preserves immediate
+      // cleanup when tracking fails or is interrupted.
+      const forgetRef = yield* Ref.make<Effect.Effect<void>>(Effect.void);
+      yield* Scope.addFinalizer(
+        runtimeScope,
+        Effect.gen(function* () {
+          yield* terminateChild;
+          const forget = yield* Ref.get(forgetRef);
+          yield* forget;
+        }),
+      );
       const forget = yield* ledger.track({ pid: Number(child.pid), port, args });
-      yield* Scope.addFinalizer(runtimeScope, forget);
+      yield* Ref.set(forgetRef, forget);
 
       const stdoutRef = yield* Ref.make("");
       const stderrRef = yield* Ref.make("");

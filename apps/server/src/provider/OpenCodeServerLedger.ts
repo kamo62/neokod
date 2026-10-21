@@ -21,7 +21,7 @@ import { collectStreamAsString } from "./providerSnapshot.ts";
  * when the child started: a pid alone is not proof, because the OS can reuse it.
  * Reconciliation only signals a group when the current pid still has the
  * recorded start time, process group and command line. Anything unproven is
- * left alone and its file removed.
+ * left alone and its entry retained so a later boot can retry.
  */
 export const OpenCodeServerLedgerEntry = Schema.Struct({
   version: Schema.Literal(1),
@@ -306,22 +306,89 @@ const removeEntryFile = (fs: FileSystem.FileSystem, filePath: string): Effect.Ef
     ),
   );
 
+type OrphanStopOutcome =
+  /** The recorded group is confirmed gone. */
+  | "exited"
+  /** The recorded pid no longer identifies our process; it was never signalled. */
+  | "stale"
+  /** Exit could not be confirmed, so the entry must survive for a retry. */
+  | "unresolved";
+
+type GroupPresence = "present" | "gone" | "unknown";
+
+const observeGroupPresence = (
+  entry: OpenCodeServerLedgerEntry,
+  inspector: ProcessInspector,
+): Effect.Effect<GroupPresence> =>
+  inspector.groupExists(entry.pgid).pipe(
+    Effect.map((exists) => (exists ? "present" : "gone") as GroupPresence),
+    Effect.catchCause((cause) =>
+      Effect.gen(function* () {
+        yield* Effect.logWarning(
+          "Could not confirm whether an orphaned OpenCode server group exited",
+          { pgid: entry.pgid, pid: entry.pid, cause },
+        );
+        return "unknown" as const;
+      }),
+    ),
+  );
+
+const waitForGroupExit = (
+  entry: OpenCodeServerLedgerEntry,
+  inspector: ProcessInspector,
+): Effect.Effect<boolean> =>
+  Effect.gen(function* () {
+    for (let poll = 0; poll < ORPHAN_TERM_POLLS; poll++) {
+      if ((yield* observeGroupPresence(entry, inspector)) === "gone") {
+        return true;
+      }
+      yield* Effect.sleep(ORPHAN_TERM_POLL_INTERVAL);
+    }
+    return false;
+  });
+
 const stopOrphan = (
   entry: OpenCodeServerLedgerEntry,
   inspector: ProcessInspector,
-): Effect.Effect<void> =>
+): Effect.Effect<OrphanStopOutcome> =>
   Effect.gen(function* () {
     const observed = yield* inspector.observe(entry.pid);
-    // Without a full identity match the pid may belong to another process now.
-    if (observed === undefined || observed.zombie) {
-      return;
+    if (observed === undefined) {
+      // No identity from the inspector is unknown evidence, not proof of exit.
+      // Only a missing process group proves this orphan is gone.
+      if ((yield* observeGroupPresence(entry, inspector)) === "gone") {
+        return "exited";
+      }
+      yield* Effect.logWarning(
+        "Keeping an OpenCode server ledger entry because its process identity could not be observed",
+        { pgid: entry.pgid, pid: entry.pid, port: entry.port },
+      );
+      return "unresolved";
+    }
+    if (observed.zombie) {
+      // The leader has exited but the group it anchored may not have.
+      if ((yield* observeGroupPresence(entry, inspector)) === "gone") {
+        return "exited";
+      }
+      yield* Effect.logWarning(
+        "Keeping an OpenCode server ledger entry because its group still exists after the leader exited",
+        { pgid: entry.pgid, pid: entry.pid, port: entry.port },
+      );
+      return "unresolved";
     }
     if (
       observed.startTime !== entry.startTime ||
       observed.pgid !== entry.pgid ||
       observed.command !== entry.command
     ) {
-      return;
+      // The pid now belongs to another process. Never signal it; the record no
+      // longer identifies anything this server owns.
+      yield* Effect.logInfo("Forgetting an OpenCode server entry whose pid was reused", {
+        pgid: entry.pgid,
+        pid: entry.pid,
+        port: entry.port,
+      });
+      return "stale";
     }
     yield* Effect.logWarning("Stopping an OpenCode server orphaned by a previous Neokod server", {
       pgid: entry.pgid,
@@ -329,20 +396,27 @@ const stopOrphan = (
       port: entry.port,
     });
     yield* inspector.signalGroup(entry.pgid, "SIGTERM");
-    for (let poll = 0; poll < ORPHAN_TERM_POLLS; poll++) {
-      if (!(yield* inspector.groupExists(entry.pgid))) {
-        return;
-      }
-      yield* Effect.sleep(ORPHAN_TERM_POLL_INTERVAL);
+    if (yield* waitForGroupExit(entry, inspector)) {
+      return "exited";
     }
     // A group that never emptied cannot have had its id reused while we polled.
     yield* inspector.signalGroup(entry.pgid, "SIGKILL");
+    if (yield* waitForGroupExit(entry, inspector)) {
+      return "exited";
+    }
+    yield* Effect.logWarning(
+      "An orphaned OpenCode server group survived SIGKILL; keeping its ledger entry for a later retry",
+      { pgid: entry.pgid, pid: entry.pid, port: entry.port },
+    );
+    return "unresolved";
   }).pipe(
     Effect.catchCause((cause) =>
-      Effect.logWarning("Could not stop an orphaned OpenCode server group", {
-        pgid: entry.pgid,
-        pid: entry.pid,
-        cause,
+      Effect.gen(function* () {
+        yield* Effect.logWarning(
+          "Could not stop an orphaned OpenCode server group; keeping its ledger entry",
+          { pgid: entry.pgid, pid: entry.pid, cause },
+        );
+        return "unresolved" as const;
       }),
     ),
   );
@@ -443,8 +517,15 @@ export const make = (
           // its children are not orphans.
           return;
         }
-        yield* stopOrphan(entry, inspector);
-        yield* removeEntryFile(fs, filePath);
+        const outcome = yield* stopOrphan(entry, inspector);
+        if (outcome === "exited" || outcome === "stale") {
+          yield* removeEntryFile(fs, filePath);
+          return;
+        }
+        yield* Effect.logWarning(
+          "Keeping an OpenCode server ledger entry because its group exit is unconfirmed",
+          { filePath, pgid: entry.pgid, pid: entry.pid, port: entry.port },
+        );
       }).pipe(
         Effect.catchCause((cause) =>
           Effect.logWarning("Could not reconcile an OpenCode server ledger entry", {
