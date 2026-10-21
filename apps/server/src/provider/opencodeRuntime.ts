@@ -1,3 +1,5 @@
+// @effect-diagnostics nodeBuiltinImport:off - the Windows taskkill worker needs its native process handle
+import * as NodeChildProcess from "node:child_process";
 import * as NodeURL from "node:url";
 import * as NodeCrypto from "node:crypto";
 
@@ -132,6 +134,16 @@ const OPENCODE_GROUP_KILL_SETTLE_INTERVAL = "50 millis";
  * seconds after its nominal timeout, plus scheduling.
  */
 const OPENCODE_COMMAND_TERM_GRACE = Duration.seconds(1);
+
+/**
+ * Bound for the Windows `taskkill` worker to settle, and for cancelling it
+ * through its own process handle when it does not. Windows has no graceful
+ * signal, so one forced tree termination replaces the POSIX TERM-to-KILL
+ * escalation. The worker is owned: it is awaited, and on cancellation it is
+ * terminated directly through the native handle rather than by launching a
+ * second `taskkill`.
+ */
+const OPENCODE_WINDOWS_TASKKILL_SETTLE_GRACE = Duration.seconds(1);
 
 export interface OpenCodeProcessGroupTerminationInput {
   readonly pgid: number;
@@ -489,14 +501,246 @@ function ensureRuntimeError(
 }
 
 /**
+ * The Windows termination worker started for one command child. It keeps the
+ * native process handle so cancellation can terminate the worker directly and
+ * await its exit instead of launching another `taskkill`.
+ */
+export interface WindowsTaskkillWorkerHandle {
+  readonly pid: number | undefined;
+  readonly isRunning: Effect.Effect<boolean>;
+  readonly exitCode: Effect.Effect<number, WindowsTaskkillWorkerError>;
+  readonly terminate: Effect.Effect<void>;
+}
+
+export class WindowsTaskkillWorkerError extends Data.TaggedError("WindowsTaskkillWorkerError")<{
+  readonly detail: string;
+}> {
+  override get message(): string {
+    return this.detail;
+  }
+}
+
+export interface WindowsTaskkillSpawnerShape {
+  readonly spawn: (
+    pid: number,
+  ) => Effect.Effect<WindowsTaskkillWorkerHandle, WindowsTaskkillWorkerError>;
+}
+
+const windowsTaskkillExecutable = (): string => {
+  const systemRoot = process.env.SystemRoot ?? process.env.windir;
+  return systemRoot && systemRoot.trim().length > 0
+    ? `${systemRoot.replace(/[\\/]+$/u, "")}\\System32\\taskkill.exe`
+    : "taskkill";
+};
+
+/**
+ * Start one `taskkill /pid <pid> /T /F` worker without a shell and retain its
+ * native handle. `/T /F` is already the forced tree termination, so the POSIX
+ * TERM-then-KILL escalation must not run here: both signals would launch the
+ * same command twice.
+ */
+const spawnWindowsTaskkillWorker = (
+  pid: number,
+): Effect.Effect<WindowsTaskkillWorkerHandle, WindowsTaskkillWorkerError> =>
+  Effect.try({
+    try: () =>
+      NodeChildProcess.spawn(windowsTaskkillExecutable(), ["/pid", String(pid), "/T", "/F"], {
+        shell: false,
+        stdio: "ignore",
+        windowsHide: true,
+      }),
+    catch: (cause) =>
+      new WindowsTaskkillWorkerError({ detail: `Could not start taskkill: ${String(cause)}` }),
+  }).pipe(
+    Effect.map((child) => {
+      const exitCode = Effect.callback<number, WindowsTaskkillWorkerError>((resume) => {
+        if (child.exitCode !== null) {
+          resume(Effect.succeed(child.exitCode));
+          return;
+        }
+        let settled = false;
+        const settle = (effect: Effect.Effect<number, WindowsTaskkillWorkerError>) => {
+          if (settled) return;
+          settled = true;
+          resume(effect);
+        };
+        const onExit = (code: number | null) => settle(Effect.succeed(code ?? -1));
+        const onError = (cause: Error) =>
+          settle(Effect.fail(new WindowsTaskkillWorkerError({ detail: cause.message })));
+        child.once("exit", onExit);
+        child.once("error", onError);
+        return Effect.sync(() => {
+          child.off("exit", onExit);
+          child.off("error", onError);
+        });
+      });
+
+      return {
+        pid: child.pid,
+        isRunning: Effect.sync(() => child.exitCode === null && child.signalCode === null),
+        exitCode,
+        // `child.kill` targets this worker's owned native handle. On Windows
+        // Node terminates that process directly, so cancellation cannot
+        // recurse into another taskkill.
+        terminate: Effect.sync(() => {
+          if (child.exitCode !== null || child.signalCode !== null) return;
+          try {
+            child.kill("SIGKILL");
+          } catch {
+            // The worker exited between the check and the signal.
+          }
+        }),
+      } satisfies WindowsTaskkillWorkerHandle;
+    }),
+  );
+
+/**
+ * Injectable so tests can exercise worker settlement without running taskkill
+ * on a non-Windows host. Production uses the owned native-process worker above.
+ */
+export const WindowsTaskkillSpawner = Context.Reference<WindowsTaskkillSpawnerShape>(
+  "neokod/provider/opencodeWindowsTaskkillSpawner",
+  { defaultValue: () => ({ spawn: spawnWindowsTaskkillWorker }) },
+);
+
+type WindowsTaskkillAwait =
+  | { readonly state: "exited"; readonly exitCode: number }
+  | { readonly state: "timeout" }
+  | { readonly state: "failed"; readonly detail: string };
+
+type WindowsTaskkillSettlement =
+  | {
+      readonly state: "exited";
+      readonly workerPid: number | undefined;
+      readonly exitCode: number;
+    }
+  | {
+      readonly state: "unknown";
+      readonly workerPid: number | undefined;
+      readonly reason: "worker_failed" | "worker_cancelled" | "worker_did_not_settle";
+      readonly detail?: string;
+    };
+
+const awaitWindowsTaskkillWorker = (
+  worker: WindowsTaskkillWorkerHandle,
+): Effect.Effect<WindowsTaskkillAwait> =>
+  worker.exitCode.pipe(
+    Effect.timeoutOption(OPENCODE_WINDOWS_TASKKILL_SETTLE_GRACE),
+    Effect.result,
+    Effect.map((result) => {
+      if (Result.isFailure(result)) {
+        return { state: "failed", detail: result.failure.detail } as const;
+      }
+      return Option.isNone(result.success)
+        ? ({ state: "timeout" } as const)
+        : ({ state: "exited", exitCode: result.success.value } as const);
+    }),
+  );
+
+const cancelWindowsTaskkillWorker = (
+  worker: WindowsTaskkillWorkerHandle,
+  reason: "worker_failed" | "worker_cancelled",
+): Effect.Effect<WindowsTaskkillSettlement> =>
+  Effect.gen(function* () {
+    if (yield* worker.isRunning.pipe(Effect.orElseSucceed(() => true))) {
+      yield* worker.terminate;
+    }
+    const after = yield* awaitWindowsTaskkillWorker(worker);
+    return after.state === "exited"
+      ? ({
+          state: "unknown",
+          workerPid: worker.pid,
+          reason,
+        } as const)
+      : ({
+          state: "unknown",
+          workerPid: worker.pid,
+          reason: "worker_did_not_settle",
+          ...(after.state === "failed" ? { detail: after.detail } : {}),
+        } as const);
+  });
+
+const settleWindowsTaskkillWorker = (
+  worker: WindowsTaskkillWorkerHandle,
+): Effect.Effect<WindowsTaskkillSettlement> =>
+  Effect.gen(function* () {
+    const first = yield* awaitWindowsTaskkillWorker(worker);
+    if (first.state === "exited") {
+      return {
+        state: "exited",
+        workerPid: worker.pid,
+        exitCode: first.exitCode,
+      } as const;
+    }
+    return yield* cancelWindowsTaskkillWorker(
+      worker,
+      first.state === "failed" ? "worker_failed" : "worker_cancelled",
+    );
+  });
+
+/**
+ * Run the one owned Windows termination worker through settlement. A spawn
+ * failure leaves no worker; a worker that outlives its bounded window is
+ * cancelled through its native handle and awaited again. If it still does not
+ * exit, the caller reports the command's state as unknown rather than claiming
+ * it stopped.
+ */
+const runOwnedWindowsTaskkill = (
+  workerSpawner: WindowsTaskkillSpawnerShape,
+  pid: number,
+): Effect.Effect<WindowsTaskkillSettlement> =>
+  Effect.gen(function* () {
+    const worker = yield* workerSpawner.spawn(pid).pipe(
+      Effect.tapError((cause) =>
+        Effect.logWarning(
+          "Could not start the Windows OpenCode termination worker; the command process state is unknown",
+          { pid, cause: cause.detail },
+        ),
+      ),
+      Effect.option,
+    );
+    if (Option.isNone(worker)) {
+      return { state: "unknown", workerPid: undefined, reason: "worker_failed" } as const;
+    }
+    return yield* settleWindowsTaskkillWorker(worker.value).pipe(
+      Effect.onInterrupt(() =>
+        cancelWindowsTaskkillWorker(worker.value, "worker_cancelled").pipe(
+          Effect.tap((settlement) =>
+            settlement.state === "unknown" && settlement.reason === "worker_did_not_settle"
+              ? Effect.logWarning(
+                  "Windows OpenCode termination worker did not exit after cancellation; its outcome and the command process state are unknown",
+                  { pid, workerPid: settlement.workerPid },
+                )
+              : Effect.void,
+          ),
+          Effect.ignore,
+        ),
+      ),
+    );
+  });
+
+const isCommandChildRunning = (
+  child: ChildProcessSpawner.ChildProcessHandle,
+): Effect.Effect<boolean> =>
+  // Unknown liveness stays unknown: it is not proof that the child stopped.
+  child.isRunning.pipe(Effect.orElseSucceed(() => true));
+
+/**
  * Stop a command child within a bounded window and report what could not be
  * stopped.
  *
- * {@link escalateChildTermination} bounds the signal delivery and the wait for
- * the exit signal: SIGTERM, at most one grace window, then SIGKILL, at most one
- * more. A child that survives even SIGKILL is logged rather than awaited
- * forever, because the alternative is a caller timeout that never settles and
- * no evidence that the process is still alive.
+ * POSIX keeps the existing TERM-then-KILL escalation: it bounds the signal
+ * delivery and the exit wait. Windows has no graceful signal and the installed
+ * spawner implements both signals as the same `taskkill /T /F` without keeping
+ * the worker handle, so a timeout leaves an unowned process that can act on the
+ * recorded pid later. This path runs one owned worker, waits for it, and
+ * cancels it through its native handle if it hangs.
+ *
+ * The preflight is the command handle's exit state: if Node has already
+ * observed the child exit, no worker is started. `taskkill` itself resolves a
+ * pid, and Windows cannot pin that pid against reuse through this API, so this
+ * is only as strong as the spawner handle's exit observation. The worker is
+ * never left to run after cleanup, which removes the delayed-action window.
  *
  * This needs no birth-token guard like the server path: the signals go through
  * the live spawner handle for a child this process just spawned, and only while
@@ -505,28 +749,57 @@ function ensureRuntimeError(
  */
 const releaseOpenCodeCommandChild = (
   child: ChildProcessSpawner.ChildProcessHandle,
+  hostPlatform: NodeJS.Platform,
+  windowsTaskkill: WindowsTaskkillSpawnerShape,
 ): Effect.Effect<void> =>
-  escalateChildTermination(child, OPENCODE_COMMAND_TERM_GRACE).pipe(
-    Effect.andThen(
-      child.isRunning.pipe(
-        // Unknown liveness stays unknown: it is not proof that the child stopped.
-        Effect.orElseSucceed(() => true),
-        Effect.flatMap((running) =>
-          running
-            ? Effect.logWarning(
-                "OpenCode command process survived SIGTERM and SIGKILL; it may still be running",
-                { pid: Number(child.pid) },
-              )
-            : Effect.void,
-        ),
-      ),
-    ),
-  );
+  Effect.gen(function* () {
+    const pid = Number(child.pid);
+    if (!(yield* isCommandChildRunning(child))) return;
+
+    if (hostPlatform === "win32") {
+      const settlement = yield* runOwnedWindowsTaskkill(windowsTaskkill, pid);
+      if (settlement.state === "exited") {
+        if (settlement.exitCode !== 0) {
+          yield* Effect.logWarning("Windows OpenCode termination worker exited non-zero", {
+            pid,
+            workerPid: settlement.workerPid,
+            exitCode: settlement.exitCode,
+          });
+        }
+      } else {
+        yield* Effect.logWarning(
+          "Windows OpenCode termination worker did not settle; the command process state is unknown",
+          {
+            pid,
+            workerPid: settlement.workerPid,
+            reason: settlement.reason,
+            ...(settlement.detail ? { cause: settlement.detail } : {}),
+          },
+        );
+      }
+      if (yield* isCommandChildRunning(child)) {
+        yield* Effect.logWarning(
+          "OpenCode command process survived Windows taskkill; it may still be running",
+          { pid, workerPid: settlement.workerPid },
+        );
+      }
+      return;
+    }
+
+    yield* escalateChildTermination(child, OPENCODE_COMMAND_TERM_GRACE);
+    if (yield* isCommandChildRunning(child)) {
+      yield* Effect.logWarning(
+        "OpenCode command process survived SIGTERM and SIGKILL; it may still be running",
+        { pid },
+      );
+    }
+  });
 
 const makeOpenCodeRuntime = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const netService = yield* NetService.NetService;
   const hostPlatform = yield* HostProcessPlatform;
+  const windowsTaskkill = yield* WindowsTaskkillSpawner;
   const ledger = yield* OpenCodeServerLedger;
   const resolveCommand = (command: string, args: ReadonlyArray<string>, env?: NodeJS.ProcessEnv) =>
     resolveSpawnCommand(command, args, env ? { env } : {});
@@ -555,7 +828,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
             }),
           )
           .pipe(Effect.provideService(Scope.Scope, spawnScope)),
-        releaseOpenCodeCommandChild,
+        (child) => releaseOpenCodeCommandChild(child, hostPlatform, windowsTaskkill),
       );
       const [stdout, stderr, code] = yield* Effect.all(
         [collectStreamAsString(child.stdout), collectStreamAsString(child.stderr), child.exitCode],

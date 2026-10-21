@@ -11,6 +11,7 @@ import * as Duration from "effect/Duration";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
@@ -27,6 +28,9 @@ import {
   parseOpenCodeServerTimeoutMs,
   parseOpenCodeServerUrlFromOutput,
   terminateOpenCodeProcessGroup,
+  WindowsTaskkillSpawner,
+  type WindowsTaskkillSpawnerShape,
+  type WindowsTaskkillWorkerHandle,
 } from "./opencodeRuntime.ts";
 import { OpenCodeServerLedger, type OpenCodeServerLedgerShape } from "./OpenCodeServerLedger.ts";
 import { OPENCODE_VERSION_PROBE_TIMEOUT } from "./openCodeVersion.ts";
@@ -249,13 +253,18 @@ const NOOP_LEDGER: OpenCodeServerLedgerShape = {
 const runtimeLayerWith = (
   spawner: ChildProcessSpawner.ChildProcessSpawner["Service"],
   ledger: OpenCodeServerLedgerShape = NOOP_LEDGER,
-) =>
-  OpenCodeRuntimeLive.pipe(
+  windowsTaskkill?: WindowsTaskkillSpawnerShape,
+) => {
+  const base = OpenCodeRuntimeLive.pipe(
     Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)),
     Layer.provide(Layer.succeed(HostProcessPlatform, "win32")),
     Layer.provide(Layer.succeed(SpawnExecutableResolution, () => undefined)),
     Layer.provide(Layer.succeed(OpenCodeServerLedger, ledger)),
   );
+  return windowsTaskkill === undefined
+    ? base
+    : base.pipe(Layer.provide(Layer.succeed(WindowsTaskkillSpawner, windowsTaskkill)));
+};
 
 const runtimeLayerWithRealSpawner = () =>
   OpenCodeRuntimeLive.pipe(
@@ -473,6 +482,180 @@ describe("startOpenCodeServerProcess shutdown ordering", () => {
       // succeeding, or a failed spawn record would leak a live child.
       expect(events.filter((event) => event === "terminate")).toHaveLength(2);
     }).pipe(Effect.provide(runtimeLayerWith(makeOrderingSpawner(events), failingLedger)));
+  });
+});
+
+const makeFakeWindowsTaskkillHandle = (input: {
+  readonly exit: Deferred.Deferred<number>;
+  readonly onTerminate: () => void;
+}): WindowsTaskkillWorkerHandle => ({
+  pid: 9001,
+  isRunning: Effect.map(Deferred.isDone(input.exit), (done) => !done),
+  exitCode: Deferred.await(input.exit),
+  terminate: Effect.sync(input.onTerminate),
+});
+
+// A command child that never exits on its own, so only command interruption
+// reaches the cleanup path. `onKill` records any spawner-level kill call; the
+// Windows path must use its owned taskkill worker instead.
+const makeRunningCommandHandle = (onKill: () => void) =>
+  ChildProcessSpawner.makeHandle({
+    pid: ChildProcessSpawner.ProcessId(1),
+    exitCode: Effect.never,
+    isRunning: Effect.succeed(true),
+    kill: () => Effect.sync(onKill),
+    unref: Effect.succeed(Effect.void),
+    stdin: Sink.drain,
+    stdout: Stream.never,
+    stderr: Stream.never,
+    all: Stream.empty,
+    getInputFd: () => Sink.drain,
+    getOutputFd: () => Stream.empty,
+  });
+
+const hangCommandUntilInterrupted = (onKill: () => void) =>
+  ChildProcessSpawner.make(() => Effect.succeed(makeRunningCommandHandle(onKill)));
+
+describe("runOpenCodeCommand Windows cleanup", () => {
+  it.effect("does not start a taskkill worker for a command that already exited", () => {
+    let workerSpawns = 0;
+    const windowsTaskkill: WindowsTaskkillSpawnerShape = {
+      spawn: () =>
+        Effect.sync(() => {
+          workerSpawns += 1;
+          const exit = Deferred.makeUnsafe<number>();
+          Deferred.doneUnsafe(exit, Exit.succeed(0));
+          return makeFakeWindowsTaskkillHandle({ exit, onTerminate: () => {} });
+        }),
+    };
+
+    return Effect.gen(function* () {
+      const runtime = yield* OpenCodeRuntime;
+      const result = yield* runtime.runOpenCodeCommand({
+        binaryPath: "fake-opencode",
+        args: ["--version"],
+      });
+
+      expect(result.code).toBe(0);
+      // The command handle already reported exit, so the pid-targeted worker
+      // must not start at all.
+      expect(workerSpawns).toBe(0);
+    }).pipe(
+      Effect.provide(runtimeLayerWith(makeCapturingSpawner([]), NOOP_LEDGER, windowsTaskkill)),
+    );
+  });
+
+  it.effect("uses one owned taskkill worker and waits for it to settle", () => {
+    const workerExit = Deferred.makeUnsafe<number>();
+    const spawnedPids: Array<number> = [];
+    let terminateCalls = 0;
+    let commandKills = 0;
+    const windowsTaskkill: WindowsTaskkillSpawnerShape = {
+      spawn: (pid) =>
+        Effect.sync(() => {
+          spawnedPids.push(pid);
+          Deferred.doneUnsafe(workerExit, Exit.succeed(0));
+          return makeFakeWindowsTaskkillHandle({
+            exit: workerExit,
+            onTerminate: () => {
+              terminateCalls += 1;
+            },
+          });
+        }),
+    };
+
+    return Effect.gen(function* () {
+      const runtime = yield* OpenCodeRuntime;
+      const command = yield* runtime
+        .runOpenCodeCommand({ binaryPath: "fake-opencode", args: ["--version"] })
+        .pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+
+      yield* Fiber.interrupt(command);
+
+      expect(spawnedPids).toEqual([1]);
+      // Windows has no graceful signal: the single user-owned worker replaces
+      // both spawner-level kill requests, so neither runs here.
+      expect(commandKills).toBe(0);
+      expect(terminateCalls).toBe(0);
+    }).pipe(
+      Effect.provide(
+        runtimeLayerWith(
+          hangCommandUntilInterrupted(() => {
+            commandKills += 1;
+          }),
+          NOOP_LEDGER,
+          windowsTaskkill,
+        ),
+      ),
+    );
+  });
+
+  it.effect("cancels a hanging taskkill worker through its owned handle", () => {
+    const workerSpawned = Deferred.makeUnsafe<void>();
+    const workerExit = Deferred.makeUnsafe<number>();
+    const logMessages: Array<unknown> = [];
+    const logger = Logger.make<unknown, void>((options) => {
+      logMessages.push(options.message);
+    });
+    let workerSpawns = 0;
+    let terminateCalls = 0;
+    let commandKills = 0;
+    const windowsTaskkill: WindowsTaskkillSpawnerShape = {
+      spawn: () =>
+        Effect.gen(function* () {
+          workerSpawns += 1;
+          yield* Deferred.succeed(workerSpawned, void 0);
+          return makeFakeWindowsTaskkillHandle({
+            exit: workerExit,
+            onTerminate: () => {
+              terminateCalls += 1;
+              Deferred.doneUnsafe(workerExit, Exit.succeed(0));
+            },
+          });
+        }),
+    };
+
+    return Effect.gen(function* () {
+      const runtime = yield* OpenCodeRuntime;
+      const command = yield* runtime
+        .runOpenCodeCommand({ binaryPath: "fake-opencode", args: ["--version"] })
+        .pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+
+      const startedAtMs = yield* currentTimeMillis;
+      const interruption = yield* Fiber.interrupt(command).pipe(Effect.forkChild);
+      yield* Deferred.await(workerSpawned);
+      // The worker hangs. At the settle bound the runtime must terminate it
+      // through its own handle and await that exit, not start another worker.
+      yield* TestClock.adjust("1 second");
+      yield* Effect.yieldNow;
+      yield* Fiber.join(interruption);
+      const elapsedMs = (yield* currentTimeMillis) - startedAtMs;
+      const exit = yield* Fiber.await(command);
+
+      expect(workerSpawns).toBe(1);
+      expect(terminateCalls).toBe(1);
+      expect(commandKills).toBe(0);
+      expect(Exit.hasInterrupts(exit)).toBe(true);
+      expect(elapsedMs).toBeLessThanOrEqual(1_000);
+      const logs = logMessages
+        .map((message) => (typeof message === "string" ? message : JSON.stringify(message)))
+        .join(" ");
+      expect(logs).toContain("termination worker did not settle");
+      expect(logs).toContain("9001");
+    }).pipe(
+      Effect.provide(
+        runtimeLayerWith(
+          hangCommandUntilInterrupted(() => {
+            commandKills += 1;
+          }),
+          NOOP_LEDGER,
+          windowsTaskkill,
+        ),
+      ),
+      Effect.withLogger(logger),
+    );
   });
 });
 
