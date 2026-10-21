@@ -1,0 +1,162 @@
+{
+  "capturedAt": "2026-10-21T18:31:20.700906+00:00",
+  "repository": "githubnext/chopin",
+  "defaultBranch": "main",
+  "sourceSha": "a55c9380c9c50aa16f2a794a119be1a2ce14b608",
+  "latestRelease": {
+    "tag": "cli-v0.0.18",
+    "sha": "a55c9380c9c50aa16f2a794a119be1a2ce14b608",
+    "publishedAt": "2026-10-21T18:12:51Z",
+    "prerelease": false
+  },
+  "coverage": {
+    "pulls": "latest 100 closed pull requests sorted by updated time, 95 merged; bounded snapshot, not whole history",
+    "releaseRecords": 10,
+    "nightly": "no separately labelled nightly in the ten fetched release records; default branch pinned independently",
+    "runtime": "source and documented interface review only; no install, build, tests or live connector execution"
+  },
+  "inspectedFiles": [
+    {
+      "path": "README.md",
+      "sha256": "fd655658ec4a63f60d3cc261349abaa97b877579f735f55e2c95ea69723c2e47",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/README.md"
+    },
+    {
+      "path": "docs/implementation-lifecycle.md",
+      "sha256": "b0335c9aac29d89be2805b553e767929b8a6f8d6905add54fd7625ac77aa1e30",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/docs/implementation-lifecycle.md"
+    },
+    {
+      "path": "docs/architecture.md",
+      "sha256": "d5b6d0aeb9b0995b9afaa662d0793f172e717ef18a9986cfebcc1ae85bda254a",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/docs/architecture.md"
+    },
+    {
+      "path": "docs/decisions.md",
+      "sha256": "e0760e973a81c44c55a41bd0528783e709428323eb03a5c2763682650b9bb7c1",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/docs/decisions.md"
+    },
+    {
+      "path": "docs/background-jobs.md",
+      "sha256": "9c2357fe77e4a9ded7f1d5d0cb91b6250dbc41e9bcbaf64e80fdb38b4f934422",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/docs/background-jobs.md"
+    },
+    {
+      "path": "apps/server/src/tasks/graphs.ts",
+      "sha256": "64f8fb1872f256f353334952d9a3eaf5903a310b943487b542d773a64e48fcf4",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/apps/server/src/tasks/graphs.ts"
+    },
+    {
+      "path": "apps/server/src/tasks/lifecycle.ts",
+      "sha256": "06a59e79e2350339abeae1a3697b85d622558748f2ac7a443cbd4985318708aa",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/apps/server/src/tasks/lifecycle.ts"
+    },
+    {
+      "path": "apps/server/src/tasks/connector.ts",
+      "sha256": "25807cf5bad27314dae7d242ce97b60c164fcce7e4f4097d78901e993998a206",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/apps/server/src/tasks/connector.ts"
+    },
+    {
+      "path": "apps/server/src/tasks/builds.ts",
+      "sha256": "add762e552d8f10ca1b2ba11f08e27b97c4af2115d4057c2fbbded250360ab65",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/apps/server/src/tasks/builds.ts"
+    },
+    {
+      "path": "apps/server/src/jobs/runner.ts",
+      "sha256": "2a160626ce15a3340ddeab316b2282123f50276f58ec7a4f38374d7287410ff6",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/apps/server/src/jobs/runner.ts"
+    },
+    {
+      "path": "apps/server/src/research/publication.ts",
+      "sha256": "a295c2ebce7cd211dd50d78278cf1ddcf13cccba5b7214815d343e0a786d9318",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/apps/server/src/research/publication.ts"
+    },
+    {
+      "path": "apps/server/src/harness/atomic/full.ts",
+      "sha256": "bf23e07fc11acd0f02a1b0f2f0e35b826a134f5f8b4edfd0e867b493d85bafeb",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/apps/server/src/harness/atomic/full.ts"
+    },
+    {
+      "path": "apps/server/src/chat/service.ts",
+      "sha256": "9d9902f7c007f6805ce0fe75f9ad704deb37254927b8e30febe1ef192fcc3e2f",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/apps/server/src/chat/service.ts"
+    },
+    {
+      "path": "apps/server/src/channels/document-title.ts",
+      "sha256": "1160c6c5aa56af305d9fb457a0ca3ebcb86d97d41c49c3c1fb13a827ed291335",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/apps/server/src/channels/document-title.ts"
+    },
+    {
+      "path": "apps/connector/src/implementation.ts",
+      "sha256": "ef7f228fec2353376ddcaedcea217f9a46997fca810a72be74ea09578076ac67",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/apps/connector/src/implementation.ts"
+    },
+    {
+      "path": "apps/connector/src/reconnect.ts",
+      "sha256": "943aeeb45a2360b614c03071364bd1393f900a2309a1c861685302df0ed12a0c",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/apps/connector/src/reconnect.ts"
+    },
+    {
+      "path": "packages/dialect/src/dialect.ts",
+      "sha256": "f9d76d8c28113f8b2eed105d082d50938668ec5f960008341a6a7f85f443f541",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/packages/dialect/src/dialect.ts"
+    },
+    {
+      "path": "packages/dialect/src/validate.ts",
+      "sha256": "03b056e52571673d8830ee987719163fe5158dc005a3a1b43c01e63cb390d989",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/packages/dialect/src/validate.ts"
+    },
+    {
+      "path": "apps/web/src/decision-view-control.tsx",
+      "sha256": "38fef908b3d5be937011d1e0b574b7563c967d9336e99efbc191d85566be3ac9",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/apps/web/src/decision-view-control.tsx"
+    },
+    {
+      "path": "apps/web/src/build-model.ts",
+      "sha256": "41dedb2ec056a1220cb71b063fe8d799cf859e7027811dd31a7cd2a5b6dd90b1",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/apps/web/src/build-model.ts"
+    },
+    {
+      "path": "apps/server/src/main.ts",
+      "sha256": "7a472b5fdd32b6a4cfb16568ed59daaf659c5167d112ceac7a3de4b317450a2b",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/apps/server/src/main.ts"
+    },
+    {
+      "path": "apps/server/src/conversation-plan/event-lifecycle.ts",
+      "sha256": "b8786a4661eb016fe24a244740cfa6a1e943e8c399c0b76fd4d1e065955424c7",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/apps/server/src/conversation-plan/event-lifecycle.ts"
+    },
+    {
+      "path": "apps/server/src/conversation-plan/event-validation.ts",
+      "sha256": "e6568f289067b96c32c9006537bf4bef445d3b2b7af5f95f917316e911b1fdc0",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/apps/server/src/conversation-plan/event-validation.ts"
+    },
+    {
+      "path": "apps/server/src/tasks/routes.ts",
+      "sha256": "52108a7e2b155b2c8f009f3973d9ed30c476b2f2acc3d417da60561c054d9b06",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/apps/server/src/tasks/routes.ts"
+    },
+    {
+      "path": "apps/server/src/tasks/live-gate.ts",
+      "sha256": "490fb3982683050ff7ca886cb4422692b77040bd8e4f4db8bfdbb86aae1a1f96",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/apps/server/src/tasks/live-gate.ts"
+    },
+    {
+      "path": "apps/server/src/tasks/live-sync.ts",
+      "sha256": "8926280ebd9983c1dab2dc7d7eb501c9c148aaec9383dd7775fd32e7bb05eb54",
+      "url": "https://github.com/githubnext/chopin/blob/a55c9380c9c50aa16f2a794a119be1a2ce14b608/apps/server/src/tasks/live-sync.ts"
+    }
+  ],
+  "reviewers": {
+    "main": "completed independent source review; includes remote selected-merge ancestry checks",
+    "opus": {
+      "sessionId": "ses_ea049599affeKDWeTrysTrb8WM",
+      "effectiveAssistantModel": {
+        "id": "claude-opus-5.5",
+        "providerID": "github-copilot",
+        "variant": "high"
+      },
+      "state": "completed source-only"
+    }
+  }
+}

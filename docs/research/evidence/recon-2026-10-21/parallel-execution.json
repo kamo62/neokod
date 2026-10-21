@@ -448,38 +448,6 @@
       "builds": "notrun; prohibited"
     },
     {
-      "lane": "lane-crash-recovery",
-      "sessionId": "ses_ea05806b9ffeygccNxuP0j4fMI",
-      "agentInfo": {
-        "name": "OpenCode",
-        "version": "2.0.32"
-      },
-      "requestedModel": "deepseek/deepseek-flash",
-      "effectiveAssistantModel": {
-        "id": "deepseek-flash",
-        "providerID": "deepseek",
-        "variant": "default"
-      },
-      "state": "running; not accepted",
-      "builds": "not run; prohibited by owner"
-    },
-    {
-      "lane": "lane-git-safety",
-      "sessionId": "ses_ea056d68bffekHG5z2fsfmd8rH",
-      "agentInfo": {
-        "name": "OpenCode",
-        "version": "2.0.32"
-      },
-      "requestedModel": "deepseek/deepseek-flash",
-      "effectiveAssistantModel": {
-        "id": "deepseek-flash",
-        "providerID": "deepseek",
-        "variant": "default"
-      },
-      "state": "running; not accepted",
-      "builds": "not run; prohibited by owner"
-    },
-    {
       "lane": "sol-composer-review",
       "sessionId": "ses_ea05803e4ffegbOm9zJzQqameh",
       "agentInfo": {
@@ -556,12 +524,188 @@
         "providerID": "deepseek",
         "variant": "default"
       },
-      "state": "running; not accepted",
+      "state": "pushed 670c9cfa7; independent closure reviews running; not integrated",
       "builds": "not run; prohibited by owner"
     },
     {
       "lane": "sol-probe-cleanup-review",
       "sessionId": "ses_ea053948cffeYZWjyhRh9AidA2",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "github-copilot/gpt-6.1-sol",
+      "effectiveAssistantModel": {
+        "id": "gpt-6.1-sol",
+        "providerID": "github-copilot",
+        "variant": "high"
+      },
+      "state": "completed; Windows worker cancellation P2 returned to DeepSeek correction",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "opus-chopin-review",
+      "sessionId": "ses_ea049599affeKDWeTrysTrb8WM",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "github-copilot/claude-opus-5.5",
+      "effectiveAssistantModel": {
+        "id": "claude-opus-5.5",
+        "providerID": "github-copilot",
+        "variant": "high"
+      },
+      "state": "completed independent source review; consolidated in report14 and plan16.9",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "opus-crash-review",
+      "sessionId": "ses_ea04cd1a0ffe1CSy0jgWiTUDtV",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "github-copilot/claude-opus-5.5",
+      "effectiveAssistantModel": {
+        "id": "claude-opus-5.5",
+        "providerID": "github-copilot",
+        "variant": "high"
+      },
+      "state": "completed; one P1 and four P2 findings returned to DeepSeek",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "sol-crash-review",
+      "sessionId": "ses_ea04cd856ffeaA8n14ER1Muk9B",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "github-copilot/gpt-6.1-sol",
+      "effectiveAssistantModel": {
+        "id": "gpt-6.1-sol",
+        "providerID": "github-copilot",
+        "variant": "high"
+      },
+      "state": "completed; per-item fence and sanitizer findings returned to DeepSeek",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "lane-crash-recovery",
+      "sessionId": "ses_ea05806b9ffeygccNxuP0j4fMI",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "completed; source acceptance not implied",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "lane-crash-closure",
+      "sessionId": "ses_ea042400fffefh5FPcn77754uk",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "running; not accepted",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "lane-git-safety",
+      "sessionId": "ses_ea056d68bffekHG5z2fsfmd8rH",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "completed/pushed 3e5b05f31; U11 integrated only; X9-X11 in independent review",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "lane-opencode-windows-cleanup",
+      "sessionId": "ses_ea050126fffeOIy1RT3hA82n0a",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "deepseek/deepseek-flash",
+      "effectiveAssistantModel": {
+        "id": "deepseek-flash",
+        "providerID": "deepseek",
+        "variant": "default"
+      },
+      "state": "completed; source acceptance not implied",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "sol-composer-closure",
+      "sessionId": "ses_ea043ca21ffecU2tTOMRNObEVT",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "github-copilot/gpt-6.1-sol",
+      "effectiveAssistantModel": {
+        "id": "gpt-6.1-sol",
+        "providerID": "github-copilot",
+        "variant": "high"
+      },
+      "state": "completed; five P2 findings; U06/U07 held for correction",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "opus-composer-closure",
+      "sessionId": "ses_ea043c475ffegmFuZv3DNX2MWW",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "github-copilot/claude-opus-5.5",
+      "effectiveAssistantModel": {
+        "id": "claude-opus-5.5",
+        "providerID": "github-copilot",
+        "variant": "high"
+      },
+      "state": "running; not accepted",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "sol-opencode-windows-closure",
+      "sessionId": "ses_ea043c156ffeaP0etEZQAabfdx",
+      "agentInfo": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "requestedModel": "github-copilot/gpt-6.1-sol",
+      "effectiveAssistantModel": {
+        "id": "gpt-6.1-sol",
+        "providerID": "github-copilot",
+        "variant": "high"
+      },
+      "state": "completed; native asynchronous error-listener race returned to DeepSeek; preserve existing dev maintenance guard at integration",
+      "builds": "not run; prohibited by owner"
+    },
+    {
+      "lane": "sol-git-safety-review",
+      "sessionId": "ses_ea0405a50ffeKxJRrG66mUzJX6",
       "agentInfo": {
         "name": "OpenCode",
         "version": "2.0.32"
@@ -678,13 +822,25 @@
       "report": "sol-copilot-core-closure-review.md"
     }
   ],
-  "latestIntegratedSourceCommit": "cc054117d28edda1729effb4ee65c75abe3c2f1b",
+  "latestIntegratedSourceCommit": "0636f2abf",
   "rootChecks": {
     "sourceCommit": "cc054117d28edda1729effb4ee65c75abe3c2f1b",
     "vpRunTypecheck": "exit0; all10tasks; Effect suggestion diagnostics",
     "combinedOpenCodeTests": "exit0;126passed8files",
     "vpCheck": "exit0; 0 errors, 30 existing warnings; evidence formatting corrected",
     "builds": "notrun; prohibited",
-    "runtime": "notestablished"
+    "runtime": "notestablished",
+    "u11": {
+      "sourceCommit": "0636f2abf",
+      "focusedTests": "Sidebar.logic.test.ts: 70 passed",
+      "typecheck": "root vp run typecheck passed all ten tasks",
+      "builds": "not run; prohibited"
+    },
+    "chopinDocs": {
+      "vpCheck": "passed: 0 errors,30 existing warnings",
+      "artifactChecks": "Chopin JSON parsed; canonical addition relative links resolve; diff whitespace clean",
+      "typecheck": "root passed at unchanged source 0636f2abf, reused for documentation-only addition",
+      "builds": "not run; prohibited"
+    }
   }
 }
