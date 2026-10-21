@@ -1,3 +1,9 @@
+// @effect-diagnostics nodeBuiltinImport:off - fixtures use synchronous temp files and paths
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -169,6 +175,12 @@ const runtimeLayerWith = (
     Layer.provide(Layer.succeed(OpenCodeServerLedger, ledger)),
   );
 
+const runtimeLayerWithRealSpawner = () =>
+  OpenCodeRuntimeLive.pipe(
+    Layer.provide(NodeServices.layer),
+    Layer.provide(Layer.succeed(OpenCodeServerLedger, NOOP_LEDGER)),
+  );
+
 // Closing the server scope sleeps one second between SIGTERM and SIGKILL.
 // Under the test clock that sleep never elapses on its own, so the started
 // server runs in a forked fiber and the clock is advanced until the scope
@@ -315,6 +327,170 @@ describe("startOpenCodeServerProcess shutdown ordering", () => {
       // succeeding, or a failed spawn record would leak a live child.
       expect(events.filter((event) => event === "terminate")).toHaveLength(2);
     }).pipe(Effect.provide(runtimeLayerWith(makeOrderingSpawner(events), failingLedger)));
+  });
+});
+
+// The real Node spawner, and a real POSIX process group per fixture. Each test
+// owns the only processes in its group, so a stray `kill(-pgid, ...)` can only
+// hit the fixture and never an unrelated process on the host.
+const makeFixtureDirectory = () =>
+  NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "neokod-opencode-runtime-"));
+
+const writeExecutableFixture = (directory: string, name: string, lines: ReadonlyArray<string>) => {
+  const filePath = NodePath.join(directory, name);
+  NodeFS.writeFileSync(filePath, `${lines.join("\n")}\n`, { mode: 0o755 });
+  return filePath;
+};
+
+const readFixturePid = (filePath: string): number | undefined => {
+  try {
+    const parsed = Number(NodeFS.readFileSync(filePath, "utf8").trim());
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const isProcessAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const killFixture = (pid: number | undefined): void => {
+  if (pid === undefined) return;
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // already gone
+  }
+};
+
+const waitForProcessExit = (pid: number, timeoutMs: number) =>
+  Effect.gen(function* () {
+    for (let waited = 0; waited < timeoutMs; waited += 50) {
+      if (!isProcessAlive(pid)) return true;
+      yield* Effect.sleep("50 millis");
+    }
+    return !isProcessAlive(pid);
+  });
+
+// POSIX-only fixtures; the runtime's platform reference is provided per effect
+// below. This is suite-level gating, not runtime code.
+// oxlint-disable-next-line neokod/no-global-process-runtime
+const describeOnPosix = NodeOS.platform() === "win32" ? describe.skip : describe;
+
+describeOnPosix("startOpenCodeServerProcess spawner ownership", () => {
+  it.live("does not let the spawner scope finalizer signal a group the guard refused", () => {
+    const directory = makeFixtureDirectory();
+    const leaderPidPath = NodePath.join(directory, "leader.pid");
+    const fixturePath = writeExecutableFixture(directory, "failing-opencode.sh", [
+      "#!/bin/sh",
+      `echo $$ > "${leaderPidPath}"`,
+      "exit 7",
+    ]);
+
+    // The real spawner calls `globalThis.process.kill(-pid, signal)` directly
+    // from its scope finalizer. Intercept that one boundary so the test sees
+    // the call without sending a real group signal; non-group calls pass
+    // through unchanged.
+
+    return Effect.gen(function* () {
+      const originalKill = process.kill.bind(process);
+      const groupSignals: Array<{
+        readonly pid: number;
+        readonly signal: string | number | undefined;
+      }> = [];
+      process.kill = ((pid: number, signal?: string | number) => {
+        if (pid < 0) {
+          groupSignals.push({ pid, signal });
+          return true;
+        }
+        return originalKill(pid, signal);
+      }) as typeof process.kill;
+
+      yield* Effect.ensuring(
+        Effect.gen(function* () {
+          const runtime = yield* OpenCodeRuntime;
+          const exit = yield* runtime
+            .startOpenCodeServerProcess({
+              binaryPath: fixturePath,
+              port: 4097,
+              timeoutMs: 5_000,
+              environment: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: directory },
+            })
+            .pipe(Effect.scoped, Effect.exit);
+
+          expect(Exit.isFailure(exit)).toBe(true);
+          const leaderPid = readFixturePid(leaderPidPath);
+          expect(leaderPid, "the fixture must record its pid").toBeDefined();
+
+          // Scope close has already run by now: the guarded cleanup refused
+          // because the leader had exited non-zero, and the spawner's own
+          // finalizer used to follow it with an unguarded SIGTERM to -pgid.
+          expect(
+            groupSignals,
+            "scope close must not signal the recorded group after the guard refused",
+          ).toEqual([]);
+        }),
+        Effect.sync(() => {
+          process.kill = originalKill;
+          NodeFS.rmSync(directory, { recursive: true, force: true });
+        }),
+      );
+    }).pipe(Effect.provide(runtimeLayerWithRealSpawner()));
+  });
+
+  it.live("still terminates an owned server group through the guarded path", () => {
+    const directory = makeFixtureDirectory();
+    const serverPidPath = NodePath.join(directory, "server.pid");
+    const fixturePath = writeExecutableFixture(directory, "healthy-opencode.sh", [
+      "#!/bin/sh",
+      `echo $$ > "${serverPidPath}"`,
+      "echo 'opencode server listening on http://127.0.0.1:4097'",
+      "trap 'exit 0' TERM",
+      "while :; do sleep 1; done",
+    ]);
+    let serverPid: number | undefined;
+
+    return Effect.gen(function* () {
+      const runtime = yield* OpenCodeRuntime;
+      const exit = yield* runtime
+        .startOpenCodeServerProcess({
+          binaryPath: fixturePath,
+          port: 4097,
+          timeoutMs: 5_000,
+          environment: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: directory },
+        })
+        .pipe(Effect.scoped, Effect.exit);
+
+      expect(Exit.isSuccess(exit)).toBe(true);
+      serverPid = readFixturePid(serverPidPath);
+      expect(serverPid, "the fixture must record its pid").toBeDefined();
+
+      // The fixture loops forever unless signalled. The guarded finalizer is
+      // the only cleanup owner now, so its TERM-to-exit remains observable.
+      const exited = yield* waitForProcessExit(serverPid!, 4_000);
+      expect(exited, "closing the server scope must still stop the owned group").toBe(true);
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          const pid = serverPid ?? readFixturePid(serverPidPath);
+          if (pid !== undefined && isProcessAlive(pid)) {
+            try {
+              process.kill(-pid, "SIGKILL");
+            } catch {
+              killFixture(pid);
+            }
+          }
+          NodeFS.rmSync(directory, { recursive: true, force: true });
+        }),
+      ),
+      Effect.provide(runtimeLayerWithRealSpawner()),
+    );
   });
 });
 
