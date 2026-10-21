@@ -797,19 +797,25 @@ export function makeOpenCodeAdapter(
     });
 
     /**
-     * Settlement for a Stop Neokod itself requested. The abort echo can arrive
-     * as `MessageAbortedError` or as an `idle` status, in either order, so this
-     * is idempotent: the first caller settles and clears `activeTurnId`, and a
-     * late echo is a no-op. The thread returns to idle with a neutral
-     * `interrupted` turn state and no red runtime error.
+     * Sole authoritative interrupted closure for a turn Neokod asked to stop.
+     * The abort echo can arrive as `MessageAbortedError` or as an `idle` status,
+     * in either order, and either may beat the `session.abort` response. Every
+     * ordering routes here: the first caller settles the turn, resolves pending
+     * permissions/questions and clears `activeTurnId`; a late echo then returns
+     * `false` without emitting anything. The thread returns to idle with a
+     * neutral `interrupted` turn state and no red runtime error.
+     *
+     * `expectedTurnId` lets an echo settle only the turn it belongs to, so a
+     * stale echo cannot clear a newer turn that started in the meantime.
      */
     const settleInterruptedTurn = Effect.fn("settleInterruptedTurn")(function* (
       context: OpenCodeSessionContext,
       raw: unknown,
+      expectedTurnId?: TurnId,
     ) {
       const turnId = context.activeTurnId;
-      if (turnId === undefined) {
-        return;
+      if (turnId === undefined || (expectedTurnId !== undefined && expectedTurnId !== turnId)) {
+        return false;
       }
       context.activeTurnId = undefined;
       context.activeAgent = undefined;
@@ -825,6 +831,7 @@ export function makeOpenCodeAdapter(
         type: "turn.completed",
         payload: { state: "interrupted" },
       });
+      return true;
     });
 
     const handleSubscribedEvent = Effect.fn("handleSubscribedEvent")(function* (
@@ -1110,8 +1117,14 @@ export function makeOpenCodeAdapter(
 
           if (event.properties.status.type === "idle" && turnId) {
             // If idle is the abort's echo, the user asked for this stop and the
-            // turn must read interrupted even though idle won the race.
-            const state = context.abortRequestedTurnId === turnId ? "interrupted" : "completed";
+            // turn must read interrupted even though idle won the race against
+            // the abort response (and any later MessageAbortedError). Route it
+            // through the shared interrupted closure so pending approvals and
+            // questions are resolved exactly once; a late echo then no-ops.
+            if (context.abortRequestedTurnId === turnId) {
+              yield* settleInterruptedTurn(context, event, turnId);
+              break;
+            }
             context.activeTurnId = undefined;
             yield* updateProviderSession(context, { status: "ready" }, { clearActiveTurnId: true });
             yield* emit({
@@ -1122,7 +1135,7 @@ export function makeOpenCodeAdapter(
               })),
               type: "turn.completed",
               payload: {
-                state,
+                state: "completed",
               },
             });
           }
