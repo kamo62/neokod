@@ -48,9 +48,11 @@ import { getModelSelectionStringOptionValue } from "@neokod/shared/model";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Queue from "effect/Queue";
+import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
@@ -66,9 +68,13 @@ import { stoppedConfirmed } from "../providerStopOutcome.ts";
 import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "../Layers/EventNdjsonLogger.ts";
 import { copyCopilotMcpServerConfigs, resolveCopilotMcpServers } from "./CopilotMcpServers.ts";
+import type { CopilotRuntimeSupervisor } from "./CopilotRuntimeSupervisor.ts";
 
 const PROVIDER = ProviderDriverKind.make("githubCopilot");
 const COPILOT_RESUME_VERSION = 1 as const;
+const COPILOT_RUNTIME_LOST_MESSAGE =
+  "GitHub Copilot runtime exited unexpectedly. Send your message again to resume.";
+const COPILOT_RUNTIME_LIVENESS_INTERVAL = Duration.seconds(3);
 type CopilotReasoningEffort = "low" | "medium" | "high" | "xhigh";
 // `UserInputRequest`/`UserInputResponse` are defined in the SDK's
 // `types.ts` but not re-exported from the package root in 1.0.5 — derive
@@ -100,6 +106,12 @@ export interface CopilotAdapterLiveOptions {
   readonly instanceId?: ProviderInstanceId;
   readonly nativeEventLogPath?: string;
   readonly nativeEventLogger?: EventNdjsonLogger;
+  /**
+   * Liveness/restart handle for the shared Copilot client. Absent in tests
+   * and for callers that do not own the runtime; when absent no watchdog
+   * runs and the abort path only surfaces failures.
+   */
+  readonly runtime?: Pick<CopilotRuntimeSupervisor, "probe" | "restartIfDead">;
 }
 
 interface PendingApproval {
@@ -542,6 +554,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
   const fileSystem = yield* FileSystem.FileSystem;
   const serverConfig = yield* ServerConfig;
   const crypto = yield* Crypto.Crypto;
+  const adapterScope = yield* Effect.scope;
   const nativeEventLogger =
     options?.nativeEventLogger ??
     (options?.nativeEventLogPath !== undefined
@@ -618,7 +631,7 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
     return Effect.succeed(ctx);
   };
 
-  const stopSessionInternal = (ctx: CopilotSessionContext) =>
+  const stopSessionInternal = (ctx: CopilotSessionContext, options?: { readonly reason: string }) =>
     Effect.gen(function* () {
       if (ctx.stopped) return;
       ctx.stopped = true;
@@ -635,9 +648,75 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
         ...(yield* makeEventStamp()),
         provider: PROVIDER,
         threadId: ctx.session.threadId,
-        payload: { exitKind: "graceful" },
+        payload: options
+          ? { exitKind: "error", reason: options.reason, recoverable: true }
+          : { exitKind: "graceful" },
       });
     });
+
+  /**
+   * Settle every live session after the shared runtime process died. Order
+   * matters: the turn must close before `runtime.error` and `session.exited`,
+   * and `runtime.error` carries no `turnId` so ingestion cannot re-assert the
+   * settled turn as active.
+   */
+  const handleRuntimeLost = Effect.fn("handleRuntimeLost")(function* (reason: string) {
+    for (const ctx of Array.from(sessions.values())) {
+      if (ctx.stopped) continue;
+      yield* settlePendingApprovalsAsCancelled(ctx.pendingApprovals);
+      yield* settlePendingUserInputsAsEmptyAnswers(ctx.pendingUserInputs);
+      const turnId = ctx.activeTurnId;
+      ctx.activeTurnId = undefined;
+      if (turnId !== undefined) {
+        yield* offerRuntimeEvent({
+          type: "turn.completed",
+          ...(yield* makeEventStamp()),
+          provider: PROVIDER,
+          threadId: ctx.session.threadId,
+          turnId,
+          payload: { state: "failed", errorMessage: reason },
+        });
+      }
+      yield* offerRuntimeEvent({
+        type: "runtime.error",
+        ...(yield* makeEventStamp()),
+        provider: PROVIDER,
+        threadId: ctx.session.threadId,
+        payload: {
+          message: reason,
+          class: "transport_error",
+          detail: { kind: "runtime_lost" },
+        },
+      });
+      yield* stopSessionInternal(ctx, { reason });
+    }
+    if (options?.runtime) {
+      yield* options.runtime.restartIfDead.pipe(Effect.ignore, Effect.forkIn(adapterScope));
+    }
+  });
+
+  const runtime = options?.runtime;
+  if (runtime) {
+    yield* Effect.forever(
+      Effect.sleep(COPILOT_RUNTIME_LIVENESS_INTERVAL).pipe(
+        Effect.andThen(
+          Effect.suspend(() =>
+            Array.from(sessions.values()).some(
+              (ctx) => !ctx.stopped && ctx.activeTurnId !== undefined,
+            )
+              ? runtime.probe.pipe(
+                  Effect.flatMap((state) =>
+                    state === "dead"
+                      ? handleRuntimeLost(COPILOT_RUNTIME_LOST_MESSAGE)
+                      : Effect.void,
+                  ),
+                )
+              : Effect.void,
+          ),
+        ),
+      ),
+    ).pipe(Effect.forkScoped);
+  }
 
   const startSession: CopilotAdapterShape["startSession"] = (input) =>
     Effect.gen(function* () {
@@ -1668,6 +1747,17 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
               return `fleet:${turnId}`;
             })
           : yield* Effect.tryPromise(() => ctx.copilotSession.send(messageOptions)).pipe(
+              Effect.tapError(() =>
+                runtime
+                  ? runtime.probe.pipe(
+                      Effect.flatMap((state) =>
+                        state === "dead"
+                          ? handleRuntimeLost(COPILOT_RUNTIME_LOST_MESSAGE)
+                          : Effect.void,
+                      ),
+                    )
+                  : Effect.void,
+              ),
               Effect.mapError((cause) => toRequestError(input.threadId, "session/send", cause)),
             );
 
@@ -1690,7 +1780,18 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
       const ctx = yield* requireSession(threadId);
       yield* settlePendingApprovalsAsCancelled(ctx.pendingApprovals);
       yield* settlePendingUserInputsAsEmptyAnswers(ctx.pendingUserInputs);
-      yield* Effect.tryPromise(() => ctx.copilotSession.abort()).pipe(Effect.ignore);
+      const aborted = yield* Effect.tryPromise(() => ctx.copilotSession.abort()).pipe(
+        Effect.result,
+      );
+      if (Result.isFailure(aborted)) {
+        if (runtime && (yield* runtime.probe) === "dead") {
+          // The stop request is satisfied: the runtime is gone, so the turn
+          // cannot continue and is settled as failed below.
+          yield* handleRuntimeLost(COPILOT_RUNTIME_LOST_MESSAGE);
+          return;
+        }
+        return yield* toRequestError(threadId, "session/abort", aborted.failure);
+      }
     });
 
   const respondToRequest: CopilotAdapterShape["respondToRequest"] = (
@@ -1780,12 +1881,12 @@ export const makeCopilotAdapter = Effect.fn("makeCopilotAdapter")(function* (
     });
 
   const stopAll: CopilotAdapterShape["stopAll"] = () =>
-    Effect.forEach(Array.from(sessions.values()), stopSessionInternal, {
+    Effect.forEach(Array.from(sessions.values()), (ctx) => stopSessionInternal(ctx), {
       discard: true,
     });
 
   yield* Effect.addFinalizer(() =>
-    Effect.forEach(Array.from(sessions.values()), stopSessionInternal, {
+    Effect.forEach(Array.from(sessions.values()), (ctx) => stopSessionInternal(ctx), {
       discard: true,
     }).pipe(
       Effect.catch((cause) =>
