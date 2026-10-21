@@ -46,6 +46,13 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { DriverOption } from "./providerDriverMeta";
 import { ProviderSettingsForm } from "./ProviderSettingsForm";
 import { ProviderModelsSection } from "./ProviderModelsSection";
+import {
+  applyEnvironmentRowPatch,
+  environmentRowNeedsValue,
+  makeEnvironmentDraftRow,
+  publishableEnvironment,
+  type EnvironmentDraftRow,
+} from "./providerEnvironmentDraft";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { ProviderAccentColorPicker } from "./ProviderAccentColorPicker";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
@@ -58,31 +65,8 @@ import {
   type ProviderStatusKey,
 } from "./providerStatus";
 
-const ENVIRONMENT_VARIABLE_NAME_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
-
 let environmentVariableDraftId = 0;
 const nextEnvironmentVariableDraftId = () => `provider-env-${environmentVariableDraftId++}`;
-
-type EnvironmentDraftRow = {
-  readonly id: string;
-  readonly name: string;
-  readonly value: string;
-  readonly sensitive: boolean;
-  readonly valueRedacted?: boolean;
-};
-
-function makeEnvironmentDraftRow(
-  variable: ProviderInstanceEnvironmentVariable,
-  index: number,
-): EnvironmentDraftRow {
-  return {
-    id: `${index}:${variable.name}`,
-    name: variable.name,
-    value: variable.value,
-    sensitive: variable.sensitive,
-    ...(variable.valueRedacted !== undefined ? { valueRedacted: variable.valueRedacted } : {}),
-  };
-}
 
 /**
  * Read a string[] at `key` from the opaque config blob, filtering out
@@ -169,35 +153,16 @@ function ProviderEnvironmentSection(props: {
   );
 
   const publishRows = (nextRows: ReadonlyArray<EnvironmentDraftRow>) => {
-    const published: ProviderInstanceEnvironmentVariable[] = [];
-    for (const row of nextRows) {
-      const name = row.name.trim();
-      if (!ENVIRONMENT_VARIABLE_NAME_PATTERN.test(name)) {
-        if (
-          name.length > 0 ||
-          row.value.length > 0 ||
-          row.sensitive !== true ||
-          row.valueRedacted !== undefined
-        ) {
-          return;
-        }
-        continue;
-      }
-      const { id: _id, ...rest } = row;
-      published.push({ ...rest, name });
-    }
-    props.onChange(published);
+    const published = publishableEnvironment(nextRows);
+    if (published !== null) props.onChange(published);
   };
 
-  const updateVariable = (id: string, patch: Partial<Omit<EnvironmentDraftRow, "id">>) => {
+  const updateVariable = (
+    id: string,
+    patch: Partial<Omit<EnvironmentDraftRow, "id" | "stored">>,
+  ) => {
     const nextRows = rows.map((row) =>
-      row.id === id
-        ? {
-            ...row,
-            ...patch,
-            ...(patch.value !== undefined ? { valueRedacted: false } : {}),
-          }
-        : row,
+      row.id === id ? applyEnvironmentRowPatch(row, patch) : row,
     );
     setRows(nextRows);
     publishRows(nextRows);
@@ -239,86 +204,98 @@ function ProviderEnvironmentSection(props: {
           Add variables to pass API keys, base URLs, or other per-instance CLI settings.
         </p>
       ) : (
-        <div className="overflow-hidden rounded-md border border-border/70">
-          <Table>
-            <TableHeader className="bg-muted/25 text-[11px] text-muted-foreground">
-              <TableRow className="hover:bg-transparent">
-                <TableHead>Variable</TableHead>
-                <TableHead>Value</TableHead>
-                <TableHead className="w-20">Sensitive</TableHead>
-                <TableHead className="w-12 text-right">
-                  <span className="sr-only">Options</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((variable, index) => (
-                <TableRow
-                  key={variable.id}
-                  className="border-border/60 odd:bg-muted/20 even:bg-background/20"
-                >
-                  <TableCell>
-                    <DraftInput
-                      value={variable.name}
-                      onCommit={(name) => updateVariable(variable.id, { name: name.trim() })}
-                      placeholder="VARIABLE_NAME"
-                      spellCheck={false}
-                      aria-label={`Environment variable name ${index + 1}`}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <DraftInput
-                      value={variable.valueRedacted ? "" : variable.value}
-                      onCommit={(value) => updateVariable(variable.id, { value })}
-                      type={variable.sensitive ? "password" : undefined}
-                      autoComplete="off"
-                      placeholder={
-                        variable.valueRedacted
-                          ? "Stored secret - enter a new value to replace"
-                          : "Value"
-                      }
-                      spellCheck={false}
-                      aria-label={`Environment variable value ${index + 1}`}
-                    />
-                  </TableCell>
-                  <TableCell className="w-20">
-                    <div className="flex h-8 items-center justify-center">
-                      <Checkbox
-                        checked={variable.sensitive}
-                        onCheckedChange={(checked) => {
-                          const sensitive = Boolean(checked);
-                          updateVariable(variable.id, {
-                            sensitive,
-                            ...(sensitive && variable.valueRedacted === undefined
-                              ? {}
-                              : {
-                                  valueRedacted: sensitive ? variable.valueRedacted : false,
-                                }),
-                          });
-                        }}
-                        aria-label={`Mark environment variable ${variable.name || index + 1} as sensitive`}
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell className="w-12">
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        size="icon-sm"
-                        variant="ghost"
-                        className="size-8 text-muted-foreground hover:text-destructive"
-                        onClick={() => removeVariable(variable.id)}
-                        aria-label={`Remove environment variable ${variable.name || index + 1}`}
-                      >
-                        <XIcon className="size-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
+        <>
+          {rows.some(environmentRowNeedsValue) ? (
+            <p className="text-[11px] text-warning-foreground">
+              Changes are not saved until every highlighted row has a value.
+            </p>
+          ) : null}
+          <div className="overflow-hidden rounded-md border border-border/70">
+            <Table>
+              <TableHeader className="bg-muted/25 text-[11px] text-muted-foreground">
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Variable</TableHead>
+                  <TableHead>Value</TableHead>
+                  <TableHead className="w-20">Sensitive</TableHead>
+                  <TableHead className="w-12 text-right">
+                    <span className="sr-only">Options</span>
+                  </TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {rows.map((variable, index) => {
+                  const needsValue = environmentRowNeedsValue(variable);
+                  return (
+                    <TableRow
+                      key={variable.id}
+                      className="border-border/60 odd:bg-muted/20 even:bg-background/20"
+                    >
+                      <TableCell>
+                        <DraftInput
+                          value={variable.name}
+                          onCommit={(name) => updateVariable(variable.id, { name: name.trim() })}
+                          placeholder="VARIABLE_NAME"
+                          spellCheck={false}
+                          aria-label={`Environment variable name ${index + 1}`}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <DraftInput
+                          value={variable.valueRedacted ? "" : variable.value}
+                          onCommit={(value) => updateVariable(variable.id, { value })}
+                          type={variable.sensitive ? "password" : undefined}
+                          autoComplete="off"
+                          placeholder={
+                            needsValue
+                              ? "Enter the value for this variable"
+                              : variable.valueRedacted
+                                ? "Stored secret - enter a new value to replace"
+                                : "Value"
+                          }
+                          spellCheck={false}
+                          aria-label={`Environment variable value ${index + 1}`}
+                          aria-invalid={needsValue}
+                        />
+                        {needsValue ? (
+                          <p className="mt-1 text-[11px] text-warning-foreground">
+                            The stored secret is kept only under the original name and as sensitive.
+                            Enter a new value to continue, or restore the name and the Sensitive
+                            checkbox.
+                          </p>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="w-20">
+                        <div className="flex h-8 items-center justify-center">
+                          <Checkbox
+                            checked={variable.sensitive}
+                            onCheckedChange={(checked) =>
+                              updateVariable(variable.id, { sensitive: Boolean(checked) })
+                            }
+                            aria-label={`Mark environment variable ${variable.name || index + 1} as sensitive`}
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell className="w-12">
+                        <div className="flex justify-end">
+                          <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="ghost"
+                            className="size-8 text-muted-foreground hover:text-destructive"
+                            onClick={() => removeVariable(variable.id)}
+                            aria-label={`Remove environment variable ${variable.name || index + 1}`}
+                          >
+                            <XIcon className="size-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       )}
       <span className="text-xs text-muted-foreground">
         Sensitive values are stored separately and are not returned to the app after saving.
