@@ -259,6 +259,10 @@ const scriptedBirthReader = (
   };
 };
 
+const shellBirthReader = (token = "shell-born"): ProcessBirthReader => ({
+  readBirthToken: () => Effect.succeed({ kind: "token", token }),
+});
+
 const terminalOwnership = (
   shellPid: number,
   overrides: Partial<TerminalOwnershipEvidence> = {},
@@ -865,7 +869,13 @@ it.layer(
 
   it.effect("restarts a running session when open is called with a different cwd", () =>
     Effect.gen(function* () {
-      const { manager, ptyAdapter, logsDir, baseDir } = yield* createManager();
+      const { manager, ptyAdapter, logsDir, baseDir } = yield* createManager(5, {
+        terminalOwnershipCapture: (pid) =>
+          Effect.succeed(terminalOwnership(pid, { controllingTty: null })),
+        processTableReader: () =>
+          Effect.succeed({ kind: "unavailable", detail: "ps_unavailable" } as const),
+        processBirthReader: shellBirthReader(),
+      });
       const path = yield* Path.Path;
       const originalCwd = path.join(baseDir, "original");
       const differentCwd = path.join(baseDir, "different");
@@ -884,6 +894,7 @@ it.layer(
       const reopened = yield* manager.open(openInput({ cwd: differentCwd }));
 
       expect(ptyAdapter.spawnInputs).toHaveLength(2);
+      yield* waitFor(Effect.sync(() => firstProcess.killed));
       assert.equal(firstProcess.killed, true);
       assert.equal(reopened.cwd, differentCwd);
       assert.equal(reopened.history, "");
@@ -1425,7 +1436,13 @@ it.layer(
 
   it.effect("closes all terminals for a thread when close omits terminalId", () =>
     Effect.gen(function* () {
-      const { manager, ptyAdapter, logsDir } = yield* createManager();
+      const { manager, ptyAdapter, logsDir } = yield* createManager(5, {
+        terminalOwnershipCapture: (pid) =>
+          Effect.succeed(terminalOwnership(pid, { controllingTty: null })),
+        processTableReader: () =>
+          Effect.succeed({ kind: "unavailable", detail: "ps_unavailable" } as const),
+        processBirthReader: shellBirthReader(),
+      });
       yield* manager.open(openInput({ terminalId: "default" }));
       yield* manager.open(openInput({ terminalId: "sidecar" }));
       const defaultProcess = ptyAdapter.processes[0];
@@ -1452,6 +1469,10 @@ it.layer(
 
       yield* manager.close({ threadId: "thread-1", deleteHistory: true });
 
+      yield* waitFor(
+        Effect.sync(() => defaultProcess.killed && sidecarProcess.killed),
+        "2000 millis",
+      );
       assert.equal(defaultProcess.killed, true);
       assert.equal(sidecarProcess.killed, true);
       expect(
@@ -1471,7 +1492,14 @@ it.layer(
 
   it.effect("escalates terminal shutdown to SIGKILL when process does not exit in time", () =>
     Effect.gen(function* () {
-      const { manager, ptyAdapter } = yield* createManager(5, { processKillGraceMs: 10 });
+      const { manager, ptyAdapter } = yield* createManager(5, {
+        processKillGraceMs: 10,
+        terminalOwnershipCapture: (pid) =>
+          Effect.succeed(terminalOwnership(pid, { controllingTty: null })),
+        processTableReader: () =>
+          Effect.succeed({ kind: "unavailable", detail: "ps_unavailable" } as const),
+        processBirthReader: shellBirthReader(),
+      });
       yield* manager.open(openInput());
       const process = ptyAdapter.processes[0];
       expect(process).toBeDefined();
@@ -1485,6 +1513,102 @@ it.layer(
       assert.equal(process.killSignals[0], "SIGTERM");
       expect(process.killSignals).toContain("SIGKILL");
     }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("skips the pty pid fallback when no birth evidence exists", () =>
+    Effect.gen(function* () {
+      if ((yield* HostProcessPlatform) === "win32") return;
+      const { manager, ptyAdapter } = yield* createManager(5, { processKillGraceMs: 10 });
+      yield* manager.open(openInput());
+
+      yield* manager.close({ threadId: "thread-1" });
+      yield* Effect.sleep("100 millis");
+
+      // Ownership capture failed, so neither TERM nor the later KILL may be sent
+      // to a bare pid that could already belong to a replacement process.
+      expect(ptyAdapter.processes[0]?.killSignals).toEqual([]);
+    }),
+  );
+
+  it.effect("revalidates birth identity before escalating the pty pid signal", () =>
+    Effect.gen(function* () {
+      if ((yield* HostProcessPlatform) === "win32") return;
+      const { manager, ptyAdapter } = yield* createManager(5, {
+        processKillGraceMs: 10,
+        terminalOwnershipCapture: (pid) =>
+          Effect.succeed(terminalOwnership(pid, { controllingTty: null })),
+        processTableReader: () => Effect.succeed({ kind: "unavailable", detail: "ps_unavailable" }),
+        // Confirmed for terminal validation and TERM, then the original shell is
+        // replaced before the KILL escalation.
+        processBirthReader: scriptedBirthReader({
+          9000: ["shell-born", "shell-born", "replacement-born"],
+        }),
+      });
+      yield* manager.open(openInput());
+      const process = ptyAdapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+
+      const closeFiber = yield* manager.close({ threadId: "thread-1" }).pipe(Effect.forkScoped);
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("10 millis");
+      yield* Fiber.join(closeFiber);
+
+      expect(process.killSignals).toEqual(["SIGTERM"]);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("does not adopt a replacement group whose pid moved tty before anchor capture", () =>
+    Effect.gen(function* () {
+      if ((yield* HostProcessPlatform) === "win32") return;
+      const calls: Array<[number, NodeJS.Signals]> = [];
+      let tableReads = 0;
+      const beforeRecycle = [
+        { pid: 9000, pgid: 9000, tty: "ttys900" },
+        { pid: 7002, pgid: 7001, tty: "ttys900" },
+        { pid: globalThis.process.pid, pgid: 4242, tty: "??" },
+      ];
+      const afterRecycle = [
+        { pid: 9000, pgid: 9000, tty: "ttys900" },
+        // 7002 was recycled onto an unrelated group on another tty before its
+        // birth token was read, so the token belongs to the replacement.
+        { pid: 7002, pgid: 7001, tty: "ttys901" },
+        { pid: globalThis.process.pid, pgid: 4242, tty: "??" },
+      ];
+      const { manager, ptyAdapter } = yield* createManager(5, {
+        processKillGraceMs: 20,
+        terminalOwnershipCapture: (pid) => Effect.succeed(terminalOwnership(pid)),
+        processTableReader: () =>
+          Effect.sync(() => {
+            const rows = tableReads === 0 ? beforeRecycle : afterRecycle;
+            tableReads += 1;
+            return { kind: "rows", rows } as const;
+          }),
+        processBirthReader: scriptedBirthReader({
+          9000: ["shell-born"],
+          7002: ["replacement-born"],
+        }),
+        processGroupSignaller: {
+          signalGroup: (pgid, signal) =>
+            Effect.sync(() => {
+              calls.push([pgid, signal]);
+              return "sent" as const;
+            }),
+          isGroupAlive: () => Effect.succeed(false),
+        },
+      });
+      yield* manager.open(openInput());
+      yield* manager.close({ threadId: "thread-1" });
+
+      yield* waitFor(
+        Effect.sync(() => calls.some(([pgid, signal]) => pgid === 9000 && signal === "SIGTERM")),
+        "2000 millis",
+      );
+      yield* Effect.sleep("50 millis");
+
+      expect(calls.filter(([pgid]) => pgid === 7001)).toEqual([]);
+      expect(ptyAdapter.processes[0]?.killSignals).toEqual([]);
+    }),
   );
 
   it.effect("refuses to signal when the shell pid was reused before discovery", () =>
@@ -2132,6 +2256,11 @@ it.layer(
       const scope = yield* Scope.make("sequential");
       const { manager, ptyAdapter } = yield* createManager(5, {
         processKillGraceMs: 10,
+        terminalOwnershipCapture: (pid) =>
+          Effect.succeed(terminalOwnership(pid, { controllingTty: null })),
+        processTableReader: () =>
+          Effect.succeed({ kind: "unavailable", detail: "ps_unavailable" } as const),
+        processBirthReader: shellBirthReader(),
       }).pipe(Effect.provideService(Scope.Scope, scope));
       yield* manager.open(openInput());
       const process = ptyAdapter.processes[0];

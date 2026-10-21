@@ -716,6 +716,8 @@ export interface ProcessGroupAnchor {
   readonly pid: number;
   /** Birth token of that member, captured at discovery. */
   readonly birthToken: string;
+  /** Controlling tty observed for the member when the anchor was accepted. */
+  readonly tty: string;
 }
 
 export interface OwnedTtyProcessGroup {
@@ -732,8 +734,14 @@ export interface OwnedTtyProcessGroup {
 
 /**
  * Groups sharing a validated terminal tty, with birth-token anchors for the
- * members that could be read. Pure over the supplied snapshot; POSIX-free so it
- * can be tested deterministically.
+ * members that could be read and whose membership was reconfirmed after the
+ * token read. Pure over the supplied snapshots; POSIX-free so it can be tested
+ * deterministically.
+ *
+ * A pid in the initial snapshot can exit and be recycled before its birth token
+ * is read, so the token may belong to an unrelated replacement. `readMembership`
+ * is therefore read again after the tokens and an anchor is kept only when that
+ * fresh row still matches the snapshot's pid, pgid and tty.
  */
 export const discoverOwnedTtyProcessGroups = (
   input: {
@@ -741,7 +749,8 @@ export const discoverOwnedTtyProcessGroups = (
     readonly tty: string;
     readonly ownPid: number;
   },
-  reader: ProcessBirthReader = posixProcessBirthReader,
+  reader: ProcessBirthReader,
+  readMembership: () => Effect.Effect<ProcessTableResult>,
 ): Effect.Effect<ReadonlyArray<OwnedTtyProcessGroup>> =>
   Effect.gen(function* () {
     const ownGroup = input.rows.find((row) => row.pid === input.ownPid)?.pgid;
@@ -760,20 +769,35 @@ export const discoverOwnedTtyProcessGroups = (
       for (const pid of members) {
         const birth = yield* reader.readBirthToken(pid);
         if (birth.kind === "token" && birth.token.trim().length > 0) {
-          anchors.push({ pid, birthToken: birth.token });
+          anchors.push({ pid, birthToken: birth.token, tty: input.tty });
         }
       }
       if (anchors.length > 0) {
         groups.push({ pgid, tty: input.tty, anchors });
       }
     }
-    return groups;
+    if (groups.length === 0) return groups;
+
+    // The snapshot and the birth tokens above are separate observations. Read
+    // membership once more so a pid recycled onto another tty cannot donate the
+    // replacement's birth token to a group we would later signal.
+    const membership = yield* readMembership();
+    if (membership.kind === "unavailable") return [];
+    const rowsByPid = new Map(membership.rows.map((row) => [row.pid, row] as const));
+    return groups.flatMap((group) => {
+      const anchors = group.anchors.filter((anchor) => {
+        const row = rowsByPid.get(anchor.pid);
+        return row !== undefined && row.pgid === group.pgid && row.tty === group.tty;
+      });
+      return anchors.length > 0 ? [{ ...group, anchors }] : [];
+    });
   });
 
 /**
  * Confirm a discovered group still contains at least one of its anchors with
- * the same pgid and birth token. This is the pre-signal guard: it fails closed
- * when the group vanished, a pid was recycled, or the evidence cannot be read.
+ * the same pgid, tty and birth token. This is the pre-signal guard: it fails
+ * closed when the group vanished, a pid was recycled onto another terminal, or
+ * the evidence cannot be read.
  */
 export const confirmOwnedTtyProcessGroup = (
   group: OwnedTtyProcessGroup,
@@ -786,6 +810,7 @@ export const confirmOwnedTtyProcessGroup = (
     }
     let sawReaderUnavailable = false;
     let sawMismatch = false;
+    let sawTtyMismatch = false;
     for (const anchor of group.anchors) {
       const row = table.rows.find((candidate) => candidate.pid === anchor.pid);
       if (row === undefined) {
@@ -794,6 +819,12 @@ export const confirmOwnedTtyProcessGroup = (
       }
       if (row.pgid !== group.pgid) {
         sawMismatch = true;
+        continue;
+      }
+      if (row.tty !== group.tty || row.tty !== anchor.tty) {
+        // The pid now belongs to a process group on another terminal, so it
+        // cannot confirm this group even if its birth token matches.
+        sawTtyMismatch = true;
         continue;
       }
       const birth = yield* reader.readBirthToken(anchor.pid);
@@ -813,6 +844,7 @@ export const confirmOwnedTtyProcessGroup = (
       }
     }
     if (sawMismatch) return { status: "revoked", reason: "group_replaced" } as const;
+    if (sawTtyMismatch) return { status: "revoked", reason: "member_recycled" } as const;
     if (sawReaderUnavailable) {
       return { status: "revoked", reason: "reader_unavailable" } as const;
     }
