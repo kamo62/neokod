@@ -740,7 +740,9 @@ const isCommandChildRunning = (
  * observed the child exit, no worker is started. `taskkill` itself resolves a
  * pid, and Windows cannot pin that pid against reuse through this API, so this
  * is only as strong as the spawner handle's exit observation. The worker is
- * never left to run after cleanup, which removes the delayed-action window.
+ * awaited and cancelled within the same cleanup instead of being abandoned; if
+ * it survives that bounded cancellation, the outcome is reported as unknown
+ * rather than assumed settled.
  *
  * This needs no birth-token guard like the server path: the signals go through
  * the live spawner handle for a child this process just spawned, and only while
