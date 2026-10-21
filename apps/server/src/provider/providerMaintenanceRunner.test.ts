@@ -65,6 +65,19 @@ function lifecycleFor(provider: ProviderDriverKind): ProviderMaintenanceCapabili
   });
 }
 
+function withCommandTimeGuard(
+  capabilities: ProviderMaintenanceCapabilities,
+  verifyStillApplicable: Effect.Effect<string | null>,
+): ProviderMaintenanceCapabilities {
+  if (capabilities.update === null) {
+    return capabilities;
+  }
+  return {
+    ...capabilities,
+    update: { ...capabilities.update, verifyStillApplicable },
+  };
+}
+
 const baseProvider: ServerProvider = {
   instanceId: CODEX_INSTANCE_ID,
   driver: CODEX_DRIVER,
@@ -285,6 +298,80 @@ describe("providerMaintenanceRunner", () => {
           args: ["i", "-g", "@openai/codex@latest"],
         },
       ]);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          NonWindowsPlatform,
+          latestVersionHttpClient("0.0.0"),
+          mockSpawnerLayer((command, args) => {
+            calls.push({ command, args });
+            return { stdout: "updated" };
+          }),
+        ),
+      ),
+    );
+  });
+
+  it.effect("blocks an update whose command-time guard rejects the current install", () => {
+    const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
+    return Effect.gen(function* () {
+      const { registry, updateStatesRef } = yield* makeRegistry(baseOpenCodeProvider);
+      const updater = yield* makeTestRunner({
+        ...registry,
+        getProviderMaintenanceCapabilitiesForInstance: (_instanceId, provider) =>
+          Effect.succeed(
+            withCommandTimeGuard(
+              lifecycleFor(provider),
+              Effect.succeed("Update blocked. OpenCode v2.0.32 is installed."),
+            ),
+          ),
+      });
+
+      const result = yield* Effect.exit(updater.updateProvider(OPENCODE_DRIVER));
+
+      assert.strictEqual(Exit.isFailure(result), true);
+      if (Exit.isFailure(result)) {
+        const error = Cause.squash(result.cause);
+        assert.strictEqual(isServerProviderUpdateError(error), true);
+        if (isServerProviderUpdateError(error)) {
+          assert.include(error.reason, "OpenCode v2.0.32");
+        }
+      }
+      assert.deepStrictEqual(calls, []);
+      assert.deepStrictEqual(yield* Ref.get(updateStatesRef), []);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          NonWindowsPlatform,
+          latestVersionHttpClient("0.0.0"),
+          mockSpawnerLayer((command, args) => {
+            calls.push({ command, args });
+            return { stdout: "updated" };
+          }),
+        ),
+      ),
+    );
+  });
+
+  it.effect("runs the update when the command-time guard accepts the current install", () => {
+    const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
+    return Effect.gen(function* () {
+      const { registry } = yield* makeRegistry(baseOpenCodeProvider);
+      const updater = yield* makeTestRunner({
+        ...registry,
+        getProviderMaintenanceCapabilitiesForInstance: (_instanceId, provider) =>
+          Effect.succeed(withCommandTimeGuard(lifecycleFor(provider), Effect.succeed(null))),
+      });
+
+      const result = yield* updater.updateProvider(OPENCODE_DRIVER);
+
+      assert.deepStrictEqual(calls, [
+        {
+          command: "npm",
+          args: ["install", "-g", "opencode-ai@latest"],
+        },
+      ]);
+      assert.strictEqual(result.providers[0]?.updateState?.status, "succeeded");
     }).pipe(
       Effect.provide(
         Layer.mergeAll(
