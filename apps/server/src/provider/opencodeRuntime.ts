@@ -297,6 +297,10 @@ export interface OpenCodeRuntimeShape {
    * `Scope.Scope` — the child is killed automatically when that scope closes.
    * Consumers that want a long-lived server must create and hold a scope explicitly
    * (see {@link Scope.make}) and close it when done.
+   *
+   * Termination runs through the birth-identity-checked cleanup registered here,
+   * never through the spawner's own scope finalizer. See the ownership note in
+   * the implementation for why the spawner scope must not be closed.
    */
   readonly startOpenCodeServerProcess: (input: {
     readonly binaryPath: string;
@@ -586,93 +590,113 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
       );
       const spawnCommand = yield* resolveCommand(input.binaryPath, args, childEnvironment);
 
-      const child = yield* spawner
-        .spawn(
-          ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-            detached: hostPlatform !== "win32",
-            shell: spawnCommand.shell,
-            // The caller's environment reaches opencode with Neokod-internal
-            // names and inherited OpenCode auth removed. This spawn used to
-            // write OPENCODE_CONFIG_CONTENT="{}" after the spread, which
-            // silently replaced a value the operator had exported. It was
-            // never a way to run opencode without a config: opencode loads its
-            // global and project config first and merges this variable as one
-            // more source on top, so "{}" only ever applied an empty overlay.
-            // Nothing here needs a config-less opencode either; the
-            // whitelist/blacklist handling in OpenCodeProvider.flattenOpenCodeModels
-            // reads the real config.
-            env: childEnvironment,
-            extendEnv: false,
-          }),
-        )
-        .pipe(
-          Effect.provideService(Scope.Scope, runtimeScope),
-          Effect.mapError(
-            (cause) =>
-              new OpenCodeRuntimeError({
-                operation: "startOpenCodeServerProcess",
-                detail: `Failed to spawn OpenCode server process: ${openCodeRuntimeErrorDetail(cause)}`,
-                cause,
-              }),
-          ),
-        );
-
-      const childPid = Number(child.pid);
-      const birthToken =
-        hostPlatform === "win32" ? null : yield* captureProcessBirthToken(childPid);
-      const terminateChild = Effect.gen(function* () {
-        if (hostPlatform === "win32") {
-          yield* child.kill({ killSignal: "SIGTERM", forceKillAfter: "1 second" }).pipe(
-            Effect.asVoid,
-            Effect.catchCause((cause) =>
-              Effect.logWarning("Could not send SIGTERM to the OpenCode server child", {
-                pid: childPid,
-                cause,
-              }),
-            ),
-          );
-          yield* Effect.sleep("1 second");
-          yield* child.kill({ killSignal: "SIGKILL", forceKillAfter: "1 second" }).pipe(
-            Effect.asVoid,
-            Effect.catchCause((cause) =>
-              Effect.logWarning("Could not send SIGKILL to the OpenCode server child", {
-                pid: childPid,
-                cause,
-              }),
-            ),
-          );
-          return;
-        }
-        yield* terminateOpenCodeProcessGroup(
-          { pgid: childPid, birthToken },
-          { signaller: posixProcessGroupSignaller, birthReader: posixProcessBirthReader },
-        );
-      }).pipe(
-        Effect.catchCause((cause) =>
-          Effect.logWarning(
-            "Could not terminate the OpenCode server process group; keeping its ledger entry",
-            { pid: childPid, cause },
-          ),
-        ),
-      );
-      // Record the process group so a later boot can find and stop it after a
-      // hard crash of this server. The forget action is folded into the
-      // termination finalizer instead of being registered separately:
-      // finalizers run in reverse order, so a separate `forget` would remove
-      // the durable evidence before the child was terminated. A crash between
-      // those two would leave a detached child with no record. Filling the
-      // forget action in after tracking returns also preserves immediate
-      // cleanup when tracking fails or is interrupted.
+      // The Node spawner's `spawn` implementation registers its own scope
+      // finalizer, which sends `-pid` to the process group whenever the child
+      // has already exited with a non-zero code, without any birth-identity
+      // check. `unref()` does not cover that branch: the finalizer tests the
+      // exit signal before it tests whether the handle is still referenced.
+      // Registering that finalizer on the caller's scope would therefore send a
+      // second, unguarded signal after the guarded cleanup below refused, or
+      // after it stopped the group and the pgid was recycled.
+      //
+      // Give the spawner a private scope that this runtime never closes, so its
+      // finalizer can never run, and let the `acquireRelease` below be the only
+      // cleanup owner. The private scope holds no OS resources of its own: the
+      // child's pipes close when the process exits, and the scope (with the
+      // unused finalizer) becomes unreachable once this effect returns.
+      //
+      // The child's forget action is folded into that release instead of being
+      // registered as a separate finalizer: finalizers run in reverse order, so
+      // a separate `forget` would remove the durable evidence before the child
+      // was terminated. A crash between those two would leave a detached child
+      // with no record. Filling the forget action in after tracking returns
+      // also preserves cleanup when tracking fails or is interrupted.
+      const spawnScope = yield* Scope.make();
       const forgetRef = yield* Ref.make<Effect.Effect<void>>(Effect.void);
-      yield* Scope.addFinalizer(
-        runtimeScope,
+      const spawned = yield* Effect.acquireRelease(
         Effect.gen(function* () {
-          yield* terminateChild;
-          const forget = yield* Ref.get(forgetRef);
-          yield* forget;
+          const child = yield* spawner
+            .spawn(
+              ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+                detached: hostPlatform !== "win32",
+                shell: spawnCommand.shell,
+                // The caller's environment reaches opencode with Neokod-internal
+                // names and inherited OpenCode auth removed. This spawn used to
+                // write OPENCODE_CONFIG_CONTENT="{}" after the spread, which
+                // silently replaced a value the operator had exported. It was
+                // never a way to run opencode without a config: opencode loads its
+                // global and project config first and merges this variable as one
+                // more source on top, so "{}" only ever applied an empty overlay.
+                // Nothing here needs a config-less opencode either; the
+                // whitelist/blacklist handling in OpenCodeProvider.flattenOpenCodeModels
+                // reads the real config.
+                env: childEnvironment,
+                extendEnv: false,
+              }),
+            )
+            .pipe(
+              Effect.provideService(Scope.Scope, spawnScope),
+              Effect.mapError(
+                (cause) =>
+                  new OpenCodeRuntimeError({
+                    operation: "startOpenCodeServerProcess",
+                    detail: `Failed to spawn OpenCode server process: ${openCodeRuntimeErrorDetail(cause)}`,
+                    cause,
+                  }),
+              ),
+            );
+
+          const childPid = Number(child.pid);
+          const birthToken =
+            hostPlatform === "win32" ? null : yield* captureProcessBirthToken(childPid);
+          return { child, childPid, birthToken } as const;
         }),
+        ({ child, childPid, birthToken }) =>
+          Effect.gen(function* () {
+            const terminateChild = Effect.gen(function* () {
+              if (hostPlatform === "win32") {
+                yield* child.kill({ killSignal: "SIGTERM", forceKillAfter: "1 second" }).pipe(
+                  Effect.asVoid,
+                  Effect.catchCause((cause) =>
+                    Effect.logWarning("Could not send SIGTERM to the OpenCode server child", {
+                      pid: childPid,
+                      cause,
+                    }),
+                  ),
+                );
+                yield* Effect.sleep("1 second");
+                yield* child.kill({ killSignal: "SIGKILL", forceKillAfter: "1 second" }).pipe(
+                  Effect.asVoid,
+                  Effect.catchCause((cause) =>
+                    Effect.logWarning("Could not send SIGKILL to the OpenCode server child", {
+                      pid: childPid,
+                      cause,
+                    }),
+                  ),
+                );
+                return;
+              }
+              yield* terminateOpenCodeProcessGroup(
+                { pgid: childPid, birthToken },
+                { signaller: posixProcessGroupSignaller, birthReader: posixProcessBirthReader },
+              );
+            }).pipe(
+              Effect.catchCause((cause) =>
+                Effect.logWarning(
+                  "Could not terminate the OpenCode server process group; keeping its ledger entry",
+                  { pid: childPid, cause },
+                ),
+              ),
+            );
+            // Terminate before forgetting so a crash cannot erase the only
+            // durable record of a child that still needs cleanup.
+            yield* terminateChild;
+            const forget = yield* Ref.get(forgetRef);
+            yield* forget;
+          }),
       );
-      const forget = yield* ledger.track({ pid: Number(child.pid), port, args });
+      const { child, childPid } = spawned;
+      const forget = yield* ledger.track({ pid: childPid, port, args });
       yield* Ref.set(forgetRef, forget);
 
       const stdoutRef = yield* Ref.make("");
