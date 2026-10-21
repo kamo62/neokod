@@ -55,6 +55,19 @@ type MessageEntry = {
   parts: Array<unknown>;
 };
 
+type Deferred = {
+  readonly promise: Promise<void>;
+  readonly resolve: () => void;
+};
+
+const createDeferred = (): Deferred => {
+  let resolve = () => {};
+  const promise = new Promise<void>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+};
+
 const runtimeMock = {
   state: {
     startCalls: [] as string[],
@@ -69,10 +82,16 @@ const runtimeMock = {
     messages: [] as MessageEntry[],
     messagesCalls: [] as Array<unknown>,
     permissionReplyCalls: [] as Array<unknown>,
+    questionReplyCalls: [] as Array<unknown>,
     subscribedEvents: [] as unknown[],
     eventsAfterAbort: [] as unknown[],
     eventsAfterAbortAfterPrompts: 1,
+    eventsAfterAbortResponse: [] as unknown[],
     holdSubscribedEventsUntilPrompt: false,
+    holdAbortResponse: false,
+    abortResponseGate: null as Deferred | null,
+    holdLateAbortEcho: false,
+    lateAbortEchoGate: null as Deferred | null,
     onPromptCall: null as (() => void) | null,
     onAbortCall: null as (() => void) | null,
   },
@@ -89,10 +108,16 @@ const runtimeMock = {
     this.state.messages = [];
     this.state.messagesCalls.length = 0;
     this.state.permissionReplyCalls.length = 0;
+    this.state.questionReplyCalls.length = 0;
     this.state.subscribedEvents = [];
     this.state.eventsAfterAbort = [];
     this.state.eventsAfterAbortAfterPrompts = 1;
+    this.state.eventsAfterAbortResponse = [];
     this.state.holdSubscribedEventsUntilPrompt = false;
+    this.state.holdAbortResponse = false;
+    this.state.abortResponseGate = null;
+    this.state.holdLateAbortEcho = false;
+    this.state.lateAbortEchoGate = null;
     this.state.onPromptCall = null;
     this.state.onAbortCall = null;
   },
@@ -153,6 +178,9 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
         abort: async ({ sessionID }: { sessionID: string }) => {
           runtimeMock.state.abortCalls.push(sessionID);
           runtimeMock.state.onAbortCall?.();
+          if (runtimeMock.state.holdAbortResponse) {
+            await runtimeMock.state.abortResponseGate?.promise;
+          }
         },
         promptAsync: async (input: unknown) => {
           runtimeMock.state.promptCalls.push(input);
@@ -189,6 +217,11 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
           runtimeMock.state.permissionReplyCalls.push(input);
         },
       },
+      question: {
+        reply: async (input: unknown) => {
+          runtimeMock.state.questionReplyCalls.push(input);
+        },
+      },
       event: {
         subscribe: async () => ({
           stream: (async function* () {
@@ -223,6 +256,12 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
               }
               for (const event of runtimeMock.state.eventsAfterAbort) {
                 yield event;
+              }
+              if (runtimeMock.state.holdLateAbortEcho) {
+                await runtimeMock.state.lateAbortEchoGate?.promise;
+                for (const event of runtimeMock.state.eventsAfterAbortResponse) {
+                  yield event;
+                }
               }
             }
           })(),
@@ -821,6 +860,201 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       NodeAssert.equal(String(completedEvent.turnId), String(turn.turnId));
       NodeAssert.deepEqual(completedEvent.payload, { state: "interrupted" });
     }),
+  );
+
+  it.effect(
+    "settles one interrupted turn and resolves pending requests when idle wins before the abort response",
+    () => {
+      const abortResponseGate = createDeferred();
+      const lateAbortEchoGate = createDeferred();
+      // Release both gates even when an assertion fails, so a regression cannot
+      // leave the fake abort or the event stream blocked during teardown.
+      const releaseGates = Effect.sync(() => {
+        abortResponseGate.resolve();
+        lateAbortEchoGate.resolve();
+      });
+      return Effect.gen(function* () {
+        const adapter = yield* OpenCodeAdapter;
+        const threadId = asThreadId("thread-stop-idle-before-abort-response");
+        runtimeMock.state.holdSubscribedEventsUntilPrompt = true;
+        runtimeMock.state.holdAbortResponse = true;
+        runtimeMock.state.abortResponseGate = abortResponseGate;
+        runtimeMock.state.holdLateAbortEcho = true;
+        runtimeMock.state.lateAbortEchoGate = lateAbortEchoGate;
+        runtimeMock.state.subscribedEvents = [
+          {
+            type: "permission.asked",
+            properties: {
+              sessionID: "http://127.0.0.1:9999/session",
+              id: "permission-idle-race",
+              permission: "bash",
+              patterns: ["bun test"],
+              metadata: {},
+            },
+          },
+          {
+            type: "question.asked",
+            properties: {
+              sessionID: "http://127.0.0.1:9999/session",
+              id: "question-idle-race",
+              questions: [
+                {
+                  header: "Pick a path",
+                  question: "Which path should I take?",
+                  options: [{ label: "A", description: "Path A" }],
+                },
+              ],
+            },
+          },
+        ];
+        // The idle echo is delivered while session.abort is still in flight; the
+        // late MessageAbortedError follows only after the abort response returns.
+        runtimeMock.state.eventsAfterAbort = [
+          {
+            type: "session.status",
+            properties: {
+              sessionID: "http://127.0.0.1:9999/session",
+              status: { type: "idle" },
+            },
+          },
+        ];
+        runtimeMock.state.eventsAfterAbortResponse = [
+          {
+            type: "session.error",
+            properties: {
+              sessionID: "http://127.0.0.1:9999/session",
+              error: { name: "MessageAbortedError", data: { message: "Aborted" } },
+            },
+          },
+        ];
+        const collected = yield* collectThreadEvents(adapter, threadId);
+
+        yield* adapter.startSession({
+          provider: ProviderDriverKind.make("opencode"),
+          threadId,
+          runtimeMode: "full-access",
+        });
+        const turn = yield* adapter.sendTurn({
+          threadId,
+          input: "Fix it",
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("opencode"),
+            model: "openai/gpt-5",
+          },
+        });
+
+        const opened = yield* waitForThreadEvents(
+          collected,
+          (events) =>
+            events.some((event) => event.type === "request.opened") &&
+            events.some((event) => event.type === "user-input.requested"),
+          2_000,
+        );
+        NodeAssert.equal(opened, true, "the approval and question must be pending before Stop");
+
+        const interruptFiber = yield* adapter
+          .interruptTurn(threadId, turn.turnId)
+          .pipe(Effect.forkChild);
+
+        // session.abort is blocked, so an idle settlement here proves idle beat
+        // the abort response.
+        const settled = yield* waitForThreadEvents(
+          collected,
+          (events) => events.some((event) => event.type === "turn.completed"),
+          2_000,
+        );
+        NodeAssert.equal(settled, true, "idle must settle the turn before session.abort returns");
+
+        const afterIdle = yield* Ref.get(collected);
+        const completed = afterIdle.filter((event) => event.type === "turn.completed");
+        NodeAssert.equal(completed.length, 1, "idle must publish exactly one terminal event");
+        const completedEvent = completed[0];
+        if (completedEvent?.type !== "turn.completed") {
+          throw new Error("Expected a turn.completed event");
+        }
+        NodeAssert.equal(String(completedEvent.turnId), String(turn.turnId));
+        NodeAssert.deepEqual(completedEvent.payload, { state: "interrupted" });
+        NodeAssert.equal(
+          afterIdle.filter((event) => event.type === "turn.aborted").length,
+          0,
+          "the abort response must still be in flight",
+        );
+        NodeAssert.equal(
+          afterIdle.filter((event) => event.type === "request.resolved").length,
+          1,
+          "idle settlement must resolve the pending approval once",
+        );
+        NodeAssert.equal(
+          afterIdle.filter((event) => event.type === "user-input.resolved").length,
+          1,
+          "idle settlement must resolve the pending question once",
+        );
+
+        const permissionError = yield* adapter
+          .respondToRequest(threadId, asApprovalRequestId("permission-idle-race"), "accept")
+          .pipe(Effect.flip);
+        NodeAssert.equal(permissionError._tag, "ProviderAdapterRequestError");
+        if (permissionError._tag !== "ProviderAdapterRequestError") {
+          throw new Error("Unexpected error type");
+        }
+        NodeAssert.equal(
+          permissionError.detail,
+          "Unknown pending permission request: permission-idle-race",
+        );
+        const questionError = yield* adapter
+          .respondToUserInput(threadId, asApprovalRequestId("question-idle-race"), {})
+          .pipe(Effect.flip);
+        NodeAssert.equal(questionError._tag, "ProviderAdapterRequestError");
+        if (questionError._tag !== "ProviderAdapterRequestError") {
+          throw new Error("Unexpected error type");
+        }
+        NodeAssert.equal(
+          questionError.detail,
+          "Unknown pending user-input request: question-idle-race",
+        );
+        NodeAssert.deepEqual(runtimeMock.state.permissionReplyCalls, []);
+        NodeAssert.deepEqual(runtimeMock.state.questionReplyCalls, []);
+
+        abortResponseGate.resolve();
+        const interruptResult = yield* joinWithinRealTime(interruptFiber, 2_000);
+        NodeAssert.equal(
+          Option.isSome(interruptResult),
+          true,
+          "interruptTurn must return after abort",
+        );
+        lateAbortEchoGate.resolve();
+        yield* sleepReal(200);
+
+        const events = yield* Ref.get(collected);
+        NodeAssert.equal(
+          events.filter((event) => event.type === "turn.completed").length,
+          1,
+          "the late abort echo must not settle the turn twice",
+        );
+        NodeAssert.equal(
+          events.filter((event) => event.type === "request.resolved").length,
+          1,
+          "the late abort echo must not resolve the approval twice",
+        );
+        NodeAssert.equal(
+          events.filter((event) => event.type === "user-input.resolved").length,
+          1,
+          "the late abort echo must not resolve the question twice",
+        );
+        NodeAssert.equal(
+          events.filter((event) => event.type === "runtime.error").length,
+          0,
+          "a requested Stop must not synthesize a runtime error",
+        );
+
+        const sessions = yield* adapter.listSessions();
+        const session = sessions.find((entry) => entry.threadId === threadId);
+        NodeAssert.equal(session?.status, "ready");
+        NodeAssert.equal(session?.activeTurnId, undefined);
+        NodeAssert.equal(session?.lastError, undefined);
+        NodeAssert.deepEqual(runtimeMock.state.abortCalls, ["http://127.0.0.1:9999/session"]);
+      }).pipe(Effect.ensuring(releaseGates));
+    },
   );
 
   it.effect("keeps an unrequested MessageAbortedError as a failure", () =>
