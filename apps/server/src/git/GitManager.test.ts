@@ -1789,6 +1789,97 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     }),
   );
 
+  it.effect("refuses commit while the merge has unmerged paths", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
+      yield* initRepo(repoDir);
+      yield* runGit(repoDir, ["checkout", "-b", "side"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "side\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "side change"]);
+      yield* runGit(repoDir, ["checkout", "main"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "main\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "main change"]);
+      yield* runGit(repoDir, ["merge", "side"], true);
+
+      const { manager } = yield* makeManager();
+      const error = yield* runStackedAction(manager, {
+        cwd: repoDir,
+        action: "commit",
+      }).pipe(Effect.flip);
+
+      expect(error).toMatchObject({
+        _tag: "GitUnmergedPathsError",
+        unmergedPaths: ["README.md"],
+      });
+      expect((yield* runGit(repoDir, ["log", "-1", "--pretty=%s"])).stdout.trim()).toBe(
+        "main change",
+      );
+      expect((yield* runGit(repoDir, ["status", "--porcelain=v2"])).stdout).toContain("u ");
+    }),
+  );
+
+  it.effect("refuses commit_push before push while the merge has unmerged paths", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
+      yield* initRepo(repoDir);
+      yield* runGit(repoDir, ["checkout", "-b", "side"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "side\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "side change"]);
+      yield* runGit(repoDir, ["checkout", "main"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "main\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "main change"]);
+      yield* runGit(repoDir, ["merge", "side"], true);
+
+      const { manager } = yield* makeManager();
+      const error = yield* runStackedAction(manager, {
+        cwd: repoDir,
+        action: "commit_push",
+      }).pipe(Effect.flip);
+
+      expect(error).toMatchObject({
+        _tag: "GitUnmergedPathsError",
+        unmergedPaths: ["README.md"],
+      });
+      expect((yield* runGit(repoDir, ["log", "-1", "--pretty=%s"])).stdout.trim()).toBe(
+        "main change",
+      );
+    }),
+  );
+
+  it.effect("allows concluding a merge after the conflict is resolved", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
+      yield* initRepo(repoDir);
+      yield* runGit(repoDir, ["checkout", "-b", "side"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "side\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "side change"]);
+      yield* runGit(repoDir, ["checkout", "main"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "main\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "main change"]);
+      yield* runGit(repoDir, ["merge", "side"], true);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "resolved\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+
+      const { manager } = yield* makeManager();
+      const result = yield* runStackedAction(manager, {
+        cwd: repoDir,
+        action: "commit",
+        commitMessage: "Merge side",
+      });
+
+      expect(result.commit.status).toBe("created");
+      expect((yield* runGit(repoDir, ["log", "-1", "--pretty=%s"])).stdout.trim()).toBe(
+        "Merge side",
+      );
+    }),
+  );
+
   it.effect("skips commit when there are no uncommitted changes", () =>
     Effect.gen(function* () {
       const repoDir = yield* makeTempDir("neokod-git-manager-");

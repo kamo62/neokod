@@ -229,6 +229,9 @@ const VcsStatusChangeRequest = Schema.Struct({
   state: VcsStatusChangeRequestState,
 });
 
+export const VcsOperationInProgress = Schema.Literals(["merge", "rebase", "cherry-pick", "revert"]);
+export type VcsOperationInProgress = typeof VcsOperationInProgress.Type;
+
 const VcsStatusLocalShape = {
   isRepo: Schema.Boolean,
   sourceControlProvider: Schema.optional(SourceControlProviderInfo),
@@ -236,6 +239,8 @@ const VcsStatusLocalShape = {
   isDefaultRef: Schema.Boolean,
   refName: Schema.NullOr(TrimmedNonEmptyStringSchema),
   hasWorkingTreeChanges: Schema.Boolean,
+  operationInProgress: Schema.optional(VcsOperationInProgress),
+  unmergedPaths: Schema.optional(Schema.Array(TrimmedNonEmptyStringSchema)),
   workingTree: Schema.Struct({
     files: Schema.Array(
       Schema.Struct({
@@ -408,10 +413,26 @@ export class GitPullRequestMaterializationError extends Schema.TaggedErrorClass<
   }
 }
 
+export class GitUnmergedPathsError extends Schema.TaggedErrorClass<GitUnmergedPathsError>()(
+  "GitUnmergedPathsError",
+  {
+    cwd: TrimmedNonEmptyStringSchema,
+    operationInProgress: Schema.optional(VcsOperationInProgress),
+    unmergedPaths: Schema.Array(TrimmedNonEmptyStringSchema),
+  },
+) {
+  override get message(): string {
+    const shown = this.unmergedPaths.slice(0, 5).join(", ");
+    const more = this.unmergedPaths.length > 5 ? ` and ${this.unmergedPaths.length - 5} more` : "";
+    return `Resolve merge conflicts before committing or pushing. Unmerged: ${shown}${more}.`;
+  }
+}
+
 export const GitManagerServiceError = Schema.Union([
   GitManagerError,
   GitPullRequestMaterializationError,
   GitCommandError,
+  GitUnmergedPathsError,
   SourceControlProviderError,
   TextGenerationError,
 ]);

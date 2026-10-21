@@ -27,6 +27,7 @@ import {
   type VcsRemoveWorktreeInput,
   type VcsInspectWorktreeInput,
   type VcsWorktreeGitState,
+  type VcsOperationInProgress,
   type VcsStatusInput,
   type VcsStatusResult,
 } from "@neokod/contracts";
@@ -68,6 +69,8 @@ export interface GitStatusDetails {
   aheadCount: number;
   behindCount: number;
   aheadOfDefaultCount: number;
+  operationInProgress?: VcsOperationInProgress | undefined;
+  unmergedPaths?: readonly string[] | undefined;
 }
 
 export interface GitRemoteStatusDetails {

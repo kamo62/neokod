@@ -42,7 +42,11 @@ import {
   type ChangeRequestTerminology,
 } from "@neokod/shared/sourceControl";
 
-import { GitManagerError, GitPullRequestMaterializationError } from "@neokod/contracts";
+import {
+  GitManagerError,
+  GitPullRequestMaterializationError,
+  GitUnmergedPathsError,
+} from "@neokod/contracts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import { extractBranchNameFromRemoteRef } from "./remoteRefs.ts";
@@ -770,7 +774,7 @@ export const make = Effect.gen(function* () {
   const canonicalizeExistingPath = (value: string) =>
     fileSystem.realPath(value).pipe(Effect.orElseSucceed(() => value));
   const normalizeStatusCacheKey = canonicalizeExistingPath;
-  const nonRepositoryStatusDetails = {
+  const nonRepositoryStatusDetails: GitVcsDriver.GitStatusDetails = {
     isRepo: false,
     hasOriginRemote: false,
     isDefaultBranch: false,
@@ -782,7 +786,7 @@ export const make = Effect.gen(function* () {
     aheadCount: 0,
     behindCount: 0,
     aheadOfDefaultCount: 0,
-  } satisfies GitVcsDriver.GitStatusDetails;
+  };
   const readLocalStatus = Effect.fn("readLocalStatus")(function* (cwd: string) {
     const details = yield* gitCore
       .statusDetailsLocal(cwd)
@@ -801,6 +805,10 @@ export const make = Effect.gen(function* () {
       refName: details.branch,
       hasWorkingTreeChanges: details.hasWorkingTreeChanges,
       workingTree: details.workingTree,
+      ...(details.operationInProgress ? { operationInProgress: details.operationInProgress } : {}),
+      ...(details.unmergedPaths && details.unmergedPaths.length > 0
+        ? { unmergedPaths: details.unmergedPaths }
+        : {}),
     } satisfies VcsStatusLocalResult;
   });
   const localStatusResultCache = yield* Cache.makeWith(readLocalStatus, {
@@ -1866,6 +1874,17 @@ export const make = Effect.gen(function* () {
         GitManagerServiceError
       > {
         const initialStatus = yield* gitCore.statusDetails(input.cwd);
+        const wantsCommitOrPush =
+          isCommitAction(input.action) || input.action === "push" || input.action === "create_pr";
+        if (wantsCommitOrPush && (initialStatus.unmergedPaths?.length ?? 0) > 0) {
+          return yield* new GitUnmergedPathsError({
+            cwd: input.cwd,
+            ...(initialStatus.operationInProgress
+              ? { operationInProgress: initialStatus.operationInProgress }
+              : {}),
+            unmergedPaths: [...(initialStatus.unmergedPaths ?? [])],
+          });
+        }
         const wantsCommit = isCommitAction(input.action);
         const wantsPush =
           input.action === "push" ||

@@ -1426,27 +1426,77 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       });
     }
 
-    const [unstagedNumstatStdout, stagedNumstatStdout, defaultRefResult, hasPrimaryRemote] =
-      yield* Effect.all(
+    const readOperationInProgress = Effect.gen(function* () {
+      const pathsResult = yield* executeGit(
+        "GitVcsDriver.statusDetails.gitPaths",
+        cwd,
         [
-          runGitStdout("GitVcsDriver.statusDetails.unstagedNumstat", cwd, ["diff", "--numstat"]),
-          runGitStdout("GitVcsDriver.statusDetails.stagedNumstat", cwd, [
-            "diff",
-            "--cached",
-            "--numstat",
-          ]),
-          executeGit(
-            "GitVcsDriver.statusDetails.defaultRef",
-            cwd,
-            ["symbolic-ref", "refs/remotes/origin/HEAD"],
-            {
-              allowNonZeroExit: true,
-            },
-          ),
-          originRemoteExists(cwd).pipe(Effect.orElseSucceed(() => false)),
+          "rev-parse",
+          "--git-path",
+          "rebase-merge",
+          "--git-path",
+          "rebase-apply",
+          "--git-path",
+          "MERGE_HEAD",
+          "--git-path",
+          "CHERRY_PICK_HEAD",
+          "--git-path",
+          "REVERT_HEAD",
         ],
-        { concurrency: "unbounded" },
+        { timeoutMs: 5_000, allowNonZeroExit: true },
       );
+      if (pathsResult.exitCode !== 0) {
+        return undefined;
+      }
+      const [rebaseMerge, rebaseApply, mergeHead, cherryPickHead, revertHead] = pathsResult.stdout
+        .split("\n")
+        .map((value) => path.resolve(cwd, value.trim()));
+      const exists = (value: string | undefined) =>
+        value === undefined
+          ? Effect.succeed(false)
+          : fileSystem.exists(value).pipe(Effect.orElseSucceed(() => false));
+      if ((yield* exists(rebaseMerge)) || (yield* exists(rebaseApply))) {
+        return "rebase" as const;
+      }
+      if (yield* exists(mergeHead)) {
+        return "merge" as const;
+      }
+      if (yield* exists(cherryPickHead)) {
+        return "cherry-pick" as const;
+      }
+      if (yield* exists(revertHead)) {
+        return "revert" as const;
+      }
+      return undefined;
+    }).pipe(Effect.orElseSucceed(() => undefined));
+
+    const [
+      unstagedNumstatStdout,
+      stagedNumstatStdout,
+      defaultRefResult,
+      hasPrimaryRemote,
+      operationInProgress,
+    ] = yield* Effect.all(
+      [
+        runGitStdout("GitVcsDriver.statusDetails.unstagedNumstat", cwd, ["diff", "--numstat"]),
+        runGitStdout("GitVcsDriver.statusDetails.stagedNumstat", cwd, [
+          "diff",
+          "--cached",
+          "--numstat",
+        ]),
+        executeGit(
+          "GitVcsDriver.statusDetails.defaultRef",
+          cwd,
+          ["symbolic-ref", "refs/remotes/origin/HEAD"],
+          {
+            allowNonZeroExit: true,
+          },
+        ),
+        originRemoteExists(cwd).pipe(Effect.orElseSucceed(() => false)),
+        readOperationInProgress,
+      ],
+      { concurrency: "unbounded" },
+    );
     const statusStdout = statusResult.stdout;
     const defaultBranch =
       defaultRefResult.exitCode === 0
@@ -1460,6 +1510,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     let aheadOfDefaultCount = 0;
     let hasWorkingTreeChanges = false;
     const changedFilesWithoutNumstat = new Set<string>();
+    const unmergedPaths: string[] = [];
 
     for (const line of statusStdout.split(/\r?\n/g)) {
       if (line.startsWith("# branch.head ")) {
@@ -1478,6 +1529,12 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         aheadCount = parsed.ahead;
         behindCount = parsed.behind;
         continue;
+      }
+      if (line.startsWith("u ")) {
+        const unmergedPath = line.split(" ").slice(10).join(" ");
+        if (unmergedPath.length > 0 && unmergedPaths.length < 100) {
+          unmergedPaths.push(unmergedPath);
+        }
       }
       if (line.trim().length > 0 && !line.startsWith("#")) {
         hasWorkingTreeChanges = true;
@@ -1549,6 +1606,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       aheadCount,
       behindCount,
       aheadOfDefaultCount,
+      ...(operationInProgress ? { operationInProgress } : {}),
+      ...(unmergedPaths.length > 0 ? { unmergedPaths } : {}),
     };
   });
 
@@ -1598,6 +1657,12 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         aheadCount: details.aheadCount,
         behindCount: details.behindCount,
         aheadOfDefaultCount: details.aheadOfDefaultCount,
+        ...(details.operationInProgress
+          ? { operationInProgress: details.operationInProgress }
+          : {}),
+        ...(details.unmergedPaths && details.unmergedPaths.length > 0
+          ? { unmergedPaths: details.unmergedPaths }
+          : {}),
         pr: null,
       })),
     );

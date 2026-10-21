@@ -1,6 +1,10 @@
 import type { GitStackedAction, VcsStatusResult } from "@neokod/contracts";
 
-import { getMenuActionDisabledReason, type GitActionMenuItem } from "./GitActionsControl.logic";
+import {
+  getMenuActionDisabledReason,
+  resolveConflictBlockReason,
+  type GitActionMenuItem,
+} from "./GitActionsControl.logic";
 import type { ChangeRequestTerminology } from "../sourceControlPresentation";
 
 /**
@@ -136,6 +140,11 @@ function resolveCommitPushAction(input: {
   }
   if (!gitStatus) {
     return { ...base, disabled: true, disabledReason: "Git status is unavailable." };
+  }
+
+  const conflictReason = resolveConflictBlockReason(gitStatus);
+  if (conflictReason) {
+    return { ...base, disabled: true, disabledReason: conflictReason };
   }
 
   const hasBranch = gitStatus.refName !== null;

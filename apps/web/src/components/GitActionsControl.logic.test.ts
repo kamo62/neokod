@@ -5,6 +5,7 @@ import {
   buildMenuItems,
   requiresDefaultBranchConfirmation,
   resolveAutoFeatureBranchName,
+  resolveConflictBlockReason,
   resolveDefaultBranchActionDialogCopy,
   resolveLiveThreadBranchUpdate,
   resolveQuickAction,
@@ -871,6 +872,35 @@ describe("when: ref has no upstream configured", () => {
         dialogAction: "create_pr",
       },
     ]);
+  });
+});
+
+describe("when: a merge or rebase is in progress", () => {
+  it("resolveQuickAction blocks with a hint when unmerged paths exist", () => {
+    const quick = resolveQuickAction(
+      status({ hasWorkingTreeChanges: true, unmergedPaths: ["a.txt", "b.txt"] }),
+      false,
+    );
+    assert.deepInclude(quick, {
+      label: "Resolve conflicts",
+      disabled: true,
+      kind: "show_hint",
+    });
+    assert.match(quick.hint ?? "", /merge conflicts/);
+  });
+
+  it("buildMenuItems disables commit and push during a rebase", () => {
+    const items = buildMenuItems(
+      status({ hasWorkingTreeChanges: true, operationInProgress: "rebase", aheadCount: 1 }),
+      false,
+    );
+    assert.equal(items.find((item) => item.id === "commit")?.disabled, true);
+    assert.equal(items.find((item) => item.id === "push")?.disabled, true);
+    assert.equal(items.find((item) => item.id === "pr")?.disabled, true);
+  });
+
+  it("resolveConflictBlockReason returns null on a clean status", () => {
+    assert.equal(resolveConflictBlockReason(status()), null);
   });
 });
 

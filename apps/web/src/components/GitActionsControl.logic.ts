@@ -51,6 +51,27 @@ function resolveChangeRequestTerminology(
     : DEFAULT_CHANGE_REQUEST_TERMINOLOGY;
 }
 
+const OPERATION_IN_PROGRESS_LABELS = {
+  merge: "Merge",
+  rebase: "Rebase",
+  "cherry-pick": "Cherry-pick",
+  revert: "Revert",
+} as const;
+
+export function resolveConflictBlockReason(gitStatus: VcsStatusResult | null): string | null {
+  const count = gitStatus?.unmergedPaths?.length ?? 0;
+  if (count > 0) {
+    return `${count} file${count === 1 ? " has" : "s have"} merge conflicts. Resolve them before committing or pushing.`;
+  }
+  if (gitStatus?.operationInProgress === "rebase") {
+    return "Rebase in progress. Finish or abort it in the terminal.";
+  }
+  if (gitStatus?.operationInProgress) {
+    return `${OPERATION_IN_PROGRESS_LABELS[gitStatus.operationInProgress]} in progress.`;
+  }
+  return null;
+}
+
 export function buildGitActionProgressStages(input: {
   action: GitStackedAction;
   hasCustomCommitMessage: boolean;
@@ -98,6 +119,7 @@ export function buildMenuItems(
 ): GitActionMenuItem[] {
   if (!gitStatus) return [];
   const terminology = resolveChangeRequestTerminology(gitStatus);
+  const conflictBlockReason = resolveConflictBlockReason(gitStatus);
 
   const hasBranch = gitStatus.refName !== null;
   const hasChanges = gitStatus.hasWorkingTreeChanges;
@@ -105,15 +127,17 @@ export function buildMenuItems(
   const isBehind = gitStatus.behindCount > 0;
   const hasDefaultBranchDelta = (gitStatus.aheadOfDefaultCount ?? gitStatus.aheadCount) > 0;
   const canPushWithoutUpstream = hasPrimaryRemote && !gitStatus.hasUpstream;
-  const canCommit = !isBusy && hasChanges;
+  const canCommit = !isBusy && hasChanges && conflictBlockReason === null;
   const canPush =
     !isBusy &&
+    conflictBlockReason === null &&
     hasBranch &&
     !isBehind &&
     gitStatus.aheadCount > 0 &&
     (gitStatus.hasUpstream || canPushWithoutUpstream);
   const canCreatePr =
     !isBusy &&
+    conflictBlockReason === null &&
     hasBranch &&
     !hasChanges &&
     !hasOpenPr &&
@@ -180,6 +204,21 @@ export function resolveQuickAction(
       disabled: true,
       kind: "show_hint",
       hint: "Git status is unavailable.",
+    };
+  }
+
+  const conflictReason = resolveConflictBlockReason(gitStatus);
+  if (conflictReason) {
+    return {
+      label:
+        (gitStatus.unmergedPaths?.length ?? 0) > 0
+          ? "Resolve conflicts"
+          : gitStatus.operationInProgress
+            ? `${OPERATION_IN_PROGRESS_LABELS[gitStatus.operationInProgress]} in progress`
+            : "Commit",
+      disabled: true,
+      kind: "show_hint",
+      hint: conflictReason,
     };
   }
 
@@ -323,6 +362,8 @@ export function getMenuActionDisabledReason({
   if (!item.disabled) return null;
   if (isBusy) return "Git action in progress.";
   if (!gitStatus) return "Git status is unavailable.";
+  const conflictReason = resolveConflictBlockReason(gitStatus);
+  if (conflictReason) return conflictReason;
 
   const hasBranch = gitStatus.refName !== null;
   const hasChanges = gitStatus.hasWorkingTreeChanges;

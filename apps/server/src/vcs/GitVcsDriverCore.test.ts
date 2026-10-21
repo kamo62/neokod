@@ -717,6 +717,90 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
     );
   });
 
+  describe("conflict and operation state", () => {
+    const runGitAllowFailure = (cwd: string, args: ReadonlyArray<string>) =>
+      Effect.gen(function* () {
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.execute({
+          operation: "GitVcsDriver.test.runGitAllowFailure",
+          cwd,
+          args,
+          allowNonZeroExit: true,
+        });
+      });
+
+    const createDivergedCommits = (cwd: string, initialBranch: string) =>
+      Effect.gen(function* () {
+        yield* git(cwd, ["checkout", "-b", "side"]);
+        yield* writeTextFile(cwd, "c.txt", "side\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "side change"]);
+        yield* git(cwd, ["checkout", initialBranch]);
+        yield* writeTextFile(cwd, "c.txt", "main\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "main change"]);
+      });
+
+    it.effect("reports unmerged paths and merge in progress", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* createDivergedCommits(cwd, initialBranch);
+        yield* runGitAllowFailure(cwd, ["merge", "side"]);
+
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const status = yield* driver.statusDetailsLocal(cwd);
+
+        assert.equal(status.operationInProgress, "merge");
+        assert.deepEqual(status.unmergedPaths, ["c.txt"]);
+      }),
+    );
+
+    it.effect("reports rebase in progress", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* createDivergedCommits(cwd, initialBranch);
+        yield* git(cwd, ["checkout", "side"]);
+        yield* runGitAllowFailure(cwd, ["rebase", initialBranch]);
+
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const status = yield* driver.statusDetailsLocal(cwd);
+
+        assert.equal(status.operationInProgress, "rebase");
+        assert.equal(status.branch, null);
+      }),
+    );
+
+    it.effect("reports cherry-pick in progress", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* createDivergedCommits(cwd, initialBranch);
+        const sideCommit = yield* git(cwd, ["rev-parse", "side"]);
+        yield* runGitAllowFailure(cwd, ["cherry-pick", sideCommit]);
+
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const status = yield* driver.statusDetailsLocal(cwd);
+
+        assert.equal(status.operationInProgress, "cherry-pick");
+      }),
+    );
+
+    it.effect("reports no operation on a clean repo", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const status = yield* driver.statusDetailsLocal(cwd);
+
+        assert.equal(status.operationInProgress, undefined);
+        assert.equal(status.unmergedPaths, undefined);
+      }),
+    );
+  });
+
   describe("worktree operations", () => {
     it("parses prunable registrations from NUL-delimited porcelain output", () => {
       assert.deepStrictEqual(

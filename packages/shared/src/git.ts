@@ -243,6 +243,10 @@ function toLocalStatusPart(status: VcsStatusResult): VcsStatusLocalResult {
     refName: status.refName,
     hasWorkingTreeChanges: status.hasWorkingTreeChanges,
     workingTree: status.workingTree,
+    ...(status.operationInProgress ? { operationInProgress: status.operationInProgress } : {}),
+    ...(status.unmergedPaths && status.unmergedPaths.length > 0
+      ? { unmergedPaths: status.unmergedPaths }
+      : {}),
   };
 }
 

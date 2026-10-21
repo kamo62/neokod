@@ -89,14 +89,17 @@ export function buildMenuItems(
 ): GitActionMenuItem[] {
   if (!gitStatus) return [];
 
+  const hasConflicts =
+    (gitStatus.unmergedPaths?.length ?? 0) > 0 || gitStatus.operationInProgress === "rebase";
   const hasBranch = gitStatus.refName !== null;
   const hasChanges = gitStatus.hasWorkingTreeChanges;
   const hasOpenPr = gitStatus.pr?.state === "open";
   const isBehind = gitStatus.behindCount > 0;
   const canPushWithoutUpstream = hasOriginRemote && !gitStatus.hasUpstream;
-  const canCommit = !isBusy && hasChanges;
+  const canCommit = !isBusy && !hasConflicts && hasChanges;
   const canPush =
     !isBusy &&
+    !hasConflicts &&
     hasBranch &&
     !hasChanges &&
     !isBehind &&
@@ -104,6 +107,7 @@ export function buildMenuItems(
     (gitStatus.hasUpstream || canPushWithoutUpstream);
   const canCreatePr =
     !isBusy &&
+    !hasConflicts &&
     hasBranch &&
     !hasChanges &&
     !hasOpenPr &&
@@ -164,6 +168,19 @@ export function resolveQuickAction(
       disabled: true,
       kind: "show_hint",
       hint: "Git status is unavailable.",
+    };
+  }
+
+  const unmergedCount = gitStatus.unmergedPaths?.length ?? 0;
+  if (unmergedCount > 0 || gitStatus.operationInProgress === "rebase") {
+    return {
+      label: unmergedCount > 0 ? "Resolve conflicts" : "Rebase in progress",
+      disabled: true,
+      kind: "show_hint",
+      hint:
+        unmergedCount > 0
+          ? `${unmergedCount} file${unmergedCount === 1 ? " has" : "s have"} merge conflicts. Resolve them before committing or pushing.`
+          : "Rebase in progress. Finish or abort it in the terminal.",
     };
   }
 

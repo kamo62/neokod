@@ -33,6 +33,7 @@ import { Spinner } from "~/components/ui/spinner";
 import { cn } from "~/lib/utils";
 import {
   getMenuActionDisabledReason,
+  resolveConflictBlockReason,
   type GitActionIconName,
   type GitActionMenuItem,
   type GitQuickAction,
@@ -1011,6 +1012,11 @@ export default function GitActionsControl({
                   Publish repository...
                 </MenuItem>
               ) : null}
+              {resolveConflictBlockReason(gitStatus) && (
+                <p className="px-2 py-1.5 text-xs text-warning">
+                  {resolveConflictBlockReason(gitStatus)}
+                </p>
+              )}
               {gitStatus?.refName === null && (
                 <p className="px-2 py-1.5 text-xs text-warning">
                   Detached HEAD: create and checkout a refName to enable push and pull request

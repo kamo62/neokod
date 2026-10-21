@@ -139,4 +139,37 @@ describe("applyGitStatusStreamEvent", () => {
       pr: null,
     });
   });
+
+  it("keeps conflict fields across a remoteUpdated event", () => {
+    const current: VcsStatusResult = {
+      isRepo: true,
+      hasPrimaryRemote: true,
+      isDefaultRef: false,
+      refName: "feature/demo",
+      hasWorkingTreeChanges: true,
+      workingTree: {
+        files: [{ path: "a.txt", insertions: 0, deletions: 0 }],
+        insertions: 0,
+        deletions: 0,
+      },
+      operationInProgress: "merge",
+      unmergedPaths: ["a.txt"],
+      hasUpstream: true,
+      aheadCount: 1,
+      behindCount: 0,
+      pr: null,
+    };
+
+    const remote: VcsStatusRemoteResult = {
+      hasUpstream: true,
+      aheadCount: 2,
+      behindCount: 0,
+      pr: null,
+    };
+
+    expect(applyGitStatusStreamEvent(current, { _tag: "remoteUpdated", remote })).toEqual({
+      ...current,
+      aheadCount: 2,
+    });
+  });
 });
