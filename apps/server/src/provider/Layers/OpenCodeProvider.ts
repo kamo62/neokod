@@ -15,7 +15,6 @@ import {
   buildServerProvider,
   cliNotFoundMessage,
   nonEmptyTrimmed,
-  parseGenericCliVersion,
   providerModelsFromSettings,
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
@@ -24,6 +23,11 @@ import {
   openCodeRuntimeErrorDetail,
   type OpenCodeInventory,
 } from "../opencodeRuntime.ts";
+import {
+  classifyOpenCodeVersion,
+  formatOpenCodeUnsupportedVersionMessage,
+  parseOpenCodeVersionOutput,
+} from "../openCodeVersion.ts";
 import type { Agent, ProviderListResponse } from "@opencode-ai/sdk/v2";
 
 const PROVIDER = ProviderDriverKind.make("opencode");
@@ -32,6 +36,8 @@ const OPENCODE_PRESENTATION = {
   showInteractionModeToggle: false,
 } as const;
 const MINIMUM_OPENCODE_VERSION = "1.14.19";
+const EXTERNAL_SERVER_VERSION_GUARD_GAP =
+  "Neokod cannot verify a configured OpenCode server's version; OpenCode 2 is not supported yet.";
 
 class OpenCodeProbeError extends Data.TaggedError("OpenCodeProbeError")<{
   readonly cause: unknown;
@@ -346,7 +352,9 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
         version,
         status: "error",
         auth: { status: "unknown" },
-        message: failure.message,
+        message: isExternalServer
+          ? `${failure.message} ${EXTERNAL_SERVER_VERSION_GUARD_GAP}`
+          : failure.message,
       },
     });
   };
@@ -392,15 +400,40 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
     if (versionExit._tag === "Failure") {
       return fallback(Cause.squash(versionExit.cause));
     }
-    version = parseGenericCliVersion(versionExit.value.stdout) ?? null;
+    const parsedVersion = parseOpenCodeVersionOutput(versionExit.value.stdout);
+    const knownVersion = parsedVersion ? classifyOpenCodeVersion(parsedVersion) : null;
+    version = knownVersion?.version ?? null;
 
-    if (!version) {
+    if (!version || !knownVersion) {
       return fallback(
         new Error(
           `Unable to determine OpenCode version from \`opencode --version\` output. Neokod requires OpenCode v${MINIMUM_OPENCODE_VERSION} or newer.`,
         ),
         null,
       );
+    }
+    if (!knownVersion.supported) {
+      // The v2 transport, authentication and event model are different. Do
+      // not start a v2 server or call its legacy 1.x routes just to discover
+      // that through a timeout or an inventory failure.
+      return buildServerProvider({
+        presentation: OPENCODE_PRESENTATION,
+        enabled: openCodeSettings.enabled,
+        checkedAt,
+        models: providerModelsFromSettings(
+          [],
+          PROVIDER,
+          customModels,
+          DEFAULT_OPENCODE_MODEL_CAPABILITIES,
+        ),
+        probe: {
+          installed: true,
+          version,
+          status: "error",
+          auth: { status: "unknown" },
+          message: formatOpenCodeUnsupportedVersionMessage(knownVersion),
+        },
+      });
     }
     if (compareSemverVersions(version, MINIMUM_OPENCODE_VERSION) < 0) {
       return buildServerProvider({
@@ -462,6 +495,12 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
     DEFAULT_OPENCODE_MODEL_CAPABILITIES,
   );
   const connectedCount = inventoryExit.value.providerList.connected.length;
+  const baseMessage =
+    connectedCount > 0
+      ? `${connectedCount} upstream provider${connectedCount === 1 ? "" : "s"} connected through ${isExternalServer ? "the configured OpenCode server" : "OpenCode"}.`
+      : isExternalServer
+        ? "Connected to the configured OpenCode server, but it did not report any connected upstream providers."
+        : "OpenCode is available, but it did not report any connected upstream providers.";
   return buildServerProvider({
     presentation: OPENCODE_PRESENTATION,
     enabled: true,
@@ -475,12 +514,12 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
         status: connectedCount > 0 ? "authenticated" : "unknown",
         type: "opencode",
       },
-      message:
-        connectedCount > 0
-          ? `${connectedCount} upstream provider${connectedCount === 1 ? "" : "s"} connected through ${isExternalServer ? "the configured OpenCode server" : "OpenCode"}.`
-          : isExternalServer
-            ? "Connected to the configured OpenCode server, but it did not report any connected upstream providers."
-            : "OpenCode is available, but it did not report any connected upstream providers.",
+      // A configured server is never version-probed, so its protocol could be
+      // v2 even when the inventory shape still looks like 1.x. Report the
+      // guard's coverage gap instead of inferring support from a response.
+      message: isExternalServer
+        ? `${baseMessage} ${EXTERNAL_SERVER_VERSION_GUARD_GAP}`
+        : baseMessage,
     },
   });
 });

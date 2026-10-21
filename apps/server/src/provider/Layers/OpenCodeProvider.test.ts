@@ -35,6 +35,8 @@ const runtimeMock = {
     versionStdout: DEFAULT_VERSION_STDOUT,
     inventoryError: null as Error | null,
     closeCalls: 0,
+    connectCalls: 0,
+    inventoryCalls: 0,
     inventory: {
       providerList: { connected: [] as string[], all: [] as unknown[], default: {} },
       agents: [] as unknown[],
@@ -46,6 +48,8 @@ const runtimeMock = {
     this.state.versionStdout = DEFAULT_VERSION_STDOUT;
     this.state.inventoryError = null;
     this.state.closeCalls = 0;
+    this.state.connectCalls = 0;
+    this.state.inventoryCalls = 0;
     this.state.inventory = {
       providerList: { connected: [], all: [] as unknown[], default: {} },
       agents: [] as unknown[],
@@ -62,6 +66,7 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
     }),
   connectToOpenCodeServer: ({ serverUrl }) =>
     Effect.gen(function* () {
+      runtimeMock.state.connectCalls += 1;
       if (!serverUrl) {
         yield* Effect.addFinalizer(() =>
           Effect.sync(() => {
@@ -88,15 +93,18 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
   createOpenCodeSdkClient: () =>
     ({}) as unknown as ReturnType<OpenCodeRuntimeShape["createOpenCodeSdkClient"]>,
   loadOpenCodeInventory: () =>
-    runtimeMock.state.inventoryError
-      ? Effect.fail(
-          new OpenCodeRuntimeError({
-            operation: "loadOpenCodeInventory",
-            detail: runtimeMock.state.inventoryError.message,
-            cause: runtimeMock.state.inventoryError,
-          }),
-        )
-      : Effect.succeed(runtimeMock.state.inventory as OpenCodeInventory),
+    Effect.suspend(() => {
+      runtimeMock.state.inventoryCalls += 1;
+      return runtimeMock.state.inventoryError
+        ? Effect.fail(
+            new OpenCodeRuntimeError({
+              operation: "loadOpenCodeInventory",
+              detail: runtimeMock.state.inventoryError.message,
+              cause: runtimeMock.state.inventoryError,
+            }),
+          )
+        : Effect.succeed(runtimeMock.state.inventory as OpenCodeInventory);
+    }),
 };
 
 beforeEach(() => {
@@ -132,6 +140,22 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
         snapshot.message,
         "OpenCode CLI (`opencode`) was not found on PATH (searched PATH: /usr/bin:/bin). If it is installed, set the binary path in the provider settings to its absolute path.",
       );
+    }),
+  );
+
+  it.effect("reports OpenCode 2 as unsupported before trying its HTTP API", () =>
+    Effect.gen(function* () {
+      runtimeMock.state.versionStdout = "opencode v2.0.32\n";
+
+      const snapshot = yield* checkOpenCodeProviderStatus(makeOpenCodeSettings(), process.cwd());
+
+      NodeAssert.equal(snapshot.status, "error");
+      NodeAssert.equal(snapshot.installed, true);
+      NodeAssert.equal(snapshot.version, "2.0.32");
+      NodeAssert.match(snapshot.message ?? "", /OpenCode 2 is not supported yet/);
+      NodeAssert.match(snapshot.message ?? "", /install OpenCode 1\.x/);
+      NodeAssert.equal(runtimeMock.state.connectCalls, 0);
+      NodeAssert.equal(runtimeMock.state.inventoryCalls, 0);
     }),
   );
 
@@ -248,6 +272,22 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
 });
 
 it.layer(testLayer)("checkOpenCodeProviderStatus with configured server URL", (it) => {
+  it.effect("reports that a configured server's version cannot be verified", () =>
+    Effect.gen(function* () {
+      const snapshot = yield* checkOpenCodeProviderStatus(
+        makeOpenCodeSettings({
+          serverUrl: "http://127.0.0.1:9999",
+          serverPassword: "secret-password",
+        }),
+        process.cwd(),
+      );
+
+      NodeAssert.equal(snapshot.status, "warning");
+      NodeAssert.match(snapshot.message ?? "", /OpenCode 2 is not supported yet/);
+      NodeAssert.match(snapshot.message ?? "", /cannot verify a configured OpenCode server/);
+    }),
+  );
+
   it.effect("surfaces a friendly auth error for configured servers", () =>
     Effect.gen(function* () {
       runtimeMock.state.inventoryError = new Error("401 Unauthorized");
@@ -263,7 +303,7 @@ it.layer(testLayer)("checkOpenCodeProviderStatus with configured server URL", (i
       NodeAssert.equal(snapshot.installed, true);
       NodeAssert.equal(
         snapshot.message,
-        "OpenCode server rejected authentication. Check the server URL and password.",
+        "OpenCode server rejected authentication. Check the server URL and password. Neokod cannot verify a configured OpenCode server's version; OpenCode 2 is not supported yet.",
       );
     }),
   );
@@ -285,7 +325,7 @@ it.layer(testLayer)("checkOpenCodeProviderStatus with configured server URL", (i
       NodeAssert.equal(snapshot.installed, true);
       NodeAssert.equal(
         snapshot.message,
-        "Couldn't reach the configured OpenCode server at http://127.0.0.1:9999. Check that the server is running and the URL is correct.",
+        "Couldn't reach the configured OpenCode server at http://127.0.0.1:9999. Check that the server is running and the URL is correct. Neokod cannot verify a configured OpenCode server's version; OpenCode 2 is not supported yet.",
       );
     }),
   );
