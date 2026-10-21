@@ -17,7 +17,12 @@ export interface ProviderSessionReconcileAction {
   readonly runtimeMode: OrchestrationSession["runtimeMode"];
   readonly status: OrchestrationSession["status"];
   readonly lastError: string | null;
+  readonly bindingSettlement?: "host_lost";
 }
+
+/** Shown on a thread whose provider session was lost with the server process. */
+export const HOST_LOST_SESSION_ERROR =
+  "Neokod restarted while this turn was running. The turn's outcome is unknown and its process may still be running.";
 
 export interface ProviderSessionReconcileInputs {
   readonly projected: OrchestrationReadModel;
@@ -111,7 +116,6 @@ export const planProviderSessionReconciliation = ({
     const binding = bindingsByThreadId.get(thread.id);
     if (
       binding === undefined ||
-      (binding.status !== "stopped" && binding.status !== "error") ||
       binding.provider !== session.providerName ||
       (session.providerInstanceId !== undefined &&
         binding.providerInstanceId !== undefined &&
@@ -120,11 +124,28 @@ export const planProviderSessionReconciliation = ({
       return [];
     }
 
+    if (binding.status === "stopped" || binding.status === "error") {
+      return [
+        {
+          ...action,
+          status: "interrupted",
+          lastError: exactBindingError(binding, turn.turnId),
+        },
+      ];
+    }
+
+    // `running` or `starting` with no live session: the previous server process
+    // was lost. A binding without a status is treated the same way; the
+    // persistence layer always fills it, so undefined behaves like `running`.
+    // The turn's outcome and whether its child process is still running are
+    // unknown, so the session is interrupted and the binding records
+    // `orphan_possible` rather than a confirmed stop.
     return [
       {
         ...action,
         status: "interrupted",
-        lastError: exactBindingError(binding, turn.turnId),
+        lastError: HOST_LOST_SESSION_ERROR,
+        bindingSettlement: "host_lost",
       },
     ];
   });

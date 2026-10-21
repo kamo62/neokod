@@ -13,6 +13,7 @@ import {
   type ProviderSessionReconcilerShape,
 } from "../Services/ProviderSessionReconciler.ts";
 import { ProviderService } from "../Services/ProviderService.ts";
+import { orphanPossible } from "../providerStopOutcome.ts";
 
 const makeProviderSessionReconciler = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
@@ -35,6 +36,42 @@ const makeProviderSessionReconciler = Effect.gen(function* () {
     });
 
     for (const action of actions) {
+      // Write the binding before the session so a crash between the two writes
+      // is repaired by the next boot: the next run sees an `error` binding and
+      // the existing terminal binding branch settles the thread. A failed
+      // binding write is logged and the thread is still settled, because the
+      // thread is what the user sees stuck.
+      if (action.bindingSettlement === "host_lost") {
+        const binding = bindings.find((entry) => entry.threadId === action.threadId);
+        if (binding !== undefined) {
+          yield* directory
+            .upsert({
+              threadId: binding.threadId,
+              provider: binding.provider,
+              ...(binding.providerInstanceId !== undefined
+                ? { providerInstanceId: binding.providerInstanceId }
+                : {}),
+              status: "error",
+              runtimePayload: {
+                activeTurnId: null,
+                stopPhase: "settled",
+                stopOutcome: orphanPossible({
+                  stoppedAt: DateTime.formatIso(yield* DateTime.now),
+                  reason: "host_lost",
+                }),
+              },
+            })
+            .pipe(
+              Effect.catch((cause) =>
+                Effect.logWarning("provider.session.reconciliation-binding-failed", {
+                  threadId: action.threadId,
+                  cause,
+                }),
+              ),
+            );
+        }
+      }
+
       yield* orchestrationEngine.dispatch({
         type: "thread.session.set",
         commandId: CommandId.make(yield* crypto.randomUUIDv4),
@@ -58,6 +95,7 @@ const makeProviderSessionReconciler = Effect.gen(function* () {
     if (actions.length > 0) {
       yield* Effect.logInfo("provider.session.reconciliation-complete", {
         settledCount: actions.length,
+        hostLostCount: actions.filter((action) => action.bindingSettlement === "host_lost").length,
       });
     }
   }).pipe(

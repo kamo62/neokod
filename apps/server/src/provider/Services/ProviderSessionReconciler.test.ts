@@ -17,6 +17,7 @@ import * as ProjectionSnapshotQuery from "../../orchestration/Services/Projectio
 import * as ProviderService from "../Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "../Services/ProviderSessionDirectory.ts";
 import {
+  HOST_LOST_SESSION_ERROR,
   planProviderSessionReconciliation,
   ProviderSessionReconciler,
 } from "./ProviderSessionReconciler.ts";
@@ -229,7 +230,53 @@ it("preserves only an error tied to the exact projected turn", () => {
   );
 });
 
-it("skips live, starting, unsettled, missing, and still-running bindings", () => {
+it("plans a host_lost settlement for a running or starting binding with no live session", () => {
+  for (const status of ["running", "starting"] as const) {
+    assert.deepStrictEqual(
+      planProviderSessionReconciliation({
+        projected: projected(),
+        liveSessions: [],
+        bindings: [{ ...stoppedBinding(), status }],
+      }),
+      [
+        {
+          threadId,
+          turnId,
+          providerName: provider,
+          providerInstanceId,
+          runtimeMode: "full-access",
+          status: "interrupted",
+          lastError: HOST_LOST_SESSION_ERROR,
+          bindingSettlement: "host_lost",
+        },
+      ],
+    );
+  }
+});
+
+it("leaves a running binding alone while a live session exists", () => {
+  assert.deepStrictEqual(
+    planProviderSessionReconciliation({
+      projected: projected(),
+      liveSessions: [providerSession],
+      bindings: [{ ...stoppedBinding(), status: "running" as const }],
+    }),
+    [],
+  );
+});
+
+it("does not settle again once the thread session is interrupted", () => {
+  assert.deepStrictEqual(
+    planProviderSessionReconciliation({
+      projected: projected({ sessionStatus: "interrupted", activeTurnId: null }),
+      liveSessions: [],
+      bindings: [{ ...stoppedBinding(), status: "error" as const }],
+    }),
+    [],
+  );
+});
+
+it("skips live, starting, unsettled and missing bindings", () => {
   const cases = [
     { projected: projected(), liveSessions: [providerSession], bindings: [stoppedBinding()] },
     {
@@ -243,11 +290,6 @@ it("skips live, starting, unsettled, missing, and still-running bindings", () =>
       bindings: [stoppedBinding()],
     },
     { projected: projected(), liveSessions: [], bindings: [] },
-    {
-      projected: projected(),
-      liveSessions: [],
-      bindings: [{ ...stoppedBinding(), status: "running" as const }],
-    },
   ];
 
   for (const input of cases) {
@@ -301,5 +343,79 @@ it.effect("dispatches terminal-turn settlement as a thread.session.set command",
     if (command?.type !== "thread.session.set") return;
     assert.equal(command.session.status, "interrupted");
     assert.equal(command.session.activeTurnId, null);
+  }),
+);
+
+it.effect("settles a crashed running binding before dispatching the session", () =>
+  Effect.gen(function* () {
+    const order: Array<"binding" | "session"> = [];
+    const commands: OrchestrationCommand[] = [];
+    const upserts: ProviderSessionDirectory.ProviderRuntimeBinding[] = [];
+    const layer = ProviderSessionReconcilerLive.pipe(
+      Layer.provideMerge(
+        Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
+          getCommandReadModel: () => Effect.succeed(projected()),
+          getSnapshot: () => Effect.die("getSnapshot must not be used by boot reconciliation"),
+        } as unknown as ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]),
+      ),
+      Layer.provideMerge(
+        Layer.succeed(OrchestrationEngine.OrchestrationEngineService, {
+          dispatch: (command: OrchestrationCommand) => {
+            order.push("session");
+            commands.push(command);
+            return Effect.succeed({ sequence: 2 });
+          },
+        } as unknown as OrchestrationEngine.OrchestrationEngineService["Service"]),
+      ),
+      Layer.provideMerge(
+        Layer.succeed(ProviderSessionDirectory.ProviderSessionDirectory, {
+          listBindings: () => Effect.succeed([{ ...stoppedBinding(), status: "running" as const }]),
+          upsert: (binding: ProviderSessionDirectory.ProviderRuntimeBinding) =>
+            Effect.sync(() => {
+              order.push("binding");
+              upserts.push(binding);
+            }),
+        } as unknown as ProviderSessionDirectory.ProviderSessionDirectory["Service"]),
+      ),
+      Layer.provideMerge(
+        Layer.succeed(ProviderService.ProviderService, {
+          listSessions: () => Effect.succeed([]),
+        } as unknown as ProviderService.ProviderService["Service"]),
+      ),
+      Layer.provideMerge(NodeServices.layer),
+    );
+
+    const reconciler = yield* ProviderSessionReconciler.pipe(Effect.provide(layer));
+    yield* reconciler.reconcile;
+
+    assert.deepStrictEqual(order, ["binding", "session"]);
+    const binding = upserts[0];
+    assert.equal(binding?.threadId, threadId);
+    assert.equal(binding?.status, "error");
+    const runtimePayload = binding?.runtimePayload as
+      | {
+          readonly activeTurnId?: unknown;
+          readonly stopPhase?: unknown;
+          readonly stopOutcome?: {
+            readonly status?: unknown;
+            readonly stoppedAt?: unknown;
+            readonly reason?: unknown;
+            readonly knownExternalRunIds?: unknown;
+          };
+        }
+      | undefined;
+    assert.equal(runtimePayload?.activeTurnId, null);
+    assert.equal(runtimePayload?.stopPhase, "settled");
+    assert.equal(runtimePayload?.stopOutcome?.status, "orphan_possible");
+    assert.equal(typeof runtimePayload?.stopOutcome?.stoppedAt, "string");
+    assert.equal(runtimePayload?.stopOutcome?.reason, "host_lost");
+    assert.deepStrictEqual(runtimePayload?.stopOutcome?.knownExternalRunIds, []);
+
+    const command = commands[0];
+    assert.equal(command?.type, "thread.session.set");
+    if (command?.type !== "thread.session.set") return;
+    assert.equal(command.session.status, "interrupted");
+    assert.equal(command.session.activeTurnId, null);
+    assert.equal(command.session.lastError, HOST_LOST_SESSION_ERROR);
   }),
 );
