@@ -4,10 +4,15 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";
+import * as Sink from "effect/Sink";
+import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
+import { ChildProcessSpawner } from "effect/unstable/process";
+import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 
 import {
   make,
+  makeSystemProcessInspector,
   OpenCodeServerLedgerEntry,
   type ObservedProcess,
   type ProcessInspector,
@@ -129,6 +134,63 @@ const addServer = (fake: FakeInspector, overrides?: Partial<ObservedProcess>) =>
 };
 
 const entryPath = (stateDir: string) => `${stateDir}/opencode-servers/500.json`;
+
+/** Minimal ChildProcess command view for assertions, as in processRunner.test.ts. */
+const asChildProcessCommand = (command: unknown) =>
+  command as { readonly command: string; readonly args: ReadonlyArray<string> };
+
+interface FakePsResult {
+  readonly code: number;
+  readonly stdout?: string;
+  readonly stderr?: string;
+}
+
+/**
+ * Drives the real system inspector on the darwin branch with a synthetic
+ * `/bin/ps`, so the test covers the actual evidence boundary without observing
+ * or signalling any live process.
+ */
+const observeWithFakePs = (
+  result: FakePsResult,
+): Effect.Effect<
+  {
+    readonly observation: ProcessObservation;
+    readonly spawns: ReadonlyArray<{
+      readonly command: string;
+      readonly args: ReadonlyArray<string>;
+    }>;
+  },
+  never,
+  FileSystem.FileSystem
+> =>
+  Effect.gen(function* () {
+    const spawns: Array<{ readonly command: string; readonly args: ReadonlyArray<string> }> = [];
+    const spawner = ChildProcessSpawner.make((command) =>
+      Effect.sync(() => {
+        const parsed = asChildProcessCommand(command);
+        spawns.push({ command: parsed.command, args: parsed.args });
+        return ChildProcessSpawner.makeHandle({
+          pid: ChildProcessSpawner.ProcessId(1),
+          exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(result.code)),
+          isRunning: Effect.succeed(false),
+          kill: () => Effect.void,
+          unref: Effect.succeed(Effect.void),
+          stdin: Sink.drain,
+          stdout: Stream.encodeText(Stream.make(result.stdout ?? "")),
+          stderr: Stream.encodeText(Stream.make(result.stderr ?? "")),
+          all: Stream.empty,
+          getInputFd: () => Sink.drain,
+          getOutputFd: () => Stream.empty,
+        });
+      }),
+    );
+    const inspector = yield* makeSystemProcessInspector.pipe(
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      Effect.provideService(HostProcessPlatform, "darwin"),
+    );
+    const observation = yield* inspector.observe(500);
+    return { observation, spawns };
+  });
 
 const makeLedger = (options: {
   readonly fake: FakeInspector;
@@ -496,6 +558,60 @@ it.layer(NodeServices.layer)("OpenCodeServerLedger", (it) => {
       // of converting an unknown outcome into a successful stop.
       assert.deepStrictEqual(second.signals, []);
       assert.strictEqual(yield* fs.exists(entryPath(stateDir)), true);
+    }),
+  );
+
+  it.effect("treats a clean ps no-match as proof of absence", () =>
+    Effect.gen(function* () {
+      // `ps -p <pid>` on Darwin exits 1 with no rows and no diagnostic when no
+      // process matches the selection.
+      const { observation, spawns } = yield* observeWithFakePs({
+        code: 1,
+        stdout: "",
+        stderr: "",
+      });
+
+      assert.deepStrictEqual(spawns, [
+        {
+          command: "/bin/ps",
+          args: ["-ww", "-o", "pid=,pgid=,stat=,lstart=,args=", "-p", "500"],
+        },
+      ]);
+      assert.deepStrictEqual(observation, { state: "absent" });
+    }),
+  );
+
+  it.effect("keeps a failed ps probe as unknown evidence", () =>
+    Effect.gen(function* () {
+      // A genuine ps failure: exit 2 with an empty stdout and a diagnostic on
+      // stderr. Empty stdout alone must never be read as proof the pid is gone.
+      const { observation, spawns } = yield* observeWithFakePs({
+        code: 2,
+        stdout: "",
+        stderr: "ps: illegal option -- w\nusage: ps ...",
+      });
+
+      assert.deepStrictEqual(spawns, [
+        {
+          command: "/bin/ps",
+          args: ["-ww", "-o", "pid=,pgid=,stat=,lstart=,args=", "-p", "500"],
+        },
+      ]);
+      assert.deepStrictEqual(observation, { state: "unknown", detail: "ps_exit_2" });
+    }),
+  );
+
+  it.effect("does not treat a failed no-match-exit probe with a diagnostic as absence", () =>
+    Effect.gen(function* () {
+      // The no-match status only proves absence when ps stayed silent. A
+      // diagnostic means the probe failed, whatever the exit status was.
+      const { observation } = yield* observeWithFakePs({
+        code: 1,
+        stdout: "",
+        stderr: "ps: cannot read process table",
+      });
+
+      assert.deepStrictEqual(observation, { state: "unknown", detail: "ps_exit_1" });
     }),
   );
 

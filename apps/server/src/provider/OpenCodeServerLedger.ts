@@ -245,6 +245,13 @@ export const makeSystemProcessInspector: Effect.Effect<
     | { readonly state: "absent" }
     | { readonly state: "unknown"; readonly detail: string };
 
+  /**
+   * Darwin's `/bin/ps` exits 1 when the selection matched nothing, with no
+   * rows and no diagnostic (`if (nkept == 0) exit(1)` in adv_cmds `ps/ps.c`).
+   * Every other failure is a failed probe and must stay unknown.
+   */
+  const PS_NO_MATCH_EXIT_CODE = 1;
+
   const runPs = (args: ReadonlyArray<string>): Effect.Effect<PsOutput> =>
     Effect.gen(function* () {
       const child = yield* spawner.spawn(
@@ -254,21 +261,27 @@ export const makeSystemProcessInspector: Effect.Effect<
           stdin: "ignore",
         }),
       );
-      const [stdout, code] = yield* Effect.all(
-        [collectStreamAsString(child.stdout), child.exitCode],
+      const [stdout, stderr, code] = yield* Effect.all(
+        [collectStreamAsString(child.stdout), collectStreamAsString(child.stderr), child.exitCode],
         {
           concurrency: "unbounded",
         },
       );
       const exitCode = Number(code);
-      if (exitCode === 0) {
-        return { state: "present", stdout } as const;
+      const noRows = stdout.trim().length === 0;
+      const noDiagnostic = stderr.trim().length === 0;
+      if (exitCode === PS_NO_MATCH_EXIT_CODE && noRows && noDiagnostic) {
+        return { state: "absent" } as const;
       }
-      // `ps -p <pid>` exits non-zero with empty output when the pid is absent.
-      // Any other non-zero exit is a failed probe, not proof of absence.
-      return stdout.trim().length === 0
-        ? ({ state: "absent" } as const)
-        : ({ state: "unknown", detail: `ps_exit_${exitCode}` } as const);
+      if (exitCode !== 0) {
+        // Any other failure says nothing about the pid, even when it printed no
+        // rows. Reporting it as absent would let a reaper kill a live child.
+        return { state: "unknown", detail: `ps_exit_${exitCode}` } as const;
+      }
+      if (noRows) {
+        return { state: "unknown", detail: "ps_output_unparsed" } as const;
+      }
+      return { state: "present", stdout } as const;
     }).pipe(
       Effect.scoped,
       Effect.timeoutOption("5 seconds"),
