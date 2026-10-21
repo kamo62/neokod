@@ -1,4 +1,11 @@
-import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId, TurnId } from "@neokod/contracts";
+import {
+  EnvironmentId,
+  MessageId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+  TurnId,
+} from "@neokod/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { Thread } from "../types";
@@ -10,8 +17,11 @@ import {
   buildThreadTurnInterruptInput,
   canAutoDispatchQueuedMessage,
   canDispatchQueuedMessage,
+  canRetryUnconfirmedQueuedMessage,
+  classifyDispatchFailure,
   composerDraftHoldsQueuedText,
   createLocalDispatchSnapshot,
+  decideQueuedDispatchSettlement,
   deriveComposerSendState,
   deriveActiveToolLabel,
   getStartedThreadModelChangeBlockReason,
@@ -20,10 +30,12 @@ import {
   partitionQueuedMessages,
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
+  removeOptimisticUserMessage,
   resolveSendEnvMode,
+  resolveSendIdentity,
   selectAcknowledgedQueuedMessageIds,
-  settleQueuedDispatch,
   shouldWriteThreadErrorToCurrentServerThread,
+  upsertOptimisticUserMessage,
 } from "./ChatView.logic";
 
 const environmentId = EnvironmentId.make("environment-local");
@@ -538,34 +550,231 @@ describe("canDispatchQueuedMessage", () => {
   });
 });
 
-describe("settleQueuedDispatch", () => {
-  it("keeps the entry when the send was not attempted or never reached a result", () => {
-    expect(settleQueuedDispatch({ outcome: "not_attempted", composerStillHoldsText: false })).toBe(
-      "keep_entry",
+describe("classifyDispatchFailure", () => {
+  it("treats a typed server dispatch error as a definitive rejection", () => {
+    expect(
+      classifyDispatchFailure({
+        interrupted: false,
+        error: { _tag: "OrchestrationDispatchCommandError", message: "rejected" },
+      }),
+    ).toBe("rejected");
+  });
+
+  it("treats an unconnected environment as definitively not sent", () => {
+    expect(
+      classifyDispatchFailure({
+        interrupted: false,
+        error: { _tag: "EnvironmentRpcUnavailableError", message: "not connected" },
+      }),
+    ).toBe("not_sent");
+  });
+
+  it("preserves interruption and transport failures as unknown outcomes", () => {
+    expect(classifyDispatchFailure({ interrupted: true, error: new Error("interrupted") })).toBe(
+      "unknown",
     );
-    expect(settleQueuedDispatch({ outcome: "attempted", composerStillHoldsText: false })).toBe(
-      "keep_entry",
+    expect(
+      classifyDispatchFailure({
+        interrupted: false,
+        error: { _tag: "RpcClientError", message: "socket closed" },
+      }),
+    ).toBe("unknown");
+    expect(classifyDispatchFailure({ interrupted: false, error: new Error("boom") })).toBe(
+      "unknown",
     );
   });
+});
+
+describe("decideQueuedDispatchSettlement", () => {
+  const firstAttempt = { previousDispatchState: "none" as const };
+  const retry = { previousDispatchState: "unconfirmed" as const };
 
   it("removes the entry once the send accepted the text", () => {
-    expect(settleQueuedDispatch({ outcome: "accepted", composerStillHoldsText: false })).toBe(
-      "remove_entry",
-    );
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "accepted",
+        composerStillHoldsText: false,
+        ...firstAttempt,
+      }),
+    ).toBe("remove_entry");
   });
 
-  it("removes the entry when a failed send restored the text into the composer", () => {
-    expect(settleQueuedDispatch({ outcome: "failed", composerStillHoldsText: true })).toBe(
-      "remove_entry",
-    );
+  it("never converts an unknown outcome into an ordinary retry draft", () => {
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "unknown",
+        composerStillHoldsText: true,
+        ...firstAttempt,
+      }),
+    ).toBe("mark_unconfirmed");
   });
 
-  it("keeps the entry when a failed send did not restore the text", () => {
-    // The composer holds newer user text, so dropping the queued entry would
-    // discard the queued message.
-    expect(settleQueuedDispatch({ outcome: "failed", composerStillHoldsText: false })).toBe(
-      "keep_entry",
+  it("marks a first attempt that definitely did not leave the client as failed", () => {
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "not_sent",
+        composerStillHoldsText: false,
+        ...firstAttempt,
+      }),
+    ).toBe("mark_failed");
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "rejected",
+        composerStillHoldsText: false,
+        ...firstAttempt,
+      }),
+    ).toBe("mark_failed");
+  });
+
+  it("marks a first attempt that was never attempted as failed", () => {
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "not_attempted",
+        composerStillHoldsText: false,
+        ...firstAttempt,
+      }),
+    ).toBe("mark_failed");
+  });
+
+  it("removes the entry when a definitive failure restored the text", () => {
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "not_sent",
+        composerStillHoldsText: true,
+        ...firstAttempt,
+      }),
+    ).toBe("remove_entry");
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "rejected",
+        composerStillHoldsText: true,
+        ...firstAttempt,
+      }),
+    ).toBe("remove_entry");
+  });
+
+  it("keeps a retry unconfirmed when this attempt never reached the command", () => {
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "not_sent",
+        composerStillHoldsText: true,
+        ...retry,
+      }),
+    ).toBe("mark_unconfirmed");
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "not_attempted",
+        composerStillHoldsText: false,
+        ...retry,
+      }),
+    ).toBe("mark_unconfirmed");
+  });
+
+  it("allows a definitive rejection to resolve an earlier unknown attempt as failed", () => {
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "rejected",
+        composerStillHoldsText: false,
+        ...retry,
+      }),
+    ).toBe("mark_failed");
+  });
+});
+
+describe("canRetryUnconfirmedQueuedMessage", () => {
+  const clear = {
+    phase: "disconnected" as const,
+    composerDraftEmpty: true,
+    hasActiveThread: true,
+    isSendBusy: false,
+    isConnecting: false,
+    environmentUnavailable: false,
+    sendInFlight: false,
+  };
+
+  it("offers the safe retry from a stopped or disconnected session", () => {
+    expect(canRetryUnconfirmedQueuedMessage(clear)).toBe(true);
+    expect(canRetryUnconfirmedQueuedMessage({ ...clear, phase: "ready" })).toBe(true);
+  });
+
+  it("matches the handler blockers and hides the retry while a turn runs", () => {
+    expect(canRetryUnconfirmedQueuedMessage({ ...clear, phase: "running" })).toBe(false);
+    expect(canRetryUnconfirmedQueuedMessage({ ...clear, composerDraftEmpty: false })).toBe(false);
+    expect(canRetryUnconfirmedQueuedMessage({ ...clear, environmentUnavailable: true })).toBe(
+      false,
     );
+    expect(canRetryUnconfirmedQueuedMessage({ ...clear, isConnecting: true })).toBe(false);
+    expect(canRetryUnconfirmedQueuedMessage({ ...clear, sendInFlight: true })).toBe(false);
+    expect(canRetryUnconfirmedQueuedMessage({ ...clear, hasPendingUserInput: true })).toBe(false);
+  });
+});
+
+describe("resolveSendIdentity", () => {
+  it("never generates a new identity for a claimed queued dispatch", () => {
+    expect(
+      resolveSendIdentity({
+        queuedDispatch: {
+          messageId: "queued-message",
+          commandId: "queued-command",
+          messageCreatedAt: "2026-10-21T10:00:00.000Z",
+        },
+        newMessageId: "fresh-message",
+        now: "2026-10-21T11:00:00.000Z",
+      }),
+    ).toEqual({
+      messageId: "queued-message",
+      commandId: "queued-command",
+      messageCreatedAt: "2026-10-21T10:00:00.000Z",
+    });
+  });
+
+  it("uses the queued timestamp when a legacy claim has none", () => {
+    expect(
+      resolveSendIdentity({
+        queuedDispatch: { messageId: "queued-message", commandId: "queued-command" },
+        newMessageId: "fresh-message",
+        now: "2026-10-21T11:00:00.000Z",
+      }),
+    ).toEqual({
+      messageId: "queued-message",
+      commandId: "queued-command",
+      messageCreatedAt: "2026-10-21T11:00:00.000Z",
+    });
+  });
+
+  it("generates the id but no command id for an ordinary send", () => {
+    expect(
+      resolveSendIdentity({
+        newMessageId: "fresh-message",
+        now: "2026-10-21T11:00:00.000Z",
+      }),
+    ).toEqual({
+      messageId: "fresh-message",
+      commandId: null,
+      messageCreatedAt: "2026-10-21T11:00:00.000Z",
+    });
+  });
+});
+
+describe("optimistic user message rows", () => {
+  const message = {
+    id: MessageId.make("message-1"),
+    role: "user" as const,
+    text: "hello",
+    turnId: null,
+    createdAt: now,
+    updatedAt: now,
+    streaming: false,
+  };
+
+  it("replaces an existing row with the same stable id", () => {
+    const updated = { ...message, text: "retried" };
+    expect(upsertOptimisticUserMessage([message], updated)).toEqual([updated]);
+  });
+
+  it("removes a failed attempt by id without touching other rows", () => {
+    const other = { ...message, id: MessageId.make("message-2") };
+    expect(removeOptimisticUserMessage([message, other], message.id)).toEqual([other]);
   });
 });
 

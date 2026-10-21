@@ -232,11 +232,15 @@ import {
   buildThreadTurnInterruptInput,
   canAutoDispatchQueuedMessage,
   canDispatchQueuedMessage,
+  canRetryUnconfirmedQueuedMessage,
+  classifyDispatchFailure,
   collectUserMessageBlobPreviewUrls,
   composerDraftHoldsQueuedText,
   createLocalDispatchSnapshot,
+  decideQueuedDispatchSettlement,
   deriveComposerSendState,
   deriveActiveToolLabel,
+  type DispatchFailureKind,
   hasServerAcknowledgedLocalDispatch,
   getStartedThreadModelChangeBlockReason,
   LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
@@ -247,12 +251,14 @@ import {
   deriveLockedProvider,
   readFileAsDataUrl,
   reconcileMountedTerminalThreadIds,
+  removeOptimisticUserMessage,
   resolveSendEnvMode,
+  resolveSendIdentity,
   revokeBlobPreviewUrl,
   revokeUserMessagePreviewUrls,
   selectAcknowledgedQueuedMessageIds,
   type SendOutcome,
-  settleQueuedDispatch,
+  upsertOptimisticUserMessage,
   waitForStartedServerThread,
 } from "./ChatView.logic";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
@@ -1129,6 +1135,9 @@ function ChatViewContent(props: ChatViewProps) {
   const markQueuedComposerMessageUnconfirmed = useComposerDraftStore(
     (store) => store.markQueuedMessageDispatchUnconfirmed,
   );
+  const markQueuedComposerMessageFailed = useComposerDraftStore(
+    (store) => store.markQueuedMessageDispatchFailed,
+  );
   const restoreComposerContent = useComposerDraftStore((store) => store.restoreComposerContent);
   // Whether the live draft (independent of the queue) has anything staged.
   // Gates both auto-dispatch and manual steer so neither ever overwrites or
@@ -1226,7 +1235,16 @@ function ChatViewContent(props: ChatViewProps) {
   const isAtEndRef = useRef(true);
   const attachmentPreviewHandoffByMessageIdRef = useRef<Record<string, string[]>>({});
   const attachmentPreviewPromotionInFlightByMessageIdRef = useRef<Record<string, true>>({});
-  const sendInFlightRef = useRef(false);
+  const sendInFlightTargetsRef = useRef<Set<string>>(new Set());
+  const dispatchingQueuedTargetsRef = useRef<Set<string>>(new Set());
+  const [queuedDispatchEpoch, setQueuedDispatchEpoch] = useState(0);
+  const composerViewMountedRef = useRef(true);
+  useEffect(() => {
+    composerViewMountedRef.current = true;
+    return () => {
+      composerViewMountedRef.current = false;
+    };
+  }, []);
   const terminalUiOpenByThreadRef = useRef<Record<string, boolean>>({});
 
   useLayoutEffect(() => {
@@ -4022,11 +4040,15 @@ function ChatViewContent(props: ChatViewProps) {
     readonly reviewComments: ReadonlyArray<ReviewCommentContext>;
   }
 
+  const isCurrentComposerTarget = (target: ComposerThreadTarget): boolean =>
+    composerTargetKey(target) === composerTargetKey(composerDraftTargetRef.current);
+
   // Restores into the target that owned the send, never into whichever
   // composer happens to be on screen. The store write only happens while that
   // target's durable draft is still empty, so a newer draft is never
-  // overwritten. The live refs and cursor move only when the target is still
-  // the current route.
+  // overwritten. Live refs and the shared composer handle move only while this
+  // component instance is mounted and that target is still the current route:
+  // an unmounted instance must never drive a handle now owned by another view.
   const restoreComposerDraftSnapshot = (
     target: ComposerThreadTarget,
     snapshot: ComposerDraftSnapshot,
@@ -4035,7 +4057,7 @@ function ChatViewContent(props: ChatViewProps) {
     if (!restored) {
       return false;
     }
-    if (composerTargetKey(target) === composerTargetKey(composerDraftTargetRef.current)) {
+    if (composerViewMountedRef.current && isCurrentComposerTarget(target)) {
       promptRef.current = snapshot.prompt;
       composerImagesRef.current = [...snapshot.images];
       composerTerminalContextsRef.current = [...snapshot.terminalContexts];
@@ -4053,16 +4075,23 @@ function ChatViewContent(props: ChatViewProps) {
     e?: { preventDefault: () => void },
     options?: {
       bypassQueue?: boolean;
-      queuedDispatch?: { readonly messageId: string; readonly commandId: string };
+      queuedDispatch?: {
+        readonly messageId: string;
+        readonly commandId: string;
+        readonly messageCreatedAt?: string;
+      };
+      /** Preserve an earlier unknown attempt even if this retry never left the client. */
+      preserveUnknownOnFailure?: boolean;
     },
   ): Promise<SendOutcome> => {
     e?.preventDefault();
+    const sendTargetKey = composerTargetKey(composerDraftTarget);
     if (
       !activeThread ||
       isSendBusy ||
       isConnecting ||
       activeEnvironmentUnavailable ||
-      sendInFlightRef.current
+      sendInFlightTargetsRef.current.has(sendTargetKey)
     )
       return "not_attempted";
     if (activePendingProgress) {
@@ -4121,11 +4150,17 @@ function ChatViewContent(props: ChatViewProps) {
       const outcome = await onSubmitPlanFollowUp({
         text: followUp.text,
         interactionMode: followUp.interactionMode,
+        ...(options?.queuedDispatch ? { queuedDispatch: options.queuedDispatch } : {}),
       });
-      if (outcome === "rejected") {
+      const shouldRestorePlanDraft =
+        outcome !== "accepted" &&
+        (options?.queuedDispatch === undefined ||
+          (options?.preserveUnknownOnFailure !== true &&
+            (outcome === "not_sent" || outcome === "rejected")));
+      if (shouldRestorePlanDraft) {
         restoreComposerDraftSnapshot(draftTargetForFollowUp, draftSnapshot);
       }
-      return outcome === "accepted" ? "accepted" : "failed";
+      return outcome;
     }
     const standaloneSlashCommand =
       composerImages.length === 0 &&
@@ -4197,7 +4232,7 @@ function ChatViewContent(props: ChatViewProps) {
       return "not_attempted";
     }
 
-    sendInFlightRef.current = true;
+    sendInFlightTargetsRef.current.add(sendTargetKey);
     beginLocalDispatch({ preparingWorktree: Boolean(baseBranchForWorktree) });
 
     const composerImagesSnapshot = [...composerImages];
@@ -4217,10 +4252,13 @@ function ChatViewContent(props: ChatViewProps) {
       messageTextWithPreviewAnnotations,
       composerReviewCommentsSnapshot,
     );
-    const messageIdForSend = options?.queuedDispatch
-      ? MessageId.make(options.queuedDispatch.messageId)
-      : newMessageId();
-    const messageCreatedAt = new Date().toISOString();
+    const sendIdentity = resolveSendIdentity({
+      ...(options?.queuedDispatch ? { queuedDispatch: options.queuedDispatch } : {}),
+      newMessageId: newMessageId(),
+      now: new Date().toISOString(),
+    });
+    const messageIdForSend = MessageId.make(sendIdentity.messageId);
+    const messageCreatedAt = sendIdentity.messageCreatedAt;
     const outgoingMessageText = formatOutgoingPrompt({
       provider: ctxSelectedProvider,
       model: ctxSelectedModel,
@@ -4259,9 +4297,8 @@ function ChatViewContent(props: ChatViewProps) {
       threadKey: scopedThreadKey(scopeThreadRef(activeThread.environmentId, threadIdForSend)),
       messageId: messageIdForSend,
     });
-    setOptimisticUserMessages((existing) => [
-      ...existing,
-      {
+    setOptimisticUserMessages((existing) =>
+      upsertOptimisticUserMessage(existing, {
         id: messageIdForSend,
         role: "user",
         text: outgoingMessageText,
@@ -4270,8 +4307,8 @@ function ChatViewContent(props: ChatViewProps) {
         createdAt: messageCreatedAt,
         updatedAt: messageCreatedAt,
         streaming: false,
-      },
-    ]);
+      }),
+    );
     setThreadError(threadIdForSend, null);
     if (expiredTerminalContextCount > 0) {
       const toastCopy = buildExpiredTerminalContextToastCopy(
@@ -4349,7 +4386,7 @@ function ChatViewContent(props: ChatViewProps) {
       failure = turnAttachmentsResult;
     }
 
-    let turnStartSucceeded = false;
+    let failureStage: "not_sent" | "command" = "not_sent";
     if (failure === null && turnAttachmentsResult._tag === "Success") {
       const bootstrap =
         isLocalDraftThread || baseBranchForWorktree
@@ -4386,8 +4423,8 @@ function ChatViewContent(props: ChatViewProps) {
         environmentId,
         input: {
           threadId: threadIdForSend,
-          ...(options?.queuedDispatch
-            ? { commandId: CommandId.make(options.queuedDispatch.commandId) }
+          ...(sendIdentity.commandId !== null
+            ? { commandId: CommandId.make(sendIdentity.commandId) }
             : {}),
           message: {
             messageId: messageIdForSend,
@@ -4405,64 +4442,99 @@ function ChatViewContent(props: ChatViewProps) {
       });
       if (startResult._tag === "Failure") {
         failure = startResult;
-      } else {
-        turnStartSucceeded = true;
+        failureStage = "command";
       }
     }
 
     if (failure !== null) {
-      const restored = restoreComposerDraftSnapshot(composerDraftTarget, {
-        prompt: promptForSend,
-        images: composerImagesSnapshot.map(cloneComposerImageForRetry),
-        terminalContexts: composerTerminalContextsSnapshot,
-        elementContexts: composerElementContextsSnapshot,
-        previewAnnotations: composerPreviewAnnotationsSnapshot,
-        reviewComments: composerReviewCommentsSnapshot,
-      });
-      if (restored) {
+      const failureKind: DispatchFailureKind =
+        failureStage === "command"
+          ? classifyDispatchFailure({
+              interrupted: isAtomCommandInterrupted(failure),
+              error: squashAtomCommandFailure(failure),
+            })
+          : "not_sent";
+      const outcome: SendOutcome =
+        failureKind === "unknown"
+          ? "unknown"
+          : failureKind === "rejected"
+            ? "rejected"
+            : "not_sent";
+      const isQueuedDispatch = options?.queuedDispatch !== undefined;
+      const preserveUnknown = isQueuedDispatch && options?.preserveUnknownOnFailure === true;
+      // A queued entry keeps its own copy of the text, so a failed attempt can
+      // always drop the optimistic row by its stable id. This also prevents a
+      // retry from appending a second row with the same id.
+      if (isQueuedDispatch) {
         setOptimisticUserMessages((existing) => {
           const removed = existing.filter((message) => message.id === messageIdForSend);
           for (const message of removed) {
             revokeUserMessagePreviewUrls(message);
           }
-          const next = existing.filter((message) => message.id !== messageIdForSend);
-          return next.length === existing.length ? existing : next;
+          return removeOptimisticUserMessage(existing, messageIdForSend);
         });
       }
-      if (!isAtomCommandInterrupted(failure)) {
+      const shouldRestore = isQueuedDispatch ? failureKind !== "unknown" && !preserveUnknown : true;
+      if (shouldRestore) {
+        const restored = restoreComposerDraftSnapshot(composerDraftTarget, {
+          prompt: promptForSend,
+          images: composerImagesSnapshot.map(cloneComposerImageForRetry),
+          terminalContexts: composerTerminalContextsSnapshot,
+          elementContexts: composerElementContextsSnapshot,
+          previewAnnotations: composerPreviewAnnotationsSnapshot,
+          reviewComments: composerReviewCommentsSnapshot,
+        });
+        if (restored && !isQueuedDispatch) {
+          setOptimisticUserMessages((existing) => {
+            const removed = existing.filter((message) => message.id === messageIdForSend);
+            for (const message of removed) {
+              revokeUserMessagePreviewUrls(message);
+            }
+            return removeOptimisticUserMessage(existing, messageIdForSend);
+          });
+        }
+      }
+      if (isQueuedDispatch && failureKind === "unknown") {
+        setThreadError(
+          threadIdForSend,
+          "The send could not be confirmed. It may still arrive; use Send again to retry with the same message identity.",
+        );
+      } else if (!isAtomCommandInterrupted(failure)) {
         const error = squashAtomCommandFailure(failure);
         setThreadError(
           threadIdForSend,
           error instanceof Error ? error.message : "Failed to send message.",
         );
       }
+      sendInFlightTargetsRef.current.delete(sendTargetKey);
+      if (isCurrentComposerTarget(composerDraftTarget)) {
+        resetLocalDispatch();
+      }
+      return outcome;
     }
-    sendInFlightRef.current = false;
-    if (!turnStartSucceeded) {
-      resetLocalDispatch();
-    }
-    return turnStartSucceeded ? "accepted" : "failed";
+    sendInFlightTargetsRef.current.delete(sendTargetKey);
+    return "accepted";
   };
 
-  // Guards re-entrant dispatch inside one component lifetime. The durable
-  // claim in the draft store is the cross-remount authority: it is set before
-  // `onSend` and cleared only when that invocation settles.
-  const dispatchingQueuedMessageRef = useRef(false);
-
-  const dispatchQueuedMessage = (
+  const dispatchQueuedMessage = async (
     queuedMessageId: string,
     text: string,
-    options?: { readonly allowUnconfirmed?: boolean },
+    options?: { readonly allowRetry?: boolean },
   ) => {
     const target = composerDraftTarget;
+    const targetKey = composerTargetKey(target);
     const queuedMessage = queuedComposerMessages.find((entry) => entry.id === queuedMessageId);
     if (!queuedMessage) {
       return;
     }
-    if (queuedMessage.dispatch?.state === "in_flight") {
+    const previousDispatch = queuedMessage.dispatch;
+    if (previousDispatch?.state === "in_flight") {
       return;
     }
-    if (queuedMessage.dispatch?.state === "unconfirmed" && options?.allowUnconfirmed !== true) {
+    if (previousDispatch !== null && options?.allowRetry !== true) {
+      return;
+    }
+    if (dispatchingQueuedTargetsRef.current.has(targetKey)) {
       return;
     }
     if (
@@ -4471,29 +4543,58 @@ function ChatViewContent(props: ChatViewProps) {
         isSendBusy,
         isConnecting,
         environmentUnavailable: Boolean(activeEnvironmentUnavailable),
-        sendInFlight: sendInFlightRef.current,
+        sendInFlight: sendInFlightTargetsRef.current.has(targetKey),
         hasPendingUserInput: Boolean(activePendingProgress),
       })
     ) {
       return;
     }
 
-    dispatchingQueuedMessageRef.current = true;
-    // Reuse the entry's identity on an explicit retry. The server's durable
-    // command receipt makes that retry idempotent even if the first attempt
-    // was accepted but its acknowledgement was lost.
-    const dispatchIdentity = claimQueuedComposerMessageDispatch(target, queuedMessageId, {
-      messageId: queuedMessage.dispatch?.messageId ?? newMessageId(),
-      commandId: queuedMessage.dispatch?.commandId ?? CommandId.make(randomHex(16)),
+    const previouslyUnconfirmed = previousDispatch?.state === "unconfirmed";
+    dispatchingQueuedTargetsRef.current.add(targetKey);
+    const claim = await claimQueuedComposerMessageDispatch(target, queuedMessageId, {
+      messageId: previouslyUnconfirmed ? previousDispatch.messageId : newMessageId(),
+      commandId: previouslyUnconfirmed ? previousDispatch.commandId : CommandId.make(randomHex(16)),
+      messageCreatedAt: previouslyUnconfirmed
+        ? (previousDispatch.messageCreatedAt ?? queuedMessage.createdAt)
+        : queuedMessage.createdAt,
     });
-    if (!dispatchIdentity) {
-      dispatchingQueuedMessageRef.current = false;
+    if (claim.status !== "claimed") {
+      dispatchingQueuedTargetsRef.current.delete(targetKey);
+      setQueuedDispatchEpoch((epoch) => epoch + 1);
+      if (claim.status === "not_persisted" && activeThread) {
+        setThreadError(
+          activeThread.id,
+          claim.reason === "storage_unavailable"
+            ? "Browser storage is unavailable, so the queued message was not sent. Nothing was left behind in the thread."
+            : "The queued message was not sent because its send record could not be saved locally. Check browser storage and try again.",
+        );
+      }
+      return;
+    }
+
+    const dispatchIdentity = claim.identity;
+    // The durable flush may await an asynchronous storage readback. Never
+    // hand the send to a shared composer handle that now belongs to another
+    // route: the claim is honest ("not sent") and the queue keeps the text.
+    if (!composerViewMountedRef.current || !isCurrentComposerTarget(target)) {
+      markQueuedComposerMessageFailed(target, queuedMessageId);
+      dispatchingQueuedTargetsRef.current.delete(targetKey);
+      setQueuedDispatchEpoch((epoch) => epoch + 1);
       return;
     }
     promptRef.current = text;
     // Decide ownership from the original target's durable draft, never from
     // whichever composer refs happen to be visible after navigation.
     const settle = (outcome: SendOutcome) => {
+      if (outcome === "not_attempted" || outcome === "unknown") {
+        // No send left the client, or the attempt may have been accepted.
+        // Either way the hidden promptRef copy must not leak into a later
+        // ordinary Enter submission; the queue owns the text.
+        if (promptRef.current === text) {
+          promptRef.current = "";
+        }
+      }
       const targetDraft = useComposerDraftStore.getState().getComposerDraft(target);
       const targetHoldsText = targetDraft
         ? composerDraftHoldsQueuedText(
@@ -4508,19 +4609,31 @@ function ChatViewContent(props: ChatViewProps) {
             text,
           )
         : false;
-      if (
-        settleQueuedDispatch({ outcome, composerStillHoldsText: targetHoldsText }) ===
-        "remove_entry"
-      ) {
+      const decision = decideQueuedDispatchSettlement({
+        outcome,
+        composerStillHoldsText: targetHoldsText,
+        previousDispatchState: previousDispatch?.state ?? "none",
+      });
+      if (decision === "remove_entry") {
         removeQueuedComposerMessage(target, queuedMessageId);
-      } else {
+      } else if (decision === "mark_unconfirmed") {
         markQueuedComposerMessageUnconfirmed(target, queuedMessageId);
+      } else {
+        markQueuedComposerMessageFailed(target, queuedMessageId);
       }
     };
-    void onSend(undefined, { bypassQueue: true, queuedDispatch: dispatchIdentity })
-      .then(settle, () => settle("attempted"))
+    void onSend(undefined, {
+      bypassQueue: true,
+      queuedDispatch: dispatchIdentity,
+      preserveUnknownOnFailure: previouslyUnconfirmed,
+    })
+      .then(settle, () => settle("unknown"))
       .finally(() => {
-        dispatchingQueuedMessageRef.current = false;
+        dispatchingQueuedTargetsRef.current.delete(targetKey);
+        // A release can happen while another route is current. Bumping a
+        // reactive generation makes that route re-evaluate its own queue
+        // instead of relying on state changes scoped to the sender's target.
+        setQueuedDispatchEpoch((epoch) => epoch + 1);
       });
   };
 
@@ -4529,20 +4642,36 @@ function ChatViewContent(props: ChatViewProps) {
   // `startTurn` call into the in-flight turn rather than rejecting it. The
   // one narrow exception (Codex mid review/compact) surfaces through the
   // normal send-failure path, same as any other failed send.
+  const canRetryQueuedMessageNow = canRetryUnconfirmedQueuedMessage({
+    phase,
+    composerDraftEmpty: composerDraftIsEmpty,
+    hasActiveThread: activeThread !== null && activeThread !== undefined,
+    isSendBusy,
+    isConnecting,
+    environmentUnavailable: Boolean(activeEnvironmentUnavailable),
+    sendInFlight: sendInFlightTargetsRef.current.has(composerTargetKey(composerDraftTarget)),
+    hasPendingUserInput: Boolean(activePendingProgress),
+  });
+
   const steerQueuedMessage = (queuedMessageId: string) => {
     if (phase !== "running" || !composerDraftIsEmpty) return;
     const message = queuedComposerMessages.find((entry) => entry.id === queuedMessageId);
     if (!message || message.dispatch !== null) return;
-    dispatchQueuedMessage(queuedMessageId, message.text);
+    void dispatchQueuedMessage(queuedMessageId, message.text);
   };
 
   // An unconfirmed entry is never replayed automatically. Its stable identity
   // makes an explicit retry safe; the user decides when to make that call.
   const retryQueuedMessage = (queuedMessageId: string) => {
-    if (phase === "running" || !composerDraftIsEmpty) return;
     const message = queuedComposerMessages.find((entry) => entry.id === queuedMessageId);
-    if (!message || message.dispatch?.state !== "unconfirmed") return;
-    dispatchQueuedMessage(queuedMessageId, message.text, { allowUnconfirmed: true });
+    if (
+      !message ||
+      (message.dispatch?.state !== "unconfirmed" && message.dispatch?.state !== "failed")
+    ) {
+      return;
+    }
+    if (!canRetryQueuedMessageNow) return;
+    void dispatchQueuedMessage(queuedMessageId, message.text, { allowRetry: true });
   };
 
   // A queued send whose stable message id appears in the thread has been
@@ -4566,7 +4695,7 @@ function ChatViewContent(props: ChatViewProps) {
   // notice and drain the next item behind once that also settles.
   useEffect(() => {
     if (phase !== "ready") return;
-    if (dispatchingQueuedMessageRef.current) return;
+    if (dispatchingQueuedTargetsRef.current.has(composerTargetKey(composerDraftTarget))) return;
     if (!composerDraftIsEmpty) return;
     const next = queuedComposerMessages[0];
     if (!next) return;
@@ -4577,13 +4706,13 @@ function ChatViewContent(props: ChatViewProps) {
         isSendBusy,
         isConnecting,
         environmentUnavailable: Boolean(activeEnvironmentUnavailable),
-        sendInFlight: sendInFlightRef.current,
+        sendInFlight: sendInFlightTargetsRef.current.has(composerTargetKey(composerDraftTarget)),
         hasPendingUserInput: Boolean(activePendingProgress),
       })
     ) {
       return;
     }
-    dispatchQueuedMessage(next.id, next.text);
+    void dispatchQueuedMessage(next.id, next.text);
     // dispatchQueuedMessage intentionally omitted: it closes over the latest
     // render's values already, and including it would redefine the effect's
     // identity every render without changing when it should run. Dispatch
@@ -4599,6 +4728,7 @@ function ChatViewContent(props: ChatViewProps) {
     isConnecting,
     activeEnvironmentUnavailable,
     activePendingProgress,
+    queuedDispatchEpoch,
   ]);
 
   const onInterrupt = async () => {
@@ -4782,28 +4912,36 @@ function ChatViewContent(props: ChatViewProps) {
     async ({
       text,
       interactionMode: nextInteractionMode,
+      queuedDispatch,
     }: {
       text: string;
       interactionMode: "default" | "plan";
-    }): Promise<"accepted" | "rejected"> => {
+      queuedDispatch?: {
+        readonly messageId: string;
+        readonly commandId: string;
+        readonly messageCreatedAt?: string;
+      };
+    }): Promise<SendOutcome> => {
+      const planTargetKey = composerTargetKey(composerDraftTarget);
       if (
         !activeThread ||
         !isServerThread ||
         isSendBusy ||
         isConnecting ||
-        sendInFlightRef.current
+        activeEnvironmentUnavailable ||
+        sendInFlightTargetsRef.current.has(planTargetKey)
       ) {
-        return "rejected";
+        return "not_attempted";
       }
 
       const trimmed = text.trim();
       if (!trimmed) {
-        return "rejected";
+        return "not_attempted";
       }
 
       const sendCtx = composerRef.current?.getSendContext();
       if (!sendCtx) {
-        return "rejected";
+        return "not_attempted";
       }
       const {
         selectedProvider: ctxSelectedProvider,
@@ -4814,8 +4952,13 @@ function ChatViewContent(props: ChatViewProps) {
       } = sendCtx;
 
       const threadIdForSend = activeThread.id;
-      const messageIdForSend = newMessageId();
-      const messageCreatedAt = new Date().toISOString();
+      const sendIdentity = resolveSendIdentity({
+        ...(queuedDispatch ? { queuedDispatch } : {}),
+        newMessageId: newMessageId(),
+        now: new Date().toISOString(),
+      });
+      const messageIdForSend = MessageId.make(sendIdentity.messageId);
+      const messageCreatedAt = sendIdentity.messageCreatedAt;
       const outgoingMessageText = formatOutgoingPrompt({
         provider: ctxSelectedProvider,
         model: ctxSelectedModel,
@@ -4824,7 +4967,7 @@ function ChatViewContent(props: ChatViewProps) {
         text: trimmed,
       });
 
-      sendInFlightRef.current = true;
+      sendInFlightTargetsRef.current.add(planTargetKey);
       beginLocalDispatch({ preparingWorktree: false });
       setThreadError(threadIdForSend, null);
 
@@ -4841,9 +4984,8 @@ function ChatViewContent(props: ChatViewProps) {
         messageId: messageIdForSend,
       });
 
-      setOptimisticUserMessages((existing) => [
-        ...existing,
-        {
+      setOptimisticUserMessages((existing) =>
+        upsertOptimisticUserMessage(existing, {
           id: messageIdForSend,
           role: "user",
           text: outgoingMessageText,
@@ -4851,8 +4993,8 @@ function ChatViewContent(props: ChatViewProps) {
           createdAt: messageCreatedAt,
           updatedAt: messageCreatedAt,
           streaming: false,
-        },
-      ]);
+        }),
+      );
 
       const settingsResult = await persistThreadSettingsForNextTurn({
         threadId: threadIdForSend,
@@ -4863,6 +5005,7 @@ function ChatViewContent(props: ChatViewProps) {
       });
       let failure: AtomCommandResult<unknown, unknown> | null =
         settingsResult._tag === "Failure" ? settingsResult : null;
+      let failureStage: "not_sent" | "command" = "not_sent";
 
       if (failure === null) {
         // Keep the mode toggle and plan-follow-up banner in sync immediately
@@ -4876,6 +5019,9 @@ function ChatViewContent(props: ChatViewProps) {
           environmentId,
           input: {
             threadId: threadIdForSend,
+            ...(sendIdentity.commandId !== null
+              ? { commandId: CommandId.make(sendIdentity.commandId) }
+              : {}),
             message: {
               messageId: messageIdForSend,
               role: "user",
@@ -4897,7 +5043,12 @@ function ChatViewContent(props: ChatViewProps) {
             createdAt: messageCreatedAt,
           },
         });
-        failure = startResult._tag === "Failure" ? startResult : null;
+        if (startResult._tag === "Failure") {
+          failure = startResult;
+          failureStage = "command";
+        } else {
+          failure = null;
+        }
       }
 
       if (failure === null) {
@@ -4910,28 +5061,56 @@ function ChatViewContent(props: ChatViewProps) {
             useRightPanelStore.getState().open(activeThreadRef, "plan");
           }
         }
-        sendInFlightRef.current = false;
+        sendInFlightTargetsRef.current.delete(planTargetKey);
         return "accepted";
       }
 
-      setOptimisticUserMessages((existing) =>
-        existing.filter((message) => message.id !== messageIdForSend),
-      );
-      if (!isAtomCommandInterrupted(failure)) {
+      const failureKind: DispatchFailureKind =
+        failureStage === "command"
+          ? classifyDispatchFailure({
+              interrupted: isAtomCommandInterrupted(failure),
+              error: squashAtomCommandFailure(failure),
+            })
+          : "not_sent";
+      const outcome: SendOutcome =
+        failureKind === "unknown"
+          ? "unknown"
+          : failureKind === "rejected"
+            ? "rejected"
+            : "not_sent";
+      setOptimisticUserMessages((existing) => {
+        const removed = existing.filter((message) => message.id === messageIdForSend);
+        for (const message of removed) {
+          revokeUserMessagePreviewUrls(message);
+        }
+        return removeOptimisticUserMessage(existing, messageIdForSend);
+      });
+      if (queuedDispatch !== undefined && failureKind === "unknown") {
+        setThreadError(
+          threadIdForSend,
+          "The plan follow-up could not be confirmed. It may still arrive; use Send again to retry with the same message identity.",
+        );
+      } else if (!isAtomCommandInterrupted(failure)) {
         const error = squashAtomCommandFailure(failure);
         setThreadError(
           threadIdForSend,
           error instanceof Error ? error.message : "Failed to send plan follow-up.",
         );
       }
-      sendInFlightRef.current = false;
-      resetLocalDispatch();
-      return "rejected";
+      sendInFlightTargetsRef.current.delete(planTargetKey);
+      if (
+        composerTargetKey(composerDraftTarget) === composerTargetKey(composerDraftTargetRef.current)
+      ) {
+        resetLocalDispatch();
+      }
+      return outcome;
     },
     [
       activeThread,
       activeProposedPlan,
+      activeEnvironmentUnavailable,
       beginLocalDispatch,
+      composerDraftTarget,
       isConnecting,
       isSendBusy,
       isServerThread,
@@ -4948,6 +5127,7 @@ function ChatViewContent(props: ChatViewProps) {
   );
 
   const onImplementPlanInNewThread = useCallback(async () => {
+    const implementTargetKey = composerTargetKey(composerDraftTarget);
     if (
       !activeThread ||
       !activeProject ||
@@ -4956,7 +5136,7 @@ function ChatViewContent(props: ChatViewProps) {
       isSendBusy ||
       isConnecting ||
       activeEnvironmentUnavailable ||
-      sendInFlightRef.current
+      sendInFlightTargetsRef.current.has(implementTargetKey)
     ) {
       return;
     }
@@ -4987,11 +5167,15 @@ function ChatViewContent(props: ChatViewProps) {
     const nextThreadTitle = truncate(buildPlanImplementationThreadTitle(planMarkdown));
     const nextThreadModelSelection: ModelSelection = ctxSelectedModelSelection;
 
-    sendInFlightRef.current = true;
+    sendInFlightTargetsRef.current.add(implementTargetKey);
     beginLocalDispatch({ preparingWorktree: false });
     const finish = () => {
-      sendInFlightRef.current = false;
-      resetLocalDispatch();
+      sendInFlightTargetsRef.current.delete(implementTargetKey);
+      if (
+        composerTargetKey(composerDraftTarget) === composerTargetKey(composerDraftTargetRef.current)
+      ) {
+        resetLocalDispatch();
+      }
     };
 
     const createResult = await createThread({
@@ -5093,6 +5277,7 @@ function ChatViewContent(props: ChatViewProps) {
     activeThread,
     beginLocalDispatch,
     activeEnvironmentUnavailable,
+    composerDraftTarget,
     createThread,
     deleteThread,
     isConnecting,
@@ -5624,6 +5809,7 @@ function ChatViewContent(props: ChatViewProps) {
                       onExpandImage={onExpandTimelineImage}
                       onSteerQueuedMessage={steerQueuedMessage}
                       onRetryQueuedMessage={retryQueuedMessage}
+                      canRetryQueuedMessage={canRetryQueuedMessageNow}
                     />
                   </div>
                 </div>

@@ -312,7 +312,7 @@ export function canDispatchQueuedMessage(input: {
  * it remounts.
  */
 export function canAutoDispatchQueuedMessage(input: {
-  readonly dispatchState: "none" | "in_flight" | "unconfirmed";
+  readonly dispatchState: QueuedDispatchState;
   readonly hasActiveThread: boolean;
   readonly isSendBusy: boolean;
   readonly isConnecting: boolean;
@@ -323,21 +323,140 @@ export function canAutoDispatchQueuedMessage(input: {
   return input.dispatchState === "none" && canDispatchQueuedMessage(input);
 }
 
-export type SendOutcome = "not_attempted" | "attempted" | "accepted" | "failed";
+export type SendOutcome =
+  | "not_attempted"
+  | "accepted"
+  /** The attempt definitively stopped before any command reached the server. */
+  | "not_sent"
+  /** The server definitively rejected the command; it was not accepted. */
+  | "rejected"
+  /** The command may have been accepted but the outcome could not be observed. */
+  | "unknown";
+
+export type DispatchFailureKind = "not_sent" | "rejected" | "unknown";
+
+function taggedErrorName(error: unknown): string | null {
+  if (typeof error !== "object" || error === null) return null;
+  const tag = (error as { readonly _tag?: unknown })._tag;
+  return typeof tag === "string" ? tag : null;
+}
 
 /**
- * Decides who still owns a queued message's text after a dispatch attempt.
- * `accepted` means the send took it. `failed` means the send put it back into
- * the live composer, so the queue can release it. Everything else, including
- * a send that threw before settling, keeps the queued entry.
+ * Classifies a failed send after the turn command was dispatched.
+ *
+ * A typed dispatch error is a server decision that the command was not
+ * accepted. An unavailable environment is rejected before the request leaves
+ * the client. Anything else, including transport loss and interruption, may
+ * have happened after the server committed the command and therefore stays
+ * unknown.
  */
-export function settleQueuedDispatch(input: {
+export function classifyDispatchFailure(input: {
+  readonly interrupted: boolean;
+  readonly error: unknown;
+}): DispatchFailureKind {
+  if (input.interrupted) return "unknown";
+  const tag = taggedErrorName(input.error);
+  if (tag === "EnvironmentRpcUnavailableError") return "not_sent";
+  if (tag === "OrchestrationDispatchCommandError") return "rejected";
+  return "unknown";
+}
+
+export type QueuedDispatchState = "none" | "in_flight" | "unconfirmed" | "failed";
+
+export type QueuedDispatchSettlement = "remove_entry" | "mark_unconfirmed" | "mark_failed";
+
+/**
+ * Decides what happens to a queued entry after one dispatch attempt.
+ *
+ * The entry owns its text until the composer has it or the send was accepted.
+ * An outcome that may have been accepted must stay under its stable identity:
+ * converting it into an ordinary draft would allow a fresh-id resend.
+ */
+export function decideQueuedDispatchSettlement(input: {
   readonly outcome: SendOutcome;
   readonly composerStillHoldsText: boolean;
-}): "remove_entry" | "keep_entry" {
+  readonly previousDispatchState: QueuedDispatchState;
+}): QueuedDispatchSettlement {
   if (input.outcome === "accepted") return "remove_entry";
-  if (input.outcome === "failed" && input.composerStillHoldsText) return "remove_entry";
-  return "keep_entry";
+  if (input.outcome === "unknown") return "mark_unconfirmed";
+  if (input.outcome === "not_attempted") {
+    // Never turn a claimed entry back into an automatically dispatchable one:
+    // an unreflected blocker could otherwise retry in a loop.
+    return input.previousDispatchState === "unconfirmed" ? "mark_unconfirmed" : "mark_failed";
+  }
+  if (input.outcome === "rejected") {
+    return input.composerStillHoldsText ? "remove_entry" : "mark_failed";
+  }
+  // `not_sent`. A known local failure on a retry cannot resolve an earlier
+  // attempt whose command may already have been accepted.
+  if (input.previousDispatchState === "unconfirmed") return "mark_unconfirmed";
+  return input.composerStillHoldsText ? "remove_entry" : "mark_failed";
+}
+
+/**
+ * Retry availability mirrors the handler and the actual send blockers. After
+ * a reload the session is often stopped or disconnected, which is not itself a
+ * reason to hide the only safe retry for an unconfirmed send.
+ */
+export function canRetryUnconfirmedQueuedMessage(input: {
+  readonly phase: SessionPhase;
+  readonly composerDraftEmpty: boolean;
+  readonly hasActiveThread: boolean;
+  readonly isSendBusy: boolean;
+  readonly isConnecting: boolean;
+  readonly environmentUnavailable: boolean;
+  readonly sendInFlight: boolean;
+  readonly hasPendingUserInput?: boolean;
+}): boolean {
+  return input.phase !== "running" && input.composerDraftEmpty && canDispatchQueuedMessage(input);
+}
+
+export function upsertOptimisticUserMessage(
+  messages: ReadonlyArray<ChatMessage>,
+  message: ChatMessage,
+): ChatMessage[] {
+  return [...messages.filter((existing) => existing.id !== message.id), message];
+}
+
+export function removeOptimisticUserMessage(
+  messages: ReadonlyArray<ChatMessage>,
+  messageId: string,
+): ChatMessage[] {
+  return messages.filter((message) => message.id !== messageId);
+}
+
+export interface ResolvedSendIdentity {
+  readonly messageId: string;
+  readonly commandId: string | null;
+  readonly messageCreatedAt: string;
+}
+
+/**
+ * Resolves the identity submitted to `thread.turn.start`. A claimed queued
+ * dispatch always wins over freshly generated ids, in the ordinary and the
+ * plan-follow-up branch alike.
+ */
+export function resolveSendIdentity(input: {
+  readonly queuedDispatch?: {
+    readonly messageId: string;
+    readonly commandId: string;
+    readonly messageCreatedAt?: string;
+  };
+  readonly newMessageId: string;
+  readonly now: string;
+}): ResolvedSendIdentity {
+  if (input.queuedDispatch) {
+    return {
+      messageId: input.queuedDispatch.messageId,
+      commandId: input.queuedDispatch.commandId,
+      messageCreatedAt: input.queuedDispatch.messageCreatedAt ?? input.now,
+    };
+  }
+  return {
+    messageId: input.newMessageId,
+    commandId: null,
+    messageCreatedAt: input.now,
+  };
 }
 
 export function isComposerDraftEmpty(input: {

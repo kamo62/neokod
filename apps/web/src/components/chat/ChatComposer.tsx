@@ -10,7 +10,6 @@ import type {
   ScopedThreadRef,
   ServerProvider,
   ThreadId,
-  TurnId,
 } from "@neokod/contracts";
 import {
   ProviderDriverKind,
@@ -563,6 +562,8 @@ export interface ChatComposerProps {
   onSteerQueuedMessage: (queuedMessageId: string) => void;
   /** Explicitly retries a queued send whose outcome is unconfirmed. */
   onRetryQueuedMessage: (queuedMessageId: string) => void;
+  /** Mirrors the retry handler and the actual send blockers. */
+  canRetryQueuedMessage: boolean;
 }
 
 // --------------------------------------------------------------------------
@@ -637,6 +638,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onExpandImage,
     onSteerQueuedMessage,
     onRetryQueuedMessage,
+    canRetryQueuedMessage,
   } = props;
 
   // ------------------------------------------------------------------
@@ -2584,11 +2586,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                               {message.text}
                             </span>
                             <span className="shrink-0 text-[11px] text-muted-foreground/70">
-                              {dispatchState === "in_flight" ? "Sending…" : "Not confirmed"}
+                              {dispatchState === "in_flight"
+                                ? "Sending…"
+                                : dispatchState === "unconfirmed"
+                                  ? "Not confirmed"
+                                  : "Not sent"}
                             </span>
-                            {dispatchState === "unconfirmed" &&
-                            phase === "ready" &&
-                            composerDraftIsEmpty ? (
+                            {(dispatchState === "unconfirmed" || dispatchState === "failed") &&
+                            canRetryQueuedMessage ? (
                               <button
                                 type="button"
                                 onClick={() => onRetryQueuedMessage(message.id)}
@@ -2597,7 +2602,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                                 Send again
                               </button>
                             ) : null}
-                            {dispatchState === "unconfirmed" ? (
+                            {dispatchState === "unconfirmed" || dispatchState === "failed" ? (
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -2606,7 +2611,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                                 onClick={() =>
                                   removeQueuedComposerMessage(composerDraftTarget, message.id)
                                 }
-                                aria-label="Remove unconfirmed queued message"
+                                aria-label="Remove unsent queued message"
                               >
                                 <XIcon className="size-3" />
                               </Button>

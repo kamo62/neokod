@@ -1888,86 +1888,272 @@ describe("composerDraftStore queued dispatch claims", () => {
   const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
   const otherThreadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, otherThreadId);
   const attemptedAt = "2026-10-21T10:00:00.000Z";
+  const threadKey = threadKeyFor(threadId, TEST_ENVIRONMENT_ID);
+  type StoreModule = typeof import("./composerDraftStore");
 
-  beforeEach(() => {
-    resetComposerDraftStore();
-  });
+  let durableStorage: Map<string, string>;
+  let durableStorageApi: Storage;
+  let storeModule: StoreModule;
+
+  function installDurableBrowserStorage(): { values: Map<string, string>; storage: Storage } {
+    const values = new Map<string, string>();
+    const storage: Storage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => {
+        values.set(key, value);
+      },
+      removeItem: (key) => {
+        values.delete(key);
+      },
+      clear: () => values.clear(),
+      key: (index) => [...values.keys()][index] ?? null,
+      get length() {
+        return values.size;
+      },
+    };
+    const testWindow = {
+      localStorage: storage,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as Window & typeof globalThis;
+    vi.stubGlobal("window", testWindow);
+    vi.stubGlobal("localStorage", storage);
+    return { values, storage };
+  }
 
   function persistApi() {
-    return useComposerDraftStore.persist as unknown as {
+    return storeModule.useComposerDraftStore.persist as unknown as {
       getOptions: () => {
-        partialize: (state: ReturnType<typeof useComposerDraftStore.getState>) => unknown;
+        partialize: (
+          state: ReturnType<typeof storeModule.useComposerDraftStore.getState>,
+        ) => unknown;
         merge: (
           persistedState: unknown,
-          currentState: ReturnType<typeof useComposerDraftStore.getState>,
-        ) => ReturnType<typeof useComposerDraftStore.getState>;
+          currentState: ReturnType<typeof storeModule.useComposerDraftStore.getState>,
+        ) => ReturnType<typeof storeModule.useComposerDraftStore.getState>;
       };
     };
   }
 
-  it("keeps a claim across consumer lifetimes and refuses a second send", () => {
-    const store = useComposerDraftStore.getState();
-    const queuedMessageId = store.addQueuedMessage(threadRef, "carry on");
-    expect(queuedMessageId).not.toBeNull();
+  function persistedStateFromDisk(): unknown {
+    const raw = durableStorage.get(COMPOSER_DRAFT_STORAGE_KEY);
+    expect(raw).toBeTypeOf("string");
+    return (JSON.parse(raw!) as { state: unknown }).state;
+  }
 
-    const identity = useComposerDraftStore
+  beforeEach(async () => {
+    const installed = installDurableBrowserStorage();
+    durableStorage = installed.values;
+    durableStorageApi = installed.storage;
+    vi.resetModules();
+    storeModule = await import("./composerDraftStore");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it("flushes and reads back the claim before the send may start", async () => {
+    const queuedMessageId = storeModule.useComposerDraftStore
       .getState()
-      .claimQueuedMessageDispatch(threadRef, queuedMessageId!, {
+      .addQueuedMessage(threadRef, "carry on")!;
+
+    const claim = await storeModule.useComposerDraftStore
+      .getState()
+      .claimQueuedMessageDispatch(threadRef, queuedMessageId, {
         messageId: "message-1",
         commandId: "command-1",
+        messageCreatedAt: attemptedAt,
       });
-    expect(identity).toEqual({ messageId: "message-1", commandId: "command-1" });
 
-    // A remount re-reads the store; it does not recreate the claim.
-    const remountedEntry = useComposerDraftStore.getState().getComposerDraft(threadRef)
-      ?.queuedMessages[0];
-    expect(remountedEntry?.dispatch).toMatchObject({
+    expect(claim).toEqual({
+      status: "claimed",
+      identity: {
+        messageId: "message-1",
+        commandId: "command-1",
+        messageCreatedAt: attemptedAt,
+      },
+    });
+
+    // No debounce timer has fired; the claim is already on disk.
+    const persisted = persistedStateFromDisk() as {
+      draftsByThreadKey: Record<string, { queuedMessages?: Array<Record<string, unknown>> }>;
+    };
+    expect(persisted.draftsByThreadKey[threadKey]?.queuedMessages?.[0]?.dispatch).toMatchObject({
       messageId: "message-1",
       commandId: "command-1",
+      messageCreatedAt: attemptedAt,
       state: "in_flight",
     });
 
-    expect(
-      useComposerDraftStore.getState().claimQueuedMessageDispatch(threadRef, queuedMessageId!, {
-        messageId: "message-2",
-        commandId: "command-2",
-      }),
-    ).toBeNull();
-    expect(
-      useComposerDraftStore.getState().getComposerDraft(threadRef)?.queuedMessages[0]?.dispatch,
-    ).toMatchObject({ messageId: "message-1", state: "in_flight" });
-  });
-
-  it("marks a claim unconfirmed and retries it with the same stable identity", () => {
-    const queuedMessageId = useComposerDraftStore
-      .getState()
-      .addQueuedMessage(threadRef, "carry on")!;
-    useComposerDraftStore.getState().claimQueuedMessageDispatch(threadRef, queuedMessageId, {
+    // A crash now hydrates the same durable entry as an unknown claim.
+    const merged = persistApi()
+      .getOptions()
+      .merge(persisted, storeModule.useComposerDraftStore.getInitialState());
+    expect(merged.draftsByThreadKey[threadKey]?.queuedMessages[0]?.dispatch).toMatchObject({
       messageId: "message-1",
       commandId: "command-1",
+      state: "unconfirmed",
     });
+  });
 
-    useComposerDraftStore
+  it("refuses a second live claim and reuses the stable identity on retry", async () => {
+    const queuedMessageId = storeModule.useComposerDraftStore
+      .getState()
+      .addQueuedMessage(threadRef, "carry on")!;
+    const firstClaim = await storeModule.useComposerDraftStore
+      .getState()
+      .claimQueuedMessageDispatch(threadRef, queuedMessageId, {
+        messageId: "message-1",
+        commandId: "command-1",
+        messageCreatedAt: attemptedAt,
+      });
+    expect(firstClaim.status).toBe("claimed");
+
+    const secondClaim = await storeModule.useComposerDraftStore
+      .getState()
+      .claimQueuedMessageDispatch(threadRef, queuedMessageId, {
+        messageId: "message-2",
+        commandId: "command-2",
+      });
+    expect(secondClaim).toEqual({ status: "not_claimed" });
+
+    storeModule.useComposerDraftStore
       .getState()
       .markQueuedMessageDispatchUnconfirmed(threadRef, queuedMessageId);
-    expect(
-      useComposerDraftStore.getState().getComposerDraft(threadRef)?.queuedMessages[0]?.dispatch,
-    ).toMatchObject({ messageId: "message-1", commandId: "command-1", state: "unconfirmed" });
-
-    expect(
-      useComposerDraftStore.getState().claimQueuedMessageDispatch(threadRef, queuedMessageId, {
+    const retryClaim = await storeModule.useComposerDraftStore
+      .getState()
+      .claimQueuedMessageDispatch(threadRef, queuedMessageId, {
         messageId: "ignored",
         commandId: "ignored",
-      }),
-    ).toEqual({ messageId: "message-1", commandId: "command-1" });
+      });
+    expect(retryClaim).toEqual({
+      status: "claimed",
+      identity: {
+        messageId: "message-1",
+        commandId: "command-1",
+        messageCreatedAt: attemptedAt,
+      },
+    });
+  });
+
+  it("starts a fresh identity after a definitively failed attempt", async () => {
+    const queuedMessageId = storeModule.useComposerDraftStore
+      .getState()
+      .addQueuedMessage(threadRef, "carry on")!;
+    await storeModule.useComposerDraftStore
+      .getState()
+      .claimQueuedMessageDispatch(threadRef, queuedMessageId, {
+        messageId: "message-1",
+        commandId: "command-1",
+      });
+    storeModule.useComposerDraftStore
+      .getState()
+      .markQueuedMessageDispatchFailed(threadRef, queuedMessageId);
+
+    const retryClaim = await storeModule.useComposerDraftStore
+      .getState()
+      .claimQueuedMessageDispatch(threadRef, queuedMessageId, {
+        messageId: "message-2",
+        commandId: "command-2",
+      });
+
+    expect(retryClaim).toEqual({
+      status: "claimed",
+      identity: { messageId: "message-2", commandId: "command-2" },
+    });
     expect(
-      useComposerDraftStore.getState().getComposerDraft(threadRef)?.queuedMessages[0]?.dispatch
-        ?.state,
-    ).toBe("in_flight");
+      storeModule.useComposerDraftStore.getState().getComposerDraft(threadRef)?.queuedMessages[0]
+        ?.dispatch,
+    ).toMatchObject({ messageId: "message-2", commandId: "command-2", state: "in_flight" });
+  });
+
+  it("keeps the queue and reverts a claim that could not be written", async () => {
+    const queuedMessageId = storeModule.useComposerDraftStore
+      .getState()
+      .addQueuedMessage(threadRef, "carry on")!;
+    durableStorageApi.setItem = () => {
+      throw new Error("quota exceeded");
+    };
+
+    const claim = await storeModule.useComposerDraftStore
+      .getState()
+      .claimQueuedMessageDispatch(threadRef, queuedMessageId, {
+        messageId: "message-1",
+        commandId: "command-1",
+      });
+
+    expect(claim).toEqual({ status: "not_persisted", reason: "write_failed" });
+    const entry = storeModule.useComposerDraftStore.getState().getComposerDraft(threadRef)
+      ?.queuedMessages[0];
+    expect(entry?.text).toBe("carry on");
+    expect(entry?.dispatch).toMatchObject({
+      messageId: "message-1",
+      commandId: "command-1",
+      state: "failed",
+    });
+  });
+
+  it("preserves an earlier unknown claim when a retry claim cannot be persisted", async () => {
+    const queuedMessageId = storeModule.useComposerDraftStore
+      .getState()
+      .addQueuedMessage(threadRef, "carry on")!;
+    await storeModule.useComposerDraftStore
+      .getState()
+      .claimQueuedMessageDispatch(threadRef, queuedMessageId, {
+        messageId: "message-1",
+        commandId: "command-1",
+      });
+    storeModule.useComposerDraftStore
+      .getState()
+      .markQueuedMessageDispatchUnconfirmed(threadRef, queuedMessageId);
+    durableStorageApi.setItem = () => {
+      throw new Error("quota exceeded");
+    };
+
+    const claim = await storeModule.useComposerDraftStore
+      .getState()
+      .claimQueuedMessageDispatch(threadRef, queuedMessageId, {
+        messageId: "message-1",
+        commandId: "command-1",
+      });
+
+    expect(claim.status).toBe("not_persisted");
+    expect(
+      storeModule.useComposerDraftStore.getState().getComposerDraft(threadRef)?.queuedMessages[0]
+        ?.dispatch,
+    ).toMatchObject({ messageId: "message-1", commandId: "command-1", state: "unconfirmed" });
+  });
+
+  it("fails closed when only the in-memory fallback is available", async () => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    const fallbackModule = await import("./composerDraftStore");
+    expect(fallbackModule.COMPOSER_DRAFT_STORAGE_IS_DURABLE).toBe(false);
+
+    const queuedMessageId = fallbackModule.useComposerDraftStore
+      .getState()
+      .addQueuedMessage(threadRef, "carry on")!;
+    const claim = await fallbackModule.useComposerDraftStore
+      .getState()
+      .claimQueuedMessageDispatch(threadRef, queuedMessageId, {
+        messageId: "message-1",
+        commandId: "command-1",
+      });
+
+    expect(claim).toEqual({ status: "not_persisted", reason: "storage_unavailable" });
+    const entry = fallbackModule.useComposerDraftStore.getState().getComposerDraft(threadRef)
+      ?.queuedMessages[0];
+    expect(entry?.text).toBe("carry on");
+    expect(entry?.dispatch).toMatchObject({
+      messageId: "message-1",
+      commandId: "command-1",
+      state: "failed",
+    });
   });
 
   it("hydrates a persisted in-flight claim as unconfirmed", () => {
-    const threadKey = threadKeyFor(threadId, TEST_ENVIRONMENT_ID);
     const merged = persistApi()
       .getOptions()
       .merge(
@@ -1994,7 +2180,7 @@ describe("composerDraftStore queued dispatch claims", () => {
           draftThreadsByThreadKey: {},
           logicalProjectDraftThreadKeyByLogicalProjectKey: {},
         },
-        useComposerDraftStore.getInitialState(),
+        storeModule.useComposerDraftStore.getInitialState(),
       );
 
     expect(merged.draftsByThreadKey[threadKey]?.queuedMessages[0]?.dispatch).toMatchObject({
@@ -2005,20 +2191,21 @@ describe("composerDraftStore queued dispatch claims", () => {
   });
 
   it("does not persist a null dispatch marker for an unclaimed entry", () => {
-    useComposerDraftStore.getState().addQueuedMessage(threadRef, "carry on");
-    const persisted = persistApi().getOptions().partialize(useComposerDraftStore.getState()) as {
+    storeModule.useComposerDraftStore.getState().addQueuedMessage(threadRef, "carry on");
+    const persisted = persistApi()
+      .getOptions()
+      .partialize(storeModule.useComposerDraftStore.getState()) as {
       draftsByThreadKey?: Record<string, { queuedMessages?: Array<Record<string, unknown>> }>;
     };
 
-    expect(
-      persisted.draftsByThreadKey?.[threadKeyFor(threadId, TEST_ENVIRONMENT_ID)]
-        ?.queuedMessages?.[0],
-    ).not.toHaveProperty("dispatch");
+    expect(persisted.draftsByThreadKey?.[threadKey]?.queuedMessages?.[0]).not.toHaveProperty(
+      "dispatch",
+    );
   });
 
   it("restores content into the original empty target without touching another thread", () => {
-    useComposerDraftStore.getState().setPrompt(otherThreadRef, "B draft");
-    const restored = useComposerDraftStore.getState().restoreComposerContent(
+    storeModule.useComposerDraftStore.getState().setPrompt(otherThreadRef, "B draft");
+    const restored = storeModule.useComposerDraftStore.getState().restoreComposerContent(
       threadRef,
       {
         prompt: "A draft",
@@ -2032,15 +2219,17 @@ describe("composerDraftStore queued dispatch claims", () => {
     );
 
     expect(restored).toBe(true);
-    expect(useComposerDraftStore.getState().getComposerDraft(threadRef)?.prompt).toBe("A draft");
-    expect(useComposerDraftStore.getState().getComposerDraft(otherThreadRef)?.prompt).toBe(
-      "B draft",
+    expect(storeModule.useComposerDraftStore.getState().getComposerDraft(threadRef)?.prompt).toBe(
+      "A draft",
     );
+    expect(
+      storeModule.useComposerDraftStore.getState().getComposerDraft(otherThreadRef)?.prompt,
+    ).toBe("B draft");
   });
 
   it("never overwrites a newer draft in the original target", () => {
-    useComposerDraftStore.getState().setPrompt(threadRef, "newer A draft");
-    const restored = useComposerDraftStore.getState().restoreComposerContent(
+    storeModule.useComposerDraftStore.getState().setPrompt(threadRef, "newer A draft");
+    const restored = storeModule.useComposerDraftStore.getState().restoreComposerContent(
       threadRef,
       {
         prompt: "old A draft",
@@ -2054,7 +2243,7 @@ describe("composerDraftStore queued dispatch claims", () => {
     );
 
     expect(restored).toBe(false);
-    expect(useComposerDraftStore.getState().getComposerDraft(threadRef)?.prompt).toBe(
+    expect(storeModule.useComposerDraftStore.getState().getComposerDraft(threadRef)?.prompt).toBe(
       "newer A draft",
     );
   });
