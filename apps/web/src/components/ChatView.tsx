@@ -252,6 +252,7 @@ import {
   readFileAsDataUrl,
   reconcileMountedTerminalThreadIds,
   removeOptimisticUserMessage,
+  resolveQueuedDispatchAttempt,
   resolveSendEnvMode,
   resolveSendIdentity,
   revokeBlobPreviewUrl,
@@ -4080,6 +4081,12 @@ function ChatViewContent(props: ChatViewProps) {
         readonly commandId: string;
         readonly messageCreatedAt?: string;
       };
+      /**
+       * Queued text for this invocation. It is passed explicitly instead of
+       * being written into the shared `promptRef`, so a send can never clear
+       * or otherwise disturb a newer draft that the visible composer owns.
+       */
+      promptOverride?: string;
       /** Preserve an earlier unknown attempt even if this retry never left the client. */
       preserveUnknownOnFailure?: boolean;
     },
@@ -4112,7 +4119,7 @@ function ChatViewContent(props: ChatViewProps) {
       selectedPromptEffort: ctxSelectedPromptEffort,
       selectedModelSelection: ctxSelectedModelSelection,
     } = sendCtx;
-    const promptForSend = promptRef.current;
+    const promptForSend = options?.promptOverride ?? promptRef.current;
     const {
       trimmedPrompt: trimmed,
       sendableTerminalContexts: sendableComposerTerminalContexts,
@@ -4141,12 +4148,16 @@ function ChatViewContent(props: ChatViewProps) {
         previewAnnotations: [...composerPreviewAnnotations],
         reviewComments: [...composerReviewComments],
       };
-      promptRef.current = "";
-      composerImagesRef.current = [];
-      composerTerminalContextsRef.current = [];
-      composerElementContextsRef.current = [];
-      clearComposerDraftContent(composerDraftTarget);
-      composerRef.current?.resetCursorState();
+      // A queued dispatch passes its text explicitly and must not consume the
+      // visible composer, which may already hold a newer draft.
+      if (options?.queuedDispatch === undefined) {
+        promptRef.current = "";
+        composerImagesRef.current = [];
+        composerTerminalContextsRef.current = [];
+        composerElementContextsRef.current = [];
+        clearComposerDraftContent(composerDraftTarget);
+        composerRef.current?.resetCursorState();
+      }
       const outcome = await onSubmitPlanFollowUp({
         text: followUp.text,
         interactionMode: followUp.interactionMode,
@@ -4155,8 +4166,7 @@ function ChatViewContent(props: ChatViewProps) {
       const shouldRestorePlanDraft =
         outcome !== "accepted" &&
         (options?.queuedDispatch === undefined ||
-          (options?.preserveUnknownOnFailure !== true &&
-            (outcome === "not_sent" || outcome === "rejected")));
+          (options?.preserveUnknownOnFailure !== true && outcome === "not_sent"));
       if (shouldRestorePlanDraft) {
         restoreComposerDraftSnapshot(draftTargetForFollowUp, draftSnapshot);
       }
@@ -4172,9 +4182,11 @@ function ChatViewContent(props: ChatViewProps) {
         : null;
     if (standaloneSlashCommand) {
       handleInteractionModeChange(standaloneSlashCommand);
-      promptRef.current = "";
-      clearComposerDraftContent(composerDraftTarget);
-      composerRef.current?.resetCursorState();
+      if (options?.queuedDispatch === undefined) {
+        promptRef.current = "";
+        clearComposerDraftContent(composerDraftTarget);
+        composerRef.current?.resetCursorState();
+      }
       return "not_attempted";
     }
     if (!hasSendableContent) {
@@ -4323,9 +4335,11 @@ function ChatViewContent(props: ChatViewProps) {
         }),
       );
     }
-    promptRef.current = "";
-    clearComposerDraftContent(composerDraftTarget);
-    composerRef.current?.resetCursorState();
+    if (options?.queuedDispatch === undefined) {
+      promptRef.current = "";
+      clearComposerDraftContent(composerDraftTarget);
+      composerRef.current?.resetCursorState();
+    }
 
     let firstComposerImageName: string | null = null;
     if (composerImagesSnapshot.length > 0) {
@@ -4454,12 +4468,7 @@ function ChatViewContent(props: ChatViewProps) {
               error: squashAtomCommandFailure(failure),
             })
           : "not_sent";
-      const outcome: SendOutcome =
-        failureKind === "unknown"
-          ? "unknown"
-          : failureKind === "rejected"
-            ? "rejected"
-            : "not_sent";
+      const outcome: SendOutcome = failureKind === "unknown" ? "unknown" : "not_sent";
       const isQueuedDispatch = options?.queuedDispatch !== undefined;
       const preserveUnknown = isQueuedDispatch && options?.preserveUnknownOnFailure === true;
       // A queued entry keeps its own copy of the text, so a failed attempt can
@@ -4551,50 +4560,9 @@ function ChatViewContent(props: ChatViewProps) {
     }
 
     const previouslyUnconfirmed = previousDispatch?.state === "unconfirmed";
-    dispatchingQueuedTargetsRef.current.add(targetKey);
-    const claim = await claimQueuedComposerMessageDispatch(target, queuedMessageId, {
-      messageId: previouslyUnconfirmed ? previousDispatch.messageId : newMessageId(),
-      commandId: previouslyUnconfirmed ? previousDispatch.commandId : CommandId.make(randomHex(16)),
-      messageCreatedAt: previouslyUnconfirmed
-        ? (previousDispatch.messageCreatedAt ?? queuedMessage.createdAt)
-        : queuedMessage.createdAt,
-    });
-    if (claim.status !== "claimed") {
-      dispatchingQueuedTargetsRef.current.delete(targetKey);
-      setQueuedDispatchEpoch((epoch) => epoch + 1);
-      if (claim.status === "not_persisted" && activeThread) {
-        setThreadError(
-          activeThread.id,
-          claim.reason === "storage_unavailable"
-            ? "Browser storage is unavailable, so the queued message was not sent. Nothing was left behind in the thread."
-            : "The queued message was not sent because its send record could not be saved locally. Check browser storage and try again.",
-        );
-      }
-      return;
-    }
-
-    const dispatchIdentity = claim.identity;
-    // The durable flush may await an asynchronous storage readback. Never
-    // hand the send to a shared composer handle that now belongs to another
-    // route: the claim is honest ("not sent") and the queue keeps the text.
-    if (!composerViewMountedRef.current || !isCurrentComposerTarget(target)) {
-      markQueuedComposerMessageFailed(target, queuedMessageId);
-      dispatchingQueuedTargetsRef.current.delete(targetKey);
-      setQueuedDispatchEpoch((epoch) => epoch + 1);
-      return;
-    }
-    promptRef.current = text;
-    // Decide ownership from the original target's durable draft, never from
+    // Decide ownership from the original target's persisted draft, never from
     // whichever composer refs happen to be visible after navigation.
     const settle = (outcome: SendOutcome) => {
-      if (outcome === "not_attempted" || outcome === "unknown") {
-        // No send left the client, or the attempt may have been accepted.
-        // Either way the hidden promptRef copy must not leak into a later
-        // ordinary Enter submission; the queue owns the text.
-        if (promptRef.current === text) {
-          promptRef.current = "";
-        }
-      }
       const targetDraft = useComposerDraftStore.getState().getComposerDraft(target);
       const targetHoldsText = targetDraft
         ? composerDraftHoldsQueuedText(
@@ -4622,9 +4590,48 @@ function ChatViewContent(props: ChatViewProps) {
         markQueuedComposerMessageFailed(target, queuedMessageId);
       }
     };
+    dispatchingQueuedTargetsRef.current.add(targetKey);
+    const attemptIdentity = resolveQueuedDispatchAttempt({
+      queuedMessageId,
+      previousDispatch,
+      freshMessageId: newMessageId(),
+      freshCommandId: CommandId.make(randomHex(16)),
+      now: new Date().toISOString(),
+    });
+    const claim = await claimQueuedComposerMessageDispatch(
+      target,
+      queuedMessageId,
+      attemptIdentity,
+    );
+    if (claim.status !== "claimed") {
+      dispatchingQueuedTargetsRef.current.delete(targetKey);
+      setQueuedDispatchEpoch((epoch) => epoch + 1);
+      if (claim.status === "not_persisted" && activeThread) {
+        setThreadError(
+          activeThread.id,
+          claim.reason === "storage_unavailable"
+            ? "Browser storage is unavailable, so the queued message was not sent. Nothing was left behind in the thread."
+            : "The queued message was not sent because its send record could not be saved locally. Check browser storage and try again.",
+        );
+      }
+      return;
+    }
+
+    const dispatchIdentity = claim.identity;
+    // The storage flush may await an asynchronous readback. Never hand the
+    // send to a shared composer handle that now belongs to another route. This
+    // attempt never left the client, but that says nothing about an earlier
+    // unknown attempt, so settlement is prior-state aware.
+    if (!composerViewMountedRef.current || !isCurrentComposerTarget(target)) {
+      settle("not_attempted");
+      dispatchingQueuedTargetsRef.current.delete(targetKey);
+      setQueuedDispatchEpoch((epoch) => epoch + 1);
+      return;
+    }
     void onSend(undefined, {
       bypassQueue: true,
       queuedDispatch: dispatchIdentity,
+      promptOverride: text,
       preserveUnknownOnFailure: previouslyUnconfirmed,
     })
       .then(settle, () => settle("unknown"))
@@ -5072,12 +5079,7 @@ function ChatViewContent(props: ChatViewProps) {
               error: squashAtomCommandFailure(failure),
             })
           : "not_sent";
-      const outcome: SendOutcome =
-        failureKind === "unknown"
-          ? "unknown"
-          : failureKind === "rejected"
-            ? "rejected"
-            : "not_sent";
+      const outcome: SendOutcome = failureKind === "unknown" ? "unknown" : "not_sent";
       setOptimisticUserMessages((existing) => {
         const removed = existing.filter((message) => message.id === messageIdForSend);
         for (const message of removed) {

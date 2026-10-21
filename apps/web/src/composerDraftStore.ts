@@ -88,7 +88,7 @@ const composerDraftStorage = resolveComposerDraftStorage();
  * `false` means the store is running on an in-memory fallback. Draft edits
  * still work in this process, but nothing survives a renderer crash or reload.
  * Queued sends fail closed in this mode because their dispatch claim cannot be
- * made durable before the network send.
+ * accepted by persistent browser storage before the network send.
  */
 export const COMPOSER_DRAFT_STORAGE_IS_DURABLE = composerDraftStorage.durable;
 const composerDebouncedStorage = createDebouncedStorage(
@@ -118,10 +118,15 @@ export interface ComposerImageAttachment extends Omit<ChatImageAttachment, "prev
 }
 
 /**
- * Durable claim for a queued message that has been handed to the send path.
+ * A claim is "persisted" only when it has been accepted into browser storage.
+ * That is acceptance by the storage backend, not proof that the operating
+ * system flushed it to disk: a force-kill before the browser writes its cache
+ * can still lose it. Queued sends therefore derive their first-attempt ids from
+ * the saved queue entry, so a lost claim replays under the same ids and the
+ * server receipt cannot accept a second copy.
  *
  * The claim outlives the component that started the send so a remount cannot
- * dispatch the same entry twice. `in_flight` is live-process state; a page
+ * dispatch the same entry twice. `in_flight` is live-process state; a renderer
  * reload hydrates it as `unconfirmed` because the promise that could confirm
  * the outcome no longer exists. `messageId` and `commandId` are stable across
  * retries. The server keeps a receipt keyed by command id and aggregate only;
@@ -2377,8 +2382,9 @@ function toHydratedDraftThreadState(
 
 /**
  * Flush the debounced composer write and prove that the claimed identity is
- * actually present in persisted state. A flush without readback would only
- * prove that a write was attempted.
+ * actually present in the persisted browser storage value. A flush without
+ * readback would only prove that a write was attempted. This proves storage
+ * acceptance, not an operating-system disk flush.
  */
 async function confirmQueuedDispatchPersisted(input: {
   readonly threadKey: string;
@@ -3565,29 +3571,36 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               return state;
             }
             previousDispatch = entry.dispatch;
+            const attemptedAt = new Date().toISOString();
+            // The first attempt's timestamp is stable across retries. Legacy
+            // claims predate the field; their `attemptedAt` is the first
+            // attempt time.
+            const messageCreatedAt =
+              entry.dispatch?.state === "unconfirmed"
+                ? (entry.dispatch.messageCreatedAt ??
+                  identity.messageCreatedAt ??
+                  entry.dispatch.attemptedAt)
+                : (identity.messageCreatedAt ?? attemptedAt);
             // Only an unknown earlier attempt must keep its identity. A known
             // failure was not accepted, so a retry starts with fresh ids.
             const dispatch: QueuedComposerMessageDispatch =
               entry.dispatch?.state === "unconfirmed"
                 ? {
                     ...entry.dispatch,
+                    messageCreatedAt,
                     state: "in_flight",
                   }
                 : {
                     messageId: identity.messageId,
                     commandId: identity.commandId,
-                    attemptedAt: new Date().toISOString(),
-                    ...(identity.messageCreatedAt !== undefined
-                      ? { messageCreatedAt: identity.messageCreatedAt }
-                      : {}),
+                    attemptedAt,
+                    messageCreatedAt,
                     state: "in_flight",
                   };
             claimState.identity = {
               messageId: dispatch.messageId,
               commandId: dispatch.commandId,
-              ...(dispatch.messageCreatedAt !== undefined
-                ? { messageCreatedAt: dispatch.messageCreatedAt }
-                : {}),
+              messageCreatedAt,
             };
             const queuedMessages = [...current.queuedMessages];
             queuedMessages[index] = { ...entry, dispatch };
@@ -3609,11 +3622,12 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             return { status: "claimed", identity: claimed };
           }
 
-          // Nothing may go to the server without a durable claim. Keep the
-          // entry visibly unsent and retryable, then persist that state on a
-          // best-effort basis. If the claim write itself succeeded but the
-          // revert write fails, a reload hydrates the leftover in-flight claim
-          // as unconfirmed, which is still fail-closed and never auto-sends.
+          // Nothing may go to the server without a claim accepted by browser
+          // storage. Keep the entry visibly unsent and retryable, then persist
+          // that state on a best-effort basis. If the claim write itself
+          // succeeded but the revert write fails, a reload hydrates the
+          // leftover in-flight claim as unconfirmed, which is still fail-closed
+          // and never auto-sends.
           set((state) => {
             const current = state.draftsByThreadKey[threadKey];
             if (!current) return state;

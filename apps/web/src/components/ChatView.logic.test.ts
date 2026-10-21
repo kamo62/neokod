@@ -31,6 +31,7 @@ import {
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
   removeOptimisticUserMessage,
+  resolveQueuedDispatchAttempt,
   resolveSendEnvMode,
   resolveSendIdentity,
   selectAcknowledgedQueuedMessageIds,
@@ -551,13 +552,15 @@ describe("canDispatchQueuedMessage", () => {
 });
 
 describe("classifyDispatchFailure", () => {
-  it("treats a typed server dispatch error as a definitive rejection", () => {
+  it("keeps a generic server dispatch error unknown", () => {
+    // The same tag covers receipt-read failures and failures after the
+    // command transaction committed, so it is not affirmative rejection.
     expect(
       classifyDispatchFailure({
         interrupted: false,
         error: { _tag: "OrchestrationDispatchCommandError", message: "rejected" },
       }),
-    ).toBe("rejected");
+    ).toBe("unknown");
   });
 
   it("treats an unconnected environment as definitively not sent", () => {
@@ -617,13 +620,6 @@ describe("decideQueuedDispatchSettlement", () => {
         ...firstAttempt,
       }),
     ).toBe("mark_failed");
-    expect(
-      decideQueuedDispatchSettlement({
-        outcome: "rejected",
-        composerStillHoldsText: false,
-        ...firstAttempt,
-      }),
-    ).toBe("mark_failed");
   });
 
   it("marks a first attempt that was never attempted as failed", () => {
@@ -636,17 +632,10 @@ describe("decideQueuedDispatchSettlement", () => {
     ).toBe("mark_failed");
   });
 
-  it("removes the entry when a definitive failure restored the text", () => {
+  it("removes the entry when a definitive local failure restored the text", () => {
     expect(
       decideQueuedDispatchSettlement({
         outcome: "not_sent",
-        composerStillHoldsText: true,
-        ...firstAttempt,
-      }),
-    ).toBe("remove_entry");
-    expect(
-      decideQueuedDispatchSettlement({
-        outcome: "rejected",
         composerStillHoldsText: true,
         ...firstAttempt,
       }),
@@ -670,14 +659,14 @@ describe("decideQueuedDispatchSettlement", () => {
     ).toBe("mark_unconfirmed");
   });
 
-  it("allows a definitive rejection to resolve an earlier unknown attempt as failed", () => {
+  it("keeps a retry unconfirmed after a generic dispatch error", () => {
     expect(
       decideQueuedDispatchSettlement({
-        outcome: "rejected",
-        composerStillHoldsText: false,
+        outcome: "unknown",
+        composerStillHoldsText: true,
         ...retry,
       }),
-    ).toBe("mark_failed");
+    ).toBe("mark_unconfirmed");
   });
 });
 
@@ -706,6 +695,109 @@ describe("canRetryUnconfirmedQueuedMessage", () => {
     expect(canRetryUnconfirmedQueuedMessage({ ...clear, isConnecting: true })).toBe(false);
     expect(canRetryUnconfirmedQueuedMessage({ ...clear, sendInFlight: true })).toBe(false);
     expect(canRetryUnconfirmedQueuedMessage({ ...clear, hasPendingUserInput: true })).toBe(false);
+  });
+});
+
+describe("resolveQueuedDispatchAttempt", () => {
+  const queuedMessageId = "queue-entry-1";
+  const firstAttemptAt = "2026-10-21T10:00:00.000Z";
+
+  it("derives the first attempt ids from the saved queue entry", () => {
+    expect(
+      resolveQueuedDispatchAttempt({
+        queuedMessageId,
+        previousDispatch: null,
+        freshMessageId: "fresh-message",
+        freshCommandId: "fresh-command",
+        now: firstAttemptAt,
+      }),
+    ).toEqual({
+      messageId: `queued-message:${queuedMessageId}`,
+      commandId: `queued-command:${queuedMessageId}`,
+      messageCreatedAt: firstAttemptAt,
+    });
+  });
+
+  it("replays a lost claim under the same ids", () => {
+    const replay = resolveQueuedDispatchAttempt({
+      queuedMessageId,
+      previousDispatch: null,
+      freshMessageId: "another-message",
+      freshCommandId: "another-command",
+      now: "2026-10-21T12:00:00.000Z",
+    });
+    const first = resolveQueuedDispatchAttempt({
+      queuedMessageId,
+      previousDispatch: null,
+      freshMessageId: "fresh-message",
+      freshCommandId: "fresh-command",
+      now: firstAttemptAt,
+    });
+
+    expect(replay.messageId).toBe(first.messageId);
+    expect(replay.commandId).toBe(first.commandId);
+    expect(replay.messageCreatedAt).not.toBe(first.messageCreatedAt);
+  });
+
+  it("keeps an earlier unknown attempt and its first attempt timestamp", () => {
+    expect(
+      resolveQueuedDispatchAttempt({
+        queuedMessageId,
+        previousDispatch: {
+          messageId: "queued-message",
+          commandId: "queued-command",
+          messageCreatedAt: firstAttemptAt,
+          attemptedAt: "2026-10-21T09:59:00.000Z",
+          state: "unconfirmed",
+        },
+        freshMessageId: "fresh-message",
+        freshCommandId: "fresh-command",
+        now: "2026-10-21T12:00:00.000Z",
+      }),
+    ).toEqual({
+      messageId: "queued-message",
+      commandId: "queued-command",
+      messageCreatedAt: firstAttemptAt,
+    });
+  });
+
+  it("uses the first attempt time for a legacy claim without a message timestamp", () => {
+    expect(
+      resolveQueuedDispatchAttempt({
+        queuedMessageId,
+        previousDispatch: {
+          messageId: "queued-message",
+          commandId: "queued-command",
+          attemptedAt: firstAttemptAt,
+          state: "unconfirmed",
+        },
+        freshMessageId: "fresh-message",
+        freshCommandId: "fresh-command",
+        now: "2026-10-21T12:00:00.000Z",
+      }).messageCreatedAt,
+    ).toBe(firstAttemptAt);
+  });
+
+  it("starts a definitive failed attempt over with fresh ids", () => {
+    expect(
+      resolveQueuedDispatchAttempt({
+        queuedMessageId,
+        previousDispatch: {
+          messageId: "queued-message",
+          commandId: "queued-command",
+          messageCreatedAt: firstAttemptAt,
+          attemptedAt: firstAttemptAt,
+          state: "failed",
+        },
+        freshMessageId: "fresh-message",
+        freshCommandId: "fresh-command",
+        now: "2026-10-21T12:00:00.000Z",
+      }),
+    ).toEqual({
+      messageId: "fresh-message",
+      commandId: "fresh-command",
+      messageCreatedAt: "2026-10-21T12:00:00.000Z",
+    });
   });
 });
 

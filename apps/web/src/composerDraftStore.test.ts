@@ -1976,7 +1976,7 @@ describe("composerDraftStore queued dispatch claims", () => {
       },
     });
 
-    // No debounce timer has fired; the claim is already on disk.
+    // No debounce timer has fired; the claim is already in browser storage.
     const persisted = persistedStateFromDisk() as {
       draftsByThreadKey: Record<string, { queuedMessages?: Array<Record<string, unknown>> }>;
     };
@@ -1987,7 +1987,7 @@ describe("composerDraftStore queued dispatch claims", () => {
       state: "in_flight",
     });
 
-    // A crash now hydrates the same durable entry as an unknown claim.
+    // A renderer reload now hydrates the same stored entry as an unknown claim.
     const merged = persistApi()
       .getOptions()
       .merge(persisted, storeModule.useComposerDraftStore.getInitialState());
@@ -2038,6 +2038,38 @@ describe("composerDraftStore queued dispatch claims", () => {
     });
   });
 
+  it("records the first attempt timestamp and keeps it across an unconfirmed retry", async () => {
+    const queuedMessageId = storeModule.useComposerDraftStore
+      .getState()
+      .addQueuedMessage(threadRef, "carry on")!;
+    const firstClaim = await storeModule.useComposerDraftStore
+      .getState()
+      .claimQueuedMessageDispatch(threadRef, queuedMessageId, {
+        messageId: "message-1",
+        commandId: "command-1",
+      });
+    if (firstClaim.status !== "claimed") throw new Error("expected a claimed dispatch");
+    const firstDispatch = storeModule.useComposerDraftStore.getState().getComposerDraft(threadRef)
+      ?.queuedMessages[0]?.dispatch;
+    expect(firstClaim.identity.messageCreatedAt).toBe(firstDispatch?.attemptedAt);
+
+    storeModule.useComposerDraftStore
+      .getState()
+      .markQueuedMessageDispatchUnconfirmed(threadRef, queuedMessageId);
+    const retryClaim = await storeModule.useComposerDraftStore
+      .getState()
+      .claimQueuedMessageDispatch(threadRef, queuedMessageId, {
+        messageId: "ignored",
+        commandId: "ignored",
+      });
+
+    expect(retryClaim.status).toBe("claimed");
+    if (retryClaim.status !== "claimed") return;
+    expect(retryClaim.identity.messageId).toBe("message-1");
+    expect(retryClaim.identity.commandId).toBe("command-1");
+    expect(retryClaim.identity.messageCreatedAt).toBe(firstClaim.identity.messageCreatedAt);
+  });
+
   it("starts a fresh identity after a definitively failed attempt", async () => {
     const queuedMessageId = storeModule.useComposerDraftStore
       .getState()
@@ -2061,7 +2093,11 @@ describe("composerDraftStore queued dispatch claims", () => {
 
     expect(retryClaim).toEqual({
       status: "claimed",
-      identity: { messageId: "message-2", commandId: "command-2" },
+      identity: {
+        messageId: "message-2",
+        commandId: "command-2",
+        messageCreatedAt: expect.any(String),
+      },
     });
     expect(
       storeModule.useComposerDraftStore.getState().getComposerDraft(threadRef)?.queuedMessages[0]

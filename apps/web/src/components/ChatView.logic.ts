@@ -328,12 +328,10 @@ export type SendOutcome =
   | "accepted"
   /** The attempt definitively stopped before any command reached the server. */
   | "not_sent"
-  /** The server definitively rejected the command; it was not accepted. */
-  | "rejected"
   /** The command may have been accepted but the outcome could not be observed. */
   | "unknown";
 
-export type DispatchFailureKind = "not_sent" | "rejected" | "unknown";
+export type DispatchFailureKind = "not_sent" | "unknown";
 
 function taggedErrorName(error: unknown): string | null {
   if (typeof error !== "object" || error === null) return null;
@@ -344,11 +342,13 @@ function taggedErrorName(error: unknown): string | null {
 /**
  * Classifies a failed send after the turn command was dispatched.
  *
- * A typed dispatch error is a server decision that the command was not
- * accepted. An unavailable environment is rejected before the request leaves
- * the client. Anything else, including transport loss and interruption, may
- * have happened after the server committed the command and therefore stays
- * unknown.
+ * An unavailable environment is rejected before the request leaves the client.
+ * A typed `OrchestrationDispatchCommandError` is not definitive rejection: the
+ * server wraps receipt-read failures, startup/queue failures, and failures
+ * after the command transaction committed in the same error tag. It may
+ * therefore have accepted the command. Anything else, including transport loss
+ * and interruption, may also have happened after the server committed the
+ * command. Without affirmative evidence, the outcome stays unknown.
  */
 export function classifyDispatchFailure(input: {
   readonly interrupted: boolean;
@@ -357,7 +357,6 @@ export function classifyDispatchFailure(input: {
   if (input.interrupted) return "unknown";
   const tag = taggedErrorName(input.error);
   if (tag === "EnvironmentRpcUnavailableError") return "not_sent";
-  if (tag === "OrchestrationDispatchCommandError") return "rejected";
   return "unknown";
 }
 
@@ -383,9 +382,6 @@ export function decideQueuedDispatchSettlement(input: {
     // Never turn a claimed entry back into an automatically dispatchable one:
     // an unreflected blocker could otherwise retry in a loop.
     return input.previousDispatchState === "unconfirmed" ? "mark_unconfirmed" : "mark_failed";
-  }
-  if (input.outcome === "rejected") {
-    return input.composerStillHoldsText ? "remove_entry" : "mark_failed";
   }
   // `not_sent`. A known local failure on a retry cannot resolve an earlier
   // attempt whose command may already have been accepted.
@@ -429,6 +425,66 @@ export interface ResolvedSendIdentity {
   readonly messageId: string;
   readonly commandId: string | null;
   readonly messageCreatedAt: string;
+}
+
+/**
+ * Identity for one queued dispatch attempt.
+ *
+ * The first attempt derives both ids from the already-saved queue entry, so a
+ * claim that never reached persistent browser storage cannot replay under a
+ * fresh identity and duplicate a send the server already accepted. An unknown
+ * earlier attempt keeps its identity. Only a definitive failure starts over.
+ */
+export interface QueuedDispatchAttemptIdentity {
+  readonly messageId: string;
+  readonly commandId: string;
+  readonly messageCreatedAt: string;
+}
+
+export function queuedDispatchMessageId(queuedMessageId: string): string {
+  return `queued-message:${queuedMessageId}`;
+}
+
+export function queuedDispatchCommandId(queuedMessageId: string): string {
+  return `queued-command:${queuedMessageId}`;
+}
+
+export function resolveQueuedDispatchAttempt(input: {
+  readonly queuedMessageId: string;
+  readonly previousDispatch: {
+    readonly messageId: string;
+    readonly commandId: string;
+    readonly messageCreatedAt?: string;
+    readonly attemptedAt: string;
+    readonly state: QueuedDispatchState;
+  } | null;
+  readonly freshMessageId: string;
+  readonly freshCommandId: string;
+  readonly now: string;
+}): QueuedDispatchAttemptIdentity {
+  const previous = input.previousDispatch;
+  if (previous !== null && previous.state !== "failed") {
+    return {
+      messageId: previous.messageId,
+      commandId: previous.commandId,
+      // `messageCreatedAt` is the first attempt's timestamp. Claims written
+      // before that field existed fall back to the first attempt time, never
+      // to the time the message was queued.
+      messageCreatedAt: previous.messageCreatedAt ?? previous.attemptedAt,
+    };
+  }
+  if (previous?.state === "failed") {
+    return {
+      messageId: input.freshMessageId,
+      commandId: input.freshCommandId,
+      messageCreatedAt: input.now,
+    };
+  }
+  return {
+    messageId: queuedDispatchMessageId(input.queuedMessageId),
+    commandId: queuedDispatchCommandId(input.queuedMessageId),
+    messageCreatedAt: input.now,
+  };
 }
 
 /**
