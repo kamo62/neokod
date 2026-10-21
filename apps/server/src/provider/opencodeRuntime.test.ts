@@ -535,6 +535,14 @@ describeOnPosix("startOpenCodeServerProcess spawner ownership", () => {
     const leaderPidPath = NodePath.join(directory, "leader.pid");
     const fixturePath = writeExecutableFixture(directory, "failing-opencode.sh", [
       "#!/bin/sh",
+      // The runtime probes `--version` before spawning the server. Answer it as
+      // a supported CLI would, so only the failing server path is exercised;
+      // otherwise the probe's own non-zero exit becomes a second process-group
+      // shutdown outside the server ownership this test covers.
+      'if [ "$1" = "--version" ]; then',
+      "  echo 'opencode 1.18.15'",
+      "  exit 0",
+      "fi",
       `echo $$ > "${leaderPidPath}"`,
       "exit 7",
     ]);
@@ -595,6 +603,13 @@ describeOnPosix("startOpenCodeServerProcess spawner ownership", () => {
     const serverPidPath = NodePath.join(directory, "server.pid");
     const fixturePath = writeExecutableFixture(directory, "healthy-opencode.sh", [
       "#!/bin/sh",
+      // The runtime probes `--version` before spawning the server. Without this
+      // branch the probe would run the long-lived server loop and only settle
+      // on its timeout, so answer the probe as a supported CLI does.
+      'if [ "$1" = "--version" ]; then',
+      "  echo 'opencode 1.18.15'",
+      "  exit 0",
+      "fi",
       `echo $$ > "${serverPidPath}"`,
       "echo 'opencode server listening on http://127.0.0.1:4097'",
       "trap 'exit 0' TERM",
