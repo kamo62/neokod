@@ -7,6 +7,7 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -18,6 +19,7 @@ import {
   OpenCodeSettings,
   ProviderDriverKind,
   ProviderInstanceId,
+  type ProviderRuntimeEvent,
   ThreadId,
 } from "@neokod/contracts";
 import { createModelSelection } from "@neokod/shared/model";
@@ -68,8 +70,11 @@ const runtimeMock = {
     messagesCalls: [] as Array<unknown>,
     permissionReplyCalls: [] as Array<unknown>,
     subscribedEvents: [] as unknown[],
+    eventsAfterAbort: [] as unknown[],
+    eventsAfterAbortAfterPrompts: 1,
     holdSubscribedEventsUntilPrompt: false,
     onPromptCall: null as (() => void) | null,
+    onAbortCall: null as (() => void) | null,
   },
   reset() {
     this.state.startCalls.length = 0;
@@ -85,8 +90,11 @@ const runtimeMock = {
     this.state.messagesCalls.length = 0;
     this.state.permissionReplyCalls.length = 0;
     this.state.subscribedEvents = [];
+    this.state.eventsAfterAbort = [];
+    this.state.eventsAfterAbortAfterPrompts = 1;
     this.state.holdSubscribedEventsUntilPrompt = false;
     this.state.onPromptCall = null;
+    this.state.onAbortCall = null;
   },
 };
 
@@ -142,6 +150,7 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
         },
         abort: async ({ sessionID }: { sessionID: string }) => {
           runtimeMock.state.abortCalls.push(sessionID);
+          runtimeMock.state.onAbortCall?.();
         },
         promptAsync: async (input: unknown) => {
           runtimeMock.state.promptCalls.push(input);
@@ -195,6 +204,24 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
             }
             for (const event of runtimeMock.state.subscribedEvents) {
               yield event;
+            }
+            if (runtimeMock.state.eventsAfterAbort.length > 0) {
+              while (
+                runtimeMock.state.promptCalls.length <
+                runtimeMock.state.eventsAfterAbortAfterPrompts
+              ) {
+                await new Promise<void>((resolve) => {
+                  runtimeMock.state.onPromptCall = resolve;
+                });
+              }
+              if (runtimeMock.state.abortCalls.length === 0) {
+                await new Promise<void>((resolve) => {
+                  runtimeMock.state.onAbortCall = resolve;
+                });
+              }
+              for (const event of runtimeMock.state.eventsAfterAbort) {
+                yield event;
+              }
             }
           })(),
         }),
@@ -281,6 +308,49 @@ const joinWithinRealTime = <A, E>(fiber: Fiber.Fiber<A, E>, millis: number) =>
         }),
     ),
   );
+
+/**
+ * Real-time sleep for the abort-echo tests: the suite runs on the TestClock,
+ * so `Effect.sleep` would never elapse without an explicit adjust.
+ */
+const sleepReal = (millis: number) =>
+  Effect.promise<void>(
+    () =>
+      new Promise((resolve) => {
+        // @effect-diagnostics-next-line globalTimers:off
+        setTimeout(resolve, millis);
+      }),
+  );
+
+const collectThreadEvents = (adapter: OpenCodeAdapterShape, threadId: ThreadId) =>
+  Effect.gen(function* () {
+    const events = yield* Ref.make<ReadonlyArray<ProviderRuntimeEvent>>([]);
+    yield* adapter.streamEvents.pipe(
+      Stream.filter((event) => event.threadId === threadId),
+      Stream.runForEach((event) => Ref.update(events, (current) => [...current, event])),
+      Effect.forkChild,
+    );
+    return events;
+  });
+
+const waitForThreadEvents = (
+  events: Ref.Ref<ReadonlyArray<ProviderRuntimeEvent>>,
+  predicate: (events: ReadonlyArray<ProviderRuntimeEvent>) => boolean,
+  millis: number,
+) => {
+  const poll = (remaining: number): Effect.Effect<boolean> =>
+    Effect.gen(function* () {
+      if (predicate(yield* Ref.get(events))) {
+        return true;
+      }
+      if (remaining <= 0) {
+        return false;
+      }
+      yield* sleepReal(10);
+      return yield* poll(remaining - 1);
+    });
+  return poll(Math.ceil(millis / 10));
+};
 
 it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
   it.effect("reuses a configured OpenCode server URL instead of spawning a local server", () =>
@@ -530,18 +600,16 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       // arrives after the first has settled the turn and must not settle,
       // warn, or abort again.
       runtimeMock.state.subscribedEvents = [retryStatusEvent(1), retryStatusEvent(2)];
-      const eventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.filter(
-          (event) =>
-            event.threadId === threadId &&
-            (event.type === "turn.completed" ||
-              event.type === "runtime.error" ||
-              event.type === "runtime.warning"),
-        ),
-        Stream.take(2),
-        Stream.runCollect,
-        Effect.forkChild,
-      );
+      runtimeMock.state.eventsAfterAbort = [
+        {
+          type: "session.error",
+          properties: {
+            sessionID: "http://127.0.0.1:9999/session",
+            error: { name: "MessageAbortedError", data: { message: "Aborted" } },
+          },
+        },
+      ];
+      const collected = yield* collectThreadEvents(adapter, threadId);
 
       yield* adapter.startSession({
         provider: ProviderDriverKind.make("opencode"),
@@ -557,13 +625,25 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         },
       });
 
-      const joined = yield* joinWithinRealTime(eventsFiber, 2_000);
+      const settled = yield* waitForThreadEvents(
+        collected,
+        (events) => events.filter((event) => event.type === "turn.completed").length === 1,
+        2_000,
+      );
       NodeAssert.equal(
-        Option.isSome(joined),
+        settled,
         true,
         "terminal retry must settle the turn instead of only warning",
       );
-      const events = Array.from(Option.isSome(joined) ? joined.value : []);
+      // Give the abort echo time to arrive. Before the mark was set on the
+      // retry abort it settled the already-dead turn a second time.
+      yield* sleepReal(200);
+      const events = (yield* Ref.get(collected)).filter(
+        (event) =>
+          event.type === "turn.completed" ||
+          event.type === "runtime.error" ||
+          event.type === "runtime.warning",
+      );
       NodeAssert.deepEqual(
         events.map((event) => event.type),
         ["turn.completed", "runtime.error"],
@@ -595,6 +675,306 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
     }),
   );
 
+  it.effect("settles Stop as interrupted when the abort echo arrives as MessageAbortedError", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-stop-abort-error");
+      runtimeMock.state.holdSubscribedEventsUntilPrompt = true;
+      runtimeMock.state.eventsAfterAbort = [
+        {
+          type: "session.error",
+          properties: {
+            sessionID: "http://127.0.0.1:9999/session",
+            error: { name: "MessageAbortedError", data: { message: "Aborted" } },
+          },
+        },
+      ];
+      const collected = yield* collectThreadEvents(adapter, threadId);
+
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const turn = yield* adapter.sendTurn({
+        threadId,
+        input: "Fix it",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("opencode"),
+          model: "openai/gpt-5",
+        },
+      });
+      yield* adapter.interruptTurn(threadId, turn.turnId);
+
+      const settled = yield* waitForThreadEvents(
+        collected,
+        (events) => events.some((event) => event.type === "turn.completed"),
+        2_000,
+      );
+      NodeAssert.equal(settled, true, "Stop must settle the turn");
+      yield* sleepReal(200);
+      const events = yield* Ref.get(collected);
+      const completed = events.filter((event) => event.type === "turn.completed");
+      NodeAssert.equal(completed.length, 1, "the abort echo must not settle the turn twice");
+      const completedEvent = completed[0];
+      if (completedEvent?.type !== "turn.completed") {
+        throw new Error("Expected a turn.completed event");
+      }
+      NodeAssert.equal(String(completedEvent.turnId), String(turn.turnId));
+      NodeAssert.deepEqual(completedEvent.payload, { state: "interrupted" });
+      NodeAssert.equal(
+        events.filter((event) => event.type === "runtime.error").length,
+        0,
+        "a user interrupt must not emit runtime.error",
+      );
+
+      const sessions = yield* adapter.listSessions();
+      const session = sessions.find((entry) => entry.threadId === threadId);
+      NodeAssert.equal(session?.status, "ready");
+      NodeAssert.equal(session?.activeTurnId, undefined);
+      NodeAssert.equal(session?.lastError, undefined);
+    }),
+  );
+
+  it.effect("reports interrupted when idle wins the race against the abort echo", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-stop-idle-race");
+      runtimeMock.state.holdSubscribedEventsUntilPrompt = true;
+      runtimeMock.state.eventsAfterAbort = [
+        {
+          type: "session.status",
+          properties: {
+            sessionID: "http://127.0.0.1:9999/session",
+            status: { type: "idle" },
+          },
+        },
+      ];
+      const collected = yield* collectThreadEvents(adapter, threadId);
+
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const turn = yield* adapter.sendTurn({
+        threadId,
+        input: "Fix it",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("opencode"),
+          model: "openai/gpt-5",
+        },
+      });
+      yield* adapter.interruptTurn(threadId, turn.turnId);
+
+      const settled = yield* waitForThreadEvents(
+        collected,
+        (events) => events.some((event) => event.type === "turn.completed"),
+        2_000,
+      );
+      NodeAssert.equal(settled, true, "idle after Stop must settle the turn");
+      yield* sleepReal(200);
+      const completed = (yield* Ref.get(collected)).filter(
+        (event) => event.type === "turn.completed",
+      );
+      NodeAssert.equal(completed.length, 1);
+      const completedEvent = completed[0];
+      if (completedEvent?.type !== "turn.completed") {
+        throw new Error("Expected a turn.completed event");
+      }
+      NodeAssert.equal(String(completedEvent.turnId), String(turn.turnId));
+      NodeAssert.deepEqual(completedEvent.payload, { state: "interrupted" });
+    }),
+  );
+
+  it.effect("keeps an unrequested MessageAbortedError as a failure", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-unrequested-abort-error");
+      runtimeMock.state.holdSubscribedEventsUntilPrompt = true;
+      runtimeMock.state.subscribedEvents = [
+        {
+          type: "session.error",
+          properties: {
+            sessionID: "http://127.0.0.1:9999/session",
+            error: { name: "MessageAbortedError", data: { message: "Aborted" } },
+          },
+        },
+      ];
+      const collected = yield* collectThreadEvents(adapter, threadId);
+
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const turn = yield* adapter.sendTurn({
+        threadId,
+        input: "Fix it",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("opencode"),
+          model: "openai/gpt-5",
+        },
+      });
+
+      const settled = yield* waitForThreadEvents(
+        collected,
+        (events) => events.some((event) => event.type === "turn.completed"),
+        2_000,
+      );
+      NodeAssert.equal(settled, true);
+      yield* sleepReal(200);
+      const events = yield* Ref.get(collected);
+      const completed = events.filter((event) => event.type === "turn.completed");
+      NodeAssert.equal(completed.length, 1);
+      const completedEvent = completed[0];
+      if (completedEvent?.type !== "turn.completed") {
+        throw new Error("Expected a turn.completed event");
+      }
+      NodeAssert.equal(String(completedEvent.turnId), String(turn.turnId));
+      NodeAssert.deepEqual(completedEvent.payload, {
+        state: "failed",
+        errorMessage: "Aborted",
+      });
+      NodeAssert.equal(
+        events.filter((event) => event.type === "runtime.error").length,
+        1,
+        "an abort Neokod did not request is still a provider failure",
+      );
+    }),
+  );
+
+  it.effect("a new turn clears the interrupt mark", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-stop-new-turn-clears-mark");
+      runtimeMock.state.holdSubscribedEventsUntilPrompt = true;
+      runtimeMock.state.eventsAfterAbortAfterPrompts = 2;
+      runtimeMock.state.eventsAfterAbort = [
+        {
+          type: "session.error",
+          properties: {
+            sessionID: "http://127.0.0.1:9999/session",
+            error: { name: "MessageAbortedError", data: { message: "Aborted" } },
+          },
+        },
+      ];
+      const collected = yield* collectThreadEvents(adapter, threadId);
+
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const firstTurn = yield* adapter.sendTurn({
+        threadId,
+        input: "First",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("opencode"),
+          model: "openai/gpt-5",
+        },
+      });
+      yield* adapter.interruptTurn(threadId, firstTurn.turnId);
+
+      const secondTurn = yield* adapter.sendTurn({
+        threadId,
+        input: "Second",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("opencode"),
+          model: "openai/gpt-5",
+        },
+      });
+
+      const settled = yield* waitForThreadEvents(
+        collected,
+        (events) => events.filter((event) => event.type === "turn.completed").length === 2,
+        2_000,
+      );
+      NodeAssert.equal(settled, true);
+      const events = yield* Ref.get(collected);
+      const completed = events.filter((event) => event.type === "turn.completed");
+      NodeAssert.equal(completed.length, 2);
+      const secondCompleted = completed[1];
+      if (secondCompleted?.type !== "turn.completed") {
+        throw new Error("Expected a second turn.completed event");
+      }
+      NodeAssert.equal(String(secondCompleted.turnId), String(secondTurn.turnId));
+      NodeAssert.deepEqual(secondCompleted.payload, {
+        state: "failed",
+        errorMessage: "Aborted",
+      });
+    }),
+  );
+
+  it.effect("resolves pending permissions on interrupt", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-stop-permission");
+      runtimeMock.state.holdSubscribedEventsUntilPrompt = true;
+      runtimeMock.state.subscribedEvents = [
+        {
+          type: "permission.asked",
+          properties: {
+            sessionID: "http://127.0.0.1:9999/session",
+            id: "permission-interrupt",
+            permission: "bash",
+            patterns: ["bun test"],
+            metadata: {},
+          },
+        },
+      ];
+      const collected = yield* collectThreadEvents(adapter, threadId);
+
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({
+        threadId,
+        input: "Fix it",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("opencode"),
+          model: "openai/gpt-5",
+        },
+      });
+
+      const opened = yield* waitForThreadEvents(
+        collected,
+        (events) => events.some((event) => event.type === "request.opened"),
+        2_000,
+      );
+      NodeAssert.equal(opened, true, "the approval must be pending before Stop");
+
+      yield* adapter.interruptTurn(threadId);
+
+      const resolved = yield* waitForThreadEvents(
+        collected,
+        (events) => events.some((event) => event.type === "request.resolved"),
+        2_000,
+      );
+      NodeAssert.equal(resolved, true, "Stop must resolve the pending permission");
+      const resolvedEvent = (yield* Ref.get(collected)).find(
+        (event) => event.type === "request.resolved",
+      );
+      if (resolvedEvent?.type !== "request.resolved") {
+        throw new Error("Expected a request.resolved event");
+      }
+      NodeAssert.deepEqual(resolvedEvent.payload, {
+        requestType: "command_execution_approval",
+        decision: "cancel",
+      });
+
+      const error = yield* adapter
+        .respondToRequest(threadId, asApprovalRequestId("permission-interrupt"), "accept")
+        .pipe(Effect.flip);
+      NodeAssert.equal(error._tag, "ProviderAdapterRequestError");
+      if (error._tag !== "ProviderAdapterRequestError") {
+        throw new Error("Unexpected error type");
+      }
+      NodeAssert.equal(error.detail, "Unknown pending permission request: permission-interrupt");
+    }),
+  );
   it.effect("keeps transient retry statuses as warnings without settling the turn", () =>
     Effect.gen(function* () {
       const adapter = yield* OpenCodeAdapter;
