@@ -1,4 +1,5 @@
 import { parseSemver } from "@neokod/shared/semver";
+import * as Duration from "effect/Duration";
 
 /**
  * OpenCode 2 moved to a different CLI, transport and event model. Neokod's
@@ -7,6 +8,17 @@ import { parseSemver } from "@neokod/shared/semver";
  * anything newer is rejected before Neokod starts its HTTP server.
  */
 export const SUPPORTED_OPENCODE_MAJOR = 1;
+
+/**
+ * Maximum time to wait for `opencode --version` before treating the installed
+ * major as unknown.
+ *
+ * The probe runs during provider hydration and again before maintenance, so an
+ * executable that hangs on `--version` must not hold server or update startup.
+ * An expired probe is a failed probe: it resolves the documented unknown
+ * fallback rather than blocking the install.
+ */
+export const OPENCODE_VERSION_PROBE_TIMEOUT = Duration.seconds(5);
 
 export interface OpenCodeVersion {
   readonly version: string;
