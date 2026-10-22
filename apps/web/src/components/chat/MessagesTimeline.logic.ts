@@ -314,6 +314,7 @@ function deriveTurnFolds(input: {
   timelineEntries: ReadonlyArray<TimelineEntry>;
   terminalAssistantMessageIds: ReadonlySet<string>;
   latestTurn: TimelineLatestTurn | null;
+  turnCompletionByTurnId: ReadonlyMap<TurnId, string | null>;
   unsettledTurnId: TurnId | null;
 }): ReadonlyMap<string, TurnFold> {
   interface TurnGroup {
@@ -389,37 +390,47 @@ function deriveTurnFolds(input: {
     }
 
     const firstEntry = group.entries[0];
-    const lastEntry = group.entries.at(-1);
-    if (!firstEntry || !lastEntry) {
+    if (!firstEntry) {
       continue;
     }
 
     const isLatestInterruptedTurn =
       input.latestTurn?.turnId === turnId && input.latestTurn.state === "interrupted";
-    // A turn cut short by a steer leaves trailing work entries behind its
-    // terminal message — take whichever ended last.
-    const lastEntryEnd =
-      lastEntry.kind === "message" ? lastEntry.message.updatedAt : lastEntry.createdAt;
-    const latestTurn = input.latestTurn;
+    const startedAt =
+      (input.latestTurn?.turnId === turnId ? input.latestTurn.startedAt : null) ??
+      group.startBoundary ??
+      firstEntry.createdAt;
+    const completion = input.turnCompletionByTurnId.get(turnId);
     let elapsedMs: number | null;
-    if (latestTurn !== null && latestTurn.turnId === turnId) {
+    if (completion !== undefined) {
       const terminalElapsed = resolveTerminalElapsedEnd({
-        terminal: latestTurn.state !== "running",
-        completedAt: latestTurn.completedAt,
+        terminal: true,
+        completedAt: completion,
       });
-      // An explicitly unknown completion stays unknown. Entry timestamps,
-      // including recovery-time synthetic activity, must not manufacture a
-      // duration for the latest terminal turn.
       elapsedMs =
-        terminalElapsed.state === "known" && latestTurn.startedAt !== null
-          ? computeElapsedMs(latestTurn.startedAt, terminalElapsed.endedAt)
+        terminalElapsed.state === "known"
+          ? computeElapsedMs(startedAt, terminalElapsed.endedAt)
           : null;
     } else {
-      elapsedMs = computeElapsedMs(
-        group.startBoundary ?? firstEntry.createdAt,
-        maxIsoTimestamp(group.terminalEntry?.message.updatedAt ?? null, lastEntryEnd) ??
-          lastEntryEnd,
-      );
+      // Historical turns without authoritative completion may use their own
+      // observed entries, but never a synthetic reconciliation row.
+      const lastEvidenceEntry = [...group.entries]
+        .reverse()
+        .find((entry) => !(entry.kind === "work" && entry.entry.synthetic === true));
+      const lastEvidenceEnd =
+        lastEvidenceEntry === undefined
+          ? null
+          : lastEvidenceEntry.kind === "message"
+            ? lastEvidenceEntry.message.updatedAt
+            : lastEvidenceEntry.createdAt;
+      elapsedMs =
+        lastEvidenceEnd === null
+          ? null
+          : computeElapsedMs(
+              group.startBoundary ?? firstEntry.createdAt,
+              maxIsoTimestamp(group.terminalEntry?.message.updatedAt ?? null, lastEvidenceEnd) ??
+                lastEvidenceEnd,
+            );
     }
     const duration = elapsedMs !== null ? formatDuration(elapsedMs) : null;
     const label = isLatestInterruptedTurn
@@ -444,6 +455,7 @@ function deriveTurnFolds(input: {
 export function deriveMessagesTimelineRows(input: {
   timelineEntries: ReadonlyArray<TimelineEntry>;
   latestTurn?: TimelineLatestTurn | null;
+  turnCompletionByTurnId?: ReadonlyMap<TurnId, string | null>;
   runningTurnId?: TurnId | null;
   expandedTurnIds?: ReadonlySet<TurnId>;
   expandedWorkGroupIds?: ReadonlySet<string>;
@@ -461,10 +473,17 @@ export function deriveMessagesTimelineRows(input: {
     input.latestTurn ?? null,
     input.runningTurnId ?? null,
   );
+  const latestTurn = input.latestTurn ?? null;
+  const completionByTurnId =
+    input.turnCompletionByTurnId ??
+    new Map<TurnId, string | null>(
+      latestTurn === null ? [] : [[latestTurn.turnId, latestTurn.completedAt]],
+    );
   const foldsByAnchorEntryId = deriveTurnFolds({
     timelineEntries: input.timelineEntries,
     terminalAssistantMessageIds,
-    latestTurn: input.latestTurn ?? null,
+    latestTurn,
+    turnCompletionByTurnId: completionByTurnId,
     unsettledTurnId,
   });
   const collapsedEntryIds = new Set<string>();

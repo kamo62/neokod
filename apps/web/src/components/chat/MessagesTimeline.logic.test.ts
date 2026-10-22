@@ -888,6 +888,7 @@ describe("deriveMessagesTimelineRows", () => {
             turnId: "turn-recovered" as never,
             label: "Tool orphaned",
             tone: "tool" as const,
+            synthetic: true,
           },
         },
       ],
@@ -909,6 +910,61 @@ describe("deriveMessagesTimelineRows", () => {
     );
     expect(fold?.label).toBe("You stopped this response");
     expect(fold?.label).not.toContain("after");
+  });
+
+  it("keeps a recovered turn duration-free after a subsequent turn starts", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "user-entry-recovered-historical",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:00Z",
+          message: {
+            id: "user-recovered-historical" as never,
+            role: "user",
+            text: "go",
+            turnId: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "work-entry-recovered-historical",
+          kind: "work",
+          createdAt: "2026-01-02T08:00:00Z",
+          entry: {
+            id: "synthetic-recovery-activity-historical",
+            createdAt: "2026-01-02T08:00:00Z",
+            turnId: "turn-recovered" as never,
+            label: "Tool orphaned",
+            tone: "tool" as const,
+            synthetic: true,
+          },
+        },
+      ],
+      latestTurn: {
+        turnId: "turn-next" as never,
+        state: "running",
+        startedAt: "2026-01-02T09:00:00Z",
+        completedAt: null,
+      },
+      turnCompletionByTurnId: new Map([
+        ["turn-recovered" as never, null],
+        ["turn-next" as never, null],
+      ]),
+      isWorking: true,
+      activeTurnStartedAt: "2026-01-02T09:00:00Z",
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const fold = rows.find(
+      (row): row is Extract<(typeof rows)[number], { kind: "turn-fold" }> =>
+        row.kind === "turn-fold",
+    );
+    expect(fold?.label).toBe("Worked");
+    expect(fold?.label).not.toContain("for");
   });
 
   it("keeps the previous turn folded while a newly sent message awaits its turn", () => {

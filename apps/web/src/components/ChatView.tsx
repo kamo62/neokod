@@ -1429,6 +1429,16 @@ function ChatViewContent(props: ChatViewProps) {
     return openTerminalThreadKeys.filter((nextThreadKey) => existingThreadKeys.has(nextThreadKey));
   }, [draftThreadKeys, openTerminalThreadKeys, serverThreadKeys]);
   const activeLatestTurn = activeThread?.latestTurn ?? null;
+  const timelineTurnCompletionByTurnId = useMemo(() => {
+    const completions = new Map<TurnId, string | null>();
+    for (const checkpoint of activeThread?.checkpoints ?? []) {
+      completions.set(checkpoint.turnId, checkpoint.completedAt);
+    }
+    if (activeLatestTurn !== null) {
+      completions.set(activeLatestTurn.turnId, activeLatestTurn.completedAt);
+    }
+    return completions;
+  }, [activeThread?.checkpoints, activeLatestTurn]);
   const sourcePlanThreadRef = useMemo(() => {
     const sourceThreadId = activeLatestTurn?.sourceProposedPlan?.threadId;
     if (!activeThread || !sourceThreadId || sourceThreadId === activeThread.id) {
@@ -5660,6 +5670,7 @@ function ChatViewContent(props: ChatViewProps) {
                 listRef={legendListRef}
                 timelineEntries={timelineEntries}
                 latestTurn={activeLatestTurn}
+                turnCompletionByTurnId={timelineTurnCompletionByTurnId}
                 runningTurnId={
                   activeThread.session?.status === "running"
                     ? activeThread.session.activeTurnId

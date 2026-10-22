@@ -167,6 +167,7 @@ interface MessagesTimelineProps {
   listRef: React.RefObject<LegendListRef | null>;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
   latestTurn: TimelineLatestTurn | null;
+  turnCompletionByTurnId?: ReadonlyMap<TurnId, string | null>;
   runningTurnId: TurnId | null;
   turnDiffSummaryByAssistantMessageId: Map<MessageId, TurnDiffSummary>;
   routeThreadKey: string;
@@ -200,6 +201,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   listRef,
   timelineEntries,
   latestTurn,
+  turnCompletionByTurnId,
   runningTurnId,
   turnDiffSummaryByAssistantMessageId,
   routeThreadKey,
@@ -304,6 +306,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       deriveMessagesTimelineRows({
         timelineEntries,
         latestTurn,
+        ...(turnCompletionByTurnId !== undefined ? { turnCompletionByTurnId } : {}),
         runningTurnId,
         expandedTurnIds,
         expandedWorkGroupIds,
@@ -315,6 +318,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [
       timelineEntries,
       latestTurn,
+      turnCompletionByTurnId,
       runningTurnId,
       expandedTurnIds,
       expandedWorkGroupIds,
