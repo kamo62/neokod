@@ -1,21 +1,43 @@
-import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId, TurnId } from "@neokod/contracts";
+import {
+  EnvironmentId,
+  MessageId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+  TurnId,
+} from "@neokod/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { Thread } from "../types";
+import type { QueuedComposerMessage } from "../composerDraftStore";
 import {
   MAX_HIDDEN_MOUNTED_PREVIEW_THREADS,
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   buildExpiredTerminalContextToastCopy,
   buildThreadTurnInterruptInput,
+  canAutoDispatchQueuedMessage,
+  canDispatchQueuedMessage,
+  canRetryUnconfirmedQueuedMessage,
+  classifyDispatchFailure,
   createLocalDispatchSnapshot,
+  decideQueuedDispatchSettlement,
   deriveComposerSendState,
   deriveActiveToolLabel,
   getStartedThreadModelChangeBlockReason,
   hasServerAcknowledgedLocalDispatch,
+  isComposerDraftEmpty,
+  partitionQueuedMessages,
+  queuedDispatchMessageId,
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
+  removeOptimisticUserMessage,
+  resolveQueuedDispatchAttempt,
   resolveSendEnvMode,
+  resolveSendIdentity,
+  selectAcknowledgedQueuedMessageIds,
+  shouldRestoreComposerDraftAfterFailure,
   shouldWriteThreadErrorToCurrentServerThread,
+  upsertOptimisticUserMessage,
 } from "./ChatView.logic";
 
 const environmentId = EnvironmentId.make("environment-local");
@@ -505,5 +527,550 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
     expect(hasServerAcknowledgedLocalDispatch({ ...common, hasPendingApproval: true })).toBe(true);
     expect(hasServerAcknowledgedLocalDispatch({ ...common, hasPendingUserInput: true })).toBe(true);
     expect(hasServerAcknowledgedLocalDispatch({ ...common, threadError: "failed" })).toBe(true);
+  });
+});
+
+describe("canDispatchQueuedMessage", () => {
+  const clear = {
+    hasActiveThread: true,
+    isSendBusy: false,
+    isConnecting: false,
+    environmentUnavailable: false,
+    sendInFlight: false,
+  };
+
+  it("dispatches only when every send blocker is clear", () => {
+    expect(canDispatchQueuedMessage(clear)).toBe(true);
+  });
+
+  it("keeps the entry while the thread, transport or a send is unavailable", () => {
+    expect(canDispatchQueuedMessage({ ...clear, hasActiveThread: false })).toBe(false);
+    expect(canDispatchQueuedMessage({ ...clear, isSendBusy: true })).toBe(false);
+    expect(canDispatchQueuedMessage({ ...clear, isConnecting: true })).toBe(false);
+    expect(canDispatchQueuedMessage({ ...clear, environmentUnavailable: true })).toBe(false);
+    expect(canDispatchQueuedMessage({ ...clear, sendInFlight: true })).toBe(false);
+  });
+});
+
+describe("classifyDispatchFailure", () => {
+  it("keeps a generic server dispatch error unknown", () => {
+    // The same tag covers receipt-read failures and failures after the
+    // command transaction committed, so it is not affirmative rejection.
+    expect(
+      classifyDispatchFailure({
+        interrupted: false,
+        error: { _tag: "OrchestrationDispatchCommandError", message: "rejected" },
+      }),
+    ).toBe("unknown");
+  });
+
+  it("treats an unconnected environment as definitively not sent", () => {
+    expect(
+      classifyDispatchFailure({
+        interrupted: false,
+        error: { _tag: "EnvironmentRpcUnavailableError", message: "not connected" },
+      }),
+    ).toBe("not_sent");
+  });
+
+  it("preserves interruption and transport failures as unknown outcomes", () => {
+    expect(classifyDispatchFailure({ interrupted: true, error: new Error("interrupted") })).toBe(
+      "unknown",
+    );
+    expect(
+      classifyDispatchFailure({
+        interrupted: false,
+        error: { _tag: "RpcClientError", message: "socket closed" },
+      }),
+    ).toBe("unknown");
+    expect(classifyDispatchFailure({ interrupted: false, error: new Error("boom") })).toBe(
+      "unknown",
+    );
+  });
+});
+
+describe("decideQueuedDispatchSettlement", () => {
+  const firstAttempt = { previousDispatchState: "none" as const };
+  const retry = { previousDispatchState: "unconfirmed" as const };
+  const failedRetry = { previousDispatchState: "failed" as const };
+
+  it("removes the entry once the send accepted the text", () => {
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "accepted",
+        ...firstAttempt,
+      }),
+    ).toBe("remove_entry");
+  });
+
+  it("never converts an unknown outcome into an ordinary retry draft", () => {
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "unknown",
+        ...firstAttempt,
+      }),
+    ).toBe("mark_unconfirmed");
+  });
+
+  it("keeps a first attempt whose history is unavailable unconfirmed, not failed", () => {
+    // A lost claim restores `dispatch: null`. This attempt may not have left
+    // the client, but an earlier attempt under the same deterministic identity
+    // may already have been accepted, so it must stay retryable under that
+    // identity rather than become a fresh-id draft.
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "not_sent",
+        ...firstAttempt,
+      }),
+    ).toBe("mark_unconfirmed");
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "not_attempted",
+        ...firstAttempt,
+      }),
+    ).toBe("mark_unconfirmed");
+  });
+
+  it("keeps a retry unconfirmed when this attempt never reached the command", () => {
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "not_sent",
+        ...retry,
+      }),
+    ).toBe("mark_unconfirmed");
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "not_attempted",
+        ...retry,
+      }),
+    ).toBe("mark_unconfirmed");
+  });
+
+  it("keeps a repeated local failure failed without releasing its identity", () => {
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "not_sent",
+        ...failedRetry,
+      }),
+    ).toBe("mark_failed");
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "not_attempted",
+        ...failedRetry,
+      }),
+    ).toBe("mark_failed");
+  });
+
+  it("keeps a retry unconfirmed after a generic dispatch error", () => {
+    expect(
+      decideQueuedDispatchSettlement({
+        outcome: "unknown",
+        ...retry,
+      }),
+    ).toBe("mark_unconfirmed");
+  });
+});
+
+describe("canRetryUnconfirmedQueuedMessage", () => {
+  const clear = {
+    phase: "disconnected" as const,
+    composerDraftEmpty: true,
+    hasActiveThread: true,
+    isSendBusy: false,
+    isConnecting: false,
+    environmentUnavailable: false,
+    sendInFlight: false,
+  };
+
+  it("offers the safe retry from a stopped or disconnected session", () => {
+    expect(canRetryUnconfirmedQueuedMessage(clear)).toBe(true);
+    expect(canRetryUnconfirmedQueuedMessage({ ...clear, phase: "ready" })).toBe(true);
+  });
+
+  it("matches the handler blockers and hides the retry while a turn runs", () => {
+    expect(canRetryUnconfirmedQueuedMessage({ ...clear, phase: "running" })).toBe(false);
+    expect(canRetryUnconfirmedQueuedMessage({ ...clear, composerDraftEmpty: false })).toBe(false);
+    expect(canRetryUnconfirmedQueuedMessage({ ...clear, environmentUnavailable: true })).toBe(
+      false,
+    );
+    expect(canRetryUnconfirmedQueuedMessage({ ...clear, isConnecting: true })).toBe(false);
+    expect(canRetryUnconfirmedQueuedMessage({ ...clear, sendInFlight: true })).toBe(false);
+    expect(canRetryUnconfirmedQueuedMessage({ ...clear, hasPendingUserInput: true })).toBe(false);
+  });
+});
+
+describe("resolveQueuedDispatchAttempt", () => {
+  const queuedMessageId = "queue-entry-1";
+  const firstAttemptAt = "2026-10-21T10:00:00.000Z";
+  const failedDispatch = {
+    messageId: `queued-message:${queuedMessageId}`,
+    commandId: `queued-command:${queuedMessageId}`,
+    messageCreatedAt: firstAttemptAt,
+    attemptedAt: firstAttemptAt,
+    state: "failed" as const,
+  };
+
+  it("derives the first attempt ids from the saved queue entry", () => {
+    expect(
+      resolveQueuedDispatchAttempt({
+        queuedMessageId,
+        previousDispatch: null,
+        now: firstAttemptAt,
+      }),
+    ).toEqual({
+      messageId: `queued-message:${queuedMessageId}`,
+      commandId: `queued-command:${queuedMessageId}`,
+      messageCreatedAt: firstAttemptAt,
+    });
+  });
+
+  it("replays a lost claim under the same ids", () => {
+    const replay = resolveQueuedDispatchAttempt({
+      queuedMessageId,
+      previousDispatch: null,
+      now: "2026-10-21T12:00:00.000Z",
+    });
+    const first = resolveQueuedDispatchAttempt({
+      queuedMessageId,
+      previousDispatch: null,
+      now: firstAttemptAt,
+    });
+
+    expect(replay.messageId).toBe(first.messageId);
+    expect(replay.commandId).toBe(first.commandId);
+    expect(replay.messageCreatedAt).not.toBe(first.messageCreatedAt);
+  });
+
+  it("keeps an earlier unknown attempt and its first attempt timestamp", () => {
+    expect(
+      resolveQueuedDispatchAttempt({
+        queuedMessageId,
+        previousDispatch: {
+          messageId: "queued-message",
+          commandId: "queued-command",
+          messageCreatedAt: firstAttemptAt,
+          attemptedAt: "2026-10-21T09:59:00.000Z",
+          state: "unconfirmed",
+        },
+        now: "2026-10-21T12:00:00.000Z",
+      }),
+    ).toEqual({
+      messageId: "queued-message",
+      commandId: "queued-command",
+      messageCreatedAt: firstAttemptAt,
+    });
+  });
+
+  it("uses the first attempt time for a legacy claim without a message timestamp", () => {
+    expect(
+      resolveQueuedDispatchAttempt({
+        queuedMessageId,
+        previousDispatch: {
+          messageId: "queued-message",
+          commandId: "queued-command",
+          attemptedAt: firstAttemptAt,
+          state: "unconfirmed",
+        },
+        now: "2026-10-21T12:00:00.000Z",
+      }).messageCreatedAt,
+    ).toBe(firstAttemptAt);
+  });
+
+  it("reconstructs an accepted manual retry from the restored failed record", () => {
+    // The retry was accepted under this identity and its replacement claim was
+    // lost; the storage snapshot fell back to the failed record.
+    const reconstructed = resolveQueuedDispatchAttempt({
+      queuedMessageId,
+      previousDispatch: failedDispatch,
+      now: "2026-10-21T12:00:00.000Z",
+    });
+
+    expect(reconstructed).toEqual({
+      messageId: failedDispatch.messageId,
+      commandId: failedDispatch.commandId,
+      messageCreatedAt: firstAttemptAt,
+    });
+  });
+
+  it("reconstructs the same identity every time the same failed record is restored", () => {
+    const first = resolveQueuedDispatchAttempt({
+      queuedMessageId,
+      previousDispatch: failedDispatch,
+      now: "2026-10-21T12:00:00.000Z",
+    });
+    const second = resolveQueuedDispatchAttempt({
+      queuedMessageId,
+      previousDispatch: failedDispatch,
+      now: "2026-10-21T18:00:00.000Z",
+    });
+
+    expect(first).toEqual(second);
+    expect(first.messageId).not.toBe(queuedDispatchMessageId(`${queuedMessageId}-other`));
+  });
+});
+
+describe("resolveSendIdentity", () => {
+  it("never generates a new identity for a claimed queued dispatch", () => {
+    expect(
+      resolveSendIdentity({
+        queuedDispatch: {
+          messageId: "queued-message",
+          commandId: "queued-command",
+          messageCreatedAt: "2026-10-21T10:00:00.000Z",
+        },
+        newMessageId: "fresh-message",
+        now: "2026-10-21T11:00:00.000Z",
+      }),
+    ).toEqual({
+      messageId: "queued-message",
+      commandId: "queued-command",
+      messageCreatedAt: "2026-10-21T10:00:00.000Z",
+    });
+  });
+
+  it("uses the queued timestamp when a legacy claim has none", () => {
+    expect(
+      resolveSendIdentity({
+        queuedDispatch: { messageId: "queued-message", commandId: "queued-command" },
+        newMessageId: "fresh-message",
+        now: "2026-10-21T11:00:00.000Z",
+      }),
+    ).toEqual({
+      messageId: "queued-message",
+      commandId: "queued-command",
+      messageCreatedAt: "2026-10-21T11:00:00.000Z",
+    });
+  });
+
+  it("generates the id but no command id for an ordinary send", () => {
+    expect(
+      resolveSendIdentity({
+        newMessageId: "fresh-message",
+        now: "2026-10-21T11:00:00.000Z",
+      }),
+    ).toEqual({
+      messageId: "fresh-message",
+      commandId: null,
+      messageCreatedAt: "2026-10-21T11:00:00.000Z",
+    });
+  });
+
+  it("keeps a reconstructed plan follow-up identity and first attempt time stable", () => {
+    const reconstructed = resolveQueuedDispatchAttempt({
+      queuedMessageId: "queue-entry-plan",
+      previousDispatch: {
+        messageId: "queued-message:queue-entry-plan",
+        commandId: "queued-command:queue-entry-plan",
+        messageCreatedAt: "2026-10-21T09:30:00.000Z",
+        attemptedAt: "2026-10-21T09:30:00.000Z",
+        state: "failed",
+      },
+      now: "2026-10-21T12:00:00.000Z",
+    });
+    const first = resolveSendIdentity({
+      queuedDispatch: reconstructed,
+      newMessageId: "ordinary-1",
+      now: "2026-10-21T12:00:00.000Z",
+    });
+    const second = resolveSendIdentity({
+      queuedDispatch: reconstructed,
+      newMessageId: "ordinary-2",
+      now: "2026-10-21T18:00:00.000Z",
+    });
+
+    expect(first).toEqual(second);
+    expect(first.messageId).toBe("queued-message:queue-entry-plan");
+    expect(first.commandId).toBe("queued-command:queue-entry-plan");
+    expect(first.messageCreatedAt).toBe("2026-10-21T09:30:00.000Z");
+  });
+});
+
+describe("optimistic user message rows", () => {
+  const message = {
+    id: MessageId.make("message-1"),
+    role: "user" as const,
+    text: "hello",
+    turnId: null,
+    createdAt: now,
+    updatedAt: now,
+    streaming: false,
+  };
+
+  it("replaces an existing row with the same stable id", () => {
+    const updated = { ...message, text: "retried" };
+    expect(upsertOptimisticUserMessage([message], updated)).toEqual([updated]);
+  });
+
+  it("removes a failed attempt by id without touching other rows", () => {
+    const other = { ...message, id: MessageId.make("message-2") };
+    expect(removeOptimisticUserMessage([message, other], message.id)).toEqual([other]);
+  });
+});
+
+describe("isComposerDraftEmpty", () => {
+  const empty = {
+    prompt: "",
+    imageCount: 0,
+    terminalContextCount: 0,
+    elementContextCount: 0,
+    previewAnnotationCount: 0,
+    reviewCommentCount: 0,
+  };
+
+  it("is empty only when the prompt and every attachment class are empty", () => {
+    expect(isComposerDraftEmpty(empty)).toBe(true);
+    expect(isComposerDraftEmpty({ ...empty, prompt: "draft" })).toBe(false);
+    expect(isComposerDraftEmpty({ ...empty, imageCount: 1 })).toBe(false);
+    expect(isComposerDraftEmpty({ ...empty, terminalContextCount: 1 })).toBe(false);
+    expect(isComposerDraftEmpty({ ...empty, elementContextCount: 1 })).toBe(false);
+    expect(isComposerDraftEmpty({ ...empty, previewAnnotationCount: 1 })).toBe(false);
+    expect(isComposerDraftEmpty({ ...empty, reviewCommentCount: 1 })).toBe(false);
+  });
+});
+
+describe("canAutoDispatchQueuedMessage", () => {
+  const clear = {
+    hasActiveThread: true,
+    isSendBusy: false,
+    isConnecting: false,
+    environmentUnavailable: false,
+    sendInFlight: false,
+  };
+
+  it("only auto-dispatches an unclaimed entry once every blocker clears", () => {
+    expect(canAutoDispatchQueuedMessage({ ...clear, dispatchState: "none" })).toBe(true);
+    expect(canAutoDispatchQueuedMessage({ ...clear, dispatchState: "in_flight" })).toBe(false);
+    expect(canAutoDispatchQueuedMessage({ ...clear, dispatchState: "unconfirmed" })).toBe(false);
+  });
+
+  it("reacts to each cleared transport blocker for an unclaimed entry", () => {
+    const blockedCases = [
+      { ...clear, dispatchState: "none" as const, hasActiveThread: false },
+      { ...clear, dispatchState: "none" as const, isSendBusy: true },
+      { ...clear, dispatchState: "none" as const, isConnecting: true },
+      { ...clear, dispatchState: "none" as const, environmentUnavailable: true },
+      { ...clear, dispatchState: "none" as const, sendInFlight: true },
+      { ...clear, dispatchState: "none" as const, hasPendingUserInput: true },
+    ];
+    for (const blocked of blockedCases) {
+      expect(canAutoDispatchQueuedMessage(blocked)).toBe(false);
+    }
+    expect(canAutoDispatchQueuedMessage({ ...clear, dispatchState: "none" })).toBe(true);
+  });
+});
+
+describe("shouldRestoreComposerDraftAfterFailure", () => {
+  it("never restores a queued dispatch into the ordinary draft", () => {
+    // Restoring would discard the entry's send identity. A local failure does
+    // not prove that an earlier attempt, whose claim may have been lost, was
+    // not accepted, so the queue keeps the content and identity instead.
+    expect(shouldRestoreComposerDraftAfterFailure({ queuedDispatch: true })).toBe(false);
+  });
+
+  it("keeps ordinary direct sends restoring the composer on failure", () => {
+    expect(shouldRestoreComposerDraftAfterFailure({ queuedDispatch: false })).toBe(true);
+  });
+});
+
+describe("selectAcknowledgedQueuedMessageIds", () => {
+  const entry = (id: string, messageId: string | null) => ({
+    id,
+    dispatch: messageId
+      ? {
+          messageId,
+          commandId: `command-${messageId}`,
+          attemptedAt: now,
+          state: "unconfirmed" as const,
+        }
+      : null,
+  });
+
+  it("releases only entries whose stable message id the server has reported", () => {
+    expect(
+      selectAcknowledgedQueuedMessageIds({
+        queuedMessages: [
+          entry("q-accepted", "message-accepted"),
+          entry("q-no-ack", "message-unknown"),
+        ],
+        messageIds: new Set(["message-accepted"]),
+      }),
+    ).toEqual(["q-accepted"]);
+  });
+
+  it("releases an entry with no claim when its derived identity is already in history", () => {
+    // The first claim was lost before it reached storage, but the server
+    // accepted the send under the deterministic identity and reported it back.
+    expect(
+      selectAcknowledgedQueuedMessageIds({
+        queuedMessages: [entry("q-lost-claim", null)],
+        messageIds: new Set([
+          queuedDispatchMessageId("q-lost-claim"),
+          queuedDispatchMessageId("some-other-entry"),
+        ]),
+      }),
+    ).toEqual(["q-lost-claim"]);
+  });
+
+  it("releases a restored failed record whose accepted retry identity is in history", () => {
+    // The manual retry was accepted under the record's reconstructed identity,
+    // then its replacement claim was lost and storage restored the failed
+    // record. History acknowledgement must still release that entry.
+    const queuedMessageId = "q-retry-accepted";
+    const accepted = resolveQueuedDispatchAttempt({
+      queuedMessageId,
+      previousDispatch: {
+        messageId: `queued-message:${queuedMessageId}`,
+        commandId: `queued-command:${queuedMessageId}`,
+        attemptedAt: now,
+        state: "failed",
+      },
+      now: "2026-10-21T12:00:00.000Z",
+    });
+
+    expect(
+      selectAcknowledgedQueuedMessageIds({
+        queuedMessages: [{ id: queuedMessageId, dispatch: { messageId: accepted.messageId } }],
+        messageIds: new Set([accepted.messageId]),
+      }),
+    ).toEqual([queuedMessageId]);
+  });
+
+  it("does not release an entry with no claim when history has no matching identity", () => {
+    expect(
+      selectAcknowledgedQueuedMessageIds({
+        queuedMessages: [entry("q-lost-claim", null)],
+        messageIds: new Set(["anything"]),
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("partitionQueuedMessages", () => {
+  const queued = (
+    id: string,
+    state: "in_flight" | "unconfirmed" | null,
+  ): QueuedComposerMessage => ({
+    id,
+    text: id,
+    createdAt: now,
+    dispatch:
+      state === null
+        ? null
+        : {
+            messageId: `message-${id}`,
+            commandId: `command-${id}`,
+            attemptedAt: now,
+            state,
+          },
+  });
+
+  it("keeps claimed entries out of the list that exposes Remove and Steer", () => {
+    const result = partitionQueuedMessages([
+      queued("ready", null),
+      queued("sending", "in_flight"),
+      queued("unknown", "unconfirmed"),
+    ]);
+    expect(result.dispatchable.map((entry) => entry.id)).toEqual(["ready"]);
+    expect(result.pending.map((entry) => entry.id)).toEqual(["sending", "unknown"]);
   });
 });
