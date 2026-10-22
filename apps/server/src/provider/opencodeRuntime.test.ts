@@ -250,6 +250,26 @@ const NOOP_LEDGER: OpenCodeServerLedgerShape = {
   track: () => Effect.succeed(Effect.void),
 };
 
+// Fake command handles report pid 1. Pinning the platform to win32 would make
+// cleanup reach the production `WindowsTaskkillSpawner` and really spawn
+// `taskkill /pid 1 /T /F`, so every fake-runtime layer gets a worker that
+// settles immediately. A test that needs to fail or observe the worker injects
+// its own spawner instead.
+const makeDefaultWindowsTaskkillSpawner = (
+  onSpawn?: (pid: number) => void,
+): WindowsTaskkillSpawnerShape => ({
+  spawn: (pid) =>
+    Effect.sync(() => {
+      onSpawn?.(pid);
+      return {
+        pid: 9001,
+        isRunning: Effect.succeed(false),
+        exitCode: Effect.succeed(0),
+        terminate: Effect.void,
+      } satisfies WindowsTaskkillWorkerHandle;
+    }),
+});
+
 // The platform is pinned to win32 so the shutdown finalizer goes through
 // `child.kill` on the fake handle instead of `process.kill(-pid)`, which
 // would signal a real process group on the host running the tests. The
@@ -259,16 +279,18 @@ const runtimeLayerWith = (
   spawner: ChildProcessSpawner.ChildProcessSpawner["Service"],
   ledger: OpenCodeServerLedgerShape = NOOP_LEDGER,
   windowsTaskkill?: WindowsTaskkillSpawnerShape,
+  onDefaultTaskkillSpawn?: (pid: number) => void,
 ) => {
-  const base = OpenCodeRuntimeLive.pipe(
+  // Always provide the tag: `WindowsTaskkillSpawner` is a Context.Reference,
+  // and its production default would spawn a real taskkill for a fake pid.
+  const taskkill = windowsTaskkill ?? makeDefaultWindowsTaskkillSpawner(onDefaultTaskkillSpawn);
+  return OpenCodeRuntimeLive.pipe(
     Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)),
     Layer.provide(Layer.succeed(HostProcessPlatform, "win32")),
     Layer.provide(Layer.succeed(SpawnExecutableResolution, () => undefined)),
     Layer.provide(Layer.succeed(OpenCodeServerLedger, ledger)),
+    Layer.provide(Layer.succeed(WindowsTaskkillSpawner, taskkill)),
   );
-  return windowsTaskkill === undefined
-    ? base
-    : base.pipe(Layer.provide(Layer.succeed(WindowsTaskkillSpawner, windowsTaskkill)));
 };
 
 const runtimeLayerWithRealSpawner = () =>
@@ -425,6 +447,7 @@ describe("startOpenCodeServerProcess version guard", () => {
 
   it.effect("starts the server after a hung --version probe times out", () => {
     const captured: Array<CapturedSpawn> = [];
+    const taskkillPids: Array<number> = [];
     const versionSpawned = Deferred.makeUnsafe<void>();
     return Effect.gen(function* () {
       const runtime = yield* OpenCodeRuntime;
@@ -443,9 +466,13 @@ describe("startOpenCodeServerProcess version guard", () => {
       expect(fiber.pollUnsafe()).toBeUndefined();
 
       // At the bound the probe resolves unknown and the supported server starts
-      // through its normal path.
+      // through its normal path. Cleanup uses the layer's deterministic fake
+      // worker, so progress only depends on the effect continuations advancing.
       yield* TestClock.adjust("1 millis");
-      yield* Effect.yieldNow;
+      for (let round = 0; round < 5; round++) {
+        yield* Effect.yieldNow;
+      }
+      expect(taskkillPids).toEqual([1]);
       expect(capturedServerSpawns(captured)).toHaveLength(1);
       for (let round = 0; round < 5; round++) {
         yield* Effect.yieldNow;
@@ -455,7 +482,16 @@ describe("startOpenCodeServerProcess version guard", () => {
 
       expect(server.url).toBe(SERVER_URL);
       expect(capturedServerSpawns(captured)).toHaveLength(1);
-    }).pipe(Effect.provide(runtimeLayerWith(makeHangingVersionSpawner(captured, versionSpawned))));
+    }).pipe(
+      Effect.provide(
+        runtimeLayerWith(
+          makeHangingVersionSpawner(captured, versionSpawned),
+          NOOP_LEDGER,
+          undefined,
+          (pid) => taskkillPids.push(pid),
+        ),
+      ),
+    );
   });
 });
 
@@ -603,6 +639,37 @@ describe("runOpenCodeCommand Windows cleanup", () => {
       expect(workerSpawns).toBe(0);
     }).pipe(
       Effect.provide(runtimeLayerWith(makeCapturingSpawner([]), NOOP_LEDGER, windowsTaskkill)),
+    );
+  });
+
+  it.effect("uses the deterministic default worker for fake command handles", () => {
+    const taskkillPids: Array<number> = [];
+    let commandKills = 0;
+
+    return Effect.gen(function* () {
+      const runtime = yield* OpenCodeRuntime;
+      const command = yield* runtime
+        .runOpenCodeCommand({ binaryPath: "fake-opencode", args: ["--version"] })
+        .pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+
+      yield* Fiber.interrupt(command);
+
+      // The fake handle reports pid 1. The helper must supply a worker for it
+      // instead of letting the production reference launch a real taskkill.
+      expect(taskkillPids).toEqual([1]);
+      expect(commandKills).toBe(0);
+    }).pipe(
+      Effect.provide(
+        runtimeLayerWith(
+          hangCommandUntilInterrupted(() => {
+            commandKills += 1;
+          }),
+          NOOP_LEDGER,
+          undefined,
+          (pid) => taskkillPids.push(pid),
+        ),
+      ),
     );
   });
 
