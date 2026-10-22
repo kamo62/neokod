@@ -112,10 +112,10 @@ const fakeOrchestratorLayer = Layer.succeed(SymphonyOrchestrator, {
   excludeWorkItem: () => Effect.void,
   includeWorkItem: () => Effect.void,
   setLocalPriority: () => Effect.void,
-  dispatchWorkItem: (workItemId: string, options?: { readonly explicit?: boolean }) =>
+  dispatchWorkItem: (workItemId: string) =>
     Effect.sync(() => {
-      dispatchCalls.push({ workItemId, explicit: options?.explicit === true });
-    }).pipe(Effect.asVoid),
+      dispatchCalls.push({ workItemId, explicit: true });
+    }).pipe(Effect.as({ status: "started" } as const)),
   cancelRun: (runAttemptId: string) =>
     Effect.logInfo(`cancelled ${runAttemptId}`).pipe(Effect.asVoid),
   listQueuesForRepository: () => Effect.succeed([]),
@@ -179,6 +179,78 @@ it.layer(failingBoardOrchestratorLayer)("Symphony WS RPC handlers - board read f
   );
 });
 
+const refusedDispatchOrchestratorLayer = Layer.succeed(SymphonyOrchestrator, {
+  dispatchWorkItem: () =>
+    Effect.succeed({ status: "refused", reason: "paused", detail: "global" } as const),
+} as unknown as (typeof SymphonyOrchestrator)["Service"]);
+
+it.layer(refusedDispatchOrchestratorLayer)("Symphony WS RPC handlers - refused dispatch", (it) => {
+  it.effect("dispatchWorkItem passes a refusal through unchanged", () =>
+    Effect.gen(function* () {
+      const handlers = makeSymphonyRpcHandlers();
+      const handler = handlers[SYMPHONY_WS_METHODS.dispatchWorkItem];
+      const result = yield* Effect.scoped(handler({ workItemId: WorkItemIdValue.make("wi-1") }));
+      expect(result).toEqual({ status: "refused", reason: "paused", detail: "global" });
+    }),
+  );
+});
+
+it.layer(Layer.empty)("Symphony WS RPC handlers - approval layer absent", (it) => {
+  const expectApprovalUnavailable = (exit: Exit.Exit<unknown, unknown>) => {
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.squash(exit.cause);
+      expect(failure).toMatchObject({
+        _tag: "SymphonyError",
+        code: "symphony_unavailable",
+      });
+      if (failure instanceof Error) {
+        expect(failure.message).toContain("approval");
+      }
+    }
+  };
+
+  it.effect("approve fails with a typed error instead of reporting success", () =>
+    Effect.gen(function* () {
+      const handlers = makeSymphonyRpcHandlers();
+      const exit = yield* Effect.exit(
+        Effect.scoped(
+          handlers[SYMPHONY_WS_METHODS.approve]({
+            requestId: "approval-1",
+            scope: "once",
+          }),
+        ),
+      );
+      expectApprovalUnavailable(exit);
+    }),
+  );
+
+  it.effect("reject fails with a typed error instead of reporting success", () =>
+    Effect.gen(function* () {
+      const handlers = makeSymphonyRpcHandlers();
+      const exit = yield* Effect.exit(
+        Effect.scoped(handlers[SYMPHONY_WS_METHODS.reject]({ requestId: "approval-1" })),
+      );
+      expectApprovalUnavailable(exit);
+    }),
+  );
+
+  it.effect("respondToUserInput fails with a typed error instead of reporting success", () =>
+    Effect.gen(function* () {
+      const handlers = makeSymphonyRpcHandlers();
+      const exit = yield* Effect.exit(
+        Effect.scoped(
+          handlers[SYMPHONY_WS_METHODS.respondToUserInput]({
+            requestId: "approval-1",
+            text: "answer",
+          }),
+        ),
+      );
+      expectApprovalUnavailable(exit);
+    }),
+  );
+});
+
 it.layer(fakeOrchestratorLayer.pipe(Layer.provideMerge(fakeApprovalsLayer)))(
   "Symphony WS RPC handlers",
   (it) => {
@@ -189,7 +261,7 @@ it.layer(fakeOrchestratorLayer.pipe(Layer.provideMerge(fakeApprovalsLayer)))(
         const handler = handlers[SYMPHONY_WS_METHODS.dispatchWorkItem];
         expect(handler).toBeDefined();
         const result = yield* Effect.scoped(handler({ workItemId: WorkItemIdValue.make("wi-1") }));
-        expect(result).toEqual({ ok: true });
+        expect(result).toEqual({ status: "started" });
         expect(dispatchCalls).toEqual([{ workItemId: "wi-1", explicit: true }]);
       }),
     );

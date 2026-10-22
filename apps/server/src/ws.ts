@@ -422,6 +422,11 @@ const withApprovalService = <A, E>(
   );
 const approvalError = (message: string): SymphonyError =>
   new SymphonyError({ code: "approval_request_not_found", message });
+const approvalUnavailable = (): SymphonyError =>
+  new SymphonyError({
+    code: "symphony_unavailable",
+    message: "symphony approval layer is not mounted",
+  });
 
 /** Actions must not report success when the Symphony layer is absent. */
 const orchestratorUnavailable = (): SymphonyError =>
@@ -1006,7 +1011,7 @@ export const makeSymphonyRpcHandlers = () => ({
             Effect.mapError((cause) => approvalError(cause.message)),
             Effect.as({ ok: true }),
           ),
-        Effect.succeed({ ok: true }),
+        Effect.fail(approvalUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
     ),
@@ -1019,7 +1024,7 @@ export const makeSymphonyRpcHandlers = () => ({
             Effect.mapError((cause) => approvalError(cause.message)),
             Effect.as({ ok: true }),
           ),
-        Effect.succeed({ ok: true }),
+        Effect.fail(approvalUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
     ),
@@ -1034,7 +1039,7 @@ export const makeSymphonyRpcHandlers = () => ({
             Effect.mapError((cause) => approvalError(cause.message)),
             Effect.as({ ok: true }),
           ),
-        Effect.succeed({ ok: true }),
+        Effect.fail(approvalUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
     ),
@@ -1076,10 +1081,7 @@ export const makeSymphonyRpcHandlers = () => ({
     observeRpcEffect(
       SYMPHONY_WS_METHODS.dispatchWorkItem,
       withOrchestrator(
-        (orchestrator) =>
-          orchestrator
-            .dispatchWorkItem(input.workItemId, { explicit: true })
-            .pipe(Effect.as({ ok: true })),
+        (orchestrator) => orchestrator.dispatchWorkItem(input.workItemId),
         Effect.fail(orchestratorUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },

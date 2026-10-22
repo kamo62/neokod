@@ -34,6 +34,7 @@ import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
 import { SymphonyAttentionList } from "./SymphonyAttentionList";
 import { SymphonyEmptyState } from "./SymphonyEmptyState";
+import { dispatchRefusalMessage } from "./dispatchRefusal.logic";
 import {
   availableSymphonyImplementationProviders,
   availableSymphonyReviewProviders,
@@ -93,12 +94,32 @@ function BoardTab({
   const environmentId = usePrimaryEnvironmentId();
   const dispatchWorkItem = useAtomCommand(symphonyEnvironment.dispatchWorkItem);
   const [dispatching, setDispatching] = useState<SymphonyBoardCard["workItemId"] | null>(null);
+  const [refusals, setRefusals] = useState<Record<string, string>>({});
 
   const dispatch = async (workItemId: SymphonyBoardCard["workItemId"]) => {
     if (environmentId === null) return;
     setDispatching(workItemId);
     try {
-      await dispatchWorkItem({ environmentId, input: { workItemId } });
+      const result = await dispatchWorkItem({ environmentId, input: { workItemId } });
+      if (result._tag === "Success" && result.value.status === "refused") {
+        const refusal = result.value;
+        setRefusals((current) => ({
+          ...current,
+          [workItemId]: dispatchRefusalMessage(refusal),
+        }));
+      } else if (result._tag === "Success") {
+        setRefusals((current) => {
+          if (!(workItemId in current)) return current;
+          const next = { ...current };
+          delete next[workItemId];
+          return next;
+        });
+      } else {
+        setRefusals((current) => ({
+          ...current,
+          [workItemId]: "The request failed. Try again.",
+        }));
+      }
       onRefresh();
     } finally {
       setDispatching(null);
@@ -159,15 +180,24 @@ function BoardTab({
                     {card.lifecycle === "eligible" ||
                     card.lifecycle === "queued" ||
                     card.lifecycle === "retry_scheduled" ? (
-                      <Button
-                        size="sm"
-                        className="mt-3 w-full"
-                        disabled={environmentId === null || dispatching !== null}
-                        onClick={() => void dispatch(card.workItemId)}
-                      >
-                        {dispatching === card.workItemId ? <Spinner className="size-3.5" /> : null}
-                        Run now
-                      </Button>
+                      <>
+                        <Button
+                          size="sm"
+                          className="mt-3 w-full"
+                          disabled={environmentId === null || dispatching !== null}
+                          onClick={() => void dispatch(card.workItemId)}
+                        >
+                          {dispatching === card.workItemId ? (
+                            <Spinner className="size-3.5" />
+                          ) : null}
+                          {refusals[card.workItemId] === undefined ? "Run now" : "Try again"}
+                        </Button>
+                        {refusals[card.workItemId] === undefined ? null : (
+                          <p role="status" className="mt-2 text-xs text-destructive-foreground">
+                            {refusals[card.workItemId]}
+                          </p>
+                        )}
+                      </>
                     ) : null}
                   </article>
                 ))

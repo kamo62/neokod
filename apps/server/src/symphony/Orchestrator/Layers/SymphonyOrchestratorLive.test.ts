@@ -1679,7 +1679,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       });
 
       dispatchedIds.length = 0;
-      yield* orchestrator.dispatchWorkItem(workItemId);
+      yield* orchestrator.refreshNow();
       expect(dispatchedIds).not.toContain("cancel-guard-1");
       yield* TestClock.adjust("10 seconds");
       // Let the scan this advance triggered finish before the next test: a late
@@ -1748,7 +1748,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       });
 
       dispatchedIds.length = 0;
-      yield* orchestrator.dispatchWorkItem(workItemId, { explicit: true });
+      yield* orchestrator.dispatchWorkItem(workItemId);
       // Wait for the forked dispatch WITHOUT advancing the clock (a
       // scheduler tick would reconcile the mock-held claim straight back:
       // the mock reports no active agent and the seeded attempt is
@@ -1826,7 +1826,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       });
 
       dispatchedIds.length = 0;
-      yield* orchestrator.dispatchWorkItem(workItemId, { explicit: true });
+      yield* orchestrator.dispatchWorkItem(workItemId);
       yield* awaitDispatched("cancel-override-1");
       expect(dispatchedIds).toContain("cancel-override-1");
     }),
@@ -1967,9 +1967,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       dispatchGate = yield* Deferred.make<void>();
       dispatchStatus.interrupted = false;
       dispatchStatus.completed = false;
-      const result = yield* Effect.scoped(
-        orchestrator.dispatchWorkItem("fork-1", { explicit: true }),
-      );
+      const result = yield* Effect.scoped(orchestrator.dispatchWorkItem("fork-1"));
       void result;
       yield* awaitDispatched("fork-1");
       yield* settle;
@@ -2168,7 +2166,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
 
       yield* Effect.gen(function* () {
         dispatchedIds.length = 0;
-        yield* orchestrator.dispatchWorkItem(targetId, { explicit: true });
+        yield* orchestrator.dispatchWorkItem(targetId);
         yield* settle;
         expect(dispatchedIds).not.toContain("occupancy-corrupt-target");
         expect((yield* workItems.getById(targetId))?.lifecycle).toBe("queued");
@@ -2455,6 +2453,215 @@ layer("SymphonyOrchestrator Observe", (it) => {
 
       const stopped = yield* orchestrator.stopAllRuns();
       expect(stopped).toBe(0);
+    }),
+  );
+
+  it.effect("dispatchWorkItem reports why a dispatch was refused", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const sql = yield* SqlClient.SqlClient;
+      const seededItemIds: Array<WorkItemId> = [];
+      const seededWorkflowIds: Array<WorkflowId> = [];
+      const seedItem = (input: {
+        readonly id: string;
+        readonly lifecycle: WorkItem["lifecycle"];
+        readonly workflowId?: string;
+        readonly trackerIssueId?: string;
+        readonly eligibilityReasons?: ReadonlyArray<string>;
+      }) =>
+        Effect.gen(function* () {
+          const id = WorkItemId.make(input.id);
+          seededItemIds.push(id);
+          yield* workItems.upsert({
+            id,
+            mode: "symphony",
+            projectId: SymphonyProjectId.make(`dispatch-refusal-${input.id}`),
+            objective: input.id,
+            acceptanceCriteria: [],
+            source: { kind: "manual" },
+            ...(input.trackerIssueId === undefined ? {} : { trackerIssueId: input.trackerIssueId }),
+            ...(input.workflowId === undefined
+              ? {}
+              : { workflowId: WorkflowId.make(input.workflowId) }),
+            lifecycle: input.lifecycle,
+            priority: 1,
+            eligibilityReasons: [...(input.eligibilityReasons ?? [])],
+            evidence: null,
+            createdAt: "2026-08-05T00:00:00.000Z",
+            updatedAt: "2026-08-05T00:00:00.000Z",
+          });
+        });
+      const seedExecuteWorkflow = (id: string, overrides: Partial<EffectiveWorkflowConfig> = {}) =>
+        Effect.gen(function* () {
+          seededWorkflowIds.push(WorkflowId.make(id));
+          yield* seedWorkflow(id, `/repo/${id}`, {
+            autonomy: "execute",
+            trackerRequiredLabels: [],
+            concurrencyGlobal: 10_000,
+            ...overrides,
+          });
+        });
+
+      yield* Effect.gen(function* () {
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-missing")).toEqual({
+          status: "refused",
+          reason: "not_found",
+        });
+
+        yield* seedItem({ id: "dispatch-refusal-running", lifecycle: "running" });
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-running")).toMatchObject({
+          status: "refused",
+          reason: "already_running",
+        });
+
+        yield* seedItem({ id: "dispatch-refusal-review", lifecycle: "ready_for_review" });
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-review")).toMatchObject({
+          status: "refused",
+          reason: "not_dispatchable",
+        });
+
+        yield* seedExecuteWorkflow("wf-refusal-paused");
+        yield* seedItem({
+          id: "dispatch-refusal-paused",
+          lifecycle: "queued",
+          workflowId: "wf-refusal-paused",
+          trackerIssueId: "1",
+        });
+        yield* orchestrator.setWorkflowPaused("wf-refusal-paused", true);
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-paused")).toEqual({
+          status: "refused",
+          reason: "paused",
+          detail: "workflow",
+        });
+        yield* orchestrator.setWorkflowPaused("wf-refusal-paused", false);
+
+        yield* seedExecuteWorkflow("wf-refusal-global");
+        yield* seedItem({
+          id: "dispatch-refusal-global",
+          lifecycle: "queued",
+          workflowId: "wf-refusal-global",
+          trackerIssueId: "1",
+        });
+        yield* orchestrator.setGlobalPaused(true);
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-global")).toEqual({
+          status: "refused",
+          reason: "paused",
+          detail: "global",
+        });
+        yield* orchestrator.setGlobalPaused(false);
+
+        yield* seedExecuteWorkflow("wf-refusal-excluded");
+        yield* seedItem({
+          id: "dispatch-refusal-excluded",
+          lifecycle: "queued",
+          workflowId: "wf-refusal-excluded",
+          trackerIssueId: "1",
+        });
+        yield* orchestrator.excludeWorkItem("dispatch-refusal-excluded", true);
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-excluded")).toEqual({
+          status: "refused",
+          reason: "excluded",
+        });
+
+        yield* seedExecuteWorkflow("wf-refusal-ineligible");
+        yield* seedItem({
+          id: "dispatch-refusal-ineligible",
+          lifecycle: "queued",
+          workflowId: "wf-refusal-ineligible",
+          trackerIssueId: "1",
+          eligibilityReasons: ["missing_label:agent-ready"],
+        });
+        const ineligible = yield* orchestrator.dispatchWorkItem("dispatch-refusal-ineligible");
+        expect(ineligible).toMatchObject({ status: "refused", reason: "ineligible" });
+        if (ineligible.status === "refused") {
+          expect(ineligible.detail).toContain("missing_label");
+        }
+
+        seededWorkflowIds.push(WorkflowId.make("wf-refusal-observe"));
+        yield* seedWorkflow("wf-refusal-observe", "/repo/wf-refusal-observe");
+        yield* seedItem({
+          id: "dispatch-refusal-observe",
+          lifecycle: "queued",
+          workflowId: "wf-refusal-observe",
+          trackerIssueId: "1",
+        });
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-observe")).toEqual({
+          status: "refused",
+          reason: "observe_only",
+        });
+
+        yield* seedItem({
+          id: "dispatch-refusal-no-workflow",
+          lifecycle: "queued",
+          workflowId: "no-such-refusal-workflow",
+          trackerIssueId: "1",
+        });
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-no-workflow")).toEqual({
+          status: "refused",
+          reason: "no_workflow",
+        });
+
+        yield* seedExecuteWorkflow("wf-refusal-refresh");
+        yield* seedItem({
+          id: "dispatch-refusal-refresh",
+          lifecycle: "queued",
+          workflowId: "wf-refusal-refresh",
+          trackerIssueId: "999",
+        });
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-refresh")).toEqual({
+          status: "refused",
+          reason: "tracker_refresh_failed",
+        });
+
+        yield* seedExecuteWorkflow("wf-refusal-cap", { concurrencyGlobal: 1 });
+        yield* seedItem({
+          id: "dispatch-refusal-cap-active",
+          lifecycle: "running",
+          workflowId: "wf-refusal-cap",
+        });
+        yield* seedItem({
+          id: "dispatch-refusal-cap-target",
+          lifecycle: "queued",
+          workflowId: "wf-refusal-cap",
+          trackerIssueId: "1",
+        });
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-cap-target")).toEqual({
+          status: "refused",
+          reason: "concurrency_cap",
+          detail: "global",
+        });
+
+        yield* seedExecuteWorkflow("wf-refusal-started");
+        yield* seedItem({
+          id: "dispatch-refusal-started",
+          lifecycle: "queued",
+          workflowId: "wf-refusal-started",
+          trackerIssueId: "1",
+        });
+        dispatchedIds.length = 0;
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-started")).toEqual({
+          status: "started",
+        });
+        yield* TestClock.adjust("100 millis");
+        yield* Effect.yieldNow;
+        expect(dispatchedIds).toContain("dispatch-refusal-started");
+      }).pipe(
+        Effect.ensuring(
+          Effect.gen(function* () {
+            yield* orchestrator.setGlobalPaused(false).pipe(Effect.ignore);
+            for (const workflowId of seededWorkflowIds) {
+              yield* orchestrator.setWorkflowPaused(String(workflowId), false).pipe(Effect.ignore);
+              yield* sql`DELETE FROM symphony_workflows WHERE id = ${workflowId}`.pipe(
+                Effect.ignore,
+              );
+            }
+            for (const itemId of seededItemIds) {
+              yield* sql`DELETE FROM symphony_work_items WHERE id = ${itemId}`.pipe(Effect.ignore);
+            }
+          }),
+        ),
+      );
     }),
   );
 
