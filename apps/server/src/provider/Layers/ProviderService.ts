@@ -38,6 +38,8 @@ import * as PubSub from "effect/PubSub";
 import * as Random from "effect/Random";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
+import * as SynchronizedRef from "effect/SynchronizedRef";
 import * as SchemaIssue from "effect/SchemaIssue";
 import * as Stream from "effect/Stream";
 
@@ -339,6 +341,50 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   // Monotonic per-thread stop sequence. A send that admitted before a later
   // Stop must not overwrite the newer stop evidence when it finally returns.
   const stopGenerationByThread = yield* Ref.make(new Map<ThreadId, number>());
+  // Short per-thread critical section for generation validation plus binding
+  // publication. It never spans a provider call, so Stop can interrupt work.
+  const threadMutationLocks = yield* SynchronizedRef.make(new Map<ThreadId, Semaphore.Semaphore>());
+  const getThreadMutationLock = (threadId: ThreadId) =>
+    SynchronizedRef.modifyEffect(threadMutationLocks, (current) => {
+      const existing = Option.fromNullishOr(current.get(threadId));
+      return Option.match(existing, {
+        onNone: () =>
+          Semaphore.make(1).pipe(
+            Effect.map((semaphore) => {
+              const next = new Map(current);
+              next.set(threadId, semaphore);
+              return [semaphore, next] as const;
+            }),
+          ),
+        onSome: (semaphore) => Effect.succeed([semaphore, current] as const),
+      });
+    });
+  const withThreadMutation = <A, E, R>(
+    threadId: ThreadId,
+    effect: Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, E, R> =>
+    Effect.flatMap(getThreadMutationLock(threadId), (semaphore) => semaphore.withPermit(effect));
+  const currentStopGeneration = (threadId: ThreadId) =>
+    Ref.get(stopGenerationByThread).pipe(
+      Effect.map((generations) => generations.get(threadId) ?? 0),
+    );
+  const publishBindingIfStopGenerationCurrent = <E, R>(input: {
+    readonly threadId: ThreadId;
+    readonly expectedStopGeneration: number;
+    readonly write: Effect.Effect<void, E, R>;
+  }): Effect.Effect<void, E, R> =>
+    withThreadMutation(
+      input.threadId,
+      Effect.gen(function* () {
+        if ((yield* currentStopGeneration(input.threadId)) !== input.expectedStopGeneration) {
+          yield* Effect.logInfo("provider.binding-write-skipped-after-stop", {
+            threadId: input.threadId,
+          });
+          return;
+        }
+        yield* input.write;
+      }),
+    );
   const stopAllInProgress = yield* Ref.make(persistedStopState.unreadable);
   const runtimeSessionKey = (threadId: ThreadId, instanceId: ProviderInstanceId) =>
     `${instanceId}:${threadId}`;
@@ -495,6 +541,12 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
        * can find.
        */
       readonly clearStopEvidence?: boolean;
+      /**
+       * Stop generation observed at admission. When set, the generation check
+       * and the binding publication run in one per-thread critical section, so
+       * a later Stop cannot slip between them.
+       */
+      readonly expectedStopGeneration?: number;
     },
   ) =>
     Effect.gen(function* () {
@@ -505,7 +557,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       const runtimeSessionId = (yield* Ref.get(runtimeSessionIds)).get(
         runtimeSessionKey(threadId, providerInstanceId),
       );
-      yield* directory.upsert({
+      const write = directory.upsert({
         threadId,
         provider: session.provider,
         providerInstanceId,
@@ -519,6 +571,15 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           }),
           ...(options?.clearStopEvidence === true ? FRESH_RUNTIME_PAYLOAD : {}),
         },
+      });
+      if (options?.expectedStopGeneration === undefined) {
+        yield* write;
+        return;
+      }
+      yield* publishBindingIfStopGenerationCurrent({
+        threadId,
+        expectedStopGeneration: options.expectedStopGeneration,
+        write,
       });
     });
 
@@ -604,6 +665,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   const recoverSessionForThread = Effect.fn("recoverSessionForThread")(function* (input: {
     readonly binding: ProviderSessionDirectory.ProviderRuntimeBinding;
     readonly operation: string;
+    readonly stopGeneration: number;
   }) {
     const bindingInstanceId = yield* requireBindingInstanceId(input.operation, input.binding);
     yield* Effect.annotateCurrentSpan({
@@ -628,7 +690,10 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
             { ...existing, providerInstanceId: bindingInstanceId },
             input.binding.threadId,
             undefined,
-            { clearStopEvidence: true },
+            {
+              clearStopEvidence: true,
+              expectedStopGeneration: input.stopGeneration,
+            },
           );
           yield* analytics.record("provider.session.recovered", {
             provider: existing.provider,
@@ -674,7 +739,10 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         { ...resumed, providerInstanceId: bindingInstanceId },
         input.binding.threadId,
         undefined,
-        { clearStopEvidence: true },
+        {
+          clearStopEvidence: true,
+          expectedStopGeneration: input.stopGeneration,
+        },
       );
       yield* analytics.record("provider.session.recovered", {
         provider: resumed.provider,
@@ -732,10 +800,11 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     // Recovery creates a new provider session and clears stop evidence. That is
     // only allowed once the thread is no longer fenced: a failed stop or a
     // non-host-lost orphan outcome must keep its evidence for the next boot.
-    yield* assertNotStopping(input.operation, input.threadId);
+    const stopGeneration = yield* admitProviderOperation(input.operation, input.threadId);
     const recovered = yield* recoverSessionForThread({
       binding,
       operation: input.operation,
+      stopGeneration,
     });
     return {
       adapter: recovered.adapter,
@@ -783,7 +852,10 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
 
   const startSession: ProviderServiceMethod<"startSession"> = Effect.fn("startSession")(
     function* (threadId, rawInput) {
-      yield* assertNotStopping("ProviderService.startSession", threadId);
+      const stopGeneration = yield* admitProviderOperation(
+        "ProviderService.startSession",
+        threadId,
+      );
       const parsed = yield* decodeInputOrValidationError({
         operation: "ProviderService.startSession",
         schema: ProviderSessionStartInput,
@@ -886,7 +958,10 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           {
             modelSelection: input.modelSelection,
           },
-          { clearStopEvidence: true },
+          {
+            clearStopEvidence: true,
+            expectedStopGeneration: stopGeneration,
+          },
         );
         yield* analytics.record("provider.session.started", {
           provider: sessionWithInstance.provider,
@@ -953,29 +1028,28 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         ...(input.modelSelection?.model ? { "provider.model": input.modelSelection.model } : {}),
       });
       const turn = yield* routed.adapter.sendTurn(input);
-      const currentStopGeneration = yield* Ref.get(stopGenerationByThread).pipe(
-        Effect.map((generations) => generations.get(input.threadId) ?? 0),
-      );
-      if (currentStopGeneration === stopGeneration) {
-        yield* directory.upsert({
-          threadId: input.threadId,
-          provider: routed.adapter.provider,
-          providerInstanceId: routed.instanceId,
-          status: "running",
-          ...(turn.resumeCursor !== undefined ? { resumeCursor: turn.resumeCursor } : {}),
-          runtimePayload: {
-            ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
-            ...FRESH_RUNTIME_PAYLOAD,
-            activeTurnId: turn.turnId,
-            lastRuntimeEvent: "provider.sendTurn",
-            lastRuntimeEventAt: yield* nowIso,
-          },
-        });
-      } else {
-        yield* Effect.logInfo("provider.send-turn.binding-write-skipped-after-stop", {
-          threadId: input.threadId,
-        });
-      }
+      yield* publishBindingIfStopGenerationCurrent({
+        threadId: input.threadId,
+        expectedStopGeneration: stopGeneration,
+        write: Effect.gen(function* () {
+          yield* directory.upsert({
+            threadId: input.threadId,
+            provider: routed.adapter.provider,
+            providerInstanceId: routed.instanceId,
+            status: "running",
+            ...(turn.resumeCursor !== undefined ? { resumeCursor: turn.resumeCursor } : {}),
+            runtimePayload: {
+              ...(input.modelSelection !== undefined
+                ? { modelSelection: input.modelSelection }
+                : {}),
+              ...FRESH_RUNTIME_PAYLOAD,
+              activeTurnId: turn.turnId,
+              lastRuntimeEvent: "provider.sendTurn",
+              lastRuntimeEventAt: yield* nowIso,
+            },
+          });
+        }),
+      });
       yield* analytics.record("provider.turn.sent", {
         provider: routed.adapter.provider,
         model: input.modelSelection?.model,
@@ -1158,25 +1232,33 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         // Fence the thread first, then durably record intent before any
         // provider/process side effect. A failed intent write releases the
         // in-memory fence because no stop was attempted; every later failure
-        // keeps it so completion cannot race an uncertain teardown.
-        yield* Ref.update(stopGenerationByThread, (generations) => {
-          const next = new Map(generations);
-          next.set(input.threadId, (next.get(input.threadId) ?? 0) + 1);
-          return next;
-        });
-        yield* Ref.update(localStopInFlight, (set) => new Set(set).add(input.threadId));
-        yield* Ref.update(stoppingThreads, (set) => new Set(set).add(input.threadId));
-        yield* directory.upsert({
-          threadId: input.threadId,
-          provider: routed.adapter.provider,
-          providerInstanceId: routed.instanceId,
-          status: routed.binding.status ?? "running",
-          runtimePayload: {
-            stopPhase: "stop_requested",
-            stopOutcome: null,
-            stopRequestedAt: yield* nowIso,
-          },
-        });
+        // keeps it so completion cannot race an uncertain teardown. The
+        // generation bump and intent write share the per-thread mutation lock
+        // with start/send binding publication, so one cannot slip between the
+        // other's check and write.
+        yield* withThreadMutation(
+          input.threadId,
+          Effect.gen(function* () {
+            yield* Ref.update(stopGenerationByThread, (generations) => {
+              const next = new Map(generations);
+              next.set(input.threadId, (next.get(input.threadId) ?? 0) + 1);
+              return next;
+            });
+            yield* Ref.update(localStopInFlight, (set) => new Set(set).add(input.threadId));
+            yield* Ref.update(stoppingThreads, (set) => new Set(set).add(input.threadId));
+            yield* directory.upsert({
+              threadId: input.threadId,
+              provider: routed.adapter.provider,
+              providerInstanceId: routed.instanceId,
+              status: routed.binding.status ?? "running",
+              runtimePayload: {
+                stopPhase: "stop_requested",
+                stopOutcome: null,
+                stopRequestedAt: yield* nowIso,
+              },
+            });
+          }),
+        );
         durableIntentRecorded = true;
         yield* emitStopUpdated({
           provider: routed.adapter.provider,

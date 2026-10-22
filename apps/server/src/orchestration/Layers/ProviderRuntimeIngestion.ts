@@ -971,6 +971,51 @@ const make = Effect.gen(function* () {
     );
   });
 
+  // Turn-ending paths that do not emit a provider turn-completion event still
+  // own turn-scoped runtime items. Close them through the same durable planner
+  // used elsewhere. Termination is not guaranteed, so unresolved items become
+  // orphaned at their own last observation.
+  const closeEndedTurnRuntimeItems = (input: {
+    readonly threadId: ThreadId;
+    readonly turnId: TurnId;
+    readonly outcome: "completed" | "failed" | "stopped";
+    readonly closedAt: string;
+  }) =>
+    Effect.gen(function* () {
+      const items = yield* projectionRuntimeItemRepository.listByThreadId({
+        threadId: input.threadId,
+      });
+      const sessionIds = new Set(
+        items
+          .filter(
+            (item) =>
+              item.effectiveState === "active" &&
+              item.turnId === input.turnId &&
+              item.updatedAt <= input.closedAt,
+          )
+          .map((item) => item.sessionId),
+      );
+      yield* Effect.forEach(
+        sessionIds,
+        (sessionId) => {
+          const boundaryId = `reconcile:runtime-items:${input.threadId}:session:${sessionId}:turn:${input.turnId}:${input.outcome}:${input.closedAt}`;
+          return closeRuntimeItems({
+            threadId: input.threadId,
+            sessionId,
+            boundary: "turn",
+            turnId: input.turnId,
+            outcome: input.outcome,
+            terminationGuaranteed: false,
+            commandId: CommandId.make(boundaryId),
+            boundaryEventId: EventId.make(boundaryId),
+            closedAt: input.closedAt,
+            observedNoLaterThan: input.closedAt,
+          });
+        },
+        { concurrency: 1 },
+      ).pipe(Effect.asVoid);
+    });
+
   const turnMessageIdsByTurnKey = yield* Cache.make<string, Set<MessageId>>({
     capacity: TURN_MESSAGE_IDS_BY_TURN_CACHE_CAPACITY,
     timeToLive: TURN_MESSAGE_IDS_BY_TURN_TTL,
@@ -2169,6 +2214,22 @@ const make = Effect.gen(function* () {
           endedTurnIds,
           observedNoLaterThan: now,
           occurredAt: now,
+        });
+      }
+      if (event.type === "runtime.error" && endedTurnId !== undefined) {
+        yield* closeEndedTurnRuntimeItems({
+          threadId: thread.id,
+          turnId: endedTurnId,
+          outcome: "failed",
+          closedAt: now,
+        });
+      }
+      if (supersededTurnId !== undefined) {
+        yield* closeEndedTurnRuntimeItems({
+          threadId: thread.id,
+          turnId: supersededTurnId,
+          outcome: "stopped",
+          closedAt: now,
         });
       }
 

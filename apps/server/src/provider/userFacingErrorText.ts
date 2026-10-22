@@ -9,7 +9,7 @@ const MAX_USER_FACING_ERROR_CHARS = 2000;
  * enough: ordinary prose such as "at most five retries" must survive.
  */
 const STACK_FRAME_LINE =
-  /^\s*at\s+(?:.*?\s+\()?(?:\S*[\\/]\S*:\d+:\d+|node:\S+:\d+:\d+|native|<anonymous>|index \d+)\)?\s*$/gm;
+  /^\s*at\s+(?:async\s+|new\s+)?(?:.*?\s+\()?(?:\S*[\\/]\S*:\d+:\d+|node:\S+:\d+:\d+|(?:native|<anonymous>)(?::\d+:\d+)?|index \d+|eval at .*?\(\S+:\d+:\d+\),\s*<anonymous>:\d+:\d+)\)?\s*$/gm;
 
 const FILE_URL = /\bfile:\/\/[^\s'"<>]+/gi;
 

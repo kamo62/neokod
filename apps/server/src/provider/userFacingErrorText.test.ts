@@ -93,13 +93,29 @@ describe("scrubErrorText", () => {
     expect(scrubErrorText(text)).toBe(text);
   });
 
-  it("strips standard aggregate and index stack frames", () => {
-    expect(scrubErrorText("boom\n    at async Promise.all (index 0)")).toBe("boom");
-    expect(scrubErrorText("boom\n    at Array.map (index 1)")).toBe("boom");
+  it("strips every supported V8 stack-frame shape", () => {
+    const frames = [
+      "    at toValidationError (file:///Users/kamogelo/Code/t3code/apps/server/dist/bin.mjs:40875:9)",
+      "    at next (/Users/kamogelo/Code/t3code/a.js:1:2)",
+      "    at node:internal/worker:123:4",
+      "    at async node:internal/modules/esm/loader:226:26",
+      "    at async Promise.all (index 0)",
+      "    at Array.map (index 1)",
+      "    at foo (eval at bar (/Users/alice/a.js:1:2), <anonymous>:1:2)",
+      "    at Object.<anonymous> (/Users/me/a.js:1:2)",
+      "    at foo (<anonymous>:1:2)",
+      "    at native",
+      "    at new Worker (/Users/me/worker.js:4:5)",
+    ];
+
+    for (const frame of frames) {
+      expect(scrubErrorText(`boom\n${frame}`)).toBe("boom");
+    }
   });
 
   it("keeps ordinary at language and only strips stack frames", () => {
     expect(scrubErrorText("Retry at most 3 times")).toBe("Retry at most 3 times");
+    expect(scrubErrorText("at 10:30:00 we stopped")).toBe("at 10:30:00 we stopped");
     expect(
       scrubErrorText(
         "failed\n    at Object.<anonymous> (/Users/me/a.js:1:2)\n    at async Worker.process (node:internal/worker:123:4)",

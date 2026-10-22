@@ -988,6 +988,27 @@ describe("ProviderRuntimeIngestion", () => {
         createdAt: observedAt,
       }),
     );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.runtime-item.observe",
+        commandId: CommandId.make("runtime-error-tool-observe"),
+        threadId,
+        observation: {
+          runtimeItemId: RuntimeItemId.make("runtime-error-tool"),
+          providerItemId: null,
+          sessionId: RuntimeSessionId.make("session-runtime-error"),
+          kind: "tool",
+          scope: "turn",
+          turnId,
+          providerState: "active",
+          label: "Run tests",
+          providerEventId: EventId.make("runtime-error-tool-started"),
+          observedAt,
+        },
+        createdAt: observedAt,
+      }),
+    );
+    await harness.drain();
 
     harness.emit({
       type: "runtime.error",
@@ -1005,6 +1026,12 @@ describe("ProviderRuntimeIngestion", () => {
       text: "partial answer",
       streaming: false,
       updatedAt: observedAt,
+    });
+    expect(
+      (await harness.runtimeItems()).find((item) => item.runtimeItemId === "runtime-error-tool"),
+    ).toMatchObject({
+      effectiveState: "orphaned",
+      completedAt: observedAt,
     });
   });
 
@@ -2950,6 +2977,27 @@ describe("ProviderRuntimeIngestion", () => {
         createdAt,
       }),
     );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.runtime-item.observe",
+        commandId: CommandId.make("steer-old-tool-observe"),
+        threadId,
+        observation: {
+          runtimeItemId: RuntimeItemId.make("steer-old-tool"),
+          providerItemId: null,
+          sessionId: RuntimeSessionId.make("session-steer-old"),
+          kind: "tool",
+          scope: "turn",
+          turnId: oldTurnId,
+          providerState: "active",
+          label: "Old work",
+          providerEventId: EventId.make("evt-steer-old-tool"),
+          observedAt: createdAt,
+        },
+        createdAt,
+      }),
+    );
+    await harness.drain();
 
     // The steer: a user-requested turn start while the old turn still runs.
     await harness.run(
@@ -3011,6 +3059,26 @@ describe("ProviderRuntimeIngestion", () => {
         createdAt,
       }),
     );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.runtime-item.observe",
+        commandId: CommandId.make("steer-new-tool-observe"),
+        threadId,
+        observation: {
+          runtimeItemId: RuntimeItemId.make("steer-new-tool"),
+          providerItemId: null,
+          sessionId: RuntimeSessionId.make("session-steer-new"),
+          kind: "tool",
+          scope: "turn",
+          turnId: newTurnId,
+          providerState: "active",
+          label: "New work",
+          providerEventId: EventId.make("evt-steer-new-tool"),
+          observedAt: createdAt,
+        },
+        createdAt,
+      }),
+    );
     await harness.drain();
 
     const finalThread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
@@ -3021,6 +3089,13 @@ describe("ProviderRuntimeIngestion", () => {
     expect(finalThread?.messages.find((message) => message.turnId === newTurnId)).toMatchObject({
       text: "new partial",
       streaming: true,
+    });
+    const runtimeItems = await harness.runtimeItems();
+    expect(runtimeItems.find((item) => item.runtimeItemId === "steer-old-tool")).toMatchObject({
+      effectiveState: "orphaned",
+    });
+    expect(runtimeItems.find((item) => item.runtimeItemId === "steer-new-tool")).toMatchObject({
+      effectiveState: "active",
     });
   });
 
