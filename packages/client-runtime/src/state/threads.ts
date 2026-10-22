@@ -21,7 +21,7 @@ import { EnvironmentCacheStore } from "../platform/persistence.ts";
 import { subscribe } from "../rpc/client.ts";
 import { ThreadSnapshotLoader } from "./threadSnapshotHttp.ts";
 import { parseThreadKey, threadKey } from "./entities.ts";
-import { applyThreadDetailEvent } from "./threadReducer.ts";
+import { applyThreadDetailEvent, withSnapshotSettlementEvidence } from "./threadReducer.ts";
 import { THREAD_STATE_IDLE_TTL_MS } from "./threadRetention.ts";
 import { followStreamInEnvironment } from "./runtime.ts";
 import {
@@ -60,7 +60,9 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
       ),
     ),
   );
-  const cachedThread = Option.map(cached, (snapshot) => snapshot.thread);
+  const cachedThread = Option.map(cached, (snapshot) =>
+    withSnapshotSettlementEvidence(snapshot.thread, null),
+  );
   const state = yield* SubscriptionRef.make<EnvironmentThreadState>({
     data: cachedThread,
     status: statusWithoutLiveData(cachedThread),
@@ -158,7 +160,10 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
   ) {
     if (item.kind === "snapshot") {
       yield* SubscriptionRef.set(lastSequence, item.snapshot.snapshotSequence);
-      yield* setThread(item.snapshot.thread);
+      const current = yield* SubscriptionRef.get(state);
+      yield* setThread(
+        withSnapshotSettlementEvidence(item.snapshot.thread, Option.getOrNull(current.data)),
+      );
       return;
     }
 

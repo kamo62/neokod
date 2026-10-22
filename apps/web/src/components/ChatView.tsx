@@ -1435,9 +1435,9 @@ function ChatViewContent(props: ChatViewProps) {
     for (const turnId of Object.keys(settled ?? {}) as TurnId[]) {
       completions.set(turnId, settled?.[turnId] ?? null);
     }
-    // A fresh server snapshot omits the client-owned record; only the latest
-    // turn is authoritative there. Historical checkpoint summaries are not
-    // completion evidence for a recovered turn.
+    // Snapshots supply at most the latest turn's completion; earlier settled
+    // turns live only in the client record. Historical checkpoint summaries
+    // are not completion evidence for a recovered turn.
     if (activeLatestTurn !== null && !completions.has(activeLatestTurn.turnId)) {
       completions.set(activeLatestTurn.turnId, activeLatestTurn.completedAt);
     }

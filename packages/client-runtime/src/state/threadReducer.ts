@@ -166,16 +166,21 @@ export function applyThreadDetailEvent(
       if (latestTurn === null || latestTurn.turnId !== event.payload.turnId) {
         return { kind: "unchanged" };
       }
+      const interruptedTurn: OrchestrationLatestTurn = {
+        ...latestTurn,
+        state: "interrupted",
+        startedAt: latestTurn.startedAt ?? event.payload.createdAt,
+        completedAt: latestTurn.completedAt ?? event.payload.createdAt,
+      };
       return {
         kind: "updated",
         thread: {
           ...thread,
-          latestTurn: {
-            ...latestTurn,
-            state: "interrupted",
-            startedAt: latestTurn.startedAt ?? event.payload.createdAt,
-            completedAt: latestTurn.completedAt ?? event.payload.createdAt,
-          },
+          latestTurn: interruptedTurn,
+          ...withSettlementEvidence(thread, {
+            turnId: interruptedTurn.turnId,
+            completedAt: interruptedTurn.completedAt,
+          }),
           updatedAt: event.occurredAt,
         },
       };
@@ -262,15 +267,21 @@ export function applyThreadDetailEvent(
             }
           : existingLatestTurn;
 
+      const settlementEvidence = withSettlementEvidence(
+        thread,
+        latestTurn !== null && latestTurn.state !== "running"
+          ? { turnId: latestTurn.turnId, completedAt: latestTurn.completedAt }
+          : null,
+      );
       // Rebind checkpoint assistant message IDs for assistant messages.
       const checkpoints =
         event.payload.role === "assistant" && event.payload.turnId !== null
           ? rebindCheckpointAssistantMessage(
-              thread.checkpoints,
+              settlementEvidence.checkpoints,
               event.payload.turnId,
               event.payload.messageId,
             )
-          : thread.checkpoints;
+          : settlementEvidence.checkpoints;
 
       return {
         kind: "updated",
@@ -278,6 +289,7 @@ export function applyThreadDetailEvent(
           ...thread,
           messages,
           checkpoints,
+          settledTurnCompletions: settlementEvidence.settledTurnCompletions,
           latestTurn,
           updatedAt: event.occurredAt,
         },
@@ -326,40 +338,47 @@ export function applyThreadDetailEvent(
               }
             : thread.latestTurn;
 
-      const supersededTurnId =
-        event.payload.session.status === "running" &&
-        event.payload.session.activeTurnId !== null &&
-        thread.latestTurn?.state === "running" &&
+      // Starting a turn supersedes whatever turn the client was showing. A
+      // superseded turn that is still running settles at the new session's
+      // observation; a turn that already settled keeps its own authoritative
+      // completion, including an explicit unknown.
+      const isRunningSession =
+        event.payload.session.status === "running" && event.payload.session.activeTurnId !== null;
+      const supersededTurn =
+        isRunningSession &&
+        thread.latestTurn !== null &&
         thread.latestTurn.turnId !== event.payload.session.activeTurnId
-          ? thread.latestTurn.turnId
+          ? thread.latestTurn
           : null;
       const terminalTurnId =
         settledTurnState === null
           ? null
           : (event.payload.interruptedTurnId ??
             (thread.latestTurn?.state === "running" ? thread.latestTurn.turnId : null));
-      const settledTurnId = supersededTurnId ?? terminalTurnId;
-      const settledCompletedAt =
-        settledTurnId === null
-          ? null
-          : event.payload.latestTurnCompletedAt === undefined
-            ? event.payload.session.updatedAt
-            : event.payload.latestTurnCompletedAt;
-      const settledTurnCompletions =
-        settledTurnId === null
-          ? thread.settledTurnCompletions
-          : {
-              ...(thread.settledTurnCompletions ?? {}),
-              [settledTurnId]: settledCompletedAt,
-            };
-      const checkpoints =
-        settledTurnId !== null && settledCompletedAt !== null
-          ? thread.checkpoints.map((checkpoint) =>
-              checkpoint.turnId === settledTurnId && checkpoint.completedAt !== settledCompletedAt
-                ? { ...checkpoint, completedAt: settledCompletedAt }
-                : checkpoint,
-            )
-          : thread.checkpoints;
+      const settlement =
+        supersededTurn !== null
+          ? {
+              turnId: supersededTurn.turnId,
+              completedAt:
+                supersededTurn.state === "running"
+                  ? event.payload.latestTurnCompletedAt === undefined
+                    ? event.payload.session.updatedAt
+                    : event.payload.latestTurnCompletedAt
+                  : supersededTurn.completedAt,
+            }
+          : terminalTurnId === null
+            ? null
+            : {
+                turnId: terminalTurnId,
+                completedAt:
+                  event.payload.latestTurnCompletedAt === undefined
+                    ? event.payload.session.updatedAt
+                    : event.payload.latestTurnCompletedAt,
+              };
+      // First authoritative settlement wins. A later session stop or turn
+      // start must not rewrite a turn that is already settled, and checkpoint
+      // summaries keep the timing its settlement froze.
+      const { settledTurnCompletions, checkpoints } = withSettlementEvidence(thread, settlement);
 
       return {
         kind: "updated",
@@ -451,9 +470,21 @@ export function applyThreadDetailEvent(
             }
           : thread.latestTurn;
 
+      const settlementEvidence = withSettlementEvidence(
+        { ...thread, checkpoints },
+        latestTurn !== null && latestTurn.state !== "running"
+          ? { turnId: latestTurn.turnId, completedAt: latestTurn.completedAt }
+          : null,
+      );
+
       return {
         kind: "updated",
-        thread: { ...thread, checkpoints, latestTurn, updatedAt: event.occurredAt },
+        thread: {
+          ...thread,
+          ...settlementEvidence,
+          latestTurn,
+          updatedAt: event.occurredAt,
+        },
       };
     }
 
@@ -534,6 +565,101 @@ export function applyThreadDetailEvent(
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
+
+type SettledTurnCompletions = NonNullable<OrchestrationThread["settledTurnCompletions"]>;
+
+/**
+ * Record one turn's authoritative settlement completion, including an explicit
+ * `null` for an unknown completion. Settlement evidence is write-once: the
+ * first authoritative settlement of a turn is never replaced by a later
+ * observation, matching `docs/architecture/state-and-evidence.md`.
+ */
+function recordSettledTurnCompletion(
+  record: SettledTurnCompletions,
+  turnId: TurnId,
+  completedAt: string | null,
+): SettledTurnCompletions {
+  return Object.hasOwn(record, turnId) ? record : { ...record, [turnId]: completedAt };
+}
+
+/**
+ * Freeze a turn's authoritative settlement on the thread.
+ *
+ * The settlement record is the single projection of turn completion, so every
+ * reducer path that settles a turn feeds it here. A later session stop, turn
+ * start or checkpoint can then never rewrite a completion that is already
+ * frozen, including an explicit unknown. A known settlement also aligns the
+ * turn's checkpoint summary with the frozen timing.
+ */
+function withSettlementEvidence(
+  thread: OrchestrationThread,
+  settlement: { readonly turnId: TurnId; readonly completedAt: string | null } | null,
+): Pick<OrchestrationThread, "settledTurnCompletions" | "checkpoints"> {
+  const unchanged = {
+    settledTurnCompletions: thread.settledTurnCompletions,
+    checkpoints: thread.checkpoints,
+  };
+  if (settlement === null) {
+    return unchanged;
+  }
+  const { turnId, completedAt } = settlement;
+  const settledTurnCompletions = recordSettledTurnCompletion(
+    thread.settledTurnCompletions ?? {},
+    turnId,
+    completedAt,
+  );
+  if (settledTurnCompletions === thread.settledTurnCompletions) {
+    return unchanged;
+  }
+  return {
+    settledTurnCompletions,
+    checkpoints:
+      completedAt === null
+        ? thread.checkpoints
+        : thread.checkpoints.map((checkpoint) =>
+            checkpoint.turnId === turnId && checkpoint.completedAt !== completedAt
+              ? { ...checkpoint, completedAt }
+              : checkpoint,
+          ),
+  };
+}
+
+function sameSettledTurnCompletions(
+  left: SettledTurnCompletions,
+  right: SettledTurnCompletions,
+): boolean {
+  const leftKeys = Object.keys(left) as TurnId[];
+  return (
+    leftKeys.length === Object.keys(right).length &&
+    leftKeys.every((key) => Object.hasOwn(right, key) && left[key] === right[key])
+  );
+}
+
+/**
+ * Carry per-turn settlement evidence onto a freshly loaded thread snapshot.
+ *
+ * A server snapshot names at most the latest turn's authoritative completion
+ * (possibly an explicit unknown), so it is the only settlement evidence a
+ * snapshot supplies. Earlier settlements survive only in the client record and
+ * must outlive snapshot replacement. Existing evidence wins: a snapshot or a
+ * later observation never rewrites a turn that already settled.
+ */
+export function withSnapshotSettlementEvidence(
+  thread: OrchestrationThread,
+  previous: OrchestrationThread | null,
+): OrchestrationThread {
+  const previousRecord =
+    previous !== null && previous.id === thread.id ? (previous.settledTurnCompletions ?? {}) : {};
+  const incomingRecord = thread.settledTurnCompletions ?? {};
+  let record: SettledTurnCompletions = { ...previousRecord, ...incomingRecord };
+  const latestTurn = thread.latestTurn;
+  if (latestTurn !== null && latestTurn.state !== "running") {
+    record = recordSettledTurnCompletion(record, latestTurn.turnId, latestTurn.completedAt);
+  }
+  return sameSettledTurnCompletions(record, incomingRecord)
+    ? thread
+    : { ...thread, settledTurnCompletions: record };
+}
 
 /**
  * Turn state to settle a still-running latest turn with when its session

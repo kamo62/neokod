@@ -5,6 +5,7 @@ import {
   ProjectId,
   ProviderInstanceId,
   ThreadId,
+  TurnId,
   type OrchestrationThread,
   type OrchestrationThreadDetailSnapshot,
   type OrchestrationThreadStreamItem,
@@ -229,6 +230,34 @@ const titleUpdated = (title: string, sequence = 2): OrchestrationThreadStreamIte
   },
 });
 
+const runningTurnSession = (turnId: string, updatedAt: string): OrchestrationThreadStreamItem => ({
+  kind: "event",
+  event: {
+    eventId: EventId.make(`event-session-${turnId}`),
+    sequence: 2,
+    occurredAt: updatedAt,
+    commandId: null,
+    causationEventId: null,
+    correlationId: null,
+    metadata: {},
+    aggregateKind: "thread",
+    aggregateId: THREAD_ID,
+    type: "thread.session-set",
+    payload: {
+      threadId: THREAD_ID,
+      session: {
+        threadId: THREAD_ID,
+        status: "running",
+        providerName: "codex",
+        runtimeMode: "full-access",
+        activeTurnId: TurnId.make(turnId),
+        lastError: null,
+        updatedAt,
+      },
+    },
+  },
+});
+
 const deleted = (): OrchestrationThreadStreamItem => ({
   kind: "event",
   event: {
@@ -443,6 +472,71 @@ describe("EnvironmentThreads", () => {
       expect(Option.isNone(recovered.error)).toBe(true);
       expect(yield* Ref.get(harness.subscriptionCount)).toBe(2);
       expect(yield* Ref.get(harness.retryCount)).toBe(0);
+    }),
+  );
+
+  it.effect("seeds and preserves per-turn settlement evidence across snapshots", () =>
+    Effect.gen(function* () {
+      const turnA = TurnId.make("turn-a");
+      const turnB = TurnId.make("turn-b");
+      const completedAt = "2026-04-01T00:01:00.000Z";
+      const recoveredThread: OrchestrationThread = {
+        ...BASE_THREAD,
+        latestTurn: {
+          turnId: turnA,
+          state: "interrupted",
+          requestedAt: "2026-04-01T00:00:00.000Z",
+          startedAt: "2026-04-01T00:00:00.000Z",
+          completedAt,
+          assistantMessageId: null,
+        },
+      };
+      const harness = yield* makeHarness({
+        httpSnapshot: Option.some({ snapshotSequence: 1, thread: recoveredThread }),
+      });
+
+      // The snapshot's authoritative latest turn seeds the client record.
+      const loaded = yield* awaitThreadState(harness.observed, (value) =>
+        Option.isSome(value.data),
+      );
+      expect(Option.getOrThrow(loaded.data).settledTurnCompletions).toEqual({
+        [turnA]: completedAt,
+      });
+
+      // A later turn supersedes it without losing the settlement.
+      yield* Queue.offer(harness.inputs, runningTurnSession("turn-b", "2026-04-01T00:03:00.000Z"));
+      const next = yield* awaitThreadState(
+        harness.observed,
+        (value) => Option.isSome(value.data) && value.data.value.latestTurn?.turnId === turnB,
+      );
+      expect(Option.getOrThrow(next.data).settledTurnCompletions).toEqual({
+        [turnA]: completedAt,
+      });
+
+      // A fresh snapshot taken after the next turn started no longer names the
+      // recovered turn, so the client record must survive the replacement.
+      yield* Queue.offer(
+        harness.inputs,
+        snapshot({
+          ...recoveredThread,
+          latestTurn: {
+            turnId: turnB,
+            state: "running",
+            requestedAt: "2026-04-01T00:03:00.000Z",
+            startedAt: "2026-04-01T00:03:00.000Z",
+            completedAt: null,
+            assistantMessageId: null,
+          },
+        }),
+      );
+      const refreshed = yield* awaitThreadState(
+        harness.observed,
+        (value) =>
+          Option.isSome(value.data) && value.data.value.updatedAt === BASE_THREAD.updatedAt,
+      );
+      expect(Option.getOrThrow(refreshed.data).settledTurnCompletions).toEqual({
+        [turnA]: completedAt,
+      });
     }),
   );
 

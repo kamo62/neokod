@@ -463,9 +463,12 @@ export const OrchestrationThread = Schema.Struct({
   goalStatus: Schema.optional(Schema.Literals(["active", "done"])),
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   /**
-   * Client-owned authoritative settlement timing per turn. A present key with
+   * Authoritative settlement timing per settled turn. A present key with
    * `null` means the turn's completion is explicitly unknown. Server snapshots
-   * omit this; the client reducer maintains it from session settlements.
+   * carry at most the latest turn's completion, so clients seed this record
+   * from that evidence and retain it when later turns start or a snapshot
+   * replaces the thread. Settlement is write-once: the first authoritative
+   * settlement of a turn is never replaced by a later observation.
    */
   settledTurnCompletions: Schema.optional(Schema.Record(TurnId, Schema.NullOr(IsoDateTime))),
   createdAt: IsoDateTime,

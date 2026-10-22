@@ -11,7 +11,7 @@ import {
 } from "@neokod/contracts";
 import type { OrchestrationThread } from "@neokod/contracts";
 
-import { applyThreadDetailEvent } from "./threadReducer.ts";
+import { applyThreadDetailEvent, withSnapshotSettlementEvidence } from "./threadReducer.ts";
 
 const baseEventFields = {
   eventId: EventId.make("event-1"),
@@ -507,6 +507,87 @@ describe("applyThreadDetailEvent", () => {
     });
   });
 
+  describe("thread.turn-interrupt-requested", () => {
+    it("keeps the interrupt's settlement when a later session stop arrives", () => {
+      const interruptedAt = "2026-04-01T07:00:30.000Z";
+      const turnId = TurnId.make("turn-1");
+      const threadWithRunningTurn: OrchestrationThread = {
+        ...baseThread,
+        latestTurn: {
+          turnId,
+          state: "running",
+          requestedAt: "2026-04-01T07:00:00.000Z",
+          startedAt: "2026-04-01T07:00:00.000Z",
+          completedAt: null,
+          assistantMessageId: null,
+        },
+        checkpoints: [
+          {
+            turnId,
+            checkpointTurnCount: 1,
+            checkpointRef: CheckpointRef.make("checkpoint-1"),
+            status: "ready",
+            files: [],
+            assistantMessageId: null,
+            completedAt: "2026-04-01T07:00:10.000Z",
+          },
+        ],
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: turnId,
+          lastError: null,
+          updatedAt: "2026-04-01T07:00:00.000Z",
+        },
+      };
+
+      const interrupted = applyThreadDetailEvent(threadWithRunningTurn, {
+        ...baseEventFields,
+        sequence: 30,
+        occurredAt: interruptedAt,
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.turn-interrupt-requested",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          turnId,
+          createdAt: interruptedAt,
+        },
+      });
+      expect(interrupted.kind).toBe("updated");
+      if (interrupted.kind !== "updated") return;
+      expect(interrupted.thread.settledTurnCompletions).toEqual({ [turnId]: interruptedAt });
+
+      const stopped = applyThreadDetailEvent(interrupted.thread, {
+        ...baseEventFields,
+        sequence: 31,
+        occurredAt: "2026-04-02T00:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.session-set",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "stopped",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: "2026-04-02T00:00:00.000Z",
+          },
+          interruptedTurnId: turnId,
+        },
+      });
+      expect(stopped.kind).toBe("updated");
+      if (stopped.kind !== "updated") return;
+      expect(stopped.thread.settledTurnCompletions).toEqual({ [turnId]: interruptedAt });
+      expect(stopped.thread.checkpoints[0]?.completedAt).toBe(interruptedAt);
+    });
+  });
+
   describe("thread.session-set", () => {
     it("settles a running latestTurn when the session leaves the running status", () => {
       const threadWithRunningTurn: OrchestrationThread = {
@@ -804,6 +885,135 @@ describe("applyThreadDetailEvent", () => {
       });
     });
 
+    it("preserves a snapshot-loaded settled turn when a later turn starts", () => {
+      for (const completedAt of ["2026-04-01T07:01:00.000Z", null] as const) {
+        const checkpointAt = "2026-04-01T07:00:10.000Z";
+        // Server snapshots carry the latest turn's authoritative completion
+        // (possibly an explicit unknown) but not the client settlement record.
+        const snapshotThread: OrchestrationThread = {
+          ...baseThread,
+          latestTurn: {
+            turnId: TurnId.make("turn-1"),
+            state: "interrupted",
+            requestedAt: "2026-04-01T07:00:00.000Z",
+            startedAt: "2026-04-01T07:00:00.000Z",
+            completedAt,
+            assistantMessageId: null,
+          },
+          checkpoints: [
+            {
+              turnId: TurnId.make("turn-1"),
+              checkpointTurnCount: 1,
+              checkpointRef: CheckpointRef.make("checkpoint-1"),
+              status: "ready",
+              files: [],
+              assistantMessageId: null,
+              completedAt: checkpointAt,
+            },
+          ],
+        };
+
+        const next = applyThreadDetailEvent(snapshotThread, {
+          ...baseEventFields,
+          sequence: 20,
+          occurredAt: "2026-04-01T07:03:00.000Z",
+          aggregateKind: "thread",
+          aggregateId: ThreadId.make("thread-1"),
+          type: "thread.session-set",
+          payload: {
+            threadId: ThreadId.make("thread-1"),
+            session: {
+              threadId: ThreadId.make("thread-1"),
+              status: "running",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: TurnId.make("turn-2"),
+              lastError: null,
+              updatedAt: "2026-04-01T07:03:00.000Z",
+            },
+          },
+        });
+
+        expect(next.kind).toBe("updated");
+        if (next.kind !== "updated") continue;
+        expect(next.thread.latestTurn?.turnId).toBe("turn-2");
+        expect(next.thread.settledTurnCompletions).toEqual({
+          [TurnId.make("turn-1")]: completedAt,
+        });
+        expect(next.thread.checkpoints[0]?.completedAt).toBe(completedAt ?? checkpointAt);
+      }
+    });
+
+    it("does not rewrite an already-settled turn when its idle session is stopped", () => {
+      for (const settledAt of ["2026-04-01T07:01:00.000Z", null] as const) {
+        const checkpointAt = "2026-04-01T07:00:10.000Z";
+        const recovered: OrchestrationThread = {
+          ...baseThread,
+          latestTurn: {
+            turnId: TurnId.make("turn-1"),
+            state: "interrupted",
+            requestedAt: "2026-04-01T07:00:00.000Z",
+            startedAt: "2026-04-01T07:00:00.000Z",
+            completedAt: settledAt,
+            assistantMessageId: null,
+          },
+          settledTurnCompletions: { [TurnId.make("turn-1")]: settledAt },
+          checkpoints: [
+            {
+              turnId: TurnId.make("turn-1"),
+              checkpointTurnCount: 1,
+              checkpointRef: CheckpointRef.make("checkpoint-1"),
+              status: "ready",
+              files: [],
+              assistantMessageId: null,
+              completedAt: checkpointAt,
+            },
+          ],
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "interrupted",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: "2026-04-01T07:02:00.000Z",
+          },
+        };
+
+        // Stopping an idle thread pins the latest turn id, but the turn was
+        // already settled: the later session timestamp must not supersede it.
+        const result = applyThreadDetailEvent(recovered, {
+          ...baseEventFields,
+          sequence: 21,
+          occurredAt: "2026-04-02T00:00:00.000Z",
+          aggregateKind: "thread",
+          aggregateId: ThreadId.make("thread-1"),
+          type: "thread.session-set",
+          payload: {
+            threadId: ThreadId.make("thread-1"),
+            session: {
+              threadId: ThreadId.make("thread-1"),
+              status: "stopped",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: "2026-04-02T00:00:00.000Z",
+            },
+            interruptedTurnId: TurnId.make("turn-1"),
+          },
+        });
+
+        expect(result.kind).toBe("updated");
+        if (result.kind !== "updated") continue;
+        expect(result.thread.settledTurnCompletions).toEqual({
+          [TurnId.make("turn-1")]: settledAt,
+        });
+        expect(result.thread.latestTurn?.completedAt).toBe(settledAt);
+        expect(result.thread.checkpoints[0]?.completedAt).toBe(checkpointAt);
+      }
+    });
+
     it("updates session and latestTurn for a running session", () => {
       const result = applyThreadDetailEvent(baseThread, {
         ...baseEventFields,
@@ -832,6 +1042,66 @@ describe("applyThreadDetailEvent", () => {
         expect(result.thread.latestTurn?.turnId).toBe("turn-1");
         expect(result.thread.latestTurn?.state).toBe("running");
       }
+    });
+  });
+
+  describe("withSnapshotSettlementEvidence", () => {
+    const settledTurn = (
+      turnId: TurnId,
+      state: "interrupted" | "running",
+      completedAt: string | null,
+    ): OrchestrationThread["latestTurn"] => ({
+      turnId,
+      state,
+      requestedAt: "2026-04-01T07:00:00.000Z",
+      startedAt: "2026-04-01T07:00:00.000Z",
+      completedAt,
+      assistantMessageId: null,
+    });
+
+    it("records the latest turn's authoritative completion when a snapshot loads", () => {
+      for (const completedAt of ["2026-04-01T07:01:00.000Z", null] as const) {
+        const snapshotThread: OrchestrationThread = {
+          ...baseThread,
+          latestTurn: settledTurn(TurnId.make("turn-1"), "interrupted", completedAt),
+        };
+
+        const hydrated = withSnapshotSettlementEvidence(snapshotThread, null);
+
+        expect(hydrated.settledTurnCompletions).toEqual({
+          [TurnId.make("turn-1")]: completedAt,
+        });
+      }
+    });
+
+    it("does not record a running latest turn as settled", () => {
+      const snapshotThread: OrchestrationThread = {
+        ...baseThread,
+        latestTurn: settledTurn(TurnId.make("turn-1"), "running", null),
+      };
+
+      expect(withSnapshotSettlementEvidence(snapshotThread, null)).toBe(snapshotThread);
+    });
+
+    it("keeps settlement evidence that a fresh snapshot no longer names", () => {
+      const settledAt = "2026-04-01T07:01:00.000Z";
+      const previous: OrchestrationThread = {
+        ...baseThread,
+        latestTurn: settledTurn(TurnId.make("turn-1"), "interrupted", settledAt),
+        settledTurnCompletions: { [TurnId.make("turn-1")]: settledAt },
+      };
+      const freshSnapshot: OrchestrationThread = {
+        ...baseThread,
+        latestTurn: settledTurn(TurnId.make("turn-2"), "running", null),
+        updatedAt: "2026-04-01T07:03:00.000Z",
+      };
+
+      const hydrated = withSnapshotSettlementEvidence(freshSnapshot, previous);
+
+      expect(hydrated.settledTurnCompletions).toEqual({
+        [TurnId.make("turn-1")]: settledAt,
+      });
+      expect(hydrated.latestTurn?.turnId).toBe(TurnId.make("turn-2"));
     });
   });
 
