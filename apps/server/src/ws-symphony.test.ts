@@ -8,12 +8,18 @@ import type {
 import {
   SYMPHONY_WS_METHODS,
   RunAttemptId as RunAttemptIdValue,
+  SymphonyProjectId,
   WorkItemId as WorkItemIdValue,
 } from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
+
+import { SymphonyPersistenceSqlError } from "./symphony/Persistence/Errors.ts";
 
 import * as SymphonyOrchestratorModule from "./symphony/Orchestrator/SymphonyOrchestrator.ts";
 const SymphonyOrchestrator = SymphonyOrchestratorModule.SymphonyOrchestrator;
@@ -126,6 +132,52 @@ const fakeApprovalsLayer = Layer.succeed(ApprovalService, {
   interrupt: () => Effect.void,
   expireRequest: () => Effect.succeed(false),
 } as (typeof ApprovalService)["Service"]);
+
+const failingBoardOrchestratorLayer = Layer.succeed(SymphonyOrchestrator, {
+  getProjectBoard: () =>
+    Effect.fail(new SymphonyPersistenceSqlError({ operation: "test", detail: "disk I/O error" })),
+} as unknown as (typeof SymphonyOrchestrator)["Service"]);
+
+it.layer(failingBoardOrchestratorLayer)("Symphony WS RPC handlers - board read failure", (it) => {
+  const expectBoardUnavailable = (exit: Exit.Exit<unknown, unknown>) => {
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.squash(exit.cause);
+      expect(failure).toMatchObject({
+        _tag: "SymphonyError",
+        code: "symphony_board_unavailable",
+      });
+    }
+  };
+
+  it.effect("getProjectBoard maps a read failure to symphony_board_unavailable", () =>
+    Effect.gen(function* () {
+      const handlers = makeSymphonyRpcHandlers();
+      const exit = yield* Effect.exit(
+        Effect.scoped(
+          handlers[SYMPHONY_WS_METHODS.getProjectBoard]({
+            projectId: SymphonyProjectId.make("p1"),
+          }),
+        ),
+      );
+      expectBoardUnavailable(exit);
+    }),
+  );
+
+  it.effect("subscribeProjectBoard maps a read failure to symphony_board_unavailable", () =>
+    Effect.gen(function* () {
+      const handlers = makeSymphonyRpcHandlers();
+      const exit = yield* Effect.exit(
+        Stream.runCollect(
+          handlers[SYMPHONY_WS_METHODS.subscribeProjectBoard]({
+            projectId: SymphonyProjectId.make("p1"),
+          }),
+        ),
+      );
+      expectBoardUnavailable(exit);
+    }),
+  );
+});
 
 it.layer(fakeOrchestratorLayer.pipe(Layer.provideMerge(fakeApprovalsLayer)))(
   "Symphony WS RPC handlers",

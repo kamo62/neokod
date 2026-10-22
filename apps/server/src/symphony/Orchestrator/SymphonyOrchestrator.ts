@@ -80,7 +80,7 @@ export interface SymphonyOrchestratorShape {
   ) => Effect.Effect<SymphonyProjectSourceControl | null>;
   readonly getProjectBoard: (
     projectId: SymphonyProjectId,
-  ) => Effect.Effect<SymphonyProjectBoard | null>;
+  ) => Effect.Effect<SymphonyProjectBoard | null, SymphonyPersistenceError>;
   /** The run's event timeline (subscribeRunEvents stream). */
   readonly listRunEvents: (runAttemptId: string) => Effect.Effect<RunEvent[]>;
   /** Open attention items: pending approvals and input requests. */

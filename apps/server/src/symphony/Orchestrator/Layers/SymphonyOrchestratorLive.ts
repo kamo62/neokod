@@ -1448,13 +1448,12 @@ const makeOrchestrator = Effect.gen(function* () {
 
   const getProjectBoard: SymphonyOrchestratorShape["getProjectBoard"] = (projectId) =>
     Effect.gen(function* () {
-      const project = yield* projects
-        .getById(projectId)
-        .pipe(Effect.catch(() => Effect.succeed(null)));
+      const project = yield* projects.getById(projectId);
       if (project === null) return null;
-      const workItemsForProject = yield* workItems
-        .listByLifecycle(ALL_WORK_LIFECYCLES, { projectId, limit: 1_000 })
-        .pipe(Effect.catch(() => Effect.succeed([])));
+      const workItemsForProject = yield* workItems.listByLifecycle(ALL_WORK_LIFECYCLES, {
+        projectId,
+        limit: 1_000,
+      });
       const sourceControl = yield* resolveProjectSourceControl(project.repositoryPath);
       return projectBoardFromWorkItems({
         project,

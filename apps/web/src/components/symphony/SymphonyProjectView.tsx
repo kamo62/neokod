@@ -481,6 +481,17 @@ export function SymphonyProjectView({ projectId }: { readonly projectId: Symphon
             {actionError}
           </p>
         ) : null}
+        {boardQuery.error !== null ? (
+          <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive-foreground">
+            <p>
+              Live updates stopped. Showing the board from{" "}
+              {new Date(board.generatedAt).toLocaleTimeString()}. {boardQuery.error}
+            </p>
+            <Button size="sm" variant="outline" onClick={boardQuery.refresh}>
+              Retry
+            </Button>
+          </div>
+        ) : null}
         <nav className="flex gap-1 overflow-x-auto" aria-label="Project sections">
           {TABS.map((item) => (
             <button

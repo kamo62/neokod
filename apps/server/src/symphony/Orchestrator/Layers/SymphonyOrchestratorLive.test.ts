@@ -673,6 +673,60 @@ layer("SymphonyOrchestrator Observe", (it) => {
     }),
   );
 
+  it.effect("getProjectBoard fails with a typed decode error that names the corrupt row", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const sql = yield* SqlClient.SqlClient;
+      const projectId = SymphonyProjectId.make("project-board-corrupt");
+      yield* orchestrator.createProject({
+        id: projectId,
+        codeProjectId: ProjectId.make("code-project-board-corrupt"),
+        title: "Corrupt board",
+        repositoryPath: "/repo/project-board-corrupt",
+        configuration: makeProjectConfiguration(),
+        now: "2026-08-10T00:00:00.000Z",
+      });
+      const workItemId = WorkItemId.make("board-corrupt-row");
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId,
+        objective: "Corrupt board row",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-10T00:00:00.000Z",
+        updatedAt: "2026-08-10T00:00:00.000Z",
+      });
+      yield* sql`UPDATE symphony_work_items SET acceptance_criteria_json = 'not json' WHERE id = ${workItemId}`;
+
+      const result = yield* Effect.result(orchestrator.getProjectBoard(projectId)).pipe(
+        Effect.ensuring(
+          Effect.gen(function* () {
+            yield* sql`UPDATE symphony_work_items SET acceptance_criteria_json = '[]' WHERE id = ${workItemId}`.pipe(
+              Effect.ignore,
+            );
+            yield* sql`DELETE FROM symphony_work_items WHERE project_id = ${projectId}`.pipe(
+              Effect.ignore,
+            );
+            yield* sql`DELETE FROM symphony_workflows WHERE id = ${projectId}`.pipe(Effect.ignore);
+            yield* sql`DELETE FROM symphony_projects WHERE id = ${projectId}`.pipe(Effect.ignore);
+          }),
+        ),
+      );
+
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure._tag).toBe("SymphonyPersistenceDecodeError");
+        expect(result.failure.message).toContain(String(workItemId));
+      }
+    }),
+  );
+
   it.effect("rolls back project writes when workflow synchronization fails", () =>
     Effect.gen(function* () {
       const orchestrator = yield* SymphonyOrchestrator;

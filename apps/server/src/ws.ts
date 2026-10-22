@@ -430,6 +430,14 @@ const orchestratorUnavailable = (): SymphonyError =>
 const projectError = (code: string, message: string): SymphonyError =>
   new SymphonyError({ code, message });
 
+const boardReadError = (cause: unknown): SymphonyError =>
+  isSymphonyError(cause)
+    ? cause
+    : projectError(
+        "symphony_board_unavailable",
+        cause instanceof Error ? cause.message : String(cause),
+      );
+
 const requireProject = <A>(value: A | null, code: string, message: string) =>
   value === null ? Effect.fail(projectError(code, message)) : Effect.succeed(value);
 
@@ -536,6 +544,7 @@ export const makeSymphonyRpcHandlers = () => ({
                   `Symphony project ${input.projectId} was not found.`,
                 ),
               ),
+              Effect.mapError(boardReadError),
               Effect.map((board) => ({ version: 1, type: "projectBoard", board }) as const),
             ),
           ).pipe(Stream.repeat(Schedule.fixed("2 seconds"))),
@@ -801,17 +810,16 @@ export const makeSymphonyRpcHandlers = () => ({
       SYMPHONY_WS_METHODS.getProjectBoard,
       withOrchestrator(
         (orchestrator) =>
-          orchestrator
-            .getProjectBoard(input.projectId)
-            .pipe(
-              Effect.flatMap((board) =>
-                requireProject(
-                  board,
-                  "symphony_project_not_found",
-                  `Symphony project ${input.projectId} was not found.`,
-                ),
+          orchestrator.getProjectBoard(input.projectId).pipe(
+            Effect.flatMap((board) =>
+              requireProject(
+                board,
+                "symphony_project_not_found",
+                `Symphony project ${input.projectId} was not found.`,
               ),
             ),
+            Effect.mapError(boardReadError),
+          ),
         Effect.fail(orchestratorUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
