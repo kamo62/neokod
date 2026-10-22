@@ -3264,6 +3264,69 @@ it.effect("does not resurrect a rejected pending admission after repeated bootst
   ),
 );
 
+it.effect("clears only the pending admission named by the failure activity", () =>
+  Effect.gen(function* () {
+    const eventStore = yield* OrchestrationEventStore;
+    const projectionPipeline = yield* OrchestrationProjectionPipeline;
+    const sql = yield* SqlClient.SqlClient;
+    const threadId = ThreadId.make("thread-message-fence");
+    const olderMessageId = MessageId.make("message-older-admission");
+    const newerMessageId = MessageId.make("message-newer-admission");
+    const createdAt = "2026-03-02T00:00:00.000Z";
+
+    yield* sql`
+      INSERT INTO projection_turns (
+        thread_id, turn_id, pending_message_id, state, requested_at,
+        checkpoint_files_json
+      ) VALUES
+        (
+          ${threadId}, NULL, ${olderMessageId}, 'pending',
+          ${createdAt}, '[]'
+        ),
+        (
+          ${threadId}, NULL, ${newerMessageId}, 'pending',
+          ${createdAt}, '[]'
+        )
+    `;
+
+    yield* eventStore.append({
+      type: "thread.activity-appended",
+      eventId: EventId.make("evt-message-fence-failed"),
+      aggregateKind: "thread",
+      aggregateId: threadId,
+      occurredAt: createdAt,
+      commandId: CommandId.make("cmd-message-fence-failed"),
+      causationEventId: null,
+      correlationId: CorrelationId.make("cmd-message-fence-failed"),
+      metadata: {},
+      payload: {
+        threadId,
+        activity: {
+          id: EventId.make("activity-message-fence-failed"),
+          tone: "error",
+          kind: "provider.turn.start.failed",
+          summary: "Provider turn start failed",
+          payload: { messageId: olderMessageId, detail: "provider unavailable" },
+          turnId: null,
+          createdAt,
+        },
+      },
+    });
+
+    yield* projectionPipeline.bootstrap;
+
+    const pendingRows = yield* sql<{ readonly messageId: string }>`
+      SELECT pending_message_id AS "messageId"
+      FROM projection_turns
+      WHERE thread_id = ${threadId}
+        AND turn_id IS NULL
+        AND state = 'pending'
+      ORDER BY pending_message_id ASC
+    `;
+    assert.deepEqual(pendingRows, [{ messageId: newerMessageId }]);
+  }).pipe(Effect.provide(BaseTestLayer)),
+);
+
 const engineLayer = it.layer(
   OrchestrationEngineLive.pipe(
     Layer.provide(OrchestrationProjectionSnapshotQueryLive),

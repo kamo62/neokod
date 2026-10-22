@@ -1,6 +1,7 @@
 import {
   ApprovalRequestId,
   type ChatAttachment,
+  MessageId,
   type OrchestrationEvent,
   type OrchestrationSessionStatus,
   ThreadId,
@@ -1097,12 +1098,15 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           if (failedMessageId === null) {
             return;
           }
-          const pending = yield* projectionTurnRepository.getPendingTurnStartByThreadId({
+          const messageId = MessageId.make(failedMessageId);
+          const pending = yield* projectionTurnRepository.getPendingTurnStartByMessageId({
             threadId: event.payload.threadId,
+            messageId,
           });
-          if (Option.isSome(pending) && String(pending.value.messageId) === failedMessageId) {
-            yield* projectionTurnRepository.deletePendingTurnStartByThreadId({
+          if (Option.isSome(pending)) {
+            yield* projectionTurnRepository.deletePendingTurnStartByMessageId({
               threadId: event.payload.threadId,
+              messageId,
             });
           }
           return;
