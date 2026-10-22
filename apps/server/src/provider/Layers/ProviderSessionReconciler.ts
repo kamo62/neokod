@@ -134,6 +134,8 @@ const makeProviderSessionReconciler = Effect.gen(function* () {
           // travels separately below.
           updatedAt: now,
         },
+        // Pin message closure to the turn this recovery settles.
+        interruptedTurnId: action.turnId,
         ...(action.lastObservedAt !== undefined
           ? { latestTurnCompletedAt: action.lastObservedAt }
           : {}),

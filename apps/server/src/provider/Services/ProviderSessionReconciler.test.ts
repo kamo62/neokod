@@ -587,6 +587,9 @@ it.effect("settles a crashed running binding before dispatching the session", ()
     assert.equal(command.session.status, "interrupted");
     assert.equal(command.session.activeTurnId, null);
     assert.equal(command.session.lastError, HOST_LOST_SESSION_ERROR);
+    // The recovery pins the turn it settled so message closure cannot drift to
+    // newer work.
+    assert.equal(command.interruptedTurnId, turnId);
     // The turn freezes at its latest turn-scoped observation, not the binding
     // write. The session update and event stay on the server clock.
     assert.equal(command.session.updatedAt, command.createdAt);

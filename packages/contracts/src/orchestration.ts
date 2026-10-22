@@ -842,6 +842,12 @@ const ThreadSessionSetCommand = Schema.Struct({
   threadId: ThreadId,
   session: OrchestrationSession,
   /**
+   * The turn this recovery session update settles. It pins durable message
+   * closure to that turn and prevents a delayed interruption from closing
+   * messages that belong to newer work.
+   */
+  interruptedTurnId: Schema.optional(TurnId),
+  /**
    * Completion time for the running turn this session update settles. Recovery
    * uses it to freeze a turn at its last observation while `session.updatedAt`
    * and event ordering stay on the server clock.
@@ -1137,6 +1143,8 @@ export const ThreadSessionStopRequestedPayload = Schema.Struct({
 export const ThreadSessionSetPayload = Schema.Struct({
   threadId: ThreadId,
   session: OrchestrationSession,
+  // Pins recovery message closure to the interrupted turn.
+  interruptedTurnId: Schema.optional(TurnId),
   // Omitted keeps the legacy session-time default; explicit null is unknown.
   latestTurnCompletedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
 });

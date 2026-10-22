@@ -1508,32 +1508,102 @@ const make = Effect.gen(function* () {
   // turn-message caches are empty. Close persisted streaming messages from the
   // durable projection instead. The completion event is ordered at recovery
   // time while each message keeps its own last observation.
-  const settleStreamingAssistantMessages = (input: {
+  const completeStreamingAssistantMessages = (input: {
     readonly threadId: ThreadId;
+    readonly occurredAt: string;
+    readonly messages: ReadonlyArray<OrchestrationMessage>;
+  }) =>
+    Effect.forEach(
+      input.messages,
+      (message) =>
+        orchestrationEngine.dispatch({
+          type: "thread.message.assistant.complete",
+          commandId: CommandId.make(
+            `reconcile:assistant-complete:${input.threadId}:${message.id}:${message.updatedAt}`,
+          ),
+          threadId: input.threadId,
+          messageId: message.id,
+          ...(message.turnId !== null ? { turnId: message.turnId } : {}),
+          lastObservedAt: message.updatedAt,
+          createdAt: input.occurredAt,
+        }),
+      { concurrency: 1 },
+    ).pipe(Effect.asVoid);
+
+  const settleStreamingAssistantMessagesForTurn = (input: {
+    readonly threadId: ThreadId;
+    readonly turnId: TurnId;
+    readonly observedNoLaterThan: string;
     readonly occurredAt: string;
   }) =>
     Effect.gen(function* () {
       const detailedThread = yield* resolveThreadDetail(input.threadId);
-      const streamingMessages = (detailedThread?.messages ?? []).filter(
-        (message) => message.role === "assistant" && message.streaming,
-      );
-      yield* Effect.forEach(
-        streamingMessages,
+      const messages = (detailedThread?.messages ?? []).filter(
         (message) =>
-          orchestrationEngine.dispatch({
-            type: "thread.message.assistant.complete",
-            commandId: CommandId.make(
-              `reconcile:assistant-complete:${input.threadId}:${message.id}:${message.updatedAt}`,
-            ),
-            threadId: input.threadId,
-            messageId: message.id,
-            ...(message.turnId !== null ? { turnId: message.turnId } : {}),
-            lastObservedAt: message.updatedAt,
-            createdAt: input.occurredAt,
-          }),
-        { concurrency: 1 },
-      ).pipe(Effect.asVoid);
+          message.role === "assistant" &&
+          message.streaming &&
+          message.turnId === input.turnId &&
+          message.updatedAt <= input.observedNoLaterThan,
+      );
+      yield* completeStreamingAssistantMessages({
+        threadId: input.threadId,
+        occurredAt: input.occurredAt,
+        messages,
+      });
     });
+
+  const settleStreamingAssistantMessagesAtStartup = (
+    threads: Iterable<{
+      readonly id: ThreadId;
+      readonly updatedAt: string;
+      readonly session: { readonly status: string } | null;
+      readonly latestTurn: { readonly state: string } | null;
+    }>,
+  ) =>
+    Effect.forEach(
+      threads,
+      (thread) =>
+        Effect.gen(function* () {
+          // Only terminal sessions or turns can own a stale streaming message.
+          // A running turn keeps its stream open for the live path.
+          const terminalSession =
+            thread.session?.status === "interrupted" ||
+            thread.session?.status === "stopped" ||
+            thread.session?.status === "error";
+          const terminalTurn =
+            thread.latestTurn?.state === "interrupted" ||
+            thread.latestTurn?.state === "error" ||
+            thread.latestTurn?.state === "completed";
+          if (!terminalSession && !terminalTurn) {
+            return;
+          }
+          const detailedThread = yield* resolveThreadDetail(thread.id);
+          const streamingMessages = (detailedThread?.messages ?? []).filter(
+            (message) =>
+              message.role === "assistant" && message.streaming && message.turnId !== null,
+          );
+          if (streamingMessages.length === 0) {
+            return;
+          }
+          const turns = yield* projectionTurnRepository.listByThreadId({
+            threadId: thread.id,
+          });
+          const terminalTurnIds = new Set(
+            turns
+              .filter((turn) => turn.turnId !== null && turn.state !== "running")
+              .map((turn) => turn.turnId!),
+          );
+          const messages = streamingMessages.filter(
+            (message) => message.turnId !== null && terminalTurnIds.has(message.turnId),
+          );
+          yield* completeStreamingAssistantMessages({
+            threadId: thread.id,
+            occurredAt: detailedThread?.session?.updatedAt ?? thread.updatedAt,
+            messages,
+          });
+        }),
+      { concurrency: 1 },
+    ).pipe(Effect.asVoid);
 
   const getSourceProposedPlanReferenceForPendingTurnStart = Effect.fn(
     "getSourceProposedPlanReferenceForPendingTurnStart",
@@ -2154,14 +2224,18 @@ const make = Effect.gen(function* () {
             updatedAt: event.payload.session.updatedAt,
             observedNoLaterThan: event.payload.session.updatedAt,
           });
-          // Settle persisted streaming messages from durable state. This covers
-          // a fresh process after a crash; on a live interruption the runtime
-          // path still flushes its buffered delta, and the deterministic
-          // completion commands keep both paths idempotent.
-          yield* settleStreamingAssistantMessages({
-            threadId: event.payload.threadId,
-            occurredAt: event.payload.session.updatedAt,
-          });
+          // Recovery pins the settled turn. Settle only that turn's streaming
+          // messages up to the interruption cutoff; a delayed interruption must
+          // not close messages that belong to newer work. Live interruption
+          // omits the turn id and keeps using its runtime buffer path.
+          if (event.payload.interruptedTurnId !== undefined) {
+            yield* settleStreamingAssistantMessagesForTurn({
+              threadId: event.payload.threadId,
+              turnId: event.payload.interruptedTurnId,
+              observedNoLaterThan: event.payload.session.updatedAt,
+              occurredAt: event.payload.session.updatedAt,
+            });
+          }
         })
       : Effect.void;
 
@@ -2278,6 +2352,11 @@ const make = Effect.gen(function* () {
         }),
       { concurrency: 1 },
     ).pipe(Effect.asVoid);
+
+    // Message recovery is independent of active runtime items. This is the
+    // repair path when a crash happened after the interrupted session became
+    // durable but before its streaming messages were closed.
+    yield* settleStreamingAssistantMessagesAtStartup(threads.values());
   });
 
   const worker = yield* makeDrainableWorker(processInputSafely);

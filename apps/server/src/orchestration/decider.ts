@@ -604,6 +604,9 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         payload: {
           threadId: command.threadId,
           session: command.session,
+          ...(command.interruptedTurnId === undefined
+            ? {}
+            : { interruptedTurnId: command.interruptedTurnId }),
           // Preserve the omitted/unknown distinction: only an omitted field
           // falls back to the legacy session-time completion. An explicit
           // null records that no current-turn observation exists.

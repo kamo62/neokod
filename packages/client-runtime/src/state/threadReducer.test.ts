@@ -306,6 +306,130 @@ describe("applyThreadDetailEvent", () => {
       }
     });
 
+    it("does not move a settled turn completion backwards when a synthetic message closes", () => {
+      const threadWithRecoveredTurn: OrchestrationThread = {
+        ...baseThread,
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: "2026-04-01T08:00:00.000Z",
+        },
+        latestTurn: {
+          turnId: TurnId.make("turn-1"),
+          state: "interrupted",
+          requestedAt: "2026-04-01T07:00:00.000Z",
+          startedAt: "2026-04-01T07:00:00.000Z",
+          completedAt: "2026-04-01T07:03:00.000Z",
+          assistantMessageId: MessageId.make("msg-1"),
+        },
+        messages: [
+          {
+            id: MessageId.make("msg-1"),
+            role: "assistant",
+            text: "partial answer",
+            turnId: TurnId.make("turn-1"),
+            streaming: true,
+            createdAt: "2026-04-01T07:00:00.000Z",
+            updatedAt: "2026-04-01T07:01:00.000Z",
+          },
+        ],
+      };
+
+      const result = applyThreadDetailEvent(threadWithRecoveredTurn, {
+        ...baseEventFields,
+        sequence: 9,
+        occurredAt: "2026-04-01T08:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.message-sent",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          messageId: MessageId.make("msg-1"),
+          role: "assistant",
+          text: "",
+          turnId: TurnId.make("turn-1"),
+          streaming: false,
+          createdAt: "2026-04-01T08:00:00.000Z",
+          updatedAt: "2026-04-01T07:01:00.000Z",
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.latestTurn?.state).toBe("interrupted");
+        // The recovered completion came from later turn evidence, not from the
+        // message's own last update.
+        expect(result.thread.latestTurn?.completedAt).toBe("2026-04-01T07:03:00.000Z");
+        expect(result.thread.messages[0]).toMatchObject({
+          text: "partial answer",
+          streaming: false,
+          updatedAt: "2026-04-01T07:01:00.000Z",
+        });
+      }
+    });
+
+    it("keeps an explicitly unknown settled completion null when a synthetic message closes", () => {
+      const threadWithUnknownTurn: OrchestrationThread = {
+        ...baseThread,
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: "2026-04-01T08:00:00.000Z",
+        },
+        latestTurn: {
+          turnId: TurnId.make("turn-1"),
+          state: "interrupted",
+          requestedAt: "2026-04-01T07:00:00.000Z",
+          startedAt: "2026-04-01T07:00:00.000Z",
+          completedAt: null,
+          assistantMessageId: MessageId.make("msg-1"),
+        },
+        messages: [
+          {
+            id: MessageId.make("msg-1"),
+            role: "assistant",
+            text: "partial answer",
+            turnId: TurnId.make("turn-1"),
+            streaming: true,
+            createdAt: "2026-04-01T07:00:00.000Z",
+            updatedAt: "2026-04-01T07:01:00.000Z",
+          },
+        ],
+      };
+
+      const result = applyThreadDetailEvent(threadWithUnknownTurn, {
+        ...baseEventFields,
+        sequence: 10,
+        occurredAt: "2026-04-01T08:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.message-sent",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          messageId: MessageId.make("msg-1"),
+          role: "assistant",
+          text: "",
+          turnId: TurnId.make("turn-1"),
+          streaming: false,
+          createdAt: "2026-04-01T08:00:00.000Z",
+          updatedAt: "2026-04-01T07:01:00.000Z",
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.latestTurn?.completedAt).toBeNull();
+      }
+    });
+
     it("updates latestTurn for assistant messages with a turn", () => {
       const result = applyThreadDetailEvent(baseThread, {
         ...baseEventFields,

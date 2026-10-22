@@ -1000,6 +1000,7 @@ describe("ProviderRuntimeIngestion", () => {
           updatedAt: recoveredAt,
           lastError: null,
         },
+        interruptedTurnId: turnId,
         latestTurnCompletedAt: null,
         createdAt: recoveredAt,
       }),
@@ -1012,6 +1013,203 @@ describe("ProviderRuntimeIngestion", () => {
       streaming: false,
       // The message keeps its own last observation; recovery time orders the
       // completion event but does not overwrite the content timestamp.
+      updatedAt: observedAt,
+    });
+  });
+
+  it("does not settle streaming messages for newer work during a delayed interruption", async () => {
+    const domainEvents = Effect.runSync(PubSub.unbounded<OrchestrationEvent>());
+    const harness = await createHarness({ domainEvents });
+    const threadId = asThreadId("thread-1");
+    const oldTurnId = asTurnId("turn-delayed-old");
+    const newerTurnId = asTurnId("turn-delayed-newer");
+    const oldMessageId = asMessageId("delayed-old-message");
+    const newerMessageId = asMessageId("delayed-newer-message");
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("delayed-old-delta"),
+        threadId,
+        messageId: oldMessageId,
+        delta: "old partial",
+        turnId: oldTurnId,
+        createdAt: "2026-01-01T00:03:01.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("delayed-newer-delta"),
+        threadId,
+        messageId: newerMessageId,
+        delta: "newer partial",
+        turnId: newerTurnId,
+        createdAt: "2026-01-01T00:05:00.000Z",
+      }),
+    );
+    for (const [runtimeItemId, turnIdValue, sessionId, observedAt] of [
+      ["delayed-old-approval", oldTurnId, "session-delayed-old", "2026-01-01T00:03:01.000Z"],
+      ["delayed-newer-approval", newerTurnId, "session-delayed-newer", "2026-01-01T00:05:00.000Z"],
+    ] as const) {
+      await harness.run(
+        harness.engine.dispatch({
+          type: "thread.runtime-item.observe",
+          commandId: CommandId.make(`delayed-observe-${runtimeItemId}`),
+          threadId,
+          observation: {
+            runtimeItemId: RuntimeItemId.make(runtimeItemId),
+            providerItemId: null,
+            sessionId: RuntimeSessionId.make(sessionId),
+            kind: "approval",
+            scope: "turn",
+            turnId: turnIdValue,
+            providerState: "active",
+            label: "Approve command",
+            providerEventId: EventId.make(`delayed-provider-${runtimeItemId}`),
+            observedAt,
+          },
+          createdAt: observedAt,
+        }),
+      );
+    }
+
+    const interruptedEvent = {
+      sequence: 3,
+      eventId: EventId.make("delayed-interruption-event"),
+      type: "thread.session-set",
+      aggregateKind: "thread",
+      aggregateId: threadId,
+      occurredAt: "2026-01-01T00:04:00.000Z",
+      commandId: CommandId.make("delayed-interruption"),
+      causationEventId: null,
+      correlationId: null,
+      metadata: {},
+      payload: {
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: "2026-01-01T00:04:00.000Z",
+          lastError: null,
+        },
+        interruptedTurnId: oldTurnId,
+        latestTurnCompletedAt: null,
+      },
+    } satisfies OrchestrationEvent;
+
+    await harness.run(
+      Effect.gen(function* () {
+        yield* PubSub.publish(domainEvents, interruptedEvent);
+        yield* Effect.yieldNow;
+      }),
+    );
+    await harness.drain();
+
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.messages.find((message) => message.id === oldMessageId)).toMatchObject({
+      text: "old partial",
+      streaming: false,
+      updatedAt: "2026-01-01T00:03:01.000Z",
+    });
+    // The newer turn is outside the interruption cutoff and turn ownership.
+    expect(thread?.messages.find((message) => message.id === newerMessageId)).toMatchObject({
+      text: "newer partial",
+      streaming: true,
+      updatedAt: "2026-01-01T00:05:00.000Z",
+    });
+
+    const runtimeItems = await harness.runtimeItems();
+    expect(
+      runtimeItems.find((item) => item.runtimeItemId === "delayed-old-approval"),
+    ).toMatchObject({
+      effectiveState: "orphaned",
+      completedAt: "2026-01-01T00:03:01.000Z",
+    });
+    expect(
+      runtimeItems.find((item) => item.runtimeItemId === "delayed-newer-approval"),
+    ).toMatchObject({ effectiveState: "active" });
+  });
+
+  it("settles persisted streaming messages during startup when the interruption survived a crash", async () => {
+    const harness = await createHarness({ startIngestion: false });
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-startup-streaming");
+    const messageId = asMessageId("startup-streaming-message");
+    const observedAt = "2026-01-01T00:03:01.000Z";
+    const recoveredAt = "2026-01-01T00:04:00.000Z";
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("startup-streaming-delta"),
+        threadId,
+        messageId,
+        delta: "partial answer",
+        turnId,
+        createdAt: observedAt,
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("startup-streaming-running"),
+        threadId,
+        session: {
+          threadId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: turnId,
+          updatedAt: "2026-01-01T00:03:00.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:03:00.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("startup-streaming-interrupted"),
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: recoveredAt,
+          lastError: null,
+        },
+        interruptedTurnId: turnId,
+        latestTurnCompletedAt: null,
+        createdAt: recoveredAt,
+      }),
+    );
+
+    // Ingestion starts after the interruption is already durable. There are no
+    // active runtime items, so message recovery must run independently.
+    await harness.start();
+    await harness.drain();
+
+    const firstPass = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(firstPass?.messages.find((message) => message.id === messageId)).toMatchObject({
+      text: "partial answer",
+      streaming: false,
+      updatedAt: observedAt,
+    });
+
+    // A repeated startup must find the message already closed and leave it
+    // unchanged, with no duplicate text.
+    await harness.start();
+    await harness.drain();
+    const secondPass = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(secondPass?.messages.find((message) => message.id === messageId)).toMatchObject({
+      text: "partial answer",
+      streaming: false,
       updatedAt: observedAt,
     });
   });
