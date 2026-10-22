@@ -43,6 +43,48 @@
       "model": "deepseek/deepseek-flash",
       "displayName": "deepseek/DeepSeek V4.1 Flash 1017",
       "state": "running-not-accepted"
+    },
+    {
+      "task": "lane-opencode2-acp-parity",
+      "sessionId": "ses_e9e316707ffeMcrQsNw3dGpqzZ",
+      "agent": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "model": "deepseek/deepseek-flash",
+      "displayName": "deepseek/DeepSeek V4.1 Flash 1017",
+      "branch": "work/opencode2-acp-parity",
+      "worktree": "/Users/kamogelo/.codex/worktrees/core-opencode-cleanup/t3code",
+      "state": "running-not-accepted",
+      "baseCommit": "8c0fc44c8573fa8b9dd5a1c465fecf7d235fdef9"
+    },
+    {
+      "task": "lane-terminal-paste",
+      "sessionId": "ses_e9e315f59ffeYhJ0EiakmsIbUF",
+      "agent": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "model": "deepseek/deepseek-flash",
+      "displayName": "deepseek/DeepSeek V4.1 Flash 1017",
+      "branch": "work/terminal-paste-chunking",
+      "worktree": "/Users/kamogelo/.codex/worktrees/core-terminal-cleanup/t3code",
+      "state": "running-not-accepted",
+      "baseCommit": "8c0fc44c8573fa8b9dd5a1c465fecf7d235fdef9"
+    },
+    {
+      "task": "lane-symphony-coverage",
+      "sessionId": "ses_e9e3158cdffeRsREdW3q1MgXsR",
+      "agent": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "model": "deepseek/deepseek-flash",
+      "displayName": "deepseek/DeepSeek V4.1 Flash 1017",
+      "branch": "work/symphony-read-coverage",
+      "worktree": "/Users/kamogelo/.codex/worktrees/core-symphony-settings/t3code",
+      "state": "running-not-accepted",
+      "baseCommit": "8c0fc44c8573fa8b9dd5a1c465fecf7d235fdef9"
     }
   ],
   "noBuilds": true,
