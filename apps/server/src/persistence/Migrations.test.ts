@@ -141,7 +141,10 @@ it.effect("accepts a database that was migrated in two steps and a repeated run"
     Effect.gen(function* () {
       yield* runMigrations({ toMigrationInclusive: 40 });
       const second = yield* runMigrations();
-      assert.deepStrictEqual(second, [[41, "SymphonyProjects"]]);
+      assert.deepStrictEqual(second, [
+        [41, "SymphonyProjects"],
+        [42, "SymphonyIneligibleLifecycle"],
+      ]);
       const third = yield* runMigrations();
       assert.deepStrictEqual(third, []);
     }),
