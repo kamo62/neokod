@@ -1329,6 +1329,176 @@ describe("deriveMessagesTimelineRows", () => {
     }
   });
 
+  it("keeps the real completion when an interrupt request fails", () => {
+    const turnId = TurnId.make("turn-interrupt");
+    const startedAt = "2026-01-01T00:00:00.000Z";
+    const requestedAt = "2026-01-01T00:00:10.000Z";
+    const completedAt = "2026-01-01T00:00:30.000Z";
+    const running: OrchestrationThread = {
+      id: ThreadId.make("thread-interrupt"),
+      projectId: ProjectId.make("project-interrupt"),
+      title: "Interrupt thread",
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      latestTurn: {
+        turnId,
+        state: "running",
+        requestedAt: startedAt,
+        startedAt,
+        completedAt: null,
+        assistantMessageId: null,
+      },
+      createdAt: startedAt,
+      updatedAt: startedAt,
+      archivedAt: null,
+      deletedAt: null,
+      messages: [],
+      proposedPlans: [],
+      activities: [],
+      checkpoints: [
+        {
+          turnId,
+          checkpointTurnCount: 1,
+          checkpointRef: CheckpointRef.make("checkpoint-interrupt"),
+          status: "ready",
+          files: [],
+          assistantMessageId: null,
+          completedAt: "2026-01-01T00:00:05.000Z",
+        },
+      ],
+      session: {
+        threadId: ThreadId.make("thread-interrupt"),
+        status: "running",
+        providerName: "codex",
+        runtimeMode: "full-access",
+        activeTurnId: turnId,
+        lastError: null,
+        updatedAt: startedAt,
+      },
+    };
+    const baseEventFields = {
+      eventId: EventId.make("event-interrupt"),
+      commandId: null,
+      causationEventId: null,
+      correlationId: null,
+      metadata: {},
+    } as const;
+    const foldLabel = (thread: OrchestrationThread) => {
+      const completions = new Map<TurnId, string | null>();
+      for (const id of Object.keys(thread.settledTurnCompletions ?? {}) as TurnId[]) {
+        completions.set(id, thread.settledTurnCompletions?.[id] ?? null);
+      }
+      if (thread.latestTurn !== null && !completions.has(thread.latestTurn.turnId)) {
+        completions.set(thread.latestTurn.turnId, thread.latestTurn.completedAt);
+      }
+      const rows = deriveMessagesTimelineRows({
+        timelineEntries: [
+          {
+            id: "user-entry-interrupt",
+            kind: "message",
+            createdAt: startedAt,
+            message: {
+              id: "user-interrupt" as never,
+              role: "user",
+              text: "go",
+              turnId: null,
+              createdAt: startedAt,
+              updatedAt: startedAt,
+              streaming: false,
+            },
+          },
+          {
+            id: "work-entry-interrupt",
+            kind: "work",
+            createdAt: "2026-01-01T00:00:05.000Z",
+            entry: {
+              id: "work-interrupt",
+              createdAt: "2026-01-01T00:00:05.000Z",
+              turnId,
+              label: "Read file",
+              tone: "tool" as const,
+            },
+          },
+        ],
+        latestTurn: thread.latestTurn,
+        turnCompletionByTurnId: completions,
+        runningTurnId: thread.latestTurn?.state === "running" ? thread.latestTurn.turnId : null,
+        isWorking: thread.latestTurn?.state === "running",
+        activeTurnStartedAt:
+          thread.latestTurn?.state === "running" ? thread.latestTurn.startedAt : null,
+        turnDiffSummaryByAssistantMessageId: new Map(),
+        revertTurnCountByUserMessageId: new Map(),
+      });
+      return rows.find(
+        (row): row is Extract<(typeof rows)[number], { kind: "turn-fold" }> =>
+          row.kind === "turn-fold",
+      )?.label;
+    };
+
+    const interrupted = applyThreadDetailEvent(running, {
+      ...baseEventFields,
+      sequence: 1,
+      occurredAt: requestedAt,
+      aggregateKind: "thread",
+      aggregateId: running.id,
+      type: "thread.turn-interrupt-requested",
+      payload: { threadId: running.id, turnId, createdAt: requestedAt },
+    });
+    expect(interrupted.kind).toBe("updated");
+    if (interrupted.kind !== "updated") return;
+
+    // The interrupt fails and the provider keeps streaming the turn.
+    const streaming = applyThreadDetailEvent(interrupted.thread, {
+      ...baseEventFields,
+      sequence: 2,
+      occurredAt: "2026-01-01T00:00:20.000Z",
+      aggregateKind: "thread",
+      aggregateId: running.id,
+      type: "thread.message-sent",
+      payload: {
+        threadId: running.id,
+        messageId: "msg-interrupt" as never,
+        role: "assistant",
+        text: "Still working.",
+        turnId,
+        streaming: true,
+        createdAt: "2026-01-01T00:00:20.000Z",
+        updatedAt: "2026-01-01T00:00:20.000Z",
+      },
+    });
+    expect(streaming.kind).toBe("updated");
+    if (streaming.kind !== "updated") return;
+
+    const settled = applyThreadDetailEvent(streaming.thread, {
+      ...baseEventFields,
+      sequence: 3,
+      occurredAt: completedAt,
+      aggregateKind: "thread",
+      aggregateId: running.id,
+      type: "thread.session-set",
+      payload: {
+        threadId: running.id,
+        session: {
+          threadId: running.id,
+          status: "idle",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: completedAt,
+        },
+      },
+    });
+    expect(settled.kind).toBe("updated");
+    if (settled.kind !== "updated") return;
+
+    // The requested interrupt boundary must not shorten the turn.
+    expect(foldLabel(settled.thread)).toBe("Worked for 30s");
+  });
+
   it("keeps the previous turn folded while a newly sent message awaits its turn", () => {
     // Right after send, isWorking is true but latestTurn still points at the
     // previous, settled turn — it must stay folded through that window.

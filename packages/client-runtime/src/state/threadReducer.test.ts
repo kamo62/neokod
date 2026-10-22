@@ -508,62 +508,68 @@ describe("applyThreadDetailEvent", () => {
   });
 
   describe("thread.turn-interrupt-requested", () => {
-    it("keeps the interrupt's settlement when a later session stop arrives", () => {
-      const interruptedAt = "2026-04-01T07:00:30.000Z";
-      const turnId = TurnId.make("turn-1");
-      const threadWithRunningTurn: OrchestrationThread = {
-        ...baseThread,
-        latestTurn: {
-          turnId,
-          state: "running",
-          requestedAt: "2026-04-01T07:00:00.000Z",
-          startedAt: "2026-04-01T07:00:00.000Z",
-          completedAt: null,
+    const runningTurnThread = (): OrchestrationThread => ({
+      ...baseThread,
+      latestTurn: {
+        turnId: TurnId.make("turn-1"),
+        state: "running",
+        requestedAt: "2026-04-01T07:00:00.000Z",
+        startedAt: "2026-04-01T07:00:00.000Z",
+        completedAt: null,
+        assistantMessageId: null,
+      },
+      checkpoints: [
+        {
+          turnId: TurnId.make("turn-1"),
+          checkpointTurnCount: 1,
+          checkpointRef: CheckpointRef.make("checkpoint-1"),
+          status: "ready",
+          files: [],
           assistantMessageId: null,
+          completedAt: "2026-04-01T07:00:05.000Z",
         },
-        checkpoints: [
-          {
-            turnId,
-            checkpointTurnCount: 1,
-            checkpointRef: CheckpointRef.make("checkpoint-1"),
-            status: "ready",
-            files: [],
-            assistantMessageId: null,
-            completedAt: "2026-04-01T07:00:10.000Z",
-          },
-        ],
-        session: {
-          threadId: ThreadId.make("thread-1"),
-          status: "running",
-          providerName: "codex",
-          runtimeMode: "full-access",
-          activeTurnId: turnId,
-          lastError: null,
-          updatedAt: "2026-04-01T07:00:00.000Z",
-        },
-      };
-
-      const interrupted = applyThreadDetailEvent(threadWithRunningTurn, {
+      ],
+      session: {
+        threadId: ThreadId.make("thread-1"),
+        status: "running",
+        providerName: "codex",
+        runtimeMode: "full-access",
+        activeTurnId: TurnId.make("turn-1"),
+        lastError: null,
+        updatedAt: "2026-04-01T07:00:00.000Z",
+      },
+    });
+    const interruptRequested = (thread: OrchestrationThread, requestedAt: string) =>
+      applyThreadDetailEvent(thread, {
         ...baseEventFields,
         sequence: 30,
-        occurredAt: interruptedAt,
+        occurredAt: requestedAt,
         aggregateKind: "thread",
         aggregateId: ThreadId.make("thread-1"),
         type: "thread.turn-interrupt-requested",
         payload: {
           threadId: ThreadId.make("thread-1"),
-          turnId,
-          createdAt: interruptedAt,
+          turnId: TurnId.make("turn-1"),
+          createdAt: requestedAt,
         },
       });
+
+    it("keeps an interrupt request provisional until the session settles", () => {
+      const requestedAt = "2026-04-01T07:00:10.000Z";
+      const stoppedAt = "2026-04-01T07:01:00.000Z";
+
+      const interrupted = interruptRequested(runningTurnThread(), requestedAt);
       expect(interrupted.kind).toBe("updated");
       if (interrupted.kind !== "updated") return;
-      expect(interrupted.thread.settledTurnCompletions).toEqual({ [turnId]: interruptedAt });
+      // Intent is not evidence: only the provisional latest-turn boundary moves.
+      expect(interrupted.thread.settledTurnCompletions).toBeUndefined();
+      expect(interrupted.thread.latestTurn?.completedAt).toBe(requestedAt);
+      expect(interrupted.thread.checkpoints[0]?.completedAt).toBe("2026-04-01T07:00:05.000Z");
 
       const stopped = applyThreadDetailEvent(interrupted.thread, {
         ...baseEventFields,
         sequence: 31,
-        occurredAt: "2026-04-02T00:00:00.000Z",
+        occurredAt: stoppedAt,
         aggregateKind: "thread",
         aggregateId: ThreadId.make("thread-1"),
         type: "thread.session-set",
@@ -576,15 +582,151 @@ describe("applyThreadDetailEvent", () => {
             runtimeMode: "full-access",
             activeTurnId: null,
             lastError: null,
-            updatedAt: "2026-04-02T00:00:00.000Z",
+            updatedAt: stoppedAt,
           },
-          interruptedTurnId: turnId,
+          interruptedTurnId: TurnId.make("turn-1"),
         },
       });
       expect(stopped.kind).toBe("updated");
       if (stopped.kind !== "updated") return;
-      expect(stopped.thread.settledTurnCompletions).toEqual({ [turnId]: interruptedAt });
-      expect(stopped.thread.checkpoints[0]?.completedAt).toBe(interruptedAt);
+      // The server-observed stop settles the turn, not the earlier request.
+      expect(stopped.thread.settledTurnCompletions).toEqual({
+        [TurnId.make("turn-1")]: stoppedAt,
+      });
+      expect(stopped.thread.checkpoints[0]?.completedAt).toBe(stoppedAt);
+    });
+
+    it("records the real completion when an interrupt request does not settle the turn", () => {
+      const requestedAt = "2026-04-01T07:00:10.000Z";
+      const completedAt = "2026-04-01T07:00:30.000Z";
+
+      // The interrupt request fails; the provider keeps streaming the turn.
+      const interrupted = interruptRequested(runningTurnThread(), requestedAt);
+      expect(interrupted.kind).toBe("updated");
+      if (interrupted.kind !== "updated") return;
+      expect(interrupted.thread.settledTurnCompletions).toBeUndefined();
+
+      const streaming = applyThreadDetailEvent(interrupted.thread, {
+        ...baseEventFields,
+        sequence: 31,
+        occurredAt: "2026-04-01T07:00:20.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.message-sent",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          messageId: MessageId.make("msg-4"),
+          role: "assistant",
+          text: "Still working.",
+          turnId: TurnId.make("turn-1"),
+          streaming: true,
+          createdAt: "2026-04-01T07:00:20.000Z",
+          updatedAt: "2026-04-01T07:00:20.000Z",
+        },
+      });
+      expect(streaming.kind).toBe("updated");
+      if (streaming.kind !== "updated") return;
+      expect(streaming.thread.latestTurn?.state).toBe("running");
+
+      const settled = applyThreadDetailEvent(streaming.thread, {
+        ...baseEventFields,
+        sequence: 32,
+        occurredAt: completedAt,
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.session-set",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "idle",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: completedAt,
+          },
+        },
+      });
+      expect(settled.kind).toBe("updated");
+      if (settled.kind !== "updated") return;
+      expect(settled.thread.latestTurn?.completedAt).toBe(completedAt);
+      // The request timestamp never becomes the turn's completion.
+      expect(settled.thread.settledTurnCompletions).toEqual({
+        [TurnId.make("turn-1")]: completedAt,
+      });
+      expect(settled.thread.checkpoints[0]?.completedAt).toBe(completedAt);
+    });
+
+    it("settles a provisional interrupt at the authoritative session time", () => {
+      const requestedAt = "2026-04-01T07:00:10.000Z";
+      const stoppedAt = "2026-04-01T07:00:12.000Z";
+
+      const interrupted = interruptRequested(runningTurnThread(), requestedAt);
+      expect(interrupted.kind).toBe("updated");
+      if (interrupted.kind !== "updated") return;
+
+      // The provider confirms the stop without pinning a turn id; the session
+      // timestamp is the settlement, not the earlier request.
+      const settled = applyThreadDetailEvent(interrupted.thread, {
+        ...baseEventFields,
+        sequence: 31,
+        occurredAt: stoppedAt,
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.session-set",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "interrupted",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: stoppedAt,
+          },
+        },
+      });
+      expect(settled.kind).toBe("updated");
+      if (settled.kind !== "updated") return;
+      expect(settled.thread.latestTurn?.completedAt).toBe(stoppedAt);
+      expect(settled.thread.settledTurnCompletions).toEqual({
+        [TurnId.make("turn-1")]: stoppedAt,
+      });
+    });
+
+    it("does not promote a provisional interrupt boundary when the next turn starts", () => {
+      const interrupted = interruptRequested(runningTurnThread(), "2026-04-01T07:00:10.000Z");
+      expect(interrupted.kind).toBe("updated");
+      if (interrupted.kind !== "updated") return;
+
+      // The session still runs the turn, so the new turn supersedes it without
+      // freezing the interrupt request as the turn's completion.
+      const next = applyThreadDetailEvent(interrupted.thread, {
+        ...baseEventFields,
+        sequence: 32,
+        occurredAt: "2026-04-01T07:00:15.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.session-set",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "running",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: TurnId.make("turn-2"),
+            lastError: null,
+            updatedAt: "2026-04-01T07:00:15.000Z",
+          },
+        },
+      });
+      expect(next.kind).toBe("updated");
+      if (next.kind !== "updated") return;
+      expect(next.thread.latestTurn?.turnId).toBe(TurnId.make("turn-2"));
+      expect(next.thread.settledTurnCompletions).toBeUndefined();
     });
   });
 
