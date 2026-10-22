@@ -45,7 +45,7 @@ interface EnvironmentQueryAtomOptions<Input, A, E, R> extends EnvironmentAtomOpt
 
 interface EnvironmentSubscriptionAtomOptions<Input, A, E, R> {
   readonly label: string;
-  readonly subscribe: (input: Input) => Stream.Stream<A, E, R>;
+  readonly subscribe: (input: Input, environmentId: EnvironmentIdType) => Stream.Stream<A, E, R>;
   readonly idleTtlMs?: number;
 }
 
@@ -508,7 +508,12 @@ export function createEnvironmentSubscriptionAtomFamily<R, ER, Input, A, E>(
   const family = Atom.family((key: string) => {
     const target = parseEnvironmentRpcKey<Input>(key);
     return runtime
-      .atom(followStreamInEnvironment(target.environmentId, options.subscribe(target.input)))
+      .atom(
+        followStreamInEnvironment(
+          target.environmentId,
+          options.subscribe(target.input, target.environmentId),
+        ),
+      )
       .pipe(
         Atom.setIdleTTL(options.idleTtlMs ?? 5 * 60_000),
         Atom.withLabel(`${options.label}:${key}`),

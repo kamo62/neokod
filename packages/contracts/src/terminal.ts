@@ -23,6 +23,7 @@ const TerminalEnvValueSchema = Schema.String.check(Schema.isMaxLength(8_192));
 const TerminalEnvSchema = Schema.Record(TerminalEnvKeySchema, TerminalEnvValueSchema).check(
   Schema.isMaxProperties(128),
 );
+const TerminalSessionGenerationSchema = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 
 export const TerminalThreadInput = Schema.Struct({
   threadId: TrimmedNonEmptyStringSchema,
@@ -57,9 +58,19 @@ export const TerminalAttachInput = Schema.Struct({
 });
 export type TerminalAttachInput = Schema.Codec.Encoded<typeof TerminalAttachInput>;
 
+/** Maximum size of one terminal write, measured in UTF-16 code units. */
+export const TERMINAL_WRITE_MAX_LENGTH = 65_536;
+
 export const TerminalWriteInput = Schema.Struct({
   ...TerminalSessionInput.fields,
-  data: Schema.String.check(Schema.isNonEmpty()).check(Schema.isMaxLength(65_536)),
+  data: Schema.String.check(Schema.isNonEmpty()).check(
+    Schema.isMaxLength(TERMINAL_WRITE_MAX_LENGTH),
+  ),
+  /**
+   * Server-owned session generation the write was issued for. The server
+   * rejects the write if the session was replaced since this generation.
+   */
+  generation: Schema.optional(TerminalSessionGenerationSchema),
 });
 export type TerminalWriteInput = Schema.Codec.Encoded<typeof TerminalWriteInput>;
 
@@ -100,6 +111,8 @@ export const TerminalSessionSnapshot = Schema.Struct({
   worktreePath: Schema.NullOr(TrimmedNonEmptyStringSchema),
   status: TerminalSessionStatus,
   pid: Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0))),
+  /** Server-owned generation, incremented for each spawned process. */
+  generation: Schema.optional(TerminalSessionGenerationSchema),
   history: Schema.String,
   exitCode: Schema.NullOr(Schema.Int),
   exitSignal: Schema.NullOr(Schema.Int),
@@ -117,6 +130,8 @@ export const TerminalSummary = Schema.Struct({
   worktreePath: Schema.NullOr(TrimmedNonEmptyStringSchema),
   status: TerminalSessionStatus,
   pid: Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0))),
+  /** Server-owned generation, incremented for each spawned process. */
+  generation: Schema.optional(TerminalSessionGenerationSchema),
   exitCode: Schema.NullOr(Schema.Int),
   exitSignal: Schema.NullOr(Schema.Int),
   hasRunningSubprocess: Schema.Boolean,
@@ -325,6 +340,20 @@ export class TerminalWriteError extends Schema.TaggedErrorClass<TerminalWriteErr
   }
 }
 
+export class TerminalSessionChangedError extends Schema.TaggedErrorClass<TerminalSessionChangedError>()(
+  "TerminalSessionChangedError",
+  {
+    threadId: Schema.String,
+    terminalId: Schema.String,
+    expectedGeneration: TerminalSessionGenerationSchema,
+    actualGeneration: TerminalSessionGenerationSchema,
+  },
+) {
+  override get message() {
+    return `Terminal session changed for thread: ${this.threadId}, terminal: ${this.terminalId} (generation ${this.expectedGeneration} -> ${this.actualGeneration})`;
+  }
+}
+
 export class TerminalResizeError extends Schema.TaggedErrorClass<TerminalResizeError>()(
   "TerminalResizeError",
   {
@@ -347,6 +376,7 @@ export const TerminalError = Schema.Union([
   TerminalSessionLookupError,
   TerminalNotRunningError,
   TerminalWriteError,
+  TerminalSessionChangedError,
   TerminalResizeError,
 ]);
 export type TerminalError = typeof TerminalError.Type;

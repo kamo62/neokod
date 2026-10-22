@@ -17,6 +17,13 @@ import {
   type ScopedThreadRef,
   type ThreadId,
 } from "@neokod/contracts";
+import {
+  acquireTerminalInputQueue,
+  disposeTerminalInputQueue,
+  shouldEndTerminalInputQueue,
+  type TerminalInputLease,
+  type TerminalInputTarget,
+} from "@neokod/client-runtime/state/terminal";
 import { getTerminalLabel } from "@neokod/shared/terminalLabels";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import {
@@ -81,8 +88,23 @@ function clampDrawerHeight(height: number): number {
   return Math.min(Math.max(Math.round(safeHeight), MIN_DRAWER_HEIGHT), maxHeight);
 }
 
+const TERMINAL_SYSTEM_MESSAGE_MAX_LENGTH = 240;
+// eslint-disable-next-line no-control-regex
+const TERMINAL_CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]+/g;
+
+/** System messages are written into the terminal, so cap their length and drop control characters. */
+export function formatTerminalSystemMessage(message: string): string {
+  const head = message
+    .slice(0, TERMINAL_SYSTEM_MESSAGE_MAX_LENGTH)
+    .replace(/[\ud800-\udbff]$/, "")
+    .replace(TERMINAL_CONTROL_CHARACTER_PATTERN, " ");
+  return message.length > TERMINAL_SYSTEM_MESSAGE_MAX_LENGTH
+    ? `${head}... (message shortened, ${message.length} characters)`
+    : head;
+}
+
 function writeSystemMessage(terminal: Terminal, message: string): void {
-  terminal.write(`\r\n[terminal] ${message}\r\n`);
+  terminal.write(`\r\n[terminal] ${formatTerminalSystemMessage(message)}\r\n`);
 }
 
 function writeTerminalBuffer(terminal: Terminal, buffer: string): void {
@@ -291,6 +313,11 @@ interface TerminalLaunchLocation {
   readonly runtimeEnv?: Record<string, string>;
 }
 
+interface TerminalInputBinding {
+  readonly target: TerminalInputTarget;
+  lease: TerminalInputLease;
+}
+
 export function TerminalViewport({
   threadRef,
   threadId,
@@ -310,6 +337,7 @@ export function TerminalViewport({
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const terminalInputRef = useRef<TerminalInputBinding | null>(null);
   const environmentId = threadRef.environmentId;
   const serverConfig = useAtomValue(serverEnvironment.configValueAtom(environmentId));
   const openInPreferredEditor = useOpenInPreferredEditor(
@@ -351,12 +379,38 @@ export function TerminalViewport({
       ...(runtimeEnv ? { env: runtimeEnv } : {}),
     },
   });
-  const writeTerminal = useEffectEvent((data: string) =>
-    runTerminalWrite({
-      environmentId,
-      input: { threadId, terminalId, data },
-    }),
-  );
+  const writeTerminal = useEffectEvent((data: string) => {
+    const binding = terminalInputRef.current;
+    if (binding === null) return Promise.resolve(undefined);
+    // Prefer the shared metadata projection. Before it or the attach stream
+    // reports a status, the drawer has just opened the session, so keep typing
+    // responsive. Once the shared projection says the session is not running,
+    // drop input instead of writing into a dead pty.
+    const projectionStatus = terminalSession.summary?.status ?? null;
+    const writableStatus = projectionStatus ?? (hasSessionEvidence ? terminalStatus : null);
+    if (writableStatus !== null && writableStatus !== "running") {
+      return Promise.resolve(undefined);
+    }
+    // Pin the session generation for the whole write. Missing evidence fails
+    // closed: an unfenced chunk could otherwise reach a replacement process.
+    const generation = terminalSession.generation;
+    if (generation === null) {
+      return Promise.resolve(undefined);
+    }
+    const lease = ensureLiveInputLease();
+    if (lease === null) return Promise.resolve(undefined);
+    return lease.queue.write(data, (chunk) =>
+      runTerminalWrite({
+        environmentId: binding.target.environmentId,
+        input: {
+          threadId: binding.target.threadId,
+          terminalId: binding.target.terminalId,
+          data: chunk,
+          generation,
+        },
+      }),
+    );
+  });
   const resizeTerminal = useEffectEvent((cols: number, rows: number) =>
     runTerminalResize({
       environmentId,
@@ -367,6 +421,15 @@ export function TerminalViewport({
   const terminalError = terminalSession.error;
   const terminalStatus = terminalSession.status;
   const terminalVersion = terminalSession.version;
+  const hasSessionEvidence = terminalVersion > 0;
+  const ensureLiveInputLease = (): TerminalInputLease | null => {
+    const binding = terminalInputRef.current;
+    if (binding === null) return null;
+    if (!binding.lease.isDisposed()) return binding.lease;
+    binding.lease.release();
+    binding.lease = acquireTerminalInputQueue(binding.target);
+    return binding.lease;
+  };
   const previousSessionRef = useRef({
     buffer: terminalBuffer,
     error: terminalError,
@@ -379,10 +442,43 @@ export function TerminalViewport({
   }, [keybindings]);
 
   useEffect(() => {
+    if (!hasSessionEvidence) return;
+    const binding = terminalInputRef.current;
+    if (binding === null) return;
+    if (
+      !shouldEndTerminalInputQueue({
+        kind: "session",
+        status: terminalStatus,
+        authoritative: terminalStatus !== "error",
+      })
+    ) {
+      if (terminalStatus === "running") {
+        ensureLiveInputLease();
+      }
+      return;
+    }
+    // Authoritative closure or replacement: the new process must not inherit
+    // queued chunks from the previous one.
+    disposeTerminalInputQueue(binding.target);
+    binding.lease.release();
+    binding.lease = acquireTerminalInputQueue(binding.target);
+  }, [environmentId, hasSessionEvidence, terminalId, terminalStatus, threadId]);
+
+  useEffect(() => {
     const mount = containerRef.current;
     if (!mount) return;
 
     const localApi = readLocalApi();
+
+    // Acquire this mounted terminal's whole-write queue from the target-keyed
+    // registry. Switching tabs unmounts the viewport but leaves the server
+    // session running, so pending chunks continue and a remount reuses the
+    // queue. Close and restart commands dispose it instead.
+    const binding: TerminalInputBinding = {
+      target: { environmentId, threadId, terminalId },
+      lease: acquireTerminalInputQueue({ environmentId, threadId, terminalId }),
+    };
+    terminalInputRef.current = binding;
 
     const fitAddon = new FitAddon();
     const terminal = new Terminal({
@@ -490,10 +586,11 @@ export function TerminalViewport({
       const activeTerminal = terminalRef.current;
       if (!activeTerminal) return;
       const result = await writeTerminal(data);
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        writeSystemMessage(activeTerminal, error instanceof Error ? error.message : fallbackError);
+      if (result === undefined || result._tag === "Success" || isAtomCommandInterrupted(result)) {
+        return;
       }
+      const error = squashAtomCommandFailure(result);
+      writeSystemMessage(activeTerminal, error instanceof Error ? error.message : fallbackError);
     };
 
     terminal.attachCustomKeyEventHandler((event) => {
@@ -620,7 +717,7 @@ export function TerminalViewport({
     const inputDisposable = terminal.onData((data) => {
       void (async () => {
         const result = await writeTerminal(data);
-        if (result._tag === "Success" || isAtomCommandInterrupted(result)) {
+        if (result === undefined || result._tag === "Success" || isAtomCommandInterrupted(result)) {
           return;
         }
         const error = squashAtomCommandFailure(result);
@@ -689,6 +786,10 @@ export function TerminalViewport({
 
     return () => {
       window.clearTimeout(fitTimer);
+      binding.lease.release();
+      if (terminalInputRef.current === binding) {
+        terminalInputRef.current = null;
+      }
       inputDisposable.dispose();
       selectionDisposable.dispose();
       terminalLinksDisposable.dispose();
@@ -763,7 +864,16 @@ export function TerminalViewport({
       });
     }
     previousSessionRef.current = current;
-  }, [autoFocus, terminalBuffer, terminalError, terminalStatus, terminalVersion]);
+  }, [
+    autoFocus,
+    environmentId,
+    terminalBuffer,
+    terminalError,
+    terminalId,
+    terminalStatus,
+    terminalVersion,
+    threadId,
+  ]);
 
   useEffect(() => {
     if (!autoFocus) return;

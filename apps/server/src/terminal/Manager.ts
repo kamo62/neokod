@@ -16,6 +16,7 @@ import {
   TerminalHistoryError,
   TerminalNotRunningError,
   TerminalResizeError,
+  TerminalSessionChangedError,
   TerminalSessionLookupError,
   TerminalWriteError,
   type TerminalAttachInput,
@@ -52,6 +53,7 @@ import {
   type TerminalOwnershipEvidence,
 } from "@neokod/shared/processGroup";
 import { getTerminalLabel } from "@neokod/shared/terminalLabels";
+import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -259,6 +261,8 @@ export interface TerminalSessionState {
   worktreePath: string | null;
   status: TerminalSessionStatus;
   pid: number | null;
+  /** Server-owned process generation; increments for every spawn. */
+  generation: number;
   history: string;
   pendingHistoryControlSequence: string;
   pendingProcessEvents: Array<PendingProcessEvent>;
@@ -313,6 +317,8 @@ type DrainProcessEventAction =
 interface TerminalManagerState {
   sessions: Map<string, TerminalSessionState>;
   killFibers: Map<PtyAdapter.PtyProcess, Fiber.Fiber<void, never>>;
+  /** Manager-owned monotonic generation source; never resets per session. */
+  lastSessionGeneration: number;
 }
 
 function truncateTerminalWireLabel(value: string): string {
@@ -356,6 +362,7 @@ function snapshot(session: TerminalSessionState): TerminalSessionSnapshot {
     worktreePath: session.worktreePath,
     status: session.status,
     pid: session.pid,
+    generation: session.generation,
     history: session.history,
     exitCode: session.exitCode,
     exitSignal: session.exitSignal,
@@ -373,6 +380,7 @@ function summary(session: TerminalSessionState): TerminalSummary {
     worktreePath: session.worktreePath,
     status: session.status,
     pid: session.pid,
+    generation: session.generation,
     exitCode: session.exitCode,
     exitSignal: session.exitSignal,
     hasRunningSubprocess: session.hasRunningSubprocess,
@@ -1263,9 +1271,13 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
   yield* fileSystem.makeDirectory(logsDir, { recursive: true }).pipe(Effect.orDie);
 
+  const generationSeed = yield* Clock.currentTimeMillis;
   const managerStateRef = yield* SynchronizedRef.make<TerminalManagerState>({
     sessions: new Map(),
     killFibers: new Map(),
+    // Seed from wall time so identities do not restart at 1 after a server
+    // restart within the same millisecond boundary.
+    lastSessionGeneration: generationSeed,
   });
   const threadLocksRef = yield* SynchronizedRef.make(new Map<string, Semaphore.Semaphore>());
   const terminalEventListeners = new Set<(event: TerminalEvent) => Effect.Effect<void>>();
@@ -1295,6 +1307,12 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const modifyManagerState = <A>(
     f: (state: TerminalManagerState) => readonly [A, TerminalManagerState],
   ) => SynchronizedRef.modify(managerStateRef, f);
+
+  const allocateSessionGeneration = () =>
+    modifyManagerState((state) => {
+      const generation = state.lastSessionGeneration + 1;
+      return [generation, { ...state, lastSessionGeneration: generation }] as const;
+    });
 
   const getThreadSemaphore = (threadId: string) =>
     SynchronizedRef.modifyEffect(threadLocksRef, (current) => {
@@ -2161,6 +2179,10 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     input: TerminalStartInput,
     eventType: "started" | "restarted",
   ) {
+    // Every spawn is a new generation. Issued writes carry the generation they
+    // were created for and are rejected once this advances. The source is
+    // manager-owned, so close and reopen of the same target never reuses one.
+    session.generation = yield* allocateSessionGeneration();
     yield* stopProcess(session);
     yield* Effect.annotateCurrentSpan({
       "terminal.thread_id": session.threadId,
@@ -2513,6 +2535,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         worktreePath: input.worktreePath ?? null,
         status: "starting",
         pid: null,
+        generation: 0,
         history,
         pendingHistoryControlSequence: "",
         pendingProcessEvents: [],
@@ -2841,28 +2864,40 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     );
   };
 
-  const write: TerminalManager["Service"]["write"] = Effect.fn("terminal.write")(function* (input) {
-    const terminalId = input.terminalId;
-    const session = yield* requireSession(input.threadId, terminalId);
-    const process = session.process;
-    if (!process || session.status !== "running") {
-      if (session.status === "exited") return;
-      return yield* new TerminalNotRunningError({
-        threadId: input.threadId,
-        terminalId,
-      });
-    }
-    yield* Effect.try({
-      try: () => process.write(input.data),
-      catch: (cause) =>
-        new TerminalWriteError({
-          threadId: input.threadId,
-          terminalId,
-          terminalPid: process.pid,
-          cause,
-        }),
-    });
-  });
+  const write: TerminalManager["Service"]["write"] = (input) =>
+    withThreadLock(
+      input.threadId,
+      Effect.gen(function* () {
+        const terminalId = input.terminalId;
+        const session = yield* requireSession(input.threadId, terminalId);
+        if (input.generation !== undefined && input.generation !== session.generation) {
+          return yield* new TerminalSessionChangedError({
+            threadId: input.threadId,
+            terminalId,
+            expectedGeneration: input.generation,
+            actualGeneration: session.generation,
+          });
+        }
+        const process = session.process;
+        if (!process || session.status !== "running") {
+          if (session.status === "exited") return;
+          return yield* new TerminalNotRunningError({
+            threadId: input.threadId,
+            terminalId,
+          });
+        }
+        yield* Effect.try({
+          try: () => process.write(input.data),
+          catch: (cause) =>
+            new TerminalWriteError({
+              threadId: input.threadId,
+              terminalId,
+              terminalPid: process.pid,
+              cause,
+            }),
+        });
+      }),
+    );
 
   const resizeLocked = Effect.fn("terminal.resize")(function* (input: TerminalResizeInput) {
     const session = yield* getSession(input.threadId, input.terminalId);
@@ -2926,6 +2961,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             worktreePath: input.worktreePath ?? null,
             status: "starting",
             pid: null,
+            generation: 0,
             history: "",
             pendingHistoryControlSequence: "",
             pendingProcessEvents: [],
