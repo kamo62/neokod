@@ -1,0 +1,275 @@
+Browser tab: 326104961, Title: "Symphony runs · Concept A · Neokod design prototype", URL: "http://127.0.0.1:63035/runs.html?item=NEO-4838&attempt=0#NEO-4838".
+0 AXWebArea Symphony runs · Concept A · Neokod design prototype, URL: 127.0.0.1:63035/runs.html?item=NEO-4838&attempt=0#NEO-4838
+	1 container
+		2 link Description: Skip to runs, Value: 127.0.0.1:63035/runs.html?item=NEO-4838&attempt=0#run-list
+		3 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		4 container Location
+			5 text Symphony
+			6 text Runs
+		7 container Symphony prototype
+			8 link Description: Work, Value: 127.0.0.1:63035/work.html
+			9 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			10 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			11 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		12 text Design prototype · Sample data
+		13 button Reset demo, ID: reset-demo
+		14 checkbox Description: Switch to light theme, Value: 1
+		15 container layout
+			16 container Project and workflows
+				17 text Neokod
+				18 text Workflows
+				19 container Description: Workflows, ID: workflows
+					20 checkbox All workflows , 3 need you, 3 runs: 12, Value: 1
+						21 text All workflows
+						22 container 3 need you
+							23 text , 3 need you, 3
+						24 text runs:
+						25 text 12
+					26 checkbox Core reliability , 2 need you, 2 runs: 6, Value: 0
+						27 text Core reliability
+						28 container 2 need you
+							29 text , 2 need you, 2
+						30 text runs:
+						31 text 6
+					32 checkbox Provider adapters runs: 3, Value: 0
+						33 text Provider adapters
+						34 text runs:
+						35 text 3
+					36 checkbox Settings and safety , 1 need you, 1 runs: 3, Value: 0
+						37 text Settings and safety
+						38 container 1 need you
+							39 text , 1 need you, 1
+						40 text runs:
+						41 text 3
+				42 text Keyboard
+				43 container
+					44 text /  Search
+				45 container
+					46 text ↑ ↓  Move between runs
+				47 container
+					48 text Esc  Clear search or close
+			49 container main
+				50 container
+					51 text Search runs
+					52 search text field (settable) Search runs, ID: search
+				53 container Show
+					54 checkbox Active, Value: 1
+					55 checkbox History, Value: 0
+					56 checkbox All, Value: 0
+				57 container Description: Filter by status, ID: chips
+					58 checkbox All 12, Value: 1
+					59 checkbox Needs you 3, Value: 0
+					60 checkbox Running 1, Value: 0
+					61 checkbox Paused 2, Value: 0
+					62 checkbox Failed 1, Value: 0
+					63 checkbox Tracking lost 1, Value: 0
+					64 checkbox Queued 2, Value: 0
+					65 checkbox Accepted, not running 1, Value: 0
+				66 container Description: Filter by machine, ID: machines
+					67 text Machine
+					68 checkbox All machines 12, Value: 1
+					69 checkbox Sample Mac 6 mac, Help: Sample Mac (mac), Connected, Value: 0
+						70 text Sample Mac
+						71 text 6
+						72 text mac
+					73 checkbox Work PC 5 work, Help: Work PC (work), Connected, Value: 0
+						74 text Work PC
+						75 text 5
+						76 text work
+					77 checkbox Build host 1 build, Help: Build host (build), Offline, sign-in failed, Value: 0
+						78 text Build host
+						79 text 1
+						80 text build
+				81 container Needs you 3, ID: attention
+					82 heading Needs you 3, Value: 2, ID: attn-title
+						83 text Needs you  3
+					84 content list
+						85 button NEO-4790 Tracking lostAgent may still be writing to the worktree Build host build offline Core reliability
+							86 text NEO-4790
+							87 text Tracking lost
+							88 text Agent may still be writing to the worktree
+							89 container Build host (build), Offline, sign-in failed. Sample machine.
+								90 text Build host build offline
+							91 text Core reliability
+						92 button NEO-4785 Same failure twiceENOENT in review tests on attempts 1 and 2 Sample Mac mac Core reliability
+							93 text NEO-4785
+							94 text Same failure twice
+							95 text ENOENT in review tests on attempts 1 and 2
+							96 container Sample Mac (mac), Connected. Sample machine.
+								97 text Sample Mac mac
+							98 text Core reliability
+						99 button NEO-4776 Merge approvalPR #1279: all gates pass at 0b7d2f6 Work PC work Settings and safety
+							100 text NEO-4776
+							101 text Merge approval
+							102 text PR #1279: all gates pass at 0b7d2f6
+							103 container Work PC (work), Connected. Sample machine.
+								104 text Work PC work
+							105 text Settings and safety
+					106 text Resolved in this demo NEO-4821 D-3 decision saved at 08:38 PM
+					107 button Reopen decision
+				108 list Description: Runs, ID: run-list
+					109 container Demo requests from Work
+						110 text Demo requests from Work
+						111 text 4
+						112 ID: opt-q-R-4b691410-9720-4b26-bf66-dab9e84d190c-NEO-4846, Value: NEO-4846 diff headers use one path style on every platform. Blocked, not started · R-4b691410-9720-4b26-bf66-dab9e84d190c, recorded 22 Oct 2026, 20:29 · Work PC (work) Receipt R-4b691410-9720-4b26-bf66-dab9e84d190c Work PC work Not observed
+							113 text NEO-4846
+							114 text diff headers use one path style on every platform.
+							115 text Blocked, not started
+							116 text · R-4b691410-9720-4b26-bf66-dab9e84d190c, recorded 22 Oct 2026, 20:29 · Work PC (work)
+							117 text Receipt R-4b691410-9720-4b26-bf66-dab9e84d190c
+							118 container Work PC (work), Connected. Sample machine.
+								119 text Work PC work
+							120 text Not observed
+						121 ID: opt-q-R-4b691410-9720-4b26-bf66-dab9e84d190c-NEO-4861, Value: NEO-4861 make the age and coverage of the loaded issue list explicit. Closed in the demo, not running · R-4b691410-9720-4b26-bf66-dab9e84d190c, recorded 22 Oct 2026, 20:29 · Sample Mac (mac) Receipt R-4b691410-9720-4b26-bf66-dab9e84d190c Sample Mac mac Not observed
+							122 text NEO-4861
+							123 text make the age and coverage of the loaded issue list explicit.
+							124 text Closed in the demo, not running
+							125 text · R-4b691410-9720-4b26-bf66-dab9e84d190c, recorded 22 Oct 2026, 20:29 · Sample Mac (mac)
+							126 text Receipt R-4b691410-9720-4b26-bf66-dab9e84d190c
+							127 container Sample Mac (mac), Connected. Sample machine.
+								128 text Sample Mac mac
+							129 text Not observed
+						130 ID: opt-q-R-1-NEO-4821, Value: NEO-4821 queued sends survive a reconnect and a reload, and are never delivered twice. Queued in the demo, not running · R-1, recorded 04:34 PM · Sample Mac (mac) Receipt R-1 Sample Mac mac Not observed
+							131 text NEO-4821
+							132 text queued sends survive a reconnect and a reload, and are never delivered twice.
+							133 text Queued in the demo, not running
+							134 text · R-1, recorded 04:34 PM · Sample Mac (mac)
+							135 text Receipt R-1
+							136 container Sample Mac (mac), Connected. Sample machine.
+								137 text Sample Mac mac
+							138 text Not observed
+						139 ID: opt-q-R-1-NEO-4846, Value: NEO-4846 diff headers use one path style on every platform. Blocked, not started · R-1, recorded 04:34 PM · Work PC (work) Receipt R-1 Work PC work Not observed
+							140 text NEO-4846
+							141 text diff headers use one path style on every platform.
+							142 text Blocked, not started
+							143 text · R-1, recorded 04:34 PM · Work PC (work)
+							144 text Receipt R-1
+							145 container Work PC (work), Connected. Sample machine.
+								146 text Work PC work
+							147 text Not observed
+					148 container Active
+						149 text Active
+						150 text 8
+						151 ID: opt-r-NEO-4821, Value: NEO-4821 Preserve queued sends across reconnects Paused, decision saved · Build, attempt 3, Core reliability Stages: Intake done, Design done, Build paused, Integrate failed, Review sent back, PR not run Sample Mac mac Waiting since 14:26
+							152 text NEO-4821
+							153 text Preserve queued sends across reconnects
+							154 text Paused, decision saved
+							155 text · Build, attempt 3, Core reliability
+							156 container Stages: Intake done, Design done, Build paused, Integrate failed, Review sent back, PR not run
+							157 container Sample Mac (mac), Connected. Sample machine.
+								158 text Sample Mac mac
+							159 text Waiting since 14:26
+						160 ID: opt-r-NEO-4807, Value: NEO-4807 Retry provider handshake after socket reset Running · Build, attempt 1, Provider adapters Stages: Intake done, Design skipped, Build running, Integrate not run, Review not run, PR not run Work PC work Started 14:02
+							161 text NEO-4807
+							162 text Retry provider handshake after socket reset
+							163 text Running
+							164 text · Build, attempt 1, Provider adapters
+							165 container Stages: Intake done, Design skipped, Build running, Integrate not run, Review not run, PR not run
+							166 container Work PC (work), Connected. Sample machine.
+								167 text Work PC work
+							168 text Started 14:02
+						169 ID: opt-r-NEO-4799, Value: NEO-4799 Settle Copilot sessions before runtime replacement Paused by you · Integrate, attempt 2, Provider adapters Stages: Intake done, Design done, Build done, Integrate paused, Review not run, PR not run Sample Mac mac Paused at 13:12
+							170 text NEO-4799
+							171 text Settle Copilot sessions before runtime replacement
+							172 text Paused by you
+							173 text · Integrate, attempt 2, Provider adapters
+							174 container Stages: Intake done, Design done, Build done, Integrate paused, Review not run, PR not run
+							175 container Sample Mac (mac), Connected. Sample machine.
+								176 text Sample Mac mac
+							177 text Paused at 13:12
+						178 ID: opt-r-NEO-4790, Value: NEO-4790 Reap terminal process groups on server exit Tracking lost · Build, attempt 1, Core reliability Stages: Intake done, Design done, Build tracking lost, Integrate not run, Review not run, PR not run Build host build offline Last observed 13:41
+							179 text NEO-4790
+							180 text Reap terminal process groups on server exit
+							181 text Tracking lost
+							182 text · Build, attempt 1, Core reliability
+							183 container Stages: Intake done, Design done, Build tracking lost, Integrate not run, Review not run, PR not run
+							184 container Build host (build), Offline, sign-in failed. Sample machine.
+								185 text Build host build offline
+							186 text Last observed 13:41
+						187 ID: opt-r-NEO-4785, Value: NEO-4785 Validate diff cwd against worktree roots Validation failed twice · Integrate, attempt 2, Core reliability Stages: Intake done, Design done, Build done, Integrate failed, Review not run, PR not run Sample Mac mac Ended 12:58
+							188 text NEO-4785
+							189 text Validate diff cwd against worktree roots
+							190 text Validation failed twice
+							191 text · Integrate, attempt 2, Core reliability
+							192 container Stages: Intake done, Design done, Build done, Integrate failed, Review not run, PR not run
+							193 container Sample Mac (mac), Connected. Sample machine.
+								194 text Sample Mac mac
+							195 text Ended 12:58
+						196 ID: opt-r-NEO-4776, Value: NEO-4776 Clamp UTF-8 writes at 10 MiB Ready to merge · PR, attempt 1, Settings and safety Stages: Intake done, Design done, Build done, Integrate passed, Review done, PR needs you Work PC work Ended 12:34
+							197 text NEO-4776
+							198 text Clamp UTF-8 writes at 10 MiB
+							199 text Ready to merge
+							200 text · PR, attempt 1, Settings and safety
+							201 container Stages: Intake done, Design done, Build done, Integrate passed, Review done, PR needs you
+							202 container Work PC (work), Connected. Sample machine.
+								203 text Work PC work
+							204 text Ended 12:34
+						205 ID: opt-r-NEO-4770, Value: NEO-4770 Debounce Symphony settings commits Queued · Not started, Settings and safety Stages: Intake queued, Design not run, Build not run, Integrate not run, Review not run, PR not run Sample Mac mac Not started
+							206 text NEO-4770
+							207 text Debounce Symphony settings commits
+							208 text Queued
+							209 text · Not started, Settings and safety
+							210 container Stages: Intake queued, Design not run, Build not run, Integrate not run, Review not run, PR not run
+							211 container Sample Mac (mac), Connected. Sample machine.
+								212 text Sample Mac mac
+							213 text Not started
+						214 (selected) ID: opt-r-NEO-4838, Value: NEO-4838 Warn before removing a worktree with uncommitted changes Accepted on Work PC, not running · Existing accepted record · Work PC (work) · not running Reference Work PC work Not observed
+							215 text NEO-4838
+							216 text Warn before removing a worktree with uncommitted changes
+							217 text Accepted on Work PC, not running
+							218 text · Existing accepted record · Work PC (work) · not running
+							219 text Reference
+							220 container Work PC (work), Connected. Sample machine.
+								221 text Work PC work
+							222 text Not observed
+			223 container Description: Selected run, ID: detail
+				224 container
+					225 text NEO-4838 Existing accepted record Accepted, not running
+					226 heading Warn before removing a worktree with uncommitted changes, Value: 2, ID: detail-title
+						227 text Warn before removing a worktree with uncommitted changes
+					228 container Work PC (work), Connected. Sample machine.
+						229 text Work PC work
+					230 text Immutable machine id  work
+				231 text Reference only
+				232 text This is Work's known accepted record for NEO-4838. No attempt has been observed and no process closure or execution is claimed.
+				233 container
+					234 text Next:  Open the Work sample to see the accepted request. This reference has no run action.
+				235 link Description: Open the Work sample, Value: 127.0.0.1:63035/work.html?issue=NEO-4838
+				236 container
+					237 heading Source, Value: 3
+						238 text Source
+					239 definition list
+						240 container Source
+							241 text Source
+						242 text Work sample issue NEO-4838 · existing accepted record at 11:02
+						243 container Recorded
+							244 text Recorded
+						245 text 11:02 (sample)
+						246 container Machine
+							247 text Machine
+						248 container
+							249 container Work PC (work), Connected. Sample machine.
+								250 text Work PC work
+							251 text Immutable machine id  work . Sample machine; no server is contacted.
+						252 container State
+							253 text State
+						254 text Accepted, not running
+						255 container Attempt
+							256 text Attempt
+						257 text Not started. No attempt was observed for this record.
+						258 container Execution
+							259 text Execution
+						260 text None observed. No process closure is claimed.
+						261 container Evidence
+							262 text Evidence
+						263 text Not run
+				264 container
+					265 heading Evidence on Work PC (work), Value: 3
+						266 text Evidence on Work PC (work)
+					267 text Not run. This reference carries no host check, review or agent result.
+				268 container
+					269 heading Why it is separate, Value: 3
+						270 text Why it is separate
+					271 text Work reports this issue as already accepted on Work PC. Opening it here resolves the known sample record and its machine. It does not invent a queued request, an attempt, a head or an exit.
+
+The focused UI element is 0 AXWebArea Symphony runs · Concept A · Neokod design prototype, URL: 127.0.0.1:63035/runs.html?item=NEO-4838&attempt=0#NEO-4838

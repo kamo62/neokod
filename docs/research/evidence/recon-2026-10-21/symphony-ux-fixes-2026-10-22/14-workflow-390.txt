@@ -1,0 +1,182 @@
+Browser tab: 326104961, Title: "Symphony workflow map · Concept B · Neokod design prototype", URL: "http://127.0.0.1:63035/workflow.html?item=NEO-4821&attempt=3#NEO-4821".
+1 AXWebArea Symphony workflow map · Concept B · Neokod design prototype, URL: 127.0.0.1:63035/workflow.html?item=NEO-4821&attempt=3#NEO-4821
+	2 container
+		3 link Description: Skip to workflow map, Value: 127.0.0.1:63035/workflow.html?item=NEO-4821&attempt=3#map-scroll
+		4 link Description: N Neokod Sample data, Value: 127.0.0.1:63035/index.html
+		5 container Symphony prototype
+			6 link Description: Work, Value: 127.0.0.1:63035/work.html
+			7 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			8 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			9 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		10 button Reset demo, ID: reset-demo
+		11 checkbox Description: Switch to light theme, Value: 1
+		12 pop up button (collapsed) NEO-4821Preserve queued sends across reconnects, ID: run-switch, Secondary Actions: Expand
+			13 container run-switch-label
+				14 text NEO-4821 Preserve queued sends across reconnects
+		15 container run-machine
+			16 container Sample Mac (mac), Connected. Sample machine.
+				17 text Sample Mac mac
+			18 text attempt 3
+		19 container Selected item detail
+			20 link Description: Summary, Value: 127.0.0.1:63035/runs.html?item=NEO-4821&attempt=3#NEO-4821
+			21 link Description: Execution, Value: 127.0.0.1:63035/workflow.html?item=NEO-4821&attempt=3#NEO-4821
+			22 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html?item=NEO-4821&attempt=3&tab=decisions#NEO-4821
+			23 link Description: Evidence, Value: 127.0.0.1:63035/planning.html?item=NEO-4821&attempt=3&tab=evidence#NEO-4821
+		24 pop up button (collapsed) Needs you 3, ID: attn-btn, Secondary Actions: Expand
+		25 container Map view
+			26 checkbox Fold packages, Value: 0, ID: fold-btn
+			27 button Description: Zoom out, Help: Zoom out (−), ID: zoom-out
+			28 text 80%
+			29 button Description: Zoom in, Help: Zoom in (+), ID: zoom-in
+			30 button Fit, Help: Fit map (F), ID: zoom-fit
+			31 button 100%, Help: Actual size (0), ID: zoom-reset
+		32 container Description: Workflow map, ID: map
+			33 text 1 Intake
+			34 text Done
+			35 text 2 Design
+			36 text Done, 2 rounds
+			37 text 3 Build
+			38 text 2 packages, B paused
+			39 text 4 Integrate
+			40 text Failed at 7f3a9c2
+			41 text 5 Review
+			42 text Round 1 of 2 sent back
+			43 text 6 PR
+			44 text Merge locked
+			45 text Package A: client outbox
+			46 text Package B: server receipts
+			47 text Sent back in round 1
+			48 text Answered 08:38 PM
+			49 text Repair round 1 of 2
+			50 text After repair
+			51 checkbox Description: Issue imported. GitHub #4821. Done. Intake stage., Value: 0, ID: n-intake
+				52 text Issue imported
+				53 text GitHub #4821
+			54 checkbox Description: Architect. Design v2. Done. Agent R. Design stage., Value: 0, ID: n-arch
+				55 text Architect
+				56 text Design v2
+				57 text R
+			58 checkbox Description: Design critic. Approved, round 2. Done. Agent C3. Design stage., Value: 0, ID: n-critic
+				59 text Design critic
+				60 text Approved, round 2
+				61 text C3
+			62 checkbox Description: Integrate. At 7f3a9c2. Failed. Integrate stage., Value: 0, ID: n-integrate
+				63 text Integrate
+				64 text At 7f3a9c2
+				65 container
+					66 text Unit  passed
+				67 container
+					68 text Integration  failed
+				69 container
+					70 text End to end  not run
+			71 checkbox Description: Review round 1. Sent back. Sent back. Agent C3. Review stage., Value: 0, ID: n-review1
+				72 text Round 1
+				73 text Sent back
+				74 text C3
+			75 checkbox Description: Review round 2. Not started. Not run. Review stage., Value: 0, ID: n-review2
+				76 text Round 2
+				77 text Not started
+			78 checkbox Description: Escalate to you. If round 2 fails. Not run. Review stage., Value: 0, ID: n-escalate
+				79 text Escalate to you
+				80 text If round 2 fails
+			81 checkbox Description: Open PR. Not opened. Not run. PR stage., Value: 0, ID: n-pr
+				82 text Open PR
+				83 text Not opened
+			84 checkbox Description: Human merge. Locked. Locked. PR stage., Value: 0, ID: n-merge
+				85 text Human merge
+				86 text Locked
+			87 checkbox Description: Implementer, package A. Completed 14:07. Done. Agent C1. Build stage., Value: 0, ID: n-implA
+				88 text Implementer
+				89 text Completed 14:07
+				90 text C1
+			91 checkbox Description: Unit tests, package A. At an earlier head. Superseded. Build stage., Value: 0, ID: n-testA
+				92 text Unit tests
+				93 text At an earlier head
+			94 checkbox Description: Critic, package A. Accepted. Done. Agent C3. Build stage., Value: 0, ID: n-criticA
+				95 text Critic
+				96 text Accepted
+				97 text C3
+			98 checkbox Description: Implementer, package B. Paused. Paused. Agent C2. Build stage., Value: 0, ID: n-implB
+				99 text Implementer
+				100 text Paused
+				101 text C2
+			102 checkbox Description: Tester subagent. Last seen 14:21. Tracking lost. Agent N1, observed native. Build stage., Value: 0, ID: n-testB
+				103 text Tester
+				104 text Last seen 14:21
+				105 text N1
+			106 checkbox Description: Critic, package B. Not run. Not run. Build stage., Value: 0, ID: n-criticB
+				107 text Critic
+				108 text Not run
+			109 checkbox Description: Decision D-3. Saved 08:38 PM. Saved. Build stage., Value: 1, ID: n-decision
+				110 text Decision D-3
+				111 text Saved 08:38 PM
+		112 container Description: Step inspector, ID: inspector
+			113 text Decision
+			114 text Build stage · Sample Mac (mac)
+			115 heading Decision D-3, Value: 2, ID: i-title
+				116 text Decision D-3
+			117 text Decision saved
+			118 container
+				119 container
+					120 text Saved at 08:38 PM  by You
+					121 text Keep the message identity and ask for an explicit retry
+				122 text Pinned to NEO-4821 attempt 3 on Sample Mac (mac), head 7f3a9c2. Decision saved at 08:38 PM.
+				123 button Request resume of attempt 3 on Sample Mac (mac)
+				124 button Reopen decision
+				125 text Saving did not start work. This is a request for attempt 3 on Sample Mac (mac), not execution approval. The map changes only when the server reports new events.
+			126 container
+				127 heading Linked steps, Value: 3
+					128 text Linked steps
+				129 button Asked by Implementer, package B
+					130 text Asked by
+					131 text Implementer, package B
+			132 container
+				133 heading Agents in this run, Value: 3
+					134 text Agents in this run
+				135 content list
+					136 button R Root run Waiting for input
+						137 text R Root run
+						138 text Waiting for input
+					139 button C1 Implementer, package A Completed
+						140 text C1 Implementer, package A
+						141 text Completed
+					142 button C2 Implementer, package B Asked a question
+						143 text C2 Implementer, package B
+						144 text Asked a question
+					145 button N1 Tester subagent Observed Tracking lost
+						146 text N1 Tester subagent
+						147 text Observed
+						148 text Tracking lost
+					149 button C3 Critic and reviewer Round 1 complete
+						150 text C3 Critic and reviewer
+						151 text Round 1 complete
+				152 text 6 stages and 16 steps, run by 5 agents. A stage or step is not an agent: C3 appears on 3 steps.
+		153 container Description: Stages, ID: stepper
+			154 button 1 Intake , Done
+				155 text 1
+				156 text Intake
+				157 text , Done
+			158 button 2 Design , Done
+				159 text 2
+				160 text Design
+				161 text , Done
+			162 button 3 Build , Paused
+				163 text 3
+				164 text Build
+				165 text , Paused
+			166 button 4 Integrate , Failed
+				167 text 4
+				168 text Integrate
+				169 text , Failed
+			170 button 5 Review , Sent back
+				171 text 5
+				172 text Review
+				173 text , Sent back
+			174 button 6 PR , Not run
+				175 text 6
+				176 text PR
+				177 text , Not run
+		178 container Legend
+			179 text Done Not yet Sent back Blocked on you Agent step Host check Human gate
+
+The focused UI element is 1 AXWebArea Symphony workflow map · Concept B · Neokod design prototype, URL: 127.0.0.1:63035/workflow.html?item=NEO-4821&attempt=3#NEO-4821

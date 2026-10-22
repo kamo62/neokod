@@ -1,0 +1,27 @@
+# Sol review: checkpoint-r20 (work/core-checkpoint-recovery @ 9e83e9e1f)
+
+## Verdict: ACCEPT
+
+## Findings
+
+No concrete P0-P2 defects found in the exact diff against `a80455a6d5701f27a29eb907e7e4e55dc9ea3379`.
+
+## Card acceptance
+
+| Acceptance criterion                                                                                        | Result | Evidence                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Save a recoverable snapshot before restoring tracked and untracked, non-ignored files                       | met    | `CheckpointReactor.ts:1567-1601` captures through `CheckpointStore` before restore. The temporary-repository regression verifies pre-revert tracked edits and an untracked file in the retained recovery ref.                                                                                                                               |
+| Refuse active work in the shared folder before mutation                                                     | met    | Reservation covers fresh session and durable admission checks through completion. Checks include physical parent/child overlap, active-turn evidence, archived admissions and recorded pending/running workspaces. Deterministic interleaving regressions passed.                                                                           |
+| Capture failure leaves files, conversation and checkpoints unchanged                                        | met    | `CheckpointReactor.ts:1574-1585` returns before restore on capture failure. The focused regression passed.                                                                                                                                                                                                                                  |
+| Retain the recovery ref and record a surviving recovery activity                                            | met    | Recovery activity uses `turnId: null`; stale-ref deletion receives only later checkpoint refs (`CheckpointReactor.ts:1588-1627`). Tests cover retained contents and uniqueness with a frozen clock and reactor restarts.                                                                                                                    |
+| Confirmation explains folder-wide edits, deletions, other threads, irreversible chat loss and file recovery | met    | `ChatView.logic.ts:135-143`, invoked by `ChatView.tsx`. Copy also explains that staged changes become unstaged. All 58 helper-suite tests passed.                                                                                                                                                                                           |
+| Preserve ignored content across restore                                                                     | met    | Pre-restore enumeration uses all standard ignore sources and collapses directories. `GitVcsDriver.ts:898-917` excludes those paths literally from clean. Rule-change and tracked-collision guards remain. The XDG regression changes an ignore source restored by the checkpoint and verifies both ignored-file and directory preservation. |
+| Rejected or abandoned pending starts do not permanently block later work                                    | met    | Message-scoped failure projection removes only the matching pending admission. Startup tests exercise two restarts, one recovery activity, explicit unknown outcome and acceptance of a fresh start.                                                                                                                                        |
+| Required verification                                                                                       | met    | `pnpm exec vp check`: zero errors, 44 warnings. `pnpm exec vp run typecheck`: all ten tasks passed. Focused server run: 210 tests across 14 files passed. Web helper suite: 58 tests passed. Exact-diff whitespace check passed.                                                                                                            |
+
+## Notes for integrator
+
+- Card 2.2 is complete at the reviewed source and regression-test level. No files were edited; the working tree remains clean.
+- Preserve both sides when integrating `work/turn-timing-evidence`. Visible overlapping paths include `ProjectionPipeline.ts` and its tests, the integration harness, migration registration/tests and `ChatView.tsx`. Pending admission workspace propagation and failure settlement must survive the turn-settlement changes.
+- This lane owns migration **043**; the timing lane introduces **044**. Retain both registrations and migration expectations.
+- The accepted in-process reservation does not cover external Git commands or editor writers. No live-provider, rendered-dialog or native Windows validation is claimed.

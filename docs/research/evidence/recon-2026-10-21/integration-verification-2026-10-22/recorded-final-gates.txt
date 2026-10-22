@@ -1,0 +1,11 @@
+ create mode 100644 apps/server/src/persistence/Services/ProjectionTurnSettlements.ts
+ Test Files  113 passed | 2 skipped (115)
+      Tests  1337 passed | 6 skipped (1343)
+ Test Files  29 passed (29)
+      Tests  245 passed (245)
+ Test Files  177 passed (177)
+      Tests  1740 passed (1740)
+Finished in 346ms on 31 files using 8 threads.
+tc_rc=0
+
+[exited with code 0]

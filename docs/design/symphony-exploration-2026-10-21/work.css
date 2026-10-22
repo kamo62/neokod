@@ -1581,7 +1581,13 @@ p.wk-scope.is-shared {
   .wk-row {
     grid-template-columns: 22px 60px minmax(0, 1fr) 150px;
   }
-  .wk-runon,
+  .wk-runon {
+    display: flex;
+    grid-column: 3;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+  }
   .wk-col-runon {
     display: none;
   }
@@ -1614,11 +1620,35 @@ p.wk-scope.is-shared {
     gap: 6px;
     padding: 0 8px;
   }
+  .wk-flowbar {
+    flex-wrap: wrap;
+    padding-block: 6px;
+  }
+  .wk-steps {
+    flex: 1 1 100%;
+    width: 100%;
+    justify-content: space-between;
+  }
+  .wk-step {
+    height: auto;
+    min-height: 30px;
+    padding-inline: 4px;
+    gap: 4px;
+  }
   .wk-step .l {
+    display: inline;
+  }
+  .wk-step-sep {
+    width: 8px;
+  }
+  .wk-flow-spacer {
     display: none;
   }
-  .wk-step[aria-current="page"] .l {
-    display: inline;
+  .wk-savestate {
+    max-width: 100%;
+    white-space: normal;
+    height: auto;
+    min-height: 22px;
   }
   .wk-listhead,
   .wk-row {
@@ -1627,12 +1657,62 @@ p.wk-scope.is-shared {
   .wk-selvis {
     grid-column: 1 / -1;
   }
-  .wk-row .wk-id,
   .wk-col-ready {
     display: none;
   }
-  .wk-ready {
-    grid-column: 2;
+  .wk-row {
+    grid-template-areas: "check id" ". title" ". machine" ". readiness";
+    gap: 5px 8px;
+    padding-block: 12px;
+  }
+  .wk-row .wk-cbwrap {
+    grid-area: check;
+  }
+  .wk-row .wk-id {
+    display: block;
+    grid-area: id;
+    font-weight: 600;
+  }
+  .wk-row .wk-title {
+    grid-area: title;
+  }
+  .wk-row .wk-runon {
+    display: flex;
+    grid-area: machine;
+  }
+  .wk-row .wk-ready {
+    grid-area: readiness;
+  }
+  .wk-side {
+    flex-direction: column;
+    overflow: auto;
+    max-height: 180px;
+    align-items: stretch;
+    gap: 14px;
+  }
+  .wk-side .wk-sec {
+    width: auto;
+  }
+  .wk-sec-machines .demo-note,
+  .wk-sec-mode .c-detail {
+    display: block;
+  }
+  .wk-sec-machines .wk-machines {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .wk-mbtn {
+    min-width: 0;
+    width: 100%;
+    white-space: normal;
+  }
+  .wk-row .wk-title .t {
+    white-space: normal;
+  }
+  .wk-pop {
+    width: min(300px, calc(100vw - 24px));
+    right: -30px;
   }
   .wk-toolbar {
     flex-wrap: wrap;
@@ -1641,7 +1721,8 @@ p.wk-scope.is-shared {
     flex-basis: 100%;
   }
   .wk-batch-def {
-    display: none;
+    display: block;
+    white-space: normal;
   }
   .wk-kv,
   .wk-form {
@@ -1663,4 +1744,198 @@ p.wk-scope.is-shared {
     order: 3;
     white-space: normal;
   }
+}
+
+/* The same compact provider/model/effort shape used by thread assignment. */
+.wk-model {
+  position: relative;
+  min-width: 0;
+}
+.wk-model-trigger {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+  width: 100%;
+  text-align: left;
+  height: auto;
+  min-height: 32px;
+}
+.wk-model-instance,
+.wk-model-inherit,
+.wk-model-note,
+.wk-model-slug,
+.wk-model-eff,
+.wk-model-disabled,
+.wk-model-warn {
+  font-size: var(--fs-meta);
+}
+.wk-model-instance,
+.wk-model-inherit,
+.wk-model-slug,
+.wk-model-eff {
+  color: var(--text-3);
+}
+.wk-model-inherit,
+.wk-model-disabled,
+.wk-model-warn {
+  display: block;
+  margin-top: 5px;
+}
+.wk-model-summary {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.wk-model-caret {
+  margin-left: auto;
+}
+.wk-model-pop {
+  position: relative;
+  z-index: 10;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--elevated);
+  box-shadow: var(--elev-pop);
+}
+.wk-model-note {
+  color: var(--text-3);
+  margin: 0 0 8px;
+}
+.wk-model-search .field {
+  width: 100%;
+}
+.wk-model-body {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.8fr) minmax(0, 1.8fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+.wk-model-instances,
+.wk-model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 280px;
+  overflow: auto;
+}
+.wk-model-instance-row,
+.wk-model-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.wk-model-instance-row:hover,
+.wk-model-row:hover {
+  background: var(--hover);
+}
+.wk-model-instance-row.is-active,
+.wk-model-row.is-active {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+.wk-model-row:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.wk-model-name {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.wk-model-tag {
+  color: var(--text-3);
+}
+.wk-model-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+  margin-top: 8px;
+  border-top: 1px solid var(--divider);
+}
+.wk-model-footer-label {
+  color: var(--text-3);
+  font-size: var(--fs-meta);
+}
+.wk-model-efforts {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.wk-model-effort.is-active {
+  border-color: var(--accent);
+}
+.wk-reviewer + .wk-reviewer {
+  margin-top: 12px;
+}
+.wk-loadmore {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  border-top: 1px solid var(--divider);
+}
+.wk-loadmore p {
+  color: var(--text-3);
+  font-size: var(--fs-meta);
+}
+.wk-scopetag {
+  color: var(--text-3);
+  font-size: 10px;
+}
+.wk-gate h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.wk-gate.is-blocking {
+  border-left: 2px solid var(--attn);
+  padding-left: 10px;
+}
+.wk-actions .wk-row-actions,
+.wk-settings-fixture .wk-row-actions {
+  flex-wrap: wrap;
+}
+@media (max-width: 560px) {
+  .wk-model-body {
+    grid-template-columns: 1fr;
+  }
+  .wk-model-instances {
+    flex-direction: row;
+    flex-wrap: wrap;
+    max-height: none;
+  }
+  .wk-model-instance-row {
+    flex: 1 1 100px;
+  }
+  .wk-loadmore {
+    flex-wrap: wrap;
+  }
+}
+.wk-source-form {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.wk-source-form .field {
+  width: 100%;
+  min-width: 0;
+}
+.wk-source-form label:not(:first-child) {
+  margin-top: 6px;
+}
+.wk-source-form .wk-kv dd {
+  overflow-wrap: anywhere;
 }

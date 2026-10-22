@@ -68,6 +68,21 @@
   font-size: var(--fs-meta);
   color: var(--text-2);
 }
+.p-ident {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+#item-tabs {
+  min-width: 0;
+}
+#item-tabs .nk-item-tabs {
+  max-width: 100%;
+  overflow-x: auto;
+}
 
 .p-layout {
   flex: 1;
@@ -718,6 +733,28 @@
   .p-layout {
     display: block;
     overflow: auto;
+  }
+  .p-subbar {
+    padding: 6px 12px;
+  }
+  .p-tabs {
+    overflow-x: auto;
+    flex: none;
+    max-width: 100%;
+  }
+  .p-tabs button {
+    white-space: nowrap;
+  }
+  #item-tabs {
+    order: 5;
+    flex-basis: 100%;
+  }
+  #item-tabs .nk-item-tabs {
+    flex-wrap: nowrap;
+  }
+  .p-ident {
+    order: 4;
+    flex-basis: 100%;
   }
   .p-work,
   .p-rail {

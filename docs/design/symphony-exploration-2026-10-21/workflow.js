@@ -4,6 +4,7 @@
   const F = window.NK_FIX;
   const M = window.NK_MAP;
   const NK = window.NK;
+  const S = NK.shared;
   const { esc, icon, glyph, pill } = NK;
   const $ = (id) => document.getElementById(id);
 
@@ -22,23 +23,27 @@
   const PACKAGE_NODES = ["implA", "testA", "criticA", "implB", "testB", "criticB"];
 
   let state;
-  function initialState() {
+  function initialState(shared) {
     return {
       runId: "NEO-4821",
       sel: "decision",
       folded: false,
       zoom: 1,
-      decision: { draft: null, note: "", saved: null },
-      resume: null,
-      clock: 30,
+      shared: shared,
+      selection: shared.selection,
     };
   }
-  function demoTime() {
-    state.clock += 1;
-    return "14:" + String(state.clock).padStart(2, "0");
-  }
   const run = () => F.runs.find((r) => r.id === state.runId);
+  const machineOf = () => NK.runMachine(state.runId);
   const isDetailed = () => state.runId === "NEO-4821";
+  const decEntry = () => (state.shared.decisions && state.shared.decisions["D-3"]) || {};
+  const decSaved = () => decEntry().saved || null;
+  const requestOf = () => (state.shared.requests && state.shared.requests["NEO-4821"]) || {};
+  function persist(mutator) {
+    const res = S.update(mutator);
+    state.shared = res.state;
+    return res.state;
+  }
   function setHash(id) {
     try {
       history.replaceState(null, "", "#" + id);
@@ -81,21 +86,21 @@
   function statusOf(n) {
     if (n.generic) return run().stages[n.stage];
     let s = M.STATUS[n.id];
-    if (state.decision.saved) {
+    if (decSaved()) {
       if (n.id === "decision") s = "saved";
       if (n.id === "implB" || n.id === "build") s = "paused";
     }
     return s;
   }
   function subOf(n) {
-    if (isDetailed() && state.decision.saved) {
-      if (n.id === "decision") return "Saved " + state.decision.saved.at;
-      if (n.id === "implB") return state.resume ? "Resume requested" : "Paused";
+    if (isDetailed() && decSaved()) {
+      if (n.id === "decision") return "Saved " + decSaved().at;
+      if (n.id === "implB") return requestOf().resume ? "Resume requested" : "Paused";
     }
     return n.sub;
   }
   function tiersOf(n) {
-    if (n.id === "build" && state.decision.saved)
+    if (n.id === "build" && decSaved())
       return [
         ["done", "Package A"],
         ["paused", "Package B"],
@@ -103,22 +108,22 @@
     return n.tiers;
   }
   function edgeOf(e) {
-    if (e.s === "blocked" && state.decision.saved)
+    if (e.s === "blocked" && decSaved())
       return Object.assign({}, e, {
         s: "done",
-        label: "Answered " + state.decision.saved.at,
+        label: "Answered " + decSaved().at,
         attn: false,
       });
     return e;
   }
   function stageStatus(k) {
     const r = run();
-    if (isDetailed() && k === "build" && state.decision.saved) return "paused";
+    if (isDetailed() && k === "build" && decSaved()) return "paused";
     return r.stages[k];
   }
   function bandSub(k) {
     if (isDetailed()) {
-      if (k === "build" && state.decision.saved) return ["2 packages, B paused", ""];
+      if (k === "build" && decSaved()) return ["2 packages, B paused", ""];
       return M.BAND_SUB[k];
     }
     const s = run().stages[k];
@@ -222,11 +227,16 @@
 
   function decisionPanel() {
     const d = F.decision;
-    const s = state.decision;
-    if (!s.saved) {
+    const s = decEntry();
+    const saved = s.saved || null;
+    const machine = NK.machineLabel(machineOf());
+    const mid = machineOf();
+    const scope = `NEO-4821 attempt ${run().attempt} on ${machine} (${mid}), head ${run().head}`;
+    if (!saved) {
       return `<section class="i-sec i-act">
         <p style="font-weight:600" id="wdq">${esc(d.title)}</p>
         <p class="muted" style="margin:6px 0 10px">${esc(d.context)}</p>
+        <p class="nk-scope-line" style="margin-bottom:10px">Applies to ${esc(scope)}. The same saved answer appears in Runs and Plan and decisions.</p>
         <div role="radiogroup" aria-labelledby="wdq">${d.options
           .map(
             (
@@ -237,21 +247,23 @@
           )
           .join("")}</div>
         <label class="label" for="wd3-note" style="display:block;margin-top:10px">Note for the record (optional)</label>
-        <textarea id="wd3-note" class="field" rows="2" style="margin-top:4px">${esc(s.note)}</textarea>
+        <textarea id="wd3-note" class="field" rows="2" style="margin-top:4px">${esc(s.note || "")}</textarea>
         <div class="row"><button type="button" class="btn primary" data-act="save-decision" aria-disabled="${!s.draft}" aria-describedby="wd3-hint">Save decision</button>
         <span class="faint" id="wd3-req">${s.draft ? "" : "Choose an option first."}</span></div>
-        <p class="i-note" id="wd3-hint">Saving records your answer. Package B stays paused and the map will not move on its own.</p>
+        <p class="i-note" id="wd3-hint">Saving records your answer for this attempt on this machine. Package B stays paused, the map will not move, and no execution is approved.</p>
       </section>`;
     }
-    const opt = d.options.find((o) => o.id === s.saved.option);
+    const opt = d.options.find((o) => o.id === saved.option) || { label: saved.option };
+    const req = requestOf();
     return `<section class="i-sec i-act">
-      <div class="saved" id="act-focus" tabindex="-1">${icon("check")}<div><strong>Saved at ${s.saved.at}</strong> by you<br/>${esc(opt.label)}${s.saved.note ? `<br/><span class="muted">Note: ${esc(s.saved.note)}</span>` : ""}</div></div>
+      <div class="saved" id="act-focus" tabindex="-1">${icon("check")}<div><strong>Saved at ${esc(saved.at)}</strong> by ${esc(saved.by || "you")}<br/>${esc(opt.label)}${saved.note ? `<br/><span class="muted">Note: ${esc(saved.note)}</span>` : ""}</div></div>
+      <p class="nk-scope-line" style="margin-top:8px">Pinned to ${esc(scope)}. Decision saved at ${esc(saved.at)}.</p>
       ${
-        state.resume
-          ? `<p class="i-note">Resume requested at ${state.resume} (demo). Package B stays paused until the server reports it running. This prototype has no server, so the map will not change.</p>
+        req.resume
+          ? `<p class="i-note">Resume requested at ${esc(req.resume.at)} for attempt ${req.resume.attempt} on ${esc(NK.machineLabel(req.resume.machine))} (${esc(req.resume.machine)}). Package B stays paused until the server reports it running. This prototype has no server, so the map will not change.</p>
              <div class="row"><button type="button" class="btn" data-act="withdraw-resume">Withdraw resume request</button><button type="button" class="btn ghost" data-act="reopen">Reopen decision</button></div>`
-          : `<div class="row"><button type="button" class="btn primary" data-act="resume">${icon("play")}Request resume of package B</button><button type="button" class="btn ghost" data-act="reopen">Reopen decision</button></div>
-             <p class="i-note">Saving did not start work. The map changes only when the server reports new events.</p>`
+          : `<div class="row"><button type="button" class="btn primary" data-act="resume">${icon("play")}Request resume of attempt ${run().attempt} on ${esc(machine)} (${esc(mid)})</button><button type="button" class="btn ghost" data-act="reopen">Reopen decision</button></div>
+             <p class="i-note">Saving did not start work. This is a request for attempt ${run().attempt} on ${esc(machine)} (${esc(mid)}), not execution approval. The map changes only when the server reports new events.</p>`
       }
     </section>`;
   }
@@ -273,25 +285,30 @@
     }
     const s = statusOf(n);
     const title = TITLES[n.id] || n.title;
+    const machine = NK.machineLabel(machineOf());
+    const mid = machineOf();
     if (n.generic) {
       const i = F.STAGES.indexOf(n.stage);
-      el.innerHTML = `<div class="i-head"><div class="i-kind">Stage ${i + 1} of 6</div><h2>${esc(title)}</h2>${pill(s)}</div>
+      el.innerHTML = `<div class="i-head"><div class="i-kind">Stage ${i + 1} of 6<span>${esc(machine)} (${esc(mid)})</span></div><h2>${esc(title)}</h2>${pill(s)}</div>
         <div class="i-body">
           <section class="i-sec"><p>${esc(r.id)} ${esc(r.title)}. ${esc(r.statusText)}.</p>
-          ${r.blocker ? `<p class="muted">${esc(r.blocker)}</p>` : ""}</section>
+          <p class="nk-scope-line" style="margin-top:6px">Run on ${NK.machineChip(mid)} attempt ${r.attempt || "not started"}.</p>
+          ${r.blocker ? `<p class="muted" style="margin-top:6px">${esc(r.blocker)}</p>` : ""}</section>
           <section class="i-sec"><h3>Linked stages</h3><div class="i-links">
             ${i > 0 ? linkButton("Previous", "g-" + F.STAGES[i - 1]) : ""}${i < 5 ? linkButton("Next", "g-" + F.STAGES[i + 1]) : ""}</div></section>
-          <section class="i-sec"><p class="i-note">This sample has a detailed step map for NEO-4821 only. For other runs the map shows the stage outline from their recorded stage status.</p>
-          <p style="margin-top:8px"><a href="runs.html#${r.id}">Open ${r.id} in the runs view</a></p></section>
+          <section class="i-sec"><p class="i-note">This sample has a detailed step map for NEO-4821 only. For other runs the map shows the stage outline from their recorded stage status, on the recorded machine.</p>
+          <p style="margin-top:8px"><a href="${S.itemHref("runs.html", { itemId: r.id, attempt: r.attempt || 0 })}">Open ${r.id} in the runs view</a></p></section>
         </div>`;
       return;
     }
     const info = M.INFO[n.id];
     let body = "";
+    if (state.selection.itemId === "NEO-4821" && state.selection.attempt !== r.attempt)
+      body += `<section class="i-sec"><p class="i-note">Selected attempt ${state.selection.attempt}. This sample map shows attempt ${r.attempt} on ${esc(machine)} (${esc(mid)}); other attempts have no observed graph.</p></section>`;
     if (n.id === "decision") body += decisionPanel();
     if (info.summary) body += `<section class="i-sec"><p>${esc(info.summary)}</p></section>`;
     if (info.evidence.length)
-      body += `<section class="i-sec"><h3>Evidence</h3><ul class="i-ev">${info.evidence
+      body += `<section class="i-sec"><h3>Evidence on ${esc(machine)} (${esc(mid)})</h3><ul class="i-ev">${info.evidence
         .map(
           (e) =>
             `<li class="${e.s}">${glyph(e.s)}<span><span>${esc(e.t)}</span>${e.n ? `<span class="n">${esc(e.n)}</span>` : ""}</span></li>`,
@@ -302,6 +319,7 @@
       const also = layout().nodes.filter((x) => x.actor === n.actor && x.id !== n.id);
       body += `<section class="i-sec"><h3>Agent</h3><dl class="i-agent">
         <dt>Agent</dt><dd>${a.id} ${esc(a.role)}</dd>
+        <dt>Machine</dt><dd>${NK.machineChip(mid)} <span class="faint">${esc(mid)}</span></dd>
         <dt>Lineage</dt><dd>${esc(lineage(a))}</dd>
         <dt>Model</dt><dd>${esc(a.model)}${a.model.startsWith("Sample") ? " (sample label)" : ""}</dd>
         <dt>State</dt><dd>${pill(a.status, a.statusText)}</dd>
@@ -323,22 +341,36 @@
       .join("")}</ul>
       <p class="i-note">6 stages and ${layout().nodes.length} steps, run by ${r.agents.length} agents. A stage or step is not an agent: C3 appears on ${layout().nodes.filter((x) => x.actor === "C3").length} steps.</p></section>`;
 
-    el.innerHTML = `<div class="i-head"><div class="i-kind">${esc(info.kind)}<span>${F.STAGE_NAMES[n.stage]} stage</span></div>
+    el.innerHTML = `<div class="i-head"><div class="i-kind">${esc(info.kind)}<span>${F.STAGE_NAMES[n.stage]} stage · ${esc(machine)} (${esc(mid)})</span></div>
       <h2 id="i-title" tabindex="-1">${esc(title)}</h2>${pill(s, s === "saved" ? "Decision saved" : undefined)}</div><div class="i-body">${body}</div>`;
   }
 
   /* Chrome: subbar, popovers, stepper -------------------------------- */
   function attentionRuns() {
-    return F.runs.filter((r) => r.attention && !(r.id === "NEO-4821" && state.decision.saved));
+    return F.runs.filter(
+      (r) =>
+        r.attention &&
+        !((state.shared.requests || {})[r.id] || {}).attnResolved &&
+        !(r.id === "NEO-4821" && decSaved()),
+    );
   }
   function renderChrome() {
     const r = run();
+    const mid = machineOf();
     $("run-switch-label").innerHTML = `<span class="rid">${r.id}</span>${esc(r.title)}`;
+    $("run-machine").innerHTML =
+      `${NK.machineChip(mid)} <span class="faint">attempt ${r.attempt || "not started"}${
+        state.selection.itemId === r.id && state.selection.attempt !== r.attempt
+          ? ` · selected attempt ${state.selection.attempt}`
+          : ""
+      }</span>`;
+    $("item-tabs").innerHTML = NK.itemTabs(state.selection, "execution");
     const agentCount = r.agents.length;
     $("run-facts").innerHTML = `
       <span>Attempt <strong>${r.attempt || "none"}</strong>${r.attempt ? ` of ${r.maxAttempts}` : ""}</span>
+      <span>Machine <strong>${esc(NK.machineLabel(mid))} (${esc(mid)})</strong></span>
       <span>Head <strong class="mono">${esc(r.head)}</strong></span>
-      <span class="hide-mid">${glyph(isDetailed() && state.decision.saved ? "paused" : r.status)}${esc(isDetailed() && state.decision.saved ? "Paused, decision saved" : r.statusText)}</span>
+      <span class="hide-mid">${glyph(isDetailed() && decSaved() ? "paused" : r.status)}${esc(isDetailed() && decSaved() ? "Paused, decision saved" : r.statusText)}</span>
       <span class="hide-mid" title="Stages are workflow steps, not agents">6 stages, ${agentCount} ${agentCount === 1 ? "agent" : "agents"}</span>`;
     const ar = attentionRuns();
     const ab = $("attn-btn");
@@ -351,7 +383,7 @@
               x,
             ) => `<button type="button" class="w-pop-item" data-run="${x.id}" data-focus="${x.id === "NEO-4821" ? "decision" : ""}" aria-current="${x.id === state.runId}">
             ${glyph(x.attention.kind === "orphaned" ? "orphaned" : x.attention.kind === "repeat" ? "failed" : "needs")}
-            <span class="id">${x.id}</span><span class="t">${esc(x.attention.label)}<small>${esc(x.attention.summary)}</small></span></button>`,
+            <span class="id">${x.id}</span><span class="t">${esc(x.attention.label)}<small>${esc(x.attention.summary)} · ${esc(NK.machineLabel(NK.runMachine(x.id)))} (${esc(NK.runMachine(x.id))})</small></span></button>`,
           )
           .join("")
       : `<p class="muted" style="padding:6px">Nothing is waiting on you.</p>`;
@@ -361,7 +393,7 @@
         (
           x,
         ) => `<button type="button" class="w-pop-item" data-run="${x.id}" aria-current="${x.id === state.runId}">
-          ${glyph(x.status)}<span class="id">${x.id}</span><span class="t">${esc(x.title)}<small>${esc(x.statusText)}</small></span></button>`,
+          ${glyph(x.status)}<span class="id">${x.id}</span><span class="t">${esc(x.title)}<small>${esc(x.statusText)} · ${esc(NK.machineLabel(NK.runMachine(x.id)))} (${esc(NK.runMachine(x.id))})</small></span></button>`,
       )
       .join("");
     const fb = $("fold-btn");
@@ -450,9 +482,16 @@
     return best;
   }
   function switchRun(id, focusNode) {
+    const next = F.runs.find((r) => r.id === id);
+    if (!next) return;
     state.runId = id;
-    const r = run();
-    state.sel = focusNode || (isDetailed() ? M.PRIMARY[r.stage] : "g-" + r.stage);
+    state.selection = { kind: "original", itemId: id, attempt: next.attempt || 0 };
+    const res = S.update((s) => {
+      s.selection = state.selection;
+      s.runsView.selectedKey = "r:" + id;
+    });
+    state.shared = res.state;
+    state.sel = focusNode || (isDetailed() ? M.PRIMARY[next.stage] : "g-" + next.stage);
     if (isDetailed() && state.folded && PACKAGE_NODES.includes(state.sel)) state.sel = "build";
     setHash(id);
     render();
@@ -491,28 +530,82 @@
   /* Actions ------------------------------------------------------------ */
   const ACTIONS = {
     "save-decision"() {
-      const s = state.decision;
+      const s = decEntry();
       if (!s.draft) {
         NK.toast("Choose an option before saving.");
         const f = document.querySelector('input[name="wd3"]');
         if (f) f.focus();
         return false;
       }
-      s.saved = { option: s.draft, note: s.note.trim(), at: demoTime() };
-      NK.toast("Decision saved. Package B is still paused.");
+      const at = NK.nowText();
+      persist((st) => {
+        const cur = Object.assign({}, st.decisions["D-3"]);
+        cur.saved = { option: cur.draft, note: (cur.note || "").trim(), at, by: "You" };
+        cur.draft = null;
+        cur.history = (cur.history || []).concat({
+          at,
+          by: "You",
+          text: "Saved: " + cur.saved.option + ".",
+        });
+        st.decisions["D-3"] = cur;
+        st.requests["NEO-4821"] = Object.assign({}, st.requests["NEO-4821"], {
+          attnResolved: { at, label: "D-3 decision saved" },
+        });
+      });
+      NK.toast("Decision saved for attempt 3 on Sample Mac. Package B is still paused.");
     },
     reopen() {
-      const prev = state.decision.saved;
-      state.decision = { draft: prev.option, note: prev.note, saved: null };
-      state.resume = null;
+      const prev = decSaved();
+      const at = NK.nowText();
+      persist((st) => {
+        const cur = Object.assign({}, st.decisions["D-3"]);
+        cur.draft = prev ? prev.option : null;
+        cur.note = prev ? prev.note : "";
+        cur.saved = null;
+        cur.history = (cur.history || []).concat({
+          at,
+          by: "You",
+          text: prev ? "Reopened. Previous answer kept: " + prev.option + "." : "Reopened.",
+        });
+        st.decisions["D-3"] = cur;
+        const req = Object.assign({}, st.requests["NEO-4821"]);
+        delete req.resume;
+        delete req.attnResolved;
+        st.requests["NEO-4821"] = req;
+        if (st.resumeApproval)
+          st.resumeApproval = Object.assign({}, st.resumeApproval, {
+            state: "superseded",
+            reason: "D-3 reopened at " + at,
+          });
+      });
       NK.toast("Decision reopened. Your previous answer is kept as a draft.");
     },
     resume() {
-      state.resume = demoTime();
-      NK.toast("Resume requested (demo). Nothing advances without server events.");
+      const at = NK.nowText();
+      const r = run();
+      persist((st) => {
+        st.requests["NEO-4821"] = Object.assign({}, st.requests["NEO-4821"], {
+          resume: {
+            at,
+            itemId: "NEO-4821",
+            attempt: r.attempt,
+            machine: machineOf(),
+            planRev: st.plan.current,
+            head: r.head,
+            decisionAt: decSaved() ? decSaved().at : "",
+          },
+        });
+      });
+      NK.toast(
+        `Resume requested (demo) for attempt ${r.attempt} on ${NK.machineLabel(machineOf())}. Nothing advances without server events.`,
+      );
     },
     "withdraw-resume"() {
-      state.resume = null;
+      persist((st) => {
+        const req = Object.assign({}, st.requests["NEO-4821"]);
+        delete req.resume;
+        st.requests["NEO-4821"] = req;
+      });
       NK.toast("Resume request withdrawn.");
     },
     unfold() {
@@ -522,13 +615,39 @@
   };
 
   NK.onReady(() => {
-    state = initialState();
+    const shared = S.load().state;
+    state = initialState(shared);
     const sc = $("map-scroll");
+    const qp = new URLSearchParams(location.search);
+    const qItem = qp.get("item");
+    const qAttempt = qp.get("attempt");
     const fromHash = decodeURIComponent(location.hash.slice(1));
-    if (fromHash && F.runs.some((r) => r.id === fromHash && !r.history)) {
-      state.runId = fromHash;
-      const r = run();
-      state.sel = isDetailed() ? "decision" : "g-" + r.stage;
+    let wanted = qItem || fromHash || "";
+    if (!wanted && shared.selection.kind === "original") wanted = shared.selection.itemId;
+    const known = F.runs.find((r) => r.id === wanted && !r.history);
+    if (known) {
+      state.runId = known.id;
+      state.selection = {
+        kind: "original",
+        itemId: known.id,
+        attempt: known.attempt || 0,
+      };
+      if (qAttempt !== null && !isNaN(Number(qAttempt)) && qAttempt !== "")
+        state.selection.attempt = Number(qAttempt);
+      state.sel = isDetailed() ? "decision" : "g-" + known.stage;
+    } else if (wanted) {
+      NK.toast(
+        "This selection has no workflow-map sample. Showing NEO-4821 attempt 3; no state was changed.",
+      );
+      state.selection = { kind: "original", itemId: "NEO-4821", attempt: 3 };
+    } else {
+      state.selection = { kind: "original", itemId: "NEO-4821", attempt: 3 };
+    }
+    if (known && (qItem || fromHash)) {
+      persist((st) => {
+        st.selection = state.selection;
+        st.runsView.selectedKey = "r:" + known.id;
+      });
     }
     // Start legible: never below 80% by default; Fit is one press away.
     state.zoom = Math.min(1, Math.max(0.8, Math.round((sc.clientWidth / M.W) * 100) / 100));
@@ -581,17 +700,22 @@
     $("zoom-fit").addEventListener("click", fit);
     $("reset-demo").addEventListener("click", () => {
       const z = state.zoom;
-      state = initialState();
+      const sharedDefault = S.reset();
+      state = initialState(sharedDefault);
       state.zoom = z;
       setHash("NEO-4821");
       render();
       ensureVisible(state.sel);
-      NK.toast("Demo state reset.");
+      NK.toast("Workflow map demo state reset. Shared decisions and plans were reset too.");
     });
 
     $("inspector").addEventListener("change", (e) => {
       if (e.target.name === "wd3") {
-        state.decision.draft = e.target.value;
+        persist((st) => {
+          const cur = Object.assign({}, st.decisions["D-3"]);
+          cur.draft = e.target.value;
+          st.decisions["D-3"] = cur;
+        });
         const b = document.querySelector('[data-act="save-decision"]');
         if (b) b.setAttribute("aria-disabled", "false");
         const req = $("wd3-req");
@@ -599,7 +723,27 @@
       }
     });
     $("inspector").addEventListener("input", (e) => {
-      if (e.target.id === "wd3-note") state.decision.note = e.target.value;
+      if (e.target.id === "wd3-note") {
+        persist((st) => {
+          const cur = Object.assign({}, st.decisions["D-3"]);
+          cur.note = e.target.value;
+          st.decisions["D-3"] = cur;
+        });
+      }
+    });
+    S.subscribe((next) => {
+      state.shared = next;
+      if (next.selection.kind === "original") {
+        const knownNext = F.runs.find((r) => r.id === next.selection.itemId && !r.history);
+        if (knownNext) {
+          state.selection = next.selection;
+          if (state.runId !== knownNext.id) {
+            state.runId = knownNext.id;
+            state.sel = isDetailed() ? "decision" : "g-" + knownNext.stage;
+          }
+        }
+      }
+      render();
     });
 
     $("map").addEventListener("keydown", (e) => {

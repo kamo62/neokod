@@ -1,0 +1,825 @@
+[1m[94mpass:[39m[0m All 2034 files are correctly formatted [2m(3245ms, 8 threads)[0m
+[1m[33mwarn:[39m[0m Lint warnings found
+! eslint(no-unused-vars): Variable 'orchestrator' is declared but never used. Unused variables should start with a '_'.
+      ,-[apps/server/src/symphony/Orchestrator/Layers/SymphonyOrchestratorLive.test.ts:1920:13]
+ 1919 |     Effect.gen(function* () {
+ 1920 |       const orchestrator = yield* SymphonyOrchestrator;
+      :             ^^^^^^|^^^^^
+      :                   `-- 'orchestrator' is declared here
+ 1921 |       yield* seedWorkflow("wf-head-queue-1", "/repo/head-queue-1");
+      `----
+  help: Consider removing this declaration.
+
+  ! neokod(no-inline-schema-compile): Hoist Schema.encodeUnknownEffect(...) to module scope: the compiled function is rebuilt on every call. Move it to a module-level const.
+      ,-[apps/server/src/symphony/Orchestrator/Layers/SymphonyOrchestratorLive.test.ts:1246:21]
+ 1245 |       expect(row?.runAttemptId).toBe(runAttemptId);
+ 1246 |       expect(yield* Schema.encodeUnknownEffect(RunDetailsSchema)(details)).toBeDefined();
+      :                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 1247 |     }),
+      `----
+
+  ! neokod(no-inline-schema-compile): Hoist Schema.encodeUnknownEffect(...) to module scope: the compiled function is rebuilt on every call. Move it to a module-level const.
+      ,-[apps/server/src/symphony/Orchestrator/Layers/SymphonyOrchestratorLive.test.ts:1333:21]
+ 1332 |       ).toBe("interrupted");
+ 1333 |       expect(yield* Schema.encodeUnknownEffect(RunDetailsSchema)(details)).toBeDefined();
+      :                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 1334 |     }),
+      `----
+
+  ! neokod(no-inline-schema-compile): Hoist Schema.encodeUnknownEffect(...) to module scope: the compiled function is rebuilt on every call. Move it to a module-level const.
+      ,-[apps/server/src/symphony/Orchestrator/Layers/SymphonyOrchestratorLive.test.ts:1392:21]
+ 1391 |       expect(row?.providerAction).toBe("commandExecution");
+ 1392 |       expect(yield* Schema.encodeUnknownEffect(RunDetailsSchema)(details)).toBeDefined();
+      :                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 1393 |     }),
+      `----
+
+  ! eslint(no-unused-vars): Identifier 'Layer' is imported but never used.
+   ,-[apps/server/src/symphony/NotificationCoordinator.test.ts:3:13]
+ 2 | import * as Effect from "effect/Effect";
+ 3 | import * as Layer from "effect/Layer";
+   :             ^^|^^
+   :               `-- 'Layer' is imported here
+ 4 |
+   `----
+  help: Consider removing this import.
+
+  ! react(no-array-index-key): Usage of Array index in keys is not allowed
+     ,-[apps/web/src/components/symphony/PullRequestPanel.tsx:386:21]
+ 385 |                   <li
+ 386 |                     key={`${finding.title}:${findingIndex}`}
+     :                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 387 |                     className="border-t border-border/50 pt-2 first:border-0 first:pt-0"
+     `----
+  help: Use a unique data-dependent key to avoid unnecessary rerenders
+
+  ! eslint(no-unused-vars): Identifier 'SymphonyProjectId' is imported but never used.
+   ,-[apps/server/src/symphony/Persistence/Layers/RunAttemptRepository.ts:2:42]
+ 1 | import type { RunAttempt, RunAttemptStatus } from "@neokod/contracts";
+ 2 | import { RunAttemptId, RunAttemptSchema, SymphonyProjectId, WorkItemId } from "@neokod/contracts";
+   :                                          ^^^^^^^^|^^^^^^^^
+   :                                                  `-- 'SymphonyProjectId' is imported here
+ 3 | import { Schema } from "effect";
+   `----
+  help: Consider removing this import.
+
+  ! neokod(no-inline-schema-compile): Hoist Schema.decodeUnknownEffect(...) to module scope: the compiled function is rebuilt on every call. Move it to a module-level const.
+    ,-[apps/server/src/symphony/Persistence/Layers/ApprovalRepository.ts:78:19]
+ 77 |     const reason = payloadString(payload, "reason");
+ 78 |     return yield* Schema.decodeUnknownEffect(ApprovalRequestSchema)({
+    :                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 79 |       id: row.id,
+    `----
+
+  ! neokod(no-inline-schema-compile): Hoist Schema.is(...) to module scope: the compiled function is rebuilt on every call. Move it to a module-level const.
+     ,-[apps/server/src/symphony/Persistence/Layers/ApprovalRepository.test.ts:163:12]
+ 162 |       const failure = yield* Effect.flip(repository.getById("sym-malformed-1"));
+ 163 |       if (!Schema.is(SymphonyPersistenceDecodeError)(failure)) {
+     :            ^^^^^^^^^
+ 164 |         throw new Error(`expected a named decode error, got ${String(failure)}`);
+     `----
+
+  ! unicorn(no-accessor-recursion): Disallow recursive access to `this` within getters.
+      ,-[packages/contracts/src/symphony.ts:1061:29]
+ 1060 |   override get message(): string {
+ 1061 |     return `${this.code}: ${this.message}`;
+      :                             ^^^^^^^^^^^^
+ 1062 |   }
+      `----
+  help: Remove this property access, or remove `get` from the method
+
+  ! eslint(no-unused-vars): Variable 'DEFAULT_API_URL' is declared but never used. Unused variables should start with a '_'.
+    ,-[apps/server/src/symphony/Trackers/GitLabApiClient.ts:30:7]
+ 29 |
+ 30 | const DEFAULT_API_URL = "https://gitlab.com/api/v4";
+    :       ^^^^^^^|^^^^^^^
+    :              `-- 'DEFAULT_API_URL' is declared here
+ 31 | const DEFAULT_TIMEOUT_MS = 30_000;
+    `----
+  help: Consider removing this declaration.
+
+  ! eslint(no-unused-vars): Variable 'page' is declared but never used. Unused variables should start with a '_'.
+    ,-[apps/server/src/symphony/Trackers/GitLabAdapter.test.ts:38:13]
+ 37 |     if (id !== undefined) {
+ 38 |       const page = url.searchParams.get("page") ?? "1";
+    :             ^^|^
+    :               `-- 'page' is declared here
+ 39 |       const result = responses.byId?.(id.replace("/", ""));
+    `----
+  help: Consider removing this declaration.
+
+  ! eslint(no-unused-vars): Variable 'assertNotStopping' is declared but never used. Unused variables should start with a '_'.
+     ,-[apps/server/src/provider/Layers/ProviderService.ts:451:9]
+ 450 |
+ 451 |   const assertNotStopping = (operation: string, threadId: ThreadId) =>
+     :         ^^^^^^^^|^^^^^^^^
+     :                 `-- 'assertNotStopping' is declared here
+ 452 |     admitProviderOperation(operation, threadId).pipe(Effect.asVoid);
+     `----
+  help: Consider removing this declaration.
+
+  ! eslint(no-unused-vars): Identifier 'invalidTrackerConfig' is imported but never used.
+   ,-[apps/server/src/symphony/Trackers/LinearAdapter.test.ts:6:10]
+ 5 |
+ 6 | import { invalidTrackerConfig, missingTrackerSecret } from "./Errors.ts";
+   :          ^^^^^^^^^^|^^^^^^^^^
+   :                    `-- 'invalidTrackerConfig' is imported here
+ 7 | import { makeLinearAdapter } from "./LinearAdapter.ts";
+   `----
+  help: Consider removing this import.
+
+  ! eslint(no-unused-vars): Identifier 'missingTrackerSecret' is imported but never used.
+   ,-[apps/server/src/symphony/Trackers/LinearAdapter.test.ts:6:32]
+ 5 |
+ 6 | import { invalidTrackerConfig, missingTrackerSecret } from "./Errors.ts";
+   :                                ^^^^^^^^^^|^^^^^^^^^
+   :                                          `-- 'missingTrackerSecret' is imported here
+ 7 | import { makeLinearAdapter } from "./LinearAdapter.ts";
+   `----
+  help: Consider removing this import.
+
+  ! eslint(no-unused-vars): Variable 'DEFAULT_ENDPOINT' is declared but never used. Unused variables should start with a '_'.
+    ,-[apps/server/src/symphony/Trackers/AsanaApiClient.ts:29:7]
+ 28 |
+ 29 | const DEFAULT_ENDPOINT = "https://app.asana.com/api/1.0";
+    :       ^^^^^^^^|^^^^^^^
+    :               `-- 'DEFAULT_ENDPOINT' is declared here
+ 30 | const DEFAULT_TIMEOUT_MS = 30_000;
+    `----
+  help: Consider removing this declaration.
+
+  ! eslint(no-unused-vars): Parameter 'projectGid' is declared but never used. Unused parameters should start with a '_'.
+     ,-[apps/server/src/symphony/Trackers/AsanaApiClient.ts:214:73]
+ 213 |
+ 214 |   const fetchTasksByIds: AsanaApiClientShape["fetchTasksByIds"] = (ids, projectGid) => {
+     :                                                                         ^^^^^|^^^^
+     :                                                                              `-- 'projectGid' is declared here
+ 215 |     const uniqueIds = [...new Set(ids)];
+     `----
+  help: Consider removing this parameter.
+
+  ! eslint(no-control-regex): Unexpected control character
+    ,-[apps/server/src/symphony/Trackers/GitLabAdapter.ts:65:64]
+ 64 |
+ 65 | const validProjectPath = (value: string): boolean => !/[ \t\n\r\0]/.test(value) && value.length > 0;
+    :                                                                ^|
+    :                                                                 `-- '\0' matches the null character (U+0000), which is a control character.
+ 66 |
+    `----
+  help: Avoid matching control characters in regular expressions. If intentional, consider using a Unicode escape instead.
+
+  ! eslint(no-unused-vars): Parameter 'reason' is declared but never used. Unused parameters should start with a '_'.
+     ,-[apps/server/src/symphony/Runner/ApprovalService.ts:156:5]
+ 155 |     decision: ApprovalDecision,
+ 156 |     reason: string | undefined,
+     :     ^^^|^^
+     :        `-- 'reason' is declared here
+ 157 |   ): Effect.Effect<void, ApprovalRequestNotFoundError> =>
+     `----
+  help: Consider removing this parameter.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+      ,-[docs/design/symphony-exploration-2026-10-21/planning.js:1163:16]
+ 1162 |         history.replaceState(null, "", location.pathname + "#plan");
+ 1163 |       } catch (e) {
+      :                |
+      :                `-- 'e' is declared here
+ 1164 |         /* file:// may refuse; the in-memory reset still applies */
+      `----
+  help: Consider handling this error.
+
+  ! unicorn(no-array-reverse): Use `Array#toReversed()` instead of `Array#reverse()`.
+     ,-[docs/design/symphony-exploration-2026-10-21/planning.js:558:10]
+ 557 |         .slice()
+ 558 |         .reverse()
+     :          ^^^^^^^
+ 559 |         .map((r) => {
+     `----
+  help: `Array#reverse()` mutates the original array. Use `Array#toReversed()` to return a new reversed array without modifying the original.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+     ,-[docs/design/symphony-exploration-2026-10-21/shared.js:496:14]
+ 495 |       return { ok: true, raw: localStorage.getItem(key) };
+ 496 |     } catch (e) {
+     :              |
+     :              `-- 'e' is declared here
+ 497 |       return {
+     `----
+  help: Consider handling this error.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+     ,-[docs/design/symphony-exploration-2026-10-21/shared.js:509:14]
+ 508 |       return { ok: true };
+ 509 |     } catch (e) {
+     :              |
+     :              `-- 'e' is declared here
+ 510 |       return {
+     `----
+  help: Consider handling this error.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+     ,-[docs/design/symphony-exploration-2026-10-21/shared.js:529:14]
+ 528 |       raw = JSON.parse(read.raw);
+ 529 |     } catch (e) {
+     :              |
+     :              `-- 'e' is declared here
+ 530 |       var msg =
+     `----
+  help: Consider handling this error.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+     ,-[docs/design/symphony-exploration-2026-10-21/shared.js:545:14]
+ 544 |       fn(s);
+ 545 |     } catch (e) {
+     :              |
+     :              `-- 'e' is declared here
+ 546 |       var msg = "A prototype state change failed and was not saved.";
+     `----
+  help: Consider handling this error.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+     ,-[docs/design/symphony-exploration-2026-10-21/shared.js:563:14]
+ 562 |       localStorage.removeItem(SHARED_KEY);
+ 563 |     } catch (e) {
+     :              |
+     :              `-- 'e' is declared here
+ 564 |       /* the in-memory reset still applies */
+     `----
+  help: Consider handling this error.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+     ,-[docs/design/symphony-exploration-2026-10-21/shared.js:684:14]
+ 683 |       raw = JSON.parse(read.raw);
+ 684 |     } catch (e) {
+     :              |
+     :              `-- 'e' is declared here
+ 685 |       return {
+     `----
+  help: Consider handling this error.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+     ,-[docs/design/symphony-exploration-2026-10-21/shared.js:887:14]
+ 886 |       return localStorage.getItem(THEME_KEY);
+ 887 |     } catch (e) {
+     :              |
+     :              `-- 'e' is declared here
+ 888 |       return null;
+     `----
+  help: Consider handling this error.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+     ,-[docs/design/symphony-exploration-2026-10-21/shared.js:945:18]
+ 944 |           localStorage.setItem(THEME_KEY, next);
+ 945 |         } catch (e) {}
+     :                  |
+     :                  `-- 'e' is declared here
+ 946 |         applyTheme(next);
+     `----
+  help: Consider handling this error.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+     ,-[docs/design/symphony-exploration-2026-10-21/work.js:392:14]
+ 391 |       return { ok: !!ok, reason: ok ? null : "This browser did not keep the test value." };
+ 392 |     } catch (e) {
+     :              |
+     :              `-- 'e' is declared here
+ 393 |       return {
+     `----
+  help: Consider handling this error.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+     ,-[docs/design/symphony-exploration-2026-10-21/work.js:410:14]
+ 409 |       return raw ? JSON.parse(raw) : null;
+ 410 |     } catch (e) {
+     :              |
+     :              `-- 'e' is declared here
+ 411 |       return null;
+     `----
+  help: Consider handling this error.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+     ,-[docs/design/symphony-exploration-2026-10-21/work.js:418:14]
+ 417 |       return true;
+ 418 |     } catch (e) {
+     :              |
+     :              `-- 'e' is declared here
+ 419 |       return false;
+     `----
+  help: Consider handling this error.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+     ,-[docs/design/symphony-exploration-2026-10-21/work.js:463:14]
+ 462 |       return { ok: true, raw: localStorage.getItem(KEY.receipts) };
+ 463 |     } catch (e) {
+     :              |
+     :              `-- 'e' is declared here
+ 464 |       return {
+     `----
+  help: Consider handling this error.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+     ,-[docs/design/symphony-exploration-2026-10-21/work.js:885:16]
+ 884 |         localStorage.removeItem(KEY.edits);
+ 885 |       } catch (e) {
+     :                |
+     :                `-- 'e' is declared here
+ 886 |         /* ignore */
+     `----
+  help: Consider handling this error.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+     ,-[docs/design/symphony-exploration-2026-10-21/work.js:902:14]
+ 901 |       state.recoveryError = null;
+ 902 |     } catch (e) {
+     :              |
+     :              `-- 'e' is declared here
+ 903 |       state.recoveryError =
+     `----
+  help: Consider handling this error.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+     ,-[docs/design/symphony-exploration-2026-10-21/work.js:913:14]
+ 912 |       if (localStorage.getItem(KEY.edits) !== null) throw new Error("Recovery removal failed");
+ 913 |     } catch (e) {
+     :              |
+     :              `-- 'e' is declared here
+ 914 |       state.recoveryError = "Could not discard the recovery copy. Your edits are still shown.";
+     `----
+  help: Consider handling this error.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+      ,-[docs/design/symphony-exploration-2026-10-21/work.js:1112:14]
+ 1111 |       raw = text ? JSON.parse(text) : null;
+ 1112 |     } catch (e) {
+      :              |
+      :              `-- 'e' is declared here
+ 1113 |       return {
+      `----
+  help: Consider handling this error.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+      ,-[docs/design/symphony-exploration-2026-10-21/work.js:1199:14]
+ 1198 |       return { ok: true };
+ 1199 |     } catch (e) {
+      :              |
+      :              `-- 'e' is declared here
+ 1200 |       return {
+      `----
+  help: Consider handling this error.
+
+  ! eslint(no-unused-vars): Variable 'provider' is declared but never used. Unused variables should start with a '_'.
+      ,-[docs/design/symphony-exploration-2026-10-21/work.js:2588:11]
+ 2587 |     const instId = state.modelInstance[ctx] || providerDefaultInstance(m, sum.ok ? sum : pick);
+ 2588 |     const provider = providerFor(m, instId);
+      :           ^^^^|^^^
+      :               `-- 'provider' is declared here
+ 2589 |     const query = (state.modelQuery || "").trim().toLowerCase();
+      `----
+  help: Consider removing this declaration.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+      ,-[docs/design/symphony-exploration-2026-10-21/work.js:4401:14]
+ 4400 |       history.replaceState(null, "", h || location.pathname + location.search);
+ 4401 |     } catch (e) {
+      :              |
+      :              `-- 'e' is declared here
+ 4402 |       /* file:// may refuse; the hash is only a convenience */
+      `----
+  help: Consider handling this error.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+      ,-[docs/design/symphony-exploration-2026-10-21/work.js:5353:14]
+ 5352 |       h = decodeURIComponent(location.hash.slice(1));
+ 5353 |     } catch (e) {
+      :              |
+      :              `-- 'e' is declared here
+ 5354 |       h = "";
+      `----
+  help: Consider handling this error.
+
+  ! unicorn(prefer-array-find): Prefer `find` over filtering and accessing the first result.
+      ,-[docs/design/symphony-exploration-2026-10-21/work.js:1344:7]
+ 1343 |       a.implPick.agent || state.draft.defaults.implementer,
+ 1344 |     ).filter((x) => x.id !== a.machine)[0];
+      :       ^^^^^^
+ 1345 |
+      `----
+  help: Use `find(predicate)` instead of `filter(predicate)[0]` or similar patterns.
+
+  ! unicorn(no-array-reverse): Use `Array#toReversed()` instead of `Array#reverse()`.
+      ,-[docs/design/symphony-exploration-2026-10-21/work.js:4312:12]
+ 4311 |           .slice()
+ 4312 |           .reverse()
+      :            ^^^^^^^
+ 4313 |           .map((r) => receiptBlock(r, cur))
+      `----
+  help: `Array#reverse()` mutates the original array. Use `Array#toReversed()` to return a new reversed array without modifying the original.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+    ,-[docs/design/symphony-exploration-2026-10-21/workflow.js:50:14]
+ 49 |       history.replaceState(null, "", "#" + id);
+ 50 |     } catch (e) {
+    :              |
+    :              `-- 'e' is declared here
+ 51 |       /* some file:// contexts reject history changes; the hash is only a convenience */
+    `----
+  help: Consider handling this error.
+
+  ! unicorn(prefer-set-has): should be a `Set`, and use `.has()` to check existence or non-existence.
+    ,-[docs/design/symphony-exploration-2026-10-21/workflow.js:23:9]
+ 22 |   };
+ 23 |   const PACKAGE_NODES = ["implA", "testA", "criticA", "implB", "testB", "criticB"];
+    :         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 24 |
+    `----
+  help: Switch to `Set`
+
+  ! unicorn(prefer-set-has): should be a `Set`, and use `.has()` to check existence or non-existence.
+    ,-[docs/design/symphony-exploration-2026-10-21/workflow.js:69:11]
+ 68 |     }));
+ 69 |     const quiet = ["notrun", "skipped", "queued"];
+    :           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 70 |     const edges = [];
+    `----
+  help: Switch to `Set`
+
+  ! eslint(no-unused-vars): Parameter 'r' is declared but never used. Unused parameters should start with a '_'.
+     ,-[docs/design/symphony-exploration-2026-10-21/runs.js:711:28]
+ 710 |   }
+ 711 |   function requestTabsHtml(r) {
+     :                            |
+     :                            `-- 'r' is declared here
+ 712 |     return `<div class="r-rtabs" role="tablist" aria-label="Request detail">
+     `----
+  help: Consider removing this parameter.
+
+  ! eslint(no-unused-vars): Catch parameter 'e' is caught but never used.
+      ,-[docs/design/symphony-exploration-2026-10-21/runs.js:1072:14]
+ 1071 |       history.replaceState(null, "", href);
+ 1072 |     } catch (e) {
+      :              |
+      :              `-- 'e' is declared here
+ 1073 |       /* file:// may refuse; shared storage still keeps the selection */
+      `----
+  help: Consider handling this error.
+
+  ! unicorn(no-array-reverse): Use `Array#toReversed()` instead of `Array#reverse()`.
+     ,-[docs/design/symphony-exploration-2026-10-21/runs.js:202:8]
+ 201 |       .slice()
+ 202 |       .reverse()
+     :        ^^^^^^^
+ 203 |       .forEach((receipt) => {
+     `----
+  help: `Array#reverse()` mutates the original array. Use `Array#toReversed()` to return a new reversed array without modifying the original.
+
+  ! react(no-unstable-nested-components): Do not define components during render.
+     ,-[apps/web/src/components/CommandPalette.tsx:711:15]
+ 710 |             valuePrefix: "project",
+ 711 | ,->         icon: (project) => (
+ 712 | |             <ProjectFavicon
+ 713 | |               environmentId={project.environmentId}
+ 714 | |               cwd={project.workspaceRoot}
+ 715 | |               className={ITEM_ICON_CLASS}
+ 716 | |             />
+ 717 | `->         ),
+ 718 |             runProject: openProjectFromSearch,
+     `----
+  help: Move this component definition out of the parent component `OpenCommandPaletteDialog` and pass data as props. If you want to allow component creation in props, set `allowAsProps` option to true.
+
+  ! react(no-unstable-nested-components): Do not define components during render.
+     ,-[apps/web/src/components/CommandPalette.tsx:729:15]
+ 728 |             shortcutCommand: "chat.new",
+ 729 | ,->         icon: (project) => (
+ 730 | |             <ProjectFavicon
+ 731 | |               environmentId={project.environmentId}
+ 732 | |               cwd={project.workspaceRoot}
+ 733 | |               className={ITEM_ICON_CLASS}
+ 734 | |             />
+ 735 | `->         ),
+ 736 |             runProject: async (project) => {
+     `----
+  help: Move this component definition out of the parent component `OpenCommandPaletteDialog` and pass data as props. If you want to allow component creation in props, set `allowAsProps` option to true.
+
+  ! unicorn(no-useless-spread): Using a spread operator here creates a new array unnecessarily.
+     ,-[apps/web/src/notifications/ActivityNotificationCoordinator.tsx:210:31]
+ 209 |     let progressed = false;
+ 210 |     for (const occurrence of [...focusQueueRef.current.values()]) {
+     :                               ^^^
+ 211 |       const key = activityOccurrenceKey(occurrence);
+     `----
+  help: `for…of` can iterate over iterable, it's unnecessary to convert to an array.
+
+  ! unicorn(no-useless-spread): Using a spread operator here creates a new array unnecessarily.
+     ,-[apps/web/src/notifications/activityNotifications.logic.ts:259:39]
+ 258 |
+ 259 |   for (const [scope, observation] of [...next.threads]) {
+     :                                       ^^^
+ 260 |     if (!scope.startsWith(`${environmentKey}:`) || seenScopes.has(scope)) continue;
+     `----
+  help: `for…of` can iterate over iterable, it's unnecessary to convert to an array.
+
+  ! unicorn(no-useless-spread): Using a spread operator here creates a new array unnecessarily.
+     ,-[apps/web/src/notifications/activityNotifications.logic.ts:309:26]
+ 308 |   if (terminalMetadataReady) {
+ 309 |     for (const [key] of [...next.terminals]) {
+     :                          ^^^
+ 310 |       if (key.startsWith(`${environmentKey}:`) && !seenTerminals.has(key))
+     `----
+  help: `for…of` can iterate over iterable, it's unnecessary to convert to an array.
+
+  ! unicorn(prefer-add-event-listener): Prefer `addEventListener()` over their `on`-function counterparts.
+    ,-[apps/web/src/notifications/browserNotification.ts:65:18]
+ 64 |     });
+ 65 |     notification.onclick = (event) => {
+    :                  ^^^^^^^
+ 66 |       event.preventDefault();
+    `----
+  help: `addEventListener()` can register multiple handlers and accepts options such as `{ once: true }`; assigning to `on<event>` replaces any previously registered handler.
+
+  ! react(no-unstable-nested-components): Do not define components during render.
+      ,-[apps/web/src/components/ChatMarkdown.tsx:1372:10]
+ 1371 |         () => ({
+ 1372 | ,->       img({ node: _node, src, alt }) {
+ 1373 | |           return (
+ 1374 | |             <MarkdownImage
+ 1375 | |               src={typeof src === "string" ? src : undefined}
+ 1376 | |               alt={alt}
+ 1377 | |               baseUrl={markdownImageBaseUrl}
+ 1378 | |               trustedOrigins={trustedImageOrigins}
+ 1379 | |             />
+ 1380 | |           );
+ 1381 | `->       },
+ 1382 |           p({ node: _node, children, ...props }) {
+      `----
+  help: Move this component definition out of the parent component `ChatMarkdown` and pass data as props. If you want to allow component creation in props, set `allowAsProps` option to true.
+
+  ! react(no-unstable-nested-components): Do not define components during render.
+      ,-[apps/web/src/components/ChatMarkdown.tsx:1382:8]
+ 1381 |           },
+ 1382 | ,->       p({ node: _node, children, ...props }) {
+ 1383 | |           return <p {...props}>{renderSkillInlineMarkdownChildren(children, skills)}</p>;
+ 1384 | `->       },
+ 1385 |           li({ node, children, ...props }) {
+      `----
+  help: Move this component definition out of the parent component `ChatMarkdown` and pass data as props. If you want to allow component creation in props, set `allowAsProps` option to true.
+
+  ! react(no-unstable-nested-components): Do not define components during render.
+      ,-[apps/web/src/components/ChatMarkdown.tsx:1385:9]
+ 1384 |           },
+ 1385 | ,->       li({ node, children, ...props }) {
+ 1386 | |           const listItemStart = node?.position?.start.offset;
+ 1387 | |           const markerOffset =
+ 1388 | |             typeof listItemStart === "number" ? findTaskListMarkerOffset(text, listItemStart) : null;
+ 1389 | |           return (
+ 1390 | |             <li {...props} data-task-marker-offset={markerOffset ?? undefined}>
+ 1391 | |               {renderSkillInlineMarkdownChildren(children, skills)}
+ 1392 | |             </li>
+ 1393 | |           );
+ 1394 | `->       },
+ 1395 |           input({ node: _node, type, checked, disabled: _disabled, ...props }) {
+      `----
+  help: Move this component definition out of the parent component `ChatMarkdown` and pass data as props. If you want to allow component creation in props, set `allowAsProps` option to true.
+
+  ! react(no-unstable-nested-components): Do not define components during render.
+      ,-[apps/web/src/components/ChatMarkdown.tsx:1395:12]
+ 1394 |           },
+ 1395 | ,->       input({ node: _node, type, checked, disabled: _disabled, ...props }) {
+ 1396 | |           if (type !== "checkbox" || !onTaskListChange) {
+ 1397 | |             return (
+ 1398 | |               <input
+ 1399 | |                 {...props}
+ 1400 | |                 type={type}
+ 1401 | |                 checked={checked}
+ 1402 | |                 disabled={_disabled}
+ 1403 | |                 readOnly={type === "checkbox"}
+ 1404 | |               />
+ 1405 | |             );
+ 1406 | |           }
+ 1407 | |           return (
+ 1408 | |             <input
+ 1409 | |               {...props}
+ 1410 | |               type="checkbox"
+ 1411 | |               name="markdown-task"
+ 1412 | |               aria-label="Toggle task"
+ 1413 | |               checked={checked}
+ 1414 | |               onChange={(event) => {
+ 1415 | |                 const markerOffset = Number(
+ 1416 | |                   event.currentTarget.closest("li")?.dataset.taskMarkerOffset,
+ 1417 | |                 );
+ 1418 | |                 if (!Number.isSafeInteger(markerOffset)) return;
+ 1419 | |                 onTaskListChange({ markerOffset, checked: event.currentTarget.checked });
+ 1420 | |               }}
+ 1421 | |             />
+ 1422 | |           );
+ 1423 | `->       },
+ 1424 |           a({ node, href, children, ...props }) {
+      `----
+  help: Move this component definition out of the parent component `ChatMarkdown` and pass data as props. If you want to allow component creation in props, set `allowAsProps` option to true.
+
+  ! react(no-unstable-nested-components): Do not define components during render.
+      ,-[apps/web/src/components/ChatMarkdown.tsx:1424:8]
+ 1423 |           },
+ 1424 | ,->       a({ node, href, children, ...props }) {
+ 1425 | |           const normalizedHref = href ? normalizeMarkdownLinkHrefKey(href) : "";
+ 1426 | |           const fileLinkMeta = normalizedHref ? markdownFileLinkMetaByHref.get(normalizedHref) : null;
+ 1427 | |           if (!fileLinkMeta) {
+ 1428 | |             const faviconHost = resolveExternalLinkHost(href);
+ 1429 | |             const isSameDocumentLink = href?.startsWith("#") ?? false;
+ 1430 | |             const onClick = props.onClick;
+ 1431 | |             const canOpenInPreview = Boolean(threadRef) && isPreviewSupportedInRuntime();
+ 1432 | |             const link = (
+ 1433 | |               <a
+ 1434 | |                 {...props}
+ 1435 | |                 href={href}
+ 1436 | |                 target={isSameDocumentLink ? undefined : "_blank"}
+ 1437 | |                 rel={isSameDocumentLink ? undefined : "noopener noreferrer"}
+ 1438 | |                 onClick={(event) => {
+ 1439 | |                   onClick?.(event);
+ 1440 | |                   if (isSameDocumentLink && href) {
+ 1441 | |                     handleMarkdownFragmentClick(event, href);
+ 1442 | |                   }
+ 1443 | |                 }}
+ 1444 | |                 onContextMenu={(event) => {
+ 1445 | |                   if (!canOpenInPreview || !href) return;
+ 1446 | |                   event.preventDefault();
+ 1447 | |                   event.stopPropagation();
+ 1448 | |                   const api = readLocalApi();
+ 1449 | |                   if (!api) return;
+ 1450 | |                   void (async () => {
+ 1451 | |                     let operation = "show-link-context-menu";
+ 1452 | |                     try {
+ 1453 | |                       const clicked = await api.contextMenu.show(
+ 1454 | |                         [
+ 1455 | |                           { id: "open-in-browser", label: "Open in integrated browser" },
+ 1456 | |                           { id: "open-external", label: "Open in system browser" },
+ 1457 | |                         ] as const,
+ 1458 | |                         { x: event.clientX, y: event.clientY },
+ 1459 | |                       );
+ 1460 | |                       if (clicked === "open-in-browser") {
+ 1461 | |                         operation = "open-link-in-preview";
+ 1462 | |                         const result = await openExternalLinkInPreview(href);
+ 1463 | |                         if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+ 1464 | |                           reportMarkdownActionFailure({ operation, target: href }, result.cause);
+ 1465 | |                         }
+ 1466 | |                         return;
+ 1467 | |                       }
+ 1468 | |                       if (clicked === "open-external") {
+ 1469 | |                         operation = "open-link-external";
+ 1470 | |                         await api.shell.openExternal(href);
+ 1471 | |                       }
+ 1472 | |                     } catch (cause) {
+ 1473 | |                       reportMarkdownActionFailure({ operation, target: href }, cause);
+ 1474 | |                     }
+ 1475 | |                   })();
+ 1476 | |                 }}
+ 1477 | |               >
+ 1478 | |                 {faviconHost ? (
+ 1479 | |                   <MarkdownExternalLinkContent plainText={plainHastText(node)}>
+ 1480 | |                     {children}
+ 1481 | |                   </MarkdownExternalLinkContent>
+ 1482 | |                 ) : (
+ 1483 | |                   children
+ 1484 | |                 )}
+ 1485 | |               </a>
+ 1486 | |             );
+ 1487 | |             if (!faviconHost || !href) {
+ 1488 | |               return link;
+ 1489 | |             }
+ 1490 | |             return (
+ 1491 | |               <Tooltip>
+ 1492 | |                 <TooltipTrigger render={link} />
+ 1493 | |                 <TooltipPopup
+ 1494 | |                   side="top"
+ 1495 | |                   className="max-w-[min(36rem,calc(100vw-2rem))] whitespace-normal leading-tight wrap-anywhere"
+ 1496 | |                 >
+ 1497 | |                   {href}
+ 1498 | |                 </TooltipPopup>
+ 1499 | |               </Tooltip>
+ 1500 | |             );
+ 1501 | |           }
+ 1502 | |
+ 1503 | |           const parentSuffix = fileLinkParentSuffixByPath.get(fileLinkMeta.filePath);
+ 1504 | |           const labelParts = [fileLinkMeta.basename];
+ 1505 | |           if (typeof parentSuffix === "string" && parentSuffix.length > 0) {
+ 1506 | |             labelParts.push(parentSuffix);
+ 1507 | |           }
+ 1508 | |           if (fileLinkMeta.line) {
+ 1509 | |             labelParts.push(
+ 1510 | |               `L${fileLinkMeta.line}${fileLinkMeta.column ? `:C${fileLinkMeta.column}` : ""}`,
+ 1511 | |             );
+ 1512 | |           }
+ 1513 | |
+ 1514 | |           return (
+ 1515 | |             <MarkdownFileLink
+ 1516 | |               href={fileLinkMeta.targetPath}
+ 1517 | |               targetPath={fileLinkMeta.targetPath}
+ 1518 | |               iconPath={fileLinkMeta.filePath}
+ 1519 | |               displayPath={fileLinkMeta.displayPath}
+ 1520 | |               workspaceRelativePath={fileLinkMeta.workspaceRelativePath}
+ 1521 | |               line={fileLinkMeta.line}
+ 1522 | |               label={labelParts.join(" · ")}
+ 1523 | |               copyMarkdown={`[${fileLinkMeta.basename}](${normalizedHref})`}
+ 1524 | |               theme={resolvedTheme}
+ 1525 | |               threadRef={threadRef}
+ 1526 | |               onOpen={openInPreferredEditor}
+ 1527 | |               onOpenInBrowser={
+ 1528 | |                 threadRef &&
+ 1529 | |                 isPreviewSupportedInRuntime() &&
+ 1530 | |                 isBrowserPreviewFile(fileLinkMeta.filePath)
+ 1531 | |                   ? () => openMarkdownFileInPreview(fileLinkMeta.filePath)
+ 1532 | |                   : undefined
+ 1533 | |               }
+ 1534 | |               className={props.className}
+ 1535 | |             />
+ 1536 | |           );
+ 1537 | `->       },
+ 1538 |           table({ node: _node, ...props }) {
+      `----
+  help: Move this component definition out of the parent component `ChatMarkdown` and pass data as props. If you want to allow component creation in props, set `allowAsProps` option to true.
+
+  ! react(no-unstable-nested-components): Do not define components during render.
+      ,-[apps/web/src/components/ChatMarkdown.tsx:1538:12]
+ 1537 |           },
+ 1538 | ,->       table({ node: _node, ...props }) {
+ 1539 | |           return <MarkdownTable {...props} />;
+ 1540 | `->       },
+ 1541 |           details({ node: _node, children, open: detailsOpen }) {
+      `----
+  help: Move this component definition out of the parent component `ChatMarkdown` and pass data as props. If you want to allow component creation in props, set `allowAsProps` option to true.
+
+  ! react(no-unstable-nested-components): Do not define components during render.
+      ,-[apps/web/src/components/ChatMarkdown.tsx:1541:14]
+ 1540 |           },
+ 1541 | ,->       details({ node: _node, children, open: detailsOpen }) {
+ 1542 | |           return <MarkdownDetails open={detailsOpen}>{children}</MarkdownDetails>;
+ 1543 | `->       },
+ 1544 |           pre({ node, children, ...props }) {
+      `----
+  help: Move this component definition out of the parent component `ChatMarkdown` and pass data as props. If you want to allow component creation in props, set `allowAsProps` option to true.
+
+  ! react(no-unstable-nested-components): Do not define components during render.
+      ,-[apps/web/src/components/ChatMarkdown.tsx:1544:10]
+ 1543 |           },
+ 1544 | ,->       pre({ node, children, ...props }) {
+ 1545 | |           const codeBlock = extractCodeBlock(children);
+ 1546 | |           if (!codeBlock) {
+ 1547 | |             return <pre {...props}>{children}</pre>;
+ 1548 | |           }
+ 1549 | |
+ 1550 | |           const language = extractFenceLanguage(codeBlock.className);
+ 1551 | |           const fenceTitle = extractFenceTitle(extractPreCodeMeta(node));
+ 1552 | |           return (
+ 1553 | |             <MarkdownCodeBlock
+ 1554 | |               code={codeBlock.code}
+ 1555 | |               language={language}
+ 1556 | |               fenceTitle={fenceTitle}
+ 1557 | |               theme={resolvedTheme}
+ 1558 | |             >
+ 1559 | |               <CodeHighlightErrorBoundary fallback={<pre {...props}>{children}</pre>}>
+ 1560 | |                 <Suspense fallback={<pre {...props}>{children}</pre>}>
+ 1561 | |                   <SuspenseShikiCodeBlock
+ 1562 | |                     className={codeBlock.className}
+ 1563 | |                     code={codeBlock.code}
+ 1564 | |                     themeName={diffThemeName}
+ 1565 | |                     isStreaming={isStreaming}
+ 1566 | |                   />
+ 1567 | |                 </Suspense>
+ 1568 | |               </CodeHighlightErrorBoundary>
+ 1569 | |             </MarkdownCodeBlock>
+ 1570 | |           );
+ 1571 | `->       },
+ 1572 |         }),
+      `----
+  help: Move this component definition out of the parent component `ChatMarkdown` and pass data as props. If you want to allow component creation in props, set `allowAsProps` option to true.
+
+  ! eslint(no-unused-vars): Identifier 'Link' is imported but never used.
+    ,-[apps/web/src/components/Sidebar.tsx:69:10]
+ 68 | } from "@neokod/client-runtime/state/runtime";
+ 69 | import { Link, useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-router";
+    :          ^^|^
+    :            `-- 'Link' is imported here
+ 70 | import {
+    `----
+  help: Consider removing this import.
+
+  ! eslint(no-unused-vars): Variable 'isHighlighted' is declared but never used. Unused variables should start with a '_'.
+     ,-[apps/web/src/components/Sidebar.tsx:453:9]
+ 452 |   );
+ 453 |   const isHighlighted = isActive || isSelected;
+     :         ^^^^^^|^^^^^^
+     :               `-- 'isHighlighted' is declared here
+ 454 |   const handleOpenDiscoveredPort = useCallback(
+     `----
+  help: Consider removing this declaration.
+
+  ! eslint(no-unused-vars): Variable 'optionalBoolean' is declared but never used. Unused variables should start with a '_'.
+    ,-[apps/desktop/src/app/DesktopConfig.ts:30:7]
+ 29 |
+ 30 | const optionalBoolean = (name: string) =>
+    :       ^^^^^^^|^^^^^^^
+    :              `-- 'optionalBoolean' is declared here
+ 31 |   Config.boolean(name).pipe(Config.option, Config.map(Option.getOrElse(() => false)));
+    `----
+  help: Consider removing this declaration.
+
+Found 0 errors and 66 warnings in 1746 files (1.6s, 8 threads)

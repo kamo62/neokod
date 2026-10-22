@@ -1,0 +1,14 @@
+{
+  "recorded_at_utc": "2026-10-22T19:02:47.521537+00:00",
+  "scope": "static Symphony artifact; no production execution",
+  "implementer_route": "OpenCode 2.0.32 standalone run",
+  "requested_model_alias": "deepseek/deepseek-flash",
+  "requested_marketing_name": "DeepSeek V4.1 Flash",
+  "work_session": "ses_e9b3105faffelSjrX6ZEirI3VY",
+  "detail_session": "ses_e9b30ea81ffeUcBVc1ZlbqR1qa",
+  "reviewer": "independent gpt-6.1-sol high affected-source and regression rechecks",
+  "review_outcome": "No remaining findings in affected final deltas; browser confirmation by main Sol",
+  "opus_review": "pending at owner-set 2026-10-22 21:12 SAST; includes core app",
+  "builds_run": false,
+  "real_agent_or_tracker_dispatch": false
+}

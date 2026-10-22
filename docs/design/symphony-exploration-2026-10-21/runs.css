@@ -96,6 +96,9 @@
   overflow: auto;
   background: var(--canvas);
 }
+.r-main > * {
+  flex-shrink: 0;
+}
 .r-toolbar {
   display: flex;
   gap: 8px;
@@ -182,6 +185,53 @@
   opacity: 0.75;
 }
 
+/* Machine filter: identity before action, so similarly named runs stay distinct. */
+.r-machines {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 16px 10px;
+}
+.r-machines > .label {
+  margin-right: 4px;
+}
+.r-machines button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-meta);
+}
+.r-machines button:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+.r-machines button[aria-pressed="true"] {
+  background: var(--selected);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+.r-machines .n {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+.r-machines .nk-mid {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-3);
+}
+.r-machine-note {
+  flex-basis: 100%;
+  color: var(--text-3);
+  font-size: var(--fs-meta);
+}
+
 /* Attention: a pinned strip, not a card grid */
 .r-attn {
   margin: 0 16px 12px;
@@ -209,7 +259,7 @@
 }
 .r-attn li button {
   display: grid;
-  grid-template-columns: 16px 74px minmax(0, 1fr) auto;
+  grid-template-columns: 16px 74px minmax(0, 1fr) auto auto;
   gap: 10px;
   align-items: center;
   width: 100%;
@@ -281,7 +331,7 @@
 }
 .r-row {
   display: grid;
-  grid-template-columns: 16px 72px minmax(0, 1fr) 84px 150px;
+  grid-template-columns: 16px 72px minmax(0, 1fr) 200px 150px;
   gap: 10px;
   align-items: center;
   min-height: 40px;
@@ -397,6 +447,43 @@
 .strip .queued {
   background: var(--line-strong);
 }
+.r-ids {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.r-ids .strip {
+  flex: 0 0 78px;
+}
+.r-ids .nk-mchip {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-flex;
+}
+.r-ids .nk-mchip > span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.r-receipt {
+  min-width: 0;
+  overflow: hidden;
+  flex-shrink: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 20px;
+  padding: 0 6px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 999px;
+  color: var(--text-3);
+  font-size: var(--fs-meta);
+  white-space: nowrap;
+}
+.r-row.kind-request .r-id {
+  color: var(--text);
+}
 .r-empty {
   padding: 24px 8px;
   color: var(--text-2);
@@ -427,8 +514,123 @@
 .d-meta {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   color: var(--text-2);
+  font-size: var(--fs-meta);
+}
+.d-machine-line {
+  margin-top: 6px;
+}
+.d-note {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-s);
+  background: var(--control);
+  color: var(--text-2);
+  font-size: var(--fs-meta);
+}
+.d-note .ic {
+  margin-top: 2px;
+}
+.d-head .nk-item-tabs {
+  margin-top: 8px;
+}
+.r-rtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-top: 8px;
+  padding: 2px;
+  border-radius: var(--radius);
+  background: var(--control);
+}
+.r-rtabs button {
+  height: 24px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-meta);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.r-rtabs button:hover {
+  color: var(--text);
+}
+.r-rtabs button[aria-selected="true"] {
+  background: var(--elevated);
+  color: var(--text);
+  box-shadow: var(--elev);
+}
+.r-req-note {
+  margin: 12px 0 0;
+  color: var(--text-2);
+}
+.r-req-nodes {
+  list-style: none;
+  margin: 10px 0 14px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.r-req-nodes li {
+  display: grid;
+  grid-template-columns: 12px 108px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--elevated);
+  box-shadow: var(--elev);
+}
+.r-req-nodes .node {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+}
+.r-req-nodes .is-queued .node {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.r-req-nodes .is-planned .node {
+  border-style: dashed;
+}
+.r-req-nodes .nm {
+  font-weight: 500;
+}
+.r-req-nodes .st {
+  color: var(--text-3);
+  font-size: var(--fs-meta);
+}
+.r-req-plan {
+  margin: 10px 0 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--elevated);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.r-req-notrun {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 0;
+}
+.r-req-secondary {
+  margin: 16px 0 0;
   font-size: var(--fs-meta);
 }
 .d-head h2 {
@@ -706,7 +908,7 @@
     grid-template-columns: 176px minmax(340px, 1fr) 380px;
   }
   .r-row {
-    grid-template-columns: 16px 64px minmax(0, 1fr) 70px;
+    grid-template-columns: 16px 64px minmax(0, 1fr) 190px;
   }
   .r-row .r-when {
     display: none;
@@ -757,17 +959,83 @@
   .r-toolbar {
     flex-wrap: wrap;
   }
+  .r-machines {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 12px;
+  }
+  .r-machines > .label {
+    flex: none;
+  }
+  .r-machines button {
+    flex: none;
+  }
   .r-row {
-    grid-template-columns: 16px minmax(0, 1fr) 60px;
+    grid-template-columns: 16px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "g id when"
+      "g title title"
+      "g ids ids";
+    row-gap: 2px;
+    align-items: start;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  .r-row > .glyph {
+    grid-area: g;
+    margin-top: 2px;
   }
   .r-row .r-id {
-    display: none;
+    display: block;
+    grid-area: id;
+  }
+  .r-row .r-title {
+    grid-area: title;
+    white-space: normal;
+  }
+  .r-row .r-ids {
+    grid-area: ids;
+    flex-wrap: wrap;
+  }
+  .r-row .r-when {
+    display: block;
+    grid-area: when;
   }
   .r-attn li button {
-    grid-template-columns: 16px minmax(0, 1fr);
+    grid-template-columns: 16px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "g id m"
+      "g sum sum";
   }
-  .r-attn .a-id,
+  .r-attn li button > .glyph {
+    grid-area: g;
+  }
+  .r-attn .a-id {
+    display: block;
+    grid-area: id;
+  }
+  .r-attn .a-sum {
+    grid-area: sum;
+    white-space: normal;
+  }
+  .r-attn .nk-mchip {
+    grid-area: m;
+  }
   .r-attn .a-wf {
     display: none;
   }
+  .d-head {
+    padding: 12px 12px 10px;
+  }
+  .d-body {
+    padding: 4px 12px 28px;
+  }
+}
+
+.r-receipt > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.r-ids .nk-mchip {
+  flex-shrink: 0;
 }

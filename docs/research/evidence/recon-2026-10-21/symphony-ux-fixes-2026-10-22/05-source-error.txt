@@ -1,0 +1,137 @@
+Browser tab: 326104961, Title: "Symphony work · Neokod design prototype", URL: "http://127.0.0.1:63035/work.html?review=ux-fixes".
+1 AXWebArea Symphony work · Neokod design prototype, URL: 127.0.0.1:63035/work.html?review=ux-fixes
+	2 container
+		3 link Description: Skip to content, Value: 127.0.0.1:63035/work.html?review=ux-fixes#wk-content
+		4 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		5 container Location
+			6 text Symphony
+			7 text Work
+		8 container Symphony pages
+			9 link Description: Work, Value: 127.0.0.1:63035/work.html
+			10 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			11 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			12 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		13 text Design prototype · Sample data
+		14 button (collapsed) Reset demo, ID: wk-reset, Secondary Actions: Expand
+		15 checkbox Description: Switch to light theme, Value: 1
+		16 container Description: Work flow, ID: wk-steps
+			356 button Select and assign 1 selected, ID: step-work
+				357 text Select and assign
+				358 text 1 selected
+			359 button Preview Not created, ID: step-preview
+				360 text Preview
+				361 text Not created
+			362 button Saved requests 1 active (demo), ID: step-runs
+				363 text Saved requests
+				364 text 1 active (demo)
+		26 text Sample data. No tracker, machine or agent is connected. Start only changes this page's demo.
+		27 text Draft saved 22 Oct 2026, 20:29
+		167 container wk-view-work
+			168 container Description: Project, tracker and machines, ID: wk-side
+				365 container
+					366 text Linear sample Connection
+					367 pop up button (collapsed, settable) Connection, Value: Linear — sample engineering (sample error), ID: wk-conn, Secondary Actions: Expand
+						368 menu
+							369 GitHub — sample workspace
+							370 GitHub mirror — sample org
+							371 (selected) Linear — sample engineering (sample error)
+					372 text Project scope
+					373 pop up button (collapsed, settable) Project scope, Value: LIN · Open issues (sample), ID: wk-scope, Secondary Actions: Expand
+						374 menu
+							375 (selected) LIN · Open issues (sample)
+					376 text Repository
+					377 pop up button (collapsed, settable) Repository, Value: neokod/neokod, ID: wk-repo, Secondary Actions: Expand
+						378 menu
+							379 (selected) neokod/neokod
+					380 container
+						381 text Connection unavailable.  Sample load failure: the saved token was rejected at 22 Oct 2026, 09:12. No issues were loaded. Repair this sample connection below; no real token is requested or stored here.
+					382 button Repair sample connection (fixture)
+					383 text Fixture connection. No network request is made and no token is read or stored. Only label filters are supported here; team, iteration and state filters are not offered.
+				384 container Start mode
+					385 heading Start mode, Value: 2, ID: wk-mode-h
+						386 text Start mode
+					387 container
+						388 radio button (settable, integer) Description: Selected only Only issues you select, preview and start will run., Value: 1
+						389 text Selected only Only issues you select, preview and start will run.
+					390 container
+						391 radio button (disabled, settable, integer) Value: 0, Description: Automatic Would start matching issues without a click. It needs an explicit project policy and is not offered in this prototype. Nothing here starts on its own.
+						392 text Automatic Would start matching issues without a click. It needs an explicit project policy and is not offered in this prototype. Nothing here starts on its own.
+				393 container Machines
+					394 heading Machines, Value: 2, ID: wk-mach-h
+						395 text Machines
+					396 content list
+						397 checkbox Sample Mac Connected macOS 26, 5 provider models, Value: 0, ID: mb-mac
+							398 text Sample Mac
+							399 text Connected
+							400 text macOS 26, 5 provider models
+						401 checkbox Work PC Connected Windows 11, 5 provider models, Value: 0, ID: mb-work
+							402 text Work PC
+							403 text Connected
+							404 text Windows 11, 5 provider models
+						405 checkbox Build host Offline, sign-in failed Ubuntu 24.04, agents unknown, Value: 0, ID: mb-build
+							406 text Build host
+							407 text Offline, sign-in failed
+							408 text Ubuntu 24.04, agents unknown
+					409 text Saved in Settings, Connections, Machines. These are sample machines, not machines detected on this computer. Open one for its scoped sample Settings, Connections panel.
+				410 container Keyboard
+					411 text Keyboard
+					412 container
+						413 text /  Search issues
+					414 container
+						415 text ↑ ↓  Move between issues
+					416 container
+						417 text ← →  Checkbox or title
+					418 container
+						419 text X  Select or clear issue
+					420 container
+						421 text Enter  Show details
+					422 container
+						423 text ⌘  or  Ctrl S  Save draft or plan
+					424 container
+						425 text Esc  Clear search or close
+			243 container Description: Issues, ID: wk-main
+				244 heading Open issues (sample), Value: 1, ID: wk-h1
+					426 text Open issues (sample)
+				427 text The sample source failed to load. Canonical scope scope_linear_open on Linear — sample engineering. Selecting visible never includes unseen matches or another scope.
+				247 container
+					248 text Search loaded issues
+					249 search text field (settable) Search loaded issues, ID: wk-q
+				250 container wk-labelsel
+					251 text Filter by label
+					252 pop up button (collapsed, settable) Filter by label, Value: Any label, ID: wk-label, Secondary Actions: Expand
+						253 menu
+							428 (selected) Any label
+				267 container Description: Filter by workflow, ID: wk-chips
+					429 checkbox All workflows 0, Value: 1, ID: wf-all
+					430 checkbox Core reliability 0, Value: 0, ID: wf-core
+					431 checkbox Provider adapters 0, Value: 0, ID: wf-providers
+					432 checkbox Settings and safety 0, Value: 0, ID: wf-settings
+				433 text Not offered by this connection: team, iteration and state filters. Search only covers the 0 loaded issues.
+				273 container wk-listhead
+					434 container
+						435 checkbox (disabled, settable, integer) Description: Select visible (0), Value: 0, ID: wk-selvis
+						436 text Select visible (0)
+					437 text Run on Readiness
+				278 content list Description: Loaded issues, ID: wk-list
+					438 container
+						439 text This scope did not load.
+						440 text  Sample load failure: the saved token was rejected at 22 Oct 2026, 09:12. No issues were loaded. Repair this sample connection below; no real token is requested or stored here.
+						441 button Repair sample connection (fixture)
+				345 container wk-loadmore
+					442 text 1 matching issue is not loaded. They cannot be selected.
+					443 button Load more (1)
+				444 container wk-hiddensel
+					445 text 1 selected issue is hidden by the current filters or scope and stays selected. Unseen issues are never added.
+					446 button Show all, ID: act-show-all
+				348 container Description: Selected work, ID: wk-batch
+					447 text 1
+					448 text  selected , 1 blocked Defaults: Sample Mac, DeepSeek V4.1 Flash · High
+					449 button Clear selection, ID: act-clear
+					450 button Assign, ID: act-assign
+					451 button (disabled) Save draft, ID: act-save
+					452 button Preview 1 issue, ID: act-preview
+			355 container Description: Inspector, ID: wk-insp
+				453 text No issue is focused. Select a loaded issue to inspect it.
+		157 text Simulated confirmed closure recorded. The issue is unlocked; the accepted history is kept.
+
+The focused UI element is 367 pop up button (collapsed, settable) Connection, Value: Linear — sample engineering (sample error), ID: wk-conn, Secondary Actions: Expand
