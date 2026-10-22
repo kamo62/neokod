@@ -69,6 +69,7 @@ export function applyThreadDetailEvent(
           branch: event.payload.branch,
           worktreePath: event.payload.worktreePath,
           latestTurn: null,
+          settledTurnCompletions: {},
           createdAt: event.payload.createdAt,
           updatedAt: event.payload.updatedAt,
           archivedAt: null,
@@ -325,12 +326,49 @@ export function applyThreadDetailEvent(
               }
             : thread.latestTurn;
 
+      const supersededTurnId =
+        event.payload.session.status === "running" &&
+        event.payload.session.activeTurnId !== null &&
+        thread.latestTurn?.state === "running" &&
+        thread.latestTurn.turnId !== event.payload.session.activeTurnId
+          ? thread.latestTurn.turnId
+          : null;
+      const terminalTurnId =
+        settledTurnState === null
+          ? null
+          : (event.payload.interruptedTurnId ??
+            (thread.latestTurn?.state === "running" ? thread.latestTurn.turnId : null));
+      const settledTurnId = supersededTurnId ?? terminalTurnId;
+      const settledCompletedAt =
+        settledTurnId === null
+          ? null
+          : event.payload.latestTurnCompletedAt === undefined
+            ? event.payload.session.updatedAt
+            : event.payload.latestTurnCompletedAt;
+      const settledTurnCompletions =
+        settledTurnId === null
+          ? thread.settledTurnCompletions
+          : {
+              ...(thread.settledTurnCompletions ?? {}),
+              [settledTurnId]: settledCompletedAt,
+            };
+      const checkpoints =
+        settledTurnId !== null && settledCompletedAt !== null
+          ? thread.checkpoints.map((checkpoint) =>
+              checkpoint.turnId === settledTurnId && checkpoint.completedAt !== settledCompletedAt
+                ? { ...checkpoint, completedAt: settledCompletedAt }
+                : checkpoint,
+            )
+          : thread.checkpoints;
+
       return {
         kind: "updated",
         thread: {
           ...thread,
           session: event.payload.session,
           latestTurn,
+          settledTurnCompletions,
+          checkpoints,
           updatedAt: event.occurredAt,
         },
       };
