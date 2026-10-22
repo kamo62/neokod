@@ -14,14 +14,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as SymphonyIndexRouteImport } from './routes/symphony.index'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
-import { Route as SymphonyWorkflowsRouteImport } from './routes/symphony.workflows'
 import { Route as SymphonyTrackersRouteImport } from './routes/symphony.trackers'
-import { Route as SymphonySettingsRouteImport } from './routes/symphony.settings'
-import { Route as SymphonyRunningRouteImport } from './routes/symphony.running'
-import { Route as SymphonyReviewsRouteImport } from './routes/symphony.reviews'
-import { Route as SymphonyQueueRouteImport } from './routes/symphony.queue'
-import { Route as SymphonyHistoryRouteImport } from './routes/symphony.history'
-import { Route as SymphonyAttentionRouteImport } from './routes/symphony.attention'
 import { Route as SymphonyRunIdRouteImport } from './routes/symphony.$runId'
 import { Route as SettingsTrackingRouteImport } from './routes/settings.tracking'
 import { Route as SettingsSourceControlRouteImport } from './routes/settings.source-control'
@@ -61,44 +54,9 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ChatRoute,
 } as any)
-const SymphonyWorkflowsRoute = SymphonyWorkflowsRouteImport.update({
-  id: '/workflows',
-  path: '/workflows',
-  getParentRoute: () => SymphonyRoute,
-} as any)
 const SymphonyTrackersRoute = SymphonyTrackersRouteImport.update({
   id: '/trackers',
   path: '/trackers',
-  getParentRoute: () => SymphonyRoute,
-} as any)
-const SymphonySettingsRoute = SymphonySettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => SymphonyRoute,
-} as any)
-const SymphonyRunningRoute = SymphonyRunningRouteImport.update({
-  id: '/running',
-  path: '/running',
-  getParentRoute: () => SymphonyRoute,
-} as any)
-const SymphonyReviewsRoute = SymphonyReviewsRouteImport.update({
-  id: '/reviews',
-  path: '/reviews',
-  getParentRoute: () => SymphonyRoute,
-} as any)
-const SymphonyQueueRoute = SymphonyQueueRouteImport.update({
-  id: '/queue',
-  path: '/queue',
-  getParentRoute: () => SymphonyRoute,
-} as any)
-const SymphonyHistoryRoute = SymphonyHistoryRouteImport.update({
-  id: '/history',
-  path: '/history',
-  getParentRoute: () => SymphonyRoute,
-} as any)
-const SymphonyAttentionRoute = SymphonyAttentionRouteImport.update({
-  id: '/attention',
-  path: '/attention',
   getParentRoute: () => SymphonyRoute,
 } as any)
 const SymphonyRunIdRoute = SymphonyRunIdRouteImport.update({
@@ -189,14 +147,7 @@ export interface FileRoutesByFullPath {
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/tracking': typeof SettingsTrackingRoute
   '/symphony/$runId': typeof SymphonyRunIdRoute
-  '/symphony/attention': typeof SymphonyAttentionRoute
-  '/symphony/history': typeof SymphonyHistoryRoute
-  '/symphony/queue': typeof SymphonyQueueRoute
-  '/symphony/reviews': typeof SymphonyReviewsRoute
-  '/symphony/running': typeof SymphonyRunningRoute
-  '/symphony/settings': typeof SymphonySettingsRoute
   '/symphony/trackers': typeof SymphonyTrackersRoute
-  '/symphony/workflows': typeof SymphonyWorkflowsRoute
   '/symphony/': typeof SymphonyIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
@@ -215,14 +166,7 @@ export interface FileRoutesByTo {
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/tracking': typeof SettingsTrackingRoute
   '/symphony/$runId': typeof SymphonyRunIdRoute
-  '/symphony/attention': typeof SymphonyAttentionRoute
-  '/symphony/history': typeof SymphonyHistoryRoute
-  '/symphony/queue': typeof SymphonyQueueRoute
-  '/symphony/reviews': typeof SymphonyReviewsRoute
-  '/symphony/running': typeof SymphonyRunningRoute
-  '/symphony/settings': typeof SymphonySettingsRoute
   '/symphony/trackers': typeof SymphonyTrackersRoute
-  '/symphony/workflows': typeof SymphonyWorkflowsRoute
   '/': typeof ChatIndexRoute
   '/symphony': typeof SymphonyIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
@@ -245,14 +189,7 @@ export interface FileRoutesById {
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/tracking': typeof SettingsTrackingRoute
   '/symphony/$runId': typeof SymphonyRunIdRoute
-  '/symphony/attention': typeof SymphonyAttentionRoute
-  '/symphony/history': typeof SymphonyHistoryRoute
-  '/symphony/queue': typeof SymphonyQueueRoute
-  '/symphony/reviews': typeof SymphonyReviewsRoute
-  '/symphony/running': typeof SymphonyRunningRoute
-  '/symphony/settings': typeof SymphonySettingsRoute
   '/symphony/trackers': typeof SymphonyTrackersRoute
-  '/symphony/workflows': typeof SymphonyWorkflowsRoute
   '/_chat/': typeof ChatIndexRoute
   '/symphony/': typeof SymphonyIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
@@ -276,14 +213,7 @@ export interface FileRouteTypes {
     | '/settings/source-control'
     | '/settings/tracking'
     | '/symphony/$runId'
-    | '/symphony/attention'
-    | '/symphony/history'
-    | '/symphony/queue'
-    | '/symphony/reviews'
-    | '/symphony/running'
-    | '/symphony/settings'
     | '/symphony/trackers'
-    | '/symphony/workflows'
     | '/symphony/'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
@@ -302,14 +232,7 @@ export interface FileRouteTypes {
     | '/settings/source-control'
     | '/settings/tracking'
     | '/symphony/$runId'
-    | '/symphony/attention'
-    | '/symphony/history'
-    | '/symphony/queue'
-    | '/symphony/reviews'
-    | '/symphony/running'
-    | '/symphony/settings'
     | '/symphony/trackers'
-    | '/symphony/workflows'
     | '/'
     | '/symphony'
     | '/$environmentId/$threadId'
@@ -331,14 +254,7 @@ export interface FileRouteTypes {
     | '/settings/source-control'
     | '/settings/tracking'
     | '/symphony/$runId'
-    | '/symphony/attention'
-    | '/symphony/history'
-    | '/symphony/queue'
-    | '/symphony/reviews'
-    | '/symphony/running'
-    | '/symphony/settings'
     | '/symphony/trackers'
-    | '/symphony/workflows'
     | '/_chat/'
     | '/symphony/'
     | '/_chat/$environmentId/$threadId'
@@ -389,60 +305,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatIndexRouteImport
       parentRoute: typeof ChatRoute
     }
-    '/symphony/workflows': {
-      id: '/symphony/workflows'
-      path: '/workflows'
-      fullPath: '/symphony/workflows'
-      preLoaderRoute: typeof SymphonyWorkflowsRouteImport
-      parentRoute: typeof SymphonyRoute
-    }
     '/symphony/trackers': {
       id: '/symphony/trackers'
       path: '/trackers'
       fullPath: '/symphony/trackers'
       preLoaderRoute: typeof SymphonyTrackersRouteImport
-      parentRoute: typeof SymphonyRoute
-    }
-    '/symphony/settings': {
-      id: '/symphony/settings'
-      path: '/settings'
-      fullPath: '/symphony/settings'
-      preLoaderRoute: typeof SymphonySettingsRouteImport
-      parentRoute: typeof SymphonyRoute
-    }
-    '/symphony/running': {
-      id: '/symphony/running'
-      path: '/running'
-      fullPath: '/symphony/running'
-      preLoaderRoute: typeof SymphonyRunningRouteImport
-      parentRoute: typeof SymphonyRoute
-    }
-    '/symphony/reviews': {
-      id: '/symphony/reviews'
-      path: '/reviews'
-      fullPath: '/symphony/reviews'
-      preLoaderRoute: typeof SymphonyReviewsRouteImport
-      parentRoute: typeof SymphonyRoute
-    }
-    '/symphony/queue': {
-      id: '/symphony/queue'
-      path: '/queue'
-      fullPath: '/symphony/queue'
-      preLoaderRoute: typeof SymphonyQueueRouteImport
-      parentRoute: typeof SymphonyRoute
-    }
-    '/symphony/history': {
-      id: '/symphony/history'
-      path: '/history'
-      fullPath: '/symphony/history'
-      preLoaderRoute: typeof SymphonyHistoryRouteImport
-      parentRoute: typeof SymphonyRoute
-    }
-    '/symphony/attention': {
-      id: '/symphony/attention'
-      path: '/attention'
-      fullPath: '/symphony/attention'
-      preLoaderRoute: typeof SymphonyAttentionRouteImport
       parentRoute: typeof SymphonyRoute
     }
     '/symphony/$runId': {
@@ -592,28 +459,14 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 
 interface SymphonyRouteChildren {
   SymphonyRunIdRoute: typeof SymphonyRunIdRoute
-  SymphonyAttentionRoute: typeof SymphonyAttentionRoute
-  SymphonyHistoryRoute: typeof SymphonyHistoryRoute
-  SymphonyQueueRoute: typeof SymphonyQueueRoute
-  SymphonyReviewsRoute: typeof SymphonyReviewsRoute
-  SymphonyRunningRoute: typeof SymphonyRunningRoute
-  SymphonySettingsRoute: typeof SymphonySettingsRoute
   SymphonyTrackersRoute: typeof SymphonyTrackersRoute
-  SymphonyWorkflowsRoute: typeof SymphonyWorkflowsRoute
   SymphonyIndexRoute: typeof SymphonyIndexRoute
   SymphonyProjectsProjectIdRoute: typeof SymphonyProjectsProjectIdRoute
 }
 
 const SymphonyRouteChildren: SymphonyRouteChildren = {
   SymphonyRunIdRoute: SymphonyRunIdRoute,
-  SymphonyAttentionRoute: SymphonyAttentionRoute,
-  SymphonyHistoryRoute: SymphonyHistoryRoute,
-  SymphonyQueueRoute: SymphonyQueueRoute,
-  SymphonyReviewsRoute: SymphonyReviewsRoute,
-  SymphonyRunningRoute: SymphonyRunningRoute,
-  SymphonySettingsRoute: SymphonySettingsRoute,
   SymphonyTrackersRoute: SymphonyTrackersRoute,
-  SymphonyWorkflowsRoute: SymphonyWorkflowsRoute,
   SymphonyIndexRoute: SymphonyIndexRoute,
   SymphonyProjectsProjectIdRoute: SymphonyProjectsProjectIdRoute,
 }

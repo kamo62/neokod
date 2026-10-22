@@ -36,7 +36,7 @@ import { SymphonyAttentionList } from "./SymphonyAttentionList";
 import { SymphonyEmptyState } from "./SymphonyEmptyState";
 import { canRunNow, formatEligibilityReason, runActionLabel } from "./boardCard.logic";
 import { dispatchRefusalMessage } from "./dispatchRefusal.logic";
-import { runAttemptStatusBadgeVariant } from "./SymphonyRunningView.logic";
+import { runAttemptStatusBadgeVariant } from "./runAttemptStatus.logic";
 import {
   availableSymphonyImplementationProviders,
   availableSymphonyReviewProviders,
