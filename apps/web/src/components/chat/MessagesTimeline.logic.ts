@@ -7,6 +7,7 @@ import {
   type WorkLogEntry,
 } from "../../session-logic";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
+import { resolveTerminalElapsedEnd } from "../threadLifecycle.logic";
 import { deriveToolCallAction } from "./ToolCallLabel.logic";
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
 import { type MessageId, type OrchestrationLatestTurn, type TurnId } from "@neokod/contracts";
@@ -399,16 +400,27 @@ function deriveTurnFolds(input: {
     // terminal message — take whichever ended last.
     const lastEntryEnd =
       lastEntry.kind === "message" ? lastEntry.message.updatedAt : lastEntry.createdAt;
-    const elapsedMs =
-      input.latestTurn?.turnId === turnId &&
-      input.latestTurn.startedAt &&
-      input.latestTurn.completedAt
-        ? computeElapsedMs(input.latestTurn.startedAt, input.latestTurn.completedAt)
-        : computeElapsedMs(
-            group.startBoundary ?? firstEntry.createdAt,
-            maxIsoTimestamp(group.terminalEntry?.message.updatedAt ?? null, lastEntryEnd) ??
-              lastEntryEnd,
-          );
+    const latestTurn = input.latestTurn;
+    let elapsedMs: number | null;
+    if (latestTurn !== null && latestTurn.turnId === turnId) {
+      const terminalElapsed = resolveTerminalElapsedEnd({
+        terminal: latestTurn.state !== "running",
+        completedAt: latestTurn.completedAt,
+      });
+      // An explicitly unknown completion stays unknown. Entry timestamps,
+      // including recovery-time synthetic activity, must not manufacture a
+      // duration for the latest terminal turn.
+      elapsedMs =
+        terminalElapsed.state === "known" && latestTurn.startedAt !== null
+          ? computeElapsedMs(latestTurn.startedAt, terminalElapsed.endedAt)
+          : null;
+    } else {
+      elapsedMs = computeElapsedMs(
+        group.startBoundary ?? firstEntry.createdAt,
+        maxIsoTimestamp(group.terminalEntry?.message.updatedAt ?? null, lastEntryEnd) ??
+          lastEntryEnd,
+      );
+    }
     const duration = elapsedMs !== null ? formatDuration(elapsedMs) : null;
     const label = isLatestInterruptedTurn
       ? duration

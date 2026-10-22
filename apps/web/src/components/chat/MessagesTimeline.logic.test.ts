@@ -861,6 +861,56 @@ describe("deriveMessagesTimelineRows", () => {
     expect(assistantRow?.assistantCopyStreaming).toBe(false);
   });
 
+  it("keeps an explicitly unknown latest turn duration-free after recovery activity", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "user-entry-recovered",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:00Z",
+          message: {
+            id: "user-recovered" as never,
+            role: "user",
+            text: "go",
+            turnId: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "work-entry-recovered",
+          kind: "work",
+          createdAt: "2026-01-02T08:00:00Z",
+          entry: {
+            id: "synthetic-recovery-activity",
+            createdAt: "2026-01-02T08:00:00Z",
+            turnId: "turn-recovered" as never,
+            label: "Tool orphaned",
+            tone: "tool" as const,
+          },
+        },
+      ],
+      latestTurn: {
+        turnId: "turn-recovered" as never,
+        state: "interrupted",
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: null,
+      },
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const fold = rows.find(
+      (row): row is Extract<(typeof rows)[number], { kind: "turn-fold" }> =>
+        row.kind === "turn-fold",
+    );
+    expect(fold?.label).toBe("You stopped this response");
+    expect(fold?.label).not.toContain("after");
+  });
+
   it("keeps the previous turn folded while a newly sent message awaits its turn", () => {
     // Right after send, isWorking is true but latestTurn still points at the
     // previous, settled turn — it must stay folded through that window.
