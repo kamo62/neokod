@@ -23,6 +23,7 @@ import {
 import { createModelSelection } from "@neokod/shared/model";
 import { it, assert, vi } from "@effect/vitest";
 
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -39,6 +40,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import {
   ProviderAdapterRequestError,
   ProviderAdapterSessionNotFoundError,
+  ProviderStoppingError,
   ProviderUnsupportedError,
   ProviderValidationError,
   type ProviderAdapterError,
@@ -59,6 +61,7 @@ import {
 import * as ServerSettings from "../../serverSettings.ts";
 import * as AnalyticsService from "../../telemetry/AnalyticsService.ts";
 import { makeAdapterRegistryMock } from "../testUtils/providerAdapterRegistryMock.ts";
+import { orphanPossible, stopFailed } from "../providerStopOutcome.ts";
 
 const defaultServerSettingsLayer = ServerSettings.ServerSettingsService.layerTest();
 
@@ -716,6 +719,682 @@ it.effect("ProviderServiceLive keeps persisted resumable sessions on startup", (
 );
 
 it.effect(
+  "ProviderServiceLive lets a host_lost binding start fresh without losing other stop barriers",
+  () =>
+    Effect.gen(function* () {
+      const tempDir = NodeFS.mkdtempSync(
+        NodePath.join(NodeOS.tmpdir(), "neokod-provider-host-lost-"),
+      );
+      const dbPath = NodePath.join(tempDir, "orchestration.sqlite");
+      const persistenceLayer = makeSqlitePersistenceLive(dbPath);
+      const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+        Layer.provide(persistenceLayer),
+      );
+      const directoryLayer = ProviderSessionDirectoryLive.pipe(
+        Layer.provide(runtimeRepositoryLayer),
+      );
+      // Record durable writes so the explicit-Stop path can prove it never
+      // erases the host_lost outcome between the intent and settlement writes.
+      const bindingWrites: ProviderSessionDirectory.ProviderRuntimeBinding[] = [];
+      const recordingDirectoryLayer = Layer.effect(
+        ProviderSessionDirectory.ProviderSessionDirectory,
+        Effect.map(ProviderSessionDirectory.ProviderSessionDirectory, (directory) =>
+          ProviderSessionDirectory.ProviderSessionDirectory.of({
+            ...directory,
+            upsert: (binding) =>
+              Effect.sync(() => {
+                bindingWrites.push(binding);
+              }).pipe(Effect.andThen(directory.upsert(binding))),
+          }),
+        ),
+      ).pipe(Layer.provide(directoryLayer));
+      const codex = makeFakeCodexAdapter();
+      const registry = makeAdapterRegistryMock({
+        [CODEX_DRIVER]: codex.adapter,
+      });
+      const hostLostThread = asThreadId("thread-host-lost-barrier");
+      const stopFailedThread = asThreadId("thread-stop-failed-barrier");
+
+      yield* Effect.gen(function* () {
+        const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+        yield* directory.upsert({
+          threadId: hostLostThread,
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          status: "error",
+          runtimePayload: {
+            activeTurnId: null,
+            stopPhase: "settled",
+            stopRequestedAt: "2026-07-26T23:58:00.000Z",
+            stopOutcome: orphanPossible({
+              stoppedAt: "2026-07-26T23:58:00.000Z",
+              reason: "host_lost",
+            }),
+          },
+        });
+        yield* directory.upsert({
+          threadId: stopFailedThread,
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          status: "error",
+          runtimePayload: {
+            stopPhase: "settled",
+            stopOutcome: stopFailed("process_group_termination_failed", "group remained alive"),
+          },
+        });
+      }).pipe(Effect.provide(directoryLayer));
+
+      const providerLayer = makeProviderServiceLive().pipe(
+        Layer.provide(Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, registry)),
+        Layer.provide(recordingDirectoryLayer),
+        Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(AnalyticsService.layerTest),
+        Layer.provide(
+          Layer.succeed(
+            ProviderEventLoggers.ProviderEventLoggers,
+            ProviderEventLoggers.NoOpProviderEventLoggers,
+          ),
+        ),
+        Layer.provideMerge(runtimeRepositoryLayer),
+      );
+
+      yield* Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        // An explicit Stop on a host_lost binding has no locally owned
+        // teardown. It must preserve the uncertainty without fencing the
+        // thread, so a later fresh session can start in the same process.
+        const stopped = yield* provider.stopSession({ threadId: hostLostThread });
+        assert.equal(stopped.status, "orphan_possible");
+        assert.equal(
+          stopped.status === "orphan_possible" ? stopped.reason : undefined,
+          "host_lost",
+        );
+        // No durable write may occur before the settlement: a crash after an
+        // intent write would otherwise erase the orphan outcome. A pure
+        // confirmation of existing evidence writes nothing.
+        assert.deepEqual(bindingWrites, []);
+        const runtimeRepository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+        const afterStop = yield* runtimeRepository.getByThreadId({ threadId: hostLostThread });
+        assert.equal(Option.isSome(afterStop), true);
+        if (Option.isSome(afterStop)) {
+          const payload = afterStop.value.runtimePayload;
+          assert.equal(
+            payload !== null && typeof payload === "object" && !Array.isArray(payload),
+            true,
+          );
+          if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+            assert.equal("stopPhase" in payload ? payload.stopPhase : undefined, "settled");
+            assert.deepEqual("stopOutcome" in payload ? payload.stopOutcome : undefined, {
+              status: "orphan_possible",
+              stoppedAt: "2026-07-26T23:58:00.000Z",
+              reason: "host_lost",
+              knownExternalRunIds: [],
+            });
+          }
+        }
+
+        const started = yield* provider.startSession(hostLostThread, {
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          threadId: hostLostThread,
+          runtimeMode: "full-access",
+        });
+        assert.equal(started.threadId, hostLostThread);
+
+        const blocked = yield* provider
+          .startSession(stopFailedThread, {
+            provider: CODEX_DRIVER,
+            providerInstanceId: codexInstanceId,
+            threadId: stopFailedThread,
+            runtimeMode: "full-access",
+          })
+          .pipe(Effect.flip);
+        assert.equal(blocked._tag, "ProviderStoppingError");
+        assert.instanceOf(blocked, ProviderStoppingError);
+
+        const repository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+        const binding = yield* repository.getByThreadId({ threadId: hostLostThread });
+        assert.equal(Option.isSome(binding), true);
+        if (Option.isSome(binding)) {
+          assert.equal(binding.value.status, "running");
+          const payload = binding.value.runtimePayload;
+          assert.equal(
+            payload !== null && typeof payload === "object" && !Array.isArray(payload),
+            true,
+          );
+          if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+            assert.equal("stopPhase" in payload ? payload.stopPhase : "missing", null);
+            assert.equal("stopOutcome" in payload ? payload.stopOutcome : "missing", null);
+            assert.equal("stopRequestedAt" in payload ? payload.stopRequestedAt : "missing", null);
+          }
+        }
+      }).pipe(Effect.provide(providerLayer));
+
+      NodeFS.rmSync(tempDir, { recursive: true, force: true });
+    }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect(
+  "ProviderServiceLive releases a restored pending-stop fence after host-loss reconciliation",
+  () =>
+    Effect.gen(function* () {
+      const tempDir = NodeFS.mkdtempSync(
+        NodePath.join(NodeOS.tmpdir(), "neokod-provider-host-lost-fence-"),
+      );
+      const dbPath = NodePath.join(tempDir, "orchestration.sqlite");
+      const persistenceLayer = makeSqlitePersistenceLive(dbPath);
+      const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+        Layer.provide(persistenceLayer),
+      );
+      const directoryLayer = ProviderSessionDirectoryLive.pipe(
+        Layer.provide(runtimeRepositoryLayer),
+      );
+      const codex = makeFakeCodexAdapter();
+      const registry = makeAdapterRegistryMock({
+        [CODEX_DRIVER]: codex.adapter,
+      });
+      const threadId = asThreadId("thread-host-lost-restored-fence");
+
+      // The previous process died with a stop request recorded, so service
+      // construction restores the thread fence.
+      yield* Effect.gen(function* () {
+        const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+        yield* directory.upsert({
+          threadId,
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          status: "running",
+          runtimePayload: {
+            activeTurnId: null,
+            stopPhase: "stop_requested",
+            stopRequestedAt: "2026-01-01T00:00:00.000Z",
+          },
+        });
+      }).pipe(Effect.provide(directoryLayer));
+
+      const providerLayer = makeProviderServiceLive().pipe(
+        Layer.provide(Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, registry)),
+        Layer.provide(directoryLayer),
+        Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(AnalyticsService.layerTest),
+        Layer.provide(
+          Layer.succeed(
+            ProviderEventLoggers.ProviderEventLoggers,
+            ProviderEventLoggers.NoOpProviderEventLoggers,
+          ),
+        ),
+        Layer.provideMerge(runtimeRepositoryLayer),
+      );
+
+      yield* Effect.gen(function* () {
+        // Construct the service while the pending stop is still the durable
+        // state, so its restored barrier set contains this thread.
+        const provider = yield* ProviderService.ProviderService;
+        const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+
+        // The reconciler then settles the binding into host-loss evidence.
+        yield* directory.upsert({
+          threadId,
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          status: "error",
+          runtimePayload: {
+            activeTurnId: null,
+            stopPhase: "settled",
+            stopOutcome: orphanPossible({
+              stoppedAt: "2026-01-01T00:00:01.000Z",
+              reason: "host_lost",
+            }),
+          },
+        });
+
+        const started = yield* provider.startSession(threadId, {
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          threadId,
+          runtimeMode: "full-access",
+        });
+        assert.equal(started.threadId, threadId);
+      }).pipe(Effect.provide(Layer.merge(providerLayer, directoryLayer)));
+
+      NodeFS.rmSync(tempDir, { recursive: true, force: true });
+    }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect("ProviderServiceLive keeps a live stop fence while its intent write is pending", () =>
+  Effect.gen(function* () {
+    const tempDir = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-provider-live-stop-fence-"),
+    );
+    const dbPath = NodePath.join(tempDir, "orchestration.sqlite");
+    const persistenceLayer = makeSqlitePersistenceLive(dbPath);
+    const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+      Layer.provide(persistenceLayer),
+    );
+    const directoryLayer = ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer));
+    const intentWriteStarted = yield* Deferred.make<void>();
+    const releaseIntentWrite = yield* Deferred.make<void>();
+    const gatedDirectoryLayer = Layer.effect(
+      ProviderSessionDirectory.ProviderSessionDirectory,
+      Effect.map(ProviderSessionDirectory.ProviderSessionDirectory, (directory) =>
+        ProviderSessionDirectory.ProviderSessionDirectory.of({
+          ...directory,
+          upsert: (binding: ProviderSessionDirectory.ProviderRuntimeBinding) => {
+            const payload = binding.runtimePayload;
+            const isStopIntent =
+              payload !== null &&
+              typeof payload === "object" &&
+              !Array.isArray(payload) &&
+              "stopPhase" in payload &&
+              payload.stopPhase === "stop_requested";
+            return isStopIntent
+              ? Deferred.succeed(intentWriteStarted, undefined).pipe(
+                  Effect.andThen(Deferred.await(releaseIntentWrite)),
+                  Effect.andThen(directory.upsert(binding)),
+                )
+              : directory.upsert(binding);
+          },
+        }),
+      ),
+    ).pipe(Layer.provide(directoryLayer));
+    const codex = makeFakeCodexAdapter();
+    const registry = makeAdapterRegistryMock({
+      [CODEX_DRIVER]: codex.adapter,
+    });
+    const threadId = asThreadId("thread-live-stop-fence");
+
+    const providerLayer = makeProviderServiceLive().pipe(
+      Layer.provide(Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, registry)),
+      Layer.provide(gatedDirectoryLayer),
+      Layer.provide(defaultServerSettingsLayer),
+      Layer.provide(AnalyticsService.layerTest),
+      Layer.provide(
+        Layer.succeed(
+          ProviderEventLoggers.ProviderEventLoggers,
+          ProviderEventLoggers.NoOpProviderEventLoggers,
+        ),
+      ),
+      Layer.provideMerge(runtimeRepositoryLayer),
+    );
+
+    yield* Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+
+      const stopFiber = yield* provider.stopSession({ threadId }).pipe(Effect.forkChild);
+      yield* Deferred.await(intentWriteStarted);
+
+      // The intent write is still blocked, so the durable binding has no
+      // stop evidence yet. The in-memory fence must still block new work.
+      const startFailure = yield* provider
+        .startSession(threadId, {
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          threadId,
+          runtimeMode: "full-access",
+        })
+        .pipe(Effect.flip, Effect.timeoutOption("2 seconds"));
+      assert.equal(Option.isSome(startFailure), true);
+      if (Option.isSome(startFailure)) {
+        assert.equal(startFailure.value._tag, "ProviderStoppingError");
+      }
+
+      const sendFailure = yield* provider
+        .sendTurn({
+          threadId,
+          input: "new work during stop",
+          attachments: [],
+        })
+        .pipe(Effect.flip, Effect.timeoutOption("2 seconds"));
+      assert.equal(Option.isSome(sendFailure), true);
+      if (Option.isSome(sendFailure)) {
+        assert.equal(sendFailure.value._tag, "ProviderStoppingError");
+      }
+
+      codex.hasSession.mockImplementationOnce(() => Effect.succeed(false));
+      const responseFailure = yield* provider
+        .respondToRequest({
+          threadId,
+          requestId: asRequestId("req-live-stop-fence"),
+          decision: "accept",
+        })
+        .pipe(Effect.flip, Effect.timeoutOption("2 seconds"));
+      assert.equal(Option.isSome(responseFailure), true);
+      if (Option.isSome(responseFailure)) {
+        assert.equal(responseFailure.value._tag, "ProviderStoppingError");
+      }
+
+      yield* Deferred.succeed(releaseIntentWrite, undefined);
+      yield* Fiber.join(stopFiber);
+    }).pipe(Effect.provide(providerLayer));
+
+    NodeFS.rmSync(tempDir, { recursive: true, force: true });
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect("ProviderServiceLive keeps a failed-stop outcome written after a send was admitted", () =>
+  Effect.gen(function* () {
+    const tempDir = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-provider-late-send-stop-"),
+    );
+    const dbPath = NodePath.join(tempDir, "orchestration.sqlite");
+    const persistenceLayer = makeSqlitePersistenceLive(dbPath);
+    const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+      Layer.provide(persistenceLayer),
+    );
+    const directoryLayer = ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer));
+    const codex = makeFakeCodexAdapter();
+    const registry = makeAdapterRegistryMock({
+      [CODEX_DRIVER]: codex.adapter,
+    });
+    const threadId = asThreadId("thread-late-send-stop");
+    const sendStarted = yield* Deferred.make<void>();
+    const releaseSend = yield* Deferred.make<void>();
+    const stopEvidence = stopFailed("process_group_termination_failed", "late send stop failed");
+
+    const providerLayer = makeProviderServiceLive().pipe(
+      Layer.provide(Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, registry)),
+      Layer.provide(directoryLayer),
+      Layer.provide(defaultServerSettingsLayer),
+      Layer.provide(AnalyticsService.layerTest),
+      Layer.provide(
+        Layer.succeed(
+          ProviderEventLoggers.ProviderEventLoggers,
+          ProviderEventLoggers.NoOpProviderEventLoggers,
+        ),
+      ),
+      Layer.provideMerge(runtimeRepositoryLayer),
+    );
+
+    yield* Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+
+      codex.sendTurn.mockImplementationOnce(() =>
+        Deferred.succeed(sendStarted, undefined).pipe(
+          Effect.andThen(Deferred.await(releaseSend)),
+          Effect.as({ threadId, turnId: asTurnId("turn-late-send") }),
+        ),
+      );
+      codex.stopSession.mockImplementationOnce(() => Effect.succeed(stopEvidence));
+
+      const sendFiber = yield* provider
+        .sendTurn({ threadId, input: "work that races stop", attachments: [] })
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(sendStarted);
+
+      yield* provider.stopSession({ threadId });
+
+      yield* Deferred.succeed(releaseSend, undefined);
+      yield* Fiber.join(sendFiber);
+
+      const repository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+      const binding = yield* repository.getByThreadId({ threadId });
+      assert.equal(Option.isSome(binding), true);
+      if (Option.isSome(binding)) {
+        assert.equal(binding.value.status, "error");
+        const payload = binding.value.runtimePayload;
+        assert.equal(
+          payload !== null && typeof payload === "object" && !Array.isArray(payload),
+          true,
+        );
+        if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+          assert.deepEqual(
+            "stopOutcome" in payload ? payload.stopOutcome : undefined,
+            stopEvidence,
+          );
+        }
+      }
+
+      const startFailure = yield* Effect.flip(
+        provider.startSession(threadId, {
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          threadId,
+          runtimeMode: "full-access",
+        }),
+      );
+      assert.equal(startFailure._tag, "ProviderStoppingError");
+    }).pipe(Effect.provide(providerLayer));
+
+    NodeFS.rmSync(tempDir, { recursive: true, force: true });
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect(
+  "ProviderServiceLive serializes a paused post-send binding write with a failed Stop",
+  () =>
+    Effect.gen(function* () {
+      const tempDir = NodeFS.mkdtempSync(
+        NodePath.join(NodeOS.tmpdir(), "neokod-provider-atomic-send-stop-"),
+      );
+      const dbPath = NodePath.join(tempDir, "orchestration.sqlite");
+      const persistenceLayer = makeSqlitePersistenceLive(dbPath);
+      const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+        Layer.provide(persistenceLayer),
+      );
+      const directoryLayer = ProviderSessionDirectoryLive.pipe(
+        Layer.provide(runtimeRepositoryLayer),
+      );
+      const sendWriteStarted = yield* Deferred.make<void>();
+      const releaseSendWrite = yield* Deferred.make<void>();
+      const gatedDirectoryLayer = Layer.effect(
+        ProviderSessionDirectory.ProviderSessionDirectory,
+        Effect.map(ProviderSessionDirectory.ProviderSessionDirectory, (directory) =>
+          ProviderSessionDirectory.ProviderSessionDirectory.of({
+            ...directory,
+            upsert: (binding: ProviderSessionDirectory.ProviderRuntimeBinding) => {
+              const payload = binding.runtimePayload;
+              const isSendWrite =
+                payload !== null &&
+                typeof payload === "object" &&
+                !Array.isArray(payload) &&
+                "lastRuntimeEvent" in payload &&
+                payload.lastRuntimeEvent === "provider.sendTurn";
+              return isSendWrite
+                ? Deferred.succeed(sendWriteStarted, undefined).pipe(
+                    Effect.andThen(Deferred.await(releaseSendWrite)),
+                    Effect.andThen(directory.upsert(binding)),
+                  )
+                : directory.upsert(binding);
+            },
+          }),
+        ),
+      ).pipe(Layer.provide(directoryLayer));
+      const codex = makeFakeCodexAdapter();
+      const registry = makeAdapterRegistryMock({
+        [CODEX_DRIVER]: codex.adapter,
+      });
+      const threadId = asThreadId("thread-atomic-send-stop");
+      const stopEvidence = stopFailed(
+        "process_group_termination_failed",
+        "atomic send stop failed",
+      );
+
+      const providerLayer = makeProviderServiceLive().pipe(
+        Layer.provide(Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, registry)),
+        Layer.provide(gatedDirectoryLayer),
+        Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(AnalyticsService.layerTest),
+        Layer.provide(
+          Layer.succeed(
+            ProviderEventLoggers.ProviderEventLoggers,
+            ProviderEventLoggers.NoOpProviderEventLoggers,
+          ),
+        ),
+        Layer.provideMerge(runtimeRepositoryLayer),
+      );
+
+      yield* Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        yield* provider.startSession(threadId, {
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          threadId,
+          runtimeMode: "full-access",
+        });
+        codex.stopSession.mockImplementationOnce(() => Effect.succeed(stopEvidence));
+
+        const sendFiber = yield* provider
+          .sendTurn({ threadId, input: "paused send", attachments: [] })
+          .pipe(Effect.forkChild);
+        yield* Deferred.await(sendWriteStarted);
+
+        const stopFiber = yield* provider.stopSession({ threadId }).pipe(Effect.forkChild);
+        // Let Stop run while the send's write is paused. With the per-thread
+        // critical section it blocks on the lock; without it the Stop settles
+        // during this window and the late send overwrites its evidence.
+        yield* Effect.forEach(Array.from({ length: 20 }), () => Effect.yieldNow, { discard: true });
+
+        yield* Deferred.succeed(releaseSendWrite, undefined);
+        yield* Fiber.join(sendFiber);
+        yield* Fiber.join(stopFiber);
+
+        const repository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+        const binding = yield* repository.getByThreadId({ threadId });
+        assert.equal(Option.isSome(binding), true);
+        if (Option.isSome(binding)) {
+          assert.equal(binding.value.status, "error");
+          const payload = binding.value.runtimePayload;
+          assert.equal(
+            payload !== null && typeof payload === "object" && !Array.isArray(payload),
+            true,
+          );
+          if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+            assert.deepEqual(
+              "stopOutcome" in payload ? payload.stopOutcome : undefined,
+              stopEvidence,
+            );
+          }
+        }
+
+        const startFailure = yield* Effect.flip(
+          provider.startSession(threadId, {
+            provider: CODEX_DRIVER,
+            providerInstanceId: codexInstanceId,
+            threadId,
+            runtimeMode: "full-access",
+          }),
+        );
+        assert.equal(startFailure._tag, "ProviderStoppingError");
+      }).pipe(Effect.provide(providerLayer));
+
+      NodeFS.rmSync(tempDir, { recursive: true, force: true });
+    }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect("ProviderServiceLive refuses recovery while a failed stop still fences the thread", () =>
+  Effect.gen(function* () {
+    const tempDir = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-provider-stop-failed-recovery-"),
+    );
+    const dbPath = NodePath.join(tempDir, "orchestration.sqlite");
+    const persistenceLayer = makeSqlitePersistenceLive(dbPath);
+    const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+      Layer.provide(persistenceLayer),
+    );
+    const directoryLayer = ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer));
+    const codex = makeFakeCodexAdapter();
+    const registry = makeAdapterRegistryMock({
+      [CODEX_DRIVER]: codex.adapter,
+    });
+    const threadId = asThreadId("thread-stop-failed-recovery");
+    const stopEvidence = stopFailed("process_group_termination_failed", "group remained alive");
+
+    yield* Effect.gen(function* () {
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      yield* directory.upsert({
+        threadId,
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        status: "error",
+        runtimePayload: {
+          activeTurnId: null,
+          stopPhase: "settled",
+          stopRequestedAt: "2026-01-01T00:00:00.000Z",
+          stopOutcome: stopEvidence,
+        },
+      });
+    }).pipe(Effect.provide(directoryLayer));
+
+    const providerLayer = makeProviderServiceLive().pipe(
+      Layer.provide(Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, registry)),
+      Layer.provide(directoryLayer),
+      Layer.provide(defaultServerSettingsLayer),
+      Layer.provide(AnalyticsService.layerTest),
+      Layer.provide(
+        Layer.succeed(
+          ProviderEventLoggers.ProviderEventLoggers,
+          ProviderEventLoggers.NoOpProviderEventLoggers,
+        ),
+      ),
+      Layer.provideMerge(runtimeRepositoryLayer),
+    );
+
+    yield* Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+
+      // All three responders can resume a missing adapter session. The stop
+      // failure must keep the thread fenced instead of erasing its evidence.
+      const interruptFailure = yield* Effect.flip(provider.interruptTurn({ threadId }));
+      assert.equal(interruptFailure._tag, "ProviderStoppingError");
+
+      const approvalFailure = yield* Effect.flip(
+        provider.respondToRequest({
+          threadId,
+          requestId: asRequestId("req-stop-failed"),
+          decision: "accept",
+        }),
+      );
+      assert.equal(approvalFailure._tag, "ProviderStoppingError");
+
+      const inputFailure = yield* Effect.flip(
+        provider.respondToUserInput({
+          threadId,
+          requestId: asRequestId("req-stop-failed-input"),
+          answers: { sandbox_mode: "workspace-write" },
+        }),
+      );
+      assert.equal(inputFailure._tag, "ProviderStoppingError");
+
+      assert.equal(codex.startSession.mock.calls.length, 0);
+      assert.equal(codex.sendTurn.mock.calls.length, 0);
+
+      const repository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+      const binding = yield* repository.getByThreadId({ threadId });
+      assert.equal(Option.isSome(binding), true);
+      if (Option.isSome(binding)) {
+        assert.equal(binding.value.status, "error");
+        const payload = binding.value.runtimePayload;
+        assert.equal(
+          payload !== null && typeof payload === "object" && !Array.isArray(payload),
+          true,
+        );
+        if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+          assert.equal("stopPhase" in payload ? payload.stopPhase : undefined, "settled");
+          assert.deepEqual(
+            "stopOutcome" in payload ? payload.stopOutcome : undefined,
+            stopEvidence,
+          );
+        }
+      }
+    }).pipe(Effect.provide(providerLayer));
+
+    NodeFS.rmSync(tempDir, { recursive: true, force: true });
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect(
   "ProviderServiceLive restores rollback routing after restart using persisted thread mapping",
   () =>
     Effect.gen(function* () {
@@ -1165,6 +1844,43 @@ routing.layer("ProviderServiceLive routing", (it) => {
     }),
   );
 
+  it.effect(
+    "fails interruptTurn with ProviderSessionNotRecoverableError when the binding has no resume cursor",
+    () =>
+      Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        const threadId = asThreadId("thread-not-recoverable");
+        routing.codex.startSession.mockImplementationOnce(() =>
+          Effect.succeed({
+            provider: CODEX_DRIVER,
+            providerInstanceId: codexInstanceId,
+            status: "ready" as const,
+            runtimeMode: "full-access" as const,
+            threadId,
+            cwd: "/tmp/project",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          }),
+        );
+
+        const session = yield* provider.startSession(threadId, {
+          provider: ProviderDriverKind.make("codex"),
+          providerInstanceId: codexInstanceId,
+          threadId,
+          cwd: "/tmp/project",
+          runtimeMode: "full-access",
+        });
+        yield* routing.codex.stopAll();
+
+        const failure = yield* Effect.flip(provider.interruptTurn({ threadId: session.threadId }));
+        assert.equal(failure._tag, "ProviderSessionNotRecoverableError");
+        if (failure._tag !== "ProviderSessionNotRecoverableError") return;
+        assert.equal(failure.threadId, "thread-not-recoverable");
+        assert.notInclude(failure.message, "thread-not-recoverable");
+        assert.notInclude(failure.message, "/");
+      }),
+  );
+
   it.effect("recovers stale claudeAgent sessions for sendTurn using persisted cwd", () =>
     Effect.gen(function* () {
       const provider = yield* ProviderService.ProviderService;
@@ -1606,6 +2322,114 @@ stopAllRouting.layer("ProviderServiceLive structured stop-all", (it) => {
     }),
   );
 });
+
+it.effect("preserves unresolved stop evidence when the shutdown snapshot runs", () =>
+  Effect.gen(function* () {
+    const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+      Layer.provide(SqlitePersistenceMemory),
+    );
+    const directoryLayer = ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer));
+    const codex = makeFakeCodexAdapter();
+    const registry = makeAdapterRegistryMock({
+      [CODEX_DRIVER]: codex.adapter,
+    });
+    const threadId = asThreadId("thread-stop-all-preserves-unresolved");
+    // Simulate dying between the pre-sweep snapshot and the next durable stop
+    // intent: the snapshot write succeeds, the intent write does not.
+    let allowedWrites = Number.POSITIVE_INFINITY;
+    const guardedDirectoryLayer = Layer.effect(
+      ProviderSessionDirectory.ProviderSessionDirectory,
+      Effect.map(ProviderSessionDirectory.ProviderSessionDirectory, (directory) =>
+        ProviderSessionDirectory.ProviderSessionDirectory.of({
+          ...directory,
+          upsert: (binding) => {
+            if (binding.threadId === threadId) {
+              if (allowedWrites <= 0) {
+                return Effect.fail(
+                  new ProviderValidationError({
+                    operation: "ProviderService.test.stopAllSnapshot",
+                    issue: "simulated crash before the stop intent",
+                  }),
+                );
+              }
+              allowedWrites -= 1;
+            }
+            return directory.upsert(binding);
+          },
+        }),
+      ),
+    ).pipe(Layer.provide(directoryLayer));
+
+    const providerLayer = makeProviderServiceLive().pipe(
+      Layer.provide(Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, registry)),
+      Layer.provideMerge(guardedDirectoryLayer),
+      Layer.provide(defaultServerSettingsLayer),
+      Layer.provide(AnalyticsService.layerTest),
+      Layer.provide(
+        Layer.succeed(
+          ProviderEventLoggers.ProviderEventLoggers,
+          ProviderEventLoggers.NoOpProviderEventLoggers,
+        ),
+      ),
+      Layer.provideMerge(runtimeRepositoryLayer),
+      Layer.provideMerge(NodeServices.layer),
+    );
+
+    yield* Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const runtimeRepository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+
+      yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        cwd: "/tmp/project-stop-all-preserves-unresolved",
+        runtimeMode: "full-access",
+      });
+      // A previous stop attempt failed while the adapter kept its session.
+      // The unresolved outcome is still the durable barrier.
+      yield* directory.upsert({
+        threadId,
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        status: "error",
+        runtimePayload: {
+          stopPhase: "settled",
+          stopOutcome: stopFailed("process_group_termination_failed", "previous attempt"),
+          stopRequestedAt: "2026-01-01T00:00:02.000Z",
+        },
+      });
+
+      // Only the pre-sweep snapshot may write. The stop intent then fails,
+      // leaving the binding exactly as the snapshot left it.
+      allowedWrites = 1;
+      const result = yield* provider.stopAllSessions();
+
+      assert.equal(result.failed.length, 1);
+      assert.equal(result.failed[0]?.sessionId, threadId);
+
+      const binding = yield* runtimeRepository.getByThreadId({ threadId });
+      assert.equal(Option.isSome(binding), true);
+      if (Option.isSome(binding)) {
+        const payload = binding.value.runtimePayload;
+        assert.equal(
+          payload !== null && typeof payload === "object" && !Array.isArray(payload),
+          true,
+        );
+        if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+          // The snapshot must not clear what the next process needs to find.
+          assert.equal("stopPhase" in payload ? payload.stopPhase : undefined, "settled");
+          assert.deepEqual("stopOutcome" in payload ? payload.stopOutcome : undefined, {
+            status: "stop_failed",
+            reason: "process_group_termination_failed",
+            detail: "previous attempt",
+          });
+        }
+      }
+    }).pipe(Effect.provide(providerLayer));
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
 
 const fanout = makeProviderServiceLayer();
 fanout.layer("ProviderServiceLive fanout", (it) => {

@@ -1,3 +1,13 @@
+import {
+  CheckpointRef,
+  EventId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+  TurnId,
+  type OrchestrationThread,
+} from "@neokod/contracts";
+import { applyThreadDetailEvent } from "@neokod/client-runtime/state/threads";
 import { describe, expect, it } from "vite-plus/test";
 import {
   computeStableMessagesTimelineRows,
@@ -787,6 +797,355 @@ describe("deriveMessagesTimelineRows", () => {
         expanded: false,
       }),
     ]);
+  });
+
+  it("settles a terminal turn with unknown completion without a false zero duration", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "user-entry-1",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:00Z",
+          message: {
+            id: "user-1" as never,
+            role: "user",
+            text: "go",
+            turnId: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "work-entry-1",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:05Z",
+          entry: {
+            id: "work-1",
+            createdAt: "2026-01-01T00:00:05Z",
+            turnId: "turn-1" as never,
+            label: "Ran command",
+            tone: "tool" as const,
+          },
+        },
+        {
+          id: "assistant-final-entry",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:20Z",
+          message: {
+            id: "assistant-final" as never,
+            role: "assistant",
+            text: "Done",
+            turnId: "turn-1" as never,
+            createdAt: "2026-01-01T00:00:20Z",
+            updatedAt: "2026-01-01T00:00:20Z",
+            streaming: false,
+          },
+        },
+      ],
+      latestTurn: {
+        turnId: "turn-1" as never,
+        state: "interrupted",
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: null,
+      },
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const fold = rows.find(
+      (row): row is Extract<(typeof rows)[number], { kind: "turn-fold" }> =>
+        row.kind === "turn-fold",
+    );
+    expect(fold?.label).toContain("You stopped");
+    expect(fold?.label).not.toMatch(/\b0s\b/);
+
+    const assistantRow = rows.find(
+      (row): row is Extract<(typeof rows)[number], { kind: "message" }> =>
+        row.kind === "message" && row.message.id === ("assistant-final" as never),
+    );
+    expect(assistantRow?.showAssistantMeta).toBe(true);
+    expect(assistantRow?.showAssistantCopyButton).toBe(true);
+    expect(assistantRow?.assistantCopyStreaming).toBe(false);
+  });
+
+  it("keeps an explicitly unknown latest turn duration-free after recovery activity", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "user-entry-recovered",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:00Z",
+          message: {
+            id: "user-recovered" as never,
+            role: "user",
+            text: "go",
+            turnId: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "work-entry-recovered",
+          kind: "work",
+          createdAt: "2026-01-02T08:00:00Z",
+          entry: {
+            id: "synthetic-recovery-activity",
+            createdAt: "2026-01-02T08:00:00Z",
+            turnId: "turn-recovered" as never,
+            label: "Tool orphaned",
+            tone: "tool" as const,
+            synthetic: true,
+          },
+        },
+      ],
+      latestTurn: {
+        turnId: "turn-recovered" as never,
+        state: "interrupted",
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: null,
+      },
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const fold = rows.find(
+      (row): row is Extract<(typeof rows)[number], { kind: "turn-fold" }> =>
+        row.kind === "turn-fold",
+    );
+    expect(fold?.label).toBe("You stopped this response");
+    expect(fold?.label).not.toContain("after");
+  });
+
+  it("keeps a recovered turn duration-free after a subsequent turn starts", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "user-entry-recovered-historical",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:00Z",
+          message: {
+            id: "user-recovered-historical" as never,
+            role: "user",
+            text: "go",
+            turnId: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "work-entry-recovered-historical",
+          kind: "work",
+          createdAt: "2026-01-02T08:00:00Z",
+          entry: {
+            id: "synthetic-recovery-activity-historical",
+            createdAt: "2026-01-02T08:00:00Z",
+            turnId: "turn-recovered" as never,
+            label: "Tool orphaned",
+            tone: "tool" as const,
+            synthetic: true,
+          },
+        },
+      ],
+      latestTurn: {
+        turnId: "turn-next" as never,
+        state: "running",
+        startedAt: "2026-01-02T09:00:00Z",
+        completedAt: null,
+      },
+      turnCompletionByTurnId: new Map([
+        ["turn-recovered" as never, null],
+        ["turn-next" as never, null],
+      ]),
+      isWorking: true,
+      activeTurnStartedAt: "2026-01-02T09:00:00Z",
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const fold = rows.find(
+      (row): row is Extract<(typeof rows)[number], { kind: "turn-fold" }> =>
+        row.kind === "turn-fold",
+    );
+    expect(fold?.label).toBe("Worked");
+    expect(fold?.label).not.toContain("for");
+  });
+
+  it("uses the reducer's per-turn settlement after later work starts", () => {
+    const turnA = TurnId.make("turn-reducer-a");
+    const turnB = TurnId.make("turn-reducer-b");
+    const baseThread: OrchestrationThread = {
+      id: ThreadId.make("thread-reducer"),
+      projectId: ProjectId.make("project-reducer"),
+      title: "Reducer thread",
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      latestTurn: {
+        turnId: turnA,
+        state: "running",
+        requestedAt: "2026-01-01T00:00:00.000Z",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        completedAt: null,
+        assistantMessageId: null,
+      },
+      settledTurnCompletions: {},
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      archivedAt: null,
+      deletedAt: null,
+      messages: [],
+      proposedPlans: [],
+      activities: [],
+      checkpoints: [
+        {
+          turnId: turnA,
+          checkpointTurnCount: 1,
+          checkpointRef: CheckpointRef.make("checkpoint-reducer-a"),
+          status: "ready",
+          files: [],
+          assistantMessageId: null,
+          completedAt: "2026-01-01T00:00:10.000Z",
+        },
+      ],
+      session: {
+        threadId: ThreadId.make("thread-reducer"),
+        status: "running",
+        providerName: "codex",
+        runtimeMode: "full-access",
+        activeTurnId: turnA,
+        lastError: null,
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    };
+    const baseEventFields = {
+      eventId: EventId.make("event-reducer"),
+      commandId: null,
+      causationEventId: null,
+      correlationId: null,
+      metadata: {},
+    } as const;
+    const completionMap = (thread: OrchestrationThread) => {
+      const map = new Map<TurnId, string | null>();
+      for (const turnId of Object.keys(thread.settledTurnCompletions ?? {}) as TurnId[]) {
+        map.set(turnId, thread.settledTurnCompletions?.[turnId] ?? null);
+      }
+      const latest = thread.latestTurn;
+      if (latest !== null && !map.has(latest.turnId)) {
+        map.set(latest.turnId, latest.completedAt);
+      }
+      return map;
+    };
+
+    for (const scenario of [
+      { completedAt: "2026-01-01T00:01:00.000Z", expected: "Worked for 1m" },
+      { completedAt: null, expected: "Worked" },
+    ] as const) {
+      const recovered = applyThreadDetailEvent(baseThread, {
+        ...baseEventFields,
+        sequence: 1,
+        occurredAt: "2026-01-01T00:02:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: baseThread.id,
+        type: "thread.session-set",
+        payload: {
+          threadId: baseThread.id,
+          session: {
+            threadId: baseThread.id,
+            status: "interrupted",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: "2026-01-01T00:02:00.000Z",
+          },
+          interruptedTurnId: turnA,
+          latestTurnCompletedAt: scenario.completedAt,
+        },
+      });
+      expect(recovered.kind).toBe("updated");
+      if (recovered.kind !== "updated") continue;
+
+      const next = applyThreadDetailEvent(recovered.thread, {
+        ...baseEventFields,
+        sequence: 2,
+        occurredAt: "2026-01-01T00:03:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: baseThread.id,
+        type: "thread.session-set",
+        payload: {
+          threadId: baseThread.id,
+          session: {
+            threadId: baseThread.id,
+            status: "running",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: turnB,
+            lastError: null,
+            updatedAt: "2026-01-01T00:03:00.000Z",
+          },
+        },
+      });
+      expect(next.kind).toBe("updated");
+      if (next.kind !== "updated") continue;
+
+      expect(next.thread.settledTurnCompletions?.[turnA]).toBe(scenario.completedAt);
+      if (scenario.completedAt !== null) {
+        expect(next.thread.checkpoints[0]?.completedAt).toBe(scenario.completedAt);
+      }
+
+      const rows = deriveMessagesTimelineRows({
+        timelineEntries: [
+          {
+            id: "user-entry-reducer",
+            kind: "message",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            message: {
+              id: "user-reducer" as never,
+              role: "user",
+              text: "go",
+              turnId: null,
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+              streaming: false,
+            },
+          },
+          {
+            id: "work-entry-reducer",
+            kind: "work",
+            createdAt: "2026-01-01T00:00:05.000Z",
+            entry: {
+              id: "work-reducer",
+              createdAt: "2026-01-01T00:00:05.000Z",
+              turnId: turnA,
+              label: "Read file",
+              tone: "tool" as const,
+            },
+          },
+        ],
+        latestTurn: next.thread.latestTurn,
+        turnCompletionByTurnId: completionMap(next.thread),
+        runningTurnId: turnB,
+        isWorking: true,
+        activeTurnStartedAt: "2026-01-01T00:03:00.000Z",
+        turnDiffSummaryByAssistantMessageId: new Map(),
+        revertTurnCountByUserMessageId: new Map(),
+      });
+
+      const fold = rows.find(
+        (row): row is Extract<(typeof rows)[number], { kind: "turn-fold" }> =>
+          row.kind === "turn-fold",
+      );
+      expect(fold?.label).toBe(scenario.expected);
+    }
   });
 
   it("keeps the previous turn folded while a newly sent message awaits its turn", () => {

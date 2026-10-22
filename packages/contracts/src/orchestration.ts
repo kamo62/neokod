@@ -462,6 +462,12 @@ export const OrchestrationThread = Schema.Struct({
   goal: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   goalStatus: Schema.optional(Schema.Literals(["active", "done"])),
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
+  /**
+   * Client-owned authoritative settlement timing per turn. A present key with
+   * `null` means the turn's completion is explicitly unknown. Server snapshots
+   * omit this; the client reducer maintains it from session settlements.
+   */
+  settledTurnCompletions: Schema.optional(Schema.Record(TurnId, Schema.NullOr(IsoDateTime))),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   archivedAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
@@ -841,6 +847,22 @@ const ThreadSessionSetCommand = Schema.Struct({
   commandId: CommandId,
   threadId: ThreadId,
   session: OrchestrationSession,
+  /**
+   * The turn this recovery session update settles. It pins durable message
+   * closure to that turn and prevents a delayed interruption from closing
+   * messages that belong to newer work.
+   */
+  interruptedTurnId: Schema.optional(TurnId),
+  /**
+   * Completion time for the running turn this session update settles. Recovery
+   * uses it to freeze a turn at its last observation while `session.updatedAt`
+   * and event ordering stay on the server clock.
+   *
+   * Omitted means legacy behaviour: the session update time stands in for a
+   * completion. Explicit `null` means no current-turn observation exists, so
+   * completion is unknown and must not be replaced by recovery time.
+   */
+  latestTurnCompletedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   createdAt: IsoDateTime,
 });
 
@@ -860,6 +882,12 @@ const ThreadMessageAssistantCompleteCommand = Schema.Struct({
   threadId: ThreadId,
   messageId: MessageId,
   turnId: Schema.optional(TurnId),
+  /**
+   * Last server-owned observation of the message. Set when a durable closure
+   * settles a persisted streaming message; event ordering still comes from
+   * `createdAt`.
+   */
+  lastObservedAt: Schema.optional(IsoDateTime),
   createdAt: IsoDateTime,
 });
 
@@ -1121,6 +1149,10 @@ export const ThreadSessionStopRequestedPayload = Schema.Struct({
 export const ThreadSessionSetPayload = Schema.Struct({
   threadId: ThreadId,
   session: OrchestrationSession,
+  // Pins recovery message closure to the interrupted turn.
+  interruptedTurnId: Schema.optional(TurnId),
+  // Omitted keeps the legacy session-time default; explicit null is unknown.
+  latestTurnCompletedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
 });
 
 export const ThreadProposedPlanUpsertedPayload = Schema.Struct({

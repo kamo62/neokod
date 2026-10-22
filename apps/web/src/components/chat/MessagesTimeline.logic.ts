@@ -7,6 +7,7 @@ import {
   type WorkLogEntry,
 } from "../../session-logic";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
+import { resolveTerminalElapsedEnd } from "../threadLifecycle.logic";
 import { deriveToolCallAction } from "./ToolCallLabel.logic";
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
 import { type MessageId, type OrchestrationLatestTurn, type TurnId } from "@neokod/contracts";
@@ -284,11 +285,12 @@ interface TurnFold {
 
 /**
  * The session's running turn is authoritative when latestTurn briefly lags or
- * regresses behind it. Otherwise, the latest turn counts as unsettled while it
- * is still running (or has not recorded a completion). This is deliberately
- * keyed on turn lifecycle rather than transient working state: right after the
- * user sends a message, the previous turn is still the "active" one until the
- * server creates the new turn, and folding must not flicker through that window.
+ * regresses behind it. Otherwise, turn lifecycle decides settlement; elapsed
+ * time may be unknown without making a terminal turn active. This is
+ * deliberately keyed on lifecycle rather than transient working state: right
+ * after the user sends a message, the previous turn is still the "active" one
+ * until the server creates the new turn, and folding must not flicker through
+ * that window.
  */
 function deriveUnsettledTurnId(
   latestTurn: TimelineLatestTurn | null,
@@ -300,8 +302,7 @@ function deriveUnsettledTurnId(
   if (!latestTurn) {
     return null;
   }
-  const isSettled = latestTurn.completedAt !== null && latestTurn.state !== "running";
-  return isSettled ? null : latestTurn.turnId;
+  return latestTurn.state === "running" ? latestTurn.turnId : null;
 }
 
 /**
@@ -313,6 +314,7 @@ function deriveTurnFolds(input: {
   timelineEntries: ReadonlyArray<TimelineEntry>;
   terminalAssistantMessageIds: ReadonlySet<string>;
   latestTurn: TimelineLatestTurn | null;
+  turnCompletionByTurnId: ReadonlyMap<TurnId, string | null>;
   unsettledTurnId: TurnId | null;
 }): ReadonlyMap<string, TurnFold> {
   interface TurnGroup {
@@ -388,27 +390,48 @@ function deriveTurnFolds(input: {
     }
 
     const firstEntry = group.entries[0];
-    const lastEntry = group.entries.at(-1);
-    if (!firstEntry || !lastEntry) {
+    if (!firstEntry) {
       continue;
     }
 
     const isLatestInterruptedTurn =
       input.latestTurn?.turnId === turnId && input.latestTurn.state === "interrupted";
-    // A turn cut short by a steer leaves trailing work entries behind its
-    // terminal message — take whichever ended last.
-    const lastEntryEnd =
-      lastEntry.kind === "message" ? lastEntry.message.updatedAt : lastEntry.createdAt;
-    const elapsedMs =
-      input.latestTurn?.turnId === turnId &&
-      input.latestTurn.startedAt &&
-      input.latestTurn.completedAt
-        ? computeElapsedMs(input.latestTurn.startedAt, input.latestTurn.completedAt)
-        : computeElapsedMs(
-            group.startBoundary ?? firstEntry.createdAt,
-            maxIsoTimestamp(group.terminalEntry?.message.updatedAt ?? null, lastEntryEnd) ??
-              lastEntryEnd,
-          );
+    const startedAt =
+      (input.latestTurn?.turnId === turnId ? input.latestTurn.startedAt : null) ??
+      group.startBoundary ??
+      firstEntry.createdAt;
+    const completion = input.turnCompletionByTurnId.get(turnId);
+    let elapsedMs: number | null;
+    if (completion !== undefined) {
+      const terminalElapsed = resolveTerminalElapsedEnd({
+        terminal: true,
+        completedAt: completion,
+      });
+      elapsedMs =
+        terminalElapsed.state === "known"
+          ? computeElapsedMs(startedAt, terminalElapsed.endedAt)
+          : null;
+    } else {
+      // Historical turns without authoritative completion may use their own
+      // observed entries, but never a synthetic reconciliation row.
+      const lastEvidenceEntry = [...group.entries]
+        .reverse()
+        .find((entry) => !(entry.kind === "work" && entry.entry.synthetic === true));
+      const lastEvidenceEnd =
+        lastEvidenceEntry === undefined
+          ? null
+          : lastEvidenceEntry.kind === "message"
+            ? lastEvidenceEntry.message.updatedAt
+            : lastEvidenceEntry.createdAt;
+      elapsedMs =
+        lastEvidenceEnd === null
+          ? null
+          : computeElapsedMs(
+              group.startBoundary ?? firstEntry.createdAt,
+              maxIsoTimestamp(group.terminalEntry?.message.updatedAt ?? null, lastEvidenceEnd) ??
+                lastEvidenceEnd,
+            );
+    }
     const duration = elapsedMs !== null ? formatDuration(elapsedMs) : null;
     const label = isLatestInterruptedTurn
       ? duration
@@ -432,6 +455,7 @@ function deriveTurnFolds(input: {
 export function deriveMessagesTimelineRows(input: {
   timelineEntries: ReadonlyArray<TimelineEntry>;
   latestTurn?: TimelineLatestTurn | null;
+  turnCompletionByTurnId?: ReadonlyMap<TurnId, string | null>;
   runningTurnId?: TurnId | null;
   expandedTurnIds?: ReadonlySet<TurnId>;
   expandedWorkGroupIds?: ReadonlySet<string>;
@@ -449,10 +473,17 @@ export function deriveMessagesTimelineRows(input: {
     input.latestTurn ?? null,
     input.runningTurnId ?? null,
   );
+  const latestTurn = input.latestTurn ?? null;
+  const completionByTurnId =
+    input.turnCompletionByTurnId ??
+    new Map<TurnId, string | null>(
+      latestTurn === null ? [] : [[latestTurn.turnId, latestTurn.completedAt]],
+    );
   const foldsByAnchorEntryId = deriveTurnFolds({
     timelineEntries: input.timelineEntries,
     terminalAssistantMessageIds,
-    latestTurn: input.latestTurn ?? null,
+    latestTurn,
+    turnCompletionByTurnId: completionByTurnId,
     unsettledTurnId,
   });
   const collapsedEntryIds = new Set<string>();

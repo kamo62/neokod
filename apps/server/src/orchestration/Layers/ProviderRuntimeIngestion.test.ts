@@ -4,6 +4,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import {
+  type OrchestrationEvent,
   OrchestrationReadModel,
   ProviderDriverKind,
   ProviderRuntimeEvent,
@@ -231,6 +232,7 @@ describe("ProviderRuntimeIngestion", () => {
   async function createHarness(options?: {
     serverSettings?: Partial<ServerSettings>;
     startIngestion?: boolean;
+    domainEvents?: PubSub.PubSub<OrchestrationEvent>;
   }) {
     const workspaceRoot = makeTempDir("neokod-provider-project-");
     NodeFS.mkdirSync(NodePath.join(workspaceRoot, ".git"));
@@ -247,8 +249,27 @@ describe("ProviderRuntimeIngestion", () => {
       Layer.provide(RepositoryIdentityResolver.layer),
       Layer.provide(SqlitePersistenceMemory),
     );
+    const domainEvents = options?.domainEvents;
+    const engineLayer =
+      domainEvents === undefined
+        ? orchestrationLayer
+        : Layer.effect(
+            OrchestrationEngineService,
+            Effect.gen(function* () {
+              const real = yield* OrchestrationEngineService;
+              return OrchestrationEngineService.of({
+                readEvents: real.readEvents,
+                dispatch: real.dispatch,
+                get streamDomainEvents() {
+                  return Stream.fromPubSub(domainEvents);
+                },
+                subscribeDomainEvents: PubSub.subscribe(domainEvents),
+                latestSequence: real.latestSequence,
+              });
+            }),
+          ).pipe(Layer.provide(orchestrationLayer));
     const layer = ProviderRuntimeIngestionLive.pipe(
-      Layer.provideMerge(orchestrationLayer),
+      Layer.provideMerge(engineLayer),
       Layer.provideMerge(projectionSnapshotLayer),
       Layer.provideMerge(
         ProjectionRuntimeItemRepositoryLive.pipe(Layer.provide(SqlitePersistenceMemory)),
@@ -270,8 +291,10 @@ describe("ProviderRuntimeIngestion", () => {
     const ingestion = await activeRuntime.runPromise(
       Effect.service(ProviderRuntimeIngestionService),
     );
-    scope = await activeRuntime.runPromise(Scope.make("sequential"));
-    const start = () => activeRuntime.runPromise(ingestion.start().pipe(Scope.provide(scope!)));
+    const ingestionScope = await activeRuntime.runPromise(Scope.make("sequential"));
+    scope = ingestionScope;
+    const start = () =>
+      activeRuntime.runPromise(ingestion.start().pipe(Scope.provide(ingestionScope)));
     if (options?.startIngestion !== false) {
       await start();
     }
@@ -351,6 +374,8 @@ describe("ProviderRuntimeIngestion", () => {
         ),
       emit: provider.emit,
       setProviderSession: provider.setSession,
+      ingestion,
+      ingestionScope,
       start,
       drain,
     };
@@ -770,6 +795,983 @@ describe("ProviderRuntimeIngestion", () => {
     expect(reused.map((item) => item.effectiveState)).toEqual(["stopped", "active"]);
   });
 
+  it("closes active approvals when the session is set to interrupted", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-interrupted-approval");
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.runtime-item.observe",
+        commandId: CommandId.make("interrupted-approval-observe"),
+        threadId,
+        observation: {
+          runtimeItemId: RuntimeItemId.make("approval-1"),
+          providerItemId: null,
+          sessionId: RuntimeSessionId.make("session-1"),
+          kind: "approval",
+          scope: "turn",
+          turnId,
+          providerState: "active",
+          label: "Approve command",
+          providerEventId: EventId.make("interrupted-approval-provider-event"),
+          observedAt: "2026-01-01T00:03:01.000Z",
+        },
+        createdAt: "2026-01-01T00:03:01.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("interrupted-approval-session-set"),
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: "2026-01-01T00:04:00.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:04:00.000Z",
+      }),
+    );
+
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "approval.resolved"),
+    );
+
+    expect(await harness.runtimeItems()).toMatchObject([
+      {
+        effectiveState: "orphaned",
+        mayStillBeRunning: true,
+        // The approval's own last observation ends the orphaned interval; the
+        // session update at 00:04 is only when recovery noticed it.
+        completedAt: "2026-01-01T00:03:01.000Z",
+      },
+    ]);
+    const resolved = thread.activities.find((activity) => activity.kind === "approval.resolved");
+    expect(resolved?.payload).toMatchObject({
+      requestId: "approval-1",
+      synthetic: true,
+    });
+  });
+
+  it("closes startup items when the interrupted session follows start immediately", async () => {
+    // Start with persisted running work. The startup scan leaves the running
+    // turn alone; boot recovery then publishes its interrupted session event
+    // immediately after start returns.
+    const domainEvents = Effect.runSync(PubSub.unbounded<OrchestrationEvent>());
+    const harness = await createHarness({ startIngestion: false, domainEvents });
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-startup-recovery");
+    const observedAt = "2026-01-01T00:03:01.000Z";
+    const recoveredAt = "2026-01-01T00:04:00.000Z";
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.runtime-item.observe",
+        commandId: CommandId.make("startup-recovery-observe"),
+        threadId,
+        observation: {
+          runtimeItemId: RuntimeItemId.make("startup-recovery-approval"),
+          providerItemId: null,
+          sessionId: RuntimeSessionId.make("session-startup-recovery"),
+          kind: "approval",
+          scope: "turn",
+          turnId,
+          providerState: "active",
+          label: "Approve command",
+          providerEventId: EventId.make("startup-recovery-provider-event"),
+          observedAt,
+        },
+        createdAt: observedAt,
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("startup-recovery-running"),
+        threadId,
+        session: {
+          threadId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: turnId,
+          updatedAt: "2026-01-01T00:03:00.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:03:00.000Z",
+      }),
+    );
+
+    const interruptedEvent = {
+      sequence: 2,
+      eventId: EventId.make("startup-recovery-interrupted-event"),
+      type: "thread.session-set",
+      aggregateKind: "thread",
+      aggregateId: threadId,
+      occurredAt: recoveredAt,
+      commandId: CommandId.make("startup-recovery-interrupted"),
+      causationEventId: null,
+      correlationId: null,
+      metadata: {},
+      payload: {
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: recoveredAt,
+          lastError: null,
+        },
+        latestTurnCompletedAt: null,
+      },
+    } satisfies OrchestrationEvent;
+
+    // Publish synchronously in the same fiber after start returns. A lazy
+    // `streamDomainEvents` consumer cannot have subscribed yet, so the
+    // pre-acquired subscription is what retains the recovery boundary.
+    await harness.run(
+      Effect.gen(function* () {
+        yield* harness.ingestion.start().pipe(Scope.provide(harness.ingestionScope));
+        yield* PubSub.publish(domainEvents, interruptedEvent);
+        // Let the already-subscribed consumer enqueue the retained event.
+        yield* Effect.yieldNow;
+      }),
+    );
+    await harness.drain();
+
+    expect(await harness.runtimeItems()).toMatchObject([
+      {
+        runtimeItemId: "startup-recovery-approval",
+        effectiveState: "orphaned",
+        // The item's own observation ends the orphaned interval; the recovery
+        // session update is only when the server noticed.
+        completedAt: observedAt,
+      },
+    ]);
+
+    const firstPass = (await harness.readModel()).threads
+      .find((thread) => thread.id === threadId)
+      ?.activities.filter((activity) => activity.kind === "approval.resolved");
+    expect(firstPass).toHaveLength(1);
+
+    // A second drain must not duplicate the synthetic closure.
+    await harness.drain();
+    const secondPass = (await harness.readModel()).threads
+      .find((thread) => thread.id === threadId)
+      ?.activities.filter((activity) => activity.kind === "approval.resolved");
+    expect(secondPass).toHaveLength(1);
+  });
+
+  it("closes a persisted streaming message on runtime.error without cache state", async () => {
+    const domainEvents = Effect.runSync(PubSub.unbounded<OrchestrationEvent>());
+    const harness = await createHarness({ domainEvents });
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-runtime-error-streaming");
+    const messageId = asMessageId("runtime-error-streaming-message");
+    const observedAt = "2026-01-01T00:03:01.000Z";
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("runtime-error-streaming-delta"),
+        threadId,
+        messageId,
+        delta: "partial answer",
+        turnId,
+        createdAt: observedAt,
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.runtime-item.observe",
+        commandId: CommandId.make("runtime-error-tool-observe"),
+        threadId,
+        observation: {
+          runtimeItemId: RuntimeItemId.make("runtime-error-tool"),
+          providerItemId: null,
+          sessionId: RuntimeSessionId.make("session-runtime-error"),
+          kind: "tool",
+          scope: "turn",
+          turnId,
+          providerState: "active",
+          label: "Run tests",
+          providerEventId: EventId.make("runtime-error-tool-started"),
+          observedAt,
+        },
+        createdAt: observedAt,
+      }),
+    );
+    await harness.drain();
+
+    harness.emit({
+      type: "runtime.error",
+      eventId: asEventId("runtime-error-streaming-event"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId,
+      turnId,
+      createdAt: "2026-01-01T00:04:00.000Z",
+      payload: { message: "runtime exploded" },
+    });
+    await harness.drain();
+
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.messages.find((message) => message.id === messageId)).toMatchObject({
+      text: "partial answer",
+      streaming: false,
+      updatedAt: observedAt,
+    });
+    expect(
+      (await harness.runtimeItems()).find((item) => item.runtimeItemId === "runtime-error-tool"),
+    ).toMatchObject({
+      effectiveState: "orphaned",
+      completedAt: observedAt,
+    });
+  });
+
+  it("closes a persisted streaming message on completion without cache state", async () => {
+    const domainEvents = Effect.runSync(PubSub.unbounded<OrchestrationEvent>());
+    const harness = await createHarness({ domainEvents });
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-completion-streaming");
+    const messageId = asMessageId("completion-streaming-message");
+    const observedAt = "2026-01-01T00:03:01.000Z";
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("completion-streaming-delta"),
+        threadId,
+        messageId,
+        delta: "partial answer",
+        turnId,
+        createdAt: observedAt,
+      }),
+    );
+
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("completion-streaming-event"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId,
+      turnId,
+      createdAt: "2026-01-01T00:04:00.000Z",
+      status: "completed",
+    });
+    await harness.drain();
+
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.messages.find((message) => message.id === messageId)).toMatchObject({
+      text: "partial answer",
+      streaming: false,
+      updatedAt: observedAt,
+    });
+  });
+
+  it("settles a persisted streaming assistant message when recovery interrupts the session", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-streaming-recovery");
+    const messageId = asMessageId("streaming-recovery-message");
+    const observedAt = "2026-01-01T00:03:01.000Z";
+    const recoveredAt = "2026-01-01T00:04:00.000Z";
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("streaming-recovery-delta"),
+        threadId,
+        messageId,
+        delta: "partial answer",
+        turnId,
+        createdAt: observedAt,
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("streaming-recovery-interrupted"),
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: recoveredAt,
+          lastError: null,
+        },
+        interruptedTurnId: turnId,
+        latestTurnCompletedAt: null,
+        createdAt: recoveredAt,
+      }),
+    );
+    await harness.drain();
+
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.messages.find((message) => message.id === messageId)).toMatchObject({
+      text: "partial answer",
+      streaming: false,
+      // The message keeps its own last observation; recovery time orders the
+      // completion event but does not overwrite the content timestamp.
+      updatedAt: observedAt,
+    });
+  });
+
+  it("does not settle streaming messages for newer work during a delayed interruption", async () => {
+    const domainEvents = Effect.runSync(PubSub.unbounded<OrchestrationEvent>());
+    const harness = await createHarness({ domainEvents });
+    const threadId = asThreadId("thread-1");
+    const oldTurnId = asTurnId("turn-delayed-old");
+    const newerTurnId = asTurnId("turn-delayed-newer");
+    const oldMessageId = asMessageId("delayed-old-message");
+    const newerMessageId = asMessageId("delayed-newer-message");
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("delayed-old-delta"),
+        threadId,
+        messageId: oldMessageId,
+        delta: "old partial",
+        turnId: oldTurnId,
+        createdAt: "2026-01-01T00:03:01.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("delayed-newer-delta"),
+        threadId,
+        messageId: newerMessageId,
+        delta: "newer partial",
+        turnId: newerTurnId,
+        createdAt: "2026-01-01T00:05:00.000Z",
+      }),
+    );
+    for (const [runtimeItemId, turnIdValue, sessionId, observedAt] of [
+      ["delayed-old-approval", oldTurnId, "session-delayed-old", "2026-01-01T00:03:01.000Z"],
+      ["delayed-newer-approval", newerTurnId, "session-delayed-newer", "2026-01-01T00:05:00.000Z"],
+    ] as const) {
+      await harness.run(
+        harness.engine.dispatch({
+          type: "thread.runtime-item.observe",
+          commandId: CommandId.make(`delayed-observe-${runtimeItemId}`),
+          threadId,
+          observation: {
+            runtimeItemId: RuntimeItemId.make(runtimeItemId),
+            providerItemId: null,
+            sessionId: RuntimeSessionId.make(sessionId),
+            kind: "approval",
+            scope: "turn",
+            turnId: turnIdValue,
+            providerState: "active",
+            label: "Approve command",
+            providerEventId: EventId.make(`delayed-provider-${runtimeItemId}`),
+            observedAt,
+          },
+          createdAt: observedAt,
+        }),
+      );
+    }
+
+    const interruptedEvent = {
+      sequence: 3,
+      eventId: EventId.make("delayed-interruption-event"),
+      type: "thread.session-set",
+      aggregateKind: "thread",
+      aggregateId: threadId,
+      occurredAt: "2026-01-01T00:04:00.000Z",
+      commandId: CommandId.make("delayed-interruption"),
+      causationEventId: null,
+      correlationId: null,
+      metadata: {},
+      payload: {
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: "2026-01-01T00:04:00.000Z",
+          lastError: null,
+        },
+        interruptedTurnId: oldTurnId,
+        latestTurnCompletedAt: null,
+      },
+    } satisfies OrchestrationEvent;
+
+    await harness.run(
+      Effect.gen(function* () {
+        yield* PubSub.publish(domainEvents, interruptedEvent);
+        yield* Effect.yieldNow;
+      }),
+    );
+    await harness.drain();
+
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.messages.find((message) => message.id === oldMessageId)).toMatchObject({
+      text: "old partial",
+      streaming: false,
+      updatedAt: "2026-01-01T00:03:01.000Z",
+    });
+    // The newer turn is outside the interruption cutoff and turn ownership.
+    expect(thread?.messages.find((message) => message.id === newerMessageId)).toMatchObject({
+      text: "newer partial",
+      streaming: true,
+      updatedAt: "2026-01-01T00:05:00.000Z",
+    });
+
+    const runtimeItems = await harness.runtimeItems();
+    expect(
+      runtimeItems.find((item) => item.runtimeItemId === "delayed-old-approval"),
+    ).toMatchObject({
+      effectiveState: "orphaned",
+      completedAt: "2026-01-01T00:03:01.000Z",
+    });
+    expect(
+      runtimeItems.find((item) => item.runtimeItemId === "delayed-newer-approval"),
+    ).toMatchObject({ effectiveState: "active" });
+  });
+
+  it("settles persisted streaming messages during startup when the interruption survived a crash", async () => {
+    const harness = await createHarness({ startIngestion: false });
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-startup-streaming");
+    const messageId = asMessageId("startup-streaming-message");
+    const observedAt = "2026-01-01T00:03:01.000Z";
+    const recoveredAt = "2026-01-01T00:04:00.000Z";
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("startup-streaming-delta"),
+        threadId,
+        messageId,
+        delta: "partial answer",
+        turnId,
+        createdAt: observedAt,
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("startup-streaming-running"),
+        threadId,
+        session: {
+          threadId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: turnId,
+          updatedAt: "2026-01-01T00:03:00.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:03:00.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("startup-streaming-interrupted"),
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: recoveredAt,
+          lastError: null,
+        },
+        interruptedTurnId: turnId,
+        latestTurnCompletedAt: null,
+        createdAt: recoveredAt,
+      }),
+    );
+
+    // Ingestion starts after the interruption is already durable. There are no
+    // active runtime items, so message recovery must run independently.
+    await harness.start();
+    await harness.drain();
+
+    const firstPass = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(firstPass?.messages.find((message) => message.id === messageId)).toMatchObject({
+      text: "partial answer",
+      streaming: false,
+      updatedAt: observedAt,
+    });
+
+    // A repeated startup must find the message already closed and leave it
+    // unchanged, with no duplicate text.
+    await harness.start();
+    await harness.drain();
+    const secondPass = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(secondPass?.messages.find((message) => message.id === messageId)).toMatchObject({
+      text: "partial answer",
+      streaming: false,
+      updatedAt: observedAt,
+    });
+  });
+
+  it("settles an older interrupted turn at startup while newer work is running", async () => {
+    const harness = await createHarness({ startIngestion: false });
+    const threadId = asThreadId("thread-1");
+    const olderTurnId = asTurnId("turn-startup-older");
+    const newerTurnId = asTurnId("turn-startup-newer");
+    const olderMessageId = asMessageId("startup-older-message");
+    const newerMessageId = asMessageId("startup-newer-message");
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("startup-older-running"),
+        threadId,
+        session: {
+          threadId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: olderTurnId,
+          updatedAt: "2026-01-01T00:03:00.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:03:00.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("startup-older-delta"),
+        threadId,
+        messageId: olderMessageId,
+        delta: "older partial",
+        turnId: olderTurnId,
+        createdAt: "2026-01-01T00:03:01.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("startup-older-interrupted"),
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: "2026-01-01T00:04:00.000Z",
+          lastError: null,
+        },
+        interruptedTurnId: olderTurnId,
+        latestTurnCompletedAt: null,
+        createdAt: "2026-01-01T00:04:00.000Z",
+      }),
+    );
+    // Newer work starts before the older message closure can run.
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("startup-newer-running"),
+        threadId,
+        session: {
+          threadId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: newerTurnId,
+          updatedAt: "2026-01-01T00:04:30.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:04:30.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("startup-newer-delta"),
+        threadId,
+        messageId: newerMessageId,
+        delta: "newer partial",
+        turnId: newerTurnId,
+        createdAt: "2026-01-01T00:05:00.000Z",
+      }),
+    );
+
+    await harness.start();
+    await harness.drain();
+
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.messages.find((message) => message.id === olderMessageId)).toMatchObject({
+      text: "older partial",
+      streaming: false,
+      updatedAt: "2026-01-01T00:03:01.000Z",
+    });
+    expect(thread?.messages.find((message) => message.id === newerMessageId)).toMatchObject({
+      text: "newer partial",
+      streaming: true,
+      updatedAt: "2026-01-01T00:05:00.000Z",
+    });
+  });
+
+  it("settles a streaming message on an archived interrupted thread at startup", async () => {
+    const harness = await createHarness({ startIngestion: false });
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-archived-streaming");
+    const messageId = asMessageId("archived-streaming-message");
+    const observedAt = "2026-01-01T00:03:01.000Z";
+    const recoveredAt = "2026-01-01T00:04:00.000Z";
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("archived-streaming-running"),
+        threadId,
+        session: {
+          threadId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: turnId,
+          updatedAt: "2026-01-01T00:03:00.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:03:00.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("archived-streaming-delta"),
+        threadId,
+        messageId,
+        delta: "partial answer",
+        turnId,
+        createdAt: observedAt,
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("archived-streaming-interrupted"),
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: recoveredAt,
+          lastError: null,
+        },
+        interruptedTurnId: turnId,
+        latestTurnCompletedAt: null,
+        createdAt: recoveredAt,
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.archive",
+        commandId: CommandId.make("archived-streaming-archive"),
+        threadId,
+      }),
+    );
+
+    await harness.start();
+    await harness.drain();
+
+    // Restoring the thread must not expose a message that startup recovery
+    // failed to close while the thread was archived.
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.unarchive",
+        commandId: CommandId.make("archived-streaming-unarchive"),
+        threadId,
+      }),
+    );
+    await harness.drain();
+
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.messages.find((message) => message.id === messageId)).toMatchObject({
+      text: "partial answer",
+      streaming: false,
+      updatedAt: observedAt,
+    });
+  });
+
+  it("orphans startup items at their own observation when a terminal turn has unknown completion", async () => {
+    const harness = await createHarness({ startIngestion: false });
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-startup-unknown-completion");
+    const observedAt = "2026-01-01T00:03:01.000Z";
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.runtime-item.observe",
+        commandId: CommandId.make("startup-unknown-observe"),
+        threadId,
+        observation: {
+          runtimeItemId: RuntimeItemId.make("startup-unknown-approval"),
+          providerItemId: null,
+          sessionId: RuntimeSessionId.make("session-startup-unknown"),
+          kind: "approval",
+          scope: "turn",
+          turnId,
+          providerState: "active",
+          label: "Approve command",
+          providerEventId: EventId.make("startup-unknown-provider-event"),
+          observedAt,
+        },
+        createdAt: observedAt,
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("startup-unknown-running"),
+        threadId,
+        session: {
+          threadId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: turnId,
+          updatedAt: "2026-01-01T00:03:00.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:03:00.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("startup-unknown-interrupted"),
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: "2026-01-01T00:04:00.000Z",
+          lastError: null,
+        },
+        latestTurnCompletedAt: null,
+        createdAt: "2026-01-01T00:04:00.000Z",
+      }),
+    );
+    // A later session is ready, so startup takes the terminal-turn branch
+    // rather than the settled-session branch.
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("startup-unknown-ready"),
+        threadId,
+        session: {
+          threadId,
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: "2026-01-01T00:04:05.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:04:05.000Z",
+      }),
+    );
+
+    await harness.start();
+    await harness.drain();
+
+    expect(await harness.runtimeItems()).toMatchObject([
+      {
+        runtimeItemId: "startup-unknown-approval",
+        effectiveState: "orphaned",
+        completedAt: observedAt,
+      },
+    ]);
+  });
+
+  it("does not close items observed after the interrupted session update", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-interrupted-approval-newer");
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.runtime-item.observe",
+        commandId: CommandId.make("newer-approval-observe"),
+        threadId,
+        observation: {
+          runtimeItemId: RuntimeItemId.make("approval-newer"),
+          providerItemId: null,
+          sessionId: RuntimeSessionId.make("session-1"),
+          kind: "approval",
+          scope: "turn",
+          turnId,
+          providerState: "active",
+          label: "Approve command",
+          providerEventId: EventId.make("newer-approval-provider-event"),
+          observedAt: "2026-01-01T00:05:00.000Z",
+        },
+        createdAt: "2026-01-01T00:05:00.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("newer-approval-session-set"),
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: "2026-01-01T00:04:00.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:04:00.000Z",
+      }),
+    );
+
+    await waitForThread(harness.readModel, (entry) => entry.session?.status === "interrupted");
+    await harness.drain();
+
+    expect(await harness.runtimeItems()).toMatchObject([
+      { effectiveState: "active", mayStillBeRunning: false },
+    ]);
+  });
+
+  it("fences newer items for a bounded interruption and closes them on a later boot recovery", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-interrupted-mixed");
+
+    for (const [runtimeItemId, observedAt] of [
+      ["approval-old", "2026-01-01T00:03:01.000Z"],
+      ["approval-newer", "2026-01-01T00:05:00.000Z"],
+    ] as const) {
+      await harness.run(
+        harness.engine.dispatch({
+          type: "thread.runtime-item.observe",
+          commandId: CommandId.make(`mixed-observe-${runtimeItemId}`),
+          threadId,
+          observation: {
+            runtimeItemId: RuntimeItemId.make(runtimeItemId),
+            providerItemId: null,
+            sessionId: RuntimeSessionId.make("session-1"),
+            kind: "approval",
+            scope: "turn",
+            turnId,
+            providerState: "active",
+            label: "Approve command",
+            providerEventId: EventId.make(`mixed-provider-event-${runtimeItemId}`),
+            observedAt,
+          },
+          createdAt: observedAt,
+        }),
+      );
+    }
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("mixed-session-set"),
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: "2026-01-01T00:04:00.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:04:00.000Z",
+      }),
+    );
+
+    await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "approval.resolved"),
+    );
+    await harness.drain();
+
+    // The bounded live event closes the older approval only.
+    const afterBounded = await harness.runtimeItems();
+    expect(afterBounded.find((item) => item.runtimeItemId === "approval-old")?.effectiveState).toBe(
+      "orphaned",
+    );
+    expect(
+      afterBounded.find((item) => item.runtimeItemId === "approval-newer")?.effectiveState,
+    ).toBe("active");
+
+    // A later unbounded startup recovery shares the session update time but
+    // closes a different item set. Its command id must not collide with the
+    // bounded one, or receipt dedup would leave the newer approval active.
+    await harness.start();
+    await waitForThread(
+      harness.readModel,
+      (entry) =>
+        entry.activities.filter((activity) => activity.kind === "approval.resolved").length >= 2,
+    );
+
+    const afterRecovery = await harness.runtimeItems();
+    expect(
+      afterRecovery.find((item) => item.runtimeItemId === "approval-old")?.effectiveState,
+    ).toBe("orphaned");
+    expect(
+      afterRecovery.find((item) => item.runtimeItemId === "approval-newer")?.effectiveState,
+    ).toBe("orphaned");
+  });
+
+  it("scrubs absolute paths from runtime.error text", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+    const scrubbed = "ENOENT: open '[path]/crash.txt'";
+
+    harness.emit({
+      type: "runtime.error",
+      eventId: asEventId("evt-runtime-error-scrub"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-runtime-error-scrub"),
+      createdAt: now,
+      payload: {
+        message: "ENOENT: open '/Users/kamogelo/Code/t3code/crash.txt'",
+      },
+    });
+
+    const thread = await waitForThread(
+      harness.readModel,
+      (entry) =>
+        entry.session?.lastError === scrubbed &&
+        entry.activities.some(
+          (activity) =>
+            activity.id === "evt-runtime-error-scrub" &&
+            typeof activity.payload === "object" &&
+            activity.payload !== null &&
+            (activity.payload as { message?: unknown }).message === scrubbed,
+        ),
+    );
+    expect(thread.session?.lastError).toBe(scrubbed);
+    expect(
+      (
+        thread.activities.find((activity) => activity.id === "evt-runtime-error-scrub")?.payload as
+          | { message?: unknown }
+          | undefined
+      )?.message,
+    ).toBe(scrubbed);
+  });
+
   it("maps turn started/completed events into thread session updates", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";
@@ -1184,6 +2186,63 @@ describe("ProviderRuntimeIngestion", () => {
     const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
     expect(thread?.session?.status).toBe("starting");
     expect(thread?.session?.activeTurnId).toBeNull();
+  });
+
+  it("does not close the active turn's message on an untargeted completion", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-untargeted-active");
+    const messageId = asMessageId("untargeted-active-message");
+    const createdAt = "2026-01-01T00:00:00.000Z";
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-session-seed-untargeted-active"),
+        threadId,
+        session: {
+          threadId,
+          status: "running",
+          providerName: "claudeAgent",
+          runtimeMode: "approval-required",
+          activeTurnId: turnId,
+          updatedAt: createdAt,
+          lastError: null,
+        },
+        createdAt,
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("cmd-untargeted-active-message"),
+        threadId,
+        messageId,
+        delta: "still running",
+        turnId,
+        createdAt,
+      }),
+    );
+
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-turn-completed-untargeted-active"),
+      provider: ProviderDriverKind.make("claudeAgent"),
+      createdAt,
+      threadId,
+      status: "completed",
+    });
+    await harness.drain();
+
+    const thread = await waitForThread(
+      harness.readModel,
+      (entry) => entry.session?.status === "running",
+    );
+    expect(thread.session?.activeTurnId).toBe(turnId);
+    expect(thread.messages.find((message) => message.id === messageId)).toMatchObject({
+      text: "still running",
+      streaming: true,
+    });
   });
 
   it("accepts a targeted turn.completed when no turn is active", async () => {
@@ -1907,6 +2966,39 @@ describe("ProviderRuntimeIngestion", () => {
       threadId,
     );
 
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("cmd-steer-old-message"),
+        threadId,
+        messageId: asMessageId("msg-steer-old"),
+        delta: "old partial",
+        turnId: oldTurnId,
+        createdAt,
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.runtime-item.observe",
+        commandId: CommandId.make("steer-old-tool-observe"),
+        threadId,
+        observation: {
+          runtimeItemId: RuntimeItemId.make("steer-old-tool"),
+          providerItemId: null,
+          sessionId: RuntimeSessionId.make("session-steer-old"),
+          kind: "tool",
+          scope: "turn",
+          turnId: oldTurnId,
+          providerState: "active",
+          label: "Old work",
+          providerEventId: EventId.make("evt-steer-old-tool"),
+          observedAt: createdAt,
+        },
+        createdAt,
+      }),
+    );
+    await harness.drain();
+
     // The steer: a user-requested turn start while the old turn still runs.
     await harness.run(
       harness.engine.dispatch({
@@ -1955,6 +3047,56 @@ describe("ProviderRuntimeIngestion", () => {
     expect(threadAfterSteer.session?.activeTurnId).toBe(newTurnId);
     expect(threadAfterSteer.latestTurn?.turnId).toBe(newTurnId);
     expect(threadAfterSteer.latestTurn?.state).toBe("running");
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("cmd-steer-new-message"),
+        threadId,
+        messageId: asMessageId("msg-steer-new"),
+        delta: "new partial",
+        turnId: newTurnId,
+        createdAt,
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.runtime-item.observe",
+        commandId: CommandId.make("steer-new-tool-observe"),
+        threadId,
+        observation: {
+          runtimeItemId: RuntimeItemId.make("steer-new-tool"),
+          providerItemId: null,
+          sessionId: RuntimeSessionId.make("session-steer-new"),
+          kind: "tool",
+          scope: "turn",
+          turnId: newTurnId,
+          providerState: "active",
+          label: "New work",
+          providerEventId: EventId.make("evt-steer-new-tool"),
+          observedAt: createdAt,
+        },
+        createdAt,
+      }),
+    );
+    await harness.drain();
+
+    const finalThread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(finalThread?.messages.find((message) => message.turnId === oldTurnId)).toMatchObject({
+      text: "old partial",
+      streaming: false,
+    });
+    expect(finalThread?.messages.find((message) => message.turnId === newTurnId)).toMatchObject({
+      text: "new partial",
+      streaming: true,
+    });
+    const runtimeItems = await harness.runtimeItems();
+    expect(runtimeItems.find((item) => item.runtimeItemId === "steer-old-tool")).toMatchObject({
+      effectiveState: "orphaned",
+    });
+    expect(runtimeItems.find((item) => item.runtimeItemId === "steer-new-tool")).toMatchObject({
+      effectiveState: "active",
+    });
   });
 
   it("does not mark the source proposed plan implemented for an unrelated turn.started when no thread active turn is tracked", async () => {

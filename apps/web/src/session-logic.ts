@@ -21,6 +21,10 @@ import type {
   ThreadSession,
   TurnDiffSummary,
 } from "./types";
+import {
+  deriveThreadLifecycle,
+  isTerminalThreadLifecycle,
+} from "./components/threadLifecycle.logic";
 
 export type ProviderPickerKind = ProviderDriverKind;
 
@@ -92,6 +96,8 @@ export interface WorkLogEntry {
   toolLifecycleStatus?: WorkLogToolLifecycleStatus;
   /** Originating orchestration activity kind (e.g. `user-input.requested`) for row chrome. */
   sourceActivityKind?: OrchestrationThreadActivity["kind"];
+  /** Server-created reconciliation row, never turn completion evidence. */
+  synthetic?: boolean;
 }
 
 interface DerivedWorkLogEntry extends WorkLogEntry {
@@ -334,18 +340,29 @@ export function formatElapsed(startIso: string, endIso: string | undefined): str
   return formatDuration(endedAt - startedAt);
 }
 
-type LatestTurnTiming = Pick<OrchestrationLatestTurn, "turnId" | "startedAt" | "completedAt">;
+type LatestTurnTiming = Pick<
+  OrchestrationLatestTurn,
+  "turnId" | "state" | "startedAt" | "completedAt"
+>;
 type SessionActivityState = Pick<NonNullable<Thread["session"]>, "status" | "activeTurnId">;
 
 export function isLatestTurnSettled(
   latestTurn: LatestTurnTiming | null,
   session: SessionActivityState | null,
 ): boolean {
-  if (!latestTurn?.startedAt) return false;
-  if (!latestTurn.completedAt) return false;
-  if (!session) return true;
-  if (session.status === "running") return false;
-  return true;
+  if (!latestTurn) return false;
+  // Settlement is authoritative lifecycle state, not elapsed-time
+  // availability. A terminal turn with an explicitly unknown completion is
+  // still settled.
+  return isTerminalThreadLifecycle(
+    deriveThreadLifecycle({
+      hasPendingApprovals: false,
+      hasPendingUserInput: false,
+      isWorking: false,
+      latestTurnState: latestTurn.state,
+      sessionStatus: session?.status,
+    }),
+  );
 }
 
 export function deriveActiveWorkStartedAt(
@@ -974,6 +991,9 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   }
   if (toolCallId) {
     entry.toolCallId = toolCallId;
+  }
+  if (payload?.synthetic === true) {
+    entry.synthetic = true;
   }
   let toolLifecycleStatus = extractWorkLogToolLifecycleStatus(payload);
   if (!toolLifecycleStatus && activity.kind === "tool.completed") {

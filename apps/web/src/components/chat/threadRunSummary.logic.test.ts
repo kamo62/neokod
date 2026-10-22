@@ -137,6 +137,28 @@ describe("deriveThreadRunSummary", () => {
     }
   });
 
+  it("does not tick a terminal run whose completion is unknown", () => {
+    const live = input();
+    for (const state of ["completed", "interrupted", "error"] as const) {
+      const summary = deriveThreadRunSummary({
+        ...live,
+        isWorking: false,
+        interruptAvailable: false,
+        thread: {
+          ...live.thread,
+          latestTurn: {
+            ...live.thread.latestTurn!,
+            state,
+            completedAt: null,
+          },
+          session: { status: "idle" },
+        },
+      });
+      expect(summary?.status).not.toBe("working");
+      expect(summary?.elapsed).toBeNull();
+    }
+  });
+
   it("formats elapsed hours and omits unavailable or negative durations", () => {
     expect(
       deriveThreadRunSummary(input({ nowMs: Date.parse("2026-07-18T12:30:03.000Z") }))?.elapsed,
