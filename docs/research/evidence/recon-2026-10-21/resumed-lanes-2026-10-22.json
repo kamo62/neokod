@@ -1,0 +1,39 @@
+{
+  "lanes": [
+    {
+      "task": "lane-crash-final-corrections",
+      "sessionId": "ses_e9e3e7885ffe9QKw0d0mH1t53Y",
+      "agent": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "model": "deepseek/deepseek-flash",
+      "displayName": "deepseek/DeepSeek V4.1 Flash 1017",
+      "state": "running-not-accepted"
+    },
+    {
+      "task": "lane-git-final-corrections",
+      "sessionId": "ses_e9e3e73e6ffeVOUC206CZOSGIX",
+      "agent": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "model": "deepseek/deepseek-flash",
+      "displayName": "deepseek/DeepSeek V4.1 Flash 1017",
+      "state": "running-not-accepted"
+    },
+    {
+      "task": "sol-composer-replay-closure",
+      "sessionId": "ses_e9e3e6e8fffe5HxFPCxlE5Qmgj",
+      "agent": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "model": "github-copilot/gpt-6.1-sol",
+      "displayName": "github-copilot/GPT-6.1 Sol",
+      "state": "source-review-completed-no-P0-P2"
+    }
+  ],
+  "noBuilds": true,
+  "scope": "core correction continuation; main retains integration"
+}
