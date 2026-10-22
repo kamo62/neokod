@@ -1,8 +1,10 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Schema from "effect/Schema";
 import {
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
+  SymphonyProjectBoardSchema,
   SymphonyProjectId,
   WorkItemId,
   type SymphonyProject,
@@ -11,6 +13,8 @@ import {
 } from "@neokod/contracts";
 
 import { boardColumnForLifecycle, projectBoardFromWorkItems } from "./ProjectBoard.ts";
+
+const decodeProjectBoard = Schema.decodeUnknownSync(SymphonyProjectBoardSchema);
 
 describe("boardColumnForLifecycle", () => {
   it("maps every lifecycle into the five server-owned columns", () => {
@@ -128,5 +132,69 @@ describe("projectBoardFromWorkItems", () => {
       "failed",
       "completed",
     ]);
+  });
+
+  it("reports exact column totals and truncation from actual lifecycle counts", () => {
+    const board = projectBoardFromWorkItems({
+      project,
+      sourceControl: { state: "none" },
+      workItems: [
+        workItem("completed", "completed", 1),
+        workItem("queued-first", "queued", 1),
+        workItem("queued-second", "queued", 2),
+      ],
+      lifecycleTotals: { completed: 5, queued: 2 },
+      generatedAt: "2026-08-10T00:01:00.000Z",
+    });
+
+    expect(board.columns.find((column) => column.id === "done")?.totalCount).toBe(5);
+    expect(board.columns.find((column) => column.id === "not_started")?.totalCount).toBe(2);
+    expect(board.truncated).toBe(true);
+
+    const complete = projectBoardFromWorkItems({
+      project,
+      sourceControl: { state: "none" },
+      workItems: [
+        workItem("completed", "completed", 1),
+        workItem("queued-first", "queued", 1),
+        workItem("queued-second", "queued", 2),
+      ],
+      lifecycleTotals: { completed: 1, queued: 2 },
+      generatedAt: "2026-08-10T00:01:00.000Z",
+    });
+
+    expect(complete.truncated).toBe(false);
+  });
+
+  it("omits coverage metadata when lifecycle totals are unavailable", () => {
+    const board = projectBoardFromWorkItems({
+      project,
+      sourceControl: { state: "none" },
+      workItems: [workItem("completed", "completed", 1), workItem("queued", "queued", 2)],
+      generatedAt: "2026-08-10T00:01:00.000Z",
+    });
+
+    expect(board.truncated).toBeUndefined();
+    expect(board.columns.every((column) => column.totalCount === undefined)).toBe(true);
+  });
+
+  it("decodes a board payload from before coverage metadata", () => {
+    const board = projectBoardFromWorkItems({
+      project,
+      sourceControl: { state: "none" },
+      workItems: [workItem("queued", "queued", 1)],
+      lifecycleTotals: { queued: 1 },
+      generatedAt: "2026-08-10T00:01:00.000Z",
+    });
+    const { truncated: _truncated, ...legacyBoard } = board;
+    const legacyPayload = {
+      ...legacyBoard,
+      columns: board.columns.map(({ totalCount: _totalCount, ...column }) => column),
+    };
+
+    const decoded = decodeProjectBoard(legacyPayload);
+
+    expect(decoded.truncated).toBeUndefined();
+    expect(decoded.columns.every((column) => column.totalCount === undefined)).toBe(true);
   });
 });
