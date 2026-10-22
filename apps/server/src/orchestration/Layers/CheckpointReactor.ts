@@ -365,8 +365,10 @@ const make = Effect.gen(function* () {
 
   const conservativePathKey = (value: string): string => value.normalize("NFC").toLowerCase();
 
-  const isGitIgnorePath = (entry: string): boolean =>
-    entry === ".gitignore" || entry.endsWith("/.gitignore");
+  const isGitIgnorePath = (entry: string): boolean => {
+    const key = conservativePathKey(entry);
+    return key === ".gitignore" || key.endsWith("/.gitignore");
+  };
 
   const parseRestoredTreeEntries = (stdout: string): ReadonlyArray<RestoredTreeEntry> | null => {
     const entries: Array<RestoredTreeEntry> = [];

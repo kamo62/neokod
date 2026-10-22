@@ -29,6 +29,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import * as CheckpointStore from "../../checkpointing/CheckpointStore.ts";
@@ -382,6 +383,7 @@ describe("CheckpointReactor", () => {
     readonly prepareRepository?: (cwd: string) => void;
     readonly providerSessionSubdirectory?: string;
     readonly truncateIgnoredEnumeration?: boolean;
+    readonly fixedClock?: boolean;
   }) {
     const cwd = createGitRepository();
     tempDirs.push(cwd);
@@ -502,7 +504,7 @@ describe("CheckpointReactor", () => {
         ).pipe(Layer.provide(vcsProcessBaseLayer))
       : vcsProcessBaseLayer;
 
-    const layer = CheckpointReactorLive.pipe(
+    const liveLayer = CheckpointReactorLive.pipe(
       Layer.provideMerge(orchestrationLayer),
       Layer.provideMerge(projectionSnapshotLayer),
       Layer.provideMerge(RuntimeReceiptBusLive),
@@ -521,6 +523,9 @@ describe("CheckpointReactor", () => {
       Layer.provideMerge(WorktreeRemovalLeaseLive),
       Layer.provideMerge(NodeServices.layer),
     );
+    const layer = options?.fixedClock
+      ? liveLayer.pipe(Layer.provideMerge(TestClock.layer()))
+      : liveLayer;
 
     const managedRuntime = ManagedRuntime.make(layer);
     runtime = managedRuntime;
@@ -1846,6 +1851,45 @@ describe("CheckpointReactor", () => {
     expect(payload?.detail).toContain("scratch.dat");
   });
 
+  it("refuses when only a mixed-case .GitIgnore rule changes", async () => {
+    const harness = await createHarness();
+    // info/exclude guarantees an ignored entry on case-sensitive hosts; the
+    // mixed-case rule file is still the changed rule under test.
+    NodeFS.writeFileSync(
+      NodePath.join(harness.cwd, ".git", "info", "exclude"),
+      "scratch.dat\n",
+      "utf8",
+    );
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, ".GitIgnore"), "", "utf8");
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, ".GitIgnore"), "scratch.dat\n", "utf8");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "scratch.dat"), "keep mixed case\n", "utf8");
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "scratch.dat"), "utf8")).toBe(
+      "keep mixed case\n",
+    );
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+
+    const failure = thread.activities.find(
+      (activity) => activity.kind === "checkpoint.revert.failed",
+    );
+    const payload = failure?.payload as { readonly detail?: string } | undefined;
+    expect(payload?.detail).toContain("scratch.dat");
+  });
+
   it("refuses when the checkpoint's .gitignore is a symlink", async () => {
     const harness = await createHarness();
     NodeFS.symlinkSync("scratch.dat", NodePath.join(harness.cwd, ".gitignore"));
@@ -1950,8 +1994,8 @@ describe("CheckpointReactor", () => {
     expect(payload?.detail).toContain("could not be read");
   });
 
-  it("keeps a distinct recovery ref for each serial revert", async () => {
-    const harness = await createHarness();
+  it("keeps a distinct recovery ref for each serial revert when the clock does not advance", async () => {
+    const harness = await createHarness({ fixedClock: true });
 
     await revertToTurnOne(harness);
     await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
@@ -1971,6 +2015,10 @@ describe("CheckpointReactor", () => {
     const recoveryRefs = listRecoveryRefs(harness.cwd);
     expect(recoveryRefs).toHaveLength(2);
     expect(new Set(recoveryRefs).size).toBe(2);
+    const suffixes = recoveryRefs
+      .map((ref) => Number(ref.split("/").at(-1)))
+      .toSorted((left, right) => left - right);
+    expect(suffixes[1]).toBe((suffixes[0] ?? 0) + 1);
     expect(
       recoveryRefs.map((ref) => gitShowFileAtRef(harness.cwd, ref, "README.md")).toSorted(),
     ).toEqual(["v2\n", "v3\n"]);
