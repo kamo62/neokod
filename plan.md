@@ -1788,11 +1788,30 @@ Claude Code integrated the six returned lanes and the remaining Symphony B-serie
 | `a80455a6d` | dev fix: two-step migration test expects 042                                                           | missed by the B-4 lane                                                                                                                              |
 | `075094dec` | `work/symphony-global-controls`, B-10                                                                  | Sol ACCEPT, round 2                                                                                                                                 |
 
-Phase 1 status: every card is on dev except 2.2 checkpoint recovery. Symphony B-series status: B-1 to B-7, B-9 and B-10 are on dev; B-8a and B-8b stay paused under 16.10 and 16.11.
+| `2745226f2` | `work/core-checkpoint-recovery`, 2.2 (migration 043) | Sol ACCEPT, round 19 |
+| `f1fc9d0e1` | `work/turn-timing-evidence`, server-owned per-turn settlement (migration 044) | Sol ACCEPT, round 12 |
 
-Still open at the time of writing:
+Final status: every Phase 1 card is on dev. Symphony B-series: B-1 to B-7, B-9 and B-10 are on dev; B-8a and B-8b stay paused under 16.10 and 16.11. The final dev merge passed 1,337 server tests, 245 client-runtime tests and 1,740 web unit tests, format on the merged files, and `vp run typecheck`.
 
-- `work/core-checkpoint-recovery` (2.2): round 13 under review. The lane now records the admitted workspace per pending turn (migration 043), pins provider start to it and rejects a second start while one is unresolved. Open question under review: whether a pending admission left by a crashed server is settled at startup, or blocks new starts on that thread.
-- `work/turn-timing-evidence`: recovered-turn duration labels. After four rounds of client-side settlement inference kept leaking, round 5 moves to storing the server's per-turn completion verbatim and deleting the inference.
+What the last two lanes settled:
+
+- 2.2 checkpoint recovery records the admitted workspace on each turn from admission through running, pins the provider session to it, rejects a second start while one is unresolved, settles admissions abandoned by a crash at startup, and never cleans a path that was ignored before the restore, whatever the ignore source.
+- Turn timing is server-owned: the turn projection computes each turn's completion once, a settlement outbox publishes it in bounded batches, the client stores it verbatim, and a missing value shows as unknown. Legacy interrupt-request completions become unknown on upgrade, and the thread cache version is bumped so clients fetch one authoritative snapshot.
 
 Known limits carried forward: the in-process worktree lease does not cover external Git or editor writers; an unparseable stored PR URL leaves a Symphony item in review for a person; manual dispatch surfaces read failures while the scheduler logs and skips; browser-project tests did not run in these checkouts because the Playwright Chromium build is not installed.
+
+### 16.13 Symphony adversarial UX review (Sol/Opus, 22 October 2026)
+
+The owner requested Sol and Opus to walk through the screens as users and find gaps. [Adjudicated report and acceptance criteria](docs/design/symphony-exploration-2026-10-21/REVIEW-2026-10-22.md), with [captures, model receipt and reproduction evidence](docs/research/evidence/recon-2026-10-21/symphony-ux-review-2026-10-22/README.md). Sol operated Chrome Computer Use across all current Symphony exploration pages and all four new-request detail tabs, including narrow layouts. Onboard first-party Opus 5.5 high completed independent and follow-up reviews of source and supplied captures; no fallback was needed. This is not an installed core-app walkthrough or live provider/machine validation.
+
+Completed: review, twenty captures, source inspection, and a deterministic isolated-function reproduction of duplicate acceptance/receipt overwrite from stale tab states. No product fixes, builds, dispatches, tracker writes or deployment were performed. No core integration lane status in 16.12 is changed by this review.
+
+Outstanding corrections feed the existing W6/W5/H/D scope in 16.11, not a parallel implementation tracker:
+
+- P1 UX-01–03: serialised demo receipt writes and canonical production admission; accepted/refused/unknown reconciliation; immutable machine identity in monitoring, actions and approval. Acceptance requires one admission under races, same-request reconciliation after lost acknowledgement, and controls pinned to the displayed machine/attempt. Client locks do not replace server authority.
+- P2 UX-04–07: reuse the actual thread model/provider-instance/effort control with target capabilities; one Work → A → B/C item/attempt journey; lifecycle actions with positive closure before linked reassignment; explicit blocking/advisory questions and named stage holds. Saving plans/answers grants no execution authority.
+- P2 UX-08–12: source/project/repository selection and partial/freshness states; links to conflicting work and scoped connection repair; issue/machine identity and reachable navigation at 390 × 844; explicit unsaved-edit handling; preference overrides separated from required-capability blocks. The report contains the individual reproduction and acceptance criteria.
+
+Retain the combined A/B/C direction. B is execution detail inside A. The model selector follows the existing thread composer, not a second selector design. Decide latest-plan inheritance versus an explicit fresh plan with provenance; the current separate fixture plans are labelled and do not prove silent data loss. Execution approval must include the target machine.
+
+All twelve findings remain open. Review authorisation does not start implementation or publishing. Remaining evidence gap: the running installed core-app screens, real multi-server/provider routing, backend concurrency/fault recovery, full keyboard/screen-reader coverage and fixes have not been validated by this pass. Core walkthrough is blocked on runtime availability: neither known frontend port 6953 nor backend port 14993 was listening at the check. An old browser tab is not runtime proof. Keep the full core pass open until an authenticated runtime is available.
