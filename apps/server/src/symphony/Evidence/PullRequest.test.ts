@@ -291,6 +291,48 @@ it.effect("refresh re-fetches the open PR for the branch", () =>
   }),
 );
 
+it.effect("refresh prefers the tracked pull request number over another PR on the branch", () =>
+  Effect.gen(function* () {
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: {
+                createChangeRequest: () => Effect.void,
+                getChangeRequestStatus: () => Effect.succeed(null),
+                // Two PRs share the head branch; the newer one targets another
+                // base and is already merged. Host order is not guaranteed.
+                listChangeRequests: () =>
+                  Effect.succeed([
+                    makeChangeRequest({
+                      number: 43,
+                      state: "merged",
+                      baseRefName: "release",
+                    }),
+                    makeChangeRequest({ number: 42, state: "open", baseRefName: "main" }),
+                  ]),
+              },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+      }),
+    );
+    const refreshed = yield* service.refresh({
+      config: makeConfig(),
+      branch: "symphony/issue-42",
+      baseBranch: "main",
+      title: "Implement issue 42",
+      pullRequestNumber: 42,
+    });
+    expect(refreshed).toMatchObject({
+      number: 42,
+      baseBranch: "main",
+      status: "open",
+    });
+  }),
+);
+
 it.effect("refresh returns null when no open PR exists for the branch", () =>
   Effect.gen(function* () {
     const service = makePullRequestService(

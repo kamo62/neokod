@@ -88,6 +88,37 @@ const makeRepository = Effect.gen(function* () {
       return rowToEvent(row);
     });
 
+  const appendOnce: RunEventRepositoryShape["appendOnce"] = (runAttemptId, eventType, payload) =>
+    Effect.gen(function* () {
+      const occurredAt = yield* nowIso;
+      const payloadJson = payload === undefined ? null : encodeJson(payload);
+      // One statement: the SELECT clause yields no row when the same
+      // observation is already stored, so concurrent writers cannot both add it
+      // (SQLite serialises writers and this insert is a single write).
+      const rows = yield* sql<Schema.Schema.Type<typeof RunEventRowSchema>>`
+        INSERT INTO symphony_run_events (
+          run_attempt_id, sequence, event_type, occurred_at, payload_json
+        )
+        SELECT
+          ${runAttemptId},
+          COALESCE(
+            (SELECT MAX(sequence) + 1 FROM symphony_run_events WHERE run_attempt_id = ${runAttemptId}),
+            0
+          ),
+          ${eventType},
+          ${occurredAt},
+          ${payloadJson}
+        WHERE NOT EXISTS (
+          SELECT 1 FROM symphony_run_events
+          WHERE run_attempt_id = ${runAttemptId}
+            AND event_type = ${eventType}
+            AND payload_json IS ${payloadJson}
+        )
+        RETURNING ${cols}
+      `.pipe(Effect.mapError(toSqlError("RunEventRepository.appendOnce")));
+      return rows.length > 0;
+    });
+
   const listForAttempt: RunEventRepositoryShape["listForAttempt"] = (runAttemptId) =>
     sql<Schema.Schema.Type<typeof RunEventRowSchema>>`
       SELECT ${cols}
@@ -140,6 +171,7 @@ const makeRepository = Effect.gen(function* () {
 
   return {
     append,
+    appendOnce,
     listForAttempt,
     streamAfter,
     lastSequence,

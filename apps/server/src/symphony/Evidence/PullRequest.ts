@@ -63,17 +63,22 @@ export class PullRequestService extends Context.Service<
     ) => Effect.Effect<PullRequestEvidence | null, PullRequestCreationError>;
 
     /**
-     * Re-fetch the open PR for a branch via the provider abstraction and
+     * Re-fetch the tracked change request via the provider abstraction and
      * return refreshed evidence (plan 10.1: status, review state and
      * mergeability are enriched host-by-host in Phase 5; the provider shape
      * today carries number/title/url/base/head/state, which is what this
      * refresh propagates).
+     *
+     * `pullRequestNumber` pins the identity: branch names are reused across
+     * dispatches, and several change requests can share a head branch. When the
+     * number is known it wins over the head-branch match.
      */
     readonly refresh: (input: {
       readonly config: EffectiveWorkflowConfig;
       readonly branch: string;
       readonly baseBranch: string;
       readonly title: string;
+      readonly pullRequestNumber?: number;
     }) => Effect.Effect<PullRequestEvidence | null, PullRequestCreationError>;
 
     /**
@@ -255,7 +260,11 @@ export const makePullRequestService = (
           Effect.mapError((cause) => new PullRequestCreationError(cause.message)),
           Effect.orElseSucceed(() => []),
         );
-      const found = open.find((pullRequest) => pullRequest.headRefName === input.branch);
+      const found =
+        (input.pullRequestNumber === undefined
+          ? undefined
+          : open.find((pullRequest) => pullRequest.number === input.pullRequestNumber)) ??
+        open.find((pullRequest) => pullRequest.headRefName === input.branch);
       if (found === undefined) {
         return null;
       }
@@ -272,8 +281,11 @@ export const makePullRequestService = (
       return {
         number: found.number,
         title: found.title,
-        branch: input.branch,
-        baseBranch: input.baseBranch,
+        // Report the host's own refs: a number-pinned lookup can surface a
+        // change request whose head/base differ from what we asked for, and the
+        // stored evidence must say what the host said.
+        branch: found.headRefName,
+        baseBranch: found.baseRefName,
         url: found.url,
         status: found.state === "merged" ? "merged" : found.state === "closed" ? "closed" : "open",
         ...(status !== null

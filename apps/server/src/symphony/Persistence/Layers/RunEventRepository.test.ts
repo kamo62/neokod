@@ -105,4 +105,38 @@ layer("RunEventRepository", (it) => {
       expect(yield* repo.lastSequence(attemptId)).toBe(a.sequence);
     }),
   );
+
+  it.effect("appendOnce records the same observation only once", () =>
+    Effect.gen(function* () {
+      const repo = yield* RunEventRepository;
+      const attemptId = RunAttemptId.make("run-events-4");
+      yield* seedRunAttempt("run-events-4", "wi-events-4");
+      const payload = { workItemId: "wi-events-4", number: 42 };
+
+      // Two writers observing the same pull request closed: only one adds
+      // history, regardless of which runs first.
+      expect(yield* repo.appendOnce(attemptId, "pull_request_closed_unmerged", payload)).toBe(
+        true,
+      );
+      expect(yield* repo.appendOnce(attemptId, "pull_request_closed_unmerged", payload)).toBe(
+        false,
+      );
+      // A different PR number is a different observation.
+      expect(
+        yield* repo.appendOnce(attemptId, "pull_request_closed_unmerged", {
+          workItemId: "wi-events-4",
+          number: 43,
+        }),
+      ).toBe(true);
+      // The same payload under another event type is unrelated.
+      expect(yield* repo.appendOnce(attemptId, "pull_request_reopened", payload)).toBe(true);
+
+      const events = yield* repo.listForAttempt(attemptId);
+      expect(events.map((event) => event.eventType)).toEqual([
+        "pull_request_closed_unmerged",
+        "pull_request_closed_unmerged",
+        "pull_request_reopened",
+      ]);
+    }),
+  );
 });
