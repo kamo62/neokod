@@ -14,6 +14,7 @@ import {
   MAX_HIDDEN_MOUNTED_PREVIEW_THREADS,
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   buildExpiredTerminalContextToastCopy,
+  buildRevertCheckpointConfirmMessage,
   buildThreadTurnInterruptInput,
   canAutoDispatchQueuedMessage,
   canDispatchQueuedMessage,
@@ -1072,5 +1073,17 @@ describe("partitionQueuedMessages", () => {
     ]);
     expect(result.dispatchable.map((entry) => entry.id)).toEqual(["ready"]);
     expect(result.pending.map((entry) => entry.id)).toEqual(["sending", "unknown"]);
+  });
+});
+
+describe("buildRevertCheckpointConfirmMessage", () => {
+  it("states the folder reset, chat loss, preserved history and recovery ref", () => {
+    const message = buildRevertCheckpointConfirmMessage(3);
+    expect(message).toContain("checkpoint 3");
+    expect(message).toContain("deleted");
+    expect(message).toContain("other threads");
+    expect(message).toContain("Staged changes become unstaged");
+    expect(message).toContain("refs/neokod/recovery/");
+    expect(message).not.toContain("cannot be undone");
   });
 });

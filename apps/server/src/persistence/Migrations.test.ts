@@ -144,6 +144,7 @@ it.effect("accepts a database that was migrated in two steps and a repeated run"
       assert.deepStrictEqual(second, [
         [41, "SymphonyProjects"],
         [42, "SymphonyIneligibleLifecycle"],
+        [43, "ProjectionTurnsPendingWorkspace"],
       ]);
       const third = yield* runMigrations();
       assert.deepStrictEqual(third, []);

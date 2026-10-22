@@ -188,13 +188,23 @@ export const WorktreeRemovalLeaseLive = Layer.effect(
           const leased = yield* Ref.get(reservations);
           if (leased.length > 0) {
             for (const workspacePath of admission.workspacePaths) {
+              // Read candidate identity once so parent and child overlaps are
+              // both evaluated with the same filesystem evidence.
+              const candidate = yield* readIdentity(workspacePath).pipe(
+                Effect.mapError(
+                  () => new WorktreeAdmissionBlockedError(workspacePath, commandType),
+                ),
+              );
               for (const reservation of leased) {
-                const inside = yield* isSameOrInside(reservation, workspacePath).pipe(
+                const overlaps = yield* Effect.all([
+                  isSameOrInside(reservation, candidate.physicalPath),
+                  isSameOrInside(candidate, reservation.physicalPath),
+                ]).pipe(
                   Effect.mapError(
                     () => new WorktreeAdmissionBlockedError(workspacePath, commandType),
                   ),
                 );
-                if (inside) {
+                if (overlaps[0] || overlaps[1]) {
                   return yield* Effect.fail(
                     new WorktreeAdmissionBlockedError(workspacePath, commandType),
                   );

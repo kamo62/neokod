@@ -25,6 +25,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
+import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -41,7 +42,9 @@ import {
 import { GENERIC_INTERNAL_ERROR_DETAIL } from "../../provider/userFacingErrorText.ts";
 import { OrchestrationEventStoreLive } from "../../persistence/Layers/OrchestrationEventStore.ts";
 import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Layers/OrchestrationCommandReceipts.ts";
+import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
+import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import {
   ProviderService,
   type ProviderServiceShape,
@@ -163,6 +166,8 @@ describe("ProviderCommandReactor", () => {
     readonly threadModelSelection?: ModelSelection;
     readonly sessionModelSwitch?: "unsupported" | "in-session";
     readonly requiresNewThreadForModelChange?: boolean;
+    readonly providerSessionCwd?: (cwd: string | undefined) => string | undefined;
+    readonly projectWorkspaceRoot?: string;
   }) {
     const now = "2026-01-01T00:00:00.000Z";
     const baseDir =
@@ -177,6 +182,7 @@ describe("ProviderCommandReactor", () => {
       instanceId: ProviderInstanceId.make("codex"),
       model: "gpt-5-codex",
     };
+    const providerSessionCwd = input?.providerSessionCwd;
     const startSession = vi.fn((_: unknown, input: unknown) => {
       const sessionIndex = nextSessionIndex++;
       const resumeCursor =
@@ -205,6 +211,14 @@ describe("ProviderCommandReactor", () => {
         typeof input.provider === "string"
           ? (input.provider as ProviderSession["provider"])
           : ProviderDriverKind.make(inputModelSelection?.instanceId ?? modelSelection.instanceId);
+      const inputCwd =
+        typeof input === "object" &&
+        input !== null &&
+        "cwd" in input &&
+        typeof input.cwd === "string"
+          ? input.cwd
+          : undefined;
+      const sessionCwd = providerSessionCwd?.(inputCwd) ?? inputCwd;
       const session: ProviderSession = {
         provider,
         ...(providerInstanceId ? { providerInstanceId } : {}),
@@ -216,12 +230,7 @@ describe("ProviderCommandReactor", () => {
           (input.runtimeMode === "approval-required" || input.runtimeMode === "full-access")
             ? input.runtimeMode
             : "full-access",
-        ...(typeof input === "object" &&
-        input !== null &&
-        "cwd" in input &&
-        typeof input.cwd === "string"
-          ? { cwd: input.cwd }
-          : {}),
+        ...(sessionCwd !== undefined ? { cwd: sessionCwd } : {}),
         ...((inputModelSelection?.model ?? modelSelection.model)
           ? { model: inputModelSelection?.model ?? modelSelection.model }
           : {}),
@@ -349,7 +358,7 @@ describe("ProviderCommandReactor", () => {
 
     const orchestrationLayer = OrchestrationEngineLive.pipe(
       Layer.provide(OrchestrationProjectionSnapshotQueryLive),
-      Layer.provide(OrchestrationProjectionPipelineLive),
+      Layer.provideMerge(OrchestrationProjectionPipelineLive),
       Layer.provide(OrchestrationEventStoreLive),
       Layer.provide(OrchestrationCommandReceiptRepositoryLive),
       Layer.provide(RepositoryIdentityResolver.layer),
@@ -387,13 +396,18 @@ describe("ProviderCommandReactor", () => {
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
       Layer.provideMerge(WorktreeRemovalLeaseLive),
+      Layer.provideMerge(ProjectionTurnRepositoryLive.pipe(Layer.provide(SqlitePersistenceMemory))),
       Layer.provideMerge(NodeServices.layer),
     );
-    runtime = ManagedRuntime.make(layer);
+    const managedRuntime = ManagedRuntime.make(layer);
+    runtime = managedRuntime;
 
-    const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
-    const snapshotQuery = await runtime.runPromise(Effect.service(ProjectionSnapshotQuery));
-    const reactor = await runtime.runPromise(Effect.service(ProviderCommandReactor));
+    const engine = await managedRuntime.runPromise(Effect.service(OrchestrationEngineService));
+    const snapshotQuery = await managedRuntime.runPromise(Effect.service(ProjectionSnapshotQuery));
+    const projectionTurnRepository = await managedRuntime.runPromise(
+      Effect.service(ProjectionTurnRepository),
+    );
+    const reactor = await managedRuntime.runPromise(Effect.service(ProviderCommandReactor));
     scope = await Effect.runPromise(Scope.make("sequential"));
     await Effect.runPromise(reactor.start().pipe(Scope.provide(scope)));
     const drain = () => Effect.runPromise(reactor.drain);
@@ -404,7 +418,7 @@ describe("ProviderCommandReactor", () => {
         commandId: CommandId.make("cmd-project-create"),
         projectId: asProjectId("project-1"),
         title: "Provider Project",
-        workspaceRoot: "/tmp/provider-project",
+        workspaceRoot: input?.projectWorkspaceRoot ?? "/tmp/provider-project",
         defaultModelSelection: modelSelection,
         createdAt: now,
       }),
@@ -427,7 +441,17 @@ describe("ProviderCommandReactor", () => {
 
     return {
       engine,
+      dispatch: (command: Parameters<typeof engine.dispatch>[0]) =>
+        managedRuntime.runPromise(engine.dispatch(command)),
+      sleep: (millis: number) => managedRuntime.runPromise(Effect.sleep(millis)),
       readModel: () => Effect.runPromise(snapshotQuery.getSnapshot()),
+      projectionTurnRepository,
+      settlePendingTurnStart: (threadId = "thread-1") =>
+        managedRuntime.runPromise(
+          projectionTurnRepository.deletePendingTurnStartByThreadId({
+            threadId: ThreadId.make(threadId),
+          }),
+        ),
       startSession,
       sendTurn,
       interruptTurn,
@@ -512,12 +536,61 @@ describe("ProviderCommandReactor", () => {
         (activity) => activity.kind === "provider.turn.start.failed",
       );
       expect(failure, "expected a provider.turn.start.failed activity").toBeDefined();
-      const detail = (failure?.payload as { readonly detail?: string } | undefined)?.detail ?? "";
+      const failurePayload = failure?.payload as
+        | { readonly detail?: string; readonly messageId?: string }
+        | undefined;
+      const detail = failurePayload?.detail ?? "";
       expect(detail).toContain("folder no longer exists");
       expect(detail).not.toContain(missingRoot);
       expect(detail).not.toContain("[path]");
+      // The message identity fences pending-admission settlement.
+      expect(failurePayload?.messageId).toBe("user-message-moved");
       // The provider must not be blamed for a filesystem problem.
       expect(detail).not.toContain("spawn");
+    }),
+  );
+
+  effectIt.effect("settles an archived turn start before provider launch", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const now = "2026-01-01T00:00:00.000Z";
+      const messageId = asMessageId("user-message-archived-start");
+
+      yield* harness.engine.dispatch({
+        type: "thread.archive",
+        commandId: CommandId.make("cmd-thread-archive-before-start"),
+        threadId: ThreadId.make("thread-1"),
+      });
+
+      const startSessionCallsBefore = harness.startSession.mock.calls.length;
+      yield* harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-archived"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId,
+          role: "user",
+          text: "hello",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      });
+      yield* Effect.promise(() => harness.drain());
+
+      expect(harness.startSession.mock.calls.length).toBe(startSessionCallsBefore);
+      const pending = yield* harness.projectionTurnRepository.getPendingTurnStartByThreadId({
+        threadId: ThreadId.make("thread-1"),
+      });
+      expect(Option.isNone(pending)).toBe(true);
+
+      const readModel = yield* Effect.promise(() => harness.readModel());
+      const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+      const failure = thread?.activities.find(
+        (activity) => activity.kind === "provider.turn.start.failed",
+      );
+      expect(failure?.payload).toMatchObject({ messageId: "user-message-archived-start" });
     }),
   );
 
@@ -558,6 +631,115 @@ describe("ProviderCommandReactor", () => {
     const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
     expect(thread?.session?.threadId).toBe("thread-1");
     expect(thread?.session?.runtimeMode).toBe("approval-required");
+  });
+
+  it("accepts an adapter-normalised session cwd for the admitted workspace", async () => {
+    const harness = await createHarness({
+      providerSessionCwd: (cwd) =>
+        cwd === undefined ? undefined : `${NodePath.resolve(cwd)}${NodePath.sep}`,
+    });
+    const now = "2026-01-01T00:00:00.000Z";
+
+    await harness.dispatch({
+      type: "thread.turn.start",
+      commandId: CommandId.make("cmd-turn-start-normalised-cwd"),
+      threadId: ThreadId.make("thread-1"),
+      message: {
+        messageId: asMessageId("user-message-normalised-cwd"),
+        role: "user",
+        text: "hello normalised cwd",
+        attachments: [],
+      },
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      runtimeMode: "approval-required",
+      createdAt: now,
+    });
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    const readModel = await harness.readModel();
+    const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    expect(
+      thread?.activities.some((activity) => activity.kind === "provider.turn.start.failed"),
+    ).toBe(false);
+  });
+
+  it("accepts a canonicalised session cwd for the admitted workspace", async () => {
+    const realWorkspace = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-real-workspace-"),
+    );
+    const symlinkWorkspace = `${realWorkspace}-link`;
+    NodeFS.symlinkSync(realWorkspace, symlinkWorkspace, "dir");
+    createdBaseDirs.add(realWorkspace);
+    createdBaseDirs.add(symlinkWorkspace);
+    const harness = await createHarness({
+      projectWorkspaceRoot: symlinkWorkspace,
+      providerSessionCwd: (cwd) => (cwd === undefined ? undefined : NodeFS.realpathSync(cwd)),
+    });
+    const now = "2026-01-01T00:00:00.000Z";
+
+    await harness.dispatch({
+      type: "thread.turn.start",
+      commandId: CommandId.make("cmd-turn-start-canonicalised-cwd"),
+      threadId: ThreadId.make("thread-1"),
+      message: {
+        messageId: asMessageId("user-message-canonicalised-cwd"),
+        role: "user",
+        text: "hello canonicalised cwd",
+        attachments: [],
+      },
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      runtimeMode: "approval-required",
+      createdAt: now,
+    });
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    const readModel = await harness.readModel();
+    const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    expect(
+      thread?.activities.some((activity) => activity.kind === "provider.turn.start.failed"),
+    ).toBe(false);
+  });
+
+  it("refuses a session in a different folder than the admitted workspace", async () => {
+    const differentCwd = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-other-workspace-"),
+    );
+    createdBaseDirs.add(differentCwd);
+    const harness = await createHarness({ providerSessionCwd: () => differentCwd });
+    const now = "2026-01-01T00:00:00.000Z";
+
+    await harness.dispatch({
+      type: "thread.turn.start",
+      commandId: CommandId.make("cmd-turn-start-wrong-cwd"),
+      threadId: ThreadId.make("thread-1"),
+      message: {
+        messageId: asMessageId("user-message-wrong-cwd"),
+        role: "user",
+        text: "hello wrong cwd",
+        attachments: [],
+      },
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      runtimeMode: "approval-required",
+      createdAt: now,
+    });
+
+    await waitFor(async () => {
+      const readModel = await harness.readModel();
+      const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+      return (
+        thread?.activities.some((activity) => activity.kind === "provider.turn.start.failed") ??
+        false
+      );
+    });
+    expect(harness.sendTurn).not.toHaveBeenCalled();
+    const readModel = await harness.readModel();
+    const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    const failure = thread?.activities.find(
+      (activity) => activity.kind === "provider.turn.start.failed",
+    );
+    const detail = (failure?.payload as { readonly detail?: string } | undefined)?.detail ?? "";
+    expect(detail).toContain("not in the admitted workspace");
+    expect(detail).not.toContain(differentCwd);
   });
 
   it("generates a thread title on the first turn", async () => {
@@ -757,6 +939,45 @@ describe("ProviderCommandReactor", () => {
     });
     expect(harness.refreshStatus.mock.calls[0]?.[0]).toBe(worktreePath);
     NodeFS.rmSync(worktreePath, { recursive: true, force: true });
+  });
+
+  it("does not rename a temporary branch on an ordinary project thread", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    await harness.dispatch({
+      type: "thread.meta.update",
+      commandId: CommandId.make("cmd-ordinary-thread-branch"),
+      threadId: ThreadId.make("thread-1"),
+      branch: "neokod/1234abcd",
+    });
+    harness.generateBranchName.mockImplementation(() =>
+      Effect.succeed({ branch: "feature/generated" }),
+    );
+
+    await harness.dispatch({
+      type: "thread.turn.start",
+      commandId: CommandId.make("cmd-ordinary-thread-first-turn"),
+      threadId: ThreadId.make("thread-1"),
+      message: {
+        messageId: asMessageId("user-message-ordinary-thread"),
+        role: "user",
+        text: "ordinary project thread",
+        attachments: [],
+      },
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      runtimeMode: "approval-required",
+      createdAt: now,
+    });
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    await harness.sleep(100);
+
+    expect(harness.renameBranch).not.toHaveBeenCalled();
+    const readModel = await harness.readModel();
+    const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    expect(thread?.worktreePath).toBeNull();
+    expect(thread?.branch).toBe("neokod/1234abcd");
   });
 
   it("forwards codex model options through session start and turn send", async () => {
@@ -961,6 +1182,7 @@ describe("ProviderCommandReactor", () => {
     );
 
     await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    await harness.settlePendingTurnStart();
 
     await Effect.runPromise(
       harness.engine.dispatch({
@@ -1015,6 +1237,7 @@ describe("ProviderCommandReactor", () => {
         });
 
         yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 1));
+        yield* Effect.promise(() => harness.settlePendingTurnStart());
 
         yield* harness.engine.dispatch({
           type: "thread.turn.start",
@@ -1135,6 +1358,7 @@ describe("ProviderCommandReactor", () => {
 
     await waitFor(() => harness.startSession.mock.calls.length === 1);
     await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    await harness.settlePendingTurnStart();
 
     await Effect.runPromise(
       harness.engine.dispatch({
@@ -1184,6 +1408,7 @@ describe("ProviderCommandReactor", () => {
     );
 
     await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    await harness.settlePendingTurnStart();
 
     await Effect.runPromise(
       harness.engine.dispatch({
@@ -1254,6 +1479,7 @@ describe("ProviderCommandReactor", () => {
     expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
       cwd: "/tmp/provider-project",
     });
+    await harness.settlePendingTurnStart();
 
     await Effect.runPromise(
       harness.engine.dispatch({
@@ -1330,6 +1556,7 @@ describe("ProviderCommandReactor", () => {
 
     await waitFor(() => harness.startSession.mock.calls.length === 1);
     await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    await harness.settlePendingTurnStart();
 
     await Effect.runPromise(
       harness.engine.dispatch({
@@ -1398,6 +1625,7 @@ describe("ProviderCommandReactor", () => {
 
     await waitFor(() => harness.startSession.mock.calls.length === 1);
     await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    await harness.settlePendingTurnStart();
 
     await Effect.runPromise(
       harness.engine.dispatch({
@@ -1586,6 +1814,7 @@ describe("ProviderCommandReactor", () => {
 
     await waitFor(() => harness.startSession.mock.calls.length === 1);
     await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    await harness.settlePendingTurnStart();
 
     await Effect.runPromise(
       harness.engine.dispatch({

@@ -1,4 +1,4 @@
-import { CommandId, type OrchestrationReadModel } from "@neokod/contracts";
+import { CommandId, EventId, type OrchestrationReadModel } from "@neokod/contracts";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -7,6 +7,7 @@ import * as Option from "effect/Option";
 
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import { ProviderSessionDirectory } from "../Services/ProviderSessionDirectory.ts";
 import {
   planProviderSessionReconciliation,
@@ -20,6 +21,7 @@ const makeProviderSessionReconciler = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const orchestrationEngine = yield* OrchestrationEngineService;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+  const projectionTurnRepository = yield* ProjectionTurnRepository;
   const providerService = yield* ProviderService;
   const directory = yield* ProviderSessionDirectory;
 
@@ -60,10 +62,11 @@ const makeProviderSessionReconciler = Effect.gen(function* () {
   const reconcile: ProviderSessionReconcilerShape["reconcile"] = Effect.gen(function* () {
     // Boot reconciliation only needs thread, latest turn and session rows; the
     // running-turn candidates are then enriched with their turn-scoped rows.
-    const [projected, liveSessions, bindings] = yield* Effect.all([
+    const [projected, liveSessions, bindings, pendingStarts] = yield* Effect.all([
       projectionSnapshotQuery.getCommandReadModel(),
       providerService.listSessions(),
       directory.listBindings(),
+      projectionTurnRepository.listPendingTurnStarts({}),
     ]);
     const liveThreadIds = new Set(liveSessions.map((session) => session.threadId));
     const actions = planProviderSessionReconciliation({
@@ -143,10 +146,52 @@ const makeProviderSessionReconciler = Effect.gen(function* () {
       });
     }
 
-    if (actions.length > 0) {
+    for (const pendingStart of pendingStarts) {
+      const now = DateTime.formatIso(yield* DateTime.now);
+      const detail =
+        pendingStart.admittedWorkspacePath === null
+          ? "Neokod restarted before this turn start was confirmed. The provider may have started; its outcome is unknown. Review the workspace before starting another turn."
+          : `Neokod restarted before this turn start was confirmed in ${pendingStart.admittedWorkspacePath}. The provider may have started there; its outcome is unknown. Review that folder before starting another turn.`;
+
+      // This is deliberately an activity, not a turn completion. The start may
+      // have reached the provider, so the outcome is unknown. The matching
+      // message identity lets the pending-turn projector clear only this
+      // admission through the normal event path.
+      yield* orchestrationEngine
+        .dispatch({
+          type: "thread.activity.append",
+          commandId: CommandId.make(yield* crypto.randomUUIDv4),
+          threadId: pendingStart.threadId,
+          activity: {
+            id: EventId.make(yield* crypto.randomUUIDv4),
+            tone: "error",
+            kind: "provider.turn.start.failed",
+            summary: "Turn start interrupted by server restart",
+            payload: {
+              detail,
+              messageId: pendingStart.messageId,
+            },
+            turnId: null,
+            createdAt: now,
+          },
+          createdAt: now,
+        })
+        .pipe(
+          Effect.catch((cause) =>
+            Effect.logWarning("provider.session.reconciliation-pending-start-failed", {
+              threadId: pendingStart.threadId,
+              messageId: pendingStart.messageId,
+              cause,
+            }),
+          ),
+        );
+    }
+
+    if (actions.length > 0 || pendingStarts.length > 0) {
       yield* Effect.logInfo("provider.session.reconciliation-complete", {
         settledCount: actions.length,
         hostLostCount: actions.filter((action) => action.bindingSettlement === "host_lost").length,
+        pendingStartCount: pendingStarts.length,
       });
     }
   }).pipe(
