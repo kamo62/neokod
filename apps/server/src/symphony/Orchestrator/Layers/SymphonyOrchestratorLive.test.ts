@@ -4,6 +4,7 @@ import type {
   NormalizedIssue,
   PullRequestEvidence,
   SymphonyProjectConfiguration,
+  WorkItem,
 } from "@neokod/contracts";
 import {
   ProjectId,
@@ -348,6 +349,14 @@ const setPullRequestRefresh = (value: PullRequestEvidence | null) =>
     }
   });
 
+// Every refresh input the orchestrator asked the host for. Used to prove the
+// PR identity (branch/base branch) came from the right evidence, not from a
+// stub that ignores its input.
+const pullRequestRefreshInputs: Array<{
+  readonly branch: string;
+  readonly baseBranch: string;
+}> = [];
+
 // Comment-body enrichment for FR-102-104 tests: `null` (the default) is the
 // honest-degradation case — no GitHub comment enrichment, counts-only.
 let pullRequestCommentsRef: Ref.Ref<ReadonlyArray<{
@@ -419,7 +428,17 @@ const layer = it.layer(
             }> | null>(null);
             return {
               create: () => Effect.succeed(null as never),
-              refresh: () => Ref.get(pullRequestRefreshRef as Ref.Ref<PullRequestEvidence | null>),
+              refresh: (input) =>
+                Effect.sync(() => {
+                  pullRequestRefreshInputs.push({
+                    branch: input.branch,
+                    baseBranch: input.baseBranch,
+                  });
+                }).pipe(
+                  Effect.andThen(
+                    Ref.get(pullRequestRefreshRef as Ref.Ref<PullRequestEvidence | null>),
+                  ),
+                ),
               listUnresolvedComments: () =>
                 Ref.get(
                   pullRequestCommentsRef as Ref.Ref<ReadonlyArray<{
@@ -462,6 +481,87 @@ const seedWorkflow = (
       createdAt: now,
       updatedAt: now,
     });
+  });
+
+/**
+ * Merge-detection fixture (B-9): a work item parked at `ready_to_merge` with
+ * stored PR evidence, the workflow that owns it, and one finished attempt for
+ * the merge events to hang on. The poll interval is short so a scheduler test
+ * can drive the sweep with the test clock.
+ */
+const seedMergeDetectionItem = (input: {
+  readonly workItemId: string;
+  readonly workflowId: string;
+  readonly repositoryPath: string;
+  readonly lifecycle?: WorkItem["lifecycle"];
+  readonly workspaceKey?: string;
+  readonly baseBranch?: string;
+  readonly storedPullRequest?: PullRequestEvidence;
+}) =>
+  Effect.gen(function* () {
+    yield* seedWorkflow(input.workflowId, input.repositoryPath, { pollIntervalMs: 5_000 });
+    const workItems = yield* WorkItemRepository;
+    const workItemId = WorkItemId.make(input.workItemId);
+    yield* workItems.upsert({
+      id: workItemId,
+      mode: "symphony",
+      projectId: TEST_PROJECT_ID,
+      objective: "Merge detection target",
+      acceptanceCriteria: [],
+      source: { kind: "manual" },
+      trackerIssueId: input.workItemId,
+      workflowId: WorkflowId.make(input.workflowId),
+      lifecycle: input.lifecycle ?? "ready_to_merge",
+      priority: 1,
+      eligibilityReasons: [],
+      evidence: null,
+      ...(input.workspaceKey !== undefined ? { workspaceKey: input.workspaceKey } : {}),
+      ...(input.baseBranch !== undefined ? { baseBranch: input.baseBranch } : {}),
+      createdAt: "2026-08-05T00:00:00.000Z",
+      updatedAt: "2026-08-05T00:00:00.000Z",
+    });
+    const evidenceRepository = yield* EvidenceRepository;
+    yield* evidenceRepository.upsert(workItemId, {
+      changedFiles: [],
+      testsChanged: [],
+      commits: [],
+      validationResults: [],
+      assumptions: [],
+      risks: [],
+      unresolved: [],
+      artefacts: [],
+      pullRequest: input.storedPullRequest ?? {
+        number: 42,
+        title: "t",
+        branch: `symphony/${input.workItemId}`,
+        baseBranch: "main",
+        status: "open",
+        ciStatus: "success",
+        reviewState: "approved",
+        mergeable: "mergeable",
+        unresolvedComments: 0,
+      },
+      modelReview: null,
+      overallAssessment: "ready_for_review",
+      createdAt: "2026-08-05T00:00:00.000Z",
+    });
+    const runAttempts = yield* RunAttemptRepository;
+    const runAttemptId = RunAttemptId.make(`run-${input.workItemId}`);
+    yield* runAttempts.create({
+      id: runAttemptId,
+      workItemId,
+      attemptNumber: 1,
+      workspacePath: `/ws/${input.workItemId}`,
+      provider: {
+        instanceId: ProviderInstanceId.make("codex_default"),
+        driver: ProviderDriverKind.make("codex"),
+      },
+      status: "succeeded",
+      startedAt: "2026-08-05T00:00:00.000Z",
+      finishedAt: "2026-08-05T00:05:00.000Z",
+      error: null,
+    });
+    return { workItemId, runAttemptId };
   });
 
 layer("SymphonyOrchestrator Observe", (it) => {
@@ -2641,6 +2741,218 @@ layer("SymphonyOrchestrator Observe", (it) => {
         expect(after?.lifecycle).toBe("ready_for_review");
         expect(dispatchedIds).toEqual([]);
       }),
+  );
+
+  // B-9: `approveMerge` parks an item at ready_to_merge and nothing ever looks
+  // at the host again, so nothing wrote `completed`. These tests drive the
+  // merge detector through the same refreshPullRequest path a person and the
+  // scheduler both use.
+  it.effect("refreshPullRequest completes a ready_to_merge item whose PR was merged", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const runEvents = yield* RunEventRepository;
+      const { workItemId, runAttemptId } = yield* seedMergeDetectionItem({
+        workItemId: "merge-9",
+        workflowId: "wf-merge-9",
+        repositoryPath: "/repo/merge-9",
+        workspaceKey: "issue-merge-9",
+        baseBranch: "main",
+      });
+
+      yield* setPullRequestRefresh({
+        number: 42,
+        title: "t",
+        branch: "symphony/issue-merge-9",
+        baseBranch: "main",
+        status: "merged",
+      });
+
+      expect(yield* orchestrator.refreshPullRequest("merge-9")).toBe(true);
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("completed");
+
+      const mergedEvents = runEvents
+        .listForAttempt(runAttemptId)
+        .pipe(
+          Effect.map((events) =>
+            events.filter((event) => event.eventType === "pull_request_merged"),
+          ),
+        );
+      const first = yield* mergedEvents;
+      expect(first).toHaveLength(1);
+      expect(first[0]?.payload).toMatchObject({ workItemId: "merge-9", number: 42 });
+
+      // Idempotent: the transition's `from` guard makes a second merged
+      // observation a no-op, so the event is written once.
+      expect(yield* orchestrator.refreshPullRequest("merge-9")).toBe(true);
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("completed");
+      expect(yield* mergedEvents).toHaveLength(1);
+    }),
+  );
+
+  it.effect("a closed unmerged PR leaves the item in ready_to_merge and records one event", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const runEvents = yield* RunEventRepository;
+      const { workItemId, runAttemptId } = yield* seedMergeDetectionItem({
+        workItemId: "merge-10",
+        workflowId: "wf-merge-10",
+        repositoryPath: "/repo/merge-10",
+        workspaceKey: "issue-merge-10",
+        baseBranch: "main",
+      });
+
+      yield* setPullRequestRefresh({
+        number: 43,
+        title: "t",
+        branch: "symphony/issue-merge-10",
+        baseBranch: "main",
+        status: "closed",
+      });
+
+      expect(yield* orchestrator.refreshPullRequest("merge-10")).toBe(true);
+      // Closed without merging is not completion and not failure: Symphony
+      // records what it observed and leaves the lifecycle alone.
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("ready_to_merge");
+
+      const closedEvents = runEvents
+        .listForAttempt(runAttemptId)
+        .pipe(
+          Effect.map((events) =>
+            events.filter((event) => event.eventType === "pull_request_closed_unmerged"),
+          ),
+        );
+      expect(yield* closedEvents).toHaveLength(1);
+
+      // The stored snapshot now says closed, so a repeat observation does not
+      // append a second event.
+      yield* orchestrator.refreshPullRequest("merge-10");
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("ready_to_merge");
+      expect(yield* closedEvents).toHaveLength(1);
+    }),
+  );
+
+  it.effect("refreshPullRequest works without a stored base branch", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedMergeDetectionItem({
+        workItemId: "merge-11",
+        workflowId: "wf-merge-11",
+        repositoryPath: "/repo/merge-11",
+        workspaceKey: "issue-merge-11",
+        storedPullRequest: {
+          number: 44,
+          title: "t",
+          branch: "symphony/issue-merge-11",
+          baseBranch: "main",
+          status: "open",
+          ciStatus: "success",
+          reviewState: "approved",
+          mergeable: "mergeable",
+          unresolvedComments: 0,
+        },
+      });
+      yield* setPullRequestRefresh({
+        number: 44,
+        title: "t",
+        branch: "symphony/issue-merge-11",
+        baseBranch: "main",
+        status: "open",
+      });
+
+      expect(yield* orchestrator.refreshPullRequest("merge-11")).toBe(true);
+      expect(
+        pullRequestRefreshInputs.some(
+          (entry) => entry.branch === "symphony/issue-merge-11" && entry.baseBranch === "main",
+        ),
+      ).toBe(true);
+    }),
+  );
+
+  it.effect(
+    "refreshPullRequest asks the host for the stored PR identity when the item records none",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* SymphonyOrchestrator;
+        // Neither a workspace key nor a base branch on the item: the stored PR
+        // evidence is the only record of both, and refusing to refresh would
+        // strand a merge-ready item forever.
+        yield* seedMergeDetectionItem({
+          workItemId: "merge-12",
+          workflowId: "wf-merge-12",
+          repositoryPath: "/repo/merge-12",
+          storedPullRequest: {
+            number: 45,
+            title: "t",
+            branch: "symphony/issue-merge-12",
+            baseBranch: "develop",
+            status: "open",
+            ciStatus: "success",
+            reviewState: "approved",
+            mergeable: "mergeable",
+            unresolvedComments: 0,
+          },
+        });
+        yield* setPullRequestRefresh({
+          number: 45,
+          title: "t",
+          branch: "symphony/issue-merge-12",
+          baseBranch: "develop",
+          status: "open",
+        });
+
+        expect(yield* orchestrator.refreshPullRequest("merge-12")).toBe(true);
+        expect(
+          pullRequestRefreshInputs.some(
+            (entry) => entry.branch === "symphony/issue-merge-12" && entry.baseBranch === "develop",
+          ),
+        ).toBe(true);
+      }),
+  );
+
+  it.effect("the scheduler completes merged PRs on its own", () =>
+    Effect.gen(function* () {
+      const workItems = yield* WorkItemRepository;
+      const { workItemId } = yield* seedMergeDetectionItem({
+        workItemId: "merge-sweep-1",
+        workflowId: "wf-merge-sweep-1",
+        repositoryPath: "/repo/merge-sweep-1",
+        workspaceKey: "issue-merge-sweep-1",
+        baseBranch: "main",
+      });
+      yield* setPullRequestRefresh({
+        number: 46,
+        title: "t",
+        branch: "symphony/issue-merge-sweep-1",
+        baseBranch: "main",
+        status: "merged",
+      });
+
+      // One scheduler scan: the sweep follows the workflow's own poll interval
+      // instead of hitting the host from the 5-second scan.
+      yield* TestClock.adjust("5 seconds");
+      yield* Effect.yieldNow;
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("completed");
+    }),
+  );
+
+  it.effect("listRuns reports completed for a completed item", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const { runAttemptId } = yield* seedMergeDetectionItem({
+        workItemId: "merge-completed-1",
+        workflowId: "wf-merge-completed-1",
+        repositoryPath: "/repo/merge-completed-1",
+        lifecycle: "completed",
+        workspaceKey: "issue-merge-completed-1",
+        baseBranch: "main",
+      });
+
+      const runs = yield* orchestrator.listRuns({ limit: 200 });
+      const summary = runs.find((run) => run.runAttemptId === runAttemptId);
+      expect(summary?.lifecycle).toBe("completed");
+    }),
   );
 });
 

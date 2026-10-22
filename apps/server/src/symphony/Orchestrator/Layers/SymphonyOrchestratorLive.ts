@@ -338,6 +338,13 @@ const RUN_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   "retries_exhausted",
 ]);
 
+/**
+ * Lifecycles the merged-PR detector is allowed to settle. A merged pull request
+ * is the only evidence that closes an item without another Symphony action, and
+ * only an item parked for merge can be closed by it.
+ */
+const MERGE_DETECTION_SOURCES: ReadonlyArray<WorkLifecycle> = ["ready_to_merge"];
+
 const lifecycleForRun = (
   attemptStatus: string,
   workItem: WorkItem | null,
@@ -360,6 +367,10 @@ const lifecycleForRun = (
       "validation_failed",
       "retry_scheduled",
       "failed",
+      // A merged PR closes the item; without this the succeeded attempt
+      // short-circuits to ready_for_review and the run list contradicts the
+      // board.
+      "completed",
     ]);
     if (reviewLifecycles.has(workItem.lifecycle)) {
       return workItem.lifecycle;
@@ -723,6 +734,9 @@ const makeOrchestrator = Effect.gen(function* () {
         next.set(String(workflow.id), nowEpochMs);
         return next;
       });
+      // Same cadence as the poll above: the merged-PR detector must not hit the
+      // host from the 5-second scan.
+      yield* mergedPullRequestSweep(workflow.id).pipe(Effect.catch(() => Effect.void));
     }
     // Best-effort housekeeping: release orphaned claims, fire due retries and
     // expire approval requests whose wait window elapsed. Runs on the same
@@ -787,6 +801,21 @@ const makeOrchestrator = Effect.gen(function* () {
     }
     return false;
   });
+
+  // Merge detection (B-9): a merge-ready item is parked until the host says
+  // the pull request merged. Nothing else looks at the host for it, so this
+  // sweep refreshes those items on the workflow's own poll cadence (never from
+  // the 5-second scan) and lets `refreshPullRequest` settle the outcome.
+  const mergedPullRequestSweep = Effect.fn("symphonyOrchestrator.mergedPullRequestSweep")(
+    function* (workflowId: WorkflowId) {
+      const candidates = yield* workItems
+        .listByLifecycle(MERGE_DETECTION_SOURCES, { workflowId: String(workflowId) })
+        .pipe(Effect.catch(() => Effect.succeed([] as WorkItem[])));
+      for (const item of candidates) {
+        yield* refreshPullRequest(String(item.id)).pipe(Effect.ignore);
+      }
+    },
+  );
 
   const sweepExpiredApprovals = (now: string) =>
     Effect.gen(function* () {
@@ -1721,6 +1750,66 @@ const makeOrchestrator = Effect.gen(function* () {
         .pipe(Effect.catch(() => Effect.void));
     });
 
+  /**
+   * B-9: Symphony never merges; a human does. Once the host reports the pull
+   * request merged, that observation is the authoritative outcome for an item
+   * parked at ready_to_merge, so the detector closes it. Both writes are
+   * idempotent: the transition carries its `from` guard, and the closed-unmerged
+   * event only fires while the stored snapshot says something else.
+   */
+  const settlePullRequestOutcome = (
+    id: WorkItemId,
+    previous: PullRequestEvidence | null,
+    fresh: PullRequestEvidence,
+  ): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      if (fresh.status === "merged") {
+        const completed = yield* workItems
+          .transition(id, "completed", { from: MERGE_DETECTION_SOURCES })
+          .pipe(Effect.catch(() => Effect.succeed(false)));
+        if (!completed) {
+          return;
+        }
+        const attempt = yield* runAttempts
+          .latestForWorkItem(id)
+          .pipe(Effect.catch(() => Effect.succeed(null)));
+        if (attempt !== null) {
+          yield* runEvents
+            .append(attempt.id, "pull_request_merged", {
+              workItemId: String(id),
+              number: fresh.number,
+              ...(fresh.url !== undefined ? { url: fresh.url } : {}),
+            })
+            .pipe(Effect.catch(() => Effect.void));
+        }
+        yield* auditRepository
+          .record({
+            actor: "symphony",
+            eventType: "pull_request_merged",
+            workItemId: String(id),
+            payload: { number: fresh.number },
+          })
+          .pipe(Effect.catch(() => Effect.void));
+        return;
+      }
+      // Closed without merging is not completion and is not failure: record
+      // what was observed once and leave the lifecycle where it is.
+      if (fresh.status === "closed" && previous?.status !== "closed") {
+        const attempt = yield* runAttempts
+          .latestForWorkItem(id)
+          .pipe(Effect.catch(() => Effect.succeed(null)));
+        if (attempt !== null) {
+          yield* runEvents
+            .append(attempt.id, "pull_request_closed_unmerged", {
+              workItemId: String(id),
+              number: fresh.number,
+              ...(fresh.url !== undefined ? { url: fresh.url } : {}),
+            })
+            .pipe(Effect.catch(() => Effect.void));
+        }
+      }
+    });
+
   const refreshPullRequest: SymphonyOrchestratorShape["refreshPullRequest"] = (workItemId) =>
     Effect.gen(function* () {
       const id = WorkItemId.make(workItemId);
@@ -1736,20 +1825,22 @@ const makeOrchestrator = Effect.gen(function* () {
               Effect.catch(() => Effect.succeed(undefined)),
             );
       const config = workflow?.effectiveConfig;
-      const workspaceKey = item.workspaceKey;
       const bundle = yield* evidenceRepository
         .getByWorkItem(id)
         .pipe(Effect.catch(() => Effect.succeed(null)));
       const baseBranch = resolveBaseBranch(item, bundle);
-      if (
-        config === null ||
-        config === undefined ||
-        workspaceKey === undefined ||
-        baseBranch === undefined
-      ) {
+      // The stored PR evidence is the fallback identity for both halves: items
+      // dispatched before the workspace/base-branch writes existed still have a
+      // pull request, and it names the head branch the host keys on.
+      const branch =
+        bundle?.pullRequest?.branch ??
+        (item.workspaceKey === undefined ? undefined : deriveWorkingBranch(item.workspaceKey));
+      if (config === null || config === undefined || baseBranch === undefined) {
         return false;
       }
-      const branch = deriveWorkingBranch(workspaceKey);
+      if (branch === undefined) {
+        return false;
+      }
       const refreshed = yield* pullRequestService
         .refresh({
           config,
@@ -1774,6 +1865,7 @@ const makeOrchestrator = Effect.gen(function* () {
         .pipe(Effect.catch(() => Effect.succeed(false)));
 
       yield* ingestReviewFeedback(id, previousPullRequest, refreshed);
+      yield* settlePullRequestOutcome(id, previousPullRequest, refreshed);
 
       return true;
     });
