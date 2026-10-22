@@ -1,4 +1,5 @@
 import type { VcsInspectWorktreeResult, VcsWorktreeGitState } from "@neokod/contracts";
+import { worktreeHasLoss } from "@neokod/shared/git";
 
 import type { ThreadShell } from "./types";
 
@@ -52,7 +53,7 @@ export function planWorktreeCleanup(inspect: VcsInspectWorktreeResult): Worktree
   confirmLines.push("", "Delete the worktree too?");
 
   let discardMessage: string | null = null;
-  if (dirty || lostCommits) {
+  if (worktreeHasLoss(inspect)) {
     const lossParts: string[] = [];
     if (inspect.changedFileCount > 0) {
       lossParts.push(
@@ -106,6 +107,7 @@ export function toWorktreeRemovalState(inspect: VcsInspectWorktreeResult): VcsWo
   return {
     path: inspect.path,
     exists: inspect.exists,
+    ...(inspect.identity ? { identity: inspect.identity } : {}),
     refName: inspect.refName,
     headSha: inspect.headSha,
     changedFileCount: inspect.changedFileCount,
@@ -116,20 +118,13 @@ export function toWorktreeRemovalState(inspect: VcsInspectWorktreeResult): VcsWo
   };
 }
 
-export function worktreeStatesEqual(
-  left: VcsWorktreeGitState,
-  right: VcsWorktreeGitState,
-): boolean {
-  return (
-    left.refName === right.refName &&
-    left.headSha === right.headSha &&
-    left.exists === right.exists &&
-    left.changedFileCount === right.changedFileCount &&
-    left.untrackedFileCount === right.untrackedFileCount &&
-    left.ignoredFileCount === right.ignoredFileCount &&
-    left.localOnlyCommitCount === right.localOnlyCommitCount &&
-    left.branchReclaimable === right.branchReclaimable
-  );
+/**
+ * A failed removal followed by a failed reinspection has an unknown outcome.
+ * The thread deletion stays successful, but the worktree claim must not say it
+ * was kept without affirmative evidence.
+ */
+export function unknownWorktreeRemovalMessage(path: string): string {
+  return `Thread deleted; could not confirm worktree removal. Check ${path} before retrying.`;
 }
 
 function normalizeWorktreePath(path: string | null): string | null {

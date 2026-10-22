@@ -8,6 +8,7 @@ import {
   formatWorktreePathForDisplay,
   getOrphanedWorktreePathForThread,
   planWorktreeCleanup,
+  unknownWorktreeRemovalMessage,
 } from "./worktreeCleanup";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
@@ -169,6 +170,16 @@ describe("planWorktreeCleanup", () => {
     if (plan.kind !== "prompt") return;
     expect(plan.confirmMessage).toContain(
       "Branch neokod/abcd1234 is kept (1 commit exist only on it).",
+    );
+    expect(plan.discardMessage).toBeNull();
+  });
+
+  it("reports a lost acknowledgement as an unknown removal outcome", () => {
+    expect(unknownWorktreeRemovalMessage("/tmp/repo/worktrees/neokod-abcd1234")).toBe(
+      "Thread deleted; could not confirm worktree removal. Check /tmp/repo/worktrees/neokod-abcd1234 before retrying.",
+    );
+    expect(unknownWorktreeRemovalMessage("/tmp/repo/worktrees/neokod-abcd1234")).not.toContain(
+      "was kept",
     );
   });
 });

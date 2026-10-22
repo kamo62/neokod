@@ -3,6 +3,7 @@ import { assert, describe, it } from "vite-plus/test";
 import {
   buildGitActionProgressStages,
   buildMenuItems,
+  isMergeCommitPending,
   requiresDefaultBranchConfirmation,
   resolveAutoFeatureBranchName,
   resolveConflictBlockReason,
@@ -1212,5 +1213,34 @@ describe("resolveAutoFeatureBranchName", () => {
   it("falls back to feature/update when no preferred name is provided", () => {
     const ref = resolveAutoFeatureBranchName(["main"]);
     assert.equal(ref, "feature/update");
+  });
+});
+
+describe("resolved merge with no tree delta", () => {
+  const merge = status({ operationInProgress: "merge", hasWorkingTreeChanges: false });
+
+  it("treats the resolved merge as committable", () => {
+    assert.equal(isMergeCommitPending(merge), true);
+    assert.equal(isMergeCommitPending(status()), false);
+    assert.equal(
+      isMergeCommitPending(status({ operationInProgress: "merge", unmergedPaths: ["a.txt"] })),
+      false,
+    );
+  });
+
+  it("offers a commit quick action instead of a clean-worktree hint", () => {
+    const quick = resolveQuickAction(merge, false);
+    assert.deepInclude(quick, {
+      label: "Commit merge",
+      disabled: false,
+      kind: "run_action",
+      action: "commit",
+    });
+  });
+
+  it("enables the commit menu item while no tree delta exists", () => {
+    const items = buildMenuItems(merge, false);
+    const commit = items.find((item) => item.id === "commit");
+    assert.equal(commit?.disabled, false);
   });
 });

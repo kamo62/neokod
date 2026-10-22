@@ -2,6 +2,7 @@ import type { GitStackedAction, VcsStatusResult } from "@neokod/contracts";
 
 import {
   getMenuActionDisabledReason,
+  isMergeCommitPending,
   resolveConflictBlockReason,
   type GitActionMenuItem,
 } from "./GitActionsControl.logic";
@@ -153,7 +154,7 @@ function resolveCommitPushAction(input: {
   const canPushWithoutUpstream = hasPrimaryRemote && !gitStatus.hasUpstream;
   const canPush = gitStatus.hasUpstream || canPushWithoutUpstream;
 
-  if (!hasChanges) {
+  if (!hasChanges && !isMergeCommitPending(gitStatus)) {
     return {
       ...base,
       disabled: true,

@@ -71,6 +71,8 @@ import { issueAssetUrl } from "./assets/AssetAccess.ts";
 import { makeRoutesLayer } from "./server.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as GitManager from "./git/GitManager.ts";
+import { WorktreeRemovalLeaseLive } from "./git/WorktreeRemovalLease.ts";
+import { readWorkspaceIdentityEvidence } from "./vcs/WorkspaceIdentity.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
@@ -624,7 +626,7 @@ const buildAppUnderTest = (options?: {
       ),
       Layer.provide(gitManagerLayer),
       Layer.provide(gitVcsDriverLayer),
-      Layer.provide(gitWorkflowLayer),
+      Layer.provide(Layer.mergeAll(gitWorkflowLayer, WorktreeRemovalLeaseLive)),
       Layer.provide(reviewLayer),
       Layer.provide(vcsProvisioningLayer),
       Layer.provide(
@@ -2263,6 +2265,13 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
   it.effect("routes websocket rpc git methods", () =>
     Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const removalRoot = yield* fs.makeTempDirectoryScoped({
+        prefix: "neokod-ws-git-removal-",
+      });
+      const missingWorktree = path.join(removalRoot, "wt");
+      const missingIdentity = yield* readWorkspaceIdentityEvidence(missingWorktree);
       yield* buildAppUnderTest({
         config: {
           cwd: "/tmp/repo",
@@ -2406,8 +2415,14 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             removeWorktree: () => Effect.void,
             inspectWorktree: () =>
               Effect.succeed({
-                path: "/tmp/wt",
+                path: missingWorktree,
                 exists: false,
+                identity: {
+                  physicalPath: missingIdentity.physicalPath,
+                  registrationPath: null,
+                  device: missingIdentity.device,
+                  inode: missingIdentity.inode,
+                },
                 refName: null,
                 headSha: null,
                 changedFileCount: 0,
@@ -2539,10 +2554,16 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         withWsRpcClient(wsUrl, (client) =>
           client[WS_METHODS.vcsRemoveWorktree]({
             cwd: "/tmp/repo",
-            path: "/tmp/wt",
+            path: missingWorktree,
             expectedState: {
-              path: "/tmp/wt",
+              path: missingWorktree,
               exists: false,
+              identity: {
+                physicalPath: missingIdentity.physicalPath,
+                registrationPath: null,
+                device: missingIdentity.device,
+                inode: missingIdentity.inode,
+              },
               refName: null,
               headSha: null,
               changedFileCount: 0,
@@ -2599,6 +2620,24 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       yield* fs.makeDirectory(realWorktree, { recursive: true });
       const aliasRoot = path.join(root, "alias");
       yield* fs.symlink(path.join(root, "real"), aliasRoot);
+      const otherWorktree = path.join(root, "other", "worktree");
+      yield* fs.makeDirectory(otherWorktree, { recursive: true });
+      const physicalWorktree = yield* fs.realPath(realWorktree);
+      const stat = yield* fs.stat(physicalWorktree);
+      const physicalOther = yield* fs.realPath(otherWorktree);
+      const otherStat = yield* fs.stat(physicalOther);
+      const identity = {
+        physicalPath: physicalWorktree,
+        registrationPath: physicalWorktree,
+        device: String(stat.dev),
+        inode: Option.isSome(stat.ino) ? String(stat.ino.value) : null,
+      };
+      const otherIdentity = {
+        physicalPath: physicalOther,
+        registrationPath: physicalOther,
+        device: String(otherStat.dev),
+        inode: Option.isSome(otherStat.ino) ? String(otherStat.ino.value) : null,
+      };
 
       const defaultReadModel = makeDefaultOrchestrationReadModel();
       const aliasedProjectId = ProjectId.make("project-aliased-workspace");
@@ -2623,6 +2662,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       let inspectState: VcsWorktreeGitState = {
         path: realWorktree,
         exists: true,
+        identity,
         refName: "neokod/abcd1234",
         headSha: "head-b",
         changedFileCount: 0,
@@ -2655,6 +2695,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const expectedState: VcsWorktreeGitState = {
         path: realWorktree,
         exists: true,
+        identity,
         refName: "neokod/abcd1234",
         headSha: "head-b",
         changedFileCount: 0,
@@ -2666,6 +2707,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const remove = (overrides: {
         expectedState?: typeof expectedState | null;
         force?: boolean;
+        confirmLoss?: boolean;
       }) =>
         Effect.scoped(
           withWsRpcClient(wsUrl, (client) =>
@@ -2676,6 +2718,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 ? {}
                 : { expectedState: overrides.expectedState ?? expectedState }),
               ...(overrides.force !== undefined ? { force: overrides.force } : {}),
+              ...(overrides.confirmLoss !== undefined
+                ? { confirmLoss: overrides.confirmLoss }
+                : {}),
             }),
           ),
         ).pipe(Effect.result);
@@ -2684,11 +2729,52 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assertTrue(noEvidence._tag === "Failure");
       assert.equal(removeCalls, 0);
 
+      const { identity: _inspectedIdentity, ...withoutIdentity } = expectedState;
+      const noIdentity = yield* remove({ expectedState: withoutIdentity });
+      assertTrue(noIdentity._tag === "Failure");
+      assert.equal(removeCalls, 0);
+
+      const retargeted = yield* remove({
+        expectedState: { ...expectedState, identity: otherIdentity },
+      });
+      assertTrue(retargeted._tag === "Failure");
+      if (retargeted._tag === "Failure") {
+        assert.match(retargeted.failure.message, /different filesystem object/);
+      }
+      assert.equal(removeCalls, 0);
+
       readModel = aliasedReadModel;
       const survivor = yield* remove({});
       assertTrue(survivor._tag === "Failure");
       if (survivor._tag === "Failure") {
         assert.match(survivor.failure.message, /used by 1 thread/);
+      }
+      assert.equal(removeCalls, 0);
+
+      const nestedProjectId = ProjectId.make("project-nested-workspace");
+      const nestedRoot = path.join(realWorktree, "packages", "app");
+      yield* fs.makeDirectory(nestedRoot, { recursive: true });
+      readModel = {
+        ...defaultReadModel,
+        projects: [
+          {
+            ...defaultReadModel.projects[0]!,
+            id: nestedProjectId,
+            workspaceRoot: nestedRoot,
+          },
+        ],
+        threads: [
+          {
+            ...defaultReadModel.threads[0]!,
+            projectId: nestedProjectId,
+            worktreePath: null,
+          },
+        ],
+      };
+      const nestedSurvivor = yield* remove({});
+      assertTrue(nestedSurvivor._tag === "Failure");
+      if (nestedSurvivor._tag === "Failure") {
+        assert.match(nestedSurvivor.failure.message, /used by 1 thread/);
       }
       assert.equal(removeCalls, 0);
 
@@ -2725,14 +2811,49 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assertTrue(missingDiscard._tag === "Failure");
       assert.equal(removeCalls, 0);
 
-      const removed = yield* remove({
+      const ignoredRemoved = yield* remove({
         expectedState: { ...expectedState, ignoredFileCount: 1 },
-        force: true,
+        confirmLoss: true,
       });
-      assertTrue(removed._tag === "Success");
+      assertTrue(ignoredRemoved._tag === "Success");
       assert.equal(removeCalls, 1);
-      assert.equal(removeInputs[0]?.force, true);
+      assert.equal(removeInputs[0]?.force, false);
+      assert.equal(removeInputs[0]?.confirmLoss, true);
       assert.equal(removeInputs[0]?.expectedState?.ignoredFileCount, 1);
+
+      inspectState = {
+        ...expectedState,
+        localOnlyCommitCount: 1,
+        branchReclaimable: false,
+      };
+      const branchCommitsRetained = yield* remove({
+        expectedState: {
+          ...expectedState,
+          localOnlyCommitCount: 1,
+          branchReclaimable: false,
+        },
+      });
+      assertTrue(branchCommitsRetained._tag === "Success");
+      assert.equal(removeCalls, 2);
+      assert.equal(removeInputs[1]?.force, false);
+      assert.equal(removeInputs[1]?.confirmLoss, false);
+
+      inspectState = {
+        ...expectedState,
+        refName: null,
+        localOnlyCommitCount: 1,
+        branchReclaimable: false,
+      };
+      const detachedWithoutConsent = yield* remove({
+        expectedState: {
+          ...expectedState,
+          refName: null,
+          localOnlyCommitCount: 1,
+          branchReclaimable: false,
+        },
+      });
+      assertTrue(detachedWithoutConsent._tag === "Failure");
+      assert.equal(removeCalls, 2);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

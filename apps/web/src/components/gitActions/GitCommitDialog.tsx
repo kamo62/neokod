@@ -56,6 +56,8 @@ export function GitCommitDialog({
   const selectedFiles = allFiles.filter((f) => !excludedFiles.has(f.path));
   const allSelected = excludedFiles.size === 0;
   const noneSelected = selectedFiles.length === 0;
+  const mergePending =
+    gitStatus?.operationInProgress === "merge" && (gitStatus.unmergedPaths?.length ?? 0) === 0;
 
   const resetState = () => {
     setDialogCommitMessage("");
@@ -231,8 +233,8 @@ export function GitCommitDialog({
           >
             Commit on new refName
           </Button>
-          <Button size="sm" disabled={noneSelected} onClick={submitCommit}>
-            Commit
+          <Button size="sm" disabled={noneSelected && !mergePending} onClick={submitCommit}>
+            {mergePending && noneSelected ? "Conclude merge" : "Commit"}
           </Button>
         </DialogFooter>
       </DialogPopup>

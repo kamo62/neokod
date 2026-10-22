@@ -1907,6 +1907,37 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     }),
   );
 
+  it.effect("concludes a resolved merge when the tree matches the current branch", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
+      yield* initRepo(repoDir);
+      yield* runGit(repoDir, ["checkout", "-b", "side"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "side\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "side change"]);
+      yield* runGit(repoDir, ["checkout", "main"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "main\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "main change"]);
+      yield* runGit(repoDir, ["merge", "side"], true);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "main\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+
+      const { manager } = yield* makeManager();
+      const result = yield* runStackedAction(manager, {
+        cwd: repoDir,
+        action: "commit",
+        commitMessage: "Conclude merge",
+      });
+
+      expect(result.commit.status).toBe("created");
+      const parents = (yield* runGit(repoDir, ["rev-list", "--parents", "-n", "1", "HEAD"])).stdout
+        .trim()
+        .split(" ");
+      expect(parents).toHaveLength(3);
+    }),
+  );
+
   it.effect("skips commit when there are no uncommitted changes", () =>
     Effect.gen(function* () {
       const repoDir = yield* makeTempDir("neokod-git-manager-");

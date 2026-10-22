@@ -1357,6 +1357,10 @@ export const make = Effect.gen(function* () {
         };
       }
 
+      if (context.stagedSummary.length === 0) {
+        return { subject: "Conclude merge", body: "", commitMessage: "Conclude merge" };
+      }
+
       const generated = yield* textGeneration
         .generateCommitMessage({
           cwd: input.cwd,

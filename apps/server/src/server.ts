@@ -75,6 +75,7 @@ import * as VcsProcess from "./vcs/VcsProcess.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
+import { WorktreeRemovalLeaseLive } from "./git/WorktreeRemovalLease.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as SourceControlProviderRegistry from "./sourceControl/SourceControlProviderRegistry.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
@@ -320,7 +321,9 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(ServerEnvironment.layer),
   Layer.provideMerge(WslBearerAuth.layer),
   Layer.provideMerge(LocalTransportAuth.layer),
-  Layer.provideMerge(ServerSecretStore.layer),
+  // One lease instance for both the orchestration admission gate and every
+  // managed removal gateway.
+  Layer.provideMerge(Layer.mergeAll(ServerSecretStore.layer, WorktreeRemovalLeaseLive)),
 );
 
 const RuntimeDependenciesLive = RuntimeCoreDependenciesLive.pipe(

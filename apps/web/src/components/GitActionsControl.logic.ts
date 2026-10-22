@@ -83,6 +83,11 @@ export function resolveOperationInProgressNotice(gitStatus: VcsStatusResult | nu
   return `${OPERATION_IN_PROGRESS_LABELS[operation]} in progress.`;
 }
 
+/** A resolved merge may have no tree delta but still needs its merge commit. */
+export function isMergeCommitPending(gitStatus: VcsStatusResult | null): boolean {
+  return gitStatus?.operationInProgress === "merge" && (gitStatus.unmergedPaths?.length ?? 0) === 0;
+}
+
 export function buildGitActionProgressStages(input: {
   action: GitStackedAction;
   hasCustomCommitMessage: boolean;
@@ -134,11 +139,12 @@ export function buildMenuItems(
 
   const hasBranch = gitStatus.refName !== null;
   const hasChanges = gitStatus.hasWorkingTreeChanges;
+  const mergePending = isMergeCommitPending(gitStatus);
   const hasOpenPr = gitStatus.pr?.state === "open";
   const isBehind = gitStatus.behindCount > 0;
   const hasDefaultBranchDelta = (gitStatus.aheadOfDefaultCount ?? gitStatus.aheadCount) > 0;
   const canPushWithoutUpstream = hasPrimaryRemote && !gitStatus.hasUpstream;
-  const canCommit = !isBusy && hasChanges && conflictBlockReason === null;
+  const canCommit = !isBusy && (hasChanges || mergePending) && conflictBlockReason === null;
   const canPush =
     !isBusy &&
     conflictBlockReason === null &&
@@ -249,6 +255,10 @@ export function resolveQuickAction(
       kind: "show_hint",
       hint: `Create and checkout a ref before pushing or opening a ${terminology.singular}.`,
     };
+  }
+
+  if (isMergeCommitPending(gitStatus)) {
+    return { label: "Commit merge", disabled: false, kind: "run_action", action: "commit" };
   }
 
   if (hasChanges) {
@@ -384,7 +394,7 @@ export function getMenuActionDisabledReason({
   const terminology = resolveChangeRequestTerminology(gitStatus);
 
   if (item.id === "commit") {
-    if (!hasChanges) {
+    if (!hasChanges && !isMergeCommitPending(gitStatus)) {
       return "Worktree is clean. Make changes before committing.";
     }
     return "Commit is currently unavailable.";

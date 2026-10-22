@@ -61,6 +61,18 @@ export class WorkspaceRemovalBlocked extends Error {
   }
 }
 
+/** A managed removal reservation could not be taken. The workspace is left in
+ * place rather than removed without admission coordination. */
+export class WorkspaceRemovalReservationFailed extends Error {
+  readonly workspacePath: string;
+
+  constructor(workspacePath: string, message: string) {
+    super(`Cannot remove workspace ${workspacePath}: ${message}`);
+    this.name = "WorkspaceRemovalReservationFailed";
+    this.workspacePath = workspacePath;
+  }
+}
+
 /** Recording the Symphony ownership lease failed. The workspace would be
  * unprotected against cross-mode removal (plan 16.0), so dispatch must not
  * proceed into it. */
@@ -116,7 +128,7 @@ export class WorkspaceManager extends Context.Service<
       readonly workspace: SymphonyWorkspace;
       readonly config: EffectiveWorkflowConfig;
       readonly force?: boolean;
-    }) => Effect.Effect<void, WorkspaceRemovalBlocked>;
+    }) => Effect.Effect<void, WorkspaceRemovalBlocked | WorkspaceRemovalReservationFailed>;
 
     /** True when a reused workspace contains a clean, committed agent handoff
      * ahead of its base branch. This lets a retry resume validation after the
@@ -153,6 +165,11 @@ export interface WorkspaceManagerDeps {
   /** Record a Symphony ownership lease for a newly created workspace
    * (plan 16.0; REVIEW P1 #1). */
   readonly acquireOwnership?: (workspacePath: string) => Effect.Effect<void, WorkspaceLeaseError>;
+  /** Hold a shared admission/removal reservation across the removal. */
+  readonly removeUnderReservation?: (input: {
+    readonly workspacePath: string;
+    readonly remove: () => Effect.Effect<void, WorkspaceRemovalBlocked>;
+  }) => Effect.Effect<void, WorkspaceRemovalBlocked | WorkspaceRemovalReservationFailed>;
 }
 
 export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManager["Service"] => {
@@ -249,8 +266,8 @@ export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManag
       return { key, path: resolvedPath, branch, baseBranch, createdNow: true };
     });
 
-  const removeWorkspace: WorkspaceManager["Service"]["removeWorkspace"] = (input) =>
-    Effect.gen(function* () {
+  const removeWorkspace: WorkspaceManager["Service"]["removeWorkspace"] = (input) => {
+    const remove = Effect.gen(function* () {
       // Ownership guard (plan 16.0): refuse removal of a workspace held by a
       // live Work-mode lease. The guard failure propagates — a blocked
       // removal must not silently proceed (REVIEW P0: the error was swallowed
@@ -273,6 +290,13 @@ export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManag
         })
         .pipe(Effect.catch(() => Effect.void));
     });
+    return deps.removeUnderReservation === undefined
+      ? remove
+      : deps.removeUnderReservation({
+          workspacePath: input.workspace.path,
+          remove: () => remove,
+        });
+  };
 
   const hasCommittedHandoff: WorkspaceManager["Service"]["hasCommittedHandoff"] = (workspace) =>
     Effect.gen(function* () {

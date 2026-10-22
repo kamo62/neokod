@@ -156,9 +156,21 @@ export const GitPreparePullRequestThreadInput = Schema.Struct({
 });
 export type GitPreparePullRequestThreadInput = typeof GitPreparePullRequestThreadInput.Type;
 
+export const VcsWorktreeIdentity = Schema.Struct({
+  /** Canonical physical path at inspection time, with symlinks resolved. */
+  physicalPath: TrimmedNonEmptyStringSchema,
+  /** The path Git records for this worktree, when it is registered. */
+  registrationPath: Schema.NullOr(TrimmedNonEmptyStringSchema),
+  /** Filesystem device and inode identify the same file across path aliases. */
+  device: Schema.NullOr(TrimmedNonEmptyStringSchema),
+  inode: Schema.NullOr(TrimmedNonEmptyStringSchema),
+});
+export type VcsWorktreeIdentity = typeof VcsWorktreeIdentity.Type;
+
 export const VcsWorktreeGitState = Schema.Struct({
   path: TrimmedNonEmptyStringSchema,
   exists: Schema.Boolean,
+  identity: Schema.optional(VcsWorktreeIdentity),
   refName: Schema.NullOr(TrimmedNonEmptyStringSchema),
   headSha: Schema.NullOr(TrimmedNonEmptyStringSchema),
   changedFileCount: NonNegativeInt,
@@ -173,6 +185,8 @@ export const VcsRemoveWorktreeInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
   path: TrimmedNonEmptyStringSchema,
   force: Schema.optional(Schema.Boolean),
+  /** The user accepted the loss described by a fresh inspection. */
+  confirmLoss: Schema.optional(Schema.Boolean),
   deleteBranch: Schema.optional(Schema.Boolean),
   expectedState: Schema.optional(VcsWorktreeGitState),
 });

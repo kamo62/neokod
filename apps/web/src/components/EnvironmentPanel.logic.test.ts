@@ -221,6 +221,14 @@ describe("resolveEnvironmentContextualActions", () => {
     assert.equal(commitPush?.disabledReason, null);
   });
 
+  it("keeps commit & push enabled for a resolved merge with no tree delta", () => {
+    const commitPush = commitPushAction(
+      status({ hasWorkingTreeChanges: false, operationInProgress: "merge" }),
+    );
+    assert.equal(commitPush?.disabled, false);
+    assert.equal(commitPush?.disabledReason, null);
+  });
+
   it("enables commit & push without an upstream when a primary remote can create one", () => {
     // First push of a new branch: no upstream yet, but a primary remote is
     // configured, so commit_push can still create + push it in one step.

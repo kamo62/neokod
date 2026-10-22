@@ -9,6 +9,7 @@ import {
   squashAtomCommandFailure,
 } from "@neokod/client-runtime/state/runtime";
 import { EnvironmentId, type ScopedThreadRef, ThreadId } from "@neokod/contracts";
+import { worktreeGitStatesMatch, worktreeRequiresForce } from "@neokod/shared/git";
 import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/unstable/reactivity";
@@ -30,7 +31,7 @@ import {
   finalizeThreadDeletion,
   planWorktreeCleanup,
   toWorktreeRemovalState,
-  worktreeStatesEqual,
+  unknownWorktreeRemovalMessage,
 } from "../worktreeCleanup";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { useClientSettings } from "./useSettings";
@@ -317,6 +318,7 @@ export function useThreadActions() {
 
         let removed = false;
         let removalFailure: WorktreeCleanupFailure | null = null;
+        let outcomeUnknown = false;
         // A link or commit can appear while the dialogs are open. The server
         // rejects that stale evidence; re-inspect and ask again once.
         for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -356,7 +358,8 @@ export function useThreadActions() {
             input: {
               cwd: candidate.projectCwd,
               path: candidate.worktreePath,
-              force: promptPlan.discardMessage !== null,
+              force: worktreeRequiresForce(inspection),
+              confirmLoss: promptPlan.discardMessage !== null,
               deleteBranch: true,
               expectedState: toWorktreeRemovalState(inspection),
             },
@@ -365,10 +368,7 @@ export function useThreadActions() {
             removed = true;
             break;
           }
-          if (isAtomCommandInterrupted(removeResult)) {
-            removalFailure = asCleanupFailure(removeResult);
-            break;
-          }
+          removalFailure = asCleanupFailure(removeResult);
 
           const reinspectResult = await inspectWorktree({
             environmentId: candidate.environmentId,
@@ -379,14 +379,20 @@ export function useThreadActions() {
             },
           });
           if (reinspectResult._tag !== "Success") {
+            outcomeUnknown = true;
             toastManager.add(
               stackedThreadToast({
                 type: "info",
-                title: "Worktree kept",
-                description: `Could not re-inspect ${candidate.worktreePath}. The worktree was kept.`,
+                title: "Worktree removal not confirmed",
+                description: unknownWorktreeRemovalMessage(candidate.worktreePath),
               }),
             );
-            removalFailure = asCleanupFailure(removeResult);
+            break;
+          }
+          if (!reinspectResult.value.exists) {
+            // The path is gone: the removal either succeeded or was already
+            // complete. Do not present the missing acknowledgement as failure.
+            removed = true;
             break;
           }
           const nextPlan = planWorktreeCleanup(reinspectResult.value);
@@ -401,19 +407,15 @@ export function useThreadActions() {
             break;
           }
           if (
-            worktreeStatesEqual(
+            worktreeGitStatesMatch(
               toWorktreeRemovalState(inspection),
               toWorktreeRemovalState(reinspectResult.value),
             )
           ) {
-            removalFailure = asCleanupFailure(removeResult);
             break;
           }
           inspection = reinspectResult.value;
           plan = nextPlan;
-          if (attempt === 1) {
-            removalFailure = asCleanupFailure(removeResult);
-          }
         }
 
         if (removed) {
@@ -424,7 +426,7 @@ export function useThreadActions() {
           if (refreshResult._tag === "Failure") {
             firstFailure ??= asCleanupFailure(refreshResult);
           }
-        } else if (removalFailure) {
+        } else if (removalFailure && !outcomeUnknown) {
           const error = squashAtomCommandFailure(removalFailure);
           const message =
             error instanceof Error ? error.message : "Unknown error removing worktree.";

@@ -5,6 +5,8 @@ import type {
   VcsStatusRemoteResult,
   VcsStatusResult,
   VcsStatusStreamEvent,
+  VcsWorktreeGitState,
+  VcsWorktreeIdentity,
 } from "@neokod/contracts";
 import * as Arr from "effect/Array";
 import * as Result from "effect/Result";
@@ -56,6 +58,63 @@ export function validateGitArgumentValue(value: string, label: string): string |
   if (value.startsWith("-")) return `${label} must not start with '-'.`;
   if (hasControlCharacter(value)) return `${label} contains a control character.`;
   return null;
+}
+
+function worktreeIdentitiesEqual(
+  expected: VcsWorktreeIdentity | undefined,
+  actual: VcsWorktreeIdentity | undefined,
+): boolean {
+  if (expected === undefined || actual === undefined) {
+    return expected === actual;
+  }
+  return (
+    expected.physicalPath === actual.physicalPath &&
+    expected.registrationPath === actual.registrationPath &&
+    expected.device === actual.device &&
+    expected.inode === actual.inode
+  );
+}
+
+/** Compare the complete evidence captured by an inspection with fresh evidence. */
+export function worktreeGitStatesMatch(
+  expected: VcsWorktreeGitState,
+  actual: VcsWorktreeGitState,
+): boolean {
+  return (
+    expected.exists === actual.exists &&
+    worktreeIdentitiesEqual(expected.identity, actual.identity) &&
+    expected.refName === actual.refName &&
+    expected.headSha === actual.headSha &&
+    expected.changedFileCount === actual.changedFileCount &&
+    expected.untrackedFileCount === actual.untrackedFileCount &&
+    expected.ignoredFileCount === actual.ignoredFileCount &&
+    expected.localOnlyCommitCount === actual.localOnlyCommitCount &&
+    expected.branchReclaimable === actual.branchReclaimable
+  );
+}
+
+/**
+ * Work the user must explicitly agree to discard. A named branch keeps its
+ * commits, so only a detached HEAD can lose commits. Ignored files are loss
+ * because removal deletes them even without `--force`.
+ */
+export function worktreeHasLoss(state: VcsWorktreeGitState): boolean {
+  return (
+    state.exists &&
+    (state.changedFileCount > 0 ||
+      state.untrackedFileCount > 0 ||
+      state.ignoredFileCount > 0 ||
+      (state.refName === null && state.localOnlyCommitCount > 0))
+  );
+}
+
+/**
+ * Git's own force requirement. `git worktree remove` deletes ignored files
+ * without force and does not check commit reachability, so only tracked and
+ * untracked dirt needs `--force`; that keeps Git's last-moment dirty check on.
+ */
+export function worktreeRequiresForce(state: VcsWorktreeGitState): boolean {
+  return state.exists && state.changedFileCount + state.untrackedFileCount > 0;
 }
 
 /**

@@ -11,9 +11,11 @@ import {
 } from "@neokod/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Metric from "effect/Metric";
+import * as Path from "effect/Path";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
@@ -32,6 +34,7 @@ import {
   type OrchestrationEventStoreShape,
 } from "../../persistence/Services/OrchestrationEventStore.ts";
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
+import { WorktreeRemovalLease, WorktreeRemovalLeaseLive } from "../../git/WorktreeRemovalLease.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQuery.ts";
@@ -63,14 +66,21 @@ async function createOrchestrationSystem() {
     Layer.provide(OrchestrationCommandReceiptRepositoryLive),
     Layer.provide(RepositoryIdentityResolver.layer),
     Layer.provide(SqlitePersistenceMemory),
+    Layer.provideMerge(WorktreeRemovalLeaseLive),
     Layer.provideMerge(ServerConfigLayer),
     Layer.provideMerge(NodeServices.layer),
   );
   const runtime = ManagedRuntime.make(orchestrationLayer);
   const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
   const snapshotQuery = await runtime.runPromise(Effect.service(ProjectionSnapshotQuery));
+  const lease = await runtime.runPromise(Effect.service(WorktreeRemovalLease));
+  const fileSystem = await runtime.runPromise(Effect.service(FileSystem.FileSystem));
+  const path = await runtime.runPromise(Effect.service(Path.Path));
   return {
     engine,
+    lease,
+    fileSystem,
+    path,
     readModel: () => runtime.runPromise(snapshotQuery.getSnapshot()),
     run: <A, E>(effect: Effect.Effect<A, E>) => runtime.runPromise(effect),
     dispose: () => runtime.dispose(),
@@ -1380,6 +1390,151 @@ describe("OrchestrationEngine", () => {
       readModel.projects.filter((p) => p.id === asProjectId("project-reuse-same")).length,
     ).toBe(1);
 
+    await system.dispose();
+  });
+
+  it("rejects admissions for a workspace under an active removal reservation", async () => {
+    const system = await createOrchestrationSystem();
+    const { engine, lease, fileSystem, path } = system;
+    const createdAt = now();
+    const root = await system.run(fileSystem.makeTempDirectory({ prefix: "neokod-engine-lease-" }));
+    const target = path.join(root, "worktree");
+    const nested = path.join(target, "packages", "app");
+    await system.run(fileSystem.makeDirectory(nested, { recursive: true }));
+    const physicalTarget = await system.run(fileSystem.realPath(target));
+    const targetStat = await system.run(fileSystem.stat(physicalTarget));
+    const identity = {
+      physicalPath: physicalTarget,
+      exists: true,
+      device: String(targetStat.dev),
+      inode: Option.match(targetStat.ino, {
+        onNone: () => "0",
+        onSome: (value) => String(value),
+      }),
+    };
+
+    await system.run(
+      engine.dispatch({
+        type: "project.create",
+        commandId: CommandId.make("cmd-lease-project"),
+        projectId: asProjectId("project-lease"),
+        title: "Lease",
+        workspaceRoot: root,
+        defaultModelSelection: {
+          instanceId: ProviderInstanceId.make("codex"),
+          model: "gpt-5-codex",
+        },
+        createdAt,
+      }),
+    );
+
+    await system.run(
+      lease.withRemovalReservation(
+        identity,
+        Effect.gen(function* () {
+          const exact = yield* engine
+            .dispatch({
+              type: "thread.create",
+              commandId: CommandId.make("cmd-lease-exact"),
+              threadId: ThreadId.make("thread-lease-exact"),
+              projectId: asProjectId("project-lease"),
+              title: "Exact",
+              modelSelection: {
+                instanceId: ProviderInstanceId.make("codex"),
+                model: "gpt-5-codex",
+              },
+              runtimeMode: "full-access",
+              interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+              branch: null,
+              worktreePath: target,
+              createdAt,
+            })
+            .pipe(Effect.flip);
+          expect((exact as { _tag: string })._tag).toBe("OrchestrationCommandInvariantError");
+          expect((exact as { message: string }).message).toContain("being removed");
+
+          const descendant = yield* engine
+            .dispatch({
+              type: "thread.create",
+              commandId: CommandId.make("cmd-lease-nested"),
+              threadId: ThreadId.make("thread-lease-nested"),
+              projectId: asProjectId("project-lease"),
+              title: "Nested",
+              modelSelection: {
+                instanceId: ProviderInstanceId.make("codex"),
+                model: "gpt-5-codex",
+              },
+              runtimeMode: "full-access",
+              interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+              branch: null,
+              worktreePath: nested,
+              createdAt,
+            })
+            .pipe(Effect.flip);
+          expect((descendant as { _tag: string })._tag).toBe("OrchestrationCommandInvariantError");
+
+          const rootChange = yield* engine
+            .dispatch({
+              type: "project.meta.update",
+              commandId: CommandId.make("cmd-lease-root"),
+              projectId: asProjectId("project-lease"),
+              workspaceRoot: nested,
+            })
+            .pipe(Effect.flip);
+          expect((rootChange as { _tag: string })._tag).toBe("OrchestrationCommandInvariantError");
+
+          const unrelated = yield* engine.dispatch({
+            type: "thread.create",
+            commandId: CommandId.make("cmd-lease-unrelated"),
+            threadId: ThreadId.make("thread-lease-unrelated"),
+            projectId: asProjectId("project-lease"),
+            title: "Unrelated",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("codex"),
+              model: "gpt-5-codex",
+            },
+            runtimeMode: "full-access",
+            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+            branch: null,
+            worktreePath: root,
+            createdAt,
+          });
+          expect(unrelated.sequence).toBeGreaterThan(0);
+
+          const attachExisting = yield* engine
+            .dispatch({
+              type: "thread.meta.update",
+              commandId: CommandId.make("cmd-lease-attach-existing"),
+              threadId: ThreadId.make("thread-lease-unrelated"),
+              worktreePath: nested,
+            })
+            .pipe(Effect.flip);
+          expect((attachExisting as { _tag: string })._tag).toBe(
+            "OrchestrationCommandInvariantError",
+          );
+
+          const createProject = yield* engine
+            .dispatch({
+              type: "project.create",
+              commandId: CommandId.make("cmd-lease-project-create"),
+              projectId: asProjectId("project-lease-nested"),
+              title: "Nested",
+              workspaceRoot: nested,
+              defaultModelSelection: {
+                instanceId: ProviderInstanceId.make("codex"),
+                model: "gpt-5-codex",
+              },
+              createdAt,
+            })
+            .pipe(Effect.flip);
+          expect((createProject as { _tag: string })._tag).toBe(
+            "OrchestrationCommandInvariantError",
+          );
+        }),
+      ),
+    );
+
+    await system.run(fileSystem.remove(root, { recursive: true, force: true }));
     await system.dispose();
   });
 });

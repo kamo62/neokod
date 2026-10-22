@@ -44,7 +44,12 @@ import {
   parseRemoteRefWithRemoteNames,
 } from "../git/remoteRefs.ts";
 import { ServerConfig } from "../config.ts";
-import { makeWorkspaceIdentityResolver } from "./WorkspaceIdentity.ts";
+import {
+  makeWorkspaceIdentityResolver,
+  readWorkspaceIdentityEvidence,
+  workspaceIdentitiesMatch,
+  type WorkspaceIdentityEvidence,
+} from "./WorkspaceIdentity.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 1_000_000;
@@ -706,6 +711,64 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       }
     }
     return undefined;
+  });
+
+  const readInspectionIdentity = Effect.fn("readInspectionIdentity")(function* (
+    target: string,
+    operation: string,
+  ) {
+    const identity = yield* readWorkspaceIdentityEvidence(target).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+      Effect.mapError(
+        (cause) =>
+          new GitCommandError({
+            ...gitCommandContext({ operation, cwd: target, args: [] }),
+            detail: "Unable to establish a stable filesystem identity for the worktree.",
+            cause,
+          }),
+      ),
+    );
+    if (identity.exists && (identity.device === null || identity.inode === null)) {
+      return yield* new GitCommandError({
+        ...gitCommandContext({ operation, cwd: target, args: [] }),
+        detail:
+          "Unable to establish a stable filesystem identity for the worktree. Inspect it again.",
+      });
+    }
+    return identity;
+  });
+
+  const readWorktreeRegistrationPath = Effect.fn("readWorktreeRegistrationPath")(function* (
+    cwd: string,
+    identity: WorkspaceIdentityEvidence,
+    operation: string,
+  ) {
+    const listArgs = ["worktree", "list", "--porcelain", "-z"] as const;
+    const result = yield* executeGit(operation, cwd, listArgs, {
+      timeoutMs: 15_000,
+      allowNonZeroExit: true,
+    });
+    if (result.exitCode !== 0) {
+      return yield* new GitCommandError({
+        ...gitCommandContext({ operation, cwd, args: listArgs }),
+        detail: "Unable to read the worktree registration.",
+        ...(result.exitCode === null ? {} : { exitCode: result.exitCode }),
+        stdoutLength: result.stdout.length,
+        stderrLength: result.stderr.length,
+      });
+    }
+    for (const entry of parseGitWorktreePorcelain(result.stdout)) {
+      const entryIdentity = yield* readWorkspaceIdentityEvidence(entry.path).pipe(
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
+        Effect.orElseSucceed(() => null),
+      );
+      if (entryIdentity !== null && workspaceIdentitiesMatch(identity, entryIdentity) === "same") {
+        return entry.path;
+      }
+    }
+    return null;
   });
 
   const executeRaw: GitVcsDriver.GitVcsDriver["Service"]["execute"] = Effect.fnUntraced(
@@ -1737,7 +1800,27 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         ["diff", "--cached", "--name-status"],
       ).pipe(Effect.map((stdout) => stdout.trim()));
       if (stagedSummary.length === 0) {
-        return null;
+        // A resolved merge can have no tree delta when every conflict chose
+        // the current branch's version. It still needs its two-parent commit.
+        // Empty cherry-pick and revert states keep the no-change policy.
+        const operationInProgress = yield* readOperationInProgress(cwd).pipe(
+          Effect.mapError(
+            (cause) =>
+              new GitCommandError({
+                ...gitCommandContext({
+                  operation: "GitVcsDriver.prepareCommitContext.operation",
+                  cwd,
+                  args: ["rev-parse", "--path-format=absolute", "--git-dir"],
+                }),
+                detail: "Unable to determine whether a Git operation is in progress.",
+                cause,
+              }),
+          ),
+        );
+        if (operationInProgress !== "merge") {
+          return null;
+        }
+        return { stagedSummary: "", stagedPatch: "" };
       }
 
       const stagedPatch = yield* runGitStdoutWithOptions(
@@ -2660,24 +2743,27 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   const inspectWorktree: GitVcsDriver.GitVcsDriver["Service"]["inspectWorktree"] = Effect.fn(
     "inspectWorktree",
   )(function* (input) {
-    const exists = yield* fileSystem.exists(input.path).pipe(
-      Effect.mapError(
-        (cause) =>
-          new GitCommandError({
-            ...gitCommandContext({
-              operation: "GitVcsDriver.inspectWorktree.exists",
-              cwd: input.path,
-              args: [],
-            }),
-            detail: "Unable to determine whether the worktree path exists.",
-            cause,
-          }),
-      ),
+    const identity = yield* readInspectionIdentity(
+      input.path,
+      "GitVcsDriver.inspectWorktree.identity",
     );
+    const exists = identity.exists;
+    const registrationPath = yield* readWorktreeRegistrationPath(
+      input.cwd,
+      identity,
+      "GitVcsDriver.inspectWorktree.registration",
+    );
+    const inspectionIdentity = {
+      physicalPath: identity.physicalPath,
+      registrationPath,
+      device: identity.device,
+      inode: identity.inode,
+    };
     if (!exists) {
       return {
         path: input.path,
         exists: false,
+        identity: inspectionIdentity,
         refName: null,
         headSha: null,
         changedFileCount: 0,
@@ -2802,6 +2888,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     return {
       path: input.path,
       exists: true,
+      identity: inspectionIdentity,
       refName,
       headSha,
       changedFileCount,
@@ -2917,6 +3004,56 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       args.push("--force");
     }
     args.push("--", input.path);
+    if (input.expectedState?.identity !== undefined) {
+      // Re-read the physical target immediately before Git's own removal so a
+      // symlink-parent retarget cannot substitute another worktree.
+      const currentIdentity = yield* readInspectionIdentity(
+        input.path,
+        "GitVcsDriver.removeWorktree.verifyIdentity",
+      );
+      const expectedIdentity = {
+        physicalPath: input.expectedState.identity.physicalPath,
+        exists: input.expectedState.exists,
+        device: input.expectedState.identity.device,
+        inode: input.expectedState.identity.inode,
+      } as const;
+      if (workspaceIdentitiesMatch(expectedIdentity, currentIdentity) !== "same") {
+        return yield* new GitCommandError({
+          ...gitCommandContext({
+            operation: "GitVcsDriver.removeWorktree.verifyIdentity",
+            cwd: input.path,
+            args: [],
+          }),
+          detail:
+            "The worktree target changed since it was inspected. Inspect it again and confirm.",
+        });
+      }
+    }
+    if (input.expectedState?.exists === true) {
+      // Re-read the full HEAD immediately before Git's own removal. This
+      // closes commits made while the confirmation dialogs were open; the
+      // external-writer window inside `git worktree remove` remains.
+      const headResult = yield* executeGit(
+        "GitVcsDriver.removeWorktree.verifyHead",
+        input.path,
+        ["rev-parse", "--verify", "HEAD"],
+        { timeoutMs: 15_000, allowNonZeroExit: true },
+      );
+      const actualHeadSha =
+        headResult.exitCode === 0 && headResult.stdout.trim().length > 0
+          ? headResult.stdout.trim()
+          : null;
+      if (actualHeadSha !== input.expectedState.headSha) {
+        return yield* new GitCommandError({
+          ...gitCommandContext({
+            operation: "GitVcsDriver.removeWorktree.verifyHead",
+            cwd: input.path,
+            args: ["rev-parse", "--verify", "HEAD"],
+          }),
+          detail: "The worktree HEAD changed since it was inspected. Inspect it again and confirm.",
+        });
+      }
+    }
     const removeResult = yield* executeGit("GitVcsDriver.removeWorktree", input.cwd, args, {
       timeoutMs: 15_000,
       allowNonZeroExit: true,
