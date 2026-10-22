@@ -283,6 +283,18 @@ layer("WorkItemRepository claim authority", (it) => {
         });
 
       yield* seedAt(
+        "board-active-d",
+        "queued",
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-01T00:00:00.000Z",
+      );
+      yield* seedAt(
+        "board-active-c",
+        "queued",
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-01T00:00:00.000Z",
+      );
+      yield* seedAt(
         "board-active-b",
         "queued",
         "2026-01-01T00:00:00.000Z",
@@ -333,20 +345,19 @@ layer("WorkItemRepository claim authority", (it) => {
       );
 
       const board = yield* repo.listForBoard(projectId, {
-        activeLimit: 10,
+        activeLimit: 2,
         terminalLimit: 2,
       });
 
       expect(board.items.map((item) => item.id)).toEqual([
         WorkItemId.make("board-active-a"),
         WorkItemId.make("board-active-b"),
-        WorkItemId.make("board-running"),
         WorkItemId.make("board-completed-new-b"),
         WorkItemId.make("board-completed-new-a"),
       ]);
       expect(board.totalsByLifecycle).toEqual({
         completed: 4,
-        queued: 2,
+        queued: 4,
         running: 1,
       });
     }),
@@ -385,6 +396,34 @@ layer("WorkItemRepository claim authority", (it) => {
       if (results.listed._tag === "Failure") {
         expect(results.listed.failure._tag).toBe("SymphonyPersistenceDecodeError");
         expect(results.listed.failure.message).toContain(id);
+      }
+    }),
+  );
+
+  it.effect("a syntactically valid null source payload fails as a named-row decode error", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const sql = yield* SqlClient.SqlClient;
+      const projectId = SymphonyProjectId.make("symphony-project-board-null-source");
+      const item = yield* makeWorkItem("board-null-source", "null-source", "queued", projectId);
+      yield* repo.upsert(item);
+      const id = item.id;
+      yield* sql`UPDATE symphony_work_items SET source_json = 'null' WHERE id = ${id}`;
+
+      const result = yield* Effect.result(
+        repo.listForBoard(projectId, { activeLimit: 10, terminalLimit: 10 }),
+      ).pipe(
+        Effect.ensuring(
+          sql`UPDATE symphony_work_items SET source_json = '{"kind":"manual"}' WHERE id = ${id}`.pipe(
+            Effect.ignore,
+          ),
+        ),
+      );
+
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure._tag).toBe("SymphonyPersistenceDecodeError");
+        expect(result.failure.message).toContain(id);
       }
     }),
   );

@@ -166,11 +166,24 @@ describe("projectBoardFromWorkItems", () => {
     expect(complete.truncated).toBe(false);
   });
 
+  it("omits coverage metadata when lifecycle totals are unavailable", () => {
+    const board = projectBoardFromWorkItems({
+      project,
+      sourceControl: { state: "none" },
+      workItems: [workItem("completed", "completed", 1), workItem("queued", "queued", 2)],
+      generatedAt: "2026-08-10T00:01:00.000Z",
+    });
+
+    expect(board.truncated).toBeUndefined();
+    expect(board.columns.every((column) => column.totalCount === undefined)).toBe(true);
+  });
+
   it("decodes a board payload from before coverage metadata", () => {
     const board = projectBoardFromWorkItems({
       project,
       sourceControl: { state: "none" },
       workItems: [workItem("queued", "queued", 1)],
+      lifecycleTotals: { queued: 1 },
       generatedAt: "2026-08-10T00:01:00.000Z",
     });
     const { truncated: _truncated, ...legacyBoard } = board;

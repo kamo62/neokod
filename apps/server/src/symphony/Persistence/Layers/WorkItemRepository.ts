@@ -3,6 +3,7 @@ import {
   SymphonyProjectId,
   WorkItemId,
   WorkLifecycleSchema,
+  WorkSourceSchema,
 } from "@neokod/contracts";
 import type { WorkItem, WorkLifecycle } from "@neokod/contracts";
 import { Schema } from "effect";
@@ -130,13 +131,28 @@ const decodeBoardLifecycleTotalRows = Schema.decodeUnknownEffect(
 
 const isPositiveLimit = (value: number): boolean => Number.isInteger(value) && value > 0;
 
+// JSON columns are decoded leniently by rowToWorkItem, so syntactically valid
+// but structurally wrong payloads (for example `source_json = 'null'`) would
+// otherwise survive the read and fail later as a defect. Validate the
+// JSON-derived fields at the row boundary instead.
+const WorkItemJsonFieldsSchema = Schema.Struct({
+  acceptanceCriteria: Schema.Array(Schema.String),
+  source: WorkSourceSchema,
+  eligibilityReasons: Schema.Array(Schema.String),
+});
+const decodeWorkItemJsonFields = Schema.decodeUnknownSync(WorkItemJsonFieldsSchema);
+
 const decodeRows = (
   operation: string,
   rows: ReadonlyArray<Schema.Schema.Type<typeof WorkItemRowSchema>>,
 ): Effect.Effect<WorkItem[], SymphonyPersistenceDecodeError> =>
   Effect.forEach(rows, (row) =>
     Effect.try({
-      try: () => rowToWorkItem(row),
+      try: () => {
+        const item = rowToWorkItem(row);
+        decodeWorkItemJsonFields(item);
+        return item;
+      },
       catch: (cause) =>
         new SymphonyPersistenceDecodeError({
           operation,

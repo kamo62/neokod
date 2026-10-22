@@ -90,16 +90,15 @@ export const projectBoardFromWorkItems = (input: {
         left.updatedAt.localeCompare(right.updatedAt) ||
         left.workItemId.localeCompare(right.workItemId),
     );
-    column.totalCount =
-      input.lifecycleTotals === undefined
-        ? column.cards.length
-        : WorkLifecycleSchema.literals.reduce(
-            (total, lifecycle) =>
-              boardColumnForLifecycle(lifecycle) === column.id
-                ? total + (input.lifecycleTotals?.[lifecycle] ?? 0)
-                : total,
-            0,
-          );
+    if (input.lifecycleTotals !== undefined) {
+      column.totalCount = WorkLifecycleSchema.literals.reduce(
+        (total, lifecycle) =>
+          boardColumnForLifecycle(lifecycle) === column.id
+            ? total + (input.lifecycleTotals?.[lifecycle] ?? 0)
+            : total,
+        0,
+      );
+    }
   }
 
   return {
@@ -107,6 +106,10 @@ export const projectBoardFromWorkItems = (input: {
     sourceControl: input.sourceControl,
     columns,
     generatedAt: input.generatedAt,
-    truncated: columns.some((column) => (column.totalCount ?? 0) > column.cards.length),
+    ...(input.lifecycleTotals === undefined
+      ? {}
+      : {
+          truncated: columns.some((column) => (column.totalCount ?? 0) > column.cards.length),
+        }),
   };
 };
