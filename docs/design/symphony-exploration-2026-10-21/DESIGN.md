@@ -1,7 +1,17 @@
 # Symphony layout exploration, 21 October 2026
 
-Status: design prototypes with sample data. No layout has been selected. These files do not implement or change the app.
+Status: design prototypes with sample data. The follow-up below recommends one combined flow. These files do not implement or change the app.
 Plan reference: `plan.md` sections 16.7, 16.9 and 16.10.
+
+22 October follow-up: the owner likes all three concepts and identifies B as detail within A. Sol and onboard Opus recommend composing them into one product, with a **Work** intake before execution. The owner subsequently requested the concrete artifact. `work.html` is that combined interactive demonstration: select issues, assign target machines and implementers, review the submission, then explicitly queue demo work. A monitors runs; B is the selected run's Execution tab; C is its Plan and decisions tab, available before and during execution. The standalone A/B/C pages remain detailed examples, separate from a newly queued demo attempt. Machines shown in Work are fictional sample servers, not discovered or authenticated real devices. The canonical production technical decision, delivery gates and acceptance criteria remain in `plan.md` section 16.11.
+
+## Work intake composition
+
+Work follows the same system type, blue selection accent and quiet status palette as the earlier views. The issue list is the main surface; a selected-item inspector carries acceptance criteria and assignments. Machine and agent choices sit with the issue they affect. Launch preview is a separate explicit step, with blocked items kept visible. This extends the existing workbench rather than adding a dashboard of cards or a fourth product mode.
+
+The intended interaction check is: select two visible issues; inspect acceptance criteria; set different target machines; confirm an offline or unsupported target blocks its item; save and reload the draft; preview ready work; change an assignment and confirm the old preview is invalid; preview again and queue demo work; inspect its pinned machine, agents and local receipt; move between Summary, Execution, Plan and Evidence. Saving a plan never starts work. The full workflow/plan examples must identify their original example attempt instead of presenting it as the newly queued work.
+
+All checks in Work are simulated against fixed fixtures. No tracker, access token, provider, server admission, validation command, process launch or real queue is used. Draft persistence is browser-local and resettable. The prototype is not proof of production machine routing or OpenCode Symphony integration.
 
 Open `index.html` in Chrome directly from disk (`file://`) or from any static server. There is no build step, dependency, font
 download or network call. All interactions change in-memory demo state, which resets on reload or with **Reset demo**. Only the
@@ -229,8 +239,10 @@ the running row shows a start time, orphaned rows show the last observation.
 
 ## Limits
 
-- I wrote these files without rendering them. No browser, build, test or visual check was run. Layout, overflow, SVG label
-  collisions, contrast in dark mode and narrow-screen behaviour need Chrome inspection.
+- Original A/B/C authoring did not include rendering. Sol inspected the new Work desktop layout in Chrome on 22 October
+  and exercised selection, per-item machine override, unsupported-provider blocking, draft save, preview, partial demo Start,
+  Execution detail and receipt restoration after reload. Narrow-screen behaviour, screen readers and full A/B/C visual
+  acceptance remain outstanding. No build or real execution was run.
 - All actions are local demo state. No tracker, server, provider or agent is contacted, and no action proves a server feature
   exists.
 - Times like "Saved at 14:31" come from a demo clock that advances one minute per recorded action. They are local interaction

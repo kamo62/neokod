@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Symphony work · Neokod design prototype</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="work.css" />
+    <script src="shared.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#wk-content">Skip to content</a>
+    <div class="wk-app">
+      <header class="topbar">
+        <a class="brand" href="index.html"><span class="brand-mark">N</span>Neokod</a>
+        <nav class="crumbs" aria-label="Location">
+          <span data-ic="chevronRight"></span>
+          <span class="hide-narrow">Symphony</span>
+          <span data-ic="chevronRight" data-ic-class="hide-narrow"></span>
+          <strong>Work</strong>
+        </nav>
+        <span class="spacer"></span>
+        <nav class="concept-nav" aria-label="Symphony pages">
+          <a href="work.html" aria-current="page">Work</a>
+          <a href="runs.html">Runs</a>
+          <a href="workflow.html">Workflow map</a>
+          <a href="planning.html">Plan and decisions</a>
+        </nav>
+        <span class="notice"><span data-ic="eye"></span>Design prototype · Sample data</span>
+        <div class="wk-reset-anchor">
+          <button
+            class="btn ghost sm"
+            type="button"
+            id="wk-reset"
+            aria-expanded="false"
+            aria-controls="wk-reset-pop"
+          >
+            Reset demo
+          </button>
+          <div class="wk-pop" id="wk-reset-pop" role="group" aria-label="Reset Work demo" hidden>
+            <p>
+              Clears this page's saved draft, plans, decisions and demo receipts. The theme and the
+              other prototype pages are not changed.
+            </p>
+            <div class="wk-pop-row">
+              <button class="btn sm" type="button" id="wk-reset-cancel">Cancel</button>
+              <button class="btn primary sm" type="button" id="wk-reset-confirm">
+                Reset Work demo
+              </button>
+            </div>
+          </div>
+        </div>
+        <button
+          class="btn ghost icon"
+          type="button"
+          data-theme-toggle
+          aria-label="Toggle theme"
+        ></button>
+      </header>
+
+      <div class="wk-flowbar">
+        <nav class="wk-steps" id="wk-steps" aria-label="Work flow"></nav>
+        <span class="wk-flow-spacer"></span>
+        <p class="wk-flow-note">
+          Sample data. No tracker, machine or agent is connected. Start only changes this page's
+          demo.
+        </p>
+        <span class="wk-savestate" id="wk-savestate" role="status" aria-live="polite"></span>
+      </div>
+
+      <div class="wk-content" id="wk-content" tabindex="-1">
+        <div class="wk-work" id="wk-view-work" data-drawer="false">
+          <aside class="wk-side" id="wk-side" aria-label="Project, tracker and machines"></aside>
+          <main class="wk-main" id="wk-main" aria-label="Issues"></main>
+          <section class="wk-insp" id="wk-insp" aria-label="Inspector"></section>
+        </div>
+        <section class="wk-page" id="wk-view-preview" aria-label="Preview" hidden></section>
+        <section
+          class="wk-runs"
+          id="wk-view-runs"
+          aria-label="Demo runs"
+          data-detail="false"
+          hidden
+        ></section>
+      </div>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="fixtures.js"></script>
+    <script src="work-data.js"></script>
+    <script src="work.js"></script>
+  </body>
+</html>

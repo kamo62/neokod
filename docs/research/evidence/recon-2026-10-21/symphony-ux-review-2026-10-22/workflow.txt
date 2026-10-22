@@ -1,0 +1,229 @@
+Browser tab: 326104940, Title: "Symphony work · Neokod design prototype", URL: "http://127.0.0.1:63035/work.html".
+1 AXWebArea Symphony work · Neokod design prototype, URL: 127.0.0.1:63035/work.html
+	2 container
+		3 link Description: Skip to content, Value: 127.0.0.1:63035/work.html#wk-content
+		4 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		5 container Location
+			6 text Symphony
+			7 text Work
+		8 container Symphony pages
+			9 link Description: Work, Value: 127.0.0.1:63035/work.html
+			10 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			11 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			12 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		13 text Design prototype · Sample data
+		14 button (collapsed) Reset demo, ID: wk-reset, Secondary Actions: Expand
+		15 checkbox Description: Switch to light theme, Value: 1
+		16 container Description: Work flow, ID: wk-steps
+			17 button Select and assign 1 selected, ID: step-work
+				18 text Select and assign
+				19 text 1 selected
+			20 button Preview Not created, ID: step-preview
+				21 text Preview
+				22 text Not created
+			23 button Demo runs 1 queued, ID: step-runs
+				24 text Demo runs
+				25 text 1 queued
+		26 text Sample data. No tracker, machine or agent is connected. Start only changes this page's demo.
+		27 text Draft saved 04:33 PM
+		28 container wk-view-work
+			29 container Description: Project, tracker and machines, ID: wk-side
+				30 container
+					31 text Neokod
+					32 definition list
+						33 container Tracker
+							34 text Tracker
+						35 text Sample GitHub connection
+						36 container Repository
+							37 text Repository
+						38 text neokod/neokod
+						39 container Scope
+							40 text Scope
+						41 text Open issues labelled agent-ready
+						42 container Fetched
+							43 text Fetched
+						44 text 14:38, sample time
+				45 container Start mode
+					46 heading Start mode, Value: 2, ID: wk-mode-h
+						47 text Start mode
+					48 container
+						49 radio button (settable, integer) Description: Selected only Only issues you select, preview and start will run., Value: 1
+						50 text Selected only Only issues you select, preview and start will run.
+					51 container
+						52 radio button (disabled, settable, integer) Value: 0, Description: Automatic Would start matching issues without a click. It needs an explicit project policy and is not offered in this prototype. Nothing here starts on its own.
+						53 text Automatic Would start matching issues without a click. It needs an explicit project policy and is not offered in this prototype. Nothing here starts on its own.
+				54 container Machines
+					55 heading Machines, Value: 2, ID: wk-mach-h
+						56 text Machines
+					57 content list
+						58 checkbox Sample Mac Connected macOS 26, 4 agents, Value: 0, ID: mb-mac
+							59 text Sample Mac
+							60 text Connected
+							61 text macOS 26, 4 agents
+						62 checkbox Work PC Connected Windows 11, 3 agents, Value: 0, ID: mb-work
+							63 text Work PC
+							64 text Connected
+							65 text Windows 11, 3 agents
+						66 checkbox Build host Offline, sign-in failed Ubuntu 24.04, agents unknown, Value: 0, ID: mb-build
+							67 text Build host
+							68 text Offline, sign-in failed
+							69 text Ubuntu 24.04, agents unknown
+					70 text Saved in Settings, Connections, Machines. These are sample machines, not machines detected on this computer.
+				71 container Keyboard
+					72 text Keyboard
+					73 container
+						74 text /  Search issues
+					75 container
+						76 text ↑ ↓  Move between issues
+					77 container
+						78 text ← →  Checkbox or title
+					79 container
+						80 text X  Select or clear issue
+					81 container
+						82 text Enter  Show details
+					83 container
+						84 text ⌘  or  Ctrl S  Save draft or plan
+					85 container
+						86 text Esc  Clear search or close
+			87 container Description: Issues, ID: wk-main
+				88 heading Agent-ready issues, Value: 1
+					89 text Agent-ready issues
+				90 text Loaded 7 of 9 matching issues from neokod/neokod, fetched 14:38 (sample time). The other 2 are on a next page this prototype does not load. Select visible never includes them.
+				91 container
+					92 text Search loaded issues
+					93 search text field (settable) Search loaded issues, ID: wk-q
+				94 container
+					95 text Filter by label
+					96 pop up button (collapsed, settable) Filter by label, Value: Any label, ID: wk-label, Secondary Actions: Expand
+						97 menu
+							98 (selected) Any label
+							99 acp
+							100 diff
+							101 git
+							102 machines
+							103 providers
+							104 reliability
+							105 safety
+							106 terminal
+							107 tracker
+							108 ui
+							109 web
+							110 windows
+				111 container Description: Filter by workflow, ID: wk-chips
+					112 checkbox All workflows 7, Value: 1, ID: wf-all
+					113 checkbox Core reliability 4, Value: 0, ID: wf-core
+					114 checkbox Provider adapters 2, Value: 0, ID: wf-providers
+					115 checkbox Settings and safety 1, Value: 0, ID: wf-settings
+				116 text Team and iteration filters are not offered by this tracker.
+				117 container wk-listhead
+					118 container
+						119 checkbox (settable, integer) Description: Select visible (6), Value: 2, ID: wk-selvis
+						120 text Select visible (6)
+					121 text Run on Readiness
+				122 content list Description: Loaded issues, ID: wk-list
+					123 container
+						124 checkbox (disabled, settable, integer) Description: NEO-4821 is already queued in this demo, Value: 0, ID: cb-NEO-4821
+						125 text NEO-4821
+						126 button Preserve queued sends across reconnects Core reliability reliability, web Edited 13:40 Shared sample, ID: tt-NEO-4821
+							127 text Preserve queued sends across reconnects
+							128 text Core reliability
+							129 text reliability, web
+							130 text Edited 13:40
+							131 text Shared sample
+						132 text Sample Mac Queued (demo)
+						133 button Open run, ID: or-NEO-4821
+					134 container
+						135 checkbox (settable, integer) Description: Select NEO-4830, Flag ACP sessions that go silent mid-turn, Value: 0, ID: cb-NEO-4830
+						136 text NEO-4830
+						137 button Flag ACP sessions that go silent mid-turn Provider adapters providers, acp Edited 12:58, ID: tt-NEO-4830
+							138 text Flag ACP sessions that go silent mid-turn
+							139 text Provider adapters
+							140 text providers, acp
+							141 text Edited 12:58
+						142 text Not selected
+					143 container
+						144 checkbox (settable, integer) Description: Select NEO-4833, Keep terminal scrollback when a thread is reopened, Value: 0, ID: cb-NEO-4833
+						145 text NEO-4833
+						146 button Keep terminal scrollback when a thread is reopened Core reliability terminal Edited 11:20, ID: tt-NEO-4833
+							147 text Keep terminal scrollback when a thread is reopened
+							148 text Core reliability
+							149 text terminal
+							150 text Edited 11:20
+						151 text Not selected
+					152 container
+						153 checkbox (settable, integer) Description: Select NEO-4838, Warn before removing a worktree with uncommitted changes, Value: 0, ID: cb-NEO-4838
+						154 text NEO-4838
+						155 button ID: tt-NEO-4838, Warn before removing a worktree with uncommitted changes Settings and safety git, safety Edited 10:47
+							156 text Warn before removing a worktree with uncommitted changes
+							157 text Settings and safety
+							158 text git, safety
+							159 text Edited 10:47
+						160 text Not selected Already has accepted work on Work PC
+					161 container
+						162 checkbox (settable, integer) Description: Select NEO-4842, Show which machine each thread runs on, Value: 0, ID: cb-NEO-4842
+						163 text NEO-4842
+						164 button Show which machine each thread runs on Core reliability machines, ui Edited 10:05, ID: tt-NEO-4842
+							165 text Show which machine each thread runs on
+							166 text Core reliability
+							167 text machines, ui
+							168 text Edited 10:05
+						169 text Not selected
+					170 container
+						171 checkbox (settable, integer) Description: Select NEO-4846, Normalise Windows paths in diff headers, Value: 1, ID: cb-NEO-4846
+						172 text NEO-4846
+						173 button Normalise Windows paths in diff headers Core reliability windows, diff Edited 09:31, ID: tt-NEO-4846
+							174 text Normalise Windows paths in diff headers
+							175 text Core reliability
+							176 text windows, diff
+							177 text Edited 09:31
+						178 text Work PC This issue only Blocked No DeepSeek V4.1 Flash on Work PC
+					179 container
+						180 checkbox (settable, integer) Description: Select NEO-4851, Back off when the tracker rate-limits issue fetches, Value: 0, ID: cb-NEO-4851
+						181 text NEO-4851
+						182 button Back off when the tracker rate-limits issue fetches Provider adapters tracker Edited Yesterday, ID: tt-NEO-4851
+							183 text Back off when the tracker rate-limits issue fetches
+							184 text Provider adapters
+							185 text tracker
+							186 text Edited Yesterday
+						187 text Not selected
+				188 container Description: Selected work, ID: wk-batch
+					189 text 1
+					190 text  selected , 1 blocked Defaults: Sample Mac, DeepSeek V4.1 Flash
+					191 button Clear selection, ID: act-clear
+					192 button Assign, ID: act-assign
+					193 button (disabled) Save draft, ID: act-save
+					194 button Preview 1 issue, ID: act-preview
+			195 container Description: Inspector, ID: wk-insp
+				196 tab group Inspector
+					197 tab (selected, settable, boolean) Details, Value: 1, ID: itab-details
+					198 tab (selectable, settable, boolean) Plan, Value: 0, ID: itab-plan
+					199 tab (selectable, settable, boolean) Selected (1), Value: 0, ID: itab-selected
+				200 container Description: Details, ID: ipanel
+					201 text NEO-4821 GitHub issue #4821 Open Edited 13:40
+					202 heading Preserve queued sends across reconnects, Value: 2
+						203 text Preserve queued sends across reconnects
+					204 text Core reliability reliability web
+					205 container
+						206 text Shared sample issue.  The Runs, Workflow map and Plan and decisions pages show an existing example attempt 3 for NEO-4821, waiting on decision D-3. A request you start here is a separate demo request. It is not added to those pages and does not change attempt 3.
+					207 link Description: Runs: existing example attempt 3, Value: 127.0.0.1:63035/runs.html#NEO-4821
+					208 link Description: Workflow map: existing example attempt 3, Value: 127.0.0.1:63035/workflow.html#NEO-4821
+					209 link Description: Plan and decisions: existing example attempt 3, Value: 127.0.0.1:63035/planning.html
+					210 container
+						211 heading Description, Value: 3
+							212 text Description
+						213 text Messages queued while the socket is down are dropped when it reconnects mid-send. Keep them, and never deliver one twice.
+					214 container
+						215 heading Acceptance criteria, Value: 3
+							216 text Acceptance criteria
+						217 content list
+							218 text A queued send survives a reconnect and a page reload.
+							219 text A send with a lost acknowledgement is never delivered twice.
+							220 text The user can see which sends are not yet confirmed.
+					221 container
+						222 heading Assignment, Value: 3
+							223 text Assignment
+						224 text Queued in this demo by receipt R-1, pinned to  Sample Mac . It cannot be selected again while that request is open.
+						225 button Open run, ID: d-openrun
+					226 text Tracker reference I_kwSAMPLE4821 in Sample GitHub connection, neokod/neokod. Kept so a renamed or renumbered issue is still the same issue.
+
+The focused UI element is 1 AXWebArea Symphony work · Neokod design prototype, URL: 127.0.0.1:63035/work.html

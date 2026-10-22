@@ -1,0 +1,26 @@
+{
+  "review_date": "2026-10-22",
+  "integration_head_at_packaging": "2745226f2c63e7a093144cf7196883e1ec510ea6",
+  "note": "Prototype includes uncommitted authoring work. Hashes identify reviewed sources; HEAD alone does not. Concurrent integration lanes may move dev.",
+  "sha256": {
+    "docs/design/symphony-exploration-2026-10-21/fixtures.js": "91a26634744acec08baeb5a1407fd382484c79a010b43e8f9d3b6585b380b333",
+    "docs/design/symphony-exploration-2026-10-21/index.html": "173a994f23a83cafedf057960ea654f6ae9171a9d5f444570d75423fdee964cd",
+    "docs/design/symphony-exploration-2026-10-21/planning-data.js": "52ffa423c8ea3ee451304433c0c958b5ad1cbd631d8d01515c394bad9c4470b2",
+    "docs/design/symphony-exploration-2026-10-21/planning.css": "537ce0ff4fb74d01cbc383079aa09f07bf40b10807854b317a856d814971ab3c",
+    "docs/design/symphony-exploration-2026-10-21/planning.html": "48c6a3363167cfb5e4f2c0368c605dd3b170ce8e3247c41397db1a1c6a781956",
+    "docs/design/symphony-exploration-2026-10-21/planning.js": "b20ed293fbdf4e79f84b2394faa4f07a410beceb6099c4d607917a9e2b9308a4",
+    "docs/design/symphony-exploration-2026-10-21/runs.css": "ba031cbeecf634b98e8d97980674bf47a6890b2cff2b833e833f9c22d8ab9f98",
+    "docs/design/symphony-exploration-2026-10-21/runs.html": "8f73fc2a4efd8880012f9c7857b9553446ebbd8ef410a80c3ad80bce4031c7a5",
+    "docs/design/symphony-exploration-2026-10-21/runs.js": "41e31730a4df2695af9b2a987b916f5de5faad3fb26afa7b5063bd791c60ca6c",
+    "docs/design/symphony-exploration-2026-10-21/shared.js": "bf259db005b31567e6646788260d87c93805c62e03d90425c9e5f9a901c90130",
+    "docs/design/symphony-exploration-2026-10-21/style.css": "b686e47c6d653b5374f9fcde65b2c88efbd58b262c8f618444a188727a06cda6",
+    "docs/design/symphony-exploration-2026-10-21/work-data.js": "8ff4695e1720f74c04e85547e330ff61e22a1afc06909706f5d7e91fceec3d4b",
+    "docs/design/symphony-exploration-2026-10-21/work.css": "9cfd8647530d30bfc26aac3917041a3753b812f2159f4436fabe42075afaf32a",
+    "docs/design/symphony-exploration-2026-10-21/work.html": "15efbdbecb31144dab9497f1541d614ab8bcc383e792ba63c332dd930a98a96a",
+    "docs/design/symphony-exploration-2026-10-21/work.js": "0c30c79b4b49aca7274e4939ece2645a124102883a4a1981d167626e5fcb0656",
+    "docs/design/symphony-exploration-2026-10-21/workflow-data.js": "44f44976d29bf1e54fd2e4b4703f9e75048c7f88c9af4f46c2343adbd2cba928",
+    "docs/design/symphony-exploration-2026-10-21/workflow.css": "dfb11ec62a2d1f60febbe29df5be9f127888471d49b2ed8a5000b6ef9d4b0d86",
+    "docs/design/symphony-exploration-2026-10-21/workflow.html": "5750b4fd0599cb7cce90f9e615167dd01257f3ddbcaf91ecd8b1b0a1e0eb7a65",
+    "docs/design/symphony-exploration-2026-10-21/workflow.js": "a050b9f09cae5e0680edf99519cc5e88fcc11798da1d18e1ac129e30bbf6941d"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "reviewer": "Onboard Claude, requested Opus 5.5 high",
+  "tools": "Read, Glob, Grep only",
+  "browser_operator": "Sol, Chrome Computer Use",
+  "turns": [
+    {
+      "turn": "opus-direct.json",
+      "subtype": "success",
+      "is_error": false,
+      "session_id": "50a845e4-99a2-442c-9fb7-5639acee5579",
+      "models": [
+        {
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty"
+        }
+      ]
+    },
+    {
+      "turn": "opus-followup.json",
+      "subtype": "success",
+      "is_error": false,
+      "session_id": "50a845e4-99a2-442c-9fb7-5639acee5579",
+      "models": [
+        {
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty"
+        }
+      ]
+    }
+  ]
+}

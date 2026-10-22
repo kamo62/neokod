@@ -1,0 +1,3 @@
+Confirmed: two isolated tab snapshots both accept NEO-4830 under the same receipt ID.
+Confirmed: accepting different issues from stale snapshots overwrites the first receipt in the shared store.
+Proof: exact prototype functions in two VM contexts with one in-memory localStorage stub; renderer replaced by no-op. No actual browser storage, provider, server, files or tracker were mutated by this check.

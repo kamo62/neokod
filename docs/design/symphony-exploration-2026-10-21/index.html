@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Symphony layout exploration · Neokod design prototype</title>
+    <title>Symphony workspace · Neokod design prototype</title>
     <link rel="stylesheet" href="style.css" />
     <script src="shared.js"></script>
     <style>
@@ -116,9 +116,31 @@
       .ix .foot p + p {
         margin-top: 8px;
       }
+      .work-entry {
+        margin-top: 24px;
+        padding: 20px;
+        border: 1px solid var(--accent);
+        border-radius: var(--radius);
+        background: var(--accent-soft);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+      }
+      .work-entry h2 {
+        font-size: 17px;
+      }
+      .work-entry p {
+        margin-top: 6px;
+        color: var(--text-2);
+        max-width: 64ch;
+      }
       @media (max-width: 760px) {
-        .concept {
+        .concept,
+        .work-entry {
           grid-template-columns: 1fr;
+          flex-direction: column;
+          align-items: start;
           gap: 12px;
         }
         .open-btn {
@@ -134,7 +156,7 @@
         <span data-ic="chevronRight"></span>
         <span class="hide-narrow">Symphony</span>
         <span data-ic="chevronRight" data-ic-class="hide-narrow"></span>
-        <strong>Layout exploration</strong>
+        <strong>Workspace preview</strong>
       </nav>
       <span class="spacer"></span>
       <span class="notice"><span data-ic="eye"></span>Design prototype · Sample data</span>
@@ -147,12 +169,24 @@
     </header>
 
     <main class="ix">
-      <h1>Three layouts for Symphony, without the board</h1>
+      <h1>Symphony, from selected work to reviewed result</h1>
       <p class="lede">
-        Each concept puts a different thing at the centre of the screen. They share the same sample
-        work item, statuses and evidence rules, so you can compare structure rather than styling.
-        None has been chosen.
+        Start with the issues you want worked on, assign agents and machines, then review the
+        launch. Runs is the operating view. Execution and Plan and decisions are details of the
+        selected work. Everything here uses fictional sample data; no real agents or machines are
+        connected.
       </p>
+      <section class="work-entry" aria-labelledby="work-entry-title">
+        <div>
+          <h2 id="work-entry-title">Work: select issues, agents and machines</h2>
+          <p>
+            The new combined flow. Select individual stories, set a machine and agent team for each,
+            save a draft, inspect the launch preview and queue demo work. Open its execution, plan
+            and evidence together.
+          </p>
+        </div>
+        <a class="btn primary" href="work.html">Open Work</a>
+      </section>
       <p class="facts">
         <span>Sample task NEO-4821, Preserve queued sends across reconnects</span>
         <span>Attempt 3, head <code>7f3a9c2</code></span>
@@ -178,7 +212,7 @@
           </svg>
           <div>
             <h2><a href="runs.html">A. Runs</a></h2>
-            <p class="role">Run-first operating view. Candidate default for daily operations.</p>
+            <p class="role">The operating view for monitoring selected work.</p>
             <dl>
               <dt>Centre</dt>
               <dd>
@@ -218,9 +252,7 @@
           </svg>
           <div>
             <h2><a href="workflow.html">B. Workflow map</a></h2>
-            <p class="role">
-              Workflow-first map for one work item. Candidate detailed execution view.
-            </p>
+            <p class="role">Execution detail for one work item, opened from its run.</p>
             <dl>
               <dt>Centre</dt>
               <dd>
@@ -259,8 +291,7 @@
           <div>
             <h2><a href="planning.html">C. Plan and decisions</a></h2>
             <p class="role">
-              Plan-and-decisions workspace with a compact run and agent rail. Candidate planning
-              surface.
+              Plan and decisions for the selected work, before and during execution.
             </p>
             <dl>
               <dt>Centre</dt>
@@ -283,13 +314,15 @@
 
       <div class="foot">
         <p>
-          The concepts can complement one another later. This page compares them as candidates for
-          the primary layout. Rationale, tokens, status rules and limits are in
+          Work combines intake, assignment and a launch preview. A, B and C remain detailed sample
+          explorations of the operating view and its run details. Rationale, status rules and limits
+          are in
           <a href="DESIGN.md">DESIGN.md</a>.
         </p>
         <p class="faint">
           Static HTML, CSS and JavaScript. No network, tracker, server or agent is connected.
-          Actions change local demo state only and reset on reload or with Reset demo.
+          Actions change local demo state only. Work drafts are saved on this browser; Reset demo
+          clears them.
         </p>
       </div>
     </main>

@@ -1,0 +1,14 @@
+{
+  "checked_at_utc": "2026-10-22T16:46:56.930109+00:00",
+  "ports": {
+    "6953": {
+      "exit_code": 1,
+      "listener_output": ""
+    },
+    "14993": {
+      "exit_code": 1,
+      "listener_output": ""
+    }
+  },
+  "conclusion": "Neither known review port was listening. No server restart or build performed."
+}

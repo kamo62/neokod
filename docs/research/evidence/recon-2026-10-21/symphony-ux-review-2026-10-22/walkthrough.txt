@@ -1,0 +1,2141 @@
+
+WORK PREVIEW
+Browser tab: 326104940, Title: "Symphony work · Neokod design prototype", URL: "http://127.0.0.1:63035/work.html#preview".
+0 AXWebArea Symphony work · Neokod design prototype, URL: 127.0.0.1:63035/work.html#preview
+	1 container
+		2 link Description: Skip to content, Value: 127.0.0.1:63035/work.html#wk-content
+		3 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		4 container Location
+			5 text Symphony
+			6 text Work
+		7 container Symphony pages
+			8 link Description: Work, Value: 127.0.0.1:63035/work.html
+			9 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			10 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			11 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		12 text Design prototype · Sample data
+		13 button (collapsed) Reset demo, ID: wk-reset, Secondary Actions: Expand
+		14 checkbox Description: Switch to light theme, Value: 1
+		15 container Description: Work flow, ID: wk-steps
+			27 button Select and assign 2 selected, ID: step-work
+				28 text Select and assign
+				29 text 2 selected
+			30 button Preview 1 ready, 1 blocked, ID: step-preview
+				31 text Preview
+				32 text 1 ready, 1 blocked
+			33 button Demo runs 1 queued, ID: step-runs
+				34 text Demo runs
+				35 text 1 queued
+		25 text Sample data. No tracker, machine or agent is connected. Start only changes this page's demo.
+		26 text Unsaved changes
+		36 container Description: Preview, ID: wk-view-preview
+			37 container
+				38 heading Preview, Value: 1, ID: pv-title
+					39 text Preview
+				40 text Created 06:31 PM for 2 selected issues.
+				41 button Back to Work, ID: pv-back
+				42 button Preview again, ID: pv-refresh
+				43 button Start 1 ready item (demo), ID: pv-start
+			44 container
+				45 text Simulated local preview.  Checked against sample machine facts in this page, not a server. It reserves nothing, holds no queue slot and is not admission. Start only changes this page's demo. No build, validation or agent command runs.
+			46 container pv-sum
+				47 text 1 ready, 1 blocked.
+				48 text  By machine: Sample Mac 1, Work PC 1. Each machine accepts or refuses its own items, so the batch is not all-or-nothing. Blocked items stay listed and are not sent.
+			49 button (collapsed) Stages and permissions for these workflows, Secondary Actions: Expand
+				50 text Stages and permissions for these workflows
+			51 content list
+				52 container
+					53 text Ready NEO-4830 Flag ACP sessions that go silent mid-turn Sample Mac
+					54 definition list
+						55 container Run on
+							56 text Run on
+						57 container
+							58 text Sample Mac  batch default
+							59 text /Users/sample/code/neokod
+						60 container Implementer
+							61 text Implementer
+						62 text DeepSeek V4.1 Flash through OpenCode (ACP), effort high
+						63 container Reviewers
+							64 text Reviewers
+						65 container
+							66 text Sol 6.1 through Codex, effort high
+							67 text Opus 5.5 through Claude, effort high
+							68 text Same machine as the implementer
+						69 container Workflow
+							70 text Workflow
+						71 text Provider adapters
+						72 container Validation
+							73 text Validation
+						74 container
+							75 text vp check vp run typecheck vp test apps/server/src/provider Planned. Nothing runs here.
+						76 container Base
+							77 text Base
+						78 text dev at e19c4d0
+						79 container Issue
+							80 text Issue
+						81 text As edited 12:58 (sample)
+						82 container Plan
+							83 text Plan
+						84 text r1
+						85 container Approval
+							86 text Approval
+						87 text Merge needs you
+						88 container If started
+							89 text If started
+						90 text Queued on Sample Mac. Up to 2 runs at once (machine setting). No slot is reserved.
+					91 text Sample checks
+					92 content list Sample checks for NEO-4830
+						93 container
+							94 text Matches sample facts: Sample Mac is connected. Sample status, last checked 14:36.
+						95 container
+							96 text Matches sample facts: Repository found at /Users/sample/code/neokod, base dev at e19c4d0.
+						97 container
+							98 text Matches sample facts: Implementer DeepSeek V4.1 Flash through OpenCode (ACP) is available on Sample Mac. Effort: high.
+						99 container
+							100 text Matches sample facts: Reviewers Sol 6.1 and Opus 5.5 are available on Sample Mac, the same machine as the implementer.
+						101 container
+							102 text Note: Plan r1, drafted from the issue.
+						103 container
+							104 text Warning: Open question not decided yet: How long without an update before a session shows as silent?
+				105 container
+					106 text Blocked NEO-4846 Normalise Windows paths in diff headers Work PC
+					107 text Will not start.
+					108 text  Work PC has no DeepSeek V4.1 Flash. OpenCode is installed on Work PC, but DeepSeek V4.1 Flash is not enabled there. Run it on Sample Mac, which has DeepSeek V4.1 Flash, or choose another implementer yourself. 
+					109 button Change in Work, ID: pv-fix-NEO-4846
+					110 definition list
+						111 container Run on
+							112 text Run on
+						113 container
+							114 text Work PC  set for this issue
+							115 text C:\Users\sample\src\neokod
+						116 container Implementer
+							117 text Implementer
+						118 text DeepSeek V4.1 Flash through OpenCode (ACP), effort not available
+						119 container Reviewers
+							120 text Reviewers
+						121 container
+							122 text Sol 6.1 through Codex, effort high
+							123 text Opus 5.5 through Claude, effort high
+							124 text Same machine as the implementer
+						125 container Workflow
+							126 text Workflow
+						127 text Core reliability
+						128 container Validation
+							129 text Validation
+						130 container
+							131 text vp check vp run typecheck vp test (affected packages) Planned. Nothing runs here.
+						132 container Base
+							133 text Base
+						134 text dev at e19c4d0
+						135 container Issue
+							136 text Issue
+						137 text As edited 09:31 (sample)
+						138 container Plan
+							139 text Plan
+						140 text r1
+						141 container Approval
+							142 text Approval
+						143 text Merge needs you
+						144 container If started
+							145 text If started
+						146 text Not sent. Fix it in Work and create a new preview.
+					147 text Sample checks
+					148 content list Sample checks for NEO-4846
+						149 container
+							150 text Matches sample facts: Work PC is connected. Sample status, last checked 14:35.
+						151 container
+							152 text Matches sample facts: Repository found at C:\Users\sample\src\neokod, base dev at e19c4d0.
+						153 container
+							154 text Blocks start: Work PC has no DeepSeek V4.1 Flash. OpenCode is installed on Work PC, but DeepSeek V4.1 Flash is not enabled there. Run it on Sample Mac, which has DeepSeek V4.1 Flash, or choose another implementer yourself.
+						155 container
+							156 text Matches sample facts: Reviewers Sol 6.1 and Opus 5.5 are available on Work PC, the same machine as the implementer.
+						157 container
+							158 text Note: Plan r1, drafted from the issue.
+
+The focused UI element is 38 heading Preview, Value: 1, ID: pv-title
+RUNS A
+Browser tab: 326104940, Title: "Symphony runs · Concept A · Neokod design prototype", URL: "http://127.0.0.1:63035/runs.html".
+0 AXWebArea Symphony runs · Concept A · Neokod design prototype, URL: 127.0.0.1:63035/runs.html
+	1 container
+		2 link Description: Skip to runs, Value: 127.0.0.1:63035/runs.html#run-list
+		3 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		4 container Location
+			5 text Symphony
+			6 text Runs
+		7 container Symphony prototype
+			8 link Description: Work, Value: 127.0.0.1:63035/work.html
+			9 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			10 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			11 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		12 text Design prototype · Sample data
+		13 button Reset demo, ID: reset-demo
+		14 checkbox Description: Switch to light theme, Value: 1
+		15 container layout
+			16 container Project and workflows
+				17 text Neokod
+				18 text Workflows
+				19 container Description: Workflows, ID: workflows
+					20 checkbox All workflows , 4 need you, 4 active runs: 7, Value: 1
+						21 text All workflows
+						22 container 4 need you
+							23 text , 4 need you, 4
+						24 text active runs:
+						25 text 7
+					26 checkbox Core reliability , 3 need you, 3 active runs: 3, Value: 0
+						27 text Core reliability
+						28 container 3 need you
+							29 text , 3 need you, 3
+						30 text active runs:
+						31 text 3
+					32 checkbox Provider adapters active runs: 2, Value: 0
+						33 text Provider adapters
+						34 text active runs:
+						35 text 2
+					36 checkbox Settings and safety , 1 need you, 1 active runs: 2, Value: 0
+						37 text Settings and safety
+						38 container 1 need you
+							39 text , 1 need you, 1
+						40 text active runs:
+						41 text 2
+				42 text Keyboard
+				43 container
+					44 text /  Search
+				45 container
+					46 text ↑ ↓  Move between runs
+				47 container
+					48 text Esc  Clear search or close
+			49 container main
+				50 container
+					51 text Search runs
+					52 search text field (settable) Search runs, ID: search
+				53 container Show
+					54 checkbox Active, Value: 1
+					55 checkbox History, Value: 0
+					56 checkbox All, Value: 0
+				57 container Description: Filter by status, ID: chips
+					58 checkbox All 7, Value: 1
+					59 checkbox Needs you 4, Value: 0
+					60 checkbox Running 1, Value: 0
+					61 checkbox Paused 1, Value: 0
+					62 checkbox Failed 1, Value: 0
+					63 checkbox Tracking lost 1, Value: 0
+					64 checkbox Queued 1, Value: 0
+				65 container Needs you 4, ID: attention
+					66 heading Needs you 4, Value: 2, ID: attn-title
+						67 text Needs you  4
+					68 content list
+						69 button NEO-4821 Decision neededUnknown send acknowledgement after reconnect Core reliability
+							70 text NEO-4821
+							71 text Decision needed
+							72 text Unknown send acknowledgement after reconnect
+							73 text Core reliability
+						74 button NEO-4790 Tracking lostAgent may still be writing to the worktree Core reliability
+							75 text NEO-4790
+							76 text Tracking lost
+							77 text Agent may still be writing to the worktree
+							78 text Core reliability
+						79 button NEO-4785 Same failure twiceENOENT in review tests on attempts 1 and 2 Core reliability
+							80 text NEO-4785
+							81 text Same failure twice
+							82 text ENOENT in review tests on attempts 1 and 2
+							83 text Core reliability
+						84 button NEO-4776 Merge approvalPR #1279: all gates pass at 0b7d2f6 Settings and safety
+							85 text NEO-4776
+							86 text Merge approval
+							87 text PR #1279: all gates pass at 0b7d2f6
+							88 text Settings and safety
+				89 list Description: Runs, ID: run-list
+					90 container Active
+						91 text Active
+						92 text 7
+						93 (selected) ID: opt-NEO-4821, Value: NEO-4821 Preserve queued sends across reconnects Waiting for your decision · Build, attempt 3, Core reliability Stages: Intake done, Design done, Build needs you, Integrate failed, Review sent back, PR not run Waiting since 14:26
+							94 text NEO-4821
+							95 text Preserve queued sends across reconnects
+							96 text Waiting for your decision 
+							97 text · Build, attempt 3, Core reliability
+							98 container Stages: Intake done, Design done, Build needs you, Integrate failed, Review sent back, PR not run
+							99 text Waiting since 14:26
+						100 ID: opt-NEO-4807, Value: NEO-4807 Retry provider handshake after socket reset Running · Build, attempt 1, Provider adapters Stages: Intake done, Design skipped, Build running, Integrate not run, Review not run, PR not run Started 14:02
+							101 text NEO-4807
+							102 text Retry provider handshake after socket reset
+							103 text Running 
+							104 text · Build, attempt 1, Provider adapters
+							105 container Stages: Intake done, Design skipped, Build running, Integrate not run, Review not run, PR not run
+							106 text Started 14:02
+						107 ID: opt-NEO-4799, Value: NEO-4799 Settle Copilot sessions before runtime replacement Paused by you · Integrate, attempt 2, Provider adapters Stages: Intake done, Design done, Build done, Integrate paused, Review not run, PR not run Paused at 13:12
+							108 text NEO-4799
+							109 text Settle Copilot sessions before runtime replacement
+							110 text Paused by you 
+							111 text · Integrate, attempt 2, Provider adapters
+							112 container Stages: Intake done, Design done, Build done, Integrate paused, Review not run, PR not run
+							113 text Paused at 13:12
+						114 ID: opt-NEO-4790, Value: NEO-4790 Reap terminal process groups on server exit Tracking lost · Build, attempt 1, Core reliability Stages: Intake done, Design done, Build tracking lost, Integrate not run, Review not run, PR not run Last observed 13:41
+							115 text NEO-4790
+							116 text Reap terminal process groups on server exit
+							117 text Tracking lost 
+							118 text · Build, attempt 1, Core reliability
+							119 container Stages: Intake done, Design done, Build tracking lost, Integrate not run, Review not run, PR not run
+							120 text Last observed 13:41
+						121 ID: opt-NEO-4785, Value: NEO-4785 Validate diff cwd against worktree roots Validation failed twice · Integrate, attempt 2, Core reliability Stages: Intake done, Design done, Build done, Integrate failed, Review not run, PR not run Ended 12:58
+							122 text NEO-4785
+							123 text Validate diff cwd against worktree roots
+							124 text Validation failed twice 
+							125 text · Integrate, attempt 2, Core reliability
+							126 container Stages: Intake done, Design done, Build done, Integrate failed, Review not run, PR not run
+							127 text Ended 12:58
+						128 ID: opt-NEO-4776, Value: NEO-4776 Clamp UTF-8 writes at 10 MiB Ready to merge · PR, attempt 1, Settings and safety Stages: Intake done, Design done, Build done, Integrate passed, Review done, PR needs you Ended 12:34
+							129 text NEO-4776
+							130 text Clamp UTF-8 writes at 10 MiB
+							131 text Ready to merge 
+							132 text · PR, attempt 1, Settings and safety
+							133 container Stages: Intake done, Design done, Build done, Integrate passed, Review done, PR needs you
+							134 text Ended 12:34
+						135 ID: opt-NEO-4770, Value: NEO-4770 Debounce Symphony settings commits Queued · Not started, Settings and safety Stages: Intake queued, Design not run, Build not run, Integrate not run, Review not run, PR not run Not started
+							136 text NEO-4770
+							137 text Debounce Symphony settings commits
+							138 text Queued 
+							139 text · Not started, Settings and safety
+							140 container Stages: Intake queued, Design not run, Build not run, Integrate not run, Review not run, PR not run
+							141 text Not started
+			142 container Description: Selected run, ID: detail
+				143 container
+					144 text NEO-4821 Core reliability Waiting for your decision
+					145 heading Preserve queued sends across reconnects, Value: 2, ID: detail-title
+						146 text Preserve queued sends across reconnects
+					147 link Description:  Open in workflow map, Value: 127.0.0.1:63035/workflow.html#NEO-4821
+					148 link Description:  Open plan and decisions, Value: 127.0.0.1:63035/planning.html
+				149 text Current blocker
+				150 text Package B is paused. Its implementer cannot finish the repair until someone decides what happens to a send whose acknowledgement was lost.
+				151 container
+					152 text Next:  Answer decision D-3. Saving the answer does not resume work; resuming is a separate step.
+				153 text D-3: How should a send with an unknown acknowledgement be handled?
+				154 text The socket dropped after the client sent message m-81f2 and before the server's acknowledgement arrived. On reconnect the client cannot tell whether the server stored it. The server keeps send receipts for 24 hours (D-2).
+				155 D-3: How should a send with an unknown acknowledgement be handled?
+					156 container
+						157 radio button (settable, integer) Value: 0, Description: Resend automatically with the same message ID Relies on server receipts to drop the duplicate. Silent if the receipt has expired.
+						158 text Resend automatically with the same message ID Relies on server receipts to drop the duplicate. Silent if the receipt has expired.
+					159 container
+						160 radio button (settable, integer) Value: 0, Description: Keep the message identity and ask for an explicit retry Suggested by C2 Mark delivery as unknown, keep m-81f2 in the outbox and show Retry. No send happens until someone retries.
+						161 text Keep the message identity and ask for an explicit retry  Suggested by C2 Mark delivery as unknown, keep m-81f2 in the outbox and show Retry. No send happens until someone retries.
+					162 container
+						163 radio button (settable, integer) Value: 0, Description: Mark the send as failed and drop it from the outbox Simplest. The user retypes the message and loses the original identity.
+						164 text Mark the send as failed and drop it from the outbox Simplest. The user retypes the message and loses the original identity.
+				165 text Note for the record (optional)
+				166 text entry area (settable) Note for the record (optional), ID: d3-note
+				167 button (disabled) Save decision
+				168 text Choose an option first.
+				169 text Saving records your answer. It does not resume package B, approve the plan or merge anything.
+				170 container
+					171 heading Root task, Value: 3
+						172 text Root task
+					173 text Messages queued while the socket is down are dropped when it reconnects mid-send. Keep them, and never deliver one twice.
+					174 content list
+						175 container
+							176 AXListMarker • 
+							177 text A queued send survives a reconnect and a page reload.
+						178 container
+							179 AXListMarker • 
+							180 text A send with a lost acknowledgement is never delivered twice.
+						181 container
+							182 AXListMarker • 
+							183 text The user can see which sends are not yet confirmed.
+					184 text GitHub issue #4821 · imported 13:40. Plan r5, execution approved for attempt 3.
+				185 container
+					186 heading Attempt and head, Value: 3
+						187 text Attempt and head
+					188 definition list
+						189 container Attempt
+							190 text Attempt
+						191 text 3 of 4
+						192 container Head
+							193 text Head
+						194 text 7f3a9c2
+						195 container Base
+							196 text Base
+						197 text e19c4d0
+						198 container Branch
+							199 text Branch
+						200 text symphony/neo-4821-queued-sends
+						201 container Worktree
+							202 text Worktree
+						203 text ~/.neokod/worktrees/neokod/neo-4821-a3
+						204 container Provider
+							205 text Provider
+						206 text OpenCode, Sample model A (sample label)
+						207 container Elapsed
+							208 text Elapsed
+						209 text Waiting since 14:26
+						210 container Cost
+							211 text Cost
+						212 text Not reported
+				213 container
+					214 heading Validation, Value: 3
+						215 text Validation
+					216 content list
+						217 container
+							218 text vp run typecheck Host · clean tree Passed
+						219 container
+							220 text vp test apps/web/src/outbox Host · 38 tests Passed
+						221 container
+							222 text vp test apps/server/src/reconnect Host · 1 of 12 failed: duplicate after ack loss Failed
+						223 container
+							224 text e2e: reconnect-mid-send Waiting on package B Not run
+						225 container
+							226 text vp test apps/server/src/reconnect Earlier head Superseded
+					227 text Only a host check at the current head can pass. Agent reports, unknown and superseded results never show green.
+				228 container
+					229 heading Review, Value: 3
+						230 text Review
+					231 text Changes requested
+					232 text Round 1 of 2 at 
+					233 text 3b18e40
+					234 text , an earlier head
+					235 content list
+						236 container
+							237 text blocking A lost acknowledgement can deliver the same message twice. open
+						238 container
+							239 text blocking Outbox is not cleared on sign-out. fixed at 7f3a9c2, not re-reviewed
+				240 container
+					241 heading Agents, Value: 3
+						242 text Agents
+					243 content list
+						244 container
+							245 text R Root run Sample model A (sample label) Waiting for input
+							246 text Waiting since 14:26
+							247 text Cost not reported
+						248 container
+							249 text C1 Implementer, package A Managed Sample model B (sample label) Completed
+							250 text 18m 04s
+							251 text Cost not reported
+						252 container
+							253 text C2 Implementer, package B Managed Sample model B (sample label) Asked a question
+							254 text Waiting since 14:26
+							255 text Cost not reported
+						256 container
+							257 text N1 Tester subagent Observed native Not reported Tracking lost
+							258 text Last observed 14:21:07 · 3m 12s
+							259 text Cost not reported
+						260 container
+							261 text C3 Critic and reviewer Managed Sample model C (sample label) Round 1 complete
+							262 text 6m 40s
+							263 text Cost not reported
+				264 container
+					265 heading Recent events, Value: 3
+						266 text Recent events
+					267 content list
+						268 container
+							269 text 14:26 C2 asked D-3: unknown send acknowledgement
+						270 container
+							271 text 14:24 Validation at 7f3a9c2: 3 passed, 1 failed, 1 not run
+						272 container
+							273 text 14:21 Tracking lost for N1 after C2's turn settled
+						274 container
+							275 text 14:16 Repair round 1 started on package B
+						276 container
+							277 text 14:15 Review round 1 at 3b18e40: changes requested
+						278 container
+							279 text 13:44 Attempt 3 dispatched from e19c4d0
+
+The focused UI element is 0 AXWebArea Symphony runs · Concept A · Neokod design prototype, URL: 127.0.0.1:63035/runs.html
+RUNS TRACKING LOST
+Browser tab: 326104940, Title: "Symphony runs · Concept A · Neokod design prototype", URL: "http://127.0.0.1:63035/runs.html".
+0 AXWebArea Symphony runs · Concept A · Neokod design prototype, URL: 127.0.0.1:63035/runs.html
+	1 container
+		2 link Description: Skip to runs, Value: 127.0.0.1:63035/runs.html#run-list
+		3 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		4 container Location
+			5 text Symphony
+			6 text Runs
+		7 container Symphony prototype
+			8 link Description: Work, Value: 127.0.0.1:63035/work.html
+			9 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			10 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			11 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		12 text Design prototype · Sample data
+		13 button Reset demo, ID: reset-demo
+		14 checkbox Description: Switch to light theme, Value: 1
+		15 container layout
+			16 container Project and workflows
+				17 text Neokod
+				18 text Workflows
+				19 container Description: Workflows, ID: workflows
+					20 checkbox All workflows , 4 need you, 4 active runs: 7, Value: 1
+						21 text All workflows
+						22 container 4 need you
+							23 text , 4 need you, 4
+						24 text active runs:
+						25 text 7
+					26 checkbox Core reliability , 3 need you, 3 active runs: 3, Value: 0
+						27 text Core reliability
+						28 container 3 need you
+							29 text , 3 need you, 3
+						30 text active runs:
+						31 text 3
+					32 checkbox Provider adapters active runs: 2, Value: 0
+						33 text Provider adapters
+						34 text active runs:
+						35 text 2
+					36 checkbox Settings and safety , 1 need you, 1 active runs: 2, Value: 0
+						37 text Settings and safety
+						38 container 1 need you
+							39 text , 1 need you, 1
+						40 text active runs:
+						41 text 2
+				42 text Keyboard
+				43 container
+					44 text /  Search
+				45 container
+					46 text ↑ ↓  Move between runs
+				47 container
+					48 text Esc  Clear search or close
+			49 container main
+				50 container
+					51 text Search runs
+					52 search text field (settable) Search runs, ID: search
+				53 container Show
+					54 checkbox Active, Value: 1
+					55 checkbox History, Value: 0
+					56 checkbox All, Value: 0
+				57 container Description: Filter by status, ID: chips
+					58 checkbox All 7, Value: 1
+					59 checkbox Needs you 4, Value: 0
+					60 checkbox Running 1, Value: 0
+					61 checkbox Paused 1, Value: 0
+					62 checkbox Failed 1, Value: 0
+					63 checkbox Tracking lost 1, Value: 0
+					64 checkbox Queued 1, Value: 0
+				65 container Needs you 4, ID: attention
+					66 heading Needs you 4, Value: 2, ID: attn-title
+						67 text Needs you  4
+					68 content list
+						69 button NEO-4821 Decision neededUnknown send acknowledgement after reconnect Core reliability
+							70 text NEO-4821
+							71 text Decision needed
+							72 text Unknown send acknowledgement after reconnect
+							73 text Core reliability
+						74 button NEO-4790 Tracking lostAgent may still be writing to the worktree Core reliability
+							75 text NEO-4790
+							76 text Tracking lost
+							77 text Agent may still be writing to the worktree
+							78 text Core reliability
+						79 button NEO-4785 Same failure twiceENOENT in review tests on attempts 1 and 2 Core reliability
+							80 text NEO-4785
+							81 text Same failure twice
+							82 text ENOENT in review tests on attempts 1 and 2
+							83 text Core reliability
+						84 button NEO-4776 Merge approvalPR #1279: all gates pass at 0b7d2f6 Settings and safety
+							85 text NEO-4776
+							86 text Merge approval
+							87 text PR #1279: all gates pass at 0b7d2f6
+							88 text Settings and safety
+				89 list Description: Runs, ID: run-list
+					90 container Active
+						91 text Active
+						92 text 7
+						93 ID: opt-NEO-4821, Value: NEO-4821 Preserve queued sends across reconnects Waiting for your decision · Build, attempt 3, Core reliability Stages: Intake done, Design done, Build needs you, Integrate failed, Review sent back, PR not run Waiting since 14:26
+							94 text NEO-4821
+							95 text Preserve queued sends across reconnects
+							96 text Waiting for your decision 
+							97 text · Build, attempt 3, Core reliability
+							98 container Stages: Intake done, Design done, Build needs you, Integrate failed, Review sent back, PR not run
+							99 text Waiting since 14:26
+						100 ID: opt-NEO-4807, Value: NEO-4807 Retry provider handshake after socket reset Running · Build, attempt 1, Provider adapters Stages: Intake done, Design skipped, Build running, Integrate not run, Review not run, PR not run Started 14:02
+							101 text NEO-4807
+							102 text Retry provider handshake after socket reset
+							103 text Running 
+							104 text · Build, attempt 1, Provider adapters
+							105 container Stages: Intake done, Design skipped, Build running, Integrate not run, Review not run, PR not run
+							106 text Started 14:02
+						107 ID: opt-NEO-4799, Value: NEO-4799 Settle Copilot sessions before runtime replacement Paused by you · Integrate, attempt 2, Provider adapters Stages: Intake done, Design done, Build done, Integrate paused, Review not run, PR not run Paused at 13:12
+							108 text NEO-4799
+							109 text Settle Copilot sessions before runtime replacement
+							110 text Paused by you 
+							111 text · Integrate, attempt 2, Provider adapters
+							112 container Stages: Intake done, Design done, Build done, Integrate paused, Review not run, PR not run
+							113 text Paused at 13:12
+						114 (selected) ID: opt-NEO-4790, Value: NEO-4790 Reap terminal process groups on server exit Tracking lost · Build, attempt 1, Core reliability Stages: Intake done, Design done, Build tracking lost, Integrate not run, Review not run, PR not run Last observed 13:41
+							115 text NEO-4790
+							116 text Reap terminal process groups on server exit
+							117 text Tracking lost 
+							118 text · Build, attempt 1, Core reliability
+							119 container Stages: Intake done, Design done, Build tracking lost, Integrate not run, Review not run, PR not run
+							120 text Last observed 13:41
+						121 ID: opt-NEO-4785, Value: NEO-4785 Validate diff cwd against worktree roots Validation failed twice · Integrate, attempt 2, Core reliability Stages: Intake done, Design done, Build done, Integrate failed, Review not run, PR not run Ended 12:58
+							122 text NEO-4785
+							123 text Validate diff cwd against worktree roots
+							124 text Validation failed twice 
+							125 text · Integrate, attempt 2, Core reliability
+							126 container Stages: Intake done, Design done, Build done, Integrate failed, Review not run, PR not run
+							127 text Ended 12:58
+						128 ID: opt-NEO-4776, Value: NEO-4776 Clamp UTF-8 writes at 10 MiB Ready to merge · PR, attempt 1, Settings and safety Stages: Intake done, Design done, Build done, Integrate passed, Review done, PR needs you Ended 12:34
+							129 text NEO-4776
+							130 text Clamp UTF-8 writes at 10 MiB
+							131 text Ready to merge 
+							132 text · PR, attempt 1, Settings and safety
+							133 container Stages: Intake done, Design done, Build done, Integrate passed, Review done, PR needs you
+							134 text Ended 12:34
+						135 ID: opt-NEO-4770, Value: NEO-4770 Debounce Symphony settings commits Queued · Not started, Settings and safety Stages: Intake queued, Design not run, Build not run, Integrate not run, Review not run, PR not run Not started
+							136 text NEO-4770
+							137 text Debounce Symphony settings commits
+							138 text Queued 
+							139 text · Not started, Settings and safety
+							140 container Stages: Intake queued, Design not run, Build not run, Integrate not run, Review not run, PR not run
+							141 text Not started
+			142 container Description: Selected run, ID: detail
+				143 container
+					144 text NEO-4790 Core reliability Tracking lost
+					145 heading Reap terminal process groups on server exit, Value: 2, ID: detail-title
+						146 text Reap terminal process groups on server exit
+					147 link Description:  Open in workflow map, Value: 127.0.0.1:63035/workflow.html#NEO-4790
+				148 text Current blocker
+				149 text The parent session ended at 13:41 without a confirmed agent exit. The agent process may still be running and writing to the worktree.
+				150 container
+					151 text Next:  Request a stop and wait for a confirmed exit before any cleanup. Do not delete the worktree yet.
+				152 button Request stop
+				153 text The run stays marked as tracking lost until the agent's exit is observed. Worktree cleanup stays blocked until then.
+				154 container
+					155 heading Root task, Value: 3
+						156 text Root task
+					157 text Terminal process groups survive a server exit.
+					158 content list
+						159 container
+							160 AXListMarker • 
+							161 text No terminal process outlives the server.
+					162 text GitHub issue #4790. No plan document.
+				163 container
+					164 heading Attempt and head, Value: 3
+						165 text Attempt and head
+					166 definition list
+						167 container Attempt
+							168 text Attempt
+						169 text 1 of 3
+						170 container Head
+							171 text Head
+						172 text unknown
+						173 container Base
+							174 text Base
+						175 text c77a312
+						176 container Branch
+							177 text Branch
+						178 text symphony/neo-4790-reap-groups
+						179 container Worktree
+							180 text Worktree
+						181 text ~/.neokod/worktrees/neokod/neo-4790-a1
+						182 container Provider
+							183 text Provider
+						184 text Claude, Sample model F (sample label)
+						185 container Elapsed
+							186 text Elapsed
+						187 text Last observed 13:41 · 22m 10s
+						188 container Cost
+							189 text Cost
+						190 text Not reported
+				191 container
+					192 heading Validation, Value: 3
+						193 text Validation
+					194 content list
+						195 container
+							196 text Host validation Head not observed since 13:41 Unknown
+					197 text Only a host check at the current head can pass. Agent reports, unknown and superseded results never show green.
+				198 container
+					199 heading Agents, Value: 3
+						200 text Agents
+					201 content list
+						202 container
+							203 text R Root run Sample model F (sample label) Tracking lost
+							204 text Last observed 13:41 · 22m 10s
+							205 text Cost not reported
+				206 container
+					207 heading Recent events, Value: 3
+						208 text Recent events
+					209 content list
+						210 container
+							211 text 13:41 Parent session ended; agent exit not confirmed
+						212 container
+							213 text 13:19 Attempt 1 dispatched
+
+The focused UI element is 0 AXWebArea Symphony runs · Concept A · Neokod design prototype, URL: 127.0.0.1:63035/runs.html
+WORKFLOW B
+Browser tab: 326104940, Title: "Symphony workflow map · Concept B · Neokod design prototype", URL: "http://127.0.0.1:63035/workflow.html#NEO-4821".
+1 AXWebArea Symphony workflow map · Concept B · Neokod design prototype, URL: 127.0.0.1:63035/workflow.html#NEO-4821
+	2 container
+		3 link Description: Skip to workflow map, Value: 127.0.0.1:63035/workflow.html#map-scroll
+		4 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		5 container Location
+			6 text Symphony
+			7 text Workflow map
+		8 container Symphony prototype
+			9 link Description: Work, Value: 127.0.0.1:63035/work.html
+			10 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			11 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			12 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		13 text Design prototype · Sample data
+		14 button Reset demo, ID: reset-demo
+		15 checkbox Description: Switch to light theme, Value: 1
+		16 pop up button (collapsed) NEO-4821Preserve queued sends across reconnects, ID: run-switch, Secondary Actions: Expand
+			17 container run-switch-label
+				18 text NEO-4821 Preserve queued sends across reconnects
+		19 container run-facts
+			20 text Attempt
+			21 text 3
+			22 text of 4 Head
+			23 text 7f3a9c2
+			24 text Waiting for your decision
+			25 text 6 stages, 5 agents
+		26 pop up button (collapsed) Needs you 4, ID: attn-btn, Secondary Actions: Expand
+		27 container Map view
+			28 checkbox Fold packages, Value: 0, ID: fold-btn
+			29 button Description: Zoom out, Help: Zoom out (−), ID: zoom-out
+			30 text 80%
+			31 button Description: Zoom in, Help: Zoom in (+), ID: zoom-in
+			32 button Fit, Help: Fit map (F), ID: zoom-fit
+			33 button 100%, Help: Actual size (0), ID: zoom-reset
+		34 container Description: Workflow map, ID: map
+			35 text 1 Intake
+			36 text Done
+			37 text 2 Design
+			38 text Done, 2 rounds
+			39 text 3 Build
+			40 text 2 packages, B waiting
+			41 text 4 Integrate
+			42 text Failed at 7f3a9c2
+			43 text 5 Review
+			44 text Round 1 of 2 sent back
+			45 text 6 PR
+			46 text Merge locked
+			47 text Package A: client outbox
+			48 text Package B: server receipts
+			49 text Sent back in round 1
+			50 text Asked 14:26
+			51 text Repair round 1 of 2
+			52 text After repair
+			53 checkbox Description: Issue imported. GitHub #4821. Done. Intake stage., Value: 0, ID: n-intake
+				54 text Issue imported
+				55 text GitHub #4821
+			56 checkbox Description: Architect. Design v2. Done. Agent R. Design stage., Value: 0, ID: n-arch
+				57 text Architect
+				58 text Design v2
+				59 text R
+			60 checkbox Description: Design critic. Approved, round 2. Done. Agent C3. Design stage., Value: 0, ID: n-critic
+				61 text Design critic
+				62 text Approved, round 2
+				63 text C3
+			64 checkbox Description: Integrate. At 7f3a9c2. Failed. Integrate stage., Value: 0, ID: n-integrate
+				65 text Integrate
+				66 text At 7f3a9c2
+				67 container
+					68 text Unit  passed
+				69 container
+					70 text Integration  failed
+				71 container
+					72 text End to end  not run
+			73 checkbox Description: Review round 1. Sent back. Sent back. Agent C3. Review stage., Value: 0, ID: n-review1
+				74 text Round 1
+				75 text Sent back
+				76 text C3
+			77 checkbox Description: Review round 2. Not started. Not run. Review stage., Value: 0, ID: n-review2
+				78 text Round 2
+				79 text Not started
+			80 checkbox Description: Escalate to you. If round 2 fails. Not run. Review stage., Value: 0, ID: n-escalate
+				81 text Escalate to you
+				82 text If round 2 fails
+			83 checkbox Description: Open PR. Not opened. Not run. PR stage., Value: 0, ID: n-pr
+				84 text Open PR
+				85 text Not opened
+			86 checkbox Description: Human merge. Locked. Locked. PR stage., Value: 0, ID: n-merge
+				87 text Human merge
+				88 text Locked
+			89 checkbox Description: Implementer, package A. Completed 14:07. Done. Agent C1. Build stage., Value: 0, ID: n-implA
+				90 text Implementer
+				91 text Completed 14:07
+				92 text C1
+			93 checkbox Description: Unit tests, package A. At an earlier head. Superseded. Build stage., Value: 0, ID: n-testA
+				94 text Unit tests
+				95 text At an earlier head
+			96 checkbox Description: Critic, package A. Accepted. Done. Agent C3. Build stage., Value: 0, ID: n-criticA
+				97 text Critic
+				98 text Accepted
+				99 text C3
+			100 checkbox Description: Implementer, package B. Waiting for you. Needs you. Agent C2. Build stage., Value: 0, ID: n-implB
+				101 text Implementer
+				102 text Waiting for you
+				103 text C2
+			104 checkbox Description: Tester subagent. Last seen 14:21. Tracking lost. Agent N1, observed native. Build stage., Value: 0, ID: n-testB
+				105 text Tester
+				106 text Last seen 14:21
+				107 text N1
+			108 checkbox Description: Critic, package B. Not run. Not run. Build stage., Value: 0, ID: n-criticB
+				109 text Critic
+				110 text Not run
+			111 checkbox Description: Decision D-3. Unknown ack. Needs you. Build stage., Value: 1, ID: n-decision
+				112 text Decision D-3
+				113 text Unknown ack
+		114 container Description: Step inspector, ID: inspector
+			115 text Decision
+			116 text Build stage
+			117 heading Decision D-3, Value: 2, ID: i-title
+				118 text Decision D-3
+			119 text Needs you
+			120 container
+				121 text How should a send with an unknown acknowledgement be handled?
+				122 text The socket dropped after the client sent message m-81f2 and before the server's acknowledgement arrived. On reconnect the client cannot tell whether the server stored it. The server keeps send receipts for 24 hours (D-2).
+				123 How should a send with an unknown acknowledgement be handled?
+					124 container
+						125 radio button (settable, integer) Value: 0, Description: Resend automatically with the same message ID Relies on server receipts to drop the duplicate. Silent if the receipt has expired.
+						126 text Resend automatically with the same message ID Relies on server receipts to drop the duplicate. Silent if the receipt has expired.
+					127 container
+						128 radio button (settable, integer) Value: 0, Description: Keep the message identity and ask for an explicit retry Suggested by C2 Mark delivery as unknown, keep m-81f2 in the outbox and show Retry. No send happens until someone retries.
+						129 text Keep the message identity and ask for an explicit retry  Suggested by C2 Mark delivery as unknown, keep m-81f2 in the outbox and show Retry. No send happens until someone retries.
+					130 container
+						131 radio button (settable, integer) Value: 0, Description: Mark the send as failed and drop it from the outbox Simplest. The user retypes the message and loses the original identity.
+						132 text Mark the send as failed and drop it from the outbox Simplest. The user retypes the message and loses the original identity.
+				133 text Note for the record (optional)
+				134 text entry area (settable) Note for the record (optional), ID: wd3-note
+				135 button (disabled) Save decision
+				136 text Choose an option first.
+				137 text Saving records your answer. Package B stays paused and the map will not move on its own.
+			138 container
+				139 heading Linked steps, Value: 3
+					140 text Linked steps
+				141 button Asked by Implementer, package B
+					142 text Asked by
+					143 text Implementer, package B
+			144 container
+				145 heading Agents in this run, Value: 3
+					146 text Agents in this run
+				147 content list
+					148 button R Root run Waiting for input
+						149 text R Root run
+						150 text Waiting for input
+					151 button C1 Implementer, package A Completed
+						152 text C1 Implementer, package A
+						153 text Completed
+					154 button C2 Implementer, package B Asked a question
+						155 text C2 Implementer, package B
+						156 text Asked a question
+					157 button N1 Tester subagent Observed Tracking lost
+						158 text N1 Tester subagent 
+						159 text Observed
+						160 text Tracking lost
+					161 button C3 Critic and reviewer Round 1 complete
+						162 text C3 Critic and reviewer
+						163 text Round 1 complete
+				164 text 6 stages and 16 steps, run by 5 agents. A stage or step is not an agent: C3 appears on 3 steps.
+		165 container Description: Stages, ID: stepper
+			166 button 1 Intake , Done
+				167 text 1
+				168 text Intake
+				169 text , Done
+			170 button 2 Design , Done
+				171 text 2
+				172 text Design
+				173 text , Done
+			174 button 3 Build , Needs you
+				175 text 3
+				176 text Build
+				177 text , Needs you
+			178 button 4 Integrate , Failed
+				179 text 4
+				180 text Integrate
+				181 text , Failed
+			182 button 5 Review , Sent back
+				183 text 5
+				184 text Review
+				185 text , Sent back
+			186 button 6 PR , Not run
+				187 text 6
+				188 text PR
+				189 text , Not run
+		190 container Legend
+			191 text Done Not yet Sent back Blocked on you Agent step Host check Human gate
+
+The focused UI element is 1 AXWebArea Symphony workflow map · Concept B · Neokod design prototype, URL: 127.0.0.1:63035/workflow.html#NEO-4821
+WORKFLOW OBSERVED TESTER
+Browser tab: 326104940, Title: "Symphony workflow map · Concept B · Neokod design prototype", URL: "http://127.0.0.1:63035/workflow.html#NEO-4821".
+1 AXWebArea Symphony workflow map · Concept B · Neokod design prototype, URL: 127.0.0.1:63035/workflow.html#NEO-4821
+	2 container
+		3 link Description: Skip to workflow map, Value: 127.0.0.1:63035/workflow.html#map-scroll
+		4 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		5 container Location
+			6 text Symphony
+			7 text Workflow map
+		8 container Symphony prototype
+			9 link Description: Work, Value: 127.0.0.1:63035/work.html
+			10 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			11 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			12 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		13 text Design prototype · Sample data
+		14 button Reset demo, ID: reset-demo
+		15 checkbox Description: Switch to light theme, Value: 1
+		16 pop up button (collapsed) NEO-4821Preserve queued sends across reconnects, ID: run-switch, Secondary Actions: Expand
+			17 container run-switch-label
+				192 text NEO-4821 Preserve queued sends across reconnects
+		19 container run-facts
+			193 text Attempt
+			194 text 3
+			195 text of 4 Head
+			196 text 7f3a9c2
+			197 text Waiting for your decision
+			198 text 6 stages, 5 agents
+		26 pop up button (collapsed) Needs you 4, ID: attn-btn, Secondary Actions: Expand
+		27 container Map view
+			28 checkbox Fold packages, Value: 0, ID: fold-btn
+			29 button Description: Zoom out, Help: Zoom out (−), ID: zoom-out
+			199 text 80%
+			31 button Description: Zoom in, Help: Zoom in (+), ID: zoom-in
+			32 button Fit, Help: Fit map (F), ID: zoom-fit
+			33 button 100%, Help: Actual size (0), ID: zoom-reset
+		34 container Description: Workflow map, ID: map
+			200 text 1 Intake
+			201 text Done
+			202 text 2 Design
+			203 text Done, 2 rounds
+			204 text 3 Build
+			205 text 2 packages, B waiting
+			206 text 4 Integrate
+			207 text Failed at 7f3a9c2
+			208 text 5 Review
+			209 text Round 1 of 2 sent back
+			210 text 6 PR
+			211 text Merge locked
+			212 text Package A: client outbox
+			213 text Package B: server receipts
+			214 text Sent back in round 1
+			215 text Asked 14:26
+			216 text Repair round 1 of 2
+			217 text After repair
+			218 checkbox Description: Issue imported. GitHub #4821. Done. Intake stage., Value: 0, ID: n-intake
+				219 text Issue imported
+				220 text GitHub #4821
+			221 checkbox Description: Architect. Design v2. Done. Agent R. Design stage., Value: 0, ID: n-arch
+				222 text Architect
+				223 text Design v2
+				224 text R
+			225 checkbox Description: Design critic. Approved, round 2. Done. Agent C3. Design stage., Value: 0, ID: n-critic
+				226 text Design critic
+				227 text Approved, round 2
+				228 text C3
+			229 checkbox Description: Integrate. At 7f3a9c2. Failed. Integrate stage., Value: 0, ID: n-integrate
+				230 text Integrate
+				231 text At 7f3a9c2
+				232 container
+					233 text Unit  passed
+				234 container
+					235 text Integration  failed
+				236 container
+					237 text End to end  not run
+			238 checkbox Description: Review round 1. Sent back. Sent back. Agent C3. Review stage., Value: 0, ID: n-review1
+				239 text Round 1
+				240 text Sent back
+				241 text C3
+			242 checkbox Description: Review round 2. Not started. Not run. Review stage., Value: 0, ID: n-review2
+				243 text Round 2
+				244 text Not started
+			245 checkbox Description: Escalate to you. If round 2 fails. Not run. Review stage., Value: 0, ID: n-escalate
+				246 text Escalate to you
+				247 text If round 2 fails
+			248 checkbox Description: Open PR. Not opened. Not run. PR stage., Value: 0, ID: n-pr
+				249 text Open PR
+				250 text Not opened
+			251 checkbox Description: Human merge. Locked. Locked. PR stage., Value: 0, ID: n-merge
+				252 text Human merge
+				253 text Locked
+			254 checkbox Description: Implementer, package A. Completed 14:07. Done. Agent C1. Build stage., Value: 0, ID: n-implA
+				255 text Implementer
+				256 text Completed 14:07
+				257 text C1
+			258 checkbox Description: Unit tests, package A. At an earlier head. Superseded. Build stage., Value: 0, ID: n-testA
+				259 text Unit tests
+				260 text At an earlier head
+			261 checkbox Description: Critic, package A. Accepted. Done. Agent C3. Build stage., Value: 0, ID: n-criticA
+				262 text Critic
+				263 text Accepted
+				264 text C3
+			265 checkbox Description: Implementer, package B. Waiting for you. Needs you. Agent C2. Build stage., Value: 0, ID: n-implB
+				266 text Implementer
+				267 text Waiting for you
+				268 text C2
+			269 checkbox Description: Tester subagent. Last seen 14:21. Tracking lost. Agent N1, observed native. Build stage., Value: 1, ID: n-testB
+				270 text Tester
+				271 text Last seen 14:21
+				272 text N1
+			273 checkbox Description: Critic, package B. Not run. Not run. Build stage., Value: 0, ID: n-criticB
+				274 text Critic
+				275 text Not run
+			276 checkbox Description: Decision D-3. Unknown ack. Needs you. Build stage., Value: 0, ID: n-decision
+				277 text Decision D-3
+				278 text Unknown ack
+		114 container Description: Step inspector, ID: inspector
+			279 text Agent step, observed native
+			280 text Build stage
+			281 heading Tester subagent, Value: 2, ID: i-title
+				282 text Tester subagent
+			283 text Tracking lost
+			284 text C2 started this tester through the provider's own subagent feature. Neokod observed it but does not manage it. Tracking was lost when C2's turn settled at 14:21, so it may still be running.
+			285 container
+				286 heading Evidence, Value: 3
+					287 text Evidence
+				288 content list
+					289 container
+						290 text Reported: duplicate after ack loss reproduced Agent report, last observed 14:21:07
+			291 container
+				292 heading Agent, Value: 3
+					293 text Agent
+				294 definition list
+					295 container Agent
+						296 text Agent
+					297 text N1 Tester subagent
+					298 container Lineage
+						299 text Lineage
+					300 text Observed native subagent of C2. Neokod does not manage it.
+					301 container Model
+						302 text Model
+					303 text Not reported
+					304 container State
+						305 text State
+					306 text Tracking lost
+					307 container Elapsed
+						308 text Elapsed
+					309 text Last observed 14:21:07 · 3m 12s
+					310 container Cost
+						311 text Cost
+					312 text Not reported
+			313 container
+				314 heading Linked steps, Value: 3
+					315 text Linked steps
+				316 button Parent Implementer, package B
+					317 text Parent
+					318 text Implementer, package B
+				319 button Next Critic, package B
+					320 text Next
+					321 text Critic, package B
+			322 container
+				323 heading Agents in this run, Value: 3
+					324 text Agents in this run
+				325 content list
+					326 button R Root run Waiting for input
+						327 text R Root run
+						328 text Waiting for input
+					329 button C1 Implementer, package A Completed
+						330 text C1 Implementer, package A
+						331 text Completed
+					332 button C2 Implementer, package B Asked a question
+						333 text C2 Implementer, package B
+						334 text Asked a question
+					335 button N1 Tester subagent Observed Tracking lost
+						336 text N1 Tester subagent 
+						337 text Observed
+						338 text Tracking lost
+					339 button C3 Critic and reviewer Round 1 complete
+						340 text C3 Critic and reviewer
+						341 text Round 1 complete
+				342 text 6 stages and 16 steps, run by 5 agents. A stage or step is not an agent: C3 appears on 3 steps.
+		165 container Description: Stages, ID: stepper
+			343 button 1 Intake , Done
+				344 text 1
+				345 text Intake
+				346 text , Done
+			347 button 2 Design , Done
+				348 text 2
+				349 text Design
+				350 text , Done
+			351 button 3 Build , Needs you
+				352 text 3
+				353 text Build
+				354 text , Needs you
+			355 button 4 Integrate , Failed
+				356 text 4
+				357 text Integrate
+				358 text , Failed
+			359 button 5 Review , Sent back
+				360 text 5
+				361 text Review
+				362 text , Sent back
+			363 button 6 PR , Not run
+				364 text 6
+				365 text PR
+				366 text , Not run
+		190 container Legend
+			191 text Done Not yet Sent back Blocked on you Agent step Host check Human gate
+
+The focused UI element is 269 checkbox Description: Tester subagent. Last seen 14:21. Tracking lost. Agent N1, observed native. Build stage., Value: 1, ID: n-testB
+PLANNING C
+Browser tab: 326104940, Title: "Symphony plan and decisions · Concept C · Neokod design prototype", URL: "http://127.0.0.1:63035/planning.html".
+1 AXWebArea Symphony plan and decisions · Concept C · Neokod design prototype, URL: 127.0.0.1:63035/planning.html
+	2 container
+		3 link Description: Skip to plan, Value: 127.0.0.1:63035/planning.html#workspace
+		4 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		5 container Location
+			6 text Symphony NEO-4821
+			7 text Plan and decisions
+		8 container Symphony prototype
+			9 link Description: Work, Value: 127.0.0.1:63035/work.html
+			10 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			11 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			12 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		13 text Design prototype · Sample data
+		14 button Reset demo, ID: reset-demo
+		15 checkbox Description: Switch to light theme, Value: 1
+		16 tab group Workspace
+			17 tab (selected, settable, boolean) Plan, Value: 1, ID: tab-plan
+			18 tab (selectable, settable, boolean) Decisions 1 open, Description: 1 open, ID: tab-decisions, Value: 0
+Decisions
+1
+			19 tab (selectable, settable, boolean) Evidence, Value: 0, ID: tab-evidence
+		20 container plan-status
+			21 text Plan r5, saved 13:42 Execution approved: r5, attempt 3
+		22 container Description: Plan outline, decisions and revisions, ID: outline
+			23 text Plan
+			24 button Goal
+			25 button Current behaviour
+			26 button Send lifecycle
+			27 button Work packages
+			28 button Validation
+			29 button Out of scope
+			30 text Decisions
+			31 button D-3 How should a send with an unknown acknowledgement be handled?
+				32 text D-3 How should a send with an unknown acknowledgement be handled?
+			33 button D-2 How long does the server keep send receipts?
+				34 text D-2 How long does the server keep send receipts?
+			35 button D-1 Where do queued sends persist?
+				36 text D-1 Where do queued sends persist?
+			37 button D-0 Show a queued-send count in the composer? Unresolved
+				38 text D-0 Show a queued-send count in the composer?
+				39 text Unresolved
+			40 text Revisions
+			41 text r5 You Current
+			42 button r4 You 13:31
+				43 text r4 You
+				44 text 13:31
+			45 text r3 You Not in sample r2 R, root run Not in sample r1 R, root run Not in sample
+		46 container Description: Plan, ID: workspace
+			47 container
+				48 text Canonical plan, r5, saved by You at 13:42
+				49 button Edit plan
+			50 container
+				51 heading Preserve queued sends across reconnects, Value: 1
+					52 text Preserve queued sends across reconnects
+				53 heading Goal, Value: 2, ID: sec-goal
+					54 text Goal
+				55 text Messages queued while the socket is down must survive a reconnect and a reload, and must never be delivered twice.
+				56 heading Current behaviour, Value: 2, ID: sec-current-behaviour
+					57 text Current behaviour
+				58 text A dropped socket during send clears the composer queue. Reconnect restores the thread but not the queued messages. Issue #4821 has the reproduction.
+				59 heading Send lifecycle, Value: 2, ID: sec-send-lifecycle
+					60 text Send lifecycle
+				61 text Each queued send keeps one message ID for its whole life. The server keeps send receipts for 24 hours 
+				62 button D-2 saved
+				63 text .
+				64 container Send lifecycle Queued, then Sending, then Acknowledged. If the socket drops before the acknowledgement, the send becomes Delivery unknown. What happens next is decision D-3, still open., Help: Queued, then Sending, then Acknowledged. If the socket drops before the acknowledgement, the send becomes Delivery unknown. What happens next is decision D-3, still open.
+				65 text The branch after Delivery unknown follows decision D-3, which is still open.
+				66 content list
+					67 container
+						68 AXListMarker • 
+						69 text Queued: stored in the outbox before any network call.
+					70 container
+						71 AXListMarker • 
+						72 text Sending: written to the socket, waiting for acknowledgement.
+					73 container
+						74 AXListMarker • 
+						75 text Acknowledged: removed from the outbox.
+					76 container
+						77 AXListMarker • 
+						78 text Delivery unknown: the socket dropped before the acknowledgement arrived. Handling is not decided yet 
+						79 button D-3 open
+						80 text .
+				81 heading Work packages, Value: 2, ID: sec-work-packages
+					82 text Work packages
+				83 content list
+					84 container
+						85 AXListMarker • 
+						86 text Package A, client outbox: persist queued sends in IndexedDB keyed by message ID 
+						87 button D-1 saved
+						88 text . Owner 
+						89 button C1
+						90 text , result 
+						91 button E-2
+						92 text .
+					93 container
+						94 AXListMarker • 
+						95 text Package B, server receipts: record receipts by message ID so a repeated send is idempotent. Owner 
+						96 button C2
+						97 text , result 
+						98 button E-3
+						99 text .
+				100 heading Validation, Value: 2, ID: sec-validation
+					101 text Validation
+				102 content list
+					103 container
+						104 AXListMarker • 
+						105 text vp run typecheck
+					106 container
+						107 AXListMarker • 
+						108 text vp test apps/web/src/outbox
+					109 container
+						110 AXListMarker • 
+						111 text vp test apps/server/src/reconnect
+					112 container
+						113 AXListMarker • 
+						114 text End-to-end fixture that drops the acknowledgement mid-send 
+						115 button E-4
+						116 text .
+				117 heading Out of scope, Value: 2, ID: sec-out-of-scope
+					118 text Out of scope
+				119 text Cross-device queues. Changing message ordering.
+		120 container Description: Run context, ID: rail
+			121 container
+				122 text NEO-4821, Core reliability Preserve queued sends across reconnects Waiting on D-3 Attempt 3 of 4, head 
+				123 text 7f3a9c2
+				124 text , base 
+				125 text e19c4d0
+			126 container
+				127 heading Stages, Value: 3
+					128 text Stages
+				129 content list
+					130 container
+						131 text Intake Issue #4821
+					132 container
+						133 text Design v2 approved in round 2
+					134 container
+						135 text Build Package B waiting on D-3
+					136 container
+						137 text Integrate Failed at 7f3a9c2
+					138 container
+						139 text Review Round 1 of 2 sent back
+					140 container
+						141 text PR Not opened, merge locked
+			142 container
+				143 heading Agents, Value: 3
+					144 text Agents
+				145 content list
+					146 button R Root run Waiting for input, Waiting since 14:26
+						147 text R Root run
+						148 text Waiting for input, Waiting since 14:26
+					149 button C1 Implementer, package A Completed, 18m 04s
+						150 text C1 Implementer, package A
+						151 text Completed, 18m 04s
+					152 button C2 Implementer, package B Asked a question, Waiting since 14:26
+						153 text C2 Implementer, package B
+						154 text Asked a question, Waiting since 14:26
+					155 button N1 Tester subagent Observed Tracking lost, Last observed 14:21:07 · 3m 12s
+						156 text N1 Tester subagent 
+						157 text Observed
+						158 text Tracking lost, Last observed 14:21:07 · 3m 12s
+					159 button C3 Critic and reviewer Round 1 complete, 6m 40s
+						160 text C3 Critic and reviewer
+						161 text Round 1 complete, 6m 40s
+				162 text Cost: not reported for any agent. Select an agent to see its result.
+			163 container
+				164 heading Approvals, Value: 3
+					165 text Approvals
+				166 content list
+					167 container
+						168 text Plan execution r5 approved for attempt 3 at 13:43 by You
+					169 container
+						170 text Resume package B Locked, needs D-3 saved
+					171 container
+						172 text Merge Locked. Yours under the merge policy, in GitHub.
+			173 container
+				174 link Description:  Open in runs view, Value: 127.0.0.1:63035/runs.html#NEO-4821
+				175 link Description:  Open in workflow map, Value: 127.0.0.1:63035/workflow.html#NEO-4821
+
+The focused UI element is 1 AXWebArea Symphony plan and decisions · Concept C · Neokod design prototype, URL: 127.0.0.1:63035/planning.html
+PLANNING DECISIONS
+Browser tab: 326104940, Title: "Symphony plan and decisions · Concept C · Neokod design prototype", URL: "http://127.0.0.1:63035/planning.html".
+1 AXWebArea Symphony plan and decisions · Concept C · Neokod design prototype, URL: 127.0.0.1:63035/planning.html
+	2 container
+		3 link Description: Skip to plan, Value: 127.0.0.1:63035/planning.html#workspace
+		4 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		5 container Location
+			6 text Symphony NEO-4821
+			7 text Plan and decisions
+		8 container Symphony prototype
+			9 link Description: Work, Value: 127.0.0.1:63035/work.html
+			10 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			11 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			12 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		13 text Design prototype · Sample data
+		14 button Reset demo, ID: reset-demo
+		15 checkbox Description: Switch to light theme, Value: 1
+		16 tab group Workspace
+			17 tab (selectable, settable, boolean) Plan, Value: 0, ID: tab-plan
+			18 tab (selected, settable, boolean) Decisions 1 open, Value: 1, ID: tab-decisions
+				121 text Decisions
+				122 container 1 open
+					123 text 1
+			19 tab (selectable, settable, boolean) Evidence, Value: 0, ID: tab-evidence
+		20 container plan-status
+			124 text Plan r5, saved 13:42 Execution approved: r5, attempt 3
+		22 container Description: Plan outline, decisions and revisions, ID: outline
+			125 text Plan
+			126 button Goal
+			127 button Current behaviour
+			128 button Send lifecycle
+			129 button Work packages
+			130 button Validation
+			131 button Out of scope
+			132 text Decisions
+			133 button D-3 How should a send with an unknown acknowledgement be handled?
+				134 text D-3 How should a send with an unknown acknowledgement be handled?
+			135 button D-2 How long does the server keep send receipts?
+				136 text D-2 How long does the server keep send receipts?
+			137 button D-1 Where do queued sends persist?
+				138 text D-1 Where do queued sends persist?
+			139 button D-0 Show a queued-send count in the composer? Unresolved
+				140 text D-0 Show a queued-send count in the composer?
+				141 text Unresolved
+			142 text Revisions
+			143 text r5 You Current
+			144 button r4 You 13:31
+				145 text r4 You
+				146 text 13:31
+			147 text r3 You Not in sample r2 R, root run Not in sample r1 R, root run Not in sample
+		46 container Description: Decisions 1 open, ID: workspace
+			148 content list
+				149 text Open 1
+				150 button D-3 How should a send with an unknown acknowledgement be handled? Anchored to Send lifecycle
+					151 text D-3 How should a send with an unknown acknowledgement be handled?
+					152 text Anchored to Send lifecycle
+				153 text Saved 3
+				154 button D-2 How long does the server keep send receipts? Anchored to Send lifecycle
+					155 text D-2 How long does the server keep send receipts?
+					156 text Anchored to Send lifecycle
+				157 button D-1 Where do queued sends persist? Anchored to Work packages
+					158 text D-1 Where do queued sends persist?
+					159 text Anchored to Work packages
+				160 button D-0 Show a queued-send count in the composer? Anchor not found in r5
+					161 text D-0 Show a queued-send count in the composer?
+					162 text Anchor not found in r5
+			163 text D-3
+			164 text Open
+			165 text Raised by C2, implementer of package B at 14:26. Attempt 3, head 7f3a9c2.
+			166 heading How should a send with an unknown acknowledgement be handled?, Value: 2, ID: dec-title
+				167 text How should a send with an unknown acknowledgement be handled?
+			168 text The socket dropped after the client sent message m-81f2 and before the server's acknowledgement arrived. On reconnect the client cannot tell whether the server stored it.
+			169 container
+				170 text Anchored to 
+				171 button Send lifecycle
+				172 text  in plan r5.
+			173 button E-4
+			174 button E-5
+			175 content list Decision stages
+				176 container
+					177 text 1 Draft answer Empty
+				178 container
+					179 text 2 Saved decision Not saved
+				180 container
+					181 text 3 Execution approval Locked
+			182 container
+				183 heading 1 Draft answer, Value: 3
+					184 text 1 Draft answer
+				185 How should a send with an unknown acknowledgement be handled?
+					186 container
+						187 radio button (settable, integer) Value: 0, Description: Resend automatically with the same message ID Relies on server receipts to drop the duplicate. Silent if the receipt has expired.
+						188 text Resend automatically with the same message ID Relies on server receipts to drop the duplicate. Silent if the receipt has expired.
+					189 container
+						190 radio button (settable, integer) Value: 0, Description: Keep the message identity and ask for an explicit retry Suggested by C2 Mark delivery as unknown, keep m-81f2 in the outbox and show Retry. No send happens until someone retries.
+						191 text Keep the message identity and ask for an explicit retry  Suggested by C2 Mark delivery as unknown, keep m-81f2 in the outbox and show Retry. No send happens until someone retries.
+					192 container
+						193 radio button (settable, integer) Value: 0, Description: Mark the send as failed and drop it from the outbox Simplest. The user retypes the message and loses the original identity.
+						194 text Mark the send as failed and drop it from the outbox Simplest. The user retypes the message and loses the original identity.
+				195 text Reason (optional)
+				196 text entry area (settable) Reason (optional), ID: dec-note
+				197 button Save draft
+				198 button (disabled) Save decision
+				199 text Choose an option to save a decision.
+				200 text A draft stays in this tab and is not a decision. Saving the decision records it with your name; it does not start work or approve anything.
+			201 container
+				202 heading 2 Saved decision, Value: 3
+					203 text 2 Saved decision
+				204 text Not saved. Nothing has been decided.
+			205 container
+				206 heading 3 Execution approval, Value: 3
+					207 text Execution approval
+				208 text Locked until D-3 is saved. Saving it will unlock this step but will not approve anything.
+			209 container
+				210 heading History, Value: 3
+					211 text History
+				212 content list
+					213 container
+						214 text 14:26 C2 Raised during repair round 1 of package B.
+		120 container Description: Run context, ID: rail
+			215 container
+				216 text NEO-4821, Core reliability Preserve queued sends across reconnects Waiting on D-3 Attempt 3 of 4, head 
+				217 text 7f3a9c2
+				218 text , base 
+				219 text e19c4d0
+			220 container
+				221 heading Stages, Value: 3
+					222 text Stages
+				223 content list
+					224 container
+						225 text Intake Issue #4821
+					226 container
+						227 text Design v2 approved in round 2
+					228 container
+						229 text Build Package B waiting on D-3
+					230 container
+						231 text Integrate Failed at 7f3a9c2
+					232 container
+						233 text Review Round 1 of 2 sent back
+					234 container
+						235 text PR Not opened, merge locked
+			236 container
+				237 heading Agents, Value: 3
+					238 text Agents
+				239 content list
+					240 button R Root run Waiting for input, Waiting since 14:26
+						241 text R Root run
+						242 text Waiting for input, Waiting since 14:26
+					243 button C1 Implementer, package A Completed, 18m 04s
+						244 text C1 Implementer, package A
+						245 text Completed, 18m 04s
+					246 button C2 Implementer, package B Asked a question, Waiting since 14:26
+						247 text C2 Implementer, package B
+						248 text Asked a question, Waiting since 14:26
+					249 button N1 Tester subagent Observed Tracking lost, Last observed 14:21:07 · 3m 12s
+						250 text N1 Tester subagent 
+						251 text Observed
+						252 text Tracking lost, Last observed 14:21:07 · 3m 12s
+					253 button C3 Critic and reviewer Round 1 complete, 6m 40s
+						254 text C3 Critic and reviewer
+						255 text Round 1 complete, 6m 40s
+				256 text Cost: not reported for any agent. Select an agent to see its result.
+			257 container
+				258 heading Approvals, Value: 3
+					259 text Approvals
+				260 content list
+					261 container
+						262 text Plan execution r5 approved for attempt 3 at 13:43 by You
+					263 container
+						264 text Resume package B Locked, needs D-3 saved
+					265 container
+						266 text Merge Locked. Yours under the merge policy, in GitHub.
+			267 container
+				268 link Description:  Open in runs view, Value: 127.0.0.1:63035/runs.html#NEO-4821
+				269 link Description:  Open in workflow map, Value: 127.0.0.1:63035/workflow.html#NEO-4821
+
+The focused UI element is 18 tab (selected, settable, boolean) Decisions 1 open, Value: 1, ID: tab-decisions
+PLANNING SAVE DECISION WITHOUT RESUME
+Browser tab: 326104940, Title: "Symphony plan and decisions · Concept C · Neokod design prototype", URL: "http://127.0.0.1:63035/planning.html".
+1 AXWebArea Symphony plan and decisions · Concept C · Neokod design prototype, URL: 127.0.0.1:63035/planning.html
+	2 container
+		3 link Description: Skip to plan, Value: 127.0.0.1:63035/planning.html#workspace
+		4 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		5 container Location
+			6 text Symphony NEO-4821
+			7 text Plan and decisions
+		8 container Symphony prototype
+			9 link Description: Work, Value: 127.0.0.1:63035/work.html
+			10 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			11 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			12 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		13 text Design prototype · Sample data
+		14 button Reset demo, ID: reset-demo
+		15 checkbox Description: Switch to light theme, Value: 1
+		16 tab group Workspace
+			17 tab (selectable, settable, boolean) Plan, Value: 0, ID: tab-plan
+			18 tab (selected, settable, boolean) Decisions, Value: 1, ID: tab-decisions
+			19 tab (selectable, settable, boolean) Evidence, Value: 0, ID: tab-evidence
+		20 container plan-status
+			121 text Plan r5, saved 13:42 Execution approved: r5, attempt 3
+		22 container Description: Plan outline, decisions and revisions, ID: outline
+			122 text Plan
+			123 button Goal
+			124 button Current behaviour
+			125 button Send lifecycle
+			126 button Work packages
+			127 button Validation
+			128 button Out of scope
+			129 text Decisions
+			130 button D-3 How should a send with an unknown acknowledgement be handled?
+				131 text D-3 How should a send with an unknown acknowledgement be handled?
+			132 button D-2 How long does the server keep send receipts?
+				133 text D-2 How long does the server keep send receipts?
+			134 button D-1 Where do queued sends persist?
+				135 text D-1 Where do queued sends persist?
+			136 button D-0 Show a queued-send count in the composer? Unresolved
+				137 text D-0 Show a queued-send count in the composer?
+				138 text Unresolved
+			139 text Revisions
+			140 text r5 You Current
+			141 button r4 You 13:31
+				142 text r4 You
+				143 text 13:31
+			144 text r3 You Not in sample r2 R, root run Not in sample r1 R, root run Not in sample
+		46 container Description: Decisions, ID: workspace
+			145 content list
+				146 text Open 0
+				147 text No open decisions.
+				148 text Saved 4
+				149 button D-3 How should a send with an unknown acknowledgement be handled? Anchored to Send lifecycle
+					150 text D-3 How should a send with an unknown acknowledgement be handled?
+					151 text Anchored to Send lifecycle
+				152 button D-2 How long does the server keep send receipts? Anchored to Send lifecycle
+					153 text D-2 How long does the server keep send receipts?
+					154 text Anchored to Send lifecycle
+				155 button D-1 Where do queued sends persist? Anchored to Work packages
+					156 text D-1 Where do queued sends persist?
+					157 text Anchored to Work packages
+				158 button D-0 Show a queued-send count in the composer? Anchor not found in r5
+					159 text D-0 Show a queued-send count in the composer?
+					160 text Anchor not found in r5
+			161 text D-3
+			162 text Saved
+			163 text Raised by C2, implementer of package B at 14:26. Attempt 3, head 7f3a9c2.
+			164 heading How should a send with an unknown acknowledgement be handled?, Value: 2, ID: dec-title
+				165 text How should a send with an unknown acknowledgement be handled?
+			166 text The socket dropped after the client sent message m-81f2 and before the server's acknowledgement arrived. On reconnect the client cannot tell whether the server stored it.
+			167 container
+				168 text Anchored to 
+				169 button Send lifecycle
+				170 text  in plan r5.
+			171 button E-4
+			172 button E-5
+			173 content list Decision stages
+				174 container
+					175 text 1 Draft answer Applied
+				176 container
+					177 text 2 Saved decision Saved 14:31 by You
+				178 container
+					179 text 3 Execution approval Not approved
+			180 container
+				181 heading 2 Saved decision, Value: 3
+					182 text 2 Saved decision
+				183 container Description: Keep the message identity and ask for an explicit retry Saved by You at 14:31, ID: focus-after
+					184 container
+						185 text Keep the message identity and ask for an explicit retry
+						186 text Saved by You at 14:31
+				187 button Reopen decision
+			188 container
+				189 heading 3 Execution approval, Value: 3
+					190 text Execution approval
+				191 definition list
+					192 container Action
+						193 text Action
+					194 text Resume package B (C2)
+					195 container Plan
+						196 text Plan
+					197 text r5
+					198 container Attempt
+						199 text Attempt
+					200 text 3 of 4
+					201 container Head
+						202 text Head
+					203 text 7f3a9c2
+					204 container Decision
+						205 text Decision
+					206 text D-3 as saved at 14:31
+				207 checkbox (settable, integer) Description: I have checked the scope above: plan r5, attempt 3, head 7f3a9c2, decision D-3., Value: 0, ID: resume-ok
+				208 text I have checked the scope above: plan r5, attempt 3, head 7f3a9c2, decision D-3.
+				209 button (disabled) Approve resume (demo)
+				210 text Recorded in this prototype only. Nothing runs and nothing merges.
+			211 container
+				212 heading History, Value: 3
+					213 text History
+				214 content list
+					215 container
+						216 text 14:31 You Saved: Keep the message identity and ask for an explicit retry.
+					217 container
+						218 text 14:26 C2 Raised during repair round 1 of package B.
+		120 container Description: Run context, ID: rail
+			219 container
+				220 text NEO-4821, Core reliability Preserve queued sends across reconnects Paused, decision saved Attempt 3 of 4, head 
+				221 text 7f3a9c2
+				222 text , base 
+				223 text e19c4d0
+			224 container
+				225 heading Stages, Value: 3
+					226 text Stages
+				227 content list
+					228 container
+						229 text Intake Issue #4821
+					230 container
+						231 text Design v2 approved in round 2
+					232 container
+						233 text Build Package B paused
+					234 container
+						235 text Integrate Failed at 7f3a9c2
+					236 container
+						237 text Review Round 1 of 2 sent back
+					238 container
+						239 text PR Not opened, merge locked
+			240 container
+				241 heading Agents, Value: 3
+					242 text Agents
+				243 content list
+					244 button R Root run Waiting for input, Waiting since 14:26
+						245 text R Root run
+						246 text Waiting for input, Waiting since 14:26
+					247 button C1 Implementer, package A Completed, 18m 04s
+						248 text C1 Implementer, package A
+						249 text Completed, 18m 04s
+					250 button C2 Implementer, package B Asked a question, Waiting since 14:26
+						251 text C2 Implementer, package B
+						252 text Asked a question, Waiting since 14:26
+					253 button N1 Tester subagent Observed Tracking lost, Last observed 14:21:07 · 3m 12s
+						254 text N1 Tester subagent 
+						255 text Observed
+						256 text Tracking lost, Last observed 14:21:07 · 3m 12s
+					257 button C3 Critic and reviewer Round 1 complete, 6m 40s
+						258 text C3 Critic and reviewer
+						259 text Round 1 complete, 6m 40s
+				260 text Cost: not reported for any agent. Select an agent to see its result.
+			261 container
+				262 heading Approvals, Value: 3
+					263 text Approvals
+				264 content list
+					265 container
+						266 text Plan execution r5 approved for attempt 3 at 13:43 by You
+					267 container
+						268 text Resume package B Not approved
+						269 button Open D-3
+					270 container
+						271 text Merge Locked. Yours under the merge policy, in GitHub.
+			272 container
+				273 link Description:  Open in runs view, Value: 127.0.0.1:63035/runs.html#NEO-4821
+				274 link Description:  Open in workflow map, Value: 127.0.0.1:63035/workflow.html#NEO-4821
+		275 text Decision saved. No work started and nothing was approved.
+
+The focused UI element is 183 container Description: Keep the message identity and ask for an explicit retry Saved by You at 14:31, ID: focus-after
+PLANNING EVIDENCE
+Browser tab: 326104940, Title: "Symphony plan and decisions · Concept C · Neokod design prototype", URL: "http://127.0.0.1:63035/planning.html".
+1 AXWebArea Symphony plan and decisions · Concept C · Neokod design prototype, URL: 127.0.0.1:63035/planning.html
+	2 container
+		3 link Description: Skip to plan, Value: 127.0.0.1:63035/planning.html#workspace
+		4 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		5 container Location
+			6 text Symphony NEO-4821
+			7 text Plan and decisions
+		8 container Symphony prototype
+			9 link Description: Work, Value: 127.0.0.1:63035/work.html
+			10 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			11 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			12 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		13 text Design prototype · Sample data
+		14 button Reset demo, ID: reset-demo
+		15 checkbox Description: Switch to light theme, Value: 1
+		16 tab group Workspace
+			17 tab (selectable, settable, boolean) Plan, Value: 0, ID: tab-plan
+			18 tab (selectable, settable, boolean) Decisions, Value: 0, ID: tab-decisions
+			19 tab (selected, settable, boolean) Evidence, Value: 1, ID: tab-evidence
+		20 container plan-status
+			276 text Plan r5, saved 13:42 Execution approved: r5, attempt 3
+		22 container Description: Plan outline, decisions and revisions, ID: outline
+			277 text Plan
+			278 button Goal
+			279 button Current behaviour
+			280 button Send lifecycle
+			281 button Work packages
+			282 button Validation
+			283 button Out of scope
+			284 text Decisions
+			285 button D-3 How should a send with an unknown acknowledgement be handled?
+				286 text D-3 How should a send with an unknown acknowledgement be handled?
+			287 button D-2 How long does the server keep send receipts?
+				288 text D-2 How long does the server keep send receipts?
+			289 button D-1 Where do queued sends persist?
+				290 text D-1 Where do queued sends persist?
+			291 button D-0 Show a queued-send count in the composer? Unresolved
+				292 text D-0 Show a queued-send count in the composer?
+				293 text Unresolved
+			294 text Revisions
+			295 text r5 You Current
+			296 button r4 You 13:31
+				297 text r4 You
+				298 text 13:31
+			299 text r3 You Not in sample r2 R, root run Not in sample r1 R, root run Not in sample
+		46 container Description: Evidence, ID: workspace
+			300 text Results and checks linked from the plan and decisions. Only host checks at the current head can pass. Agent reports stay unverified, and cancelled or earlier-head results are never shown as current.
+			301 container ev-E-0
+				302 text E-0
+				303 text Research: server-side outbox
+				304 text R, root run, Attempt 2
+				305 text Stopped when D-1 was saved. A cancelled result is never shown as current.
+				306 text Cancelled, not current
+				307 text Used by
+				308 button D-1 saved
+				309 button R
+			310 container ev-E-1
+				311 text E-1
+				312 text Research: reconnect gaps after laptop sleep
+				313 text R, root run, Attempt 2
+				314 text Sample finding: reconnects after sleep can exceed 10 minutes.
+				315 text Pinned result
+				316 text Used by
+				317 button D-2 saved
+				318 button R
+			319 container ev-E-2
+				320 text E-2
+				321 text Package A result: client outbox
+				322 text C1, managed child, 
+				323 text 3b18e40
+				324 text Outbox in IndexedDB keyed by message ID. Accepted by the critic.
+				325 text Pinned result
+				326 text Used by
+				327 button Work packages
+				328 button C1
+			329 container ev-E-3
+				330 text E-3
+				331 text Package B result: server receipts
+				332 text C2, managed child, 
+				333 text 7f3a9c2
+				334 text C2 is waiting on D-3. Nothing is pinned.
+				335 text No result yet
+				336 text Used by
+				337 button Work packages
+				338 button C2
+			339 container ev-E-4
+				340 text E-4
+				341 text Integration validation
+				342 text Host, 
+				343 text 7f3a9c2
+				344 text vp test apps/server/src/reconnect: 1 of 12 failed, duplicate after ack loss. Clean tree.
+				345 text Failed
+				346 text Used by
+				347 button D-3 saved
+				348 button Validation
+			349 container ev-E-5
+				350 text E-5
+				351 text Tester report: duplicate reproduced
+				352 text N1, observed native subagent of C2, Not reported
+				353 text Tracking lost after 14:21:07. Not a host check.
+				354 text Agent report, unverified
+				355 text Used by
+				356 button D-3 saved
+				357 button N1
+			358 container ev-E-6
+				359 text E-6
+				360 text Review round 1
+				361 text C3, managed child, 
+				362 text 3b18e40
+				363 text At 3b18e40, an earlier head. One blocking finding still open.
+				364 text Changes requested
+				365 text Not referenced by the current plan
+				366 button C3
+		120 container Description: Run context, ID: rail
+			367 container
+				368 text NEO-4821, Core reliability Preserve queued sends across reconnects Paused, decision saved Attempt 3 of 4, head 
+				369 text 7f3a9c2
+				370 text , base 
+				371 text e19c4d0
+			372 container
+				373 heading Stages, Value: 3
+					374 text Stages
+				375 content list
+					376 container
+						377 text Intake Issue #4821
+					378 container
+						379 text Design v2 approved in round 2
+					380 container
+						381 text Build Package B paused
+					382 container
+						383 text Integrate Failed at 7f3a9c2
+					384 container
+						385 text Review Round 1 of 2 sent back
+					386 container
+						387 text PR Not opened, merge locked
+			388 container
+				389 heading Agents, Value: 3
+					390 text Agents
+				391 content list
+					392 button R Root run Waiting for input, Waiting since 14:26
+						393 text R Root run
+						394 text Waiting for input, Waiting since 14:26
+					395 button C1 Implementer, package A Completed, 18m 04s
+						396 text C1 Implementer, package A
+						397 text Completed, 18m 04s
+					398 button C2 Implementer, package B Asked a question, Waiting since 14:26
+						399 text C2 Implementer, package B
+						400 text Asked a question, Waiting since 14:26
+					401 button N1 Tester subagent Observed Tracking lost, Last observed 14:21:07 · 3m 12s
+						402 text N1 Tester subagent 
+						403 text Observed
+						404 text Tracking lost, Last observed 14:21:07 · 3m 12s
+					405 button C3 Critic and reviewer Round 1 complete, 6m 40s
+						406 text C3 Critic and reviewer
+						407 text Round 1 complete, 6m 40s
+				408 text Cost: not reported for any agent. Select an agent to see its result.
+			409 container
+				410 heading Approvals, Value: 3
+					411 text Approvals
+				412 content list
+					413 container
+						414 text Plan execution r5 approved for attempt 3 at 13:43 by You
+					415 container
+						416 text Resume package B Not approved
+						417 button Open D-3
+					418 container
+						419 text Merge Locked. Yours under the merge policy, in GitHub.
+			420 container
+				421 link Description:  Open in runs view, Value: 127.0.0.1:63035/runs.html#NEO-4821
+				422 link Description:  Open in workflow map, Value: 127.0.0.1:63035/workflow.html#NEO-4821
+		275 text Decision saved. No work started and nothing was approved.
+
+The focused UI element is 19 tab (selected, settable, boolean) Evidence, Value: 1, ID: tab-evidence
+WORK DEMO SUMMARY
+Browser tab: 326104940, Title: "Symphony work · Neokod design prototype", URL: "http://127.0.0.1:63035/work.html#runs".
+1 AXWebArea Symphony work · Neokod design prototype, URL: 127.0.0.1:63035/work.html#runs
+	2 container
+		3 link Description: Skip to content, Value: 127.0.0.1:63035/work.html#wk-content
+		4 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		5 container Location
+			6 text Symphony
+			7 text Work
+		8 container Symphony pages
+			9 link Description: Work, Value: 127.0.0.1:63035/work.html
+			10 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			11 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			12 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		13 text Design prototype · Sample data
+		14 button (collapsed) Reset demo, ID: wk-reset, Secondary Actions: Expand
+		15 checkbox Description: Switch to light theme, Value: 1
+		16 container Description: Work flow, ID: wk-steps
+			17 button Select and assign 1 selected, ID: step-work
+				18 text Select and assign
+				19 text 1 selected
+			20 button Preview Not created, ID: step-preview
+				21 text Preview
+				22 text Not created
+			23 button Demo runs 1 queued, ID: step-runs
+				24 text Demo runs
+				25 text 1 queued
+		26 text Sample data. No tracker, machine or agent is connected. Start only changes this page's demo.
+		27 text Draft saved 04:33 PM
+		28 container Description: Demo runs, ID: wk-view-runs
+			29 container wk-runs-list
+				30 heading Demo runs, Value: 1, ID: runs-title
+					31 text Demo runs
+				32 text Queued by this page only. No agent runs, and these requests are not added to the Runs page.
+				33 container Receipt R-1
+					34 heading Receipt R-1, Value: 2, ID: rc-R-1
+						35 text Receipt R-1
+					36 container
+						37 text Started 04:34 PM, local demo time. Request key  wk-a29f2d39 . 1 queued, 1 not started.
+					38 content list
+						39 button Queued (demo) NEO-4821 Preserve queued sends across reconnects Sample Mac, ID: ri-R-1-NEO-4821
+							40 text Queued (demo)
+							41 text NEO-4821
+							42 text Preserve queued sends across reconnects
+							43 text Sample Mac
+						44 container
+							45 text Not started NEO-4846 Work PC has no DeepSeek V4.1 Flash. OpenCode is installed on Work PC, but DeepSeek V4.1 Flash is not enabled there. Run it on Sample Mac, which has DeepSeek V4.1 Flash, or choose another implementer yourself. Work PC
+			46 container Description: Demo run detail, ID: wk-run
+				47 container
+					48 text NEO-4821 Demo request from receipt R-1 Accepted 04:34 PM
+					49 heading Preserve queued sends across reconnects, Value: 2, ID: run-title
+						50 text Preserve queued sends across reconnects
+					51 text Queued (demo) Pinned to Sample Mac /Users/sample/code/neokod
+					52 tab group Demo run
+						53 tab (selected, settable, boolean) Summary, Value: 1, ID: rtab-summary
+						54 tab (selectable, settable, boolean) Execution, Value: 0, ID: rtab-execution
+						55 tab (selectable, settable, boolean) Plan and decisions, Value: 0, ID: rtab-plan
+						56 tab (selectable, settable, boolean) Evidence, Value: 0, ID: rtab-evidence
+				57 container Description: Summary, ID: rpanel
+					58 text Now
+					59 text Queued in this demo. No agent has started and nothing is running.
+					60 text Accepted means this page recorded the request. In the product, Sample Mac would start it when a slot is free, and the stages would fill in from what it reports.
+					61 container
+						62 heading Agent team, Value: 3
+							63 text Agent team
+						64 content list
+							65 container
+								66 text Implementer DeepSeek V4.1 Flash through OpenCode (ACP) , effort high
+							67 container
+								68 text Reviewer Sol 6.1 through Codex , effort high
+							69 container
+								70 text Reviewer Opus 5.5 through Claude , effort high
+						71 text All three run on Sample Mac. Accepted work gets new agent sessions; choosing agents never moves an existing session.
+					72 container
+						73 heading Request, Value: 3
+							74 text Request
+						75 definition list
+							76 container Issue
+								77 text Issue
+							78 text NEO-4821, GitHub issue #4821, as edited 13:40
+							79 container Run on
+								80 text Run on
+							81 container
+								82 text Sample Mac sample-mac.tailnet.example:3773
+							83 container Repository
+								84 text Repository
+							85 text /Users/sample/code/neokod
+							86 container Base
+								87 text Base
+							88 text dev at e19c4d0
+							89 container Workflow
+								90 text Workflow
+							91 text Core reliability
+							92 container Plan
+								93 text Plan
+							94 text r1, pinned at acceptance
+							95 container Approval
+								96 text Approval
+							97 text Merge needs you
+							98 container Receipt
+								99 text Receipt
+							100 text R-1, accepted 04:34 PM
+							101 container Preview match
+								102 text Preview match
+							103 text Same machine, agents, base and plan as the preview you started. Nothing was substituted.
+					104 container
+						105 heading Machine, Value: 3
+							106 text Machine
+						107 text This request stays on Sample Mac. Running it elsewhere needs a new linked request after this one is closed; it is never moved silently.
+					108 container
+						109 heading Existing example attempt 3, Value: 3
+							110 text Existing example attempt 3
+						111 text The other prototype pages show an existing example attempt 3 for NEO-4821. It is not this queued request, which has no execution yet.
+						112 link Description: Runs: existing example attempt 3, Value: 127.0.0.1:63035/runs.html#NEO-4821
+						113 link Description: Workflow map: existing example attempt 3, Value: 127.0.0.1:63035/workflow.html#NEO-4821
+						114 link Description: Plan and decisions: existing example attempt 3, Value: 127.0.0.1:63035/planning.html
+
+The focused UI element is 1 AXWebArea Symphony work · Neokod design prototype, URL: 127.0.0.1:63035/work.html#runs
+WORK DEMO EXECUTION
+Browser tab: 326104940, Title: "Symphony work · Neokod design prototype", URL: "http://127.0.0.1:63035/work.html#runs".
+1 AXWebArea Symphony work · Neokod design prototype, URL: 127.0.0.1:63035/work.html#runs
+	2 container
+		3 link Description: Skip to content, Value: 127.0.0.1:63035/work.html#wk-content
+		4 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		5 container Location
+			6 text Symphony
+			7 text Work
+		8 container Symphony pages
+			9 link Description: Work, Value: 127.0.0.1:63035/work.html
+			10 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			11 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			12 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		13 text Design prototype · Sample data
+		14 button (collapsed) Reset demo, ID: wk-reset, Secondary Actions: Expand
+		15 checkbox Description: Switch to light theme, Value: 1
+		16 container Description: Work flow, ID: wk-steps
+			29 button Select and assign 1 selected, ID: step-work
+				30 text Select and assign
+				31 text 1 selected
+			32 button Preview Not created, ID: step-preview
+				33 text Preview
+				34 text Not created
+			35 button Demo runs 1 queued, ID: step-runs
+				36 text Demo runs
+				37 text 1 queued
+		26 text Sample data. No tracker, machine or agent is connected. Start only changes this page's demo.
+		27 text Draft saved 04:33 PM
+		28 container Description: Demo runs, ID: wk-view-runs
+			38 container wk-runs-list
+				39 heading Demo runs, Value: 1, ID: runs-title
+					40 text Demo runs
+				41 text Queued by this page only. No agent runs, and these requests are not added to the Runs page.
+				42 container Receipt R-1
+					43 heading Receipt R-1, Value: 2, ID: rc-R-1
+						44 text Receipt R-1
+					45 container
+						46 text Started 04:34 PM, local demo time. Request key  wk-a29f2d39 . 1 queued, 1 not started.
+					47 content list
+						48 button Queued (demo) NEO-4821 Preserve queued sends across reconnects Sample Mac, ID: ri-R-1-NEO-4821
+							49 text Queued (demo)
+							50 text NEO-4821
+							51 text Preserve queued sends across reconnects
+							52 text Sample Mac
+						53 container
+							54 text Not started NEO-4846 Work PC has no DeepSeek V4.1 Flash. OpenCode is installed on Work PC, but DeepSeek V4.1 Flash is not enabled there. Run it on Sample Mac, which has DeepSeek V4.1 Flash, or choose another implementer yourself. Work PC
+			55 container Description: Demo run detail, ID: wk-run
+				56 container
+					57 text NEO-4821 Demo request from receipt R-1 Accepted 04:34 PM
+					58 heading Preserve queued sends across reconnects, Value: 2, ID: run-title
+						59 text Preserve queued sends across reconnects
+					60 text Queued (demo) Pinned to Sample Mac /Users/sample/code/neokod
+					61 tab group Demo run
+						62 tab (selectable, settable, boolean) Summary, Value: 0, ID: rtab-summary
+						63 tab (selected, settable, boolean) Execution, Value: 1, ID: rtab-execution
+						64 tab (selectable, settable, boolean) Plan and decisions, Value: 0, ID: rtab-plan
+						65 tab (selectable, settable, boolean) Evidence, Value: 0, ID: rtab-evidence
+				66 container Description: Execution, ID: rpanel
+					67 text Planned from the Core reliability workflow. Nothing has been observed, because no agent has started.
+					68 content list Stages
+						69 container
+							70 text Intake Queued (demo) DeepSeek V4.1 Flash
+						71 container
+							72 text Design Planned DeepSeek V4.1 Flash
+						73 container
+							74 text Build Planned DeepSeek V4.1 Flash
+						75 container
+							76 text Integrate Planned Validation on Sample Mac
+						77 container
+							78 text Review Planned Sol 6.1 and Opus 5.5
+						79 container
+							80 text PR Planned You
+					81 container Legend
+						82 text Queued in this demo Planned, not observed Observed on the machine (none yet)
+					83 container
+						84 heading Who does what, Value: 3
+							85 text Who does what
+						86 table
+							87 row
+								88 cell
+									89 text Stage
+								90 cell
+									91 text Who
+								92 cell
+									93 text Allowed to
+							94 row
+								95 cell
+									96 text Intake
+								97 cell
+									98 text DeepSeek V4.1 Flash
+								99 cell
+									100 text Reads the issue and the pinned plan
+							101 row
+								102 cell
+									103 text Design
+								104 cell
+									105 text DeepSeek V4.1 Flash
+								106 cell
+									107 text Reads the repository; no edits
+							108 row
+								109 cell
+									110 text Build
+								111 cell
+									112 text DeepSeek V4.1 Flash
+								113 cell
+									114 text Edits files in a new worktree only
+							115 row
+								116 cell
+									117 text Integrate
+								118 cell
+									119 text Validation on Sample Mac
+								120 cell
+									121 text Runs the workflow's validation on the target machine
+							122 row
+								123 cell
+									124 text Review
+								125 cell
+									126 text Sol 6.1 and Opus 5.5
+								127 cell
+									128 text Read-only; can send work back, up to two rounds
+							129 row
+								130 cell
+									131 text PR
+								132 cell
+									133 text You
+								134 cell
+									135 text Pushes the branch and opens a PR; merging needs you
+					136 text For a full step map with agents and repair rounds, see the 
+					137 link Description: Workflow map for existing example attempt 3, Value: 127.0.0.1:63035/workflow.html#NEO-4821
+					138 text . That map shows attempt 3, not this request.
+
+The focused UI element is 63 tab (selected, settable, boolean) Execution, Value: 1, ID: rtab-execution
+WORK DEMO PLAN
+Browser tab: 326104940, Title: "Symphony work · Neokod design prototype", URL: "http://127.0.0.1:63035/work.html#runs".
+The following is a diff from the previous accessibility tree with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 68-138
+~						63 tab (selectable, settable, boolean) Execution, Value: 0, ID: rtab-execution
+~						64 tab (selected, settable, boolean) Plan and decisions, Value: 1, ID: rtab-plan
+~				66 container Description: Plan and decisions, ID: rpanel
+~					67 container
++						68 heading Pinned for this request, Value: 3
++							69 text Pinned for this request
++						70 text Plan r1, as accepted 04:34 PM. Goal: queued sends survive a reconnect and a reload, and are never delivered twice.
+
+Approach:
+- Keep each queued send in a client outbox, keyed by one message ID for its whole life.
+- Record server receipts by message ID so a repeated send is ignored.
+- Show sends that are not yet confirmed.
+
+Validation: outbox and reconnect tests, plus an end-to-end check that drops the acknowledgement mid-send.
++					71 heading Current plan for this issue, Value: 3
++						72 text Current plan for this issue
++					73 container
++						74 heading Plan r1, Value: 3, ID: plan-h-run
++							75 text Plan r1
++						76 text Drafted from the issue (sample)
++						77 text Plan for NEO-4821
++						78 text entry area (settable) Plan for NEO-4821, ID: plan-text-run, Value: Goal: queued sends survive a reconnect and a reload, and are never delivered twice.
+
+Approach:
+- Keep each queued send in a client outbox, keyed by one message ID for its whole life.
+- Record server receipts by message ID so a repeated send is ignored.
+- Show sends that are not yet confirmed.
+
+Validation: outbox and reconnect tests, plus an end-to-end check that drops the acknowledgement mid-send.
++						79 button (disabled) Save plan, ID: plan-save-run
++						80 button (disabled) Discard edits, ID: plan-discard-run
++						81 text Saving a plan starts nothing and grants no permission to run. Edits here apply to the next request for this issue. This queued request keeps its pinned plan, and saving does not resume or restart it.
++					82 container
++						83 container Open question Should the end-to-end check also reload the page mid-send?
++							84 container
++								85 text Open question Should the end-to-end check also reload the page mid-send?
++							86 container
++								87 radio button (settable, integer) Description: Yes, reload during the send Suggested, Value: 0
++								88 text Yes, reload during the send  Suggested
++							89 container
++								90 radio button (settable, integer) Description: No, reconnect only, Value: 0
++								91 text No, reconnect only
++						92 button (disabled) Save decision, ID: dec-save-run
++						93 text No decision saved. Saving a decision does not start, resume or approve work.
++					94 text Decision D-3 and plan r5 belong to the existing example attempt 3. See 
++					95 link Description: Plan and decisions: existing example attempt 3, Value: 127.0.0.1:63035/planning.html
++					96 text .
+The focused UI element is 64 tab (selected, settable, boolean) Plan and decisions, Value: 1, ID: rtab-plan
+WORK DEMO EVIDENCE
+Browser tab: 326104940, Title: "Symphony work · Neokod design prototype", URL: "http://127.0.0.1:63035/work.html#runs".
+The following is a diff from the previous accessibility tree with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 68-96
+~						64 tab (selectable, settable, boolean) Plan and decisions, Value: 0, ID: rtab-plan
+~						65 tab (selected, settable, boolean) Evidence, Value: 1, ID: rtab-evidence
+~				66 container Description: Evidence, ID: rpanel
+~					67 text No evidence yet. Evidence appears only when Sample Mac reports host checks and reviews for this request.
++					68 container
++						69 heading Host validation, Value: 3
++							70 text Host validation
++						71 content list
++							72 container
++								73 text Not run vp check
++							74 container
++								75 text Not run vp run typecheck
++							76 container
++								77 text Not run vp test (affected packages)
++					78 container
++						79 heading Reviews, Value: 3
++							80 text Reviews
++						81 content list
++							82 container
++								83 text Not run Sol 6.1
++							84 container
++								85 text Not run Opus 5.5
++					86 container
++						87 heading Preview checks at acceptance, Value: 3
++							88 text Preview checks at acceptance
++						89 text Simulated sample checks recorded 04:34 PM. They are not host evidence and prove nothing about the machine.
++						90 content list
++							91 container
++								92 text Matches sample facts: Sample Mac is connected. Sample status, last checked 14:36.
++							93 container
++								94 text Matches sample facts: Repository found at /Users/sample/code/neokod, base dev at e19c4d0.
++							95 container
++								96 text Matches sample facts: Implementer DeepSeek V4.1 Flash through OpenCode (ACP) is available on Sample Mac. Effort: high.
++							97 container
++								98 text Matches sample facts: Reviewers Sol 6.1 and Opus 5.5 are available on Sample Mac, the same machine as the implementer.
++							99 container
++								100 text Warning: Prototype limit: the existing example attempt 3 on the Runs, Workflow map and Plan and decisions pages is not checked here. In the product, an active attempt would block a second start for this issue.
++							101 container
++								102 text Note: Plan r1, drafted from the issue.
++							103 container
++								104 text Warning: Open question not decided yet: Should the end-to-end check also reload the page mid-send?
++					105 container
++						106 heading Receipt, Value: 3
++							107 text Receipt
++						108 definition list
++							109 container Receipt
++								110 text Receipt
++							111 text R-1
++							112 container Request key
++								113 text Request key
++							114 text wk-a29f2d39
++							115 container Accepted
++								116 text Accepted
++							117 text 04:34 PM, local demo time
++							118 container Batch
++								119 text Batch
++							120 text 1 item queued, 1 not started. Each result stands on its own.
+The focused UI element is 65 tab (selected, settable, boolean) Evidence, Value: 1, ID: rtab-evidence
+RESPONSIVE CHECK: Chrome viewport explicitly set to 390 x 844. Work screenshot 17 visibly hides issue IDs and the queued-run machine badge. The left project/mode/machines strip clips off machines with no visible machine affordance in the initial viewport. Main list scroll and bottom Assign/Preview exist. Screenshots taken through Computer Use; no Playwright.
