@@ -1359,35 +1359,43 @@ const make = Effect.gen(function* () {
           }
 
           for (const shellThread of commandReadModel.threads) {
-            const workspacePath = resolveThreadWorkspaceCwd({
+            const currentWorkspacePath = resolveThreadWorkspaceCwd({
               thread: shellThread,
               projects: commandReadModel.projects,
             });
-            const overlaps =
-              workspacePath === undefined
+            const currentOverlaps =
+              currentWorkspacePath === undefined
                 ? true
-                : yield* workspacePathsOverlap(cwdIdentity, workspacePath);
-            if (!overlaps) {
-              continue;
-            }
-
-            const activeTurnId = shellThread.session?.activeTurnId ?? null;
-            if (activeTurnId !== null || shellThread.latestTurn?.state === "running") {
-              busyThreads.add(shellThread.id);
-            }
+                : yield* workspacePathsOverlap(cwdIdentity, currentWorkspacePath);
 
             const turns = yield* projectionTurnRepository.listByThreadId({
               threadId: shellThread.id,
             });
-            if (
-              turns.some(
-                (projectedTurn) =>
-                  projectedTurn.turnId === null ||
-                  projectedTurn.state === "pending" ||
-                  projectedTurn.state === "running",
-              )
-            ) {
-              busyThreads.add(shellThread.id);
+            const pendingTurns = turns.filter(
+              (projectedTurn) => projectedTurn.turnId === null || projectedTurn.state === "pending",
+            );
+            if (pendingTurns.length > 0) {
+              const pendingOverlaps = yield* Effect.forEach(pendingTurns, (pendingTurn) => {
+                // A legacy pending row has no recorded workspace. Fail closed
+                // rather than assume it belongs to an unrelated folder.
+                if (pendingTurn.pendingWorkspacePath === null) {
+                  return Effect.succeed(true);
+                }
+                return workspacePathsOverlap(cwdIdentity, pendingTurn.pendingWorkspacePath);
+              }).pipe(Effect.map((results) => results.some(Boolean)));
+              if (pendingOverlaps) {
+                busyThreads.add(shellThread.id);
+              }
+            }
+
+            if (currentOverlaps) {
+              const activeTurnId = shellThread.session?.activeTurnId ?? null;
+              if (activeTurnId !== null || shellThread.latestTurn?.state === "running") {
+                busyThreads.add(shellThread.id);
+              }
+              if (turns.some((projectedTurn) => projectedTurn.state === "running")) {
+                busyThreads.add(shellThread.id);
+              }
             }
           }
 

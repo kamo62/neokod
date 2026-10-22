@@ -36,7 +36,6 @@ import {
 import { toPersistenceSqlError } from "../../persistence/Errors.ts";
 import { OrchestrationEventStore } from "../../persistence/Services/OrchestrationEventStore.ts";
 import { OrchestrationCommandReceiptRepository } from "../../persistence/Services/OrchestrationCommandReceipts.ts";
-import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import {
   OrchestrationCommandIdReusedError,
   OrchestrationCommandInvariantError,
@@ -90,7 +89,6 @@ const makeOrchestrationEngine = Effect.gen(function* () {
   const commandReceiptRepository = yield* OrchestrationCommandReceiptRepository;
   const projectionPipeline = yield* OrchestrationProjectionPipeline;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
-  const projectionTurnRepository = yield* ProjectionTurnRepository;
   const crypto = yield* Crypto.Crypto;
   const worktreeRemovalLease = yield* WorktreeRemovalLease;
 
@@ -171,38 +169,6 @@ const makeOrchestrationEngine = Effect.gen(function* () {
         }
 
         const commitAdmission = Effect.gen(function* () {
-          // Keep a thread's workspace stable while its turn start is still
-          // pending or running. The provider start captures the effective cwd
-          // before the session becomes visible, and the revert guard cannot
-          // associate a moved thread with that captured workspace.
-          if (
-            envelope.command.type === "thread.meta.update" &&
-            envelope.command.worktreePath !== undefined
-          ) {
-            const command = envelope.command;
-            const commandThreadId = command.threadId;
-            const commandWorktreePath = command.worktreePath;
-            const currentThread = commandReadModel.threads.find(
-              (thread) => thread.id === commandThreadId,
-            );
-            const changesWorkspace =
-              currentThread !== undefined && currentThread.worktreePath !== commandWorktreePath;
-            if (changesWorkspace) {
-              const turns = yield* projectionTurnRepository.listByThreadId({
-                threadId: commandThreadId,
-              });
-              const pendingAdmission = turns.some(
-                (turn) => turn.turnId === null || turn.state === "pending",
-              );
-              if (pendingAdmission) {
-                return yield* new OrchestrationCommandInvariantError({
-                  commandType: command.type,
-                  detail: `Thread '${commandThreadId}' has an unresolved admitted turn. Wait for it to start or settle before moving its workspace.`,
-                });
-              }
-            }
-          }
-
           const eventBase = yield* decideOrchestrationCommand({
             command: envelope.command,
             readModel: commandReadModel,

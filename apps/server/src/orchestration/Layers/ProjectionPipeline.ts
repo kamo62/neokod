@@ -1109,9 +1109,20 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         }
 
         case "thread.turn-start-requested": {
+          const thread = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          const project = Option.isSome(thread)
+            ? yield* projectionProjectRepository.getById({ projectId: thread.value.projectId })
+            : Option.none();
+          const workspacePath = Option.isSome(thread)
+            ? (thread.value.worktreePath ??
+              (Option.isSome(project) ? project.value.workspaceRoot : null))
+            : null;
           yield* projectionTurnRepository.replacePendingTurnStart({
             threadId: event.payload.threadId,
             messageId: event.payload.messageId,
+            workspacePath,
             sourceProposedPlanThreadId: event.payload.sourceProposedPlan?.threadId ?? null,
             sourceProposedPlanId: event.payload.sourceProposedPlan?.planId ?? null,
             requestedAt: event.payload.createdAt,

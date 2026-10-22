@@ -1747,7 +1747,7 @@ describe("CheckpointReactor", () => {
     expect(listRecoveryRefs(harness.cwd)).toHaveLength(1);
   });
 
-  it("refuses to move a pending thread workspace before a shared-folder revert", async () => {
+  it("refuses a revert when a pending thread moved out of the shared folder", async () => {
     const harness = await createHarness({ secondThreadSharingWorktree: true });
     const moveTarget = NodeFS.mkdtempSync(
       NodePath.join(NodeOS.tmpdir(), "neokod-pending-thread-move-"),
@@ -1764,17 +1764,18 @@ describe("CheckpointReactor", () => {
       ),
     );
 
-    const moveOutcome = await harness.runPromise(
-      Effect.exit(
-        harness.engine.dispatch({
-          type: "thread.meta.update",
-          commandId: CommandId.make("cmd-move-pending-thread-2"),
-          threadId: ThreadId.make("thread-2"),
-          worktreePath: moveTarget,
-        }),
-      ),
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-move-pending-thread-2"),
+        threadId: ThreadId.make("thread-2"),
+        worktreePath: moveTarget,
+      }),
     );
-    expect(Exit.isFailure(moveOutcome)).toBe(true);
+    const movedReadModel = await harness.readModel();
+    expect(
+      movedReadModel.threads.find((entry) => entry.id === ThreadId.make("thread-2"))?.worktreePath,
+    ).toBe(moveTarget);
 
     await revertToTurnOne(harness);
     await waitForRevertOutcome(harness.engine);
@@ -1782,9 +1783,54 @@ describe("CheckpointReactor", () => {
       entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
     );
 
-    const readModel = await harness.readModel();
-    const movedThread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-2"));
-    expect(movedThread?.worktreePath).toBe(harness.cwd);
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+  });
+
+  it("refuses a revert when a project root moved away from a pending admission", async () => {
+    const harness = await createHarness({ secondThreadSharingWorktree: true });
+    const projectRootTarget = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-pending-project-root-"),
+    );
+    tempDirs.push(projectRootTarget);
+
+    // Make thread-2 inherit the project workspace root instead of its own worktree.
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-thread-2-inherit-project-root"),
+        threadId: ThreadId.make("thread-2"),
+        worktreePath: null,
+      }),
+    );
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-turn-start-before-project-root-move",
+          messageId: "message-turn-start-before-project-root-move",
+        }),
+      ),
+    );
+
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "project.meta.update",
+        commandId: CommandId.make("cmd-move-pending-project-root"),
+        projectId: asProjectId("project-1"),
+        workspaceRoot: projectRootTarget,
+      }),
+    );
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
     expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
     expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
     expect(listRecoveryRefs(harness.cwd)).toEqual([]);
