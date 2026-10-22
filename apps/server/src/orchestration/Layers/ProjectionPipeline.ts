@@ -1013,26 +1013,6 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       switch (event.type) {
         case "thread.activity-appended": {
           const activity = event.payload.activity;
-          if (activity.kind === "provider.turn.start.failed") {
-            const payload = activity.payload;
-            const failedMessageId =
-              typeof payload === "object" &&
-              payload !== null &&
-              "messageId" in payload &&
-              typeof (payload as { readonly messageId?: unknown }).messageId === "string"
-                ? (payload as { readonly messageId: string }).messageId
-                : null;
-            if (failedMessageId !== null) {
-              const pending = yield* projectionTurnRepository.getPendingTurnStartByThreadId({
-                threadId: event.payload.threadId,
-              });
-              if (Option.isSome(pending) && String(pending.value.messageId) === failedMessageId) {
-                yield* projectionTurnRepository.deletePendingTurnStartByThreadId({
-                  threadId: event.payload.threadId,
-                });
-              }
-            }
-          }
           yield* projectionThreadActivityRepository.upsert({
             activityId: activity.id,
             threadId: event.payload.threadId,
@@ -1101,6 +1081,33 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       "applyThreadTurnsProjection",
     )(function* (event, _attachmentSideEffects) {
       switch (event.type) {
+        case "thread.activity-appended": {
+          const activity = event.payload.activity;
+          if (activity.kind !== "provider.turn.start.failed") {
+            return;
+          }
+          const payload = activity.payload;
+          const failedMessageId =
+            typeof payload === "object" &&
+            payload !== null &&
+            "messageId" in payload &&
+            typeof (payload as { readonly messageId?: unknown }).messageId === "string"
+              ? (payload as { readonly messageId: string }).messageId
+              : null;
+          if (failedMessageId === null) {
+            return;
+          }
+          const pending = yield* projectionTurnRepository.getPendingTurnStartByThreadId({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isSome(pending) && String(pending.value.messageId) === failedMessageId) {
+            yield* projectionTurnRepository.deletePendingTurnStartByThreadId({
+              threadId: event.payload.threadId,
+            });
+          }
+          return;
+        }
+
         case "thread.turn-start-requested": {
           yield* projectionTurnRepository.replacePendingTurnStart({
             threadId: event.payload.threadId,

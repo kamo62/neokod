@@ -784,6 +784,26 @@ const make = Effect.gen(function* () {
 
     const thread = yield* resolveThread(event.payload.threadId);
     if (!thread) {
+      // Archived and deleted threads are excluded from the detailed read used
+      // above. The start was already admitted, so settle its pending row
+      // explicitly instead of leaving every later revert blocked.
+      yield* appendProviderFailureActivity({
+        threadId: event.payload.threadId,
+        kind: "provider.turn.start.failed",
+        summary: "Provider turn start skipped",
+        detail: "Thread was archived or deleted before the turn start was processed.",
+        turnId: null,
+        createdAt: event.payload.createdAt,
+        messageId: event.payload.messageId,
+      }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("provider command reactor failed to settle skipped turn start", {
+            eventType: event.type,
+            threadId: event.payload.threadId,
+            cause: Cause.pretty(cause),
+          }),
+        ),
+      );
       return;
     }
 
