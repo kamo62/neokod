@@ -32,6 +32,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
 import { SymphonyEmptyState } from "./SymphonyEmptyState";
+import { SymphonyGlobalControls } from "./SymphonyGlobalControls";
 import {
   availableSymphonyImplementationProviders,
   availableSymphonyReviewProviders,
@@ -287,14 +288,15 @@ export function SymphonyProjectsView() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between border-b px-6 py-5 sm:px-8">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-6 py-5 sm:px-8">
         <div>
           <h1 className="text-lg font-semibold tracking-[-0.02em]">Symphony projects</h1>
           <p className="mt-1 text-xs text-muted-foreground">
             Code repository, tracker scope, and delivery policy meet here.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <SymphonyGlobalControls environmentId={environmentId} />
           <Button
             size="sm"
             variant="ghost"

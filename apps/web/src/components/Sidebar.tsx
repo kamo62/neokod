@@ -3006,21 +3006,15 @@ function NeokodWordmark() {
   );
 }
 
-const SidebarChromeFooter = memo(function SidebarChromeFooter({
-  isOnSymphony = false,
-}: {
-  isOnSymphony?: boolean;
-}) {
+const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
   const handleSettingsClick = useCallback(() => {
     if (isMobile) {
       setOpenMobile(false);
     }
-    // Symphony has its own settings surface, separate from the app settings
-    // pages, so this button follows whichever mode the sidebar is in.
-    void navigate({ to: isOnSymphony ? "/symphony/settings" : "/settings" });
-  }, [isMobile, isOnSymphony, navigate, setOpenMobile]);
+    void navigate({ to: "/settings" });
+  }, [isMobile, navigate, setOpenMobile]);
 
   return (
     <SidebarFooter className="p-2">
@@ -3034,7 +3028,7 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter({
             onClick={handleSettingsClick}
           >
             <SettingsIcon className="size-3.5" />
-            <span className="text-ui">{isOnSymphony ? "Symphony settings" : "Settings"}</span>
+            <span className="text-ui">Settings</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
@@ -4145,7 +4139,7 @@ export default function Sidebar() {
         <>
           <SymphonySidebarNav pathname={pathname} />
           <SidebarSeparator />
-          <SidebarChromeFooter isOnSymphony />
+          <SidebarChromeFooter />
         </>
       ) : (
         <>
