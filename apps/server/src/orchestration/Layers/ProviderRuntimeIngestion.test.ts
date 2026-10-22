@@ -4,6 +4,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import {
+  type OrchestrationEvent,
   OrchestrationReadModel,
   ProviderDriverKind,
   ProviderRuntimeEvent,
@@ -230,6 +231,7 @@ describe("ProviderRuntimeIngestion", () => {
   async function createHarness(options?: {
     serverSettings?: Partial<ServerSettings>;
     startIngestion?: boolean;
+    domainEvents?: PubSub.PubSub<OrchestrationEvent>;
   }) {
     const workspaceRoot = makeTempDir("neokod-provider-project-");
     NodeFS.mkdirSync(NodePath.join(workspaceRoot, ".git"));
@@ -246,8 +248,27 @@ describe("ProviderRuntimeIngestion", () => {
       Layer.provide(RepositoryIdentityResolver.layer),
       Layer.provide(SqlitePersistenceMemory),
     );
+    const domainEvents = options?.domainEvents;
+    const engineLayer =
+      domainEvents === undefined
+        ? orchestrationLayer
+        : Layer.effect(
+            OrchestrationEngineService,
+            Effect.gen(function* () {
+              const real = yield* OrchestrationEngineService;
+              return OrchestrationEngineService.of({
+                readEvents: real.readEvents,
+                dispatch: real.dispatch,
+                get streamDomainEvents() {
+                  return Stream.fromPubSub(domainEvents);
+                },
+                subscribeDomainEvents: PubSub.subscribe(domainEvents),
+                latestSequence: real.latestSequence,
+              });
+            }),
+          ).pipe(Layer.provide(orchestrationLayer));
     const layer = ProviderRuntimeIngestionLive.pipe(
-      Layer.provideMerge(orchestrationLayer),
+      Layer.provideMerge(engineLayer),
       Layer.provideMerge(projectionSnapshotLayer),
       Layer.provideMerge(
         ProjectionRuntimeItemRepositoryLive.pipe(Layer.provide(SqlitePersistenceMemory)),
@@ -268,8 +289,10 @@ describe("ProviderRuntimeIngestion", () => {
     const ingestion = await activeRuntime.runPromise(
       Effect.service(ProviderRuntimeIngestionService),
     );
-    scope = await activeRuntime.runPromise(Scope.make("sequential"));
-    const start = () => activeRuntime.runPromise(ingestion.start().pipe(Scope.provide(scope!)));
+    const ingestionScope = await activeRuntime.runPromise(Scope.make("sequential"));
+    scope = ingestionScope;
+    const start = () =>
+      activeRuntime.runPromise(ingestion.start().pipe(Scope.provide(ingestionScope)));
     if (options?.startIngestion !== false) {
       await start();
     }
@@ -349,6 +372,8 @@ describe("ProviderRuntimeIngestion", () => {
         ),
       emit: provider.emit,
       setProviderSession: provider.setSession,
+      ingestion,
+      ingestionScope,
       start,
       drain,
     };
@@ -835,7 +860,8 @@ describe("ProviderRuntimeIngestion", () => {
     // Start with persisted running work. The startup scan leaves the running
     // turn alone; boot recovery then publishes its interrupted session event
     // immediately after start returns.
-    const harness = await createHarness({ startIngestion: false });
+    const domainEvents = Effect.runSync(PubSub.unbounded<OrchestrationEvent>());
+    const harness = await createHarness({ startIngestion: false, domainEvents });
     const threadId = asThreadId("thread-1");
     const turnId = asTurnId("turn-startup-recovery");
     const observedAt = "2026-01-01T00:03:01.000Z";
@@ -879,12 +905,18 @@ describe("ProviderRuntimeIngestion", () => {
       }),
     );
 
-    // The subscription is acquired inside start before the startup scan.
-    await harness.start();
-    await harness.run(
-      harness.engine.dispatch({
-        type: "thread.session.set",
-        commandId: CommandId.make("startup-recovery-interrupted"),
+    const interruptedEvent = {
+      sequence: 2,
+      eventId: EventId.make("startup-recovery-interrupted-event"),
+      type: "thread.session-set",
+      aggregateKind: "thread",
+      aggregateId: threadId,
+      occurredAt: recoveredAt,
+      commandId: CommandId.make("startup-recovery-interrupted"),
+      causationEventId: null,
+      correlationId: null,
+      metadata: {},
+      payload: {
         threadId,
         session: {
           threadId,
@@ -895,7 +927,19 @@ describe("ProviderRuntimeIngestion", () => {
           updatedAt: recoveredAt,
           lastError: null,
         },
-        createdAt: recoveredAt,
+        latestTurnCompletedAt: null,
+      },
+    } satisfies OrchestrationEvent;
+
+    // Publish synchronously in the same fiber after start returns. A lazy
+    // `streamDomainEvents` consumer cannot have subscribed yet, so the
+    // pre-acquired subscription is what retains the recovery boundary.
+    await harness.run(
+      Effect.gen(function* () {
+        yield* harness.ingestion.start().pipe(Scope.provide(harness.ingestionScope));
+        yield* PubSub.publish(domainEvents, interruptedEvent);
+        // Let the already-subscribed consumer enqueue the retained event.
+        yield* Effect.yieldNow;
       }),
     );
     await harness.drain();
@@ -921,6 +965,148 @@ describe("ProviderRuntimeIngestion", () => {
       .find((thread) => thread.id === threadId)
       ?.activities.filter((activity) => activity.kind === "approval.resolved");
     expect(secondPass).toHaveLength(1);
+  });
+
+  it("settles a persisted streaming assistant message when recovery interrupts the session", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-streaming-recovery");
+    const messageId = asMessageId("streaming-recovery-message");
+    const observedAt = "2026-01-01T00:03:01.000Z";
+    const recoveredAt = "2026-01-01T00:04:00.000Z";
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("streaming-recovery-delta"),
+        threadId,
+        messageId,
+        delta: "partial answer",
+        turnId,
+        createdAt: observedAt,
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("streaming-recovery-interrupted"),
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: recoveredAt,
+          lastError: null,
+        },
+        latestTurnCompletedAt: null,
+        createdAt: recoveredAt,
+      }),
+    );
+    await harness.drain();
+
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.messages.find((message) => message.id === messageId)).toMatchObject({
+      text: "partial answer",
+      streaming: false,
+      // The message keeps its own last observation; recovery time orders the
+      // completion event but does not overwrite the content timestamp.
+      updatedAt: observedAt,
+    });
+  });
+
+  it("orphans startup items at their own observation when a terminal turn has unknown completion", async () => {
+    const harness = await createHarness({ startIngestion: false });
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-startup-unknown-completion");
+    const observedAt = "2026-01-01T00:03:01.000Z";
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.runtime-item.observe",
+        commandId: CommandId.make("startup-unknown-observe"),
+        threadId,
+        observation: {
+          runtimeItemId: RuntimeItemId.make("startup-unknown-approval"),
+          providerItemId: null,
+          sessionId: RuntimeSessionId.make("session-startup-unknown"),
+          kind: "approval",
+          scope: "turn",
+          turnId,
+          providerState: "active",
+          label: "Approve command",
+          providerEventId: EventId.make("startup-unknown-provider-event"),
+          observedAt,
+        },
+        createdAt: observedAt,
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("startup-unknown-running"),
+        threadId,
+        session: {
+          threadId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: turnId,
+          updatedAt: "2026-01-01T00:03:00.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:03:00.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("startup-unknown-interrupted"),
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: "2026-01-01T00:04:00.000Z",
+          lastError: null,
+        },
+        latestTurnCompletedAt: null,
+        createdAt: "2026-01-01T00:04:00.000Z",
+      }),
+    );
+    // A later session is ready, so startup takes the terminal-turn branch
+    // rather than the settled-session branch.
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("startup-unknown-ready"),
+        threadId,
+        session: {
+          threadId,
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: "2026-01-01T00:04:05.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:04:05.000Z",
+      }),
+    );
+
+    await harness.start();
+    await harness.drain();
+
+    expect(await harness.runtimeItems()).toMatchObject([
+      {
+        runtimeItemId: "startup-unknown-approval",
+        effectiveState: "orphaned",
+        completedAt: observedAt,
+      },
+    ]);
   });
 
   it("does not close items observed after the interrupted session update", async () => {

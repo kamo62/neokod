@@ -284,11 +284,12 @@ interface TurnFold {
 
 /**
  * The session's running turn is authoritative when latestTurn briefly lags or
- * regresses behind it. Otherwise, the latest turn counts as unsettled while it
- * is still running (or has not recorded a completion). This is deliberately
- * keyed on turn lifecycle rather than transient working state: right after the
- * user sends a message, the previous turn is still the "active" one until the
- * server creates the new turn, and folding must not flicker through that window.
+ * regresses behind it. Otherwise, turn lifecycle decides settlement; elapsed
+ * time may be unknown without making a terminal turn active. This is
+ * deliberately keyed on lifecycle rather than transient working state: right
+ * after the user sends a message, the previous turn is still the "active" one
+ * until the server creates the new turn, and folding must not flicker through
+ * that window.
  */
 function deriveUnsettledTurnId(
   latestTurn: TimelineLatestTurn | null,
@@ -300,8 +301,7 @@ function deriveUnsettledTurnId(
   if (!latestTurn) {
     return null;
   }
-  const isSettled = latestTurn.completedAt !== null && latestTurn.state !== "running";
-  return isSettled ? null : latestTurn.turnId;
+  return latestTurn.state === "running" ? latestTurn.turnId : null;
 }
 
 /**

@@ -870,6 +870,12 @@ const ThreadMessageAssistantCompleteCommand = Schema.Struct({
   threadId: ThreadId,
   messageId: MessageId,
   turnId: Schema.optional(TurnId),
+  /**
+   * Last server-owned observation of the message. Set when a durable closure
+   * settles a persisted streaming message; event ordering still comes from
+   * `createdAt`.
+   */
+  lastObservedAt: Schema.optional(IsoDateTime),
   createdAt: IsoDateTime,
 });
 

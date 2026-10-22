@@ -19,11 +19,11 @@ const FILE_URL = /\bfile:\/\/[^\s'"<>]+/gi;
  *
  * A single quote is a valid URL character (for example `O'Reilly`), so it may
  * continue a token when URL content follows. A quote that closes a surrounding
- * quote is followed by whitespace, punctuation or the end of the token and is
- * left outside the protected range.
+ * quote is followed by whitespace, a list/delimiter separator or the end of the
+ * token and is left outside the protected range.
  */
 const NON_FILE_URL =
-  /\b(?:https?|wss?|ftps?|ssh|git\+ssh|git|mailto|urn|data|blob):(?:[^\s<>"']|'(?=[^\s<>"]))+/gi;
+  /\b(?:https?|wss?|ftps?|ssh|git\+ssh|git|mailto|urn|data|blob):(?:[^\s<>"']|'(?=[^\s<>",);\]}]))+/gi;
 const URL_PLACEHOLDER = /\uE000url:(\d+)\uE001/g;
 
 const QUOTED_ABSOLUTE_PATH =

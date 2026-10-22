@@ -789,9 +789,23 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
   });
 
-  it("does not derive a zero-duration fold when a stopped turn has unknown completion", () => {
+  it("settles a terminal turn with unknown completion without a false zero duration", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [
+        {
+          id: "user-entry-1",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:00Z",
+          message: {
+            id: "user-1" as never,
+            role: "user",
+            text: "go",
+            turnId: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+            streaming: false,
+          },
+        },
         {
           id: "work-entry-1",
           kind: "work",
@@ -802,6 +816,20 @@ describe("deriveMessagesTimelineRows", () => {
             turnId: "turn-1" as never,
             label: "Ran command",
             tone: "tool" as const,
+          },
+        },
+        {
+          id: "assistant-final-entry",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:20Z",
+          message: {
+            id: "assistant-final" as never,
+            role: "assistant",
+            text: "Done",
+            turnId: "turn-1" as never,
+            createdAt: "2026-01-01T00:00:20Z",
+            updatedAt: "2026-01-01T00:00:20Z",
+            streaming: false,
           },
         },
       ],
@@ -817,9 +845,20 @@ describe("deriveMessagesTimelineRows", () => {
       revertTurnCountByUserMessageId: new Map(),
     });
 
-    expect(
-      rows.some((row) => row.kind === "turn-fold" && row.label.includes("stopped after 0s")),
-    ).toBe(false);
+    const fold = rows.find(
+      (row): row is Extract<(typeof rows)[number], { kind: "turn-fold" }> =>
+        row.kind === "turn-fold",
+    );
+    expect(fold?.label).toContain("You stopped");
+    expect(fold?.label).not.toMatch(/\b0s\b/);
+
+    const assistantRow = rows.find(
+      (row): row is Extract<(typeof rows)[number], { kind: "message" }> =>
+        row.kind === "message" && row.message.id === ("assistant-final" as never),
+    );
+    expect(assistantRow?.showAssistantMeta).toBe(true);
+    expect(assistantRow?.showAssistantCopyButton).toBe(true);
+    expect(assistantRow?.assistantCopyStreaming).toBe(false);
   });
 
   it("keeps the previous turn folded while a newly sent message awaits its turn", () => {

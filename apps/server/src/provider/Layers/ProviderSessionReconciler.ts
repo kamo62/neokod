@@ -93,10 +93,11 @@ const makeProviderSessionReconciler = Effect.gen(function* () {
                 activeTurnId: null,
                 stopPhase: "settled",
                 stopOutcome: orphanPossible({
-                  // The last persisted observation is the honest end of the
-                  // evidence we hold. Boot time is when recovery ran, not when
-                  // the lost turn or its items were last seen.
-                  stoppedAt: binding.lastSeenAt,
+                  // Record the latest turn-scoped observation when one exists.
+                  // The binding write happens when the turn starts, so it is
+                  // only a fallback for a turn with no later evidence. Boot
+                  // time is never used as the observation.
+                  stoppedAt: action.lastObservedAt ?? binding.lastSeenAt,
                   reason: "host_lost",
                 }),
               },

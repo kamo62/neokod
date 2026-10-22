@@ -75,6 +75,12 @@ describe("scrubErrorText", () => {
     expect(scrubErrorText(`"${url}"`)).toBe(`"${url}"`);
   });
 
+  it("ends a quoted URL before a comma-separated absolute path", () => {
+    expect(
+      scrubErrorText("fetch failed: 'https://registry.npmjs.org/x','/Users/alice/.npmrc'"),
+    ).toBe("fetch failed: 'https://registry.npmjs.org/x','[path]/.npmrc'");
+  });
+
   it("preserves consecutive apostrophes and later path-like URL segments", () => {
     const url = "https://api.example.com/v1?name=O''Reilly&redirect=/docs/api";
     expect(scrubErrorText(`GET ${url} failed`)).toBe(`GET ${url} failed`);

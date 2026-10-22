@@ -317,6 +317,44 @@ it("freezes a recovered turn at its latest turn-scoped observation", () => {
   assert.equal(action?.lastObservedAt, "2026-07-26T23:59:00.000Z");
 });
 
+it("does not let a persisted host_lost stop time override later turn evidence", () => {
+  const action = planProviderSessionReconciliation({
+    projected: projected({
+      startedAt: "2026-07-26T23:40:00.000Z",
+      messages: [
+        {
+          id: MessageId.make("streamed-assistant-message"),
+          role: "assistant",
+          text: "still working",
+          turnId,
+          streaming: true,
+          createdAt: "2026-07-26T23:50:00.000Z",
+          updatedAt: "2026-07-26T23:58:00.000Z",
+        },
+      ],
+    }),
+    liveSessions: [],
+    bindings: [
+      {
+        ...stoppedBinding({
+          activeTurnId: null,
+          stopPhase: "settled",
+          // The first recovery wrote the binding's turn-start write as the
+          // host-loss observation, then crashed before the session dispatch.
+          stopOutcome: orphanPossible({
+            stoppedAt: "2026-07-26T23:41:00.000Z",
+            reason: "host_lost",
+          }),
+        }),
+        status: "error" as const,
+      },
+    ],
+  })[0];
+
+  // Host-loss stop evidence is binding state, not turn completion.
+  assert.equal(action?.lastObservedAt, "2026-07-26T23:58:00.000Z");
+});
+
 it("ignores observations before the turn start and keeps completion unknown", () => {
   const action = planProviderSessionReconciliation({
     projected: projected({
@@ -360,9 +398,9 @@ it("keeps a host_lost warning when the binding survived but the session dispatch
 
   assert.equal(action?.status, "interrupted");
   assert.equal(action?.lastError, HOST_LOST_SESSION_ERROR);
-  // The persisted orphan observation ends the turn, not the binding's later
-  // rewrite during the previous boot.
-  assert.equal(action?.lastObservedAt, "2026-07-26T23:59:00.000Z");
+  // Host-loss stop evidence is binding state, not current-turn completion.
+  // With no turn-scoped row, completion stays explicitly unknown.
+  assert.equal(action?.lastObservedAt, null);
   // The binding is already settled; only the missing session update remains.
   assert.equal(action?.bindingSettlement, undefined);
 });
@@ -537,8 +575,9 @@ it.effect("settles a crashed running binding before dispatching the session", ()
     assert.equal(runtimePayload?.activeTurnId, null);
     assert.equal(runtimePayload?.stopPhase, "settled");
     assert.equal(runtimePayload?.stopOutcome?.status, "orphan_possible");
-    // Orphan evidence keeps the binding's honest last write.
-    assert.equal(runtimePayload?.stopOutcome?.stoppedAt, "2026-07-26T23:41:00.000Z");
+    // Orphan evidence records the latest turn-scoped observation, not the
+    // binding write that happened when the turn started.
+    assert.equal(runtimePayload?.stopOutcome?.stoppedAt, "2026-07-26T23:58:00.000Z");
     assert.equal(runtimePayload?.stopOutcome?.reason, "host_lost");
     assert.deepStrictEqual(runtimePayload?.stopOutcome?.knownExternalRunIds, []);
 
@@ -618,19 +657,23 @@ it.effect("repairs only the session when the host_lost binding write already sur
         activeTurnId: null,
         stopPhase: "settled",
         stopOutcome: orphanPossible({
-          stoppedAt: "2026-07-26T23:58:00.000Z",
+          stoppedAt: "2026-07-26T23:41:00.000Z",
           reason: "host_lost",
         }),
       }),
       status: "error" as const,
-      lastSeenAt: "2026-07-26T23:58:00.000Z",
+      lastSeenAt: "2026-07-26T23:41:00.000Z",
+    };
+    const detailThread = {
+      ...projected({ startedAt: "2026-07-26T23:40:00.000Z" }).threads[0]!,
+      activities: [activityAt("repair-observation", turnId, "2026-07-26T23:58:00.000Z")],
     };
     const layer = ProviderSessionReconcilerLive.pipe(
       Layer.provideMerge(
         Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
           getCommandReadModel: () =>
             Effect.succeed(projected({ startedAt: "2026-07-26T23:40:00.000Z" })),
-          getThreadDetailById: () => Effect.succeed(Option.none()),
+          getThreadDetailById: () => Effect.succeed(Option.some(detailThread)),
           getSnapshot: () => Effect.die("getSnapshot must not be used by boot reconciliation"),
         } as unknown as ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]),
       ),
@@ -670,7 +713,8 @@ it.effect("repairs only the session when the host_lost binding write already sur
     if (command?.type !== "thread.session.set") return;
     assert.equal(command.session.status, "interrupted");
     assert.equal(command.session.lastError, HOST_LOST_SESSION_ERROR);
-    // The original orphan observation, not this boot's clock, ends the turn.
+    // The later turn-scoped observation ends the turn, not the stale host-loss
+    // stop timestamp or this boot's clock.
     assert.equal(command.session.updatedAt, command.createdAt);
     assert.equal(command.latestTurnCompletedAt, "2026-07-26T23:58:00.000Z");
     assert.notEqual(command.latestTurnCompletedAt, command.createdAt);

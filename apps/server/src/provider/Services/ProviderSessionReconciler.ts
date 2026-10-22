@@ -227,13 +227,22 @@ export const planProviderSessionReconciliation = ({
         persistedOutcome?.status === "orphan_possible"
           ? persistedOutcome.stoppedAt
           : null;
+      // A `host_lost` outcome is written from binding state and can be the
+      // turn-start write that survived a crash between binding and session
+      // dispatch. It is not authoritative turn completion, so recompute from
+      // this turn's own rows. Other stop outcomes are real server-owned stop
+      // evidence; still take the max so later turn rows are never hidden.
+      const lastObservedAt = isHostLostStopOutcome(persistedOutcome)
+        ? lastObservedForTurn(thread, turn)
+        : latestBoundedObservation(startMs, [
+            persistedStopAt,
+            ...currentTurnObservationCandidates(thread, turn),
+          ]);
       return [
         {
           ...action,
           status: "interrupted",
-          lastObservedAt:
-            latestBoundedObservation(startMs, [persistedStopAt]) ??
-            lastObservedForTurn(thread, turn),
+          lastObservedAt,
           // The binding may already carry the host-loss warning from a boot that
           // crashed between writing the binding and dispatching the session. The
           // payload has no `activeTurnId` then, so recover the warning from the

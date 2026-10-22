@@ -663,7 +663,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           turnId: command.turnId ?? null,
           streaming: false,
           createdAt: command.createdAt,
-          updatedAt: command.createdAt,
+          updatedAt: command.lastObservedAt ?? command.createdAt,
         },
       };
     }

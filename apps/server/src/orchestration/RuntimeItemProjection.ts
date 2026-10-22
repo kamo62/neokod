@@ -109,10 +109,7 @@ function syntheticStateForItem(input: {
   readonly outcome: "completed" | "failed" | "stopped";
   readonly terminationGuaranteed: boolean;
 }): RuntimeItemSyntheticState {
-  if (
-    input.item.scope === "detached" ||
-    (input.boundary === "session" && !input.terminationGuaranteed)
-  ) {
+  if (input.item.scope === "detached" || !input.terminationGuaranteed) {
     return "orphaned";
   }
   switch (input.item.kind) {

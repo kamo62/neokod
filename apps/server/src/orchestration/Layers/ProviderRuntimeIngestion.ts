@@ -1504,6 +1504,37 @@ const make = Effect.gen(function* () {
       yield* clearTurnStateForSession(input.threadId);
     });
 
+  // Recovery runs in a fresh process, so the in-memory assistant buffers and
+  // turn-message caches are empty. Close persisted streaming messages from the
+  // durable projection instead. The completion event is ordered at recovery
+  // time while each message keeps its own last observation.
+  const settleStreamingAssistantMessages = (input: {
+    readonly threadId: ThreadId;
+    readonly occurredAt: string;
+  }) =>
+    Effect.gen(function* () {
+      const detailedThread = yield* resolveThreadDetail(input.threadId);
+      const streamingMessages = (detailedThread?.messages ?? []).filter(
+        (message) => message.role === "assistant" && message.streaming,
+      );
+      yield* Effect.forEach(
+        streamingMessages,
+        (message) =>
+          orchestrationEngine.dispatch({
+            type: "thread.message.assistant.complete",
+            commandId: CommandId.make(
+              `reconcile:assistant-complete:${input.threadId}:${message.id}:${message.updatedAt}`,
+            ),
+            threadId: input.threadId,
+            messageId: message.id,
+            ...(message.turnId !== null ? { turnId: message.turnId } : {}),
+            lastObservedAt: message.updatedAt,
+            createdAt: input.occurredAt,
+          }),
+        { concurrency: 1 },
+      ).pipe(Effect.asVoid);
+    });
+
   const getSourceProposedPlanReferenceForPendingTurnStart = Effect.fn(
     "getSourceProposedPlanReferenceForPendingTurnStart",
   )(function* (threadId: ThreadId) {
@@ -2116,11 +2147,21 @@ const make = Effect.gen(function* () {
 
   const processDomainEvent = (event: TurnStartRequestedDomainEvent | SessionSetDomainEvent) =>
     event.type === "thread.session-set" && event.payload.session.status === "interrupted"
-      ? closeItemsOfSettledSession({
-          threadId: event.payload.threadId,
-          status: "interrupted",
-          updatedAt: event.payload.session.updatedAt,
-          observedNoLaterThan: event.payload.session.updatedAt,
+      ? Effect.gen(function* () {
+          yield* closeItemsOfSettledSession({
+            threadId: event.payload.threadId,
+            status: "interrupted",
+            updatedAt: event.payload.session.updatedAt,
+            observedNoLaterThan: event.payload.session.updatedAt,
+          });
+          // Settle persisted streaming messages from durable state. This covers
+          // a fresh process after a crash; on a live interruption the runtime
+          // path still flushes its buffered delta, and the deterministic
+          // completion commands keep both paths idempotent.
+          yield* settleStreamingAssistantMessages({
+            threadId: event.payload.threadId,
+            occurredAt: event.payload.session.updatedAt,
+          });
         })
       : Effect.void;
 
@@ -2203,6 +2244,11 @@ const make = Effect.gen(function* () {
                     ? "failed"
                     : "stopped";
               const settledAt = turn.completedAt ?? turn.requestedAt;
+              // An interrupted turn never proves its items terminated. Keeping
+              // termination unguaranteed makes the closure orphan each item at
+              // its own last observation instead of fabricating the turn
+              // request time when completion is explicitly unknown.
+              const terminationGuaranteed = turn.state !== "interrupted";
               const sessionIds = new Set(
                 activeItems
                   .filter((item) => item.turnId === turn.turnId)
@@ -2218,7 +2264,7 @@ const make = Effect.gen(function* () {
                     boundary: "turn",
                     turnId: turn.turnId,
                     outcome,
-                    terminationGuaranteed: true,
+                    terminationGuaranteed,
                     commandId: CommandId.make(boundaryId),
                     boundaryEventId: EventId.make(boundaryId),
                     closedAt: settledAt,
