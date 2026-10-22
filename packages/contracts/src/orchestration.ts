@@ -463,9 +463,12 @@ export const OrchestrationThread = Schema.Struct({
   goalStatus: Schema.optional(Schema.Literals(["active", "done"])),
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   /**
-   * Client-owned authoritative settlement timing per turn. A present key with
-   * `null` means the turn's completion is explicitly unknown. Server snapshots
-   * omit this; the client reducer maintains it from session settlements.
+   * Server-recorded settlement timing per settled turn. A present key with
+   * `null` means the turn's completion is explicitly unknown; a turn absent
+   * from the record has no settlement evidence. The server owns this evidence:
+   * snapshots carry the durable turn projection and session settlement events
+   * carry the same values, so clients store them verbatim and never infer
+   * completion from requests or session status.
    */
   settledTurnCompletions: Schema.optional(Schema.Record(TurnId, Schema.NullOr(IsoDateTime))),
   createdAt: IsoDateTime,
@@ -866,6 +869,16 @@ const ThreadSessionSetCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+const ThreadTurnSettleCommand = Schema.Struct({
+  type: Schema.Literal("thread.turn.settle"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  turnId: TurnId,
+  /** Completion already persisted by the durable turn projection. */
+  completedAt: Schema.NullOr(IsoDateTime),
+  createdAt: IsoDateTime,
+});
+
 const ThreadMessageAssistantDeltaCommand = Schema.Struct({
   type: Schema.Literal("thread.message.assistant.delta"),
   commandId: CommandId,
@@ -950,6 +963,7 @@ const ThreadRuntimeItemsCloseCommand = Schema.Struct({
 
 const InternalOrchestrationCommand = Schema.Union([
   ThreadSessionSetCommand,
+  ThreadTurnSettleCommand,
   ThreadMessageAssistantDeltaCommand,
   ThreadMessageAssistantCompleteCommand,
   ThreadProposedPlanUpsertCommand,
@@ -987,6 +1001,7 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.reverted",
   "thread.session-stop-requested",
   "thread.session-set",
+  "thread.turn-settled",
   "thread.proposed-plan-upserted",
   "thread.turn-diff-completed",
   "thread.activity-appended",
@@ -1155,6 +1170,13 @@ export const ThreadSessionSetPayload = Schema.Struct({
   latestTurnCompletedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
 });
 
+export const ThreadTurnSettledPayload = Schema.Struct({
+  threadId: ThreadId,
+  turnId: TurnId,
+  /** Durable per-turn completion as persisted by the turn projection. */
+  completedAt: Schema.NullOr(IsoDateTime),
+});
+
 export const ThreadProposedPlanUpsertedPayload = Schema.Struct({
   threadId: ThreadId,
   proposedPlan: OrchestrationProposedPlan,
@@ -1306,6 +1328,11 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.session-set"),
     payload: ThreadSessionSetPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.turn-settled"),
+    payload: ThreadTurnSettledPayload,
   }),
   Schema.Struct({
     ...EventBaseFields,

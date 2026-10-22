@@ -133,6 +133,16 @@ const latestBoundedObservation = (
   return latestAt;
 };
 
+const bindingMatchesSession = (
+  binding: ProviderRuntimeBinding,
+  session: OrchestrationSession,
+): boolean =>
+  session.providerName !== null &&
+  binding.provider === session.providerName &&
+  (session.providerInstanceId === undefined ||
+    binding.providerInstanceId === undefined ||
+    binding.providerInstanceId === session.providerInstanceId);
+
 const lastObservedForTurn = (
   thread: ReconciledThread,
   turn: OrchestrationLatestTurn,
@@ -176,7 +186,43 @@ export const planProviderSessionReconciliation = ({
 
     if (turn.state !== "running") {
       if (turn.completedAt === null) {
-        return [];
+        // A legacy interrupted turn can have its request-derived completion
+        // cleared while the session still reports it as running. Recover the
+        // session through the same host-loss path as a running turn, keeping
+        // completion explicitly unknown instead of inventing closure evidence.
+        if (turn.state !== "interrupted" || liveThreadIds.has(thread.id)) {
+          return [];
+        }
+        const binding = bindingsByThreadId.get(thread.id);
+        if (binding === undefined || !bindingMatchesSession(binding, session)) {
+          return [];
+        }
+        if (binding.status === "stopped" || binding.status === "error") {
+          // A previous boot already recorded the host-loss binding; only the
+          // session still needs repair. The host-loss payload clears
+          // `activeTurnId`, so restore the warning from the persisted outcome
+          // instead of reporting an unexplained interruption.
+          const persistedOutcome = readPersistedStopOutcome(binding.runtimePayload);
+          return [
+            {
+              ...action,
+              status: "interrupted",
+              lastError:
+                exactBindingError(binding, turn.turnId) ??
+                (isHostLostStopOutcome(persistedOutcome) ? HOST_LOST_SESSION_ERROR : null),
+              lastObservedAt: null,
+            },
+          ];
+        }
+        return [
+          {
+            ...action,
+            status: "interrupted",
+            lastError: HOST_LOST_SESSION_ERROR,
+            bindingSettlement: "host_lost",
+            lastObservedAt: null,
+          },
+        ];
       }
       const status =
         turn.state === "completed"
@@ -206,13 +252,7 @@ export const planProviderSessionReconciliation = ({
     }
 
     const binding = bindingsByThreadId.get(thread.id);
-    if (
-      binding === undefined ||
-      binding.provider !== session.providerName ||
-      (session.providerInstanceId !== undefined &&
-        binding.providerInstanceId !== undefined &&
-        binding.providerInstanceId !== session.providerInstanceId)
-    ) {
+    if (binding === undefined || !bindingMatchesSession(binding, session)) {
       return [];
     }
 

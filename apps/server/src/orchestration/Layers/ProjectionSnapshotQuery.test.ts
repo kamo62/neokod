@@ -235,6 +235,76 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
         )
       `;
 
+      yield* sql`
+        INSERT INTO projection_turns (
+          thread_id,
+          turn_id,
+          pending_message_id,
+          source_proposed_plan_thread_id,
+          source_proposed_plan_id,
+          assistant_message_id,
+          state,
+          requested_at,
+          started_at,
+          completed_at,
+          checkpoint_turn_count,
+          checkpoint_ref,
+          checkpoint_status,
+          checkpoint_files_json
+        )
+        VALUES (
+          'thread-1',
+          'turn-2',
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          'interrupted',
+          '2026-02-24T00:00:09.000Z',
+          '2026-02-24T00:00:09.000Z',
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          '[]'
+        )
+      `;
+
+      yield* sql`
+        INSERT INTO projection_turns (
+          thread_id,
+          turn_id,
+          pending_message_id,
+          source_proposed_plan_thread_id,
+          source_proposed_plan_id,
+          assistant_message_id,
+          state,
+          requested_at,
+          started_at,
+          completed_at,
+          checkpoint_turn_count,
+          checkpoint_ref,
+          checkpoint_status,
+          checkpoint_files_json
+        )
+        VALUES (
+          'thread-1',
+          'turn-running',
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          'running',
+          '2026-02-24T00:00:10.000Z',
+          '2026-02-24T00:00:10.000Z',
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          '[]'
+        )
+      `;
+
       let sequence = 5;
       for (const projector of Object.values(ORCHESTRATION_PROJECTOR_NAMES)) {
         yield* sql`
@@ -306,6 +376,10 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
               threadId: ThreadId.make("thread-1"),
               planId: "plan-1",
             },
+          },
+          settledTurnCompletions: {
+            [asTurnId("turn-1")]: "2026-02-24T00:00:08.000Z",
+            [asTurnId("turn-2")]: null,
           },
           createdAt: "2026-02-24T00:00:02.000Z",
           updatedAt: "2026-02-24T00:00:03.000Z",

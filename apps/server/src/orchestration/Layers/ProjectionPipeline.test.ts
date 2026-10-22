@@ -2286,7 +2286,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
         });
 
         yield* appendAndProject({
-          type: "thread.turn-interrupt-requested",
+          type: "thread.session-set",
           eventId: EventId.make("evt-conflict-3"),
           aggregateKind: "thread",
           aggregateId: ThreadId.make("thread-conflict"),
@@ -2297,8 +2297,15 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
           metadata: {},
           payload: {
             threadId: ThreadId.make("thread-conflict"),
-            turnId: TurnId.make("turn-interrupted"),
-            createdAt: "2026-02-26T13:00:02.000Z",
+            session: {
+              threadId: ThreadId.make("thread-conflict"),
+              status: "running",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: TurnId.make("turn-interrupted"),
+              lastError: null,
+              updatedAt: "2026-02-26T13:00:02.000Z",
+            },
           },
         });
 
@@ -2367,9 +2374,151 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
       `;
         assert.deepEqual(turnRows, [
           { turnId: "turn-completed", checkpointTurnCount: 1, status: "completed" },
-          { turnId: "turn-interrupted", checkpointTurnCount: null, status: "interrupted" },
+          { turnId: "turn-interrupted", checkpointTurnCount: null, status: "running" },
         ]);
       }),
+  );
+
+  it.effect("does not project an interrupt request as authoritative turn settlement", () =>
+    Effect.gen(function* () {
+      const projectionPipeline = yield* OrchestrationProjectionPipeline;
+      const eventStore = yield* OrchestrationEventStore;
+      const sql = yield* SqlClient.SqlClient;
+      const appendAndProject = (event: Parameters<typeof eventStore.append>[0]) =>
+        eventStore
+          .append(event)
+          .pipe(Effect.flatMap((savedEvent) => projectionPipeline.projectEvent(savedEvent)));
+
+      yield* appendAndProject({
+        type: "project.created",
+        eventId: EventId.make("evt-interrupt-1"),
+        aggregateKind: "project",
+        aggregateId: ProjectId.make("project-interrupt"),
+        occurredAt: "2026-03-01T13:00:00.000Z",
+        commandId: CommandId.make("cmd-interrupt-1"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-interrupt-1"),
+        metadata: {},
+        payload: {
+          projectId: ProjectId.make("project-interrupt"),
+          title: "Project Interrupt",
+          workspaceRoot: "/tmp/project-interrupt",
+          defaultModelSelection: null,
+          scripts: [],
+          createdAt: "2026-03-01T13:00:00.000Z",
+          updatedAt: "2026-03-01T13:00:00.000Z",
+        },
+      });
+
+      yield* appendAndProject({
+        type: "thread.created",
+        eventId: EventId.make("evt-interrupt-2"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-interrupt"),
+        occurredAt: "2026-03-01T13:00:01.000Z",
+        commandId: CommandId.make("cmd-interrupt-2"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-interrupt-2"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.make("thread-interrupt"),
+          projectId: ProjectId.make("project-interrupt"),
+          title: "Thread Interrupt",
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("codex"),
+            model: "gpt-5-codex",
+          },
+          runtimeMode: "full-access",
+          branch: null,
+          worktreePath: null,
+          createdAt: "2026-03-01T13:00:01.000Z",
+          updatedAt: "2026-03-01T13:00:01.000Z",
+        },
+      });
+
+      yield* appendAndProject({
+        type: "thread.session-set",
+        eventId: EventId.make("evt-interrupt-3"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-interrupt"),
+        occurredAt: "2026-03-01T13:00:02.000Z",
+        commandId: CommandId.make("cmd-interrupt-3"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-interrupt-3"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.make("thread-interrupt"),
+          session: {
+            threadId: ThreadId.make("thread-interrupt"),
+            status: "running",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: TurnId.make("turn-interrupt"),
+            lastError: null,
+            updatedAt: "2026-03-01T13:00:02.000Z",
+          },
+        },
+      });
+
+      yield* appendAndProject({
+        type: "thread.turn-interrupt-requested",
+        eventId: EventId.make("evt-interrupt-4"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-interrupt"),
+        occurredAt: "2026-03-01T13:00:10.000Z",
+        commandId: CommandId.make("cmd-interrupt-4"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-interrupt-4"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.make("thread-interrupt"),
+          turnId: TurnId.make("turn-interrupt"),
+          createdAt: "2026-03-01T13:00:10.000Z",
+        },
+      });
+
+      const readTurnRows = () =>
+        sql<{ readonly state: string; readonly completedAt: string | null }>`
+          SELECT
+            state,
+            completed_at AS "completedAt"
+          FROM projection_turns
+          WHERE thread_id = 'thread-interrupt'
+            AND turn_id = 'turn-interrupt'
+        `;
+      // The request is intent: the turn stays running and carries no completion.
+      assert.deepEqual(yield* readTurnRows(), [{ state: "running", completedAt: null }]);
+
+      // The provider observes the stop later; that session event settles the
+      // turn at its own timestamp.
+      yield* appendAndProject({
+        type: "thread.session-set",
+        eventId: EventId.make("evt-interrupt-5"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-interrupt"),
+        occurredAt: "2026-03-01T13:00:30.000Z",
+        commandId: CommandId.make("cmd-interrupt-5"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-interrupt-5"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.make("thread-interrupt"),
+          session: {
+            threadId: ThreadId.make("thread-interrupt"),
+            status: "interrupted",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: "2026-03-01T13:00:30.000Z",
+          },
+        },
+      });
+
+      assert.deepEqual(yield* readTurnRows(), [
+        { state: "interrupted", completedAt: "2026-03-01T13:00:30.000Z" },
+      ]);
+    }),
   );
 
   it.effect("clears stale pending approvals from projected shell summaries", () =>

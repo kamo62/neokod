@@ -35,6 +35,8 @@ import {
   type ProjectionTurn,
   ProjectionTurnRepository,
 } from "../../persistence/Services/ProjectionTurns.ts";
+import { ProjectionTurnSettlementRepository } from "../../persistence/Services/ProjectionTurnSettlements.ts";
+import { ProjectionTurnSettlementRepositoryLive } from "../../persistence/Layers/ProjectionTurnSettlements.ts";
 import { ProjectionThreadRepository } from "../../persistence/Services/ProjectionThreads.ts";
 import { ProjectionPendingApprovalRepositoryLive } from "../../persistence/Layers/ProjectionPendingApprovals.ts";
 import { ProjectionProjectRepositoryLive } from "../../persistence/Layers/ProjectionProjects.ts";
@@ -518,6 +520,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
     const projectionThreadActivityRepository = yield* ProjectionThreadActivityRepository;
     const projectionThreadSessionRepository = yield* ProjectionThreadSessionRepository;
     const projectionTurnRepository = yield* ProjectionTurnRepository;
+    const projectionTurnSettlementRepository = yield* ProjectionTurnSettlementRepository;
     const projectionPendingApprovalRepository = yield* ProjectionPendingApprovalRepository;
     const projectionRuntimeItemRepository = yield* ProjectionRuntimeItemRepository;
 
@@ -1147,25 +1150,36 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             const existingTurns = yield* projectionTurnRepository.listByThreadId({
               threadId: event.payload.threadId,
             });
+            // A running turn's completedAt can only hold a mid-turn
+            // placeholder checkpoint timestamp. Recovery can freeze it at the
+            // last observation instead of the event time. An explicit null
+            // means no observation exists; only an omitted field keeps the
+            // legacy session-time default.
+            const settledCompletedAt =
+              event.payload.latestTurnCompletedAt === undefined
+                ? event.payload.session.updatedAt
+                : event.payload.latestTurnCompletedAt;
             yield* Effect.forEach(
               existingTurns.filter((turn) => turn.turnId !== null && turn.state === "running"),
               (turn) =>
                 turn.turnId === null
                   ? Effect.void
-                  : projectionTurnRepository.upsertByTurnId({
-                      ...turn,
-                      turnId: turn.turnId,
-                      state: settledTurnState,
-                      // A running turn's completedAt can only hold a mid-turn
-                      // placeholder checkpoint timestamp. Recovery can freeze
-                      // it at the last observation instead of the event time.
-                      // An explicit null means no observation exists; only an
-                      // omitted field keeps the legacy session-time default.
-                      completedAt:
-                        event.payload.latestTurnCompletedAt === undefined
-                          ? event.payload.session.updatedAt
-                          : event.payload.latestTurnCompletedAt,
-                    }),
+                  : projectionTurnRepository
+                      .upsertByTurnId({
+                        ...turn,
+                        turnId: turn.turnId,
+                        state: settledTurnState,
+                        completedAt: settledCompletedAt,
+                      })
+                      .pipe(
+                        Effect.andThen(
+                          projectionTurnSettlementRepository.recordSettlement({
+                            threadId: turn.threadId,
+                            turnId: turn.turnId,
+                            completedAt: settledCompletedAt,
+                          }),
+                        ),
+                      ),
               { concurrency: 1 },
             );
             return;
@@ -1184,12 +1198,22 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             (turn) =>
               turn.turnId === null
                 ? Effect.void
-                : projectionTurnRepository.upsertByTurnId({
-                    ...turn,
-                    turnId: turn.turnId,
-                    state: "completed",
-                    completedAt: event.payload.session.updatedAt,
-                  }),
+                : projectionTurnRepository
+                    .upsertByTurnId({
+                      ...turn,
+                      turnId: turn.turnId,
+                      state: "completed",
+                      completedAt: event.payload.session.updatedAt,
+                    })
+                    .pipe(
+                      Effect.andThen(
+                        projectionTurnSettlementRepository.recordSettlement({
+                          threadId: turn.threadId,
+                          turnId: turn.turnId,
+                          completedAt: event.payload.session.updatedAt,
+                        }),
+                      ),
+                    ),
             { concurrency: 1 },
           );
 
@@ -1298,84 +1322,79 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           });
           if (Option.isSome(existingTurn)) {
             const existingSettled = existingTurn.value.state !== "running";
-            yield* projectionTurnRepository.upsertByTurnId({
-              ...existingTurn.value,
-              assistantMessageId: event.payload.messageId,
-              state: settlesTurn
-                ? existingTurn.value.state === "interrupted"
-                  ? "interrupted"
-                  : existingTurn.value.state === "error"
-                    ? "error"
-                    : "completed"
-                : existingTurn.value.state,
-              // A recovered turn may already be terminal with known or
-              // explicitly unknown completion. Synthetic message closure must
-              // not replace it with the message's own last update.
-              completedAt: settlesTurn
-                ? existingSettled
-                  ? existingTurn.value.completedAt
-                  : event.payload.updatedAt
-                : existingTurn.value.completedAt,
-              startedAt: existingTurn.value.startedAt ?? event.payload.createdAt,
-              requestedAt: existingTurn.value.requestedAt ?? event.payload.createdAt,
-            });
+            const settledCompletedAt = settlesTurn
+              ? existingSettled
+                ? existingTurn.value.completedAt
+                : event.payload.updatedAt
+              : existingTurn.value.completedAt;
+            yield* projectionTurnRepository
+              .upsertByTurnId({
+                ...existingTurn.value,
+                assistantMessageId: event.payload.messageId,
+                state: settlesTurn
+                  ? existingTurn.value.state === "interrupted"
+                    ? "interrupted"
+                    : existingTurn.value.state === "error"
+                      ? "error"
+                      : "completed"
+                  : existingTurn.value.state,
+                // A recovered turn may already be terminal with known or
+                // explicitly unknown completion. Synthetic message closure must
+                // not replace it with the message's own last update.
+                completedAt: settledCompletedAt,
+                startedAt: existingTurn.value.startedAt ?? event.payload.createdAt,
+                requestedAt: existingTurn.value.requestedAt ?? event.payload.createdAt,
+              })
+              .pipe(
+                Effect.andThen(
+                  settlesTurn && !existingSettled
+                    ? projectionTurnSettlementRepository.recordSettlement({
+                        threadId: event.payload.threadId,
+                        turnId: event.payload.turnId,
+                        completedAt: settledCompletedAt,
+                      })
+                    : Effect.void,
+                ),
+              );
             return;
           }
-          yield* projectionTurnRepository.upsertByTurnId({
-            turnId: event.payload.turnId,
-            threadId: event.payload.threadId,
-            pendingMessageId: null,
-            admittedWorkspacePath: null,
-            sourceProposedPlanThreadId: null,
-            sourceProposedPlanId: null,
-            assistantMessageId: event.payload.messageId,
-            state: settlesTurn ? "completed" : "running",
-            requestedAt: event.payload.createdAt,
-            startedAt: event.payload.createdAt,
-            completedAt: settlesTurn ? event.payload.updatedAt : null,
-            checkpointTurnCount: null,
-            checkpointRef: null,
-            checkpointStatus: null,
-            checkpointFiles: [],
-          });
+          yield* projectionTurnRepository
+            .upsertByTurnId({
+              turnId: event.payload.turnId,
+              threadId: event.payload.threadId,
+              pendingMessageId: null,
+              admittedWorkspacePath: null,
+              sourceProposedPlanThreadId: null,
+              sourceProposedPlanId: null,
+              assistantMessageId: event.payload.messageId,
+              state: settlesTurn ? "completed" : "running",
+              requestedAt: event.payload.createdAt,
+              startedAt: event.payload.createdAt,
+              completedAt: settlesTurn ? event.payload.updatedAt : null,
+              checkpointTurnCount: null,
+              checkpointRef: null,
+              checkpointStatus: null,
+              checkpointFiles: [],
+            })
+            .pipe(
+              Effect.andThen(
+                settlesTurn
+                  ? projectionTurnSettlementRepository.recordSettlement({
+                      threadId: event.payload.threadId,
+                      turnId: event.payload.turnId,
+                      completedAt: event.payload.updatedAt,
+                    })
+                  : Effect.void,
+              ),
+            );
           return;
         }
 
         case "thread.turn-interrupt-requested": {
-          if (event.payload.turnId === undefined) {
-            return;
-          }
-          const existingTurn = yield* projectionTurnRepository.getByTurnId({
-            threadId: event.payload.threadId,
-            turnId: event.payload.turnId,
-          });
-          if (Option.isSome(existingTurn)) {
-            yield* projectionTurnRepository.upsertByTurnId({
-              ...existingTurn.value,
-              state: "interrupted",
-              completedAt: existingTurn.value.completedAt ?? event.payload.createdAt,
-              startedAt: existingTurn.value.startedAt ?? event.payload.createdAt,
-              requestedAt: existingTurn.value.requestedAt ?? event.payload.createdAt,
-            });
-            return;
-          }
-          yield* projectionTurnRepository.upsertByTurnId({
-            turnId: event.payload.turnId,
-            threadId: event.payload.threadId,
-            pendingMessageId: null,
-            admittedWorkspacePath: null,
-            sourceProposedPlanThreadId: null,
-            sourceProposedPlanId: null,
-            assistantMessageId: null,
-            state: "interrupted",
-            requestedAt: event.payload.createdAt,
-            startedAt: event.payload.createdAt,
-            completedAt: event.payload.createdAt,
-            checkpointTurnCount: null,
-            checkpointRef: null,
-            checkpointStatus: null,
-            checkpointFiles: [],
-          });
+          // An interrupt request is intent, not settlement. The turn stays
+          // running until the provider session observes its end, so a snapshot
+          // taken while the request is pending can never report the request
+          // timestamp as the turn's completion.
           return;
         }
 
@@ -1401,37 +1420,71 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           });
 
           if (Option.isSome(existingTurn)) {
-            yield* projectionTurnRepository.upsertByTurnId({
-              ...existingTurn.value,
+            // A turn that already settled keeps its durable completion. A late
+            // checkpoint must not rewrite the completion the settlement event
+            // published.
+            const existingSettled = existingTurn.value.state !== "running";
+            yield* projectionTurnRepository
+              .upsertByTurnId({
+                ...existingTurn.value,
+                assistantMessageId: event.payload.assistantMessageId,
+                state: turnStillRunning
+                  ? existingTurn.value.state
+                  : existingSettled
+                    ? existingTurn.value.state
+                    : nextState,
+                checkpointTurnCount: event.payload.checkpointTurnCount,
+                checkpointRef: event.payload.checkpointRef,
+                checkpointStatus: event.payload.status,
+                checkpointFiles: event.payload.files,
+                startedAt: existingTurn.value.startedAt ?? event.payload.completedAt,
+                requestedAt: existingTurn.value.requestedAt ?? event.payload.completedAt,
+                completedAt: existingSettled
+                  ? existingTurn.value.completedAt
+                  : event.payload.completedAt,
+              })
+              .pipe(
+                Effect.andThen(
+                  !turnStillRunning && !existingSettled
+                    ? projectionTurnSettlementRepository.recordSettlement({
+                        threadId: event.payload.threadId,
+                        turnId: event.payload.turnId,
+                        completedAt: event.payload.completedAt,
+                      })
+                    : Effect.void,
+                ),
+              );
+            return;
+          }
+          yield* projectionTurnRepository
+            .upsertByTurnId({
+              turnId: event.payload.turnId,
+              threadId: event.payload.threadId,
+              pendingMessageId: null,
+              admittedWorkspacePath: null,
+              sourceProposedPlanThreadId: null,
+              sourceProposedPlanId: null,
               assistantMessageId: event.payload.assistantMessageId,
-              state: turnStillRunning ? existingTurn.value.state : nextState,
+              state: turnStillRunning ? "running" : nextState,
+              requestedAt: event.payload.completedAt,
+              startedAt: event.payload.completedAt,
+              completedAt: event.payload.completedAt,
               checkpointTurnCount: event.payload.checkpointTurnCount,
               checkpointRef: event.payload.checkpointRef,
               checkpointStatus: event.payload.status,
               checkpointFiles: event.payload.files,
-              startedAt: existingTurn.value.startedAt ?? event.payload.completedAt,
-              requestedAt: existingTurn.value.requestedAt ?? event.payload.completedAt,
-              completedAt: event.payload.completedAt,
-            });
-            return;
-          }
-          yield* projectionTurnRepository.upsertByTurnId({
-            turnId: event.payload.turnId,
-            threadId: event.payload.threadId,
-            pendingMessageId: null,
-            admittedWorkspacePath: null,
-            sourceProposedPlanThreadId: null,
-            sourceProposedPlanId: null,
-            assistantMessageId: event.payload.assistantMessageId,
-            state: turnStillRunning ? "running" : nextState,
-            requestedAt: event.payload.completedAt,
-            startedAt: event.payload.completedAt,
-            completedAt: event.payload.completedAt,
-            checkpointTurnCount: event.payload.checkpointTurnCount,
-            checkpointRef: event.payload.checkpointRef,
-            checkpointStatus: event.payload.status,
-            checkpointFiles: event.payload.files,
-          });
+            })
+            .pipe(
+              Effect.andThen(
+                turnStillRunning
+                  ? Effect.void
+                  : projectionTurnSettlementRepository.recordSettlement({
+                      threadId: event.payload.threadId,
+                      turnId: event.payload.turnId,
+                      completedAt: event.payload.completedAt,
+                    }),
+              ),
+            );
           return;
         }
 
@@ -1824,6 +1877,7 @@ export const OrchestrationProjectionPipelineLive = Layer.effect(
   Layer.provideMerge(ProjectionThreadActivityRepositoryLive),
   Layer.provideMerge(ProjectionThreadSessionRepositoryLive),
   Layer.provideMerge(ProjectionTurnRepositoryLive),
+  Layer.provideMerge(ProjectionTurnSettlementRepositoryLive),
   Layer.provideMerge(ProjectionPendingApprovalRepositoryLive),
   Layer.provideMerge(ProjectionRuntimeItemRepositoryLive),
   Layer.provideMerge(ProjectionStateRepositoryLive),

@@ -29,6 +29,10 @@ const SHELL_STORE_NAME = "shell";
 const THREAD_STORE_NAME = "thread";
 const CATALOG_KEY = "document";
 const SHELL_SNAPSHOT_CACHE_SCHEMA_VERSION = 1;
+// v3 invalidates caches written before settlement evidence became server-owned.
+// Legacy caches may hold client-inferred completion timestamps, so they are
+// rejected and an authoritative snapshot is fetched once on upgrade.
+export const THREAD_SNAPSHOT_CACHE_SCHEMA_VERSION = 3;
 
 const StoredShellSnapshot = Schema.Struct({
   schemaVersion: Schema.Literal(SHELL_SNAPSHOT_CACHE_SCHEMA_VERSION),
@@ -40,12 +44,12 @@ const StoredShellSnapshotJson = Schema.fromJsonString(StoredShellSnapshot);
 // resume via `afterSequence` instead of re-downloading the full thread body.
 // Older v1 entries (no sequence) fail to decode and are treated as a cold cache.
 const StoredThreadSnapshot = Schema.Struct({
-  schemaVersion: Schema.Literal(2),
+  schemaVersion: Schema.Literal(THREAD_SNAPSHOT_CACHE_SCHEMA_VERSION),
   environmentId: EnvironmentId,
   threadId: ThreadId,
   snapshot: OrchestrationThreadDetailSnapshot,
 });
-const StoredThreadSnapshotJson = Schema.fromJsonString(StoredThreadSnapshot);
+export const StoredThreadSnapshotJson = Schema.fromJsonString(StoredThreadSnapshot);
 const StoredConnectionCatalogDocumentJson = Schema.fromJsonString(StoredConnectionCatalogDocument);
 const decodeStoredConnectionCatalogDocument = Schema.decodeUnknownEffect(
   StoredConnectionCatalogDocumentJson,
@@ -381,7 +385,7 @@ export const connectionStorageLayer = Layer.effectContext(
       saveThread: (environmentId, snapshot) =>
         Effect.gen(function* () {
           const encoded = yield* encodeStoredThreadSnapshot({
-            schemaVersion: 2,
+            schemaVersion: THREAD_SNAPSHOT_CACHE_SCHEMA_VERSION,
             environmentId,
             threadId: snapshot.thread.id,
             snapshot,

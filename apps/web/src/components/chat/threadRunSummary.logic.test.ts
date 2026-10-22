@@ -1,4 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
+import {
+  CheckpointRef,
+  EventId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+  TurnId,
+  type OrchestrationThread,
+} from "@neokod/contracts";
+import { applyThreadDetailEvent } from "@neokod/client-runtime/state/threads";
 import { deriveThreadRunSummary } from "./threadRunSummary.logic";
 
 const NOW = Date.parse("2026-07-18T10:02:03.000Z");
@@ -171,5 +181,81 @@ describe("deriveThreadRunSummary", () => {
     expect(
       deriveThreadRunSummary(input({ nowMs: Date.parse("2026-07-18T10:00:02.000Z") }))?.elapsed,
     ).toBeNull();
+  });
+
+  it("keeps the settled duration when a late checkpoint arrives", () => {
+    const threadId = ThreadId.make("thread-late-checkpoint");
+    const turnId = TurnId.make("turn-late-checkpoint");
+    const startedAt = "2026-07-18T10:00:00.000Z";
+
+    for (const settledAt of ["2026-07-18T10:01:00.000Z", null] as const) {
+      const settled: OrchestrationThread = {
+        id: threadId,
+        projectId: ProjectId.make("project-late-checkpoint"),
+        title: "Recovered thread",
+        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        latestTurn: {
+          turnId,
+          state: "interrupted",
+          requestedAt: startedAt,
+          startedAt,
+          completedAt: settledAt,
+          assistantMessageId: null,
+        },
+        settledTurnCompletions: { [turnId]: settledAt },
+        createdAt: startedAt,
+        updatedAt: startedAt,
+        archivedAt: null,
+        deletedAt: null,
+        messages: [],
+        proposedPlans: [],
+        activities: [],
+        checkpoints: [],
+        session: null,
+      };
+
+      const result = applyThreadDetailEvent(settled, {
+        eventId: EventId.make("event-late-checkpoint"),
+        sequence: 1,
+        occurredAt: "2026-07-19T10:00:00.000Z",
+        commandId: null,
+        causationEventId: null,
+        correlationId: null,
+        metadata: {},
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        type: "thread.turn-diff-completed",
+        payload: {
+          threadId,
+          turnId,
+          checkpointTurnCount: 1,
+          checkpointRef: CheckpointRef.make("checkpoint-late"),
+          status: "ready",
+          files: [],
+          assistantMessageId: null,
+          completedAt: "2026-07-19T10:00:00.000Z",
+        },
+      });
+      expect(result.kind).toBe("updated");
+      if (result.kind !== "updated") continue;
+
+      const summary = deriveThreadRunSummary({
+        thread: result.thread,
+        activePlan: null,
+        activeWorkStartedAt: null,
+        hasPendingApprovals: false,
+        hasPendingUserInput: false,
+        isWorking: false,
+        interruptAvailable: false,
+        nowMs: Date.parse("2026-07-19T10:05:00.000Z"),
+      });
+      // The settlement owns the duration; the late checkpoint only adds
+      // checkpoint metadata.
+      expect(summary?.elapsed).toBe(settledAt === null ? null : "1m");
+    }
   });
 });

@@ -46,6 +46,8 @@ import {
 import { ProviderService } from "../src/provider/Services/ProviderService.ts";
 import { AnalyticsService } from "../src/telemetry/Services/AnalyticsService.ts";
 import { CheckpointReactorLive } from "../src/orchestration/Layers/CheckpointReactor.ts";
+import { TurnSettlementReactorLive } from "../src/orchestration/Layers/TurnSettlementReactor.ts";
+import { ProjectionTurnRepositoryLive } from "../src/persistence/Layers/ProjectionTurns.ts";
 import * as RepositoryIdentityResolver from "../src/project/RepositoryIdentityResolver.ts";
 import { WorktreeRemovalLeaseLive } from "../src/git/WorktreeRemovalLease.ts";
 import { OrchestrationEngineLive } from "../src/orchestration/Layers/OrchestrationEngine.ts";
@@ -362,6 +364,13 @@ export const makeOrchestrationIntegrationHarness = (
       Layer.provideMerge(runtimeIngestionLayer),
       Layer.provideMerge(providerCommandReactorLayer),
       Layer.provideMerge(checkpointReactorLayer),
+      Layer.provideMerge(
+        TurnSettlementReactorLive.pipe(
+          Layer.provideMerge(runtimeServicesLayer),
+          Layer.provideMerge(ProjectionTurnRepositoryLive.pipe(Layer.provide(persistenceLayer))),
+          Layer.provideMerge(VcsProcess.layer),
+        ),
+      ),
       Layer.provideMerge(
         Layer.succeed(ThreadDeletionReactor, {
           start: () => Effect.void,

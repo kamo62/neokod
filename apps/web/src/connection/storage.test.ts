@@ -1,16 +1,25 @@
 import { ConnectionTransientError } from "@neokod/client-runtime/connection";
 import { ConnectionCatalogDocument } from "@neokod/client-runtime/platform";
+import { EnvironmentId, ThreadId } from "@neokod/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Schema from "effect/Schema";
 import { afterEach, vi } from "vite-plus/test";
 
-import { makeCatalogBackend, makeCatalogStore } from "./storage";
+import {
+  makeCatalogBackend,
+  makeCatalogStore,
+  StoredThreadSnapshotJson,
+  THREAD_SNAPSHOT_CACHE_SCHEMA_VERSION,
+} from "./storage";
 
 const emptyCatalog = {
   schemaVersion: 2,
 } as const;
 const decodeCatalog = Schema.decodeUnknownSync(Schema.fromJsonString(ConnectionCatalogDocument));
+const encodeStoredThreadSnapshot = Schema.encodeSync(StoredThreadSnapshotJson);
+const decodeStoredThreadSnapshot = Schema.decodeUnknownExit(StoredThreadSnapshotJson);
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -68,6 +77,58 @@ describe("makeCatalogStore", () => {
       expect(yield* store.read).toEqual(emptyCatalog);
     }),
   );
+});
+
+describe("StoredThreadSnapshot", () => {
+  it("rejects a thread cache written before server-owned settlement", () => {
+    const environmentId = EnvironmentId.make("environment-1");
+    const threadId = ThreadId.make("thread-1");
+    const snapshot = {
+      snapshotSequence: 1,
+      thread: {
+        id: threadId,
+        projectId: "project-1" as never,
+        title: "Recovered thread",
+        modelSelection: { instanceId: "codex" as never, model: "gpt-5.4" },
+        runtimeMode: "full-access" as const,
+        interactionMode: "default" as const,
+        branch: null,
+        worktreePath: null,
+        // A legacy cache could hold a client-inferred completion here.
+        latestTurn: {
+          turnId: "turn-1" as never,
+          state: "interrupted" as const,
+          requestedAt: "2026-04-01T00:00:00.000Z",
+          startedAt: "2026-04-01T00:00:00.000Z",
+          completedAt: "2026-04-02T00:00:00.000Z",
+          assistantMessageId: null,
+        },
+        createdAt: "2026-04-01T00:00:00.000Z",
+        updatedAt: "2026-04-02T00:00:00.000Z",
+        archivedAt: null,
+        deletedAt: null,
+        messages: [],
+        proposedPlans: [],
+        activities: [],
+        checkpoints: [],
+        session: null,
+      },
+    };
+    const encoded = encodeStoredThreadSnapshot({
+      schemaVersion: THREAD_SNAPSHOT_CACHE_SCHEMA_VERSION,
+      environmentId,
+      threadId,
+      snapshot,
+    });
+
+    // The current format decodes.
+    expect(Exit.isSuccess(decodeStoredThreadSnapshot(encoded))).toBe(true);
+
+    // A previous-format cache is rejected, so the client fetches an
+    // authoritative snapshot instead of trusting a client-inferred record.
+    const legacy = JSON.stringify({ ...JSON.parse(encoded), schemaVersion: 2 });
+    expect(Exit.isFailure(decodeStoredThreadSnapshot(legacy))).toBe(true);
+  });
 });
 
 describe("makeCatalogBackend", () => {

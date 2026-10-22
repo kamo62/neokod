@@ -103,6 +103,11 @@ const ProjectionLatestTurnDbRowSchema = Schema.Struct({
   sourceProposedPlanThreadId: Schema.NullOr(ThreadId),
   sourceProposedPlanId: Schema.NullOr(OrchestrationProposedPlanId),
 });
+const ProjectionSettledTurnDbRowSchema = Schema.Struct({
+  threadId: ProjectionThread.fields.threadId,
+  turnId: TurnId,
+  completedAt: Schema.NullOr(IsoDateTime),
+});
 const ProjectionStateDbRowSchema = ProjectionState;
 const ProjectionCountsRowSchema = Schema.Struct({
   projectCount: Schema.Number,
@@ -207,6 +212,16 @@ function mapLatestTurn(
         }
       : {}),
   };
+}
+
+function mapSettledTurnCompletions(
+  rows: ReadonlyArray<Schema.Schema.Type<typeof ProjectionSettledTurnDbRowSchema>>,
+): Record<TurnId, string | null> {
+  const completions = {} as Record<TurnId, string | null>;
+  for (const row of rows) {
+    completions[row.turnId] = row.completedAt;
+  }
+  return completions;
 }
 
 function mapThreadMessageRow(
@@ -605,6 +620,39 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           AND turns.turn_id = threads.latest_turn_id
         WHERE threads.latest_turn_id IS NOT NULL
         ORDER BY turns.thread_id ASC
+      `,
+  });
+
+  const listSettledTurnRows = SqlSchema.findAll({
+    Request: Schema.Void,
+    Result: ProjectionSettledTurnDbRowSchema,
+    execute: () =>
+      sql`
+        SELECT
+          thread_id AS "threadId",
+          turn_id AS "turnId",
+          completed_at AS "completedAt"
+        FROM projection_turns
+        WHERE turn_id IS NOT NULL
+          AND state IN ('completed', 'interrupted', 'error')
+        ORDER BY thread_id ASC, requested_at ASC
+      `,
+  });
+
+  const listSettledTurnRowsByThread = SqlSchema.findAll({
+    Request: ThreadIdLookupInput,
+    Result: ProjectionSettledTurnDbRowSchema,
+    execute: ({ threadId }) =>
+      sql`
+        SELECT
+          thread_id AS "threadId",
+          turn_id AS "turnId",
+          completed_at AS "completedAt"
+        FROM projection_turns
+        WHERE thread_id = ${threadId}
+          AND turn_id IS NOT NULL
+          AND state IN ('completed', 'interrupted', 'error')
+        ORDER BY requested_at ASC
       `,
   });
 
@@ -1028,6 +1076,14 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
               ),
             ),
           ),
+          listSettledTurnRows(undefined).pipe(
+            Effect.mapError(
+              toPersistenceSqlOrDecodeError(
+                "ProjectionSnapshotQuery.getSnapshot:listSettledTurns:query",
+                "ProjectionSnapshotQuery.getSnapshot:listSettledTurns:decodeRows",
+              ),
+            ),
+          ),
           listProjectionStateRows(undefined).pipe(
             Effect.mapError(
               toPersistenceSqlOrDecodeError(
@@ -1049,6 +1105,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             sessionRows,
             checkpointRows,
             latestTurnRows,
+            settledTurnRows,
             stateRows,
           ]) =>
             Effect.gen(function* () {
@@ -1185,6 +1242,18 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 });
               }
 
+              const settledTurnCompletionsByThread = new Map<
+                string,
+                Record<TurnId, string | null>
+              >();
+              for (const row of settledTurnRows) {
+                const threadCompletions =
+                  settledTurnCompletionsByThread.get(row.threadId) ??
+                  ({} as Record<TurnId, string | null>);
+                threadCompletions[row.turnId] = row.completedAt;
+                settledTurnCompletionsByThread.set(row.threadId, threadCompletions);
+              }
+
               const repositoryIdentities = yield* resolveRepositoryIdentitiesForProjects(
                 projectRows,
                 { includeDeleted: true },
@@ -1214,6 +1283,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 goal: row.goal,
                 goalStatus: row.goalStatus,
                 latestTurn: latestTurnByThread.get(row.threadId) ?? null,
+                settledTurnCompletions: settledTurnCompletionsByThread.get(row.threadId) ?? {},
                 createdAt: row.createdAt,
                 updatedAt: row.updatedAt,
                 archivedAt: row.archivedAt,
@@ -1957,6 +2027,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         activityRows,
         checkpointRows,
         latestTurnRow,
+        settledTurnRows,
         sessionRow,
       ] = yield* Effect.all([
         getActiveThreadRowById({ threadId }).pipe(
@@ -2007,6 +2078,14 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             ),
           ),
         ),
+        listSettledTurnRowsByThread({ threadId }).pipe(
+          Effect.mapError(
+            toPersistenceSqlOrDecodeError(
+              "ProjectionSnapshotQuery.getThreadDetailById:listSettledTurns:query",
+              "ProjectionSnapshotQuery.getThreadDetailById:listSettledTurns:decodeRows",
+            ),
+          ),
+        ),
         getThreadSessionRowByThread({ threadId }).pipe(
           Effect.mapError(
             toPersistenceSqlOrDecodeError(
@@ -2033,6 +2112,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         goal: threadRow.value.goal,
         goalStatus: threadRow.value.goalStatus,
         latestTurn: Option.isSome(latestTurnRow) ? mapLatestTurn(latestTurnRow.value) : null,
+        settledTurnCompletions: mapSettledTurnCompletions(settledTurnRows),
         createdAt: threadRow.value.createdAt,
         updatedAt: threadRow.value.updatedAt,
         archivedAt: threadRow.value.archivedAt,
