@@ -65,22 +65,17 @@ export const WorkspaceManagerLive = Layer.effect(
         ),
       );
 
+    const worktreeRemovalLease = yield* WorktreeRemovalLease;
     const removeUnderReservation: WorkspaceManagerDeps["removeUnderReservation"] = (input) =>
-      Effect.serviceOption(WorktreeRemovalLease).pipe(
-        Effect.flatMap((maybeLease) =>
-          Option.isSome(maybeLease)
-            ? maybeLease.value
-                .withRemovalReservationForPath(input.workspacePath, input.remove())
-                .pipe(
-                  Effect.mapError((cause) =>
-                    cause instanceof WorkspaceRemovalBlocked
-                      ? cause
-                      : new WorkspaceRemovalReservationFailed(input.workspacePath, cause.message),
-                  ),
-                )
-            : input.remove(),
-        ),
-      );
+      worktreeRemovalLease
+        .withRemovalReservationForPath(input.workspacePath, input.remove())
+        .pipe(
+          Effect.mapError((cause) =>
+            cause instanceof WorkspaceRemovalBlocked
+              ? cause
+              : new WorkspaceRemovalReservationFailed(input.workspacePath, cause.message),
+          ),
+        );
 
     const ownershipRepository = yield* WorkspaceOwnershipRepository;
 

@@ -209,6 +209,87 @@ it.effect("prunes an exact stale registration after its worktree directory is go
   }).pipe(Effect.provide(NodeServices.layer));
 });
 
+it.effect("prepareCommitContext fails closed when operation discovery fails", () => {
+  const commands: string[][] = [];
+  const spawner = ChildProcessSpawner.make((command) =>
+    Effect.sync(() => {
+      if (!ChildProcess.isStandardCommand(command)) {
+        return assert.fail("expected a standard Git command");
+      }
+      commands.push([...command.args]);
+      return makeProcessHandle({
+        exitCode: 128,
+        stderr: "fatal: unable to read git directory",
+      });
+    }),
+  );
+  const nodeServicesLayer = Layer.merge(
+    NodeServices.layer,
+    Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner),
+  );
+  const layer = GitVcsDriver.layer.pipe(
+    Layer.provide(ServerConfigLayer),
+    Layer.provideMerge(nodeServicesLayer),
+  );
+
+  return Effect.gen(function* () {
+    const cwd = yield* makeTmpDir();
+    const driver = yield* GitVcsDriver.GitVcsDriver;
+    const error = yield* driver.prepareCommitContext(cwd, ["a.txt"]).pipe(Effect.flip);
+
+    assert.equal(error._tag, "GitCommandError");
+    if (error._tag !== "GitCommandError") {
+      return assert.fail("expected GitCommandError");
+    }
+    assert.equal(error.operation, "GitVcsDriver.prepareCommitContext.operation");
+    assert.deepStrictEqual(commands, [["rev-parse", "--path-format=absolute", "--git-dir"]]);
+  }).pipe(Effect.provide(layer));
+});
+
+it.effect("switchRef rejects an option-like resolved local tracking branch", () => {
+  const commands: string[][] = [];
+  const spawner = ChildProcessSpawner.make((command) =>
+    Effect.sync(() => {
+      if (!ChildProcess.isStandardCommand(command)) {
+        return assert.fail("expected a standard Git command");
+      }
+      const args = [...command.args];
+      commands.push(args);
+      if (args[0] === "show-ref") {
+        const ref = args.at(-1) ?? "";
+        return makeProcessHandle({
+          exitCode: ref === "refs/remotes/origin/topic" ? 0 : 1,
+        });
+      }
+      if (args[0] === "for-each-ref") {
+        return makeProcessHandle({ exitCode: 0, stdout: "-f\torigin/topic\n" });
+      }
+      if (args[0] === "branch" && args[1] === "--show-current") {
+        return makeProcessHandle({ exitCode: 0, stdout: "-f\n" });
+      }
+      return makeProcessHandle({ exitCode: 0 });
+    }),
+  );
+  const nodeServicesLayer = Layer.merge(
+    NodeServices.layer,
+    Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner),
+  );
+  const layer = GitVcsDriver.layer.pipe(
+    Layer.provide(ServerConfigLayer),
+    Layer.provideMerge(nodeServicesLayer),
+  );
+
+  return Effect.gen(function* () {
+    const cwd = yield* makeTmpDir();
+    const driver = yield* GitVcsDriver.GitVcsDriver;
+    const error = yield* driver.switchRef({ cwd, refName: "origin/topic" }).pipe(Effect.flip);
+
+    assert.equal(error.operation, "GitVcsDriver.switchRef.localTrackingBranch");
+    assert.include(error.detail, "Local tracking branch");
+    assert.isFalse(commands.some((args) => args[0] === "checkout"));
+  }).pipe(Effect.provide(layer));
+});
+
 it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
   describe("process environment", () => {
     it.effect("preserves the caller locale for general Git subprocesses", () =>
@@ -866,6 +947,10 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
 
         const error = yield* driver.prepareCommitContext(cwd, ["c.txt"]).pipe(Effect.flip);
 
+        assert.equal(error._tag, "GitCommandError");
+        if (error._tag !== "GitCommandError") {
+          return assert.fail("expected GitCommandError");
+        }
         assert.include(error.detail, "Cannot commit selected files while a merge is in progress");
         assert.equal(yield* git(cwd, ["rev-parse", "--verify", "MERGE_HEAD"]), mergeHeadBefore);
 
@@ -876,6 +961,34 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         yield* driver.commit(cwd, "Merge side", "");
         const parents = yield* git(cwd, ["rev-list", "--parents", "-n", "1", "HEAD"]);
         assert.equal(parents.split(" ").length, 3);
+      }),
+    );
+
+    it.effect("refuses to stage unresolved merge conflicts", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* git(cwd, ["checkout", "-b", "side"]);
+        yield* writeTextFile(cwd, "c.txt", "side\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "side change"]);
+        yield* git(cwd, ["checkout", initialBranch]);
+        yield* writeTextFile(cwd, "c.txt", "main\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "main change"]);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.execute({
+          operation: "GitVcsDriver.test.merge",
+          cwd,
+          args: ["merge", "side"],
+          allowNonZeroExit: true,
+        });
+
+        const error = yield* driver.prepareCommitContext(cwd).pipe(Effect.flip);
+
+        assert.equal(error._tag, "GitUnmergedPathsError");
+        yield* git(cwd, ["rev-parse", "--verify", "MERGE_HEAD"]);
+        assert.include(yield* git(cwd, ["status", "--porcelain=v2"]), "u ");
       }),
     );
 
@@ -934,6 +1047,10 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
 
         const error = yield* driver.prepareCommitContext(cwd, ["c.txt"]).pipe(Effect.flip);
 
+        assert.equal(error._tag, "GitCommandError");
+        if (error._tag !== "GitCommandError") {
+          return assert.fail("expected GitCommandError");
+        }
         assert.include(error.detail, "Cannot commit selected files while a merge is in progress");
         yield* git(cwd, ["rev-parse", "--verify", "MERGE_HEAD"]);
       }),
@@ -963,6 +1080,10 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
 
         const error = yield* driver.prepareCommitContext(cwd, ["c.txt"]).pipe(Effect.flip);
 
+        assert.equal(error._tag, "GitCommandError");
+        if (error._tag !== "GitCommandError") {
+          return assert.fail("expected GitCommandError");
+        }
         assert.include(
           error.detail,
           "Cannot commit selected files while a cherry-pick is in progress",
@@ -1482,7 +1603,8 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
           const cwd = yield* makeTmpDir();
           const { initialBranch } = yield* initRepoWithCommit(cwd);
           const pathService = yield* Path.Path;
-          const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "-wt");
+          const worktreePath = "-wt";
+          const absoluteWorktreePath = pathService.join(cwd, worktreePath);
           const driver = yield* GitVcsDriver.GitVcsDriver;
 
           yield* driver.createWorktree({
@@ -1491,11 +1613,14 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
             refName: initialBranch,
             newRefName: "feature/dash-path",
           });
-          assert.equal(yield* git(worktreePath, ["branch", "--show-current"]), "feature/dash-path");
+          assert.equal(
+            yield* git(absoluteWorktreePath, ["branch", "--show-current"]),
+            "feature/dash-path",
+          );
 
           yield* driver.removeWorktree({ cwd, path: worktreePath });
           const fileSystem = yield* FileSystem.FileSystem;
-          assert.equal(yield* fileSystem.exists(worktreePath), false);
+          assert.equal(yield* fileSystem.exists(absoluteWorktreePath), false);
         }),
     );
 

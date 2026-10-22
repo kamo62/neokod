@@ -204,6 +204,7 @@ describe("OrchestrationEngine", () => {
       Layer.provide(OrchestrationCommandReceiptRepositoryLive),
       Layer.provide(RepositoryIdentityResolver.layer),
       Layer.provide(SqlitePersistenceMemory),
+      Layer.provideMerge(WorktreeRemovalLeaseLive),
       Layer.provideMerge(ServerConfigLayer),
       Layer.provideMerge(NodeServices.layer),
     );
@@ -339,6 +340,7 @@ describe("OrchestrationEngine", () => {
       Layer.provide(Layer.succeed(OrchestrationEventStore, eventStore)),
       Layer.provide(OrchestrationCommandReceiptRepositoryLive),
       Layer.provide(SqlitePersistenceMemory),
+      Layer.provideMerge(WorktreeRemovalLeaseLive),
       Layer.provideMerge(NodeServices.layer),
     );
 
@@ -918,6 +920,7 @@ describe("OrchestrationEngine", () => {
         Layer.provide(OrchestrationCommandReceiptRepositoryLive),
         Layer.provide(RepositoryIdentityResolver.layer),
         Layer.provide(SqlitePersistenceMemory),
+        Layer.provideMerge(WorktreeRemovalLeaseLive),
         Layer.provideMerge(ServerConfigLayer),
         Layer.provideMerge(NodeServices.layer),
       ),
@@ -1023,6 +1026,7 @@ describe("OrchestrationEngine", () => {
         Layer.provide(OrchestrationCommandReceiptRepositoryLive),
         Layer.provide(RepositoryIdentityResolver.layer),
         Layer.provide(SqlitePersistenceMemory),
+        Layer.provideMerge(WorktreeRemovalLeaseLive),
         Layer.provide(NodeServices.layer),
       ),
     );
@@ -1166,6 +1170,7 @@ describe("OrchestrationEngine", () => {
         Layer.provide(OrchestrationCommandReceiptRepositoryLive),
         Layer.provide(RepositoryIdentityResolver.layer),
         Layer.provide(SqlitePersistenceMemory),
+        Layer.provideMerge(WorktreeRemovalLeaseLive),
         Layer.provide(NodeServices.layer),
       ),
     );
@@ -1533,6 +1538,82 @@ describe("OrchestrationEngine", () => {
         }),
       ),
     );
+
+    await system.run(fileSystem.remove(root, { recursive: true, force: true }));
+    await system.dispose();
+  });
+
+  it("rejects a prepared worktree removed before attachment", async () => {
+    const system = await createOrchestrationSystem();
+    const { engine, lease, fileSystem, path } = system;
+    const createdAt = now();
+    const root = await system.run(
+      fileSystem.makeTempDirectory({ prefix: "neokod-engine-prepared-" }),
+    );
+    const target = path.join(root, "worktree");
+    await system.run(fileSystem.makeDirectory(target, { recursive: true }));
+    await system.run(lease.recordPreparedWorktree(target));
+
+    await system.run(
+      engine.dispatch({
+        type: "project.create",
+        commandId: CommandId.make("cmd-prepared-project"),
+        projectId: asProjectId("project-prepared"),
+        title: "Prepared",
+        workspaceRoot: root,
+        defaultModelSelection: {
+          instanceId: ProviderInstanceId.make("codex"),
+          model: "gpt-5-codex",
+        },
+        createdAt,
+      }),
+    );
+    await system.run(fileSystem.remove(target, { recursive: true }));
+
+    const removed = await system.run(
+      engine
+        .dispatch({
+          type: "thread.create",
+          commandId: CommandId.make("cmd-prepared-removed"),
+          threadId: ThreadId.make("thread-prepared-removed"),
+          projectId: asProjectId("project-prepared"),
+          title: "Removed",
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("codex"),
+            model: "gpt-5-codex",
+          },
+          runtimeMode: "full-access",
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          branch: "feature/prepared",
+          worktreePath: target,
+          createdAt,
+        })
+        .pipe(Effect.flip),
+    );
+    expect((removed as { _tag: string })._tag).toBe("OrchestrationCommandInvariantError");
+
+    await system.run(fileSystem.makeDirectory(target, { recursive: true }));
+    const replaced = await system.run(
+      engine
+        .dispatch({
+          type: "thread.create",
+          commandId: CommandId.make("cmd-prepared-replaced"),
+          threadId: ThreadId.make("thread-prepared-replaced"),
+          projectId: asProjectId("project-prepared"),
+          title: "Replaced",
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("codex"),
+            model: "gpt-5-codex",
+          },
+          runtimeMode: "full-access",
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          branch: "feature/prepared",
+          worktreePath: target,
+          createdAt,
+        })
+        .pipe(Effect.flip),
+    );
+    expect((replaced as { _tag: string })._tag).toBe("OrchestrationCommandInvariantError");
 
     await system.run(fileSystem.remove(root, { recursive: true, force: true }));
     await system.dispose();

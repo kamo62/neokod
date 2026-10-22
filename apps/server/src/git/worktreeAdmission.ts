@@ -1,5 +1,12 @@
 import type { OrchestrationCommand, OrchestrationReadModel } from "@neokod/contracts";
 
+export interface WorktreeAdmission {
+  /** Effective workspaces this command can attach or expose. */
+  readonly workspacePaths: readonly string[];
+  /** Non-null worktree paths whose prepared identity must still hold. */
+  readonly preparedWorktreePaths: readonly string[];
+}
+
 /**
  * Effective workspaces an orchestration command can attach or expose. The
  * order is not significant; duplicates are harmless.
@@ -7,31 +14,43 @@ import type { OrchestrationCommand, OrchestrationReadModel } from "@neokod/contr
 export function admissionWorkspacePaths(
   command: OrchestrationCommand,
   readModel: Pick<OrchestrationReadModel, "projects" | "threads">,
-): readonly string[] {
+): WorktreeAdmission {
   const projectWorkspaceRoot = (projectId: string): string | null =>
     readModel.projects.find((project) => project.id === projectId)?.workspaceRoot ?? null;
 
   switch (command.type) {
     case "project.create":
-      return [command.workspaceRoot];
+      return { workspacePaths: [command.workspaceRoot], preparedWorktreePaths: [] };
     case "project.meta.update":
-      return command.workspaceRoot === undefined ? [] : [command.workspaceRoot];
-    case "thread.create":
-      return [command.worktreePath ?? projectWorkspaceRoot(command.projectId)].filter(
-        (value): value is string => value !== null,
-      );
+      return {
+        workspacePaths: command.workspaceRoot === undefined ? [] : [command.workspaceRoot],
+        preparedWorktreePaths: [],
+      };
+    case "thread.create": {
+      const workspacePath = command.worktreePath ?? projectWorkspaceRoot(command.projectId);
+      return {
+        workspacePaths: workspacePath === null ? [] : [workspacePath],
+        preparedWorktreePaths: command.worktreePath === null ? [] : [command.worktreePath],
+      };
+    }
     case "thread.meta.update": {
       if (command.worktreePath === undefined) {
-        return [];
+        return { workspacePaths: [], preparedWorktreePaths: [] };
       }
       if (command.worktreePath !== null) {
-        return [command.worktreePath];
+        return {
+          workspacePaths: [command.worktreePath],
+          preparedWorktreePaths: [command.worktreePath],
+        };
       }
       const thread = readModel.threads.find((candidate) => candidate.id === command.threadId);
       const projectRoot = thread ? projectWorkspaceRoot(thread.projectId) : null;
-      return projectRoot === null ? [] : [projectRoot];
+      return {
+        workspacePaths: projectRoot === null ? [] : [projectRoot],
+        preparedWorktreePaths: [],
+      };
     }
     default:
-      return [];
+      return { workspacePaths: [], preparedWorktreePaths: [] };
   }
 }

@@ -90,7 +90,7 @@ const makeOrchestrationEngine = Effect.gen(function* () {
   const projectionPipeline = yield* OrchestrationProjectionPipeline;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const crypto = yield* Crypto.Crypto;
-  const worktreeRemovalLease = yield* Effect.serviceOption(WorktreeRemovalLease);
+  const worktreeRemovalLease = yield* WorktreeRemovalLease;
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
   let commandReadModel = createEmptyReadModel(yield* nowIso);
@@ -233,22 +233,20 @@ const makeOrchestrationEngine = Effect.gen(function* () {
               ),
             );
         });
-        const admissionPaths = admissionWorkspacePaths(envelope.command, commandReadModel);
-        const committedCommand = yield* Option.isSome(worktreeRemovalLease)
-          ? worktreeRemovalLease.value
-              .withAdmission(envelope.command.type, admissionPaths, commitAdmission)
-              .pipe(
-                Effect.mapError((cause) =>
-                  cause instanceof WorktreeAdmissionBlockedError
-                    ? new OrchestrationCommandInvariantError({
-                        commandType: envelope.command.type,
-                        detail: cause.message,
-                        cause,
-                      })
-                    : cause,
-                ),
-              )
-          : commitAdmission;
+        const admission = admissionWorkspacePaths(envelope.command, commandReadModel);
+        const committedCommand = yield* worktreeRemovalLease
+          .withAdmission(envelope.command.type, admission, commitAdmission)
+          .pipe(
+            Effect.mapError((cause) =>
+              cause instanceof WorktreeAdmissionBlockedError
+                ? new OrchestrationCommandInvariantError({
+                    commandType: envelope.command.type,
+                    detail: cause.message,
+                    cause,
+                  })
+                : cause,
+            ),
+          );
 
         commandReadModel = committedCommand.nextCommandReadModel;
         for (const [index, event] of committedCommand.committedEvents.entries()) {

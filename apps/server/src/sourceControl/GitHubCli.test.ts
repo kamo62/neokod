@@ -120,9 +120,10 @@ describe("GitHubCli.layer", () => {
         args: [
           "pr",
           "view",
-          "#42",
           "--json",
           "number,title,url,baseRefName,headRefName,state,mergedAt,isCrossRepository,headRepository,headRepositoryOwner",
+          "--",
+          "#42",
         ],
         cwd: "/repo",
         timeoutMs: 30_000,

@@ -211,7 +211,7 @@ export class GitVcsDriver extends Context.Service<
     readonly prepareCommitContext: (
       cwd: string,
       filePaths?: readonly string[],
-    ) => Effect.Effect<GitPreparedCommitContext | null, GitCommandError>;
+    ) => Effect.Effect<GitPreparedCommitContext | null, GitCommandError | GitUnmergedPathsError>;
     readonly commit: (
       cwd: string,
       subject: string,

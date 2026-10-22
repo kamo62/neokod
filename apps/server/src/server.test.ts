@@ -8,6 +8,7 @@ import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 
 import {
   CommandId,
+  DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_SERVER_SETTINGS,
   EnvironmentId,
   EventId,
@@ -68,10 +69,10 @@ const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
 
 import * as ServerConfig from "./config.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
-import { makeRoutesLayer } from "./server.ts";
+import { makeRoutesLayer, makeServerLayer } from "./server.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as GitManager from "./git/GitManager.ts";
-import { WorktreeRemovalLeaseLive } from "./git/WorktreeRemovalLease.ts";
+import { WorktreeRemovalLease, WorktreeRemovalLeaseLive } from "./git/WorktreeRemovalLease.ts";
 import { readWorkspaceIdentityEvidence } from "./vcs/WorkspaceIdentity.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
@@ -4821,5 +4822,80 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       assertFailure(result, terminalError);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+});
+
+type ComposedServerServices =
+  | WorktreeRemovalLease
+  | OrchestrationEngine.OrchestrationEngineService
+  | GitWorkflowService.GitWorkflowService
+  | FileSystem.FileSystem
+  | Path.Path;
+
+// @effect-diagnostics-next-line unsafeEffectTypeAssertion:off
+const composedServerLayer = makeServerLayer.pipe(
+  Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "neokod-composed-lease-server-" })),
+  Layer.provideMerge(NodeServices.layer),
+) as Layer.Layer<ComposedServerServices, never, never>;
+
+const ComposedServerTestLayer = it.layer(composedServerLayer);
+
+ComposedServerTestLayer("composed server layer", (it) => {
+  it.effect("resolves the lease-dependent services and shares one lease", () =>
+    Effect.gen(function* () {
+      const lease = yield* WorktreeRemovalLease;
+      const engine = yield* OrchestrationEngine.OrchestrationEngineService;
+      const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
+      assert.isDefined(lease);
+      assert.isDefined(engine);
+      assert.isDefined(gitWorkflow);
+
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectory({ prefix: "neokod-composed-lease-" });
+      const target = path.join(root, "worktree");
+      yield* fs.makeDirectory(target, { recursive: true });
+      const identity = yield* readWorkspaceIdentityEvidence(target);
+      const projectId = ProjectId.make("project-composed-lease");
+
+      yield* engine.dispatch({
+        type: "project.create",
+        commandId: CommandId.make("cmd-composed-lease-project"),
+        projectId,
+        title: "Composed Lease",
+        workspaceRoot: root,
+        defaultModelSelection: {
+          instanceId: ProviderInstanceId.make("codex"),
+          model: "gpt-5-codex",
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+
+      yield* lease.withRemovalReservation(
+        identity,
+        Effect.gen(function* () {
+          const error = yield* engine
+            .dispatch({
+              type: "thread.create",
+              commandId: CommandId.make("cmd-composed-lease-thread"),
+              threadId: ThreadId.make("thread-composed-lease"),
+              projectId,
+              title: "Composed Lease Thread",
+              modelSelection: {
+                instanceId: ProviderInstanceId.make("codex"),
+                model: "gpt-5-codex",
+              },
+              runtimeMode: "full-access",
+              interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+              branch: "feature/composed",
+              worktreePath: target,
+              createdAt: "2026-01-01T00:00:00.000Z",
+            })
+            .pipe(Effect.flip);
+          assert.equal((error as { _tag: string })._tag, "OrchestrationCommandInvariantError");
+        }),
+      );
+      yield* fs.remove(root, { recursive: true, force: true });
+    }),
   );
 });

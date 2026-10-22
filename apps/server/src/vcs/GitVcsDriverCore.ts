@@ -1470,11 +1470,28 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       { timeoutMs: 5_000, allowNonZeroExit: true },
     );
     if (gitDirResult.exitCode !== 0) {
-      return undefined;
+      return yield* new GitCommandError({
+        ...gitCommandContext({
+          operation: "GitVcsDriver.statusDetails.gitDir",
+          cwd,
+          args: ["rev-parse", "--path-format=absolute", "--git-dir"],
+        }),
+        detail: "Unable to determine the Git directory for operation state.",
+        ...(gitDirResult.exitCode === null ? {} : { exitCode: gitDirResult.exitCode }),
+        stdoutLength: gitDirResult.stdout.length,
+        stderrLength: gitDirResult.stderr.length,
+      });
     }
     const gitDir = gitDirResult.stdout.replace(/\r?\n$/, "");
     if (gitDir.length === 0) {
-      return undefined;
+      return yield* new GitCommandError({
+        ...gitCommandContext({
+          operation: "GitVcsDriver.statusDetails.gitDir",
+          cwd,
+          args: ["rev-parse", "--path-format=absolute", "--git-dir"],
+        }),
+        detail: "Unable to determine the Git directory for operation state.",
+      });
     }
     const statePath = (name: string) => path.join(gitDir, name);
     if (
@@ -1778,6 +1795,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
             detail: `Cannot commit selected files while a ${operationInProgress} is in progress. Commit all resolved changes to conclude it.`,
           });
         }
+        yield* assertNoUnmergedPaths(cwd);
         yield* runGit("GitVcsDriver.prepareCommitContext.reset", cwd, ["reset"]).pipe(
           Effect.catchTags({
             GitCommandError: () => Effect.void,
@@ -1791,6 +1809,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           ...filePaths,
         ]);
       } else {
+        // Re-check immediately before staging: a merge can start between the
+        // caller's status read and this point, and `add -A` would resolve it.
+        yield* assertNoUnmergedPaths(cwd);
         yield* runGit("GitVcsDriver.prepareCommitContext.addAll", cwd, ["add", "-A"]);
       }
 
@@ -2999,11 +3020,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       );
 
     const branchForReclaim = input.deleteBranch === true ? yield* readBranchForReclaim() : null;
-    const args = ["worktree", "remove"];
-    if (input.force) {
-      args.push("--force");
-    }
-    args.push("--", input.path);
+    let removeTargetPath = input.path;
     if (input.expectedState?.identity !== undefined) {
       // Re-read the physical target immediately before Git's own removal so a
       // symlink-parent retarget cannot substitute another worktree.
@@ -3028,6 +3045,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
             "The worktree target changed since it was inspected. Inspect it again and confirm.",
         });
       }
+      removeTargetPath = currentIdentity.physicalPath;
     }
     if (input.expectedState?.exists === true) {
       // Re-read the full HEAD immediately before Git's own removal. This
@@ -3035,7 +3053,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       // external-writer window inside `git worktree remove` remains.
       const headResult = yield* executeGit(
         "GitVcsDriver.removeWorktree.verifyHead",
-        input.path,
+        removeTargetPath,
         ["rev-parse", "--verify", "HEAD"],
         { timeoutMs: 15_000, allowNonZeroExit: true },
       );
@@ -3047,13 +3065,18 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         return yield* new GitCommandError({
           ...gitCommandContext({
             operation: "GitVcsDriver.removeWorktree.verifyHead",
-            cwd: input.path,
+            cwd: removeTargetPath,
             args: ["rev-parse", "--verify", "HEAD"],
           }),
           detail: "The worktree HEAD changed since it was inspected. Inspect it again and confirm.",
         });
       }
     }
+    const args = ["worktree", "remove"];
+    if (input.force) {
+      args.push("--force");
+    }
+    args.push("--", removeTargetPath);
     const removeResult = yield* executeGit("GitVcsDriver.removeWorktree", input.cwd, args, {
       timeoutMs: 15_000,
       allowNonZeroExit: true,
@@ -3267,6 +3290,14 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
             ),
           )
         : null;
+
+      if (localTrackingBranch !== null) {
+        yield* failOnInvalidGitName(
+          "GitVcsDriver.switchRef.localTrackingBranch",
+          input.cwd,
+          validateGitRefName(localTrackingBranch, "Local tracking branch"),
+        );
+      }
 
       const localTrackedBranchCandidate = deriveLocalBranchNameFromRemoteRef(input.refName);
       const localTrackedBranchTargetExists =

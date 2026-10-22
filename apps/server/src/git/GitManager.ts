@@ -54,6 +54,7 @@ import * as ServerSettings from "../serverSettings.ts";
 import type { GitManagerServiceError } from "@neokod/contracts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
+import { WorktreeRemovalLease } from "./WorktreeRemovalLease.ts";
 import type { ChangeRequest } from "@neokod/contracts";
 
 export interface GitActionProgressReporter {
@@ -571,6 +572,15 @@ export const make = Effect.gen(function* () {
   const textGeneration = yield* TextGeneration.TextGeneration;
   const projectSetupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
   const crypto = yield* Crypto.Crypto;
+
+  const recordPreparedWorktree = (workspacePath: string) =>
+    Effect.serviceOption(WorktreeRemovalLease).pipe(
+      Effect.flatMap((maybeLease) =>
+        Option.isSome(maybeLease)
+          ? maybeLease.value.recordPreparedWorktree(workspacePath)
+          : Effect.void,
+      ),
+    );
 
   const sourceControlProvider = (cwd: string) => sourceControlProviders.resolve({ cwd });
   const serverSettingsService = yield* ServerSettings.ServerSettingsService;
@@ -1770,6 +1780,7 @@ export const make = Effect.gen(function* () {
         existingBranchBeforeFetchPath !== rootWorktreePath
       ) {
         yield* ensureExistingWorktreeUpstream(existingBranchBeforeFetch.worktreePath);
+        yield* recordPreparedWorktree(existingBranchBeforeFetch.worktreePath);
         return {
           pullRequest,
           branch: localPullRequestBranch,
@@ -1800,6 +1811,7 @@ export const make = Effect.gen(function* () {
         existingBranchAfterFetchPath !== rootWorktreePath
       ) {
         yield* ensureExistingWorktreeUpstream(existingBranchAfterFetch.worktreePath);
+        yield* recordPreparedWorktree(existingBranchAfterFetch.worktreePath);
         return {
           pullRequest,
           branch: localPullRequestBranch,
@@ -1821,6 +1833,7 @@ export const make = Effect.gen(function* () {
         path: null,
       });
       yield* ensureExistingWorktreeUpstream(worktree.worktree.path);
+      yield* recordPreparedWorktree(worktree.worktree.path);
       yield* maybeRunSetupScript(worktree.worktree.path);
 
       return {

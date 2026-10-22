@@ -3,6 +3,7 @@ import { assert, describe, it } from "vite-plus/test";
 import {
   buildGitActionProgressStages,
   buildMenuItems,
+  canSubmitCommitSelection,
   isMergeCommitPending,
   requiresDefaultBranchConfirmation,
   resolveAutoFeatureBranchName,
@@ -1242,5 +1243,24 @@ describe("resolved merge with no tree delta", () => {
     const items = buildMenuItems(merge, false);
     const commit = items.find((item) => item.id === "commit");
     assert.equal(commit?.disabled, false);
+  });
+
+  it("rejects an explicitly empty file selection over existing files", () => {
+    assert.equal(
+      canSubmitCommitSelection({ fileCount: 0, selectedFileCount: 0, mergePending: true }),
+      true,
+    );
+    assert.equal(
+      canSubmitCommitSelection({ fileCount: 2, selectedFileCount: 0, mergePending: true }),
+      false,
+    );
+    assert.equal(
+      canSubmitCommitSelection({ fileCount: 2, selectedFileCount: 1, mergePending: true }),
+      true,
+    );
+    assert.equal(
+      canSubmitCommitSelection({ fileCount: 2, selectedFileCount: 0, mergePending: false }),
+      false,
+    );
   });
 });

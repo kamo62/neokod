@@ -15,6 +15,11 @@ import { readWorkspaceIdentityEvidence } from "../vcs/WorkspaceIdentity.ts";
 
 const layer = it.layer(WorktreeRemovalLeaseLive.pipe(Layer.provideMerge(NodeServices.layer)));
 
+const admission = (
+  workspacePaths: readonly string[],
+  preparedWorktreePaths: readonly string[] = [],
+) => ({ workspacePaths, preparedWorktreePaths }) as const;
+
 layer("WorktreeRemovalLease", (it) => {
   it.effect("blocks admission of the reserved target and paths inside it", () =>
     Effect.gen(function* () {
@@ -34,18 +39,18 @@ layer("WorktreeRemovalLease", (it) => {
         identity,
         Effect.gen(function* () {
           const exact = yield* lease
-            .withAdmission("thread.create", [target], Effect.succeed("admitted"))
+            .withAdmission("thread.create", admission([target]), Effect.succeed("admitted"))
             .pipe(Effect.flip);
           expect(exact).toBeInstanceOf(WorktreeAdmissionBlockedError);
 
           const descendant = yield* lease
-            .withAdmission("thread.meta.update", [nested], Effect.succeed("admitted"))
+            .withAdmission("thread.meta.update", admission([nested]), Effect.succeed("admitted"))
             .pipe(Effect.flip);
           expect(descendant).toBeInstanceOf(WorktreeAdmissionBlockedError);
 
           const allowed = yield* lease.withAdmission(
             "thread.create",
-            [unrelated],
+            admission([unrelated]),
             Effect.succeed("admitted"),
           );
           expect(allowed).toBe("admitted");
@@ -54,7 +59,7 @@ layer("WorktreeRemovalLease", (it) => {
 
       const afterRelease = yield* lease.withAdmission(
         "thread.create",
-        [target],
+        admission([target]),
         Effect.succeed("admitted"),
       );
       expect(afterRelease).toBe("admitted");
@@ -103,11 +108,52 @@ layer("WorktreeRemovalLease", (it) => {
         identity,
         Effect.gen(function* () {
           const blocked = yield* lease
-            .withAdmission("thread.create", [alias], Effect.succeed("admitted"))
+            .withAdmission("thread.create", admission([alias]), Effect.succeed("admitted"))
             .pipe(Effect.flip);
           expect(blocked).toBeInstanceOf(WorktreeAdmissionBlockedError);
         }),
       );
+    }),
+  );
+
+  it.effect("rejects a prepared worktree removed before attachment", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-lease-" });
+      const target = path.join(root, "worktree");
+      yield* fs.makeDirectory(target, { recursive: true });
+      const lease = yield* WorktreeRemovalLease;
+      yield* lease.recordPreparedWorktree(target);
+
+      yield* fs.remove(target, { recursive: true });
+      const blocked = yield* lease
+        .withAdmission("thread.create", admission([target], [target]), Effect.succeed("admitted"))
+        .pipe(Effect.flip);
+
+      expect(blocked).toBeInstanceOf(WorktreeAdmissionBlockedError);
+      expect(blocked.message).toContain("removed or replaced");
+    }),
+  );
+
+  it.effect("rejects a prepared worktree replaced at the same path", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-lease-" });
+      const target = path.join(root, "worktree");
+      yield* fs.makeDirectory(target, { recursive: true });
+      const lease = yield* WorktreeRemovalLease;
+      yield* lease.recordPreparedWorktree(target);
+
+      yield* fs.rename(target, path.join(root, "replaced-original"));
+      yield* fs.makeDirectory(target, { recursive: true });
+      const blocked = yield* lease
+        .withAdmission("thread.create", admission([target], [target]), Effect.succeed("admitted"))
+        .pipe(Effect.flip);
+
+      expect(blocked).toBeInstanceOf(WorktreeAdmissionBlockedError);
+      expect(blocked.message).toContain("removed or replaced");
     }),
   );
 });

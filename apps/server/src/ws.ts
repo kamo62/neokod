@@ -2397,7 +2397,7 @@ const makeWsRpcLayer = (
                     "The inspection did not capture a stable filesystem identity. Inspect the worktree again.",
                 });
               }
-              const targetIdentity = {
+              const expectedTargetIdentity = {
                 physicalPath: expectedIdentity.physicalPath,
                 exists: expected.exists,
                 device: expectedIdentity.device,
@@ -2415,7 +2415,7 @@ const makeWsRpcLayer = (
                     }),
                 ),
               );
-              if (workspaceIdentitiesMatch(targetIdentity, submittedIdentity) !== "same") {
+              if (workspaceIdentitiesMatch(expectedTargetIdentity, submittedIdentity) !== "same") {
                 return yield* new GitCommandError({
                   operation: "ws.vcsRemoveWorktree",
                   command: "git worktree remove",
@@ -2424,6 +2424,10 @@ const makeWsRpcLayer = (
                     "The worktree path now identifies a different filesystem object than the one inspected. Inspect it again and confirm.",
                 });
               }
+              // Reserve and find survivors using the server-derived identity;
+              // the client-supplied physical path is only compared, never
+              // trusted for containment.
+              const targetIdentity = submittedIdentity;
               return yield* worktreeRemovalLease
                 .withRemovalReservation(
                   targetIdentity,

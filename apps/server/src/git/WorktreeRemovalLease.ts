@@ -10,8 +10,10 @@ import * as Semaphore from "effect/Semaphore";
 import {
   isWorkspaceSameOrInside,
   readWorkspaceIdentityEvidence,
+  workspaceIdentitiesMatch,
   type WorkspaceIdentityEvidence,
 } from "../vcs/WorkspaceIdentity.ts";
+import type { WorktreeAdmission } from "./worktreeAdmission.ts";
 
 /**
  * One in-process gate for managed worktree admission and removal.
@@ -27,8 +29,10 @@ export class WorktreeAdmissionBlockedError extends Error {
   readonly workspacePath: string;
   readonly commandType: string;
 
-  constructor(workspacePath: string, commandType: string) {
-    super(`Workspace ${workspacePath} is being removed. Retry after the removal completes.`);
+  constructor(workspacePath: string, commandType: string, detail?: string) {
+    super(
+      detail ?? `Workspace ${workspacePath} is being removed. Retry after the removal completes.`,
+    );
     this.name = "WorktreeAdmissionBlockedError";
     this.workspacePath = workspacePath;
     this.commandType = commandType;
@@ -54,9 +58,11 @@ export class WorktreeRemovalLeaseConflictError extends Error {
 export interface WorktreeRemovalLeaseShape {
   readonly withAdmission: <A, E, R>(
     commandType: string,
-    workspacePaths: readonly string[],
+    admission: WorktreeAdmission,
     effect: Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E | WorktreeAdmissionBlockedError, R>;
+
+  readonly recordPreparedWorktree: (workspacePath: string) => Effect.Effect<void>;
 
   readonly withRemovalReservation: <A, E, R>(
     target: WorkspaceIdentityEvidence,
@@ -84,6 +90,9 @@ export const WorktreeRemovalLeaseLive = Layer.effect(
     const hostPlatform = yield* HostProcessPlatform;
     const gate = yield* Semaphore.make(1);
     const reservations = yield* Ref.make<ReadonlyArray<WorkspaceIdentityEvidence>>([]);
+    const preparedWorktrees = yield* Ref.make<ReadonlyMap<string, WorkspaceIdentityEvidence>>(
+      new Map(),
+    );
 
     const isSameOrInside = (target: WorkspaceIdentityEvidence, candidatePath: string) =>
       isWorkspaceSameOrInside({ target, candidatePath }).pipe(
@@ -98,16 +107,64 @@ export const WorktreeRemovalLeaseLive = Layer.effect(
         Effect.provideService(Path.Path, path),
       );
 
+    const recordPreparedWorktree: WorktreeRemovalLeaseShape["recordPreparedWorktree"] = (
+      workspacePath,
+    ) =>
+      readIdentity(workspacePath).pipe(
+        Effect.flatMap((identity) =>
+          identity.exists && identity.device !== null && identity.inode !== null
+            ? Ref.update(preparedWorktrees, (current) => {
+                const next = new Map(current);
+                next.set(workspacePath, identity);
+                next.set(identity.physicalPath, identity);
+                return next.size > 512 ? new Map([...next.entries()].slice(next.size - 512)) : next;
+              })
+            : Effect.void,
+        ),
+        Effect.orElseSucceed(() => undefined),
+      );
+
+    const checkPreparedWorktree = (workspacePath: string, commandType: string) =>
+      Effect.gen(function* () {
+        const current = yield* readIdentity(workspacePath).pipe(
+          Effect.mapError(
+            () =>
+              new WorktreeAdmissionBlockedError(
+                workspacePath,
+                commandType,
+                `Unable to verify the prepared worktree ${workspacePath}. Retry the attachment.`,
+              ),
+          ),
+        );
+        const prepared = yield* Ref.get(preparedWorktrees);
+        const expected = prepared.get(workspacePath) ?? prepared.get(current.physicalPath);
+        if (expected === undefined) {
+          return;
+        }
+        if (!current.exists || workspaceIdentitiesMatch(expected, current) !== "same") {
+          return yield* Effect.fail(
+            new WorktreeAdmissionBlockedError(
+              workspacePath,
+              commandType,
+              `The prepared worktree ${workspacePath} was removed or replaced before it was attached. Prepare it again.`,
+            ),
+          );
+        }
+      });
+
     const withAdmission: WorktreeRemovalLeaseShape["withAdmission"] = (
       commandType,
-      workspacePaths,
+      admission,
       effect,
     ) =>
       gate.withPermit(
         Effect.gen(function* () {
+          for (const preparedPath of admission.preparedWorktreePaths) {
+            yield* checkPreparedWorktree(preparedPath, commandType);
+          }
           const leased = yield* Ref.get(reservations);
           if (leased.length > 0) {
-            for (const workspacePath of workspacePaths) {
+            for (const workspacePath of admission.workspacePaths) {
               for (const reservation of leased) {
                 const inside = yield* isSameOrInside(reservation, workspacePath).pipe(
                   Effect.mapError(
@@ -192,6 +249,7 @@ export const WorktreeRemovalLeaseLive = Layer.effect(
 
     return {
       withAdmission,
+      recordPreparedWorktree,
       withRemovalReservation,
       withRemovalReservationForPath,
       hasReservations: Ref.get(reservations).pipe(Effect.map((leased) => leased.length > 0)),

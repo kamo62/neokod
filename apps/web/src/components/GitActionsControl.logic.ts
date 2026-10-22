@@ -88,6 +88,22 @@ export function isMergeCommitPending(gitStatus: VcsStatusResult | null): boolean
   return gitStatus?.operationInProgress === "merge" && (gitStatus.unmergedPaths?.length ?? 0) === 0;
 }
 
+/**
+ * The commit dialog may submit with no selected files only for a resolved
+ * merge whose working tree has no files at all. An explicit empty selection
+ * over existing files is invalid and must remain disabled.
+ */
+export function canSubmitCommitSelection(input: {
+  readonly fileCount: number;
+  readonly selectedFileCount: number;
+  readonly mergePending: boolean;
+}): boolean {
+  if (input.selectedFileCount > 0) {
+    return true;
+  }
+  return input.mergePending && input.fileCount === 0;
+}
+
 export function buildGitActionProgressStages(input: {
   action: GitStackedAction;
   hasCustomCommitMessage: boolean;

@@ -628,9 +628,10 @@ export const make = Effect.gen(function* () {
         args: [
           "pr",
           "view",
-          input.reference,
           "--json",
           "number,title,url,baseRefName,headRefName,state,mergedAt,isCrossRepository,headRepository,headRepositoryOwner",
+          "--",
+          input.reference,
         ],
       }).pipe(
         Effect.map((result) => result.stdout.trim()),
@@ -803,7 +804,7 @@ export const make = Effect.gen(function* () {
     checkoutPullRequest: (input) =>
       execute({
         cwd: input.cwd,
-        args: ["pr", "checkout", input.reference, ...(input.force ? ["--force"] : [])],
+        args: ["pr", "checkout", ...(input.force ? ["--force"] : []), "--", input.reference],
       }).pipe(Effect.asVoid),
   });
 });
