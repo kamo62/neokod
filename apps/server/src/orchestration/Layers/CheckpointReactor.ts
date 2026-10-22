@@ -1371,19 +1371,23 @@ const make = Effect.gen(function* () {
             const turns = yield* projectionTurnRepository.listByThreadId({
               threadId: shellThread.id,
             });
-            const pendingTurns = turns.filter(
-              (projectedTurn) => projectedTurn.turnId === null || projectedTurn.state === "pending",
+            const unsettledTurns = turns.filter(
+              (projectedTurn) =>
+                projectedTurn.turnId === null ||
+                projectedTurn.state === "pending" ||
+                projectedTurn.state === "running",
             );
-            if (pendingTurns.length > 0) {
-              const pendingOverlaps = yield* Effect.forEach(pendingTurns, (pendingTurn) => {
-                // A legacy pending row has no recorded workspace. Fail closed
-                // rather than assume it belongs to an unrelated folder.
-                if (pendingTurn.pendingWorkspacePath === null) {
+            if (unsettledTurns.length > 0) {
+              // The admitted workspace is independent of the thread's current
+              // or inherited folder. A legacy unsettled row has no recorded
+              // workspace, so it fails closed rather than guessing.
+              const admittedOverlaps = yield* Effect.forEach(unsettledTurns, (projectedTurn) => {
+                if (projectedTurn.admittedWorkspacePath === null) {
                   return Effect.succeed(true);
                 }
-                return workspacePathsOverlap(cwdIdentity, pendingTurn.pendingWorkspacePath);
+                return workspacePathsOverlap(cwdIdentity, projectedTurn.admittedWorkspacePath);
               }).pipe(Effect.map((results) => results.some(Boolean)));
-              if (pendingOverlaps) {
+              if (admittedOverlaps) {
                 busyThreads.add(shellThread.id);
               }
             }

@@ -1872,6 +1872,173 @@ describe("CheckpointReactor", () => {
     expect(listRecoveryRefs(harness.cwd)).toHaveLength(1);
   });
 
+  it("refuses a revert when an admitted turn starts in the shared folder during the busy check", async () => {
+    const admissionCwd = createGitRepository();
+    const movedCwd = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "neokod-handover-move-"));
+    tempDirs.push(admissionCwd, movedCwd);
+    const listingStarted = Promise.withResolvers<void>();
+    const listingRelease = Promise.withResolvers<void>();
+    let sessionListCount = 0;
+    const revertingSession: ProviderSession = {
+      provider: ProviderDriverKind.make("codex"),
+      status: "ready",
+      runtimeMode: "full-access",
+      threadId: ThreadId.make("thread-1"),
+      cwd: admissionCwd,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const listSessions: ProviderServiceShape["listSessions"] = () => {
+      sessionListCount += 1;
+      const sessions = [revertingSession];
+      if (sessionListCount === 2) {
+        return Effect.promise(async () => {
+          listingStarted.resolve();
+          await listingRelease.promise;
+          return sessions;
+        });
+      }
+      return Effect.succeed(sessions);
+    };
+
+    const harness = await createHarness({
+      repositoryCwd: admissionCwd,
+      secondThreadSharingWorktree: true,
+      providerOverrides: { listSessions },
+    });
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-handover-admission",
+          messageId: "message-handover-admission",
+        }),
+      ),
+    );
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-handover-move"),
+        threadId: ThreadId.make("thread-2"),
+        worktreePath: movedCwd,
+      }),
+    );
+
+    await revertToTurnOne(harness);
+    await listingStarted.promise;
+
+    const turnId = asTurnId("turn-handover-running");
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-handover-running-session"),
+        threadId: ThreadId.make("thread-2"),
+        session: {
+          threadId: ThreadId.make("thread-2"),
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: turnId,
+          lastError: null,
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+
+    const turns = await harness.runPromise(
+      harness.projectionTurnRepository.listByThreadId({ threadId: ThreadId.make("thread-2") }),
+    );
+    const runningTurn = turns.find((turn) => turn.turnId === turnId && turn.state === "running");
+    expect(runningTurn?.admittedWorkspacePath).toBe(admissionCwd);
+    expect(turns.some((turn) => turn.turnId === null && turn.state === "pending")).toBe(false);
+
+    listingRelease.resolve();
+    const outcomeEvents = await waitForRevertOutcome(harness.engine);
+    expect(outcomeEvents.some((event) => event.type === "thread.reverted")).toBe(false);
+
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+    expect(NodeFS.readFileSync(NodePath.join(admissionCwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(admissionCwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+  });
+
+  it("refuses a revert when an unsettled turn has no admitted workspace", async () => {
+    const harness = await createHarness({ secondThreadSharingWorktree: true });
+    const moveTarget = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-unknown-admission-"),
+    );
+    tempDirs.push(moveTarget);
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-unknown-admission-start",
+          messageId: "message-unknown-admission-start",
+        }),
+      ),
+    );
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-unknown-admission-move"),
+        threadId: ThreadId.make("thread-2"),
+        worktreePath: moveTarget,
+      }),
+    );
+    const turnId = asTurnId("turn-unknown-admission");
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-unknown-admission-running"),
+        threadId: ThreadId.make("thread-2"),
+        session: {
+          threadId: ThreadId.make("thread-2"),
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: turnId,
+          lastError: null,
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+
+    const turns = await harness.runPromise(
+      harness.projectionTurnRepository.listByThreadId({ threadId: ThreadId.make("thread-2") }),
+    );
+    const runningTurn = turns.find((turn) => turn.turnId === turnId);
+    expect(runningTurn).toBeDefined();
+    if (runningTurn === undefined || runningTurn.turnId === null) {
+      return;
+    }
+    await harness.runPromise(
+      harness.projectionTurnRepository.upsertByTurnId({
+        ...runningTurn,
+        turnId: runningTurn.turnId,
+        admittedWorkspacePath: null,
+      }),
+    );
+
+    await revertToTurnOne(harness);
+    const outcomeEvents = await waitForRevertOutcome(harness.engine);
+    expect(outcomeEvents.some((event) => event.type === "thread.reverted")).toBe(false);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+  });
+
   it("refuses a revert when a pending thread moved out of the shared folder", async () => {
     const harness = await createHarness({ secondThreadSharingWorktree: true });
     const moveTarget = NodeFS.mkdtempSync(
@@ -2382,7 +2549,7 @@ describe("CheckpointReactor", () => {
     await harness.runPromise(
       harness.projectionTurnRepository.replacePendingTurnStart({
         ...pending.value,
-        workspacePath: null,
+        admittedWorkspacePath: null,
       }),
     );
 

@@ -484,8 +484,8 @@ const make = Effect.gen(function* () {
             }),
         ),
       );
-    const pendingWorkspacePath = Option.isSome(pendingStart)
-      ? pendingStart.value.workspacePath
+    const pendingAdmittedWorkspacePath = Option.isSome(pendingStart)
+      ? pendingStart.value.admittedWorkspacePath
       : null;
 
     const desiredRuntimeMode = thread.runtimeMode;
@@ -595,7 +595,7 @@ const make = Effect.gen(function* () {
     // An unresolved admission owns the workspace decision. Every caller,
     // including runtime-mode changes, must not move or recreate the provider
     // session outside that recorded folder while the start is still pending.
-    if (Option.isSome(pendingStart) && pendingWorkspacePath === null) {
+    if (Option.isSome(pendingStart) && pendingAdmittedWorkspacePath === null) {
       if (activeSession !== undefined) {
         return activeSession.threadId;
       }
@@ -608,8 +608,8 @@ const make = Effect.gen(function* () {
     }
 
     const admittedWorkspacePath =
-      Option.isSome(pendingStart) && pendingWorkspacePath !== null
-        ? pendingWorkspacePath
+      Option.isSome(pendingStart) && pendingAdmittedWorkspacePath !== null
+        ? pendingAdmittedWorkspacePath
         : undefined;
     const project =
       admittedWorkspacePath === undefined && options?.workspacePath === undefined
@@ -1034,7 +1034,7 @@ const make = Effect.gen(function* () {
       });
       return;
     }
-    if (pendingAdmission.workspacePath === null) {
+    if (pendingAdmission.admittedWorkspacePath === null) {
       yield* appendProviderFailureActivity({
         threadId: event.payload.threadId,
         kind: "provider.turn.start.failed",
@@ -1047,7 +1047,7 @@ const make = Effect.gen(function* () {
       });
       return;
     }
-    const admissionWorkspacePath = pendingAdmission.workspacePath;
+    const admissionWorkspacePath = pendingAdmission.admittedWorkspacePath;
 
     const isFirstUserMessageTurn =
       thread.messages.filter((entry) => entry.role === "user").length === 1;

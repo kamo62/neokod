@@ -1126,7 +1126,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           yield* projectionTurnRepository.replacePendingTurnStart({
             threadId: event.payload.threadId,
             messageId: event.payload.messageId,
-            workspacePath,
+            admittedWorkspacePath: workspacePath,
             sourceProposedPlanThreadId: event.payload.sourceProposedPlan?.threadId ?? null,
             sourceProposedPlanId: event.payload.sourceProposedPlan?.planId ?? null,
             requestedAt: event.payload.createdAt,
@@ -1211,6 +1211,11 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
               pendingMessageId:
                 existingTurn.value.pendingMessageId ??
                 (Option.isSome(pendingTurnStart) ? pendingTurnStart.value.messageId : null),
+              admittedWorkspacePath:
+                existingTurn.value.admittedWorkspacePath ??
+                (Option.isSome(pendingTurnStart)
+                  ? pendingTurnStart.value.admittedWorkspacePath
+                  : null),
               sourceProposedPlanThreadId:
                 existingTurn.value.sourceProposedPlanThreadId ??
                 (Option.isSome(pendingTurnStart)
@@ -1238,6 +1243,9 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
               threadId: event.payload.threadId,
               pendingMessageId: Option.isSome(pendingTurnStart)
                 ? pendingTurnStart.value.messageId
+                : null,
+              admittedWorkspacePath: Option.isSome(pendingTurnStart)
+                ? pendingTurnStart.value.admittedWorkspacePath
                 : null,
               sourceProposedPlanThreadId: Option.isSome(pendingTurnStart)
                 ? pendingTurnStart.value.sourceProposedPlanThreadId
@@ -1317,6 +1325,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             turnId: event.payload.turnId,
             threadId: event.payload.threadId,
             pendingMessageId: null,
+            admittedWorkspacePath: null,
             sourceProposedPlanThreadId: null,
             sourceProposedPlanId: null,
             assistantMessageId: event.payload.messageId,
@@ -1354,6 +1363,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             turnId: event.payload.turnId,
             threadId: event.payload.threadId,
             pendingMessageId: null,
+            admittedWorkspacePath: null,
             sourceProposedPlanThreadId: null,
             sourceProposedPlanId: null,
             assistantMessageId: null,
@@ -1409,6 +1419,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             turnId: event.payload.turnId,
             threadId: event.payload.threadId,
             pendingMessageId: null,
+            admittedWorkspacePath: null,
             sourceProposedPlanThreadId: null,
             sourceProposedPlanId: null,
             assistantMessageId: event.payload.assistantMessageId,

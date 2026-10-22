@@ -149,9 +149,9 @@ const makeProviderSessionReconciler = Effect.gen(function* () {
     for (const pendingStart of pendingStarts) {
       const now = DateTime.formatIso(yield* DateTime.now);
       const detail =
-        pendingStart.workspacePath === null
+        pendingStart.admittedWorkspacePath === null
           ? "Neokod restarted before this turn start was confirmed. The provider may have started; its outcome is unknown. Review the workspace before starting another turn."
-          : `Neokod restarted before this turn start was confirmed in ${pendingStart.workspacePath}. The provider may have started there; its outcome is unknown. Review that folder before starting another turn.`;
+          : `Neokod restarted before this turn start was confirmed in ${pendingStart.admittedWorkspacePath}. The provider may have started there; its outcome is unknown. Review that folder before starting another turn.`;
 
       // This is deliberately an activity, not a turn completion. The start may
       // have reached the provider, so the outcome is unknown. The matching

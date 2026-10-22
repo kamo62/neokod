@@ -45,12 +45,12 @@ layer("043_ProjectionTurnsPendingWorkspace", (it) => {
 
       yield* runMigrations();
 
-      const rows = yield* sql<{ readonly pendingWorkspacePath: string | null }>`
-        SELECT pending_workspace_path AS "pendingWorkspacePath"
+      const rows = yield* sql<{ readonly admittedWorkspacePath: string | null }>`
+        SELECT admitted_workspace_path AS "admittedWorkspacePath"
         FROM projection_turns
         WHERE thread_id = 'thread-moved'
       `;
-      assert.deepStrictEqual(rows, [{ pendingWorkspacePath: null }]);
+      assert.deepStrictEqual(rows, [{ admittedWorkspacePath: null }]);
     }),
   );
 });
