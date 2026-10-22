@@ -1336,24 +1336,11 @@ const make = Effect.gen(function* () {
           // Fresh evidence after the reservation. A turn admitted before the
           // reservation is already projected as pending/running, so it is
           // refused here before capture.
-          const shell = yield* projectionSnapshotQuery.getShellSnapshot();
-          const archivedShell = yield* projectionSnapshotQuery.getArchivedShellSnapshot();
-          const shellProjects = [
-            ...new Map(
-              [...shell.projects, ...archivedShell.projects].map((project) => [
-                project.id,
-                project,
-              ]),
-            ).values(),
-          ];
-          // Archived threads can still own an admitted turn whose provider
-          // session is not visible yet. Archive state must not hide that
-          // evidence from the revert guard.
-          const shellThreads = [
-            ...new Map(
-              [...shell.threads, ...archivedShell.threads].map((thread) => [thread.id, thread]),
-            ).values(),
-          ];
+          // Read unresolved admissions independently of the active-sidebar
+          // shell filter. Archived or deleted threads can still own an
+          // admitted turn whose provider session is not visible yet, so the
+          // full command read model is the authoritative thread list here.
+          const commandReadModel = yield* projectionSnapshotQuery.getCommandReadModel();
           const cwdIdentity = yield* readWorkspaceIdentity(cwd);
           const busyThreads = new Set<ThreadId>();
 
@@ -1371,10 +1358,10 @@ const make = Effect.gen(function* () {
             busyThreads.add(thread.id);
           }
 
-          for (const shellThread of shellThreads) {
+          for (const shellThread of commandReadModel.threads) {
             const workspacePath = resolveThreadWorkspaceCwd({
               thread: shellThread,
-              projects: shellProjects,
+              projects: commandReadModel.projects,
             });
             const overlaps =
               workspacePath === undefined
