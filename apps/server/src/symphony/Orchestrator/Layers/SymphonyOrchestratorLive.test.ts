@@ -564,7 +564,10 @@ const seedMergeDetectionItem = (input: {
       unresolved: [],
       artefacts: [],
       pullRequest:
-        input.storedPullRequest ?? openPullRequest(42, `symphony/${input.workItemId}`),
+        input.storedPullRequest ??
+        // A dispatched item's PR branch is derived from its workspace key; keep
+        // the fixture consistent with that invariant.
+        openPullRequest(42, `symphony/${input.workspaceKey ?? input.workItemId}`),
       modelReview: null,
       overallAssessment: "ready_for_review",
       createdAt: "2026-08-05T00:00:00.000Z",
@@ -1001,7 +1004,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       expect(row?.action).toBe("user_input");
       expect(row?.reason).toBe("Which branch should I target?");
       expect(row?.runAttemptId).toBe(runAttemptId);
-      expect(Schema.encodeUnknownSync(RunDetailsSchema)(details)).toBeDefined();
+      expect(yield* Schema.encodeUnknownEffect(RunDetailsSchema)(details)).toBeDefined();
     }),
   );
 
@@ -1082,13 +1085,13 @@ layer("SymphonyOrchestrator Observe", (it) => {
       expect(answeredRow?.state).toBe("approved");
       expect(answeredRow?.reason).toBe("Which branch should I target?");
       expect(answeredRow?.decidedAt).not.toBeNull();
-      expect(
-        details?.approvalRequests.find((request) => request.id === expired.id)?.state,
-      ).toBe("expired");
+      expect(details?.approvalRequests.find((request) => request.id === expired.id)?.state).toBe(
+        "expired",
+      );
       expect(
         details?.approvalRequests.find((request) => request.id === interrupted.id)?.state,
       ).toBe("interrupted");
-      expect(Schema.encodeUnknownSync(RunDetailsSchema)(details)).toBeDefined();
+      expect(yield* Schema.encodeUnknownEffect(RunDetailsSchema)(details)).toBeDefined();
     }),
   );
 
@@ -1147,7 +1150,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       expect(row?.kind).toBe("approval");
       expect(row?.action).toBe("command_execution");
       expect(row?.providerAction).toBe("commandExecution");
-      expect(Schema.encodeUnknownSync(RunDetailsSchema)(details)).toBeDefined();
+      expect(yield* Schema.encodeUnknownEffect(RunDetailsSchema)(details)).toBeDefined();
     }),
   );
 
@@ -3241,10 +3244,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       // snapshot and observe the close; the event log must still show one
       // observation.
       yield* Effect.all(
-        [
-          orchestrator.refreshPullRequest("merge-14"),
-          orchestrator.refreshPullRequest("merge-14"),
-        ],
+        [orchestrator.refreshPullRequest("merge-14"), orchestrator.refreshPullRequest("merge-14")],
         { concurrency: "unbounded" },
       );
 

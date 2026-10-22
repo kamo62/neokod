@@ -115,9 +115,7 @@ layer("RunEventRepository", (it) => {
 
       // Two writers observing the same pull request closed: only one adds
       // history, regardless of which runs first.
-      expect(yield* repo.appendOnce(attemptId, "pull_request_closed_unmerged", payload)).toBe(
-        true,
-      );
+      expect(yield* repo.appendOnce(attemptId, "pull_request_closed_unmerged", payload)).toBe(true);
       expect(yield* repo.appendOnce(attemptId, "pull_request_closed_unmerged", payload)).toBe(
         false,
       );

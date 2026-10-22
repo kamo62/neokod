@@ -31,6 +31,5 @@ export const normaliseApprovalRequestAction = (raw: string): ApprovalRequestActi
 };
 
 /** Questions are answered; everything else is a gated action. */
-export const approvalRequestKindForAction = (
-  action: ApprovalRequestAction,
-): ApprovalRequestKind => (action === "user_input" ? "user_input" : "approval");
+export const approvalRequestKindForAction = (action: ApprovalRequestAction): ApprovalRequestKind =>
+  action === "user_input" ? "user_input" : "approval";

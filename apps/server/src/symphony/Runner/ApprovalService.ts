@@ -96,10 +96,7 @@ export interface ApprovalServiceShape {
    * live entry is removed first, so a late approve/answer fails instead of
    * reporting a decision the agent never saw.
    */
-  readonly expireRequest: (
-    runAttemptId: RunAttemptId,
-    requestId: string,
-  ) => Effect.Effect<void>;
+  readonly expireRequest: (runAttemptId: RunAttemptId, requestId: string) => Effect.Effect<void>;
 }
 
 export class ApprovalService extends Context.Service<ApprovalService, ApprovalServiceShape>()(

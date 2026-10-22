@@ -624,7 +624,12 @@ export const ApprovalRequestSchema = Schema.Struct({
   policySource: Schema.optional(Schema.String),
   createdAt: IsoDateTime,
   decidedAt: Schema.NullOr(IsoDateTime),
-  decision: Schema.optional(Schema.Literals(["approved", "rejected", "expired"])),
+  /**
+   * How the request closed. The durable column records the same value as
+   * `state` on every close, including `interrupted` (the run died while the
+   * request was pending), so an interrupted row stays decodable.
+   */
+  decision: Schema.optional(Schema.Literals(["approved", "rejected", "expired", "interrupted"])),
 });
 export type ApprovalRequest = typeof ApprovalRequestSchema.Type;
 

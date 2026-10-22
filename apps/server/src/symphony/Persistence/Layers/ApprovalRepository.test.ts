@@ -5,6 +5,7 @@ import {
   WorkItemId,
 } from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
+import { Schema } from "effect";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
@@ -159,7 +160,7 @@ layer("ApprovalRepository request vocabulary", (it) => {
       `;
 
       const failure = yield* Effect.flip(repository.getById("sym-malformed-1"));
-      if (!(failure instanceof SymphonyPersistenceDecodeError)) {
+      if (!Schema.is(SymphonyPersistenceDecodeError)(failure)) {
         throw new Error(`expected a named decode error, got ${String(failure)}`);
       }
       expect(failure.operation).toBe("ApprovalRepository.rowToApproval");
@@ -213,6 +214,9 @@ layer("ApprovalRepository request vocabulary", (it) => {
       expect(answeredRow?.decidedAt).not.toBeNull();
       expect(rows.find((row) => row.id === expired.id)?.state).toBe("expired");
       expect(rows.find((row) => row.id === interrupted.id)?.state).toBe("interrupted");
+      // The row's decision mirrors its state on every close; an interruption is
+      // recorded too, so the contract must decode it.
+      expect(rows.find((row) => row.id === interrupted.id)?.decision).toBe("interrupted");
       expect(rows.find((row) => row.id === interrupted.id)?.action).toBe("command_execution");
     }),
   );

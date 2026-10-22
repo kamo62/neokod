@@ -214,10 +214,7 @@ export const makeLiveRequests = Effect.gen(function* () {
       if (entry.kind !== "user_input") {
         return yield* Effect.fail(new LiveRequestNotFoundError(requestId, String(runAttemptId)));
       }
-      const answered = yield* Deferred.succeed(
-        entry.deferred as Deferred.Deferred<string>,
-        text,
-      );
+      const answered = yield* Deferred.succeed(entry.deferred as Deferred.Deferred<string>, text);
       yield* removeKey(keyOf(runAttemptId, requestId));
       if (!answered) {
         return yield* Effect.fail(new LiveRequestNotFoundError(requestId, String(runAttemptId)));

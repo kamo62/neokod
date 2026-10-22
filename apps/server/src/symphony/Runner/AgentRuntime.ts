@@ -375,10 +375,7 @@ const userInputQuestionText = (params: Record<string, unknown>): string => {
 };
 
 /** Compose the durable/prompt text for a user-input request. */
-export const userInputRequestText = (
-  params: Record<string, unknown>,
-  method: string,
-): string => {
+export const userInputRequestText = (params: Record<string, unknown>, method: string): string => {
   const text = userInputQuestionText(params);
   return text.length > 0 ? text : `The agent needs your input for ${method}.`;
 };
@@ -494,7 +491,10 @@ const handleRequest = (
       yield* client.raw
         .respond(
           request.id,
-          toCodexUserInputResponse(params.questions, Option.getOrElse(answer, () => "")),
+          toCodexUserInputResponse(
+            params.questions,
+            Option.getOrElse(answer, () => ""),
+          ),
         )
         .pipe(Effect.catch(() => Effect.void));
     } else {

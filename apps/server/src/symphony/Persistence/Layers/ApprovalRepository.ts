@@ -1,9 +1,5 @@
 import type { ApprovalRequest, ApprovalRequestKind } from "@neokod/contracts";
-import {
-  ApprovalRequestSchema,
-  RunAttemptId,
-  SymphonyApprovalRequestId,
-} from "@neokod/contracts";
+import { ApprovalRequestSchema, RunAttemptId, SymphonyApprovalRequestId } from "@neokod/contracts";
 import { Schema } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
@@ -75,8 +71,7 @@ const rowToApproval = (
     const action = normaliseApprovalRequestAction(row.action);
     const kind = payloadKind(payload) ?? approvalRequestKindForAction(action);
     const storedProviderAction = payloadString(payload, "providerAction");
-    const providerAction =
-      storedProviderAction ?? (action === row.action ? undefined : row.action);
+    const providerAction = storedProviderAction ?? (action === row.action ? undefined : row.action);
     const command = payloadString(payload, "command");
     const workingDirectory = payloadString(payload, "workingDirectory");
     const reason = payloadString(payload, "reason");
