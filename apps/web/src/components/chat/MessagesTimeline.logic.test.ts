@@ -23,16 +23,14 @@ import {
 } from "./MessagesTimeline.logic";
 
 /**
- * Completion evidence as ChatView supplies it: the client settlement record
- * first, then the latest turn's own completion when the record omits it.
+ * Completion evidence as ChatView supplies it: the server's per-turn settlement
+ * record only. A present `null` means the server recorded an unknown
+ * completion.
  */
 function turnCompletionMap(thread: OrchestrationThread): Map<TurnId, string | null> {
   const map = new Map<TurnId, string | null>();
   for (const turnId of Object.keys(thread.settledTurnCompletions ?? {}) as TurnId[]) {
     map.set(turnId, thread.settledTurnCompletions?.[turnId] ?? null);
-  }
-  if (thread.latestTurn !== null && !map.has(thread.latestTurn.turnId)) {
-    map.set(thread.latestTurn.turnId, thread.latestTurn.completedAt);
   }
   return map;
 }
@@ -1076,6 +1074,7 @@ describe("deriveMessagesTimelineRows", () => {
           },
           interruptedTurnId: turnA,
           latestTurnCompletedAt: scenario.completedAt,
+          settledTurnCompletions: { [turnA]: scenario.completedAt },
         },
       });
       expect(recovered.kind).toBe("updated");
@@ -1099,15 +1098,13 @@ describe("deriveMessagesTimelineRows", () => {
             lastError: null,
             updatedAt: "2026-01-01T00:03:00.000Z",
           },
+          settledTurnCompletions: { [turnA]: scenario.completedAt },
         },
       });
       expect(next.kind).toBe("updated");
       if (next.kind !== "updated") continue;
 
       expect(next.thread.settledTurnCompletions?.[turnA]).toBe(scenario.completedAt);
-      if (scenario.completedAt !== null) {
-        expect(next.thread.checkpoints[0]?.completedAt).toBe(scenario.completedAt);
-      }
 
       const rows = deriveMessagesTimelineRows({
         timelineEntries: [
@@ -1265,9 +1262,9 @@ describe("deriveMessagesTimelineRows", () => {
       const loaded: OrchestrationThread = {
         ...snapshotThread,
         latestTurn: { ...snapshotThread.latestTurn!, completedAt: scenario.completedAt },
+        settledTurnCompletions: { [turnA]: scenario.completedAt },
       };
-      // Before the next turn starts, the snapshot's latest turn is the only
-      // completion evidence available.
+      // The snapshot's server record supplies the interrupted turn's duration.
       expect(foldLabel(loaded, null)).toMatch(/^You stopped/);
 
       const next = applyThreadDetailEvent(loaded, {
@@ -1288,6 +1285,7 @@ describe("deriveMessagesTimelineRows", () => {
             lastError: null,
             updatedAt: "2026-01-01T00:03:00.000Z",
           },
+          settledTurnCompletions: { [turnA]: scenario.completedAt },
         },
       });
       expect(next.kind).toBe("updated");
@@ -1295,8 +1293,8 @@ describe("deriveMessagesTimelineRows", () => {
 
       expect(foldLabel(next.thread, turnB)).toBe(scenario.settled);
 
-      // A fresh snapshot taken after the next turn started no longer names the
-      // recovered turn: the client record must survive the replacement.
+      // A fresh snapshot taken after the next turn started still reports the
+      // settled turn, so the record survives the replacement.
       const refreshedSnapshot: OrchestrationThread = {
         ...snapshotThread,
         latestTurn: {
@@ -1307,6 +1305,7 @@ describe("deriveMessagesTimelineRows", () => {
           completedAt: null,
           assistantMessageId: null,
         },
+        settledTurnCompletions: { [turnA]: scenario.completedAt },
         session: {
           threadId: snapshotThread.id,
           status: "running",
@@ -1477,6 +1476,7 @@ describe("deriveMessagesTimelineRows", () => {
           lastError: null,
           updatedAt: completedAt,
         },
+        settledTurnCompletions: { [turnId]: completedAt },
       },
     });
     expect(settled.kind).toBe("updated");
@@ -1610,6 +1610,7 @@ describe("deriveMessagesTimelineRows", () => {
           lastError: null,
           updatedAt: supersededAt,
         },
+        settledTurnCompletions: { [turnId]: supersededAt },
       },
     });
     expect(next.kind).toBe("updated");

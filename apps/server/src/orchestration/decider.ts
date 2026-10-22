@@ -3,6 +3,8 @@ import {
   type OrchestrationCommand,
   type OrchestrationEvent,
   type OrchestrationReadModel,
+  type OrchestrationThread,
+  type TurnId,
 } from "@neokod/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Crypto from "effect/Crypto";
@@ -54,6 +56,41 @@ function withEventBase(
 }
 
 type PlannedOrchestrationEvent = Omit<OrchestrationEvent, "sequence">;
+
+/**
+ * Server-recorded settlement for a `thread.session.set` update.
+ *
+ * The turn projection closes still-running turns when a session update leaves
+ * the running status, and supersedes them when a new turn starts. The decision
+ * engine mirrors that rule so the appended event carries the same per-turn
+ * completion the projection persists; clients never infer the timestamp.
+ */
+function sessionSettlementCompletions(
+  command: Extract<OrchestrationCommand, { type: "thread.session.set" }>,
+  thread: OrchestrationThread,
+): Record<TurnId, string | null> | undefined {
+  const runningTurnId = thread.latestTurn?.state === "running" ? thread.latestTurn.turnId : null;
+  if (runningTurnId === null) {
+    return undefined;
+  }
+  const status = command.session.status;
+  if (status !== "running" && status !== "starting") {
+    return {
+      [runningTurnId]:
+        command.latestTurnCompletedAt === undefined
+          ? command.session.updatedAt
+          : command.latestTurnCompletedAt,
+    };
+  }
+  if (
+    status === "running" &&
+    command.session.activeTurnId !== null &&
+    command.session.activeTurnId !== runningTurnId
+  ) {
+    return { [runningTurnId]: command.session.updatedAt };
+  }
+  return undefined;
+}
 
 type DecideOrchestrationCommandResult =
   | PlannedOrchestrationEvent
@@ -587,11 +624,12 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
     }
 
     case "thread.session.set": {
-      yield* requireThread({
+      const thread = yield* requireThread({
         readModel,
         command,
         threadId: command.threadId,
       });
+      const settledTurnCompletions = sessionSettlementCompletions(command, thread);
       return {
         ...(yield* withEventBase({
           aggregateKind: "thread",
@@ -613,6 +651,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           ...(command.latestTurnCompletedAt === undefined
             ? {}
             : { latestTurnCompletedAt: command.latestTurnCompletedAt }),
+          ...(settledTurnCompletions === undefined ? {} : { settledTurnCompletions }),
         },
       };
     }

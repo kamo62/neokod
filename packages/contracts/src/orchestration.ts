@@ -463,12 +463,12 @@ export const OrchestrationThread = Schema.Struct({
   goalStatus: Schema.optional(Schema.Literals(["active", "done"])),
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   /**
-   * Authoritative settlement timing per settled turn. A present key with
-   * `null` means the turn's completion is explicitly unknown. Server snapshots
-   * carry at most the latest turn's completion, so clients seed this record
-   * from that evidence and retain it when later turns start or a snapshot
-   * replaces the thread. Settlement is write-once: the first authoritative
-   * settlement of a turn is never replaced by a later observation.
+   * Server-recorded settlement timing per settled turn. A present key with
+   * `null` means the turn's completion is explicitly unknown; a turn absent
+   * from the record has no settlement evidence. The server owns this evidence:
+   * snapshots carry the durable turn projection and session settlement events
+   * carry the same values, so clients store them verbatim and never infer
+   * completion from requests or session status.
    */
   settledTurnCompletions: Schema.optional(Schema.Record(TurnId, Schema.NullOr(IsoDateTime))),
   createdAt: IsoDateTime,
@@ -1156,6 +1156,12 @@ export const ThreadSessionSetPayload = Schema.Struct({
   interruptedTurnId: Schema.optional(TurnId),
   // Omitted keeps the legacy session-time default; explicit null is unknown.
   latestTurnCompletedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
+  /**
+   * Server-recorded settlement for every turn this session update closed.
+   * Clients store these values verbatim; a turn absent from the record is
+   * unknown, and a present `null` is an explicit unknown completion.
+   */
+  settledTurnCompletions: Schema.optional(Schema.Record(TurnId, Schema.NullOr(IsoDateTime))),
 });
 
 export const ThreadProposedPlanUpsertedPayload = Schema.Struct({
