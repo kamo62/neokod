@@ -24,7 +24,7 @@ const PROJECT_ID = SymphonyProjectId.make("symphony-project-test");
 const makeWorkItem = (
   id: string,
   trackerIssueId: string,
-  lifecycle: WorkLifecycle = "eligible",
+  lifecycle: WorkLifecycle = "queued",
   projectId: SymphonyProjectId | undefined = PROJECT_ID,
 ): Effect.Effect<WorkItem> =>
   Effect.gen(function* () {
@@ -48,7 +48,7 @@ const makeWorkItem = (
     } satisfies WorkItem;
   });
 
-const seed = (id: string, trackerIssueId: string, lifecycle: WorkLifecycle = "eligible") =>
+const seed = (id: string, trackerIssueId: string, lifecycle: WorkLifecycle = "queued") =>
   Effect.gen(function* () {
     const repo = yield* WorkItemRepository;
     const item = yield* makeWorkItem(id, trackerIssueId, lifecycle);
@@ -57,7 +57,7 @@ const seed = (id: string, trackerIssueId: string, lifecycle: WorkLifecycle = "el
   });
 
 layer("WorkItemRepository claim authority", (it) => {
-  it.effect("exactly one claim succeeds for a shared eligible row", () =>
+  it.effect("exactly one claim succeeds for a shared queued row", () =>
     Effect.gen(function* () {
       const repo = yield* WorkItemRepository;
       const id = yield* seed("workitem-claim-1", "42");
@@ -167,7 +167,7 @@ layer("WorkItemRepository claim authority", (it) => {
   it.effect("a transition without from is bounded by the legality table", () =>
     Effect.gen(function* () {
       const repo = yield* WorkItemRepository;
-      // eligible -> running is not a legal default source pair.
+      // queued -> running is not a legal default source pair.
       const illegal = yield* repo.transition(WorkItemId.make("workitem-claim-3"), "running");
       expect(illegal).toBe(false);
       const row = yield* repo.getById(WorkItemId.make("workitem-claim-3"));
@@ -196,6 +196,19 @@ layer("WorkItemRepository claim authority", (it) => {
       const id = yield* seed("workitem-claim-4", "45", "completed");
       const result = yield* Effect.result(repo.claim(id, "owner-a"));
       expect(result._tag).toBe("Failure");
+    }),
+  );
+
+  it.effect("an ineligible item cannot be claimed", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const id = yield* seed("workitem-claim-ineligible", "48", "ineligible");
+      const result = yield* Effect.result(repo.claim(id, "owner-a"));
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure).toBeInstanceOf(SymphonyClaimLost);
+      }
+      expect((yield* repo.getById(id))?.lifecycle).toBe("ineligible");
     }),
   );
 
@@ -230,12 +243,7 @@ layer("WorkItemRepository claim authority", (it) => {
       const repo = yield* WorkItemRepository;
       const otherProjectId = SymphonyProjectId.make("symphony-project-other");
       const first = yield* makeWorkItem("workitem-project-a", "shared");
-      const second = yield* makeWorkItem(
-        "workitem-project-b",
-        "shared",
-        "eligible",
-        otherProjectId,
-      );
+      const second = yield* makeWorkItem("workitem-project-b", "shared", "queued", otherProjectId);
       yield* repo.upsert(first);
       yield* repo.upsert(second);
 

@@ -205,7 +205,7 @@ export type WorkSource = typeof WorkSourceSchema.Type;
 
 export const WorkLifecycleSchema = Schema.Literals([
   "draft",
-  "eligible",
+  "ineligible",
   "queued",
   "preparing",
   "running",
@@ -982,6 +982,8 @@ export const SymphonyBoardCardSchema = Schema.Struct({
   outcome: Schema.NullOr(Schema.Literals(["completed", "cancelled", "failed"])),
   priority: Schema.optional(Schema.Int),
   issueUrl: Schema.optional(Schema.String),
+  eligibilityReasons: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  latestRunAttemptId: Schema.optional(RunAttemptId),
   updatedAt: IsoDateTime,
 });
 export type SymphonyBoardCard = typeof SymphonyBoardCardSchema.Type;

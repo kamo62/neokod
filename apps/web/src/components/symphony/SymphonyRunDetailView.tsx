@@ -1,4 +1,5 @@
-import { ActivityIcon, RefreshCwIcon, SquareIcon } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { ActivityIcon, ArrowLeftIcon, RefreshCwIcon, SquareIcon } from "lucide-react";
 
 import { RunAttemptId, type EvidenceBundle, type RunDetails } from "@neokod/contracts";
 import { usePrimaryEnvironmentId } from "../../state/environments";
@@ -14,15 +15,7 @@ import { PullRequestPanel } from "./PullRequestPanel";
 import { SymphonyApprovalActions } from "./SymphonyApprovalActions";
 import { SymphonyEmptyState } from "./SymphonyEmptyState";
 import { approvalRequestMode, attentionMode } from "./attention.logic";
-
-const RUNNING_STATUSES = new Set([
-  "preparing_workspace",
-  "initializing_session",
-  "launching_agent",
-  "building_prompt",
-  "streaming_turn",
-  "finishing",
-]);
+import { ACTIVE_RUN_STATUSES } from "./symphonyRuns.logic";
 
 function Timeline({ details }: { readonly details: RunDetails }) {
   return (
@@ -159,12 +152,31 @@ export function SymphonyRunDetailView({ runId }: { readonly runId: string }) {
       ? []
       : details.approvalRequests.filter((request) => request.state !== "pending");
 
-  const active = details !== null && RUNNING_STATUSES.has(details.runAttempt.status);
+  const active = details !== null && ACTIVE_RUN_STATUSES.has(details.runAttempt.status);
 
   return (
     <div className="flex flex-1 flex-col">
       <div className="flex items-center justify-between px-6 pb-2 pt-6 sm:px-8">
         <div className="space-y-0.5">
+          {details?.workItem.projectId === undefined ? (
+            <Link
+              to="/symphony"
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground underline"
+            >
+              <ArrowLeftIcon className="size-3.5" />
+              Projects
+            </Link>
+          ) : (
+            <Link
+              to="/symphony/projects/$projectId"
+              params={{ projectId: details.workItem.projectId }}
+              search={{ tab: "runs" }}
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground underline"
+            >
+              <ArrowLeftIcon className="size-3.5" />
+              Runs
+            </Link>
+          )}
           <h1 className="text-[15px] font-semibold tracking-[-0.01em] text-foreground">
             Run {runId}
           </h1>

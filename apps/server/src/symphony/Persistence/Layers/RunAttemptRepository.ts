@@ -1,5 +1,5 @@
 import type { RunAttempt, RunAttemptStatus } from "@neokod/contracts";
-import { RunAttemptId, RunAttemptSchema, WorkItemId } from "@neokod/contracts";
+import { RunAttemptId, RunAttemptSchema, SymphonyProjectId, WorkItemId } from "@neokod/contracts";
 import { Schema } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
@@ -187,6 +187,27 @@ const makeRepository = Effect.gen(function* () {
       Effect.map(Option.match({ onNone: () => null, onSome: rowToAttempt })),
     );
 
+  const latestIdsForProject: RunAttemptRepositoryShape["latestIdsForProject"] = (projectId) =>
+    sql<{ readonly workItemId: string; readonly runAttemptId: string }>`
+      SELECT attempt.work_item_id AS "workItemId", attempt.id AS "runAttemptId"
+      FROM symphony_run_attempts AS attempt
+      JOIN symphony_work_items AS item ON item.id = attempt.work_item_id
+      WHERE item.project_id = ${projectId}
+        AND attempt.attempt_number = (
+          SELECT MAX(newest.attempt_number)
+          FROM symphony_run_attempts AS newest
+          WHERE newest.work_item_id = attempt.work_item_id
+        )
+    `.pipe(
+      Effect.mapError(toSqlError("RunAttemptRepository.latestIdsForProject")),
+      Effect.map((rows) =>
+        rows.map((row) => ({
+          workItemId: WorkItemId.make(row.workItemId),
+          runAttemptId: RunAttemptId.make(row.runAttemptId),
+        })),
+      ),
+    );
+
   const listRecent: RunAttemptRepositoryShape["listRecent"] = (options) =>
     sql<Schema.Schema.Type<typeof RunAttemptRowSchema>>`
       SELECT ${cols}
@@ -278,6 +299,7 @@ const makeRepository = Effect.gen(function* () {
     getById,
     listByWorkItem,
     latestForWorkItem,
+    latestIdsForProject,
     listRecent,
     updateStatus,
   } satisfies RunAttemptRepositoryShape;

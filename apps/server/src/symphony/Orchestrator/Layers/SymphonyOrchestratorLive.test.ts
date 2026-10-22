@@ -673,6 +673,89 @@ layer("SymphonyOrchestrator Observe", (it) => {
     }),
   );
 
+  it.effect("getProjectBoard cards link to the latest run attempt", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const runAttempts = yield* RunAttemptRepository;
+      const sql = yield* SqlClient.SqlClient;
+      const projectId = SymphonyProjectId.make("project-board-run-link");
+      yield* orchestrator.createProject({
+        id: projectId,
+        codeProjectId: ProjectId.make("code-project-board-run-link"),
+        title: "Board run link",
+        repositoryPath: "/repo/project-board-run-link",
+        configuration: makeProjectConfiguration(),
+        now: "2026-08-10T00:00:00.000Z",
+      });
+      const workItemId = WorkItemId.make("board-run-link-row");
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId,
+        objective: "Board run link row",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-10T00:00:00.000Z",
+        updatedAt: "2026-08-10T00:00:00.000Z",
+      });
+      const firstAttemptId = RunAttemptId.make("board-run-link-attempt-1");
+      const secondAttemptId = RunAttemptId.make("board-run-link-attempt-2");
+      yield* runAttempts.create({
+        id: firstAttemptId,
+        workItemId,
+        attemptNumber: 1,
+        workspacePath: "/ws/run-link-1",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "succeeded",
+        startedAt: "2026-08-10T00:00:00.000Z",
+        finishedAt: "2026-08-10T00:05:00.000Z",
+        error: null,
+      });
+      yield* runAttempts.create({
+        id: secondAttemptId,
+        workItemId,
+        attemptNumber: 2,
+        workspacePath: "/ws/run-link-2",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "streaming_turn",
+        startedAt: "2026-08-11T00:00:00.000Z",
+        finishedAt: null,
+        error: null,
+      });
+
+      const board = yield* orchestrator.getProjectBoard(projectId).pipe(
+        Effect.ensuring(
+          Effect.gen(function* () {
+            yield* sql`DELETE FROM symphony_run_attempts WHERE work_item_id = ${workItemId}`.pipe(
+              Effect.ignore,
+            );
+            yield* sql`DELETE FROM symphony_work_items WHERE project_id = ${projectId}`.pipe(
+              Effect.ignore,
+            );
+            yield* sql`DELETE FROM symphony_workflows WHERE id = ${projectId}`.pipe(Effect.ignore);
+            yield* sql`DELETE FROM symphony_projects WHERE id = ${projectId}`.pipe(Effect.ignore);
+          }),
+        ),
+      );
+
+      const card = board?.columns
+        .flatMap((column) => column.cards)
+        .find((candidate) => candidate.workItemId === workItemId);
+      expect(card?.latestRunAttemptId).toBe(secondAttemptId);
+    }),
+  );
+
   it.effect("getProjectBoard fails with a typed decode error that names the corrupt row", () =>
     Effect.gen(function* () {
       const orchestrator = yield* SymphonyOrchestrator;
@@ -867,7 +950,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       const byTitle = new Map(queue.map((item) => [item.title, item]));
       expect(byTitle.get("Issue 1")?.lifecycle).toBe("queued");
       expect(byTitle.get("Issue 1")?.eligible).toBe(true);
-      expect(byTitle.get("Issue 3")?.lifecycle).toBe("eligible");
+      expect(byTitle.get("Issue 3")?.lifecycle).toBe("ineligible");
       expect(byTitle.get("Issue 3")?.eligible).toBe(false);
       expect(
         byTitle.get("Issue 3")?.ineligibilityReasons.some((r) => r.startsWith("missing_label")),
@@ -2112,7 +2195,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* orchestrator.dispatchWorkItem(workItemId);
       expect(dispatchedIds).not.toContain("stale-closed-1");
       const after = yield* workItems.getById(workItemId);
-      expect(after?.lifecycle).toBe("eligible");
+      expect(after?.lifecycle).toBe("ineligible");
       expect(after?.eligibilityReasons.some((r) => r.startsWith("state_terminal:"))).toBe(true);
     }),
   );
@@ -2216,7 +2299,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* orchestrator.dispatchWorkItem(workItemId);
       expect(dispatchedIds).not.toContain("stale-unlabelled-1");
       const after = yield* workItems.getById(workItemId);
-      expect(after?.lifecycle).toBe("eligible");
+      expect(after?.lifecycle).toBe("ineligible");
       expect(after?.eligibilityReasons.some((r) => r.includes("agent-ready"))).toBe(true);
     }),
   );
@@ -2278,6 +2361,78 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* orchestrator.dispatchWorkItem(workItemId);
       yield* awaitDispatched("stale-review-1");
       expect(dispatchedIds).toContain("stale-review-1");
+    }),
+  );
+
+  it.effect("a refused dispatch leaves a changes_requested item where it was", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-run-again-1", "/repo/run-again-1", { autonomy: "execute" });
+      const workItems = yield* WorkItemRepository;
+      const workItemId = WorkItemId.make("run-again-1");
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId: SymphonyProjectId.make("run-again-project-1"),
+        objective: "Run again",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "1",
+        workflowId: WorkflowId.make("wf-run-again-1"),
+        lifecycle: "changes_requested",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      yield* orchestrator.setWorkflowPaused("wf-run-again-1", true);
+
+      const refused = yield* orchestrator.dispatchWorkItem("run-again-1");
+      expect(refused).toEqual({ status: "refused", reason: "paused", detail: "workflow" });
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("changes_requested");
+
+      yield* orchestrator.setWorkflowPaused("wf-run-again-1", false);
+      dispatchedIds.length = 0;
+      const started = yield* orchestrator.dispatchWorkItem("run-again-1");
+      expect(started).toEqual({ status: "started" });
+      yield* TestClock.adjust("100 millis");
+      yield* Effect.yieldNow;
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("preparing");
+      expect(dispatchedIds).toContain("run-again-1");
+    }),
+  );
+
+  it.effect("dispatch requeues and claims a validation_failed item", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-run-again-2", "/repo/run-again-2", { autonomy: "execute" });
+      const workItems = yield* WorkItemRepository;
+      const workItemId = WorkItemId.make("run-again-2");
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId: SymphonyProjectId.make("run-again-project-2"),
+        objective: "Validation failed rerun",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "1",
+        workflowId: WorkflowId.make("wf-run-again-2"),
+        lifecycle: "validation_failed",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      dispatchedIds.length = 0;
+      const started = yield* orchestrator.dispatchWorkItem("run-again-2");
+      expect(started).toEqual({ status: "started" });
+      yield* TestClock.adjust("100 millis");
+      yield* Effect.yieldNow;
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("preparing");
+      expect(dispatchedIds).toContain("run-again-2");
     }),
   );
 

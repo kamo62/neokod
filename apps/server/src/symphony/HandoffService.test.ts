@@ -457,7 +457,7 @@ layer("HandoffService delegateFromThread", (it) => {
       expect(created?.description).toBe("Summary from the thread");
       expect(created?.acceptanceCriteria).toEqual(["Test passes"]);
       expect(created?.baseBranch).toBe("fix/flaky");
-      expect(created?.lifecycle).toBe("eligible");
+      expect(created?.lifecycle).toBe("queued");
       expect(created?.workflowId).toBe(WorkflowId.make("wf-handoff-1"));
       expect(created?.projectId).toBe(SymphonyProjectId.make("wf-handoff-1"));
     }),

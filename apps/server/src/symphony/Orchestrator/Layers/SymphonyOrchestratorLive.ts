@@ -97,7 +97,7 @@ const BOARD_TERMINAL_LIMIT = 100;
 
 const ALL_WORK_LIFECYCLES = [
   "draft",
-  "eligible",
+  "ineligible",
   "queued",
   "preparing",
   "running",
@@ -286,10 +286,17 @@ interface PreparedDispatch {
 type DispatchRefused = Extract<SymphonyDispatchResult, { readonly status: "refused" }>;
 
 const DISPATCHABLE_LIFECYCLES: ReadonlySet<WorkLifecycle> = new Set([
-  "eligible",
   "queued",
   "retry_scheduled",
   "changes_requested",
+  "validation_failed",
+]);
+
+// A second run of a review or validation follow-up is only queued after every
+// dispatch gate has passed, so a refused request leaves the item where it was.
+const REQUEUE_BEFORE_DISPATCH: ReadonlySet<WorkLifecycle> = new Set([
+  "changes_requested",
+  "validation_failed",
 ]);
 
 const refused = (reason: DispatchRefused["reason"], detail?: string): DispatchRefused => ({
@@ -1151,9 +1158,7 @@ const makeOrchestrator = Effect.gen(function* () {
         "Active workflow count could not be read.",
       );
       const queued = yield* readOverviewMetric(
-        workItems
-          .listByLifecycle(["eligible", "queued"])
-          .pipe(Effect.map((items) => items.filter((item) => item.lifecycle === "queued").length)),
+        workItems.listByLifecycle(["queued"]).pipe(Effect.map((items) => items.length)),
         "Queue count could not be read.",
       );
       const running = yield* readOverviewMetric(
@@ -1221,7 +1226,7 @@ const makeOrchestrator = Effect.gen(function* () {
     Effect.gen(function* () {
       const items = yield* workItems
         .listByLifecycle(
-          filter?.lifecycle === undefined ? ["eligible", "queued"] : [filter.lifecycle],
+          filter?.lifecycle === undefined ? ["ineligible", "queued"] : [filter.lifecycle],
           {
             ...(filter?.projectId === undefined ? {} : { projectId: filter.projectId }),
             limit: 1_000,
@@ -1480,12 +1485,16 @@ const makeOrchestrator = Effect.gen(function* () {
         activeLimit: BOARD_ACTIVE_LIMIT,
         terminalLimit: BOARD_TERMINAL_LIMIT,
       });
+      const latestRunAttempts = yield* runAttempts.latestIdsForProject(projectId);
       const sourceControl = yield* resolveProjectSourceControl(project.repositoryPath);
       return projectBoardFromWorkItems({
         project,
         sourceControl,
         workItems: result.items,
         lifecycleTotals: result.totalsByLifecycle,
+        latestRunAttemptIds: new Map(
+          latestRunAttempts.map((entry) => [String(entry.workItemId), entry.runAttemptId]),
+        ),
         generatedAt: yield* nowIso,
       });
     });
@@ -1639,14 +1648,6 @@ const makeOrchestrator = Effect.gen(function* () {
     if (!DISPATCHABLE_LIFECYCLES.has(item.lifecycle) && !explicitTerminalRetry) {
       return refused("not_dispatchable", item.lifecycle);
     }
-    if (item.lifecycle === "changes_requested") {
-      const requeued = yield* workItems
-        .transition(item.id, "queued", { from: ["changes_requested"] })
-        .pipe(Effect.catch(() => Effect.succeed(false)));
-      if (!requeued) {
-        return refused("not_dispatchable", "state changed");
-      }
-    }
     if (explicitTerminalRetry) {
       // A user chose to run this item again. Leaving a terminal lifecycle needs an explicit `from`.
       const requeued = yield* workItems
@@ -1746,13 +1747,13 @@ const makeOrchestrator = Effect.gen(function* () {
       });
       if (!fresh.eligible) {
         // Record why, so the queue explains it and the scheduler stops picking the item every tick.
-        // A queued item goes back to `eligible`; other lifecycles keep theirs (the upsert only moves
-        // draft, eligible and queued, see updateRow's CASE). Non-empty stored reasons make the
+        // A queued item goes to `ineligible`; other lifecycles keep theirs (the upsert only moves
+        // draft, ineligible and queued, see updateRow's CASE). Non-empty stored reasons make the
         // pre-check above refuse the item until a poll finds it eligible again.
         yield* workItems
           .upsert({
             ...item,
-            lifecycle: item.lifecycle === "queued" ? "eligible" : item.lifecycle,
+            lifecycle: item.lifecycle === "queued" ? "ineligible" : item.lifecycle,
             eligibilityReasons: [...fresh.reasons],
           })
           .pipe(Effect.catch(() => Effect.void));
@@ -1765,6 +1766,14 @@ const makeOrchestrator = Effect.gen(function* () {
     }
     const reviewFeedback = yield* buildReviewFeedback(item, config);
     const workflowInstructions = workflow.definition.promptTemplate.trim();
+    if (REQUEUE_BEFORE_DISPATCH.has(item.lifecycle)) {
+      const requeued = yield* workItems
+        .transition(item.id, "queued", { from: [item.lifecycle] })
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+      if (!requeued) {
+        return refused("not_dispatchable", "state changed");
+      }
+    }
     return {
       item,
       issue,

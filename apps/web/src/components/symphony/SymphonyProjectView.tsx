@@ -4,12 +4,13 @@ import {
   squashAtomCommandFailure,
 } from "@neokod/client-runtime/state/runtime";
 import type {
+  RunSummary,
   SymphonyBoardCard,
   SymphonyProject,
   SymphonyProjectBoard,
   SymphonyProjectId,
 } from "@neokod/contracts";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
   CheckCircle2Icon,
@@ -26,7 +27,6 @@ import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { primaryServerProvidersAtom } from "../../state/server";
 import { symphonyEnvironment } from "../../state/symphony";
-import { symphonyExtras } from "../../state/symphonyExtras";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -34,7 +34,9 @@ import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
 import { SymphonyAttentionList } from "./SymphonyAttentionList";
 import { SymphonyEmptyState } from "./SymphonyEmptyState";
+import { canRunNow, formatEligibilityReason, runActionLabel } from "./boardCard.logic";
 import { dispatchRefusalMessage } from "./dispatchRefusal.logic";
+import { runAttemptStatusBadgeVariant } from "./SymphonyRunningView.logic";
 import {
   availableSymphonyImplementationProviders,
   availableSymphonyReviewProviders,
@@ -52,16 +54,20 @@ import {
   startDraft,
 } from "./projectSettingsDraft";
 import { useProjectSettingsDraftStore } from "./projectSettingsDraftStore";
+import { filterRuns, type RunFilter } from "./symphonyRuns.logic";
+import { PROJECT_TABS, type ProjectTab } from "./symphonyProjectTabs";
 
-type ProjectTab = "board" | "runs" | "attention" | "history" | "settings";
+const TAB_LABELS: Readonly<Record<ProjectTab, string>> = {
+  board: "Board",
+  runs: "Runs",
+  attention: "Attention",
+  settings: "Settings",
+};
 
-const TABS: ReadonlyArray<{ value: ProjectTab; label: string }> = [
-  { value: "board", label: "Board" },
-  { value: "runs", label: "Runs" },
-  { value: "attention", label: "Attention" },
-  { value: "history", label: "History" },
-  { value: "settings", label: "Settings" },
-];
+const TABS: ReadonlyArray<{ value: ProjectTab; label: string }> = PROJECT_TABS.map((value) => ({
+  value,
+  label: TAB_LABELS[value],
+}));
 
 const trackerScope = (project: SymphonyProject): string => {
   const tracker = project.configuration?.tracker;
@@ -177,9 +183,7 @@ function BoardTab({
                         {card.lifecycle.replaceAll("_", " ")}
                       </Badge>
                     </div>
-                    {card.lifecycle === "eligible" ||
-                    card.lifecycle === "queued" ||
-                    card.lifecycle === "retry_scheduled" ? (
+                    {canRunNow(card) ? (
                       <>
                         <Button
                           size="sm"
@@ -190,7 +194,9 @@ function BoardTab({
                           {dispatching === card.workItemId ? (
                             <Spinner className="size-3.5" />
                           ) : null}
-                          {refusals[card.workItemId] === undefined ? "Run now" : "Try again"}
+                          {refusals[card.workItemId] === undefined
+                            ? runActionLabel(card.lifecycle)
+                            : "Try again"}
                         </Button>
                         {refusals[card.workItemId] === undefined ? null : (
                           <p role="status" className="mt-2 text-xs text-destructive-foreground">
@@ -199,6 +205,21 @@ function BoardTab({
                         )}
                       </>
                     ) : null}
+                    {card.lifecycle === "ineligible" ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Not eligible:{" "}
+                        {(card.eligibilityReasons ?? []).map(formatEligibilityReason).join("; ")}
+                      </p>
+                    ) : null}
+                    {card.latestRunAttemptId === undefined ? null : (
+                      <Link
+                        to="/symphony/$runId"
+                        params={{ runId: card.latestRunAttemptId }}
+                        className="mt-2 inline-block text-xs text-muted-foreground underline"
+                      >
+                        Open run
+                      </Link>
+                    )}
                   </article>
                 ))
               )}
@@ -358,10 +379,17 @@ function SettingsTab({
   );
 }
 
-export function SymphonyProjectView({ projectId }: { readonly projectId: SymphonyProjectId }) {
+export function SymphonyProjectView({
+  projectId,
+  tab,
+  onTabChange,
+}: {
+  readonly projectId: SymphonyProjectId;
+  readonly tab: ProjectTab;
+  readonly onTabChange: (tab: ProjectTab) => void;
+}) {
   const navigate = useNavigate();
   const environmentId = usePrimaryEnvironmentId();
-  const [tab, setTab] = useState<ProjectTab>("board");
   const [action, setAction] = useState<"start" | "pause" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const settingsDraft = useProjectSettingsDraftStore((state) => state.drafts[projectId]);
@@ -383,11 +411,6 @@ export function SymphonyProjectView({ projectId }: { readonly projectId: Symphon
     environmentId === null || tab !== "attention"
       ? null
       : symphonyEnvironment.attention({ environmentId, input: { projectId } }),
-  );
-  const historyQuery = useEnvironmentQuery(
-    environmentId === null || tab !== "history"
-      ? null
-      : symphonyExtras.history({ environmentId, input: { projectId } }),
   );
   const startProject = useAtomCommand(symphonyEnvironment.startProject, {
     reportFailure: false,
@@ -548,7 +571,7 @@ export function SymphonyProjectView({ projectId }: { readonly projectId: Symphon
                   ? "border-b-2 border-foreground px-3 py-2 text-sm font-medium"
                   : "border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
               }
-              onClick={() => setTab(item.value)}
+              onClick={() => onTabChange(item.value)}
             >
               {item.label}
               {item.value === "settings" && settingsDraftDirty ? " •" : null}
@@ -568,15 +591,10 @@ export function SymphonyProjectView({ projectId }: { readonly projectId: Symphon
           />
         ) : null}
         {tab === "runs" ? (
-          <SimpleList
-            title="Runs"
+          <RunsTab
+            runs={runsQuery.data ?? []}
             loading={runsQuery.isPending}
             error={runsQuery.error}
-            rows={(runsQuery.data ?? []).map((run) => ({
-              id: run.runAttemptId,
-              title: run.issueTitle ?? run.workItemId,
-              detail: `${run.lifecycle.replaceAll("_", " ")} · attempt ${run.attemptNumber}`,
-            }))}
           />
         ) : null}
         {tab === "attention" && environmentId !== null ? (
@@ -592,18 +610,6 @@ export function SymphonyProjectView({ projectId }: { readonly projectId: Symphon
               onChanged={attentionQuery.refresh}
             />
           </ListFrame>
-        ) : null}
-        {tab === "history" ? (
-          <SimpleList
-            title="History"
-            loading={historyQuery.isPending}
-            error={historyQuery.error}
-            rows={(historyQuery.data ?? []).map((run) => ({
-              id: run.runAttemptId,
-              title: run.issueTitle ?? run.workItemId,
-              detail: `${run.lifecycle.replaceAll("_", " ")} · ${new Date(run.startedAt).toLocaleString()}`,
-            }))}
-          />
         ) : null}
       </main>
     </div>
@@ -645,26 +651,116 @@ function ListFrame({
   );
 }
 
+const RUN_FILTERS: ReadonlyArray<{ readonly value: RunFilter; readonly label: string }> = [
+  { value: "all", label: "All" },
+  { value: "active", label: "Active" },
+  { value: "finished", label: "Finished" },
+];
+
+function RunsTab({
+  runs,
+  loading,
+  error,
+}: {
+  readonly runs: ReadonlyArray<RunSummary>;
+  readonly loading: boolean;
+  readonly error: string | null;
+}) {
+  const [filter, setFilter] = useState<RunFilter>("all");
+  const visible = filterRuns(runs, filter);
+  return (
+    <SimpleList
+      title="Runs"
+      loading={loading}
+      error={error}
+      isEmpty={runs.length === 0}
+      toolbar={
+        <div className="flex gap-1">
+          {RUN_FILTERS.map((item) => (
+            <Button
+              key={item.value}
+              size="sm"
+              variant={filter === item.value ? "secondary" : "ghost"}
+              onClick={() => setFilter(item.value)}
+            >
+              {item.label}
+            </Button>
+          ))}
+        </div>
+      }
+      rows={visible.map((run) => ({
+        id: run.runAttemptId,
+        title: run.issueTitle ?? run.workItemId,
+        detail: `${run.status.replaceAll("_", " ")} · item ${run.lifecycle.replaceAll("_", " ")} · attempt ${run.attemptNumber}`,
+        to: { runId: run.runAttemptId },
+        badge: {
+          label: run.status.replaceAll("_", " "),
+          variant: runAttemptStatusBadgeVariant(run.status),
+        },
+      }))}
+    />
+  );
+}
+
 function SimpleList({
   title,
   loading,
   error,
   rows,
+  toolbar,
+  isEmpty,
 }: {
   readonly title: string;
   readonly loading: boolean;
   readonly error: string | null;
-  readonly rows: ReadonlyArray<{ id: string; title: string; detail: string }>;
+  readonly isEmpty?: boolean;
+  readonly rows: ReadonlyArray<{
+    id: string;
+    title: string;
+    detail: string;
+    to?: { runId: string };
+    badge?: { label: string; variant: "error" | "info" | "secondary" | "success" };
+  }>;
+  readonly toolbar?: ReactNode;
 }) {
   return (
-    <ListFrame title={title} loading={loading} error={error} isEmpty={rows.length === 0}>
+    <ListFrame title={title} loading={loading} error={error} isEmpty={isEmpty ?? rows.length === 0}>
+      {toolbar}
       <div className="divide-y rounded-2xl border bg-card">
-        {rows.map((row) => (
-          <div key={row.id} className="px-4 py-3">
-            <p className="text-sm font-medium">{row.title}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{row.detail}</p>
-          </div>
-        ))}
+        {rows.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+            No runs match this filter.
+          </p>
+        ) : null}
+        {rows.map((row) => {
+          const body = (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium">{row.title}</p>
+                {row.badge === undefined ? null : (
+                  <Badge variant={row.badge.variant} size="sm">
+                    {row.badge.label}
+                  </Badge>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{row.detail}</p>
+            </>
+          );
+          return row.to === undefined ? (
+            <div key={row.id} className="px-4 py-3">
+              {body}
+            </div>
+          ) : (
+            <Link
+              key={row.id}
+              to="/symphony/$runId"
+              params={row.to}
+              className="block px-4 py-3 hover:bg-muted/40"
+            >
+              {body}
+            </Link>
+          );
+        })}
       </div>
     </ListFrame>
   );
