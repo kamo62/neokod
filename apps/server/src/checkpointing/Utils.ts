@@ -17,9 +17,15 @@ export function checkpointRefForThreadTurn(threadId: ThreadId, turnCount: number
  * Git ref names cannot contain `:`, so the timestamp is epoch milliseconds. The
  * thread id is base64url encoded for the same reason as a checkpoint ref.
  */
-export function recoveryRefForThreadRevert(threadId: ThreadId, epochMillis: number): CheckpointRef {
+export function recoveryRefForThreadRevert(
+  threadId: ThreadId,
+  epochMillis: number,
+  uniqueSuffix?: string,
+): CheckpointRef {
   return CheckpointRef.make(
-    `${RECOVERY_REFS_PREFIX}/${Encoding.encodeBase64Url(threadId)}/${epochMillis}`,
+    `${RECOVERY_REFS_PREFIX}/${Encoding.encodeBase64Url(threadId)}/${epochMillis}${
+      uniqueSuffix === undefined ? "" : `-${uniqueSuffix}`
+    }`,
   );
 }
 

@@ -16,6 +16,12 @@ describe("recoveryRefForThreadRevert", () => {
       `${RECOVERY_REFS_PREFIX}/${Encoding.encodeBase64Url(threadId)}/1700000000000`,
     );
   });
+
+  it("appends a unique suffix when one is provided", () => {
+    expect(recoveryRefForThreadRevert(threadId, 1700000000000, "abc-123")).toBe(
+      `${RECOVERY_REFS_PREFIX}/${Encoding.encodeBase64Url(threadId)}/1700000000000-abc-123`,
+    );
+  });
 });
 
 describe("findActiveSessionsSharingCwd", () => {

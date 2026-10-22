@@ -24,7 +24,7 @@ import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@neokod/shared/DrainableWorker";
-import { isTemporaryWorktreeBranch } from "@neokod/shared/git";
+import { isTemporaryWorktreeBranch, validateGitArgumentValue } from "@neokod/shared/git";
 import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 
 import { parseTurnDiffFilesFromUnifiedDiff } from "../../checkpointing/Diffs.ts";
@@ -255,9 +255,10 @@ const make = Effect.gen(function* () {
     );
   });
 
-  // Recovery refs are created by the serial reactor worker. Keep them distinct
-  // even if two reverts land in the same millisecond, so the earlier snapshot
-  // is not overwritten.
+  // Recovery refs are created by the serial reactor worker. The monotonic
+  // timestamp keeps same-process allocations distinct; the random suffix and
+  // persisted-ref check keep them distinct across reactor restarts and refuse
+  // to overwrite a retained snapshot.
   const lastRecoveryRefMillis = yield* Ref.make(0);
   const nextRecoveryRefMillis = Effect.gen(function* () {
     const nowMillis = yield* Clock.currentTimeMillis;
@@ -265,6 +266,22 @@ const make = Effect.gen(function* () {
       const millis = Math.max(nowMillis, last + 1);
       return [millis, millis];
     });
+  });
+
+  const allocateRecoveryRef = Effect.fn("CheckpointReactor.allocateRecoveryRef")(function* (
+    cwd: string,
+    threadId: ThreadId,
+  ) {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const epochMillis = yield* nextRecoveryRefMillis;
+      const uniqueSuffix = yield* randomUUID;
+      const checkpointRef = recoveryRefForThreadRevert(threadId, epochMillis, uniqueSuffix);
+      const exists = yield* checkpointStore.hasCheckpointRef({ cwd, checkpointRef });
+      if (!exists) {
+        return checkpointRef;
+      }
+    }
+    return null;
   });
 
   const resolveThreadDetail = Effect.fn("resolveThreadDetail")(function* (threadId: ThreadId) {
@@ -484,12 +501,21 @@ const make = Effect.gen(function* () {
         return refusedEvidence(`git rev-parse --show-prefix exited with ${prefix.result.exitCode}`);
       }
       const cwdPrefix = stripTrailingNewline(prefix.result.stdout);
+      if (cwdPrefix.length > 0) {
+        const pathProblem = validateGitArgumentValue(cwdPrefix, "Subfolder path");
+        if (pathProblem !== null) {
+          return refusedEvidence(pathProblem);
+        }
+      }
       const pathArgs = cwdPrefix.length > 0 ? ["--", cwdPrefix] : [];
 
       const ignored = yield* runGitEvidence({
         operation: "CheckpointReactor.inspectIgnoredRevertRisk.ignored",
         cwd: repoRoot,
         args: [
+          // Filesystem-derived paths are always literal pathspecs; `--` only
+          // ends option parsing, it does not disable pathspec magic.
+          "--literal-pathspecs",
           // Directory-level enumeration is enough: Git cannot re-include a
           // descendant of an excluded directory.
           "ls-files",
@@ -521,7 +547,7 @@ const make = Effect.gen(function* () {
       const tree = yield* runGitEvidence({
         operation: "CheckpointReactor.inspectIgnoredRevertRisk.tree",
         cwd: repoRoot,
-        args: ["ls-tree", "-r", "-z", commitResult.commit, ...pathArgs],
+        args: ["--literal-pathspecs", "ls-tree", "-r", "-z", commitResult.commit, ...pathArgs],
       });
       if (!tree.ok) {
         return refusedEvidence(tree.detail);
@@ -537,7 +563,15 @@ const make = Effect.gen(function* () {
       const currentFiles = yield* runGitEvidence({
         operation: "CheckpointReactor.inspectIgnoredRevertRisk.currentFiles",
         cwd: repoRoot,
-        args: ["ls-files", "--cached", "--others", "--exclude-standard", "-z", ...pathArgs],
+        args: [
+          "--literal-pathspecs",
+          "ls-files",
+          "--cached",
+          "--others",
+          "--exclude-standard",
+          "-z",
+          ...pathArgs,
+        ],
       });
       if (!currentFiles.ok) {
         return refusedEvidence(currentFiles.detail);
@@ -590,10 +624,15 @@ const make = Effect.gen(function* () {
           rulesChanged = true;
           break;
         }
+        const ignorePathProblem = validateGitArgumentValue(ignorePath, "Ignore file path");
+        if (ignorePathProblem !== null) {
+          rulesChanged = true;
+          break;
+        }
         const hashed = yield* runGitEvidence({
           operation: "CheckpointReactor.inspectIgnoredRevertRisk.hashObject",
           cwd: repoRoot,
-          args: ["hash-object", "--no-filters", "--", ignorePath],
+          args: ["--literal-pathspecs", "hash-object", "--no-filters", "--", ignorePath],
         });
         if (!hashed.ok || hashed.result.exitCode !== 0) {
           rulesChanged = true;
@@ -1381,7 +1420,13 @@ const make = Effect.gen(function* () {
             return;
           }
 
-          const recoveryRef = recoveryRefForThreadRevert(threadId, yield* nextRecoveryRefMillis);
+          const recoveryRef = yield* allocateRecoveryRef(cwd, threadId);
+          if (recoveryRef === null) {
+            yield* failRevert(
+              "Revert refused: a unique recovery ref could not be allocated, so nothing was changed.",
+            );
+            return;
+          }
           const saved = yield* checkpointStore
             .captureCheckpoint({ cwd, checkpointRef: recoveryRef })
             .pipe(

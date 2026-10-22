@@ -408,9 +408,12 @@ describe("CheckpointReactor", () => {
       readonly markStarted: () => void;
       readonly release: Promise<void>;
     };
+    readonly repositoryCwd?: string;
   }) {
-    const cwd = createGitRepository();
-    tempDirs.push(cwd);
+    const cwd = options?.repositoryCwd ?? createGitRepository();
+    if (options?.repositoryCwd === undefined) {
+      tempDirs.push(cwd);
+    }
     options?.prepareRepository?.(cwd);
     const sessionCwd =
       options?.providerSessionSubdirectory !== undefined
@@ -572,9 +575,25 @@ describe("CheckpointReactor", () => {
     const checkpointStore = await managedRuntime.runPromise(
       Effect.service(CheckpointStore.CheckpointStore),
     );
-    scope = await Effect.runPromise(Scope.make("sequential"));
-    await Effect.runPromise(reactor.start().pipe(Scope.provide(scope)));
+    const harnessScope = await Effect.runPromise(Scope.make("sequential"));
+    scope = harnessScope;
+    await Effect.runPromise(reactor.start().pipe(Scope.provide(harnessScope)));
     const drain = () => Effect.runPromise(reactor.drain);
+    let disposed = false;
+    const dispose = async () => {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      await managedRuntime.runPromise(Scope.close(harnessScope, Exit.void)).catch(() => undefined);
+      await managedRuntime.dispose();
+      if (scope === harnessScope) {
+        scope = null;
+      }
+      if (runtime === managedRuntime) {
+        runtime = null;
+      }
+    };
 
     const createdAt = "2026-01-01T00:00:00.000Z";
     await Effect.runPromise(
@@ -665,6 +684,7 @@ describe("CheckpointReactor", () => {
       checkpointStore,
       cwd,
       drain,
+      dispose,
     };
   }
 
@@ -2008,6 +2028,42 @@ describe("CheckpointReactor", () => {
     expect(payload?.detail).toContain("scratch.dat");
   });
 
+  it("refuses a subfolder revert when the folder name looks like pathspec magic", async () => {
+    // oxlint-disable-next-line neokod/no-global-process-runtime -- This path name is not valid on Windows.
+    if (process.platform === "win32") {
+      return;
+    }
+    const harness = await createHarness({
+      providerSessionSubdirectory: ":(literal)sub",
+      prepareRepository: (repository) => {
+        NodeFS.mkdirSync(NodePath.join(repository, ":(literal)sub"), { recursive: true });
+      },
+    });
+    const sub = NodePath.join(harness.cwd, ":(literal)sub");
+    NodeFS.writeFileSync(NodePath.join(sub, ".gitignore"), "", "utf8");
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(sub, ".gitignore"), "scratch.dat\n", "utf8");
+    NodeFS.writeFileSync(NodePath.join(sub, "scratch.dat"), "keep magic sub file\n", "utf8");
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(sub, "scratch.dat"), "utf8")).toBe(
+      "keep magic sub file\n",
+    );
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+  });
+
   it("refuses when only a mixed-case .GitIgnore rule changes", async () => {
     const harness = await createHarness();
     // info/exclude guarantees an ignored entry on case-sensitive hosts; the
@@ -2173,11 +2229,33 @@ describe("CheckpointReactor", () => {
     expect(recoveryRefs).toHaveLength(2);
     expect(new Set(recoveryRefs).size).toBe(2);
     const suffixes = recoveryRefs
-      .map((ref) => Number(ref.split("/").at(-1)))
+      .map((ref) => Number((ref.split("/").at(-1) ?? "").split("-")[0]))
       .toSorted((left, right) => left - right);
     expect(suffixes[1]).toBe((suffixes[0] ?? 0) + 1);
     expect(
       recoveryRefs.map((ref) => gitShowFileAtRef(harness.cwd, ref, "README.md")).toSorted(),
     ).toEqual(["v2\n", "v3\n"]);
+  });
+
+  it("keeps recovery refs unique across reactor restarts", async () => {
+    const first = await createHarness({ fixedClock: true });
+    await revertToTurnOne(first);
+    await waitForEvent(first.engine, (event) => event.type === "thread.reverted");
+    const firstRecoveryRefs = listRecoveryRefs(first.cwd);
+    expect(firstRecoveryRefs).toHaveLength(1);
+    expect(gitShowFileAtRef(first.cwd, firstRecoveryRefs[0]!, "README.md")).toBe("v3\n");
+    await first.dispose();
+
+    const second = await createHarness({ fixedClock: true, repositoryCwd: first.cwd });
+    NodeFS.writeFileSync(NodePath.join(second.cwd, "README.md"), "v4-second\n", "utf8");
+    await revertToTurnOne(second);
+    await waitForEvent(second.engine, (event) => event.type === "thread.reverted");
+
+    const recoveryRefs = listRecoveryRefs(second.cwd);
+    expect(recoveryRefs).toHaveLength(2);
+    expect(new Set(recoveryRefs).size).toBe(2);
+    expect(
+      recoveryRefs.map((ref) => gitShowFileAtRef(second.cwd, ref, "README.md")).toSorted(),
+    ).toEqual(["v3\n", "v4-second\n"]);
   });
 });
