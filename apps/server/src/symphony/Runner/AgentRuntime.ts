@@ -151,6 +151,16 @@ export interface AgentRuntimeDeps {
     /** The agent's question (user-input requests) or its stated reason (approvals). */
     readonly reason?: string;
   }) => Effect.Effect<void>;
+  /**
+   * The runtime's own wait elapsed before a human answered (the agent already
+   * received its fallback answer). Settles the durable request and removes the
+   * live entry so a late answer is refused. Best-effort.
+   */
+  readonly requestTimedOut?: (input: {
+    readonly requestId: string;
+    readonly workItemId: WorkItemId;
+    readonly runAttemptId: RunAttemptId;
+  }) => Effect.Effect<void>;
 }
 
 export const makeCodexAgentRuntime = (
@@ -163,7 +173,7 @@ export const makeCodexAgentRuntime = (
   Effect.gen(function* () {
     const scope = yield* Scope.Scope;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const { liveRequests, recordRequest } = deps;
+    const { liveRequests, recordRequest, requestTimedOut } = deps;
 
     let activeClient: CodexClientService | undefined;
     let threadId: string | undefined;
@@ -246,6 +256,7 @@ export const makeCodexAgentRuntime = (
               liveRequests,
               recordRequest,
               input.config,
+              requestTimedOut,
             ),
           );
         }
@@ -333,6 +344,45 @@ const isApprovalRequest = (method: string): boolean => APPROVAL_METHODS.has(meth
 const isUserInputRequest = (method: string): boolean =>
   method === CodexRpc.SERVER_REQUEST_METHODS["item/tool/requestUserInput"];
 
+const userInputQuestionText = (params: Record<string, unknown>): string => {
+  // Codex's `item/tool/requestUserInput` carries `questions[]`
+  // ({ header, id, question, options }) and no `prompt` field (generated
+  // schema: ToolRequestUserInputParams). A shim may still send `prompt`.
+  if (typeof params.prompt === "string" && params.prompt.trim().length > 0) {
+    return params.prompt.trim();
+  }
+  const questions = Array.isArray(params.questions) ? params.questions : [];
+  const lines: string[] = [];
+  for (const raw of questions) {
+    if (typeof raw !== "object" || raw === null) continue;
+    const question = raw as Record<string, unknown>;
+    const text = typeof question.question === "string" ? question.question.trim() : "";
+    if (text.length === 0) continue;
+    const header = typeof question.header === "string" ? question.header.trim() : "";
+    const label = header.length > 0 && header !== text ? `${header}: ${text}` : text;
+    const options = Array.isArray(question.options)
+      ? question.options.flatMap((option) =>
+          typeof option === "object" &&
+          option !== null &&
+          typeof (option as { label?: unknown }).label === "string"
+            ? [(option as { label: string }).label]
+            : [],
+        )
+      : [];
+    lines.push(options.length > 0 ? `${label} (options: ${options.join(", ")})` : label);
+  }
+  return lines.join("\n");
+};
+
+/** Compose the durable/prompt text for a user-input request. */
+export const userInputRequestText = (
+  params: Record<string, unknown>,
+  method: string,
+): string => {
+  const text = userInputQuestionText(params);
+  return text.length > 0 ? text : `The agent needs your input for ${method}.`;
+};
+
 const consumeIncoming = (
   client: CodexClientService,
   runAttemptId: RunAttemptId,
@@ -340,9 +390,19 @@ const consumeIncoming = (
   liveRequests: LiveRequestsService,
   recordRequest: AgentRuntimeDeps["recordRequest"],
   config: EffectiveWorkflowConfig,
+  requestTimedOut?: AgentRuntimeDeps["requestTimedOut"],
 ): Effect.Effect<void, never, never> =>
   Stream.runForEach(client.raw.requests, (request) =>
-    handleRequest(client, request, runAttemptId, workItemId, liveRequests, recordRequest, config),
+    handleRequest(
+      client,
+      request,
+      runAttemptId,
+      workItemId,
+      liveRequests,
+      recordRequest,
+      config,
+      requestTimedOut,
+    ),
   ).pipe(
     Effect.catch(() => Effect.void),
     Effect.interruptible,
@@ -356,11 +416,18 @@ const handleRequest = (
   liveRequests: LiveRequestsService,
   recordRequest: AgentRuntimeDeps["recordRequest"],
   config: EffectiveWorkflowConfig,
+  requestTimedOut?: AgentRuntimeDeps["requestTimedOut"],
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
     const params = (request.params ?? {}) as Record<string, unknown>;
     const waitTimeoutMs =
       config.liveRequestsWaitTimeoutMs ?? WORKFLOW_DEFAULTS.liveRequestsWaitTimeoutMs;
+    const settleTimedOut = (requestId: string) =>
+      requestTimedOut === undefined
+        ? Effect.void
+        : requestTimedOut({ requestId, workItemId, runAttemptId }).pipe(
+            Effect.catch(() => Effect.void),
+          );
     if (isApprovalRequest(request.method)) {
       const requestId = String(params.requestId ?? params.approvalId ?? request.id);
       const action = String(params.kind ?? request.method.split("/").at(-2) ?? "action");
@@ -385,18 +452,21 @@ const handleRequest = (
           ...(command !== undefined ? { command } : {}),
         }).pipe(Effect.catch(() => Effect.void)) ?? Effect.void
       );
-      const decision = yield* waitWithTimeout(deferred, Duration.millis(waitTimeoutMs)).pipe(
-        Effect.catch(() => Effect.succeed("rejected" as ApprovalDecision)),
+      const decision = yield* waitForAnswer<ApprovalDecision>(
+        deferred,
+        Duration.millis(waitTimeoutMs),
       );
+      if (Option.isNone(decision)) {
+        yield* settleTimedOut(requestId);
+      }
       yield* client.raw
-        .respond(request.id, { decision: toCodexApprovalDecision(decision) })
+        .respond(request.id, {
+          decision: toCodexApprovalDecision(Option.getOrElse(decision, () => "rejected" as const)),
+        })
         .pipe(Effect.catch(() => Effect.void));
     } else if (isUserInputRequest(request.method)) {
       const requestId = String(params.requestId ?? request.id);
-      const promptText =
-        typeof params.prompt === "string"
-          ? params.prompt
-          : `The agent needs your input for ${request.method}.`;
+      const promptText = userInputRequestText(params, request.method);
       const deferred = yield* liveRequests
         .registerUserInput({
           requestId,
@@ -417,11 +487,15 @@ const handleRequest = (
           reason: promptText,
         }).pipe(Effect.catch(() => Effect.void)) ?? Effect.void
       );
-      const answer = yield* waitWithTimeout(deferred, Duration.millis(waitTimeoutMs)).pipe(
-        Effect.catch(() => Effect.succeed("")),
-      );
+      const answer = yield* waitForAnswer<string>(deferred, Duration.millis(waitTimeoutMs));
+      if (Option.isNone(answer)) {
+        yield* settleTimedOut(requestId);
+      }
       yield* client.raw
-        .respond(request.id, toCodexUserInputResponse(params.questions, answer))
+        .respond(
+          request.id,
+          toCodexUserInputResponse(params.questions, Option.getOrElse(answer, () => "")),
+        )
         .pipe(Effect.catch(() => Effect.void));
     } else {
       yield* client.raw
@@ -519,16 +593,16 @@ export const waitForTurnCompletion = (
     );
   });
 
-const waitWithTimeout = <A>(
+/**
+ * Wait for an answer, yielding `none` when the wait elapsed or the live
+ * request was settled elsewhere (run settlement, cancellation). Callers answer
+ * the provider with their fallback and settle the durable request.
+ */
+const waitForAnswer = <A>(
   deferred: Deferred.Deferred<A>,
   duration: Duration.Duration,
-): Effect.Effect<A, AgentRuntimeSpawnError> =>
+): Effect.Effect<Option.Option<A>> =>
   Deferred.await(deferred).pipe(
     Effect.timeoutOption(duration),
-    Effect.flatMap((result) =>
-      Option.match(result, {
-        onNone: () => Effect.fail(new AgentRuntimeSpawnError("request timed out")),
-        onSome: (value) => Effect.succeed(value),
-      }),
-    ),
+    Effect.catch(() => Effect.succeed(Option.none<A>())),
   );

@@ -1,5 +1,9 @@
-import type { ApprovalRequest } from "@neokod/contracts";
-import { RunAttemptId, SymphonyApprovalRequestId } from "@neokod/contracts";
+import type { ApprovalRequest, ApprovalRequestKind } from "@neokod/contracts";
+import {
+  ApprovalRequestSchema,
+  RunAttemptId,
+  SymphonyApprovalRequestId,
+} from "@neokod/contracts";
 import { Schema } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
@@ -7,7 +11,11 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { nowIso } from "../../Domain/Time.ts";
-import { SymphonyPersistenceSqlError } from "../Errors.ts";
+import {
+  approvalRequestKindForAction,
+  normaliseApprovalRequestAction,
+} from "../../Domain/Approvals.ts";
+import { SymphonyPersistenceDecodeError, SymphonyPersistenceSqlError } from "../Errors.ts";
 import { decodeJson, encodeJson } from "../Json.ts";
 import {
   ApprovalRepository,
@@ -29,36 +37,78 @@ const ApprovalRowSchema = Schema.Struct({
   decidedAt: Schema.NullOr(Schema.String),
 });
 
-const rowToApproval = (row: Schema.Schema.Type<typeof ApprovalRowSchema>): ApprovalRequest => {
-  const payload =
-    row.payloadJson === null
-      ? ({} as Record<string, unknown>)
-      : (decodeJson(row.payloadJson) as Record<string, unknown>);
-  const affectedFiles = Array.isArray(payload.affectedFiles)
-    ? (payload.affectedFiles as string[]).map(String)
-    : [];
-  return {
-    id: row.id,
-    requestId: row.requestId,
-    workItemId: row.workItemId as ApprovalRequest["workItemId"],
-    ...(row.runAttemptId === null ? {} : { runAttemptId: row.runAttemptId }),
-    action: row.action as ApprovalRequest["action"],
-    scope: row.scope as ApprovalRequest["scope"],
-    state: row.state as ApprovalRequest["state"],
-    ...(row.decision === null
-      ? {}
-      : { decision: row.decision as "approved" | "rejected" | "expired" }),
-    ...(row.policySource === null ? {} : { policySource: row.policySource }),
-    ...(payload.command !== undefined ? { command: String(payload.command) } : {}),
-    ...(payload.workingDirectory !== undefined
-      ? { workingDirectory: String(payload.workingDirectory) }
-      : {}),
-    ...(payload.reason !== undefined ? { reason: String(payload.reason) } : {}),
-    affectedFiles,
-    createdAt: row.createdAt,
-    decidedAt: row.decidedAt,
-  };
+const payloadString = (payload: Record<string, unknown>, key: string): string | undefined =>
+  typeof payload[key] === "string" ? (payload[key] as string) : undefined;
+
+const payloadKind = (payload: Record<string, unknown>): ApprovalRequestKind | undefined => {
+  const value = payload.kind;
+  return value === "approval" || value === "user_input" ? value : undefined;
 };
+
+/**
+ * Decode one durable approval row. Nothing is cast: an unrecognised state,
+ * scope or id surfaces as a named `SymphonyPersistenceDecodeError` instead of
+ * reaching the RPC boundary as a payload that cannot encode.
+ *
+ * Rows written before the request vocabulary existed hold the provider's raw
+ * kind and no `kind`; both are normalised here, so old history stays readable.
+ */
+const rowToApproval = (
+  row: Schema.Schema.Type<typeof ApprovalRowSchema>,
+): Effect.Effect<ApprovalRequest, SymphonyPersistenceDecodeError> =>
+  Effect.gen(function* () {
+    const payload = yield* Effect.try({
+      try: () =>
+        row.payloadJson === null
+          ? ({} as Record<string, unknown>)
+          : (decodeJson(row.payloadJson) as Record<string, unknown>),
+      catch: (cause) =>
+        new SymphonyPersistenceDecodeError({
+          operation: "ApprovalRepository.rowToApproval",
+          issue: `approval row ${String(row.id)} payload could not be decoded`,
+          cause,
+        }),
+    });
+    const affectedFiles = Array.isArray(payload.affectedFiles)
+      ? (payload.affectedFiles as string[]).map(String)
+      : [];
+    const action = normaliseApprovalRequestAction(row.action);
+    const kind = payloadKind(payload) ?? approvalRequestKindForAction(action);
+    const storedProviderAction = payloadString(payload, "providerAction");
+    const providerAction =
+      storedProviderAction ?? (action === row.action ? undefined : row.action);
+    const command = payloadString(payload, "command");
+    const workingDirectory = payloadString(payload, "workingDirectory");
+    const reason = payloadString(payload, "reason");
+    return yield* Schema.decodeUnknownEffect(ApprovalRequestSchema)({
+      id: row.id,
+      requestId: row.requestId,
+      workItemId: row.workItemId,
+      ...(row.runAttemptId === null ? {} : { runAttemptId: row.runAttemptId }),
+      kind,
+      action,
+      ...(providerAction === undefined ? {} : { providerAction }),
+      scope: row.scope,
+      state: row.state,
+      ...(row.decision === null ? {} : { decision: row.decision }),
+      ...(row.policySource === null ? {} : { policySource: row.policySource }),
+      ...(command === undefined ? {} : { command }),
+      ...(workingDirectory === undefined ? {} : { workingDirectory }),
+      ...(reason === undefined ? {} : { reason }),
+      affectedFiles,
+      createdAt: row.createdAt,
+      decidedAt: row.decidedAt,
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SymphonyPersistenceDecodeError({
+            operation: "ApprovalRepository.rowToApproval",
+            issue: `approval row ${String(row.id)} could not be decoded`,
+            cause,
+          }),
+      ),
+    );
+  });
 
 const SELECT_COLUMNS = `
   id, request_id AS "requestId", work_item_id AS "workItemId",
@@ -79,7 +129,14 @@ const makeRepository = Effect.gen(function* () {
   const create: ApprovalRepositoryShape["create"] = (input) =>
     Effect.gen(function* () {
       const createdAt = yield* nowIso;
+      // Normalise once at the write boundary: the provider's raw kind is kept
+      // next to the action it maps to, and `kind` records whether a human must
+      // decide or answer.
+      const action = normaliseApprovalRequestAction(input.action);
+      const kind = approvalRequestKindForAction(action);
       const payload = encodeJson({
+        kind,
+        ...(action === input.action ? {} : { providerAction: input.action }),
         ...(input.command !== undefined ? { command: input.command } : {}),
         ...(input.workingDirectory !== undefined
           ? { workingDirectory: input.workingDirectory }
@@ -119,12 +176,12 @@ const makeRepository = Effect.gen(function* () {
         requestId: input.requestId,
         workItemId: input.workItemId,
         runAttemptId: input.runAttemptId,
-        action: input.action,
+        action,
         scope: input.scope,
         payload,
         createdAt,
       }).pipe(Effect.mapError(toSqlError("ApprovalRepository.create")));
-      return rowToApproval(row);
+      return yield* rowToApproval(row);
     });
 
   const decide: ApprovalRepositoryShape["decide"] = (id, decision) =>
@@ -138,27 +195,27 @@ const makeRepository = Effect.gen(function* () {
     });
 
   const listPending: ApprovalRepositoryShape["listPending"] = (options) =>
-    sql<Schema.Schema.Type<typeof ApprovalRowSchema>>`
-      SELECT ${cols}
-      FROM symphony_approvals
-      WHERE state = 'pending'
-      ORDER BY created_at DESC
-      ${options?.limit ? sql`LIMIT ${options.limit}` : sql``}
-    `.pipe(
-      Effect.mapError(toSqlError("ApprovalRepository.listPending")),
-      Effect.map((rows) => rows.map(rowToApproval)),
-    );
+    Effect.gen(function* () {
+      const rows = yield* sql<Schema.Schema.Type<typeof ApprovalRowSchema>>`
+        SELECT ${cols}
+        FROM symphony_approvals
+        WHERE state = 'pending'
+        ORDER BY created_at DESC
+        ${options?.limit ? sql`LIMIT ${options.limit}` : sql``}
+      `.pipe(Effect.mapError(toSqlError("ApprovalRepository.listPending")));
+      return yield* Effect.forEach(rows, rowToApproval);
+    });
 
   const listForRun: ApprovalRepositoryShape["listForRun"] = (runAttemptId) =>
-    sql<Schema.Schema.Type<typeof ApprovalRowSchema>>`
-      SELECT ${cols}
-      FROM symphony_approvals
-      WHERE run_attempt_id = ${runAttemptId}
-      ORDER BY created_at DESC
-    `.pipe(
-      Effect.mapError(toSqlError("ApprovalRepository.listForRun")),
-      Effect.map((rows) => rows.map(rowToApproval)),
-    );
+    Effect.gen(function* () {
+      const rows = yield* sql<Schema.Schema.Type<typeof ApprovalRowSchema>>`
+        SELECT ${cols}
+        FROM symphony_approvals
+        WHERE run_attempt_id = ${runAttemptId}
+        ORDER BY created_at DESC
+      `.pipe(Effect.mapError(toSqlError("ApprovalRepository.listForRun")));
+      return yield* Effect.forEach(rows, rowToApproval);
+    });
 
   const getById: ApprovalRepositoryShape["getById"] = (id) =>
     SqlSchema.findOneOption({
@@ -172,7 +229,9 @@ const makeRepository = Effect.gen(function* () {
         `,
     })({ id }).pipe(
       Effect.mapError(toSqlError("ApprovalRepository.getById")),
-      Effect.map((row) => (row._tag === "None" ? null : rowToApproval(row.value))),
+      Effect.flatMap((row) =>
+        row._tag === "None" ? Effect.succeed(null) : rowToApproval(row.value),
+      ),
     );
 
   return {

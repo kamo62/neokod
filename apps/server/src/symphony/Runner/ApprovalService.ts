@@ -89,6 +89,17 @@ export interface ApprovalServiceShape {
    * decision so the UI distinguishes a dead run from a timed-out wait.
    */
   readonly interrupt: (id: string) => Effect.Effect<void>;
+
+  /**
+   * Expire the durable record behind a live request id once the runtime's own
+   * wait has timed out (the agent already received its fallback answer). The
+   * live entry is removed first, so a late approve/answer fails instead of
+   * reporting a decision the agent never saw.
+   */
+  readonly expireRequest: (
+    runAttemptId: RunAttemptId,
+    requestId: string,
+  ) => Effect.Effect<void>;
 }
 
 export class ApprovalService extends Context.Service<ApprovalService, ApprovalServiceShape>()(
@@ -204,6 +215,23 @@ export const makeApprovalService = Effect.gen(function* () {
       yield* repository.decide(id, "interrupted").pipe(Effect.catch(() => Effect.void));
     });
 
+  const expireRequest: ApprovalServiceShape["expireRequest"] = (runAttemptId, requestId) =>
+    Effect.gen(function* () {
+      // Settle the live entry first: from this point the request cannot be
+      // answered, so a later button press is refused instead of claiming a
+      // decision the agent never received.
+      yield* liveRequests.settleRequest(runAttemptId, requestId, "request wait timed out");
+      const records = yield* repository
+        .listForRun(runAttemptId)
+        .pipe(Effect.catch(() => Effect.succeed([] as ApprovalRequest[])));
+      const record = records.find(
+        (candidate) => candidate.requestId === requestId && candidate.state === "pending",
+      );
+      if (record !== undefined) {
+        yield* repository.decide(record.id, "expired").pipe(Effect.catch(() => Effect.void));
+      }
+    });
+
   return {
     recordPending,
     approve,
@@ -213,6 +241,7 @@ export const makeApprovalService = Effect.gen(function* () {
     listForRun,
     expire,
     interrupt,
+    expireRequest,
   };
 });
 

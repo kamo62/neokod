@@ -249,6 +249,84 @@ it.effect("answers user input with an answers map on the wire", () =>
   ),
 );
 
+it.effect("persists the protocol question text and its choices for a user-input request", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const peer = yield* makeFakeCodexPeer();
+      const liveRequests = yield* makeLiveRequests;
+      const recorded: Array<{
+        readonly requestId: string;
+        readonly action: string;
+        readonly reason?: string;
+      }> = [];
+      const runtime = yield* makeFakeCodexRuntime({
+        peer,
+        liveRequests,
+        recordRequest: (input) =>
+          Effect.sync(() => {
+            recorded.push({
+              requestId: input.requestId,
+              action: input.action,
+              ...(input.reason !== undefined ? { reason: input.reason } : {}),
+            });
+          }),
+      });
+      const runAttemptId = RunAttemptId.make("run-question");
+      const fiber = yield* runtime
+        .runTurn({
+          issue: makeRunnerTestIssue("1"),
+          config: makeRunnerTestConfig(),
+          workspacePath: "/tmp/fake-ws",
+          branch: "b",
+          runAttemptId,
+          workItemId: WorkItemId.make("wi-question"),
+        })
+        .pipe(Effect.forkScoped);
+      yield* peer.awaitClientRequest("turn/start");
+      // The protocol payload: questions[] with header/question/options and no
+      // `prompt` field (generated schema: ToolRequestUserInputParams).
+      const id = yield* peer.sendRequest("item/tool/requestUserInput", {
+        threadId: peer.threadId,
+        turnId: yield* peer.currentTurnId,
+        itemId: "item-9",
+        questions: [
+          {
+            header: "Branch",
+            id: "q1",
+            question: "Which branch should I target?",
+            options: [
+              { label: "main", description: "default branch" },
+              { label: "release", description: "release branch" },
+            ],
+          },
+        ],
+      });
+      let pending = yield* liveRequests.listPending(runAttemptId);
+      let iterations = 0;
+      while (pending.length === 0 && iterations < 100) {
+        yield* Effect.yieldNow;
+        pending = yield* liveRequests.listPending(runAttemptId);
+        iterations += 1;
+      }
+      assert.strictEqual(pending.length, 1);
+      const prompt = pending[0]?.prompt ?? "";
+      assert.isTrue(prompt.includes("Which branch should I target?"));
+      assert.isTrue(prompt.includes("options: main, release"));
+
+      yield* liveRequests.respondToUserInput(runAttemptId, pending[0]?.requestId ?? "0", "main");
+      const reply = yield* peer.awaitClientResponse(id);
+      assert.deepStrictEqual(reply.result, { answers: { q1: { answers: ["main"] } } });
+
+      const record = recorded.find((entry) => entry.action === "user_input");
+      assert.isTrue(record?.reason?.includes("Which branch should I target?") ?? false);
+      assert.isTrue(record?.reason?.includes("options: main, release") ?? false);
+
+      yield* peer.completeTurn("completed");
+      yield* Fiber.join(fiber);
+    }),
+  ),
+);
+
 it.effect("rejects an unsupported method with method-not-found", () =>
   Effect.scoped(
     Effect.gen(function* () {

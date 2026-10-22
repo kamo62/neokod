@@ -125,6 +125,28 @@ describe("LiveRequests", () => {
     }),
   );
 
+  it.effect("refuses an answer when the request was already settled elsewhere", () =>
+    Effect.gen(function* () {
+      const service = yield* makeLiveRequests;
+      const deferred = yield* service.registerApproval({
+        requestId: "req-race",
+        workItemId,
+        runAttemptId,
+        action: "command_execution",
+        prompt: "A",
+      });
+      // Another path answered the Deferred without removing the registry entry
+      // yet (the timeout settlement sits between Deferred completion and key
+      // removal). A late click must not report success.
+      yield* Deferred.succeed(deferred, "approved");
+      const failure = yield* Effect.flip(
+        service.respondToApproval(runAttemptId, "req-race", "rejected"),
+      );
+      expect(failure).toBeInstanceOf(LiveRequestNotFoundError);
+      expect(yield* service.listPending(runAttemptId)).toHaveLength(0);
+    }),
+  );
+
   it.effect("keeps the same request id in two runs apart", () =>
     Effect.gen(function* () {
       const service = yield* makeLiveRequests;

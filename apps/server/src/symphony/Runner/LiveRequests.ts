@@ -191,8 +191,17 @@ export const makeLiveRequests = Effect.gen(function* () {
       if (entry.kind !== "approval") {
         return yield* Effect.fail(new LiveRequestNotFoundError(requestId, String(runAttemptId)));
       }
-      yield* Deferred.succeed(entry.deferred as Deferred.Deferred<ApprovalDecision>, decision);
+      // A completed Deferred means another path (timeout, run settlement)
+      // already answered it; claiming success here would record a decision the
+      // agent never saw.
+      const answered = yield* Deferred.succeed(
+        entry.deferred as Deferred.Deferred<ApprovalDecision>,
+        decision,
+      );
       yield* removeKey(keyOf(runAttemptId, requestId));
+      if (!answered) {
+        return yield* Effect.fail(new LiveRequestNotFoundError(requestId, String(runAttemptId)));
+      }
     });
 
   const respondToUserInput: LiveRequestsService["respondToUserInput"] = (
@@ -205,8 +214,14 @@ export const makeLiveRequests = Effect.gen(function* () {
       if (entry.kind !== "user_input") {
         return yield* Effect.fail(new LiveRequestNotFoundError(requestId, String(runAttemptId)));
       }
-      yield* Deferred.succeed(entry.deferred as Deferred.Deferred<string>, text);
+      const answered = yield* Deferred.succeed(
+        entry.deferred as Deferred.Deferred<string>,
+        text,
+      );
       yield* removeKey(keyOf(runAttemptId, requestId));
+      if (!answered) {
+        return yield* Effect.fail(new LiveRequestNotFoundError(requestId, String(runAttemptId)));
+      }
     });
 
   const listPending: LiveRequestsService["listPending"] = (runAttemptId) =>
