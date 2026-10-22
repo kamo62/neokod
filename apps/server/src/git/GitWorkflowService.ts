@@ -20,6 +20,8 @@ import {
   type GitPullRequestRefInput,
   type VcsPullResult,
   type VcsRemoveWorktreeInput,
+  type VcsInspectWorktreeInput,
+  type VcsWorktreeGitState,
   type GitResolvePullRequestResult,
   type GitRunStackedActionInput,
   type GitRunStackedActionResult,
@@ -30,6 +32,7 @@ import {
 } from "@neokod/contracts";
 
 import * as GitManager from "./GitManager.ts";
+import { WorktreeRemovalLease } from "./WorktreeRemovalLease.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import { WorkspaceRemovalGuard } from "../symphony/Persistence/Services/WorkspaceOwnershipRepository.ts";
@@ -82,6 +85,9 @@ export class GitWorkflowService extends Context.Service<
     readonly removeWorktree: (
       input: VcsRemoveWorktreeInput,
     ) => Effect.Effect<void, GitCommandError>;
+    readonly inspectWorktree: (
+      input: VcsInspectWorktreeInput,
+    ) => Effect.Effect<VcsWorktreeGitState, GitCommandError>;
     readonly createRef: (
       input: VcsCreateRefInput,
     ) => Effect.Effect<VcsCreateRefResult, GitCommandError>;
@@ -136,6 +142,7 @@ export const make = Effect.gen(function* () {
   const registry = yield* VcsDriverRegistry.VcsDriverRegistry;
   const git = yield* GitVcsDriver.GitVcsDriver;
   const gitManager = yield* GitManager.GitManager;
+  const worktreeRemovalLease = yield* WorktreeRemovalLease;
 
   const ensureGit = Effect.fn("GitWorkflowService.ensureGit")(function* (
     operation: string,
@@ -298,9 +305,14 @@ export const make = Effect.gen(function* () {
         ),
       ),
     createWorktree: (input) =>
-      ensureGitCommand("GitWorkflowService.createWorktree", input.cwd).pipe(
-        Effect.andThen(git.createWorktree(input)),
-      ),
+      Effect.gen(function* () {
+        const created = yield* ensureGitCommand(
+          "GitWorkflowService.createWorktree",
+          input.cwd,
+        ).pipe(Effect.andThen(git.createWorktree(input)));
+        yield* worktreeRemovalLease.recordPreparedWorktree(created.worktree.path);
+        return created;
+      }),
     fetchRemote: (input) =>
       ensureGitCommand("GitWorkflowService.fetchRemote", input.cwd).pipe(
         Effect.andThen(git.fetchRemote(input)),
@@ -342,6 +354,10 @@ export const make = Effect.gen(function* () {
     createRef: (input) =>
       ensureGitCommand("GitWorkflowService.createRef", input.cwd).pipe(
         Effect.andThen(git.createRef(input)),
+      ),
+    inspectWorktree: (input) =>
+      ensureGitCommand("GitWorkflowService.inspectWorktree", input.cwd).pipe(
+        Effect.andThen(git.inspectWorktree(input)),
       ),
     switchRef: (input) =>
       ensureGitCommand("GitWorkflowService.switchRef", input.cwd).pipe(

@@ -23,6 +23,11 @@ import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import {
+  WorktreeAdmissionBlockedError,
+  WorktreeRemovalLease,
+} from "../../git/WorktreeRemovalLease.ts";
+import { admissionWorkspacePaths } from "../../git/worktreeAdmission.ts";
+import {
   metricAttributes,
   orchestrationCommandAckDuration,
   orchestrationCommandsTotal,
@@ -85,6 +90,7 @@ const makeOrchestrationEngine = Effect.gen(function* () {
   const projectionPipeline = yield* OrchestrationProjectionPipeline;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const crypto = yield* Crypto.Crypto;
+  const worktreeRemovalLease = yield* WorktreeRemovalLease;
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
   let commandReadModel = createEmptyReadModel(yield* nowIso);
@@ -162,65 +168,83 @@ const makeOrchestrationEngine = Effect.gen(function* () {
           });
         }
 
-        const eventBase = yield* decideOrchestrationCommand({
-          command: envelope.command,
-          readModel: commandReadModel,
-        }).pipe(
-          Effect.provideService(Crypto.Crypto, crypto),
-          Effect.mapError((cause) =>
-            isOrchestrationCommandInvariantError(cause)
-              ? cause
-              : new OrchestrationCommandInvariantError({
-                  commandType: envelope.command.type,
-                  detail: "Failed to generate an event identifier.",
-                  cause,
-                }),
-          ),
-        );
-        const eventBases = Array.isArray(eventBase) ? eventBase : [eventBase];
-        const committedCommand = yield* sql
-          .withTransaction(
-            Effect.gen(function* () {
-              const committedEvents: OrchestrationEvent[] = [];
-              let nextCommandReadModel = commandReadModel;
+        const commitAdmission = Effect.gen(function* () {
+          const eventBase = yield* decideOrchestrationCommand({
+            command: envelope.command,
+            readModel: commandReadModel,
+          }).pipe(
+            Effect.provideService(Crypto.Crypto, crypto),
+            Effect.mapError((cause) =>
+              isOrchestrationCommandInvariantError(cause)
+                ? cause
+                : new OrchestrationCommandInvariantError({
+                    commandType: envelope.command.type,
+                    detail: "Failed to generate an event identifier.",
+                    cause,
+                  }),
+            ),
+          );
+          const eventBases = Array.isArray(eventBase) ? eventBase : [eventBase];
+          return yield* sql
+            .withTransaction(
+              Effect.gen(function* () {
+                const committedEvents: OrchestrationEvent[] = [];
+                let nextCommandReadModel = commandReadModel;
 
-              for (const nextEvent of eventBases) {
-                const savedEvent = yield* eventStore.append(nextEvent);
-                nextCommandReadModel = yield* projectEvent(nextCommandReadModel, savedEvent);
-                yield* projectionPipeline.projectEvent(savedEvent);
-                committedEvents.push(savedEvent);
-              }
+                for (const nextEvent of eventBases) {
+                  const savedEvent = yield* eventStore.append(nextEvent);
+                  nextCommandReadModel = yield* projectEvent(nextCommandReadModel, savedEvent);
+                  yield* projectionPipeline.projectEvent(savedEvent);
+                  committedEvents.push(savedEvent);
+                }
 
-              const lastSavedEvent = committedEvents.at(-1) ?? null;
-              if (lastSavedEvent === null) {
-                return yield* new OrchestrationCommandInvariantError({
-                  commandType: envelope.command.type,
-                  detail: "Command produced no events.",
+                const lastSavedEvent = committedEvents.at(-1) ?? null;
+                if (lastSavedEvent === null) {
+                  return yield* new OrchestrationCommandInvariantError({
+                    commandType: envelope.command.type,
+                    detail: "Command produced no events.",
+                  });
+                }
+
+                yield* commandReceiptRepository.insert({
+                  commandId: envelope.command.commandId,
+                  aggregateKind: lastSavedEvent.aggregateKind,
+                  aggregateId: lastSavedEvent.aggregateId,
+                  acceptedAt: lastSavedEvent.occurredAt,
+                  resultSequence: lastSavedEvent.sequence,
+                  status: "accepted",
+                  error: null,
                 });
-              }
 
-              yield* commandReceiptRepository.insert({
-                commandId: envelope.command.commandId,
-                aggregateKind: lastSavedEvent.aggregateKind,
-                aggregateId: lastSavedEvent.aggregateId,
-                acceptedAt: lastSavedEvent.occurredAt,
-                resultSequence: lastSavedEvent.sequence,
-                status: "accepted",
-                error: null,
-              });
-
-              return {
-                committedEvents,
-                lastSequence: lastSavedEvent.sequence,
-                nextCommandReadModel,
-              } as const;
-            }),
-          )
-          .pipe(
-            Effect.catchTag("SqlError", (sqlError) =>
-              Effect.fail(
-                toPersistenceSqlError("OrchestrationEngine.processEnvelope:transaction")(sqlError),
+                return {
+                  committedEvents,
+                  lastSequence: lastSavedEvent.sequence,
+                  nextCommandReadModel,
+                } as const;
+              }),
+            )
+            .pipe(
+              Effect.catchTag("SqlError", (sqlError) =>
+                Effect.fail(
+                  toPersistenceSqlError("OrchestrationEngine.processEnvelope:transaction")(
+                    sqlError,
+                  ),
+                ),
               ),
+            );
+        });
+        const admission = admissionWorkspacePaths(envelope.command, commandReadModel);
+        const committedCommand = yield* worktreeRemovalLease
+          .withAdmission(envelope.command.type, admission, commitAdmission)
+          .pipe(
+            Effect.mapError((cause) =>
+              cause instanceof WorktreeAdmissionBlockedError
+                ? new OrchestrationCommandInvariantError({
+                    commandType: envelope.command.type,
+                    detail: cause.message,
+                    cause,
+                  })
+                : cause,
             ),
           );
 

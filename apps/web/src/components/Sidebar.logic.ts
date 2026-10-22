@@ -627,6 +627,35 @@ export function getVisibleThreadsForProject<T extends Pick<Thread, "id">>(input:
   };
 }
 
+export interface ThreadWorkspacePathThread {
+  readonly environmentId: string;
+  readonly projectId: string;
+  readonly worktreePath: string | null;
+}
+
+export interface ThreadWorkspacePathProject {
+  readonly environmentId: string;
+  readonly id: string;
+  readonly workspaceRoot: string;
+}
+
+/**
+ * Resolves the workspace path for a thread from its own environment and project
+ * identity. The owning project is the only fallback for a thread without a
+ * worktree; an unknown owner is unavailable rather than another project's root.
+ */
+export function resolveThreadWorkspacePath(input: {
+  readonly thread: ThreadWorkspacePathThread;
+  readonly projects: ReadonlyArray<ThreadWorkspacePathProject>;
+}): string | null {
+  if (input.thread.worktreePath) return input.thread.worktreePath;
+  const owner = input.projects.find(
+    (project) =>
+      project.environmentId === input.thread.environmentId && project.id === input.thread.projectId,
+  );
+  return owner?.workspaceRoot ?? null;
+}
+
 export function getFallbackThreadIdAfterDelete<
   T extends Pick<Thread, "id" | "projectId" | "createdAt" | "updatedAt"> & ThreadSortInput,
 >(input: {

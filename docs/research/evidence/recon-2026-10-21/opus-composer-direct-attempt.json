@@ -1,0 +1,7 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": true,
+  "result": "You've hit your session limit \u00b7 resets 9:10pm (Africa/Johannesburg)",
+  "session_id": "e59d817c-f868-41f7-9f70-aed103d0b196"
+}

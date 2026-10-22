@@ -201,12 +201,93 @@ it.effect("prunes an exact stale registration after its worktree directory is go
     }).pipe(Effect.provide(layer));
 
     assert.deepStrictEqual(commands, [
-      ["worktree", "remove", "--force", worktreePath],
+      ["worktree", "remove", "--force", "--", worktreePath],
       ["worktree", "list", "--porcelain", "-z"],
       ["worktree", "prune", "--expire", "now"],
       ["worktree", "list", "--porcelain", "-z"],
     ]);
   }).pipe(Effect.provide(NodeServices.layer));
+});
+
+it.effect("prepareCommitContext fails closed when operation discovery fails", () => {
+  const commands: string[][] = [];
+  const spawner = ChildProcessSpawner.make((command) =>
+    Effect.sync(() => {
+      if (!ChildProcess.isStandardCommand(command)) {
+        return assert.fail("expected a standard Git command");
+      }
+      commands.push([...command.args]);
+      return makeProcessHandle({
+        exitCode: 128,
+        stderr: "fatal: unable to read git directory",
+      });
+    }),
+  );
+  const nodeServicesLayer = Layer.merge(
+    NodeServices.layer,
+    Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner),
+  );
+  const layer = GitVcsDriver.layer.pipe(
+    Layer.provide(ServerConfigLayer),
+    Layer.provideMerge(nodeServicesLayer),
+  );
+
+  return Effect.gen(function* () {
+    const cwd = yield* makeTmpDir();
+    const driver = yield* GitVcsDriver.GitVcsDriver;
+    const error = yield* driver.prepareCommitContext(cwd, ["a.txt"]).pipe(Effect.flip);
+
+    assert.equal(error._tag, "GitCommandError");
+    if (error._tag !== "GitCommandError") {
+      return assert.fail("expected GitCommandError");
+    }
+    assert.equal(error.operation, "GitVcsDriver.prepareCommitContext.operation");
+    assert.deepStrictEqual(commands, [["rev-parse", "--path-format=absolute", "--git-dir"]]);
+  }).pipe(Effect.provide(layer));
+});
+
+it.effect("switchRef rejects an option-like resolved local tracking branch", () => {
+  const commands: string[][] = [];
+  const spawner = ChildProcessSpawner.make((command) =>
+    Effect.sync(() => {
+      if (!ChildProcess.isStandardCommand(command)) {
+        return assert.fail("expected a standard Git command");
+      }
+      const args = [...command.args];
+      commands.push(args);
+      if (args[0] === "show-ref") {
+        const ref = args.at(-1) ?? "";
+        return makeProcessHandle({
+          exitCode: ref === "refs/remotes/origin/topic" ? 0 : 1,
+        });
+      }
+      if (args[0] === "for-each-ref") {
+        return makeProcessHandle({ exitCode: 0, stdout: "-f\torigin/topic\n" });
+      }
+      if (args[0] === "branch" && args[1] === "--show-current") {
+        return makeProcessHandle({ exitCode: 0, stdout: "-f\n" });
+      }
+      return makeProcessHandle({ exitCode: 0 });
+    }),
+  );
+  const nodeServicesLayer = Layer.merge(
+    NodeServices.layer,
+    Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner),
+  );
+  const layer = GitVcsDriver.layer.pipe(
+    Layer.provide(ServerConfigLayer),
+    Layer.provideMerge(nodeServicesLayer),
+  );
+
+  return Effect.gen(function* () {
+    const cwd = yield* makeTmpDir();
+    const driver = yield* GitVcsDriver.GitVcsDriver;
+    const error = yield* driver.switchRef({ cwd, refName: "origin/topic" }).pipe(Effect.flip);
+
+    assert.equal(error.operation, "GitVcsDriver.switchRef.localTrackingBranch");
+    assert.include(error.detail, "Local tracking branch");
+    assert.isFalse(commands.some((args) => args[0] === "checkout"));
+  }).pipe(Effect.provide(layer));
 });
 
 it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
@@ -717,6 +798,304 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
     );
   });
 
+  describe("conflict and operation state", () => {
+    const runGitAllowFailure = (cwd: string, args: ReadonlyArray<string>) =>
+      Effect.gen(function* () {
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.execute({
+          operation: "GitVcsDriver.test.runGitAllowFailure",
+          cwd,
+          args,
+          allowNonZeroExit: true,
+        });
+      });
+
+    const createDivergedCommits = (cwd: string, initialBranch: string) =>
+      Effect.gen(function* () {
+        yield* git(cwd, ["checkout", "-b", "side"]);
+        yield* writeTextFile(cwd, "c.txt", "side\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "side change"]);
+        yield* git(cwd, ["checkout", initialBranch]);
+        yield* writeTextFile(cwd, "c.txt", "main\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "main change"]);
+      });
+
+    it.effect("reports unmerged paths and merge in progress", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* createDivergedCommits(cwd, initialBranch);
+        yield* runGitAllowFailure(cwd, ["merge", "side"]);
+
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const status = yield* driver.statusDetailsLocal(cwd);
+
+        assert.equal(status.operationInProgress, "merge");
+        assert.deepEqual(status.unmergedPaths, ["c.txt"]);
+      }),
+    );
+
+    it.effect("reports rebase in progress", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* createDivergedCommits(cwd, initialBranch);
+        yield* git(cwd, ["checkout", "side"]);
+        yield* runGitAllowFailure(cwd, ["rebase", initialBranch]);
+
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const status = yield* driver.statusDetailsLocal(cwd);
+
+        assert.equal(status.operationInProgress, "rebase");
+        assert.equal(status.branch, null);
+      }),
+    );
+
+    it.effect("reports cherry-pick in progress", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* createDivergedCommits(cwd, initialBranch);
+        const sideCommit = yield* git(cwd, ["rev-parse", "side"]);
+        yield* runGitAllowFailure(cwd, ["cherry-pick", sideCommit]);
+
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const status = yield* driver.statusDetailsLocal(cwd);
+
+        assert.equal(status.operationInProgress, "cherry-pick");
+      }),
+    );
+
+    it.effect("reports revert in progress", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* writeTextFile(cwd, "c.txt", "one\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "one"]);
+        const revertTarget = yield* git(cwd, ["rev-parse", "HEAD"]);
+        yield* writeTextFile(cwd, "c.txt", "two\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "two"]);
+        yield* runGitAllowFailure(cwd, ["revert", "--no-edit", revertTarget]);
+        assert.equal(yield* git(cwd, ["branch", "--show-current"]), initialBranch);
+
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const status = yield* driver.statusDetailsLocal(cwd);
+
+        assert.equal(status.operationInProgress, "revert");
+      }),
+    );
+
+    it.effect("reports merge state when the per-worktree git directory contains a newline", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const pathService = yield* Path.Path;
+        const cwd = pathService.join(yield* makeTmpDir(), "repo\nwith-newline");
+        yield* fileSystem.makeDirectory(cwd, { recursive: true });
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* createDivergedCommits(cwd, initialBranch);
+        const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "linked");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({ cwd, path: worktreePath, refName: "side" });
+        yield* runGitAllowFailure(worktreePath, ["merge", initialBranch]);
+
+        const status = yield* driver.statusDetailsLocal(worktreePath);
+
+        assert.equal(status.operationInProgress, "merge");
+        assert.deepEqual(status.unmergedPaths, ["c.txt"]);
+      }),
+    );
+
+    it.effect("reports no operation on a clean repo", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const status = yield* driver.statusDetailsLocal(cwd);
+
+        assert.equal(status.operationInProgress, undefined);
+        assert.equal(status.unmergedPaths, undefined);
+      }),
+    );
+  });
+
+  describe("commit operation safety", () => {
+    it.effect("refuses selected-file commits during a merge and keeps the merge state", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* git(cwd, ["checkout", "-b", "side"]);
+        yield* writeTextFile(cwd, "c.txt", "side\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "side change"]);
+        yield* git(cwd, ["checkout", initialBranch]);
+        yield* writeTextFile(cwd, "c.txt", "main\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "main change"]);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.execute({
+          operation: "GitVcsDriver.test.merge",
+          cwd,
+          args: ["merge", "side"],
+          allowNonZeroExit: true,
+        });
+        const mergeHeadBefore = yield* git(cwd, ["rev-parse", "--verify", "MERGE_HEAD"]);
+
+        const error = yield* driver.prepareCommitContext(cwd, ["c.txt"]).pipe(Effect.flip);
+
+        assert.equal(error._tag, "GitCommandError");
+        if (error._tag !== "GitCommandError") {
+          return assert.fail("expected GitCommandError");
+        }
+        assert.include(error.detail, "Cannot commit selected files while a merge is in progress");
+        assert.equal(yield* git(cwd, ["rev-parse", "--verify", "MERGE_HEAD"]), mergeHeadBefore);
+
+        yield* writeTextFile(cwd, "c.txt", "resolved\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        const prepared = yield* driver.prepareCommitContext(cwd);
+        assert.notEqual(prepared, null);
+        yield* driver.commit(cwd, "Merge side", "");
+        const parents = yield* git(cwd, ["rev-list", "--parents", "-n", "1", "HEAD"]);
+        assert.equal(parents.split(" ").length, 3);
+      }),
+    );
+
+    it.effect("refuses to stage unresolved merge conflicts", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* git(cwd, ["checkout", "-b", "side"]);
+        yield* writeTextFile(cwd, "c.txt", "side\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "side change"]);
+        yield* git(cwd, ["checkout", initialBranch]);
+        yield* writeTextFile(cwd, "c.txt", "main\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "main change"]);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.execute({
+          operation: "GitVcsDriver.test.merge",
+          cwd,
+          args: ["merge", "side"],
+          allowNonZeroExit: true,
+        });
+
+        const error = yield* driver.prepareCommitContext(cwd).pipe(Effect.flip);
+
+        assert.equal(error._tag, "GitUnmergedPathsError");
+        yield* git(cwd, ["rev-parse", "--verify", "MERGE_HEAD"]);
+        assert.include(yield* git(cwd, ["status", "--porcelain=v2"]), "u ");
+      }),
+    );
+
+    it.effect("concludes a resolved merge with no tree delta as a two-parent commit", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* git(cwd, ["checkout", "-b", "side"]);
+        yield* writeTextFile(cwd, "c.txt", "side\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "side change"]);
+        yield* git(cwd, ["checkout", initialBranch]);
+        yield* writeTextFile(cwd, "c.txt", "main\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "main change"]);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.execute({
+          operation: "GitVcsDriver.test.merge",
+          cwd,
+          args: ["merge", "side"],
+          allowNonZeroExit: true,
+        });
+        yield* writeTextFile(cwd, "c.txt", "main\n");
+        yield* git(cwd, ["add", "c.txt"]);
+
+        const prepared = yield* driver.prepareCommitContext(cwd);
+        assert.notEqual(prepared, null);
+        assert.equal(prepared?.stagedSummary, "");
+        yield* driver.commit(cwd, "Conclude merge", "");
+        const parents = yield* git(cwd, ["rev-list", "--parents", "-n", "1", "HEAD"]);
+        assert.equal(parents.split(" ").length, 3);
+      }),
+    );
+
+    it.effect("still refuses selected-file commits during a resolved merge", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* git(cwd, ["checkout", "-b", "side"]);
+        yield* writeTextFile(cwd, "c.txt", "side\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "side change"]);
+        yield* git(cwd, ["checkout", initialBranch]);
+        yield* writeTextFile(cwd, "c.txt", "main\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "main change"]);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.execute({
+          operation: "GitVcsDriver.test.merge",
+          cwd,
+          args: ["merge", "side"],
+          allowNonZeroExit: true,
+        });
+        yield* writeTextFile(cwd, "c.txt", "main\n");
+        yield* git(cwd, ["add", "c.txt"]);
+
+        const error = yield* driver.prepareCommitContext(cwd, ["c.txt"]).pipe(Effect.flip);
+
+        assert.equal(error._tag, "GitCommandError");
+        if (error._tag !== "GitCommandError") {
+          return assert.fail("expected GitCommandError");
+        }
+        assert.include(error.detail, "Cannot commit selected files while a merge is in progress");
+        yield* git(cwd, ["rev-parse", "--verify", "MERGE_HEAD"]);
+      }),
+    );
+
+    it.effect("refuses selected-file commits during a cherry-pick and keeps the state", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* git(cwd, ["checkout", "-b", "side"]);
+        yield* writeTextFile(cwd, "c.txt", "side\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "side change"]);
+        const sideCommit = yield* git(cwd, ["rev-parse", "HEAD"]);
+        yield* git(cwd, ["checkout", initialBranch]);
+        yield* writeTextFile(cwd, "c.txt", "main\n");
+        yield* git(cwd, ["add", "c.txt"]);
+        yield* git(cwd, ["commit", "-m", "main change"]);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.execute({
+          operation: "GitVcsDriver.test.cherryPick",
+          cwd,
+          args: ["cherry-pick", sideCommit],
+          allowNonZeroExit: true,
+        });
+        const cherryPickHeadBefore = yield* git(cwd, ["rev-parse", "--verify", "CHERRY_PICK_HEAD"]);
+
+        const error = yield* driver.prepareCommitContext(cwd, ["c.txt"]).pipe(Effect.flip);
+
+        assert.equal(error._tag, "GitCommandError");
+        if (error._tag !== "GitCommandError") {
+          return assert.fail("expected GitCommandError");
+        }
+        assert.include(
+          error.detail,
+          "Cannot commit selected files while a cherry-pick is in progress",
+        );
+        assert.equal(
+          yield* git(cwd, ["rev-parse", "--verify", "CHERRY_PICK_HEAD"]),
+          cherryPickHeadBefore,
+        );
+      }),
+    );
+  });
+
   describe("worktree operations", () => {
     it("parses prunable registrations from NUL-delimited porcelain output", () => {
       assert.deepStrictEqual(
@@ -792,6 +1171,473 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         assert.equal(error.operation, "GitVcsDriver.removeWorktree");
         assert.include(error.detail, "git worktree remove failed:");
         assert.include(error.detail.toLowerCase(), "locked");
+      }),
+    );
+
+    it.effect("inspectWorktree reports changed, untracked and local-only counts", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "inspect-me");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: initialBranch,
+          newRefName: "neokod/abcd1234",
+        });
+
+        yield* writeTextFile(worktreePath, "README.md", "# changed\n");
+        yield* writeTextFile(worktreePath, "new.txt", "untracked\n");
+        yield* writeTextFile(worktreePath, "committed.txt", "committed\n");
+        yield* git(worktreePath, ["add", "committed.txt"]);
+        yield* git(worktreePath, ["commit", "-m", "worktree commit"]);
+
+        const state = yield* driver.inspectWorktree({ cwd, path: worktreePath });
+
+        assert.equal(state.exists, true);
+        assert.equal(
+          state.identity?.physicalPath,
+          yield* (yield* FileSystem.FileSystem).realPath(worktreePath),
+        );
+        assert.isString(state.identity?.device);
+        assert.isString(state.identity?.inode);
+        assert.isString(state.identity?.registrationPath);
+        assert.equal(state.refName, "neokod/abcd1234");
+        assert.equal(state.headSha, yield* git(worktreePath, ["rev-parse", "HEAD"]));
+        assert.equal(state.changedFileCount, 1);
+        assert.equal(state.untrackedFileCount, 1);
+        assert.equal(state.ignoredFileCount, 0);
+        assert.equal(state.localOnlyCommitCount, 1);
+        assert.equal(state.branchReclaimable, false);
+      }),
+    );
+
+    it.effect("inspectWorktree treats a fresh neokod branch as reclaimable", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "clean-tree");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: initialBranch,
+          newRefName: "neokod/abcd1234",
+        });
+
+        const state = yield* driver.inspectWorktree({ cwd, path: worktreePath });
+
+        assert.equal(state.exists, true);
+        assert.equal(state.changedFileCount, 0);
+        assert.equal(state.untrackedFileCount, 0);
+        assert.equal(state.localOnlyCommitCount, 0);
+        assert.equal(state.branchReclaimable, true);
+      }),
+    );
+
+    it.effect("inspectWorktree reports ignored files that a non-force removal deletes", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* writeTextFile(cwd, ".gitignore", "*.secret\n");
+        yield* git(cwd, ["add", ".gitignore"]);
+        yield* git(cwd, ["commit", "-m", "ignore secrets"]);
+        const pathService = yield* Path.Path;
+        const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "ignored-tree");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: initialBranch,
+          newRefName: "neokod/abcd1234",
+        });
+        yield* writeTextFile(worktreePath, "private.secret", "private\n");
+
+        const state = yield* driver.inspectWorktree({ cwd, path: worktreePath });
+
+        assert.equal(state.changedFileCount, 0);
+        assert.equal(state.untrackedFileCount, 0);
+        assert.equal(state.ignoredFileCount, 1);
+        assert.equal(state.branchReclaimable, true);
+      }),
+    );
+
+    it.effect("inspectWorktree reports a missing path as not existing", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const missingPath = pathService.join(yield* makeTmpDir("git-worktrees-"), "gone");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+
+        const state = yield* driver.inspectWorktree({ cwd, path: missingPath });
+
+        assert.equal(state.exists, false);
+        assert.equal(state.refName, null);
+        assert.equal(state.headSha, null);
+        assert.equal(state.ignoredFileCount, 0);
+        assert.equal(state.changedFileCount, 0);
+        assert.equal(state.branchReclaimable, false);
+        assert.equal(state.identity?.device, null);
+        assert.equal(state.identity?.inode, null);
+        assert.equal(state.identity?.physicalPath.endsWith("gone"), true);
+      }),
+    );
+
+    it.effect("removeWorktree with deleteBranch deletes a reclaimable neokod branch", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "reclaim-me");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: initialBranch,
+          newRefName: "neokod/abcd1234",
+        });
+
+        yield* driver.removeWorktree({ cwd, path: worktreePath, deleteBranch: true });
+
+        assert.equal(yield* git(cwd, ["branch", "--list", "neokod/abcd1234"]), "");
+      }),
+    );
+
+    it.effect("removeWorktree with deleteBranch keeps a branch that has unique commits", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const worktreePath = pathService.join(
+          yield* makeTmpDir("git-worktrees-"),
+          "unique-commits",
+        );
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: initialBranch,
+          newRefName: "neokod/abcd1234",
+        });
+        yield* writeTextFile(worktreePath, "unique.txt", "unique\n");
+        yield* git(worktreePath, ["add", "unique.txt"]);
+        yield* git(worktreePath, ["commit", "-m", "unique worktree commit"]);
+
+        yield* driver.removeWorktree({ cwd, path: worktreePath, deleteBranch: true });
+
+        assert.notEqual(yield* git(cwd, ["branch", "--list", "neokod/abcd1234"]), "");
+      }),
+    );
+
+    it.effect("removeWorktree with deleteBranch keeps non-neokod branches", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "user-branch");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: initialBranch,
+          newRefName: "feature/keep",
+        });
+
+        yield* driver.removeWorktree({ cwd, path: worktreePath, deleteBranch: true });
+
+        assert.notEqual(yield* git(cwd, ["branch", "--list", "feature/keep"]), "");
+      }),
+    );
+
+    it.effect("removeWorktree without force refuses a dirty worktree", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "dirty-tree");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: initialBranch,
+          newRefName: "neokod/abcd1234",
+        });
+        yield* writeTextFile(worktreePath, "README.md", "# dirty\n");
+
+        const error = yield* driver.removeWorktree({ cwd, path: worktreePath }).pipe(Effect.flip);
+        const fileSystem = yield* FileSystem.FileSystem;
+
+        assert.include(error.detail, "contains modified or untracked files");
+        assert.equal(yield* fileSystem.exists(worktreePath), true);
+      }),
+    );
+
+    it.effect("removeWorktree without force refuses a tracked write made after inspection", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "late-write");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: initialBranch,
+          newRefName: "neokod/abcd1234",
+        });
+        const inspected = yield* driver.inspectWorktree({ cwd, path: worktreePath });
+        yield* writeTextFile(worktreePath, "README.md", "# written after inspection\n");
+
+        const error = yield* driver
+          .removeWorktree({
+            cwd,
+            path: worktreePath,
+            force: false,
+            expectedState: inspected,
+          })
+          .pipe(Effect.flip);
+        const fileSystem = yield* FileSystem.FileSystem;
+
+        assert.include(error.detail, "contains modified or untracked files");
+        assert.equal(yield* fileSystem.exists(worktreePath), true);
+      }),
+    );
+
+    it.effect("removeWorktree refuses a HEAD that moved after inspection", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "moved-head");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: initialBranch,
+          newRefName: "neokod/abcd1234",
+        });
+        const inspected = yield* driver.inspectWorktree({ cwd, path: worktreePath });
+        yield* writeTextFile(worktreePath, "late.txt", "late\n");
+        yield* git(worktreePath, ["add", "late.txt"]);
+        yield* git(worktreePath, ["commit", "-m", "late commit"]);
+
+        const error = yield* driver
+          .removeWorktree({
+            cwd,
+            path: worktreePath,
+            force: true,
+            expectedState: inspected,
+          })
+          .pipe(Effect.flip);
+        const fileSystem = yield* FileSystem.FileSystem;
+
+        assert.include(error.detail, "HEAD changed since it was inspected");
+        assert.equal(yield* fileSystem.exists(worktreePath), true);
+      }),
+    );
+
+    it.effect("removeWorktree refuses a symlink-parent retarget with matching HEAD", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const fs = yield* FileSystem.FileSystem;
+        const firstRoot = yield* makeTmpDir("git-worktree-first-");
+        const secondRoot = yield* makeTmpDir("git-worktree-second-");
+        const link = pathService.join(yield* makeTmpDir("git-worktree-link-"), "link");
+        const firstPath = pathService.join(firstRoot, "wt");
+        const secondPath = pathService.join(secondRoot, "wt");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: firstPath,
+          refName: initialBranch,
+          newRefName: "neokod/aaaa1111",
+        });
+        yield* driver.createWorktree({
+          cwd,
+          path: secondPath,
+          refName: initialBranch,
+          newRefName: "neokod/bbbb2222",
+        });
+        yield* fs.symlink(firstRoot, link);
+        const inspected = yield* driver.inspectWorktree({
+          cwd,
+          path: pathService.join(link, "wt"),
+        });
+
+        yield* fs.remove(link);
+        yield* fs.symlink(secondRoot, link);
+        const error = yield* driver
+          .removeWorktree({
+            cwd,
+            path: pathService.join(link, "wt"),
+            force: true,
+            expectedState: inspected,
+          })
+          .pipe(Effect.flip);
+
+        assert.include(error.detail, "target changed since it was inspected");
+        assert.equal(yield* fs.exists(firstPath), true);
+        assert.equal(yield* fs.exists(secondPath), true);
+      }),
+    );
+
+    it.effect("removeWorktree without force deletes ignored files", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* writeTextFile(cwd, ".gitignore", "*.secret\n");
+        yield* git(cwd, ["add", ".gitignore"]);
+        yield* git(cwd, ["commit", "-m", "ignore secrets"]);
+        const pathService = yield* Path.Path;
+        const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "ignored-only");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* driver.createWorktree({
+          cwd,
+          path: worktreePath,
+          refName: initialBranch,
+          newRefName: "neokod/abcd1234",
+        });
+        yield* writeTextFile(worktreePath, "private.secret", "private\n");
+        const inspected = yield* driver.inspectWorktree({ cwd, path: worktreePath });
+
+        yield* driver.removeWorktree({
+          cwd,
+          path: worktreePath,
+          force: false,
+          expectedState: inspected,
+        });
+
+        const fileSystem = yield* FileSystem.FileSystem;
+        assert.equal(yield* fileSystem.exists(worktreePath), false);
+      }),
+    );
+  });
+
+  describe("argument safety", () => {
+    it.effect("switchRef rejects option-like names and keeps local changes", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        yield* writeTextFile(cwd, "README.md", "# modified\n");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+
+        for (const refName of ["-f", "--upload-pack=x", "a..b", "a b"]) {
+          const error = yield* driver.switchRef({ cwd, refName }).pipe(Effect.flip);
+          assert.equal(error.operation, "GitVcsDriver.switchRef");
+          assert.isTrue(error.detail.length > 0);
+          assert.equal(yield* git(cwd, ["status", "--porcelain"]), "M README.md");
+        }
+      }),
+    );
+
+    it.effect("switchRef and createRef accept slash and unicode names", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+
+        yield* driver.createRef({ cwd, refName: "feature/ünï", switchRef: true });
+        assert.equal(yield* git(cwd, ["branch", "--show-current"]), "feature/ünï");
+        yield* driver.switchRef({ cwd, refName: initialBranch });
+        yield* driver.switchRef({ cwd, refName: "feature/ünï" });
+        assert.equal(yield* git(cwd, ["branch", "--show-current"]), "feature/ünï");
+      }),
+    );
+
+    it.effect("createRef rejects -f without creating a branch", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const before = yield* git(cwd, ["branch", "--list"]);
+
+        const error = yield* driver.createRef({ cwd, refName: "-f" }).pipe(Effect.flip);
+
+        assert.equal(error.operation, "GitVcsDriver.createRef");
+        assert.equal(yield* git(cwd, ["branch", "--list"]), before);
+      }),
+    );
+
+    it.effect("createWorktree rejects option-like names and creates nothing", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const pathService = yield* Path.Path;
+        const parent = yield* makeTmpDir("git-worktrees-");
+        const fileSystem = yield* FileSystem.FileSystem;
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+
+        const refError = yield* driver
+          .createWorktree({
+            cwd,
+            path: pathService.join(parent, "ref-option"),
+            refName: "--detach",
+          })
+          .pipe(Effect.flip);
+        assert.equal(refError.operation, "GitVcsDriver.createWorktree");
+        assert.equal(yield* fileSystem.exists(pathService.join(parent, "ref-option")), false);
+
+        const branchError = yield* driver
+          .createWorktree({
+            cwd,
+            path: pathService.join(parent, "new-ref-option"),
+            refName: initialBranch,
+            newRefName: "-b",
+          })
+          .pipe(Effect.flip);
+        assert.equal(branchError.operation, "GitVcsDriver.createWorktree");
+        assert.equal(yield* fileSystem.exists(pathService.join(parent, "new-ref-option")), false);
+      }),
+    );
+
+    it.effect(
+      "createWorktree and removeWorktree accept a destination that starts with a dash",
+      () =>
+        Effect.gen(function* () {
+          const cwd = yield* makeTmpDir();
+          const { initialBranch } = yield* initRepoWithCommit(cwd);
+          const pathService = yield* Path.Path;
+          const worktreePath = "-wt";
+          const absoluteWorktreePath = pathService.join(cwd, worktreePath);
+          const driver = yield* GitVcsDriver.GitVcsDriver;
+
+          yield* driver.createWorktree({
+            cwd,
+            path: worktreePath,
+            refName: initialBranch,
+            newRefName: "feature/dash-path",
+          });
+          assert.equal(
+            yield* git(absoluteWorktreePath, ["branch", "--show-current"]),
+            "feature/dash-path",
+          );
+
+          yield* driver.removeWorktree({ cwd, path: worktreePath });
+          const fileSystem = yield* FileSystem.FileSystem;
+          assert.equal(yield* fileSystem.exists(absoluteWorktreePath), false);
+        }),
+    );
+
+    it.effect("readRangeContext does not treat baseRef as an option", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const fileSystem = yield* FileSystem.FileSystem;
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const outputPath = `${cwd}/pwn`;
+
+        const error = yield* driver
+          .readRangeContext(cwd, `--output=${outputPath}`)
+          .pipe(Effect.flip);
+
+        assert.equal(error.operation, "GitVcsDriver.readRangeContext");
+        assert.equal(yield* fileSystem.exists(`${outputPath}..HEAD`), false);
       }),
     );
   });

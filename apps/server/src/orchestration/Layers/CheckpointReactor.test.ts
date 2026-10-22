@@ -37,6 +37,7 @@ import * as VcsProcess from "../../vcs/VcsProcess.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
 import { CheckpointReactorLive } from "./CheckpointReactor.ts";
+import { WorktreeRemovalLeaseLive } from "../../git/WorktreeRemovalLease.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQuery.ts";
@@ -517,6 +518,7 @@ describe("CheckpointReactor", () => {
       Layer.provideMerge(WorkspacePaths.layer),
       Layer.provideMerge(vcsProcessLayer),
       Layer.provideMerge(ServerConfigLayer),
+      Layer.provideMerge(WorktreeRemovalLeaseLive),
       Layer.provideMerge(NodeServices.layer),
     );
 

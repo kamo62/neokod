@@ -188,6 +188,30 @@ it.layer(CursorTextGenerationTestLayer)("CursorTextGeneration", (it) => {
     );
   });
 
+  it.effect("preserves whitespace across tool-interleaved assistant chunks", () =>
+    withFakeAcpAgent(
+      {
+        NEOKOD_ACP_EMIT_TOOL_INTERLEAVED_WHITESPACE: "1",
+      },
+      (textGeneration) =>
+        Effect.gen(function* () {
+          const generated = yield* textGeneration.generateCommitMessage({
+            cwd: process.cwd(),
+            branch: "feature/cursor-tool-whitespace",
+            stagedSummary: "M README.md",
+            stagedPatch: "diff --git a/README.md b/README.md",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("cursor"),
+              model: "composer-2",
+            },
+          });
+
+          expect(generated.subject).toBe("Fix name");
+          expect(generated.body).toBe("");
+        }),
+    ),
+  );
+
   it.effect("accepts json objects with extra assistant text around them", () =>
     withFakeAcpAgent(
       {

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Symphony runs · Concept A · Neokod design prototype</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="runs.css" />
+    <script src="shared.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#run-list">Skip to runs</a>
+    <div class="app">
+      <header class="topbar">
+        <a class="brand" href="index.html"><span class="brand-mark">N</span>Neokod</a>
+        <nav class="crumbs" aria-label="Location">
+          <span data-ic="chevronRight"></span>
+          <span class="hide-narrow">Symphony</span>
+          <span data-ic="chevronRight" data-ic-class="hide-narrow"></span>
+          <strong>Runs</strong>
+        </nav>
+        <span class="spacer"></span>
+        <nav class="concept-nav" aria-label="Design concepts">
+          <a href="runs.html" aria-current="page">Runs</a>
+          <a href="workflow.html">Workflow map</a>
+          <a href="planning.html">Plan and decisions</a>
+        </nav>
+        <span class="notice"><span data-ic="eye"></span>Design prototype · Sample data</span>
+        <button class="btn ghost sm" type="button" id="reset-demo">Reset demo</button>
+        <button
+          class="btn ghost icon"
+          type="button"
+          data-theme-toggle
+          aria-label="Toggle theme"
+        ></button>
+      </header>
+
+      <div class="r-layout" id="layout" data-detail-open="false">
+        <aside class="r-side" aria-label="Project and workflows">
+          <div class="r-project">
+            <span data-ic="folder"></span>
+            <span>Neokod</span>
+          </div>
+          <div class="r-side-label label" id="wf-label">Workflows</div>
+          <div class="r-wf" id="workflows" role="group" aria-labelledby="wf-label"></div>
+          <div class="r-side-foot">
+            <p class="label">Keyboard</p>
+            <p><span class="kbd">/</span> Search</p>
+            <p><span class="kbd">↑</span> <span class="kbd">↓</span> Move between runs</p>
+            <p><span class="kbd">Esc</span> Clear search or close</p>
+          </div>
+        </aside>
+
+        <main class="r-main" id="main">
+          <div class="r-toolbar">
+            <label class="r-search">
+              <span data-ic="search"></span>
+              <span class="sr-only">Search runs</span>
+              <input
+                id="search"
+                type="search"
+                placeholder="Search by issue, title, branch or head"
+                autocomplete="off"
+              />
+              <span class="kbd" aria-hidden="true">/</span>
+            </label>
+            <div class="r-scope" role="group" aria-label="Show">
+              <button type="button" data-scope="active" aria-pressed="true">Active</button>
+              <button type="button" data-scope="history" aria-pressed="false">History</button>
+              <button type="button" data-scope="all" aria-pressed="false">All</button>
+            </div>
+          </div>
+          <div class="r-chips" id="chips" role="group" aria-label="Filter by status"></div>
+
+          <section class="r-attn" id="attention" aria-labelledby="attn-title"></section>
+
+          <div class="r-listwrap">
+            <div id="run-list" class="r-list" role="listbox" aria-label="Runs" tabindex="-1"></div>
+          </div>
+        </main>
+
+        <section class="r-detail" id="detail" aria-label="Selected run" tabindex="-1"></section>
+      </div>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="fixtures.js"></script>
+    <script src="runs.js"></script>
+  </body>
+</html>

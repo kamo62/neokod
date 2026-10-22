@@ -5,6 +5,8 @@ import type {
   VcsStatusRemoteResult,
   VcsStatusResult,
   VcsStatusStreamEvent,
+  VcsWorktreeGitState,
+  VcsWorktreeIdentity,
 } from "@neokod/contracts";
 import * as Arr from "effect/Array";
 import * as Result from "effect/Result";
@@ -12,6 +14,108 @@ import { detectSourceControlProviderFromRemoteUrl } from "./sourceControl.ts";
 
 export const WORKTREE_BRANCH_PREFIX = "neokod";
 const TEMP_WORKTREE_BRANCH_PATTERN = new RegExp(`^${WORKTREE_BRANCH_PREFIX}\\/[0-9a-f]{8}$`);
+
+// Git 2.24 added `--end-of-options`; all other invocations rely on these pure
+// validators plus `--`, which work on every git version the driver supports.
+const FORBIDDEN_REF_CHARACTERS = [" ", "~", "^", ":", "?", "*", "[", "\\"];
+
+function hasControlCharacter(value: string): boolean {
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0;
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
+}
+
+/** Returns a human readable problem, or null when `value` is safe to pass as a git ref or remote name. */
+export function validateGitRefName(value: string, label = "Ref name"): string | null {
+  if (value.length === 0) return `${label} is required.`;
+  if (value.length > 255) return `${label} is longer than 255 characters.`;
+  if (value.startsWith("-")) return `${label} must not start with '-'.`;
+  if (hasControlCharacter(value)) return `${label} contains a control character.`;
+  if (FORBIDDEN_REF_CHARACTERS.some((character) => value.includes(character))) {
+    return `${label} contains an unsupported character.`;
+  }
+  if (value.includes("..")) return `${label} must not contain '..'.`;
+  if (value.includes("@{")) return `${label} must not contain '@{'.`;
+  if (value === "@") return `${label} must not be '@'.`;
+  if (value.startsWith("/") || value.endsWith("/")) {
+    return `${label} must not start or end with '/'.`;
+  }
+  if (value.includes("//")) return `${label} must not contain '//'.`;
+  if (value.endsWith(".")) return `${label} must not end with '.'.`;
+  if (
+    value.split("/").some((component) => component.startsWith(".") || component.endsWith(".lock"))
+  ) {
+    return `${label} contains an invalid path component.`;
+  }
+  return null;
+}
+
+/** For revisions, URLs and similar free text that go on a git command line (no ref grammar). */
+export function validateGitArgumentValue(value: string, label: string): string | null {
+  if (value.length === 0) return `${label} is required.`;
+  if (value.startsWith("-")) return `${label} must not start with '-'.`;
+  if (hasControlCharacter(value)) return `${label} contains a control character.`;
+  return null;
+}
+
+function worktreeIdentitiesEqual(
+  expected: VcsWorktreeIdentity | undefined,
+  actual: VcsWorktreeIdentity | undefined,
+): boolean {
+  if (expected === undefined || actual === undefined) {
+    return expected === actual;
+  }
+  return (
+    expected.physicalPath === actual.physicalPath &&
+    expected.registrationPath === actual.registrationPath &&
+    expected.device === actual.device &&
+    expected.inode === actual.inode
+  );
+}
+
+/** Compare the complete evidence captured by an inspection with fresh evidence. */
+export function worktreeGitStatesMatch(
+  expected: VcsWorktreeGitState,
+  actual: VcsWorktreeGitState,
+): boolean {
+  return (
+    expected.exists === actual.exists &&
+    worktreeIdentitiesEqual(expected.identity, actual.identity) &&
+    expected.refName === actual.refName &&
+    expected.headSha === actual.headSha &&
+    expected.changedFileCount === actual.changedFileCount &&
+    expected.untrackedFileCount === actual.untrackedFileCount &&
+    expected.ignoredFileCount === actual.ignoredFileCount &&
+    expected.localOnlyCommitCount === actual.localOnlyCommitCount &&
+    expected.branchReclaimable === actual.branchReclaimable
+  );
+}
+
+/**
+ * Work the user must explicitly agree to discard. A named branch keeps its
+ * commits, so only a detached HEAD can lose commits. Ignored files are loss
+ * because removal deletes them even without `--force`.
+ */
+export function worktreeHasLoss(state: VcsWorktreeGitState): boolean {
+  return (
+    state.exists &&
+    (state.changedFileCount > 0 ||
+      state.untrackedFileCount > 0 ||
+      state.ignoredFileCount > 0 ||
+      (state.refName === null && state.localOnlyCommitCount > 0))
+  );
+}
+
+/**
+ * Git's own force requirement. `git worktree remove` deletes ignored files
+ * without force and does not check commit reachability, so only tracked and
+ * untracked dirt needs `--force`; that keeps Git's last-moment dirty check on.
+ */
+export function worktreeRequiresForce(state: VcsWorktreeGitState): boolean {
+  return state.exists && state.changedFileCount + state.untrackedFileCount > 0;
+}
 
 /**
  * Sanitize an arbitrary string into a valid, lowercase git refName fragment.
@@ -243,6 +347,10 @@ function toLocalStatusPart(status: VcsStatusResult): VcsStatusLocalResult {
     refName: status.refName,
     hasWorkingTreeChanges: status.hasWorkingTreeChanges,
     workingTree: status.workingTree,
+    ...(status.operationInProgress ? { operationInProgress: status.operationInProgress } : {}),
+    ...(status.unmergedPaths && status.unmergedPaths.length > 0
+      ? { unmergedPaths: status.unmergedPaths }
+      : {}),
   };
 }
 
