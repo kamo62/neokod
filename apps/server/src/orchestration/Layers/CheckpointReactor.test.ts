@@ -460,6 +460,9 @@ describe("CheckpointReactor", () => {
       readonly markStarted: () => void;
       readonly release: Promise<void>;
     };
+    readonly onRestoreCheckpoint?: (input: {
+      readonly preserveIgnoredPaths?: ReadonlyArray<string>;
+    }) => void;
   }) {
     const cwd = options?.repositoryCwd ?? createGitRepository();
     if (options?.repositoryCwd === undefined) {
@@ -569,6 +572,21 @@ describe("CheckpointReactor", () => {
             ),
           ).pipe(Layer.provide(checkpointStoreBaseLayer))
         : checkpointStoreBaseLayer;
+    const checkpointStoreWithRestoreSink =
+      options?.onRestoreCheckpoint === undefined
+        ? checkpointStoreLayer
+        : Layer.effect(
+            CheckpointStore.CheckpointStore,
+            Effect.map(CheckpointStore.CheckpointStore, (store) =>
+              CheckpointStore.CheckpointStore.of({
+                ...store,
+                restoreCheckpoint: (input) => {
+                  options.onRestoreCheckpoint?.(input);
+                  return store.restoreCheckpoint(input);
+                },
+              }),
+            ),
+          ).pipe(Layer.provide(checkpointStoreLayer));
 
     const vcsProcessBaseLayer = VcsProcess.layer;
     const vcsProcessLayer = options?.truncateIgnoredEnumeration
@@ -660,7 +678,7 @@ describe("CheckpointReactor", () => {
       Layer.provideMerge(RuntimeReceiptBusLive),
       Layer.provideMerge(Layer.succeed(ProviderService, provider.service)),
       Layer.provideMerge(vcsStatusBroadcasterLayer),
-      Layer.provideMerge(checkpointStoreLayer),
+      Layer.provideMerge(checkpointStoreWithRestoreSink),
       Layer.provideMerge(
         WorkspaceEntries.layer.pipe(
           Layer.provide(WorkspacePaths.layer),
@@ -2674,6 +2692,76 @@ describe("CheckpointReactor", () => {
     expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
     expect(listRecoveryRefs(harness.cwd)).toEqual([]);
     expect(thread.checkpoints).toHaveLength(2);
+  });
+
+  it("preserves files ignored by Git's default XDG ignore file across restore", async () => {
+    const repository = createGitRepository();
+    tempDirs.push(repository);
+    const xdgConfigHome = NodePath.join(repository, ".config");
+    const xdgIgnorePath = NodePath.join(xdgConfigHome, "git", "ignore");
+    NodeFS.mkdirSync(NodePath.dirname(xdgIgnorePath), { recursive: true });
+    NodeFS.writeFileSync(xdgIgnorePath, "", "utf8");
+    runGit(repository, ["add", ".config/git/ignore"]);
+    runGit(repository, ["commit", "-m", "Add default ignore"]);
+    const previousXdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = xdgConfigHome;
+    let preservedIgnoredPaths: ReadonlyArray<string> = [];
+
+    try {
+      const harness = await createHarness({
+        repositoryCwd: repository,
+        onRestoreCheckpoint: (input) => {
+          preservedIgnoredPaths = input.preserveIgnoredPaths ?? [];
+        },
+      });
+      NodeFS.writeFileSync(xdgIgnorePath, "secret.txt\nnode_modules/\n", "utf8");
+      NodeFS.writeFileSync(NodePath.join(repository, "secret.txt"), "keep xdg\n", "utf8");
+      NodeFS.mkdirSync(NodePath.join(repository, "node_modules", "pkg"), { recursive: true });
+      NodeFS.writeFileSync(
+        NodePath.join(repository, "node_modules", "pkg", "index.js"),
+        "keep module\n",
+        "utf8",
+      );
+
+      await revertToTurnOne(harness);
+      await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+
+      expect(NodeFS.readFileSync(NodePath.join(repository, "secret.txt"), "utf8")).toBe(
+        "keep xdg\n",
+      );
+      expect(
+        NodeFS.readFileSync(NodePath.join(repository, "node_modules", "pkg", "index.js"), "utf8"),
+      ).toBe("keep module\n");
+      expect(NodeFS.readFileSync(NodePath.join(repository, "README.md"), "utf8")).toBe("v2\n");
+      expect(harness.provider.rollbackConversation).toHaveBeenCalledTimes(1);
+      expect(listRecoveryRefs(repository)).toHaveLength(1);
+      expect(preservedIgnoredPaths).toContain("secret.txt");
+      expect(preservedIgnoredPaths).toContain("node_modules");
+      expect(preservedIgnoredPaths).not.toContain("node_modules/pkg/index.js");
+    } finally {
+      if (previousXdg === undefined) {
+        delete process.env.XDG_CONFIG_HOME;
+      } else {
+        process.env.XDG_CONFIG_HOME = previousXdg;
+      }
+    }
+  });
+
+  it("preserves files ignored by .git/info/exclude across restore", async () => {
+    const harness = await createHarness();
+    const infoExcludePath = NodePath.join(harness.cwd, ".git", "info", "exclude");
+    NodeFS.writeFileSync(infoExcludePath, "secret.txt\n", "utf8");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "secret.txt"), "keep info exclude\n", "utf8");
+
+    await revertToTurnOne(harness);
+    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "secret.txt"), "utf8")).toBe(
+      "keep info exclude\n",
+    );
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v2\n");
+    expect(harness.provider.rollbackConversation).toHaveBeenCalledTimes(1);
+    expect(listRecoveryRefs(harness.cwd)).toHaveLength(1);
   });
 
   it("refuses when a currently ignored file would be lost by the checkpoint's ignore rules", async () => {

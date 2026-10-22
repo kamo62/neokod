@@ -895,10 +895,25 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         cwd: input.cwd,
         args: ["restore", "--source", commitOid, "--worktree", "--staged", "--", "."],
       });
+      const preservedIgnoredPaths = [
+        ...new Set(
+          (input.preserveIgnoredPaths ?? [])
+            .map((ignoredPath) => ignoredPath.replace(/\/+$/, ""))
+            .filter((ignoredPath) => ignoredPath.length > 0),
+        ),
+      ];
       yield* execute({
         operation,
         cwd: input.cwd,
-        args: ["clean", "-fd", "--", "."],
+        // Literal exclusions keep paths that were ignored before the restore
+        // out of clean even when the restored tree changes the ignore rules.
+        args: [
+          "clean",
+          "-fd",
+          "--",
+          ".",
+          ...preservedIgnoredPaths.map((ignoredPath) => `:(exclude,literal)${ignoredPath}`),
+        ],
       });
 
       const headExists = yield* hasHeadCommit(input.cwd);

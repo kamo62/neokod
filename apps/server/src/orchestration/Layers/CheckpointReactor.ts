@@ -364,6 +364,48 @@ const make = Effect.gen(function* () {
       Effect.catch((error) => Effect.succeed({ ok: false as const, detail: error.message })),
     );
 
+  const listIgnoredPathsForRestore = Effect.fn("CheckpointReactor.listIgnoredPathsForRestore")(
+    function* (
+      cwd: string,
+    ): Effect.fn.Return<
+      | { readonly ok: true; readonly paths: ReadonlyArray<string> }
+      | { readonly ok: false; readonly detail: string }
+    > {
+      const ignored = yield* runGitEvidence({
+        operation: "CheckpointReactor.listIgnoredPathsForRestore",
+        cwd,
+        args: [
+          "ls-files",
+          "--others",
+          "--ignored",
+          "--exclude-standard",
+          // Collapse ignored trees such as node_modules into one entry.
+          "--directory",
+          "-z",
+        ],
+      });
+      if (!ignored.ok) {
+        return { ok: false, detail: ignored.detail };
+      }
+      if (ignored.result.exitCode !== 0) {
+        return {
+          ok: false,
+          detail: `git ls-files --ignored exited with ${ignored.result.exitCode}`,
+        };
+      }
+      const paths = [
+        ...new Set(
+          ignored.result.stdout
+            .split("\0")
+            .filter((entry) => entry.length > 0)
+            .map(trimTrailingSlash)
+            .filter((entry) => entry.length > 0),
+        ),
+      ];
+      return { ok: true, paths };
+    },
+  );
+
   const resolveRestoreCommit = Effect.fn("CheckpointReactor.resolveRestoreCommit")(
     function* (input: {
       readonly cwd: string;
@@ -1514,6 +1556,14 @@ const make = Effect.gen(function* () {
             return;
           }
 
+          const preservedIgnored = yield* listIgnoredPathsForRestore(cwd);
+          if (!preservedIgnored.ok) {
+            yield* failRevert(
+              `Revert refused: Neokod could not list the ignored paths in this folder before reverting (${preservedIgnored.detail}). Nothing was changed.`,
+            );
+            return;
+          }
+
           const recoveryRef = yield* allocateRecoveryRef(cwd, threadId);
           if (recoveryRef === null) {
             yield* failRevert(
@@ -1547,6 +1597,7 @@ const make = Effect.gen(function* () {
             cwd,
             checkpointRef: targetCheckpointRef,
             fallbackToHead: turnCount === 0,
+            preserveIgnoredPaths: preservedIgnored.paths,
           });
           if (!restored) {
             yield* failRevert(`Filesystem checkpoint is unavailable for turn ${turnCount}.`);
