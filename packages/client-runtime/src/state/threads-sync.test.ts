@@ -101,6 +101,11 @@ function awaitThreadState(
 
 const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (options?: {
   readonly cached?: OrchestrationThread;
+  /**
+   * Simulate a cache entry that fails to decode, as an unsupported legacy
+   * thread-cache schema does after a version bump.
+   */
+  readonly cachedLoadError?: boolean;
   readonly httpSnapshot?: Option.Option<OrchestrationThreadDetailSnapshot>;
 }) {
   const inputs = yield* Queue.unbounded<TestThreadInput>();
@@ -159,14 +164,21 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
     loadShell: () => Effect.succeed(Option.none()),
     saveShell: () => Effect.void,
     loadThread: (_environmentId, threadId) =>
-      Effect.succeed(
-        threadId === THREAD_ID && options?.cached !== undefined
-          ? Option.some({
-              snapshotSequence: CACHED_SNAPSHOT_SEQUENCE,
-              thread: options.cached,
-            })
-          : Option.none(),
-      ),
+      threadId === THREAD_ID && options?.cachedLoadError === true
+        ? Effect.fail(
+            new Persistence.ConnectionPersistenceError({
+              operation: "load-thread",
+              message: "Unsupported thread cache schema.",
+            }),
+          )
+        : Effect.succeed(
+            threadId === THREAD_ID && options?.cached !== undefined
+              ? Option.some({
+                  snapshotSequence: CACHED_SNAPSHOT_SEQUENCE,
+                  thread: options.cached,
+                })
+              : Option.none(),
+          ),
     saveThread: (_environmentId, thread) =>
       Ref.update(savedThreads, (current) => [...current, thread]),
     removeThread: (_environmentId, threadId) =>
@@ -392,6 +404,39 @@ describe("EnvironmentThreads", () => {
       expect(Option.getOrThrow(state.data).settledTurnCompletions).toEqual({
         [turnId]: completedAt,
       });
+    }),
+  );
+
+  it.effect("replaces a rejected legacy thread cache with the server snapshot", () =>
+    Effect.gen(function* () {
+      const turnId = TurnId.make("turn-upgrade");
+      const completedAt = "2026-04-01T00:01:00.000Z";
+      // The authoritative snapshot the server serves after the cache is
+      // invalidated by the thread-cache schema bump.
+      const serverThread: OrchestrationThread = {
+        ...BASE_THREAD,
+        latestTurn: {
+          turnId,
+          state: "interrupted",
+          requestedAt: "2026-04-01T00:00:00.000Z",
+          startedAt: "2026-04-01T00:00:00.000Z",
+          completedAt,
+          assistantMessageId: null,
+        },
+        settledTurnCompletions: { [turnId]: completedAt },
+      };
+      const harness = yield* makeHarness({
+        cachedLoadError: true,
+        httpSnapshot: Option.some({ snapshotSequence: 1, thread: serverThread }),
+      });
+
+      // No thread events arrive: the upgrade relies on the fetched snapshot.
+      const state = yield* awaitThreadState(harness.observed, (value) => Option.isSome(value.data));
+
+      expect(Option.getOrThrow(state.data).settledTurnCompletions).toEqual({
+        [turnId]: completedAt,
+      });
+      expect(yield* Ref.get(harness.loaderCalls)).toBeGreaterThanOrEqual(1);
     }),
   );
 
