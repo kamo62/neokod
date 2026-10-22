@@ -229,6 +229,7 @@ import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   buildExpiredTerminalContextToastCopy,
   buildLocalDraftThread,
+  buildRevertCheckpointConfirmMessage,
   buildThreadTurnInterruptInput,
   canAutoDispatchQueuedMessage,
   canDispatchQueuedMessage,
@@ -3990,11 +3991,7 @@ function ChatViewContent(props: ChatViewProps) {
         return;
       }
       const confirmed = await localApi.dialogs.confirm(
-        [
-          `Revert this thread to checkpoint ${turnCount}?`,
-          "This will discard newer messages and turn diffs in this thread.",
-          "This action cannot be undone.",
-        ].join("\n"),
+        buildRevertCheckpointConfirmMessage(turnCount),
       );
       if (!confirmed) {
         return;

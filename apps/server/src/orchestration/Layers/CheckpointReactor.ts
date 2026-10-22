@@ -8,9 +8,11 @@ import {
   TurnId,
   type OrchestrationEvent,
   type ProviderRuntimeEvent,
+  type ProviderSession,
   type VcsStatusLocalResult,
 } from "@neokod/contracts";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -18,6 +20,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import type * as PlatformError from "effect/PlatformError";
+import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@neokod/shared/DrainableWorker";
 import { isTemporaryWorktreeBranch } from "@neokod/shared/git";
@@ -25,6 +28,8 @@ import { isTemporaryWorktreeBranch } from "@neokod/shared/git";
 import { parseTurnDiffFilesFromUnifiedDiff } from "../../checkpointing/Diffs.ts";
 import {
   checkpointRefForThreadTurn,
+  findActiveSessionsSharingCwd,
+  recoveryRefForThreadRevert,
   resolveThreadWorkspaceCwd,
 } from "../../checkpointing/Utils.ts";
 import * as CheckpointStore from "../../checkpointing/CheckpointStore.ts";
@@ -122,6 +127,40 @@ const make = Effect.gen(function* () {
       ),
     );
 
+  const appendRevertRecoveryActivity = (input: {
+    readonly threadId: ThreadId;
+    readonly turnCount: number;
+    readonly recoveryRef: CheckpointRef;
+    readonly cwd: string;
+    readonly createdAt: string;
+  }) =>
+    Effect.all({
+      commandId: serverCommandId("checkpoint-revert-recovery"),
+      activityId: serverEventId,
+    }).pipe(
+      Effect.flatMap(({ commandId, activityId }) =>
+        orchestrationEngine.dispatch({
+          type: "thread.activity.append",
+          commandId,
+          threadId: input.threadId,
+          activity: {
+            id: activityId,
+            tone: "info",
+            kind: "checkpoint.revert.recovery-saved",
+            summary: "Files saved before revert",
+            payload: {
+              turnCount: input.turnCount,
+              recoveryRef: input.recoveryRef,
+              cwd: input.cwd,
+            },
+            turnId: null,
+            createdAt: input.createdAt,
+          },
+          createdAt: input.createdAt,
+        }),
+      ),
+    );
+
   const appendCaptureFailureActivity = (input: {
     readonly threadId: ThreadId;
     readonly turnId: TurnId | null;
@@ -153,14 +192,46 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  const resolveSessionRuntimeForThread = Effect.fn("resolveSessionRuntimeForThread")(function* (
+  const sessionRuntimeFromSessions = (
     threadId: ThreadId,
-  ): Effect.fn.Return<Option.Option<{ readonly threadId: ThreadId; readonly cwd: string }>> {
-    const sessions = yield* providerService.listSessions();
+    sessions: ReadonlyArray<ProviderSession>,
+  ): Option.Option<{ readonly threadId: ThreadId; readonly cwd: string }> => {
     const session = sessions.find((entry) => entry.threadId === threadId);
     return session?.cwd
       ? Option.some({ threadId: session.threadId, cwd: session.cwd })
       : Option.none();
+  };
+
+  const resolveSessionRuntimeForThread = Effect.fn("resolveSessionRuntimeForThread")(function* (
+    threadId: ThreadId,
+  ): Effect.fn.Return<Option.Option<{ readonly threadId: ThreadId; readonly cwd: string }>> {
+    const sessions = yield* providerService.listSessions();
+    return sessionRuntimeFromSessions(threadId, sessions);
+  });
+
+  // A failed session listing is unknown, not an empty list. Revert must refuse
+  // rather than assume no other thread is active in the folder.
+  const readSessionsForRevert = Effect.fn("readSessionsForRevert")(function* (): Effect.fn.Return<
+    Option.Option<ReadonlyArray<ProviderSession>>
+  > {
+    return yield* providerService.listSessions().pipe(
+      Effect.map((sessions) => Option.some(sessions)),
+      Effect.catchCause((cause) =>
+        Cause.hasInterruptsOnly(cause) ? Effect.failCause(cause) : Effect.succeed(Option.none()),
+      ),
+    );
+  });
+
+  // Recovery refs are created by the serial reactor worker. Keep them distinct
+  // even if two reverts land in the same millisecond, so the earlier snapshot
+  // is not overwritten.
+  const lastRecoveryRefMillis = yield* Ref.make(0);
+  const nextRecoveryRefMillis = Effect.gen(function* () {
+    const nowMillis = yield* Clock.currentTimeMillis;
+    return yield* Ref.modify(lastRecoveryRefMillis, (last) => {
+      const millis = Math.max(nowMillis, last + 1);
+      return [millis, millis];
+    });
   });
 
   const resolveThreadDetail = Effect.fn("resolveThreadDetail")(function* (threadId: ThreadId) {
@@ -728,7 +799,19 @@ const make = Effect.gen(function* () {
       return;
     }
 
-    const sessionRuntime = yield* resolveSessionRuntimeForThread(event.payload.threadId);
+    const sessions = yield* readSessionsForRevert();
+    if (Option.isNone(sessions)) {
+      yield* appendRevertFailureActivity({
+        threadId: event.payload.threadId,
+        turnCount: event.payload.turnCount,
+        detail:
+          "Revert refused: the active provider session list could not be read, so Neokod cannot confirm that no other thread is running in this folder. Nothing was changed.",
+        createdAt: now,
+      }).pipe(Effect.catch(() => Effect.void));
+      return;
+    }
+
+    const sessionRuntime = sessionRuntimeFromSessions(event.payload.threadId, sessions.value);
     if (Option.isNone(sessionRuntime)) {
       yield* appendRevertFailureActivity({
         threadId: event.payload.threadId,
@@ -780,8 +863,61 @@ const make = Effect.gen(function* () {
       return;
     }
 
+    const cwd = sessionRuntime.value.cwd;
+
+    // Refuse while another thread is starting or running a turn in the same
+    // folder. Restore rewrites every tracked file and deletes every untracked,
+    // non-ignored file under cwd, including another thread's work.
+    const busyThreads = findActiveSessionsSharingCwd({
+      threadId: event.payload.threadId,
+      cwd,
+      sessions: sessions.value,
+    });
+    if (busyThreads.length > 0) {
+      yield* appendRevertFailureActivity({
+        threadId: event.payload.threadId,
+        turnCount: event.payload.turnCount,
+        detail: `Revert refused: ${busyThreads.join(", ")} ${busyThreads.length === 1 ? "has" : "have"} an active session in the same folder (${cwd}). Wait for it to finish or interrupt it, then try again. Nothing was changed.`,
+        createdAt: now,
+      }).pipe(Effect.catch(() => Effect.void));
+      return;
+    }
+
+    // Save the current files to a hidden ref first. If that fails, change
+    // nothing: no restore, no conversation rollback and no checkpoint cleanup.
+    const recoveryRef = recoveryRefForThreadRevert(
+      event.payload.threadId,
+      yield* nextRecoveryRefMillis,
+    );
+    const saved = yield* checkpointStore
+      .captureCheckpoint({ cwd, checkpointRef: recoveryRef })
+      .pipe(
+        Effect.as(true),
+        Effect.catch((error) =>
+          appendRevertFailureActivity({
+            threadId: event.payload.threadId,
+            turnCount: event.payload.turnCount,
+            detail: `Revert refused: the current files could not be saved to a recovery ref, so nothing was changed. ${error.message}`,
+            createdAt: now,
+          }).pipe(
+            Effect.catch(() => Effect.void),
+            Effect.as(false),
+          ),
+        ),
+      );
+    if (!saved) {
+      return;
+    }
+    yield* appendRevertRecoveryActivity({
+      threadId: event.payload.threadId,
+      turnCount: event.payload.turnCount,
+      recoveryRef,
+      cwd,
+      createdAt: now,
+    }).pipe(Effect.catch(() => Effect.void));
+
     const restored = yield* checkpointStore.restoreCheckpoint({
-      cwd: sessionRuntime.value.cwd,
+      cwd,
       checkpointRef: targetCheckpointRef,
       fallbackToHead: event.payload.turnCount === 0,
     });
@@ -797,7 +933,7 @@ const make = Effect.gen(function* () {
 
     // Refresh the workspace entry index so the @-mention file picker
     // reflects the reverted filesystem state.
-    yield* workspaceEntries.refresh(sessionRuntime.value.cwd);
+    yield* workspaceEntries.refresh(cwd);
 
     const rolledBackTurns = Math.max(0, currentTurnCount - event.payload.turnCount);
     if (rolledBackTurns > 0) {
@@ -816,7 +952,7 @@ const make = Effect.gen(function* () {
 
     if (staleCheckpointRefs.length > 0) {
       yield* checkpointStore.deleteCheckpointRefs({
-        cwd: sessionRuntime.value.cwd,
+        cwd,
         checkpointRefs: staleCheckpointRefs,
       });
     }
