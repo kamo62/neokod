@@ -199,12 +199,17 @@ export const planProviderSessionReconciliation = ({
         }
         if (binding.status === "stopped" || binding.status === "error") {
           // A previous boot already recorded the host-loss binding; only the
-          // session still needs repair.
+          // session still needs repair. The host-loss payload clears
+          // `activeTurnId`, so restore the warning from the persisted outcome
+          // instead of reporting an unexplained interruption.
+          const persistedOutcome = readPersistedStopOutcome(binding.runtimePayload);
           return [
             {
               ...action,
               status: "interrupted",
-              lastError: exactBindingError(binding, turn.turnId) ?? session.lastError,
+              lastError:
+                exactBindingError(binding, turn.turnId) ??
+                (isHostLostStopOutcome(persistedOutcome) ? HOST_LOST_SESSION_ERROR : null),
               lastObservedAt: null,
             },
           ];
