@@ -1,0 +1,138 @@
+Browser tab: 326104961, Title: "Symphony plan and decisions · Concept C · Neokod design prototype", URL: "http://127.0.0.1:63035/planning.html?item=NEO-4821&attempt=3&tab=decisions#NEO-4821".
+1 AXWebArea Symphony plan and decisions · Concept C · Neokod design prototype, URL: 127.0.0.1:63035/planning.html?item=NEO-4821&attempt=3&tab=decisions#NEO-4821
+	2 container
+		3 link Description: Skip to plan, Value: 127.0.0.1:63035/planning.html?item=NEO-4821&attempt=3&tab=decisions#workspace
+		4 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		5 container Location
+			6 text Symphony NEO-4821
+			7 text Plan and decisions
+		8 container Symphony prototype
+			9 link Description: Work, Value: 127.0.0.1:63035/work.html
+			10 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			11 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			12 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		13 text Design prototype · Sample data
+		14 button Reset demo, ID: reset-demo
+		15 checkbox Description: Switch to light theme, Value: 1
+		16 tab group Workspace
+			17 tab (selected, settable, boolean) Plan, Value: 1, ID: tab-plan
+			18 tab (selectable, settable, boolean) Decisions, Value: 0, ID: tab-decisions
+			19 tab (selectable, settable, boolean) Evidence, Value: 0, ID: tab-evidence
+		20 container plan-ident
+			144 container Sample Mac (mac), Connected. Sample machine.
+				145 text Sample Mac mac
+			146 text NEO-4821, attempt 3
+		147 container Selected item detail
+			148 link Description: Summary, Value: 127.0.0.1:63035/runs.html?item=NEO-4821&attempt=3#NEO-4821
+			149 link Description: Execution, Value: 127.0.0.1:63035/workflow.html?item=NEO-4821&attempt=3#NEO-4821
+			150 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html?item=NEO-4821&attempt=3&tab=decisions#NEO-4821
+			151 link Description: Evidence, Value: 127.0.0.1:63035/planning.html?item=NEO-4821&attempt=3&tab=evidence#NEO-4821
+		29 container plan-status
+			152 text Plan r6, saved 22 Oct 2026, 20:49
+			153 container Sample Mac (mac), Connected. Sample machine.
+				154 text Sample Mac mac
+			155 text NEO-4821 attempt 3 Plan not execution-approved
+		34 container Description: Plan outline, decisions and revisions, ID: outline
+			156 text Plan
+			157 button Goal
+			158 button Validation
+			159 text Decisions
+			160 button D-3 How should a send with an unknown acknowledgement be handled? Unresolved
+				161 text D-3 How should a send with an unknown acknowledgement be handled?
+				162 text Unresolved
+			163 button D-2 How long does the server keep send receipts? Unresolved
+				164 text D-2 How long does the server keep send receipts?
+				165 text Unresolved
+			166 button D-1 Where do queued sends persist? Unresolved
+				167 text D-1 Where do queued sends persist?
+				168 text Unresolved
+			169 button D-0 Show a queued-send count in the composer? Unresolved
+				170 text D-0 Show a queued-send count in the composer?
+				171 text Unresolved
+			172 text Revisions
+			173 text r6 You Current
+			174 button r5 You 13:42
+				175 text r5 You
+				176 text 13:42
+			177 button r4 You 13:31
+				178 text r4 You
+				179 text 13:31
+			180 text r3 You Not in sample r2 R, root run Not in sample r1 R, root run Not in sample
+		58 container Description: Plan, ID: workspace
+			181 container
+				182 text Canonical plan, r6, saved by You at 22 Oct 2026, 20:49. Pinned to NEO-4821 attempt 3 on Sample Mac (mac).
+				183 button Edit plan
+			184 container
+				185 heading Preserve queued sends across reconnects, Value: 1
+					186 text Preserve queued sends across reconnects
+				187 heading Goal, Value: 2, ID: sec-goal
+					188 text Goal
+				189 text Keep message identity across reconnects.
+				190 heading Validation, Value: 2, ID: sec-validation
+					191 text Validation
+				192 text Require an authoritative acknowledgement before delivery is confirmed. Prototype verification edit: this changes the plan revision and must invalidate its prior approval.
+		143 container Description: Run context, ID: rail
+			193 container
+				194 text NEO-4821, Core reliability Preserve queued sends across reconnects Paused, decision saved
+				195 container Sample Mac (mac), Connected. Sample machine.
+					196 text Sample Mac mac
+				197 text Attempt 3 of 4, head
+				198 text 7f3a9c2
+				199 text , base
+				200 text e19c4d0
+				201 text , machine Sample Mac (mac)
+			202 container
+				203 heading Stages, Value: 3
+					204 text Stages
+				205 content list
+					206 container
+						207 text Intake Issue #4821
+					208 container
+						209 text Design v2 approved in round 2
+					210 container
+						211 text Build Package B paused
+					212 container
+						213 text Integrate Failed at 7f3a9c2
+					214 container
+						215 text Review Round 1 of 2 sent back
+					216 container
+						217 text PR Not opened, merge locked
+			218 container
+				219 heading Agents, Value: 3
+					220 text Agents
+				221 content list
+					222 button R Root run Waiting for input, Waiting since 14:26
+						223 text R Root run
+						224 text Waiting for input, Waiting since 14:26
+					225 button C1 Implementer, package A Completed, 18m 04s
+						226 text C1 Implementer, package A
+						227 text Completed, 18m 04s
+					228 button C2 Implementer, package B Asked a question, Waiting since 14:26
+						229 text C2 Implementer, package B
+						230 text Asked a question, Waiting since 14:26
+					231 button N1 Tester subagent Observed Tracking lost, Last observed 14:21:07 · 3m 12s
+						232 text N1 Tester subagent
+						233 text Observed
+						234 text Tracking lost, Last observed 14:21:07 · 3m 12s
+					235 button C3 Critic and reviewer Round 1 complete, 6m 40s
+						236 text C3 Critic and reviewer
+						237 text Round 1 complete, 6m 40s
+				238 text On Sample Mac (mac). Cost: not reported for any agent.
+			239 container
+				240 heading Approvals, Value: 3
+					241 text Approvals
+				242 content list
+					243 container
+						244 text Plan execution Plan changed to r6
+						245 button Review approval for r6
+					246 container
+						247 text Resume package B Not approved: No resume approval is recorded.
+						248 button Open D-3
+					249 container
+						250 text Merge Locked. Yours under the merge policy, in GitHub.
+			251 container
+				252 link Description:  Open in runs view, Value: 127.0.0.1:63035/runs.html?item=NEO-4821&attempt=3#NEO-4821
+				253 link Description:  Open in workflow map, Value: 127.0.0.1:63035/workflow.html?item=NEO-4821&attempt=3#NEO-4821
+		254 text Saved as r6. No work started. The earlier execution approval no longer covers the plan, and any resume approval is invalidated.
+
+The focused UI element is 1 AXWebArea Symphony plan and decisions · Concept C · Neokod design prototype, URL: 127.0.0.1:63035/planning.html?item=NEO-4821&attempt=3&tab=decisions#NEO-4821

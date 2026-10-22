@@ -1,0 +1,24 @@
+{
+  "checked_at_utc": "2026-10-22T17:50:14.581081+00:00",
+  "local_dev": "dc71b40fa1f7c25331c6f886d08894ed52aec9ed",
+  "remote_dev": "dc71b40fa1f7c25331c6f886d08894ed52aec9ed\trefs/heads/dev",
+  "reported_commit": "109bd5f8c0b977ed03d108871f187ed1c596457e",
+  "reviewed_lane_merges": [
+    "f1fc9d0e1 Merge reviewed server-owned turn timing evidence into dev [skip ci]",
+    "2745226f2 Merge reviewed checkpoint recovery (2.2) into dev [skip ci]",
+    "075094dec Merge reviewed Symphony global controls and orphaned view removal (B-10) into dev [skip ci]",
+    "9e58eb4f9 Merge reviewed Symphony run actions (B-4, B-5, B-6) into dev [skip ci]",
+    "829774c4e Merge reviewed Symphony board honesty (B-1, B-2, B-3) into dev [skip ci]",
+    "fefc1b2a4 Merge reviewed core crash recovery (2.3, X-7) into dev [skip ci]",
+    "a78fa9367 Merge reviewed Symphony honest lifecycle (B-9, B-7) into dev [skip ci]",
+    "6051f127d Merge reviewed terminal paste chunking (X-15) into dev [skip ci]",
+    "eb5908f1f Merge reviewed git safety follow-ups into dev [skip ci]",
+    "af763dfb7 Merge reviewed git safety lane (X-9, X-10, X-11) into dev [skip ci]",
+    "f5e202319 Merge reviewed ACP whitespace-only delta fix into dev [skip ci]",
+    "a8ea4f928 Merge reviewed OpenCode 2 ACP parity spike into dev [skip ci]",
+    "4e78918f7 Merge reviewed Symphony B-2 coverage foundation into dev [skip ci]",
+    "89fa90688 Merge reviewed composer queue recovery into dev [skip ci]",
+    "7b0615b4e Merge reviewed OpenCode test isolation into dev [skip ci]"
+  ],
+  "application_diff_since_reported_commit": []
+}

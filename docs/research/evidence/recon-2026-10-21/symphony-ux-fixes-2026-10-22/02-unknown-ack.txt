@@ -1,0 +1,152 @@
+Browser tab: 326104961, Title: "Symphony work · Neokod design prototype", URL: "http://127.0.0.1:63035/work.html?review=ux-fixes#runs".
+0 AXWebArea Symphony work · Neokod design prototype, URL: 127.0.0.1:63035/work.html?review=ux-fixes#runs
+	1 container
+		2 link Description: Skip to content, Value: 127.0.0.1:63035/work.html?review=ux-fixes#wk-content
+		3 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		4 container Location
+			5 text Symphony
+			6 text Work
+		7 container Symphony pages
+			8 link Description: Work, Value: 127.0.0.1:63035/work.html
+			9 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			10 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			11 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		12 text Design prototype · Sample data
+		13 button (collapsed) Reset demo, ID: wk-reset, Secondary Actions: Expand
+		14 checkbox Description: Switch to light theme, Value: 1
+		15 container Description: Work flow, ID: wk-steps
+			26 button Select and assign 1 selected, ID: step-work
+				27 text Select and assign
+				28 text 1 selected
+			29 button Preview Unknown: R-4b691410, ID: step-preview
+				30 text Preview
+				31 text Unknown: R-4b691410
+			32 button Saved requests 2 active (demo), ID: step-runs
+				33 text Saved requests
+				34 text 2 active (demo)
+		25 text Sample data. No tracker, machine or agent is connected. Start only changes this page's demo.
+		35 text Draft saved 04:33 PM
+		36 container Description: Demo runs, ID: wk-view-runs
+			37 container wk-runs-list
+				38 heading Saved demo requests, Value: 1, ID: runs-title
+					39 text Saved demo requests
+				40 container
+					41 text Admission receipts recorded by this page. They are request details here, not a competing Runs view. The canonical operating view is
+					42 link Description: runs.html, Value: 127.0.0.1:63035/runs.html
+					43 text . No agent runs, and these requests are not added to that page.
+				44 container Request R-4b691410-9720-4b26-bf66-dab9e84d190c
+					45 heading Request R-4b691410-9720-4b26-bf66-dab9e84d190c, Value: 2, ID: rc-R-4b691410-9720-4b26-bf66-dab9e84d190c
+						46 text Request R-4b691410-9720-4b26-bf66-dab9e84d190c
+					47 container
+						48 text Recorded 22 Oct 2026, 20:29 (demo time). Simulated outcome unknown. Request key  wk-4fd206f8 . 2 items, each with its own result.
+					49 content list
+						50 container
+							51 text Not started NEO-4846 OpenCode is installed on Work PC, but DeepSeek V4.1 Flash is not enabled for this provider instance. Work PC
+							52 button Change in Work
+						53 button Unknown acknowledgement; not closure NEO-4861 Show when the issue list was last fetched Sample Mac, ID: ri-R-4b691410-9720-4b26-bf66-dab9e84d190c-60694dd9
+							54 text Unknown acknowledgement; not closure
+							55 text NEO-4861
+							56 text Show when the issue list was last fetched
+							57 text Sample Mac
+				58 container Request R-1
+					59 heading Request R-1, Value: 2, ID: rc-R-1
+						60 text Request R-1
+					61 container
+						62 text Recorded 04:34 PM (demo time). Simulated outcome mixed. Request key  wk-a29f2d39 . 2 items, each with its own result.
+					63 content list
+						64 button Queued (demo) NEO-4821 Preserve queued sends across reconnects Sample Mac, ID: ri-R-1-e85f9695
+							65 text Queued (demo)
+							66 text NEO-4821
+							67 text Preserve queued sends across reconnects
+							68 text Sample Mac
+						69 container
+							70 text Not started NEO-4846 Work PC has no DeepSeek V4.1 Flash. OpenCode is installed on Work PC, but DeepSeek V4.1 Flash is not enabled there. Run it on Sample Mac, which has DeepSeek V4.1 Flash, or choose another implementer yourself. Work PC
+							71 button Change in Work
+			72 container Description: Saved request detail, ID: wk-run
+				73 container
+					74 text NEO-4861 Admission receipt R-4b691410-9720-4b26-bf66-dab9e84d190c Recorded 22 Oct 2026, 20:29 (demo time)
+					75 heading Show when the issue list was last fetched, Value: 2, ID: run-title
+						76 text Show when the issue list was last fetched
+					77 text Unknown acknowledgement; not closure Pinned to Sample Mac /Users/sample/code/neokod Machine mac, issue NEO-4861, request R-4b691410-9720-4b26-bf66-dab9e84d190c. Label or machine name changes do not change these identities.
+					78 tab group Request detail
+						79 tab (selected, settable, boolean) Summary, Value: 1, ID: rtab-summary
+						80 tab (selectable, settable, boolean) Execution, Value: 0, ID: rtab-execution
+						81 tab (selectable, settable, boolean) Plan and decisions, Value: 0, ID: rtab-plan
+						82 tab (selectable, settable, boolean) Evidence, Value: 0, ID: rtab-evidence
+				83 container Description: Summary, ID: rpanel
+					84 container
+						85 heading Needs you, Value: 3
+							86 text Needs you
+						87 content list
+							88 container
+								89 AXListMarker •
+								90 text Needs you  Acknowledgement unknown since 22 Oct 2026, 20:29 (demo time). Check status with an explicit simulated authoritative answer. Do not start it elsewhere.
+					91 text Now
+					92 text Acknowledgement unknown (simulated). Nothing is running and the request is not closed.
+					93 container
+						94 text This page is the admission receipt detail for one request. The canonical Runs operating view is
+						95 link Description: runs.html, Value: 127.0.0.1:63035/runs.html
+						96 text . Accepted means this page recorded the request; it is not server admission and not a started agent.
+					97 container
+						98 heading Agent team, Value: 3
+							99 text Agent team
+						100 content list
+							101 container
+								102 text Implementer DeepSeek V4.1 Flash through OpenCode (ACP) , pi_mac_opencode, model deepseek/deepseek-flash, effort Medium
+							103 container
+								104 text Reviewer Sol 6.1 through Codex , pi_mac_codex, model gpt-6.1-sol, effort High
+							105 container
+								106 text Reviewer Opus 5.5 through Claude , pi_mac_claude, model claude-opus-5-5, effort High
+						107 text All three run on Sample Mac. Exact provider instance, model and effort are pinned from acceptance; choosing agents never moves an existing session.
+					108 container
+						109 heading Request, Value: 3
+							110 text Request
+						111 definition list
+							112 container Issue
+								113 text Issue
+							114 text NEO-4861, GitHub — sample workspace issue #4861, native I_kwSAMPLE4861, as edited 22 Oct 2026, 14:05 (sample time)
+							115 container Run on
+								116 text Run on
+							117 container
+								118 text Sample Mac sample-mac.tailnet.example:3773 machine id mac
+							119 container Repository
+								120 text Repository
+							121 text /Users/sample/code/neokod
+							122 container Base
+								123 text Base
+							124 text dev at e19c4d0
+							125 container Workflow
+								126 text Workflow
+							127 text Provider adapters
+							128 container Plan
+								129 text Plan
+							130 text r1, pinned at acceptance
+							131 container Gate
+								132 text Gate
+							133 text None.
+							134 container Approval
+								135 text Approval
+							136 text Merge needs you. Decisions and plans are not approvals.
+							137 container Receipt
+								138 text Receipt
+							139 text R-4b691410-9720-4b26-bf66-dab9e84d190c, recorded 22 Oct 2026, 20:29 (demo time), simulated outcome unknown
+							140 container Lifecycle
+								141 text Lifecycle
+							142 text Unknown acknowledgement; not closure
+							143 container Target match
+								144 text Target match
+							145 text Exact provider instance, model, supported effort, base and plan as previewed. Nothing was substituted.
+					146 container
+						147 heading Reconcile acknowledgement (simulated), Value: 3
+							148 text Reconcile acknowledgement (simulated)
+						149 text This request keeps request key  wk-4fd206f8  and its Sample Mac reservation. Offline status or elapsed time is never closure. Only an explicit simulated authoritative answer resolves it, and acceptance never relaunches the work.
+						150 button Simulate authoritative accepted
+						151 button Simulate authoritative refused
+					152 container
+						153 heading Machine, Value: 3
+							154 text Machine
+						155 text This request stays on Sample Mac. Running it elsewhere needs positive closure and a new linked request; it is never moved silently, and an offline status is not closure.
+					156 text Separate demo sample. It has no page in Runs, Workflow map or Plan and decisions.
+		157 text Demo only, simulated: R-4b691410-9720-4b26-bf66-dab9e84d190c recorded 0 accepted items, 1 acknowledgement unknown, 0 refused, 1 blocked. No agent started.
+
+The focused UI element is 45 heading Request R-4b691410-9720-4b26-bf66-dab9e84d190c, Value: 2, ID: rc-R-4b691410-9720-4b26-bf66-dab9e84d190c

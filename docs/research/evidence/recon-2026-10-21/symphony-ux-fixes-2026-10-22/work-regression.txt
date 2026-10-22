@@ -1,0 +1,13 @@
+work.regression.cjs: all receipt-store checks passed
+- same issue race: 1 accepted admission, 1 receipt, unique UUID
+- same issue with different targets: 1 winner, no competing receipt
+- different issues: 2 receipts, both accepted
+- refusal: no reservation, new request uses a new key and keeps history
+- unknown: reservation kept, other tab fenced, explicit reconciliation, closure gate
+- failed write: no in-memory acceptance, storage untouched, retry allocates fresh ID
+- corrupt storage: explicit error, Start disabled, bytes untouched
+- no Web Locks: Start disabled, nothing persisted
+- legacy receipt: still read and still locks the issue
+- reset: serialized, stale-confirmation safe, visible failure, keeps concurrent receipts
+- rendering: resolved unknown, queued, withdrawn, closure-unknown, closed and refused states
+Proof: shared localStorage and Web Locks stubs across two VM contexts running the real work.js. No browser, server, provider, machine or tracker was touched.

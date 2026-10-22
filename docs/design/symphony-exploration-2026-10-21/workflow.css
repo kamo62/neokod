@@ -58,6 +58,19 @@
   color: var(--text);
   font-weight: 500;
 }
+.w-machine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+#item-tabs {
+  min-width: 0;
+}
+#item-tabs .nk-item-tabs {
+  max-width: 100%;
+  overflow-x: auto;
+}
 .w-tools {
   display: flex;
   align-items: center;
@@ -644,6 +657,14 @@
   }
   .w-facts {
     display: none;
+  }
+  #item-tabs {
+    order: 6;
+    flex-basis: 100%;
+  }
+  #item-tabs .nk-item-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
   }
   .w-legend {
     margin-left: 0;

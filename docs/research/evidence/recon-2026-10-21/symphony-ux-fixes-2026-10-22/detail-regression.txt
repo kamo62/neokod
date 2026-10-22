@@ -1,0 +1,13 @@
+ok - machine ids stay fixed and labels only change presentation
+ok - one shared saved decision is visible to every page
+ok - approval scope is pinned to machine, item, attempt, plan, head and decision
+ok - editing the plan invalidates the stored matching approval
+ok - Work receipts are read defensively without trusting unknown fields
+ok - receipt state resolves unknown and closure without inventing execution
+ok - corrupt shared state is reported and falls back to sample defaults
+ok - a reference selection keeps its kind, and item links carry the attempt
+ok - a two-item receipt opens the second item with all request tabs
+ok - empty plan draft survives reload and another tab advances the canonical plan
+ok - unknown admission summary cannot claim a queued lifecycle
+ok - confirmed acceptance with unknown closure is not an unknown admission
+12 regression checks passed

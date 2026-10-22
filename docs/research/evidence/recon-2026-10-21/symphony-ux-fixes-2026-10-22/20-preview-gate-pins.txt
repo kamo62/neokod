@@ -1,0 +1,181 @@
+Browser tab: 326104961, Title: "Symphony work · Neokod design prototype", URL: "http://127.0.0.1:63035/work.html#preview".
+0 AXWebArea Symphony work · Neokod design prototype, URL: 127.0.0.1:63035/work.html#preview
+	1 container
+		2 link Description: Skip to content, Value: 127.0.0.1:63035/work.html#wk-content
+		3 link Description: N Neokod, Value: 127.0.0.1:63035/index.html
+		4 container Location
+			5 text Symphony
+			6 text Work
+		7 container Symphony pages
+			8 link Description: Work, Value: 127.0.0.1:63035/work.html
+			9 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			10 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			11 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		12 text Design prototype · Sample data
+		13 button (collapsed) Reset demo, ID: wk-reset, Secondary Actions: Expand
+		14 checkbox Description: Switch to light theme, Value: 1
+		15 container Description: Work flow, ID: wk-steps
+			27 button Select and assign 2 selected, ID: step-work
+				28 text Select and assign
+				29 text 2 selected
+			30 button Preview 1 ready, 1 blocked, ID: step-preview
+				31 text Preview
+				32 text 1 ready, 1 blocked
+			33 button Saved requests 1 active (demo), ID: step-runs
+				34 text Saved requests
+				35 text 1 active (demo)
+		25 text Sample data. No tracker, machine or agent is connected. Start only changes this page's demo.
+		26 text Unsaved changes
+		36 container Description: Preview, ID: wk-view-preview
+			37 container
+				38 heading Preview, Value: 1, ID: pv-title
+					39 text Preview
+				40 text Created 22 Oct 2026, 20:54 (demo time) for 2 selected issues. Request key  wk-b60783c8 .
+				41 button Back to Work, ID: pv-back
+				42 button Preview again, ID: pv-refresh
+				43 button Start 1 ready item (demo accepted), ID: pv-start
+			44 container
+				45 text Simulated local preview and start.  Checked against sample machine facts in this page, not a server. It reserves nothing, holds no queue slot and is not admission. Start only records a demo receipt; it is never proof of server admission. No build, validation or agent command runs.
+			46 text Start serialises one receipt write under the Web Locks API and verifies the write before acknowledging.
+			47 container Demo outcome before Start What the sample target reports. This is simulated; no server is contacted.
+				48 container
+					49 text Demo outcome before Start What the sample target reports. This is simulated; no server is contacted.
+				50 container
+					51 radio button (settable, integer) Description: Accepted (simulated admission), Value: 1
+					52 text Accepted (simulated admission)
+				53 container
+					54 radio button (settable, integer) Description: Target refuses (typed demo refusal), Value: 0
+					55 text Target refuses (typed demo refusal)
+				56 container
+					57 radio button (settable, integer) Description: Acknowledgement unknown (lost response), Value: 0
+					58 text Acknowledgement unknown (lost response)
+			59 text An accepted demo receipt records the request. It is not a started agent, not a queue slot, and not server admission.
+			60 container pv-sum
+				61 text 1 ready, 1 blocked at preview.
+				62 text  By machine: Sample Mac 1, Work PC 1. Each machine gets its own result; the batch is not all-or-nothing. Blocked items stay listed and are not sent. An accepted demo receipt records the request. It is not a started agent, not a queue slot, and not server admission.
+			63 button (collapsed) Stages, gates and permissions for these workflows, Secondary Actions: Expand
+				64 text Stages, gates and permissions for these workflows
+			65 content list
+				66 container
+					67 text Ready NEO-4830 Flag ACP sessions that go silent mid-turn Sample Mac
+					68 definition list
+						69 container Run on
+							70 text Run on
+						71 container
+							72 text Sample Mac  batch default mac
+							73 text /Users/sample/code/neokod repo_neo_01
+						74 container Implementer
+							75 text Implementer
+						76 container
+							77 text DeepSeek V4.1 Flash through OpenCode (ACP), effort High
+							78 text pi_mac_opencode · deepseek/deepseek-flash
+						79 container Reviewers
+							80 text Reviewers
+						81 container
+							82 text Sol 6.1 through Codex, effort High  pi_mac_codex · gpt-6.1-sol
+							83 text Opus 5.5 through Claude, effort High  pi_mac_claude · claude-opus-5-5
+							84 text Same machine as the implementer; exact targets, no substitution.
+						85 container Workflow
+							86 text Workflow
+						87 text Provider adapters
+						88 container Validation
+							89 text Validation
+						90 container
+							91 text vp check vp run typecheck vp test apps/server/src/provider Planned. Nothing runs here.
+						92 container Base
+							93 text Base
+						94 text dev at e19c4d0
+						95 container Issue
+							96 text Issue
+						97 text NEO-4830 in I_kwSAMPLE4830; as edited 22 Oct 2026, 12:58 (sample time)
+						98 container Plan
+							99 text Plan
+						100 text r1
+						101 container Gate
+							102 text Gate
+						103 text Admits to Intake. Build held until the question is answered.
+						104 container Approval
+							105 text Approval
+						106 text Merge needs you; saving a plan or decision is not execution approval.
+						107 container If started
+							108 text If started
+						109 text Recorded as simulated accepted. Up to 2 runs at once (machine setting). No slot is reserved.
+					110 text Sample checks
+					111 content list Sample checks for NEO-4830
+						112 container
+							113 text Matches sample facts: Sample Mac is connected. Sample status, last checked 22 Oct 2026, 14:36 (sample time).
+						114 container
+							115 text Matches sample facts: Repository found at /Users/sample/code/neokod, base dev at e19c4d0.
+						116 container
+							117 text Matches sample facts: Implementer DeepSeek V4.1 Flash through OpenCode (ACP) is available on Sample Mac. Effort: High. Instance pi_mac_opencode, model deepseek/deepseek-flash.
+						118 container
+							119 text Matches sample facts: Reviewers Sol 6.1 and Opus 5.5 are available on Sample Mac, the same machine as the implementer.
+						120 container
+							121 text Note: Plan r1, drafted from the issue.
+						122 container
+							123 text Warning: Blocking question holds Build: How long without an update before a session shows as silent? Saving an answer is not execution approval.
+				124 container
+					125 text Blocked at preview NEO-4846 Normalise Windows paths in diff headers Work PC
+					126 text Will not start.
+					127 text  The saved provider instance pi_mac_opencode with model deepseek/deepseek-flash is not on Work PC. Choose it again; nothing is substituted.
+					128 button Change in Work, ID: pv-fix-f16421ee
+					129 definition list
+						130 container Run on
+							131 text Run on
+						132 container
+							133 text Work PC  set for this issue work
+							134 text C:\Users\sample\src\neokod repo_neo_01
+						135 container Implementer
+							136 text Implementer
+						137 container
+							138 text DeepSeek V4.1 Flash through unknown provider instance, effort not offered
+							139 text ·
+						140 container Reviewers
+							141 text Reviewers
+						142 container
+							143 text Sol 6.1 through Codex, effort High  pi_mac_codex · gpt-6.1-sol Unavailable; the preview is blocked.
+							144 text Opus 5.5 through Claude, effort High  pi_mac_claude · claude-opus-5-5 Unavailable; the preview is blocked.
+							145 text Same machine as the implementer; exact targets, no substitution.
+						146 container Workflow
+							147 text Workflow
+						148 text Core reliability
+						149 container Validation
+							150 text Validation
+						151 container
+							152 text vp check vp run typecheck vp test (affected packages) Planned. Nothing runs here.
+						153 container Base
+							154 text Base
+						155 text dev at e19c4d0
+						156 container Issue
+							157 text Issue
+						158 text NEO-4846 in I_kwSAMPLE4846; as edited 22 Oct 2026, 09:31 (sample time)
+						159 container Plan
+							160 text Plan
+						161 text r1
+						162 container Gate
+							163 text Gate
+						164 text No question gate.
+						165 container Approval
+							166 text Approval
+						167 text Merge needs you; saving a plan or decision is not execution approval.
+						168 container If started
+							169 text If started
+						170 text Not sent. Fix it in Work and create a new preview.
+					171 text Sample checks
+					172 content list Sample checks for NEO-4846
+						173 container
+							174 text Matches sample facts: Work PC is connected. Sample status, last checked 22 Oct 2026, 14:35 (sample time).
+						175 container
+							176 text Matches sample facts: Repository found at C:\Users\sample\src\neokod, base dev at e19c4d0.
+						177 container
+							178 text Blocks start: The saved provider instance pi_mac_opencode with model deepseek/deepseek-flash is not on Work PC. Choose it again; nothing is substituted.
+						179 container
+							180 text Blocks start: Work PC cannot resolve reviewer Sol 6.1 and Opus 5.5. The saved provider instance pi_mac_codex with model gpt-6.1-sol is not on Work PC. Choose it again; nothing is substituted.
+						181 container
+							182 text Note: This issue runs on Work PC instead of the batch default.
+						183 container
+							184 text Note: Preferred machine: Work PC. This issue prefers Work PC because it asks for a check on Windows. That is a preference, not proof that another machine cannot run the path tests.
+						185 container
+							186 text Note: Plan r1, drafted from the issue.
+
+The focused UI element is 38 heading Preview, Value: 1, ID: pv-title

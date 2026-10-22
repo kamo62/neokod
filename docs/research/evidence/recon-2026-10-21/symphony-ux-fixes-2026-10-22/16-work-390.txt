@@ -1,0 +1,177 @@
+Browser tab: 326104961, Title: "Symphony work · Neokod design prototype", URL: "http://127.0.0.1:63035/work.html".
+0 AXWebArea Symphony work · Neokod design prototype, URL: 127.0.0.1:63035/work.html
+	1 container
+		2 link Description: Skip to content, Value: 127.0.0.1:63035/work.html#wk-content
+		3 link Description: N Neokod Sample data, Value: 127.0.0.1:63035/index.html
+		4 container Symphony pages
+			5 link Description: Work, Value: 127.0.0.1:63035/work.html
+			6 link Description: Runs, Value: 127.0.0.1:63035/runs.html
+			7 link Description: Workflow map, Value: 127.0.0.1:63035/workflow.html
+			8 link Description: Plan and decisions, Value: 127.0.0.1:63035/planning.html
+		9 button (collapsed) Reset demo, ID: wk-reset, Secondary Actions: Expand
+		10 checkbox Description: Switch to light theme, Value: 1
+		11 container Description: Work flow, ID: wk-steps
+			12 button Select and assign, ID: step-work
+			13 button Preview, ID: step-preview
+			14 button Saved requests, ID: step-runs
+		15 text Draft saved 22 Oct 2026, 20:29
+		16 container wk-view-work
+			17 container Description: Project, tracker and machines, ID: wk-side
+				18 container
+					19 text Neokod Connection
+					20 pop up button (collapsed, settable) Connection, Value: GitHub — sample workspace, ID: wk-conn, Secondary Actions: Expand
+						21 menu
+							22 (selected) GitHub — sample workspace
+							23 GitHub mirror — sample org
+							24 Linear — sample engineering (sample error)
+					25 text Project scope
+					26 pop up button (collapsed, settable) Project scope, Value: NEO · Open issues labelled agent-ready, ID: wk-scope, Secondary Actions: Expand
+						27 menu
+							28 (selected) NEO · Open issues labelled agent-ready
+							29 DOC · Documentation follow-ups
+							30 NEO · Issues awaiting triage (none) (empty)
+					31 text Repository
+					32 pop up button (collapsed, settable) Repository, Value: neokod/neokod, ID: wk-repo, Secondary Actions: Expand
+						33 menu
+							34 (selected) neokod/neokod
+							35 neokod/neokod-docs
+					36 text Partial Partial: 7 of 9 matching issues loaded, fetched 22 Oct 2026, 14:38 (sample time). 2 issues remain on a next page.
+					37 definition list
+						38 container Connection ID
+							39 text Connection ID
+						40 text conn_gh_main
+						41 container Scope ID
+							42 text Scope ID
+						43 text scope_neo_open / scope_gh_main_neo_open
+						44 container Revision
+							45 text Revision
+						46 text 3 (sample source)
+					47 button Load 2 more issues, ID: act-load-more
+					48 button Refresh sample source
+					49 text Fixture connection. No network request is made and no token is read or stored. Only label filters are supported here; team and iteration filters are not offered.
+				50 container Start mode
+					51 heading Start mode, Value: 2, ID: wk-mode-h
+						52 text Start mode
+					53 container
+						54 radio button (settable, integer) Description: Selected only Only issues you select, preview and start will run., Value: 1
+						55 text Selected only Only issues you select, preview and start will run.
+				56 container Machines
+					57 heading Machines, Value: 2, ID: wk-mach-h
+						58 text Machines
+					59 content list
+						60 checkbox Sample Mac Connected, Value: 0, ID: mb-mac
+						61 checkbox Work PC Connected, Value: 0, ID: mb-work
+						62 checkbox Build host Offline, sign-in failed, Value: 0, ID: mb-build
+					63 text Saved in Settings, Connections, Machines. These are sample machines, not machines detected on this computer. Open one for its scoped sample Settings, Connections panel.
+			64 container Description: Issues, ID: wk-main
+				65 heading Open issues labelled agent-ready, Value: 1, ID: wk-h1
+					66 text Open issues labelled agent-ready
+				67 text Partial: 7 of 9 matching issues loaded, fetched 22 Oct 2026, 14:38 (sample time). 2 issues remain on a next page. Canonical scope scope_gh_main_neo_open on GitHub — sample workspace. Selecting visible never includes unseen matches or another scope.
+				68 container
+					69 text Search loaded issues
+					70 search text field (settable) Search loaded issues, ID: wk-q
+				71 container wk-labelsel
+					72 text Filter by label
+					73 pop up button (collapsed, settable) Filter by label, Value: Any label, ID: wk-label, Secondary Actions: Expand
+						74 menu
+							75 (selected) Any label
+							76 acp
+							77 diff
+							78 git
+							79 machines
+							80 providers
+							81 reliability
+							82 safety
+							83 terminal
+							84 tracker
+							85 ui
+							86 web
+							87 windows
+				88 container Description: Filter by workflow, ID: wk-chips
+					89 checkbox All workflows 7, Value: 1, ID: wf-all
+					90 checkbox Core reliability 4, Value: 0, ID: wf-core
+					91 checkbox Provider adapters 2, Value: 0, ID: wf-providers
+					92 checkbox Settings and safety 1, Value: 0, ID: wf-settings
+				93 text Not offered by this connection: team and iteration filters. Search only covers the 7 loaded issues.
+				94 container
+					95 checkbox (settable, integer) Description: Select visible (5), Value: 2, ID: wk-selvis
+					96 text Select visible (5)
+				97 content list Description: Loaded issues, ID: wk-list
+					98 container
+						99 checkbox (disabled, settable, integer) Description: NEO-4821 is already recorded in the demo, Value: 0, ID: cb-e85f9695
+						100 text NEO-4821
+						101 button ID: tt-e85f9695, Preserve queued sends across reconnects Core reliability reliability, web Edited 22 Oct 2026, 13:40 (sample time) Shared sample
+							102 text Preserve queued sends across reconnects
+							103 text Core reliability
+							104 text reliability, web
+							105 text Edited 22 Oct 2026, 13:40 (sample time)
+							106 text Shared sample
+						107 text Sample Mac Queued (demo)
+						108 button Open request, ID: or-e85f9695
+					109 container
+						110 checkbox (settable, integer) Description: Select NEO-4830, Flag ACP sessions that go silent mid-turn, Value: 0, ID: cb-ed61dd0b
+						111 text NEO-4830
+						112 button ID: tt-ed61dd0b, Flag ACP sessions that go silent mid-turn Provider adapters providers, acp Edited 22 Oct 2026, 12:58 (sample time)
+							113 text Flag ACP sessions that go silent mid-turn
+							114 text Provider adapters
+							115 text providers, acp
+							116 text Edited 22 Oct 2026, 12:58 (sample time)
+						117 text Not selected
+					118 container
+						119 checkbox (settable, integer) Description: Select NEO-4833, Keep terminal scrollback when a thread is reopened, Value: 0, ID: cb-ee61de9e
+						120 text NEO-4833
+						121 button ID: tt-ee61de9e, Keep terminal scrollback when a thread is reopened Core reliability terminal Edited 22 Oct 2026, 11:20 (sample time)
+							122 text Keep terminal scrollback when a thread is reopened
+							123 text Core reliability
+							124 text terminal
+							125 text Edited 22 Oct 2026, 11:20 (sample time)
+						126 text Not selected
+					127 container
+						128 checkbox (disabled, settable, integer) Description: NEO-4838 already has an existing run and cannot be selected as new work, Value: 0, ID: cb-e561d073
+						129 text NEO-4838
+						130 button ID: tt-e561d073, Warn before removing a worktree with uncommitted changes Settings and safety git, safety Edited 22 Oct 2026, 10:47 (sample time)
+							131 text Warn before removing a worktree with uncommitted changes
+							132 text Settings and safety
+							133 text git, safety
+							134 text Edited 22 Oct 2026, 10:47 (sample time)
+						135 text Work PC Not selectable
+						136 link Description: Open existing run: Work PC, NEO-4838, attempt A-2, Value: 127.0.0.1:63035/runs.html#NEO-4838, ID: ex-e561d073
+					137 container
+						138 checkbox (settable, integer) Description: Select NEO-4842, Show which machine each thread runs on, Value: 0, ID: cb-f564283a
+						139 text NEO-4842
+						140 button ID: tt-f564283a, Show which machine each thread runs on Core reliability machines, ui Edited 22 Oct 2026, 10:05 (sample time)
+							141 text Show which machine each thread runs on
+							142 text Core reliability
+							143 text machines, ui
+							144 text Edited 22 Oct 2026, 10:05 (sample time)
+						145 text Not selected
+					146 container
+						147 checkbox (settable, integer) Description: Select NEO-4846, Normalise Windows paths in diff headers, Value: 1, ID: cb-f16421ee
+						148 text NEO-4846
+						149 button ID: tt-f16421ee, Normalise Windows paths in diff headers Core reliability windows, diff Edited 22 Oct 2026, 09:31 (sample time)
+							150 text Normalise Windows paths in diff headers
+							151 text Core reliability
+							152 text windows, diff
+							153 text Edited 22 Oct 2026, 09:31 (sample time)
+						154 text Work PC This issue only Blocked Provider target unavailable
+					155 container
+						156 checkbox (settable, integer) Description: Select NEO-4851, Back off when the tracker rate-limits issue fetches, Value: 0, ID: cb-f8666b8a
+						157 text NEO-4851
+						158 button ID: tt-f8666b8a, Back off when the tracker rate-limits issue fetches Provider adapters tracker Edited 22 Oct 2026, 08:55 (sample time)
+							159 text Back off when the tracker rate-limits issue fetches
+							160 text Provider adapters
+							161 text tracker
+							162 text Edited 22 Oct 2026, 08:55 (sample time)
+						163 text Not selected
+				164 container wk-loadmore
+					165 text 2 matching issues are not loaded. They cannot be selected.
+					166 button Load more (2)
+				167 container Description: Selected work, ID: wk-batch
+					168 text 1
+					169 text  selected , 1 blocked Defaults: Sample Mac, DeepSeek V4.1 Flash · High
+					170 button Clear selection, ID: act-clear
+					171 button Assign, ID: act-assign
+					172 button (disabled) Save draft, ID: act-save
+					173 button Preview 1 issue, ID: act-preview
+
+The focused UI element is 0 AXWebArea Symphony work · Neokod design prototype, URL: 127.0.0.1:63035/work.html
