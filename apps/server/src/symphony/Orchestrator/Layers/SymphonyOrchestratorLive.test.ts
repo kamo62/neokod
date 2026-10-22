@@ -673,6 +673,134 @@ layer("SymphonyOrchestrator Observe", (it) => {
     }),
   );
 
+  it.effect("getProjectBoard fails with a typed decode error that names the corrupt row", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const sql = yield* SqlClient.SqlClient;
+      const projectId = SymphonyProjectId.make("project-board-corrupt");
+      yield* orchestrator.createProject({
+        id: projectId,
+        codeProjectId: ProjectId.make("code-project-board-corrupt"),
+        title: "Corrupt board",
+        repositoryPath: "/repo/project-board-corrupt",
+        configuration: makeProjectConfiguration(),
+        now: "2026-08-10T00:00:00.000Z",
+      });
+      const workItemId = WorkItemId.make("board-corrupt-row");
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId,
+        objective: "Corrupt board row",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-10T00:00:00.000Z",
+        updatedAt: "2026-08-10T00:00:00.000Z",
+      });
+      yield* sql`UPDATE symphony_work_items SET acceptance_criteria_json = 'not json' WHERE id = ${workItemId}`;
+
+      const result = yield* Effect.result(orchestrator.getProjectBoard(projectId)).pipe(
+        Effect.ensuring(
+          Effect.gen(function* () {
+            yield* sql`UPDATE symphony_work_items SET acceptance_criteria_json = '[]' WHERE id = ${workItemId}`.pipe(
+              Effect.ignore,
+            );
+            yield* sql`DELETE FROM symphony_work_items WHERE project_id = ${projectId}`.pipe(
+              Effect.ignore,
+            );
+            yield* sql`DELETE FROM symphony_workflows WHERE id = ${projectId}`.pipe(Effect.ignore);
+            yield* sql`DELETE FROM symphony_projects WHERE id = ${projectId}`.pipe(Effect.ignore);
+          }),
+        ),
+      );
+
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure._tag).toBe("SymphonyPersistenceDecodeError");
+        expect(result.failure.message).toContain(String(workItemId));
+      }
+    }),
+  );
+
+  it.effect("getProjectBoard keeps all active items and the newest 100 finished items", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const sql = yield* SqlClient.SqlClient;
+      const projectId = SymphonyProjectId.make("project-board-coverage");
+      yield* orchestrator.createProject({
+        id: projectId,
+        codeProjectId: ProjectId.make("code-project-board-coverage"),
+        title: "Board coverage",
+        repositoryPath: "/repo/project-board-coverage",
+        configuration: makeProjectConfiguration(),
+        now: "2026-03-01T00:00:00.000Z",
+      });
+
+      const completedIds: Array<WorkItemId> = [];
+      const seed = (id: string, lifecycle: WorkItem["lifecycle"], updatedAt: string) =>
+        Effect.gen(function* () {
+          const workItemId = WorkItemId.make(id);
+          yield* workItems.upsert({
+            id: workItemId,
+            mode: "symphony",
+            projectId,
+            objective: id,
+            acceptanceCriteria: [],
+            source: { kind: "manual" },
+            trackerIssueId: id,
+            lifecycle,
+            priority: 1,
+            eligibilityReasons: [],
+            evidence: null,
+            createdAt: "2026-03-01T00:00:00.000Z",
+            updatedAt,
+          });
+          return workItemId;
+        });
+      for (let index = 0; index < 105; index++) {
+        const minutes = String(Math.floor(index / 60)).padStart(2, "0");
+        const seconds = String(index % 60).padStart(2, "0");
+        completedIds.push(
+          yield* seed(
+            `board-coverage-completed-${String(index).padStart(3, "0")}`,
+            "completed",
+            `2026-03-01T00:${minutes}:${seconds}.000Z`,
+          ),
+        );
+      }
+      yield* seed("board-coverage-queued-1", "queued", "2026-03-01T00:00:00.000Z");
+      yield* seed("board-coverage-queued-2", "queued", "2026-03-01T00:00:00.000Z");
+      yield* seed("board-coverage-queued-3", "queued", "2026-03-01T00:00:00.000Z");
+
+      const board = yield* orchestrator.getProjectBoard(projectId).pipe(
+        Effect.ensuring(
+          Effect.gen(function* () {
+            yield* sql`DELETE FROM symphony_work_items WHERE project_id = ${projectId}`.pipe(
+              Effect.ignore,
+            );
+            yield* sql`DELETE FROM symphony_workflows WHERE id = ${projectId}`.pipe(Effect.ignore);
+            yield* sql`DELETE FROM symphony_projects WHERE id = ${projectId}`.pipe(Effect.ignore);
+          }),
+        ),
+      );
+
+      const done = board?.columns.find((column) => column.id === "done");
+      const notStarted = board?.columns.find((column) => column.id === "not_started");
+      expect(done?.cards).toHaveLength(100);
+      expect(done?.totalCount).toBe(105);
+      expect(board?.truncated).toBe(true);
+      expect(done?.cards.some((card) => card.workItemId === completedIds[0])).toBe(false);
+      expect(done?.cards.some((card) => card.workItemId === completedIds[104])).toBe(true);
+      expect(notStarted?.totalCount).toBe(3);
+    }),
+  );
+
   it.effect("rolls back project writes when workflow synchronization fails", () =>
     Effect.gen(function* () {
       const orchestrator = yield* SymphonyOrchestrator;
@@ -1551,7 +1679,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       });
 
       dispatchedIds.length = 0;
-      yield* orchestrator.dispatchWorkItem(workItemId);
+      yield* orchestrator.refreshNow();
       expect(dispatchedIds).not.toContain("cancel-guard-1");
       yield* TestClock.adjust("10 seconds");
       // Let the scan this advance triggered finish before the next test: a late
@@ -1620,7 +1748,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       });
 
       dispatchedIds.length = 0;
-      yield* orchestrator.dispatchWorkItem(workItemId, { explicit: true });
+      yield* orchestrator.dispatchWorkItem(workItemId);
       // Wait for the forked dispatch WITHOUT advancing the clock (a
       // scheduler tick would reconcile the mock-held claim straight back:
       // the mock reports no active agent and the seeded attempt is
@@ -1698,7 +1826,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       });
 
       dispatchedIds.length = 0;
-      yield* orchestrator.dispatchWorkItem(workItemId, { explicit: true });
+      yield* orchestrator.dispatchWorkItem(workItemId);
       yield* awaitDispatched("cancel-override-1");
       expect(dispatchedIds).toContain("cancel-override-1");
     }),
@@ -1839,9 +1967,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       dispatchGate = yield* Deferred.make<void>();
       dispatchStatus.interrupted = false;
       dispatchStatus.completed = false;
-      const result = yield* Effect.scoped(
-        orchestrator.dispatchWorkItem("fork-1", { explicit: true }),
-      );
+      const result = yield* Effect.scoped(orchestrator.dispatchWorkItem("fork-1"));
       void result;
       yield* awaitDispatched("fork-1");
       yield* settle;
@@ -2040,7 +2166,11 @@ layer("SymphonyOrchestrator Observe", (it) => {
 
       yield* Effect.gen(function* () {
         dispatchedIds.length = 0;
-        yield* orchestrator.dispatchWorkItem(targetId, { explicit: true });
+        const outcome = yield* Effect.result(orchestrator.dispatchWorkItem(targetId));
+        expect(outcome._tag).toBe("Failure");
+        if (outcome._tag === "Failure") {
+          expect(outcome.failure._tag).toMatch(/^SymphonyPersistence/);
+        }
         yield* settle;
         expect(dispatchedIds).not.toContain("occupancy-corrupt-target");
         expect((yield* workItems.getById(targetId))?.lifecycle).toBe("queued");
@@ -2328,6 +2458,379 @@ layer("SymphonyOrchestrator Observe", (it) => {
       const stopped = yield* orchestrator.stopAllRuns();
       expect(stopped).toBe(0);
     }),
+  );
+
+  it.effect("dispatchWorkItem reports why a dispatch was refused", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const sql = yield* SqlClient.SqlClient;
+      const seededItemIds: Array<WorkItemId> = [];
+      const seededWorkflowIds: Array<WorkflowId> = [];
+      const seedItem = (input: {
+        readonly id: string;
+        readonly lifecycle: WorkItem["lifecycle"];
+        readonly workflowId?: string;
+        readonly trackerIssueId?: string;
+        readonly eligibilityReasons?: ReadonlyArray<string>;
+      }) =>
+        Effect.gen(function* () {
+          const id = WorkItemId.make(input.id);
+          seededItemIds.push(id);
+          yield* workItems.upsert({
+            id,
+            mode: "symphony",
+            projectId: SymphonyProjectId.make(`dispatch-refusal-${input.id}`),
+            objective: input.id,
+            acceptanceCriteria: [],
+            source: { kind: "manual" },
+            ...(input.trackerIssueId === undefined ? {} : { trackerIssueId: input.trackerIssueId }),
+            ...(input.workflowId === undefined
+              ? {}
+              : { workflowId: WorkflowId.make(input.workflowId) }),
+            lifecycle: input.lifecycle,
+            priority: 1,
+            eligibilityReasons: [...(input.eligibilityReasons ?? [])],
+            evidence: null,
+            createdAt: "2026-08-05T00:00:00.000Z",
+            updatedAt: "2026-08-05T00:00:00.000Z",
+          });
+        });
+      const seedExecuteWorkflow = (id: string, overrides: Partial<EffectiveWorkflowConfig> = {}) =>
+        Effect.gen(function* () {
+          seededWorkflowIds.push(WorkflowId.make(id));
+          yield* seedWorkflow(id, `/repo/${id}`, {
+            autonomy: "execute",
+            trackerRequiredLabels: [],
+            concurrencyGlobal: 10_000,
+            ...overrides,
+          });
+        });
+
+      yield* Effect.gen(function* () {
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-missing")).toEqual({
+          status: "refused",
+          reason: "not_found",
+        });
+
+        yield* seedItem({ id: "dispatch-refusal-running", lifecycle: "running" });
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-running")).toMatchObject({
+          status: "refused",
+          reason: "already_running",
+        });
+
+        yield* seedItem({ id: "dispatch-refusal-review", lifecycle: "ready_for_review" });
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-review")).toMatchObject({
+          status: "refused",
+          reason: "not_dispatchable",
+        });
+
+        yield* seedExecuteWorkflow("wf-refusal-paused");
+        yield* seedItem({
+          id: "dispatch-refusal-paused",
+          lifecycle: "queued",
+          workflowId: "wf-refusal-paused",
+          trackerIssueId: "1",
+        });
+        yield* orchestrator.setWorkflowPaused("wf-refusal-paused", true);
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-paused")).toEqual({
+          status: "refused",
+          reason: "paused",
+          detail: "workflow",
+        });
+        yield* orchestrator.setWorkflowPaused("wf-refusal-paused", false);
+
+        yield* seedExecuteWorkflow("wf-refusal-global");
+        yield* seedItem({
+          id: "dispatch-refusal-global",
+          lifecycle: "queued",
+          workflowId: "wf-refusal-global",
+          trackerIssueId: "1",
+        });
+        yield* orchestrator.setGlobalPaused(true);
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-global")).toEqual({
+          status: "refused",
+          reason: "paused",
+          detail: "global",
+        });
+        yield* orchestrator.setGlobalPaused(false);
+
+        yield* seedExecuteWorkflow("wf-refusal-excluded");
+        yield* seedItem({
+          id: "dispatch-refusal-excluded",
+          lifecycle: "queued",
+          workflowId: "wf-refusal-excluded",
+          trackerIssueId: "1",
+        });
+        yield* orchestrator.excludeWorkItem("dispatch-refusal-excluded", true);
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-excluded")).toEqual({
+          status: "refused",
+          reason: "excluded",
+        });
+
+        yield* seedExecuteWorkflow("wf-refusal-ineligible");
+        yield* seedItem({
+          id: "dispatch-refusal-ineligible",
+          lifecycle: "queued",
+          workflowId: "wf-refusal-ineligible",
+          trackerIssueId: "1",
+          eligibilityReasons: ["missing_label:agent-ready"],
+        });
+        const ineligible = yield* orchestrator.dispatchWorkItem("dispatch-refusal-ineligible");
+        expect(ineligible).toMatchObject({ status: "refused", reason: "ineligible" });
+        if (ineligible.status === "refused") {
+          expect(ineligible.detail).toContain("missing_label");
+        }
+
+        seededWorkflowIds.push(WorkflowId.make("wf-refusal-observe"));
+        yield* seedWorkflow("wf-refusal-observe", "/repo/wf-refusal-observe");
+        yield* seedItem({
+          id: "dispatch-refusal-observe",
+          lifecycle: "queued",
+          workflowId: "wf-refusal-observe",
+          trackerIssueId: "1",
+        });
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-observe")).toEqual({
+          status: "refused",
+          reason: "observe_only",
+        });
+
+        yield* seedItem({
+          id: "dispatch-refusal-no-workflow",
+          lifecycle: "queued",
+          workflowId: "no-such-refusal-workflow",
+          trackerIssueId: "1",
+        });
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-no-workflow")).toEqual({
+          status: "refused",
+          reason: "no_workflow",
+        });
+
+        yield* seedExecuteWorkflow("wf-refusal-refresh");
+        yield* seedItem({
+          id: "dispatch-refusal-refresh",
+          lifecycle: "queued",
+          workflowId: "wf-refusal-refresh",
+          trackerIssueId: "999",
+        });
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-refresh")).toEqual({
+          status: "refused",
+          reason: "tracker_refresh_failed",
+        });
+
+        yield* seedExecuteWorkflow("wf-refusal-cap", { concurrencyGlobal: 1 });
+        yield* seedItem({
+          id: "dispatch-refusal-cap-active",
+          lifecycle: "running",
+          workflowId: "wf-refusal-cap",
+        });
+        yield* seedItem({
+          id: "dispatch-refusal-cap-target",
+          lifecycle: "queued",
+          workflowId: "wf-refusal-cap",
+          trackerIssueId: "1",
+        });
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-cap-target")).toEqual({
+          status: "refused",
+          reason: "concurrency_cap",
+          detail: "global",
+        });
+
+        yield* seedExecuteWorkflow("wf-refusal-started");
+        yield* seedItem({
+          id: "dispatch-refusal-started",
+          lifecycle: "queued",
+          workflowId: "wf-refusal-started",
+          trackerIssueId: "1",
+        });
+        dispatchedIds.length = 0;
+        expect(yield* orchestrator.dispatchWorkItem("dispatch-refusal-started")).toEqual({
+          status: "started",
+        });
+        yield* TestClock.adjust("100 millis");
+        yield* Effect.yieldNow;
+        expect(dispatchedIds).toContain("dispatch-refusal-started");
+      }).pipe(
+        Effect.ensuring(
+          Effect.gen(function* () {
+            yield* orchestrator.setGlobalPaused(false).pipe(Effect.ignore);
+            for (const workflowId of seededWorkflowIds) {
+              yield* orchestrator.setWorkflowPaused(String(workflowId), false).pipe(Effect.ignore);
+              yield* sql`DELETE FROM symphony_workflows WHERE id = ${workflowId}`.pipe(
+                Effect.ignore,
+              );
+            }
+            for (const itemId of seededItemIds) {
+              yield* sql`DELETE FROM symphony_work_items WHERE id = ${itemId}`.pipe(Effect.ignore);
+            }
+          }),
+        ),
+      );
+    }),
+  );
+
+  it.effect(
+    "dispatchWorkItem surfaces a work-item read failure instead of reporting the item missing",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* SymphonyOrchestrator;
+        const workItems = yield* WorkItemRepository;
+        const sql = yield* SqlClient.SqlClient;
+        const workItemId = WorkItemId.make("dispatch-read-failure-item");
+        yield* workItems.upsert({
+          id: workItemId,
+          mode: "symphony",
+          projectId: SymphonyProjectId.make("dispatch-read-failure-item-project"),
+          objective: "Read failure target",
+          acceptanceCriteria: [],
+          source: { kind: "manual" },
+          lifecycle: "queued",
+          priority: 1,
+          eligibilityReasons: [],
+          evidence: null,
+          createdAt: "2026-08-05T00:00:00.000Z",
+          updatedAt: "2026-08-05T00:00:00.000Z",
+        });
+        yield* sql`UPDATE symphony_work_items SET lifecycle = 'not-a-lifecycle' WHERE id = ${workItemId}`;
+
+        const result = yield* Effect.result(orchestrator.dispatchWorkItem(String(workItemId))).pipe(
+          Effect.ensuring(
+            sql`DELETE FROM symphony_work_items WHERE id = ${workItemId}`.pipe(Effect.ignore),
+          ),
+        );
+
+        expect(result._tag).toBe("Failure");
+        if (result._tag === "Failure") {
+          expect(result.failure._tag).toMatch(/^SymphonyPersistence/);
+        }
+      }),
+  );
+
+  it.effect(
+    "dispatchWorkItem surfaces a workflow read failure instead of reporting no workflow",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* SymphonyOrchestrator;
+        const workItems = yield* WorkItemRepository;
+        const sql = yield* SqlClient.SqlClient;
+        const workflowId = WorkflowId.make("wf-dispatch-read-failure");
+        const workItemId = WorkItemId.make("dispatch-read-failure-workflow");
+        yield* seedWorkflow("wf-dispatch-read-failure", "/repo/dispatch-read-failure", {
+          autonomy: "execute",
+          trackerRequiredLabels: [],
+          concurrencyGlobal: 10_000,
+        });
+        yield* workItems.upsert({
+          id: workItemId,
+          mode: "symphony",
+          projectId: SymphonyProjectId.make("dispatch-read-failure-workflow-project"),
+          objective: "Workflow read failure target",
+          acceptanceCriteria: [],
+          source: { kind: "manual" },
+          trackerIssueId: "1",
+          workflowId,
+          lifecycle: "queued",
+          priority: 1,
+          eligibilityReasons: [],
+          evidence: null,
+          createdAt: "2026-08-05T00:00:00.000Z",
+          updatedAt: "2026-08-05T00:00:00.000Z",
+        });
+        yield* sql`ALTER TABLE symphony_workflows RENAME TO symphony_workflows_read_failure`;
+
+        const result = yield* Effect.result(orchestrator.dispatchWorkItem(String(workItemId))).pipe(
+          Effect.ensuring(
+            Effect.gen(function* () {
+              yield* sql`ALTER TABLE symphony_workflows_read_failure RENAME TO symphony_workflows`.pipe(
+                Effect.ignore,
+              );
+              yield* sql`DELETE FROM symphony_work_items WHERE id = ${workItemId}`.pipe(
+                Effect.ignore,
+              );
+              yield* sql`DELETE FROM symphony_workflows WHERE id = ${workflowId}`.pipe(
+                Effect.ignore,
+              );
+            }),
+          ),
+        );
+
+        expect(result._tag).toBe("Failure");
+        if (result._tag === "Failure") {
+          expect(result.failure._tag).toMatch(/^SymphonyPersistence/);
+        }
+      }),
+  );
+
+  it.effect(
+    "dispatchWorkItem surfaces an occupancy read failure instead of refusing on unreadable state",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* SymphonyOrchestrator;
+        const workItems = yield* WorkItemRepository;
+        const sql = yield* SqlClient.SqlClient;
+        const workflowId = WorkflowId.make("wf-dispatch-read-failure-occupancy");
+        const workItemId = WorkItemId.make("dispatch-read-failure-occupancy-target");
+        const activeId = WorkItemId.make("dispatch-read-failure-occupancy-active");
+        yield* seedWorkflow(
+          "wf-dispatch-read-failure-occupancy",
+          "/repo/dispatch-read-failure-occupancy",
+          {
+            autonomy: "execute",
+            trackerRequiredLabels: [],
+            concurrencyGlobal: 10_000,
+          },
+        );
+        yield* workItems.upsert({
+          id: activeId,
+          mode: "symphony",
+          projectId: SymphonyProjectId.make("dispatch-read-failure-occupancy-active-project"),
+          objective: "Unreadable active item",
+          acceptanceCriteria: [],
+          source: { kind: "manual" },
+          workflowId,
+          lifecycle: "running",
+          priority: 1,
+          eligibilityReasons: [],
+          evidence: null,
+          createdAt: "2026-08-05T00:00:00.000Z",
+          updatedAt: "2026-08-05T00:00:00.000Z",
+        });
+        yield* workItems.upsert({
+          id: workItemId,
+          mode: "symphony",
+          projectId: SymphonyProjectId.make("dispatch-read-failure-occupancy-target-project"),
+          objective: "Occupancy read failure target",
+          acceptanceCriteria: [],
+          source: { kind: "manual" },
+          trackerIssueId: "1",
+          workflowId,
+          lifecycle: "queued",
+          priority: 1,
+          eligibilityReasons: [],
+          evidence: null,
+          createdAt: "2026-08-05T00:00:00.000Z",
+          updatedAt: "2026-08-05T00:00:00.000Z",
+        });
+        yield* sql`UPDATE symphony_work_items SET acceptance_criteria_json = 'not json' WHERE id = ${activeId}`;
+
+        const result = yield* Effect.result(orchestrator.dispatchWorkItem(String(workItemId))).pipe(
+          Effect.ensuring(
+            Effect.gen(function* () {
+              yield* sql`DELETE FROM symphony_work_items WHERE id IN (${workItemId}, ${activeId})`.pipe(
+                Effect.ignore,
+              );
+              yield* sql`DELETE FROM symphony_workflows WHERE id = ${workflowId}`.pipe(
+                Effect.ignore,
+              );
+            }),
+          ),
+        );
+
+        expect(result._tag).toBe("Failure");
+        if (result._tag === "Failure") {
+          expect(result.failure._tag).toMatch(/^SymphonyPersistence/);
+        }
+      }),
   );
 
   it.effect("requestChanges moves a review-ready item to changes_requested", () =>

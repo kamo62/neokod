@@ -10,6 +10,7 @@ import type {
   RunAttempt,
   RunDetails,
   RunSummary,
+  SymphonyDispatchResult,
   SymphonyProject,
   SymphonyProjectConfiguration,
   SymphonyProjectSourceControl,
@@ -42,6 +43,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { approvalRequestKind } from "../../Domain/Approvals.ts";
 import { nowIso } from "../../Domain/Time.ts";
 import { SymphonyPersistenceSqlError } from "../../Persistence/Errors.ts";
+import type { SymphonyPersistenceError } from "../../Persistence/Errors.ts";
 import { SymphonyProjectRepository } from "../../Persistence/Services/SymphonyProjectRepository.ts";
 import { WorkflowRepository } from "../../Persistence/Services/WorkflowRepository.ts";
 import { WorkItemRepository } from "../../Persistence/Services/WorkItemRepository.ts";
@@ -86,6 +88,12 @@ import { ServerConfig } from "../../../config.ts";
  */
 
 const SCHEDULER_SCAN_INTERVAL = "5 seconds";
+
+// The board shows every active item (bounded so a runaway table cannot stall
+// the read) and the newest finished work, with exact counts from the same
+// snapshot so the two bounded slices can be described honestly.
+const BOARD_ACTIVE_LIMIT = 5_000;
+const BOARD_TERMINAL_LIMIT = 100;
 
 const ALL_WORK_LIFECYCLES = [
   "draft",
@@ -274,6 +282,24 @@ interface PreparedDispatch {
   readonly reviewFeedback?: ReviewFeedbackContext;
   readonly workflowInstructions?: string;
 }
+
+type DispatchRefused = Extract<SymphonyDispatchResult, { readonly status: "refused" }>;
+
+const DISPATCHABLE_LIFECYCLES: ReadonlySet<WorkLifecycle> = new Set([
+  "eligible",
+  "queued",
+  "retry_scheduled",
+  "changes_requested",
+]);
+
+const refused = (reason: DispatchRefused["reason"], detail?: string): DispatchRefused => ({
+  status: "refused",
+  reason,
+  ...(detail === undefined ? {} : { detail }),
+});
+
+const isRefused = (value: PreparedDispatch | DispatchRefused): value is DispatchRefused =>
+  "status" in value;
 
 const EMPTY_STATE: OrchestratorRuntimeState = {
   lastPollAt: null,
@@ -1448,18 +1474,18 @@ const makeOrchestrator = Effect.gen(function* () {
 
   const getProjectBoard: SymphonyOrchestratorShape["getProjectBoard"] = (projectId) =>
     Effect.gen(function* () {
-      const project = yield* projects
-        .getById(projectId)
-        .pipe(Effect.catch(() => Effect.succeed(null)));
+      const project = yield* projects.getById(projectId);
       if (project === null) return null;
-      const workItemsForProject = yield* workItems
-        .listByLifecycle(ALL_WORK_LIFECYCLES, { projectId, limit: 1_000 })
-        .pipe(Effect.catch(() => Effect.succeed([])));
+      const result = yield* workItems.listForBoard(projectId, {
+        activeLimit: BOARD_ACTIVE_LIMIT,
+        terminalLimit: BOARD_TERMINAL_LIMIT,
+      });
       const sourceControl = yield* resolveProjectSourceControl(project.repositoryPath);
       return projectBoardFromWorkItems({
         project,
         sourceControl,
-        workItems: workItemsForProject,
+        workItems: result.items,
+        lifecycleTotals: result.totalsByLifecycle,
         generatedAt: yield* nowIso,
       });
     });
@@ -1590,58 +1616,65 @@ const makeOrchestrator = Effect.gen(function* () {
   const prepareDispatch = Effect.fn("symphonyOrchestrator.prepareDispatch")(function* (
     workItemId: string,
     options: { readonly explicit: boolean },
-  ): Effect.fn.Return<PreparedDispatch | null> {
+  ): Effect.fn.Return<PreparedDispatch | DispatchRefused, SymphonyPersistenceError> {
     // Defence in depth for an explicit dispatch RPC on a follower: the tick
     // gate above normally keeps followers out, but the RPC can arrive
     // between ticks.
     if (!(yield* Ref.get(holdsLockRef))) {
-      return null;
+      return refused("not_leader");
     }
-    const item = yield* workItems
-      .getById(WorkItemId.make(workItemId))
-      .pipe(Effect.catch(() => Effect.succeed(null)));
+    const item = yield* workItems.getById(WorkItemId.make(workItemId));
+    if (item === null) {
+      return refused("not_found");
+    }
     if (
-      item === null ||
       item.lifecycle === "preparing" ||
       item.lifecycle === "running" ||
       item.lifecycle === "testing"
     ) {
-      return null;
+      return refused("already_running");
+    }
+    const explicitTerminalRetry =
+      options.explicit && (item.lifecycle === "failed" || item.lifecycle === "cancelled");
+    if (!DISPATCHABLE_LIFECYCLES.has(item.lifecycle) && !explicitTerminalRetry) {
+      return refused("not_dispatchable", item.lifecycle);
     }
     if (item.lifecycle === "changes_requested") {
       const requeued = yield* workItems
         .transition(item.id, "queued", { from: ["changes_requested"] })
         .pipe(Effect.catch(() => Effect.succeed(false)));
       if (!requeued) {
-        return null;
+        return refused("not_dispatchable", "state changed");
       }
     }
-    if (options.explicit && (item.lifecycle === "failed" || item.lifecycle === "cancelled")) {
+    if (explicitTerminalRetry) {
       // A user chose to run this item again. Leaving a terminal lifecycle needs an explicit `from`.
       const requeued = yield* workItems
         .transition(item.id, "queued", { from: [item.lifecycle] })
         .pipe(Effect.catch(() => Effect.succeed(false)));
-      if (!requeued) return null;
+      if (!requeued) return refused("not_dispatchable", "state changed");
     }
     if (item.lifecycle === "queued" && !options.explicit) {
       const latestAttempt = yield* runAttempts
         .latestForWorkItem(item.id)
         .pipe(Effect.catch(() => Effect.succeed(null)));
-      if (latestAttempt !== null && isAutoDispatchBlockedStatus(latestAttempt.status)) return null;
+      if (latestAttempt !== null && isAutoDispatchBlockedStatus(latestAttempt.status)) {
+        return refused("not_dispatchable", "the previous attempt ended");
+      }
     }
 
     const paused = yield* orchestratorState
       .isGlobalPaused()
       .pipe(Effect.catch(() => Effect.succeed(false)));
     if (paused) {
-      return null;
+      return refused("paused", "global");
     }
     if (item.workflowId !== undefined) {
       const workflowPaused = yield* orchestratorState
         .isWorkflowPaused(String(item.workflowId))
         .pipe(Effect.catch(() => Effect.succeed(false)));
       if (workflowPaused) {
-        return null;
+        return refused("paused", "workflow");
       }
     }
     if (item.repositoryPath !== undefined) {
@@ -1649,44 +1682,35 @@ const makeOrchestrator = Effect.gen(function* () {
         .isRepositoryPaused(item.repositoryPath)
         .pipe(Effect.catch(() => Effect.succeed(false)));
       if (repositoryPaused) {
-        return null;
+        return refused("paused", "repository");
       }
     }
-    if (item.excluded === true || item.eligibilityReasons.length > 0) {
-      return null;
+    if (item.excluded === true) {
+      return refused("excluded");
+    }
+    if (item.eligibilityReasons.length > 0) {
+      return refused("ineligible", item.eligibilityReasons.join(", "));
     }
 
     const workflow = yield* workflows
       .list()
-      .pipe(Effect.map((all) => all.find((record) => record.id === item.workflowId)))
-      .pipe(Effect.catch(() => Effect.succeed(undefined)));
+      .pipe(Effect.map((all) => all.find((record) => record.id === item.workflowId)));
     const config = workflow?.effectiveConfig;
-    if (
-      workflow === undefined ||
-      config === null ||
-      config === undefined ||
-      config.autonomy === "observe"
-    ) {
-      return null;
+    if (workflow === undefined || config === null || config === undefined) {
+      return refused("no_workflow");
+    }
+    if (config.autonomy === "observe") {
+      return refused("observe_only");
     }
 
-    const inFlightItems = yield* workItems
-      .listByLifecycle(["preparing", "running", "waiting_for_approval"])
-      .pipe(
-        Effect.catch((cause) =>
-          Effect.gen(function* () {
-            yield* Effect.logWarning("symphony.dispatch.refused_occupancy_unavailable", {
-              workItemId: String(item.id),
-              error: cause.message,
-            });
-            return null;
-          }),
-        ),
-      );
-    if (inFlightItems === null) return null;
+    const inFlightItems = yield* workItems.listByLifecycle([
+      "preparing",
+      "running",
+      "waiting_for_approval",
+    ]);
     const globalCap = config.concurrencyGlobal ?? WORKFLOW_DEFAULTS.concurrencyGlobal;
     if (globalCap > 0 && inFlightItems.length >= globalCap) {
-      return null;
+      return refused("concurrency_cap", "global");
     }
     const repoCap = config.concurrencyRepository ?? 0;
     if (
@@ -1694,7 +1718,7 @@ const makeOrchestrator = Effect.gen(function* () {
       inFlightItems.filter((other) => other.repositoryPath === item.repositoryPath).length >=
         repoCap
     ) {
-      return null;
+      return refused("concurrency_cap", "repository");
     }
     const workflowCap = config.concurrencyWorkflow ?? 0;
     if (
@@ -1702,12 +1726,12 @@ const makeOrchestrator = Effect.gen(function* () {
       item.workflowId !== undefined &&
       inFlightItems.filter((other) => other.workflowId === item.workflowId).length >= workflowCap
     ) {
-      return null;
+      return refused("concurrency_cap", "workflow");
     }
 
     const issue = yield* refreshIssueSnapshot(item, config, registry, enablement);
     if (issue === null) {
-      return null;
+      return refused("tracker_refresh_failed");
     }
     // Re-check eligibility on the fresh issue: the stored reasons are from the last poll.
     // Items without a tracker id use a synthetic snapshot, and review continuations may sit in a
@@ -1736,7 +1760,7 @@ const makeOrchestrator = Effect.gen(function* () {
           workItemId: String(item.id),
           reasons: fresh.reasons,
         });
-        return null;
+        return refused("ineligible", fresh.reasons.join(", "));
       }
     }
     const reviewFeedback = yield* buildReviewFeedback(item, config);
@@ -1754,8 +1778,18 @@ const makeOrchestrator = Effect.gen(function* () {
     workItemId: string,
     options: { readonly explicit: boolean },
   ) {
-    const prepared = yield* prepareDispatch(workItemId, options);
-    if (prepared === null) return false;
+    const prepared = yield* prepareDispatch(workItemId, options).pipe(
+      Effect.catch((cause) =>
+        Effect.gen(function* () {
+          yield* Effect.logWarning("symphony.dispatch.repository_unavailable", {
+            workItemId,
+            error: cause.message,
+          });
+          return null;
+        }),
+      ),
+    );
+    if (prepared === null || isRefused(prepared)) return false;
     yield* executePreparedDispatch(prepared).pipe(
       Effect.scoped,
       Effect.forkIn(dispatchScope),
@@ -1827,8 +1861,19 @@ const makeOrchestrator = Effect.gen(function* () {
     }
   });
 
-  const dispatchWorkItem: SymphonyOrchestratorShape["dispatchWorkItem"] = (workItemId, options) =>
-    launchDispatch(workItemId, { explicit: options?.explicit === true }).pipe(Effect.asVoid);
+  const dispatchWorkItem: SymphonyOrchestratorShape["dispatchWorkItem"] = (workItemId) =>
+    prepareDispatch(workItemId, { explicit: true }).pipe(
+      Effect.flatMap(
+        (prepared): Effect.Effect<SymphonyDispatchResult> =>
+          isRefused(prepared)
+            ? Effect.succeed(prepared)
+            : executePreparedDispatch(prepared).pipe(
+                Effect.scoped,
+                Effect.forkIn(dispatchScope),
+                Effect.as({ status: "started" } as const),
+              ),
+      ),
+    );
 
   const cancelRun: SymphonyOrchestratorShape["cancelRun"] = (runAttemptId) =>
     Effect.gen(function* () {
