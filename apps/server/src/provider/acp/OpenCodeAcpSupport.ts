@@ -251,17 +251,14 @@ export type OpenCodeAcpTextPromptResult = AcpAssistantTextResult;
 export function runOpenCodeAcpTextPrompt<E>(input: {
   readonly runtime: Pick<
     AcpSessionRuntime.AcpSessionRuntime["Service"],
-    "drainEvents" | "getEvents" | "prompt" | "start"
+    "handleSessionUpdate" | "prompt" | "start"
   >;
   readonly prompt: string;
   readonly mapError: (cause: EffectAcpErrors.AcpError) => E;
 }): Effect.Effect<OpenCodeAcpTextPromptResult, E> {
-  return Effect.gen(function* () {
-    yield* input.runtime.start().pipe(Effect.mapError(input.mapError));
-    return yield* collectAcpAssistantText({
-      runtime: input.runtime,
-      prompt: input.prompt,
-      mapError: input.mapError,
-    });
+  return collectAcpAssistantText({
+    runtime: input.runtime,
+    prompt: input.prompt,
+    mapError: input.mapError,
   });
 }
