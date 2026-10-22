@@ -98,6 +98,7 @@ function createProviderServiceHarness(
   overrides?: {
     readonly startSession?: ProviderServiceShape["startSession"];
     readonly sendTurn?: ProviderServiceShape["sendTurn"];
+    readonly listSessions?: ProviderServiceShape["listSessions"];
   },
 ) {
   const now = "2026-01-01T00:00:00.000Z";
@@ -136,7 +137,7 @@ function createProviderServiceHarness(
     respondToUserInput: () => unsupported(),
     stopSession: () => unsupported(),
     stopAllSessions: () => unsupported(),
-    listSessions,
+    listSessions: overrides?.listSessions ?? listSessions,
     getCapabilities: () => Effect.succeed({ sessionModelSwitch: "in-session" }),
     getInstanceInfo: (instanceId) =>
       Effect.succeed({
@@ -452,6 +453,7 @@ describe("CheckpointReactor", () => {
     readonly providerOverrides?: {
       readonly startSession?: ProviderServiceShape["startSession"];
       readonly sendTurn?: ProviderServiceShape["sendTurn"];
+      readonly listSessions?: ProviderServiceShape["listSessions"];
     };
     readonly threadDetailGate?: {
       readonly threadId: string;
@@ -1971,14 +1973,28 @@ describe("CheckpointReactor", () => {
     const recoveryStarted = Promise.withResolvers<void>();
     const recoveryRelease = Promise.withResolvers<void>();
     const sessionCwds = new Map<string, string>();
+    const sessions: ProviderSession[] = [];
+    const revertingSession: ProviderSession = {
+      provider: ProviderDriverKind.make("codex"),
+      status: "ready",
+      runtimeMode: "full-access",
+      threadId: ThreadId.make("thread-1"),
+      cwd: revertCwd,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
 
     const startSession: ProviderServiceShape["startSession"] = (threadId, input) =>
       Effect.sync(() => {
         if (input.cwd !== undefined) {
           sessionCwds.set(String(threadId), input.cwd);
         }
-        return providerSessionForStart(threadId, input);
+        const session = providerSessionForStart(threadId, input);
+        sessions.splice(0, sessions.length, session);
+        return session;
       });
+    const listSessions: ProviderServiceShape["listSessions"] = () =>
+      Effect.succeed([revertingSession, ...sessions]);
     const sendTurn: ProviderServiceShape["sendTurn"] = (input) =>
       Effect.sync(() => {
         const cwd = sessionCwds.get(String(input.threadId));
@@ -1998,7 +2014,7 @@ describe("CheckpointReactor", () => {
       secondThreadSharingWorktree: true,
       providerSessionCwd: revertCwd,
       providerCommandReactor: true,
-      providerOverrides: { startSession, sendTurn },
+      providerOverrides: { startSession, sendTurn, listSessions },
       threadDetailGate: {
         threadId: "thread-2",
         markStarted: () => providerStart.resolve(),
@@ -2064,6 +2080,143 @@ describe("CheckpointReactor", () => {
     await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
 
     expect(writtenCwd).toBe(admissionCwd);
+    expect(NodeFS.readFileSync(NodePath.join(admissionCwd, "provider-write.txt"), "utf8")).toBe(
+      "written\n",
+    );
+    expect(NodeFS.existsSync(NodePath.join(revertCwd, "provider-write.txt"))).toBe(false);
+    expect(NodeFS.readFileSync(NodePath.join(revertCwd, "README.md"), "utf8")).toBe("v2\n");
+    expect(listRecoveryRefs(revertCwd)).toHaveLength(1);
+  });
+
+  it("keeps a runtime-mode replacement in the admitted folder while a deferred send is pending", async () => {
+    const admissionCwd = createGitRepository();
+    const revertCwd = createGitRepository();
+    tempDirs.push(admissionCwd, revertCwd);
+
+    const sendStarted = Promise.withResolvers<void>();
+    const sendRelease = Promise.withResolvers<void>();
+    const sendWrote = Promise.withResolvers<string>();
+    const recoveryStarted = Promise.withResolvers<void>();
+    const recoveryRelease = Promise.withResolvers<void>();
+    const runtimeModeStart = Promise.withResolvers<string>();
+    const sessions: ProviderSession[] = [];
+    const startCwds: string[] = [];
+    const revertingSession: ProviderSession = {
+      provider: ProviderDriverKind.make("codex"),
+      status: "ready",
+      runtimeMode: "full-access",
+      threadId: ThreadId.make("thread-1"),
+      cwd: revertCwd,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    const startSession: ProviderServiceShape["startSession"] = (threadId, input) =>
+      Effect.sync(() => {
+        if (input.cwd !== undefined) {
+          startCwds.push(input.cwd);
+        }
+        const session = providerSessionForStart(threadId, input);
+        sessions.splice(0, sessions.length, session);
+        if (startCwds.length === 2) {
+          runtimeModeStart.resolve(input.cwd ?? "");
+        }
+        return session;
+      });
+    const listSessions: ProviderServiceShape["listSessions"] = () =>
+      Effect.succeed([revertingSession, ...sessions]);
+    const sendTurn: ProviderServiceShape["sendTurn"] = (input) =>
+      Effect.gen(function* () {
+        sendStarted.resolve();
+        yield* Effect.promise(() => sendRelease.promise);
+        const session = sessions.find((entry) => entry.threadId === input.threadId);
+        const cwd = session?.cwd;
+        if (cwd !== undefined) {
+          NodeFS.writeFileSync(NodePath.join(cwd, "provider-write.txt"), "written\n", "utf8");
+          sendWrote.resolve(cwd);
+        }
+        return {
+          threadId: input.threadId,
+          turnId: asTurnId("turn-runtime-mode-pin"),
+        };
+      });
+
+    const harness = await createHarness({
+      repositoryCwd: admissionCwd,
+      seedFilesystemCheckpoints: false,
+      secondThreadSharingWorktree: true,
+      providerSessionCwd: revertCwd,
+      providerCommandReactor: true,
+      providerOverrides: { startSession, sendTurn, listSessions },
+      recoveryCaptureGate: {
+        markStarted: () => recoveryStarted.resolve(),
+        release: recoveryRelease.promise,
+      },
+    });
+
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: revertCwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 0),
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(revertCwd, "README.md"), "v2\n", "utf8");
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: revertCwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(revertCwd, "README.md"), "v3\n", "utf8");
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: revertCwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2),
+      }),
+    );
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-runtime-mode-pin-start",
+          messageId: "message-runtime-mode-pin-start",
+        }),
+      ),
+    );
+    await sendStarted.promise;
+
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-runtime-mode-pin-move"),
+        threadId: ThreadId.make("thread-2"),
+        worktreePath: revertCwd,
+      }),
+    );
+
+    await revertToTurnOne(harness);
+    await recoveryStarted.promise;
+
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.runtime-mode.set",
+        commandId: CommandId.make("cmd-runtime-mode-pin-change"),
+        threadId: ThreadId.make("thread-2"),
+        runtimeMode: "full-access",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    const replacementCwd = await runtimeModeStart.promise;
+    expect(replacementCwd).toBe(admissionCwd);
+
+    sendRelease.resolve();
+    const wroteCwd = await sendWrote.promise;
+    recoveryRelease.resolve();
+
+    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+
+    expect(wroteCwd).toBe(admissionCwd);
     expect(NodeFS.readFileSync(NodePath.join(admissionCwd, "provider-write.txt"), "utf8")).toBe(
       "written\n",
     );

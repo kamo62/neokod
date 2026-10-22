@@ -447,6 +447,23 @@ const make = Effect.gen(function* () {
       return yield* Effect.die(new Error(`Thread '${threadId}' was not found in read model.`));
     }
 
+    const pendingStart = yield* projectionTurnRepository
+      .getPendingTurnStartByThreadId({ threadId })
+      .pipe(
+        Effect.mapError(
+          () =>
+            new ProviderAdapterRequestError({
+              provider: providerErrorLabel(String(thread.modelSelection.instanceId)),
+              method: "thread.turn.start",
+              detail:
+                "Neokod could not read the turn admission workspace, so the provider session was not changed.",
+            }),
+        ),
+      );
+    const pendingWorkspacePath = Option.isSome(pendingStart)
+      ? pendingStart.value.workspacePath
+      : null;
+
     const desiredRuntimeMode = thread.runtimeMode;
     const requestedModelSelection = options?.modelSelection;
     const resolveActiveSession = (threadId: ThreadId) =>
@@ -551,9 +568,31 @@ const make = Effect.gen(function* () {
         });
       }
     }
+    // An unresolved admission owns the workspace decision. Every caller,
+    // including runtime-mode changes, must not move or recreate the provider
+    // session outside that recorded folder while the start is still pending.
+    if (Option.isSome(pendingStart) && pendingWorkspacePath === null) {
+      if (activeSession !== undefined) {
+        return activeSession.threadId;
+      }
+      return yield* new ProviderAdapterRequestError({
+        provider: providerErrorLabel(String(thread.modelSelection.instanceId)),
+        method: "thread.turn.start",
+        detail:
+          "This turn start has no recorded admission workspace, so the provider session was not created. Start the turn again.",
+      });
+    }
+
+    const admittedWorkspacePath =
+      Option.isSome(pendingStart) && pendingWorkspacePath !== null
+        ? pendingWorkspacePath
+        : undefined;
     const project =
-      options?.workspacePath === undefined ? yield* resolveProject(thread.projectId) : undefined;
+      admittedWorkspacePath === undefined && options?.workspacePath === undefined
+        ? yield* resolveProject(thread.projectId)
+        : undefined;
     const effectiveCwd =
+      admittedWorkspacePath ??
       options?.workspacePath ??
       resolveThreadWorkspaceCwd({
         thread,
@@ -734,27 +773,32 @@ const make = Effect.gen(function* () {
     }
     const normalizedInput = toNonEmptyProviderInput(input.messageText);
     const normalizedAttachments = input.attachments ?? [];
-    const activeSession = yield* providerService
-      .listSessions()
-      .pipe(
-        Effect.map((sessions) => sessions.find((session) => session.threadId === input.threadId)),
-      );
+    const matchingSessions = (yield* providerService.listSessions()).filter(
+      (session) => session.threadId === input.threadId && session.cwd === input.workspacePath,
+    );
+    const activeSession = matchingSessions.at(-1);
+    if (activeSession === undefined) {
+      return yield* new ProviderAdapterRequestError({
+        provider: providerErrorLabel(String(thread.modelSelection.instanceId)),
+        method: "thread.turn.start",
+        detail:
+          "The provider session is not in the admitted workspace, so the turn was not sent. Start the turn again.",
+      });
+    }
     const sessionModelSwitch =
-      activeSession === undefined
-        ? "in-session"
-        : activeSession.providerInstanceId === undefined
-          ? yield* new ProviderAdapterRequestError({
-              provider: providerErrorLabel(activeSession.provider),
-              method: "thread.turn.start",
-              detail: `Active provider session '${activeSession.threadId}' is missing a provider instance id.`,
-            })
-          : (yield* providerService.getCapabilities(activeSession.providerInstanceId))
-              .sessionModelSwitch;
+      activeSession.providerInstanceId === undefined
+        ? yield* new ProviderAdapterRequestError({
+            provider: providerErrorLabel(activeSession.provider),
+            method: "thread.turn.start",
+            detail: `Active provider session '${activeSession.threadId}' is missing a provider instance id.`,
+          })
+        : (yield* providerService.getCapabilities(activeSession.providerInstanceId))
+            .sessionModelSwitch;
     const requestedModelSelection =
       input.modelSelection ?? threadModelSelections.get(input.threadId) ?? thread.modelSelection;
     const modelForTurn =
       sessionModelSwitch === "unsupported" && input.modelSelection === undefined
-        ? activeSession?.model !== undefined
+        ? activeSession.model !== undefined
           ? {
               ...requestedModelSelection,
               model: activeSession.model,
