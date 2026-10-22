@@ -7,6 +7,7 @@ Release impact: Patch because this corrects unsafe workspace reads/writes, edito
 - Settle Copilot turns and pending requests when its CLI dies, serialise runtime recovery and surface abort failures.
 - Treat Claude error-bearing success envelopes as failures, retain per-window allowance rejections across sessions, preserve unknown reset evidence and surface provider limits.
 - Authenticate each spawned OpenCode server with a fresh password, scrub internal host variables, settle stop requests once and preserve process-ledger evidence until exit is confirmed.
+- Report local OpenCode 2 as unsupported by the legacy HTTP adapter, bound CLI version probes, and recheck supported-version evidence inside the maintenance lock before any legacy updater runs.
 - Stop proven background process groups sharing a closed terminal’s controlling TTY; retain identity evidence and refuse unsafe signalling when ownership is unknown.
 - Permit diff previews for registered live projects/worktrees while rejecting unregistered roots, and remove the client fallback that could show another repository's diff.
 - Preserve stored provider secrets when their redacted rows are renamed or made non-sensitive until a replacement value is entered; reject stale queued secret references before persistence.

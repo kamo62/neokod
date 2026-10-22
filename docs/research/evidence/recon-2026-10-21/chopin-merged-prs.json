@@ -1,0 +1,667 @@
+[
+  {
+    "number": 715,
+    "title": "Set the chopin CLI's version to 0.0.18",
+    "merged_at": "2026-10-21T18:10:37Z",
+    "merge_commit_sha": "a55c9380c9c50aa16f2a794a119be1a2ce14b608",
+    "html_url": "https://github.com/githubnext/chopin/pull/715"
+  },
+  {
+    "number": 714,
+    "title": "Keep the title a person is renaming from the Planner's drafted title",
+    "merged_at": "2026-10-21T17:52:19Z",
+    "merge_commit_sha": "87669fe875a493bfb3d26628c5080b52521de1d5",
+    "html_url": "https://github.com/githubnext/chopin/pull/714"
+  },
+  {
+    "number": 713,
+    "title": "Wait ten minutes for a build's machine after a Chopin restart",
+    "merged_at": "2026-10-21T17:51:52Z",
+    "merge_commit_sha": "cc4c548d4f469e55b05e43e2ef83f1328c15f89d",
+    "html_url": "https://github.com/githubnext/chopin/pull/713"
+  },
+  {
+    "number": 712,
+    "title": "Act on saved Planner decisions, keep the Planner's cards linked, and fix two message slips",
+    "merged_at": "2026-10-21T07:10:50Z",
+    "merge_commit_sha": "d08d7f5cfe9143cf52d3260897b146709429f4b1",
+    "html_url": "https://github.com/githubnext/chopin/pull/712"
+  },
+  {
+    "number": 711,
+    "title": "Keep a launched workflow run live until its root run ends",
+    "merged_at": "2026-10-21T06:03:04Z",
+    "merge_commit_sha": "9284ff1cfa4ed7d6bb4fb58d4a0e9a25212f076f",
+    "html_url": "https://github.com/githubnext/chopin/pull/711"
+  },
+  {
+    "number": 710,
+    "title": "Set the chopin CLI's version to 0.0.17",
+    "merged_at": "2026-10-21T04:11:55Z",
+    "merge_commit_sha": "c9505559bf69c9907459748fda23fbac92d2223b",
+    "html_url": "https://github.com/githubnext/chopin/pull/710"
+  },
+  {
+    "number": 709,
+    "title": "Keep a running build going through a Chopin restart",
+    "merged_at": "2026-10-21T02:27:04Z",
+    "merge_commit_sha": "4fa31473e34c9c721c795943f4770dea6d0e3aa6",
+    "html_url": "https://github.com/githubnext/chopin/pull/709"
+  },
+  {
+    "number": 708,
+    "title": "Set the chopin CLI's version to 0.0.16",
+    "merged_at": "2026-10-21T00:51:56Z",
+    "merge_commit_sha": "ec23ccd1f1bfd54e4714f9ca69fcfc62a26755fb",
+    "html_url": "https://github.com/githubnext/chopin/pull/708"
+  },
+  {
+    "number": 707,
+    "title": "Let complete_task finish a task that needed no code change",
+    "merged_at": "2026-10-21T00:34:38Z",
+    "merge_commit_sha": "217c595bc8f5b6cd8bccd329e36b8f8b1a907a7a",
+    "html_url": "https://github.com/githubnext/chopin/pull/707"
+  },
+  {
+    "number": 706,
+    "title": "Upgrade Atomic to the stable 0.9.40 release",
+    "merged_at": "2026-10-20T20:21:38Z",
+    "merge_commit_sha": "8775fafc6d5ba0ee0493e626d1297631586e1fd8",
+    "html_url": "https://github.com/githubnext/chopin/pull/706"
+  },
+  {
+    "number": 705,
+    "title": "Keep saved decisions and their investigations reachable",
+    "merged_at": "2026-10-20T14:59:26Z",
+    "merge_commit_sha": "35822ebfdbccb82f1ace9eade44bb4f93b120d60",
+    "html_url": "https://github.com/githubnext/chopin/pull/705"
+  },
+  {
+    "number": 704,
+    "title": "Keep decision write-ups linked through Planner rewrites",
+    "merged_at": "2026-10-20T14:31:54Z",
+    "merge_commit_sha": "bcd2d7acfae7ca133d26c444d7f54a6ba6626155",
+    "html_url": "https://github.com/githubnext/chopin/pull/704"
+  },
+  {
+    "number": 703,
+    "title": "Verify real ACP build-tool handoff and document Atomic minimum",
+    "merged_at": "2026-10-20T13:57:38Z",
+    "merge_commit_sha": "dee7265b253c0921a4f2868c863ad14b0df853c2",
+    "html_url": "https://github.com/githubnext/chopin/pull/703"
+  },
+  {
+    "number": 702,
+    "title": "Reject corrupted document titles before writes",
+    "merged_at": "2026-10-20T13:38:10Z",
+    "merge_commit_sha": "cf4c8c5535192206f0ae1968f41fc1792b8a4917",
+    "html_url": "https://github.com/githubnext/chopin/pull/702"
+  },
+  {
+    "number": 701,
+    "title": "Fix adding decision options from natural Chat requests",
+    "merged_at": "2026-10-20T13:10:49Z",
+    "merge_commit_sha": "3560ec0d9b4b99c9ead347ce646e65fab0174e6e",
+    "html_url": "https://github.com/githubnext/chopin/pull/701"
+  },
+  {
+    "number": 700,
+    "title": "Make wireframes low-fidelity sketches",
+    "merged_at": "2026-10-20T08:58:59Z",
+    "merge_commit_sha": "dcebfd028f9851bde022bf172dcf0ae44f5e86d5",
+    "html_url": "https://github.com/githubnext/chopin/pull/700"
+  },
+  {
+    "number": 698,
+    "title": "Keep a rebind from taking another document's connection assignment",
+    "merged_at": "2026-10-20T08:01:39Z",
+    "merge_commit_sha": "ff03079f01cbc70058ee57aeba24c755de706652",
+    "html_url": "https://github.com/githubnext/chopin/pull/698"
+  },
+  {
+    "number": 683,
+    "title": "Criteria on choice decisions",
+    "merged_at": "2026-10-20T07:52:47Z",
+    "merge_commit_sha": "99d6c92cefba964ab516a72df5005f4d48822b4d",
+    "html_url": "https://github.com/githubnext/chopin/pull/683"
+  },
+  {
+    "number": 689,
+    "title": "Make web research finish: budget searches, longer deadline, retry once",
+    "merged_at": "2026-10-20T07:35:09Z",
+    "merge_commit_sha": "62bdf99e9522d83b3810cef9aa7594145b268ae6",
+    "html_url": "https://github.com/githubnext/chopin/pull/689"
+  },
+  {
+    "number": 697,
+    "title": "Preserve safe diagnostics for research search failures",
+    "merged_at": "2026-10-20T07:15:03Z",
+    "merge_commit_sha": "366adaf3ab99b90426ed3536e080f90eeccad76a",
+    "html_url": "https://github.com/githubnext/chopin/pull/697"
+  },
+  {
+    "number": 688,
+    "title": "Fix stuck research findings and other issues from a real-environment check",
+    "merged_at": "2026-10-20T06:48:47Z",
+    "merge_commit_sha": "13c815f9a37e1ad5392ba8dbbd72247110a3d652",
+    "html_url": "https://github.com/githubnext/chopin/pull/688"
+  },
+  {
+    "number": 680,
+    "title": "Decision pages on phones, and a why line for settled decisions",
+    "merged_at": "2026-10-20T06:11:24Z",
+    "merge_commit_sha": "3c44ff7a6f2cc158a45acf1f126a503d66cc292d",
+    "html_url": "https://github.com/githubnext/chopin/pull/680"
+  },
+  {
+    "number": 685,
+    "title": "Avoid false failures after completed rebuilds",
+    "merged_at": "2026-10-20T05:57:16Z",
+    "merge_commit_sha": "35401146f4f069d2ba9c2edd5ed827bcd217d1dd",
+    "html_url": "https://github.com/githubnext/chopin/pull/685"
+  },
+  {
+    "number": 696,
+    "title": "Keep a run's stored stages on reattach and open card diagrams fitted",
+    "merged_at": "2026-10-20T02:28:41Z",
+    "merge_commit_sha": "e95618af5238320834b50470fa67882f834f0ad8",
+    "html_url": "https://github.com/githubnext/chopin/pull/696"
+  },
+  {
+    "number": 695,
+    "title": "Keep every stage of a workflow run and load them when its card unfolds",
+    "merged_at": "2026-10-19T21:09:15Z",
+    "merge_commit_sha": "5c4aefbec75bb08f776fa08750ef9670026f1edc",
+    "html_url": "https://github.com/githubnext/chopin/pull/695"
+  },
+  {
+    "number": 694,
+    "title": "Render decision card text as Markdown, with diagrams and the document's own images",
+    "merged_at": "2026-10-19T20:30:29Z",
+    "merge_commit_sha": "6df285944b8ac6737445d8e3a59323bed32e571c",
+    "html_url": "https://github.com/githubnext/chopin/pull/694"
+  },
+  {
+    "number": 693,
+    "title": "Let a workflow run card unfold all its earlier stages",
+    "merged_at": "2026-10-19T20:30:02Z",
+    "merge_commit_sha": "95f12d8faa4df5d1c28e6e3596f29e38c841f251",
+    "html_url": "https://github.com/githubnext/chopin/pull/693"
+  },
+  {
+    "number": 692,
+    "title": "Set the chopin CLI's version to 0.0.15",
+    "merged_at": "2026-10-19T16:59:05Z",
+    "merge_commit_sha": "2b7a1f32c363e83b63c402ffccc8358323d23793",
+    "html_url": "https://github.com/githubnext/chopin/pull/692"
+  },
+  {
+    "number": 691,
+    "title": "Show build progress, task text and continued numbered lists as people read them",
+    "merged_at": "2026-10-19T16:56:49Z",
+    "merge_commit_sha": "94ef22b3dcc5da1f33e9911207e1e099316a6c6d",
+    "html_url": "https://github.com/githubnext/chopin/pull/691"
+  },
+  {
+    "number": 690,
+    "title": "Keep a build running when its machine registers again mid-run",
+    "merged_at": "2026-10-19T16:56:22Z",
+    "merge_commit_sha": "74f8f240760abdb3c2cf9b16a750dec320c46cca",
+    "html_url": "https://github.com/githubnext/chopin/pull/690"
+  },
+  {
+    "number": 687,
+    "title": "Close drafts when Planner questions are detached",
+    "merged_at": "2026-10-19T16:36:37Z",
+    "merge_commit_sha": "f246900b3677d57c21633c6207b662848447c5d3",
+    "html_url": "https://github.com/githubnext/chopin/pull/687"
+  },
+  {
+    "number": 686,
+    "title": "Hide child documents from the Projects sidebar",
+    "merged_at": "2026-10-19T15:52:17Z",
+    "merge_commit_sha": "9b975fa9250e3402d23fb3f59c97889b8a9d2501",
+    "html_url": "https://github.com/githubnext/chopin/pull/686"
+  },
+  {
+    "number": 684,
+    "title": "Keep routine status notices out of chat",
+    "merged_at": "2026-10-19T15:08:24Z",
+    "merge_commit_sha": "29ece9c4059ce13a048a54c92883fe8ec42b8a88",
+    "html_url": "https://github.com/githubnext/chopin/pull/684"
+  },
+  {
+    "number": 678,
+    "title": "Pick a document's machine beside Build plan, and call machines Local or Cloud",
+    "merged_at": "2026-10-19T14:47:11Z",
+    "merge_commit_sha": "16cd7f563745c50b8a778355839e9e93aaef3674",
+    "html_url": "https://github.com/githubnext/chopin/pull/678"
+  },
+  {
+    "number": 682,
+    "title": "Fix Planner failures while drafting inline decisions",
+    "merged_at": "2026-10-19T14:30:25Z",
+    "merge_commit_sha": "8cdb63aa9b3344eaf19852c662b574e7a70cb5c8",
+    "html_url": "https://github.com/githubnext/chopin/pull/682"
+  },
+  {
+    "number": 677,
+    "title": "Clarify final answers on resolved written decisions",
+    "merged_at": "2026-10-19T14:20:55Z",
+    "merge_commit_sha": "9b07efa4123f4ca372f09ec1ebb3181c95f5ea50",
+    "html_url": "https://github.com/githubnext/chopin/pull/677"
+  },
+  {
+    "number": 681,
+    "title": "Keep the empty document prompt aligned when toggling Projects",
+    "merged_at": "2026-10-19T14:09:23Z",
+    "merge_commit_sha": "2713b3aef6f0fdfe518abd356746d8902f1faad0",
+    "html_url": "https://github.com/githubnext/chopin/pull/681"
+  },
+  {
+    "number": 676,
+    "title": "Capture anchored Planner decisions and update prose on Save",
+    "merged_at": "2026-10-19T13:14:50Z",
+    "merge_commit_sha": "8edacecd6e4f9d8a56df0a2a2ae03a3fc2c2ae77",
+    "html_url": "https://github.com/githubnext/chopin/pull/676"
+  },
+  {
+    "number": 673,
+    "title": "Questions MVP phase 1: open-ended questions, Explore, findings and decision pages",
+    "merged_at": "2026-10-19T12:56:03Z",
+    "merge_commit_sha": "364dbf94f22d9cd99567cc504b01c2dabdac47bd",
+    "html_url": "https://github.com/githubnext/chopin/pull/673"
+  },
+  {
+    "number": 675,
+    "title": "Restore Chat when its configured model is unavailable",
+    "merged_at": "2026-10-19T11:24:41Z",
+    "merge_commit_sha": "f908ac6031864e64c5ceb23084566d1e63e036bb",
+    "html_url": "https://github.com/githubnext/chopin/pull/675"
+  },
+  {
+    "number": 674,
+    "title": "Tighten document header controls and balance spacing",
+    "merged_at": "2026-10-19T10:46:55Z",
+    "merge_commit_sha": "2007e89b2de3e61431cb25a9bed353a8520dc276",
+    "html_url": "https://github.com/githubnext/chopin/pull/674"
+  },
+  {
+    "number": 670,
+    "title": "decisions-v1: add document records and rerun the coverage critique",
+    "merged_at": "2026-10-19T09:51:55Z",
+    "merge_commit_sha": "187cdd57e08a15208042b24eea505c2fe6e5c188",
+    "html_url": "https://github.com/githubnext/chopin/pull/670"
+  },
+  {
+    "number": 669,
+    "title": "Add decisions-v1 corpus of real GitHub decisions",
+    "merged_at": "2026-10-19T09:45:47Z",
+    "merge_commit_sha": "d094a1efc0172371199d05eceef72e4fe974f153",
+    "html_url": "https://github.com/githubnext/chopin/pull/669"
+  },
+  {
+    "number": 672,
+    "title": "Upgrade Atomic to the stable 0.9.39 release",
+    "merged_at": "2026-10-19T04:46:12Z",
+    "merge_commit_sha": "3f751ba91a8cb334dfe677d283fdc49aa29c1194",
+    "html_url": "https://github.com/githubnext/chopin/pull/672"
+  },
+  {
+    "number": 668,
+    "title": "Upgrade Atomic to 0.9.38-alpha.9 and keep Planner workflow runs in Chopin's state directory",
+    "merged_at": "2026-10-18T01:55:00Z",
+    "merge_commit_sha": "d9aec4befa397d6da9a1f483e634794a949f821f",
+    "html_url": "https://github.com/githubnext/chopin/pull/668"
+  },
+  {
+    "number": 667,
+    "title": "Let invoke_planner start an automatic follow-up behind a system notice",
+    "merged_at": "2026-10-18T01:54:35Z",
+    "merge_commit_sha": "526702adec07a701e474b9c5542e54e2acdc27ee",
+    "html_url": "https://github.com/githubnext/chopin/pull/667"
+  },
+  {
+    "number": 666,
+    "title": "Keep nested lists and indentation in Chat messages",
+    "merged_at": "2026-10-17T17:41:48Z",
+    "merge_commit_sha": "61fe221d87b395a4eba9c03b7728acb0cb18dc15",
+    "html_url": "https://github.com/githubnext/chopin/pull/666"
+  },
+  {
+    "number": 665,
+    "title": "Keep a title a person set when the Planner drafts the document heading",
+    "merged_at": "2026-10-17T00:47:42Z",
+    "merge_commit_sha": "3b58e3bff1a30d87dfc9eff1e6e2db44cb717caa",
+    "html_url": "https://github.com/githubnext/chopin/pull/665"
+  },
+  {
+    "number": 664,
+    "title": "Keep a decision linked when a document rewrite leaves its text unchanged",
+    "merged_at": "2026-10-17T00:47:27Z",
+    "merge_commit_sha": "4b3e099d74ebab57f6bd6fbdb22a7445e5dc64e1",
+    "html_url": "https://github.com/githubnext/chopin/pull/664"
+  },
+  {
+    "number": 663,
+    "title": "Set the chopin CLI's version to 0.0.14",
+    "merged_at": "2026-10-16T21:51:46Z",
+    "merge_commit_sha": "8883843340d72ec7e2ebbeb20c144b338d41aca8",
+    "html_url": "https://github.com/githubnext/chopin/pull/663"
+  },
+  {
+    "number": 662,
+    "title": "Fit wide diagrams, date builds from their finish, follow renames, and place Planner questions",
+    "merged_at": "2026-10-16T21:49:36Z",
+    "merge_commit_sha": "3ee6887bc2f989b4b49ab469a57f494985c6e343",
+    "html_url": "https://github.com/githubnext/chopin/pull/662"
+  },
+  {
+    "number": 657,
+    "title": "Decisions a Planner waits on no longer time out",
+    "merged_at": "2026-10-16T18:45:14Z",
+    "merge_commit_sha": "5254cc0811087a9705e86fe0a165be877800d21a",
+    "html_url": "https://github.com/githubnext/chopin/pull/657"
+  },
+  {
+    "number": 656,
+    "title": "Set the chopin CLI's version to 0.0.13",
+    "merged_at": "2026-10-16T17:32:45Z",
+    "merge_commit_sha": "e9bed512262d6f593e7c43b0183df1c9a717bbbd",
+    "html_url": "https://github.com/githubnext/chopin/pull/656"
+  },
+  {
+    "number": 655,
+    "title": "Set decision titles at prose size, tighten decision text, and even out the header",
+    "merged_at": "2026-10-16T16:42:50Z",
+    "merge_commit_sha": "f55de25c3dddcb9fc8976e41aa77812ff6efbbb9",
+    "html_url": "https://github.com/githubnext/chopin/pull/655"
+  },
+  {
+    "number": 594,
+    "title": "Document Activity history and Contents outline",
+    "merged_at": "2026-10-16T14:21:54Z",
+    "merge_commit_sha": "e45f0ed11d2c38cbab5a85d4daa46dd834e63fb3",
+    "html_url": "https://github.com/githubnext/chopin/pull/594"
+  },
+  {
+    "number": 652,
+    "title": "Hide the related-places count on decision cards",
+    "merged_at": "2026-10-16T13:57:18Z",
+    "merge_commit_sha": "58cd96923ae1be1306f326bcd166acc94453c9fc",
+    "html_url": "https://github.com/githubnext/chopin/pull/652"
+  },
+  {
+    "number": 654,
+    "title": "Show the build as a status card",
+    "merged_at": "2026-10-16T13:51:57Z",
+    "merge_commit_sha": "c94988df82e6231cdcd78dab82c4bf07c14d41df",
+    "html_url": "https://github.com/githubnext/chopin/pull/654"
+  },
+  {
+    "number": 653,
+    "title": "Record which machine runs each build",
+    "merged_at": "2026-10-16T12:30:06Z",
+    "merge_commit_sha": "8809b41fdac10e2fd8731429768fb2867e156f6a",
+    "html_url": "https://github.com/githubnext/chopin/pull/653"
+  },
+  {
+    "number": 651,
+    "title": "Keep queued background jobs out of Chat",
+    "merged_at": "2026-10-16T12:26:00Z",
+    "merge_commit_sha": "7441b6ba7ff2d47727a9711186c7284d6c17708a",
+    "html_url": "https://github.com/githubnext/chopin/pull/651"
+  },
+  {
+    "number": 650,
+    "title": "Restore document-menu machine choice with an inline picker",
+    "merged_at": "2026-10-16T09:44:36Z",
+    "merge_commit_sha": "78db4e51cd19e3367d34486e765892367291aeb3",
+    "html_url": "https://github.com/githubnext/chopin/pull/650"
+  },
+  {
+    "number": 649,
+    "title": "Close machine menus when navigating",
+    "merged_at": "2026-10-16T07:52:53Z",
+    "merge_commit_sha": "e6d74014e143de726d342629cb3fcd4e616ec1bf",
+    "html_url": "https://github.com/githubnext/chopin/pull/649"
+  },
+  {
+    "number": 648,
+    "title": "Keep the sidebar machine menu's focused row visible",
+    "merged_at": "2026-10-16T07:05:24Z",
+    "merge_commit_sha": "3b2ecda2c613a77a94c60c3eaf2aed8abb8d155e",
+    "html_url": "https://github.com/githubnext/chopin/pull/648"
+  },
+  {
+    "number": 647,
+    "title": "Stop unfinished workflow stages and cover populated machine menus",
+    "merged_at": "2026-10-16T03:48:15Z",
+    "merge_commit_sha": "eb5edfec37b22b99737d7d4a333481dfbc4c54b1",
+    "html_url": "https://github.com/githubnext/chopin/pull/647"
+  },
+  {
+    "number": 644,
+    "title": "Set the chopin CLI's version to 0.0.12",
+    "merged_at": "2026-10-15T23:59:39Z",
+    "merge_commit_sha": "f1b418a2a14770819ff46c50bc8016a6975f3f79",
+    "html_url": "https://github.com/githubnext/chopin/pull/644"
+  },
+  {
+    "number": 643,
+    "title": "Say why a machine stopped running a document's Planner",
+    "merged_at": "2026-10-15T23:57:32Z",
+    "merge_commit_sha": "2d7f30450a5e564b212306ec462e8fedca490a03",
+    "html_url": "https://github.com/githubnext/chopin/pull/643"
+  },
+  {
+    "number": 642,
+    "title": "Run a Default machine document's Planner on its creator's machine",
+    "merged_at": "2026-10-15T23:21:13Z",
+    "merge_commit_sha": "9f121b6261cf86cdfd8c62048c41a70119f5346b",
+    "html_url": "https://github.com/githubnext/chopin/pull/642"
+  },
+  {
+    "number": 641,
+    "title": "Call the machine menu's default row Default machine everywhere",
+    "merged_at": "2026-10-15T22:42:55Z",
+    "merge_commit_sha": "521f3a2dd3161b6f61ef70283678ddf4d064c691",
+    "html_url": "https://github.com/githubnext/chopin/pull/641"
+  },
+  {
+    "number": 640,
+    "title": "Set the chopin CLI's version to 0.0.11",
+    "merged_at": "2026-10-15T20:58:19Z",
+    "merge_commit_sha": "fb101535df5d2f879729ca6ecc2b8d513ad2b6d5",
+    "html_url": "https://github.com/githubnext/chopin/pull/640"
+  },
+  {
+    "number": 639,
+    "title": "Show machines without a repository, and keep their menus inside the window",
+    "merged_at": "2026-10-15T20:56:11Z",
+    "merge_commit_sha": "b462ac974194b12f53743e4b39e9513067be1e3e",
+    "html_url": "https://github.com/githubnext/chopin/pull/639"
+  },
+  {
+    "number": 638,
+    "title": "Connect a machine once for every repository its owner can push to",
+    "merged_at": "2026-10-15T20:52:04Z",
+    "merge_commit_sha": "18be5b94fced1bf0d4f6eb8b03d6b3c426c47460",
+    "html_url": "https://github.com/githubnext/chopin/pull/638"
+  },
+  {
+    "number": 637,
+    "title": "Let a deployment answer Planner decisions with any Atomic classifier",
+    "merged_at": "2026-10-15T16:46:54Z",
+    "merge_commit_sha": "e631c8b24973d18d09da5ecae56dec977dbf57a6",
+    "html_url": "https://github.com/githubnext/chopin/pull/637"
+  },
+  {
+    "number": 636,
+    "title": "Return focus to the research opener after a mid-open close",
+    "merged_at": "2026-10-15T15:10:37Z",
+    "merge_commit_sha": "4a106053402efc2052063bf9767cb396ab4158ff",
+    "html_url": "https://github.com/githubnext/chopin/pull/636"
+  },
+  {
+    "number": 635,
+    "title": "Keep Chopin's replies always on and restore the Chat/Chopin switch",
+    "merged_at": "2026-10-15T15:03:44Z",
+    "merge_commit_sha": "6ebaa4ac3b3cad96e2a867893b68ff07b11f9b35",
+    "html_url": "https://github.com/githubnext/chopin/pull/635"
+  },
+  {
+    "number": 632,
+    "title": "Render live Decisions, resolved comment and identity components in the design audit",
+    "merged_at": "2026-10-15T13:38:02Z",
+    "merge_commit_sha": "9480f0262e7a242db5315b2ebddb8012db4614c6",
+    "html_url": "https://github.com/githubnext/chopin/pull/632"
+  },
+  {
+    "number": 633,
+    "title": "Render real document context and control states in the audit's content and controls plates",
+    "merged_at": "2026-10-15T11:59:52Z",
+    "merge_commit_sha": "c08e96ee586110f2972be4297b526daf64febd5b",
+    "html_url": "https://github.com/githubnext/chopin/pull/633"
+  },
+  {
+    "number": 625,
+    "title": "Adopt shadcn Nova menus and buttons, with contextual icon sizes",
+    "merged_at": "2026-10-15T11:52:58Z",
+    "merge_commit_sha": "d66b163c9b6803cbc7ad6589c9064d6d46f7ae57",
+    "html_url": "https://github.com/githubnext/chopin/pull/625"
+  },
+  {
+    "number": 631,
+    "title": "Render the live sidebar, palette and account menu on the design audit",
+    "merged_at": "2026-10-15T11:27:00Z",
+    "merge_commit_sha": "170675caf08629de2a58e52637c913eb83fdf9cc",
+    "html_url": "https://github.com/githubnext/chopin/pull/631"
+  },
+  {
+    "number": 630,
+    "title": "Render the live workspace chrome in the design audit",
+    "merged_at": "2026-10-15T11:12:19Z",
+    "merge_commit_sha": "c4011622a1f915108065a158957406804414e56d",
+    "html_url": "https://github.com/githubnext/chopin/pull/630"
+  },
+  {
+    "number": 629,
+    "title": "Render the real Chat composer on the Conversation audit plate",
+    "merged_at": "2026-10-15T11:03:39Z",
+    "merge_commit_sha": "36616f5da49fa4c7ea03bfd2324f6e2124288336",
+    "html_url": "https://github.com/githubnext/chopin/pull/629"
+  },
+  {
+    "number": 612,
+    "title": "Make Chopin participate in conversational turns",
+    "merged_at": "2026-10-15T10:39:22Z",
+    "merge_commit_sha": "9534789fa7a202820f11e01a1cfb876dc27357e8",
+    "html_url": "https://github.com/githubnext/chopin/pull/612"
+  },
+  {
+    "number": 626,
+    "title": "Split design audit surface plates into per-plate files",
+    "merged_at": "2026-10-15T10:34:33Z",
+    "merge_commit_sha": "e86457c2aeed1060a8298a040eccbb848a61a636",
+    "html_url": "https://github.com/githubnext/chopin/pull/626"
+  },
+  {
+    "number": 606,
+    "title": "Guide Planner turns to draft early and follow through",
+    "merged_at": "2026-10-15T10:20:09Z",
+    "merge_commit_sha": "7a403de82574d0c261e67650c7355d4a464194f3",
+    "html_url": "https://github.com/githubnext/chopin/pull/606"
+  },
+  {
+    "number": 628,
+    "title": "Set the default machine from the sidebar's Machines menu",
+    "merged_at": "2026-10-15T10:14:29Z",
+    "merge_commit_sha": "d48e4a6b3d61eff8949f88a6ef2624e984f61e27",
+    "html_url": "https://github.com/githubnext/chopin/pull/628"
+  },
+  {
+    "number": 627,
+    "title": "Move the document's machine choice into its title menu",
+    "merged_at": "2026-10-15T10:09:49Z",
+    "merge_commit_sha": "9ed4f56f073b43c04e79c0db8ff6fc24975e4238",
+    "html_url": "https://github.com/githubnext/chopin/pull/627"
+  },
+  {
+    "number": 624,
+    "title": "Remove middle-dot separators and ban them",
+    "merged_at": "2026-10-15T09:35:56Z",
+    "merge_commit_sha": "309da28df14aa4ad9575430f4c71f2df77fb03fa",
+    "html_url": "https://github.com/githubnext/chopin/pull/624"
+  },
+  {
+    "number": 623,
+    "title": "Summarise finished Planner work as a glyph pile",
+    "merged_at": "2026-10-15T08:47:26Z",
+    "merge_commit_sha": "a76db04cfa5e8641f4a0521ee1a77ae5e248033c",
+    "html_url": "https://github.com/githubnext/chopin/pull/623"
+  },
+  {
+    "number": 622,
+    "title": "Set the chopin CLI's version to 0.0.10",
+    "merged_at": "2026-10-15T07:10:44Z",
+    "merge_commit_sha": "aa31d3763d6201f71171c0c95b6ea920df640e51",
+    "html_url": "https://github.com/githubnext/chopin/pull/622"
+  },
+  {
+    "number": 621,
+    "title": "Machines at /machines, Build tasks under Build, and no restart for a withdrawn Planner",
+    "merged_at": "2026-10-15T07:08:39Z",
+    "merge_commit_sha": "7980c172ea80258e71933aaf2885e6538acb577a",
+    "html_url": "https://github.com/githubnext/chopin/pull/621"
+  },
+  {
+    "number": 620,
+    "title": "Set the chopin CLI's version to 0.0.9",
+    "merged_at": "2026-10-15T06:02:30Z",
+    "merge_commit_sha": "ee7eaaffa93a670e0dbedb83ab0e48f964bf875d",
+    "html_url": "https://github.com/githubnext/chopin/pull/620"
+  },
+  {
+    "number": 619,
+    "title": "Save the full path of the agent chopin connect found",
+    "merged_at": "2026-10-15T06:00:34Z",
+    "merge_commit_sha": "629131b317127304203ba0ec90c7a3fbd891a926",
+    "html_url": "https://github.com/githubnext/chopin/pull/619"
+  },
+  {
+    "number": 617,
+    "title": "Name the agent WebSocket /api/v1/agent with the chopin.agent.v1 subprotocol",
+    "merged_at": "2026-10-15T02:58:21Z",
+    "merge_commit_sha": "eb6e5679c8fc1b2039ff811a0db75acabf439a2e",
+    "html_url": "https://github.com/githubnext/chopin/pull/617"
+  },
+  {
+    "number": 616,
+    "title": "Offer only Copilot CLI and Atomic, remove the Pi harness, and add chopin connect --agent",
+    "merged_at": "2026-10-15T02:35:29Z",
+    "merge_commit_sha": "a7618ac612d0c26fca7d245cb7009284c6c4149f",
+    "html_url": "https://github.com/githubnext/chopin/pull/616"
+  },
+  {
+    "number": 615,
+    "title": "Set the chopin CLI's version to 0.0.8",
+    "merged_at": "2026-10-15T01:58:29Z",
+    "merge_commit_sha": "26547aef0a6f0f2ce52c1201e4f73ca5fc5e60ec",
+    "html_url": "https://github.com/githubnext/chopin/pull/615"
+  },
+  {
+    "number": 614,
+    "title": "Keep machine work under chopin connect's folder, push as the owner with draft PRs, and offer deployment setups",
+    "merged_at": "2026-10-15T01:56:33Z",
+    "merge_commit_sha": "078f688c0951d6ead38f3e8ec7a3331d903d52f3",
+    "html_url": "https://github.com/githubnext/chopin/pull/614"
+  },
+  {
+    "number": 609,
+    "title": "Set the chopin CLI's version to 0.0.7",
+    "merged_at": "2026-10-14T21:33:54Z",
+    "merge_commit_sha": "217580f692637d46925c37767b171ff24059b741",
+    "html_url": "https://github.com/githubnext/chopin/pull/609"
+  }
+]

@@ -14,6 +14,10 @@ import {
 } from "~/components/ui/dialog";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Textarea } from "~/components/ui/textarea";
+import {
+  canSubmitCommitSelection,
+  resolveCommitFilePaths,
+} from "~/components/GitActionsControl.logic";
 
 const COMMIT_DIALOG_TITLE = "Commit changes";
 const COMMIT_DIALOG_DESCRIPTION =
@@ -54,8 +58,15 @@ export function GitCommitDialog({
 
   const allFiles = gitStatus?.workingTree.files ?? [];
   const selectedFiles = allFiles.filter((f) => !excludedFiles.has(f.path));
-  const allSelected = excludedFiles.size === 0;
+  const allSelected = selectedFiles.length === allFiles.length;
   const noneSelected = selectedFiles.length === 0;
+  const mergePending =
+    gitStatus?.operationInProgress === "merge" && (gitStatus.unmergedPaths?.length ?? 0) === 0;
+  const canSubmitCommit = canSubmitCommitSelection({
+    fileCount: allFiles.length,
+    selectedFileCount: selectedFiles.length,
+    mergePending,
+  });
 
   const resetState = () => {
     setDialogCommitMessage("");
@@ -72,9 +83,13 @@ export function GitCommitDialog({
 
   const buildInput = (): GitCommitInput => {
     const commitMessage = dialogCommitMessage.trim();
+    const filePaths = resolveCommitFilePaths({
+      allFilePaths: allFiles.map((file) => file.path),
+      selectedFilePaths: selectedFiles.map((file) => file.path),
+    });
     return {
       ...(commitMessage ? { commitMessage } : {}),
-      ...(!allSelected ? { filePaths: selectedFiles.map((f) => f.path) } : {}),
+      ...(filePaths !== undefined ? { filePaths: [...filePaths] } : {}),
     };
   };
 
@@ -231,8 +246,8 @@ export function GitCommitDialog({
           >
             Commit on new refName
           </Button>
-          <Button size="sm" disabled={noneSelected} onClick={submitCommit}>
-            Commit
+          <Button size="sm" disabled={!canSubmitCommit} onClick={submitCommit}>
+            {mergePending && noneSelected ? "Conclude merge" : "Commit"}
           </Button>
         </DialogFooter>
       </DialogPopup>

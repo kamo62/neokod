@@ -1,3 +1,4 @@
+import { WorkLifecycleSchema } from "@neokod/contracts";
 import type {
   SymphonyBoardColumnId,
   SymphonyBoardCard,
@@ -39,9 +40,15 @@ export const projectBoardFromWorkItems = (input: {
   readonly project: SymphonyProject;
   readonly sourceControl: SymphonyProjectSourceControl;
   readonly workItems: ReadonlyArray<WorkItem>;
+  readonly lifecycleTotals?: Readonly<Record<string, number>>;
   readonly generatedAt: string;
 }): SymphonyProjectBoard => {
-  const columns: Array<Omit<SymphonyBoardColumn, "cards"> & { cards: SymphonyBoardCard[] }> = [
+  const columns: Array<
+    Omit<SymphonyBoardColumn, "cards" | "totalCount"> & {
+      cards: SymphonyBoardCard[];
+      totalCount?: number;
+    }
+  > = [
     { id: "not_started", title: "Not Started", cards: [] },
     { id: "in_progress", title: "In Progress", cards: [] },
     { id: "testing", title: "Testing", cards: [] },
@@ -83,6 +90,15 @@ export const projectBoardFromWorkItems = (input: {
         left.updatedAt.localeCompare(right.updatedAt) ||
         left.workItemId.localeCompare(right.workItemId),
     );
+    if (input.lifecycleTotals !== undefined) {
+      column.totalCount = WorkLifecycleSchema.literals.reduce(
+        (total, lifecycle) =>
+          boardColumnForLifecycle(lifecycle) === column.id
+            ? total + (input.lifecycleTotals?.[lifecycle] ?? 0)
+            : total,
+        0,
+      );
+    }
   }
 
   return {
@@ -90,5 +106,10 @@ export const projectBoardFromWorkItems = (input: {
     sourceControl: input.sourceControl,
     columns,
     generatedAt: input.generatedAt,
+    ...(input.lifecycleTotals === undefined
+      ? {}
+      : {
+          truncated: columns.some((column) => (column.totalCount ?? 0) > column.cards.length),
+        }),
   };
 };

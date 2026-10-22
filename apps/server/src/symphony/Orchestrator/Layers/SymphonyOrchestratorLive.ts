@@ -1489,7 +1489,18 @@ const makeOrchestrator = Effect.gen(function* () {
 
     const inFlightItems = yield* workItems
       .listByLifecycle(["preparing", "running", "waiting_for_approval"])
-      .pipe(Effect.catch(() => Effect.succeed([] as WorkItem[])));
+      .pipe(
+        Effect.catch((cause) =>
+          Effect.gen(function* () {
+            yield* Effect.logWarning("symphony.dispatch.refused_occupancy_unavailable", {
+              workItemId: String(item.id),
+              error: cause.message,
+            });
+            return null;
+          }),
+        ),
+      );
+    if (inFlightItems === null) return null;
     const globalCap = config.concurrencyGlobal ?? WORKFLOW_DEFAULTS.concurrencyGlobal;
     if (globalCap > 0 && inFlightItems.length >= globalCap) {
       return null;

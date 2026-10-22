@@ -23,6 +23,7 @@ import {
   resolveSidebarWorkerBadge,
   resolveThreadRowClassName,
   resolveThreadStatusPill,
+  resolveThreadWorkspacePath,
   runBulkThreadDeletes,
   shouldClearThreadSelectionOnMouseDown,
   sortProjectsForSidebar,
@@ -112,6 +113,56 @@ describe("bulk thread deletion", () => {
         { title: "First thread", reason: summary.failures[0]!.reason },
       ]),
     ).toBe("2 of 3 completed successfully.\nFailed:\nFirst thread: worktree locked");
+  });
+});
+
+describe("resolveThreadWorkspacePath", () => {
+  const projects = [
+    { environmentId: "env-1", id: "project-a", workspaceRoot: "/repos/a" },
+    { environmentId: "env-1", id: "project-b", workspaceRoot: "/repos/b" },
+  ];
+
+  it("returns the thread worktree path when one is set", () => {
+    expect(
+      resolveThreadWorkspacePath({
+        thread: {
+          environmentId: "env-1",
+          projectId: "project-a",
+          worktreePath: "/worktrees/thread-a",
+        },
+        projects,
+      }),
+    ).toBe("/worktrees/thread-a");
+  });
+
+  it("returns the thread's own project root, not the first project's root", () => {
+    expect(
+      resolveThreadWorkspacePath({
+        thread: { environmentId: "env-1", projectId: "project-b", worktreePath: null },
+        projects,
+      }),
+    ).toBe("/repos/b");
+  });
+
+  it("matches project identity within the thread's environment", () => {
+    expect(
+      resolveThreadWorkspacePath({
+        thread: { environmentId: "env-2", projectId: "project-a", worktreePath: null },
+        projects: [
+          { environmentId: "env-1", id: "project-a", workspaceRoot: "/repos/a" },
+          { environmentId: "env-2", id: "project-a", workspaceRoot: "/repos/a-env-2" },
+        ],
+      }),
+    ).toBe("/repos/a-env-2");
+  });
+
+  it("returns null when the owning project is unknown", () => {
+    expect(
+      resolveThreadWorkspacePath({
+        thread: { environmentId: "env-1", projectId: "missing", worktreePath: null },
+        projects,
+      }),
+    ).toBeNull();
   });
 });
 

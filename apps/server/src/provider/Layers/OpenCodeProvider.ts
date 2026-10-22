@@ -7,7 +7,9 @@ import {
 import * as Cause from "effect/Cause";
 import * as Data from "effect/Data";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
 import { createModelCapabilities } from "@neokod/shared/model";
 import { compareSemverVersions } from "@neokod/shared/semver";
@@ -26,6 +28,7 @@ import {
 import {
   classifyOpenCodeVersion,
   formatOpenCodeUnsupportedVersionMessage,
+  OPENCODE_VERSION_PROBE_TIMEOUT,
   parseOpenCodeVersionOutput,
 } from "../openCodeVersion.ts";
 import type { Agent, ProviderListResponse } from "@opencode-ai/sdk/v2";
@@ -395,12 +398,38 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
           Effect.mapError(
             (cause) => new OpenCodeProbeError({ cause, detail: openCodeRuntimeErrorDetail(cause) }),
           ),
+          // The runtime already terminates a command child on interruption.
+          // This is the same collection bound used by startup and maintenance,
+          // so status cannot wait forever on an executable that never answers.
+          Effect.timeoutOption(OPENCODE_VERSION_PROBE_TIMEOUT),
         ),
     );
     if (versionExit._tag === "Failure") {
       return fallback(Cause.squash(versionExit.cause));
     }
-    const parsedVersion = parseOpenCodeVersionOutput(versionExit.value.stdout);
+    if (Option.isNone(versionExit.value)) {
+      return buildServerProvider({
+        presentation: OPENCODE_PRESENTATION,
+        enabled: openCodeSettings.enabled,
+        checkedAt,
+        models: providerModelsFromSettings(
+          [],
+          PROVIDER,
+          customModels,
+          DEFAULT_OPENCODE_MODEL_CAPABILITIES,
+        ),
+        probe: {
+          installed: true,
+          // The probe expired without a version. Keep that unknown; do not
+          // report a version or treat the CLI as missing.
+          version: null,
+          status: "error",
+          auth: { status: "unknown" },
+          message: `OpenCode CLI is installed but \`opencode --version\` did not finish within ${Duration.toMillis(OPENCODE_VERSION_PROBE_TIMEOUT)}ms, so the installed version could not be verified. Refresh to retry.`,
+        },
+      });
+    }
+    const parsedVersion = parseOpenCodeVersionOutput(versionExit.value.value.stdout);
     const knownVersion = parsedVersion ? classifyOpenCodeVersion(parsedVersion) : null;
     version = knownVersion?.version ?? null;
 

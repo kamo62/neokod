@@ -5,6 +5,7 @@ import type {
   WorkItem,
 } from "@neokod/contracts";
 import {
+  GitUnmergedPathsError,
   ProviderDriverKind,
   ProviderInstanceId,
   RunAttemptId,
@@ -170,6 +171,62 @@ it.effect("pushes the branch then creates the change request via the provider", 
       baseBranch: "main",
       status: "open",
     });
+  }),
+);
+
+it.effect("does not create a change request when the push is refused for unmerged paths", () =>
+  Effect.gen(function* () {
+    let created = 0;
+    let bodyWrites = 0;
+    const service = makePullRequestService(
+      makeDeps({
+        git: {
+          pushCurrentBranch: () =>
+            Effect.fail(
+              new GitUnmergedPathsError({
+                cwd: "/ws/key-1",
+                operationInProgress: "merge",
+                unmergedPaths: ["README.md"],
+              }),
+            ),
+        } as unknown as PullRequestServiceDeps["git"],
+        writeBodyFile: () =>
+          Effect.sync(() => {
+            bodyWrites += 1;
+          }),
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: {
+                createChangeRequest: () =>
+                  Effect.sync(() => {
+                    created += 1;
+                  }),
+                getChangeRequestStatus: () => Effect.succeed(null),
+                listChangeRequests: () => Effect.succeed([]),
+              },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+      }),
+    );
+
+    const result = yield* service
+      .create({
+        workItem: makeWorkItem(),
+        config: makeConfig(),
+        runAttemptId,
+        workspacePath: "/ws/key-1",
+        branch: "symphony/issue-42",
+        baseBranch: "main",
+        evidence: makeEvidence(),
+        bodyFileDir: "/tmp/neokod",
+      })
+      .pipe(Effect.result);
+
+    expect(result._tag).toBe("Failure");
+    expect(created).toBe(0);
+    expect(bodyWrites).toBe(0);
   }),
 );
 

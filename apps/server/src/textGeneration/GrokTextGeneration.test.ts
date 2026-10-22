@@ -125,6 +125,27 @@ it.layer(GrokTextGenerationTestLayer)("GrokTextGeneration", (it) => {
     );
   });
 
+  it.effect("preserves whitespace across tool-interleaved assistant chunks", () =>
+    withFakeAcpGrok(
+      {
+        NEOKOD_ACP_EMIT_TOOL_INTERLEAVED_WHITESPACE: "1",
+      },
+      (textGeneration) =>
+        Effect.gen(function* () {
+          const generated = yield* textGeneration.generateCommitMessage({
+            cwd: process.cwd(),
+            branch: "feature/grok-tool-whitespace",
+            stagedSummary: "M README.md",
+            stagedPatch: "diff --git a/README.md b/README.md",
+            modelSelection: createModelSelection(ProviderInstanceId.make("grok"), "grok-mock-alt"),
+          });
+
+          expect(generated.subject).toBe("Fix name");
+          expect(generated.body).toBe("");
+        }),
+    ),
+  );
+
   it.effect("extracts the JSON object when Grok wraps it in conversational text", () =>
     withFakeAcpGrok(
       {

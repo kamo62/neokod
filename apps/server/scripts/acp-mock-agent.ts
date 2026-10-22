@@ -16,6 +16,10 @@ const exitLogPath = process.env.NEOKOD_ACP_EXIT_LOG_PATH;
 const emitToolCalls = process.env.NEOKOD_ACP_EMIT_TOOL_CALLS === "1";
 const emitInterleavedAssistantToolCalls =
   process.env.NEOKOD_ACP_EMIT_INTERLEAVED_ASSISTANT_TOOL_CALLS === "1";
+const emitToolInterleavedWhitespace =
+  process.env.NEOKOD_ACP_EMIT_TOOL_INTERLEAVED_WHITESPACE === "1";
+const emitLeadingWhitespace = process.env.NEOKOD_ACP_EMIT_LEADING_WHITESPACE === "1";
+const emitWhitespaceOnly = process.env.NEOKOD_ACP_EMIT_WHITESPACE_ONLY === "1";
 const emitGenericToolPlaceholders = process.env.NEOKOD_ACP_EMIT_GENERIC_TOOL_PLACEHOLDERS === "1";
 const emitAskQuestion = process.env.NEOKOD_ACP_EMIT_ASK_QUESTION === "1";
 const emitElicitation = process.env.NEOKOD_ACP_EMIT_ELICITATION === "1";
@@ -602,6 +606,100 @@ const program = Effect.gen(function* () {
         });
 
         return yield* Effect.never;
+      }
+
+      if (emitLeadingWhitespace) {
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "  " },
+          },
+        });
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "indented" },
+          },
+        });
+        return { stopReason: "end_turn" };
+      }
+
+      if (emitWhitespaceOnly) {
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: " " },
+          },
+        });
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "\n\t" },
+          },
+        });
+        return { stopReason: "end_turn" };
+      }
+
+      if (emitToolInterleavedWhitespace) {
+        const toolCallId = "tool-call-whitespace";
+
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: '{"subject":"Fix' },
+          },
+        });
+
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: {
+            sessionUpdate: "tool_call",
+            toolCallId,
+            title: "Terminal",
+            kind: "execute",
+            status: "pending",
+            rawInput: {
+              command: ["echo", "between"],
+            },
+          },
+        });
+
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: {
+            sessionUpdate: "tool_call_update",
+            toolCallId,
+            status: "completed",
+            rawOutput: {
+              exitCode: 0,
+              stdout: "between",
+              stderr: "",
+            },
+          },
+        });
+
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: " " },
+          },
+        });
+
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: 'name","body":""}' },
+          },
+        });
+
+        return { stopReason: "end_turn" };
       }
 
       if (emitInterleavedAssistantToolCalls) {

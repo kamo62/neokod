@@ -53,7 +53,7 @@ import {
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { useShallow } from "zustand/react/shallow";
-import { createDebouncedStorage, createMemoryStorage } from "./lib/storage";
+import { createDebouncedStorage, createMemoryStorage, type StateStorage } from "./lib/storage";
 import { getDefaultServerModel } from "./providerModels";
 import { UnifiedSettings } from "@neokod/contracts/settings";
 import { ReviewCommentContextSchema, type ReviewCommentContext } from "./reviewCommentContext";
@@ -72,8 +72,27 @@ export type DraftId = typeof DraftId.Type;
 
 const COMPOSER_PERSIST_DEBOUNCE_MS = 300;
 
+function resolveComposerDraftStorage(): { storage: StateStorage; durable: boolean } {
+  try {
+    if (typeof localStorage !== "undefined") {
+      return { storage: localStorage, durable: true };
+    }
+  } catch {
+    // Accessing `localStorage` can throw in restricted browser contexts.
+  }
+  return { storage: createMemoryStorage(), durable: false };
+}
+
+const composerDraftStorage = resolveComposerDraftStorage();
+/**
+ * `false` means the store is running on an in-memory fallback. Draft edits
+ * still work in this process, but nothing survives a renderer crash or reload.
+ * Queued sends fail closed in this mode because their dispatch claim cannot be
+ * accepted by persistent browser storage before the network send.
+ */
+export const COMPOSER_DRAFT_STORAGE_IS_DURABLE = composerDraftStorage.durable;
 const composerDebouncedStorage = createDebouncedStorage(
-  typeof localStorage !== "undefined" ? localStorage : createMemoryStorage(),
+  composerDraftStorage.storage,
   COMPOSER_PERSIST_DEBOUNCE_MS,
 );
 
@@ -99,6 +118,37 @@ export interface ComposerImageAttachment extends Omit<ChatImageAttachment, "prev
 }
 
 /**
+ * A claim is "persisted" only when it has been accepted into browser storage.
+ * That is acceptance by the storage backend, not proof that the operating
+ * system flushed it to disk: a force-kill before the browser writes its cache
+ * can still lose it. Queued sends therefore derive their logical send identity
+ * from the saved queue entry, so a lost claim replays under the same ids and
+ * the server receipt cannot accept a second copy.
+ *
+ * The claim outlives the component that started the send so a remount cannot
+ * dispatch the same entry twice. `in_flight` is live-process state; a renderer
+ * reload hydrates it as `unconfirmed` because the promise that could confirm
+ * the outcome no longer exists. `messageId` and `commandId` are stable across
+ * retries. The server keeps a receipt keyed by command id and aggregate only;
+ * it returns the original accepted result without comparing the payload, so a
+ * same-id retry cannot create a second accepted message when the first one
+ * was accepted. This is receipt deduplication, not payload-validated replay.
+ */
+export const QueuedComposerMessageDispatch = Schema.Struct({
+  messageId: Schema.String,
+  commandId: Schema.String,
+  attemptedAt: Schema.String,
+  /**
+   * Message timestamp captured on the first attempt. Reusing it keeps a
+   * retry's local message row stable; the server still treats the command id
+   * as the only replay key.
+   */
+  messageCreatedAt: Schema.optionalKey(Schema.String),
+  state: Schema.Literals(["in_flight", "unconfirmed", "failed"]),
+});
+export type QueuedComposerMessageDispatch = typeof QueuedComposerMessageDispatch.Type;
+
+/**
  * A follow-up message submitted while a turn is running. Queued messages
  * dispatch automatically, oldest first, once the turn they were queued
  * behind settles: see `ChatView.tsx`'s queue-drain effect.
@@ -107,6 +157,7 @@ export const PersistedQueuedComposerMessage = Schema.Struct({
   id: Schema.String,
   text: Schema.String,
   createdAt: Schema.String,
+  dispatch: Schema.optionalKey(QueuedComposerMessageDispatch),
 });
 export type PersistedQueuedComposerMessage = typeof PersistedQueuedComposerMessage.Type;
 const isPersistedQueuedComposerMessage = Schema.is(PersistedQueuedComposerMessage);
@@ -115,7 +166,24 @@ export interface QueuedComposerMessage {
   id: string;
   text: string;
   createdAt: string;
+  /** `null` until a send claims the entry; never silently replayed afterwards. */
+  dispatch: QueuedComposerMessageDispatch | null;
 }
+
+/** Stable identity handed to the send path for one queued dispatch attempt. */
+export interface QueuedMessageDispatchIdentity {
+  readonly messageId: string;
+  readonly commandId: string;
+  readonly messageCreatedAt?: string;
+}
+
+export type QueuedMessageDispatchClaim =
+  | { readonly status: "claimed"; readonly identity: QueuedMessageDispatchIdentity }
+  | { readonly status: "not_claimed" }
+  | {
+      readonly status: "not_persisted";
+      readonly reason: "storage_unavailable" | "write_failed" | "readback_mismatch";
+    };
 
 const PersistedTerminalContextDraft = Schema.Struct({
   id: Schema.String,
@@ -268,6 +336,9 @@ const PersistedComposerDraftStoreStorage = Schema.Struct({
   version: Schema.Number,
   state: PersistedComposerDraftStoreState,
 });
+const decodePersistedComposerDraftStoreStorage = Schema.decodeUnknownSync(
+  PersistedComposerDraftStoreStorage,
+);
 
 /**
  * Composer content keyed by either a draft session (`DraftId`) or a real server
@@ -343,7 +414,20 @@ interface ProjectDraftSession extends DraftSessionState {
  * Raw `ThreadId` is intentionally excluded so callers cannot drop environment
  * identity for real threads.
  */
-type ComposerThreadTarget = ScopedThreadRef | DraftId;
+export type ComposerThreadTarget = ScopedThreadRef | DraftId;
+
+/**
+ * Composer content captured before a send, restored only when the original
+ * target's durable draft is still empty.
+ */
+export interface ComposerDraftContentSnapshot {
+  readonly prompt: string;
+  readonly images: ReadonlyArray<ComposerImageAttachment>;
+  readonly terminalContexts: ReadonlyArray<TerminalContextDraft>;
+  readonly elementContexts: ReadonlyArray<ElementContextDraft>;
+  readonly previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
+  readonly reviewComments: ReadonlyArray<ReviewCommentContext>;
+}
 
 /**
  * Persisted store for composer content plus draft-session metadata.
@@ -511,6 +595,41 @@ interface ComposerDraftStoreState {
   /** Appends a follow-up to the queue and returns its generated id. */
   addQueuedMessage: (threadRef: ComposerThreadTarget, text: string) => string | null;
   removeQueuedMessage: (threadRef: ComposerThreadTarget, queuedMessageId: string) => void;
+  /**
+   * Durably claims a queued entry before its send attempt. The returned
+   * identity is the existing one for an unconfirmed retry. The claim is only
+   * reported as `claimed` after the persisted state has been flushed and read
+   * back with that identity. `not_persisted` means the caller must not send.
+   */
+  claimQueuedMessageDispatch: (
+    threadRef: ComposerThreadTarget,
+    queuedMessageId: string,
+    identity: QueuedMessageDispatchIdentity,
+  ) => Promise<QueuedMessageDispatchClaim>;
+  /** Moves a live claim to the honest "outcome unknown" state. */
+  markQueuedMessageDispatchUnconfirmed: (
+    threadRef: ComposerThreadTarget,
+    queuedMessageId: string,
+  ) => void;
+  /**
+   * Marks a claim whose current attempt stopped locally (`not_sent` or
+   * `not_attempted`). The text stays queued, is never auto-replayed, and a
+   * retry keeps the entry's identity so a lost claim cannot lead to a second
+   * accepted copy.
+   */
+  markQueuedMessageDispatchFailed: (
+    threadRef: ComposerThreadTarget,
+    queuedMessageId: string,
+  ) => void;
+  /**
+   * Restores composer content into the original target, optionally only when
+   * that target's durable draft is still empty. Returns whether it wrote.
+   */
+  restoreComposerContent: (
+    threadRef: ComposerThreadTarget,
+    content: ComposerDraftContentSnapshot,
+    options?: { readonly onlyIfEmpty?: boolean },
+  ) => boolean;
   clearPersistedAttachments: (threadRef: ComposerThreadTarget) => void;
   syncPersistedAttachments: (
     threadRef: ComposerThreadTarget,
@@ -699,6 +818,19 @@ function normalizeTerminalContextsForThread(
   }
 
   return normalizedContexts;
+}
+
+function isDraftContentEmpty(draft: ComposerThreadDraftState): boolean {
+  return (
+    draft.prompt.length === 0 &&
+    draft.images.length === 0 &&
+    draft.nonPersistedImageIds.length === 0 &&
+    draft.persistedAttachments.length === 0 &&
+    draft.terminalContexts.length === 0 &&
+    draft.elementContexts.length === 0 &&
+    draft.previewAnnotations.length === 0 &&
+    draft.reviewComments.length === 0
+  );
 }
 
 function shouldRemoveDraft(draft: ComposerThreadDraftState): boolean {
@@ -1230,7 +1362,7 @@ function logicalProjectDraftKey(logicalProjectKey: string): string {
  * Draft sessions are keyed by `DraftId`. Real threads are keyed by
  * `ScopedThreadRef` so environment identity is always preserved.
  */
-function composerTargetKey(target: ScopedThreadRef | DraftId): string {
+export function composerTargetKey(target: ScopedThreadRef | DraftId): string {
   if (typeof target === "string") {
     return target.trim();
   }
@@ -1946,7 +2078,12 @@ function partializeComposerDraftStoreState(
         : {}),
       ...(draft.queuedMessages.length > 0
         ? {
-            queuedMessages: draft.queuedMessages.map((message) => ({ ...message })),
+            queuedMessages: draft.queuedMessages.map((message) => ({
+              id: message.id,
+              text: message.text,
+              createdAt: message.createdAt,
+              ...(message.dispatch ? { dispatch: { ...message.dispatch } } : {}),
+            })),
           }
         : {}),
       ...(hasModelData
@@ -2192,7 +2329,21 @@ function toHydratedThreadDraft(
     previewAnnotations:
       persistedDraft.previewAnnotations?.map((annotation) => ({ ...annotation })) ?? [],
     reviewComments: persistedDraft.reviewComments?.map((comment) => ({ ...comment })) ?? [],
-    queuedMessages: persistedDraft.queuedMessages?.map((message) => ({ ...message })) ?? [],
+    queuedMessages:
+      persistedDraft.queuedMessages?.map((message) => ({
+        id: message.id,
+        text: message.text,
+        createdAt: message.createdAt,
+        dispatch: message.dispatch
+          ? {
+              ...message.dispatch,
+              // A live claim cannot survive the process that made it. Report
+              // the outcome as unknown instead of replaying it silently.
+              state:
+                message.dispatch.state === "in_flight" ? "unconfirmed" : message.dispatch.state,
+            }
+          : null,
+      })) ?? [],
     modelSelectionByProvider,
     activeProvider,
     runtimeMode: persistedDraft.runtimeMode ?? null,
@@ -2229,6 +2380,55 @@ function toHydratedDraftThreadState(
         )
       : null,
   };
+}
+
+/**
+ * Flush the debounced composer write and prove that the claimed identity is
+ * actually present in the persisted browser storage value. A flush without
+ * readback would only prove that a write was attempted. This proves storage
+ * acceptance, not an operating-system disk flush.
+ */
+async function confirmQueuedDispatchPersisted(input: {
+  readonly threadKey: string;
+  readonly queuedMessageId: string;
+  readonly identity: QueuedMessageDispatchIdentity;
+}): Promise<
+  | { readonly status: "confirmed" }
+  | {
+      readonly status: "not_persisted";
+      readonly reason: "storage_unavailable" | "write_failed" | "readback_mismatch";
+    }
+> {
+  if (!COMPOSER_DRAFT_STORAGE_IS_DURABLE) {
+    return { status: "not_persisted", reason: "storage_unavailable" };
+  }
+  try {
+    composerDebouncedStorage.flush();
+  } catch {
+    return { status: "not_persisted", reason: "write_failed" };
+  }
+
+  try {
+    const raw = await composerDebouncedStorage.getItem(COMPOSER_DRAFT_STORAGE_KEY);
+    if (typeof raw !== "string" || raw.length === 0) {
+      return { status: "not_persisted", reason: "readback_mismatch" };
+    }
+    const decoded = decodePersistedComposerDraftStoreStorage(JSON.parse(raw));
+    const persistedMessage = decoded.state.draftsByThreadKey[input.threadKey]?.queuedMessages?.find(
+      (message) => message.id === input.queuedMessageId,
+    );
+    const dispatch = persistedMessage?.dispatch;
+    if (
+      dispatch?.state !== "in_flight" ||
+      dispatch.messageId !== input.identity.messageId ||
+      dispatch.commandId !== input.identity.commandId
+    ) {
+      return { status: "not_persisted", reason: "readback_mismatch" };
+    }
+    return { status: "confirmed" };
+  } catch {
+    return { status: "not_persisted", reason: "readback_mismatch" };
+  }
 }
 
 const composerDraftStore = create<ComposerDraftStoreState>()(
@@ -3324,6 +3524,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             id: randomUUID(),
             text: trimmed,
             createdAt: new Date().toISOString(),
+            dispatch: null,
           };
           set((state) => {
             const existing = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();
@@ -3355,6 +3556,202 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             else nextDraftsByThreadKey[threadKey] = nextDraft;
             return { draftsByThreadKey: nextDraftsByThreadKey };
           });
+        },
+        claimQueuedMessageDispatch: async (threadRef, queuedMessageId, identity) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef);
+          if (!threadKey || !queuedMessageId) return { status: "not_claimed" };
+          let previousDispatch: QueuedComposerMessageDispatch | null = null;
+          const claimState: { identity: QueuedMessageDispatchIdentity | null } = { identity: null };
+          set((state) => {
+            const current = state.draftsByThreadKey[threadKey];
+            if (!current) return state;
+            const index = current.queuedMessages.findIndex((entry) => entry.id === queuedMessageId);
+            if (index === -1) return state;
+            const entry = current.queuedMessages[index];
+            if (!entry) return state;
+            if (entry.dispatch?.state === "in_flight") {
+              return state;
+            }
+            previousDispatch = entry.dispatch;
+            const attemptedAt = new Date().toISOString();
+            // The first attempt's timestamp is stable across retries. Legacy
+            // claims predate the field; their `attemptedAt` is the first
+            // attempt time.
+            const messageCreatedAt = entry.dispatch
+              ? (entry.dispatch.messageCreatedAt ??
+                identity.messageCreatedAt ??
+                entry.dispatch.attemptedAt)
+              : (identity.messageCreatedAt ?? attemptedAt);
+            // Once an entry has a dispatch record, that identity is the
+            // entry's logical send identity and is retained for every state.
+            // Replacing a failed record with a random identity would make an
+            // accepted retry impossible to reconstruct after a lost claim.
+            // A future affirmative rejection that genuinely needs a new
+            // identity would have to derive it deterministically from this
+            // record and be added here deliberately.
+            const dispatch: QueuedComposerMessageDispatch = entry.dispatch
+              ? {
+                  ...entry.dispatch,
+                  messageCreatedAt,
+                  state: "in_flight",
+                }
+              : {
+                  messageId: identity.messageId,
+                  commandId: identity.commandId,
+                  attemptedAt,
+                  messageCreatedAt,
+                  state: "in_flight",
+                };
+            claimState.identity = {
+              messageId: dispatch.messageId,
+              commandId: dispatch.commandId,
+              messageCreatedAt,
+            };
+            const queuedMessages = [...current.queuedMessages];
+            queuedMessages[index] = { ...entry, dispatch };
+            return {
+              draftsByThreadKey: {
+                ...state.draftsByThreadKey,
+                [threadKey]: { ...current, queuedMessages },
+              },
+            };
+          });
+          if (!claimState.identity) return { status: "not_claimed" };
+          const claimed = claimState.identity;
+          const confirmation = await confirmQueuedDispatchPersisted({
+            threadKey,
+            queuedMessageId,
+            identity: claimed,
+          });
+          if (confirmation.status === "confirmed") {
+            return { status: "claimed", identity: claimed };
+          }
+
+          // Nothing may go to the server without a claim accepted by browser
+          // storage. Keep the entry visibly unsent and retryable, then persist
+          // that state on a best-effort basis. If the claim write itself
+          // succeeded but the revert write fails, a reload hydrates the
+          // leftover in-flight claim as unconfirmed, which is still fail-closed
+          // and never auto-sends.
+          set((state) => {
+            const current = state.draftsByThreadKey[threadKey];
+            if (!current) return state;
+            const index = current.queuedMessages.findIndex((entry) => entry.id === queuedMessageId);
+            if (index === -1) return state;
+            const entry = current.queuedMessages[index];
+            if (!entry) return state;
+            if (
+              entry.dispatch?.messageId !== claimed.messageId ||
+              entry.dispatch?.commandId !== claimed.commandId
+            ) {
+              return state;
+            }
+            const queuedMessages = [...current.queuedMessages];
+            // A known failure stays visibly "not sent" and is never
+            // auto-replayed. A prior unknown claim keeps its unknown state.
+            const fallbackDispatch: QueuedComposerMessageDispatch = previousDispatch ?? {
+              messageId: claimed.messageId,
+              commandId: claimed.commandId,
+              attemptedAt: new Date().toISOString(),
+              ...(claimed.messageCreatedAt !== undefined
+                ? { messageCreatedAt: claimed.messageCreatedAt }
+                : {}),
+              state: "failed",
+            };
+            queuedMessages[index] = { ...entry, dispatch: fallbackDispatch };
+            return {
+              draftsByThreadKey: {
+                ...state.draftsByThreadKey,
+                [threadKey]: { ...current, queuedMessages },
+              },
+            };
+          });
+          try {
+            composerDebouncedStorage.flush();
+          } catch {
+            // Keep the in-memory queue; the next reload fails closed.
+          }
+          return { status: "not_persisted", reason: confirmation.reason };
+        },
+        markQueuedMessageDispatchUnconfirmed: (threadRef, queuedMessageId) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef);
+          if (!threadKey || !queuedMessageId) return;
+          set((state) => {
+            const current = state.draftsByThreadKey[threadKey];
+            if (!current) return state;
+            const index = current.queuedMessages.findIndex((entry) => entry.id === queuedMessageId);
+            if (index === -1) return state;
+            const entry = current.queuedMessages[index];
+            if (!entry?.dispatch || entry.dispatch.state === "unconfirmed") {
+              return state;
+            }
+            const queuedMessages = [...current.queuedMessages];
+            queuedMessages[index] = {
+              ...entry,
+              dispatch: { ...entry.dispatch, state: "unconfirmed" },
+            };
+            return {
+              draftsByThreadKey: {
+                ...state.draftsByThreadKey,
+                [threadKey]: { ...current, queuedMessages },
+              },
+            };
+          });
+        },
+        markQueuedMessageDispatchFailed: (threadRef, queuedMessageId) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef);
+          if (!threadKey || !queuedMessageId) return;
+          set((state) => {
+            const current = state.draftsByThreadKey[threadKey];
+            if (!current) return state;
+            const index = current.queuedMessages.findIndex((entry) => entry.id === queuedMessageId);
+            if (index === -1) return state;
+            const entry = current.queuedMessages[index];
+            if (!entry?.dispatch || entry.dispatch.state === "failed") {
+              return state;
+            }
+            const queuedMessages = [...current.queuedMessages];
+            queuedMessages[index] = {
+              ...entry,
+              dispatch: { ...entry.dispatch, state: "failed" },
+            };
+            return {
+              draftsByThreadKey: {
+                ...state.draftsByThreadKey,
+                [threadKey]: { ...current, queuedMessages },
+              },
+            };
+          });
+        },
+        restoreComposerContent: (threadRef, content, options) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef);
+          if (!threadKey) return false;
+          let restored = false;
+          set((state) => {
+            const current = state.draftsByThreadKey[threadKey];
+            if (options?.onlyIfEmpty === true && current && !isDraftContentEmpty(current)) {
+              return state;
+            }
+            restored = true;
+            const nextDraft: ComposerThreadDraftState = {
+              ...(current ?? createEmptyThreadDraft()),
+              prompt: content.prompt,
+              images: [...content.images],
+              nonPersistedImageIds: [],
+              persistedAttachments: [],
+              terminalContexts: [...content.terminalContexts],
+              elementContexts: [...content.elementContexts],
+              previewAnnotations: [...content.previewAnnotations],
+              reviewComments: [...content.reviewComments],
+            };
+            return {
+              draftsByThreadKey: {
+                ...state.draftsByThreadKey,
+                [threadKey]: nextDraft,
+              },
+            };
+          });
+          return restored;
         },
         clearPersistedAttachments: (threadRef) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";

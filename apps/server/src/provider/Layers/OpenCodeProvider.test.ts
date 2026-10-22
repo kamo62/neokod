@@ -2,9 +2,12 @@ import * as NodeAssert from "node:assert/strict";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as TestClock from "effect/testing/TestClock";
 import { beforeEach } from "vite-plus/test";
 
 import { OpenCodeSettings } from "@neokod/contracts";
@@ -16,6 +19,7 @@ import {
 } from "../opencodeRuntime.ts";
 import { checkOpenCodeProviderStatus } from "./OpenCodeProvider.ts";
 import type { OpenCodeInventory } from "../opencodeRuntime.ts";
+import { OPENCODE_VERSION_PROBE_TIMEOUT } from "../openCodeVersion.ts";
 const decodeOpenCodeSettings = Schema.decodeSync(OpenCodeSettings);
 
 const DEFAULT_VERSION_STDOUT = "opencode 1.14.19\n";
@@ -33,6 +37,7 @@ const runtimeMock = {
   state: {
     runVersionError: null as Error | null,
     versionStdout: DEFAULT_VERSION_STDOUT,
+    versionHangs: false,
     inventoryError: null as Error | null,
     closeCalls: 0,
     connectCalls: 0,
@@ -46,6 +51,7 @@ const runtimeMock = {
   reset() {
     this.state.runVersionError = null;
     this.state.versionStdout = DEFAULT_VERSION_STDOUT;
+    this.state.versionHangs = false;
     this.state.inventoryError = null;
     this.state.closeCalls = 0;
     this.state.connectCalls = 0;
@@ -81,15 +87,17 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
       };
     }),
   runOpenCodeCommand: () =>
-    runtimeMock.state.runVersionError
-      ? Effect.fail(
-          new OpenCodeRuntimeError({
-            operation: "runOpenCodeCommand",
-            detail: runtimeMock.state.runVersionError.message,
-            cause: runtimeMock.state.runVersionError,
-          }),
-        )
-      : Effect.succeed({ stdout: runtimeMock.state.versionStdout, stderr: "", code: 0 }),
+    runtimeMock.state.versionHangs
+      ? Effect.never
+      : runtimeMock.state.runVersionError
+        ? Effect.fail(
+            new OpenCodeRuntimeError({
+              operation: "runOpenCodeCommand",
+              detail: runtimeMock.state.runVersionError.message,
+              cause: runtimeMock.state.runVersionError,
+            }),
+          )
+        : Effect.succeed({ stdout: runtimeMock.state.versionStdout, stderr: "", code: 0 }),
   createOpenCodeSdkClient: () =>
     ({}) as unknown as ReturnType<OpenCodeRuntimeShape["createOpenCodeSdkClient"]>,
   loadOpenCodeInventory: () =>
@@ -140,6 +148,38 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
         snapshot.message,
         "OpenCode CLI (`opencode`) was not found on PATH (searched PATH: /usr/bin:/bin). If it is installed, set the binary path in the provider settings to its absolute path.",
       );
+    }),
+  );
+
+  it.effect("bounds a hanging local --version probe and keeps the version unknown", () =>
+    Effect.gen(function* () {
+      runtimeMock.state.versionHangs = true;
+      const statusFiber = yield* checkOpenCodeProviderStatus(
+        makeOpenCodeSettings(),
+        process.cwd(),
+      ).pipe(Effect.forkChild);
+
+      yield* Effect.yieldNow;
+      // One millisecond before the shared probe bound, status must still be
+      // waiting rather than reporting a version it never observed.
+      yield* TestClock.adjust(
+        Duration.millis(Duration.toMillis(OPENCODE_VERSION_PROBE_TIMEOUT) - 1),
+      );
+      yield* Effect.yieldNow;
+      NodeAssert.equal(statusFiber.pollUnsafe(), undefined);
+
+      yield* TestClock.adjust("1 millis");
+      yield* Effect.yieldNow;
+      const snapshot = yield* Fiber.join(statusFiber);
+
+      NodeAssert.equal(snapshot.status, "error");
+      NodeAssert.equal(snapshot.installed, true);
+      NodeAssert.equal(snapshot.version, null);
+      NodeAssert.deepEqual(snapshot.auth, { status: "unknown" });
+      NodeAssert.match(snapshot.message ?? "", /did not finish/);
+      NodeAssert.match(snapshot.message ?? "", /5\d{3}ms/);
+      NodeAssert.equal(runtimeMock.state.connectCalls, 0);
+      NodeAssert.equal(runtimeMock.state.inventoryCalls, 0);
     }),
   );
 

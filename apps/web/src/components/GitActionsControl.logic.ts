@@ -51,6 +51,71 @@ function resolveChangeRequestTerminology(
     : DEFAULT_CHANGE_REQUEST_TERMINOLOGY;
 }
 
+const OPERATION_IN_PROGRESS_LABELS = {
+  merge: "Merge",
+  rebase: "Rebase",
+  "cherry-pick": "Cherry-pick",
+  revert: "Revert",
+} as const;
+
+/**
+ * Reasons that must disable commit/push/PR. A resolved merge, cherry-pick or
+ * revert stays committable so the operation can be concluded; only unmerged
+ * paths and a rebase block. Other operations are shown as an informational
+ * notice by `resolveOperationInProgressNotice`.
+ */
+export function resolveConflictBlockReason(gitStatus: VcsStatusResult | null): string | null {
+  const count = gitStatus?.unmergedPaths?.length ?? 0;
+  if (count > 0) {
+    return `${count} file${count === 1 ? " has" : "s have"} merge conflicts. Resolve them before committing or pushing.`;
+  }
+  if (gitStatus?.operationInProgress === "rebase") {
+    return "Rebase in progress. Finish or abort it in the terminal.";
+  }
+  return null;
+}
+
+export function resolveOperationInProgressNotice(gitStatus: VcsStatusResult | null): string | null {
+  const operation = gitStatus?.operationInProgress;
+  if (!operation || operation === "rebase") {
+    return null;
+  }
+  return `${OPERATION_IN_PROGRESS_LABELS[operation]} in progress.`;
+}
+
+/** A resolved merge may have no tree delta but still needs its merge commit. */
+export function isMergeCommitPending(gitStatus: VcsStatusResult | null): boolean {
+  return gitStatus?.operationInProgress === "merge" && (gitStatus.unmergedPaths?.length ?? 0) === 0;
+}
+
+/**
+ * The commit dialog may submit with no selected files only for a resolved
+ * merge whose working tree has no files at all. An explicit empty selection
+ * over existing files is invalid and must remain disabled.
+ */
+export function canSubmitCommitSelection(input: {
+  readonly fileCount: number;
+  readonly selectedFileCount: number;
+  readonly mergePending: boolean;
+}): boolean {
+  if (input.selectedFileCount > 0) {
+    return true;
+  }
+  return input.mergePending && input.fileCount === 0;
+}
+
+/** Omit `filePaths` for a full commit, including a zero-file merge conclusion. */
+export function resolveCommitFilePaths(input: {
+  readonly allFilePaths: readonly string[];
+  readonly selectedFilePaths: readonly string[];
+}): readonly string[] | undefined {
+  const allSelected = input.selectedFilePaths.length === input.allFilePaths.length;
+  if (allSelected || input.allFilePaths.length === 0) {
+    return undefined;
+  }
+  return input.selectedFilePaths;
+}
+
 export function buildGitActionProgressStages(input: {
   action: GitStackedAction;
   hasCustomCommitMessage: boolean;
@@ -98,22 +163,26 @@ export function buildMenuItems(
 ): GitActionMenuItem[] {
   if (!gitStatus) return [];
   const terminology = resolveChangeRequestTerminology(gitStatus);
+  const conflictBlockReason = resolveConflictBlockReason(gitStatus);
 
   const hasBranch = gitStatus.refName !== null;
   const hasChanges = gitStatus.hasWorkingTreeChanges;
+  const mergePending = isMergeCommitPending(gitStatus);
   const hasOpenPr = gitStatus.pr?.state === "open";
   const isBehind = gitStatus.behindCount > 0;
   const hasDefaultBranchDelta = (gitStatus.aheadOfDefaultCount ?? gitStatus.aheadCount) > 0;
   const canPushWithoutUpstream = hasPrimaryRemote && !gitStatus.hasUpstream;
-  const canCommit = !isBusy && hasChanges;
+  const canCommit = !isBusy && (hasChanges || mergePending) && conflictBlockReason === null;
   const canPush =
     !isBusy &&
+    conflictBlockReason === null &&
     hasBranch &&
     !isBehind &&
     gitStatus.aheadCount > 0 &&
     (gitStatus.hasUpstream || canPushWithoutUpstream);
   const canCreatePr =
     !isBusy &&
+    conflictBlockReason === null &&
     hasBranch &&
     !hasChanges &&
     !hasOpenPr &&
@@ -183,6 +252,21 @@ export function resolveQuickAction(
     };
   }
 
+  const conflictReason = resolveConflictBlockReason(gitStatus);
+  if (conflictReason) {
+    return {
+      label:
+        (gitStatus.unmergedPaths?.length ?? 0) > 0
+          ? "Resolve conflicts"
+          : gitStatus.operationInProgress
+            ? `${OPERATION_IN_PROGRESS_LABELS[gitStatus.operationInProgress]} in progress`
+            : "Commit",
+      disabled: true,
+      kind: "show_hint",
+      hint: conflictReason,
+    };
+  }
+
   const hasBranch = gitStatus.refName !== null;
   const hasChanges = gitStatus.hasWorkingTreeChanges;
   const hasOpenPr = gitStatus.pr?.state === "open";
@@ -199,6 +283,10 @@ export function resolveQuickAction(
       kind: "show_hint",
       hint: `Create and checkout a ref before pushing or opening a ${terminology.singular}.`,
     };
+  }
+
+  if (isMergeCommitPending(gitStatus)) {
+    return { label: "Commit merge", disabled: false, kind: "run_action", action: "commit" };
   }
 
   if (hasChanges) {
@@ -323,6 +411,8 @@ export function getMenuActionDisabledReason({
   if (!item.disabled) return null;
   if (isBusy) return "Git action in progress.";
   if (!gitStatus) return "Git status is unavailable.";
+  const conflictReason = resolveConflictBlockReason(gitStatus);
+  if (conflictReason) return conflictReason;
 
   const hasBranch = gitStatus.refName !== null;
   const hasChanges = gitStatus.hasWorkingTreeChanges;
@@ -332,7 +422,7 @@ export function getMenuActionDisabledReason({
   const terminology = resolveChangeRequestTerminology(gitStatus);
 
   if (item.id === "commit") {
-    if (!hasChanges) {
+    if (!hasChanges && !isMergeCommitPending(gitStatus)) {
       return "Worktree is clean. Make changes before committing.";
     }
     return "Commit is currently unavailable.";

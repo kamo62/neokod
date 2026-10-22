@@ -1,0 +1,10 @@
+{
+  "requestedModel": "claude-opus-5-5",
+  "effectiveModel": "claude-opus-5-5",
+  "sessionId": "99bcfa03-6a75-46ee-9fb7-a76f9dfadd21",
+  "requestedEffort": "high",
+  "state": "not completed; account session limit",
+  "result": "You've hit your session limit \u00b7 resets 9:10pm (Africa/Johannesburg)",
+  "builds": "not run",
+  "report": "No Opus design review produced; brief remains pending"
+}

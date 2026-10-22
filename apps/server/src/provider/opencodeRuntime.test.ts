@@ -1,5 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off - fixtures use synchronous temp files and paths
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import type * as NodeChildProcess from "node:child_process";
+import * as NodeEvents from "node:events";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -11,6 +13,9 @@ import * as Duration from "effect/Duration";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
+import * as Result from "effect/Result";
+import * as Scheduler from "effect/Scheduler";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
@@ -21,12 +26,16 @@ import { SpawnExecutableResolution } from "@neokod/shared/shell";
 
 import {
   buildOpenCodeServerEnvironment,
+  makeWindowsTaskkillSpawner,
   OpenCodeRuntime,
   OpenCodeRuntimeError,
   OpenCodeRuntimeLive,
   parseOpenCodeServerTimeoutMs,
   parseOpenCodeServerUrlFromOutput,
   terminateOpenCodeProcessGroup,
+  WindowsTaskkillSpawner,
+  type WindowsTaskkillSpawnerShape,
+  type WindowsTaskkillWorkerHandle,
 } from "./opencodeRuntime.ts";
 import { OpenCodeServerLedger, type OpenCodeServerLedgerShape } from "./OpenCodeServerLedger.ts";
 import { OPENCODE_VERSION_PROBE_TIMEOUT } from "./openCodeVersion.ts";
@@ -241,6 +250,26 @@ const NOOP_LEDGER: OpenCodeServerLedgerShape = {
   track: () => Effect.succeed(Effect.void),
 };
 
+// Fake command handles report pid 1. Pinning the platform to win32 would make
+// cleanup reach the production `WindowsTaskkillSpawner` and really spawn
+// `taskkill /pid 1 /T /F`, so every fake-runtime layer gets a worker that
+// settles immediately. A test that needs to fail or observe the worker injects
+// its own spawner instead.
+const makeDefaultWindowsTaskkillSpawner = (
+  onSpawn?: (pid: number) => void,
+): WindowsTaskkillSpawnerShape => ({
+  spawn: (pid) =>
+    Effect.sync(() => {
+      onSpawn?.(pid);
+      return {
+        pid: 9001,
+        isRunning: Effect.succeed(false),
+        exitCode: Effect.succeed(0),
+        terminate: Effect.void,
+      } satisfies WindowsTaskkillWorkerHandle;
+    }),
+});
+
 // The platform is pinned to win32 so the shutdown finalizer goes through
 // `child.kill` on the fake handle instead of `process.kill(-pid)`, which
 // would signal a real process group on the host running the tests. The
@@ -249,13 +278,20 @@ const NOOP_LEDGER: OpenCodeServerLedgerShape = {
 const runtimeLayerWith = (
   spawner: ChildProcessSpawner.ChildProcessSpawner["Service"],
   ledger: OpenCodeServerLedgerShape = NOOP_LEDGER,
-) =>
-  OpenCodeRuntimeLive.pipe(
+  windowsTaskkill?: WindowsTaskkillSpawnerShape,
+  onDefaultTaskkillSpawn?: (pid: number) => void,
+) => {
+  // Always provide the tag: `WindowsTaskkillSpawner` is a Context.Reference,
+  // and its production default would spawn a real taskkill for a fake pid.
+  const taskkill = windowsTaskkill ?? makeDefaultWindowsTaskkillSpawner(onDefaultTaskkillSpawn);
+  return OpenCodeRuntimeLive.pipe(
     Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)),
     Layer.provide(Layer.succeed(HostProcessPlatform, "win32")),
     Layer.provide(Layer.succeed(SpawnExecutableResolution, () => undefined)),
     Layer.provide(Layer.succeed(OpenCodeServerLedger, ledger)),
+    Layer.provide(Layer.succeed(WindowsTaskkillSpawner, taskkill)),
   );
+};
 
 const runtimeLayerWithRealSpawner = () =>
   OpenCodeRuntimeLive.pipe(
@@ -411,6 +447,7 @@ describe("startOpenCodeServerProcess version guard", () => {
 
   it.effect("starts the server after a hung --version probe times out", () => {
     const captured: Array<CapturedSpawn> = [];
+    const taskkillPids: Array<number> = [];
     const versionSpawned = Deferred.makeUnsafe<void>();
     return Effect.gen(function* () {
       const runtime = yield* OpenCodeRuntime;
@@ -429,9 +466,13 @@ describe("startOpenCodeServerProcess version guard", () => {
       expect(fiber.pollUnsafe()).toBeUndefined();
 
       // At the bound the probe resolves unknown and the supported server starts
-      // through its normal path.
+      // through its normal path. Cleanup uses the layer's deterministic fake
+      // worker, so progress only depends on the effect continuations advancing.
       yield* TestClock.adjust("1 millis");
-      yield* Effect.yieldNow;
+      for (let round = 0; round < 5; round++) {
+        yield* Effect.yieldNow;
+      }
+      expect(taskkillPids).toEqual([1]);
       expect(capturedServerSpawns(captured)).toHaveLength(1);
       for (let round = 0; round < 5; round++) {
         yield* Effect.yieldNow;
@@ -441,7 +482,16 @@ describe("startOpenCodeServerProcess version guard", () => {
 
       expect(server.url).toBe(SERVER_URL);
       expect(capturedServerSpawns(captured)).toHaveLength(1);
-    }).pipe(Effect.provide(runtimeLayerWith(makeHangingVersionSpawner(captured, versionSpawned))));
+    }).pipe(
+      Effect.provide(
+        runtimeLayerWith(
+          makeHangingVersionSpawner(captured, versionSpawned),
+          NOOP_LEDGER,
+          undefined,
+          (pid) => taskkillPids.push(pid),
+        ),
+      ),
+    );
   });
 });
 
@@ -473,6 +523,443 @@ describe("startOpenCodeServerProcess shutdown ordering", () => {
       // succeeding, or a failed spawn record would leak a live child.
       expect(events.filter((event) => event === "terminate")).toHaveLength(2);
     }).pipe(Effect.provide(runtimeLayerWith(makeOrderingSpawner(events), failingLedger)));
+  });
+});
+
+const makeFakeWindowsTaskkillHandle = (input: {
+  readonly exit: Deferred.Deferred<number>;
+  readonly onTerminate: () => void;
+}): WindowsTaskkillWorkerHandle => ({
+  pid: 9001,
+  isRunning: Effect.map(Deferred.isDone(input.exit), (done) => !done),
+  exitCode: Deferred.await(input.exit),
+  terminate: Effect.sync(input.onTerminate),
+});
+
+// A command child that never exits on its own, so only command interruption
+// reaches the cleanup path. `onKill` records any spawner-level kill call; the
+// Windows path must use its owned taskkill worker instead.
+const makeRunningCommandHandle = (onKill: () => void) =>
+  ChildProcessSpawner.makeHandle({
+    pid: ChildProcessSpawner.ProcessId(1),
+    exitCode: Effect.never,
+    isRunning: Effect.succeed(true),
+    kill: () => Effect.sync(onKill),
+    unref: Effect.succeed(Effect.void),
+    stdin: Sink.drain,
+    stdout: Stream.never,
+    stderr: Stream.never,
+    all: Stream.empty,
+    getInputFd: () => Sink.drain,
+    getOutputFd: () => Stream.empty,
+  });
+
+const hangCommandUntilInterrupted = (onKill: () => void) =>
+  ChildProcessSpawner.make(() => Effect.succeed(makeRunningCommandHandle(onKill)));
+
+type FakeTaskkillChild = NodeEvents.EventEmitter & {
+  pid: number | undefined;
+  exitCode: number | null;
+  signalCode: NodeJS.Signals | null;
+  kill: (signal?: NodeJS.Signals | number) => boolean;
+};
+
+const makeFakeTaskkillChild = (
+  input: { readonly exitCode?: number | null; readonly onKill?: () => void } = {},
+): FakeTaskkillChild => {
+  const child = new NodeEvents.EventEmitter() as FakeTaskkillChild;
+  child.pid = undefined;
+  child.exitCode = input.exitCode ?? null;
+  child.signalCode = null;
+  child.kill = () => {
+    input.onKill?.();
+    return false;
+  };
+  return child;
+};
+
+const asTaskkillChild = (child: FakeTaskkillChild) =>
+  child as unknown as NodeChildProcess.ChildProcess;
+
+const waitForNextTickPhase = Effect.promise(
+  () => new Promise<void>((resolve) => setImmediate(resolve)),
+);
+
+/**
+ * A launch failure at the native boundary. Node reports it through the
+ * `error` event on a later tick, after `spawn` has returned and before any
+ * caller has necessarily subscribed to the worker's exit. The fixture refuses
+ * to emit when no observer is installed, which turns a missed error into an
+ * assertion instead of a host crash.
+ */
+const makeLaunchErrorSpawner = (input: {
+  readonly error: Error;
+  readonly onSpawn?: () => void;
+  readonly onDeliver?: () => void;
+  readonly onKill?: () => void;
+  readonly onUnobserved?: () => void;
+}) =>
+  makeWindowsTaskkillSpawner(() => {
+    input.onSpawn?.();
+    const child = makeFakeTaskkillChild(input.onKill ? { onKill: input.onKill } : {});
+    process.nextTick(() => {
+      if (child.listenerCount("error") === 0) {
+        input.onUnobserved?.();
+        return;
+      }
+      input.onDeliver?.();
+      child.emit("error", input.error);
+    });
+    return asTaskkillChild(child);
+  });
+
+describe("runOpenCodeCommand Windows cleanup", () => {
+  it.effect("does not start a taskkill worker for a command that already exited", () => {
+    let workerSpawns = 0;
+    const windowsTaskkill: WindowsTaskkillSpawnerShape = {
+      spawn: () =>
+        Effect.sync(() => {
+          workerSpawns += 1;
+          const exit = Deferred.makeUnsafe<number>();
+          Deferred.doneUnsafe(exit, Exit.succeed(0));
+          return makeFakeWindowsTaskkillHandle({ exit, onTerminate: () => {} });
+        }),
+    };
+
+    return Effect.gen(function* () {
+      const runtime = yield* OpenCodeRuntime;
+      const result = yield* runtime.runOpenCodeCommand({
+        binaryPath: "fake-opencode",
+        args: ["--version"],
+      });
+
+      expect(result.code).toBe(0);
+      // The command handle already reported exit, so the pid-targeted worker
+      // must not start at all.
+      expect(workerSpawns).toBe(0);
+    }).pipe(
+      Effect.provide(runtimeLayerWith(makeCapturingSpawner([]), NOOP_LEDGER, windowsTaskkill)),
+    );
+  });
+
+  it.effect("uses the deterministic default worker for fake command handles", () => {
+    const taskkillPids: Array<number> = [];
+    let commandKills = 0;
+
+    return Effect.gen(function* () {
+      const runtime = yield* OpenCodeRuntime;
+      const command = yield* runtime
+        .runOpenCodeCommand({ binaryPath: "fake-opencode", args: ["--version"] })
+        .pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+
+      yield* Fiber.interrupt(command);
+
+      // The fake handle reports pid 1. The helper must supply a worker for it
+      // instead of letting the production reference launch a real taskkill.
+      expect(taskkillPids).toEqual([1]);
+      expect(commandKills).toBe(0);
+    }).pipe(
+      Effect.provide(
+        runtimeLayerWith(
+          hangCommandUntilInterrupted(() => {
+            commandKills += 1;
+          }),
+          NOOP_LEDGER,
+          undefined,
+          (pid) => taskkillPids.push(pid),
+        ),
+      ),
+    );
+  });
+
+  it.effect("uses one owned taskkill worker and waits for it to settle", () => {
+    const workerExit = Deferred.makeUnsafe<number>();
+    const spawnedPids: Array<number> = [];
+    let terminateCalls = 0;
+    let commandKills = 0;
+    const windowsTaskkill: WindowsTaskkillSpawnerShape = {
+      spawn: (pid) =>
+        Effect.sync(() => {
+          spawnedPids.push(pid);
+          Deferred.doneUnsafe(workerExit, Exit.succeed(0));
+          return makeFakeWindowsTaskkillHandle({
+            exit: workerExit,
+            onTerminate: () => {
+              terminateCalls += 1;
+            },
+          });
+        }),
+    };
+
+    return Effect.gen(function* () {
+      const runtime = yield* OpenCodeRuntime;
+      const command = yield* runtime
+        .runOpenCodeCommand({ binaryPath: "fake-opencode", args: ["--version"] })
+        .pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+
+      yield* Fiber.interrupt(command);
+
+      expect(spawnedPids).toEqual([1]);
+      // Windows has no graceful signal: the single user-owned worker replaces
+      // both spawner-level kill requests, so neither runs here.
+      expect(commandKills).toBe(0);
+      expect(terminateCalls).toBe(0);
+    }).pipe(
+      Effect.provide(
+        runtimeLayerWith(
+          hangCommandUntilInterrupted(() => {
+            commandKills += 1;
+          }),
+          NOOP_LEDGER,
+          windowsTaskkill,
+        ),
+      ),
+    );
+  });
+
+  it.effect("cancels a hanging taskkill worker through its owned handle", () => {
+    const workerSpawned = Deferred.makeUnsafe<void>();
+    const workerExit = Deferred.makeUnsafe<number>();
+    const logMessages: Array<unknown> = [];
+    const logger = Logger.make<unknown, void>((options) => {
+      logMessages.push(options.message);
+    });
+    let workerSpawns = 0;
+    let terminateCalls = 0;
+    let commandKills = 0;
+    const windowsTaskkill: WindowsTaskkillSpawnerShape = {
+      spawn: () =>
+        Effect.gen(function* () {
+          workerSpawns += 1;
+          yield* Deferred.succeed(workerSpawned, void 0);
+          return makeFakeWindowsTaskkillHandle({
+            exit: workerExit,
+            onTerminate: () => {
+              terminateCalls += 1;
+              Deferred.doneUnsafe(workerExit, Exit.succeed(0));
+            },
+          });
+        }),
+    };
+
+    return Effect.gen(function* () {
+      const runtime = yield* OpenCodeRuntime;
+      const command = yield* runtime
+        .runOpenCodeCommand({ binaryPath: "fake-opencode", args: ["--version"] })
+        .pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+
+      const startedAtMs = yield* currentTimeMillis;
+      const interruption = yield* Fiber.interrupt(command).pipe(Effect.forkChild);
+      yield* Deferred.await(workerSpawned);
+      // The worker hangs. At the settle bound the runtime must terminate it
+      // through its own handle and await that exit, not start another worker.
+      yield* TestClock.adjust("1 second");
+      yield* Effect.yieldNow;
+      yield* Fiber.join(interruption);
+      const elapsedMs = (yield* currentTimeMillis) - startedAtMs;
+      const exit = yield* Fiber.await(command);
+
+      expect(workerSpawns).toBe(1);
+      expect(terminateCalls).toBe(1);
+      expect(commandKills).toBe(0);
+      expect(Exit.hasInterrupts(exit)).toBe(true);
+      expect(elapsedMs).toBeLessThanOrEqual(1_000);
+      const logs = logMessages
+        .map((message) => (typeof message === "string" ? message : JSON.stringify(message)))
+        .join(" ");
+      expect(logs).toContain("termination worker did not settle");
+      expect(logs).toContain("9001");
+    }).pipe(
+      Effect.provide(
+        runtimeLayerWith(
+          hangCommandUntilInterrupted(() => {
+            commandKills += 1;
+          }),
+          NOOP_LEDGER,
+          windowsTaskkill,
+        ),
+      ),
+      Effect.withLogger(logger),
+    );
+  });
+});
+
+describe("Windows taskkill worker launch boundary", () => {
+  it.effect("settles a launch error delivered before the first wait", () => {
+    let unobserved = false;
+    let terminateCalls = 0;
+    const launchError = Object.assign(new Error("spawn taskkill EACCES"), { code: "EACCES" });
+    const spawner = makeLaunchErrorSpawner({
+      error: launchError,
+      onKill: () => {
+        terminateCalls += 1;
+      },
+      onUnobserved: () => {
+        unobserved = true;
+      },
+    });
+
+    return Effect.gen(function* () {
+      const worker = yield* spawner.spawn(4242);
+      // Deliver the queued launch error before the first `exitCode` wait.
+      yield* waitForNextTickPhase;
+
+      expect(unobserved).toBe(false);
+      const first = yield* worker.exitCode.pipe(Effect.result);
+      const second = yield* worker.exitCode.pipe(Effect.result);
+
+      // Both the bounded wait and the cancellation path read the same held
+      // settlement instead of installing a listener after the event fired.
+      expect(Result.isFailure(first)).toBe(true);
+      expect(Result.isFailure(second)).toBe(true);
+      if (Result.isFailure(first) && Result.isFailure(second)) {
+        expect(first.failure.detail).toContain("EACCES");
+        expect(second.failure.detail).toBe(first.failure.detail);
+      }
+      expect(yield* worker.isRunning).toBe(false);
+      yield* worker.terminate;
+      // A worker that never launched must not be signalled through the handle.
+      expect(terminateCalls).toBe(0);
+    });
+  });
+
+  it.effect("settles a launch error delivered during a scheduler yield after spawn", () => {
+    let unobserved = false;
+    let terminateCalls = 0;
+    let yieldAfterSpawn = false;
+    let didYield = false;
+    let continuationReached = false;
+    let errorDeliveredBeforeContinuation = false;
+    const launchError = Object.assign(new Error("spawn taskkill EACCES"), { code: "EACCES" });
+    const spawner = makeLaunchErrorSpawner({
+      error: launchError,
+      onSpawn: () => {
+        yieldAfterSpawn = true;
+      },
+      onDeliver: () => {
+        errorDeliveredBeforeContinuation = !continuationReached;
+      },
+      onKill: () => {
+        terminateCalls += 1;
+      },
+      onUnobserved: () => {
+        unobserved = true;
+      },
+    });
+    // Yield once, immediately after the native spawn callback returns. The
+    // launch error is queued on the next tick, so it arrives before the
+    // generator continuation but after that callback.
+    const scheduler: Scheduler.Scheduler = {
+      executionMode: "async",
+      makeDispatcher: () => new Scheduler.MixedScheduler().makeDispatcher(),
+      shouldYield: () => {
+        if (!yieldAfterSpawn) {
+          return false;
+        }
+        yieldAfterSpawn = false;
+        didYield = true;
+        return true;
+      },
+    };
+
+    return Effect.gen(function* () {
+      const worker = yield* spawner.spawn(4242);
+      continuationReached = true;
+      yield* waitForNextTickPhase;
+
+      expect(didYield).toBe(true);
+      expect(errorDeliveredBeforeContinuation).toBe(true);
+      expect(unobserved).toBe(false);
+      const first = yield* worker.exitCode.pipe(Effect.result);
+      const second = yield* worker.exitCode.pipe(Effect.result);
+
+      expect(Result.isFailure(first)).toBe(true);
+      expect(Result.isFailure(second)).toBe(true);
+      if (Result.isFailure(first) && Result.isFailure(second)) {
+        expect(first.failure.detail).toContain("EACCES");
+        expect(second.failure.detail).toBe(first.failure.detail);
+      }
+      expect(yield* worker.isRunning).toBe(false);
+      yield* worker.terminate;
+      // A worker that never launched must not be signalled through the handle.
+      expect(terminateCalls).toBe(0);
+    }).pipe(Effect.provideService(Scheduler.Scheduler, scheduler));
+  });
+
+  it.effect("replays an exit already observed when spawn returns", () => {
+    const spawner = makeWindowsTaskkillSpawner(() =>
+      asTaskkillChild(makeFakeTaskkillChild({ exitCode: 7 })),
+    );
+
+    return Effect.gen(function* () {
+      const worker = yield* spawner.spawn(4242);
+
+      expect(yield* worker.isRunning).toBe(false);
+      expect(yield* worker.exitCode).toBe(7);
+      expect(yield* worker.exitCode).toBe(7);
+    });
+  });
+});
+
+describe("runOpenCodeCommand Windows launch failure", () => {
+  it.effect("reports an unknown command state when taskkill cannot launch", () => {
+    const logMessages: Array<unknown> = [];
+    const logger = Logger.make<unknown, void>((options) => {
+      logMessages.push(options.message);
+    });
+    const launchError = Object.assign(new Error("spawn taskkill EACCES"), { code: "EACCES" });
+    let workerSpawns = 0;
+    let terminateCalls = 0;
+    let commandKills = 0;
+    let unobserved = false;
+    const windowsTaskkill = makeLaunchErrorSpawner({
+      error: launchError,
+      onSpawn: () => {
+        workerSpawns += 1;
+      },
+      onKill: () => {
+        terminateCalls += 1;
+      },
+      onUnobserved: () => {
+        unobserved = true;
+      },
+    });
+
+    return Effect.gen(function* () {
+      const runtime = yield* OpenCodeRuntime;
+      const command = yield* runtime
+        .runOpenCodeCommand({ binaryPath: "fake-opencode", args: ["--version"] })
+        .pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+
+      yield* Fiber.interrupt(command);
+      yield* waitForNextTickPhase;
+
+      expect(unobserved).toBe(false);
+      expect(workerSpawns).toBe(1);
+      expect(terminateCalls).toBe(0);
+      expect(commandKills).toBe(0);
+      const logs = logMessages
+        .map((message) => (typeof message === "string" ? message : JSON.stringify(message)))
+        .join(" ");
+      expect(logs).toContain("state is unknown");
+      expect(logs).toContain("worker_failed");
+      expect(logs).toContain("EACCES");
+    }).pipe(
+      Effect.provide(
+        runtimeLayerWith(
+          hangCommandUntilInterrupted(() => {
+            commandKills += 1;
+          }),
+          NOOP_LEDGER,
+          windowsTaskkill,
+        ),
+      ),
+      Effect.withLogger(logger),
+    );
   });
 });
 
@@ -647,6 +1134,198 @@ describeOnPosix("startOpenCodeServerProcess spawner ownership", () => {
               killFixture(pid);
             }
           }
+          NodeFS.rmSync(directory, { recursive: true, force: true });
+        }),
+      ),
+      Effect.provide(runtimeLayerWithRealSpawner()),
+    );
+  });
+});
+
+const currentTimeMillis = Effect.clockWith((clock) => clock.currentTimeMillis);
+
+const waitForFixturePid = (pidPath: string, timeoutMs: number) =>
+  Effect.gen(function* () {
+    const deadline = (yield* currentTimeMillis) + timeoutMs;
+    for (;;) {
+      const pid = readFixturePid(pidPath);
+      if (pid !== undefined) return pid;
+      if ((yield* currentTimeMillis) >= deadline) return undefined;
+      yield* Effect.sleep("20 millis");
+    }
+  });
+
+// Best-effort SIGKILL for a disposable fixture group. Every pid passed here was
+// recorded by a fixture this test spawned, and the liveness check keeps the
+// signal off a pid that has already exited.
+const killFixtureGroup = (pid: number | undefined): void => {
+  if (pid === undefined || !isProcessAlive(pid)) return;
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch {
+    killFixture(pid);
+  }
+};
+
+/**
+ * External watchdog for a forked effect that owns a real, disposable fixture.
+ *
+ * The effect under test may be waiting on cleanup that never settles. Polling
+ * completion from the test (rather than wrapping the effect in another timeout,
+ * which would inherit the same blocked finalizer) lets the deadline fire: the
+ * watchdog SIGKILLs the owned fixture so the effect can settle, and reports
+ * `watchdog_expired`. The test then fails on that recorded outcome instead of
+ * hanging the runner.
+ */
+const watchForCompletion = (input: {
+  readonly done: Deferred.Deferred<void>;
+  readonly fixturePid: () => number | undefined;
+  readonly boundMs: number;
+}) =>
+  Effect.gen(function* () {
+    const deadline = (yield* currentTimeMillis) + input.boundMs;
+    while (!(yield* Deferred.isDone(input.done))) {
+      if ((yield* currentTimeMillis) >= deadline) {
+        killFixtureGroup(input.fixturePid());
+        return "watchdog_expired" as const;
+      }
+      yield* Effect.sleep("25 millis");
+    }
+    return "settled" as const;
+  });
+
+describeOnPosix("bounded command cleanup", () => {
+  it.live("settles interruption of a command that ignores SIGTERM", () => {
+    const directory = makeFixtureDirectory();
+    const versionPidPath = NodePath.join(directory, "version.pid");
+    const fixturePath = writeExecutableFixture(directory, "hung-version-opencode.sh", [
+      "#!/bin/sh",
+      // This probe never answers and ignores SIGTERM, like a CLI blocked before
+      // it can print `--version`. Only a bounded TERM-to-KILL escalation can
+      // stop it; the spawner's own cleanup waits on the exit signal forever.
+      "trap '' TERM",
+      `echo $$ > "${versionPidPath}"`,
+      "while :; do sleep 1; done",
+    ]);
+    let fixturePid: number | undefined;
+
+    return Effect.gen(function* () {
+      const runtime = yield* OpenCodeRuntime;
+      const done = yield* Deferred.make<void>();
+      const command = yield* runtime
+        .runOpenCodeCommand({
+          binaryPath: fixturePath,
+          args: ["--version"],
+          environment: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: directory },
+        })
+        .pipe(
+          Effect.onExit(() => Deferred.succeed(done, void 0)),
+          Effect.forkChild,
+        );
+
+      fixturePid = yield* waitForFixturePid(versionPidPath, 2_000);
+      expect(fixturePid, "the fixture must record its pid").toBeDefined();
+
+      const startedAtMs = yield* currentTimeMillis;
+      // Interrupt exactly as a caller timer does. `Fiber.interrupt` waits for
+      // the command's finalizers, so this measures the cleanup bound too.
+      yield* Effect.sleep("25 millis").pipe(
+        Effect.andThen(Fiber.interrupt(command)),
+        Effect.forkChild,
+      );
+
+      const outcome = yield* watchForCompletion({
+        done,
+        fixturePid: () => fixturePid,
+        boundMs: 5_000,
+      });
+      const exit = yield* Fiber.await(command);
+      const elapsedMs = (yield* currentTimeMillis) - startedAtMs;
+
+      expect(outcome, "command interruption must settle without the watchdog").toBe("settled");
+      expect(Exit.hasInterrupts(exit)).toBe(true);
+      // One SIGTERM grace window, then SIGKILL and its exit wait: about a
+      // second, well inside the 5s watchdog and not an unbounded wait.
+      expect(elapsedMs).toBeLessThan(4_000);
+      expect(
+        isProcessAlive(fixturePid!),
+        "the interrupted command must not leave an owned fixture running",
+      ).toBe(false);
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          killFixtureGroup(fixturePid ?? readFixturePid(versionPidPath));
+          NodeFS.rmSync(directory, { recursive: true, force: true });
+        }),
+      ),
+      Effect.provide(runtimeLayerWithRealSpawner()),
+    );
+  });
+
+  it.live("starts the server after a SIGTERM-ignoring --version probe is bounded", () => {
+    const directory = makeFixtureDirectory();
+    const versionPidPath = NodePath.join(directory, "version.pid");
+    const serverPidPath = NodePath.join(directory, "server.pid");
+    const fixturePath = writeExecutableFixture(directory, "hung-probe-opencode.sh", [
+      "#!/bin/sh",
+      'if [ "$1" = "--version" ]; then',
+      // The probe hangs and ignores TERM; the runtime must still reach its
+      // unknown-version fallback and start the server.
+      "  trap '' TERM",
+      `  echo $$ > "${versionPidPath}"`,
+      "  while :; do sleep 1; done",
+      "fi",
+      `echo $$ > "${serverPidPath}"`,
+      `echo 'opencode server listening on ${SERVER_URL}'`,
+      "trap 'exit 0' TERM",
+      "while :; do sleep 1; done",
+    ]);
+    let versionPid: number | undefined;
+
+    return Effect.gen(function* () {
+      const runtime = yield* OpenCodeRuntime;
+      const done = yield* Deferred.make<void>();
+      const startup = yield* runtime
+        .startOpenCodeServerProcess({
+          binaryPath: fixturePath,
+          port: 4097,
+          environment: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: directory },
+        })
+        .pipe(
+          Effect.scoped,
+          Effect.onExit(() => Deferred.succeed(done, void 0)),
+          Effect.forkChild,
+        );
+
+      versionPid = yield* waitForFixturePid(versionPidPath, 2_000);
+      expect(versionPid, "the probe fixture must record its pid").toBeDefined();
+
+      const startedAtMs = yield* currentTimeMillis;
+      const outcome = yield* watchForCompletion({
+        done,
+        fixturePid: () => versionPid,
+        boundMs: 9_000,
+      });
+      const exit = yield* Fiber.await(startup);
+      const elapsedMs = (yield* currentTimeMillis) - startedAtMs;
+
+      expect(outcome, "startup must settle without the watchdog").toBe("settled");
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (Exit.isSuccess(exit)) {
+        expect(exit.value.url).toBe(SERVER_URL);
+      }
+      // The 5s probe budget plus one SIGTERM grace window and the prompt
+      // SIGKILL exit: about six seconds, so the bound is deliberately not 5s.
+      expect(elapsedMs).toBeLessThan(9_000);
+      expect(
+        isProcessAlive(versionPid!),
+        "the timed-out probe must be terminated, not left as an untracked process",
+      ).toBe(false);
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          killFixtureGroup(versionPid ?? readFixturePid(versionPidPath));
+          killFixtureGroup(readFixturePid(serverPidPath));
           NodeFS.rmSync(directory, { recursive: true, force: true });
         }),
       ),

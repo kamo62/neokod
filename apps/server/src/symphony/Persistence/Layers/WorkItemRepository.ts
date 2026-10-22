@@ -1,5 +1,11 @@
-import { SymphonyProjectId, WorkItemId, WorkLifecycleSchema } from "@neokod/contracts";
-import type { WorkItem } from "@neokod/contracts";
+import {
+  NonNegativeInt,
+  SymphonyProjectId,
+  WorkItemId,
+  WorkLifecycleSchema,
+  WorkSourceSchema,
+} from "@neokod/contracts";
+import type { WorkItem, WorkLifecycle } from "@neokod/contracts";
 import { Schema } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
@@ -8,7 +14,12 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import { nowIso } from "../../Domain/Time.ts";
-import { SymphonyBusy, SymphonyClaimLost, SymphonyPersistenceSqlError } from "../Errors.ts";
+import {
+  SymphonyBusy,
+  SymphonyClaimLost,
+  SymphonyPersistenceDecodeError,
+  SymphonyPersistenceSqlError,
+} from "../Errors.ts";
 import { decodeJson, encodeJson } from "../Json.ts";
 import {
   WorkItemRepository,
@@ -104,6 +115,52 @@ const DEFAULT_TRANSITION_SOURCES: Readonly<Record<string, ReadonlyArray<string>>
   ],
   failed: ["preparing", "running", "testing", "retry_scheduled", "validation_failed"],
 };
+
+const TERMINAL_LIFECYCLES: ReadonlyArray<WorkLifecycle> = ["completed", "cancelled", "failed"];
+const ACTIVE_LIFECYCLES: ReadonlyArray<WorkLifecycle> = WorkLifecycleSchema.literals.filter(
+  (lifecycle) => !TERMINAL_LIFECYCLES.includes(lifecycle),
+);
+
+const BoardLifecycleTotalRowSchema = Schema.Struct({
+  lifecycle: WorkLifecycleSchema,
+  count: NonNegativeInt,
+});
+const decodeBoardLifecycleTotalRows = Schema.decodeUnknownEffect(
+  Schema.Array(BoardLifecycleTotalRowSchema),
+);
+
+const isPositiveLimit = (value: number): boolean => Number.isInteger(value) && value > 0;
+
+// JSON columns are decoded leniently by rowToWorkItem, so syntactically valid
+// but structurally wrong payloads (for example `source_json = 'null'`) would
+// otherwise survive the read and fail later as a defect. Validate the
+// JSON-derived fields at the row boundary instead.
+const WorkItemJsonFieldsSchema = Schema.Struct({
+  acceptanceCriteria: Schema.Array(Schema.String),
+  source: WorkSourceSchema,
+  eligibilityReasons: Schema.Array(Schema.String),
+});
+const decodeWorkItemJsonFields = Schema.decodeUnknownSync(WorkItemJsonFieldsSchema);
+
+const decodeRows = (
+  operation: string,
+  rows: ReadonlyArray<Schema.Schema.Type<typeof WorkItemRowSchema>>,
+): Effect.Effect<WorkItem[], SymphonyPersistenceDecodeError> =>
+  Effect.forEach(rows, (row) =>
+    Effect.try({
+      try: () => {
+        const item = rowToWorkItem(row);
+        decodeWorkItemJsonFields(item);
+        return item;
+      },
+      catch: (cause) =>
+        new SymphonyPersistenceDecodeError({
+          operation,
+          issue: `row ${row.id}: ${cause instanceof Error ? cause.message : String(cause)}`,
+          workItemId: row.id,
+        }),
+    }),
+  );
 
 const rowToWorkItem = (row: Schema.Schema.Type<typeof WorkItemRowSchema>): WorkItem => ({
   id: row.id,
@@ -450,8 +507,88 @@ const makeRepository = Effect.gen(function* () {
       LIMIT ${options?.limit ?? 500}
     `.pipe(
       Effect.mapError(toSqlError("WorkItemRepository.listByLifecycle")),
-      Effect.map((rows) => rows.map(rowToWorkItem)),
+      Effect.flatMap((rows) => decodeRows("WorkItemRepository.listByLifecycle", rows)),
     );
+  };
+
+  const listForBoard: WorkItemRepositoryShape["listForBoard"] = (projectId, options) => {
+    if (!isPositiveLimit(options.activeLimit) || !isPositiveLimit(options.terminalLimit)) {
+      return Effect.fail(
+        new SymphonyPersistenceSqlError({
+          operation: "WorkItemRepository.listForBoard",
+          detail: "activeLimit and terminalLimit must be positive integers",
+        }),
+      );
+    }
+
+    const totalsQuery = sql<{
+      readonly lifecycle: unknown;
+      readonly count: unknown;
+    }>`
+      SELECT lifecycle, COUNT(*) AS count
+      FROM symphony_work_items
+      WHERE project_id = ${projectId}
+      GROUP BY lifecycle
+    `.pipe(Effect.mapError(toSqlError("WorkItemRepository.listForBoard:totals")));
+
+    const activeRowsQuery = sql<Schema.Schema.Type<typeof WorkItemRowSchema>>`
+      SELECT ${cols}
+      FROM symphony_work_items
+      WHERE project_id = ${projectId}
+        AND ${sql.in("lifecycle", ACTIVE_LIFECYCLES)}
+      ORDER BY created_at ASC, id ASC
+      LIMIT ${options.activeLimit}
+    `.pipe(Effect.mapError(toSqlError("WorkItemRepository.listForBoard:active")));
+
+    const terminalRowsQuery = sql<Schema.Schema.Type<typeof WorkItemRowSchema>>`
+      SELECT ${cols}
+      FROM symphony_work_items
+      WHERE project_id = ${projectId}
+        AND ${sql.in("lifecycle", TERMINAL_LIFECYCLES)}
+      ORDER BY updated_at DESC, id DESC
+      LIMIT ${options.terminalLimit}
+    `.pipe(Effect.mapError(toSqlError("WorkItemRepository.listForBoard:terminal")));
+
+    return sql
+      .withTransaction(
+        Effect.gen(function* () {
+          const rawTotals = yield* totalsQuery;
+          const totalRows = yield* decodeBoardLifecycleTotalRows(rawTotals).pipe(
+            Effect.mapError(
+              (cause) =>
+                new SymphonyPersistenceDecodeError({
+                  operation: "WorkItemRepository.listForBoard:totals",
+                  issue: cause.message,
+                }),
+            ),
+          );
+          const activeItems = yield* activeRowsQuery.pipe(
+            Effect.flatMap((rows) => decodeRows("WorkItemRepository.listForBoard:active", rows)),
+          );
+          const terminalItems = yield* terminalRowsQuery.pipe(
+            Effect.flatMap((rows) => decodeRows("WorkItemRepository.listForBoard:terminal", rows)),
+          );
+          const totalsByLifecycle: Record<string, number> = {};
+          for (const row of totalRows) {
+            totalsByLifecycle[row.lifecycle] = row.count;
+          }
+          return {
+            items: [...activeItems, ...terminalItems],
+            totalsByLifecycle,
+          };
+        }),
+      )
+      .pipe(
+        Effect.catchTag("SqlError", (cause) =>
+          Effect.fail(
+            new SymphonyPersistenceSqlError({
+              operation: "WorkItemRepository.listForBoard:transaction",
+              detail: "Board read transaction failed",
+              cause,
+            }),
+          ),
+        ),
+      );
   };
 
   const claim: WorkItemRepositoryShape["claim"] = (id, ownerToken) =>
@@ -579,6 +716,7 @@ const makeRepository = Effect.gen(function* () {
     getById,
     getByTrackerIssue,
     listByLifecycle,
+    listForBoard,
     claim,
     setClaimOwnerPid,
     setBaseBranch,

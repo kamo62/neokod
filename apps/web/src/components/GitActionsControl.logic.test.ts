@@ -3,9 +3,14 @@ import { assert, describe, it } from "vite-plus/test";
 import {
   buildGitActionProgressStages,
   buildMenuItems,
+  canSubmitCommitSelection,
+  isMergeCommitPending,
+  resolveCommitFilePaths,
   requiresDefaultBranchConfirmation,
   resolveAutoFeatureBranchName,
+  resolveConflictBlockReason,
   resolveDefaultBranchActionDialogCopy,
+  resolveOperationInProgressNotice,
   resolveLiveThreadBranchUpdate,
   resolveQuickAction,
   resolveThreadBranchUpdate,
@@ -874,6 +879,65 @@ describe("when: ref has no upstream configured", () => {
   });
 });
 
+describe("when: a merge or rebase is in progress", () => {
+  it("resolveQuickAction blocks with a hint when unmerged paths exist", () => {
+    const quick = resolveQuickAction(
+      status({ hasWorkingTreeChanges: true, unmergedPaths: ["a.txt", "b.txt"] }),
+      false,
+    );
+    assert.deepInclude(quick, {
+      label: "Resolve conflicts",
+      disabled: true,
+      kind: "show_hint",
+    });
+    assert.match(quick.hint ?? "", /merge conflicts/);
+  });
+
+  it("buildMenuItems disables commit and push during a rebase", () => {
+    const items = buildMenuItems(
+      status({ hasWorkingTreeChanges: true, operationInProgress: "rebase", aheadCount: 1 }),
+      false,
+    );
+    assert.equal(items.find((item) => item.id === "commit")?.disabled, true);
+    assert.equal(items.find((item) => item.id === "push")?.disabled, true);
+    assert.equal(items.find((item) => item.id === "pr")?.disabled, true);
+  });
+
+  it("resolveConflictBlockReason returns null on a clean status", () => {
+    assert.equal(resolveConflictBlockReason(status()), null);
+  });
+
+  it("keeps a resolved merge committable and reports it as informational", () => {
+    const resolvedMerge = status({
+      hasWorkingTreeChanges: true,
+      operationInProgress: "merge",
+      aheadCount: 1,
+    });
+    assert.equal(resolveConflictBlockReason(resolvedMerge), null);
+    assert.equal(resolveOperationInProgressNotice(resolvedMerge), "Merge in progress.");
+
+    const items = buildMenuItems(resolvedMerge, false);
+    assert.equal(items.find((item) => item.id === "commit")?.disabled, false);
+    assert.equal(items.find((item) => item.id === "push")?.disabled, false);
+
+    const quick = resolveQuickAction(resolvedMerge, false);
+    assert.notEqual(quick.kind, "show_hint");
+    assert.equal(quick.disabled, false);
+  });
+
+  it("keeps a resolved cherry-pick and revert committable", () => {
+    for (const operationInProgress of ["cherry-pick", "revert"] as const) {
+      const resolved = status({ hasWorkingTreeChanges: true, operationInProgress });
+      assert.equal(resolveConflictBlockReason(resolved), null);
+      assert.match(resolveOperationInProgressNotice(resolved) ?? "", /in progress/);
+      assert.equal(
+        buildMenuItems(resolved, false).find((item) => item.id === "commit")?.disabled,
+        false,
+      );
+    }
+  });
+});
+
 describe("requiresDefaultBranchConfirmation", () => {
   it("requires confirmation for push actions on default ref", () => {
     assert.isFalse(requiresDefaultBranchConfirmation("commit", true));
@@ -1151,5 +1215,65 @@ describe("resolveAutoFeatureBranchName", () => {
   it("falls back to feature/update when no preferred name is provided", () => {
     const ref = resolveAutoFeatureBranchName(["main"]);
     assert.equal(ref, "feature/update");
+  });
+});
+
+describe("resolved merge with no tree delta", () => {
+  const merge = status({ operationInProgress: "merge", hasWorkingTreeChanges: false });
+
+  it("treats the resolved merge as committable", () => {
+    assert.equal(isMergeCommitPending(merge), true);
+    assert.equal(isMergeCommitPending(status()), false);
+    assert.equal(
+      isMergeCommitPending(status({ operationInProgress: "merge", unmergedPaths: ["a.txt"] })),
+      false,
+    );
+  });
+
+  it("offers a commit quick action instead of a clean-worktree hint", () => {
+    const quick = resolveQuickAction(merge, false);
+    assert.deepInclude(quick, {
+      label: "Commit merge",
+      disabled: false,
+      kind: "run_action",
+      action: "commit",
+    });
+  });
+
+  it("enables the commit menu item while no tree delta exists", () => {
+    const items = buildMenuItems(merge, false);
+    const commit = items.find((item) => item.id === "commit");
+    assert.equal(commit?.disabled, false);
+  });
+
+  it("rejects an explicitly empty file selection over existing files", () => {
+    assert.equal(
+      canSubmitCommitSelection({ fileCount: 0, selectedFileCount: 0, mergePending: true }),
+      true,
+    );
+    assert.equal(
+      canSubmitCommitSelection({ fileCount: 2, selectedFileCount: 0, mergePending: true }),
+      false,
+    );
+    assert.equal(
+      canSubmitCommitSelection({ fileCount: 2, selectedFileCount: 1, mergePending: true }),
+      true,
+    );
+    assert.equal(
+      canSubmitCommitSelection({ fileCount: 2, selectedFileCount: 0, mergePending: false }),
+      false,
+    );
+  });
+
+  it("omits filePaths when the working tree has no files", () => {
+    assert.equal(resolveCommitFilePaths({ allFilePaths: [], selectedFilePaths: [] }), undefined);
+    assert.equal(
+      resolveCommitFilePaths({ allFilePaths: ["a.txt"], selectedFilePaths: ["a.txt"] }),
+      undefined,
+    );
+    assert.deepEqual(
+      resolveCommitFilePaths({ allFilePaths: ["a.txt", "b.txt"], selectedFilePaths: ["a.txt"] }),
+      ["a.txt"],
+    );
   });
 });

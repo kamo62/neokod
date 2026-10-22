@@ -156,12 +156,60 @@ export const GitPreparePullRequestThreadInput = Schema.Struct({
 });
 export type GitPreparePullRequestThreadInput = typeof GitPreparePullRequestThreadInput.Type;
 
+export const VcsWorktreeIdentity = Schema.Struct({
+  /** Canonical physical path at inspection time, with symlinks resolved. */
+  physicalPath: TrimmedNonEmptyStringSchema,
+  /** The path Git records for this worktree, when it is registered. */
+  registrationPath: Schema.NullOr(TrimmedNonEmptyStringSchema),
+  /** Filesystem device and inode identify the same file across path aliases. */
+  device: Schema.NullOr(TrimmedNonEmptyStringSchema),
+  inode: Schema.NullOr(TrimmedNonEmptyStringSchema),
+});
+export type VcsWorktreeIdentity = typeof VcsWorktreeIdentity.Type;
+
+export const VcsWorktreeGitState = Schema.Struct({
+  path: TrimmedNonEmptyStringSchema,
+  exists: Schema.Boolean,
+  identity: Schema.optional(VcsWorktreeIdentity),
+  refName: Schema.NullOr(TrimmedNonEmptyStringSchema),
+  headSha: Schema.NullOr(TrimmedNonEmptyStringSchema),
+  changedFileCount: NonNegativeInt,
+  untrackedFileCount: NonNegativeInt,
+  ignoredFileCount: NonNegativeInt,
+  localOnlyCommitCount: NonNegativeInt,
+  branchReclaimable: Schema.Boolean,
+});
+export type VcsWorktreeGitState = typeof VcsWorktreeGitState.Type;
+
 export const VcsRemoveWorktreeInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
   path: TrimmedNonEmptyStringSchema,
   force: Schema.optional(Schema.Boolean),
+  /** The user accepted the loss described by a fresh inspection. */
+  confirmLoss: Schema.optional(Schema.Boolean),
+  deleteBranch: Schema.optional(Schema.Boolean),
+  expectedState: Schema.optional(VcsWorktreeGitState),
 });
 export type VcsRemoveWorktreeInput = typeof VcsRemoveWorktreeInput.Type;
+
+export const VcsInspectWorktreeInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  path: TrimmedNonEmptyStringSchema,
+  excludeThreadIds: Schema.optional(Schema.Array(ThreadId)),
+});
+export type VcsInspectWorktreeInput = typeof VcsInspectWorktreeInput.Type;
+
+export const VcsWorktreeLinkedThread = Schema.Struct({
+  threadId: ThreadId,
+  title: TrimmedNonEmptyStringSchema,
+});
+export type VcsWorktreeLinkedThread = typeof VcsWorktreeLinkedThread.Type;
+
+export const VcsInspectWorktreeResult = Schema.Struct({
+  ...VcsWorktreeGitState.fields,
+  linkedThreads: Schema.Array(VcsWorktreeLinkedThread),
+});
+export type VcsInspectWorktreeResult = typeof VcsInspectWorktreeResult.Type;
 
 export const VcsCreateRefInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
@@ -198,6 +246,9 @@ const VcsStatusChangeRequest = Schema.Struct({
   state: VcsStatusChangeRequestState,
 });
 
+export const VcsOperationInProgress = Schema.Literals(["merge", "rebase", "cherry-pick", "revert"]);
+export type VcsOperationInProgress = typeof VcsOperationInProgress.Type;
+
 const VcsStatusLocalShape = {
   isRepo: Schema.Boolean,
   sourceControlProvider: Schema.optional(SourceControlProviderInfo),
@@ -205,6 +256,8 @@ const VcsStatusLocalShape = {
   isDefaultRef: Schema.Boolean,
   refName: Schema.NullOr(TrimmedNonEmptyStringSchema),
   hasWorkingTreeChanges: Schema.Boolean,
+  operationInProgress: Schema.optional(VcsOperationInProgress),
+  unmergedPaths: Schema.optional(Schema.Array(TrimmedNonEmptyStringSchema)),
   workingTree: Schema.Struct({
     files: Schema.Array(
       Schema.Struct({
@@ -377,10 +430,26 @@ export class GitPullRequestMaterializationError extends Schema.TaggedErrorClass<
   }
 }
 
+export class GitUnmergedPathsError extends Schema.TaggedErrorClass<GitUnmergedPathsError>()(
+  "GitUnmergedPathsError",
+  {
+    cwd: TrimmedNonEmptyStringSchema,
+    operationInProgress: Schema.optional(VcsOperationInProgress),
+    unmergedPaths: Schema.Array(TrimmedNonEmptyStringSchema),
+  },
+) {
+  override get message(): string {
+    const shown = this.unmergedPaths.slice(0, 5).join(", ");
+    const more = this.unmergedPaths.length > 5 ? ` and ${this.unmergedPaths.length - 5} more` : "";
+    return `Resolve merge conflicts before committing or pushing. Unmerged: ${shown}${more}.`;
+  }
+}
+
 export const GitManagerServiceError = Schema.Union([
   GitManagerError,
   GitPullRequestMaterializationError,
   GitCommandError,
+  GitUnmergedPathsError,
   SourceControlProviderError,
   TextGenerationError,
 ]);

@@ -49,6 +49,7 @@ import {
 import { makeProviderRegistryLayer } from "../../provider/testUtils/providerRegistryMock.ts";
 import { TextGeneration, type TextGenerationShape } from "../../textGeneration/TextGeneration.ts";
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
+import { WorktreeRemovalLeaseLive } from "../../git/WorktreeRemovalLease.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQuery.ts";
@@ -385,6 +386,7 @@ describe("ProviderCommandReactor", () => {
       ),
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
+      Layer.provideMerge(WorktreeRemovalLeaseLive),
       Layer.provideMerge(NodeServices.layer),
     );
     runtime = ManagedRuntime.make(layer);
@@ -702,6 +704,9 @@ describe("ProviderCommandReactor", () => {
   it("generates a worktree branch name for the first turn", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";
+    const worktreePath = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-provider-worktree-"),
+    );
 
     await Effect.runPromise(
       harness.engine.dispatch({
@@ -709,7 +714,7 @@ describe("ProviderCommandReactor", () => {
         commandId: CommandId.make("cmd-thread-branch"),
         threadId: ThreadId.make("thread-1"),
         branch: "neokod/1234abcd",
-        worktreePath: "/tmp/provider-project-worktree",
+        worktreePath,
       }),
     );
 
@@ -750,7 +755,8 @@ describe("ProviderCommandReactor", () => {
     expect(harness.generateBranchName.mock.calls[0]?.[0]).toMatchObject({
       message: "Add a safer reconnect backoff.",
     });
-    expect(harness.refreshStatus.mock.calls[0]?.[0]).toBe("/tmp/provider-project-worktree");
+    expect(harness.refreshStatus.mock.calls[0]?.[0]).toBe(worktreePath);
+    NodeFS.rmSync(worktreePath, { recursive: true, force: true });
   });
 
   it("forwards codex model options through session start and turn send", async () => {
@@ -1222,6 +1228,9 @@ describe("ProviderCommandReactor", () => {
       },
     });
     const now = "2026-01-01T00:00:00.000Z";
+    const worktreePath = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-provider-worktree-"),
+    );
 
     await Effect.runPromise(
       harness.engine.dispatch({
@@ -1251,7 +1260,7 @@ describe("ProviderCommandReactor", () => {
         type: "thread.meta.update",
         commandId: CommandId.make("cmd-thread-worktree-change"),
         threadId: ThreadId.make("thread-1"),
-        worktreePath: "/tmp/provider-project-worktree",
+        worktreePath,
       }),
     );
 
@@ -1277,7 +1286,7 @@ describe("ProviderCommandReactor", () => {
     expect(harness.stopSession.mock.calls.length).toBe(0);
     expect(harness.startSession.mock.calls[1]?.[1]).toMatchObject({
       threadId: ThreadId.make("thread-1"),
-      cwd: "/tmp/provider-project-worktree",
+      cwd: worktreePath,
       resumeCursor: { opaque: "resume-1" },
       modelSelection: {
         instanceId: ProviderInstanceId.make("claudeAgent"),
@@ -1285,6 +1294,7 @@ describe("ProviderCommandReactor", () => {
       },
       runtimeMode: "approval-required",
     });
+    NodeFS.rmSync(worktreePath, { recursive: true, force: true });
   });
 
   it("restarts claude sessions when claude effort changes", async () => {

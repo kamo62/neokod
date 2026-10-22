@@ -7,6 +7,7 @@ import * as Option from "effect/Option";
 
 import { ProcessRunner } from "../../processRunner.ts";
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
+import { WorktreeRemovalLease } from "../../git/WorktreeRemovalLease.ts";
 import {
   WorkspaceOwnershipRepository,
   WorkspaceRemovalGuard,
@@ -19,6 +20,7 @@ import {
   type WorkspaceManagerDeps,
   WorkspacePopulationError,
   WorkspaceRemovalBlocked,
+  WorkspaceRemovalReservationFailed,
 } from "./Manager.ts";
 
 /**
@@ -62,6 +64,18 @@ export const WorkspaceManagerLive = Layer.effect(
             : Effect.void,
         ),
       );
+
+    const worktreeRemovalLease = yield* WorktreeRemovalLease;
+    const removeUnderReservation: WorkspaceManagerDeps["removeUnderReservation"] = (input) =>
+      worktreeRemovalLease
+        .withRemovalReservationForPath(input.workspacePath, input.remove())
+        .pipe(
+          Effect.mapError((cause) =>
+            cause instanceof WorkspaceRemovalBlocked
+              ? cause
+              : new WorkspaceRemovalReservationFailed(input.workspacePath, cause.message),
+          ),
+        );
 
     const ownershipRepository = yield* WorkspaceOwnershipRepository;
 
@@ -128,6 +142,7 @@ export const WorkspaceManagerLive = Layer.effect(
           .pipe(Effect.mapError((cause) => new WorkspacePopulationError(p, cause.message))),
       assertRemovable,
       acquireOwnership,
+      removeUnderReservation,
     };
 
     return makeWorkspaceManager(deps);

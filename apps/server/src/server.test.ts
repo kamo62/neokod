@@ -8,6 +8,7 @@ import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 
 import {
   CommandId,
+  DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_SERVER_SETTINGS,
   EnvironmentId,
   EventId,
@@ -27,6 +28,7 @@ import {
   ResolvedKeybindingRule,
   ThreadId,
   TurnId,
+  type VcsWorktreeGitState,
   WS_METHODS,
   WsRpcGroup,
   EditorId,
@@ -67,9 +69,11 @@ const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
 
 import * as ServerConfig from "./config.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
-import { makeRoutesLayer } from "./server.ts";
+import { makeRoutesLayer, makeServerLayer } from "./server.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as GitManager from "./git/GitManager.ts";
+import { WorktreeRemovalLease, WorktreeRemovalLeaseLive } from "./git/WorktreeRemovalLease.ts";
+import { readWorkspaceIdentityEvidence } from "./vcs/WorkspaceIdentity.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
@@ -495,6 +499,7 @@ const buildAppUnderTest = (options?: {
       Layer.provideMerge(vcsDriverRegistryLayer),
       Layer.provideMerge(gitVcsDriverLayer),
       Layer.provideMerge(gitManagerLayer),
+      Layer.provideMerge(WorktreeRemovalLeaseLive),
     );
     const vcsProvisioningLayer = VcsProvisioningService.layer.pipe(
       Layer.provide(vcsDriverRegistryLayer),
@@ -1903,6 +1908,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         contents: "export const answer = 42;\n",
         byteLength: 26,
         truncated: false,
+        contentHash: "a2098bd92b10bf8b816d24b7556b1ce8c49a879d130489065ef1051c17e042f6",
       });
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
@@ -2263,6 +2269,13 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
   it.effect("routes websocket rpc git methods", () =>
     Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const removalRoot = yield* fs.makeTempDirectoryScoped({
+        prefix: "neokod-ws-git-removal-",
+      });
+      const missingWorktree = path.join(removalRoot, "wt");
+      const missingIdentity = yield* readWorkspaceIdentityEvidence(missingWorktree);
       yield* buildAppUnderTest({
         config: {
           cwd: "/tmp/repo",
@@ -2404,6 +2417,24 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 worktree: { path: "/tmp/wt", refName: "feature/demo" },
               }),
             removeWorktree: () => Effect.void,
+            inspectWorktree: () =>
+              Effect.succeed({
+                path: missingWorktree,
+                exists: false,
+                identity: {
+                  physicalPath: missingIdentity.physicalPath,
+                  registrationPath: null,
+                  device: missingIdentity.device,
+                  inode: missingIdentity.inode,
+                },
+                refName: null,
+                headSha: null,
+                changedFileCount: 0,
+                untrackedFileCount: 0,
+                ignoredFileCount: 0,
+                localOnlyCommitCount: 0,
+                branchReclaimable: false,
+              }),
             createRef: (input) => Effect.succeed({ refName: input.refName }),
             switchRef: (input) => Effect.succeed({ refName: input.refName }),
           },
@@ -2527,7 +2558,24 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         withWsRpcClient(wsUrl, (client) =>
           client[WS_METHODS.vcsRemoveWorktree]({
             cwd: "/tmp/repo",
-            path: "/tmp/wt",
+            path: missingWorktree,
+            expectedState: {
+              path: missingWorktree,
+              exists: false,
+              identity: {
+                physicalPath: missingIdentity.physicalPath,
+                registrationPath: null,
+                device: missingIdentity.device,
+                inode: missingIdentity.inode,
+              },
+              refName: null,
+              headSha: null,
+              changedFileCount: 0,
+              untrackedFileCount: 0,
+              ignoredFileCount: 0,
+              localOnlyCommitCount: 0,
+              branchReclaimable: false,
+            },
           }),
         ),
       );
@@ -2564,6 +2612,252 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         ),
       );
       assert.equal(diffPreview.sources[0]?.diff, "dirty-diff");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("enforces fresh worktree removal evidence at the websocket boundary", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-ws-worktree-removal-" });
+      const realWorktree = path.join(root, "real", "worktree");
+      yield* fs.makeDirectory(realWorktree, { recursive: true });
+      const aliasRoot = path.join(root, "alias");
+      yield* fs.symlink(path.join(root, "real"), aliasRoot);
+      const otherWorktree = path.join(root, "other", "worktree");
+      yield* fs.makeDirectory(otherWorktree, { recursive: true });
+      const physicalWorktree = yield* fs.realPath(realWorktree);
+      const stat = yield* fs.stat(physicalWorktree);
+      const physicalOther = yield* fs.realPath(otherWorktree);
+      const otherStat = yield* fs.stat(physicalOther);
+      const identity = {
+        physicalPath: physicalWorktree,
+        registrationPath: physicalWorktree,
+        device: String(stat.dev),
+        inode: Option.isSome(stat.ino) ? String(stat.ino.value) : null,
+      };
+      const otherIdentity = {
+        physicalPath: physicalOther,
+        registrationPath: physicalOther,
+        device: String(otherStat.dev),
+        inode: Option.isSome(otherStat.ino) ? String(otherStat.ino.value) : null,
+      };
+
+      const defaultReadModel = makeDefaultOrchestrationReadModel();
+      const aliasedProjectId = ProjectId.make("project-aliased-workspace");
+      const aliasedReadModel = {
+        ...defaultReadModel,
+        projects: [
+          {
+            ...defaultReadModel.projects[0]!,
+            id: aliasedProjectId,
+            workspaceRoot: path.join(aliasRoot, "worktree"),
+          },
+        ],
+        threads: [
+          {
+            ...defaultReadModel.threads[0]!,
+            projectId: aliasedProjectId,
+            worktreePath: null,
+          },
+        ],
+      };
+      let readModel: ReturnType<typeof makeDefaultOrchestrationReadModel> = defaultReadModel;
+      let inspectState: VcsWorktreeGitState = {
+        path: realWorktree,
+        exists: true,
+        identity,
+        refName: "neokod/abcd1234",
+        headSha: "head-b",
+        changedFileCount: 0,
+        untrackedFileCount: 0,
+        ignoredFileCount: 0,
+        localOnlyCommitCount: 0,
+        branchReclaimable: true,
+      };
+      let removeCalls = 0;
+      const removeInputs: Array<
+        Parameters<GitVcsDriver.GitVcsDriver["Service"]["removeWorktree"]>[0]
+      > = [];
+
+      yield* buildAppUnderTest({
+        layers: {
+          gitVcsDriver: {
+            inspectWorktree: () => Effect.succeed(inspectState),
+            removeWorktree: (input) =>
+              Effect.sync(() => {
+                removeCalls += 1;
+                removeInputs.push(input);
+              }),
+          },
+          projectionSnapshotQuery: {
+            getCommandReadModel: () => Effect.succeed(readModel),
+          },
+        },
+      });
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const expectedState: VcsWorktreeGitState = {
+        path: realWorktree,
+        exists: true,
+        identity,
+        refName: "neokod/abcd1234",
+        headSha: "head-b",
+        changedFileCount: 0,
+        untrackedFileCount: 0,
+        ignoredFileCount: 0,
+        localOnlyCommitCount: 0,
+        branchReclaimable: true,
+      };
+      const remove = (overrides: {
+        expectedState?: typeof expectedState | null;
+        force?: boolean;
+        confirmLoss?: boolean;
+      }) =>
+        Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[WS_METHODS.vcsRemoveWorktree]({
+              cwd: root,
+              path: realWorktree,
+              ...(overrides.expectedState === null
+                ? {}
+                : { expectedState: overrides.expectedState ?? expectedState }),
+              ...(overrides.force !== undefined ? { force: overrides.force } : {}),
+              ...(overrides.confirmLoss !== undefined
+                ? { confirmLoss: overrides.confirmLoss }
+                : {}),
+            }),
+          ),
+        ).pipe(Effect.result);
+
+      const noEvidence = yield* remove({ expectedState: null });
+      assertTrue(noEvidence._tag === "Failure");
+      assert.equal(removeCalls, 0);
+
+      const { identity: _inspectedIdentity, ...withoutIdentity } = expectedState;
+      const noIdentity = yield* remove({ expectedState: withoutIdentity });
+      assertTrue(noIdentity._tag === "Failure");
+      assert.equal(removeCalls, 0);
+
+      const retargeted = yield* remove({
+        expectedState: { ...expectedState, identity: otherIdentity },
+      });
+      assertTrue(retargeted._tag === "Failure");
+      if (retargeted._tag === "Failure") {
+        assert.match(retargeted.failure.message, /different filesystem object/);
+      }
+      assert.equal(removeCalls, 0);
+
+      readModel = aliasedReadModel;
+      const survivor = yield* remove({});
+      assertTrue(survivor._tag === "Failure");
+      if (survivor._tag === "Failure") {
+        assert.match(survivor.failure.message, /used by 1 thread/);
+      }
+      assert.equal(removeCalls, 0);
+
+      const nestedProjectId = ProjectId.make("project-nested-workspace");
+      const nestedRoot = path.join(realWorktree, "packages", "app");
+      yield* fs.makeDirectory(nestedRoot, { recursive: true });
+      readModel = {
+        ...defaultReadModel,
+        projects: [
+          {
+            ...defaultReadModel.projects[0]!,
+            id: nestedProjectId,
+            workspaceRoot: nestedRoot,
+          },
+        ],
+        threads: [
+          {
+            ...defaultReadModel.threads[0]!,
+            projectId: nestedProjectId,
+            worktreePath: null,
+          },
+        ],
+      };
+      const nestedSurvivor = yield* remove({});
+      assertTrue(nestedSurvivor._tag === "Failure");
+      if (nestedSurvivor._tag === "Failure") {
+        assert.match(nestedSurvivor.failure.message, /used by 1 thread/);
+      }
+      assert.equal(removeCalls, 0);
+
+      readModel = defaultReadModel;
+      const stale = yield* remove({
+        expectedState: { ...expectedState, headSha: "head-a" },
+      });
+      assertTrue(stale._tag === "Failure");
+      assert.equal(removeCalls, 0);
+
+      inspectState = {
+        ...inspectState,
+        refName: null,
+        headSha: "detached-head",
+        localOnlyCommitCount: 1,
+        branchReclaimable: false,
+      };
+      const staleLoss = yield* remove({
+        expectedState: {
+          ...expectedState,
+          refName: null,
+          headSha: "detached-head",
+          localOnlyCommitCount: 0,
+          branchReclaimable: false,
+        },
+      });
+      assertTrue(staleLoss._tag === "Failure");
+      assert.equal(removeCalls, 0);
+
+      inspectState = { ...expectedState, ignoredFileCount: 1 };
+      const missingDiscard = yield* remove({
+        expectedState: { ...expectedState, ignoredFileCount: 1 },
+      });
+      assertTrue(missingDiscard._tag === "Failure");
+      assert.equal(removeCalls, 0);
+
+      const ignoredRemoved = yield* remove({
+        expectedState: { ...expectedState, ignoredFileCount: 1 },
+        confirmLoss: true,
+      });
+      assertTrue(ignoredRemoved._tag === "Success");
+      assert.equal(removeCalls, 1);
+      assert.equal(removeInputs[0]?.force, false);
+      assert.equal(removeInputs[0]?.confirmLoss, true);
+      assert.equal(removeInputs[0]?.expectedState?.ignoredFileCount, 1);
+
+      inspectState = {
+        ...expectedState,
+        localOnlyCommitCount: 1,
+        branchReclaimable: false,
+      };
+      const branchCommitsRetained = yield* remove({
+        expectedState: {
+          ...expectedState,
+          localOnlyCommitCount: 1,
+          branchReclaimable: false,
+        },
+      });
+      assertTrue(branchCommitsRetained._tag === "Success");
+      assert.equal(removeCalls, 2);
+      assert.equal(removeInputs[1]?.force, false);
+      assert.equal(removeInputs[1]?.confirmLoss, false);
+
+      inspectState = {
+        ...expectedState,
+        refName: null,
+        localOnlyCommitCount: 1,
+        branchReclaimable: false,
+      };
+      const detachedWithoutConsent = yield* remove({
+        expectedState: {
+          ...expectedState,
+          refName: null,
+          localOnlyCommitCount: 1,
+          branchReclaimable: false,
+        },
+      });
+      assertTrue(detachedWithoutConsent._tag === "Failure");
+      assert.equal(removeCalls, 2);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -4531,5 +4825,80 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       assertFailure(result, terminalError);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+});
+
+type ComposedServerServices =
+  | WorktreeRemovalLease
+  | OrchestrationEngine.OrchestrationEngineService
+  | GitWorkflowService.GitWorkflowService
+  | FileSystem.FileSystem
+  | Path.Path;
+
+// @effect-diagnostics-next-line unsafeEffectTypeAssertion:off
+const composedServerLayer = makeServerLayer.pipe(
+  Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "neokod-composed-lease-server-" })),
+  Layer.provideMerge(NodeServices.layer),
+) as Layer.Layer<ComposedServerServices, never, never>;
+
+const ComposedServerTestLayer = it.layer(composedServerLayer);
+
+ComposedServerTestLayer("composed server layer", (it) => {
+  it.effect("resolves the lease-dependent services and shares one lease", () =>
+    Effect.gen(function* () {
+      const lease = yield* WorktreeRemovalLease;
+      const engine = yield* OrchestrationEngine.OrchestrationEngineService;
+      const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
+      assert.isDefined(lease);
+      assert.isDefined(engine);
+      assert.isDefined(gitWorkflow);
+
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectory({ prefix: "neokod-composed-lease-" });
+      const target = path.join(root, "worktree");
+      yield* fs.makeDirectory(target, { recursive: true });
+      const identity = yield* readWorkspaceIdentityEvidence(target);
+      const projectId = ProjectId.make("project-composed-lease");
+
+      yield* engine.dispatch({
+        type: "project.create",
+        commandId: CommandId.make("cmd-composed-lease-project"),
+        projectId,
+        title: "Composed Lease",
+        workspaceRoot: root,
+        defaultModelSelection: {
+          instanceId: ProviderInstanceId.make("codex"),
+          model: "gpt-5-codex",
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+
+      yield* lease.withRemovalReservation(
+        identity,
+        Effect.gen(function* () {
+          const error = yield* engine
+            .dispatch({
+              type: "thread.create",
+              commandId: CommandId.make("cmd-composed-lease-thread"),
+              threadId: ThreadId.make("thread-composed-lease"),
+              projectId,
+              title: "Composed Lease Thread",
+              modelSelection: {
+                instanceId: ProviderInstanceId.make("codex"),
+                model: "gpt-5-codex",
+              },
+              runtimeMode: "full-access",
+              interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+              branch: "feature/composed",
+              worktreePath: target,
+              createdAt: "2026-01-01T00:00:00.000Z",
+            })
+            .pipe(Effect.flip);
+          assert.equal((error as { _tag: string })._tag, "OrchestrationCommandInvariantError");
+        }),
+      );
+      yield* fs.remove(root, { recursive: true, force: true });
+    }),
   );
 });

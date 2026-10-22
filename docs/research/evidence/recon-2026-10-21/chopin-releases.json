@@ -1,0 +1,72 @@
+[
+  {
+    "tag_name": "cli-v0.0.18",
+    "published_at": "2026-10-21T18:12:51Z",
+    "prerelease": false,
+    "html_url": "https://github.com/githubnext/chopin/releases/tag/cli-v0.0.18",
+    "target_commitish": "main"
+  },
+  {
+    "tag_name": "cli-v0.0.17",
+    "published_at": "2026-10-21T04:14:07Z",
+    "prerelease": false,
+    "html_url": "https://github.com/githubnext/chopin/releases/tag/cli-v0.0.17",
+    "target_commitish": "main"
+  },
+  {
+    "tag_name": "cli-v0.0.16",
+    "published_at": "2026-10-21T00:54:01Z",
+    "prerelease": false,
+    "html_url": "https://github.com/githubnext/chopin/releases/tag/cli-v0.0.16",
+    "target_commitish": "main"
+  },
+  {
+    "tag_name": "cli-v0.0.15",
+    "published_at": "2026-10-19T17:01:12Z",
+    "prerelease": false,
+    "html_url": "https://github.com/githubnext/chopin/releases/tag/cli-v0.0.15",
+    "target_commitish": "main"
+  },
+  {
+    "tag_name": "cli-v0.0.14",
+    "published_at": "2026-10-16T21:53:35Z",
+    "prerelease": false,
+    "html_url": "https://github.com/githubnext/chopin/releases/tag/cli-v0.0.14",
+    "target_commitish": "main"
+  },
+  {
+    "tag_name": "cli-v0.0.13",
+    "published_at": "2026-10-16T17:34:36Z",
+    "prerelease": false,
+    "html_url": "https://github.com/githubnext/chopin/releases/tag/cli-v0.0.13",
+    "target_commitish": "main"
+  },
+  {
+    "tag_name": "cli-v0.0.9",
+    "published_at": "2026-10-15T06:04:52Z",
+    "prerelease": false,
+    "html_url": "https://github.com/githubnext/chopin/releases/tag/cli-v0.0.9",
+    "target_commitish": "main"
+  },
+  {
+    "tag_name": "cli-v0.0.8",
+    "published_at": "2026-10-15T03:00:45Z",
+    "prerelease": false,
+    "html_url": "https://github.com/githubnext/chopin/releases/tag/cli-v0.0.8",
+    "target_commitish": "main"
+  },
+  {
+    "tag_name": "cli-v0.0.12",
+    "published_at": "2026-10-16T00:01:44Z",
+    "prerelease": false,
+    "html_url": "https://github.com/githubnext/chopin/releases/tag/cli-v0.0.12",
+    "target_commitish": "main"
+  },
+  {
+    "tag_name": "cli-v0.0.11",
+    "published_at": "2026-10-15T21:00:28Z",
+    "prerelease": false,
+    "html_url": "https://github.com/githubnext/chopin/releases/tag/cli-v0.0.11",
+    "target_commitish": "main"
+  }
+]
