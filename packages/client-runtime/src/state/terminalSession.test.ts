@@ -18,6 +18,7 @@ import {
   disposeTerminalInputQueue,
   EMPTY_TERMINAL_BUFFER_STATE,
   selectRunningSubprocessTerminalIds,
+  shouldEndTerminalInputQueue,
   splitTerminalInput,
   TERMINAL_WRITE_CHUNK_LENGTH,
   withTerminalInputInvalidation,
@@ -687,5 +688,51 @@ describe("terminal metadata input invalidation", () => {
     invalidate(metadataSnapshot(terminalSummary(TARGET_A.terminalId, "running", 456)));
     expect(remounted.isDisposed()).toBe(false);
     remounted.release();
+  });
+});
+
+describe("terminal input end decision", () => {
+  it("keeps the queue for unavailable attach evidence", () => {
+    expect(
+      shouldEndTerminalInputQueue({
+        kind: "session",
+        status: "error",
+        authoritative: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldEndTerminalInputQueue({
+        kind: "session",
+        status: null,
+        authoritative: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("ends on authoritative closure, replacement or an explicit client command", () => {
+    for (const status of ["closed", "exited", "starting", "error"] as const) {
+      expect(shouldEndTerminalInputQueue({ kind: "session", status, authoritative: true })).toBe(
+        true,
+      );
+    }
+    expect(
+      shouldEndTerminalInputQueue({
+        kind: "session",
+        status: "running",
+        authoritative: true,
+        sessionPid: 123,
+        knownSessionPid: 123,
+      }),
+    ).toBe(false);
+    expect(
+      shouldEndTerminalInputQueue({
+        kind: "session",
+        status: "running",
+        authoritative: true,
+        sessionPid: 456,
+        knownSessionPid: 123,
+      }),
+    ).toBe(true);
+    expect(shouldEndTerminalInputQueue({ kind: "client-command" })).toBe(true);
   });
 });

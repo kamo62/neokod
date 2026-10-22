@@ -15,8 +15,21 @@ const harness = vi.hoisted(() => {
   const writes: Array<PendingWrite> = [];
   const terminals: Array<{ emit: (data: string) => void }> = [];
   let exits = 0;
+  const runningSummary = {
+    threadId: "thread-terminal-browser",
+    terminalId: "term-1",
+    cwd: "/tmp",
+    worktreePath: null,
+    status: "running" as const,
+    pid: 123,
+    exitCode: null,
+    exitSignal: null,
+    hasRunningSubprocess: false,
+    label: "term-1",
+    updatedAt: "2026-10-22T00:00:00.000Z",
+  };
   let session = {
-    summary: null,
+    summary: runningSummary,
     buffer: "",
     status: "running" as string,
     error: null as string | null,
@@ -53,7 +66,7 @@ const harness = vi.hoisted(() => {
       terminals.length = 0;
       exits = 0;
       session = {
-        summary: null,
+        summary: runningSummary,
         buffer: "",
         status: "running",
         error: null,
@@ -237,6 +250,30 @@ describe("TerminalViewport input lifecycle", () => {
         .map((write) => write.data)
         .join(""),
     ).toBe(paste);
+  });
+
+  it("keeps a pending paste when the attach query fails but shared metadata is running", async () => {
+    screen = await render(viewport("term-1", 1));
+    expect(harness.terminals).toHaveLength(1);
+
+    const paste = "x".repeat(70_000);
+    harness.terminals[0]?.emit(paste);
+    await waitForWrites(1);
+    expect(harness.writes[0]?.data).toHaveLength(32_768);
+
+    // The attach subscription fails, but the shared metadata still reports the
+    // same running session. Unavailable evidence must not dispose the queue.
+    harness.setSession({ status: "error", version: 2 });
+    await screen.rerender(viewport("term-1", 2));
+
+    harness.resolve(0);
+    await waitForWrites(2);
+    expect(harness.writes[1]?.data).toHaveLength(32_768);
+    harness.resolve(1);
+    await waitForWrites(3);
+    harness.resolve(2);
+
+    expect(harness.writes.map((write) => write.data).join("")).toBe(paste);
   });
 
   it("starts a fresh queue when an exited session restarts in the same viewport", async () => {

@@ -5,6 +5,7 @@ import {
   type TerminalAttachStreamEvent,
   type TerminalMetadataStreamEvent,
   type TerminalSessionSnapshot,
+  type TerminalSessionStatus,
   type TerminalSummary,
 } from "@neokod/contracts";
 import type { AtomCommand } from "./runtime.ts";
@@ -422,6 +423,44 @@ function disposeTerminalInputForMetadataTarget(
   terminalInputEntryForMetadataTarget(environmentId, target)?.queue.dispose();
 }
 
+export type TerminalInputEndEvidence =
+  | { readonly kind: "client-command" }
+  | {
+      readonly kind: "session";
+      readonly status: TerminalSessionStatus | "closed" | null;
+      /**
+       * False when the status comes from an unavailable query (for example a
+       * failed attach subscription). Unavailable evidence never ends a queue.
+       */
+      readonly authoritative: boolean;
+      readonly sessionPid?: number | null;
+      readonly knownSessionPid?: number | null;
+    };
+
+/**
+ * The single decision used by every queue-disposal path. Only an authoritative
+ * session closure, a replacement generation, or an explicit client close or
+ * restart may abandon accepted input.
+ */
+export function shouldEndTerminalInputQueue(evidence: TerminalInputEndEvidence): boolean {
+  if (evidence.kind === "client-command") return true;
+  if (!evidence.authoritative) return false;
+  switch (evidence.status) {
+    case "closed":
+    case "exited":
+    case "starting":
+    case "error":
+      return true;
+    case "running": {
+      const knownPid = evidence.knownSessionPid ?? null;
+      const nextPid = evidence.sessionPid ?? null;
+      return knownPid !== null && nextPid !== null && knownPid !== nextPid;
+    }
+    default:
+      return false;
+  }
+}
+
 /**
  * Invalidate retained input queues from authoritative terminal metadata, so a
  * close, exit or archive disposes a target's queue even when its viewport is
@@ -437,17 +476,22 @@ export function createTerminalMetadataInputInvalidator(
   const reconcile = (terminal: TerminalSummary): void => {
     const key = metadataTargetKey(terminal);
     const entry = terminalInputEntryForMetadataTarget(environmentId, terminal);
-    if (terminal.status !== "running") {
-      entry?.queue.dispose();
-      lastPidByTarget.delete(key);
-      return;
-    }
     const knownPid = entry?.sessionPid ?? lastPidByTarget.get(key) ?? null;
-    if (knownPid !== null && terminal.pid !== null && knownPid !== terminal.pid) {
-      // The target now identifies a replacement process: the previous
-      // generation's queued input must never reach it.
+    if (
+      shouldEndTerminalInputQueue({
+        kind: "session",
+        status: terminal.status,
+        authoritative: true,
+        sessionPid: terminal.pid,
+        knownSessionPid: knownPid,
+      })
+    ) {
       entry?.queue.dispose();
-      lastPidByTarget.set(key, terminal.pid);
+      if (terminal.status === "running" && terminal.pid !== null) {
+        lastPidByTarget.set(key, terminal.pid);
+      } else {
+        lastPidByTarget.delete(key);
+      }
       return;
     }
     if (entry !== undefined && entry.sessionPid === null && terminal.pid !== null) {
@@ -462,8 +506,10 @@ export function createTerminalMetadataInputInvalidator(
 
   return (event) => {
     if (event.type === "remove") {
-      disposeTerminalInputForMetadataTarget(environmentId, event);
-      lastPidByTarget.delete(metadataTargetKey(event));
+      if (shouldEndTerminalInputQueue({ kind: "session", status: "closed", authoritative: true })) {
+        disposeTerminalInputForMetadataTarget(environmentId, event);
+        lastPidByTarget.delete(metadataTargetKey(event));
+      }
       return;
     }
     if (event.type === "upsert") {
@@ -476,7 +522,8 @@ export function createTerminalMetadataInputInvalidator(
     for (const entry of terminalInputQueues.values()) {
       if (
         entry.target.environmentId === environmentId &&
-        !present.has(metadataTargetKey(entry.target))
+        !present.has(metadataTargetKey(entry.target)) &&
+        shouldEndTerminalInputQueue({ kind: "session", status: "closed", authoritative: true })
       ) {
         entry.queue.dispose();
       }
@@ -499,6 +546,7 @@ export interface TerminalInputCommandTarget {
 }
 
 function invalidateTerminalInputForCommand(target: TerminalInputCommandTarget): void {
+  if (!shouldEndTerminalInputQueue({ kind: "client-command" })) return;
   const terminalId = target.input.terminalId;
   if (terminalId === undefined) {
     disposeTerminalInputQueuesForThread(target.environmentId, target.input.threadId);

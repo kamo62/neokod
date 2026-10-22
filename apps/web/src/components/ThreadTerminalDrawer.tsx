@@ -20,6 +20,7 @@ import {
 import {
   acquireTerminalInputQueue,
   disposeTerminalInputQueue,
+  shouldEndTerminalInputQueue,
   type TerminalInputLease,
   type TerminalInputTarget,
 } from "@neokod/client-runtime/state/terminal";
@@ -437,13 +438,20 @@ export function TerminalViewport({
     if (!hasSessionEvidence) return;
     const binding = terminalInputRef.current;
     if (binding === null) return;
-    if (terminalStatus === "running") {
-      ensureLiveInputLease();
+    if (
+      !shouldEndTerminalInputQueue({
+        kind: "session",
+        status: terminalStatus,
+        authoritative: terminalStatus !== "error",
+      })
+    ) {
+      if (terminalStatus === "running") {
+        ensureLiveInputLease();
+      }
       return;
     }
-    // A closed, exited, starting or errored session must not inherit queued
-    // chunks from the previous process. Hold a fresh, empty queue so a restart
-    // in this same viewport can write again without remounting.
+    // Authoritative closure or replacement: the new process must not inherit
+    // queued chunks from the previous one.
     disposeTerminalInputQueue(binding.target);
     binding.lease.release();
     binding.lease = acquireTerminalInputQueue(binding.target);
