@@ -8,6 +8,7 @@ import { TerminalViewport } from "./ThreadTerminalDrawer";
 
 interface PendingWrite {
   data: string;
+  generation: number | undefined;
   resolve: (result: { _tag: "Success"; value: undefined }) => void;
 }
 
@@ -22,6 +23,7 @@ const harness = vi.hoisted(() => {
     worktreePath: null,
     status: "running" as const,
     pid: 123,
+    generation: 7,
     exitCode: null,
     exitSignal: null,
     hasRunningSubprocess: false,
@@ -51,9 +53,11 @@ const harness = vi.hoisted(() => {
     setSession(next: { readonly status: string; readonly version: number }) {
       session = { ...session, ...next };
     },
-    write(input: { readonly input: { readonly data: string } }) {
+    write(input: {
+      readonly input: { readonly data: string; readonly generation?: number | undefined };
+    }) {
       return new Promise<{ _tag: "Success"; value: undefined }>((resolve) => {
-        writes.push({ data: input.input.data, resolve });
+        writes.push({ data: input.input.data, generation: input.input.generation, resolve });
       });
     },
     resolve(index: number) {
@@ -250,6 +254,7 @@ describe("TerminalViewport input lifecycle", () => {
         .map((write) => write.data)
         .join(""),
     ).toBe(paste);
+    expect(harness.writes.map((write) => write.generation)).toEqual([7, 7, 7, 7]);
   });
 
   it("keeps a pending paste when the attach query fails but shared metadata is running", async () => {

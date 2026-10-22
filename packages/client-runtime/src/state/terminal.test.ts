@@ -67,7 +67,7 @@ describe("terminal command input invalidation", () => {
   const atoms = createTerminalEnvironmentAtoms({} as never);
   const registry = AtomRegistry.make();
 
-  it("disposes the target queue from the real close command before the RPC", async () => {
+  it("pauses the target queue while the real close RPC settles", async () => {
     const { recorder, lease, pending } = await startPendingWrite("term-close");
 
     await atoms.close.run(registry, {
@@ -78,14 +78,16 @@ describe("terminal command input invalidation", () => {
       },
     });
 
-    expect(lease.isDisposed()).toBe(true);
+    expect(lease.isDisposed()).toBe(false);
+    expect(lease.queue.isPaused()).toBe(true);
     recorder.acknowledgements[0]?.resolve(SUCCESS);
+    lease.queue.dispose();
     expect(await pending).toBeUndefined();
     expect(recorder.sent).toHaveLength(1);
     lease.release();
   });
 
-  it("disposes the target queue from the real restart command before the RPC", async () => {
+  it("pauses the target queue while the real restart RPC settles", async () => {
     const { recorder, lease, pending } = await startPendingWrite("term-restart");
 
     await atoms.restart.run(registry, {
@@ -99,8 +101,10 @@ describe("terminal command input invalidation", () => {
       },
     });
 
-    expect(lease.isDisposed()).toBe(true);
+    expect(lease.isDisposed()).toBe(false);
+    expect(lease.queue.isPaused()).toBe(true);
     recorder.acknowledgements[0]?.resolve(SUCCESS);
+    lease.queue.dispose();
     expect(await pending).toBeUndefined();
     expect(recorder.sent).toHaveLength(1);
     lease.release();

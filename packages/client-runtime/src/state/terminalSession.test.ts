@@ -2,11 +2,15 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   EnvironmentId,
+  TerminalCwdNotFoundError,
   TerminalSessionSnapshot,
   ThreadId,
   TERMINAL_WRITE_MAX_LENGTH,
   type TerminalSummary,
 } from "@neokod/contracts";
+import * as Cause from "effect/Cause";
+import { AsyncResult } from "effect/unstable/reactivity";
+import type { AtomCommandResult } from "./runtime.ts";
 
 import {
   acquireTerminalInputQueue,
@@ -734,5 +738,103 @@ describe("terminal input end decision", () => {
       }),
     ).toBe(true);
     expect(shouldEndTerminalInputQueue({ kind: "client-command" })).toBe(true);
+  });
+});
+
+function lifecycleCommand(result: AtomCommandResult<unknown, unknown>) {
+  return withTerminalInputInvalidation<TerminalInputCommandTarget, unknown, unknown>({
+    label: "test terminal lifecycle",
+    run: async () => result,
+  });
+}
+
+const STOP_TARGET_INPUT = {
+  environmentId: TARGET_A.environmentId,
+  input: { threadId: TARGET_A.threadId, terminalId: TARGET_A.terminalId },
+};
+
+describe("terminal lifecycle input handling", () => {
+  it("pauses chunks and resumes them after an intact rejection", async () => {
+    const recorder = recordingSend();
+    const lease = acquireTerminalInputQueue(TARGET_A);
+    const pending = lease.queue.write("x".repeat(70_000), recorder.send);
+    await waitForSent(recorder.sent, 1);
+
+    lease.queue.pause();
+    recorder.acknowledgements[0]?.resolve(SUCCESS);
+    for (let tick = 0; tick < 10; tick += 1) await Promise.resolve();
+    expect(recorder.sent).toHaveLength(1);
+
+    lease.queue.settleLifecycle("intact");
+    await waitForSent(recorder.sent, 2);
+    recorder.acknowledgements[1]?.resolve(SUCCESS);
+    await waitForSent(recorder.sent, 3);
+    recorder.acknowledgements[2]?.resolve(SUCCESS);
+
+    expect((await pending)?._tag).toBe("Success");
+    lease.release();
+  });
+
+  it("resumes accepted input after a rejected restart that left the session intact", async () => {
+    const recorder = recordingSend();
+    const lease = acquireTerminalInputQueue(TARGET_A);
+    const paste = "x".repeat(70_000);
+    const pending = lease.queue.write(paste, recorder.send);
+    await waitForSent(recorder.sent, 1);
+
+    await lifecycleCommand(
+      AsyncResult.failure(Cause.fail(new TerminalCwdNotFoundError({ cwd: "/deleted" }))),
+    ).run(undefined as never, STOP_TARGET_INPUT);
+
+    expect(lease.isDisposed()).toBe(false);
+    expect(lease.queue.isPaused()).toBe(false);
+    recorder.acknowledgements[0]?.resolve(SUCCESS);
+    await waitForSent(recorder.sent, 2);
+    recorder.acknowledgements[1]?.resolve(SUCCESS);
+    await waitForSent(recorder.sent, 3);
+    recorder.acknowledgements[2]?.resolve(SUCCESS);
+
+    expect((await pending)?._tag).toBe("Success");
+    expect(recorder.sent.join("")).toBe(paste);
+    lease.release();
+  });
+
+  it("holds input after an unknown lifecycle outcome until metadata reconciles", async () => {
+    const invalidate = createTerminalMetadataInputInvalidator(TARGET_A.environmentId);
+    const recorder = recordingSend();
+    const lease = acquireTerminalInputQueue(TARGET_A);
+    invalidate(metadataSnapshot(terminalSummary(TARGET_A.terminalId, "running", 123)));
+
+    const pending = lease.queue.write("x".repeat(70_000), recorder.send);
+    await waitForSent(recorder.sent, 1);
+
+    await lifecycleCommand(
+      AsyncResult.failure(Cause.fail(new Error("terminal transport closed"))),
+    ).run(undefined as never, STOP_TARGET_INPUT);
+
+    expect(lease.isDisposed()).toBe(false);
+    expect(lease.queue.isPaused()).toBe(true);
+    recorder.acknowledgements[0]?.resolve(SUCCESS);
+    for (let tick = 0; tick < 10; tick += 1) await Promise.resolve();
+    expect(recorder.sent).toHaveLength(1);
+
+    invalidate(metadataSnapshot(terminalSummary(TARGET_A.terminalId, "running", 123)));
+    await waitForSent(recorder.sent, 2);
+    recorder.acknowledgements[1]?.resolve(SUCCESS);
+    await waitForSent(recorder.sent, 3);
+    recorder.acknowledgements[2]?.resolve(SUCCESS);
+
+    expect((await pending)?._tag).toBe("Success");
+    lease.release();
+  });
+
+  it("disposes accepted input after a confirmed lifecycle command", async () => {
+    const lease = acquireTerminalInputQueue(TARGET_A);
+    await lifecycleCommand(AsyncResult.success(undefined)).run(
+      undefined as never,
+      STOP_TARGET_INPUT,
+    );
+    expect(lease.isDisposed()).toBe(true);
+    lease.release();
   });
 });

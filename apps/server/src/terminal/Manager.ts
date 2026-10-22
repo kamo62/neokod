@@ -16,6 +16,7 @@ import {
   TerminalHistoryError,
   TerminalNotRunningError,
   TerminalResizeError,
+  TerminalSessionChangedError,
   TerminalSessionLookupError,
   TerminalWriteError,
   type TerminalAttachInput,
@@ -259,6 +260,8 @@ export interface TerminalSessionState {
   worktreePath: string | null;
   status: TerminalSessionStatus;
   pid: number | null;
+  /** Server-owned process generation; increments for every spawn. */
+  generation: number;
   history: string;
   pendingHistoryControlSequence: string;
   pendingProcessEvents: Array<PendingProcessEvent>;
@@ -356,6 +359,7 @@ function snapshot(session: TerminalSessionState): TerminalSessionSnapshot {
     worktreePath: session.worktreePath,
     status: session.status,
     pid: session.pid,
+    generation: session.generation,
     history: session.history,
     exitCode: session.exitCode,
     exitSignal: session.exitSignal,
@@ -373,6 +377,7 @@ function summary(session: TerminalSessionState): TerminalSummary {
     worktreePath: session.worktreePath,
     status: session.status,
     pid: session.pid,
+    generation: session.generation,
     exitCode: session.exitCode,
     exitSignal: session.exitSignal,
     hasRunningSubprocess: session.hasRunningSubprocess,
@@ -2161,6 +2166,9 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     input: TerminalStartInput,
     eventType: "started" | "restarted",
   ) {
+    // Every spawn is a new generation. Issued writes carry the generation they
+    // were created for and are rejected once this advances.
+    session.generation += 1;
     yield* stopProcess(session);
     yield* Effect.annotateCurrentSpan({
       "terminal.thread_id": session.threadId,
@@ -2513,6 +2521,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         worktreePath: input.worktreePath ?? null,
         status: "starting",
         pid: null,
+        generation: 0,
         history,
         pendingHistoryControlSequence: "",
         pendingProcessEvents: [],
@@ -2841,28 +2850,40 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     );
   };
 
-  const write: TerminalManager["Service"]["write"] = Effect.fn("terminal.write")(function* (input) {
-    const terminalId = input.terminalId;
-    const session = yield* requireSession(input.threadId, terminalId);
-    const process = session.process;
-    if (!process || session.status !== "running") {
-      if (session.status === "exited") return;
-      return yield* new TerminalNotRunningError({
-        threadId: input.threadId,
-        terminalId,
-      });
-    }
-    yield* Effect.try({
-      try: () => process.write(input.data),
-      catch: (cause) =>
-        new TerminalWriteError({
-          threadId: input.threadId,
-          terminalId,
-          terminalPid: process.pid,
-          cause,
-        }),
-    });
-  });
+  const write: TerminalManager["Service"]["write"] = (input) =>
+    withThreadLock(
+      input.threadId,
+      Effect.gen(function* () {
+        const terminalId = input.terminalId;
+        const session = yield* requireSession(input.threadId, terminalId);
+        if (input.generation !== undefined && input.generation !== session.generation) {
+          return yield* new TerminalSessionChangedError({
+            threadId: input.threadId,
+            terminalId,
+            expectedGeneration: input.generation,
+            actualGeneration: session.generation,
+          });
+        }
+        const process = session.process;
+        if (!process || session.status !== "running") {
+          if (session.status === "exited") return;
+          return yield* new TerminalNotRunningError({
+            threadId: input.threadId,
+            terminalId,
+          });
+        }
+        yield* Effect.try({
+          try: () => process.write(input.data),
+          catch: (cause) =>
+            new TerminalWriteError({
+              threadId: input.threadId,
+              terminalId,
+              terminalPid: process.pid,
+              cause,
+            }),
+        });
+      }),
+    );
 
   const resizeLocked = Effect.fn("terminal.resize")(function* (input: TerminalResizeInput) {
     const session = yield* getSession(input.threadId, input.terminalId);
@@ -2926,6 +2947,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             worktreePath: input.worktreePath ?? null,
             status: "starting",
             pid: null,
+            generation: 0,
             history: "",
             pendingHistoryControlSequence: "",
             pendingProcessEvents: [],

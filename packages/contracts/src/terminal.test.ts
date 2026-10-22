@@ -174,6 +174,25 @@ describe("TerminalWriteInput", () => {
     ).toBe(false);
   });
 
+  it("accepts a session generation on a write", () => {
+    expect(
+      decodes(TerminalWriteInput, {
+        threadId: "thread-1",
+        terminalId: DEFAULT_TERMINAL_ID,
+        data: "echo hello\n",
+        generation: 3,
+      }),
+    ).toBe(true);
+    expect(
+      decodes(TerminalWriteInput, {
+        threadId: "thread-1",
+        terminalId: DEFAULT_TERMINAL_ID,
+        data: "echo hello\n",
+        generation: -1,
+      }),
+    ).toBe(false);
+  });
+
   it("TERMINAL_WRITE_MAX_LENGTH is 65536", () => {
     expect(TERMINAL_WRITE_MAX_LENGTH).toBe(65_536);
   });

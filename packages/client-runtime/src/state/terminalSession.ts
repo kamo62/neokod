@@ -9,6 +9,7 @@ import {
   type TerminalSummary,
 } from "@neokod/contracts";
 import type { AtomCommand } from "./runtime.ts";
+import * as Cause from "effect/Cause";
 
 export interface TerminalSessionState {
   readonly summary: TerminalSummary | null;
@@ -242,6 +243,17 @@ export interface TerminalInputQueue {
   readonly dispose: () => void;
   /** True once the queue has been disposed; the owning viewport reacquires. */
   readonly isDisposed: () => boolean;
+  /** True while a lifecycle request or reconciliation is holding the queue. */
+  readonly isPaused: () => boolean;
+  /** Hold queued chunks while a lifecycle request is in flight. */
+  readonly pause: () => void;
+  /**
+   * Release a lifecycle pause. `intact` resumes immediately (the server rejected
+   * the request); `unknown` stays paused until metadata reconciliation.
+   */
+  readonly settleLifecycle: (outcome: "intact" | "unknown") => void;
+  /** Resume a paused queue when metadata confirms the same running session. */
+  readonly resumeReconciled: () => void;
 }
 
 /**
@@ -255,11 +267,42 @@ export interface TerminalInputQueue {
 export function createTerminalInputQueue(): TerminalInputQueue {
   let tail: Promise<unknown> = Promise.resolve();
   let disposed = false;
+  let paused = false;
+  let lifecyclePending = false;
+  const pauseWaiters: Array<() => void> = [];
+  const wakePaused = () => {
+    for (const resolve of pauseWaiters.splice(0)) resolve();
+  };
+  const waitWhilePaused = async (): Promise<boolean> => {
+    while (true) {
+      if (disposed) return false;
+      if (!paused) return true;
+      await new Promise<void>((resolve) => pauseWaiters.push(resolve));
+    }
+  };
   return {
+    pause: () => {
+      paused = true;
+      lifecyclePending = true;
+    },
+    settleLifecycle: (outcome) => {
+      lifecyclePending = false;
+      if (outcome === "intact") {
+        paused = false;
+        wakePaused();
+      }
+    },
+    resumeReconciled: () => {
+      if (!paused || lifecyclePending) return;
+      paused = false;
+      wakePaused();
+    },
     dispose: () => {
       disposed = true;
+      wakePaused();
     },
     isDisposed: () => disposed,
+    isPaused: () => paused,
     write: <R extends { readonly _tag: string }>(
       data: string,
       send: (chunk: string) => Promise<R>,
@@ -268,7 +311,7 @@ export function createTerminalInputQueue(): TerminalInputQueue {
         if (disposed) return undefined;
         let result: R | undefined;
         for (const chunk of splitTerminalInput(data)) {
-          if (disposed) return undefined;
+          if (!(await waitWhilePaused())) return undefined;
           result = await send(chunk);
           if (result._tag !== "Success") return result;
         }
@@ -353,6 +396,10 @@ function createTerminalInputQueueEntry(
       if (terminalInputQueues.get(key) === entry) terminalInputQueues.delete(key);
     },
     isDisposed: () => rawQueue.isDisposed(),
+    isPaused: () => rawQueue.isPaused(),
+    pause: () => rawQueue.pause(),
+    settleLifecycle: (outcome) => rawQueue.settleLifecycle(outcome),
+    resumeReconciled: () => rawQueue.resumeReconciled(),
   };
   return entry;
 }
@@ -494,6 +541,7 @@ export function createTerminalMetadataInputInvalidator(
       }
       return;
     }
+    entry?.queue.resumeReconciled();
     if (entry !== undefined && entry.sessionPid === null && terminal.pid !== null) {
       entry.sessionPid = terminal.pid;
     }
@@ -559,19 +607,84 @@ function invalidateTerminalInputForCommand(target: TerminalInputCommandTarget): 
   });
 }
 
+function terminalInputQueuesForCommand(
+  target: TerminalInputCommandTarget,
+): ReadonlyArray<TerminalInputQueue> {
+  const terminalId = target.input.terminalId;
+  if (terminalId === undefined) {
+    return [...terminalInputQueues.values()]
+      .filter(
+        (entry) =>
+          entry.target.environmentId === target.environmentId &&
+          entry.target.threadId === target.input.threadId,
+      )
+      .map((entry) => entry.queue);
+  }
+  const entry = terminalInputQueues.get(
+    terminalInputTargetKey({
+      environmentId: target.environmentId,
+      threadId: ThreadId.make(target.input.threadId),
+      terminalId,
+    }),
+  );
+  return entry === undefined ? [] : [entry.queue];
+}
+
+const TERMINAL_LIFECYCLE_INTACT_ERROR_TAGS = new Set([
+  "TerminalCwdNotFoundError",
+  "TerminalCwdNotDirectoryError",
+  "TerminalCwdStatError",
+]);
+
+const TERMINAL_LIFECYCLE_ENDED_ERROR_TAGS = new Set([
+  "TerminalNotRunningError",
+  "TerminalSessionLookupError",
+  "TerminalSessionChangedError",
+]);
+
+type TerminalLifecycleOutcome = "ended" | "intact" | "unknown";
+
+function classifyTerminalLifecycleOutcome(result: {
+  readonly _tag: "Success" | "Failure";
+  readonly cause?: Cause.Cause<unknown>;
+}): TerminalLifecycleOutcome {
+  if (result._tag === "Success") return "ended";
+  const cause = result.cause;
+  if (cause === undefined || Cause.hasDies(cause) || Cause.hasInterruptsOnly(cause)) {
+    return "unknown";
+  }
+  const error = Cause.squash(cause) as { readonly _tag?: unknown } | undefined;
+  const tag = typeof error?._tag === "string" ? error._tag : null;
+  if (tag !== null && TERMINAL_LIFECYCLE_INTACT_ERROR_TAGS.has(tag)) return "intact";
+  if (tag !== null && TERMINAL_LIFECYCLE_ENDED_ERROR_TAGS.has(tag)) return "ended";
+  return "unknown";
+}
+
 /**
- * Wrap a terminal close or restart command so every caller invalidates the
- * target's input queue before the session is replaced. Pending chunks from the
- * previous process are abandoned instead of reaching the replacement.
+ * Wrap a terminal close or restart command so accepted input is held while the
+ * request is in flight. A confirmed replacement disposes the queue; a confirmed
+ * rejection resumes it; an unknown outcome stays paused until metadata
+ * reconciliation. Issued chunks also carry their session generation, so the
+ * server fence rejects one that crosses a replacement.
  */
 export function withTerminalInputInvalidation<W extends TerminalInputCommandTarget, A, E>(
   command: AtomCommand<W, A, E>,
 ): AtomCommand<W, A, E> {
   return {
     ...command,
-    run: (registry, input) => {
-      invalidateTerminalInputForCommand(input);
-      return command.run(registry, input);
+    run: async (registry, input) => {
+      const queues = terminalInputQueuesForCommand(input);
+      for (const queue of queues) queue.pause();
+      const result = await command.run(registry, input);
+      const outcome = classifyTerminalLifecycleOutcome(result);
+      if (outcome === "ended") {
+        invalidateTerminalInputForCommand(input);
+      } else if (outcome === "intact") {
+        for (const queue of queues) queue.settleLifecycle("intact");
+      } else {
+        for (const queue of queues) queue.settleLifecycle("unknown");
+      }
+      return result;
     },
   };
 }
