@@ -414,19 +414,28 @@ export function applyThreadDetailEvent(
       // Mid-turn diff updates produce placeholder checkpoints; record the
       // checkpoint, but don't settle a turn its session is still running.
       const diffTurnStillRunning = sessionRunsTurn(thread.session, event.payload.turnId);
+      const existingLatestTurn = thread.latestTurn;
+      // A turn that already settled keeps its lifecycle and completion. A late
+      // checkpoint only contributes checkpoint metadata.
+      const latestTurnAlreadySettled =
+        existingLatestTurn !== null && existingLatestTurn.state !== "running";
       const settlesTurn =
         !diffTurnStillRunning &&
-        (thread.latestTurn === null || thread.latestTurn.turnId === event.payload.turnId);
+        (existingLatestTurn === null || existingLatestTurn.turnId === event.payload.turnId);
       const latestTurn = settlesTurn
         ? {
             turnId: event.payload.turnId,
-            state: checkpointStatusToTurnState(event.payload.status),
-            requestedAt: thread.latestTurn?.requestedAt ?? event.payload.completedAt,
-            startedAt: thread.latestTurn?.startedAt ?? event.payload.completedAt,
-            completedAt: event.payload.completedAt,
+            state: latestTurnAlreadySettled
+              ? existingLatestTurn.state
+              : checkpointStatusToTurnState(event.payload.status),
+            requestedAt: existingLatestTurn?.requestedAt ?? event.payload.completedAt,
+            startedAt: existingLatestTurn?.startedAt ?? event.payload.completedAt,
+            completedAt: latestTurnAlreadySettled
+              ? existingLatestTurn.completedAt
+              : event.payload.completedAt,
             assistantMessageId: event.payload.assistantMessageId,
           }
-        : thread.latestTurn;
+        : existingLatestTurn;
 
       return {
         kind: "updated",

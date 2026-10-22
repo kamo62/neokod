@@ -1690,6 +1690,53 @@ describe("applyThreadDetailEvent", () => {
         expect(result.thread.latestTurn?.state).toBe("completed");
       }
     });
+
+    it("keeps a settled turn's lifecycle and completion when a late checkpoint arrives", () => {
+      for (const settledAt of ["2026-04-01T07:01:00.000Z", null] as const) {
+        const settled: OrchestrationThread = {
+          ...baseThread,
+          latestTurn: {
+            turnId: TurnId.make("turn-1"),
+            state: "interrupted",
+            requestedAt: "2026-04-01T07:00:00.000Z",
+            startedAt: "2026-04-01T07:00:00.000Z",
+            completedAt: settledAt,
+            assistantMessageId: null,
+          },
+          settledTurnCompletions: { [TurnId.make("turn-1")]: settledAt },
+        };
+
+        const result = applyThreadDetailEvent(settled, {
+          ...baseEventFields,
+          sequence: 14,
+          occurredAt: "2026-04-02T07:00:00.000Z",
+          aggregateKind: "thread",
+          aggregateId: ThreadId.make("thread-1"),
+          type: "thread.turn-diff-completed",
+          payload: {
+            threadId: ThreadId.make("thread-1"),
+            turnId: TurnId.make("turn-1"),
+            checkpointTurnCount: 1,
+            checkpointRef: CheckpointRef.make("ref-late"),
+            status: "ready",
+            files: [],
+            assistantMessageId: MessageId.make("msg-late"),
+            completedAt: "2026-04-02T07:00:00.000Z",
+          },
+        });
+
+        expect(result.kind).toBe("updated");
+        if (result.kind !== "updated") continue;
+        // Checkpoint metadata is recorded without rewriting settlement.
+        expect(result.thread.checkpoints[0]?.completedAt).toBe("2026-04-02T07:00:00.000Z");
+        expect(result.thread.latestTurn?.state).toBe("interrupted");
+        expect(result.thread.latestTurn?.completedAt).toBe(settledAt);
+        expect(result.thread.latestTurn?.assistantMessageId).toBe(MessageId.make("msg-late"));
+        expect(result.thread.settledTurnCompletions).toEqual({
+          [TurnId.make("turn-1")]: settledAt,
+        });
+      }
+    });
   });
 
   describe("thread.reverted", () => {

@@ -143,15 +143,6 @@ export interface ProjectionTurnRepositoryShape {
   ) => Effect.Effect<ReadonlyArray<ProjectionTurn>, ProjectionRepositoryError>;
 
   /**
-   * Lists every concrete turn the durable projection has settled, ordered by
-   * thread and request time. Used to republish settlement evidence at startup.
-   */
-  readonly listSettledTurns: () => Effect.Effect<
-    ReadonlyArray<ProjectionTurn>,
-    ProjectionRepositoryError
-  >;
-
-  /**
    * Looks up a concrete turn row by `{threadId, turnId}` and never returns pending placeholder rows.
    */
   readonly getByTurnId: (

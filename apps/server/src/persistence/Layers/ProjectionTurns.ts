@@ -202,33 +202,6 @@ const makeProjectionTurnRepository = Effect.gen(function* () {
       `,
   });
 
-  const listSettledTurnRows = SqlSchema.findAll({
-    Request: Schema.Void,
-    Result: ProjectionTurnDbRowSchema,
-    execute: () =>
-      sql`
-        SELECT
-          thread_id AS "threadId",
-          turn_id AS "turnId",
-          pending_message_id AS "pendingMessageId",
-          source_proposed_plan_thread_id AS "sourceProposedPlanThreadId",
-          source_proposed_plan_id AS "sourceProposedPlanId",
-          assistant_message_id AS "assistantMessageId",
-          state,
-          requested_at AS "requestedAt",
-          started_at AS "startedAt",
-          completed_at AS "completedAt",
-          checkpoint_turn_count AS "checkpointTurnCount",
-          checkpoint_ref AS "checkpointRef",
-          checkpoint_status AS "checkpointStatus",
-          checkpoint_files_json AS "checkpointFiles"
-        FROM projection_turns
-        WHERE turn_id IS NOT NULL
-          AND state NOT IN ('running', 'pending')
-        ORDER BY thread_id ASC, requested_at ASC
-      `,
-  });
-
   const getProjectionTurnByTurnId = SqlSchema.findOneOption({
     Request: GetProjectionTurnByTurnIdInput,
     Result: ProjectionTurnByIdDbRowSchema,
@@ -334,17 +307,6 @@ const makeProjectionTurnRepository = Effect.gen(function* () {
       Effect.map((rows) => rows as ReadonlyArray<Schema.Schema.Type<typeof ProjectionTurn>>),
     );
 
-  const listSettledTurns: ProjectionTurnRepositoryShape["listSettledTurns"] = () =>
-    listSettledTurnRows().pipe(
-      Effect.mapError(
-        toPersistenceSqlOrDecodeError(
-          "ProjectionTurnRepository.listSettledTurns:query",
-          "ProjectionTurnRepository.listSettledTurns:decodeRows",
-        ),
-      ),
-      Effect.map((rows) => rows as ReadonlyArray<Schema.Schema.Type<typeof ProjectionTurn>>),
-    );
-
   const getByTurnId: ProjectionTurnRepositoryShape["getByTurnId"] = (input) =>
     getProjectionTurnByTurnId(input).pipe(
       Effect.mapError(
@@ -381,7 +343,6 @@ const makeProjectionTurnRepository = Effect.gen(function* () {
     getPendingTurnStartByThreadId,
     deletePendingTurnStartByThreadId,
     listByThreadId,
-    listSettledTurns,
     getByTurnId,
     clearCheckpointTurnConflict,
     deleteByThreadId,

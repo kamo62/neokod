@@ -6,6 +6,7 @@ import {
   ProviderInstanceId,
   ThreadId,
   TurnId,
+  type OrchestrationCommand,
   type OrchestrationEvent,
   type ThreadId as ThreadIdType,
   type TurnId as TurnIdType,
@@ -16,14 +17,14 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Layers/OrchestrationCommandReceipts.ts";
 import { OrchestrationEventStoreLive } from "../../persistence/Layers/OrchestrationEventStore.ts";
-import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
 import { OrchestrationEventStore } from "../../persistence/Services/OrchestrationEventStore.ts";
-import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
 import { WorktreeRemovalLeaseLive } from "../../git/WorktreeRemovalLease.ts";
 import { ServerConfig } from "../../config.ts";
@@ -40,15 +41,11 @@ const EngineLayer = OrchestrationEngineLive.pipe(
   Layer.provide(OrchestrationProjectionPipelineLive),
 );
 
-const TestLayer = Layer.mergeAll(
-  EngineLayer,
-  OrchestrationProjectionSnapshotQueryLive,
-  ProjectionTurnRepositoryLive,
-).pipe(
+const TestLayer = Layer.mergeAll(EngineLayer, OrchestrationProjectionSnapshotQueryLive).pipe(
   Layer.provideMerge(OrchestrationEventStoreLive),
   Layer.provide(OrchestrationCommandReceiptRepositoryLive),
   Layer.provide(RepositoryIdentityResolver.layer),
-  Layer.provide(SqlitePersistenceMemory),
+  Layer.provideMerge(SqlitePersistenceMemory),
   Layer.provideMerge(WorktreeRemovalLeaseLive),
   Layer.provideMerge(
     ServerConfig.layerTest(process.cwd(), { prefix: "neokod-turn-settlement-test-" }),
@@ -57,22 +54,26 @@ const TestLayer = Layer.mergeAll(
 );
 
 /**
- * Build a fresh reactor instance from the shared engine and durable turn
- * projection. Building a new instance models a process restart: its in-memory
- * publication set is empty and it reconciles durable settlements at startup.
+ * Build a fresh reactor instance from the shared engine. Building a new
+ * instance models a process restart: its startup drain sees the durable outbox.
+ * A recorder captures the commands the reactor dispatches.
  */
 const buildReactor = Effect.gen(function* () {
   const engine = yield* OrchestrationEngineService;
-  const turnRepository = yield* ProjectionTurnRepository;
-  // Build in the caller's scope: the reactor owns a scoped worker fiber, so
-  // it must outlive this effect until the surrounding scope closes.
+  const dispatched = yield* Ref.make<ReadonlyArray<OrchestrationCommand["type"]>>([]);
+  const recordingEngine = {
+    ...engine,
+    dispatch: (command: OrchestrationCommand) =>
+      Ref.update(dispatched, (current) => [...current, command.type]).pipe(
+        Effect.andThen(engine.dispatch(command)),
+      ),
+  };
   const context = yield* Layer.build(
     TurnSettlementReactorLive.pipe(
-      Layer.provideMerge(Layer.succeed(OrchestrationEngineService, engine)),
-      Layer.provideMerge(Layer.succeed(ProjectionTurnRepository, turnRepository)),
+      Layer.provideMerge(Layer.succeed(OrchestrationEngineService, recordingEngine)),
     ),
   );
-  return Context.get(context, TurnSettlementReactor);
+  return { reactor: Context.get(context, TurnSettlementReactor), dispatched };
 });
 
 /**
@@ -187,7 +188,7 @@ it.layer(TestLayer)("TurnSettlementReactor", (it) => {
 
       yield* Effect.scoped(
         Effect.gen(function* () {
-          const reactor = yield* buildReactor;
+          const { reactor } = yield* buildReactor;
           yield* reactor.start();
           const { threadId, turnId, completedAt } = yield* commitClosure(run);
           yield* reactor.drain;
@@ -212,11 +213,11 @@ it.layer(TestLayer)("TurnSettlementReactor", (it) => {
       const engine = yield* OrchestrationEngineService;
       const cacheSequence = yield* engine.latestSequence;
 
-      // Restart with no further thread events: startup reconciliation must
+      // Restart with no further thread events: the startup outbox drain must
       // publish the durable settlement.
       yield* Effect.scoped(
         Effect.gen(function* () {
-          const reactor = yield* buildReactor;
+          const { reactor } = yield* buildReactor;
           yield* reactor.start();
           yield* reactor.drain;
         }),
@@ -236,28 +237,104 @@ it.layer(TestLayer)("TurnSettlementReactor", (it) => {
       const run = "restart";
       const { threadId, turnId, completedAt } = yield* Effect.scoped(
         Effect.gen(function* () {
-          const firstReactor = yield* buildReactor;
-          yield* firstReactor.start();
+          const { reactor } = yield* buildReactor;
+          yield* reactor.start();
           const closure = yield* commitClosure(run);
-          yield* firstReactor.drain;
+          yield* reactor.drain;
           return closure;
         }),
       );
       expect(yield* readSettlements(threadId)).toHaveLength(1);
 
-      // A fresh instance has an empty in-memory publication set and reconciles
-      // the durable closure again. The durable command receipt dedupes it.
+      // The outbox row is marked published and the durable command receipt
+      // dedupes a republished turn, so a restart emits nothing new.
       yield* Effect.scoped(
         Effect.gen(function* () {
-          const restartedReactor = yield* buildReactor;
-          yield* restartedReactor.start();
-          yield* restartedReactor.drain;
+          const { reactor } = yield* buildReactor;
+          yield* reactor.start();
+          yield* reactor.drain;
         }),
       );
 
       const settlements = yield* readSettlements(threadId);
       expect(settlements).toHaveLength(1);
       expect(settlements[0]?.payload).toEqual({ threadId, turnId, completedAt });
+    }),
+  );
+
+  it.effect("dispatches no historical settlements on a later boot", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      // A long-lived database whose settlements were already published.
+      yield* sql`
+        WITH RECURSIVE seq(n) AS (
+          SELECT 1
+          UNION ALL
+          SELECT n + 1 FROM seq WHERE n < 2000
+        )
+        INSERT INTO projection_turns (
+          thread_id,
+          turn_id,
+          pending_message_id,
+          source_proposed_plan_thread_id,
+          source_proposed_plan_id,
+          assistant_message_id,
+          state,
+          requested_at,
+          started_at,
+          completed_at,
+          checkpoint_turn_count,
+          checkpoint_ref,
+          checkpoint_status,
+          checkpoint_files_json
+        )
+        SELECT
+          'thread-history',
+          'turn-history-' || n,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          'completed',
+          '2026-01-01T00:00:00.000Z',
+          '2026-01-01T00:00:00.000Z',
+          '2026-01-01T00:00:00.000Z',
+          NULL,
+          NULL,
+          NULL,
+          '[]'
+        FROM seq
+      `;
+      yield* sql`
+        WITH RECURSIVE seq(n) AS (
+          SELECT 1
+          UNION ALL
+          SELECT n + 1 FROM seq WHERE n < 2000
+        )
+        INSERT INTO projection_turn_settlements (
+          thread_id,
+          turn_id,
+          completed_at,
+          published_at
+        )
+        SELECT
+          'thread-history',
+          'turn-history-' || n,
+          '2026-01-01T00:00:00.000Z',
+          '2026-01-01T00:00:00.000Z'
+        FROM seq
+      `;
+
+      const { reactor, dispatched } = yield* buildReactor;
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          yield* reactor.start();
+          yield* reactor.drain;
+        }),
+      );
+
+      const commands = yield* Ref.get(dispatched);
+      expect(commands.filter((type) => type === "thread.turn.settle")).toHaveLength(0);
     }),
   );
 });

@@ -6,15 +6,19 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 
+import { ProjectionTurnSettlementRepositoryLive } from "../../persistence/Layers/ProjectionTurnSettlements.ts";
 import {
-  ProjectionTurnRepository,
-  type ProjectionTurn,
-} from "../../persistence/Services/ProjectionTurns.ts";
+  ProjectionTurnSettlementRepository,
+  type ProjectionTurnSettlement,
+} from "../../persistence/Services/ProjectionTurnSettlements.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import {
   TurnSettlementReactor,
   type TurnSettlementReactorShape,
 } from "../Services/TurnSettlementReactor.ts";
+
+/** Bounded publication batch. */
+const SETTLEMENT_BATCH_SIZE = 100;
 
 /** Events after which the turn projection may have closed a turn. */
 function settlementSourceThreadId(event: OrchestrationEvent): ThreadId | null {
@@ -41,66 +45,64 @@ const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
 const make = Effect.gen(function* () {
   const orchestrationEngine = yield* OrchestrationEngineService;
-  const projectionTurnRepository = yield* ProjectionTurnRepository;
+  const settlementRepository = yield* ProjectionTurnSettlementRepository;
 
-  // Turns already published in this process. The durable command receipt makes
-  // republication after a restart a no-op.
-  const publishedTurnKeys = new Set<string>();
+  const publishSettlement = (settlement: ProjectionTurnSettlement, publishedAt: string) =>
+    orchestrationEngine
+      .dispatch({
+        type: "thread.turn.settle",
+        commandId: turnSettlementCommandId(settlement.threadId, settlement.turnId),
+        threadId: settlement.threadId,
+        turnId: settlement.turnId,
+        completedAt: settlement.completedAt,
+        createdAt: publishedAt,
+      })
+      .pipe(
+        Effect.andThen(
+          settlementRepository.markPublished({
+            threadId: settlement.threadId,
+            turnId: settlement.turnId,
+            publishedAt,
+          }),
+        ),
+        Effect.as(true),
+        Effect.catchCause((cause) =>
+          Effect.logWarning("failed to publish turn settlement", {
+            threadId: settlement.threadId,
+            turnId: settlement.turnId,
+            cause: Cause.pretty(cause),
+          }).pipe(Effect.as(false)),
+        ),
+      );
 
-  const publishSettlement = (turn: ProjectionTurn, occurredAt: string) =>
-    Effect.gen(function* () {
-      if (turn.turnId === null || turn.state === "running" || turn.state === "pending") {
-        return;
-      }
-      const key = `${turn.threadId}:${turn.turnId}`;
-      if (publishedTurnKeys.has(key)) {
-        return;
-      }
-      yield* orchestrationEngine
-        .dispatch({
-          type: "thread.turn.settle",
-          commandId: turnSettlementCommandId(turn.threadId, turn.turnId),
-          threadId: turn.threadId,
-          turnId: turn.turnId,
-          completedAt: turn.completedAt,
-          createdAt: occurredAt,
-        })
-        .pipe(
-          Effect.tap(() =>
-            Effect.sync(() => {
-              publishedTurnKeys.add(key);
-            }),
-          ),
-          Effect.catchCause((cause) =>
-            Effect.logWarning("failed to publish turn settlement", {
-              threadId: turn.threadId,
-              turnId: turn.turnId,
-              cause: Cause.pretty(cause),
-            }),
-          ),
-        );
-    });
-
-  const publishThreadSettlements = Effect.fn("TurnSettlementReactor.publishThreadSettlements")(
-    function* (threadId: ThreadId, occurredAt: string) {
-      const turns = yield* projectionTurnRepository.listByThreadId({ threadId });
-      yield* Effect.forEach(turns, (turn) => publishSettlement(turn, occurredAt), {
-        concurrency: 1,
+  // Drain the durable outbox in bounded batches. Only rows without a published
+  // marker are read, so already published history costs nothing at startup or
+  // during streaming.
+  const drainUnpublishedSettlements = Effect.fn(
+    "TurnSettlementReactor.drainUnpublishedSettlements",
+  )(function* (input: { readonly threadId?: ThreadId; readonly publishedAt: string }) {
+    while (true) {
+      const pending = yield* settlementRepository.listUnpublished({
+        ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+        limit: SETTLEMENT_BATCH_SIZE,
       });
-    },
-  );
-
-  // A crash between durable closure and publication leaves the settlement
-  // unpublished. Republish every durable settled turn at startup so a
-  // warm-cache client that resumes from `afterSequence` still receives it.
-  const reconcileSettledTurnsAtStartup = Effect.fn(
-    "TurnSettlementReactor.reconcileSettledTurnsAtStartup",
-  )(function* () {
-    const occurredAt = yield* nowIso;
-    const turns = yield* projectionTurnRepository.listSettledTurns();
-    yield* Effect.forEach(turns, (turn) => publishSettlement(turn, occurredAt), {
-      concurrency: 1,
-    });
+      if (pending.length === 0) {
+        return;
+      }
+      let failed = false;
+      for (const settlement of pending) {
+        const published = yield* publishSettlement(settlement, input.publishedAt);
+        if (!published) {
+          // Leave the row unpublished and retry on the next trigger or boot.
+          // Continue with the rest of the batch so one failure cannot block
+          // settlement publication for other turns.
+          failed = true;
+        }
+      }
+      if (failed || pending.length < SETTLEMENT_BATCH_SIZE) {
+        return;
+      }
+    }
   });
 
   const processEvent = Effect.fn("TurnSettlementReactor.processEvent")(function* (
@@ -110,7 +112,7 @@ const make = Effect.gen(function* () {
     if (threadId === null) {
       return;
     }
-    yield* publishThreadSettlements(threadId, event.occurredAt);
+    yield* drainUnpublishedSettlements({ threadId, publishedAt: event.occurredAt });
   });
 
   const processEventSafely = (event: OrchestrationEvent) =>
@@ -126,11 +128,15 @@ const make = Effect.gen(function* () {
 
   const start: TurnSettlementReactorShape["start"] = Effect.fn("start")(function* () {
     // Acquire before startup reconciliation. The hot PubSub has no replay, so a
-    // forked consumer could otherwise miss a closure committed while the scan
-    // runs. Returning from this subscription is the readiness signal.
+    // forked consumer could otherwise miss a closure committed while the
+    // outbox is drained. Returning from this subscription is the readiness
+    // signal.
     const domainEvents = yield* orchestrationEngine.subscribeDomainEvents;
 
-    yield* reconcileSettledTurnsAtStartup().pipe(
+    // Repair closures whose publication was lost to a crash. Only unpublished
+    // outbox rows are read, in bounded batches.
+    const publishedAt = yield* nowIso;
+    yield* drainUnpublishedSettlements({ publishedAt }).pipe(
       Effect.catchCause((cause) =>
         Effect.logError("turn settlement startup reconciliation failed", {
           cause: Cause.pretty(cause),
@@ -151,4 +157,6 @@ const make = Effect.gen(function* () {
   } satisfies TurnSettlementReactorShape;
 });
 
-export const TurnSettlementReactorLive = Layer.effect(TurnSettlementReactor, make);
+export const TurnSettlementReactorLive = Layer.effect(TurnSettlementReactor, make).pipe(
+  Layer.provide(ProjectionTurnSettlementRepositoryLive),
+);

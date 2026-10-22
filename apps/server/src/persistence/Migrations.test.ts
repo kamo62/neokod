@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { findMigrationIdentityProblems, runMigrations } from "./Migrations.ts";
+import { migrationEntries } from "./Migrations.ts";
 import * as NodeSqliteClient from "./NodeSqliteClient.ts";
 
 const withMemoryDb = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
@@ -141,7 +142,10 @@ it.effect("accepts a database that was migrated in two steps and a repeated run"
     Effect.gen(function* () {
       yield* runMigrations({ toMigrationInclusive: 40 });
       const second = yield* runMigrations();
-      assert.deepStrictEqual(second, [[41, "SymphonyProjects"]]);
+      const expected = migrationEntries
+        .filter(([id]) => id > 40)
+        .map(([id, name]) => [id, name] as const);
+      assert.deepStrictEqual(second, expected);
       const third = yield* runMigrations();
       assert.deepStrictEqual(third, []);
     }),
