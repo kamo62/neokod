@@ -1,5 +1,6 @@
 import type {
   AttentionItem,
+  ApprovalRequestAction,
   ApprovalRequestKind,
   EffectiveWorkflowConfig,
   EvidenceBundle,
@@ -38,6 +39,7 @@ import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
+import { approvalRequestKind } from "../../Domain/Approvals.ts";
 import { nowIso } from "../../Domain/Time.ts";
 import { SymphonyPersistenceSqlError } from "../../Persistence/Errors.ts";
 import { SymphonyProjectRepository } from "../../Persistence/Services/SymphonyProjectRepository.ts";
@@ -346,6 +348,15 @@ const RUN_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
  */
 const MERGE_DETECTION_SOURCES: ReadonlyArray<WorkLifecycle> = ["ready_to_merge"];
 
+/**
+ * A closed pull request is an observation, not a terminal state: the host can
+ * reopen it. Closed items are re-checked on a bounded exponential backoff so a
+ * dead PR does not burn host rate limit while a reopened-then-merged PR is
+ * still detected.
+ */
+const CLOSED_PULL_REQUEST_RECHECK_MS = 60_000;
+const CLOSED_PULL_REQUEST_RECHECK_MAX_MS = 60 * 60_000;
+
 const lifecycleForRun = (
   attemptStatus: string,
   workItem: WorkItem | null,
@@ -449,15 +460,17 @@ const approvalToAttentionItem = (request: {
   readonly id: string;
   readonly workItemId: string;
   readonly runAttemptId?: string | undefined;
-  readonly kind: ApprovalRequestKind;
-  readonly action: string;
+  /** Absent on payloads written before the request kind existed. */
+  readonly kind?: ApprovalRequestKind | undefined;
+  readonly action: ApprovalRequestAction;
   readonly command?: string | undefined;
   readonly reason?: string | undefined;
   readonly createdAt: string;
 }): AttentionItem => {
   // A user-input request is a question the agent is blocked on, not a command
   // approval: it is answered with text (`answer`), never approved or rejected.
-  const isQuestion = request.kind === "user_input";
+  const isQuestion =
+    approvalRequestKind({ kind: request.kind, action: request.action }) === "user_input";
   return {
     id: request.id as AttentionItem["id"],
     workItemId: WorkItemId.make(request.workItemId),
@@ -601,6 +614,11 @@ const makeOrchestrator = Effect.gen(function* () {
 
   const stateRef = yield* Ref.make<OrchestratorRuntimeState>(EMPTY_STATE);
   const lastPollByWorkflowRef = yield* Ref.make<ReadonlyMap<string, number>>(new Map());
+  // Per-item re-check schedule for closed pull requests (in-memory cadence only;
+  // the durable truth is the evidence bundle, so a restart simply re-checks).
+  const closedPullRequestRechecksRef = yield* Ref.make<
+    ReadonlyMap<string, { readonly attempts: number; readonly nextCheckAtMs: number }>
+  >(new Map());
   const dispatchScope = yield* Scope.make();
   yield* Effect.addFinalizer(() => Scope.close(dispatchScope, Exit.void));
   const workflowLoader = yield* Effect.serviceOption(WorkflowLoaderService);
@@ -814,23 +832,65 @@ const makeOrchestrator = Effect.gen(function* () {
     return false;
   });
 
+  /**
+   * Record how the latest observation affects the closed-PR re-check schedule.
+   * Closed → schedule the next check on a bounded exponential backoff (the PR
+   * may reopen); anything else (open, merged, unknown) → normal cadence again.
+   */
+  const noteMergeDetectionStatus = (
+    id: WorkItemId,
+    status: PullRequestEvidence["status"],
+  ): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      const key = String(id);
+      if (status !== "closed") {
+        yield* Ref.update(closedPullRequestRechecksRef, (current) => {
+          if (!current.has(key)) {
+            return current;
+          }
+          const next = new Map(current);
+          next.delete(key);
+          return next;
+        });
+        return;
+      }
+      const nowMsValue = yield* Clock.currentTimeMillis;
+      yield* Ref.update(closedPullRequestRechecksRef, (current) => {
+        const attempts = (current.get(key)?.attempts ?? 0) + 1;
+        const delay = Math.min(
+          CLOSED_PULL_REQUEST_RECHECK_MS * 2 ** (attempts - 1),
+          CLOSED_PULL_REQUEST_RECHECK_MAX_MS,
+        );
+        const next = new Map(current);
+        next.set(key, { attempts, nextCheckAtMs: nowMsValue + delay });
+        return next;
+      });
+    });
+
   // Merge detection (B-9): a merge-ready item is parked until the host says
   // the pull request merged. Nothing else looks at the host for it, so this
   // sweep refreshes those items on the workflow's own poll cadence (never from
   // the 5-second scan) and lets `refreshPullRequest` settle the outcome.
-  // Items whose stored PR is already closed are skipped: the lifecycle stays
-  // ready_to_merge for a person to decide, and polling a dead PR forever only
-  // burns host rate limit. Paused workflows are not swept at all.
+  // A closed PR is still re-checked on the bounded backoff recorded by
+  // `noteMergeDetectionStatus`, so a reopened or later-merged PR is detected;
+  // paused workflows are not swept at all.
   const mergedPullRequestSweep = Effect.fn("symphonyOrchestrator.mergedPullRequestSweep")(
     function* (workflowId: WorkflowId) {
       const candidates = yield* workItems
         .listByLifecycle(MERGE_DETECTION_SOURCES, { workflowId: String(workflowId) })
         .pipe(Effect.catch(() => Effect.succeed([] as WorkItem[])));
+      const rechecks = yield* Ref.get(closedPullRequestRechecksRef);
+      const nowMsValue = yield* Clock.currentTimeMillis;
       for (const item of candidates) {
         const evidence = yield* evidenceRepository
           .getByWorkItem(item.id)
           .pipe(Effect.catch(() => Effect.succeed(null)));
-        if (evidence?.pullRequest?.status === "closed") {
+        const scheduled = rechecks.get(String(item.id));
+        if (
+          evidence?.pullRequest?.status === "closed" &&
+          scheduled !== undefined &&
+          nowMsValue < scheduled.nextCheckAtMs
+        ) {
           continue;
         }
         yield* refreshPullRequest(String(item.id)).pipe(Effect.ignore);
@@ -1932,6 +1992,9 @@ const makeOrchestrator = Effect.gen(function* () {
 
       yield* ingestReviewFeedback(id, previousPullRequest, refreshed);
       yield* settlePullRequestOutcome(id, previousPullRequest, refreshed);
+      // Closed is not terminal: keep the re-check schedule so a reopened (and
+      // later merged) PR is detected without polling a dead PR every scan.
+      yield* noteMergeDetectionStatus(id, refreshed.status);
 
       return true;
     });

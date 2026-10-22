@@ -3,6 +3,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Crypto from "effect/Crypto";
+import * as Semaphore from "effect/Semaphore";
 
 import { ApprovalRepository } from "../Persistence/Services/ApprovalRepository.ts";
 import {
@@ -92,11 +93,13 @@ export interface ApprovalServiceShape {
 
   /**
    * Expire the durable record behind a live request id once the runtime's own
-   * wait has timed out (the agent already received its fallback answer). The
-   * live entry is removed first, so a late approve/answer fails instead of
-   * reporting a decision the agent never saw.
+   * wait has timed out (the agent already received its fallback answer).
+   *
+   * Returns true only when this call won the atomic live claim and therefore
+   * expired the request. A request an answer already resolved returns false and
+   * is left untouched, so the row keeps exactly one terminal outcome.
    */
-  readonly expireRequest: (runAttemptId: RunAttemptId, requestId: string) => Effect.Effect<void>;
+  readonly expireRequest: (runAttemptId: RunAttemptId, requestId: string) => Effect.Effect<boolean>;
 }
 
 export class ApprovalService extends Context.Service<ApprovalService, ApprovalServiceShape>()(
@@ -107,6 +110,13 @@ export const makeApprovalService = Effect.gen(function* () {
   const liveRequests = yield* LiveRequests;
   const repository = yield* ApprovalRepository;
   const crypto = yield* Crypto.Crypto;
+
+  // One resolution at a time across the whole service: the live-registry claim
+  // and the durable decision it authorises must not interleave with another
+  // resolve for the same request (an answer next to a timeout, or two clicks).
+  const resolutionMutex = yield* Semaphore.make(1);
+  const withResolution = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    resolutionMutex.withPermits(1)(effect);
 
   const makeId = () =>
     crypto.randomUUIDv4.pipe(
@@ -145,19 +155,23 @@ export const makeApprovalService = Effect.gen(function* () {
     decision: ApprovalDecision,
     reason: string | undefined,
   ): Effect.Effect<void, ApprovalRequestNotFoundError> =>
-    Effect.gen(function* () {
-      const record = yield* repository.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
-      if (record === null || record.state !== "pending" || record.runAttemptId === undefined) {
-        return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
-      }
-      const live = yield* Effect.result(
-        liveRequests.respondToApproval(record.runAttemptId, record.requestId, decision),
-      );
-      if (live._tag === "Failure") {
-        return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
-      }
-      yield* repository.decide(record.id, decision).pipe(Effect.catch(() => Effect.void));
-    });
+    withResolution(
+      Effect.gen(function* () {
+        const record = yield* repository.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
+        if (record === null || record.state !== "pending" || record.runAttemptId === undefined) {
+          return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
+        }
+        const live = yield* Effect.result(
+          liveRequests.respondToApproval(record.runAttemptId, record.requestId, decision),
+        );
+        if (live._tag === "Failure") {
+          // Another resolver (a timeout, run settlement) already claimed the
+          // request: record nothing so the row keeps that single outcome.
+          return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
+        }
+        yield* repository.decide(record.id, decision).pipe(Effect.catch(() => Effect.void));
+      }),
+    );
 
   const approve: ApprovalServiceShape["approve"] = (requestId) =>
     decide(requestId, "approved", undefined);
@@ -166,19 +180,21 @@ export const makeApprovalService = Effect.gen(function* () {
     decide(requestId, "rejected", reason);
 
   const respondToUserInput: ApprovalServiceShape["respondToUserInput"] = (id, text) =>
-    Effect.gen(function* () {
-      const record = yield* repository.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
-      if (record === null || record.state !== "pending" || record.runAttemptId === undefined) {
-        return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
-      }
-      const result = yield* Effect.result(
-        liveRequests.respondToUserInput(record.runAttemptId, record.requestId, text),
-      );
-      if (result._tag === "Failure") {
-        return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
-      }
-      yield* repository.decide(record.id, "approved").pipe(Effect.catch(() => Effect.void));
-    });
+    withResolution(
+      Effect.gen(function* () {
+        const record = yield* repository.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
+        if (record === null || record.state !== "pending" || record.runAttemptId === undefined) {
+          return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
+        }
+        const result = yield* Effect.result(
+          liveRequests.respondToUserInput(record.runAttemptId, record.requestId, text),
+        );
+        if (result._tag === "Failure") {
+          return yield* Effect.fail(new ApprovalRequestNotFoundError(id));
+        }
+        yield* repository.decide(record.id, "approved").pipe(Effect.catch(() => Effect.void));
+      }),
+    );
 
   const listPending: ApprovalServiceShape["listPending"] = (options) =>
     repository.listPending(options).pipe(Effect.catch(() => Effect.succeed([])));
@@ -187,47 +203,77 @@ export const makeApprovalService = Effect.gen(function* () {
     repository.listForRun(runAttemptId).pipe(Effect.catch(() => Effect.succeed([])));
 
   const expire: ApprovalServiceShape["expire"] = (id) =>
-    Effect.gen(function* () {
-      const record = yield* repository.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
-      if (record !== null && record.runAttemptId !== undefined) {
-        yield* liveRequests.settleRequest(
-          record.runAttemptId,
-          record.requestId,
-          "approval wait timed out",
-        );
-      }
-      yield* repository.decide(id, "expired").pipe(Effect.catch(() => Effect.void));
-    });
+    withResolution(
+      Effect.gen(function* () {
+        const record = yield* repository.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
+        if (record === null) {
+          return;
+        }
+        // Claim the live entry when the agent is still waiting. A lost claim
+        // means an answer already resolved the request; leave its row alone.
+        const claimed =
+          record.runAttemptId === undefined
+            ? false
+            : yield* liveRequests.settleRequest(
+                record.runAttemptId,
+                record.requestId,
+                "approval wait timed out",
+              );
+        if (!claimed && record.state !== "pending") {
+          return;
+        }
+        yield* repository.decide(id, "expired").pipe(Effect.catch(() => Effect.void));
+      }),
+    );
 
   const interrupt: ApprovalServiceShape["interrupt"] = (id) =>
-    Effect.gen(function* () {
-      const record = yield* repository.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
-      if (record !== null && record.runAttemptId !== undefined) {
-        yield* liveRequests.settleRequest(
-          record.runAttemptId,
-          record.requestId,
-          "run interrupted; approval unanswered",
-        );
-      }
-      yield* repository.decide(id, "interrupted").pipe(Effect.catch(() => Effect.void));
-    });
+    withResolution(
+      Effect.gen(function* () {
+        const record = yield* repository.getById(id).pipe(Effect.catch(() => Effect.succeed(null)));
+        if (record === null) {
+          return;
+        }
+        const claimed =
+          record.runAttemptId === undefined
+            ? false
+            : yield* liveRequests.settleRequest(
+                record.runAttemptId,
+                record.requestId,
+                "run interrupted; approval unanswered",
+              );
+        if (!claimed && record.state !== "pending") {
+          return;
+        }
+        yield* repository.decide(id, "interrupted").pipe(Effect.catch(() => Effect.void));
+      }),
+    );
 
   const expireRequest: ApprovalServiceShape["expireRequest"] = (runAttemptId, requestId) =>
-    Effect.gen(function* () {
-      // Settle the live entry first: from this point the request cannot be
-      // answered, so a later button press is refused instead of claiming a
-      // decision the agent never received.
-      yield* liveRequests.settleRequest(runAttemptId, requestId, "request wait timed out");
-      const records = yield* repository
-        .listForRun(runAttemptId)
-        .pipe(Effect.catch(() => Effect.succeed([] as ApprovalRequest[])));
-      const record = records.find(
-        (candidate) => candidate.requestId === requestId && candidate.state === "pending",
-      );
-      if (record !== undefined) {
-        yield* repository.decide(record.id, "expired").pipe(Effect.catch(() => Effect.void));
-      }
-    });
+    withResolution(
+      Effect.gen(function* () {
+        // The runtime's own wait elapsed. Winning the claim is what authorises
+        // persisting `expired`; losing it means an answer (or another settle)
+        // already owns this request, so nothing is written.
+        const claimed = yield* liveRequests.settleRequest(
+          runAttemptId,
+          requestId,
+          "request wait timed out",
+        );
+        if (!claimed) {
+          return false;
+        }
+        const records = yield* repository
+          .listForRun(runAttemptId)
+          .pipe(Effect.catch(() => Effect.succeed([] as ApprovalRequest[])));
+        const record = records.find(
+          (candidate) => candidate.requestId === requestId && candidate.state === "pending",
+        );
+        if (record !== undefined) {
+          yield* repository.decide(record.id, "expired").pipe(Effect.catch(() => Effect.void));
+        }
+        return true;
+      }),
+    );
 
   return {
     recordPending,

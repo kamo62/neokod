@@ -147,6 +147,72 @@ describe("LiveRequests", () => {
     }),
   );
 
+  it.effect("an answer that wins the claim makes a later timeout a no-op", () =>
+    Effect.gen(function* () {
+      const service = yield* makeLiveRequests;
+      yield* service.registerApproval({
+        requestId: "req-cas-answer",
+        workItemId,
+        runAttemptId,
+        action: "command_execution",
+        prompt: "A",
+      });
+      const answered = yield* Effect.result(
+        service.respondToApproval(runAttemptId, "req-cas-answer", "approved"),
+      );
+      expect(answered._tag).toBe("Success");
+      // The timeout arrives late: it must lose the claim, not settle the request
+      // or authorise a second outcome.
+      expect(yield* service.settleRequest(runAttemptId, "req-cas-answer", "timed out")).toBe(false);
+      expect(yield* service.listPending(runAttemptId)).toHaveLength(0);
+    }),
+  );
+
+  it.effect("a timeout that wins the claim makes a later answer a no-op", () =>
+    Effect.gen(function* () {
+      const service = yield* makeLiveRequests;
+      const deferred = yield* service.registerApproval({
+        requestId: "req-cas-timeout",
+        workItemId,
+        runAttemptId,
+        action: "command_execution",
+        prompt: "A",
+      });
+      expect(yield* service.settleRequest(runAttemptId, "req-cas-timeout", "timed out")).toBe(true);
+      const answered = yield* Effect.result(
+        service.respondToApproval(runAttemptId, "req-cas-timeout", "approved"),
+      );
+      expect(answered._tag).toBe("Failure");
+      expect(yield* Deferred.isDone(deferred)).toBe(true);
+    }),
+  );
+
+  it.effect("racing a timeout against an answer yields exactly one winner", () =>
+    Effect.gen(function* () {
+      const service = yield* makeLiveRequests;
+      const deferred = yield* service.registerApproval({
+        requestId: "req-race-timeout",
+        workItemId,
+        runAttemptId,
+        action: "command_execution",
+        prompt: "A",
+      });
+      const [settled, answered] = yield* Effect.all(
+        [
+          service.settleRequest(runAttemptId, "req-race-timeout", "request wait timed out"),
+          Effect.result(service.respondToApproval(runAttemptId, "req-race-timeout", "approved")),
+        ],
+        { concurrency: "unbounded" },
+      );
+
+      // Exactly one of the two claimed the request.
+      expect(settled).toBe(answered._tag === "Failure");
+      // And the agent observed that same outcome.
+      const observed = yield* Effect.result(Deferred.await(deferred));
+      expect(observed._tag).toBe(answered._tag === "Success" ? "Success" : "Failure");
+    }),
+  );
+
   it.effect("keeps the same request id in two runs apart", () =>
     Effect.gen(function* () {
       const service = yield* makeLiveRequests;

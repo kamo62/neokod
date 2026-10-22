@@ -16,8 +16,14 @@ export function attentionMode(item: Pick<AttentionItem, "availableActions">): At
   return "info";
 }
 
+/**
+ * Question vs approval for a durable request. The request kind is explicit on
+ * current payloads; payloads written before it existed only carry the action,
+ * so it is derived rather than treated as unknown.
+ */
 export function approvalRequestMode(
-  request: Pick<ApprovalRequest, "kind">,
+  request: Pick<ApprovalRequest, "kind" | "action">,
 ): "approval" | "question" {
-  return request.kind === "user_input" ? "question" : "approval";
+  const kind = request.kind ?? (request.action === "user_input" ? "user_input" : "approval");
+  return kind === "user_input" ? "question" : "approval";
 }

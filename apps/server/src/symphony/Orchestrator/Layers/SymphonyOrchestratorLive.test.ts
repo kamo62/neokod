@@ -342,10 +342,13 @@ const mockApprovalsLayer = Layer.effect(
               (candidate) => candidate.requestId === requestId && candidate.state === "pending",
             );
             return record === undefined
-              ? Effect.void
-              : repository.decide(record.id, "expired").pipe(Effect.catch(() => Effect.void));
+              ? Effect.succeed(false)
+              : repository.decide(record.id, "expired").pipe(
+                  Effect.catch(() => Effect.void),
+                  Effect.as(true),
+                );
           }),
-          Effect.catch(() => Effect.void),
+          Effect.catch(() => Effect.succeed(false)),
         ),
     } satisfies ApprovalService["Service"];
   }),
@@ -1523,6 +1526,9 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* orchestrator.dispatchWorkItem(workItemId);
       expect(dispatchedIds).not.toContain("cancel-guard-1");
       yield* TestClock.adjust("10 seconds");
+      // Let the scan this advance triggered finish before the next test: a late
+      // tick would reconcile the explicit-dispatch claim seeded there.
+      yield* settle;
       expect(dispatchedIds).not.toContain("cancel-guard-1");
     }),
   );
@@ -3350,46 +3356,118 @@ layer("SymphonyOrchestrator Observe", (it) => {
     }),
   );
 
-  it.effect("the sweep stops polling a pull request that is already closed", () =>
+  it.effect("the sweep backs off after observing a closed pull request", () =>
     Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
       const workItems = yield* WorkItemRepository;
-      const { workItemId } = yield* seedMergeDetectionItem({
+      const runEvents = yield* RunEventRepository;
+      const branch = "symphony/issue-merge-closed-sweep-1";
+      const { workItemId, runAttemptId } = yield* seedMergeDetectionItem({
         workItemId: "merge-closed-sweep-1",
         workflowId: "wf-merge-closed-sweep-1",
         repositoryPath: "/repo/merge-closed-sweep-1",
         workspaceKey: "issue-merge-closed-sweep-1",
         baseBranch: "main",
-        storedPullRequest: {
-          number: 48,
-          title: "t",
-          branch: "symphony/issue-merge-closed-sweep-1",
-          baseBranch: "main",
-          status: "closed",
-        },
+        storedPullRequest: openPullRequest(48, branch),
       });
-      // If the sweep called the host it would see "merged" and complete the
-      // item; a closed PR must stop being polled and stay for a person.
       yield* setPullRequestRefresh({
         number: 48,
         title: "t",
-        branch: "symphony/issue-merge-closed-sweep-1",
+        branch,
+        baseBranch: "main",
+        status: "closed",
+      });
+      const refreshCount = () =>
+        Effect.sync(
+          () => pullRequestRefreshInputs.filter((entry) => entry.branch === branch).length,
+        );
+      const closedEvents = () =>
+        runEvents
+          .listForAttempt(runAttemptId)
+          .pipe(
+            Effect.map(
+              (events) =>
+                events.filter((event) => event.eventType === "pull_request_closed_unmerged").length,
+            ),
+          );
+
+      // First observation: closed is recorded once and the item stays parked.
+      expect(yield* orchestrator.refreshPullRequest("merge-closed-sweep-1")).toBe(true);
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("ready_to_merge");
+      expect(yield* closedEvents()).toBe(1);
+      const baseline = yield* refreshCount();
+
+      // Inside the backoff window a scheduler scan must not hit the host again.
+      yield* TestClock.adjust("5 seconds");
+      yield* settle;
+      expect(yield* refreshCount()).toBe(baseline);
+      expect(yield* closedEvents()).toBe(1);
+
+      // Once the backoff elapses the sweep re-checks it (still closed here, so
+      // the observation is not duplicated).
+      yield* TestClock.adjust("61 seconds");
+      yield* settle;
+      expect(yield* refreshCount()).toBeGreaterThan(baseline);
+      expect(yield* closedEvents()).toBe(1);
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("ready_to_merge");
+    }),
+  );
+
+  it.effect("a closed pull request that reopens and is then merged is detected", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const branch = "symphony/issue-merge-reopen-1";
+      const { workItemId } = yield* seedMergeDetectionItem({
+        workItemId: "merge-reopen-1",
+        workflowId: "wf-merge-reopen-1",
+        repositoryPath: "/repo/merge-reopen-1",
+        workspaceKey: "issue-merge-reopen-1",
+        baseBranch: "main",
+        storedPullRequest: openPullRequest(49, branch),
+      });
+      const refreshCount = () =>
+        Effect.sync(
+          () => pullRequestRefreshInputs.filter((entry) => entry.branch === branch).length,
+        );
+
+      yield* setPullRequestRefresh({
+        number: 49,
+        title: "t",
+        branch,
+        baseBranch: "main",
+        status: "closed",
+      });
+      expect(yield* orchestrator.refreshPullRequest("merge-reopen-1")).toBe(true);
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("ready_to_merge");
+      const baseline = yield* refreshCount();
+
+      // The host reopens the PR. Closed was only an observation, so the backoff
+      // expires and the sweep sees the reopen; normal cadence resumes.
+      yield* setPullRequestRefresh({
+        number: 49,
+        title: "t",
+        branch,
+        baseBranch: "main",
+        status: "open",
+      });
+      yield* TestClock.adjust("61 seconds");
+      yield* settle;
+      expect(yield* refreshCount()).toBeGreaterThan(baseline);
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("ready_to_merge");
+
+      // The next scan (normal 5 s cadence, no closed backoff left) detects the
+      // merge and closes the item.
+      yield* setPullRequestRefresh({
+        number: 49,
+        title: "t",
+        branch,
         baseBranch: "main",
         status: "merged",
       });
-      const branch = "symphony/issue-merge-closed-sweep-1";
-      const refreshesBefore = pullRequestRefreshInputs.filter(
-        (entry) => entry.branch === branch,
-      ).length;
-
-      for (let tick = 0; tick < 3; tick += 1) {
-        yield* TestClock.adjust("5 seconds");
-        yield* settle;
-      }
-
-      expect(pullRequestRefreshInputs.filter((entry) => entry.branch === branch)).toHaveLength(
-        refreshesBefore,
-      );
-      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("ready_to_merge");
+      yield* TestClock.adjust("5 seconds");
+      yield* settle;
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("completed");
     }),
   );
 

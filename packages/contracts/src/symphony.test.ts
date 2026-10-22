@@ -1,9 +1,10 @@
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { WorkItemSchema } from "./symphony.ts";
+import { ApprovalRequestSchema, WorkItemSchema } from "./symphony.ts";
 
 const decodeWorkItem = Schema.decodeUnknownSync(WorkItemSchema);
+const decodeApprovalRequest = Schema.decodeUnknownSync(ApprovalRequestSchema);
 
 const workItem = {
   id: "work-item-1",
@@ -44,5 +45,50 @@ describe("WorkItemSchema process identity", () => {
     ["unsupported group signalling", { ownerPid: 42, ownerPgid: null }],
   ])("accepts %s group signalling metadata", (_name, identity) => {
     expect(() => decodeWorkItem({ ...workItem, ...identity })).not.toThrow();
+  });
+});
+
+const approvalRequest = {
+  id: "sym-1",
+  requestId: "req-1",
+  workItemId: "work-item-1",
+  action: "command_execution",
+  scope: "once",
+  state: "pending",
+  affectedFiles: [],
+  createdAt: "2026-08-08T10:00:00.000Z",
+  decidedAt: null,
+} as const;
+
+describe("ApprovalRequestSchema request kind", () => {
+  it("decodes a payload written before the request kind existed", () => {
+    // Pre-kind payloads only carry the action. They are evidence, so they must
+    // decode rather than be rejected; the consumer derives the kind.
+    const decoded = decodeApprovalRequest(approvalRequest);
+    expect(decoded.kind).toBeUndefined();
+    expect(decoded.action).toBe("command_execution");
+  });
+
+  it("decodes a pre-kind user-input payload", () => {
+    const decoded = decodeApprovalRequest({ ...approvalRequest, action: "user_input" });
+    expect(decoded.kind).toBeUndefined();
+    expect(decoded.action).toBe("user_input");
+  });
+
+  it("keeps an explicit request kind", () => {
+    expect(decodeApprovalRequest({ ...approvalRequest, kind: "user_input" }).kind).toBe(
+      "user_input",
+    );
+  });
+
+  it("accepts an interrupted decision", () => {
+    expect(
+      decodeApprovalRequest({
+        ...approvalRequest,
+        kind: "approval",
+        state: "interrupted",
+        decision: "interrupted",
+      }).decision,
+    ).toBe("interrupted");
   });
 });

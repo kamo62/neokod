@@ -197,6 +197,89 @@ layer("ApprovalService durable ids", (it) => {
     }),
   );
 
+  it.effect("a timeout after an answer must not overwrite the answer", () =>
+    Effect.gen(function* () {
+      yield* seedWorkItem("wi-late-timeout");
+      const service = yield* ApprovalService;
+      const repo = yield* ApprovalRepository;
+      const runAttemptId = RunAttemptId.make("run-late-timeout");
+      const { deferred, record } = yield* makeRequest(
+        runAttemptId,
+        WorkItemId.make("wi-late-timeout"),
+        "0",
+      );
+
+      yield* service.approve(record.id);
+      expect(yield* Deferred.await(deferred)).toBe("approved");
+
+      // The runtime's wait elapsed after the answer already won. Arriving late
+      // must not claim the request or replace the recorded outcome.
+      expect(yield* service.expireRequest(runAttemptId, "0")).toBe(false);
+      expect((yield* repo.getById(record.id))?.state).toBe("approved");
+    }),
+  );
+
+  it.effect("an answer after a timeout is refused and changes nothing", () =>
+    Effect.gen(function* () {
+      yield* seedWorkItem("wi-late-answer");
+      const service = yield* ApprovalService;
+      const repo = yield* ApprovalRepository;
+      const runAttemptId = RunAttemptId.make("run-late-answer");
+      const { deferred, record } = yield* makeRequest(
+        runAttemptId,
+        WorkItemId.make("wi-late-answer"),
+        "0",
+      );
+
+      expect(yield* service.expireRequest(runAttemptId, "0")).toBe(true);
+      expect((yield* repo.getById(record.id))?.state).toBe("expired");
+
+      const late = yield* Effect.result(service.approve(record.id));
+      expect(late._tag).toBe("Failure");
+      expect((yield* repo.getById(record.id))?.state).toBe("expired");
+      expect(yield* Deferred.isDone(deferred)).toBe(true);
+    }),
+  );
+
+  it.effect("a timeout racing an answer records exactly one terminal outcome", () =>
+    Effect.gen(function* () {
+      yield* seedWorkItem("wi-race");
+      const service = yield* ApprovalService;
+      const repo = yield* ApprovalRepository;
+      const runAttemptId = RunAttemptId.make("run-race");
+      const { deferred, record } = yield* makeRequest(
+        runAttemptId,
+        WorkItemId.make("wi-race"),
+        "0",
+      );
+
+      // The runtime's wait elapses while the operator answers.
+      const [expired, approved] = yield* Effect.all(
+        [service.expireRequest(runAttemptId, "0"), Effect.result(service.approve(record.id))],
+        { concurrency: "unbounded" },
+      );
+
+      const row = yield* repo.getById(record.id);
+      const observed = yield* Effect.result(Deferred.await(deferred));
+      const answerWon = approved._tag === "Success";
+
+      // Exactly one resolver won; the durable row agrees with the answer the
+      // agent actually observed, and nothing is left pending.
+      expect(row?.state).not.toBe("pending");
+      expect(expired).toBe(!answerWon);
+      if (answerWon) {
+        expect(row?.state).toBe("approved");
+        expect(observed._tag).toBe("Success");
+        if (observed._tag === "Success") {
+          expect(observed.success).toBe("approved");
+        }
+      } else {
+        expect(row?.state).toBe("expired");
+        expect(observed._tag).toBe("Failure");
+      }
+    }),
+  );
+
   it.effect("a runtime wait timeout expires the request so a late answer is refused", () =>
     Effect.scoped(
       Effect.gen(function* () {

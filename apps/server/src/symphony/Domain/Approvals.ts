@@ -1,4 +1,8 @@
-import type { ApprovalRequestAction, ApprovalRequestKind } from "@neokod/contracts";
+import type {
+  ApprovalRequest,
+  ApprovalRequestAction,
+  ApprovalRequestKind,
+} from "@neokod/contracts";
 import { ApprovalActionSchema } from "@neokod/contracts";
 
 /**
@@ -33,3 +37,12 @@ export const normaliseApprovalRequestAction = (raw: string): ApprovalRequestActi
 /** Questions are answered; everything else is a gated action. */
 export const approvalRequestKindForAction = (action: ApprovalRequestAction): ApprovalRequestKind =>
   action === "user_input" ? "user_input" : "approval";
+
+/**
+ * Effective request kind. Payloads written before the explicit `kind` field
+ * existed only carry the action, so it is derived instead of rejected
+ * (state-and-evidence: known evidence must not become an error).
+ */
+export const approvalRequestKind = (
+  request: Pick<ApprovalRequest, "kind" | "action">,
+): ApprovalRequestKind => request.kind ?? approvalRequestKindForAction(request.action);

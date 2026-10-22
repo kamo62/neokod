@@ -22,10 +22,16 @@ describe("attentionMode", () => {
 
 describe("approvalRequestMode", () => {
   it("treats a user-input request as a question", () => {
-    expect(approvalRequestMode({ kind: "user_input" })).toBe("question");
+    expect(approvalRequestMode({ kind: "user_input", action: "user_input" })).toBe("question");
   });
 
   it("treats a command approval as an approval", () => {
-    expect(approvalRequestMode({ kind: "approval" })).toBe("approval");
+    expect(approvalRequestMode({ kind: "approval", action: "command_execution" })).toBe("approval");
+  });
+
+  it("derives the mode when a pre-kind payload has no kind", () => {
+    expect(approvalRequestMode({ action: "user_input" })).toBe("question");
+    expect(approvalRequestMode({ action: "command_execution" })).toBe("approval");
+    expect(approvalRequestMode({ action: "unknown" })).toBe("approval");
   });
 });

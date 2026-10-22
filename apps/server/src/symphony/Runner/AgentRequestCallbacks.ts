@@ -34,7 +34,8 @@ export const approvalServiceRequestCallbacks = (
         Effect.catch(() => Effect.void),
       ),
   requestTimedOut: (input) =>
-    approvals
-      .expireRequest(input.runAttemptId, input.requestId)
-      .pipe(Effect.catch(() => Effect.void)),
+    approvals.expireRequest(input.runAttemptId, input.requestId).pipe(
+      Effect.asVoid,
+      Effect.catch(() => Effect.void),
+    ),
 });

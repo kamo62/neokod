@@ -607,8 +607,12 @@ export const ApprovalRequestSchema = Schema.Struct({
   requestId: TrimmedNonEmptyString,
   workItemId: WorkItemId,
   runAttemptId: Schema.optional(RunAttemptId),
-  /** Whether this request is a gated action or an agent question. */
-  kind: ApprovalRequestKindSchema,
+  /**
+   * Whether this request is a gated action or an agent question. Optional so
+   * payloads written before the field existed still decode: consumers derive it
+   * from `action` when it is absent instead of rejecting known evidence.
+   */
+  kind: Schema.optional(ApprovalRequestKindSchema),
   /** Normalised request action; `unknown` when the provider kind is not mapped. */
   action: ApprovalRequestActionSchema,
   /** The provider's own kind (`commandExecution`, `fileChange`) when it differs. */
