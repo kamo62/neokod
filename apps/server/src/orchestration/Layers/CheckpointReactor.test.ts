@@ -9,6 +9,7 @@ import {
   ProviderRuntimeEvent,
   ProviderSession,
   ProviderInstanceId,
+  TextGenerationError,
   VcsProcessExitError,
 } from "@neokod/contracts";
 import {
@@ -26,6 +27,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
+import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -38,6 +40,7 @@ import * as VcsProcess from "../../vcs/VcsProcess.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
 import { CheckpointReactorLive } from "./CheckpointReactor.ts";
+import { ProviderCommandReactorLive } from "./ProviderCommandReactor.ts";
 import { WorktreeRemovalLeaseLive } from "../../git/WorktreeRemovalLease.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
@@ -46,11 +49,13 @@ import { RuntimeReceiptBusLive } from "./RuntimeReceiptBus.ts";
 import { OrchestrationEventStoreLive } from "../../persistence/Layers/OrchestrationEventStore.ts";
 import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Layers/OrchestrationCommandReceipts.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
+import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import {
   OrchestrationEngineService,
   type OrchestrationEngineShape,
 } from "../Services/OrchestrationEngine.ts";
 import { CheckpointReactor } from "../Services/CheckpointReactor.ts";
+import { ProviderCommandReactor } from "../Services/ProviderCommandReactor.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import {
   ProviderService,
@@ -58,6 +63,10 @@ import {
 } from "../../provider/Services/ProviderService.ts";
 import { RECOVERY_REFS_PREFIX, checkpointRefForThreadTurn } from "../../checkpointing/Utils.ts";
 import { ServerConfig } from "../../config.ts";
+import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
+import { makeProviderRegistryLayer } from "../../provider/testUtils/providerRegistryMock.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
+import { TextGeneration } from "../../textGeneration/TextGeneration.ts";
 import * as WorkspaceEntries from "../../workspace/WorkspaceEntries.ts";
 import * as WorkspacePaths from "../../workspace/WorkspacePaths.ts";
 
@@ -85,6 +94,10 @@ function createProviderServiceHarness(
   extraSessions: ReadonlyArray<ProviderSession> = [],
   listSessionsFailure = false,
   sessionActiveTurnId?: string,
+  overrides?: {
+    readonly startSession?: ProviderServiceShape["startSession"];
+    readonly sendTurn?: ProviderServiceShape["sendTurn"];
+  },
 ) {
   const now = "2026-01-01T00:00:00.000Z";
   const runtimeEventPubSub = Effect.runSync(PubSub.unbounded<ProviderRuntimeEvent>());
@@ -115,8 +128,8 @@ function createProviderServiceHarness(
       ? Effect.die(new Error("provider session list unavailable"))
       : Effect.succeed([...baseSessions, ...extraSessions]);
   const service: ProviderServiceShape = {
-    startSession: () => unsupported(),
-    sendTurn: () => unsupported(),
+    startSession: overrides?.startSession ?? (() => unsupported()),
+    sendTurn: overrides?.sendTurn ?? (() => unsupported()),
     interruptTurn: () => unsupported(),
     respondToRequest: () => unsupported(),
     respondToUserInput: () => unsupported(),
@@ -164,17 +177,18 @@ type ThreadStateSummary = {
   activities: ReadonlyArray<ThreadActivitySummary>;
 };
 
-async function waitForThread(
+async function waitForThreadById(
   readModel: () => Promise<{
     readonly threads: ReadonlyArray<ThreadStateSummary & { readonly id: ThreadId }>;
   }>,
+  threadId: string,
   predicate: (thread: ThreadStateSummary) => boolean,
   timeoutMs = 15_000,
 ) {
   const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
   const poll = async (): Promise<ThreadStateSummary> => {
     const snapshot = await readModel();
-    const thread = snapshot.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    const thread = snapshot.threads.find((entry) => entry.id === ThreadId.make(threadId));
     if (thread && predicate(thread)) {
       return thread;
     }
@@ -185,6 +199,16 @@ async function waitForThread(
     return poll();
   };
   return poll();
+}
+
+async function waitForThread(
+  readModel: () => Promise<{
+    readonly threads: ReadonlyArray<ThreadStateSummary & { readonly id: ThreadId }>;
+  }>,
+  predicate: (thread: ThreadStateSummary) => boolean,
+  timeoutMs = 15_000,
+) {
+  return waitForThreadById(readModel, "thread-1", predicate, timeoutMs);
 }
 
 async function waitForEvent(
@@ -353,13 +377,7 @@ async function revertToTurnOne(
 }
 
 describe("CheckpointReactor", () => {
-  let runtime: ManagedRuntime.ManagedRuntime<
-    | OrchestrationEngineService
-    | CheckpointReactor
-    | CheckpointStore.CheckpointStore
-    | ProjectionSnapshotQuery,
-    unknown
-  > | null = null;
+  let runtime: { readonly dispose: () => Promise<unknown> } | null = null;
   let scope: Scope.Closeable | null = null;
   const tempDirs: string[] = [];
 
@@ -409,6 +427,16 @@ describe("CheckpointReactor", () => {
       readonly release: Promise<void>;
     };
     readonly repositoryCwd?: string;
+    readonly providerCommandReactor?: boolean;
+    readonly providerOverrides?: {
+      readonly startSession?: ProviderServiceShape["startSession"];
+      readonly sendTurn?: ProviderServiceShape["sendTurn"];
+    };
+    readonly threadDetailGate?: {
+      readonly threadId: string;
+      readonly markStarted: () => void;
+      readonly release: Promise<void>;
+    };
   }) {
     const cwd = options?.repositoryCwd ?? createGitRepository();
     if (options?.repositoryCwd === undefined) {
@@ -442,6 +470,7 @@ describe("CheckpointReactor", () => {
       extraSessions,
       options?.listSessionsFailure ?? false,
       options?.ownSessionActiveTurnId,
+      options?.providerOverrides,
     );
     const orchestrationLayer = OrchestrationEngineLive.pipe(
       Layer.provide(OrchestrationProjectionSnapshotQueryLive),
@@ -544,7 +573,65 @@ describe("CheckpointReactor", () => {
         ).pipe(Layer.provide(vcsProcessBaseLayer))
       : vcsProcessBaseLayer;
 
-    const liveLayer = CheckpointReactorLive.pipe(
+    const gatedProjectionSnapshotLayer =
+      options?.threadDetailGate === undefined
+        ? projectionSnapshotLayer
+        : Layer.effect(
+            ProjectionSnapshotQuery,
+            Effect.map(ProjectionSnapshotQuery, (base) =>
+              ProjectionSnapshotQuery.of({
+                ...base,
+                getThreadDetailById: (threadId) => {
+                  const gate = options.threadDetailGate;
+                  if (gate !== undefined && threadId === ThreadId.make(gate.threadId)) {
+                    return Effect.promise(async () => {
+                      gate.markStarted();
+                      await gate.release;
+                    }).pipe(Effect.andThen(base.getThreadDetailById(threadId)));
+                  }
+                  return base.getThreadDetailById(threadId);
+                },
+              }),
+            ),
+          ).pipe(Layer.provide(projectionSnapshotLayer));
+
+    const providerRegistryLayer = makeProviderRegistryLayer([
+      { instanceId: ProviderInstanceId.make("codex") } as never,
+    ]);
+    const gitWorkflowLayer = Layer.mock(GitWorkflowService)({
+      renameBranch: (input) =>
+        Effect.succeed({
+          branch:
+            typeof input === "object" &&
+            input !== null &&
+            "newBranch" in input &&
+            typeof input.newBranch === "string"
+              ? input.newBranch
+              : "renamed-branch",
+        }),
+    } satisfies Partial<GitWorkflowService["Service"]>);
+    const textGenerationLayer = Layer.mock(TextGeneration, {
+      generateBranchName: () =>
+        Effect.fail(
+          new TextGenerationError({
+            operation: "generateBranchName",
+            detail: "disabled in checkpoint reactor test harness",
+          }),
+        ),
+      generateThreadTitle: () =>
+        Effect.fail(
+          new TextGenerationError({
+            operation: "generateThreadTitle",
+            detail: "disabled in checkpoint reactor test harness",
+          }),
+        ),
+    });
+
+    const providerCore = ProviderCommandReactorLive.pipe(
+      Layer.provideMerge(gatedProjectionSnapshotLayer),
+    );
+    const reactorsLayer = Layer.merge(CheckpointReactorLive, providerCore);
+    const liveLayer = reactorsLayer.pipe(
       Layer.provideMerge(orchestrationLayer),
       Layer.provideMerge(projectionSnapshotLayer),
       Layer.provideMerge(RuntimeReceiptBusLive),
@@ -561,6 +648,10 @@ describe("CheckpointReactor", () => {
       Layer.provideMerge(vcsProcessLayer),
       Layer.provideMerge(ServerConfigLayer),
       Layer.provideMerge(WorktreeRemovalLeaseLive),
+      Layer.provideMerge(providerRegistryLayer),
+      Layer.provideMerge(gitWorkflowLayer),
+      Layer.provideMerge(textGenerationLayer),
+      Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(NodeServices.layer),
     );
     const layer = options?.fixedClock
@@ -572,12 +663,22 @@ describe("CheckpointReactor", () => {
     const engine = await managedRuntime.runPromise(Effect.service(OrchestrationEngineService));
     const snapshotQuery = await managedRuntime.runPromise(Effect.service(ProjectionSnapshotQuery));
     const reactor = await managedRuntime.runPromise(Effect.service(CheckpointReactor));
+    const providerReactor =
+      options?.providerCommandReactor === true
+        ? await managedRuntime.runPromise(Effect.service(ProviderCommandReactor))
+        : null;
     const checkpointStore = await managedRuntime.runPromise(
       Effect.service(CheckpointStore.CheckpointStore),
+    );
+    const projectionTurnRepository = await managedRuntime.runPromise(
+      Effect.service(ProjectionTurnRepository),
     );
     const harnessScope = await Effect.runPromise(Scope.make("sequential"));
     scope = harnessScope;
     await Effect.runPromise(reactor.start().pipe(Scope.provide(harnessScope)));
+    if (providerReactor !== null) {
+      await managedRuntime.runPromise(providerReactor.start().pipe(Scope.provide(harnessScope)));
+    }
     const drain = () => Effect.runPromise(reactor.drain);
     let disposed = false;
     const dispose = async () => {
@@ -653,21 +754,21 @@ describe("CheckpointReactor", () => {
     );
 
     if (options?.seedFilesystemCheckpoints ?? true) {
-      await runtime.runPromise(
+      await managedRuntime.runPromise(
         checkpointStore.captureCheckpoint({
           cwd,
           checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 0),
         }),
       );
       NodeFS.writeFileSync(NodePath.join(cwd, "README.md"), "v2\n", "utf8");
-      await runtime.runPromise(
+      await managedRuntime.runPromise(
         checkpointStore.captureCheckpoint({
           cwd,
           checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
         }),
       );
       NodeFS.writeFileSync(NodePath.join(cwd, "README.md"), "v3\n", "utf8");
-      await runtime.runPromise(
+      await managedRuntime.runPromise(
         checkpointStore.captureCheckpoint({
           cwd,
           checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2),
@@ -682,6 +783,7 @@ describe("CheckpointReactor", () => {
         managedRuntime.runPromise(effect),
       provider,
       checkpointStore,
+      projectionTurnRepository,
       cwd,
       drain,
       dispose,
@@ -1835,6 +1937,207 @@ describe("CheckpointReactor", () => {
     expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
     expect(listRecoveryRefs(harness.cwd)).toEqual([]);
     expect(thread.checkpoints).toHaveLength(2);
+  });
+
+  it("starts an admitted turn in its recorded folder while another folder reverts", async () => {
+    const admissionCwd = createGitRepository();
+    const revertCwd = createGitRepository();
+    tempDirs.push(admissionCwd, revertCwd);
+
+    const providerStart = Promise.withResolvers<void>();
+    const providerStartRelease = Promise.withResolvers<void>();
+    const providerWrite = Promise.withResolvers<string>();
+    const recoveryStarted = Promise.withResolvers<void>();
+    const recoveryRelease = Promise.withResolvers<void>();
+    const sessionCwds = new Map<string, string>();
+
+    const startSession: ProviderServiceShape["startSession"] = (threadId, input) =>
+      Effect.sync(() => {
+        if (input.cwd !== undefined) {
+          sessionCwds.set(String(threadId), input.cwd);
+        }
+        return {
+          provider: input.provider ?? ProviderDriverKind.make("codex"),
+          ...(input.providerInstanceId !== undefined
+            ? { providerInstanceId: input.providerInstanceId }
+            : {}),
+          status: "ready" as const,
+          runtimeMode: input.runtimeMode,
+          ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+          ...(input.modelSelection?.model !== undefined
+            ? { model: input.modelSelection.model }
+            : {}),
+          threadId,
+          resumeCursor: { opaque: "resume-provider-write" },
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        };
+      });
+    const sendTurn: ProviderServiceShape["sendTurn"] = (input) =>
+      Effect.sync(() => {
+        const cwd = sessionCwds.get(String(input.threadId));
+        if (cwd !== undefined) {
+          NodeFS.writeFileSync(NodePath.join(cwd, "provider-write.txt"), "written\n", "utf8");
+          providerWrite.resolve(cwd);
+        }
+        return {
+          threadId: input.threadId,
+          turnId: asTurnId("turn-provider-write"),
+        };
+      });
+
+    const harness = await createHarness({
+      repositoryCwd: admissionCwd,
+      seedFilesystemCheckpoints: false,
+      secondThreadSharingWorktree: true,
+      providerSessionCwd: revertCwd,
+      providerCommandReactor: true,
+      providerOverrides: { startSession, sendTurn },
+      threadDetailGate: {
+        threadId: "thread-2",
+        markStarted: () => providerStart.resolve(),
+        release: providerStartRelease.promise,
+      },
+      recoveryCaptureGate: {
+        markStarted: () => recoveryStarted.resolve(),
+        release: recoveryRelease.promise,
+      },
+    });
+
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: revertCwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 0),
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(revertCwd, "README.md"), "v2\n", "utf8");
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: revertCwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(revertCwd, "README.md"), "v3\n", "utf8");
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: revertCwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2),
+      }),
+    );
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-turn-start-before-destination-revert",
+          messageId: "message-turn-start-before-destination-revert",
+        }),
+      ),
+    );
+    await providerStart.promise;
+
+    // The admission recorded the folder the start was accepted in. Move the
+    // thread to the revert destination before the provider resolves its cwd.
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-move-admitted-thread-to-revert-folder"),
+        threadId: ThreadId.make("thread-2"),
+        worktreePath: revertCwd,
+      }),
+    );
+
+    await revertToTurnOne(harness);
+    await recoveryStarted.promise;
+
+    // Release provider startup after the revert passed its busy check.
+    providerStartRelease.resolve();
+    const writtenCwd = await providerWrite.promise;
+    recoveryRelease.resolve();
+
+    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+
+    expect(writtenCwd).toBe(admissionCwd);
+    expect(NodeFS.readFileSync(NodePath.join(admissionCwd, "provider-write.txt"), "utf8")).toBe(
+      "written\n",
+    );
+    expect(NodeFS.existsSync(NodePath.join(revertCwd, "provider-write.txt"))).toBe(false);
+    expect(NodeFS.readFileSync(NodePath.join(revertCwd, "README.md"), "utf8")).toBe("v2\n");
+    expect(listRecoveryRefs(revertCwd)).toHaveLength(1);
+  });
+
+  it("refuses a legacy pending admission without using the current folder", async () => {
+    const providerStart = Promise.withResolvers<void>();
+    const providerStartRelease = Promise.withResolvers<void>();
+    const startSession = vi.fn<ProviderServiceShape["startSession"]>((threadId, input) =>
+      Effect.succeed({
+        provider: input.provider ?? ProviderDriverKind.make("codex"),
+        ...(input.providerInstanceId !== undefined
+          ? { providerInstanceId: input.providerInstanceId }
+          : {}),
+        status: "ready" as const,
+        runtimeMode: input.runtimeMode,
+        ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+        threadId,
+        resumeCursor: { opaque: "resume-legacy-admission" },
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    const harness = await createHarness({
+      secondThreadSharingWorktree: true,
+      providerCommandReactor: true,
+      providerOverrides: { startSession },
+      threadDetailGate: {
+        threadId: "thread-2",
+        markStarted: () => providerStart.resolve(),
+        release: providerStartRelease.promise,
+      },
+    });
+    const threadId = ThreadId.make("thread-2");
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-turn-start-legacy-admission",
+          messageId: "message-turn-start-legacy-admission",
+        }),
+      ),
+    );
+    await providerStart.promise;
+
+    const pending = await harness.runPromise(
+      harness.projectionTurnRepository.getPendingTurnStartByThreadId({ threadId }),
+    );
+    expect(Option.isSome(pending)).toBe(true);
+    if (Option.isNone(pending)) {
+      return;
+    }
+    await harness.runPromise(
+      harness.projectionTurnRepository.replacePendingTurnStart({
+        ...pending.value,
+        workspacePath: null,
+      }),
+    );
+
+    providerStartRelease.resolve();
+
+    const thread = await waitForThreadById(harness.readModel, "thread-2", (entry) =>
+      entry.activities.some((activity) => activity.kind === "provider.turn.start.failed"),
+    );
+    const failure = thread.activities.find(
+      (activity) => activity.kind === "provider.turn.start.failed",
+    );
+    expect((failure?.payload as { readonly detail?: string } | undefined)?.detail ?? "").toContain(
+      "legacy admission",
+    );
+    expect(startSession).not.toHaveBeenCalled();
+
+    const pendingAfter = await harness.runPromise(
+      harness.projectionTurnRepository.getPendingTurnStartByThreadId({ threadId }),
+    );
+    expect(Option.isNone(pendingAfter)).toBe(true);
   });
 
   it("refuses a revert when an archived thread has an admitted turn", async () => {

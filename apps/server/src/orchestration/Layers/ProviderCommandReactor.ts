@@ -30,6 +30,7 @@ import { makeDrainableWorker } from "@neokod/shared/DrainableWorker";
 
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
 import { increment, orchestrationEventsProcessedTotal } from "../../observability/Metrics.ts";
+import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import { ProviderAdapterRequestError } from "../../provider/Errors.ts";
 import type { ProviderServiceError } from "../../provider/Errors.ts";
 import { TextGeneration } from "../../textGeneration/TextGeneration.ts";
@@ -194,6 +195,7 @@ const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const orchestrationEngine = yield* OrchestrationEngineService;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+  const projectionTurnRepository = yield* ProjectionTurnRepository;
   const providerService = yield* ProviderService;
   const providerRegistry = yield* ProviderRegistry;
   const gitWorkflow = yield* GitWorkflowService;
@@ -362,6 +364,7 @@ const make = Effect.gen(function* () {
     createdAt: string,
     options?: {
       readonly modelSelection?: ModelSelection;
+      readonly workspacePath?: string;
     },
   ) {
     const thread = yield* resolveThread(threadId);
@@ -473,11 +476,14 @@ const make = Effect.gen(function* () {
         });
       }
     }
-    const project = yield* resolveProject(thread.projectId);
-    const effectiveCwd = resolveThreadWorkspaceCwd({
-      thread,
-      projects: project ? [project] : [],
-    });
+    const project =
+      options?.workspacePath === undefined ? yield* resolveProject(thread.projectId) : undefined;
+    const effectiveCwd =
+      options?.workspacePath ??
+      resolveThreadWorkspaceCwd({
+        thread,
+        projects: project ? [project] : [],
+      });
 
     // Spawning into a directory that no longer exists fails with ENOENT, and
     // `isCommandMissingCause` reads any NotFound as a missing provider binary
@@ -620,6 +626,7 @@ const make = Effect.gen(function* () {
     readonly modelSelection?: ModelSelection;
     readonly interactionMode?: "default" | "plan";
     readonly createdAt: string;
+    readonly workspacePath: string;
   }) {
     const thread = yield* resolveThread(input.threadId);
     if (!thread) {
@@ -627,11 +634,10 @@ const make = Effect.gen(function* () {
         new Error(`Thread '${input.threadId}' was not found in read model.`),
       );
     }
-    yield* ensureSessionForThread(
-      input.threadId,
-      input.createdAt,
-      input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {},
-    );
+    yield* ensureSessionForThread(input.threadId, input.createdAt, {
+      ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
+      workspacePath: input.workspacePath,
+    });
     if (input.modelSelection !== undefined) {
       threadModelSelections.set(input.threadId, input.modelSelection);
     }
@@ -821,15 +827,68 @@ const make = Effect.gen(function* () {
       return;
     }
 
+    const pendingStart = yield* projectionTurnRepository
+      .getPendingTurnStartByThreadId({ threadId: event.payload.threadId })
+      .pipe(Effect.option);
+    if (Option.isNone(pendingStart)) {
+      yield* appendProviderFailureActivity({
+        threadId: event.payload.threadId,
+        kind: "provider.turn.start.failed",
+        summary: "Provider turn start failed",
+        detail:
+          "The turn start admission workspace could not be read, so the provider was not started. Retry the turn.",
+        turnId: null,
+        createdAt: event.payload.createdAt,
+        messageId: event.payload.messageId,
+      });
+      return;
+    }
+    if (Option.isNone(pendingStart.value)) {
+      yield* appendProviderFailureActivity({
+        threadId: event.payload.threadId,
+        kind: "provider.turn.start.failed",
+        summary: "Provider turn start failed",
+        detail:
+          "No pending admission was found for this turn start, so the provider was not started. Start the turn again.",
+        turnId: null,
+        createdAt: event.payload.createdAt,
+        messageId: event.payload.messageId,
+      });
+      return;
+    }
+    const pendingAdmission = pendingStart.value.value;
+    if (pendingAdmission.messageId !== event.payload.messageId) {
+      yield* appendProviderFailureActivity({
+        threadId: event.payload.threadId,
+        kind: "provider.turn.start.failed",
+        summary: "Provider turn start failed",
+        detail:
+          "The pending admission does not belong to this turn start, so the provider was not started. Start the turn again.",
+        turnId: null,
+        createdAt: event.payload.createdAt,
+        messageId: event.payload.messageId,
+      });
+      return;
+    }
+    if (pendingAdmission.workspacePath === null) {
+      yield* appendProviderFailureActivity({
+        threadId: event.payload.threadId,
+        kind: "provider.turn.start.failed",
+        summary: "Provider turn start failed",
+        detail:
+          "This turn start has no recorded admission workspace (legacy admission), so the provider was not started. Start the turn again.",
+        turnId: null,
+        createdAt: event.payload.createdAt,
+        messageId: event.payload.messageId,
+      });
+      return;
+    }
+    const admissionWorkspacePath = pendingAdmission.workspacePath;
+
     const isFirstUserMessageTurn =
       thread.messages.filter((entry) => entry.role === "user").length === 1;
     if (isFirstUserMessageTurn) {
-      const project = yield* resolveProject(thread.projectId);
-      const generationCwd =
-        resolveThreadWorkspaceCwd({
-          thread,
-          projects: project ? [project] : [],
-        }) ?? process.cwd();
+      const generationCwd = admissionWorkspacePath;
       const generationInput = {
         messageText: message.text,
         ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
@@ -839,7 +898,7 @@ const make = Effect.gen(function* () {
       yield* maybeGenerateAndRenameWorktreeBranchForFirstTurn({
         threadId: event.payload.threadId,
         branch: thread.branch,
-        worktreePath: thread.worktreePath,
+        worktreePath: admissionWorkspacePath,
         ...generationInput,
       }).pipe(Effect.forkScoped);
 
@@ -898,6 +957,7 @@ const make = Effect.gen(function* () {
         : {}),
       interactionMode: event.payload.interactionMode,
       createdAt: event.payload.createdAt,
+      workspacePath: admissionWorkspacePath,
     }).pipe(
       Effect.map(Option.some),
       Effect.catchCause((cause) => handleTurnStartFailure(cause).pipe(Effect.as(Option.none()))),
