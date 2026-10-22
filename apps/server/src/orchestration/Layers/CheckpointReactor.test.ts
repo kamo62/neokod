@@ -22,6 +22,7 @@ import {
   TurnId,
 } from "@neokod/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -162,6 +163,26 @@ function createProviderServiceHarness(
     service,
     rollbackConversation,
     emit,
+  };
+}
+
+function providerSessionForStart(
+  threadId: ThreadId,
+  input: Parameters<ProviderServiceShape["startSession"]>[1],
+): ProviderSession {
+  return {
+    provider: input.provider ?? ProviderDriverKind.make("codex"),
+    ...(input.providerInstanceId !== undefined
+      ? { providerInstanceId: input.providerInstanceId }
+      : {}),
+    status: "ready" as const,
+    runtimeMode: input.runtimeMode,
+    ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+    ...(input.modelSelection?.model !== undefined ? { model: input.modelSelection.model } : {}),
+    threadId,
+    resumeCursor: { opaque: "resume-checkpoint-test" },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
   };
 }
 
@@ -1956,22 +1977,7 @@ describe("CheckpointReactor", () => {
         if (input.cwd !== undefined) {
           sessionCwds.set(String(threadId), input.cwd);
         }
-        return {
-          provider: input.provider ?? ProviderDriverKind.make("codex"),
-          ...(input.providerInstanceId !== undefined
-            ? { providerInstanceId: input.providerInstanceId }
-            : {}),
-          status: "ready" as const,
-          runtimeMode: input.runtimeMode,
-          ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
-          ...(input.modelSelection?.model !== undefined
-            ? { model: input.modelSelection.model }
-            : {}),
-          threadId,
-          resumeCursor: { opaque: "resume-provider-write" },
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-        };
+        return providerSessionForStart(threadId, input);
       });
     const sendTurn: ProviderServiceShape["sendTurn"] = (input) =>
       Effect.sync(() => {
@@ -2064,6 +2070,112 @@ describe("CheckpointReactor", () => {
     expect(NodeFS.existsSync(NodePath.join(revertCwd, "provider-write.txt"))).toBe(false);
     expect(NodeFS.readFileSync(NodePath.join(revertCwd, "README.md"), "utf8")).toBe("v2\n");
     expect(listRecoveryRefs(revertCwd)).toHaveLength(1);
+  });
+
+  it("refuses a second turn start while the first admission is unresolved", async () => {
+    const providerStart = Promise.withResolvers<void>();
+    const providerRelease = Promise.withResolvers<void>();
+    const providerResumed = Promise.withResolvers<void>();
+    const startCwds: string[] = [];
+    const startSession: ProviderServiceShape["startSession"] = (threadId, input) =>
+      Effect.gen(function* () {
+        if (input.cwd !== undefined) {
+          startCwds.push(input.cwd);
+        }
+        providerStart.resolve();
+        yield* Effect.promise(() => providerRelease.promise);
+        providerResumed.resolve();
+        return providerSessionForStart(threadId, input);
+      });
+    const sendTurn: ProviderServiceShape["sendTurn"] = (input) =>
+      Effect.succeed({
+        threadId: input.threadId,
+        turnId: asTurnId("turn-second-admission"),
+      });
+    const harness = await createHarness({
+      secondThreadSharingWorktree: true,
+      providerCommandReactor: true,
+      providerOverrides: { startSession, sendTurn },
+    });
+    const moveTarget = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-second-admission-"),
+    );
+    tempDirs.push(moveTarget);
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-first-unresolved-admission",
+          messageId: "message-first-unresolved-admission",
+        }),
+      ),
+    );
+    await providerStart.promise;
+
+    // The first start has read its recorded workspace and is paused before its
+    // provider session exists. Move the thread without settling that start.
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-move-during-unresolved-admission"),
+        threadId: ThreadId.make("thread-2"),
+        worktreePath: moveTarget,
+      }),
+    );
+
+    const secondOutcome = await harness.runPromise(
+      Effect.exit(
+        harness.engine.dispatch(
+          threadTurnStartCommand({
+            threadId: "thread-2",
+            commandId: "cmd-second-unresolved-admission",
+            messageId: "message-second-unresolved-admission",
+          }),
+        ),
+      ),
+    );
+    expect(Exit.isFailure(secondOutcome)).toBe(true);
+    if (Exit.isFailure(secondOutcome)) {
+      const failure = Cause.findErrorOption(secondOutcome.cause);
+      expect(Option.isSome(failure)).toBe(true);
+      if (Option.isSome(failure)) {
+        expect(failure.value).toMatchObject({
+          _tag: "OrchestrationCommandInvariantError",
+        });
+        expect((failure.value as { readonly detail?: string }).detail ?? "").toContain(
+          "unresolved turn start",
+        );
+      }
+    }
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+
+    providerRelease.resolve();
+    await providerResumed.promise;
+    expect(startCwds).toEqual([harness.cwd]);
+
+    const events = await harness.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((chunk) => Array.from(chunk)),
+      ),
+    );
+    expect(
+      events.some(
+        (event) =>
+          event.type === "thread.turn-start-requested" &&
+          event.payload.messageId === MessageId.make("message-second-unresolved-admission"),
+      ),
+    ).toBe(false);
   });
 
   it("refuses a legacy pending admission without using the current folder", async () => {
