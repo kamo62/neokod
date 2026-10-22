@@ -19,7 +19,8 @@ import {
   type ThreadId,
 } from "@neokod/contracts";
 import {
-  createTerminalInputQueue,
+  acquireTerminalInputQueue,
+  disposeTerminalInputQueue,
   type TerminalInputQueue,
 } from "@neokod/client-runtime/state/terminal";
 import { getTerminalLabel } from "@neokod/shared/terminalLabels";
@@ -414,12 +415,17 @@ export function TerminalViewport({
 
     const localApi = readLocalApi();
 
-    // Bind this mounted terminal's whole-write queue to the target it was opened
-    // for. A later prop change disposes this queue before a replacement terminal
-    // exists, so queued chunks can never spill into the next thread or session.
-    const inputQueue = createTerminalInputQueue();
+    // Acquire this mounted terminal's whole-write queue from the target-keyed
+    // registry. Switching tabs unmounts the viewport but leaves the server
+    // session running, so pending chunks continue and a remount reuses the
+    // queue. Only a real close disposes it.
+    const inputLease = acquireTerminalInputQueue({
+      environmentId,
+      threadId,
+      terminalId,
+    });
     terminalWriteTargetRef.current = {
-      queue: inputQueue,
+      queue: inputLease.queue,
       environmentId,
       threadId,
       terminalId,
@@ -731,8 +737,8 @@ export function TerminalViewport({
 
     return () => {
       window.clearTimeout(fitTimer);
-      inputQueue.dispose();
-      if (terminalWriteTargetRef.current?.queue === inputQueue) {
+      inputLease.release();
+      if (terminalWriteTargetRef.current?.queue === inputLease.queue) {
         terminalWriteTargetRef.current = null;
       }
       inputDisposable.dispose();
@@ -792,6 +798,7 @@ export function TerminalViewport({
       !hasHandledExitRef.current
     ) {
       hasHandledExitRef.current = true;
+      disposeTerminalInputQueue({ environmentId, threadId, terminalId });
       writeSystemMessage(
         terminal,
         current.status === "closed" ? "Terminal closed" : "Process exited",
@@ -809,7 +816,16 @@ export function TerminalViewport({
       });
     }
     previousSessionRef.current = current;
-  }, [autoFocus, terminalBuffer, terminalError, terminalStatus, terminalVersion]);
+  }, [
+    autoFocus,
+    environmentId,
+    terminalBuffer,
+    terminalError,
+    terminalId,
+    terminalStatus,
+    terminalVersion,
+    threadId,
+  ]);
 
   useEffect(() => {
     if (!autoFocus) return;
@@ -1133,6 +1149,17 @@ export default function ThreadTerminalDrawer({
   const onNewTerminalAction = useCallback(() => {
     onNewTerminal();
   }, [onNewTerminal]);
+  const closeTerminal = useCallback(
+    (terminalId: string) => {
+      disposeTerminalInputQueue({
+        environmentId: threadRef.environmentId,
+        threadId,
+        terminalId,
+      });
+      onCloseTerminal(terminalId);
+    },
+    [onCloseTerminal, threadId, threadRef.environmentId],
+  );
 
   useEffect(() => {
     onHeightChangeRef.current = onHeightChange;
@@ -1348,7 +1375,7 @@ export default function ThreadTerminalDrawer({
                   ? "right-panel-icon-button"
                   : "p-1 text-foreground/90 transition-colors hover:bg-accent",
               )}
-              onClick={() => onCloseTerminal(resolvedActiveTerminalId)}
+              onClick={() => closeTerminal(resolvedActiveTerminalId)}
               label={closeTerminalActionLabel}
             >
               <Trash2 className="size-3.25" />
@@ -1406,7 +1433,7 @@ export default function ThreadTerminalDrawer({
                           {...(terminalLaunchLocation.runtimeEnv
                             ? { runtimeEnv: terminalLaunchLocation.runtimeEnv }
                             : {})}
-                          onSessionExited={() => onCloseTerminal(terminalId)}
+                          onSessionExited={() => closeTerminal(terminalId)}
                           onAddTerminalContext={onAddTerminalContext}
                           focusRequestId={focusRequestId}
                           autoFocus={terminalId === resolvedActiveTerminalId}
@@ -1434,7 +1461,7 @@ export default function ThreadTerminalDrawer({
                   {...(activeTerminalLaunchLocation.runtimeEnv
                     ? { runtimeEnv: activeTerminalLaunchLocation.runtimeEnv }
                     : {})}
-                  onSessionExited={() => onCloseTerminal(resolvedActiveTerminalId)}
+                  onSessionExited={() => closeTerminal(resolvedActiveTerminalId)}
                   onAddTerminalContext={onAddTerminalContext}
                   focusRequestId={focusRequestId}
                   autoFocus
@@ -1481,7 +1508,7 @@ export default function ThreadTerminalDrawer({
                   </TerminalActionButton>
                   <TerminalActionButton
                     className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
-                    onClick={() => onCloseTerminal(resolvedActiveTerminalId)}
+                    onClick={() => closeTerminal(resolvedActiveTerminalId)}
                     label={closeTerminalActionLabel}
                   >
                     <Trash2 className="size-3.25" />
@@ -1551,7 +1578,7 @@ export default function ThreadTerminalDrawer({
                                       <button
                                         type="button"
                                         className="inline-flex size-3.5 items-center justify-center rounded text-xs font-medium leading-none text-muted-foreground opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-100"
-                                        onClick={() => onCloseTerminal(terminalId)}
+                                        onClick={() => closeTerminal(terminalId)}
                                         aria-label={closeTerminalLabel}
                                       />
                                     }

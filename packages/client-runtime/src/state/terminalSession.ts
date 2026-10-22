@@ -275,3 +275,89 @@ export function createTerminalInputQueue(): TerminalInputQueue {
     },
   };
 }
+
+export interface TerminalInputTarget {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+  readonly terminalId: string;
+}
+
+export interface TerminalInputLease {
+  readonly queue: TerminalInputQueue;
+  /**
+   * Stop this viewport holding the target's queue. Pending chunks keep going,
+   * so unmounting a viewport does not truncate an accepted paste.
+   */
+  readonly release: () => void;
+}
+
+interface TerminalInputQueueEntry {
+  queue: TerminalInputQueue;
+  mounts: number;
+  pendingWrites: number;
+}
+
+/**
+ * Queues survive viewport remounts (switching terminal tabs) because they belong
+ * to the live terminal target, not to a React component. An entry is dropped
+ * once no viewport holds it and its last write settles.
+ */
+const terminalInputQueues = new Map<string, TerminalInputQueueEntry>();
+
+function terminalInputTargetKey(target: TerminalInputTarget): string {
+  return JSON.stringify([target.environmentId, target.threadId, target.terminalId]);
+}
+
+function removeIdleTerminalInputQueue(key: string, entry: TerminalInputQueueEntry): void {
+  if (entry.mounts === 0 && entry.pendingWrites === 0 && terminalInputQueues.get(key) === entry) {
+    terminalInputQueues.delete(key);
+  }
+}
+
+function createTerminalInputQueueEntry(key: string): TerminalInputQueueEntry {
+  const rawQueue = createTerminalInputQueue();
+  const entry: TerminalInputQueueEntry = {
+    queue: rawQueue,
+    mounts: 0,
+    pendingWrites: 0,
+  };
+  entry.queue = {
+    write: (data, send) => {
+      entry.pendingWrites += 1;
+      return rawQueue.write(data, send).finally(() => {
+        entry.pendingWrites -= 1;
+        removeIdleTerminalInputQueue(key, entry);
+      });
+    },
+    dispose: () => {
+      rawQueue.dispose();
+      if (terminalInputQueues.get(key) === entry) terminalInputQueues.delete(key);
+    },
+  };
+  return entry;
+}
+
+export function acquireTerminalInputQueue(target: TerminalInputTarget): TerminalInputLease {
+  const key = terminalInputTargetKey(target);
+  let entry = terminalInputQueues.get(key);
+  if (entry === undefined) {
+    entry = createTerminalInputQueueEntry(key);
+    terminalInputQueues.set(key, entry);
+  }
+  entry.mounts += 1;
+  let released = false;
+  return {
+    queue: entry.queue,
+    release: () => {
+      if (released) return;
+      released = true;
+      entry.mounts -= 1;
+      removeIdleTerminalInputQueue(key, entry);
+    },
+  };
+}
+
+/** Close the target's queue: queued chunks are abandoned and a restart starts clean. */
+export function disposeTerminalInputQueue(target: TerminalInputTarget): void {
+  terminalInputQueues.get(terminalInputTargetKey(target))?.queue.dispose();
+}

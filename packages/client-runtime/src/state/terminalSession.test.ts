@@ -8,10 +8,12 @@ import {
 } from "@neokod/contracts";
 
 import {
+  acquireTerminalInputQueue,
   applyTerminalAttachStreamEvent,
   applyTerminalMetadataStreamEvent,
   combineTerminalSessionState,
   createTerminalInputQueue,
+  disposeTerminalInputQueue,
   EMPTY_TERMINAL_BUFFER_STATE,
   selectRunningSubprocessTerminalIds,
   splitTerminalInput,
@@ -373,5 +375,105 @@ describe("terminal input queue", () => {
     const later = await queue.write("ok", send);
     expect(later).toBeUndefined();
     expect(sent).toHaveLength(1);
+  });
+});
+
+describe("terminal input queue registry", () => {
+  const TARGET_A = {
+    environmentId: TARGET.environmentId,
+    threadId: TARGET.threadId,
+    terminalId: TARGET.terminalId,
+  };
+  const TARGET_B = { ...TARGET_A, terminalId: "term-2" };
+
+  function recordingSend() {
+    const sent: Array<string> = [];
+    const acknowledgements: Array<ReturnType<typeof deferred<WriteResult>>> = [];
+    return {
+      sent,
+      acknowledgements,
+      send: (chunk: string) => {
+        sent.push(chunk);
+        const acknowledgement = deferred<WriteResult>();
+        acknowledgements.push(acknowledgement);
+        return acknowledgement.promise;
+      },
+    };
+  }
+
+  it("keeps a pending paste across a viewport remount and orders later input after it", async () => {
+    const recorder = recordingSend();
+    const paste = "x".repeat(70_000);
+    const first = acquireTerminalInputQueue(TARGET_A);
+
+    const pendingWrite = first.queue.write(paste, recorder.send);
+    await waitForSent(recorder.sent, 1);
+
+    // Switch to terminal B: the viewport for A unmounts but its server session keeps running.
+    first.release();
+
+    recorder.acknowledgements[0]?.resolve(SUCCESS);
+    await waitForSent(recorder.sent, 2);
+    expect(recorder.sent[1]).toHaveLength(32_768);
+
+    // Switch back to terminal A while the paste is still pending.
+    const second = acquireTerminalInputQueue(TARGET_A);
+    expect(second.queue).toBe(first.queue);
+    const laterInput = second.queue.write("late", recorder.send);
+
+    recorder.acknowledgements[1]?.resolve(SUCCESS);
+    await waitForSent(recorder.sent, 3);
+    expect(recorder.sent[2]).toHaveLength(4_464);
+
+    recorder.acknowledgements[2]?.resolve(SUCCESS);
+    await waitForSent(recorder.sent, 4);
+    expect(recorder.sent[3]).toBe("late");
+
+    recorder.acknowledgements[3]?.resolve(SUCCESS);
+    expect((await pendingWrite)?._tag).toBe("Success");
+    expect((await laterInput)?._tag).toBe("Success");
+    expect(recorder.sent.slice(0, 3).join("")).toBe(paste);
+    second.release();
+  });
+
+  it("keeps separate queues for separate terminal targets", () => {
+    const first = acquireTerminalInputQueue(TARGET_A);
+    const second = acquireTerminalInputQueue(TARGET_B);
+
+    expect(first.queue).not.toBe(second.queue);
+
+    first.release();
+    second.release();
+  });
+
+  it("drops an idle queue once no viewport holds it", async () => {
+    const first = acquireTerminalInputQueue(TARGET_A);
+    const result = await first.queue.write("ok", async () => SUCCESS);
+    expect(result?._tag).toBe("Success");
+    first.release();
+
+    const second = acquireTerminalInputQueue(TARGET_A);
+    expect(second.queue).not.toBe(first.queue);
+    second.release();
+  });
+
+  it("abandons a pending write on close and starts clean after a restart", async () => {
+    const recorder = recordingSend();
+    const first = acquireTerminalInputQueue(TARGET_A);
+    const pendingWrite = first.queue.write("x".repeat(70_000), recorder.send);
+    await waitForSent(recorder.sent, 1);
+
+    disposeTerminalInputQueue(TARGET_A);
+    recorder.acknowledgements[0]?.resolve(SUCCESS);
+
+    expect(await pendingWrite).toBeUndefined();
+    expect(recorder.sent).toHaveLength(1);
+    first.release();
+
+    const restarted = acquireTerminalInputQueue(TARGET_A);
+    expect(restarted.queue).not.toBe(first.queue);
+    const later = await restarted.queue.write("ok", async () => SUCCESS);
+    expect(later?._tag).toBe("Success");
+    restarted.release();
   });
 });
