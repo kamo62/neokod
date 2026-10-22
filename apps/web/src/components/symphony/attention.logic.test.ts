@@ -21,11 +21,11 @@ describe("attentionMode", () => {
 });
 
 describe("approvalRequestMode", () => {
-  it("recognises the persisted user-input action as a question", () => {
-    expect(approvalRequestMode({ action: "user_input" as never })).toBe("question");
+  it("treats a user-input request as a question", () => {
+    expect(approvalRequestMode({ kind: "user_input" })).toBe("question");
   });
 
   it("treats a command approval as an approval", () => {
-    expect(approvalRequestMode({ action: "command_execution" })).toBe("approval");
+    expect(approvalRequestMode({ kind: "approval" })).toBe("approval");
   });
 });

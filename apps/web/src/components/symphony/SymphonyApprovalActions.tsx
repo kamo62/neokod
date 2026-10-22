@@ -14,6 +14,20 @@ import { Textarea } from "../ui/textarea";
 
 const STALE_REQUEST = "That request is no longer pending. Refresh and check the run.";
 
+/** The RPC code the server returns for a decided/expired request. */
+const REQUEST_NOT_FOUND = "approval_request_not_found";
+
+const failureCode = (cause: unknown): string | null =>
+  typeof cause === "object" &&
+  cause !== null &&
+  "code" in cause &&
+  typeof (cause as { code?: unknown }).code === "string"
+    ? (cause as { code: string }).code
+    : null;
+
+const failureMessage = (cause: unknown): string =>
+  cause instanceof Error && cause.message.trim().length > 0 ? cause.message.trim() : "";
+
 /**
  * Answer a pending agent request from wherever it is visible (the project
  * Attention tab and the run page).
@@ -39,7 +53,10 @@ export function SymphonyApprovalActions({
   const respond = useAtomCommand(symphonyEnvironment.respondToUserInput, { reportFailure: false });
   const [note, setNote] = useState("");
   const [pending, setPending] = useState<"approve" | "reject" | "answer" | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{
+    readonly stale: boolean;
+    readonly detail: string;
+  } | null>(null);
 
   const trimmed = note.trim();
 
@@ -60,7 +77,13 @@ export function SymphonyApprovalActions({
       if (result._tag === "Failure") {
         if (!isAtomCommandInterrupted(result)) {
           const cause = squashAtomCommandFailure(result);
-          setFailure(cause instanceof Error ? cause.message.trim() : "");
+          // Only a decided/expired request is reported as stale; a transport or
+          // "Symphony unavailable" failure says so instead of claiming the
+          // request is gone.
+          setFailure({
+            stale: failureCode(cause) === REQUEST_NOT_FOUND,
+            detail: failureMessage(cause),
+          });
         }
         return;
       }
@@ -136,8 +159,16 @@ export function SymphonyApprovalActions({
       )}
       {failure !== null ? (
         <div className="rounded-md border border-destructive/30 bg-destructive/5 px-2.5 py-2 text-[11px] text-destructive-foreground">
-          <p>{STALE_REQUEST}</p>
-          {failure.length > 0 ? <p className="mt-1 text-muted-foreground">{failure}</p> : null}
+          <p>
+            {failure.stale
+              ? STALE_REQUEST
+              : failure.detail === ""
+                ? "The request could not be sent."
+                : failure.detail}
+          </p>
+          {failure.stale && failure.detail !== "" ? (
+            <p className="mt-1 text-muted-foreground">{failure.detail}</p>
+          ) : null}
         </div>
       ) : null}
     </div>

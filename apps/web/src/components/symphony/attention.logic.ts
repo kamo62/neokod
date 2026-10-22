@@ -17,9 +17,7 @@ export function attentionMode(item: Pick<AttentionItem, "availableActions">): At
 }
 
 export function approvalRequestMode(
-  request: Pick<ApprovalRequest, "action">,
+  request: Pick<ApprovalRequest, "kind">,
 ): "approval" | "question" {
-  // The persisted `user_input` action is outside ApprovalActionSchema: the
-  // server records the agent's raw request kind, so compare it as a string.
-  return String(request.action) === "user_input" ? "question" : "approval";
+  return request.kind === "user_input" ? "question" : "approval";
 }
