@@ -443,6 +443,7 @@ describe("ProviderCommandReactor", () => {
       engine,
       dispatch: (command: Parameters<typeof engine.dispatch>[0]) =>
         managedRuntime.runPromise(engine.dispatch(command)),
+      sleep: (millis: number) => managedRuntime.runPromise(Effect.sleep(millis)),
       readModel: () => Effect.runPromise(snapshotQuery.getSnapshot()),
       projectionTurnRepository,
       settlePendingTurnStart: (threadId = "thread-1") =>
@@ -938,6 +939,45 @@ describe("ProviderCommandReactor", () => {
     });
     expect(harness.refreshStatus.mock.calls[0]?.[0]).toBe(worktreePath);
     NodeFS.rmSync(worktreePath, { recursive: true, force: true });
+  });
+
+  it("does not rename a temporary branch on an ordinary project thread", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    await harness.dispatch({
+      type: "thread.meta.update",
+      commandId: CommandId.make("cmd-ordinary-thread-branch"),
+      threadId: ThreadId.make("thread-1"),
+      branch: "neokod/1234abcd",
+    });
+    harness.generateBranchName.mockImplementation(() =>
+      Effect.succeed({ branch: "feature/generated" }),
+    );
+
+    await harness.dispatch({
+      type: "thread.turn.start",
+      commandId: CommandId.make("cmd-ordinary-thread-first-turn"),
+      threadId: ThreadId.make("thread-1"),
+      message: {
+        messageId: asMessageId("user-message-ordinary-thread"),
+        role: "user",
+        text: "ordinary project thread",
+        attachments: [],
+      },
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      runtimeMode: "approval-required",
+      createdAt: now,
+    });
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    await harness.sleep(100);
+
+    expect(harness.renameBranch).not.toHaveBeenCalled();
+    const readModel = await harness.readModel();
+    const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    expect(thread?.worktreePath).toBeNull();
+    expect(thread?.branch).toBe("neokod/1234abcd");
   });
 
   it("forwards codex model options through session start and turn send", async () => {

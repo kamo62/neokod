@@ -1062,7 +1062,9 @@ const make = Effect.gen(function* () {
       yield* maybeGenerateAndRenameWorktreeBranchForFirstTurn({
         threadId: event.payload.threadId,
         branch: thread.branch,
-        worktreePath: admissionWorkspacePath,
+        // Worktree eligibility comes from the thread metadata. The admitted
+        // workspace only supplies the execution path for a managed worktree.
+        worktreePath: thread.worktreePath === null ? null : admissionWorkspacePath,
         ...generationInput,
       }).pipe(Effect.forkScoped);
 

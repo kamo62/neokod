@@ -2643,6 +2643,39 @@ describe("CheckpointReactor", () => {
     expect(listRecoveryRefs(harness.cwd)).toHaveLength(1);
   });
 
+  it("refuses when an in-workspace core.excludesFile would drop ignored files", async () => {
+    const excludesName = ".repo-excludes";
+    const harness = await createHarness({
+      prepareRepository: (repository) => {
+        const excludesPath = NodePath.join(repository, excludesName);
+        NodeFS.writeFileSync(excludesPath, "", "utf8");
+        runGit(repository, ["add", excludesName]);
+        runGit(repository, ["commit", "-m", "Add in-workspace excludes"]);
+        runGit(repository, ["config", "core.excludesFile", excludesPath]);
+      },
+    });
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, excludesName), "secret.txt\n", "utf8");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "secret.txt"), "keep ignored\n", "utf8");
+
+    await revertToTurnOne(harness);
+    const outcomeEvents = await waitForRevertOutcome(harness.engine);
+    expect(outcomeEvents.some((event) => event.type === "thread.reverted")).toBe(false);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "secret.txt"), "utf8")).toBe(
+      "keep ignored\n",
+    );
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, excludesName), "utf8")).toBe(
+      "secret.txt\n",
+    );
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+  });
+
   it("refuses when a currently ignored file would be lost by the checkpoint's ignore rules", async () => {
     const harness = await createHarness();
     NodeFS.writeFileSync(NodePath.join(harness.cwd, ".gitignore"), "", "utf8");
@@ -3028,7 +3061,7 @@ describe("CheckpointReactor", () => {
       (activity) => activity.kind === "checkpoint.revert.failed",
     );
     const payload = failure?.payload as { readonly detail?: string } | undefined;
-    expect(payload?.detail).toContain(".gitignore");
+    expect(payload?.detail).toContain("ignore rules");
   });
 
   it("does not refuse for a ready session or a running session in another folder", async () => {

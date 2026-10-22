@@ -509,6 +509,34 @@ const make = Effect.gen(function* () {
       }
       const pathArgs = cwdPrefix.length > 0 ? ["--", cwdPrefix] : [];
 
+      const cwdIdentity = yield* readWorkspaceIdentity(input.cwd).pipe(Effect.option);
+      if (Option.isNone(cwdIdentity)) {
+        return refusedEvidence("the workspace identity could not be read");
+      }
+      const excludesConfig = yield* runGitEvidence({
+        operation: "CheckpointReactor.inspectIgnoredRevertRisk.excludesFile",
+        cwd: repoRoot,
+        args: ["config", "--path", "--get", "core.excludesFile"],
+      });
+      if (!excludesConfig.ok) {
+        return refusedEvidence(excludesConfig.detail);
+      }
+      if (excludesConfig.result.exitCode !== 0 && excludesConfig.result.exitCode !== 1) {
+        return refusedEvidence(
+          `git config core.excludesFile exited with ${excludesConfig.result.exitCode}`,
+        );
+      }
+      const configuredExcludesValue =
+        excludesConfig.result.exitCode === 0
+          ? stripTrailingNewline(excludesConfig.result.stdout)
+          : "";
+      const configuredExcludesPath =
+        configuredExcludesValue.length === 0
+          ? null
+          : path.isAbsolute(configuredExcludesValue)
+            ? configuredExcludesValue
+            : path.resolve(repoRoot, configuredExcludesValue);
+
       const ignored = yield* runGitEvidence({
         operation: "CheckpointReactor.inspectIgnoredRevertRisk.ignored",
         cwd: repoRoot,
@@ -579,15 +607,65 @@ const make = Effect.gen(function* () {
       if (currentFiles.result.exitCode !== 0) {
         return refusedEvidence(`git ls-files exited with ${currentFiles.result.exitCode}`);
       }
+
+      const specialIgnorePaths = new Set<string>();
+      if (configuredExcludesPath !== null) {
+        const physicallyInside = yield* isWorkspaceSameOrInsideWithServices(
+          cwdIdentity.value,
+          configuredExcludesPath,
+        ).pipe(Effect.option);
+        if (Option.isNone(physicallyInside)) {
+          return refusedEvidence("the configured core.excludesFile identity could not be read");
+        }
+        const relativeToCwd = path.relative(input.cwd, configuredExcludesPath);
+        const lexicallyInside =
+          relativeToCwd === "" ||
+          (!relativeToCwd.startsWith("..") && !path.isAbsolute(relativeToCwd));
+        if (physicallyInside.value || lexicallyInside) {
+          const relativeToRepo = path.relative(repoRoot, configuredExcludesPath);
+          if (
+            relativeToRepo.length === 0 ||
+            relativeToRepo === ".." ||
+            relativeToRepo.startsWith(`..${path.sep}`) ||
+            path.isAbsolute(relativeToRepo)
+          ) {
+            return refusedEvidence(
+              "the configured core.excludesFile could not be mapped into the restored workspace",
+            );
+          }
+          const excludesRelativePath = relativeToRepo.split(path.sep).join("/");
+          const currentListed = [...currentFiles.result.stdout.split("\0"), ...currentIgnored]
+            .map(trimTrailingSlash)
+            .includes(trimTrailingSlash(excludesRelativePath));
+          const absoluteExcludesPath = path.join(repoRoot, excludesRelativePath);
+          const currentInfo = yield* fileSystem.stat(absoluteExcludesPath).pipe(Effect.option);
+          const currentLink = yield* fileSystem.readLink(absoluteExcludesPath).pipe(Effect.option);
+          const targetListed = targetEntries.some((entry) => entry.path === excludesRelativePath);
+          if (
+            currentListed ||
+            Option.isSome(currentInfo) ||
+            Option.isSome(currentLink) ||
+            targetListed
+          ) {
+            specialIgnorePaths.add(excludesRelativePath);
+          }
+        }
+      }
+      const isRelevantIgnorePath = (entry: string): boolean =>
+        isGitIgnorePath(entry) || specialIgnorePaths.has(trimTrailingSlash(entry));
+
       const currentIgnorePaths = new Set(
         [...currentFiles.result.stdout.split("\0"), ...currentIgnored]
-          .filter((entry) => entry.length > 0 && isGitIgnorePath(entry))
+          .filter((entry) => entry.length > 0 && isRelevantIgnorePath(entry))
           .map(trimTrailingSlash),
       );
+      for (const specialIgnorePath of specialIgnorePaths) {
+        currentIgnorePaths.add(specialIgnorePath);
+      }
 
       const targetIgnoreByPath = new Map(
         targetEntries
-          .filter((entry) => isGitIgnorePath(entry.path))
+          .filter((entry) => isRelevantIgnorePath(entry.path))
           .map((entry) => [entry.path, entry] as const),
       );
 
@@ -1426,10 +1504,10 @@ const make = Effect.gen(function* () {
               const more = count > 5 ? ` and ${count - 5} more` : "";
               const cause =
                 ignoredCheck.reason === "rules"
-                  ? `the .gitignore rules under this folder changed since checkpoint ${turnCount}`
+                  ? `the ignore rules under this folder changed since checkpoint ${turnCount}`
                   : ignoredCheck.reason === "collision"
                     ? `tracked paths under this folder changed since checkpoint ${turnCount} and overlap ignored paths`
-                    : `the .gitignore rules and tracked paths under this folder changed since checkpoint ${turnCount}`;
+                    : `the ignore rules and tracked paths under this folder changed since checkpoint ${turnCount}`;
               detail = `Revert refused: ${count} ignored path${count === 1 ? "" : "s"} would be lost because ${cause}. At risk: ${shown}${more}. Nothing was changed.`;
             }
             yield* failRevert(detail);
