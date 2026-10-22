@@ -166,6 +166,8 @@ describe("ProviderCommandReactor", () => {
     readonly threadModelSelection?: ModelSelection;
     readonly sessionModelSwitch?: "unsupported" | "in-session";
     readonly requiresNewThreadForModelChange?: boolean;
+    readonly providerSessionCwd?: (cwd: string | undefined) => string | undefined;
+    readonly projectWorkspaceRoot?: string;
   }) {
     const now = "2026-01-01T00:00:00.000Z";
     const baseDir =
@@ -180,6 +182,7 @@ describe("ProviderCommandReactor", () => {
       instanceId: ProviderInstanceId.make("codex"),
       model: "gpt-5-codex",
     };
+    const providerSessionCwd = input?.providerSessionCwd;
     const startSession = vi.fn((_: unknown, input: unknown) => {
       const sessionIndex = nextSessionIndex++;
       const resumeCursor =
@@ -208,6 +211,14 @@ describe("ProviderCommandReactor", () => {
         typeof input.provider === "string"
           ? (input.provider as ProviderSession["provider"])
           : ProviderDriverKind.make(inputModelSelection?.instanceId ?? modelSelection.instanceId);
+      const inputCwd =
+        typeof input === "object" &&
+        input !== null &&
+        "cwd" in input &&
+        typeof input.cwd === "string"
+          ? input.cwd
+          : undefined;
+      const sessionCwd = providerSessionCwd?.(inputCwd) ?? inputCwd;
       const session: ProviderSession = {
         provider,
         ...(providerInstanceId ? { providerInstanceId } : {}),
@@ -219,12 +230,7 @@ describe("ProviderCommandReactor", () => {
           (input.runtimeMode === "approval-required" || input.runtimeMode === "full-access")
             ? input.runtimeMode
             : "full-access",
-        ...(typeof input === "object" &&
-        input !== null &&
-        "cwd" in input &&
-        typeof input.cwd === "string"
-          ? { cwd: input.cwd }
-          : {}),
+        ...(sessionCwd !== undefined ? { cwd: sessionCwd } : {}),
         ...((inputModelSelection?.model ?? modelSelection.model)
           ? { model: inputModelSelection?.model ?? modelSelection.model }
           : {}),
@@ -412,7 +418,7 @@ describe("ProviderCommandReactor", () => {
         commandId: CommandId.make("cmd-project-create"),
         projectId: asProjectId("project-1"),
         title: "Provider Project",
-        workspaceRoot: "/tmp/provider-project",
+        workspaceRoot: input?.projectWorkspaceRoot ?? "/tmp/provider-project",
         defaultModelSelection: modelSelection,
         createdAt: now,
       }),
@@ -435,6 +441,8 @@ describe("ProviderCommandReactor", () => {
 
     return {
       engine,
+      dispatch: (command: Parameters<typeof engine.dispatch>[0]) =>
+        managedRuntime.runPromise(engine.dispatch(command)),
       readModel: () => Effect.runPromise(snapshotQuery.getSnapshot()),
       projectionTurnRepository,
       settlePendingTurnStart: (threadId = "thread-1") =>
@@ -622,6 +630,115 @@ describe("ProviderCommandReactor", () => {
     const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
     expect(thread?.session?.threadId).toBe("thread-1");
     expect(thread?.session?.runtimeMode).toBe("approval-required");
+  });
+
+  it("accepts an adapter-normalised session cwd for the admitted workspace", async () => {
+    const harness = await createHarness({
+      providerSessionCwd: (cwd) =>
+        cwd === undefined ? undefined : `${NodePath.resolve(cwd)}${NodePath.sep}`,
+    });
+    const now = "2026-01-01T00:00:00.000Z";
+
+    await harness.dispatch({
+      type: "thread.turn.start",
+      commandId: CommandId.make("cmd-turn-start-normalised-cwd"),
+      threadId: ThreadId.make("thread-1"),
+      message: {
+        messageId: asMessageId("user-message-normalised-cwd"),
+        role: "user",
+        text: "hello normalised cwd",
+        attachments: [],
+      },
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      runtimeMode: "approval-required",
+      createdAt: now,
+    });
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    const readModel = await harness.readModel();
+    const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    expect(
+      thread?.activities.some((activity) => activity.kind === "provider.turn.start.failed"),
+    ).toBe(false);
+  });
+
+  it("accepts a canonicalised session cwd for the admitted workspace", async () => {
+    const realWorkspace = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-real-workspace-"),
+    );
+    const symlinkWorkspace = `${realWorkspace}-link`;
+    NodeFS.symlinkSync(realWorkspace, symlinkWorkspace, "dir");
+    createdBaseDirs.add(realWorkspace);
+    createdBaseDirs.add(symlinkWorkspace);
+    const harness = await createHarness({
+      projectWorkspaceRoot: symlinkWorkspace,
+      providerSessionCwd: (cwd) => (cwd === undefined ? undefined : NodeFS.realpathSync(cwd)),
+    });
+    const now = "2026-01-01T00:00:00.000Z";
+
+    await harness.dispatch({
+      type: "thread.turn.start",
+      commandId: CommandId.make("cmd-turn-start-canonicalised-cwd"),
+      threadId: ThreadId.make("thread-1"),
+      message: {
+        messageId: asMessageId("user-message-canonicalised-cwd"),
+        role: "user",
+        text: "hello canonicalised cwd",
+        attachments: [],
+      },
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      runtimeMode: "approval-required",
+      createdAt: now,
+    });
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    const readModel = await harness.readModel();
+    const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    expect(
+      thread?.activities.some((activity) => activity.kind === "provider.turn.start.failed"),
+    ).toBe(false);
+  });
+
+  it("refuses a session in a different folder than the admitted workspace", async () => {
+    const differentCwd = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-other-workspace-"),
+    );
+    createdBaseDirs.add(differentCwd);
+    const harness = await createHarness({ providerSessionCwd: () => differentCwd });
+    const now = "2026-01-01T00:00:00.000Z";
+
+    await harness.dispatch({
+      type: "thread.turn.start",
+      commandId: CommandId.make("cmd-turn-start-wrong-cwd"),
+      threadId: ThreadId.make("thread-1"),
+      message: {
+        messageId: asMessageId("user-message-wrong-cwd"),
+        role: "user",
+        text: "hello wrong cwd",
+        attachments: [],
+      },
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      runtimeMode: "approval-required",
+      createdAt: now,
+    });
+
+    await waitFor(async () => {
+      const readModel = await harness.readModel();
+      const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+      return (
+        thread?.activities.some((activity) => activity.kind === "provider.turn.start.failed") ??
+        false
+      );
+    });
+    expect(harness.sendTurn).not.toHaveBeenCalled();
+    const readModel = await harness.readModel();
+    const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    const failure = thread?.activities.find(
+      (activity) => activity.kind === "provider.turn.start.failed",
+    );
+    const detail = (failure?.payload as { readonly detail?: string } | undefined)?.detail ?? "";
+    expect(detail).toContain("not in the admitted workspace");
+    expect(detail).not.toContain(differentCwd);
   });
 
   it("generates a thread title on the first turn", async () => {

@@ -24,6 +24,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Equal from "effect/Equal";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@neokod/shared/DrainableWorker";
@@ -31,6 +32,10 @@ import { makeDrainableWorker } from "@neokod/shared/DrainableWorker";
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
 import { increment, orchestrationEventsProcessedTotal } from "../../observability/Metrics.ts";
 import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
+import {
+  readWorkspaceIdentityEvidence,
+  workspaceIdentitiesMatch,
+} from "../../vcs/WorkspaceIdentity.ts";
 import { ProviderAdapterRequestError } from "../../provider/Errors.ts";
 import {
   ProviderSessionNotRecoverableError,
@@ -208,6 +213,7 @@ function buildGeneratedWorktreeBranchName(raw: string): string {
 const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
   const orchestrationEngine = yield* OrchestrationEngineService;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const projectionTurnRepository = yield* ProjectionTurnRepository;
@@ -401,6 +407,24 @@ const make = Effect.gen(function* () {
       .getThreadDetailById(threadId)
       .pipe(Effect.map(Option.getOrUndefined));
   });
+
+  // Adapters may normalise a cwd (path.resolve, trailing separators) or
+  // canonicalise a symlink (realPath). Accept only affirmative same-folder
+  // identity, never a parent/child overlap or an unknown identity.
+  const sessionCwdMatchesAdmission = (sessionCwd: string | undefined, admittedCwd: string) =>
+    sessionCwd === undefined
+      ? Effect.succeed(false)
+      : Effect.all([
+          readWorkspaceIdentityEvidence(admittedCwd),
+          readWorkspaceIdentityEvidence(sessionCwd),
+        ]).pipe(
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+          Effect.map(
+            ([admitted, session]) => workspaceIdentitiesMatch(admitted, session) === "same",
+          ),
+          Effect.orElseSucceed(() => false),
+        );
 
   const rejectStartedThreadModelChangeIfRequired = Effect.fnUntraced(function* (input: {
     readonly threadId: ThreadId;
@@ -773,8 +797,13 @@ const make = Effect.gen(function* () {
     }
     const normalizedInput = toNonEmptyProviderInput(input.messageText);
     const normalizedAttachments = input.attachments ?? [];
-    const matchingSessions = (yield* providerService.listSessions()).filter(
-      (session) => session.threadId === input.threadId && session.cwd === input.workspacePath,
+    const sessionCandidates = (yield* providerService.listSessions()).filter(
+      (session) => session.threadId === input.threadId,
+    );
+    const matchingSessions = yield* Effect.filter(
+      sessionCandidates,
+      (session) => sessionCwdMatchesAdmission(session.cwd, input.workspacePath),
+      { concurrency: 4 },
     );
     const activeSession = matchingSessions.at(-1);
     if (activeSession === undefined) {
