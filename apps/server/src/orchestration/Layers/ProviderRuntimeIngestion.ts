@@ -1706,6 +1706,15 @@ const make = Effect.gen(function* () {
             return true;
         }
       })();
+      // A steer opens a new turn without completing the prior one. The session
+      // update settles the superseded turn, so close its messages here.
+      const supersededTurnId =
+        event.type === "turn.started" &&
+        conflictsWithActiveTurn &&
+        conflictingTurnStartIsPendingTurnStart &&
+        shouldApplyThreadLifecycle
+          ? (activeTurnId ?? undefined)
+          : undefined;
       const acceptedTurnStartedSourcePlan =
         event.type === "turn.started" && shouldApplyThreadLifecycle
           ? yield* getSourceProposedPlanReferenceForAcceptedTurnStart(thread.id, eventTurnId)
@@ -2119,15 +2128,39 @@ const make = Effect.gen(function* () {
         });
       }
 
+      if (supersededTurnId !== undefined) {
+        const detailedThread = yield* getLoadedThreadDetail();
+        yield* finalizeActiveAssistantSegmentForTurn({
+          event,
+          threadId: thread.id,
+          turnId: supersededTurnId,
+          createdAt: now,
+          commandTag: "assistant-complete-on-steer-supersede",
+          finalDeltaCommandTag: "assistant-delta-finalize-on-steer-supersede",
+          hasProjectedMessage:
+            detailedThread !== null &&
+            hasAssistantMessageForTurn(detailedThread.messages, supersededTurnId, {
+              streamingOnly: true,
+            }),
+        });
+      }
+
       // Buffer finalisation above handles in-memory text. This durable step
       // closes persisted messages that were not in the cache, on every path
       // that ended a turn.
+      const endedTurnIds = new Set<TurnId>();
       if (endedTurnId !== undefined) {
+        endedTurnIds.add(endedTurnId);
+      }
+      if (supersededTurnId !== undefined) {
+        endedTurnIds.add(supersededTurnId);
+      }
+      if (endedTurnIds.size > 0) {
         yield* completeStreamingAssistantMessages({
           orchestrationEngine,
           projectionSnapshotQuery,
           threadId: thread.id,
-          endedTurnIds: new Set([endedTurnId]),
+          endedTurnIds,
           observedNoLaterThan: now,
           occurredAt: now,
         });

@@ -23,6 +23,7 @@ import {
 import { createModelSelection } from "@neokod/shared/model";
 import { it, assert, vi } from "@effect/vitest";
 
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -958,6 +959,122 @@ it.effect(
 
       NodeFS.rmSync(tempDir, { recursive: true, force: true });
     }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect("ProviderServiceLive keeps a live stop fence while its intent write is pending", () =>
+  Effect.gen(function* () {
+    const tempDir = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-provider-live-stop-fence-"),
+    );
+    const dbPath = NodePath.join(tempDir, "orchestration.sqlite");
+    const persistenceLayer = makeSqlitePersistenceLive(dbPath);
+    const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+      Layer.provide(persistenceLayer),
+    );
+    const directoryLayer = ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer));
+    const intentWriteStarted = yield* Deferred.make<void>();
+    const releaseIntentWrite = yield* Deferred.make<void>();
+    const gatedDirectoryLayer = Layer.effect(
+      ProviderSessionDirectory.ProviderSessionDirectory,
+      Effect.map(ProviderSessionDirectory.ProviderSessionDirectory, (directory) =>
+        ProviderSessionDirectory.ProviderSessionDirectory.of({
+          ...directory,
+          upsert: (binding: ProviderSessionDirectory.ProviderRuntimeBinding) => {
+            const payload = binding.runtimePayload;
+            const isStopIntent =
+              payload !== null &&
+              typeof payload === "object" &&
+              !Array.isArray(payload) &&
+              "stopPhase" in payload &&
+              payload.stopPhase === "stop_requested";
+            return isStopIntent
+              ? Deferred.succeed(intentWriteStarted, undefined).pipe(
+                  Effect.andThen(Deferred.await(releaseIntentWrite)),
+                  Effect.andThen(directory.upsert(binding)),
+                )
+              : directory.upsert(binding);
+          },
+        }),
+      ),
+    ).pipe(Layer.provide(directoryLayer));
+    const codex = makeFakeCodexAdapter();
+    const registry = makeAdapterRegistryMock({
+      [CODEX_DRIVER]: codex.adapter,
+    });
+    const threadId = asThreadId("thread-live-stop-fence");
+
+    const providerLayer = makeProviderServiceLive().pipe(
+      Layer.provide(Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, registry)),
+      Layer.provide(gatedDirectoryLayer),
+      Layer.provide(defaultServerSettingsLayer),
+      Layer.provide(AnalyticsService.layerTest),
+      Layer.provide(
+        Layer.succeed(
+          ProviderEventLoggers.ProviderEventLoggers,
+          ProviderEventLoggers.NoOpProviderEventLoggers,
+        ),
+      ),
+      Layer.provideMerge(runtimeRepositoryLayer),
+    );
+
+    yield* Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+
+      const stopFiber = yield* provider.stopSession({ threadId }).pipe(Effect.forkChild);
+      yield* Deferred.await(intentWriteStarted);
+
+      // The intent write is still blocked, so the durable binding has no
+      // stop evidence yet. The in-memory fence must still block new work.
+      const startFailure = yield* provider
+        .startSession(threadId, {
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          threadId,
+          runtimeMode: "full-access",
+        })
+        .pipe(Effect.flip, Effect.timeoutOption("2 seconds"));
+      assert.equal(Option.isSome(startFailure), true);
+      if (Option.isSome(startFailure)) {
+        assert.equal(startFailure.value._tag, "ProviderStoppingError");
+      }
+
+      const sendFailure = yield* provider
+        .sendTurn({
+          threadId,
+          input: "new work during stop",
+          attachments: [],
+        })
+        .pipe(Effect.flip, Effect.timeoutOption("2 seconds"));
+      assert.equal(Option.isSome(sendFailure), true);
+      if (Option.isSome(sendFailure)) {
+        assert.equal(sendFailure.value._tag, "ProviderStoppingError");
+      }
+
+      codex.hasSession.mockImplementationOnce(() => Effect.succeed(false));
+      const responseFailure = yield* provider
+        .respondToRequest({
+          threadId,
+          requestId: asRequestId("req-live-stop-fence"),
+          decision: "accept",
+        })
+        .pipe(Effect.flip, Effect.timeoutOption("2 seconds"));
+      assert.equal(Option.isSome(responseFailure), true);
+      if (Option.isSome(responseFailure)) {
+        assert.equal(responseFailure.value._tag, "ProviderStoppingError");
+      }
+
+      yield* Deferred.succeed(releaseIntentWrite, undefined);
+      yield* Fiber.join(stopFiber);
+    }).pipe(Effect.provide(providerLayer));
+
+    NodeFS.rmSync(tempDir, { recursive: true, force: true });
+  }).pipe(Effect.provide(NodeServices.layer)),
 );
 
 it.effect("ProviderServiceLive refuses recovery while a failed stop still fences the thread", () =>

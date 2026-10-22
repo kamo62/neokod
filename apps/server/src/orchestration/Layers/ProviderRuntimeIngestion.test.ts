@@ -2882,6 +2882,18 @@ describe("ProviderRuntimeIngestion", () => {
       threadId,
     );
 
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("cmd-steer-old-message"),
+        threadId,
+        messageId: asMessageId("msg-steer-old"),
+        delta: "old partial",
+        turnId: oldTurnId,
+        createdAt,
+      }),
+    );
+
     // The steer: a user-requested turn start while the old turn still runs.
     await harness.run(
       harness.engine.dispatch({
@@ -2930,6 +2942,29 @@ describe("ProviderRuntimeIngestion", () => {
     expect(threadAfterSteer.session?.activeTurnId).toBe(newTurnId);
     expect(threadAfterSteer.latestTurn?.turnId).toBe(newTurnId);
     expect(threadAfterSteer.latestTurn?.state).toBe("running");
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("cmd-steer-new-message"),
+        threadId,
+        messageId: asMessageId("msg-steer-new"),
+        delta: "new partial",
+        turnId: newTurnId,
+        createdAt,
+      }),
+    );
+    await harness.drain();
+
+    const finalThread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(finalThread?.messages.find((message) => message.turnId === oldTurnId)).toMatchObject({
+      text: "old partial",
+      streaming: false,
+    });
+    expect(finalThread?.messages.find((message) => message.turnId === newTurnId)).toMatchObject({
+      text: "new partial",
+      streaming: true,
+    });
   });
 
   it("does not mark the source proposed plan implemented for an unrelated turn.started when no thread active turn is tracked", async () => {

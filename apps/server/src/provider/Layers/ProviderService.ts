@@ -332,6 +332,10 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       persistedStopState.bindings.filter(hasUnresolvedStop).map((binding) => binding.threadId),
     ),
   );
+  // Threads whose Stop is executing in this process. Their fence is owned by
+  // the live operation, not by restored durable evidence, so a stale binding
+  // read must never release it before the intent write becomes visible.
+  const localStopInFlight = yield* Ref.make(new Set<ThreadId>());
   const stopAllInProgress = yield* Ref.make(persistedStopState.unreadable);
   const runtimeSessionKey = (threadId: ThreadId, instanceId: ProviderInstanceId) =>
     `${instanceId}:${threadId}`;
@@ -353,6 +357,9 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   const releaseSettledStopBarrier = (threadId: ThreadId) =>
     Effect.gen(function* () {
       if (!(yield* Ref.get(stoppingThreads)).has(threadId)) {
+        return;
+      }
+      if ((yield* Ref.get(localStopInFlight)).has(threadId)) {
         return;
       }
       const binding = yield* directory.getBinding(threadId).pipe(
@@ -1131,6 +1138,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         // provider/process side effect. A failed intent write releases the
         // in-memory fence because no stop was attempted; every later failure
         // keeps it so completion cannot race an uncertain teardown.
+        yield* Ref.update(localStopInFlight, (set) => new Set(set).add(input.threadId));
         yield* Ref.update(stoppingThreads, (set) => new Set(set).add(input.threadId));
         yield* directory.upsert({
           threadId: input.threadId,
@@ -1192,15 +1200,20 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         return outcome;
       }).pipe(
         Effect.ensuring(
-          Effect.suspend(() =>
-            releaseBarrier || !durableIntentRecorded
-              ? Ref.update(stoppingThreads, (set) => {
-                  const next = new Set(set);
-                  next.delete(input.threadId);
-                  return next;
-                })
-              : Effect.void,
-          ),
+          Effect.gen(function* () {
+            yield* Ref.update(localStopInFlight, (set) => {
+              const next = new Set(set);
+              next.delete(input.threadId);
+              return next;
+            });
+            if (releaseBarrier || !durableIntentRecorded) {
+              yield* Ref.update(stoppingThreads, (set) => {
+                const next = new Set(set);
+                next.delete(input.threadId);
+                return next;
+              });
+            }
+          }),
         ),
         withMetrics({
           counter: providerSessionsTotal,
