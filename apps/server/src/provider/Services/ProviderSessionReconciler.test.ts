@@ -427,16 +427,11 @@ it("does not settle again once the thread session is interrupted", () => {
   );
 });
 
-it("skips live, starting, unsettled and missing bindings", () => {
+it("skips live, starting and missing bindings", () => {
   const cases = [
     { projected: projected(), liveSessions: [providerSession], bindings: [stoppedBinding()] },
     {
       projected: projected({ sessionStatus: "starting" }),
-      liveSessions: [],
-      bindings: [stoppedBinding()],
-    },
-    {
-      projected: projected({ turnState: "interrupted", completedAt: null }),
       liveSessions: [],
       bindings: [stoppedBinding()],
     },
@@ -453,6 +448,63 @@ it("skips live, starting, unsettled and missing bindings", () => {
       bindings: [stoppedBinding()],
     }).length,
     1,
+  );
+});
+
+it("recovers an interrupted turn with unknown completion through the host-loss path", () => {
+  const runningBinding = { ...stoppedBinding(), status: "running" as const };
+
+  assert.deepStrictEqual(
+    planProviderSessionReconciliation({
+      projected: projected({ turnState: "interrupted", completedAt: null }),
+      liveSessions: [],
+      bindings: [runningBinding],
+    }),
+    [
+      {
+        threadId,
+        turnId,
+        providerName: provider,
+        providerInstanceId,
+        runtimeMode: "full-access",
+        status: "interrupted",
+        lastError: HOST_LOST_SESSION_ERROR,
+        bindingSettlement: "host_lost",
+        lastObservedAt: null,
+      },
+    ],
+  );
+
+  // A live session still owns the turn: recovery must not touch it.
+  assert.deepStrictEqual(
+    planProviderSessionReconciliation({
+      projected: projected({ turnState: "interrupted", completedAt: null }),
+      liveSessions: [providerSession],
+      bindings: [runningBinding],
+    }),
+    [],
+  );
+
+  // A previous boot already recorded the host-loss binding; only the session
+  // still needs repair, and completion stays unknown.
+  assert.deepStrictEqual(
+    planProviderSessionReconciliation({
+      projected: projected({ turnState: "interrupted", completedAt: null }),
+      liveSessions: [],
+      bindings: [stoppedBinding()],
+    }),
+    [
+      {
+        threadId,
+        turnId,
+        providerName: provider,
+        providerInstanceId,
+        runtimeMode: "full-access",
+        status: "interrupted",
+        lastError: null,
+        lastObservedAt: null,
+      },
+    ],
   );
 });
 
