@@ -93,6 +93,11 @@ describe("scrubErrorText", () => {
     expect(scrubErrorText(text)).toBe(text);
   });
 
+  it("strips standard aggregate and index stack frames", () => {
+    expect(scrubErrorText("boom\n    at async Promise.all (index 0)")).toBe("boom");
+    expect(scrubErrorText("boom\n    at Array.map (index 1)")).toBe("boom");
+  });
+
   it("keeps ordinary at language and only strips stack frames", () => {
     expect(scrubErrorText("Retry at most 3 times")).toBe("Retry at most 3 times");
     expect(

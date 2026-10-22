@@ -1652,7 +1652,13 @@ const make = Effect.gen(function* () {
           (event.payload.outcome?.status === "stopped_confirmed" ||
             event.payload.outcome?.status === "orphan_possible")) ||
         event.type === "runtime.error";
-      const endedTurnId = turnEndingEvent ? (eventTurnId ?? activeTurnId ?? undefined) : undefined;
+      const endedTurnId = turnEndingEvent
+        ? event.type === "turn.completed"
+          ? // An untargeted completion cannot establish which turn ended. It
+            // must not inherit the active turn and close its live messages.
+            eventTurnId
+          : (eventTurnId ?? activeTurnId ?? undefined)
+        : undefined;
 
       const conflictsWithActiveTurn =
         activeTurnId !== null && eventTurnId !== undefined && !sameId(activeTurnId, eventTurnId);

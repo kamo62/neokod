@@ -1077,6 +1077,100 @@ it.effect("ProviderServiceLive keeps a live stop fence while its intent write is
   }).pipe(Effect.provide(NodeServices.layer)),
 );
 
+it.effect("ProviderServiceLive keeps a failed-stop outcome written after a send was admitted", () =>
+  Effect.gen(function* () {
+    const tempDir = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-provider-late-send-stop-"),
+    );
+    const dbPath = NodePath.join(tempDir, "orchestration.sqlite");
+    const persistenceLayer = makeSqlitePersistenceLive(dbPath);
+    const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+      Layer.provide(persistenceLayer),
+    );
+    const directoryLayer = ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer));
+    const codex = makeFakeCodexAdapter();
+    const registry = makeAdapterRegistryMock({
+      [CODEX_DRIVER]: codex.adapter,
+    });
+    const threadId = asThreadId("thread-late-send-stop");
+    const sendStarted = yield* Deferred.make<void>();
+    const releaseSend = yield* Deferred.make<void>();
+    const stopEvidence = stopFailed("process_group_termination_failed", "late send stop failed");
+
+    const providerLayer = makeProviderServiceLive().pipe(
+      Layer.provide(Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, registry)),
+      Layer.provide(directoryLayer),
+      Layer.provide(defaultServerSettingsLayer),
+      Layer.provide(AnalyticsService.layerTest),
+      Layer.provide(
+        Layer.succeed(
+          ProviderEventLoggers.ProviderEventLoggers,
+          ProviderEventLoggers.NoOpProviderEventLoggers,
+        ),
+      ),
+      Layer.provideMerge(runtimeRepositoryLayer),
+    );
+
+    yield* Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+
+      codex.sendTurn.mockImplementationOnce(() =>
+        Deferred.succeed(sendStarted, undefined).pipe(
+          Effect.andThen(Deferred.await(releaseSend)),
+          Effect.as({ threadId, turnId: asTurnId("turn-late-send") }),
+        ),
+      );
+      codex.stopSession.mockImplementationOnce(() => Effect.succeed(stopEvidence));
+
+      const sendFiber = yield* provider
+        .sendTurn({ threadId, input: "work that races stop", attachments: [] })
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(sendStarted);
+
+      yield* provider.stopSession({ threadId });
+
+      yield* Deferred.succeed(releaseSend, undefined);
+      yield* Fiber.join(sendFiber);
+
+      const repository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+      const binding = yield* repository.getByThreadId({ threadId });
+      assert.equal(Option.isSome(binding), true);
+      if (Option.isSome(binding)) {
+        assert.equal(binding.value.status, "error");
+        const payload = binding.value.runtimePayload;
+        assert.equal(
+          payload !== null && typeof payload === "object" && !Array.isArray(payload),
+          true,
+        );
+        if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+          assert.deepEqual(
+            "stopOutcome" in payload ? payload.stopOutcome : undefined,
+            stopEvidence,
+          );
+        }
+      }
+
+      const startFailure = yield* Effect.flip(
+        provider.startSession(threadId, {
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          threadId,
+          runtimeMode: "full-access",
+        }),
+      );
+      assert.equal(startFailure._tag, "ProviderStoppingError");
+    }).pipe(Effect.provide(providerLayer));
+
+    NodeFS.rmSync(tempDir, { recursive: true, force: true });
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
 it.effect("ProviderServiceLive refuses recovery while a failed stop still fences the thread", () =>
   Effect.gen(function* () {
     const tempDir = NodeFS.mkdtempSync(

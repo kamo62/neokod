@@ -336,6 +336,9 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   // the live operation, not by restored durable evidence, so a stale binding
   // read must never release it before the intent write becomes visible.
   const localStopInFlight = yield* Ref.make(new Set<ThreadId>());
+  // Monotonic per-thread stop sequence. A send that admitted before a later
+  // Stop must not overwrite the newer stop evidence when it finally returns.
+  const stopGenerationByThread = yield* Ref.make(new Map<ThreadId, number>());
   const stopAllInProgress = yield* Ref.make(persistedStopState.unreadable);
   const runtimeSessionKey = (threadId: ThreadId, instanceId: ProviderInstanceId) =>
     `${instanceId}:${threadId}`;
@@ -381,7 +384,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       });
     });
 
-  const assertNotStopping = (operation: string, threadId: ThreadId) =>
+  const admitProviderOperation = (operation: string, threadId: ThreadId) =>
     Effect.gen(function* () {
       if (yield* Ref.get(stopAllInProgress)) {
         return yield* Effect.fail(
@@ -394,7 +397,13 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           new ProviderStoppingError({ operation, threadId, scope: "thread" }),
         );
       }
+      return yield* Ref.get(stopGenerationByThread).pipe(
+        Effect.map((generations) => generations.get(threadId) ?? 0),
+      );
     });
+
+  const assertNotStopping = (operation: string, threadId: ThreadId) =>
+    admitProviderOperation(operation, threadId).pipe(Effect.asVoid);
 
   const newEventId = Effect.all([DateTime.now, Random.nextInt, Random.nextInt]).pipe(
     Effect.map(([now, first, second]) =>
@@ -919,7 +928,10 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         "Either input text or at least one attachment is required",
       );
     }
-    yield* assertNotStopping("ProviderService.sendTurn", input.threadId);
+    const stopGeneration = yield* admitProviderOperation(
+      "ProviderService.sendTurn",
+      input.threadId,
+    );
     yield* Effect.annotateCurrentSpan({
       "provider.operation": "send-turn",
       "provider.thread_id": input.threadId,
@@ -941,20 +953,29 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         ...(input.modelSelection?.model ? { "provider.model": input.modelSelection.model } : {}),
       });
       const turn = yield* routed.adapter.sendTurn(input);
-      yield* directory.upsert({
-        threadId: input.threadId,
-        provider: routed.adapter.provider,
-        providerInstanceId: routed.instanceId,
-        status: "running",
-        ...(turn.resumeCursor !== undefined ? { resumeCursor: turn.resumeCursor } : {}),
-        runtimePayload: {
-          ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
-          ...FRESH_RUNTIME_PAYLOAD,
-          activeTurnId: turn.turnId,
-          lastRuntimeEvent: "provider.sendTurn",
-          lastRuntimeEventAt: yield* nowIso,
-        },
-      });
+      const currentStopGeneration = yield* Ref.get(stopGenerationByThread).pipe(
+        Effect.map((generations) => generations.get(input.threadId) ?? 0),
+      );
+      if (currentStopGeneration === stopGeneration) {
+        yield* directory.upsert({
+          threadId: input.threadId,
+          provider: routed.adapter.provider,
+          providerInstanceId: routed.instanceId,
+          status: "running",
+          ...(turn.resumeCursor !== undefined ? { resumeCursor: turn.resumeCursor } : {}),
+          runtimePayload: {
+            ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
+            ...FRESH_RUNTIME_PAYLOAD,
+            activeTurnId: turn.turnId,
+            lastRuntimeEvent: "provider.sendTurn",
+            lastRuntimeEventAt: yield* nowIso,
+          },
+        });
+      } else {
+        yield* Effect.logInfo("provider.send-turn.binding-write-skipped-after-stop", {
+          threadId: input.threadId,
+        });
+      }
       yield* analytics.record("provider.turn.sent", {
         provider: routed.adapter.provider,
         model: input.modelSelection?.model,
@@ -1138,6 +1159,11 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         // provider/process side effect. A failed intent write releases the
         // in-memory fence because no stop was attempted; every later failure
         // keeps it so completion cannot race an uncertain teardown.
+        yield* Ref.update(stopGenerationByThread, (generations) => {
+          const next = new Map(generations);
+          next.set(input.threadId, (next.get(input.threadId) ?? 0) + 1);
+          return next;
+        });
         yield* Ref.update(localStopInFlight, (set) => new Set(set).add(input.threadId));
         yield* Ref.update(stoppingThreads, (set) => new Set(set).add(input.threadId));
         yield* directory.upsert({

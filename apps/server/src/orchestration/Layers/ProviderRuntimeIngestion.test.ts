@@ -2161,6 +2161,63 @@ describe("ProviderRuntimeIngestion", () => {
     expect(thread?.session?.activeTurnId).toBeNull();
   });
 
+  it("does not close the active turn's message on an untargeted completion", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-untargeted-active");
+    const messageId = asMessageId("untargeted-active-message");
+    const createdAt = "2026-01-01T00:00:00.000Z";
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-session-seed-untargeted-active"),
+        threadId,
+        session: {
+          threadId,
+          status: "running",
+          providerName: "claudeAgent",
+          runtimeMode: "approval-required",
+          activeTurnId: turnId,
+          updatedAt: createdAt,
+          lastError: null,
+        },
+        createdAt,
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("cmd-untargeted-active-message"),
+        threadId,
+        messageId,
+        delta: "still running",
+        turnId,
+        createdAt,
+      }),
+    );
+
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-turn-completed-untargeted-active"),
+      provider: ProviderDriverKind.make("claudeAgent"),
+      createdAt,
+      threadId,
+      status: "completed",
+    });
+    await harness.drain();
+
+    const thread = await waitForThread(
+      harness.readModel,
+      (entry) => entry.session?.status === "running",
+    );
+    expect(thread.session?.activeTurnId).toBe(turnId);
+    expect(thread.messages.find((message) => message.id === messageId)).toMatchObject({
+      text: "still running",
+      streaming: true,
+    });
+  });
+
   it("accepts a targeted turn.completed when no turn is active", async () => {
     const harness = await createHarness();
     const seededAt = "2026-01-01T00:00:00.000Z";
