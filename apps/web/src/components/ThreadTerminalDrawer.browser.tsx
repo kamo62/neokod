@@ -37,6 +37,7 @@ const harness = vi.hoisted(() => {
     error: null as string | null,
     hasRunningSubprocess: false,
     updatedAt: null as string | null,
+    generation: 7 as number | null,
     version: 1,
   };
 
@@ -50,7 +51,11 @@ const harness = vi.hoisted(() => {
       exits += 1;
     },
     getSession: () => session,
-    setSession(next: { readonly status: string; readonly version: number }) {
+    setSession(next: {
+      readonly status: string;
+      readonly version: number;
+      readonly generation?: number | null;
+    }) {
       session = { ...session, ...next };
     },
     write(input: {
@@ -76,6 +81,7 @@ const harness = vi.hoisted(() => {
         error: null,
         hasRunningSubprocess: false,
         updatedAt: null,
+        generation: 7,
         version: 1,
       };
     },
@@ -279,6 +285,23 @@ describe("TerminalViewport input lifecycle", () => {
     harness.resolve(2);
 
     expect(harness.writes.map((write) => write.data).join("")).toBe(paste);
+  });
+
+  it("refuses to write when no session generation is known yet", async () => {
+    harness.setSession({ status: "running", version: 1, generation: null });
+    screen = await render(viewport("term-1", 1));
+    expect(harness.terminals).toHaveLength(1);
+
+    harness.terminals[0]?.emit("unfenced");
+    for (let tick = 0; tick < 10; tick += 1) await Promise.resolve();
+    expect(harness.writes).toHaveLength(0);
+
+    harness.setSession({ status: "running", version: 2, generation: 7 });
+    await screen.rerender(viewport("term-1", 2));
+    harness.terminals[0]?.emit("fenced");
+    await waitForWrites(1);
+    expect(harness.writes[0]?.generation).toBe(7);
+    harness.resolve(0);
   });
 
   it("starts a fresh queue when an exited session restarts in the same viewport", async () => {

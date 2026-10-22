@@ -53,6 +53,7 @@ import {
   type TerminalOwnershipEvidence,
 } from "@neokod/shared/processGroup";
 import { getTerminalLabel } from "@neokod/shared/terminalLabels";
+import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -316,6 +317,8 @@ type DrainProcessEventAction =
 interface TerminalManagerState {
   sessions: Map<string, TerminalSessionState>;
   killFibers: Map<PtyAdapter.PtyProcess, Fiber.Fiber<void, never>>;
+  /** Manager-owned monotonic generation source; never resets per session. */
+  lastSessionGeneration: number;
 }
 
 function truncateTerminalWireLabel(value: string): string {
@@ -1268,9 +1271,13 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
   yield* fileSystem.makeDirectory(logsDir, { recursive: true }).pipe(Effect.orDie);
 
+  const generationSeed = yield* Clock.currentTimeMillis;
   const managerStateRef = yield* SynchronizedRef.make<TerminalManagerState>({
     sessions: new Map(),
     killFibers: new Map(),
+    // Seed from wall time so identities do not restart at 1 after a server
+    // restart within the same millisecond boundary.
+    lastSessionGeneration: generationSeed,
   });
   const threadLocksRef = yield* SynchronizedRef.make(new Map<string, Semaphore.Semaphore>());
   const terminalEventListeners = new Set<(event: TerminalEvent) => Effect.Effect<void>>();
@@ -1300,6 +1307,12 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const modifyManagerState = <A>(
     f: (state: TerminalManagerState) => readonly [A, TerminalManagerState],
   ) => SynchronizedRef.modify(managerStateRef, f);
+
+  const allocateSessionGeneration = () =>
+    modifyManagerState((state) => {
+      const generation = state.lastSessionGeneration + 1;
+      return [generation, { ...state, lastSessionGeneration: generation }] as const;
+    });
 
   const getThreadSemaphore = (threadId: string) =>
     SynchronizedRef.modifyEffect(threadLocksRef, (current) => {
@@ -2167,8 +2180,9 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     eventType: "started" | "restarted",
   ) {
     // Every spawn is a new generation. Issued writes carry the generation they
-    // were created for and are rejected once this advances.
-    session.generation += 1;
+    // were created for and are rejected once this advances. The source is
+    // manager-owned, so close and reopen of the same target never reuses one.
+    session.generation = yield* allocateSessionGeneration();
     yield* stopProcess(session);
     yield* Effect.annotateCurrentSpan({
       "terminal.thread_id": session.threadId,

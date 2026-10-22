@@ -732,6 +732,58 @@ it.layer(
     }),
   );
 
+  it.effect("rejects a write issued before a close and reopen of the same terminal target", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      const opened = yield* manager.open(openInput());
+      expect(typeof opened.generation).toBe("number");
+      const firstGeneration = opened.generation as number;
+      const firstProcess = ptyAdapter.processes[0];
+      expect(firstProcess).toBeDefined();
+
+      yield* manager.write({
+        threadId: "thread-1",
+        terminalId: DEFAULT_TERMINAL_ID,
+        data: "first\n",
+        generation: firstGeneration,
+      });
+      expect(firstProcess?.writes).toEqual(["first\n"]);
+
+      yield* manager.close({
+        threadId: "thread-1",
+        terminalId: DEFAULT_TERMINAL_ID,
+        deleteHistory: true,
+      });
+      const reopened = yield* manager.open(openInput());
+      expect(reopened.generation).not.toBe(firstGeneration);
+      const secondProcess = ptyAdapter.processes[1];
+      expect(secondProcess).toBeDefined();
+
+      const error = yield* Effect.flip(
+        manager.write({
+          threadId: "thread-1",
+          terminalId: DEFAULT_TERMINAL_ID,
+          data: "stale\n",
+          generation: firstGeneration,
+        }),
+      );
+      expect(error).toMatchObject({
+        _tag: "TerminalSessionChangedError",
+        expectedGeneration: firstGeneration,
+        actualGeneration: reopened.generation,
+      });
+      expect(secondProcess?.writes).toEqual([]);
+
+      yield* manager.write({
+        threadId: "thread-1",
+        terminalId: DEFAULT_TERMINAL_ID,
+        data: "fresh\n",
+        generation: reopened.generation as number,
+      });
+      expect(secondProcess?.writes).toEqual(["fresh\n"]);
+    }),
+  );
+
   it.effect("preserves structured context and causes for PTY I/O failures", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter } = yield* createManager();

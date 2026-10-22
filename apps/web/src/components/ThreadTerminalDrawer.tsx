@@ -391,9 +391,12 @@ export function TerminalViewport({
     if (writableStatus !== null && writableStatus !== "running") {
       return Promise.resolve(undefined);
     }
-    // Pin the shared projection's session generation for the whole write. Every
-    // chunk carries it, so the server rejects a chunk that crosses a replacement.
-    const generation = terminalSession.summary?.generation ?? null;
+    // Pin the session generation for the whole write. Missing evidence fails
+    // closed: an unfenced chunk could otherwise reach a replacement process.
+    const generation = terminalSession.generation;
+    if (generation === null) {
+      return Promise.resolve(undefined);
+    }
     const lease = ensureLiveInputLease();
     if (lease === null) return Promise.resolve(undefined);
     return lease.queue.write(data, (chunk) =>
@@ -403,7 +406,7 @@ export function TerminalViewport({
           threadId: binding.target.threadId,
           terminalId: binding.target.terminalId,
           data: chunk,
-          ...(generation !== null ? { generation } : {}),
+          generation,
         },
       }),
     );

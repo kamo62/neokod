@@ -210,6 +210,22 @@ describe("terminal session reducers", () => {
 
     expect(state.buffer).toBe("🙂");
   });
+
+  it("retains the attach snapshot's session generation across events", () => {
+    const snapshot = applyTerminalAttachStreamEvent(EMPTY_TERMINAL_BUFFER_STATE, {
+      type: "snapshot",
+      snapshot: { ...BASE_SNAPSHOT, generation: 7 },
+    });
+    expect(combineTerminalSessionState(null, snapshot).generation).toBe(7);
+
+    const output = applyTerminalAttachStreamEvent(snapshot, {
+      type: "output",
+      threadId: TARGET.threadId,
+      terminalId: TARGET.terminalId,
+      data: "next",
+    });
+    expect(combineTerminalSessionState(null, output).generation).toBe(7);
+  });
 });
 
 type WriteResult =
@@ -836,5 +852,42 @@ describe("terminal lifecycle input handling", () => {
     );
     expect(lease.isDisposed()).toBe(true);
     lease.release();
+  });
+
+  it("does not dispose the replacement queue when an older restart acknowledgement arrives", async () => {
+    const original = acquireTerminalInputQueue(TARGET_A);
+    let resolveCommand: (result: AtomCommandResult<unknown, unknown>) => void = () => {};
+    const command = withTerminalInputInvalidation<TerminalInputCommandTarget, unknown, unknown>({
+      label: "deferred terminal restart",
+      run: () =>
+        new Promise((resolve) => {
+          resolveCommand = resolve;
+        }),
+    });
+
+    const running = command.run(undefined as never, STOP_TARGET_INPUT);
+    for (let tick = 0; tick < 10 && !original.queue.isPaused(); tick += 1) {
+      await Promise.resolve();
+    }
+    expect(original.queue.isPaused()).toBe(true);
+
+    // The server publishes the replacement before the restart RPC returns.
+    disposeTerminalInputQueue(TARGET_A);
+    original.release();
+    const replacement = acquireTerminalInputQueue(TARGET_A);
+    expect(replacement.queue).not.toBe(original.queue);
+
+    const recorder = recordingSend();
+    const freshWrite = replacement.queue.write("fresh", recorder.send);
+    await waitForSent(recorder.sent, 1);
+
+    resolveCommand(AsyncResult.success(undefined));
+    await running;
+
+    expect(original.isDisposed()).toBe(true);
+    expect(replacement.isDisposed()).toBe(false);
+    recorder.acknowledgements[0]?.resolve(SUCCESS);
+    expect((await freshWrite)?._tag).toBe("Success");
+    replacement.release();
   });
 });

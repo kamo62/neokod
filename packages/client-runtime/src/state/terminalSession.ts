@@ -18,6 +18,7 @@ export interface TerminalSessionState {
   readonly error: string | null;
   readonly hasRunningSubprocess: boolean;
   readonly updatedAt: string | null;
+  readonly generation: number | null;
   readonly version: number;
 }
 
@@ -26,6 +27,7 @@ export interface TerminalBufferState {
   readonly status: TerminalSessionSnapshot["status"] | "closed";
   readonly error: string | null;
   readonly updatedAt: string | null;
+  readonly generation: number | null;
   readonly version: number;
 }
 
@@ -53,6 +55,7 @@ export const EMPTY_TERMINAL_BUFFER_STATE = Object.freeze<TerminalBufferState>({
   status: "closed",
   error: null,
   updatedAt: null,
+  generation: null,
   version: 0,
 });
 
@@ -63,6 +66,7 @@ export const EMPTY_TERMINAL_SESSION_STATE = Object.freeze<TerminalSessionState>(
   error: null,
   hasRunningSubprocess: false,
   updatedAt: null,
+  generation: null,
   version: 0,
 });
 
@@ -101,6 +105,7 @@ export function terminalBufferStateFromSnapshot(
     status: snapshot.status,
     error: null,
     updatedAt: snapshot.updatedAt,
+    generation: snapshot.generation ?? null,
     version: 1,
   };
 }
@@ -122,6 +127,7 @@ export function combineTerminalSessionState(
     error: buffer.error,
     hasRunningSubprocess: summary?.hasRunningSubprocess ?? false,
     updatedAt: latestTimestamp(summary?.updatedAt ?? null, buffer.updatedAt),
+    generation: (buffer.version > 0 ? buffer.generation : null) ?? summary?.generation ?? null,
     version: buffer.version,
   };
 }
@@ -431,18 +437,6 @@ export function disposeTerminalInputQueue(target: TerminalInputTarget): void {
   terminalInputQueues.get(terminalInputTargetKey(target))?.queue.dispose();
 }
 
-/** Close every queue on a thread, for a close command without a terminal id. */
-export function disposeTerminalInputQueuesForThread(
-  environmentId: EnvironmentId,
-  threadId: string,
-): void {
-  for (const entry of terminalInputQueues.values()) {
-    if (entry.target.environmentId === environmentId && entry.target.threadId === threadId) {
-      entry.queue.dispose();
-    }
-  }
-}
-
 function metadataTargetKey(target: {
   readonly threadId: string;
   readonly terminalId: string;
@@ -593,20 +587,6 @@ export interface TerminalInputCommandTarget {
   };
 }
 
-function invalidateTerminalInputForCommand(target: TerminalInputCommandTarget): void {
-  if (!shouldEndTerminalInputQueue({ kind: "client-command" })) return;
-  const terminalId = target.input.terminalId;
-  if (terminalId === undefined) {
-    disposeTerminalInputQueuesForThread(target.environmentId, target.input.threadId);
-    return;
-  }
-  disposeTerminalInputQueue({
-    environmentId: target.environmentId,
-    threadId: ThreadId.make(target.input.threadId),
-    terminalId,
-  });
-}
-
 function terminalInputQueuesForCommand(
   target: TerminalInputCommandTarget,
 ): ReadonlyArray<TerminalInputQueue> {
@@ -678,7 +658,9 @@ export function withTerminalInputInvalidation<W extends TerminalInputCommandTarg
       const result = await command.run(registry, input);
       const outcome = classifyTerminalLifecycleOutcome(result);
       if (outcome === "ended") {
-        invalidateTerminalInputForCommand(input);
+        if (shouldEndTerminalInputQueue({ kind: "client-command" })) {
+          for (const queue of queues) queue.dispose();
+        }
       } else if (outcome === "intact") {
         for (const queue of queues) queue.settleLifecycle("intact");
       } else {
