@@ -337,7 +337,7 @@ export const makeHandoffService = Effect.gen(function* () {
         .transition(attempt.workItemId, "blocked", {
           from: [
             "draft",
-            "eligible",
+            "ineligible",
             "queued",
             "preparing",
             "running",
@@ -532,7 +532,7 @@ export const makeHandoffService = Effect.gen(function* () {
         acceptanceCriteria: input.acceptanceCriteria ?? [],
         source: { kind: "manual" },
         trackerIssueId: `delegated-${id}`,
-        lifecycle: "eligible",
+        lifecycle: "queued",
         ...(input.branch !== undefined ? { baseBranch: input.branch } : {}),
         eligibilityReasons: [],
         evidence: null,

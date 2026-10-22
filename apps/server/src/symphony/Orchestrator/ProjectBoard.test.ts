@@ -20,7 +20,7 @@ describe("boardColumnForLifecycle", () => {
   it("maps every lifecycle into the five server-owned columns", () => {
     const expected: Record<WorkLifecycle, ReturnType<typeof boardColumnForLifecycle>> = {
       draft: "not_started",
-      eligible: "not_started",
+      ineligible: "not_started",
       queued: "not_started",
       preparing: "in_progress",
       running: "in_progress",
@@ -80,6 +80,7 @@ describe("projectBoardFromWorkItems", () => {
     lifecycle: WorkLifecycle,
     priority: number,
     source: WorkItem["source"] = { kind: "manual" },
+    eligibilityReasons: ReadonlyArray<string> = [],
   ): WorkItem => ({
     id: WorkItemId.make(id),
     mode: "symphony",
@@ -89,7 +90,7 @@ describe("projectBoardFromWorkItems", () => {
     source,
     lifecycle,
     priority,
-    eligibilityReasons: [],
+    eligibilityReasons,
     evidence: null,
     createdAt: "2026-08-10T00:00:00.000Z",
     updatedAt: `2026-08-10T00:00:0${priority}.000Z`,
@@ -132,6 +133,27 @@ describe("projectBoardFromWorkItems", () => {
       "failed",
       "completed",
     ]);
+  });
+
+  it("shows ineligible cards in Not Started with their eligibility reasons", () => {
+    const board = projectBoardFromWorkItems({
+      project,
+      sourceControl: { state: "none" },
+      workItems: [
+        workItem("ineligible", "ineligible", 1, { kind: "manual" }, ["missing_label:agent-ready"]),
+        workItem("queued", "queued", 2),
+      ],
+      generatedAt: "2026-08-10T00:01:00.000Z",
+    });
+
+    const cards = board.columns[0]?.cards ?? [];
+    expect(cards.find((card) => card.workItemId === WorkItemId.make("ineligible"))).toMatchObject({
+      lifecycle: "ineligible",
+      eligibilityReasons: ["missing_label:agent-ready"],
+    });
+    expect(
+      cards.find((card) => card.workItemId === WorkItemId.make("queued"))?.eligibilityReasons,
+    ).toBeUndefined();
   });
 
   it("reports exact column totals and truncation from actual lifecycle counts", () => {

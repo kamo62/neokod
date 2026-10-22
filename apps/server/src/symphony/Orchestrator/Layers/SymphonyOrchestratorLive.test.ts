@@ -867,7 +867,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       const byTitle = new Map(queue.map((item) => [item.title, item]));
       expect(byTitle.get("Issue 1")?.lifecycle).toBe("queued");
       expect(byTitle.get("Issue 1")?.eligible).toBe(true);
-      expect(byTitle.get("Issue 3")?.lifecycle).toBe("eligible");
+      expect(byTitle.get("Issue 3")?.lifecycle).toBe("ineligible");
       expect(byTitle.get("Issue 3")?.eligible).toBe(false);
       expect(
         byTitle.get("Issue 3")?.ineligibilityReasons.some((r) => r.startsWith("missing_label")),
@@ -2112,7 +2112,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* orchestrator.dispatchWorkItem(workItemId);
       expect(dispatchedIds).not.toContain("stale-closed-1");
       const after = yield* workItems.getById(workItemId);
-      expect(after?.lifecycle).toBe("eligible");
+      expect(after?.lifecycle).toBe("ineligible");
       expect(after?.eligibilityReasons.some((r) => r.startsWith("state_terminal:"))).toBe(true);
     }),
   );
@@ -2216,7 +2216,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       yield* orchestrator.dispatchWorkItem(workItemId);
       expect(dispatchedIds).not.toContain("stale-unlabelled-1");
       const after = yield* workItems.getById(workItemId);
-      expect(after?.lifecycle).toBe("eligible");
+      expect(after?.lifecycle).toBe("ineligible");
       expect(after?.eligibilityReasons.some((r) => r.includes("agent-ready"))).toBe(true);
     }),
   );

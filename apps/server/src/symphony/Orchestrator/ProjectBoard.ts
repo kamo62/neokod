@@ -13,7 +13,7 @@ import type {
 export const boardColumnForLifecycle = (lifecycle: WorkLifecycle): SymphonyBoardColumnId => {
   switch (lifecycle) {
     case "draft":
-    case "eligible":
+    case "ineligible":
     case "queued":
       return "not_started";
     case "preparing":
@@ -78,6 +78,9 @@ export const projectBoardFromWorkItems = (input: {
       ...(item.source.kind === "manual" || item.source.externalUrl.trim().length === 0
         ? {}
         : { issueUrl: item.source.externalUrl }),
+      ...(item.eligibilityReasons.length > 0
+        ? { eligibilityReasons: item.eligibilityReasons }
+        : {}),
       updatedAt: item.updatedAt,
     });
   }

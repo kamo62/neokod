@@ -8,7 +8,7 @@ import type { SymphonyPersistenceError } from "../Errors.ts";
  * WorkItemRepository - persistence for symphony work items.
  *
  * Work-item rows are the dispatch authority (plan section 4): claiming is a
- * conditional `UPDATE ... WHERE lifecycle IN ('eligible','queued','retry_scheduled')`
+ * conditional `UPDATE ... WHERE lifecycle IN ('queued','retry_scheduled')`
  * moving the row to `preparing`, returning either the claimed work item or a
  * claim-lost error. Every subsequent transition and side effect asserts
  * `owner_token = ? AND generation = ?` via {@link assertOwnedTransition}, so a

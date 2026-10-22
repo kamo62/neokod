@@ -34,6 +34,7 @@ import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
 import { SymphonyAttentionList } from "./SymphonyAttentionList";
 import { SymphonyEmptyState } from "./SymphonyEmptyState";
+import { canRunNow, formatEligibilityReason } from "./boardCard.logic";
 import { dispatchRefusalMessage } from "./dispatchRefusal.logic";
 import {
   availableSymphonyImplementationProviders,
@@ -177,9 +178,7 @@ function BoardTab({
                         {card.lifecycle.replaceAll("_", " ")}
                       </Badge>
                     </div>
-                    {card.lifecycle === "eligible" ||
-                    card.lifecycle === "queued" ||
-                    card.lifecycle === "retry_scheduled" ? (
+                    {canRunNow(card) ? (
                       <>
                         <Button
                           size="sm"
@@ -198,6 +197,12 @@ function BoardTab({
                           </p>
                         )}
                       </>
+                    ) : null}
+                    {card.lifecycle === "ineligible" ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Not eligible:{" "}
+                        {(card.eligibilityReasons ?? []).map(formatEligibilityReason).join("; ")}
+                      </p>
                     ) : null}
                   </article>
                 ))

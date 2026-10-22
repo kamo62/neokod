@@ -97,7 +97,7 @@ const BOARD_TERMINAL_LIMIT = 100;
 
 const ALL_WORK_LIFECYCLES = [
   "draft",
-  "eligible",
+  "ineligible",
   "queued",
   "preparing",
   "running",
@@ -286,7 +286,6 @@ interface PreparedDispatch {
 type DispatchRefused = Extract<SymphonyDispatchResult, { readonly status: "refused" }>;
 
 const DISPATCHABLE_LIFECYCLES: ReadonlySet<WorkLifecycle> = new Set([
-  "eligible",
   "queued",
   "retry_scheduled",
   "changes_requested",
@@ -1151,9 +1150,7 @@ const makeOrchestrator = Effect.gen(function* () {
         "Active workflow count could not be read.",
       );
       const queued = yield* readOverviewMetric(
-        workItems
-          .listByLifecycle(["eligible", "queued"])
-          .pipe(Effect.map((items) => items.filter((item) => item.lifecycle === "queued").length)),
+        workItems.listByLifecycle(["queued"]).pipe(Effect.map((items) => items.length)),
         "Queue count could not be read.",
       );
       const running = yield* readOverviewMetric(
@@ -1221,7 +1218,7 @@ const makeOrchestrator = Effect.gen(function* () {
     Effect.gen(function* () {
       const items = yield* workItems
         .listByLifecycle(
-          filter?.lifecycle === undefined ? ["eligible", "queued"] : [filter.lifecycle],
+          filter?.lifecycle === undefined ? ["ineligible", "queued"] : [filter.lifecycle],
           {
             ...(filter?.projectId === undefined ? {} : { projectId: filter.projectId }),
             limit: 1_000,
@@ -1746,13 +1743,13 @@ const makeOrchestrator = Effect.gen(function* () {
       });
       if (!fresh.eligible) {
         // Record why, so the queue explains it and the scheduler stops picking the item every tick.
-        // A queued item goes back to `eligible`; other lifecycles keep theirs (the upsert only moves
-        // draft, eligible and queued, see updateRow's CASE). Non-empty stored reasons make the
+        // A queued item goes to `ineligible`; other lifecycles keep theirs (the upsert only moves
+        // draft, ineligible and queued, see updateRow's CASE). Non-empty stored reasons make the
         // pre-check above refuse the item until a poll finds it eligible again.
         yield* workItems
           .upsert({
             ...item,
-            lifecycle: item.lifecycle === "queued" ? "eligible" : item.lifecycle,
+            lifecycle: item.lifecycle === "queued" ? "ineligible" : item.lifecycle,
             eligibilityReasons: [...fresh.reasons],
           })
           .pipe(Effect.catch(() => Effect.void));

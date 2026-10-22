@@ -71,10 +71,10 @@ const WorkItemRowSchema = Schema.Struct({
  * move FROM a terminal state requires an explicit `from` opt-in.
  */
 const DEFAULT_TRANSITION_SOURCES: Readonly<Record<string, ReadonlyArray<string>>> = {
-  draft: ["eligible"],
-  eligible: ["draft", "queued"],
+  draft: ["ineligible"],
+  ineligible: ["draft", "queued"],
   queued: [
-    "eligible",
+    "ineligible",
     "preparing",
     "running",
     "blocked",
@@ -84,7 +84,7 @@ const DEFAULT_TRANSITION_SOURCES: Readonly<Record<string, ReadonlyArray<string>>
     "ready_for_review",
     "validation_failed",
   ],
-  preparing: ["eligible", "queued"],
+  preparing: ["queued"],
   running: ["preparing"],
   testing: ["running"],
   blocked: ["preparing", "running", "waiting_for_approval", "retry_scheduled"],
@@ -104,7 +104,7 @@ const DEFAULT_TRANSITION_SOURCES: Readonly<Record<string, ReadonlyArray<string>>
   completed: ["ready_to_merge"],
   cancelled: [
     "draft",
-    "eligible",
+    "ineligible",
     "queued",
     "preparing",
     "blocked",
@@ -336,7 +336,7 @@ const makeRepository = Effect.gen(function* () {
           branch_name = ${row.branchName},
           issue_url = ${row.issueUrl},
           lifecycle = CASE
-            WHEN lifecycle IN ('draft', 'eligible', 'queued') THEN ${row.lifecycle}
+            WHEN lifecycle IN ('draft', 'ineligible', 'queued') THEN ${row.lifecycle}
             ELSE lifecycle
           END,
           workspace_key = ${row.workspaceKey},
@@ -366,7 +366,7 @@ const makeRepository = Effect.gen(function* () {
           claimed_at = ${request.now},
           updated_at = ${request.now}
         WHERE id = ${request.id}
-          AND lifecycle IN ('eligible', 'queued', 'retry_scheduled')
+          AND lifecycle IN ('queued', 'retry_scheduled')
         RETURNING ${cols}
       `,
   });
