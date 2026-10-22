@@ -293,6 +293,130 @@ describe("AcpSessionRuntime", () => {
     ),
   );
 
+  it.effect("preserves whitespace across a tool boundary", () =>
+    Effect.gen(function* () {
+      const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+      yield* runtime.start();
+
+      const promptResult = yield* runtime.prompt({
+        prompt: [{ type: "text", text: "hi" }],
+      });
+      expect(promptResult).toMatchObject({ stopReason: "end_turn" });
+
+      const notes = Array.from(yield* Stream.runCollect(Stream.take(runtime.getEvents(), 8)));
+      expect(notes.map((note) => note._tag)).toEqual([
+        "AssistantItemStarted",
+        "ContentDelta",
+        "AssistantItemCompleted",
+        "ToolCallUpdated",
+        "ToolCallUpdated",
+        "AssistantItemStarted",
+        "ContentDelta",
+        "AssistantItemCompleted",
+      ]);
+      const deltas = notes.filter(
+        (
+          note,
+        ): note is Extract<AcpSessionRuntime.AcpSessionRuntimeEvent, { _tag: "ContentDelta" }> =>
+          note._tag === "ContentDelta",
+      );
+      expect(deltas.map((delta) => delta.text).join("")).toBe('{"subject":"Fix name","body":""}');
+      expect(deltas[1]?.text).toMatch(/^ name/);
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: {
+              NEOKOD_ACP_EMIT_TOOL_INTERLEAVED_WHITESPACE: "1",
+            },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "neokod-test", version: "0.0.0" },
+          authMethodId: "test",
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    ),
+  );
+
+  it.effect("preserves leading indentation without starting a ghost segment", () =>
+    Effect.gen(function* () {
+      const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+      yield* runtime.start();
+
+      const promptResult = yield* runtime.prompt({
+        prompt: [{ type: "text", text: "hi" }],
+      });
+      expect(promptResult).toMatchObject({ stopReason: "end_turn" });
+
+      const notes = Array.from(yield* Stream.runCollect(Stream.take(runtime.getEvents(), 3)));
+      expect(notes.map((note) => note._tag)).toEqual([
+        "AssistantItemStarted",
+        "ContentDelta",
+        "AssistantItemCompleted",
+      ]);
+      const delta = notes[1];
+      if (delta?._tag === "ContentDelta") {
+        expect(delta.text).toBe("  indented");
+      }
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: {
+              NEOKOD_ACP_EMIT_LEADING_WHITESPACE: "1",
+            },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "neokod-test", version: "0.0.0" },
+          authMethodId: "test",
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    ),
+  );
+
+  it.effect("does not emit a visible message for a whitespace-only stream", () =>
+    Effect.gen(function* () {
+      const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+      yield* runtime.start();
+
+      const promptResult = yield* runtime.prompt({
+        prompt: [{ type: "text", text: "hi" }],
+      });
+      expect(promptResult).toMatchObject({ stopReason: "end_turn" });
+
+      const firstEvent = yield* Stream.runHead(runtime.getEvents()).pipe(
+        Effect.timeoutOption("100 millis"),
+      );
+      expect(Option.isNone(firstEvent)).toBe(true);
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: {
+              NEOKOD_ACP_EMIT_WHITESPACE_ONLY: "1",
+            },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "neokod-test", version: "0.0.0" },
+          authMethodId: "test",
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+      TestClock.withLive,
+    ),
+  );
+
   it.effect("suppresses generic placeholder tool updates until completion", () =>
     Effect.gen(function* () {
       const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;

@@ -271,10 +271,13 @@ type AcpStartState =
 interface AcpAssistantSegmentState {
   readonly nextSegmentIndex: number;
   readonly activeItemId?: string;
+  /** Whitespace received after a segment closed, carried into the next text segment. */
+  readonly pendingWhitespace: string;
 }
 
 interface EnsureActiveAssistantSegmentResult {
   readonly itemId: string;
+  readonly pendingWhitespace: string;
   readonly startedEvent?: Extract<AcpParsedSessionEvent, { readonly _tag: "AssistantItemStarted" }>;
 }
 
@@ -292,7 +295,10 @@ export const make = (
     const eventQueue = yield* Queue.unbounded<AcpSessionRuntimeEvent>();
     const modeStateRef = yield* Ref.make<AcpSessionModeState | undefined>(undefined);
     const toolCallsRef = yield* Ref.make(new Map<string, AcpToolCallState>());
-    const assistantSegmentRef = yield* Ref.make<AcpAssistantSegmentState>({ nextSegmentIndex: 0 });
+    const assistantSegmentRef = yield* Ref.make<AcpAssistantSegmentState>({
+      nextSegmentIndex: 0,
+      pendingWhitespace: "",
+    });
     const configOptionsRef = yield* Ref.make(sessionConfigOptionsFromSetup(undefined));
     const startStateRef = yield* Ref.make<AcpStartState>({ _tag: "NotStarted" });
     const promptSerializationSemaphore = yield* Semaphore.make(1);
@@ -795,6 +801,9 @@ export const make = (
               queue: eventQueue,
               assistantSegmentRef,
             });
+            yield* clearPendingAssistantWhitespace({
+              assistantSegmentRef,
+            });
             const requestPayload = {
               sessionId: started.sessionId,
               ...payload,
@@ -821,9 +830,14 @@ export const make = (
                 }),
               ),
               Effect.tap(() =>
-                closeActiveAssistantSegment({
-                  queue: eventQueue,
-                  assistantSegmentRef,
+                Effect.gen(function* () {
+                  yield* closeActiveAssistantSegment({
+                    queue: eventQueue,
+                    assistantSegmentRef,
+                  });
+                  yield* clearPendingAssistantWhitespace({
+                    assistantSegmentRef,
+                  });
                 }),
               ),
             );
@@ -963,10 +977,14 @@ const handleSessionUpdate = ({
         if (event.text.trim().length === 0) {
           const assistantSegmentState = yield* Ref.get(assistantSegmentRef);
           if (!assistantSegmentState.activeItemId) {
+            yield* Ref.update(assistantSegmentRef, (current) => ({
+              ...current,
+              pendingWhitespace: current.pendingWhitespace + event.text,
+            }));
             continue;
           }
         }
-        const itemId = yield* ensureActiveAssistantSegment({
+        const { itemId, pendingWhitespace } = yield* ensureActiveAssistantSegment({
           queue,
           assistantSegmentRef,
           sessionId: params.sessionId,
@@ -974,6 +992,7 @@ const handleSessionUpdate = ({
         yield* Queue.offer(queue, {
           ...event,
           itemId,
+          text: pendingWhitespace + event.text,
         });
         continue;
       }
@@ -1023,12 +1042,22 @@ const ensureActiveAssistantSegment = ({
     assistantSegmentRef,
     (current) => {
       if (current.activeItemId) {
-        return [{ itemId: current.activeItemId }, current] as const;
+        return [
+          {
+            itemId: current.activeItemId,
+            pendingWhitespace: current.pendingWhitespace,
+          },
+          {
+            ...current,
+            pendingWhitespace: "",
+          },
+        ] as const;
       }
       const itemId = assistantItemId(sessionId, current.nextSegmentIndex);
       return [
         {
           itemId,
+          pendingWhitespace: current.pendingWhitespace,
           startedEvent: {
             _tag: "AssistantItemStarted",
             itemId,
@@ -1037,14 +1066,15 @@ const ensureActiveAssistantSegment = ({
         {
           nextSegmentIndex: current.nextSegmentIndex + 1,
           activeItemId: itemId,
+          pendingWhitespace: "",
         } satisfies AcpAssistantSegmentState,
       ] as const;
     },
   ).pipe(
     Effect.flatMap((result) =>
       result.startedEvent
-        ? Queue.offer(queue, result.startedEvent).pipe(Effect.as(result.itemId))
-        : Effect.succeed(result.itemId),
+        ? Queue.offer(queue, result.startedEvent).pipe(Effect.as(result))
+        : Effect.succeed(result),
     ),
   );
 
@@ -1066,6 +1096,21 @@ const closeActiveAssistantSegment = ({
       } satisfies AcpParsedSessionEvent,
       {
         nextSegmentIndex: current.nextSegmentIndex,
+        pendingWhitespace: current.pendingWhitespace,
       } satisfies AcpAssistantSegmentState,
     ] as const;
   }).pipe(Effect.flatMap((event) => (event ? Queue.offer(queue, event) : Effect.void)));
+
+const clearPendingAssistantWhitespace = ({
+  assistantSegmentRef,
+}: {
+  readonly assistantSegmentRef: Ref.Ref<AcpAssistantSegmentState>;
+}) =>
+  Ref.update(assistantSegmentRef, (current) =>
+    current.pendingWhitespace.length === 0
+      ? current
+      : {
+          ...current,
+          pendingWhitespace: "",
+        },
+  );
