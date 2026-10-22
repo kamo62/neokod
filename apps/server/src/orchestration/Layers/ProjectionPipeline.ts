@@ -1011,19 +1011,41 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       "applyThreadActivitiesProjection",
     )(function* (event, _attachmentSideEffects) {
       switch (event.type) {
-        case "thread.activity-appended":
+        case "thread.activity-appended": {
+          const activity = event.payload.activity;
+          if (activity.kind === "provider.turn.start.failed") {
+            const payload = activity.payload;
+            const failedMessageId =
+              typeof payload === "object" &&
+              payload !== null &&
+              "messageId" in payload &&
+              typeof (payload as { readonly messageId?: unknown }).messageId === "string"
+                ? (payload as { readonly messageId: string }).messageId
+                : null;
+            if (failedMessageId !== null) {
+              const pending = yield* projectionTurnRepository.getPendingTurnStartByThreadId({
+                threadId: event.payload.threadId,
+              });
+              if (Option.isSome(pending) && String(pending.value.messageId) === failedMessageId) {
+                yield* projectionTurnRepository.deletePendingTurnStartByThreadId({
+                  threadId: event.payload.threadId,
+                });
+              }
+            }
+          }
           yield* projectionThreadActivityRepository.upsert({
-            activityId: event.payload.activity.id,
+            activityId: activity.id,
             threadId: event.payload.threadId,
-            turnId: event.payload.activity.turnId,
-            tone: event.payload.activity.tone,
-            kind: event.payload.activity.kind,
-            summary: event.payload.activity.summary,
-            payload: event.payload.activity.payload,
-            sequence: event.payload.activity.sequence ?? event.sequence,
-            createdAt: event.payload.activity.createdAt,
+            turnId: activity.turnId,
+            tone: activity.tone,
+            kind: activity.kind,
+            summary: activity.summary,
+            payload: activity.payload,
+            sequence: activity.sequence ?? event.sequence,
+            createdAt: activity.createdAt,
           });
           return;
+        }
 
         case "thread.reverted": {
           const existingRows = yield* projectionThreadActivityRepository.listByThreadId({

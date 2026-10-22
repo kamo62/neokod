@@ -1337,6 +1337,23 @@ const make = Effect.gen(function* () {
           // reservation is already projected as pending/running, so it is
           // refused here before capture.
           const shell = yield* projectionSnapshotQuery.getShellSnapshot();
+          const archivedShell = yield* projectionSnapshotQuery.getArchivedShellSnapshot();
+          const shellProjects = [
+            ...new Map(
+              [...shell.projects, ...archivedShell.projects].map((project) => [
+                project.id,
+                project,
+              ]),
+            ).values(),
+          ];
+          // Archived threads can still own an admitted turn whose provider
+          // session is not visible yet. Archive state must not hide that
+          // evidence from the revert guard.
+          const shellThreads = [
+            ...new Map(
+              [...shell.threads, ...archivedShell.threads].map((thread) => [thread.id, thread]),
+            ).values(),
+          ];
           const cwdIdentity = yield* readWorkspaceIdentity(cwd);
           const busyThreads = new Set<ThreadId>();
 
@@ -1354,10 +1371,10 @@ const make = Effect.gen(function* () {
             busyThreads.add(thread.id);
           }
 
-          for (const shellThread of shell.threads) {
+          for (const shellThread of shellThreads) {
             const workspacePath = resolveThreadWorkspaceCwd({
               thread: shellThread,
-              projects: shell.projects,
+              projects: shellProjects,
             });
             const overlaps =
               workspacePath === undefined

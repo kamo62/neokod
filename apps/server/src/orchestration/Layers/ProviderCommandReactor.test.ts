@@ -507,8 +507,13 @@ describe("ProviderCommandReactor", () => {
         (activity) => activity.kind === "provider.turn.start.failed",
       );
       expect(failure, "expected a provider.turn.start.failed activity").toBeDefined();
-      const detail = (failure?.payload as { readonly detail?: string } | undefined)?.detail ?? "";
+      const failurePayload = failure?.payload as
+        | { readonly detail?: string; readonly messageId?: string }
+        | undefined;
+      const detail = failurePayload?.detail ?? "";
       expect(detail).toContain(missingRoot);
+      // The message identity fences pending-admission settlement.
+      expect(failurePayload?.messageId).toBe("user-message-moved");
       // The provider must not be blamed for a filesystem problem.
       expect(detail).not.toContain("spawn");
     }),

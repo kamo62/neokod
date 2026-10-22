@@ -1747,6 +1747,77 @@ describe("CheckpointReactor", () => {
     expect(listRecoveryRefs(harness.cwd)).toHaveLength(1);
   });
 
+  it("refuses a revert when an archived thread has an admitted turn", async () => {
+    const harness = await createHarness({ secondThreadSharingWorktree: true });
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-turn-start-archived",
+          messageId: "message-turn-start-archived",
+        }),
+      ),
+    );
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.archive",
+        commandId: CommandId.make("cmd-archive-thread-2-busy"),
+        threadId: ThreadId.make("thread-2"),
+      }),
+    );
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+  });
+
+  it("allows a revert after a rejected provider start settles its pending turn", async () => {
+    const harness = await createHarness({ secondThreadSharingWorktree: true });
+    const messageId = "message-turn-start-rejected";
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-turn-start-rejected",
+          messageId,
+        }),
+      ),
+    );
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.activity.append",
+        commandId: CommandId.make("cmd-provider-turn-start-failed"),
+        threadId: ThreadId.make("thread-2"),
+        activity: {
+          id: EventId.make("activity-provider-turn-start-failed"),
+          tone: "error",
+          kind: "provider.turn.start.failed",
+          summary: "Provider turn start failed",
+          payload: { messageId, detail: "provider unavailable" },
+          turnId: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+
+    await revertToTurnOne(harness);
+    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v2\n");
+    expect(harness.provider.rollbackConversation).toHaveBeenCalledTimes(1);
+    expect(listRecoveryRefs(harness.cwd)).toHaveLength(1);
+  });
+
   it("refuses when a currently ignored file would be lost by the checkpoint's ignore rules", async () => {
     const harness = await createHarness();
     NodeFS.writeFileSync(NodePath.join(harness.cwd, ".gitignore"), "", "utf8");
