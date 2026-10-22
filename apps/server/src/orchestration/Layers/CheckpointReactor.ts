@@ -20,6 +20,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import type * as PlatformError from "effect/PlatformError";
+import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@neokod/shared/DrainableWorker";
@@ -42,6 +43,7 @@ import type { CheckpointStoreError } from "../../checkpointing/Errors.ts";
 import type { OrchestrationDispatchError } from "../Errors.ts";
 import { isGitRepository } from "../../git/Utils.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
+import * as VcsProcess from "../../vcs/VcsProcess.ts";
 import * as WorkspaceEntries from "../../workspace/WorkspaceEntries.ts";
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -91,6 +93,8 @@ const make = Effect.gen(function* () {
   const providerService = yield* ProviderService;
   const checkpointStore = yield* CheckpointStore.CheckpointStore;
   const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const vcsProcess = yield* VcsProcess.VcsProcess;
   const receiptBus = yield* RuntimeReceiptBus;
   const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
   const vcsStatusBroadcaster = yield* VcsStatusBroadcaster;
@@ -250,6 +254,179 @@ const make = Effect.gen(function* () {
   });
 
   const isGitWorkspace = (cwd: string) => isGitRepository(cwd);
+
+  const runGit = Effect.fn("CheckpointReactor.runGit")(function* (input: {
+    readonly operation: string;
+    readonly cwd: string;
+    readonly args: ReadonlyArray<string>;
+    readonly stdin?: string;
+    readonly allowNonZeroExit?: boolean;
+  }) {
+    return yield* vcsProcess.run({
+      operation: input.operation,
+      command: "git",
+      cwd: input.cwd,
+      args: input.args,
+      ...(input.stdin !== undefined ? { stdin: input.stdin } : {}),
+      ...(input.allowNonZeroExit !== undefined ? { allowNonZeroExit: input.allowNonZeroExit } : {}),
+    });
+  });
+
+  const resolveRestoreCommit = Effect.fn("CheckpointReactor.resolveRestoreCommit")(
+    function* (input: {
+      readonly cwd: string;
+      readonly checkpointRef: CheckpointRef;
+      readonly fallbackToHead: boolean;
+    }) {
+      const target = yield* runGit({
+        operation: "CheckpointReactor.resolveRestoreCommit",
+        cwd: input.cwd,
+        args: ["rev-parse", "--verify", "--quiet", `${input.checkpointRef}^{commit}`],
+        allowNonZeroExit: true,
+      });
+      if (target.exitCode === 0) {
+        const commit = target.stdout.trim();
+        if (commit.length > 0) {
+          return commit;
+        }
+      }
+      if (!input.fallbackToHead) {
+        return null;
+      }
+      const head = yield* runGit({
+        operation: "CheckpointReactor.resolveRestoreCommit",
+        cwd: input.cwd,
+        args: ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
+        allowNonZeroExit: true,
+      });
+      if (head.exitCode !== 0) {
+        return null;
+      }
+      const commit = head.stdout.trim();
+      return commit.length > 0 ? commit : null;
+    },
+  );
+
+  const trimTrailingSlash = (value: string): string => value.replace(/\/+$/, "");
+
+  // Restore reinstates the target tree's .gitignore rules before `git clean -fd`
+  // runs. An untracked file that is ignored now but not by the target tree would
+  // be deleted, and the recovery snapshot never captured it because it was
+  // ignored at capture time. Refuse when that would happen.
+  const findIgnoredPathsLostByRestore = Effect.fn(
+    "CheckpointReactor.findIgnoredPathsLostByRestore",
+  )(function* (input: {
+    readonly cwd: string;
+    readonly checkpointRef: CheckpointRef;
+    readonly fallbackToHead: boolean;
+  }) {
+    const repoRootResult = yield* runGit({
+      operation: "CheckpointReactor.findIgnoredPathsLostByRestore",
+      cwd: input.cwd,
+      args: ["rev-parse", "--show-toplevel"],
+      allowNonZeroExit: true,
+    });
+    if (repoRootResult.exitCode !== 0) {
+      return [];
+    }
+    const repoRoot = repoRootResult.stdout.trim();
+    if (repoRoot.length === 0) {
+      return [];
+    }
+
+    const prefixResult = yield* runGit({
+      operation: "CheckpointReactor.findIgnoredPathsLostByRestore",
+      cwd: input.cwd,
+      args: ["rev-parse", "--show-prefix"],
+      allowNonZeroExit: true,
+    });
+    const cwdPrefix = prefixResult.exitCode === 0 ? prefixResult.stdout.trim() : "";
+
+    const ignored = yield* runGit({
+      operation: "CheckpointReactor.findIgnoredPathsLostByRestore",
+      cwd: repoRoot,
+      args: [
+        // An ignored directory is enough to assess: Git cannot re-include a
+        // descendant of an excluded directory, so either the target still
+        // ignores it or clean would remove the whole directory.
+        "ls-files",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "--directory",
+        "--full-name",
+        "-z",
+        ...(cwdPrefix.length > 0 ? ["--", cwdPrefix] : []),
+      ],
+    });
+    const currentIgnored = ignored.stdout.split("\0").filter((entry) => entry.length > 0);
+    if (currentIgnored.length === 0) {
+      return [];
+    }
+
+    const commit = yield* resolveRestoreCommit(input);
+    if (commit === null) {
+      return [];
+    }
+
+    const tree = yield* runGit({
+      operation: "CheckpointReactor.findIgnoredPathsLostByRestore",
+      cwd: repoRoot,
+      args: ["ls-tree", "-r", "-z", "--name-only", commit],
+    });
+    const targetIgnorePaths = tree.stdout
+      .split("\0")
+      .filter((entry) => entry === ".gitignore" || entry.endsWith("/.gitignore"));
+
+    return yield* Effect.scoped(
+      Effect.acquireRelease(
+        fileSystem.makeTempDirectory({ prefix: "neokod-revert-ignore-check-" }),
+        (directory) =>
+          fileSystem.remove(directory, { recursive: true, force: true }).pipe(Effect.ignore),
+      ).pipe(
+        Effect.flatMap((tempDirectory) =>
+          Effect.gen(function* () {
+            for (const ignorePath of targetIgnorePaths) {
+              const contents = yield* runGit({
+                operation: "CheckpointReactor.findIgnoredPathsLostByRestore",
+                cwd: repoRoot,
+                args: ["show", `${commit}:${ignorePath}`],
+              });
+              const destination = path.join(tempDirectory, ignorePath);
+              yield* fileSystem.makeDirectory(path.dirname(destination), { recursive: true });
+              yield* fileSystem.writeFileString(destination, contents.stdout);
+            }
+
+            const checked = yield* runGit({
+              operation: "CheckpointReactor.findIgnoredPathsLostByRestore",
+              cwd: repoRoot,
+              args: ["--work-tree", tempDirectory, "check-ignore", "--no-index", "-z", "--stdin"],
+              stdin: `${currentIgnored.join("\0")}\0`,
+              allowNonZeroExit: true,
+            });
+            if (checked.exitCode !== 0 && checked.exitCode !== 1) {
+              // Unknown target rules: refuse rather than claim the files survive.
+              return currentIgnored;
+            }
+
+            const targetIgnored = new Set(
+              checked.stdout
+                .split("\0")
+                .filter((entry) => entry.length > 0)
+                .map(trimTrailingSlash),
+            );
+            return currentIgnored
+              .filter((entry) => !targetIgnored.has(trimTrailingSlash(entry)))
+              .map((entry) =>
+                cwdPrefix.length > 0 && entry.startsWith(cwdPrefix)
+                  ? entry.slice(cwdPrefix.length)
+                  : entry,
+              );
+          }),
+        ),
+      ),
+    );
+  });
 
   // Resolves the workspace CWD for checkpoint operations, preferring the
   // active provider session CWD and falling back to the thread/project config.
@@ -865,19 +1042,54 @@ const make = Effect.gen(function* () {
 
     const cwd = sessionRuntime.value.cwd;
 
-    // Refuse while another thread is starting or running a turn in the same
-    // folder. Restore rewrites every tracked file and deletes every untracked,
-    // non-ignored file under cwd, including another thread's work.
-    const busyThreads = findActiveSessionsSharingCwd({
-      threadId: event.payload.threadId,
-      cwd,
-      sessions: sessions.value,
-    });
+    // Refuse while this thread or another thread has an active turn in the same
+    // folder or an overlapping parent/child folder. Restore rewrites every
+    // tracked file and deletes every untracked, non-ignored file under cwd,
+    // including another thread's work.
+    const busyThreads = [
+      ...findActiveSessionsSharingCwd({
+        cwd,
+        sessions: sessions.value,
+      }),
+    ];
+    // The provider session list is not the only evidence of an active turn.
+    // The read model also records the thread's own active turn; treat either
+    // as busy. This covers adapters that keep the session at "ready".
+    const readModelActiveTurnId = thread.session?.activeTurnId ?? null;
+    if (
+      readModelActiveTurnId !== null &&
+      !busyThreads.some((threadId) => threadId === event.payload.threadId)
+    ) {
+      busyThreads.push(event.payload.threadId);
+    }
     if (busyThreads.length > 0) {
       yield* appendRevertFailureActivity({
         threadId: event.payload.threadId,
         turnCount: event.payload.turnCount,
-        detail: `Revert refused: ${busyThreads.join(", ")} ${busyThreads.length === 1 ? "has" : "have"} an active session in the same folder (${cwd}). Wait for it to finish or interrupt it, then try again. Nothing was changed.`,
+        detail: `Revert refused: ${busyThreads.join(", ")} ${busyThreads.length === 1 ? "has" : "have"} an active turn in the same folder (${cwd}). Wait for it to finish or interrupt it, then try again. Nothing was changed.`,
+        createdAt: now,
+      }).pipe(Effect.catch(() => Effect.void));
+      return;
+    }
+
+    // The recovery snapshot never captures ignored files. If restoring the
+    // target tree's ignore rules would make a currently ignored path
+    // non-ignored, git clean would delete it. Refuse before any mutation.
+    const ignoredPathsLostByRestore = yield* findIgnoredPathsLostByRestore({
+      cwd,
+      checkpointRef: targetCheckpointRef,
+      fallbackToHead: event.payload.turnCount === 0,
+    });
+    if (ignoredPathsLostByRestore.length > 0) {
+      const shown = ignoredPathsLostByRestore.slice(0, 5).join(", ");
+      const more =
+        ignoredPathsLostByRestore.length > 5
+          ? ` and ${ignoredPathsLostByRestore.length - 5} more`
+          : "";
+      yield* appendRevertFailureActivity({
+        threadId: event.payload.threadId,
+        turnCount: event.payload.turnCount,
+        detail: `Revert refused: ${ignoredPathsLostByRestore.length} ignored path${ignoredPathsLostByRestore.length === 1 ? "" : "s"} would be deleted because the recovery snapshot does not include ignored files and checkpoint ${event.payload.turnCount}'s ignore rules do not cover: ${shown}${more}. Move the path out of this folder or keep it ignored in the checkpoint, then try again. Nothing was changed.`,
         createdAt: now,
       }).pipe(Effect.catch(() => Effect.void));
       return;

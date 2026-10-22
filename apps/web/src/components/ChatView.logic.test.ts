@@ -1082,6 +1082,7 @@ describe("buildRevertCheckpointConfirmMessage", () => {
     expect(message).toContain("checkpoint 3");
     expect(message).toContain("deleted");
     expect(message).toContain("other threads");
+    expect(message).toContain("Staged changes become unstaged");
     expect(message).toContain("refs/neokod/recovery/");
     expect(message).not.toContain("cannot be undone");
   });

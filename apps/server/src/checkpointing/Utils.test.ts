@@ -26,11 +26,11 @@ describe("findActiveSessionsSharingCwd", () => {
       readonly threadId: string;
       readonly cwd?: string | undefined;
       readonly status: string;
+      readonly activeTurnId?: string | null | undefined;
     }>,
     targetCwd = cwd,
   ) =>
     findActiveSessionsSharingCwd({
-      threadId,
       cwd: targetCwd,
       sessions: sessions.map((session) => ({
         ...session,
@@ -50,7 +50,7 @@ describe("findActiveSessionsSharingCwd", () => {
     ]);
   });
 
-  it("ignores ready, error and closed sessions", () => {
+  it("ignores ready, error and closed sessions without an active turn", () => {
     expect(
       find([
         { threadId: "thread-2", cwd, status: "ready" },
@@ -60,12 +60,30 @@ describe("findActiveSessionsSharingCwd", () => {
     ).toEqual([]);
   });
 
+  it("counts a ready session that has an active turn", () => {
+    expect(find([{ threadId: "thread-2", cwd, status: "ready", activeTurnId: "turn-1" }])).toEqual([
+      ThreadId.make("thread-2"),
+    ]);
+  });
+
   it("ignores a session in a different folder", () => {
     expect(find([{ threadId: "thread-2", cwd: "/repo/other", status: "running" }])).toEqual([]);
   });
 
-  it("ignores the thread's own session", () => {
-    expect(find([{ threadId: "thread-1", cwd, status: "running" }])).toEqual([]);
+  it("counts the reverting thread's own running session", () => {
+    expect(find([{ threadId: "thread-1", cwd, status: "running" }])).toEqual([threadId]);
+  });
+
+  it("counts a session in a child folder", () => {
+    expect(find([{ threadId: "thread-2", cwd: `${cwd}/nested`, status: "running" }])).toEqual([
+      ThreadId.make("thread-2"),
+    ]);
+  });
+
+  it("counts a session in a parent folder", () => {
+    expect(find([{ threadId: "thread-2", cwd: "/repo", status: "running" }])).toEqual([
+      ThreadId.make("thread-2"),
+    ]);
   });
 
   it("ignores a session without a folder", () => {

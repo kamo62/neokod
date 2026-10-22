@@ -25,32 +25,56 @@ export function recoveryRefForThreadRevert(threadId: ThreadId, epochMillis: numb
 
 const trimTrailingSeparators = (value: string): string => value.replace(/[\\/]+$/, "");
 
+const sessionHasActiveTurn = (session: {
+  readonly status: string;
+  readonly activeTurnId?: string | null | undefined;
+}): boolean =>
+  session.status === "running" ||
+  session.status === "connecting" ||
+  (session.activeTurnId !== undefined && session.activeTurnId !== null);
+
+const foldersOverlap = (left: string, right: string): boolean => {
+  const normalizedLeft = trimTrailingSeparators(left);
+  const normalizedRight = trimTrailingSeparators(right);
+  if (normalizedLeft === normalizedRight) {
+    return true;
+  }
+  return (
+    normalizedLeft.startsWith(`${normalizedRight}/`) ||
+    normalizedLeft.startsWith(`${normalizedRight}\\`) ||
+    normalizedRight.startsWith(`${normalizedLeft}/`) ||
+    normalizedRight.startsWith(`${normalizedLeft}\\`)
+  );
+};
+
 /**
- * Threads, other than `threadId`, whose provider session is starting or running
- * in `cwd`.
+ * Threads whose provider session has an active turn in `cwd` or in a folder
+ * that contains or is contained by `cwd`.
  *
- * The comparison is normalized string equality (trailing separators are
- * trimmed). It does not resolve symlinks, `..` segments, case differences on a
- * case-insensitive filesystem, or bind mounts, and it cannot observe writers
- * outside Neokod.
+ * `running` and `connecting` sessions count. A session that stays `ready`
+ * while a turn is active, as Copilot and Cursor do, counts through its
+ * `activeTurnId`. The reverting thread's own active turn also counts.
+ *
+ * The comparison is normalized string equality or prefix overlap (trailing
+ * separators are trimmed). It does not resolve symlinks, `..` segments, case
+ * differences on a case-insensitive filesystem, or bind mounts, and it cannot
+ * observe writers outside Neokod.
  */
 export function findActiveSessionsSharingCwd(input: {
-  readonly threadId: ThreadId;
   readonly cwd: string;
   readonly sessions: ReadonlyArray<{
     readonly threadId: ThreadId;
     readonly cwd?: string | undefined;
     readonly status: string;
+    readonly activeTurnId?: string | null | undefined;
   }>;
 }): ReadonlyArray<ThreadId> {
-  const target = trimTrailingSeparators(input.cwd);
   return input.sessions
     .filter(
       (session) =>
-        session.threadId !== input.threadId &&
-        (session.status === "running" || session.status === "connecting") &&
+        sessionHasActiveTurn(session) &&
         session.cwd !== undefined &&
-        trimTrailingSeparators(session.cwd) === target,
+        foldersOverlap(session.cwd, input.cwd),
     )
     .map((session) => session.threadId);
 }
