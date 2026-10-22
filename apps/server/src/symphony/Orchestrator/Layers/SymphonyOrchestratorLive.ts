@@ -51,7 +51,8 @@ import { RunEventRepository } from "../../Persistence/Services/RunEventRepositor
 import { ApprovalService } from "../../Runner/ApprovalService.ts";
 import { RunDispatcher } from "../../Runner/Dispatcher.ts";
 import { EvidenceRepository } from "../../Persistence/Services/EvidenceRepository.ts";
-import { PullRequestService, pullRequestRepositoryKey } from "../../Evidence/PullRequest.ts";
+import { PullRequestService } from "../../Evidence/PullRequest.ts";
+import { changeRequestRepositoryKey } from "../../../sourceControl/ChangeRequestUrl.ts";
 import { WORKFLOW_DEFAULTS } from "../../Workflow/Config.ts";
 import { TrackerAdapterRegistry } from "../../Trackers/Adapter.ts";
 import { resolveTrackerAdapter, TrackerEnablement } from "../TrackerEnablement.ts";
@@ -1930,11 +1931,17 @@ const makeOrchestrator = Effect.gen(function* () {
     fresh: PullRequestEvidence,
   ): Effect.Effect<void> =>
     Effect.gen(function* () {
+      // Completion requires affirmative identity: the same number in the same
+      // repository. Missing or unparseable provenance is unresolved evidence.
+      const trackedNumber = previous?.number;
+      const trackedRepository = previous === null ? null : changeRequestRepositoryKey(previous.url);
+      const freshRepository = changeRequestRepositoryKey(fresh.url);
       const tracked =
         previous !== null &&
-        previous.number === fresh.number &&
-        (pullRequestRepositoryKey(previous.url) === null ||
-          pullRequestRepositoryKey(previous.url) === pullRequestRepositoryKey(fresh.url));
+        trackedNumber === fresh.number &&
+        trackedRepository !== null &&
+        freshRepository !== null &&
+        trackedRepository === freshRepository;
       if (fresh.status === "merged") {
         if (!tracked) {
           yield* Effect.logWarning("symphony.merge.tracked_pull_request_mismatch", {
@@ -2022,15 +2029,26 @@ const makeOrchestrator = Effect.gen(function* () {
       if (branch === undefined) {
         return false;
       }
+      // Unresolved provenance is not permission: without a parseable repository
+      // identity for the tracked PR, a refresh could replace it with a
+      // same-number PR from another repository. Keep the evidence untouched.
+      const trackedNumber = bundle?.pullRequest?.number;
+      const trackedRepository = changeRequestRepositoryKey(bundle?.pullRequest?.url);
+      if (trackedNumber !== undefined && trackedRepository === null) {
+        yield* Effect.logWarning("symphony.pull_request.refresh_identity_unresolved", {
+          workItemId: String(id),
+          tracked: trackedNumber,
+          trackedUrl: bundle?.pullRequest?.url ?? null,
+        });
+        return false;
+      }
       const refreshed = yield* pullRequestService
         .refresh({
           config,
           branch,
           baseBranch,
           title: item.objective,
-          ...(bundle?.pullRequest?.number !== undefined
-            ? { pullRequestNumber: bundle.pullRequest.number }
-            : {}),
+          ...(trackedNumber !== undefined ? { pullRequestNumber: trackedNumber } : {}),
           ...(bundle?.pullRequest?.url !== undefined
             ? { pullRequestUrl: bundle.pullRequest.url }
             : {}),
@@ -2046,12 +2064,11 @@ const makeOrchestrator = Effect.gen(function* () {
       // (even one with the same number in another repository) would corrupt the
       // review evidence the merge decision is made on. Refuse and keep what we
       // know.
-      const trackedNumber = bundle.pullRequest?.number;
-      const trackedRepository = pullRequestRepositoryKey(bundle.pullRequest?.url);
-      const refreshedRepository = pullRequestRepositoryKey(refreshed.url);
+      const refreshedRepository = changeRequestRepositoryKey(refreshed.url);
       if (
-        (trackedNumber !== undefined && refreshed.number !== trackedNumber) ||
-        (trackedRepository !== null && refreshedRepository !== trackedRepository)
+        (trackedNumber !== undefined &&
+          (refreshed.number !== trackedNumber || trackedRepository !== refreshedRepository)) ||
+        (trackedNumber === undefined && bundle.pullRequest !== null && refreshedRepository === null)
       ) {
         yield* Effect.logWarning("symphony.pull_request.refresh_identity_mismatch", {
           workItemId: String(id),
@@ -2145,7 +2162,18 @@ const makeOrchestrator = Effect.gen(function* () {
       }
       const branch = deriveWorkingBranch(workspaceKey);
       const trackedNumber = previousEvidence?.pullRequest?.number;
-      const trackedRepository = pullRequestRepositoryKey(previousEvidence?.pullRequest?.url);
+      const trackedRepository = changeRequestRepositoryKey(previousEvidence?.pullRequest?.url);
+      // Merge approval needs the tracked PR's repository identity: authorising a
+      // merge on a same-number PR from another repository (or on unresolved
+      // provenance) is not evidence about this work item.
+      if (trackedNumber === undefined || trackedRepository === null) {
+        yield* Effect.logWarning("symphony.merge.approval_identity_unresolved", {
+          workItemId: String(id),
+          tracked: trackedNumber ?? null,
+          trackedUrl: previousEvidence?.pullRequest?.url ?? null,
+        });
+        return false;
+      }
       const freshPullRequest = yield* pullRequestService
         .refresh({
           config,
@@ -2164,10 +2192,11 @@ const makeOrchestrator = Effect.gen(function* () {
       // The gate may only judge the PR the run actually opened: a different PR
       // (same number in another repository, or another PR on the branch) is not
       // evidence about this work item.
-      const freshRepository = pullRequestRepositoryKey(freshPullRequest.url);
+      const freshRepository = changeRequestRepositoryKey(freshPullRequest.url);
       if (
-        (trackedNumber !== undefined && freshPullRequest.number !== trackedNumber) ||
-        (trackedRepository !== null && freshRepository !== trackedRepository)
+        freshPullRequest.number !== trackedNumber ||
+        freshRepository === null ||
+        freshRepository !== trackedRepository
       ) {
         yield* Effect.logWarning("symphony.merge.approval_identity_mismatch", {
           workItemId: String(id),

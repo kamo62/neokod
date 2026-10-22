@@ -19,7 +19,6 @@ import * as Option from "effect/Option";
 import {
   makePullRequestService,
   PullRequestService,
-  pullRequestRepositoryKey,
   type PullRequestServiceDeps,
 } from "./PullRequest.ts";
 
@@ -81,17 +80,20 @@ const makeEvidence = (): EvidenceBundle => ({
   createdAt: "2026-08-05T03:00:00.000Z",
 });
 
-const makeChangeRequest = (overrides: Partial<ChangeRequest> = {}): ChangeRequest => ({
-  provider: "github",
-  number: 17,
-  title: "Implement issue 42",
-  url: "https://github.com/owner/repo/pull/17",
-  baseRefName: "main",
-  headRefName: "symphony/issue-42",
-  state: "open",
-  updatedAt: Option.some(DateTime.makeUnsafe("2026-08-05T04:00:00.000Z")),
-  ...overrides,
-});
+const makeChangeRequest = (overrides: Partial<ChangeRequest> = {}): ChangeRequest => {
+  const number = overrides.number ?? 17;
+  return {
+    provider: "github",
+    number,
+    title: "Implement issue 42",
+    url: `https://github.com/owner/repo/pull/${number}`,
+    baseRefName: "main",
+    headRefName: "symphony/issue-42",
+    state: "open",
+    updatedAt: Option.some(DateTime.makeUnsafe("2026-08-05T04:00:00.000Z")),
+    ...overrides,
+  };
+};
 
 const makeDeps = (overrides: Partial<PullRequestServiceDeps> = {}): PullRequestServiceDeps => ({
   git: {
@@ -328,6 +330,7 @@ it.effect("refresh looks up a tracked number directly instead of scanning the br
       baseBranch: "main",
       title: "Implement issue 42",
       pullRequestNumber: 42,
+      pullRequestUrl: "https://github.com/owner/repo/pull/42",
     });
 
     expect(directReferences).toEqual(["42"]);
@@ -376,6 +379,7 @@ it.effect(
           baseBranch: "main",
           title: "Implement issue 42",
           pullRequestNumber: 42,
+          pullRequestUrl: "https://github.com/owner/repo/pull/42",
         }),
       ).toBeNull();
       // A different PR on the branch is not a substitute for the tracked one.
@@ -383,25 +387,158 @@ it.effect(
     }),
 );
 
-it("derives a comparable repository identity from change-request URLs", () => {
-  expect(pullRequestRepositoryKey("https://github.com/owner/a/pull/42")).toBe(
-    pullRequestRepositoryKey("https://www.github.com/owner/a/pull/7/"),
-  );
-  expect(pullRequestRepositoryKey("https://github.com/owner/a/pull/42")).not.toBe(
-    pullRequestRepositoryKey("https://github.com/owner/b/pull/42"),
-  );
-  expect(pullRequestRepositoryKey("https://gitlab.com/group/project/-/merge_requests/42")).toBe(
-    "gitlab.com/group/project",
-  );
-  expect(pullRequestRepositoryKey("https://bitbucket.org/owner/repo/pull-requests/42")).toBe(
-    "bitbucket.org/owner/repo",
-  );
-  expect(
-    pullRequestRepositoryKey("https://dev.azure.com/org/project/_git/repo/pullrequest/42"),
-  ).toBe("dev.azure.com/org/project/_git/repo");
-  expect(pullRequestRepositoryKey(undefined)).toBeNull();
-  expect(pullRequestRepositoryKey("not a url")).toBeNull();
-});
+it.effect("refresh refuses a tracked PR whose repository identity is missing", () =>
+  Effect.gen(function* () {
+    const hostCalls: string[] = [];
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: {
+                createChangeRequest: () => Effect.void,
+                getChangeRequestStatus: () => Effect.succeed(null),
+                getChangeRequest: () => {
+                  hostCalls.push("getChangeRequest");
+                  return Effect.succeed(makeChangeRequest({ number: 42 }));
+                },
+                listChangeRequests: () => {
+                  hostCalls.push("listChangeRequests");
+                  return Effect.succeed([makeChangeRequest({ number: 42 })]);
+                },
+              },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+      }),
+    );
+
+    expect(
+      yield* service.refresh({
+        config: makeConfig(),
+        branch: "symphony/issue-42",
+        baseBranch: "main",
+        title: "Implement issue 42",
+        pullRequestNumber: 42,
+      }),
+    ).toBeNull();
+    // Unresolved provenance is not permission: the host is not even asked.
+    expect(hostCalls).toEqual([]);
+  }),
+);
+
+it.effect("refresh refuses a tracked PR whose repository identity is unparseable", () =>
+  Effect.gen(function* () {
+    const hostCalls: string[] = [];
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: {
+                createChangeRequest: () => Effect.void,
+                getChangeRequestStatus: () => Effect.succeed(null),
+                getChangeRequest: () => {
+                  hostCalls.push("getChangeRequest");
+                  return Effect.succeed(makeChangeRequest({ number: 42 }));
+                },
+                listChangeRequests: () => {
+                  hostCalls.push("listChangeRequests");
+                  return Effect.succeed([]);
+                },
+              },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+      }),
+    );
+
+    expect(
+      yield* service.refresh({
+        config: makeConfig(),
+        branch: "symphony/issue-42",
+        baseBranch: "main",
+        title: "Implement issue 42",
+        pullRequestNumber: 42,
+        pullRequestUrl: "not a change-request url",
+      }),
+    ).toBeNull();
+    expect(hostCalls).toEqual([]);
+  }),
+);
+
+it.effect("refresh refuses equal PR numbers on different ports of the same host", () =>
+  Effect.gen(function* () {
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: {
+                createChangeRequest: () => Effect.void,
+                getChangeRequestStatus: () => Effect.succeed(null),
+                getChangeRequest: () =>
+                  Effect.succeed(
+                    makeChangeRequest({
+                      number: 42,
+                      url: "https://gitlab.example:9443/group/repo/-/merge_requests/42",
+                    }),
+                  ),
+                listChangeRequests: () => Effect.succeed([]),
+              },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+      }),
+    );
+
+    expect(
+      yield* service.refresh({
+        config: makeConfig(),
+        branch: "symphony/issue-42",
+        baseBranch: "main",
+        title: "Implement issue 42",
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://gitlab.example:8443/group/repo/-/merge_requests/42",
+      }),
+    ).toBeNull();
+  }),
+);
+
+it.effect("refresh refuses equal PR numbers under an owner named pull", () =>
+  Effect.gen(function* () {
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: {
+                createChangeRequest: () => Effect.void,
+                getChangeRequestStatus: () => Effect.succeed(null),
+                getChangeRequest: () =>
+                  Effect.succeed(
+                    makeChangeRequest({ number: 42, url: "https://github.com/pull/b/pull/42" }),
+                  ),
+                listChangeRequests: () => Effect.succeed([]),
+              },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+      }),
+    );
+
+    expect(
+      yield* service.refresh({
+        config: makeConfig(),
+        branch: "symphony/issue-42",
+        baseBranch: "main",
+        title: "Implement issue 42",
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://github.com/pull/a/pull/42",
+      }),
+    ).toBeNull();
+  }),
+);
 
 it.effect("refresh refuses a same-number PR that belongs to another repository", () =>
   Effect.gen(function* () {

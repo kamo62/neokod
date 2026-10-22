@@ -472,6 +472,13 @@ const layer = it.layer(
                   ),
                   Effect.andThen(
                     Ref.get(pullRequestRefreshRef as Ref.Ref<PullRequestEvidence | null>),
+                    // Providers always return a URL; only fixtures that test
+                    // identity deliberately override it.
+                  ),
+                  Effect.map((value) =>
+                    value === null || value.url !== undefined
+                      ? value
+                      : { ...value, url: `https://github.com/owner/repo/pull/${value.number}` },
                   ),
                 ),
               listUnresolvedComments: () =>
@@ -527,6 +534,9 @@ const openPullRequest = (
   title: "t",
   branch,
   baseBranch,
+  // Real evidence always carries the host URL; number-only identity is what the
+  // repository guards refuse.
+  url: `https://github.com/owner/repo/pull/${number}`,
   status: "open",
   ciStatus: "success",
   reviewState: "approved",
@@ -2411,6 +2421,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
           title: "t",
           branch: "b",
           baseBranch: "m",
+          url: "https://github.com/owner/repo/pull/1",
           status: "open",
           ciStatus: "success",
           reviewState: "approved",
@@ -2510,6 +2521,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
             title: "t",
             branch: "b",
             baseBranch: "m",
+            url: "https://github.com/owner/repo/pull/1",
             status: "open",
             ciStatus: "success",
             reviewState: "approved",
@@ -2793,6 +2805,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
           title: "t",
           branch: "b",
           baseBranch: "m",
+          url: "https://github.com/owner/repo/pull/1",
           status: "open",
           ciStatus: "success",
           reviewState: "approved",
@@ -2906,6 +2919,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
             number: 7,
             title: "t",
             branch: "symphony/review-fr-1",
+            url: "https://github.com/owner/repo/pull/7",
             baseBranch: "main",
             status: "open",
             ciStatus: "success",
@@ -2994,6 +3008,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
             number: 8,
             title: "t",
             branch: "symphony/review-fr-2",
+            url: "https://github.com/owner/repo/pull/8",
             baseBranch: "main",
             status: "open",
             ciStatus: "success",
@@ -3063,6 +3078,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
             number: 9,
             title: "t",
             branch: "symphony/review-fr-3",
+            url: "https://github.com/owner/repo/pull/9",
             baseBranch: "main",
             status: "open",
             ciStatus: "failure",
@@ -3153,6 +3169,122 @@ layer("SymphonyOrchestrator Observe", (it) => {
       expect(yield* orchestrator.refreshPullRequest("merge-9")).toBe(true);
       expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("completed");
       expect(yield* mergedEvents).toHaveLength(1);
+    }),
+  );
+
+  it.effect("a ready_to_merge item without a tracked repository identity is never completed", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const evidenceRepository = yield* EvidenceRepository;
+      const branch = "symphony/issue-merge-no-identity-1";
+      // Evidence written before the URL was recorded: the number is known, the
+      // repository is not. Missing identity is unresolved, never "any repo".
+      const { workItemId } = yield* seedMergeDetectionItem({
+        workItemId: "merge-no-identity-1",
+        workflowId: "wf-merge-no-identity-1",
+        repositoryPath: "/repo/merge-no-identity-1",
+        workspaceKey: "issue-merge-no-identity-1",
+        baseBranch: "main",
+        storedPullRequest: {
+          number: 42,
+          title: "t",
+          branch,
+          baseBranch: "main",
+          status: "open",
+          ciStatus: "success",
+          reviewState: "approved",
+          mergeable: "mergeable",
+          unresolvedComments: 0,
+        },
+      });
+      yield* setPullRequestRefresh({
+        number: 42,
+        title: "t",
+        branch,
+        baseBranch: "main",
+        status: "merged",
+      });
+      const before = pullRequestRefreshInputs.filter((entry) => entry.branch === branch).length;
+
+      expect(yield* orchestrator.refreshPullRequest("merge-no-identity-1")).toBe(false);
+      // Refused before the host was asked: the missing identity is not replaced.
+      expect(pullRequestRefreshInputs.filter((entry) => entry.branch === branch)).toHaveLength(
+        before,
+      );
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("ready_to_merge");
+      expect(
+        (yield* evidenceRepository.getByWorkItem(workItemId))?.pullRequest?.url,
+      ).toBeUndefined();
+    }),
+  );
+
+  it.effect("approveMerge refuses a tracked PR with an unresolved repository identity", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const workItemId = WorkItemId.make("merge-no-identity-approval-1");
+      yield* seedWorkflow("wf-merge-no-identity-2", "/repo/merge-no-identity-2", {
+        autonomy: "execute",
+      });
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId: TEST_PROJECT_ID,
+        objective: "Merge target without repository identity",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "merge-no-identity-approval-1",
+        workflowId: WorkflowId.make("wf-merge-no-identity-2"),
+        lifecycle: "ready_for_review",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        workspaceKey: "issue-merge-no-identity-2",
+        baseBranch: "main",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      const evidenceRepository = yield* EvidenceRepository;
+      yield* evidenceRepository.upsert(workItemId, {
+        changedFiles: [],
+        testsChanged: [],
+        commits: [],
+        validationResults: [],
+        assumptions: [],
+        risks: [],
+        unresolved: [],
+        artefacts: [],
+        // Number known, repository unknown.
+        pullRequest: {
+          number: 1,
+          title: "t",
+          branch: "b",
+          baseBranch: "m",
+          status: "open",
+          ciStatus: "success",
+          reviewState: "approved",
+          mergeable: "mergeable",
+          unresolvedComments: 0,
+        },
+        modelReview: null,
+        overallAssessment: "ready_for_review",
+        createdAt: "2026-08-05T00:00:00.000Z",
+      });
+      yield* setPullRequestRefresh({
+        number: 1,
+        title: "t",
+        branch: "b",
+        baseBranch: "m",
+        status: "open",
+        ciStatus: "success",
+        reviewState: "approved",
+        mergeable: "mergeable",
+        unresolvedComments: 0,
+      });
+
+      expect(yield* orchestrator.approveMerge("merge-no-identity-approval-1")).toBe(false);
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("ready_for_review");
     }),
   );
 
@@ -3671,6 +3803,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
             title: "t",
             branch: `symphony/${key}`,
             baseBranch: "main",
+            url: `https://github.com/owner/repo/pull/${1_000 + index}`,
             status: "closed",
           },
           modelReview: null,

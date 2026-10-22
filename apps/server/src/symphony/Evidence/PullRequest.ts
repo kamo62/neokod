@@ -11,6 +11,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
+import { changeRequestRepositoryKey } from "../../sourceControl/ChangeRequestUrl.ts";
 import { SourceControlProviderRegistry } from "../../sourceControl/SourceControlProviderRegistry.ts";
 import { GitHubCli } from "../../sourceControl/GitHubCli.ts";
 import { nowIso } from "../Domain/Time.ts";
@@ -54,34 +55,6 @@ export interface CreatePullRequestInput {
   /** Where to write the PR body file (temp dir). */
   readonly bodyFileDir: string;
 }
-
-/**
- * Repository identity carried by a change-request URL: host plus repository
- * path, with the provider's change-request segment (and the reference after it)
- * removed. `null` means the URL cannot identify a repository; callers must not
- * invent an identity from it.
- *
- * A tracked PR number is only unique inside its repository, so merge evidence
- * must be bound to both.
- */
-export const pullRequestRepositoryKey = (url: string | undefined): string | null => {
-  if (url === undefined) {
-    return null;
-  }
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return null;
-  }
-  const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
-  const path = parsed.pathname.replace(/\/+$/, "");
-  const marker = path.search(/\/(pulls?|pull-requests|pullrequest|merge_requests)\//i);
-  const repositoryPath = (marker === -1 ? path : path.slice(0, marker))
-    .replace(/\/-$/, "")
-    .replace(/\.git$/i, "");
-  return `${host}${repositoryPath.toLowerCase()}`;
-};
 
 export class PullRequestService extends Context.Service<
   PullRequestService,
@@ -275,6 +248,17 @@ export const makePullRequestService = (
       const handle = yield* deps.providers
         .resolveHandle({ cwd: input.config.repositoryPath })
         .pipe(Effect.mapError((cause) => new PullRequestCreationError(cause.message)));
+      // A tracked request needs affirmative repository provenance. Missing or
+      // unparseable provenance is unresolved, not "any repository": refuse
+      // rather than let a same-number PR from another repository become the
+      // tracked evidence.
+      const trackedRepository =
+        input.pullRequestNumber === undefined
+          ? null
+          : changeRequestRepositoryKey(input.pullRequestUrl);
+      if (input.pullRequestNumber !== undefined && trackedRepository === null) {
+        return null;
+      }
       // Identity first: a tracked number is fetched directly. Scanning the
       // branch is only for requests without a known number, and nothing else is
       // accepted when the tracked PR cannot be read — a different PR on the
@@ -311,12 +295,14 @@ export const makePullRequestService = (
       if (found === null) {
         return null;
       }
-      // A PR number is only unique inside its repository: the tracked URL must
-      // name the same repository, or this is a different PR that merely shares
-      // the number (and perhaps the branch). Refuse rather than overwrite the
+      // A PR number is only unique inside its repository: the result must name
+      // the same repository, or this is a different PR that merely shares the
+      // number (and perhaps the branch). Refuse rather than overwrite the
       // stored evidence.
-      const trackedRepository = pullRequestRepositoryKey(input.pullRequestUrl);
-      if (trackedRepository !== null && pullRequestRepositoryKey(found.url) !== trackedRepository) {
+      if (
+        trackedRepository !== null &&
+        changeRequestRepositoryKey(found.url) !== trackedRepository
+      ) {
         return null;
       }
       // Host-enriched status (plan 10.1, Phase 5): CI status, review state,
