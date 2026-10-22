@@ -165,8 +165,9 @@ export interface WorkspaceManagerDeps {
   /** Record a Symphony ownership lease for a newly created workspace
    * (plan 16.0; REVIEW P1 #1). */
   readonly acquireOwnership?: (workspacePath: string) => Effect.Effect<void, WorkspaceLeaseError>;
-  /** Hold a shared admission/removal reservation across the removal. */
-  readonly removeUnderReservation?: (input: {
+  /** Hold a shared admission/removal reservation across the removal. Required:
+   * an omitted reservation would silently disarm the admission gate. */
+  readonly removeUnderReservation: (input: {
     readonly workspacePath: string;
     readonly remove: () => Effect.Effect<void, WorkspaceRemovalBlocked>;
   }) => Effect.Effect<void, WorkspaceRemovalBlocked | WorkspaceRemovalReservationFailed>;
@@ -290,12 +291,10 @@ export const makeWorkspaceManager = (deps: WorkspaceManagerDeps): WorkspaceManag
         })
         .pipe(Effect.catch(() => Effect.void));
     });
-    return deps.removeUnderReservation === undefined
-      ? remove
-      : deps.removeUnderReservation({
-          workspacePath: input.workspace.path,
-          remove: () => remove,
-        });
+    return deps.removeUnderReservation({
+      workspacePath: input.workspace.path,
+      remove: () => remove,
+    });
   };
 
   const hasCommittedHandoff: WorkspaceManager["Service"]["hasCommittedHandoff"] = (workspace) =>

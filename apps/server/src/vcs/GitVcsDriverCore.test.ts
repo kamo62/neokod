@@ -1317,6 +1317,21 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
           "unique-commits",
         );
         const driver = yield* GitVcsDriver.GitVcsDriver;
+        // Positive control: a reclaimable sibling worktree must lose its branch,
+        // so this test fails if branch reclamation is reverted.
+        const controlPath = pathService.join(
+          yield* makeTmpDir("git-worktrees-"),
+          "reclaim-control",
+        );
+        yield* driver.createWorktree({
+          cwd,
+          path: controlPath,
+          refName: initialBranch,
+          newRefName: "neokod/positive-control",
+        });
+        yield* driver.removeWorktree({ cwd, path: controlPath, deleteBranch: true });
+        assert.equal(yield* git(cwd, ["branch", "--list", "neokod/positive-control"]), "");
+
         yield* driver.createWorktree({
           cwd,
           path: worktreePath,
@@ -1340,6 +1355,21 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         const pathService = yield* Path.Path;
         const worktreePath = pathService.join(yield* makeTmpDir("git-worktrees-"), "user-branch");
         const driver = yield* GitVcsDriver.GitVcsDriver;
+        // Positive control: a reclaimable sibling worktree must lose its branch,
+        // so this test fails if branch reclamation is reverted.
+        const controlPath = pathService.join(
+          yield* makeTmpDir("git-worktrees-"),
+          "reclaim-control",
+        );
+        yield* driver.createWorktree({
+          cwd,
+          path: controlPath,
+          refName: initialBranch,
+          newRefName: "neokod/positive-control",
+        });
+        yield* driver.removeWorktree({ cwd, path: controlPath, deleteBranch: true });
+        assert.equal(yield* git(cwd, ["branch", "--list", "neokod/positive-control"]), "");
+
         yield* driver.createWorktree({
           cwd,
           path: worktreePath,
