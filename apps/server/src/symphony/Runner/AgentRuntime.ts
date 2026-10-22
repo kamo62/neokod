@@ -152,15 +152,17 @@ export interface AgentRuntimeDeps {
     readonly reason?: string;
   }) => Effect.Effect<void>;
   /**
-   * The runtime's own wait elapsed before a human answered (the agent already
-   * received its fallback answer). Settles the durable request and removes the
-   * live entry so a late answer is refused. Best-effort.
+   * The runtime's own wait elapsed. Competes for the request through the live
+   * registry: returns `true` when this runtime won (the request is settled and
+   * the agent gets its fallback answer) and `false` when a human answer claimed
+   * it first (the runtime must then send that answer to the provider).
+   * Best-effort: an implementation reports `true` when it cannot settle.
    */
   readonly requestTimedOut?: (input: {
     readonly requestId: string;
     readonly workItemId: WorkItemId;
     readonly runAttemptId: RunAttemptId;
-  }) => Effect.Effect<void>;
+  }) => Effect.Effect<boolean>;
 }
 
 export const makeCodexAgentRuntime = (
@@ -421,10 +423,25 @@ const handleRequest = (
       config.liveRequestsWaitTimeoutMs ?? WORKFLOW_DEFAULTS.liveRequestsWaitTimeoutMs;
     const settleTimedOut = (requestId: string) =>
       requestTimedOut === undefined
-        ? Effect.void
-        : requestTimedOut({ requestId, workItemId, runAttemptId }).pipe(
-            Effect.catch(() => Effect.void),
-          );
+        ? Effect.succeed(true)
+        : requestTimedOut({ requestId, workItemId, runAttemptId });
+    // The wait elapsed. Only this runtime's own claim authorises a fallback:
+    // when a human answer won instead, send exactly what the agent observed so
+    // the provider response and the durable decision cannot disagree.
+    const answerAfterTimeout = <A>(
+      deferred: Deferred.Deferred<A>,
+      fallback: A,
+      requestId: string,
+    ): Effect.Effect<A> =>
+      Effect.gen(function* () {
+        const won = yield* settleTimedOut(requestId);
+        if (won) {
+          return fallback;
+        }
+        const winner = yield* Effect.result(Deferred.await(deferred));
+        // A failed Deferred means run settlement/cancellation, not an answer.
+        return winner._tag === "Success" ? winner.success : fallback;
+      });
     if (isApprovalRequest(request.method)) {
       const requestId = String(params.requestId ?? params.approvalId ?? request.id);
       const action = String(params.kind ?? request.method.split("/").at(-2) ?? "action");
@@ -453,13 +470,11 @@ const handleRequest = (
         deferred,
         Duration.millis(waitTimeoutMs),
       );
-      if (Option.isNone(decision)) {
-        yield* settleTimedOut(requestId);
-      }
+      const effectiveDecision = Option.isSome(decision)
+        ? decision.value
+        : yield* answerAfterTimeout(deferred, "rejected" as ApprovalDecision, requestId);
       yield* client.raw
-        .respond(request.id, {
-          decision: toCodexApprovalDecision(Option.getOrElse(decision, () => "rejected" as const)),
-        })
+        .respond(request.id, { decision: toCodexApprovalDecision(effectiveDecision) })
         .pipe(Effect.catch(() => Effect.void));
     } else if (isUserInputRequest(request.method)) {
       const requestId = String(params.requestId ?? request.id);
@@ -485,17 +500,11 @@ const handleRequest = (
         }).pipe(Effect.catch(() => Effect.void)) ?? Effect.void
       );
       const answer = yield* waitForAnswer<string>(deferred, Duration.millis(waitTimeoutMs));
-      if (Option.isNone(answer)) {
-        yield* settleTimedOut(requestId);
-      }
+      const effectiveAnswer = Option.isSome(answer)
+        ? answer.value
+        : yield* answerAfterTimeout(deferred, "", requestId);
       yield* client.raw
-        .respond(
-          request.id,
-          toCodexUserInputResponse(
-            params.questions,
-            Option.getOrElse(answer, () => ""),
-          ),
-        )
+        .respond(request.id, toCodexUserInputResponse(params.questions, effectiveAnswer))
         .pipe(Effect.catch(() => Effect.void));
     } else {
       yield* client.raw

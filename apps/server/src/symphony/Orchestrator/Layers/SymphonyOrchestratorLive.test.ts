@@ -3395,6 +3395,7 @@ layer("SymphonyOrchestrator Observe", (it) => {
       expect(yield* orchestrator.refreshPullRequest("merge-closed-sweep-1")).toBe(true);
       expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("ready_to_merge");
       expect(yield* closedEvents()).toBe(1);
+      yield* settle;
       const baseline = yield* refreshCount();
 
       // Inside the backoff window a scheduler scan must not hit the host again.
@@ -3456,8 +3457,9 @@ layer("SymphonyOrchestrator Observe", (it) => {
       expect(yield* refreshCount()).toBeGreaterThan(baseline);
       expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("ready_to_merge");
 
-      // The next scan (normal 5 s cadence, no closed backoff left) detects the
-      // merge and closes the item.
+      // The next scans (normal 5 s cadence, no closed backoff left) detect the
+      // merge and close the item. Tick until it settles: the shared suite's
+      // scans can land a moment after the clock advance.
       yield* setPullRequestRefresh({
         number: 49,
         title: "t",
@@ -3465,9 +3467,92 @@ layer("SymphonyOrchestrator Observe", (it) => {
         baseBranch: "main",
         status: "merged",
       });
-      yield* TestClock.adjust("5 seconds");
-      yield* settle;
-      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("completed");
+      let merged = (yield* workItems.getById(workItemId))?.lifecycle ?? "ready_to_merge";
+      for (let tick = 0; tick < 20 && merged !== "completed"; tick += 1) {
+        yield* TestClock.adjust("5 seconds");
+        yield* settle;
+        merged = (yield* workItems.getById(workItemId))?.lifecycle ?? "ready_to_merge";
+      }
+      expect(merged).toBe("completed");
+    }),
+  );
+
+  it.effect("the sweep rotates through more closed candidates than one page", () =>
+    Effect.gen(function* () {
+      const workItems = yield* WorkItemRepository;
+      const evidenceRepository = yield* EvidenceRepository;
+      const workflowId = "wf-merge-rotation-1";
+      const repositoryPath = "/repo/merge-rotation-1";
+      yield* seedWorkflow(workflowId, repositoryPath, { pollIntervalMs: 5_000 });
+
+      // More closed candidates than a single repository page (and than the
+      // sweep's page) so only rotation can reach the later merged item.
+      const closedCount = 501;
+      for (let index = 0; index < closedCount; index += 1) {
+        const key = `merge-rotation-closed-${String(index).padStart(4, "0")}`;
+        const closedId = WorkItemId.make(key);
+        yield* workItems.upsert({
+          id: closedId,
+          mode: "symphony",
+          projectId: TEST_PROJECT_ID,
+          objective: `Closed candidate ${index}`,
+          acceptanceCriteria: [],
+          source: { kind: "manual" },
+          trackerIssueId: key,
+          workflowId: WorkflowId.make(workflowId),
+          lifecycle: "ready_to_merge",
+          priority: 1,
+          eligibilityReasons: [],
+          evidence: null,
+          createdAt: "2026-08-04T00:00:00.000Z",
+          updatedAt: "2026-08-04T00:00:00.000Z",
+        });
+        yield* evidenceRepository.upsert(closedId, {
+          changedFiles: [],
+          testsChanged: [],
+          commits: [],
+          validationResults: [],
+          assumptions: [],
+          risks: [],
+          unresolved: [],
+          artefacts: [],
+          pullRequest: {
+            number: 1_000 + index,
+            title: "t",
+            branch: `symphony/${key}`,
+            baseBranch: "main",
+            status: "closed",
+          },
+          modelReview: null,
+          overallAssessment: "ready_for_review",
+          createdAt: "2026-08-04T00:00:00.000Z",
+        });
+      }
+
+      const branch = "symphony/issue-merge-rotation-target";
+      const { workItemId } = yield* seedMergeDetectionItem({
+        workItemId: "merge-rotation-target",
+        workflowId,
+        repositoryPath,
+        workspaceKey: "issue-merge-rotation-target",
+        baseBranch: "main",
+        storedPullRequest: openPullRequest(49, branch),
+      });
+      yield* setPullRequestRefresh({
+        number: 49,
+        title: "t",
+        branch,
+        baseBranch: "main",
+        status: "merged",
+      });
+
+      let lifecycle = (yield* workItems.getById(workItemId))?.lifecycle ?? "ready_to_merge";
+      for (let tick = 0; tick < 20 && lifecycle !== "completed"; tick += 1) {
+        yield* TestClock.adjust("5 seconds");
+        yield* settle;
+        lifecycle = (yield* workItems.getById(workItemId))?.lifecycle ?? "ready_to_merge";
+      }
+      expect(lifecycle).toBe("completed");
     }),
   );
 

@@ -8,6 +8,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   RunAttemptId,
+  SourceControlProviderError,
   WorkItemId,
 } from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
@@ -291,8 +292,10 @@ it.effect("refresh re-fetches the open PR for the branch", () =>
   }),
 );
 
-it.effect("refresh prefers the tracked pull request number over another PR on the branch", () =>
+it.effect("refresh looks up a tracked number directly instead of scanning the branch", () =>
   Effect.gen(function* () {
+    const directReferences: string[] = [];
+    const listCalls: string[] = [];
     const service = makePullRequestService(
       makeDeps({
         providers: {
@@ -301,23 +304,23 @@ it.effect("refresh prefers the tracked pull request number over another PR on th
               provider: {
                 createChangeRequest: () => Effect.void,
                 getChangeRequestStatus: () => Effect.succeed(null),
-                // Two PRs share the head branch; the newer one targets another
-                // base and is already merged. Host order is not guaranteed.
-                listChangeRequests: () =>
-                  Effect.succeed([
-                    makeChangeRequest({
-                      number: 43,
-                      state: "merged",
-                      baseRefName: "release",
-                    }),
-                    makeChangeRequest({ number: 42, state: "open", baseRefName: "main" }),
-                  ]),
+                getChangeRequest: (request: { reference: string }) => {
+                  directReferences.push(request.reference);
+                  return Effect.succeed(makeChangeRequest({ number: 42, baseRefName: "main" }));
+                },
+                // The tracked PR is older than ten other PRs sharing the branch,
+                // so a limited branch scan would not contain it.
+                listChangeRequests: (request: { headSelector: string }) => {
+                  listCalls.push(request.headSelector);
+                  return Effect.succeed([makeChangeRequest({ number: 100 })]);
+                },
               },
               context: null,
             }),
         } as unknown as PullRequestServiceDeps["providers"],
       }),
     );
+
     const refreshed = yield* service.refresh({
       config: makeConfig(),
       branch: "symphony/issue-42",
@@ -325,12 +328,58 @@ it.effect("refresh prefers the tracked pull request number over another PR on th
       title: "Implement issue 42",
       pullRequestNumber: 42,
     });
-    expect(refreshed).toMatchObject({
-      number: 42,
-      baseBranch: "main",
-      status: "open",
-    });
+
+    expect(directReferences).toEqual(["42"]);
+    expect(listCalls).toEqual([]);
+    expect(refreshed).toMatchObject({ number: 42, baseBranch: "main" });
   }),
+);
+
+it.effect(
+  "refresh returns null rather than another PR when the tracked number cannot be read",
+  () =>
+    Effect.gen(function* () {
+      const listCalls: string[] = [];
+      const service = makePullRequestService(
+        makeDeps({
+          providers: {
+            resolveHandle: () =>
+              Effect.succeed({
+                provider: {
+                  createChangeRequest: () => Effect.void,
+                  getChangeRequestStatus: () => Effect.succeed(null),
+                  getChangeRequest: () =>
+                    Effect.fail(
+                      new SourceControlProviderError({
+                        provider: "github",
+                        operation: "getChangeRequest",
+                        cwd: "/repo",
+                        detail: "not found",
+                      }),
+                    ),
+                  listChangeRequests: (request: { headSelector: string }) => {
+                    listCalls.push(request.headSelector);
+                    return Effect.succeed([makeChangeRequest({ number: 100 })]);
+                  },
+                },
+                context: null,
+              }),
+          } as unknown as PullRequestServiceDeps["providers"],
+        }),
+      );
+
+      expect(
+        yield* service.refresh({
+          config: makeConfig(),
+          branch: "symphony/issue-42",
+          baseBranch: "main",
+          title: "Implement issue 42",
+          pullRequestNumber: 42,
+        }),
+      ).toBeNull();
+      // A different PR on the branch is not a substitute for the tracked one.
+      expect(listCalls).toEqual([]);
+    }),
 );
 
 it.effect("refresh returns null when no open PR exists for the branch", () =>

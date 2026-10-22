@@ -357,6 +357,13 @@ const MERGE_DETECTION_SOURCES: ReadonlyArray<WorkLifecycle> = ["ready_to_merge"]
 const CLOSED_PULL_REQUEST_RECHECK_MS = 60_000;
 const CLOSED_PULL_REQUEST_RECHECK_MAX_MS = 60 * 60_000;
 
+/**
+ * Merge-ready items visited per workflow per scan. A workflow can hold more
+ * merge-ready items than one repository page, so the sweep rotates a bounded
+ * page instead of only ever looking at the first rows.
+ */
+const MERGE_SWEEP_PAGE_SIZE = 100;
+
 const lifecycleForRun = (
   attemptStatus: string,
   workItem: WorkItem | null,
@@ -619,6 +626,10 @@ const makeOrchestrator = Effect.gen(function* () {
   const closedPullRequestRechecksRef = yield* Ref.make<
     ReadonlyMap<string, { readonly attempts: number; readonly nextCheckAtMs: number }>
   >(new Map());
+  // Rotating page cursor per workflow for the merge sweep (in-memory cadence
+  // only). A wrap to zero makes every merge-ready item reachable even when a
+  // workflow holds more items than one repository page returns.
+  const mergeSweepCursorRef = yield* Ref.make<ReadonlyMap<string, number>>(new Map());
   const dispatchScope = yield* Scope.make();
   yield* Effect.addFinalizer(() => Scope.close(dispatchScope, Exit.void));
   const workflowLoader = yield* Effect.serviceOption(WorkflowLoaderService);
@@ -872,13 +883,30 @@ const makeOrchestrator = Effect.gen(function* () {
   // sweep refreshes those items on the workflow's own poll cadence (never from
   // the 5-second scan) and lets `refreshPullRequest` settle the outcome.
   // A closed PR is still re-checked on the bounded backoff recorded by
-  // `noteMergeDetectionStatus`, so a reopened or later-merged PR is detected;
-  // paused workflows are not swept at all.
+  // `noteMergeDetectionStatus`, so a reopened or later-merged PR is detected.
+  // Only one bounded page is visited per scan and the page rotates, so a
+  // workflow with more candidates than a page still covers every item.
+  // Paused workflows are not swept at all.
   const mergedPullRequestSweep = Effect.fn("symphonyOrchestrator.mergedPullRequestSweep")(
     function* (workflowId: WorkflowId) {
+      const workflowKey = String(workflowId);
+      const cursors = yield* Ref.get(mergeSweepCursorRef);
+      const offset = cursors.get(workflowKey) ?? 0;
       const candidates = yield* workItems
-        .listByLifecycle(MERGE_DETECTION_SOURCES, { workflowId: String(workflowId) })
+        .listByLifecycle(MERGE_DETECTION_SOURCES, {
+          workflowId: workflowKey,
+          limit: MERGE_SWEEP_PAGE_SIZE,
+          offset,
+        })
         .pipe(Effect.catch(() => Effect.succeed([] as WorkItem[])));
+      // Advance the rotating page; a short page means the end was reached, so
+      // the next scan starts again from the first row.
+      const nextOffset = candidates.length < MERGE_SWEEP_PAGE_SIZE ? 0 : offset + candidates.length;
+      yield* Ref.update(mergeSweepCursorRef, (current) => {
+        const next = new Map(current);
+        next.set(workflowKey, nextOffset);
+        return next;
+      });
       const rechecks = yield* Ref.get(closedPullRequestRechecksRef);
       const nowMsValue = yield* Clock.currentTimeMillis;
       for (const item of candidates) {

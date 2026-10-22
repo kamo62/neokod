@@ -245,27 +245,40 @@ export const makePullRequestService = (
       const handle = yield* deps.providers
         .resolveHandle({ cwd: input.config.repositoryPath })
         .pipe(Effect.mapError((cause) => new PullRequestCreationError(cause.message)));
-      const open = yield* handle.provider
-        .listChangeRequests({
-          cwd: input.config.repositoryPath,
-          ...(handle.context !== null ? { context: handle.context } : {}),
-          headSelector: input.branch,
-          // Query all states so a merged/closed PR is reflected in evidence
-          // (REVIEW P2: filtering on "open" froze the status at "open"
-          // forever after merge).
-          state: "all",
-          limit: 10,
-        })
-        .pipe(
-          Effect.mapError((cause) => new PullRequestCreationError(cause.message)),
-          Effect.orElseSucceed(() => []),
-        );
+      // Identity first: a tracked number is fetched directly. Scanning the
+      // branch is only for requests without a known number, and nothing else is
+      // accepted when the tracked PR cannot be read — a different PR on the
+      // same branch is not evidence about this run.
       const found =
-        (input.pullRequestNumber === undefined
-          ? undefined
-          : open.find((pullRequest) => pullRequest.number === input.pullRequestNumber)) ??
-        open.find((pullRequest) => pullRequest.headRefName === input.branch);
-      if (found === undefined) {
+        input.pullRequestNumber === undefined
+          ? yield* handle.provider
+              .listChangeRequests({
+                cwd: input.config.repositoryPath,
+                ...(handle.context !== null ? { context: handle.context } : {}),
+                headSelector: input.branch,
+                // Query all states so a merged/closed PR is reflected in
+                // evidence (REVIEW P2: filtering on "open" froze the status at
+                // "open" forever after merge).
+                state: "all",
+                limit: 10,
+              })
+              .pipe(
+                Effect.mapError((cause) => new PullRequestCreationError(cause.message)),
+                Effect.orElseSucceed(() => []),
+                Effect.map(
+                  (requests) =>
+                    requests.find((pullRequest) => pullRequest.headRefName === input.branch) ??
+                    null,
+                ),
+              )
+          : yield* handle.provider
+              .getChangeRequest({
+                cwd: input.config.repositoryPath,
+                ...(handle.context !== null ? { context: handle.context } : {}),
+                reference: String(input.pullRequestNumber),
+              })
+              .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (found === null) {
         return null;
       }
       // Host-enriched status (plan 10.1, Phase 5): CI status, review state,

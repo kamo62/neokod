@@ -33,9 +33,7 @@ export const approvalServiceRequestCallbacks = (
         Effect.asVoid,
         Effect.catch(() => Effect.void),
       ),
-  requestTimedOut: (input) =>
-    approvals.expireRequest(input.runAttemptId, input.requestId).pipe(
-      Effect.asVoid,
-      Effect.catch(() => Effect.void),
-    ),
+  // True only when the timeout won the live claim; a human answer that won
+  // first makes the runtime send that answer instead of its fallback.
+  requestTimedOut: (input) => approvals.expireRequest(input.runAttemptId, input.requestId),
 });

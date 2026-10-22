@@ -520,6 +520,51 @@ layer("WorkItemRepository lifecycle legality (plan section 19 suite 6)", (it) =>
       expect(row?.lifecycle).toBe("queued");
     }),
   );
+
+  it.effect("listByLifecycle pages through a stable order with offset", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const projectId = SymphonyProjectId.make("symphony-project-pagination");
+      const seeded: string[] = [];
+      for (let index = 0; index < 5; index += 1) {
+        const item = yield* makeWorkItem(
+          `workitem-page-${index}`,
+          `page-${index}`,
+          "ready_to_merge",
+          projectId,
+        );
+        const row = yield* repo.upsert({
+          ...item,
+          createdAt: `2026-08-0${index + 1}T00:00:00.000Z`,
+          updatedAt: `2026-08-0${index + 1}T00:00:00.000Z`,
+        });
+        seeded.push(String(row.id));
+      }
+
+      const first = yield* repo.listByLifecycle(["ready_to_merge"], { projectId, limit: 2 });
+      const second = yield* repo.listByLifecycle(["ready_to_merge"], {
+        projectId,
+        limit: 2,
+        offset: 2,
+      });
+      const third = yield* repo.listByLifecycle(["ready_to_merge"], {
+        projectId,
+        limit: 2,
+        offset: 4,
+      });
+      const past = yield* repo.listByLifecycle(["ready_to_merge"], {
+        projectId,
+        limit: 2,
+        offset: 9,
+      });
+
+      // Pages are disjoint — the order is total — and together cover every row.
+      const paged = [...first, ...second, ...third].map((item) => String(item.id));
+      expect(new Set(paged).size).toBe(5);
+      expect(new Set(paged)).toEqual(new Set(seeded));
+      expect(past).toEqual([]);
+    }),
+  );
 });
 
 describe("WorkItemRepository two-connection contention", () => {

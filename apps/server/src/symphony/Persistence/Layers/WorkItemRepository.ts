@@ -494,6 +494,9 @@ const makeRepository = Effect.gen(function* () {
     const workflowFilter =
       options?.workflowId === undefined ? sql`` : sql`AND workflow_id = ${options.workflowId}`;
     const lifecycleFilter = sql.in("lifecycle", lifecycles);
+    // `id` breaks ties so an offset page is stable across reads; callers that
+    // rotate bounded pages depend on a total order.
+    const offset = Math.max(0, Math.trunc(options?.offset ?? 0));
     return sql<Schema.Schema.Type<typeof WorkItemRowSchema>>`
       SELECT ${cols}
       FROM symphony_work_items
@@ -503,8 +506,10 @@ const makeRepository = Effect.gen(function* () {
       ORDER BY
         (COALESCE(local_priority, priority) BETWEEN 1 AND 4) DESC,
         COALESCE(local_priority, priority) ASC,
-        created_at ASC
+        created_at ASC,
+        id ASC
       LIMIT ${options?.limit ?? 500}
+      OFFSET ${offset}
     `.pipe(
       Effect.mapError(toSqlError("WorkItemRepository.listByLifecycle")),
       Effect.flatMap((rows) => decodeRows("WorkItemRepository.listByLifecycle", rows)),
