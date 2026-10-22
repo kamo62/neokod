@@ -1,8 +1,11 @@
-import { EnvironmentId, ThreadId } from "@neokod/contracts";
+import { EnvironmentId, ThreadId, type TerminalSummary } from "@neokod/contracts";
+import { it as effectIt } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
-import { createTerminalEnvironmentAtoms } from "./terminal.ts";
+import { createTerminalEnvironmentAtoms, invalidateTerminalInputOnMetadata } from "./terminal.ts";
 import { acquireTerminalInputQueue, type TerminalInputTarget } from "./terminalSession.ts";
 
 type WriteResult = { readonly _tag: "Success" } | { readonly _tag: "Failure" };
@@ -97,4 +100,60 @@ describe("terminal command input invalidation", () => {
     expect(recorder.sent).toHaveLength(1);
     lease.release();
   });
+});
+
+function terminalSummary(
+  summaryTarget: TerminalInputTarget,
+  status: TerminalSummary["status"],
+): TerminalSummary {
+  return {
+    threadId: summaryTarget.threadId,
+    terminalId: summaryTarget.terminalId,
+    cwd: "/repo",
+    worktreePath: null,
+    status,
+    pid: status === "running" ? 123 : null,
+    exitCode: status === "exited" ? 0 : null,
+    exitSignal: null,
+    hasRunningSubprocess: false,
+    label: summaryTarget.terminalId,
+    updatedAt: "2026-10-22T00:00:00.000Z",
+  };
+}
+
+describe("terminal metadata stream invalidation", () => {
+  effectIt.effect("disposes a retained queue when the metadata projection removes its target", () =>
+    Effect.gen(function* () {
+      const leaseTarget = target("term-metadata-archive");
+      const lease = acquireTerminalInputQueue(leaseTarget);
+      const stream = invalidateTerminalInputOnMetadata(
+        leaseTarget.environmentId,
+        Stream.make([terminalSummary(leaseTarget, "running")], []),
+      );
+
+      yield* Stream.runDrain(stream);
+
+      expect(lease.isDisposed()).toBe(true);
+      lease.release();
+    }),
+  );
+
+  effectIt.effect("disposes a retained queue when the metadata projection reports exit", () =>
+    Effect.gen(function* () {
+      const leaseTarget = target("term-metadata-exit");
+      const lease = acquireTerminalInputQueue(leaseTarget);
+      const stream = invalidateTerminalInputOnMetadata(
+        leaseTarget.environmentId,
+        Stream.make(
+          [terminalSummary(leaseTarget, "running")],
+          [terminalSummary(leaseTarget, "exited")],
+        ),
+      );
+
+      yield* Stream.runDrain(stream);
+
+      expect(lease.isDisposed()).toBe(true);
+      lease.release();
+    }),
+  );
 });

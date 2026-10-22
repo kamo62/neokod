@@ -1,4 +1,5 @@
-import { type TerminalSummary, WS_METHODS } from "@neokod/contracts";
+import { type EnvironmentId, type TerminalSummary, WS_METHODS } from "@neokod/contracts";
+import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import { Atom } from "effect/unstable/reactivity";
 
@@ -13,9 +14,28 @@ import { subscribe, type EnvironmentRpcInput } from "../rpc/client.ts";
 import {
   applyTerminalAttachStreamEvent,
   applyTerminalMetadataStreamEvent,
+  createTerminalMetadataInputInvalidator,
   EMPTY_TERMINAL_BUFFER_STATE,
   withTerminalInputInvalidation,
 } from "./terminalSession.ts";
+
+/**
+ * Apply metadata-driven input invalidation to a terminal metadata projection
+ * stream. The metadata atom uses this so archives, exits and removals dispose
+ * retained queues without help from a mounted viewport or a UI close path.
+ */
+export function invalidateTerminalInputOnMetadata<E, R>(
+  environmentId: EnvironmentId,
+  stream: Stream.Stream<ReadonlyArray<TerminalSummary>, E, R>,
+): Stream.Stream<ReadonlyArray<TerminalSummary>, E, R> {
+  const invalidate = createTerminalMetadataInputInvalidator(environmentId);
+  return stream.pipe(
+    Stream.tap((terminals) => {
+      invalidate(terminals);
+      return Effect.void;
+    }),
+  );
+}
 
 export function createTerminalEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
@@ -67,6 +87,8 @@ export function createTerminalEnvironmentAtoms<R, E>(
         subscribe(WS_METHODS.subscribeTerminalMetadata, {}).pipe(
           Stream.scan([] as ReadonlyArray<TerminalSummary>, applyTerminalMetadataStreamEvent),
         ),
+      transform: ({ environmentId }, stream) =>
+        invalidateTerminalInputOnMetadata(environmentId, stream),
     }),
     open: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:terminal:open",

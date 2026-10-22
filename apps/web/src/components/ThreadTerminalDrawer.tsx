@@ -461,6 +461,17 @@ export function TerminalViewport({
       lease: acquireTerminalInputQueue({ environmentId, threadId, terminalId }),
     };
     terminalInputRef.current = binding;
+    if (
+      (terminalSession.summary !== null && terminalSession.summary.status !== "running") ||
+      (terminalVersion > 0 && terminalStatus !== "running")
+    ) {
+      // Remounting a target whose last known session is already dead must not
+      // reuse a retained queue. The metadata observer normally disposes it; this
+      // covers the gap between mount and the first status effect.
+      disposeTerminalInputQueue(binding.target);
+      binding.lease.release();
+      binding.lease = acquireTerminalInputQueue(binding.target);
+    }
 
     const fitAddon = new FitAddon();
     const terminal = new Terminal({

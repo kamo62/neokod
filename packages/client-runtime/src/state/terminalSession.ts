@@ -389,6 +389,52 @@ export function disposeTerminalInputQueuesForThread(
   }
 }
 
+function metadataTargetKey(target: {
+  readonly threadId: string;
+  readonly terminalId: string;
+}): string {
+  return `${target.threadId}\u0000${target.terminalId}`;
+}
+
+function disposeTerminalInputForMetadataTarget(
+  environmentId: EnvironmentId,
+  target: { readonly threadId: string; readonly terminalId: string },
+): void {
+  disposeTerminalInputQueue({
+    environmentId,
+    threadId: ThreadId.make(target.threadId),
+    terminalId: target.terminalId,
+  });
+}
+
+/**
+ * Invalidate retained input queues from authoritative terminal metadata, so a
+ * close, exit or archive disposes a target's queue even when its viewport is
+ * not mounted. Every non-running entry is invalidated, and so is every target
+ * that disappeared since the previous metadata projection.
+ */
+export function createTerminalMetadataInputInvalidator(
+  environmentId: EnvironmentId,
+): (terminals: ReadonlyArray<TerminalSummary>) => void {
+  let knownTargets: ReadonlyArray<{ threadId: string; terminalId: string }> | null = null;
+  return (terminals) => {
+    for (const terminal of terminals) {
+      if (terminal.status !== "running") {
+        disposeTerminalInputForMetadataTarget(environmentId, terminal);
+      }
+    }
+    if (knownTargets !== null) {
+      const nextKeys = new Set(terminals.map(metadataTargetKey));
+      for (const target of knownTargets) {
+        if (!nextKeys.has(metadataTargetKey(target))) {
+          disposeTerminalInputForMetadataTarget(environmentId, target);
+        }
+      }
+    }
+    knownTargets = terminals.map(({ threadId, terminalId }) => ({ threadId, terminalId }));
+  };
+}
+
 export interface TerminalInputCommandTarget {
   readonly environmentId: EnvironmentId;
   readonly input: {

@@ -5,6 +5,7 @@ import {
   TerminalSessionSnapshot,
   ThreadId,
   TERMINAL_WRITE_MAX_LENGTH,
+  type TerminalSummary,
 } from "@neokod/contracts";
 
 import {
@@ -13,6 +14,7 @@ import {
   applyTerminalMetadataStreamEvent,
   combineTerminalSessionState,
   createTerminalInputQueue,
+  createTerminalMetadataInputInvalidator,
   disposeTerminalInputQueue,
   EMPTY_TERMINAL_BUFFER_STATE,
   selectRunningSubprocessTerminalIds,
@@ -572,5 +574,94 @@ describe("terminal input invalidation at command boundaries", () => {
     expect(secondRecord.sent).toHaveLength(1);
     firstLease.release();
     secondLease.release();
+  });
+});
+
+function terminalSummary(terminalId: string, status: TerminalSummary["status"]): TerminalSummary {
+  return {
+    threadId: TARGET_A.threadId,
+    terminalId,
+    cwd: "/repo",
+    worktreePath: null,
+    status,
+    pid: status === "running" ? 123 : null,
+    exitCode: status === "exited" ? 0 : null,
+    exitSignal: null,
+    hasRunningSubprocess: false,
+    label: terminalId,
+    updatedAt: "2026-10-22T00:00:00.000Z",
+  };
+}
+
+describe("terminal metadata input invalidation", () => {
+  it("abandons an offscreen paste when archive removes its terminal", async () => {
+    const invalidate = createTerminalMetadataInputInvalidator(TARGET_A.environmentId);
+    invalidate([terminalSummary(TARGET_A.terminalId, "running")]);
+
+    const recorder = recordingSend();
+    const lease = acquireTerminalInputQueue(TARGET_A);
+    const pendingWrite = lease.queue.write("x".repeat(70_000), recorder.send);
+    await waitForSent(recorder.sent, 1);
+
+    // The viewport is unmounted, so only server-observed metadata can invalidate.
+    lease.release();
+    invalidate([]);
+
+    recorder.acknowledgements[0]?.resolve(SUCCESS);
+    expect(await pendingWrite).toBeUndefined();
+    expect(recorder.sent).toHaveLength(1);
+  });
+
+  it("abandons an offscreen paste on exit and remounts on a fresh queue", async () => {
+    const invalidate = createTerminalMetadataInputInvalidator(TARGET_A.environmentId);
+    invalidate([terminalSummary(TARGET_A.terminalId, "running")]);
+
+    const recorder = recordingSend();
+    const lease = acquireTerminalInputQueue(TARGET_A);
+    const pendingWrite = lease.queue.write("x".repeat(70_000), recorder.send);
+    await waitForSent(recorder.sent, 1);
+
+    lease.release();
+    invalidate([terminalSummary(TARGET_A.terminalId, "exited")]);
+
+    recorder.acknowledgements[0]?.resolve(SUCCESS);
+    expect(await pendingWrite).toBeUndefined();
+    expect(recorder.sent).toHaveLength(1);
+
+    const remounted = acquireTerminalInputQueue(TARGET_A);
+    expect(remounted.queue).not.toBe(lease.queue);
+    expect(remounted.isDisposed()).toBe(false);
+    const later = await remounted.queue.write("ok", async () => SUCCESS);
+    expect(later?._tag).toBe("Success");
+    remounted.release();
+  });
+
+  it("disposes an exited target and a target missing from the next snapshot", () => {
+    const invalidate = createTerminalMetadataInputInvalidator(TARGET_A.environmentId);
+    invalidate([
+      terminalSummary(TARGET_A.terminalId, "running"),
+      terminalSummary(TARGET_B.terminalId, "running"),
+    ]);
+
+    const firstLease = acquireTerminalInputQueue(TARGET_A);
+    const secondLease = acquireTerminalInputQueue(TARGET_B);
+    invalidate([terminalSummary(TARGET_B.terminalId, "exited")]);
+
+    expect(firstLease.isDisposed()).toBe(true);
+    expect(secondLease.isDisposed()).toBe(true);
+
+    firstLease.release();
+    secondLease.release();
+  });
+
+  it("keeps a running terminal's queue", () => {
+    const invalidate = createTerminalMetadataInputInvalidator(TARGET_A.environmentId);
+    invalidate([terminalSummary(TARGET_A.terminalId, "running")]);
+
+    const lease = acquireTerminalInputQueue(TARGET_A);
+    invalidate([terminalSummary(TARGET_A.terminalId, "running")]);
+
+    expect(lease.isDisposed()).toBe(false);
+    lease.release();
   });
 });

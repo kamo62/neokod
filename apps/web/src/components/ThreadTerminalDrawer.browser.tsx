@@ -16,6 +16,7 @@ const harness = vi.hoisted(() => {
   const terminals: Array<{ emit: (data: string) => void }> = [];
   let exits = 0;
   let session = {
+    summary: null,
     buffer: "",
     status: "running" as string,
     error: null as string | null,
@@ -52,6 +53,7 @@ const harness = vi.hoisted(() => {
       terminals.length = 0;
       exits = 0;
       session = {
+        summary: null,
         buffer: "",
         status: "running",
         error: null,
