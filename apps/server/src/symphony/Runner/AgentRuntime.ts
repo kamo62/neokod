@@ -148,6 +148,8 @@ export interface AgentRuntimeDeps {
     readonly runAttemptId: RunAttemptId;
     readonly action: string;
     readonly command?: string;
+    /** The agent's question (user-input requests) or its stated reason (approvals). */
+    readonly reason?: string;
   }) => Effect.Effect<void>;
 }
 
@@ -409,6 +411,10 @@ const handleRequest = (
           workItemId,
           runAttemptId,
           action: "user_input",
+          // Persist the question itself: the live registry only holds it in
+          // memory, so without this the Attention tab can only say that
+          // something was asked.
+          reason: promptText,
         }).pipe(Effect.catch(() => Effect.void)) ?? Effect.void
       );
       const answer = yield* waitWithTimeout(deferred, Duration.millis(waitTimeoutMs)).pipe(

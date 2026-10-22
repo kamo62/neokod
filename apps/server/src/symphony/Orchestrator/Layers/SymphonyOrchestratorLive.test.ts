@@ -8,6 +8,7 @@ import type {
 } from "@neokod/contracts";
 import {
   ProjectId,
+  RunDetailsSchema,
   WorkflowId,
   WorkItemId,
   ProviderInstanceId,
@@ -915,6 +916,67 @@ layer("SymphonyOrchestrator Observe", (it) => {
     }),
   );
 
+  it.effect("getRun projects a pending agent question instead of an unencodable approval row", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const runAttempts = yield* RunAttemptRepository;
+      const workItemId = WorkItemId.make("question-run-1");
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId: TEST_PROJECT_ID,
+        objective: "Question target",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "question-run-1",
+        lifecycle: "running",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      const runAttemptId = RunAttemptId.make("run-question-1");
+      yield* runAttempts.create({
+        id: runAttemptId,
+        workItemId,
+        attemptNumber: 1,
+        workspacePath: "/ws/question-run-1",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "streaming_turn",
+        startedAt: "2026-08-05T00:00:00.000Z",
+        finishedAt: null,
+        error: null,
+      });
+      const approvals = yield* ApprovalService;
+      yield* approvals.recordPending({
+        id: "question-1",
+        workItemId,
+        runAttemptId,
+        requestId: "question-1",
+        action: "user_input",
+        scope: "once",
+        reason: "Which branch should I target?",
+      });
+
+      const details = yield* orchestrator.getRun("run-question-1");
+      const question = details?.attentionItems.find((item) =>
+        item.id.toString().endsWith("question-1"),
+      );
+      expect(question?.kind).toBe("agent_question");
+      expect(question?.availableActions).toEqual(["answer"]);
+      expect(question?.whatHappened).toBe("Which branch should I target?");
+      // The raw `user_input` action is outside ApprovalActionSchema, so it is
+      // projected rather than echoed; the run payload must still encode.
+      expect(details?.approvalRequests).toEqual([]);
+      expect(Schema.encodeUnknownSync(RunDetailsSchema)(details)).toBeDefined();
+    }),
+  );
+
   it.effect("listAttention maps pending approval requests to attention items", () =>
     Effect.gen(function* () {
       const orchestrator = yield* SymphonyOrchestrator;
@@ -954,6 +1016,29 @@ layer("SymphonyOrchestrator Observe", (it) => {
         limit: 1,
       });
       expect(scopedAttention.map((entry) => entry.id)).toEqual([item?.id]);
+
+      // A user-input request is a question, not a command approval: it carries
+      // the persisted prompt text and is answered, not approved/rejected.
+      yield* approvals.recordPending({
+        id: "attn-2",
+        workItemId: eligible.workItemId,
+        runAttemptId: RunAttemptId.make(`run-${eligible.workItemId}-question`),
+        requestId: "attn-2",
+        action: "user_input",
+        scope: "once",
+        reason: "Which branch should I target?",
+      });
+
+      const withQuestion = yield* orchestrator.listAttention();
+      const question = withQuestion.find((a) => a.id.toString().endsWith("attn-2"));
+      expect(question).toBeDefined();
+      expect(question?.kind).toBe("agent_question");
+      expect(question?.availableActions).toEqual(["answer"]);
+      expect(question?.whatHappened).toBe("Which branch should I target?");
+      // The command approval is unchanged by the presence of a question.
+      expect(withQuestion.find((a) => a.id.toString().endsWith("attn-1"))?.kind).toBe(
+        "command_approval",
+      );
     }),
   );
 

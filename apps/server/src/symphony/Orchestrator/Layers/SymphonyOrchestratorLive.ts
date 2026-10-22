@@ -19,6 +19,7 @@ import type {
   WorkLifecycle,
 } from "@neokod/contracts";
 import {
+  ApprovalActionSchema,
   AttentionItemId,
   RunAttemptId,
   SymphonyProjectId,
@@ -345,6 +346,13 @@ const RUN_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
  */
 const MERGE_DETECTION_SOURCES: ReadonlyArray<WorkLifecycle> = ["ready_to_merge"];
 
+/**
+ * Approval actions the shared contract can represent. An agent question is
+ * persisted with the raw `user_input` kind, which is not in the union yet, so
+ * payloads must project those rows instead of echoing them verbatim.
+ */
+const CONTRACT_APPROVAL_ACTIONS: ReadonlySet<string> = new Set(ApprovalActionSchema.literals);
+
 const lifecycleForRun = (
   attemptStatus: string,
   workItem: WorkItem | null,
@@ -450,23 +458,33 @@ const approvalToAttentionItem = (request: {
   readonly runAttemptId?: string | undefined;
   readonly action: string;
   readonly command?: string | undefined;
+  readonly reason?: string | undefined;
   readonly createdAt: string;
-}): AttentionItem => ({
-  id: request.id as AttentionItem["id"],
-  workItemId: WorkItemId.make(request.workItemId),
-  ...(request.runAttemptId !== undefined
-    ? { runAttemptId: RunAttemptId.make(request.runAttemptId) }
-    : {}),
-  kind: "command_approval",
-  severity: "high",
-  state: "open",
-  whatHappened: request.command ?? `The agent requests ${request.action}.`,
-  whyHuman: "This action is gated by the workflow approval policy.",
-  ...(request.command !== undefined ? { recommendedResponse: "Approve or reject." } : {}),
-  availableActions: ["approve", "reject"],
-  createdAt: request.createdAt,
-  resolvedAt: null,
-});
+}): AttentionItem => {
+  // A user-input request is a question the agent is blocked on, not a command
+  // approval: it is answered with text (`answer`), never approved or rejected.
+  const isQuestion = request.action === "user_input";
+  return {
+    id: request.id as AttentionItem["id"],
+    workItemId: WorkItemId.make(request.workItemId),
+    ...(request.runAttemptId !== undefined
+      ? { runAttemptId: RunAttemptId.make(request.runAttemptId) }
+      : {}),
+    kind: isQuestion ? "agent_question" : "command_approval",
+    severity: "high",
+    state: "open",
+    whatHappened: isQuestion
+      ? (request.reason ?? "The agent asked a question.")
+      : (request.command ?? `The agent requests ${request.action}.`),
+    whyHuman: isQuestion
+      ? "The agent is waiting for your answer."
+      : "This action is gated by the workflow approval policy.",
+    ...(!isQuestion ? { recommendedResponse: "Approve or reject." } : {}),
+    availableActions: isQuestion ? ["answer"] : ["approve", "reject"],
+    createdAt: request.createdAt,
+    resolvedAt: null,
+  };
+};
 
 const recordTrackerHealth = (
   stateRef: Ref.Ref<OrchestratorRuntimeState>,
@@ -1159,14 +1177,27 @@ const makeOrchestrator = Effect.gen(function* () {
       const timeline = yield* runEvents
         .listForAttempt(attempt.id)
         .pipe(Effect.catch(() => Effect.succeed([])));
-      const approvalRequests = yield* approvals
+      const requests = yield* approvals
         .listForRun(attempt.id)
         .pipe(Effect.catch(() => Effect.succeed([])));
+      // Pending requests are served as the attention projection, which is what
+      // the run page renders controls from. A raw row is only carried on the
+      // approval list when its action is inside ApprovalActionSchema: an agent
+      // question is persisted with the raw `user_input` kind, which the contract
+      // does not model yet, and a row the contract cannot encode would fail the
+      // whole run payload at the RPC boundary (B-7 follow-up: widen
+      // ApprovalActionSchema rather than drop the row).
+      const attentionItems = requests
+        .filter((request) => request.state === "pending")
+        .map(approvalToAttentionItem);
+      const approvalRequests = requests.filter((request) =>
+        CONTRACT_APPROVAL_ACTIONS.has(String(request.action)),
+      );
       return {
         workItem: evidenceWorkItem,
         runAttempt: attempt,
         timeline,
-        attentionItems: [],
+        attentionItems,
         approvalRequests,
       } satisfies RunDetails;
     });

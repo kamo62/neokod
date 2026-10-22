@@ -72,6 +72,7 @@ const makeAgentRuntimeFactory = Effect.gen(function* () {
                   action: input.action,
                   scope: "once",
                   ...(input.command !== undefined ? { command: input.command } : {}),
+                  ...(input.reason !== undefined ? { reason: input.reason } : {}),
                 })
                 .pipe(
                   Effect.asVoid,
