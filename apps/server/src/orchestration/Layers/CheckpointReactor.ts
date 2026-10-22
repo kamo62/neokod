@@ -358,6 +358,13 @@ const make = Effect.gen(function* () {
 
   const trimTrailingSlash = (value: string): string => value.replace(/\/+$/, "");
 
+  // Git path output is newline-terminated. Strip only that terminator so
+  // leading or trailing whitespace in a real path is preserved.
+  const stripTrailingNewline = (value: string): string =>
+    value.endsWith("\r\n") ? value.slice(0, -2) : value.endsWith("\n") ? value.slice(0, -1) : value;
+
+  const conservativePathKey = (value: string): string => value.normalize("NFC").toLowerCase();
+
   const isGitIgnorePath = (entry: string): boolean =>
     entry === ".gitignore" || entry.endsWith("/.gitignore");
 
@@ -415,7 +422,7 @@ const make = Effect.gen(function* () {
           `git rev-parse --show-toplevel exited with ${toplevel.result.exitCode}`,
         );
       }
-      const repoRoot = toplevel.result.stdout.trim();
+      const repoRoot = stripTrailingNewline(toplevel.result.stdout);
       if (repoRoot.length === 0) {
         return refusedEvidence("the repository root is empty");
       }
@@ -431,7 +438,7 @@ const make = Effect.gen(function* () {
       if (prefix.result.exitCode !== 0) {
         return refusedEvidence(`git rev-parse --show-prefix exited with ${prefix.result.exitCode}`);
       }
-      const cwdPrefix = prefix.result.stdout.trim();
+      const cwdPrefix = stripTrailingNewline(prefix.result.stdout);
       const pathArgs = cwdPrefix.length > 0 ? ["--", cwdPrefix] : [];
 
       const ignored = yield* runGitEvidence({
@@ -553,24 +560,25 @@ const make = Effect.gen(function* () {
         }
       }
 
-      const targetPaths = new Set(targetEntries.map((entry) => entry.path));
-      const targetDirectoryPrefixes = new Set<string>();
+      const targetPathKeys = new Set(targetEntries.map((entry) => conservativePathKey(entry.path)));
+      const targetDirectoryPrefixKeys = new Set<string>();
       for (const entry of targetEntries) {
         const segments = entry.path.split("/");
         for (let index = 1; index < segments.length; index += 1) {
-          targetDirectoryPrefixes.add(segments.slice(0, index).join("/"));
+          targetDirectoryPrefixKeys.add(conservativePathKey(segments.slice(0, index).join("/")));
         }
       }
 
       const collidingIgnored = [
         ...new Set(
           currentIgnored.map(trimTrailingSlash).filter((ignoredPath) => {
-            if (targetPaths.has(ignoredPath) || targetDirectoryPrefixes.has(ignoredPath)) {
+            const ignoredKey = conservativePathKey(ignoredPath);
+            if (targetPathKeys.has(ignoredKey) || targetDirectoryPrefixKeys.has(ignoredKey)) {
               return true;
             }
             const segments = ignoredPath.split("/");
             for (let index = 1; index < segments.length; index += 1) {
-              if (targetPaths.has(segments.slice(0, index).join("/"))) {
+              if (targetPathKeys.has(conservativePathKey(segments.slice(0, index).join("/")))) {
                 return true;
               }
             }

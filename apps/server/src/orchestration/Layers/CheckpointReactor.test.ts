@@ -1767,6 +1767,83 @@ describe("CheckpointReactor", () => {
     expect(payload?.detail).toContain("tracked");
   });
 
+  it("refuses when an ignored path differs only by case from a tracked checkpoint entry", async () => {
+    const harness = await createHarness();
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, ".gitignore"), "config.local\n", "utf8");
+    NodeFS.writeFileSync(
+      NodePath.join(harness.cwd, "Config.local"),
+      "checkpoint content\n",
+      "utf8",
+    );
+    runGit(harness.cwd, ["add", "-f", "Config.local"]);
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+    runGit(harness.cwd, ["rm", "--cached", "Config.local"]);
+    const original = NodePath.join(harness.cwd, "Config.local");
+    const intermediate = NodePath.join(harness.cwd, ".config-local-case-rename");
+    const current = NodePath.join(harness.cwd, "config.local");
+    NodeFS.renameSync(original, intermediate);
+    NodeFS.renameSync(intermediate, current);
+    NodeFS.writeFileSync(current, "current ignored content\n", "utf8");
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(current, "utf8")).toBe("current ignored content\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(thread.checkpoints).toHaveLength(2);
+
+    const failure = thread.activities.find(
+      (activity) => activity.kind === "checkpoint.revert.failed",
+    );
+    const payload = failure?.payload as { readonly detail?: string } | undefined;
+    expect(payload?.detail).toContain("config.local");
+  });
+
+  it("refuses a subfolder revert when the folder name starts with a space", async () => {
+    const harness = await createHarness({
+      providerSessionSubdirectory: " sub",
+      prepareRepository: (repository) => {
+        NodeFS.mkdirSync(NodePath.join(repository, " sub"), { recursive: true });
+      },
+    });
+    const sub = NodePath.join(harness.cwd, " sub");
+    NodeFS.writeFileSync(NodePath.join(sub, ".gitignore"), "", "utf8");
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(sub, ".gitignore"), "scratch.dat\n", "utf8");
+    NodeFS.writeFileSync(NodePath.join(sub, "scratch.dat"), "keep spaced sub file\n", "utf8");
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(sub, "scratch.dat"), "utf8")).toBe(
+      "keep spaced sub file\n",
+    );
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(thread.checkpoints).toHaveLength(2);
+
+    const failure = thread.activities.find(
+      (activity) => activity.kind === "checkpoint.revert.failed",
+    );
+    const payload = failure?.payload as { readonly detail?: string } | undefined;
+    expect(payload?.detail).toContain("scratch.dat");
+  });
+
   it("refuses when the checkpoint's .gitignore is a symlink", async () => {
     const harness = await createHarness();
     NodeFS.symlinkSync("scratch.dat", NodePath.join(harness.cwd, ".gitignore"));
