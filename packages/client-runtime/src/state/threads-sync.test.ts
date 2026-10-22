@@ -345,13 +345,42 @@ describe("EnvironmentThreads", () => {
     }),
   );
 
-  it.effect("stores the live turn settlement the projection published", () =>
+  it.effect("applies a startup settlement to a warm-cached interrupted turn", () =>
     Effect.gen(function* () {
-      const harness = yield* makeHarness({ cached: BASE_THREAD });
-      const turnId = TurnId.make("turn-live");
+      const turnId = TurnId.make("turn-restart");
+      const completedAt = "2026-04-01T00:01:00.000Z";
+      // The cache holds the durable closing session update but no settlement:
+      // the server crashed before publication.
+      const cachedThread: OrchestrationThread = {
+        ...BASE_THREAD,
+        latestTurn: {
+          turnId,
+          state: "interrupted",
+          requestedAt: "2026-04-01T00:00:00.000Z",
+          startedAt: "2026-04-01T00:00:00.000Z",
+          completedAt,
+          assistantMessageId: null,
+        },
+        session: {
+          threadId: THREAD_ID,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: "2026-04-01T00:02:00.000Z",
+        },
+      };
+      const harness = yield* makeHarness({ cached: cachedThread });
+      const loaded = yield* awaitThreadState(harness.observed, (value) =>
+        Option.isSome(value.data),
+      );
+      expect(Option.getOrThrow(loaded.data).settledTurnCompletions).toBeUndefined();
+
+      // Resuming from the cached sequence delivers only the startup settlement.
       yield* Queue.offer(
         harness.inputs,
-        turnSettled("turn-live", "2026-04-01T00:01:00.000Z", CACHED_SNAPSHOT_SEQUENCE + 1),
+        turnSettled("turn-restart", completedAt, CACHED_SNAPSHOT_SEQUENCE + 1),
       );
 
       const state = yield* awaitThreadState(
@@ -361,7 +390,7 @@ describe("EnvironmentThreads", () => {
       );
 
       expect(Option.getOrThrow(state.data).settledTurnCompletions).toEqual({
-        [turnId]: "2026-04-01T00:01:00.000Z",
+        [turnId]: completedAt,
       });
     }),
   );
