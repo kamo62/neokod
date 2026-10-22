@@ -205,7 +205,7 @@ export type WorkSource = typeof WorkSourceSchema.Type;
 
 export const WorkLifecycleSchema = Schema.Literals([
   "draft",
-  "eligible",
+  "ineligible",
   "queued",
   "preparing",
   "running",
@@ -586,12 +586,37 @@ export const ApprovalRequestStateSchema = Schema.Literals([
 ]);
 export type ApprovalRequestState = typeof ApprovalRequestStateSchema.Type;
 
+/**
+ * What the runtime is actually asking for. `ApprovalActionSchema` stays the
+ * policy vocabulary (the classes a workflow may gate); a request additionally
+ * carries provider reaction kinds and questions, and must be able to say
+ * `unknown` rather than mislabeling protocol drift.
+ */
+export const ApprovalRequestActionSchema = Schema.Union([
+  ApprovalActionSchema,
+  Schema.Literals(["file_change", "user_input", "unknown"]),
+]);
+export type ApprovalRequestAction = typeof ApprovalRequestActionSchema.Type;
+
+/** An approval is decided (`approved`/`rejected`); a question is answered. */
+export const ApprovalRequestKindSchema = Schema.Literals(["approval", "user_input"]);
+export type ApprovalRequestKind = typeof ApprovalRequestKindSchema.Type;
+
 export const ApprovalRequestSchema = Schema.Struct({
   id: SymphonyApprovalRequestId,
   requestId: TrimmedNonEmptyString,
   workItemId: WorkItemId,
   runAttemptId: Schema.optional(RunAttemptId),
-  action: ApprovalActionSchema,
+  /**
+   * Whether this request is a gated action or an agent question. Optional so
+   * payloads written before the field existed still decode: consumers derive it
+   * from `action` when it is absent instead of rejecting known evidence.
+   */
+  kind: Schema.optional(ApprovalRequestKindSchema),
+  /** Normalised request action; `unknown` when the provider kind is not mapped. */
+  action: ApprovalRequestActionSchema,
+  /** The provider's own kind (`commandExecution`, `fileChange`) when it differs. */
+  providerAction: Schema.optional(Schema.String),
   scope: ApprovalScopeSchema,
   state: ApprovalRequestStateSchema,
   command: Schema.optional(Schema.String),
@@ -603,7 +628,12 @@ export const ApprovalRequestSchema = Schema.Struct({
   policySource: Schema.optional(Schema.String),
   createdAt: IsoDateTime,
   decidedAt: Schema.NullOr(IsoDateTime),
-  decision: Schema.optional(Schema.Literals(["approved", "rejected", "expired"])),
+  /**
+   * How the request closed. The durable column records the same value as
+   * `state` on every close, including `interrupted` (the run died while the
+   * request was pending), so an interrupted row stays decodable.
+   */
+  decision: Schema.optional(Schema.Literals(["approved", "rejected", "expired", "interrupted"])),
 });
 export type ApprovalRequest = typeof ApprovalRequestSchema.Type;
 
@@ -952,6 +982,8 @@ export const SymphonyBoardCardSchema = Schema.Struct({
   outcome: Schema.NullOr(Schema.Literals(["completed", "cancelled", "failed"])),
   priority: Schema.optional(Schema.Int),
   issueUrl: Schema.optional(Schema.String),
+  eligibilityReasons: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  latestRunAttemptId: Schema.optional(RunAttemptId),
   updatedAt: IsoDateTime,
 });
 export type SymphonyBoardCard = typeof SymphonyBoardCardSchema.Type;
@@ -1302,4 +1334,30 @@ export const SymphonyProjectBoardStreamEvent = Schema.Union([
 ]);
 
 export const SymphonyEmptyResult = Schema.Struct({ ok: Schema.Boolean });
+
+export const SymphonyDispatchRefusalReasonSchema = Schema.Literals([
+  "not_leader",
+  "not_found",
+  "already_running",
+  "not_dispatchable",
+  "paused",
+  "excluded",
+  "ineligible",
+  "no_workflow",
+  "observe_only",
+  "concurrency_cap",
+  "tracker_refresh_failed",
+]);
+export type SymphonyDispatchRefusalReason = typeof SymphonyDispatchRefusalReasonSchema.Type;
+
+export const SymphonyDispatchResultSchema = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("started") }),
+  Schema.Struct({
+    status: Schema.Literal("refused"),
+    reason: SymphonyDispatchRefusalReasonSchema,
+    detail: Schema.optional(Schema.String),
+  }),
+]);
+export type SymphonyDispatchResult = typeof SymphonyDispatchResultSchema.Type;
+
 export const SymphonyWorkItemResult = Schema.Struct({ workItemId: WorkItemId });

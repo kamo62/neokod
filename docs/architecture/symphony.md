@@ -67,7 +67,7 @@ Tracker  --poll-->  Eligibility  --dispatch-->  Isolated worktree  -->  Agent ru
    lists candidate issues. `Orchestrator/Eligibility.ts` checks each one against `active_states`,
    `terminal_states`, `required_labels`, and whether it's already claimed. `Orchestrator/Projection.ts`
    turns eligible issues into `WorkItem` rows, persisted by `Persistence/Layers/WorkItemRepository.ts`.
-   A `WorkItem` moves through a defined lifecycle: `draft, eligible, queued, preparing, running,
+   A `WorkItem` moves through a defined lifecycle: `draft, ineligible, queued, preparing, running,
 blocked, waiting_for_approval, retry_scheduled, validation_failed, ready_for_review,
 changes_requested, ready_to_merge, completed, cancelled, failed`. Claiming a queued item for
    dispatch is an optimistic-fenced SQL update, so two orchestrator instances (or a stale retry) can't

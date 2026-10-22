@@ -1,4 +1,5 @@
-import { ActivityIcon, RefreshCwIcon, SquareIcon } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { ActivityIcon, ArrowLeftIcon, RefreshCwIcon, SquareIcon } from "lucide-react";
 
 import { RunAttemptId, type EvidenceBundle, type RunDetails } from "@neokod/contracts";
 import { usePrimaryEnvironmentId } from "../../state/environments";
@@ -11,16 +12,10 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "..
 import { Skeleton } from "../ui/skeleton";
 import { cn } from "../../lib/utils";
 import { PullRequestPanel } from "./PullRequestPanel";
+import { SymphonyApprovalActions } from "./SymphonyApprovalActions";
 import { SymphonyEmptyState } from "./SymphonyEmptyState";
-
-const RUNNING_STATUSES = new Set([
-  "preparing_workspace",
-  "initializing_session",
-  "launching_agent",
-  "building_prompt",
-  "streaming_turn",
-  "finishing",
-]);
+import { approvalRequestMode, attentionMode } from "./attention.logic";
+import { ACTIVE_RUN_STATUSES } from "./symphonyRuns.logic";
 
 function Timeline({ details }: { readonly details: RunDetails }) {
   return (
@@ -150,13 +145,38 @@ export function SymphonyRunDetailView({ runId }: { readonly runId: string }) {
   );
   const cancelRun = useAtomCommand(symphonyEnvironment.cancelRun);
   const details = detail.data ?? null;
+  // Pending requests arrive as the attention projection (the run page answers
+  // there); the raw approval list carries the decided history.
+  const decidedApprovals =
+    details === null
+      ? []
+      : details.approvalRequests.filter((request) => request.state !== "pending");
 
-  const active = details !== null && RUNNING_STATUSES.has(details.runAttempt.status);
+  const active = details !== null && ACTIVE_RUN_STATUSES.has(details.runAttempt.status);
 
   return (
     <div className="flex flex-1 flex-col">
       <div className="flex items-center justify-between px-6 pb-2 pt-6 sm:px-8">
         <div className="space-y-0.5">
+          {details?.workItem.projectId === undefined ? (
+            <Link
+              to="/symphony"
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground underline"
+            >
+              <ArrowLeftIcon className="size-3.5" />
+              Projects
+            </Link>
+          ) : (
+            <Link
+              to="/symphony/projects/$projectId"
+              params={{ projectId: details.workItem.projectId }}
+              search={{ tab: "runs" }}
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground underline"
+            >
+              <ArrowLeftIcon className="size-3.5" />
+              Runs
+            </Link>
+          )}
           <h1 className="text-[15px] font-semibold tracking-[-0.01em] text-foreground">
             Run {runId}
           </h1>
@@ -263,30 +283,65 @@ export function SymphonyRunDetailView({ runId }: { readonly runId: string }) {
                 isRefreshing={detail.isPending}
               />
             ) : null}
-            {details.approvalRequests.length > 0 ? (
+            {details.attentionItems.length > 0 ? (
               <div className="rounded-2xl border bg-card px-4 py-3">
-                <h2 className="mb-2 text-[12px] font-semibold text-foreground">Approvals</h2>
-                <ul className="space-y-1.5">
-                  {details.approvalRequests.map((request) => (
-                    <li key={request.id} className="flex items-center justify-between gap-3">
-                      <span className="text-[11px] text-muted-foreground">
-                        {request.action}
-                        {request.command !== undefined ? ` · ${request.command}` : ""}
-                      </span>
-                      <Badge
-                        variant={
-                          request.state === "pending"
-                            ? "warning"
-                            : request.state === "approved"
-                              ? "success"
-                              : "secondary"
-                        }
-                        size="sm"
-                      >
-                        {request.state}
-                      </Badge>
-                    </li>
-                  ))}
+                <h2 className="mb-2 text-[12px] font-semibold text-foreground">Waiting for you</h2>
+                <ul className="divide-y divide-border/60">
+                  {details.attentionItems.map((item) => {
+                    const mode = attentionMode(item);
+                    return (
+                      <li key={item.id} className="space-y-2 py-2.5 first:pt-0 last:pb-0">
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="min-w-0 flex-1 text-xs text-foreground">
+                            {item.whatHappened}
+                          </span>
+                          <Badge variant="warning" size="sm">
+                            {item.kind.replaceAll("_", " ")}
+                          </Badge>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">{item.whyHuman}</p>
+                        {mode !== "info" && environmentId !== null ? (
+                          <SymphonyApprovalActions
+                            environmentId={environmentId}
+                            requestId={item.id}
+                            mode={mode}
+                            onDone={detail.refresh}
+                          />
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
+            {decidedApprovals.length > 0 ? (
+              <div className="rounded-2xl border bg-card px-4 py-3">
+                <h2 className="mb-2 text-[12px] font-semibold text-foreground">
+                  Decided approvals
+                </h2>
+                <ul className="divide-y divide-border/60">
+                  {decidedApprovals.map((request) => {
+                    const mode = approvalRequestMode(request);
+                    return (
+                      <li key={request.id} className="space-y-1 py-2.5 first:pt-0 last:pb-0">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[11px] text-muted-foreground">
+                            {mode === "question" ? "question" : request.action}
+                            {request.command !== undefined ? ` · ${request.command}` : ""}
+                          </span>
+                          <Badge
+                            variant={request.state === "approved" ? "success" : "secondary"}
+                            size="sm"
+                          >
+                            {request.state}
+                          </Badge>
+                        </div>
+                        {mode === "question" && request.reason !== undefined ? (
+                          <p className="text-xs text-foreground">{request.reason}</p>
+                        ) : null}
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             ) : null}

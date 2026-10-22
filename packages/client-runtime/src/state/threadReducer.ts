@@ -69,6 +69,7 @@ export function applyThreadDetailEvent(
           branch: event.payload.branch,
           worktreePath: event.payload.worktreePath,
           latestTurn: null,
+          settledTurnCompletions: {},
           createdAt: event.payload.createdAt,
           updatedAt: event.payload.updatedAt,
           archivedAt: null,
@@ -226,35 +227,40 @@ export function applyThreadDetailEvent(
         thread.session?.status === "running" &&
         thread.session.activeTurnId === event.payload.turnId;
       const settlesTurn = !event.payload.streaming && !turnStillRunning;
+      const existingLatestTurn = thread.latestTurn;
+      const sameTurn = existingLatestTurn?.turnId === event.payload.turnId;
+      // A recovered turn may already be terminal with known or explicitly
+      // unknown completion. Synthetic message closure must not replace that
+      // authoritative turn timing with the message's own last update.
+      const existingSettled =
+        sameTurn && existingLatestTurn !== null && existingLatestTurn.state !== "running";
       const latestTurn: OrchestrationThread["latestTurn"] =
         event.payload.role === "assistant" &&
         event.payload.turnId !== null &&
-        (thread.latestTurn === null || thread.latestTurn.turnId === event.payload.turnId)
+        (existingLatestTurn === null || sameTurn)
           ? {
               turnId: event.payload.turnId,
               state: settlesTurn
-                ? thread.latestTurn?.state === "interrupted"
+                ? existingLatestTurn?.state === "interrupted"
                   ? "interrupted"
-                  : thread.latestTurn?.state === "error"
+                  : existingLatestTurn?.state === "error"
                     ? "error"
                     : "completed"
                 : "running",
-              requestedAt:
-                thread.latestTurn?.turnId === event.payload.turnId
-                  ? thread.latestTurn.requestedAt
-                  : event.payload.createdAt,
-              startedAt:
-                thread.latestTurn?.turnId === event.payload.turnId
-                  ? (thread.latestTurn.startedAt ?? event.payload.createdAt)
-                  : event.payload.createdAt,
+              requestedAt: sameTurn ? existingLatestTurn.requestedAt : event.payload.createdAt,
+              startedAt: sameTurn
+                ? (existingLatestTurn.startedAt ?? event.payload.createdAt)
+                : event.payload.createdAt,
               completedAt: settlesTurn
-                ? event.payload.updatedAt
-                : thread.latestTurn?.turnId === event.payload.turnId
-                  ? (thread.latestTurn.completedAt ?? null)
+                ? existingSettled
+                  ? (existingLatestTurn.completedAt ?? null)
+                  : event.payload.updatedAt
+                : sameTurn
+                  ? (existingLatestTurn.completedAt ?? null)
                   : null,
               assistantMessageId: event.payload.messageId,
             }
-          : thread.latestTurn;
+          : existingLatestTurn;
 
       // Rebind checkpoint assistant message IDs for assistant messages.
       const checkpoints =
@@ -309,11 +315,51 @@ export function applyThreadDetailEvent(
                 ...thread.latestTurn,
                 state: settledTurnState,
                 // A running turn's completedAt can only hold a mid-turn
-                // placeholder checkpoint timestamp — the session leaving
-                // "running" is the authoritative turn end.
-                completedAt: event.payload.session.updatedAt,
+                // placeholder checkpoint timestamp. Recovery can freeze it at
+                // the last observation instead of the event time. An explicit
+                // null means no observation exists; only an omitted field
+                // keeps the legacy session-time default.
+                completedAt:
+                  event.payload.latestTurnCompletedAt === undefined
+                    ? event.payload.session.updatedAt
+                    : event.payload.latestTurnCompletedAt,
               }
             : thread.latestTurn;
+
+      const supersededTurnId =
+        event.payload.session.status === "running" &&
+        event.payload.session.activeTurnId !== null &&
+        thread.latestTurn?.state === "running" &&
+        thread.latestTurn.turnId !== event.payload.session.activeTurnId
+          ? thread.latestTurn.turnId
+          : null;
+      const terminalTurnId =
+        settledTurnState === null
+          ? null
+          : (event.payload.interruptedTurnId ??
+            (thread.latestTurn?.state === "running" ? thread.latestTurn.turnId : null));
+      const settledTurnId = supersededTurnId ?? terminalTurnId;
+      const settledCompletedAt =
+        settledTurnId === null
+          ? null
+          : event.payload.latestTurnCompletedAt === undefined
+            ? event.payload.session.updatedAt
+            : event.payload.latestTurnCompletedAt;
+      const settledTurnCompletions =
+        settledTurnId === null
+          ? thread.settledTurnCompletions
+          : {
+              ...(thread.settledTurnCompletions ?? {}),
+              [settledTurnId]: settledCompletedAt,
+            };
+      const checkpoints =
+        settledTurnId !== null && settledCompletedAt !== null
+          ? thread.checkpoints.map((checkpoint) =>
+              checkpoint.turnId === settledTurnId && checkpoint.completedAt !== settledCompletedAt
+                ? { ...checkpoint, completedAt: settledCompletedAt }
+                : checkpoint,
+            )
+          : thread.checkpoints;
 
       return {
         kind: "updated",
@@ -321,6 +367,8 @@ export function applyThreadDetailEvent(
           ...thread,
           session: event.payload.session,
           latestTurn,
+          settledTurnCompletions,
+          checkpoints,
           updatedAt: event.occurredAt,
         },
       };

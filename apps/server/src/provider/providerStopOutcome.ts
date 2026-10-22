@@ -12,11 +12,34 @@
  *
  * @module providerStopOutcome
  */
-import type {
-  ProviderStopFailedReason,
-  ProviderStopOutcome,
-  ProviderStopReason,
-} from "@neokod/contracts";
+import { ProviderStopOutcome } from "@neokod/contracts";
+import type { ProviderStopFailedReason, ProviderStopReason } from "@neokod/contracts";
+import * as Schema from "effect/Schema";
+
+const isProviderStopOutcome = Schema.is(ProviderStopOutcome);
+
+/**
+ * Read the persisted stop outcome from a binding's runtime payload.
+ * A malformed or absent value means "no stop evidence", not a stopped session.
+ */
+export function readPersistedStopOutcome(runtimePayload: unknown): ProviderStopOutcome | undefined {
+  if (!runtimePayload || typeof runtimePayload !== "object" || Array.isArray(runtimePayload)) {
+    return undefined;
+  }
+  const rawOutcome = "stopOutcome" in runtimePayload ? runtimePayload.stopOutcome : undefined;
+  return isProviderStopOutcome(rawOutcome) ? rawOutcome : undefined;
+}
+
+/**
+ * A `host_lost` orphan observation means the previous server process vanished.
+ * It is not a locally owned stop operation: there is no teardown to complete,
+ * and it must not fence the thread against a later explicit session or turn.
+ */
+export function isHostLostStopOutcome(
+  outcome: ProviderStopOutcome | undefined,
+): outcome is Extract<ProviderStopOutcome, { readonly status: "orphan_possible" }> {
+  return outcome?.status === "orphan_possible" && outcome.reason === "host_lost";
+}
 
 /**
  * Confirmed stop: foreground settled and the owned process tree was torn down.

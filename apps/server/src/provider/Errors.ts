@@ -172,6 +172,20 @@ export class ProviderSessionNotFoundError extends Schema.TaggedErrorClass<Provid
 }
 
 /**
+ * ProviderSessionNotRecoverableError - The thread has a persisted binding but
+ * no live session and no resume state, so the provider session cannot be rebuilt.
+ * Typical after a hard crash of an adapter that never persists a resume cursor.
+ */
+export class ProviderSessionNotRecoverableError extends Schema.TaggedErrorClass<ProviderSessionNotRecoverableError>()(
+  "ProviderSessionNotRecoverableError",
+  { operation: Schema.String, threadId: Schema.String },
+) {
+  override get message(): string {
+    return "This thread's provider session was lost when Neokod last restarted and no resume state was saved, so the turn cannot be continued.";
+  }
+}
+
+/**
  * ProviderSessionDirectoryPersistenceError - Session directory persistence failure.
  */
 export class ProviderSessionDirectoryPersistenceError extends Schema.TaggedErrorClass<ProviderSessionDirectoryPersistenceError>()(
@@ -219,6 +233,7 @@ export type ProviderServiceError =
   | ProviderUnsupportedError
   | ProviderInstanceNotFoundError
   | ProviderSessionNotFoundError
+  | ProviderSessionNotRecoverableError
   | ProviderSessionDirectoryPersistenceError
   | ProviderStoppingError
   | ProviderAdapterError

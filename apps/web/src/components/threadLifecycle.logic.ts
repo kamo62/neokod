@@ -61,3 +61,25 @@ export function isTerminalThreadLifecycle(
 ): lifecycle is Extract<ThreadLifecycle, { readonly phase: "terminal" }> {
   return lifecycle.phase === "terminal";
 }
+
+export type TerminalElapsedEnd =
+  | { readonly state: "live" }
+  | { readonly state: "known"; readonly endedAt: string }
+  | { readonly state: "unknown" };
+
+/**
+ * Resolve how a terminal turn's elapsed interval ends. An explicit null
+ * completion is unknown, not an invitation to use entry or recovery
+ * timestamps.
+ */
+export function resolveTerminalElapsedEnd(input: {
+  readonly terminal: boolean;
+  readonly completedAt: string | null;
+}): TerminalElapsedEnd {
+  if (!input.terminal) {
+    return { state: "live" };
+  }
+  return input.completedAt === null
+    ? { state: "unknown" }
+    : { state: "known", endedAt: input.completedAt };
+}

@@ -35,6 +35,11 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { deriveServerPaths, ServerConfig } from "../../config.ts";
 import { TextGenerationError } from "@neokod/contracts";
 import { ProviderAdapterRequestError } from "../../provider/Errors.ts";
+import {
+  ProviderSessionNotRecoverableError,
+  ProviderValidationError,
+} from "../../provider/Errors.ts";
+import { GENERIC_INTERNAL_ERROR_DETAIL } from "../../provider/userFacingErrorText.ts";
 import { OrchestrationEventStoreLive } from "../../persistence/Layers/OrchestrationEventStore.ts";
 import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Layers/OrchestrationCommandReceipts.ts";
 import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
@@ -509,7 +514,7 @@ describe("ProviderCommandReactor", () => {
       expect(harness.startSession.mock.calls.length).toBe(startSessionCallsBefore);
 
       // Surfaces as a provider.turn.start.failed activity, which is the panel
-      // the user reads, and it names the folder rather than the provider.
+      // the user reads. The path is not repeated in the stored detail.
       const readModel = yield* Effect.promise(() => harness.readModel());
       const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-moved"));
       const failure = (thread?.activities ?? []).find(
@@ -520,7 +525,9 @@ describe("ProviderCommandReactor", () => {
         | { readonly detail?: string; readonly messageId?: string }
         | undefined;
       const detail = failurePayload?.detail ?? "";
-      expect(detail).toContain(missingRoot);
+      expect(detail).toContain("folder no longer exists");
+      expect(detail).not.toContain(missingRoot);
+      expect(detail).not.toContain("[path]");
       // The message identity fences pending-admission settlement.
       expect(failurePayload?.messageId).toBe("user-message-moved");
       // The provider must not be blamed for a filesystem problem.
@@ -1854,6 +1861,334 @@ describe("ProviderCommandReactor", () => {
           }),
         }),
       );
+    }),
+  );
+
+  effectIt.effect(
+    "settles the thread as interrupted when Stop hits a binding with no resume state",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* Effect.promise(() => createHarness());
+        const now = "2026-01-01T00:00:00.000Z";
+        const expectedMessage = new ProviderSessionNotRecoverableError({
+          operation: "x",
+          threadId: "thread-1",
+        }).message;
+        harness.interruptTurn.mockImplementation(() =>
+          Effect.fail(
+            new ProviderSessionNotRecoverableError({
+              operation: "ProviderService.interruptTurn",
+              threadId: "thread-1",
+            }),
+          ),
+        );
+
+        yield* harness.engine.dispatch({
+          type: "thread.session.set",
+          commandId: CommandId.make("cmd-session-set-for-unrecoverable-stop"),
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "running",
+            providerName: "codex",
+            runtimeMode: "approval-required",
+            activeTurnId: asTurnId("turn-1"),
+            lastError: null,
+            updatedAt: now,
+          },
+          createdAt: now,
+        });
+
+        yield* harness.engine.dispatch({
+          type: "thread.message.assistant.delta",
+          commandId: CommandId.make("cmd-unrecoverable-streaming-message"),
+          threadId: ThreadId.make("thread-1"),
+          messageId: MessageId.make("msg-unrecoverable-streaming"),
+          delta: "partial answer",
+          turnId: asTurnId("turn-1"),
+          createdAt: now,
+        });
+
+        yield* harness.engine.dispatch({
+          type: "thread.turn.interrupt",
+          commandId: CommandId.make("cmd-turn-interrupt-unrecoverable"),
+          threadId: ThreadId.make("thread-1"),
+          turnId: asTurnId("turn-1"),
+          createdAt: now,
+        });
+
+        yield* Effect.promise(() =>
+          waitFor(async () => {
+            const readModel = await harness.readModel();
+            const thread = readModel.threads.find(
+              (entry) => entry.id === ThreadId.make("thread-1"),
+            );
+            return thread?.session?.status === "interrupted";
+          }),
+        );
+        yield* Effect.promise(() => harness.drain());
+
+        const readModel = yield* Effect.promise(() => harness.readModel());
+        const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+        expect(thread?.session?.status).toBe("interrupted");
+        expect(thread?.session?.activeTurnId).toBeNull();
+        expect(thread?.session?.lastError).toBe(expectedMessage);
+        expect(
+          thread?.activities.some((activity) => activity.kind === "provider.turn.interrupt.failed"),
+        ).toBe(false);
+        expect(
+          thread?.messages.find(
+            (message) => message.id === MessageId.make("msg-unrecoverable-streaming"),
+          ),
+        ).toMatchObject({ text: "partial answer", streaming: false });
+      }),
+  );
+
+  effectIt.effect(
+    "does not touch an idle ready thread when Stop hits a binding with no resume state",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* Effect.promise(() => createHarness());
+        const now = "2026-01-01T00:00:00.000Z";
+        harness.interruptTurn.mockImplementation(() =>
+          Effect.fail(
+            new ProviderSessionNotRecoverableError({
+              operation: "ProviderService.interruptTurn",
+              threadId: "thread-1",
+            }),
+          ),
+        );
+
+        yield* harness.engine.dispatch({
+          type: "thread.session.set",
+          commandId: CommandId.make("cmd-session-set-ready-unrecoverable"),
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "ready",
+            providerName: "codex",
+            runtimeMode: "approval-required",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: now,
+          },
+          createdAt: now,
+        });
+
+        yield* harness.engine.dispatch({
+          type: "thread.turn.interrupt",
+          commandId: CommandId.make("cmd-turn-interrupt-ready-unrecoverable"),
+          threadId: ThreadId.make("thread-1"),
+          turnId: asTurnId("turn-1"),
+          createdAt: now,
+        });
+
+        yield* Effect.promise(() => waitFor(() => harness.interruptTurn.mock.calls.length === 1));
+        yield* Effect.promise(() => harness.drain());
+
+        const readModel = yield* Effect.promise(() => harness.readModel());
+        const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+        expect(thread?.session?.status).toBe("ready");
+        expect(
+          thread?.activities.some((activity) => activity.kind === "provider.turn.interrupt.failed"),
+        ).toBe(false);
+      }),
+  );
+
+  effectIt.effect(
+    "expires the approval and settles the thread when Approve hits a binding with no resume state",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* Effect.promise(() => createHarness());
+        const now = "2026-01-01T00:00:00.000Z";
+        harness.respondToRequest.mockImplementation(() =>
+          Effect.fail(
+            new ProviderSessionNotRecoverableError({
+              operation: "ProviderService.respondToRequest",
+              threadId: "thread-1",
+            }),
+          ),
+        );
+
+        yield* harness.engine.dispatch({
+          type: "thread.session.set",
+          commandId: CommandId.make("cmd-session-set-approval-unrecoverable"),
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "running",
+            providerName: "codex",
+            runtimeMode: "approval-required",
+            activeTurnId: asTurnId("turn-1"),
+            lastError: null,
+            updatedAt: now,
+          },
+          createdAt: now,
+        });
+
+        yield* harness.engine.dispatch({
+          type: "thread.message.assistant.delta",
+          commandId: CommandId.make("cmd-approval-unrecoverable-streaming-message"),
+          threadId: ThreadId.make("thread-1"),
+          messageId: MessageId.make("msg-approval-unrecoverable-streaming"),
+          delta: "partial answer",
+          turnId: asTurnId("turn-1"),
+          createdAt: now,
+        });
+
+        yield* harness.engine.dispatch({
+          type: "thread.activity.append",
+          commandId: CommandId.make("cmd-approval-requested-unrecoverable"),
+          threadId: ThreadId.make("thread-1"),
+          activity: {
+            id: EventId.make("activity-approval-requested-unrecoverable"),
+            tone: "approval",
+            kind: "approval.requested",
+            summary: "Command approval requested",
+            payload: {
+              requestId: "approval-request-1",
+              requestKind: "command",
+            },
+            turnId: null,
+            createdAt: now,
+          },
+          createdAt: now,
+        });
+
+        yield* harness.engine.dispatch({
+          type: "thread.approval.respond",
+          commandId: CommandId.make("cmd-approval-respond-unrecoverable"),
+          threadId: ThreadId.make("thread-1"),
+          requestId: asApprovalRequestId("approval-request-1"),
+          decision: "acceptForSession",
+          createdAt: now,
+        });
+
+        yield* Effect.promise(() =>
+          waitFor(async () => {
+            const readModel = await harness.readModel();
+            const entry = readModel.threads.find(
+              (candidate) => candidate.id === ThreadId.make("thread-1"),
+            );
+            return entry?.session?.status === "interrupted";
+          }),
+        );
+
+        const readModel = yield* Effect.promise(() => harness.readModel());
+        const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+        const failureActivity = thread?.activities.find(
+          (activity) => activity.kind === "provider.approval.respond.failed",
+        );
+        expect(failureActivity?.payload).toMatchObject({
+          requestId: "approval-request-1",
+          detail: expect.stringContaining("Stale pending approval request: approval-request-1"),
+        });
+        expect(thread?.session?.status).toBe("interrupted");
+        expect(
+          thread?.messages.find(
+            (message) => message.id === MessageId.make("msg-approval-unrecoverable-streaming"),
+          ),
+        ).toMatchObject({ text: "partial answer", streaming: false });
+      }),
+  );
+
+  effectIt.effect("stores no stack frames or paths in provider failure details", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const now = "2026-01-01T00:00:00.000Z";
+      harness.interruptTurn.mockImplementation(() =>
+        Effect.die(new Error("boom at /Users/me/secret/file.ts")),
+      );
+
+      yield* harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-session-set-sanitised-die"),
+        threadId: ThreadId.make("thread-1"),
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: asTurnId("turn-1"),
+          lastError: null,
+          updatedAt: now,
+        },
+        createdAt: now,
+      });
+
+      yield* harness.engine.dispatch({
+        type: "thread.turn.interrupt",
+        commandId: CommandId.make("cmd-turn-interrupt-sanitised-die"),
+        threadId: ThreadId.make("thread-1"),
+        turnId: asTurnId("turn-1"),
+        createdAt: now,
+      });
+
+      yield* Effect.promise(() =>
+        waitFor(async () => {
+          const readModel = await harness.readModel();
+          const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+          return (
+            thread?.activities.some(
+              (activity) => activity.kind === "provider.turn.interrupt.failed",
+            ) ?? false
+          );
+        }),
+      );
+
+      let readModel = yield* Effect.promise(() => harness.readModel());
+      let thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+      let failureActivity = thread?.activities.find(
+        (activity) => activity.kind === "provider.turn.interrupt.failed",
+      );
+      expect(failureActivity?.payload).toMatchObject({ detail: GENERIC_INTERNAL_ERROR_DETAIL });
+
+      harness.interruptTurn.mockImplementation(() =>
+        Effect.fail(
+          new ProviderValidationError({
+            operation: "ProviderService.interruptTurn",
+            issue: "bad",
+          }),
+        ),
+      );
+
+      yield* harness.engine.dispatch({
+        type: "thread.turn.interrupt",
+        commandId: CommandId.make("cmd-turn-interrupt-sanitised-validation"),
+        threadId: ThreadId.make("thread-1"),
+        turnId: asTurnId("turn-1"),
+        createdAt: now,
+      });
+
+      yield* Effect.promise(() =>
+        waitFor(async () => {
+          const model = await harness.readModel();
+          const entry = model.threads.find(
+            (candidate) => candidate.id === ThreadId.make("thread-1"),
+          );
+          return (
+            entry?.activities.filter(
+              (activity) => activity.kind === "provider.turn.interrupt.failed",
+            ).length === 2
+          );
+        }),
+      );
+
+      readModel = yield* Effect.promise(() => harness.readModel());
+      thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+      const failureActivities = thread?.activities.filter(
+        (activity) => activity.kind === "provider.turn.interrupt.failed",
+      );
+      const validationDetail = (
+        failureActivities?.at(-1)?.payload as { detail?: string } | undefined
+      )?.detail;
+      expect(validationDetail).toBe(
+        new ProviderValidationError({
+          operation: "ProviderService.interruptTurn",
+          issue: "bad",
+        }).message,
+      );
+      expect(validationDetail).not.toMatch(/\n\s+at /);
     }),
   );
 

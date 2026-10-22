@@ -8,12 +8,18 @@ import type {
 import {
   SYMPHONY_WS_METHODS,
   RunAttemptId as RunAttemptIdValue,
+  SymphonyProjectId,
   WorkItemId as WorkItemIdValue,
 } from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
+
+import { SymphonyPersistenceSqlError } from "./symphony/Persistence/Errors.ts";
 
 import * as SymphonyOrchestratorModule from "./symphony/Orchestrator/SymphonyOrchestrator.ts";
 const SymphonyOrchestrator = SymphonyOrchestratorModule.SymphonyOrchestrator;
@@ -106,10 +112,10 @@ const fakeOrchestratorLayer = Layer.succeed(SymphonyOrchestrator, {
   excludeWorkItem: () => Effect.void,
   includeWorkItem: () => Effect.void,
   setLocalPriority: () => Effect.void,
-  dispatchWorkItem: (workItemId: string, options?: { readonly explicit?: boolean }) =>
+  dispatchWorkItem: (workItemId: string) =>
     Effect.sync(() => {
-      dispatchCalls.push({ workItemId, explicit: options?.explicit === true });
-    }).pipe(Effect.asVoid),
+      dispatchCalls.push({ workItemId, explicit: true });
+    }).pipe(Effect.as({ status: "started" } as const)),
   cancelRun: (runAttemptId: string) =>
     Effect.logInfo(`cancelled ${runAttemptId}`).pipe(Effect.asVoid),
   listQueuesForRepository: () => Effect.succeed([]),
@@ -124,7 +130,163 @@ const fakeApprovalsLayer = Layer.succeed(ApprovalService, {
   listForRun: () => Effect.succeed([]),
   expire: () => Effect.void,
   interrupt: () => Effect.void,
+  expireRequest: () => Effect.succeed(false),
 } as (typeof ApprovalService)["Service"]);
+
+const failingBoardOrchestratorLayer = Layer.succeed(SymphonyOrchestrator, {
+  getProjectBoard: () =>
+    Effect.fail(new SymphonyPersistenceSqlError({ operation: "test", detail: "disk I/O error" })),
+} as unknown as (typeof SymphonyOrchestrator)["Service"]);
+
+it.layer(failingBoardOrchestratorLayer)("Symphony WS RPC handlers - board read failure", (it) => {
+  const expectBoardUnavailable = (exit: Exit.Exit<unknown, unknown>) => {
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.squash(exit.cause);
+      expect(failure).toMatchObject({
+        _tag: "SymphonyError",
+        code: "symphony_board_unavailable",
+      });
+    }
+  };
+
+  it.effect("getProjectBoard maps a read failure to symphony_board_unavailable", () =>
+    Effect.gen(function* () {
+      const handlers = makeSymphonyRpcHandlers();
+      const exit = yield* Effect.exit(
+        Effect.scoped(
+          handlers[SYMPHONY_WS_METHODS.getProjectBoard]({
+            projectId: SymphonyProjectId.make("p1"),
+          }),
+        ),
+      );
+      expectBoardUnavailable(exit);
+    }),
+  );
+
+  it.effect("subscribeProjectBoard maps a read failure to symphony_board_unavailable", () =>
+    Effect.gen(function* () {
+      const handlers = makeSymphonyRpcHandlers();
+      const exit = yield* Effect.exit(
+        Stream.runCollect(
+          handlers[SYMPHONY_WS_METHODS.subscribeProjectBoard]({
+            projectId: SymphonyProjectId.make("p1"),
+          }),
+        ),
+      );
+      expectBoardUnavailable(exit);
+    }),
+  );
+});
+
+const refusedDispatchOrchestratorLayer = Layer.succeed(SymphonyOrchestrator, {
+  dispatchWorkItem: () =>
+    Effect.succeed({ status: "refused", reason: "paused", detail: "global" } as const),
+} as unknown as (typeof SymphonyOrchestrator)["Service"]);
+
+it.layer(refusedDispatchOrchestratorLayer)("Symphony WS RPC handlers - refused dispatch", (it) => {
+  it.effect("dispatchWorkItem passes a refusal through unchanged", () =>
+    Effect.gen(function* () {
+      const handlers = makeSymphonyRpcHandlers();
+      const handler = handlers[SYMPHONY_WS_METHODS.dispatchWorkItem];
+      const result = yield* Effect.scoped(handler({ workItemId: WorkItemIdValue.make("wi-1") }));
+      expect(result).toEqual({ status: "refused", reason: "paused", detail: "global" });
+    }),
+  );
+});
+
+const failingDispatchOrchestratorLayer = Layer.succeed(SymphonyOrchestrator, {
+  dispatchWorkItem: () =>
+    Effect.fail(
+      new SymphonyPersistenceSqlError({
+        operation: "WorkItemRepository.getById",
+        detail: "disk I/O error",
+      }),
+    ),
+} as unknown as (typeof SymphonyOrchestrator)["Service"]);
+
+it.layer(failingDispatchOrchestratorLayer)(
+  "Symphony WS RPC handlers - dispatch read failure",
+  (it) => {
+    it.effect(
+      "dispatchWorkItem maps a repository read failure to symphony_dispatch_unavailable",
+      () =>
+        Effect.gen(function* () {
+          const handlers = makeSymphonyRpcHandlers();
+          const exit = yield* Effect.exit(
+            Effect.scoped(
+              handlers[SYMPHONY_WS_METHODS.dispatchWorkItem]({
+                workItemId: WorkItemIdValue.make("wi-1"),
+              }),
+            ),
+          );
+          expect(Exit.isFailure(exit)).toBe(true);
+          if (Exit.isFailure(exit)) {
+            expect(Cause.squash(exit.cause)).toMatchObject({
+              _tag: "SymphonyError",
+              code: "symphony_dispatch_unavailable",
+            });
+          }
+        }),
+    );
+  },
+);
+
+it.layer(Layer.empty)("Symphony WS RPC handlers - approval layer absent", (it) => {
+  const expectApprovalUnavailable = (exit: Exit.Exit<unknown, unknown>) => {
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.squash(exit.cause);
+      expect(failure).toMatchObject({
+        _tag: "SymphonyError",
+        code: "symphony_unavailable",
+      });
+      if (failure instanceof Error) {
+        expect(failure.message).toContain("approval");
+      }
+    }
+  };
+
+  it.effect("approve fails with a typed error instead of reporting success", () =>
+    Effect.gen(function* () {
+      const handlers = makeSymphonyRpcHandlers();
+      const exit = yield* Effect.exit(
+        Effect.scoped(
+          handlers[SYMPHONY_WS_METHODS.approve]({
+            requestId: "approval-1",
+            scope: "once",
+          }),
+        ),
+      );
+      expectApprovalUnavailable(exit);
+    }),
+  );
+
+  it.effect("reject fails with a typed error instead of reporting success", () =>
+    Effect.gen(function* () {
+      const handlers = makeSymphonyRpcHandlers();
+      const exit = yield* Effect.exit(
+        Effect.scoped(handlers[SYMPHONY_WS_METHODS.reject]({ requestId: "approval-1" })),
+      );
+      expectApprovalUnavailable(exit);
+    }),
+  );
+
+  it.effect("respondToUserInput fails with a typed error instead of reporting success", () =>
+    Effect.gen(function* () {
+      const handlers = makeSymphonyRpcHandlers();
+      const exit = yield* Effect.exit(
+        Effect.scoped(
+          handlers[SYMPHONY_WS_METHODS.respondToUserInput]({
+            requestId: "approval-1",
+            text: "answer",
+          }),
+        ),
+      );
+      expectApprovalUnavailable(exit);
+    }),
+  );
+});
 
 it.layer(fakeOrchestratorLayer.pipe(Layer.provideMerge(fakeApprovalsLayer)))(
   "Symphony WS RPC handlers",
@@ -136,7 +298,7 @@ it.layer(fakeOrchestratorLayer.pipe(Layer.provideMerge(fakeApprovalsLayer)))(
         const handler = handlers[SYMPHONY_WS_METHODS.dispatchWorkItem];
         expect(handler).toBeDefined();
         const result = yield* Effect.scoped(handler({ workItemId: WorkItemIdValue.make("wi-1") }));
-        expect(result).toEqual({ ok: true });
+        expect(result).toEqual({ status: "started" });
         expect(dispatchCalls).toEqual([{ workItemId: "wi-1", explicit: true }]);
       }),
     );

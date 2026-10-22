@@ -142,6 +142,7 @@ import {
   SymphonyAttentionStreamEvent,
   SymphonyCancelRunInput,
   SymphonyDispatchWorkItemInput,
+  SymphonyDispatchResultSchema,
   SymphonyEmptyResult,
   SymphonyError,
   SymphonyExcludeWorkItemInput,
@@ -910,7 +911,7 @@ export const WsSymphonyResumeGlobalRpc = Rpc.make(SYMPHONY_WS_METHODS.resumeGlob
 
 export const WsSymphonyDispatchWorkItemRpc = Rpc.make(SYMPHONY_WS_METHODS.dispatchWorkItem, {
   payload: SymphonyDispatchWorkItemInput,
-  success: SymphonyEmptyResult,
+  success: SymphonyDispatchResultSchema,
   error: SymphonyError,
 });
 

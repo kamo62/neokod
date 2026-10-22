@@ -1,4 +1,10 @@
-import { type TerminalSummary, WS_METHODS } from "@neokod/contracts";
+import {
+  type EnvironmentId,
+  type TerminalMetadataStreamEvent,
+  type TerminalSummary,
+  WS_METHODS,
+} from "@neokod/contracts";
+import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import { Atom } from "effect/unstable/reactivity";
 
@@ -13,8 +19,30 @@ import { subscribe, type EnvironmentRpcInput } from "../rpc/client.ts";
 import {
   applyTerminalAttachStreamEvent,
   applyTerminalMetadataStreamEvent,
+  createTerminalMetadataInputInvalidator,
   EMPTY_TERMINAL_BUFFER_STATE,
+  withTerminalInputInvalidation,
 } from "./terminalSession.ts";
+
+/**
+ * Project terminal metadata into the shared terminal session state while
+ * invalidating retained input queues from authoritative events. Tapping before
+ * the scan matters: a re-subscribe emits a fresh snapshot, not an empty reset,
+ * so a still-running session keeps its queue.
+ */
+export function projectTerminalMetadata<E, R>(
+  environmentId: EnvironmentId,
+  stream: Stream.Stream<TerminalMetadataStreamEvent, E, R>,
+): Stream.Stream<ReadonlyArray<TerminalSummary>, E, R> {
+  const invalidate = createTerminalMetadataInputInvalidator(environmentId);
+  return stream.pipe(
+    Stream.tap((event) => {
+      invalidate(event);
+      return Effect.void;
+    }),
+    Stream.scan([] as ReadonlyArray<TerminalSummary>, applyTerminalMetadataStreamEvent),
+  );
+}
 
 export function createTerminalEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
@@ -36,6 +64,18 @@ export function createTerminalEnvironmentAtoms<R, E>(
     readonly input: { readonly threadId: string; readonly terminalId?: string | undefined };
   }) => JSON.stringify([environmentId, input.threadId, input.terminalId ?? null]);
   const lifecycleConcurrency = { mode: "serial" as const, key: terminalThreadKey };
+  const restartCommand = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:terminal:restart",
+    tag: WS_METHODS.terminalRestart,
+    scheduler: lifecycleScheduler,
+    concurrency: lifecycleConcurrency,
+  });
+  const closeCommand = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:terminal:close",
+    tag: WS_METHODS.terminalClose,
+    scheduler: lifecycleScheduler,
+    concurrency: lifecycleConcurrency,
+  });
   return {
     attach: createEnvironmentSubscriptionAtomFamily(runtime, {
       label: "environment-data:terminal:attach",
@@ -50,10 +90,8 @@ export function createTerminalEnvironmentAtoms<R, E>(
     }),
     metadata: createEnvironmentSubscriptionAtomFamily(runtime, {
       label: "environment-data:terminal:metadata",
-      subscribe: (_input: null) =>
-        subscribe(WS_METHODS.subscribeTerminalMetadata, {}).pipe(
-          Stream.scan([] as ReadonlyArray<TerminalSummary>, applyTerminalMetadataStreamEvent),
-        ),
+      subscribe: (_input: null, environmentId) =>
+        projectTerminalMetadata(environmentId, subscribe(WS_METHODS.subscribeTerminalMetadata, {})),
     }),
     open: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:terminal:open",
@@ -77,18 +115,8 @@ export function createTerminalEnvironmentAtoms<R, E>(
       scheduler: lifecycleScheduler,
       concurrency: lifecycleConcurrency,
     }),
-    restart: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:terminal:restart",
-      tag: WS_METHODS.terminalRestart,
-      scheduler: lifecycleScheduler,
-      concurrency: lifecycleConcurrency,
-    }),
-    close: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:terminal:close",
-      tag: WS_METHODS.terminalClose,
-      scheduler: lifecycleScheduler,
-      concurrency: lifecycleConcurrency,
-    }),
+    restart: withTerminalInputInvalidation(restartCommand),
+    close: withTerminalInputInvalidation(closeCommand),
   };
 }
 

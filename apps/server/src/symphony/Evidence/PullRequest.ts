@@ -11,6 +11,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 
 import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
+import { changeRequestRepositoryKey } from "../../sourceControl/ChangeRequestUrl.ts";
 import { SourceControlProviderRegistry } from "../../sourceControl/SourceControlProviderRegistry.ts";
 import { GitHubCli } from "../../sourceControl/GitHubCli.ts";
 import { nowIso } from "../Domain/Time.ts";
@@ -63,17 +64,24 @@ export class PullRequestService extends Context.Service<
     ) => Effect.Effect<PullRequestEvidence | null, PullRequestCreationError>;
 
     /**
-     * Re-fetch the open PR for a branch via the provider abstraction and
+     * Re-fetch the tracked change request via the provider abstraction and
      * return refreshed evidence (plan 10.1: status, review state and
      * mergeability are enriched host-by-host in Phase 5; the provider shape
      * today carries number/title/url/base/head/state, which is what this
      * refresh propagates).
+     *
+     * `pullRequestNumber` pins the identity: branch names are reused across
+     * dispatches, and several change requests can share a head branch. When the
+     * number is known it wins over the head-branch match.
      */
     readonly refresh: (input: {
       readonly config: EffectiveWorkflowConfig;
       readonly branch: string;
       readonly baseBranch: string;
       readonly title: string;
+      readonly pullRequestNumber?: number;
+      /** URL of the tracked PR, used to bind the refresh to its repository. */
+      readonly pullRequestUrl?: string;
     }) => Effect.Effect<PullRequestEvidence | null, PullRequestCreationError>;
 
     /**
@@ -240,23 +248,61 @@ export const makePullRequestService = (
       const handle = yield* deps.providers
         .resolveHandle({ cwd: input.config.repositoryPath })
         .pipe(Effect.mapError((cause) => new PullRequestCreationError(cause.message)));
-      const open = yield* handle.provider
-        .listChangeRequests({
-          cwd: input.config.repositoryPath,
-          ...(handle.context !== null ? { context: handle.context } : {}),
-          headSelector: input.branch,
-          // Query all states so a merged/closed PR is reflected in evidence
-          // (REVIEW P2: filtering on "open" froze the status at "open"
-          // forever after merge).
-          state: "all",
-          limit: 10,
-        })
-        .pipe(
-          Effect.mapError((cause) => new PullRequestCreationError(cause.message)),
-          Effect.orElseSucceed(() => []),
-        );
-      const found = open.find((pullRequest) => pullRequest.headRefName === input.branch);
-      if (found === undefined) {
+      // A tracked request needs affirmative repository provenance. Missing or
+      // unparseable provenance is unresolved, not "any repository": refuse
+      // rather than let a same-number PR from another repository become the
+      // tracked evidence.
+      const trackedRepository =
+        input.pullRequestNumber === undefined
+          ? null
+          : changeRequestRepositoryKey(input.pullRequestUrl);
+      if (input.pullRequestNumber !== undefined && trackedRepository === null) {
+        return null;
+      }
+      // Identity first: a tracked number is fetched directly. Scanning the
+      // branch is only for requests without a known number, and nothing else is
+      // accepted when the tracked PR cannot be read — a different PR on the
+      // same branch is not evidence about this run.
+      const found =
+        input.pullRequestNumber === undefined
+          ? yield* handle.provider
+              .listChangeRequests({
+                cwd: input.config.repositoryPath,
+                ...(handle.context !== null ? { context: handle.context } : {}),
+                headSelector: input.branch,
+                // Query all states so a merged/closed PR is reflected in
+                // evidence (REVIEW P2: filtering on "open" froze the status at
+                // "open" forever after merge).
+                state: "all",
+                limit: 10,
+              })
+              .pipe(
+                Effect.mapError((cause) => new PullRequestCreationError(cause.message)),
+                Effect.orElseSucceed(() => []),
+                Effect.map(
+                  (requests) =>
+                    requests.find((pullRequest) => pullRequest.headRefName === input.branch) ??
+                    null,
+                ),
+              )
+          : yield* handle.provider
+              .getChangeRequest({
+                cwd: input.config.repositoryPath,
+                ...(handle.context !== null ? { context: handle.context } : {}),
+                reference: String(input.pullRequestNumber),
+              })
+              .pipe(Effect.catch(() => Effect.succeed(null)));
+      if (found === null) {
+        return null;
+      }
+      // A PR number is only unique inside its repository: the result must name
+      // the same repository, or this is a different PR that merely shares the
+      // number (and perhaps the branch). Refuse rather than overwrite the
+      // stored evidence.
+      if (
+        trackedRepository !== null &&
+        changeRequestRepositoryKey(found.url) !== trackedRepository
+      ) {
         return null;
       }
       // Host-enriched status (plan 10.1, Phase 5): CI status, review state,
@@ -272,8 +318,11 @@ export const makePullRequestService = (
       return {
         number: found.number,
         title: found.title,
-        branch: input.branch,
-        baseBranch: input.baseBranch,
+        // Report the host's own refs: a number-pinned lookup can surface a
+        // change request whose head/base differ from what we asked for, and the
+        // stored evidence must say what the host said.
+        branch: found.headRefName,
+        baseBranch: found.baseRefName,
         url: found.url,
         status: found.state === "merged" ? "merged" : found.state === "closed" ? "closed" : "open",
         ...(status !== null

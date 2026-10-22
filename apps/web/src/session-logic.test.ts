@@ -1669,6 +1669,7 @@ describe("deriveWorkLogEntries context window handling", () => {
 describe("isLatestTurnSettled", () => {
   const latestTurn = {
     turnId: TurnId.make("turn-1"),
+    state: "completed",
     startedAt: "2026-02-27T21:10:00.000Z",
     completedAt: "2026-02-27T21:10:06.000Z",
   } as const;
@@ -1700,23 +1701,40 @@ describe("isLatestTurnSettled", () => {
     ).toBe(true);
   });
 
-  it("returns false when turn timestamps are incomplete", () => {
+  it("returns true for a terminal turn with unknown completion", () => {
+    const terminalUnknown = {
+      turnId: TurnId.make("turn-1"),
+      state: "interrupted" as const,
+      startedAt: "2026-02-27T21:10:00.000Z",
+      completedAt: null,
+    };
+    expect(
+      isLatestTurnSettled(terminalUnknown, {
+        status: "ready",
+        activeTurnId: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("settles a terminal turn even when its timestamps are incomplete", () => {
     expect(
       isLatestTurnSettled(
         {
           turnId: TurnId.make("turn-1"),
+          state: "completed",
           startedAt: null,
           completedAt: "2026-02-27T21:10:06.000Z",
         },
         null,
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 });
 
 describe("deriveActiveWorkStartedAt", () => {
   const latestTurn = {
     turnId: TurnId.make("turn-1"),
+    state: "completed",
     startedAt: "2026-02-27T21:10:00.000Z",
     completedAt: "2026-02-27T21:10:06.000Z",
   } as const;
@@ -1765,6 +1783,7 @@ describe("deriveActiveWorkStartedAt", () => {
       deriveActiveWorkStartedAt(
         {
           turnId: TurnId.make("turn-1"),
+          state: "completed",
           startedAt: "2026-02-27T21:10:00.000Z",
           completedAt: "2026-02-27T21:10:06.000Z",
         },

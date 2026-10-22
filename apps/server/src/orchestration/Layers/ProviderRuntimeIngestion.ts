@@ -31,6 +31,7 @@ import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@neokod/shared/DrainableWorker";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
+import { scrubErrorText } from "../../provider/userFacingErrorText.ts";
 import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import { ProjectionRuntimeItemRepository } from "../../persistence/Services/ProjectionRuntimeItems.ts";
 import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
@@ -43,6 +44,7 @@ import {
 } from "../Services/ProviderRuntimeIngestion.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { planRuntimeItemClosures } from "../RuntimeItemProjection.ts";
+import { completeStreamingAssistantMessages } from "../StreamingAssistantClosure.ts";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
 
@@ -67,6 +69,7 @@ type TurnStartRequestedDomainEvent = Extract<
   OrchestrationEvent,
   { type: "thread.turn-start-requested" }
 >;
+type SessionSetDomainEvent = Extract<OrchestrationEvent, { type: "thread.session-set" }>;
 
 type RuntimeIngestionInput =
   | {
@@ -75,7 +78,7 @@ type RuntimeIngestionInput =
     }
   | {
       source: "domain";
-      event: TurnStartRequestedDomainEvent;
+      event: TurnStartRequestedDomainEvent | SessionSetDomainEvent;
     };
 
 function toTurnId(value: TurnId | string | undefined): TurnId | undefined {
@@ -560,7 +563,7 @@ function runtimeEventToActivities(
           kind: "runtime.error",
           summary: "Runtime error",
           payload: {
-            message: truncateDetail(event.payload.message),
+            message: truncateDetail(scrubErrorText(event.payload.message)),
           },
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
@@ -881,6 +884,7 @@ const make = Effect.gen(function* () {
     readonly commandId: CommandId;
     readonly boundaryEventId: EventId;
     readonly closedAt: string;
+    readonly observedNoLaterThan?: string;
   }) {
     const items = yield* projectionRuntimeItemRepository.listByThreadId({
       threadId: input.threadId,
@@ -894,6 +898,9 @@ const make = Effect.gen(function* () {
       terminationGuaranteed: input.terminationGuaranteed,
       boundaryEventId: input.boundaryEventId,
       closedAt: input.closedAt,
+      ...(input.observedNoLaterThan === undefined
+        ? {}
+        : { observedNoLaterThan: input.observedNoLaterThan }),
     });
     if (closures.length === 0) return;
     yield* orchestrationEngine.dispatch({
@@ -907,6 +914,107 @@ const make = Effect.gen(function* () {
       createdAt: input.closedAt,
     });
   });
+
+  const closeItemsOfSettledSession = Effect.fn("closeItemsOfSettledSession")(function* (input: {
+    readonly threadId: ThreadId;
+    readonly status: "stopped" | "interrupted" | "error";
+    readonly updatedAt: string;
+    readonly observedNoLaterThan?: string;
+  }) {
+    const items = yield* projectionRuntimeItemRepository.listByThreadId({
+      threadId: input.threadId,
+    });
+    const sessionIds = new Set(
+      items
+        .filter((item) => item.effectiveState === "active")
+        .filter(
+          (item) =>
+            input.observedNoLaterThan === undefined ||
+            (item.startedAt <= input.observedNoLaterThan &&
+              item.updatedAt <= input.observedNoLaterThan),
+        )
+        .map((item) => item.sessionId),
+    );
+    yield* Effect.forEach(
+      sessionIds,
+      (sessionId) => {
+        // A bounded live closure and a later unbounded startup recovery may
+        // share the same session update time but close different item sets.
+        // Distinct command ids keep receipt dedup from dropping the later one.
+        const boundaryId = [
+          "reconcile:runtime-items",
+          input.threadId,
+          "session",
+          sessionId,
+          input.status,
+          input.updatedAt,
+          input.observedNoLaterThan === undefined
+            ? "unbounded"
+            : `bounded:${input.observedNoLaterThan}`,
+        ].join(":");
+        return closeRuntimeItems({
+          threadId: input.threadId,
+          sessionId,
+          boundary: "session",
+          turnId: null,
+          outcome: input.status === "error" ? "failed" : "stopped",
+          terminationGuaranteed: false,
+          commandId: CommandId.make(boundaryId),
+          boundaryEventId: EventId.make(boundaryId),
+          closedAt: input.updatedAt,
+          ...(input.observedNoLaterThan === undefined
+            ? {}
+            : { observedNoLaterThan: input.observedNoLaterThan }),
+        });
+      },
+      { concurrency: 1, discard: true },
+    );
+  });
+
+  // Turn-ending paths that do not emit a provider turn-completion event still
+  // own turn-scoped runtime items. Close them through the same durable planner
+  // used elsewhere. Termination is not guaranteed, so unresolved items become
+  // orphaned at their own last observation.
+  const closeEndedTurnRuntimeItems = (input: {
+    readonly threadId: ThreadId;
+    readonly turnId: TurnId;
+    readonly outcome: "completed" | "failed" | "stopped";
+    readonly closedAt: string;
+  }) =>
+    Effect.gen(function* () {
+      const items = yield* projectionRuntimeItemRepository.listByThreadId({
+        threadId: input.threadId,
+      });
+      const sessionIds = new Set(
+        items
+          .filter(
+            (item) =>
+              item.effectiveState === "active" &&
+              item.turnId === input.turnId &&
+              item.updatedAt <= input.closedAt,
+          )
+          .map((item) => item.sessionId),
+      );
+      yield* Effect.forEach(
+        sessionIds,
+        (sessionId) => {
+          const boundaryId = `reconcile:runtime-items:${input.threadId}:session:${sessionId}:turn:${input.turnId}:${input.outcome}:${input.closedAt}`;
+          return closeRuntimeItems({
+            threadId: input.threadId,
+            sessionId,
+            boundary: "turn",
+            turnId: input.turnId,
+            outcome: input.outcome,
+            terminationGuaranteed: false,
+            commandId: CommandId.make(boundaryId),
+            boundaryEventId: EventId.make(boundaryId),
+            closedAt: input.closedAt,
+            observedNoLaterThan: input.closedAt,
+          });
+        },
+        { concurrency: 1 },
+      ).pipe(Effect.asVoid);
+    });
 
   const turnMessageIdsByTurnKey = yield* Cache.make<string, Set<MessageId>>({
     capacity: TURN_MESSAGE_IDS_BY_TURN_CACHE_CAPACITY,
@@ -1442,6 +1550,43 @@ const make = Effect.gen(function* () {
       yield* clearTurnStateForSession(input.threadId);
     });
 
+  const settleStreamingAssistantMessagesAtStartup = (
+    threads: Iterable<{
+      readonly id: ThreadId;
+      readonly updatedAt: string;
+      readonly session: { readonly updatedAt: string } | null;
+    }>,
+  ) =>
+    Effect.forEach(
+      threads,
+      (thread) =>
+        Effect.gen(function* () {
+          // Match messages to their owning durable turn, not to the thread's
+          // latest turn. Older interrupted turns must close even while newer
+          // work is running.
+          const turns = yield* projectionTurnRepository.listByThreadId({
+            threadId: thread.id,
+          });
+          const endedTurnIds = new Set(
+            turns
+              .filter((turn) => turn.turnId !== null && turn.state !== "running")
+              .map((turn) => turn.turnId!),
+          );
+          if (endedTurnIds.size === 0) {
+            return;
+          }
+          yield* completeStreamingAssistantMessages({
+            orchestrationEngine,
+            projectionSnapshotQuery,
+            threadId: thread.id,
+            endedTurnIds,
+            observedNoLaterThan: thread.updatedAt,
+            occurredAt: thread.session?.updatedAt ?? thread.updatedAt,
+          });
+        }),
+      { concurrency: 1 },
+    ).pipe(Effect.asVoid);
+
   const getSourceProposedPlanReferenceForPendingTurnStart = Effect.fn(
     "getSourceProposedPlanReferenceForPendingTurnStart",
   )(function* (threadId: ThreadId) {
@@ -1543,6 +1688,22 @@ const make = Effect.gen(function* () {
       const now = event.createdAt;
       const eventTurnId = toTurnId(event.turnId);
       const activeTurnId = thread.session?.activeTurnId ?? null;
+      const turnEndingEvent =
+        event.type === "turn.completed" ||
+        event.type === "session.exited" ||
+        (event.type === "session.state.changed" &&
+          (event.payload.state === "stopped" || event.payload.state === "error")) ||
+        (event.type === "session.stop.updated" &&
+          (event.payload.outcome?.status === "stopped_confirmed" ||
+            event.payload.outcome?.status === "orphan_possible")) ||
+        event.type === "runtime.error";
+      const endedTurnId = turnEndingEvent
+        ? event.type === "turn.completed"
+          ? // An untargeted completion cannot establish which turn ended. It
+            // must not inherit the active turn and close its live messages.
+            eventTurnId
+          : (eventTurnId ?? activeTurnId ?? undefined)
+        : undefined;
 
       const conflictsWithActiveTurn =
         activeTurnId !== null && eventTurnId !== undefined && !sameId(activeTurnId, eventTurnId);
@@ -1596,6 +1757,15 @@ const make = Effect.gen(function* () {
             return true;
         }
       })();
+      // A steer opens a new turn without completing the prior one. The session
+      // update settles the superseded turn, so close its messages here.
+      const supersededTurnId =
+        event.type === "turn.started" &&
+        conflictsWithActiveTurn &&
+        conflictingTurnStartIsPendingTurnStart &&
+        shouldApplyThreadLifecycle
+          ? (activeTurnId ?? undefined)
+          : undefined;
       const acceptedTurnStartedSourcePlan =
         event.type === "turn.started" && shouldApplyThreadLifecycle
           ? yield* getSourceProposedPlanReferenceForAcceptedTurnStart(thread.id, eventTurnId)
@@ -1638,10 +1808,14 @@ const make = Effect.gen(function* () {
                 : activeTurnId;
         const lastError =
           event.type === "session.state.changed" && event.payload.state === "error"
-            ? (event.payload.reason ?? thread.session?.lastError ?? "Provider session error")
+            ? event.payload.reason !== undefined
+              ? scrubErrorText(event.payload.reason)
+              : (thread.session?.lastError ?? "Provider session error")
             : event.type === "turn.completed" &&
                 normalizeRuntimeTurnState(event.payload.state) === "failed"
-              ? (event.payload.errorMessage ?? thread.session?.lastError ?? "Turn failed")
+              ? event.payload.errorMessage !== undefined
+                ? scrubErrorText(event.payload.errorMessage)
+                : (thread.session?.lastError ?? "Turn failed")
               : status === "ready"
                 ? null
                 : (thread.session?.lastError ?? null);
@@ -1683,6 +1857,7 @@ const make = Effect.gen(function* () {
               lastError,
               updatedAt: now,
             },
+            ...(endedTurnId !== undefined ? { interruptedTurnId: endedTurnId } : {}),
             createdAt: now,
           });
         }
@@ -1958,7 +2133,7 @@ const make = Effect.gen(function* () {
       }
 
       if (event.type === "runtime.error") {
-        const runtimeErrorMessage = event.payload.message;
+        const runtimeErrorMessage = scrubErrorText(event.payload.message);
 
         const shouldApplyRuntimeError = !STRICT_PROVIDER_LIFECYCLE_GUARD
           ? true
@@ -1981,9 +2156,81 @@ const make = Effect.gen(function* () {
               lastError: runtimeErrorMessage,
               updatedAt: now,
             },
+            ...(endedTurnId !== undefined ? { interruptedTurnId: endedTurnId } : {}),
             createdAt: now,
           });
         }
+      }
+
+      if (event.type === "runtime.error" && endedTurnId !== undefined) {
+        const detailedThread = yield* getLoadedThreadDetail();
+        yield* finalizeActiveAssistantSegmentForTurn({
+          event,
+          threadId: thread.id,
+          turnId: endedTurnId,
+          createdAt: now,
+          commandTag: "assistant-complete-on-runtime-error",
+          finalDeltaCommandTag: "assistant-delta-finalize-on-runtime-error",
+          hasProjectedMessage:
+            detailedThread !== null &&
+            hasAssistantMessageForTurn(detailedThread.messages, endedTurnId, {
+              streamingOnly: true,
+            }),
+        });
+      }
+
+      if (supersededTurnId !== undefined) {
+        const detailedThread = yield* getLoadedThreadDetail();
+        yield* finalizeActiveAssistantSegmentForTurn({
+          event,
+          threadId: thread.id,
+          turnId: supersededTurnId,
+          createdAt: now,
+          commandTag: "assistant-complete-on-steer-supersede",
+          finalDeltaCommandTag: "assistant-delta-finalize-on-steer-supersede",
+          hasProjectedMessage:
+            detailedThread !== null &&
+            hasAssistantMessageForTurn(detailedThread.messages, supersededTurnId, {
+              streamingOnly: true,
+            }),
+        });
+      }
+
+      // Buffer finalisation above handles in-memory text. This durable step
+      // closes persisted messages that were not in the cache, on every path
+      // that ended a turn.
+      const endedTurnIds = new Set<TurnId>();
+      if (endedTurnId !== undefined) {
+        endedTurnIds.add(endedTurnId);
+      }
+      if (supersededTurnId !== undefined) {
+        endedTurnIds.add(supersededTurnId);
+      }
+      if (endedTurnIds.size > 0) {
+        yield* completeStreamingAssistantMessages({
+          orchestrationEngine,
+          projectionSnapshotQuery,
+          threadId: thread.id,
+          endedTurnIds,
+          observedNoLaterThan: now,
+          occurredAt: now,
+        });
+      }
+      if (event.type === "runtime.error" && endedTurnId !== undefined) {
+        yield* closeEndedTurnRuntimeItems({
+          threadId: thread.id,
+          turnId: endedTurnId,
+          outcome: "failed",
+          closedAt: now,
+        });
+      }
+      if (supersededTurnId !== undefined) {
+        yield* closeEndedTurnRuntimeItems({
+          threadId: thread.id,
+          turnId: supersededTurnId,
+          outcome: "stopped",
+          closedAt: now,
+        });
       }
 
       if (event.type === "thread.metadata.updated" && event.payload.name) {
@@ -2048,7 +2295,38 @@ const make = Effect.gen(function* () {
       ).pipe(Effect.asVoid);
     });
 
-  const processDomainEvent = (_event: TurnStartRequestedDomainEvent) => Effect.void;
+  const processDomainEvent = (event: TurnStartRequestedDomainEvent | SessionSetDomainEvent) => {
+    if (event.type !== "thread.session-set") {
+      return Effect.void;
+    }
+    const status = event.payload.session.status;
+    if (status !== "interrupted" && status !== "stopped" && status !== "error") {
+      return Effect.void;
+    }
+    return Effect.gen(function* () {
+      if (status === "interrupted") {
+        yield* closeItemsOfSettledSession({
+          threadId: event.payload.threadId,
+          status,
+          updatedAt: event.payload.session.updatedAt,
+          observedNoLaterThan: event.payload.session.updatedAt,
+        });
+      }
+      // Every turn-ending session path uses the same durable closure step.
+      // The pinned turn and cutoff keep a delayed settlement away from newer
+      // work.
+      if (event.payload.interruptedTurnId !== undefined) {
+        yield* completeStreamingAssistantMessages({
+          orchestrationEngine,
+          projectionSnapshotQuery,
+          threadId: event.payload.threadId,
+          endedTurnIds: new Set([event.payload.interruptedTurnId]),
+          observedNoLaterThan: event.payload.session.updatedAt,
+          occurredAt: event.payload.session.updatedAt,
+        });
+      }
+    });
+  };
 
   const processInput = (input: RuntimeIngestionInput) =>
     input.source === "runtime" ? processRuntimeEvent(input.event) : processDomainEvent(input.event);
@@ -2094,26 +2372,11 @@ const make = Effect.gen(function* () {
               session.status === "interrupted" ||
               session.status === "error")
           ) {
-            const outcome = session.status === "error" ? "failed" : "stopped";
-            const sessionIds = new Set(activeItems.map((item) => item.sessionId));
-            yield* Effect.forEach(
-              sessionIds,
-              (sessionId) => {
-                const boundaryId = `reconcile:runtime-items:${thread.id}:session:${sessionId}:${session.status}:${session.updatedAt}`;
-                return closeRuntimeItems({
-                  threadId: thread.id,
-                  sessionId,
-                  boundary: "session",
-                  turnId: null,
-                  outcome,
-                  terminationGuaranteed: false,
-                  commandId: CommandId.make(boundaryId),
-                  boundaryEventId: EventId.make(boundaryId),
-                  closedAt: session.updatedAt,
-                });
-              },
-              { concurrency: 1 },
-            ).pipe(Effect.asVoid);
+            yield* closeItemsOfSettledSession({
+              threadId: thread.id,
+              status: session.status,
+              updatedAt: session.updatedAt,
+            });
             return;
           }
 
@@ -2144,6 +2407,11 @@ const make = Effect.gen(function* () {
                     ? "failed"
                     : "stopped";
               const settledAt = turn.completedAt ?? turn.requestedAt;
+              // An interrupted turn never proves its items terminated. Keeping
+              // termination unguaranteed makes the closure orphan each item at
+              // its own last observation instead of fabricating the turn
+              // request time when completion is explicitly unknown.
+              const terminationGuaranteed = turn.state !== "interrupted";
               const sessionIds = new Set(
                 activeItems
                   .filter((item) => item.turnId === turn.turnId)
@@ -2159,7 +2427,7 @@ const make = Effect.gen(function* () {
                     boundary: "turn",
                     turnId: turn.turnId,
                     outcome,
-                    terminationGuaranteed: true,
+                    terminationGuaranteed,
                     commandId: CommandId.make(boundaryId),
                     boundaryEventId: EventId.make(boundaryId),
                     closedAt: settledAt,
@@ -2173,12 +2441,23 @@ const make = Effect.gen(function* () {
         }),
       { concurrency: 1 },
     ).pipe(Effect.asVoid);
+
+    // Message recovery is independent of active runtime items. This is the
+    // repair path when a crash happened after the interrupted session became
+    // durable but before its streaming messages were closed.
+    yield* settleStreamingAssistantMessagesAtStartup(threads.values());
   });
 
   const worker = yield* makeDrainableWorker(processInputSafely);
 
   const start: ProviderRuntimeIngestionShape["start"] = () =>
     Effect.gen(function* () {
+      // Acquire before the startup scan and before any recovery dispatch can
+      // run. Returning from this subscription is the readiness signal: the hot
+      // PubSub has no replay, so a forked `streamDomainEvents` consumer could
+      // otherwise miss the interrupted session event that closes startup items.
+      const domainEvents = yield* orchestrationEngine.subscribeDomainEvents;
+
       yield* reconcileRuntimeItemsAtStartup.pipe(
         Effect.catchCause((cause) =>
           Effect.logError("provider runtime-item startup reconciliation failed", {
@@ -2192,8 +2471,11 @@ const make = Effect.gen(function* () {
         ),
       );
       yield* Effect.forkScoped(
-        Stream.runForEach(orchestrationEngine.streamDomainEvents, (event) => {
-          if (event.type !== "thread.turn-start-requested") {
+        Stream.runForEach(Stream.fromSubscription(domainEvents), (event) => {
+          if (
+            event.type !== "thread.turn-start-requested" &&
+            !(event.type === "thread.session-set" && event.payload.session.status === "interrupted")
+          ) {
             return Effect.void;
           }
           return worker.enqueue({ source: "domain", event });

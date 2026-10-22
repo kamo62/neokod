@@ -1,22 +1,28 @@
-import { expect, it } from "@effect/vitest";
+import { assert, expect, it } from "@effect/vitest";
 import { RunAttemptId, SymphonyProjectId, WorkItemId } from "@neokod/contracts";
-import type { WorkItem } from "@neokod/contracts";
+import type { ApprovalRequest, WorkItem } from "@neokod/contracts";
+import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as TestClock from "effect/testing/TestClock";
 
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
 import { WorkItemRepository } from "../Persistence/Services/WorkItemRepository.ts";
 import { WorkItemRepositoryLive } from "../Persistence/Layers/WorkItemRepository.ts";
 import { ApprovalRepository } from "../Persistence/Services/ApprovalRepository.ts";
 import { ApprovalRepositoryLive } from "../Persistence/Layers/ApprovalRepository.ts";
+import { approvalServiceRequestCallbacks } from "./AgentRequestCallbacks.ts";
 import { LiveRequests, LiveRequestsLive } from "./LiveRequests.ts";
 import {
   ApprovalRequestNotFoundError,
   ApprovalService,
   ApprovalServiceLive,
 } from "./ApprovalService.ts";
+import { makeFakeCodexPeer, makeFakeCodexRuntime } from "./testkit/FakeCodexPeer.ts";
+import { makeRunnerTestConfig, makeRunnerTestIssue } from "./testkit/RunnerFixtures.ts";
 import { nowIso } from "../Domain/Time.ts";
 
 const seedWorkItem = (id: string) =>
@@ -51,6 +57,30 @@ const layer = it.layer(
     Layer.provideMerge(SqlitePersistenceMemory),
     Layer.provideMerge(NodeServices.layer),
   ),
+);
+
+/**
+ * A repository whose lookups outlive the runtime deadline: an answer can start
+ * before the wait elapses, hold the resolution lock while it reads, and only
+ * land afterwards. Everything else delegates to the real repository.
+ */
+const slowLookupApprovalRepositoryLayer = Layer.effect(
+  ApprovalRepository,
+  Effect.gen(function* () {
+    const repository = yield* ApprovalRepository;
+    return ApprovalRepository.of({
+      ...repository,
+      getById: (id) => Effect.sleep("40 seconds").pipe(Effect.andThen(repository.getById(id))),
+    });
+  }),
+).pipe(Layer.provide(ApprovalRepositoryLive));
+
+const slowLookupStack = ApprovalServiceLive.pipe(
+  Layer.provideMerge(slowLookupApprovalRepositoryLayer),
+  Layer.provideMerge(LiveRequestsLive),
+  Layer.provideMerge(WorkItemRepositoryLive),
+  Layer.provideMerge(SqlitePersistenceMemory),
+  Layer.provideMerge(NodeServices.layer),
 );
 
 const makeRequest = (
@@ -190,5 +220,233 @@ layer("ApprovalService durable ids", (it) => {
       expect(String((error as Error).message)).toContain("approval wait timed out");
       expect((yield* repo.getById(record.id))?.state).toBe("expired");
     }),
+  );
+
+  it.effect("a timeout after an answer must not overwrite the answer", () =>
+    Effect.gen(function* () {
+      yield* seedWorkItem("wi-late-timeout");
+      const service = yield* ApprovalService;
+      const repo = yield* ApprovalRepository;
+      const runAttemptId = RunAttemptId.make("run-late-timeout");
+      const { deferred, record } = yield* makeRequest(
+        runAttemptId,
+        WorkItemId.make("wi-late-timeout"),
+        "0",
+      );
+
+      yield* service.approve(record.id);
+      expect(yield* Deferred.await(deferred)).toBe("approved");
+
+      // The runtime's wait elapsed after the answer already won. Arriving late
+      // must not claim the request or replace the recorded outcome.
+      expect(yield* service.expireRequest(runAttemptId, "0")).toBe(false);
+      expect((yield* repo.getById(record.id))?.state).toBe("approved");
+    }),
+  );
+
+  it.effect("an answer after a timeout is refused and changes nothing", () =>
+    Effect.gen(function* () {
+      yield* seedWorkItem("wi-late-answer");
+      const service = yield* ApprovalService;
+      const repo = yield* ApprovalRepository;
+      const runAttemptId = RunAttemptId.make("run-late-answer");
+      const { deferred, record } = yield* makeRequest(
+        runAttemptId,
+        WorkItemId.make("wi-late-answer"),
+        "0",
+      );
+
+      expect(yield* service.expireRequest(runAttemptId, "0")).toBe(true);
+      expect((yield* repo.getById(record.id))?.state).toBe("expired");
+
+      const late = yield* Effect.result(service.approve(record.id));
+      expect(late._tag).toBe("Failure");
+      expect((yield* repo.getById(record.id))?.state).toBe("expired");
+      expect(yield* Deferred.isDone(deferred)).toBe(true);
+    }),
+  );
+
+  it.effect("a timeout racing an answer records exactly one terminal outcome", () =>
+    Effect.gen(function* () {
+      yield* seedWorkItem("wi-race");
+      const service = yield* ApprovalService;
+      const repo = yield* ApprovalRepository;
+      const runAttemptId = RunAttemptId.make("run-race");
+      const { deferred, record } = yield* makeRequest(
+        runAttemptId,
+        WorkItemId.make("wi-race"),
+        "0",
+      );
+
+      // The runtime's wait elapses while the operator answers.
+      const [expired, approved] = yield* Effect.all(
+        [service.expireRequest(runAttemptId, "0"), Effect.result(service.approve(record.id))],
+        { concurrency: "unbounded" },
+      );
+
+      const row = yield* repo.getById(record.id);
+      const observed = yield* Effect.result(Deferred.await(deferred));
+      const answerWon = approved._tag === "Success";
+
+      // Exactly one resolver won; the durable row agrees with the answer the
+      // agent actually observed, and nothing is left pending.
+      expect(row?.state).not.toBe("pending");
+      expect(expired).toBe(!answerWon);
+      if (answerWon) {
+        expect(row?.state).toBe("approved");
+        expect(observed._tag).toBe("Success");
+        if (observed._tag === "Success") {
+          expect(observed.success).toBe("approved");
+        }
+      } else {
+        expect(row?.state).toBe("expired");
+        expect(observed._tag).toBe("Failure");
+      }
+    }),
+  );
+
+  it.effect("an answer that finishes after the deadline still reaches the provider", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        // Fresh: the file's shared layer already memoises ApprovalService for the
+        // real repository, and this stack must build the slow one.
+        const context = yield* Layer.build(Layer.fresh(slowLookupStack));
+        const service = Context.get(context, ApprovalService);
+        const live = Context.get(context, LiveRequests);
+        const workItems = Context.get(context, WorkItemRepository);
+        const repository = Context.get(context, ApprovalRepository);
+        const seededAt = yield* nowIso;
+        const workItemId = WorkItemId.make("wi-slow-lookup");
+        yield* workItems.upsert({
+          id: workItemId,
+          mode: "symphony",
+          projectId: SymphonyProjectId.make("approvals-slow-lookup"),
+          objective: "Slow lookup target",
+          description: "Seeded for the slow-lookup approval regression",
+          acceptanceCriteria: [],
+          source: { kind: "manual" },
+          trackerIssueId: "wi-slow-lookup",
+          lifecycle: "queued",
+          priority: 1,
+          eligibilityReasons: [],
+          evidence: null,
+          createdAt: seededAt,
+          updatedAt: seededAt,
+        });
+
+        const peer = yield* makeFakeCodexPeer();
+        const runtime = yield* makeFakeCodexRuntime({
+          peer,
+          liveRequests: live,
+          ...approvalServiceRequestCallbacks(service),
+        });
+        const runAttemptId = RunAttemptId.make("run-slow-lookup");
+        const fiber = yield* runtime
+          .runTurn({
+            issue: makeRunnerTestIssue("slow-lookup"),
+            config: makeRunnerTestConfig({ liveRequestsWaitTimeoutMs: 30_000 }),
+            workspacePath: "/tmp/fake-ws",
+            branch: "b",
+            runAttemptId,
+            workItemId,
+          })
+          .pipe(Effect.forkScoped);
+        yield* peer.awaitClientRequest("turn/start");
+        const wireId = yield* peer.sendCommandApproval();
+
+        let recorded: ApprovalRequest | undefined;
+        for (let attempt = 0; attempt < 100 && recorded === undefined; attempt += 1) {
+          yield* Effect.yieldNow;
+          const rows = yield* repository.listForRun(runAttemptId);
+          recorded = rows[0];
+        }
+        if (recorded === undefined) {
+          throw new Error("the runtime did not record the approval request");
+        }
+
+        // The answer starts before the deadline but its lookup takes 40 s; it
+        // holds the resolution lock the whole time.
+        const answer = yield* service.approve(recorded.id).pipe(Effect.forkScoped);
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+
+        // The runtime's 30 s wait elapses while the lookup is still running.
+        yield* TestClock.adjust("31 seconds");
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        // Proof the answer really outlived the deadline: it is still blocked in
+        // the slow lookup (and therefore still holds the resolution lock).
+        expect(answer.pollUnsafe()).toBeUndefined();
+        // The lookup finishes after the deadline and wins.
+        yield* TestClock.adjust("10 seconds");
+        yield* Effect.repeat(Effect.yieldNow, { times: 100 });
+
+        const reply = yield* peer.awaitClientResponse(wireId);
+        assert.deepStrictEqual(reply.result, { decision: "accept" });
+        const rows = yield* repository.listForRun(runAttemptId);
+        expect(rows.find((row) => row.id === recorded.id)?.state).toBe("approved");
+
+        yield* Fiber.join(answer);
+        yield* peer.completeTurn("completed");
+        yield* Fiber.join(fiber);
+      }),
+    ),
+  );
+
+  it.effect("a runtime wait timeout expires the request so a late answer is refused", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* seedWorkItem("wi-timeout");
+        const service = yield* ApprovalService;
+        const live = yield* LiveRequests;
+        const repository = yield* ApprovalRepository;
+        const peer = yield* makeFakeCodexPeer();
+        const runAttemptId = RunAttemptId.make("run-timeout");
+        const workItemId = WorkItemId.make("wi-timeout");
+        const runtime = yield* makeFakeCodexRuntime({
+          peer,
+          liveRequests: live,
+          ...approvalServiceRequestCallbacks(service),
+        });
+        const fiber = yield* runtime
+          .runTurn({
+            issue: makeRunnerTestIssue("timeout"),
+            config: makeRunnerTestConfig({ liveRequestsWaitTimeoutMs: 30_000 }),
+            workspacePath: "/tmp/fake-ws",
+            branch: "b",
+            runAttemptId,
+            workItemId,
+          })
+          .pipe(Effect.forkScoped);
+        yield* peer.awaitClientRequest("turn/start");
+        const wireId = yield* peer.sendCommandApproval();
+
+        let recorded: ApprovalRequest | undefined;
+        for (let attempt = 0; attempt < 100 && recorded === undefined; attempt += 1) {
+          yield* Effect.yieldNow;
+          const rows = yield* repository.listForRun(runAttemptId);
+          recorded = rows[0];
+        }
+        if (recorded === undefined) {
+          throw new Error("the runtime did not record the approval request");
+        }
+        // Let the handler reach its wait before time moves: the timeout sleep is
+        // registered after the durable write.
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+
+        // The runtime's own wait elapses: the agent gets its fallback answer and
+        // the durable request must stop being answerable.
+        yield* TestClock.adjust("31 seconds");
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        const reply = yield* peer.awaitClientResponse(wireId);
+        assert.deepStrictEqual(reply.result, { decision: "decline" });
+        expect((yield* repository.getById(recorded.id))?.state).toBe("expired");
+
+        const late = yield* Effect.result(service.approve(recorded.id));
+        expect(late._tag).toBe("Failure");
+        expect((yield* repository.getById(recorded.id))?.state).toBe("expired");
+
+        yield* peer.completeTurn("completed");
+        yield* Fiber.join(fiber);
+      }),
+    ),
   );
 });

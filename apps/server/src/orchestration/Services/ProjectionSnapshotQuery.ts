@@ -9,6 +9,7 @@
 import type {
   CheckpointRef,
   OrchestrationCheckpointSummary,
+  OrchestrationMessage,
   OrchestrationProject,
   OrchestrationProjectShell,
   OrchestrationReadModel,
@@ -151,6 +152,15 @@ export interface ProjectionSnapshotQueryShape {
   readonly getThreadShellById: (
     threadId: ThreadId,
   ) => Effect.Effect<Option.Option<OrchestrationThreadShell>, ProjectionRepositoryError>;
+
+  /**
+   * Read durable messages for a thread, including archived threads.
+   *
+   * Durable closure paths must not depend on the thread still being active.
+   */
+  readonly getThreadMessagesById: (
+    threadId: ThreadId,
+  ) => Effect.Effect<ReadonlyArray<OrchestrationMessage>, ProjectionRepositoryError>;
 
   /**
    * Read a single active thread detail snapshot by id.

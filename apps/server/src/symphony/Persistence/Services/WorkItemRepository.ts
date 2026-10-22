@@ -8,7 +8,7 @@ import type { SymphonyPersistenceError } from "../Errors.ts";
  * WorkItemRepository - persistence for symphony work items.
  *
  * Work-item rows are the dispatch authority (plan section 4): claiming is a
- * conditional `UPDATE ... WHERE lifecycle IN ('eligible','queued','retry_scheduled')`
+ * conditional `UPDATE ... WHERE lifecycle IN ('queued','retry_scheduled')`
  * moving the row to `preparing`, returning either the claimed work item or a
  * claim-lost error. Every subsequent transition and side effect asserts
  * `owner_token = ? AND generation = ?` via {@link assertOwnedTransition}, so a
@@ -28,13 +28,19 @@ export interface WorkItemRepositoryShape {
     trackerIssueId: string,
   ) => Effect.Effect<WorkItem | null, SymphonyPersistenceError>;
 
-  /** Read work items in a set of lifecycles, optionally scoped. */
+  /**
+   * Read work items in a set of lifecycles, optionally scoped. `offset` pages
+   * through the same stable order (priority, creation time, id) so a caller
+   * that must eventually visit every row can rotate bounded pages instead of
+   * only ever seeing the first `limit` rows.
+   */
   readonly listByLifecycle: (
     lifecycles: ReadonlyArray<WorkLifecycle>,
     options?: {
       readonly projectId?: SymphonyProjectId;
       readonly workflowId?: string;
       readonly limit?: number;
+      readonly offset?: number;
     },
   ) => Effect.Effect<WorkItem[], SymphonyPersistenceError>;
 

@@ -1,0 +1,170 @@
+import * as Cause from "effect/Cause";
+import { describe, expect, it } from "vite-plus/test";
+
+import { ProviderAdapterRequestError, ProviderValidationError } from "./Errors.ts";
+import {
+  GENERIC_INTERNAL_ERROR_DETAIL,
+  REDACTED_ERROR_DETAIL,
+  scrubErrorText,
+  userFacingFailureDetail,
+} from "./userFacingErrorText.ts";
+
+describe("scrubErrorText", () => {
+  it("strips stack frames", () => {
+    expect(
+      scrubErrorText(
+        "ProviderValidationError: Provider validation failed in ProviderService.interruptTurn: boom\n    at toValidationError (file:///Users/kamogelo/Code/t3code/apps/server/dist/bin.mjs:40875:9)\n    at next (/Users/kamogelo/Code/t3code/a.js:1:2)",
+      ),
+    ).toBe(
+      "ProviderValidationError: Provider validation failed in ProviderService.interruptTurn: boom",
+    );
+  });
+
+  it("replaces absolute paths but keeps the file name", () => {
+    expect(
+      scrubErrorText(
+        "ENOENT: no such file or directory, open '/Users/kamogelo/Code/t3code/crash.txt'",
+      ),
+    ).toBe("ENOENT: no such file or directory, open '[path]/crash.txt'");
+    expect(scrubErrorText("C:\\Users\\me\\proj\\a.txt missing")).toBe("[path]/a.txt missing");
+    expect(scrubErrorText("C:/Users/me/proj/a.txt missing")).toBe("[path]/a.txt missing");
+    expect(scrubErrorText("\\\\server\\share\\deep\\a.txt missing")).toBe("[path]/a.txt missing");
+    expect(scrubErrorText("//server/share/deep/a.txt missing")).toBe("[path]/a.txt missing");
+    expect(scrubErrorText("see file:///Users/me/x.mjs:1:2")).toBe("see [path]");
+  });
+
+  it("covers root files, colon-adjacent paths, quoted spaces and home paths", () => {
+    expect(scrubErrorText("read /etc/passwd first")).toBe("read [path]/passwd first");
+    expect(scrubErrorText("open /Users/me/a.ts:12:3")).toBe("open [path]/a.ts:12:3");
+    expect(scrubErrorText("open '/Users/me/My Documents/file.txt' failed")).toBe(
+      "open '[path]/file.txt' failed",
+    );
+    expect(scrubErrorText('"C:\\Program Files\\App\\a.txt" missing')).toBe(
+      '"[path]/a.txt" missing',
+    );
+    expect(scrubErrorText("open '\\\\server\\share\\My Folder\\a.txt'")).toBe(
+      "open '[path]/a.txt'",
+    );
+    expect(scrubErrorText("read ~/.ssh/id_ed25519")).toBe("read [path]/id_ed25519");
+    expect(scrubErrorText("read $HOME/secret/file")).toBe("read [path]/file");
+    expect(scrubErrorText("read /home/kamogelo/private")).toBe("read [path]/private");
+    expect(scrubErrorText("ENOENT: open `/Users/alice/private/a.txt`")).toBe(
+      "ENOENT: open `[path]/a.txt`",
+    );
+  });
+
+  it("redacts GNU-style backtick-open single-quote-close absolute paths", () => {
+    expect(scrubErrorText("make: *** No rule to make target `/Users/alice/proj/x'.  Stop.")).toBe(
+      "make: *** No rule to make target `[path]/x'.  Stop.",
+    );
+    expect(scrubErrorText("ruby: `/home/alice/app/main.rb' failed")).toBe(
+      "ruby: `[path]/main.rb' failed",
+    );
+  });
+
+  it("leaves URLs, ids and punctuation-bearing relative paths alone", () => {
+    const text =
+      "GET https://api.example.com/v1/models?path=/Users/me/x&q=src/(generated)/deep/file.ts failed for anthropic/claude-3 in src/(generated)/deep/file.ts";
+    expect(scrubErrorText(text)).toBe(text);
+  });
+
+  it("preserves valid apostrophes inside URL queries", () => {
+    const url = "https://api.example.com/v1?name=O'Reilly&redirect=/docs/api";
+    expect(scrubErrorText(`GET ${url} failed`)).toBe(`GET ${url} failed`);
+    expect(scrubErrorText(`'${url}'`)).toBe(`'${url}'`);
+    expect(scrubErrorText(`"${url}"`)).toBe(`"${url}"`);
+  });
+
+  it("ends a quoted URL before a comma-separated absolute path", () => {
+    expect(
+      scrubErrorText("fetch failed: 'https://registry.npmjs.org/x','/Users/alice/.npmrc'"),
+    ).toBe("fetch failed: 'https://registry.npmjs.org/x','[path]/.npmrc'");
+  });
+
+  it("preserves consecutive apostrophes and later path-like URL segments", () => {
+    const url = "https://api.example.com/v1?name=O''Reilly&redirect=/docs/api";
+    expect(scrubErrorText(`GET ${url} failed`)).toBe(`GET ${url} failed`);
+    expect(scrubErrorText(`'${url}'`)).toBe(`'${url}'`);
+    expect(scrubErrorText(`"${url}"`)).toBe(`"${url}"`);
+  });
+
+  it("leaves backtick-quoted relative paths alone", () => {
+    const text = "run `src/(generated)/deep/file.ts` and `pnpm --filter @neokod/web test`";
+    expect(scrubErrorText(text)).toBe(text);
+  });
+
+  it("strips every supported V8 stack-frame shape", () => {
+    const frames = [
+      "    at toValidationError (file:///Users/kamogelo/Code/t3code/apps/server/dist/bin.mjs:40875:9)",
+      "    at next (/Users/kamogelo/Code/t3code/a.js:1:2)",
+      "    at node:internal/worker:123:4",
+      "    at async node:internal/modules/esm/loader:226:26",
+      "    at async Promise.all (index 0)",
+      "    at Array.map (index 1)",
+      "    at foo (eval at bar (/Users/alice/a.js:1:2), <anonymous>:1:2)",
+      "    at Object.<anonymous> (/Users/me/a.js:1:2)",
+      "    at foo (<anonymous>:1:2)",
+      "    at native",
+      "    at new Worker (/Users/me/worker.js:4:5)",
+    ];
+
+    for (const frame of frames) {
+      expect(scrubErrorText(`boom\n${frame}`)).toBe("boom");
+    }
+  });
+
+  it("keeps ordinary at language and only strips stack frames", () => {
+    expect(scrubErrorText("Retry at most 3 times")).toBe("Retry at most 3 times");
+    expect(scrubErrorText("at 10:30:00 we stopped")).toBe("at 10:30:00 we stopped");
+    expect(
+      scrubErrorText(
+        "failed\n    at Object.<anonymous> (/Users/me/a.js:1:2)\n    at async Worker.process (node:internal/worker:123:4)",
+      ),
+    ).toBe("failed");
+  });
+
+  it("returns a non-empty fallback when every line was a stack frame", () => {
+    expect(scrubErrorText("  \n    at foo (/Users/me/a.ts:1:2)\n")).toBe(REDACTED_ERROR_DETAIL);
+  });
+});
+
+describe("userFacingFailureDetail", () => {
+  it("uses the message of a typed error without a stack", () => {
+    expect(
+      userFacingFailureDetail(
+        Cause.fail(
+          new ProviderValidationError({
+            operation: "ProviderService.interruptTurn",
+            issue: "x",
+          }),
+        ),
+      ),
+    ).toBe("Provider validation failed in ProviderService.interruptTurn: x");
+  });
+
+  it("keeps the detail of request errors", () => {
+    expect(
+      userFacingFailureDetail(
+        Cause.fail(
+          new ProviderAdapterRequestError({
+            provider: "codex",
+            method: "m",
+            detail: "interrupt failed",
+          }),
+        ),
+      ),
+    ).toBe("interrupt failed");
+  });
+
+  it("hides defects", () => {
+    expect(userFacingFailureDetail(Cause.die(new Error("boom /Users/a/b.ts")))).toBe(
+      GENERIC_INTERNAL_ERROR_DETAIL,
+    );
+  });
+
+  it("truncates long text", () => {
+    const detail = userFacingFailureDetail(Cause.fail(new Error("x".repeat(5000))));
+    expect(detail).toHaveLength(2003);
+    expect(detail.endsWith("...")).toBe(true);
+  });
+});

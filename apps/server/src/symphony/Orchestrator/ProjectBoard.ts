@@ -1,5 +1,6 @@
 import { WorkLifecycleSchema } from "@neokod/contracts";
 import type {
+  RunAttemptId,
   SymphonyBoardColumnId,
   SymphonyBoardCard,
   SymphonyBoardColumn,
@@ -13,7 +14,7 @@ import type {
 export const boardColumnForLifecycle = (lifecycle: WorkLifecycle): SymphonyBoardColumnId => {
   switch (lifecycle) {
     case "draft":
-    case "eligible":
+    case "ineligible":
     case "queued":
       return "not_started";
     case "preparing":
@@ -41,6 +42,7 @@ export const projectBoardFromWorkItems = (input: {
   readonly sourceControl: SymphonyProjectSourceControl;
   readonly workItems: ReadonlyArray<WorkItem>;
   readonly lifecycleTotals?: Readonly<Record<string, number>>;
+  readonly latestRunAttemptIds?: ReadonlyMap<string, RunAttemptId>;
   readonly generatedAt: string;
 }): SymphonyProjectBoard => {
   const columns: Array<
@@ -59,6 +61,7 @@ export const projectBoardFromWorkItems = (input: {
 
   for (const item of input.workItems) {
     const columnId = boardColumnForLifecycle(item.lifecycle);
+    const latestRunAttemptId = input.latestRunAttemptIds?.get(String(item.id));
     columnById.get(columnId)?.cards.push({
       workItemId: item.id,
       projectId: input.project.id,
@@ -78,6 +81,10 @@ export const projectBoardFromWorkItems = (input: {
       ...(item.source.kind === "manual" || item.source.externalUrl.trim().length === 0
         ? {}
         : { issueUrl: item.source.externalUrl }),
+      ...(item.eligibilityReasons.length > 0
+        ? { eligibilityReasons: item.eligibilityReasons }
+        : {}),
+      ...(latestRunAttemptId === undefined ? {} : { latestRunAttemptId }),
       updatedAt: item.updatedAt,
     });
   }

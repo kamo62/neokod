@@ -1430,6 +1430,20 @@ function ChatViewContent(props: ChatViewProps) {
     return openTerminalThreadKeys.filter((nextThreadKey) => existingThreadKeys.has(nextThreadKey));
   }, [draftThreadKeys, openTerminalThreadKeys, serverThreadKeys]);
   const activeLatestTurn = activeThread?.latestTurn ?? null;
+  const timelineTurnCompletionByTurnId = useMemo(() => {
+    const completions = new Map<TurnId, string | null>();
+    const settled = activeThread?.settledTurnCompletions;
+    for (const turnId of Object.keys(settled ?? {}) as TurnId[]) {
+      completions.set(turnId, settled?.[turnId] ?? null);
+    }
+    // A fresh server snapshot omits the client-owned record; only the latest
+    // turn is authoritative there. Historical checkpoint summaries are not
+    // completion evidence for a recovered turn.
+    if (activeLatestTurn !== null && !completions.has(activeLatestTurn.turnId)) {
+      completions.set(activeLatestTurn.turnId, activeLatestTurn.completedAt);
+    }
+    return completions;
+  }, [activeThread?.settledTurnCompletions, activeLatestTurn]);
   const sourcePlanThreadRef = useMemo(() => {
     const sourceThreadId = activeLatestTurn?.sourceProposedPlan?.threadId;
     if (!activeThread || !sourceThreadId || sourceThreadId === activeThread.id) {
@@ -5657,6 +5671,7 @@ function ChatViewContent(props: ChatViewProps) {
                 listRef={legendListRef}
                 timelineEntries={timelineEntries}
                 latestTurn={activeLatestTurn}
+                turnCompletionByTurnId={timelineTurnCompletionByTurnId}
                 runningTurnId={
                   activeThread.session?.status === "running"
                     ? activeThread.session.activeTurnId

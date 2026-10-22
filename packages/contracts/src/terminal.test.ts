@@ -12,6 +12,7 @@ import {
   TerminalSessionSnapshot,
   TerminalThreadInput,
   TerminalWriteInput,
+  TERMINAL_WRITE_MAX_LENGTH,
 } from "./terminal.ts";
 
 function decodeSync<S extends Schema.Top>(schema: S, input: unknown): Schema.Schema.Type<S> {
@@ -151,6 +152,49 @@ describe("TerminalWriteInput", () => {
         data: "echo hello\n",
       }),
     ).toBe(false);
+  });
+
+  it("accepts exactly TERMINAL_WRITE_MAX_LENGTH characters", () => {
+    expect(
+      decodes(TerminalWriteInput, {
+        threadId: "thread-1",
+        terminalId: DEFAULT_TERMINAL_ID,
+        data: "a".repeat(TERMINAL_WRITE_MAX_LENGTH),
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects one character more", () => {
+    expect(
+      decodes(TerminalWriteInput, {
+        threadId: "thread-1",
+        terminalId: DEFAULT_TERMINAL_ID,
+        data: "a".repeat(TERMINAL_WRITE_MAX_LENGTH + 1),
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts a session generation on a write", () => {
+    expect(
+      decodes(TerminalWriteInput, {
+        threadId: "thread-1",
+        terminalId: DEFAULT_TERMINAL_ID,
+        data: "echo hello\n",
+        generation: 3,
+      }),
+    ).toBe(true);
+    expect(
+      decodes(TerminalWriteInput, {
+        threadId: "thread-1",
+        terminalId: DEFAULT_TERMINAL_ID,
+        data: "echo hello\n",
+        generation: -1,
+      }),
+    ).toBe(false);
+  });
+
+  it("TERMINAL_WRITE_MAX_LENGTH is 65536", () => {
+    expect(TERMINAL_WRITE_MAX_LENGTH).toBe(65_536);
   });
 });
 

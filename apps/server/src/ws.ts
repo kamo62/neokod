@@ -422,6 +422,11 @@ const withApprovalService = <A, E>(
   );
 const approvalError = (message: string): SymphonyError =>
   new SymphonyError({ code: "approval_request_not_found", message });
+const approvalUnavailable = (): SymphonyError =>
+  new SymphonyError({
+    code: "symphony_unavailable",
+    message: "symphony approval layer is not mounted",
+  });
 
 /** Actions must not report success when the Symphony layer is absent. */
 const orchestratorUnavailable = (): SymphonyError =>
@@ -429,6 +434,22 @@ const orchestratorUnavailable = (): SymphonyError =>
 
 const projectError = (code: string, message: string): SymphonyError =>
   new SymphonyError({ code, message });
+
+const boardReadError = (cause: unknown): SymphonyError =>
+  isSymphonyError(cause)
+    ? cause
+    : projectError(
+        "symphony_board_unavailable",
+        cause instanceof Error ? cause.message : String(cause),
+      );
+
+const dispatchReadError = (cause: unknown): SymphonyError =>
+  isSymphonyError(cause)
+    ? cause
+    : projectError(
+        "symphony_dispatch_unavailable",
+        cause instanceof Error ? cause.message : String(cause),
+      );
 
 const requireProject = <A>(value: A | null, code: string, message: string) =>
   value === null ? Effect.fail(projectError(code, message)) : Effect.succeed(value);
@@ -536,6 +557,7 @@ export const makeSymphonyRpcHandlers = () => ({
                   `Symphony project ${input.projectId} was not found.`,
                 ),
               ),
+              Effect.mapError(boardReadError),
               Effect.map((board) => ({ version: 1, type: "projectBoard", board }) as const),
             ),
           ).pipe(Stream.repeat(Schedule.fixed("2 seconds"))),
@@ -801,17 +823,16 @@ export const makeSymphonyRpcHandlers = () => ({
       SYMPHONY_WS_METHODS.getProjectBoard,
       withOrchestrator(
         (orchestrator) =>
-          orchestrator
-            .getProjectBoard(input.projectId)
-            .pipe(
-              Effect.flatMap((board) =>
-                requireProject(
-                  board,
-                  "symphony_project_not_found",
-                  `Symphony project ${input.projectId} was not found.`,
-                ),
+          orchestrator.getProjectBoard(input.projectId).pipe(
+            Effect.flatMap((board) =>
+              requireProject(
+                board,
+                "symphony_project_not_found",
+                `Symphony project ${input.projectId} was not found.`,
               ),
             ),
+            Effect.mapError(boardReadError),
+          ),
         Effect.fail(orchestratorUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
@@ -998,7 +1019,7 @@ export const makeSymphonyRpcHandlers = () => ({
             Effect.mapError((cause) => approvalError(cause.message)),
             Effect.as({ ok: true }),
           ),
-        Effect.succeed({ ok: true }),
+        Effect.fail(approvalUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
     ),
@@ -1011,7 +1032,7 @@ export const makeSymphonyRpcHandlers = () => ({
             Effect.mapError((cause) => approvalError(cause.message)),
             Effect.as({ ok: true }),
           ),
-        Effect.succeed({ ok: true }),
+        Effect.fail(approvalUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
     ),
@@ -1026,7 +1047,7 @@ export const makeSymphonyRpcHandlers = () => ({
             Effect.mapError((cause) => approvalError(cause.message)),
             Effect.as({ ok: true }),
           ),
-        Effect.succeed({ ok: true }),
+        Effect.fail(approvalUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },
     ),
@@ -1069,9 +1090,7 @@ export const makeSymphonyRpcHandlers = () => ({
       SYMPHONY_WS_METHODS.dispatchWorkItem,
       withOrchestrator(
         (orchestrator) =>
-          orchestrator
-            .dispatchWorkItem(input.workItemId, { explicit: true })
-            .pipe(Effect.as({ ok: true })),
+          orchestrator.dispatchWorkItem(input.workItemId).pipe(Effect.mapError(dispatchReadError)),
         Effect.fail(orchestratorUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },

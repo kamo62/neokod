@@ -1153,9 +1153,14 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
                       turnId: turn.turnId,
                       state: settledTurnState,
                       // A running turn's completedAt can only hold a mid-turn
-                      // placeholder checkpoint timestamp — the session leaving
-                      // "running" is the authoritative turn end.
-                      completedAt: event.payload.session.updatedAt,
+                      // placeholder checkpoint timestamp. Recovery can freeze
+                      // it at the last observation instead of the event time.
+                      // An explicit null means no observation exists; only an
+                      // omitted field keeps the legacy session-time default.
+                      completedAt:
+                        event.payload.latestTurnCompletedAt === undefined
+                          ? event.payload.session.updatedAt
+                          : event.payload.latestTurnCompletedAt,
                     }),
               { concurrency: 1 },
             );
@@ -1280,6 +1285,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             turnId: event.payload.turnId,
           });
           if (Option.isSome(existingTurn)) {
+            const existingSettled = existingTurn.value.state !== "running";
             yield* projectionTurnRepository.upsertByTurnId({
               ...existingTurn.value,
               assistantMessageId: event.payload.messageId,
@@ -1290,8 +1296,13 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
                     ? "error"
                     : "completed"
                 : existingTurn.value.state,
+              // A recovered turn may already be terminal with known or
+              // explicitly unknown completion. Synthetic message closure must
+              // not replace it with the message's own last update.
               completedAt: settlesTurn
-                ? (existingTurn.value.completedAt ?? event.payload.updatedAt)
+                ? existingSettled
+                  ? existingTurn.value.completedAt
+                  : event.payload.updatedAt
                 : existingTurn.value.completedAt,
               startedAt: existingTurn.value.startedAt ?? event.payload.createdAt,
               requestedAt: existingTurn.value.requestedAt ?? event.payload.createdAt,

@@ -25,6 +25,7 @@ import { ProviderSessionReaper } from "../Services/ProviderSessionReaper.ts";
 import { ProviderService, type ProviderServiceShape } from "../Services/ProviderService.ts";
 import { ProviderSessionDirectoryLive } from "./ProviderSessionDirectory.ts";
 import { makeProviderSessionReaperLive } from "./ProviderSessionReaper.ts";
+import { orphanPossible } from "../providerStopOutcome.ts";
 
 const defaultModelSelection = {
   instanceId: ProviderInstanceId.make("codex"),
@@ -214,6 +215,7 @@ describe("ProviderSessionReaper", () => {
                 : Option.none(),
             ),
           getThreadDetailById: () => Effect.die("unused"),
+          getThreadMessagesById: () => Effect.succeed([]),
           getThreadDetailSnapshot: () => Effect.die("unused"),
         }),
       ),
@@ -419,6 +421,71 @@ describe("ProviderSessionReaper", () => {
     expect(harness.stopSession).not.toHaveBeenCalled();
     const remaining = await runtime!.runPromise(repository.getByThreadId({ threadId }));
     expect(Option.isSome(remaining)).toBe(true);
+  });
+
+  it("leaves a host_lost binding to boot evidence instead of reaping it", async () => {
+    const threadId = ThreadId.make("thread-reaper-host-lost");
+    const now = "2026-01-01T00:00:00.000Z";
+    const harness = await createHarness({
+      readModel: makeReadModel([
+        {
+          id: threadId,
+          session: {
+            threadId,
+            status: "interrupted",
+            providerName: "claudeAgent",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: "Neokod restarted while this turn was running.",
+            updatedAt: now,
+          },
+        },
+      ]),
+    });
+    const repository = await runtime!.runPromise(
+      Effect.service(ProviderSessionRuntime.ProviderSessionRuntimeRepository),
+    );
+
+    await runtime!.runPromise(
+      repository.upsert({
+        threadId,
+        providerName: "claudeAgent",
+        providerInstanceId: null,
+        adapterKey: "claudeAgent",
+        runtimeMode: "full-access",
+        status: "error",
+        lastSeenAt: "2026-04-14T00:00:00.000Z",
+        resumeCursor: null,
+        runtimePayload: {
+          activeTurnId: null,
+          stopPhase: "settled",
+          stopOutcome: orphanPossible({
+            stoppedAt: "2026-04-14T00:00:00.000Z",
+            reason: "host_lost",
+          }),
+        },
+      }),
+    );
+
+    const reaper = await runtime!.runPromise(Effect.service(ProviderSessionReaper));
+    scope = await runtime!.runPromise(Scope.make("sequential"));
+    await runtime!.runPromise(reaper.start().pipe(Scope.provide(scope)));
+    await runtime!.runPromise(drainFibers);
+
+    expect(harness.stopSession).not.toHaveBeenCalled();
+    const remaining = await runtime!.runPromise(repository.getByThreadId({ threadId }));
+    expect(Option.isSome(remaining)).toBe(true);
+    if (Option.isSome(remaining)) {
+      expect(remaining.value.status).toBe("error");
+      const payload = remaining.value.runtimePayload;
+      expect(payload !== null && typeof payload === "object" && !Array.isArray(payload)).toBe(true);
+      if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+        expect("stopOutcome" in payload ? payload.stopOutcome : undefined).toMatchObject({
+          status: "orphan_possible",
+          reason: "host_lost",
+        });
+      }
+    }
   });
 
   it("continues reaping other sessions when one stop attempt fails", async () => {

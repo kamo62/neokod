@@ -71,10 +71,10 @@ const WorkItemRowSchema = Schema.Struct({
  * move FROM a terminal state requires an explicit `from` opt-in.
  */
 const DEFAULT_TRANSITION_SOURCES: Readonly<Record<string, ReadonlyArray<string>>> = {
-  draft: ["eligible"],
-  eligible: ["draft", "queued"],
+  draft: ["ineligible"],
+  ineligible: ["draft", "queued"],
   queued: [
-    "eligible",
+    "ineligible",
     "preparing",
     "running",
     "blocked",
@@ -84,7 +84,7 @@ const DEFAULT_TRANSITION_SOURCES: Readonly<Record<string, ReadonlyArray<string>>
     "ready_for_review",
     "validation_failed",
   ],
-  preparing: ["eligible", "queued"],
+  preparing: ["queued"],
   running: ["preparing"],
   testing: ["running"],
   blocked: ["preparing", "running", "waiting_for_approval", "retry_scheduled"],
@@ -104,7 +104,7 @@ const DEFAULT_TRANSITION_SOURCES: Readonly<Record<string, ReadonlyArray<string>>
   completed: ["ready_to_merge"],
   cancelled: [
     "draft",
-    "eligible",
+    "ineligible",
     "queued",
     "preparing",
     "blocked",
@@ -336,7 +336,7 @@ const makeRepository = Effect.gen(function* () {
           branch_name = ${row.branchName},
           issue_url = ${row.issueUrl},
           lifecycle = CASE
-            WHEN lifecycle IN ('draft', 'eligible', 'queued') THEN ${row.lifecycle}
+            WHEN lifecycle IN ('draft', 'ineligible', 'queued') THEN ${row.lifecycle}
             ELSE lifecycle
           END,
           workspace_key = ${row.workspaceKey},
@@ -366,7 +366,7 @@ const makeRepository = Effect.gen(function* () {
           claimed_at = ${request.now},
           updated_at = ${request.now}
         WHERE id = ${request.id}
-          AND lifecycle IN ('eligible', 'queued', 'retry_scheduled')
+          AND lifecycle IN ('queued', 'retry_scheduled')
         RETURNING ${cols}
       `,
   });
@@ -494,6 +494,9 @@ const makeRepository = Effect.gen(function* () {
     const workflowFilter =
       options?.workflowId === undefined ? sql`` : sql`AND workflow_id = ${options.workflowId}`;
     const lifecycleFilter = sql.in("lifecycle", lifecycles);
+    // `id` breaks ties so an offset page is stable across reads; callers that
+    // rotate bounded pages depend on a total order.
+    const offset = Math.max(0, Math.trunc(options?.offset ?? 0));
     return sql<Schema.Schema.Type<typeof WorkItemRowSchema>>`
       SELECT ${cols}
       FROM symphony_work_items
@@ -503,8 +506,10 @@ const makeRepository = Effect.gen(function* () {
       ORDER BY
         (COALESCE(local_priority, priority) BETWEEN 1 AND 4) DESC,
         COALESCE(local_priority, priority) ASC,
-        created_at ASC
+        created_at ASC,
+        id ASC
       LIMIT ${options?.limit ?? 500}
+      OFFSET ${offset}
     `.pipe(
       Effect.mapError(toSqlError("WorkItemRepository.listByLifecycle")),
       Effect.flatMap((rows) => decodeRows("WorkItemRepository.listByLifecycle", rows)),

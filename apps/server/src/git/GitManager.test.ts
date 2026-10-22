@@ -717,6 +717,13 @@ function makeManager(input?: {
 
 const asThreadId = (threadId: string) => threadId as ThreadId;
 
+it("requires the worktree removal lease when constructing GitManager", () => {
+  const requiresLease: WorktreeRemovalLease extends Layer.Services<typeof GitManager.layer>
+    ? true
+    : false = true;
+  expect(requiresLease).toBe(true);
+});
+
 const GitManagerTestLayer = GitVcsDriver.layer.pipe(
   Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "neokod-git-manager-test-" })),
   Layer.provideMerge(VcsProcess.layer),

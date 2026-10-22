@@ -1,15 +1,42 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, expect, it, vi } from "@effect/vitest";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 
 import { VcsRepositoryDetectionError } from "@neokod/contracts";
 
 import * as GitManager from "./GitManager.ts";
 import * as GitWorkflowService from "./GitWorkflowService.ts";
-import { WorktreeRemovalLeaseLive } from "./WorktreeRemovalLease.ts";
+import {
+  WorktreeAdmissionBlockedError,
+  WorktreeRemovalLease,
+  WorktreeRemovalLeaseLive,
+} from "./WorktreeRemovalLease.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
+
+const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
+
+const gitDriverHandle = {
+  kind: "git",
+  repository: {
+    kind: "git",
+    rootPath: "/repo",
+    metadataPath: null,
+    freshness: {
+      source: "live-local",
+      observedAt: TEST_EPOCH,
+      expiresAt: Option.none(),
+    },
+  },
+  driver: {},
+} as unknown as VcsDriverRegistry.VcsDriverHandle;
 
 function makeLayer(input: {
   readonly detect: VcsDriverRegistry.VcsDriverRegistry["Service"]["detect"];
@@ -167,6 +194,69 @@ describe("GitWorkflowService", () => {
       ),
     );
   });
+
+  it.effect("records a created worktree so a replaced path is refused", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const worktreePath = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "neokod-workflow-worktree-",
+      });
+      const workflow = yield* GitWorkflowService.GitWorkflowService;
+      const lease = yield* WorktreeRemovalLease;
+
+      const created = yield* workflow.createWorktree({
+        cwd: "/repo",
+        refName: "main",
+        newRefName: "neokod/abcd1234",
+        path: worktreePath,
+      });
+      assert.equal(created.worktree.path, worktreePath);
+
+      yield* fileSystem.remove(worktreePath, { recursive: true });
+      yield* fileSystem.makeDirectory(worktreePath, { recursive: true });
+
+      const error = yield* lease
+        .withAdmission(
+          "thread.create",
+          { workspacePaths: [worktreePath], preparedWorktreePaths: [worktreePath] },
+          Effect.succeed("admitted"),
+        )
+        .pipe(Effect.flip);
+
+      expect(error).toBeInstanceOf(WorktreeAdmissionBlockedError);
+      expect(error.message).toContain("removed or replaced");
+    }).pipe(
+      Effect.provide(
+        GitWorkflowService.layer.pipe(
+          Layer.provide(
+            Layer.mock(VcsDriverRegistry.VcsDriverRegistry)({
+              detect: () => Effect.succeed(gitDriverHandle),
+              resolve: () => Effect.succeed(gitDriverHandle),
+            }),
+          ),
+          Layer.provide(
+            Layer.mock(GitVcsDriver.GitVcsDriver)({
+              createWorktree: (input) =>
+                Effect.sync(() => {
+                  if (input.path !== null) {
+                    NodeFS.mkdirSync(input.path, { recursive: true });
+                  }
+                  return {
+                    worktree: {
+                      path: input.path ?? "/repo",
+                      refName: input.newRefName ?? input.refName,
+                    },
+                  };
+                }),
+            }),
+          ),
+          Layer.provide(Layer.mock(GitManager.GitManager)({})),
+          Layer.provideMerge(WorktreeRemovalLeaseLive),
+          Layer.provideMerge(NodeServices.layer),
+        ),
+      ),
+    ),
+  );
 
   it.effect("structures command detection failures without exposing upstream details", () => {
     const cause = new VcsRepositoryDetectionError({

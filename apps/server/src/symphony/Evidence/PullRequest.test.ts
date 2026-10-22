@@ -9,6 +9,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   RunAttemptId,
+  SourceControlProviderError,
   WorkItemId,
 } from "@neokod/contracts";
 import { expect, it } from "@effect/vitest";
@@ -80,17 +81,20 @@ const makeEvidence = (): EvidenceBundle => ({
   createdAt: "2026-08-05T03:00:00.000Z",
 });
 
-const makeChangeRequest = (overrides: Partial<ChangeRequest> = {}): ChangeRequest => ({
-  provider: "github",
-  number: 17,
-  title: "Implement issue 42",
-  url: "https://github.com/owner/repo/pull/17",
-  baseRefName: "main",
-  headRefName: "symphony/issue-42",
-  state: "open",
-  updatedAt: Option.some(DateTime.makeUnsafe("2026-08-05T04:00:00.000Z")),
-  ...overrides,
-});
+const makeChangeRequest = (overrides: Partial<ChangeRequest> = {}): ChangeRequest => {
+  const number = overrides.number ?? 17;
+  return {
+    provider: "github",
+    number,
+    title: "Implement issue 42",
+    url: `https://github.com/owner/repo/pull/${number}`,
+    baseRefName: "main",
+    headRefName: "symphony/issue-42",
+    state: "open",
+    updatedAt: Option.some(DateTime.makeUnsafe("2026-08-05T04:00:00.000Z")),
+    ...overrides,
+  };
+};
 
 const makeDeps = (overrides: Partial<PullRequestServiceDeps> = {}): PullRequestServiceDeps => ({
   git: {
@@ -345,6 +349,376 @@ it.effect("refresh re-fetches the open PR for the branch", () =>
       url: "https://github.com/owner/repo/pull/17",
       status: "open",
     });
+  }),
+);
+
+it.effect("refresh looks up a tracked number directly instead of scanning the branch", () =>
+  Effect.gen(function* () {
+    const directReferences: string[] = [];
+    const listCalls: string[] = [];
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: {
+                createChangeRequest: () => Effect.void,
+                getChangeRequestStatus: () => Effect.succeed(null),
+                getChangeRequest: (request: { reference: string }) => {
+                  directReferences.push(request.reference);
+                  return Effect.succeed(makeChangeRequest({ number: 42, baseRefName: "main" }));
+                },
+                // The tracked PR is older than ten other PRs sharing the branch,
+                // so a limited branch scan would not contain it.
+                listChangeRequests: (request: { headSelector: string }) => {
+                  listCalls.push(request.headSelector);
+                  return Effect.succeed([makeChangeRequest({ number: 100 })]);
+                },
+              },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+      }),
+    );
+
+    const refreshed = yield* service.refresh({
+      config: makeConfig(),
+      branch: "symphony/issue-42",
+      baseBranch: "main",
+      title: "Implement issue 42",
+      pullRequestNumber: 42,
+      pullRequestUrl: "https://github.com/owner/repo/pull/42",
+    });
+
+    expect(directReferences).toEqual(["42"]);
+    expect(listCalls).toEqual([]);
+    expect(refreshed).toMatchObject({ number: 42, baseBranch: "main" });
+  }),
+);
+
+it.effect(
+  "refresh returns null rather than another PR when the tracked number cannot be read",
+  () =>
+    Effect.gen(function* () {
+      const listCalls: string[] = [];
+      const service = makePullRequestService(
+        makeDeps({
+          providers: {
+            resolveHandle: () =>
+              Effect.succeed({
+                provider: {
+                  createChangeRequest: () => Effect.void,
+                  getChangeRequestStatus: () => Effect.succeed(null),
+                  getChangeRequest: () =>
+                    Effect.fail(
+                      new SourceControlProviderError({
+                        provider: "github",
+                        operation: "getChangeRequest",
+                        cwd: "/repo",
+                        detail: "not found",
+                      }),
+                    ),
+                  listChangeRequests: (request: { headSelector: string }) => {
+                    listCalls.push(request.headSelector);
+                    return Effect.succeed([makeChangeRequest({ number: 100 })]);
+                  },
+                },
+                context: null,
+              }),
+          } as unknown as PullRequestServiceDeps["providers"],
+        }),
+      );
+
+      expect(
+        yield* service.refresh({
+          config: makeConfig(),
+          branch: "symphony/issue-42",
+          baseBranch: "main",
+          title: "Implement issue 42",
+          pullRequestNumber: 42,
+          pullRequestUrl: "https://github.com/owner/repo/pull/42",
+        }),
+      ).toBeNull();
+      // A different PR on the branch is not a substitute for the tracked one.
+      expect(listCalls).toEqual([]);
+    }),
+);
+
+it.effect("refresh refuses a tracked PR whose repository identity is missing", () =>
+  Effect.gen(function* () {
+    const hostCalls: string[] = [];
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: {
+                createChangeRequest: () => Effect.void,
+                getChangeRequestStatus: () => Effect.succeed(null),
+                getChangeRequest: () => {
+                  hostCalls.push("getChangeRequest");
+                  return Effect.succeed(makeChangeRequest({ number: 42 }));
+                },
+                listChangeRequests: () => {
+                  hostCalls.push("listChangeRequests");
+                  return Effect.succeed([makeChangeRequest({ number: 42 })]);
+                },
+              },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+      }),
+    );
+
+    expect(
+      yield* service.refresh({
+        config: makeConfig(),
+        branch: "symphony/issue-42",
+        baseBranch: "main",
+        title: "Implement issue 42",
+        pullRequestNumber: 42,
+      }),
+    ).toBeNull();
+    // Unresolved provenance is not permission: the host is not even asked.
+    expect(hostCalls).toEqual([]);
+  }),
+);
+
+it.effect("refresh refuses a tracked PR whose repository identity is unparseable", () =>
+  Effect.gen(function* () {
+    const hostCalls: string[] = [];
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: {
+                createChangeRequest: () => Effect.void,
+                getChangeRequestStatus: () => Effect.succeed(null),
+                getChangeRequest: () => {
+                  hostCalls.push("getChangeRequest");
+                  return Effect.succeed(makeChangeRequest({ number: 42 }));
+                },
+                listChangeRequests: () => {
+                  hostCalls.push("listChangeRequests");
+                  return Effect.succeed([]);
+                },
+              },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+      }),
+    );
+
+    expect(
+      yield* service.refresh({
+        config: makeConfig(),
+        branch: "symphony/issue-42",
+        baseBranch: "main",
+        title: "Implement issue 42",
+        pullRequestNumber: 42,
+        pullRequestUrl: "not a change-request url",
+      }),
+    ).toBeNull();
+    expect(hostCalls).toEqual([]);
+  }),
+);
+
+it.effect("refresh refuses equal PR numbers on a distinct authority", () =>
+  Effect.gen(function* () {
+    const serviceFor = (foundUrl: string) =>
+      makePullRequestService(
+        makeDeps({
+          providers: {
+            resolveHandle: () =>
+              Effect.succeed({
+                provider: {
+                  createChangeRequest: () => Effect.void,
+                  getChangeRequestStatus: () => Effect.succeed(null),
+                  getChangeRequest: () =>
+                    Effect.succeed(makeChangeRequest({ number: 42, url: foundUrl })),
+                  listChangeRequests: () => Effect.succeed([]),
+                },
+                context: null,
+              }),
+          } as unknown as PullRequestServiceDeps["providers"],
+        }),
+      );
+
+    // A `www.` prefix is only an alias for github.com; self-hosted installations
+    // can serve distinct repositories under both names.
+    expect(
+      yield* serviceFor("https://www.git.example/owner/repo/pull/42").refresh({
+        config: makeConfig(),
+        branch: "symphony/issue-42",
+        baseBranch: "main",
+        title: "Implement issue 42",
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://git.example/owner/repo/pull/42",
+      }),
+    ).toBeNull();
+
+    // http and https on the same host can be independent installations.
+    expect(
+      yield* serviceFor("https://git.example/owner/repo/pull/42").refresh({
+        config: makeConfig(),
+        branch: "symphony/issue-42",
+        baseBranch: "main",
+        title: "Implement issue 42",
+        pullRequestNumber: 42,
+        pullRequestUrl: "http://git.example/owner/repo/pull/42",
+      }),
+    ).toBeNull();
+  }),
+);
+
+it.effect("refresh refuses equal PR numbers on different ports of the same host", () =>
+  Effect.gen(function* () {
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: {
+                createChangeRequest: () => Effect.void,
+                getChangeRequestStatus: () => Effect.succeed(null),
+                getChangeRequest: () =>
+                  Effect.succeed(
+                    makeChangeRequest({
+                      number: 42,
+                      url: "https://gitlab.example:9443/group/repo/-/merge_requests/42",
+                    }),
+                  ),
+                listChangeRequests: () => Effect.succeed([]),
+              },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+      }),
+    );
+
+    expect(
+      yield* service.refresh({
+        config: makeConfig(),
+        branch: "symphony/issue-42",
+        baseBranch: "main",
+        title: "Implement issue 42",
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://gitlab.example:8443/group/repo/-/merge_requests/42",
+      }),
+    ).toBeNull();
+  }),
+);
+
+it.effect("refresh refuses equal PR numbers under an owner named pull", () =>
+  Effect.gen(function* () {
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: {
+                createChangeRequest: () => Effect.void,
+                getChangeRequestStatus: () => Effect.succeed(null),
+                getChangeRequest: () =>
+                  Effect.succeed(
+                    makeChangeRequest({ number: 42, url: "https://github.com/pull/b/pull/42" }),
+                  ),
+                listChangeRequests: () => Effect.succeed([]),
+              },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+      }),
+    );
+
+    expect(
+      yield* service.refresh({
+        config: makeConfig(),
+        branch: "symphony/issue-42",
+        baseBranch: "main",
+        title: "Implement issue 42",
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://github.com/pull/a/pull/42",
+      }),
+    ).toBeNull();
+  }),
+);
+
+it.effect("refresh refuses a same-number PR that belongs to another repository", () =>
+  Effect.gen(function* () {
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: {
+                createChangeRequest: () => Effect.void,
+                getChangeRequestStatus: () => Effect.succeed(null),
+                // Same number, different repository: a number alone is not
+                // identity.
+                getChangeRequest: () =>
+                  Effect.succeed(
+                    makeChangeRequest({
+                      number: 42,
+                      url: "https://github.com/owner/b/pull/42",
+                    }),
+                  ),
+                listChangeRequests: () => Effect.succeed([]),
+              },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+      }),
+    );
+
+    expect(
+      yield* service.refresh({
+        config: makeConfig(),
+        branch: "symphony/issue-42",
+        baseBranch: "main",
+        title: "Implement issue 42",
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://github.com/owner/a/pull/42",
+      }),
+    ).toBeNull();
+  }),
+);
+
+it.effect("refresh accepts the tracked PR in the same repository", () =>
+  Effect.gen(function* () {
+    const service = makePullRequestService(
+      makeDeps({
+        providers: {
+          resolveHandle: () =>
+            Effect.succeed({
+              provider: {
+                createChangeRequest: () => Effect.void,
+                getChangeRequestStatus: () => Effect.succeed(null),
+                getChangeRequest: () =>
+                  Effect.succeed(
+                    makeChangeRequest({
+                      number: 42,
+                      url: "https://www.github.com/owner/a/pull/42/",
+                    }),
+                  ),
+                listChangeRequests: () => Effect.succeed([]),
+              },
+              context: null,
+            }),
+        } as unknown as PullRequestServiceDeps["providers"],
+      }),
+    );
+
+    const refreshed = yield* service.refresh({
+      config: makeConfig(),
+      branch: "symphony/issue-42",
+      baseBranch: "main",
+      title: "Implement issue 42",
+      pullRequestNumber: 42,
+      pullRequestUrl: "https://github.com/owner/a/pull/42",
+    });
+    expect(refreshed).toMatchObject({ number: 42, url: "https://www.github.com/owner/a/pull/42/" });
   }),
 );
 

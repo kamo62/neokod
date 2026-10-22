@@ -261,6 +261,175 @@ describe("applyThreadDetailEvent", () => {
       }
     });
 
+    it("settles a streaming message without replacing its text or last observation", () => {
+      const threadWithMessage: OrchestrationThread = {
+        ...baseThread,
+        messages: [
+          {
+            id: MessageId.make("msg-2"),
+            role: "assistant",
+            text: "partial answer",
+            turnId: TurnId.make("turn-1"),
+            streaming: true,
+            createdAt: "2026-04-01T06:00:00.000Z",
+            updatedAt: "2026-04-01T06:03:01.000Z",
+          },
+        ],
+      };
+
+      const result = applyThreadDetailEvent(threadWithMessage, {
+        ...baseEventFields,
+        sequence: 8,
+        occurredAt: "2026-04-01T07:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.message-sent",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          messageId: MessageId.make("msg-2"),
+          role: "assistant",
+          text: "",
+          turnId: TurnId.make("turn-1"),
+          streaming: false,
+          createdAt: "2026-04-01T07:00:00.000Z",
+          updatedAt: "2026-04-01T06:03:01.000Z",
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.messages[0]).toMatchObject({
+          text: "partial answer",
+          streaming: false,
+          updatedAt: "2026-04-01T06:03:01.000Z",
+        });
+      }
+    });
+
+    it("does not move a settled turn completion backwards when a synthetic message closes", () => {
+      const threadWithRecoveredTurn: OrchestrationThread = {
+        ...baseThread,
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: "2026-04-01T08:00:00.000Z",
+        },
+        latestTurn: {
+          turnId: TurnId.make("turn-1"),
+          state: "interrupted",
+          requestedAt: "2026-04-01T07:00:00.000Z",
+          startedAt: "2026-04-01T07:00:00.000Z",
+          completedAt: "2026-04-01T07:03:00.000Z",
+          assistantMessageId: MessageId.make("msg-1"),
+        },
+        messages: [
+          {
+            id: MessageId.make("msg-1"),
+            role: "assistant",
+            text: "partial answer",
+            turnId: TurnId.make("turn-1"),
+            streaming: true,
+            createdAt: "2026-04-01T07:00:00.000Z",
+            updatedAt: "2026-04-01T07:01:00.000Z",
+          },
+        ],
+      };
+
+      const result = applyThreadDetailEvent(threadWithRecoveredTurn, {
+        ...baseEventFields,
+        sequence: 9,
+        occurredAt: "2026-04-01T08:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.message-sent",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          messageId: MessageId.make("msg-1"),
+          role: "assistant",
+          text: "",
+          turnId: TurnId.make("turn-1"),
+          streaming: false,
+          createdAt: "2026-04-01T08:00:00.000Z",
+          updatedAt: "2026-04-01T07:01:00.000Z",
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.latestTurn?.state).toBe("interrupted");
+        // The recovered completion came from later turn evidence, not from the
+        // message's own last update.
+        expect(result.thread.latestTurn?.completedAt).toBe("2026-04-01T07:03:00.000Z");
+        expect(result.thread.messages[0]).toMatchObject({
+          text: "partial answer",
+          streaming: false,
+          updatedAt: "2026-04-01T07:01:00.000Z",
+        });
+      }
+    });
+
+    it("keeps an explicitly unknown settled completion null when a synthetic message closes", () => {
+      const threadWithUnknownTurn: OrchestrationThread = {
+        ...baseThread,
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: "2026-04-01T08:00:00.000Z",
+        },
+        latestTurn: {
+          turnId: TurnId.make("turn-1"),
+          state: "interrupted",
+          requestedAt: "2026-04-01T07:00:00.000Z",
+          startedAt: "2026-04-01T07:00:00.000Z",
+          completedAt: null,
+          assistantMessageId: MessageId.make("msg-1"),
+        },
+        messages: [
+          {
+            id: MessageId.make("msg-1"),
+            role: "assistant",
+            text: "partial answer",
+            turnId: TurnId.make("turn-1"),
+            streaming: true,
+            createdAt: "2026-04-01T07:00:00.000Z",
+            updatedAt: "2026-04-01T07:01:00.000Z",
+          },
+        ],
+      };
+
+      const result = applyThreadDetailEvent(threadWithUnknownTurn, {
+        ...baseEventFields,
+        sequence: 10,
+        occurredAt: "2026-04-01T08:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.message-sent",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          messageId: MessageId.make("msg-1"),
+          role: "assistant",
+          text: "",
+          turnId: TurnId.make("turn-1"),
+          streaming: false,
+          createdAt: "2026-04-01T08:00:00.000Z",
+          updatedAt: "2026-04-01T07:01:00.000Z",
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.latestTurn?.completedAt).toBeNull();
+      }
+    });
+
     it("updates latestTurn for assistant messages with a turn", () => {
       const result = applyThreadDetailEvent(baseThread, {
         ...baseEventFields,
@@ -378,6 +547,261 @@ describe("applyThreadDetailEvent", () => {
         expect(result.thread.latestTurn?.state).toBe("completed");
         expect(result.thread.latestTurn?.completedAt).toBe("2026-04-01T08:00:00.000Z");
       }
+    });
+
+    it("uses the recovered turn completion instead of the session update time", () => {
+      const threadWithRunningTurn: OrchestrationThread = {
+        ...baseThread,
+        latestTurn: {
+          turnId: TurnId.make("turn-1"),
+          state: "running",
+          requestedAt: "2026-04-01T07:00:00.000Z",
+          startedAt: "2026-04-01T07:00:00.000Z",
+          completedAt: null,
+          assistantMessageId: MessageId.make("msg-3"),
+        },
+      };
+
+      const result = applyThreadDetailEvent(threadWithRunningTurn, {
+        ...baseEventFields,
+        sequence: 10,
+        occurredAt: "2026-04-02T08:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.session-set",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "interrupted",
+            providerName: "claude",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: "2026-04-02T08:00:00.000Z",
+          },
+          latestTurnCompletedAt: "2026-04-01T08:00:00.000Z",
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.latestTurn?.state).toBe("interrupted");
+        // The turn ends at the last observation, not when recovery ran.
+        expect(result.thread.latestTurn?.completedAt).toBe("2026-04-01T08:00:00.000Z");
+        expect(result.thread.session?.updatedAt).toBe("2026-04-02T08:00:00.000Z");
+      }
+    });
+
+    it("keeps an explicitly unknown recovered completion null", () => {
+      const threadWithRunningTurn: OrchestrationThread = {
+        ...baseThread,
+        latestTurn: {
+          turnId: TurnId.make("turn-1"),
+          state: "running",
+          requestedAt: "2026-04-01T07:00:00.000Z",
+          startedAt: "2026-04-01T07:00:00.000Z",
+          completedAt: null,
+          assistantMessageId: MessageId.make("msg-3"),
+        },
+      };
+
+      const result = applyThreadDetailEvent(threadWithRunningTurn, {
+        ...baseEventFields,
+        sequence: 11,
+        occurredAt: "2026-04-02T08:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.session-set",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "interrupted",
+            providerName: "claude",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: "2026-04-02T08:00:00.000Z",
+          },
+          latestTurnCompletedAt: null,
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.latestTurn?.state).toBe("interrupted");
+        // Explicit null means no observation; the session update time is not
+        // allowed to stand in for completion.
+        expect(result.thread.latestTurn?.completedAt).toBeNull();
+        expect(result.thread.session?.updatedAt).toBe("2026-04-02T08:00:00.000Z");
+      }
+    });
+
+    it("records known settlement per turn and preserves it when a later turn starts", () => {
+      const startedAt = "2026-04-01T07:00:00.000Z";
+      const checkpointAt = "2026-04-01T07:00:10.000Z";
+      const completedAt = "2026-04-01T07:01:00.000Z";
+      const threadWithRunningTurn: OrchestrationThread = {
+        ...baseThread,
+        latestTurn: {
+          turnId: TurnId.make("turn-1"),
+          state: "running",
+          requestedAt: startedAt,
+          startedAt,
+          completedAt: null,
+          assistantMessageId: null,
+        },
+        checkpoints: [
+          {
+            turnId: TurnId.make("turn-1"),
+            checkpointTurnCount: 1,
+            checkpointRef: CheckpointRef.make("checkpoint-1"),
+            status: "ready",
+            files: [],
+            assistantMessageId: null,
+            completedAt: checkpointAt,
+          },
+        ],
+      };
+
+      const recovered = applyThreadDetailEvent(threadWithRunningTurn, {
+        ...baseEventFields,
+        sequence: 10,
+        occurredAt: "2026-04-01T07:02:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.session-set",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "interrupted",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: completedAt,
+          },
+          interruptedTurnId: TurnId.make("turn-1"),
+          latestTurnCompletedAt: completedAt,
+        },
+      });
+      expect(recovered.kind).toBe("updated");
+      if (recovered.kind !== "updated") return;
+      expect(recovered.thread.settledTurnCompletions).toEqual({
+        [TurnId.make("turn-1")]: completedAt,
+      });
+      expect(recovered.thread.checkpoints[0]?.completedAt).toBe(completedAt);
+
+      const next = applyThreadDetailEvent(recovered.thread, {
+        ...baseEventFields,
+        sequence: 11,
+        occurredAt: "2026-04-01T07:03:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.session-set",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "running",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: TurnId.make("turn-2"),
+            lastError: null,
+            updatedAt: "2026-04-01T07:03:00.000Z",
+          },
+        },
+      });
+      expect(next.kind).toBe("updated");
+      if (next.kind !== "updated") return;
+      expect(next.thread.latestTurn?.turnId).toBe("turn-2");
+      expect(next.thread.settledTurnCompletions).toEqual({
+        [TurnId.make("turn-1")]: completedAt,
+      });
+    });
+
+    it("records explicit unknown settlement per turn and preserves it when a later turn starts", () => {
+      const startedAt = "2026-04-01T07:00:00.000Z";
+      const checkpointAt = "2026-04-01T07:00:10.000Z";
+      const threadWithRunningTurn: OrchestrationThread = {
+        ...baseThread,
+        latestTurn: {
+          turnId: TurnId.make("turn-1"),
+          state: "running",
+          requestedAt: startedAt,
+          startedAt,
+          completedAt: null,
+          assistantMessageId: null,
+        },
+        checkpoints: [
+          {
+            turnId: TurnId.make("turn-1"),
+            checkpointTurnCount: 1,
+            checkpointRef: CheckpointRef.make("checkpoint-1"),
+            status: "ready",
+            files: [],
+            assistantMessageId: null,
+            completedAt: checkpointAt,
+          },
+        ],
+      };
+
+      const recovered = applyThreadDetailEvent(threadWithRunningTurn, {
+        ...baseEventFields,
+        sequence: 12,
+        occurredAt: "2026-04-01T07:02:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.session-set",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "interrupted",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: "2026-04-01T07:02:00.000Z",
+          },
+          interruptedTurnId: TurnId.make("turn-1"),
+          latestTurnCompletedAt: null,
+        },
+      });
+      expect(recovered.kind).toBe("updated");
+      if (recovered.kind !== "updated") return;
+      expect(recovered.thread.settledTurnCompletions).toEqual({
+        [TurnId.make("turn-1")]: null,
+      });
+      expect(recovered.thread.checkpoints[0]?.completedAt).toBe(checkpointAt);
+
+      const next = applyThreadDetailEvent(recovered.thread, {
+        ...baseEventFields,
+        sequence: 13,
+        occurredAt: "2026-04-01T07:03:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.session-set",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "running",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: TurnId.make("turn-2"),
+            lastError: null,
+            updatedAt: "2026-04-01T07:03:00.000Z",
+          },
+        },
+      });
+      expect(next.kind).toBe("updated");
+      if (next.kind !== "updated") return;
+      expect(next.thread.settledTurnCompletions).toEqual({
+        [TurnId.make("turn-1")]: null,
+      });
     });
 
     it("updates session and latestTurn for a running session", () => {

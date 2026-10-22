@@ -5,6 +5,7 @@ import * as Scope from "effect/Scope";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
 import { makeCodexAgentRuntime } from "./AgentRuntime.ts";
+import { approvalServiceRequestCallbacks } from "./AgentRequestCallbacks.ts";
 import { ApprovalService } from "./ApprovalService.ts";
 import { LiveRequests } from "./LiveRequests.ts";
 import { AgentRuntimeFactory } from "./Dispatcher.ts";
@@ -62,21 +63,7 @@ const makeAgentRuntimeFactory = Effect.gen(function* () {
               ? { onChildSpawned: options.onChildSpawned }
               : {}),
             liveRequests,
-            recordRequest: (input) =>
-              approvalService
-                .recordPending({
-                  id: input.requestId,
-                  requestId: input.requestId,
-                  workItemId: input.workItemId,
-                  runAttemptId: input.runAttemptId,
-                  action: input.action,
-                  scope: "once",
-                  ...(input.command !== undefined ? { command: input.command } : {}),
-                })
-                .pipe(
-                  Effect.asVoid,
-                  Effect.catch(() => Effect.void),
-                ),
+            ...approvalServiceRequestCallbacks(approvalService),
           }).pipe(
             Effect.mapError(() => Effect.never as never),
             // Resolve the spawner at factory construction so the dispatcher's public

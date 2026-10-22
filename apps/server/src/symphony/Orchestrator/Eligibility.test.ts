@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { ProviderDriverKind, ProviderInstanceId } from "@neokod/contracts";
 import type { EffectiveWorkflowConfig, NormalizedIssue } from "@neokod/contracts";
 
-import { evaluateEligibility } from "./Eligibility.ts";
+import { evaluateEligibility, inferQueuedLifecycle } from "./Eligibility.ts";
 
 const makeConfig = (overrides: Partial<EffectiveWorkflowConfig> = {}): EffectiveWorkflowConfig =>
   ({
@@ -137,5 +137,25 @@ describe("evaluateEligibility", () => {
       dispatchPaused: false,
     });
     expect(result.eligible).toBe(true);
+  });
+});
+
+describe("inferQueuedLifecycle", () => {
+  it("returns ineligible when the rules fail and queued when they pass", () => {
+    const passing = evaluateEligibility({
+      config: makeConfig(),
+      issue: makeIssue(),
+      claimedIssueIds: new Set(),
+      dispatchPaused: false,
+    });
+    const failing = evaluateEligibility({
+      config: makeConfig(),
+      issue: makeIssue({ labels: [] }),
+      claimedIssueIds: new Set(),
+      dispatchPaused: false,
+    });
+
+    expect(inferQueuedLifecycle(makeIssue(), passing)).toBe("queued");
+    expect(inferQueuedLifecycle(makeIssue({ labels: [] }), failing)).toBe("ineligible");
   });
 });

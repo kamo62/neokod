@@ -13,6 +13,8 @@
 import type { OrchestrationCommand, OrchestrationEvent } from "@neokod/contracts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
+import type * as PubSub from "effect/PubSub";
+import type * as Scope from "effect/Scope";
 import type * as Stream from "effect/Stream";
 
 import type { OrchestrationDispatchError } from "../Errors.ts";
@@ -54,8 +56,23 @@ export interface OrchestrationEngineShape {
    * Stream persisted domain events in dispatch order.
    *
    * This is a hot runtime stream (new events only), not a historical replay.
+   * `Stream.fromPubSub` subscribes when the stream starts running, so a forked
+   * consumer can miss an event published before its fiber runs. Consumers that
+   * need readiness before returning should use `subscribeDomainEvents`.
    */
   readonly streamDomainEvents: Stream.Stream<OrchestrationEvent>;
+
+  /**
+   * Acquire a domain-event subscription synchronously in the caller's fiber.
+   * The subscription is released when the provided scope closes, and any event
+   * published after this effect returns is retained for the caller's consumer
+   * loop. Use with `Stream.fromSubscription`.
+   */
+  readonly subscribeDomainEvents: Effect.Effect<
+    PubSub.Subscription<OrchestrationEvent>,
+    never,
+    Scope.Scope
+  >;
 
   /**
    * The latest sequence reflected in the engine's authoritative command read
