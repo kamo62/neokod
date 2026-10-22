@@ -87,6 +87,12 @@ import { ServerConfig } from "../../../config.ts";
 
 const SCHEDULER_SCAN_INTERVAL = "5 seconds";
 
+// The board shows every active item (bounded so a runaway table cannot stall
+// the read) and the newest finished work, with exact counts from the same
+// snapshot so the two bounded slices can be described honestly.
+const BOARD_ACTIVE_LIMIT = 5_000;
+const BOARD_TERMINAL_LIMIT = 100;
+
 const ALL_WORK_LIFECYCLES = [
   "draft",
   "eligible",
@@ -1450,15 +1456,16 @@ const makeOrchestrator = Effect.gen(function* () {
     Effect.gen(function* () {
       const project = yield* projects.getById(projectId);
       if (project === null) return null;
-      const workItemsForProject = yield* workItems.listByLifecycle(ALL_WORK_LIFECYCLES, {
-        projectId,
-        limit: 1_000,
+      const result = yield* workItems.listForBoard(projectId, {
+        activeLimit: BOARD_ACTIVE_LIMIT,
+        terminalLimit: BOARD_TERMINAL_LIMIT,
       });
       const sourceControl = yield* resolveProjectSourceControl(project.repositoryPath);
       return projectBoardFromWorkItems({
         project,
         sourceControl,
-        workItems: workItemsForProject,
+        workItems: result.items,
+        lifecycleTotals: result.totalsByLifecycle,
         generatedAt: yield* nowIso,
       });
     });

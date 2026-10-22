@@ -727,6 +727,80 @@ layer("SymphonyOrchestrator Observe", (it) => {
     }),
   );
 
+  it.effect("getProjectBoard keeps all active items and the newest 100 finished items", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const sql = yield* SqlClient.SqlClient;
+      const projectId = SymphonyProjectId.make("project-board-coverage");
+      yield* orchestrator.createProject({
+        id: projectId,
+        codeProjectId: ProjectId.make("code-project-board-coverage"),
+        title: "Board coverage",
+        repositoryPath: "/repo/project-board-coverage",
+        configuration: makeProjectConfiguration(),
+        now: "2026-03-01T00:00:00.000Z",
+      });
+
+      const completedIds: Array<WorkItemId> = [];
+      const seed = (id: string, lifecycle: WorkItem["lifecycle"], updatedAt: string) =>
+        Effect.gen(function* () {
+          const workItemId = WorkItemId.make(id);
+          yield* workItems.upsert({
+            id: workItemId,
+            mode: "symphony",
+            projectId,
+            objective: id,
+            acceptanceCriteria: [],
+            source: { kind: "manual" },
+            trackerIssueId: id,
+            lifecycle,
+            priority: 1,
+            eligibilityReasons: [],
+            evidence: null,
+            createdAt: "2026-03-01T00:00:00.000Z",
+            updatedAt,
+          });
+          return workItemId;
+        });
+      for (let index = 0; index < 105; index++) {
+        const minutes = String(Math.floor(index / 60)).padStart(2, "0");
+        const seconds = String(index % 60).padStart(2, "0");
+        completedIds.push(
+          yield* seed(
+            `board-coverage-completed-${String(index).padStart(3, "0")}`,
+            "completed",
+            `2026-03-01T00:${minutes}:${seconds}.000Z`,
+          ),
+        );
+      }
+      yield* seed("board-coverage-queued-1", "queued", "2026-03-01T00:00:00.000Z");
+      yield* seed("board-coverage-queued-2", "queued", "2026-03-01T00:00:00.000Z");
+      yield* seed("board-coverage-queued-3", "queued", "2026-03-01T00:00:00.000Z");
+
+      const board = yield* orchestrator.getProjectBoard(projectId).pipe(
+        Effect.ensuring(
+          Effect.gen(function* () {
+            yield* sql`DELETE FROM symphony_work_items WHERE project_id = ${projectId}`.pipe(
+              Effect.ignore,
+            );
+            yield* sql`DELETE FROM symphony_workflows WHERE id = ${projectId}`.pipe(Effect.ignore);
+            yield* sql`DELETE FROM symphony_projects WHERE id = ${projectId}`.pipe(Effect.ignore);
+          }),
+        ),
+      );
+
+      const done = board?.columns.find((column) => column.id === "done");
+      const notStarted = board?.columns.find((column) => column.id === "not_started");
+      expect(done?.cards).toHaveLength(100);
+      expect(done?.totalCount).toBe(105);
+      expect(board?.truncated).toBe(true);
+      expect(done?.cards.some((card) => card.workItemId === completedIds[0])).toBe(false);
+      expect(done?.cards.some((card) => card.workItemId === completedIds[104])).toBe(true);
+      expect(notStarted?.totalCount).toBe(3);
+    }),
+  );
+
   it.effect("rolls back project writes when workflow synchronization fails", () =>
     Effect.gen(function* () {
       const orchestrator = yield* SymphonyOrchestrator;
