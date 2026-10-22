@@ -119,5 +119,9 @@ export function createSymphonyEnvironmentAtoms<R, E>(
       label: "environment-command:symphony:reject",
       tag: SYMPHONY_WS_METHODS.reject,
     }),
+    respondToUserInput: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:symphony:respondToUserInput",
+      tag: SYMPHONY_WS_METHODS.respondToUserInput,
+    }),
   };
 }

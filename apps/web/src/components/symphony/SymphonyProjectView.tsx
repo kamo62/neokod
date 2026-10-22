@@ -20,7 +20,7 @@ import {
   RefreshCwIcon,
   TriangleAlertIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
@@ -32,6 +32,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
+import { SymphonyAttentionList } from "./SymphonyAttentionList";
 import { SymphonyEmptyState } from "./SymphonyEmptyState";
 import {
   availableSymphonyImplementationProviders,
@@ -521,17 +522,19 @@ export function SymphonyProjectView({ projectId }: { readonly projectId: Symphon
             }))}
           />
         ) : null}
-        {tab === "attention" ? (
-          <SimpleList
+        {tab === "attention" && environmentId !== null ? (
+          <ListFrame
             title="Attention"
             loading={attentionQuery.isPending}
             error={attentionQuery.error}
-            rows={(attentionQuery.data ?? []).map((item) => ({
-              id: item.id,
-              title: item.kind.replaceAll("_", " "),
-              detail: item.recommendedResponse ?? item.whatHappened,
-            }))}
-          />
+            isEmpty={(attentionQuery.data ?? []).length === 0}
+          >
+            <SymphonyAttentionList
+              items={attentionQuery.data ?? []}
+              environmentId={environmentId}
+              onChanged={attentionQuery.refresh}
+            />
+          </ListFrame>
         ) : null}
         {tab === "history" ? (
           <SimpleList
@@ -550,6 +553,41 @@ export function SymphonyProjectView({ projectId }: { readonly projectId: Symphon
   );
 }
 
+function ListFrame({
+  title,
+  loading,
+  error,
+  isEmpty,
+  children,
+}: {
+  readonly title: string;
+  readonly loading: boolean;
+  readonly error: string | null;
+  readonly isEmpty: boolean;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="mx-auto max-w-4xl space-y-4 p-6 sm:p-8">
+      <h2 className="text-base font-semibold">{title}</h2>
+      {loading && isEmpty ? (
+        <Skeleton className="h-32 rounded-2xl" />
+      ) : error && isEmpty ? (
+        <SymphonyEmptyState
+          icon={TriangleAlertIcon}
+          title={`${title} unavailable`}
+          description={error}
+        />
+      ) : isEmpty ? (
+        <p className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+          Nothing here yet.
+        </p>
+      ) : (
+        children
+      )}
+    </div>
+  );
+}
+
 function SimpleList({
   title,
   loading,
@@ -562,30 +600,15 @@ function SimpleList({
   readonly rows: ReadonlyArray<{ id: string; title: string; detail: string }>;
 }) {
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-6 sm:p-8">
-      <h2 className="text-base font-semibold">{title}</h2>
-      {loading && rows.length === 0 ? (
-        <Skeleton className="h-32 rounded-2xl" />
-      ) : error && rows.length === 0 ? (
-        <SymphonyEmptyState
-          icon={TriangleAlertIcon}
-          title={`${title} unavailable`}
-          description={error}
-        />
-      ) : rows.length === 0 ? (
-        <p className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Nothing here yet.
-        </p>
-      ) : (
-        <div className="divide-y rounded-2xl border bg-card">
-          {rows.map((row) => (
-            <div key={row.id} className="px-4 py-3">
-              <p className="text-sm font-medium">{row.title}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{row.detail}</p>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+    <ListFrame title={title} loading={loading} error={error} isEmpty={rows.length === 0}>
+      <div className="divide-y rounded-2xl border bg-card">
+        {rows.map((row) => (
+          <div key={row.id} className="px-4 py-3">
+            <p className="text-sm font-medium">{row.title}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{row.detail}</p>
+          </div>
+        ))}
+      </div>
+    </ListFrame>
   );
 }
