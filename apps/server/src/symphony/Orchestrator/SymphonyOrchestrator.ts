@@ -5,6 +5,7 @@ import type {
   RunDetails,
   RunEvent,
   RunSummary,
+  SymphonyDispatchResult,
   SymphonyProject,
   SymphonyProjectBoard,
   SymphonyProjectConfiguration,
@@ -80,7 +81,7 @@ export interface SymphonyOrchestratorShape {
   ) => Effect.Effect<SymphonyProjectSourceControl | null>;
   readonly getProjectBoard: (
     projectId: SymphonyProjectId,
-  ) => Effect.Effect<SymphonyProjectBoard | null>;
+  ) => Effect.Effect<SymphonyProjectBoard | null, SymphonyPersistenceError>;
   /** The run's event timeline (subscribeRunEvents stream). */
   readonly listRunEvents: (runAttemptId: string) => Effect.Effect<RunEvent[]>;
   /** Open attention items: pending approvals and input requests. */
@@ -127,8 +128,7 @@ export interface SymphonyOrchestratorShape {
   // workflow autonomy is prepare/execute/deliver; observe never dispatches.
   readonly dispatchWorkItem: (
     workItemId: string,
-    options?: { readonly explicit?: boolean },
-  ) => Effect.Effect<void, never, Scope.Scope>;
+  ) => Effect.Effect<SymphonyDispatchResult, SymphonyPersistenceError>;
   readonly cancelRun: (runAttemptId: string) => Effect.Effect<void, never, Scope.Scope>;
 
   // Review lifecycle (Phase 5, plan 14): review actions with their own

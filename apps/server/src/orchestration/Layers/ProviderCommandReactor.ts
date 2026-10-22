@@ -2,6 +2,7 @@ import {
   type ChatAttachment,
   CommandId,
   EventId,
+  type MessageId,
   type ModelSelection,
   type OrchestrationEvent,
   ProviderDriverKind,
@@ -23,12 +24,18 @@ import * as FileSystem from "effect/FileSystem";
 import * as Equal from "effect/Equal";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@neokod/shared/DrainableWorker";
 
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
 import { increment, orchestrationEventsProcessedTotal } from "../../observability/Metrics.ts";
+import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
+import {
+  readWorkspaceIdentityEvidence,
+  workspaceIdentitiesMatch,
+} from "../../vcs/WorkspaceIdentity.ts";
 import { ProviderAdapterRequestError } from "../../provider/Errors.ts";
 import {
   ProviderSessionNotRecoverableError,
@@ -206,8 +213,10 @@ function buildGeneratedWorktreeBranchName(raw: string): string {
 const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
   const orchestrationEngine = yield* OrchestrationEngineService;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+  const projectionTurnRepository = yield* ProjectionTurnRepository;
   const providerService = yield* ProviderService;
   const providerRegistry = yield* ProviderRegistry;
   const gitWorkflow = yield* GitWorkflowService;
@@ -245,6 +254,7 @@ const make = Effect.gen(function* () {
     readonly turnId: TurnId | null;
     readonly createdAt: string;
     readonly requestId?: string;
+    readonly messageId?: MessageId;
   }) =>
     Effect.all({
       commandId: serverCommandId("provider-failure-activity"),
@@ -263,6 +273,7 @@ const make = Effect.gen(function* () {
             payload: {
               detail: input.detail,
               ...(input.requestId ? { requestId: input.requestId } : {}),
+              ...(input.messageId !== undefined ? { messageId: input.messageId } : {}),
             },
             turnId: input.turnId,
             createdAt: input.createdAt,
@@ -397,6 +408,24 @@ const make = Effect.gen(function* () {
       .pipe(Effect.map(Option.getOrUndefined));
   });
 
+  // Adapters may normalise a cwd (path.resolve, trailing separators) or
+  // canonicalise a symlink (realPath). Accept only affirmative same-folder
+  // identity, never a parent/child overlap or an unknown identity.
+  const sessionCwdMatchesAdmission = (sessionCwd: string | undefined, admittedCwd: string) =>
+    sessionCwd === undefined
+      ? Effect.succeed(false)
+      : Effect.all([
+          readWorkspaceIdentityEvidence(admittedCwd),
+          readWorkspaceIdentityEvidence(sessionCwd),
+        ]).pipe(
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+          Effect.map(
+            ([admitted, session]) => workspaceIdentitiesMatch(admitted, session) === "same",
+          ),
+          Effect.orElseSucceed(() => false),
+        );
+
   const rejectStartedThreadModelChangeIfRequired = Effect.fnUntraced(function* (input: {
     readonly threadId: ThreadId;
     readonly currentModelSelection: ModelSelection;
@@ -434,12 +463,30 @@ const make = Effect.gen(function* () {
     createdAt: string,
     options?: {
       readonly modelSelection?: ModelSelection;
+      readonly workspacePath?: string;
     },
   ) {
     const thread = yield* resolveThread(threadId);
     if (!thread) {
       return yield* Effect.die(new Error(`Thread '${threadId}' was not found in read model.`));
     }
+
+    const pendingStart = yield* projectionTurnRepository
+      .getPendingTurnStartByThreadId({ threadId })
+      .pipe(
+        Effect.mapError(
+          () =>
+            new ProviderAdapterRequestError({
+              provider: providerErrorLabel(String(thread.modelSelection.instanceId)),
+              method: "thread.turn.start",
+              detail:
+                "Neokod could not read the turn admission workspace, so the provider session was not changed.",
+            }),
+        ),
+      );
+    const pendingAdmittedWorkspacePath = Option.isSome(pendingStart)
+      ? pendingStart.value.admittedWorkspacePath
+      : null;
 
     const desiredRuntimeMode = thread.runtimeMode;
     const requestedModelSelection = options?.modelSelection;
@@ -545,11 +592,36 @@ const make = Effect.gen(function* () {
         });
       }
     }
-    const project = yield* resolveProject(thread.projectId);
-    const effectiveCwd = resolveThreadWorkspaceCwd({
-      thread,
-      projects: project ? [project] : [],
-    });
+    // An unresolved admission owns the workspace decision. Every caller,
+    // including runtime-mode changes, must not move or recreate the provider
+    // session outside that recorded folder while the start is still pending.
+    if (Option.isSome(pendingStart) && pendingAdmittedWorkspacePath === null) {
+      if (activeSession !== undefined) {
+        return activeSession.threadId;
+      }
+      return yield* new ProviderAdapterRequestError({
+        provider: providerErrorLabel(String(thread.modelSelection.instanceId)),
+        method: "thread.turn.start",
+        detail:
+          "This turn start has no recorded admission workspace, so the provider session was not created. Start the turn again.",
+      });
+    }
+
+    const admittedWorkspacePath =
+      Option.isSome(pendingStart) && pendingAdmittedWorkspacePath !== null
+        ? pendingAdmittedWorkspacePath
+        : undefined;
+    const project =
+      admittedWorkspacePath === undefined && options?.workspacePath === undefined
+        ? yield* resolveProject(thread.projectId)
+        : undefined;
+    const effectiveCwd =
+      admittedWorkspacePath ??
+      options?.workspacePath ??
+      resolveThreadWorkspaceCwd({
+        thread,
+        projects: project ? [project] : [],
+      });
 
     // Spawning into a directory that no longer exists fails with ENOENT, and
     // `isCommandMissingCause` reads any NotFound as a missing provider binary
@@ -708,6 +780,7 @@ const make = Effect.gen(function* () {
     readonly modelSelection?: ModelSelection;
     readonly interactionMode?: "default" | "plan";
     readonly createdAt: string;
+    readonly workspacePath: string;
   }) {
     const thread = yield* resolveThread(input.threadId);
     if (!thread) {
@@ -715,37 +788,46 @@ const make = Effect.gen(function* () {
         new Error(`Thread '${input.threadId}' was not found in read model.`),
       );
     }
-    yield* ensureSessionForThread(
-      input.threadId,
-      input.createdAt,
-      input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {},
-    );
+    yield* ensureSessionForThread(input.threadId, input.createdAt, {
+      ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
+      workspacePath: input.workspacePath,
+    });
     if (input.modelSelection !== undefined) {
       threadModelSelections.set(input.threadId, input.modelSelection);
     }
     const normalizedInput = toNonEmptyProviderInput(input.messageText);
     const normalizedAttachments = input.attachments ?? [];
-    const activeSession = yield* providerService
-      .listSessions()
-      .pipe(
-        Effect.map((sessions) => sessions.find((session) => session.threadId === input.threadId)),
-      );
+    const sessionCandidates = (yield* providerService.listSessions()).filter(
+      (session) => session.threadId === input.threadId,
+    );
+    const matchingSessions = yield* Effect.filter(
+      sessionCandidates,
+      (session) => sessionCwdMatchesAdmission(session.cwd, input.workspacePath),
+      { concurrency: 4 },
+    );
+    const activeSession = matchingSessions.at(-1);
+    if (activeSession === undefined) {
+      return yield* new ProviderAdapterRequestError({
+        provider: providerErrorLabel(String(thread.modelSelection.instanceId)),
+        method: "thread.turn.start",
+        detail:
+          "The provider session is not in the admitted workspace, so the turn was not sent. Start the turn again.",
+      });
+    }
     const sessionModelSwitch =
-      activeSession === undefined
-        ? "in-session"
-        : activeSession.providerInstanceId === undefined
-          ? yield* new ProviderAdapterRequestError({
-              provider: providerErrorLabel(activeSession.provider),
-              method: "thread.turn.start",
-              detail: `Active provider session '${activeSession.threadId}' is missing a provider instance id.`,
-            })
-          : (yield* providerService.getCapabilities(activeSession.providerInstanceId))
-              .sessionModelSwitch;
+      activeSession.providerInstanceId === undefined
+        ? yield* new ProviderAdapterRequestError({
+            provider: providerErrorLabel(activeSession.provider),
+            method: "thread.turn.start",
+            detail: `Active provider session '${activeSession.threadId}' is missing a provider instance id.`,
+          })
+        : (yield* providerService.getCapabilities(activeSession.providerInstanceId))
+            .sessionModelSwitch;
     const requestedModelSelection =
       input.modelSelection ?? threadModelSelections.get(input.threadId) ?? thread.modelSelection;
     const modelForTurn =
       sessionModelSwitch === "unsupported" && input.modelSelection === undefined
-        ? activeSession?.model !== undefined
+        ? activeSession.model !== undefined
           ? {
               ...requestedModelSelection,
               model: activeSession.model,
@@ -872,6 +954,26 @@ const make = Effect.gen(function* () {
 
     const thread = yield* resolveThread(event.payload.threadId);
     if (!thread) {
+      // Archived and deleted threads are excluded from the detailed read used
+      // above. The start was already admitted, so settle its pending row
+      // explicitly instead of leaving every later revert blocked.
+      yield* appendProviderFailureActivity({
+        threadId: event.payload.threadId,
+        kind: "provider.turn.start.failed",
+        summary: "Provider turn start skipped",
+        detail: "Thread was archived or deleted before the turn start was processed.",
+        turnId: null,
+        createdAt: event.payload.createdAt,
+        messageId: event.payload.messageId,
+      }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("provider command reactor failed to settle skipped turn start", {
+            eventType: event.type,
+            threadId: event.payload.threadId,
+            cause: Cause.pretty(cause),
+          }),
+        ),
+      );
       return;
     }
 
@@ -884,19 +986,73 @@ const make = Effect.gen(function* () {
         detail: `User message '${event.payload.messageId}' was not found for turn start request.`,
         turnId: null,
         createdAt: event.payload.createdAt,
+        messageId: event.payload.messageId,
       });
       return;
     }
 
+    const pendingStart = yield* projectionTurnRepository
+      .getPendingTurnStartByThreadId({ threadId: event.payload.threadId })
+      .pipe(Effect.option);
+    if (Option.isNone(pendingStart)) {
+      yield* appendProviderFailureActivity({
+        threadId: event.payload.threadId,
+        kind: "provider.turn.start.failed",
+        summary: "Provider turn start failed",
+        detail:
+          "The turn start admission workspace could not be read, so the provider was not started. Retry the turn.",
+        turnId: null,
+        createdAt: event.payload.createdAt,
+        messageId: event.payload.messageId,
+      });
+      return;
+    }
+    if (Option.isNone(pendingStart.value)) {
+      yield* appendProviderFailureActivity({
+        threadId: event.payload.threadId,
+        kind: "provider.turn.start.failed",
+        summary: "Provider turn start failed",
+        detail:
+          "No pending admission was found for this turn start, so the provider was not started. Start the turn again.",
+        turnId: null,
+        createdAt: event.payload.createdAt,
+        messageId: event.payload.messageId,
+      });
+      return;
+    }
+    const pendingAdmission = pendingStart.value.value;
+    if (pendingAdmission.messageId !== event.payload.messageId) {
+      yield* appendProviderFailureActivity({
+        threadId: event.payload.threadId,
+        kind: "provider.turn.start.failed",
+        summary: "Provider turn start failed",
+        detail:
+          "The pending admission does not belong to this turn start, so the provider was not started. Start the turn again.",
+        turnId: null,
+        createdAt: event.payload.createdAt,
+        messageId: event.payload.messageId,
+      });
+      return;
+    }
+    if (pendingAdmission.admittedWorkspacePath === null) {
+      yield* appendProviderFailureActivity({
+        threadId: event.payload.threadId,
+        kind: "provider.turn.start.failed",
+        summary: "Provider turn start failed",
+        detail:
+          "This turn start has no recorded admission workspace (legacy admission), so the provider was not started. Start the turn again.",
+        turnId: null,
+        createdAt: event.payload.createdAt,
+        messageId: event.payload.messageId,
+      });
+      return;
+    }
+    const admissionWorkspacePath = pendingAdmission.admittedWorkspacePath;
+
     const isFirstUserMessageTurn =
       thread.messages.filter((entry) => entry.role === "user").length === 1;
     if (isFirstUserMessageTurn) {
-      const project = yield* resolveProject(thread.projectId);
-      const generationCwd =
-        resolveThreadWorkspaceCwd({
-          thread,
-          projects: project ? [project] : [],
-        }) ?? process.cwd();
+      const generationCwd = admissionWorkspacePath;
       const generationInput = {
         messageText: message.text,
         ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
@@ -906,7 +1062,9 @@ const make = Effect.gen(function* () {
       yield* maybeGenerateAndRenameWorktreeBranchForFirstTurn({
         threadId: event.payload.threadId,
         branch: thread.branch,
-        worktreePath: thread.worktreePath,
+        // Worktree eligibility comes from the thread metadata. The admitted
+        // workspace only supplies the execution path for a managed worktree.
+        worktreePath: thread.worktreePath === null ? null : admissionWorkspacePath,
         ...generationInput,
       }).pipe(Effect.forkScoped);
 
@@ -942,6 +1100,7 @@ const make = Effect.gen(function* () {
                 detail,
                 turnId: null,
                 createdAt: event.payload.createdAt,
+                messageId: event.payload.messageId,
               }),
             ),
             Effect.asVoid,
@@ -971,6 +1130,7 @@ const make = Effect.gen(function* () {
         : {}),
       interactionMode: event.payload.interactionMode,
       createdAt: event.payload.createdAt,
+      workspacePath: admissionWorkspacePath,
     }).pipe(
       Effect.map(Option.some),
       Effect.catchCause((cause) => handleTurnStartFailure(cause).pipe(Effect.as(Option.none()))),

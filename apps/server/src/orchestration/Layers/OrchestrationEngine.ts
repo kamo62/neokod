@@ -36,6 +36,7 @@ import {
 import { toPersistenceSqlError } from "../../persistence/Errors.ts";
 import { OrchestrationEventStore } from "../../persistence/Services/OrchestrationEventStore.ts";
 import { OrchestrationCommandReceiptRepository } from "../../persistence/Services/OrchestrationCommandReceipts.ts";
+import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import {
   OrchestrationCommandIdReusedError,
   OrchestrationCommandInvariantError,
@@ -89,6 +90,7 @@ const makeOrchestrationEngine = Effect.gen(function* () {
   const commandReceiptRepository = yield* OrchestrationCommandReceiptRepository;
   const projectionPipeline = yield* OrchestrationProjectionPipeline;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+  const projectionTurnRepository = yield* ProjectionTurnRepository;
   const crypto = yield* Crypto.Crypto;
   const worktreeRemovalLease = yield* WorktreeRemovalLease;
 
@@ -169,6 +171,21 @@ const makeOrchestrationEngine = Effect.gen(function* () {
         }
 
         const commitAdmission = Effect.gen(function* () {
+          // A pending admission is the workspace evidence the revert guard
+          // uses. Starting another turn would replace that row, so refuse
+          // until the earlier start has authority to settle.
+          if (envelope.command.type === "thread.turn.start") {
+            const pendingStart = yield* projectionTurnRepository.getPendingTurnStartByThreadId({
+              threadId: envelope.command.threadId,
+            });
+            if (Option.isSome(pendingStart)) {
+              return yield* new OrchestrationCommandInvariantError({
+                commandType: envelope.command.type,
+                detail: `Thread '${envelope.command.threadId}' already has an unresolved turn start. Wait for it to start or settle before starting another turn.`,
+              });
+            }
+          }
+
           const eventBase = yield* decideOrchestrationCommand({
             command: envelope.command,
             readModel: commandReadModel,

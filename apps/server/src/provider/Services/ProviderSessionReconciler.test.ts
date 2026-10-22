@@ -19,6 +19,7 @@ import * as OrchestrationEngine from "../../orchestration/Services/Orchestration
 import * as ProjectionSnapshotQuery from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ProviderService from "../Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "../Services/ProviderSessionDirectory.ts";
+import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import {
   HOST_LOST_SESSION_ERROR,
   planProviderSessionReconciliation,
@@ -26,6 +27,10 @@ import {
 } from "./ProviderSessionReconciler.ts";
 import { orphanPossible, stopFailed, stoppedConfirmed } from "../providerStopOutcome.ts";
 import { ProviderSessionReconcilerLive } from "../Layers/ProviderSessionReconciler.ts";
+
+const emptyPendingStartsLayer = Layer.succeed(ProjectionTurnRepository, {
+  listPendingTurnStarts: () => Effect.succeed([]),
+} as unknown as ProjectionTurnRepository["Service"]);
 
 const threadId = ThreadId.make("thread-reconcile");
 const turnId = TurnId.make("turn-reconcile");
@@ -537,6 +542,7 @@ it.effect("dispatches terminal-turn settlement as a thread.session.set command",
           listSessions: () => Effect.succeed([]),
         } as unknown as ProviderService.ProviderService["Service"]),
       ),
+      Layer.provideMerge(emptyPendingStartsLayer),
       Layer.provideMerge(NodeServices.layer),
     );
 
@@ -602,6 +608,7 @@ it.effect("settles a crashed running binding before dispatching the session", ()
           listSessions: () => Effect.succeed([]),
         } as unknown as ProviderService.ProviderService["Service"]),
       ),
+      Layer.provideMerge(emptyPendingStartsLayer),
       Layer.provideMerge(NodeServices.layer),
     );
 
@@ -688,6 +695,7 @@ it.effect("dispatches an explicitly unknown completion when no turn observation 
           listSessions: () => Effect.succeed([]),
         } as unknown as ProviderService.ProviderService["Service"]),
       ),
+      Layer.provideMerge(emptyPendingStartsLayer),
       Layer.provideMerge(NodeServices.layer),
     );
 
@@ -754,6 +762,7 @@ it.effect("repairs only the session when the host_lost binding write already sur
           listSessions: () => Effect.succeed([]),
         } as unknown as ProviderService.ProviderService["Service"]),
       ),
+      Layer.provideMerge(emptyPendingStartsLayer),
       Layer.provideMerge(NodeServices.layer),
     );
 

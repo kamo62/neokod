@@ -33,8 +33,7 @@ const SYMPHONY_NAV_ITEMS: readonly SymphonyNavItem[] = [
 
 // Mirrors the lifecycle set the orchestrator counts toward `overview.running`
 // (apps/server/src/symphony/Orchestrator/Layers/SymphonyOrchestratorLive.ts
-// listByLifecycle(["preparing", "running", "waiting_for_approval"])), so the
-// "Active runs" list below lines up with the Running row's badge count.
+// listByLifecycle(["preparing", "running", "waiting_for_approval"])).
 const ACTIVE_RUN_LIFECYCLES = new Set(["preparing", "running", "waiting_for_approval"]);
 const MAX_ACTIVE_RUNS_SHOWN = 5;
 
@@ -53,8 +52,7 @@ export function SymphonySidebarNav({ pathname }: { pathname: string }) {
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
   const environmentId = usePrimaryEnvironmentId();
-  // Same query (same environmentId + input) the Running view issues, so this
-  // shares that atom's cache entry instead of triggering a second fetch.
+  // Orchestrator-wide run list backing the active-runs summary below.
   const runsQuery = useEnvironmentQuery(
     environmentId === null ? null : symphonyEnvironment.runs({ environmentId, input: {} }),
   );

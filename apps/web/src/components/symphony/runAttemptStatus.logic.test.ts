@@ -1,7 +1,7 @@
 import type { RunAttemptStatus } from "@neokod/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { runAttemptStatusBadgeVariant } from "./SymphonyRunningView.logic";
+import { runAttemptStatusBadgeVariant } from "./runAttemptStatus.logic";
 
 const ALL_STATUSES = [
   "preparing_workspace",

@@ -50,6 +50,17 @@ export function admissionWorkspacePaths(
         preparedWorktreePaths: [],
       };
     }
+    case "thread.turn.start": {
+      const thread = readModel.threads.find((candidate) => candidate.id === command.threadId);
+      if (!thread) {
+        return { workspacePaths: [], preparedWorktreePaths: [] };
+      }
+      const workspacePath = thread.worktreePath ?? projectWorkspaceRoot(thread.projectId);
+      return {
+        workspacePaths: workspacePath === null ? [] : [workspacePath],
+        preparedWorktreePaths: [],
+      };
+    }
     default:
       return { workspacePaths: [], preparedWorktreePaths: [] };
   }

@@ -69,12 +69,12 @@ export const evaluateEligibility = (input: EligibilityInput): EligibilityResult 
 };
 
 /**
- * Projection of an eligible issue into the queued lifecycle. Ineligible issues
- * stay in `eligible` lifecycle but carry their ineligibility reasons so the
- * Queue view can show why each item is not dispatchable (PRD 18.3: "understand
- * why an issue is not eligible without reading logs").
+ * Projection of an eligible issue into the queued lifecycle. Issues that fail
+ * the rules are stored as `ineligible` and carry their reasons so the Queue
+ * view can show why each item is not dispatchable (PRD 18.3: "understand why
+ * an issue is not eligible without reading logs").
  */
 export const inferQueuedLifecycle = (
   issue: NormalizedIssue,
   result: EligibilityResult,
-): "queued" | "eligible" => (result.eligible ? "queued" : "eligible");
+): "queued" | "ineligible" => (result.eligible ? "queued" : "ineligible");

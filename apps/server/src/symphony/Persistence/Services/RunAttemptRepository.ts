@@ -1,4 +1,10 @@
-import type { RunAttempt, RunAttemptId, RunAttemptStatus, WorkItemId } from "@neokod/contracts";
+import type {
+  RunAttempt,
+  RunAttemptId,
+  RunAttemptStatus,
+  SymphonyProjectId,
+  WorkItemId,
+} from "@neokod/contracts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 
@@ -23,6 +29,13 @@ export interface RunAttemptRepositoryShape {
   readonly latestForWorkItem: (
     workItemId: WorkItemId,
   ) => Effect.Effect<RunAttempt | null, SymphonyPersistenceError>;
+  /** Latest attempt id for every work item in a project, in one read. */
+  readonly latestIdsForProject: (
+    projectId: SymphonyProjectId,
+  ) => Effect.Effect<
+    ReadonlyArray<{ readonly workItemId: WorkItemId; readonly runAttemptId: RunAttemptId }>,
+    SymphonyPersistenceError
+  >;
   /** Most recent attempts across all work items, newest first. */
   readonly listRecent: (options?: {
     readonly limit?: number;

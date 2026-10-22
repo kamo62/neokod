@@ -24,14 +24,17 @@ const layer = it.layer(
   ),
 );
 
-const seedWorkItem = (workItemId: string) =>
+const seedWorkItem = (
+  workItemId: string,
+  projectId: SymphonyProjectId = SymphonyProjectId.make("run-attempt-project"),
+) =>
   Effect.gen(function* () {
     const repo = yield* WorkItemRepository;
     const now = yield* nowIso;
     yield* repo.upsert({
       id: WorkItemId.make(workItemId),
       mode: "symphony",
-      projectId: SymphonyProjectId.make("run-attempt-project"),
+      projectId,
       objective: "Seed work item",
       acceptanceCriteria: [],
       source: { kind: "github", externalId: workItemId, externalUrl: "https://example.test" },
@@ -97,6 +100,37 @@ layer("RunAttemptRepository", (it) => {
 
       const latest = yield* repo.latestForWorkItem(WorkItemId.make("wi-2"));
       expect(latest?.attemptNumber).toBe(2);
+    }),
+  );
+
+  it.effect("latestIdsForProject returns the newest attempt of each item in one project", () =>
+    Effect.gen(function* () {
+      const repo = yield* RunAttemptRepository;
+      const projectId = SymphonyProjectId.make("run-attempt-project-latest");
+      yield* seedWorkItem("wi-lp-a", projectId);
+      yield* seedWorkItem("wi-lp-b", projectId);
+      yield* seedWorkItem("wi-lp-other", SymphonyProjectId.make("other-project"));
+      yield* repo.create(yield* makeAttempt("run-lp-a1", "wi-lp-a", 1));
+      yield* repo.create(yield* makeAttempt("run-lp-a2", "wi-lp-a", 2));
+      yield* repo.create(yield* makeAttempt("run-lp-b1", "wi-lp-b", 1));
+      yield* repo.create(yield* makeAttempt("run-lp-other1", "wi-lp-other", 1));
+
+      const latest = yield* repo.latestIdsForProject(projectId);
+
+      expect(
+        [...latest].sort((left, right) =>
+          String(left.workItemId).localeCompare(String(right.workItemId)),
+        ),
+      ).toEqual([
+        {
+          workItemId: WorkItemId.make("wi-lp-a"),
+          runAttemptId: RunAttemptId.make("run-lp-a2"),
+        },
+        {
+          workItemId: WorkItemId.make("wi-lp-b"),
+          runAttemptId: RunAttemptId.make("run-lp-b1"),
+        },
+      ]);
     }),
   );
 

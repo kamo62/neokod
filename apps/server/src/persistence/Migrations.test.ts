@@ -9,6 +9,7 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
+import { ProjectionTurnRepositoryLive } from "./Layers/ProjectionTurns.ts";
 import { ProviderSessionReconcilerLive } from "../provider/Layers/ProviderSessionReconciler.ts";
 import {
   HOST_LOST_SESSION_ERROR,
@@ -617,6 +618,7 @@ it.effect("recovers a legacy interrupted turn whose session still reports it run
           const reconciler = yield* ProviderSessionReconciler.pipe(
             Effect.provide(
               ProviderSessionReconcilerLive.pipe(
+                Layer.provideMerge(ProjectionTurnRepositoryLive),
                 Layer.provideMerge(Layer.succeed(ProjectionSnapshotQuery, query)),
                 Layer.provideMerge(
                   Layer.succeed(OrchestrationEngineService, {

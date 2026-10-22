@@ -205,7 +205,7 @@ export type WorkSource = typeof WorkSourceSchema.Type;
 
 export const WorkLifecycleSchema = Schema.Literals([
   "draft",
-  "eligible",
+  "ineligible",
   "queued",
   "preparing",
   "running",
@@ -982,6 +982,8 @@ export const SymphonyBoardCardSchema = Schema.Struct({
   outcome: Schema.NullOr(Schema.Literals(["completed", "cancelled", "failed"])),
   priority: Schema.optional(Schema.Int),
   issueUrl: Schema.optional(Schema.String),
+  eligibilityReasons: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  latestRunAttemptId: Schema.optional(RunAttemptId),
   updatedAt: IsoDateTime,
 });
 export type SymphonyBoardCard = typeof SymphonyBoardCardSchema.Type;
@@ -1332,4 +1334,30 @@ export const SymphonyProjectBoardStreamEvent = Schema.Union([
 ]);
 
 export const SymphonyEmptyResult = Schema.Struct({ ok: Schema.Boolean });
+
+export const SymphonyDispatchRefusalReasonSchema = Schema.Literals([
+  "not_leader",
+  "not_found",
+  "already_running",
+  "not_dispatchable",
+  "paused",
+  "excluded",
+  "ineligible",
+  "no_workflow",
+  "observe_only",
+  "concurrency_cap",
+  "tracker_refresh_failed",
+]);
+export type SymphonyDispatchRefusalReason = typeof SymphonyDispatchRefusalReasonSchema.Type;
+
+export const SymphonyDispatchResultSchema = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("started") }),
+  Schema.Struct({
+    status: Schema.Literal("refused"),
+    reason: SymphonyDispatchRefusalReasonSchema,
+    detail: Schema.optional(Schema.String),
+  }),
+]);
+export type SymphonyDispatchResult = typeof SymphonyDispatchResultSchema.Type;
+
 export const SymphonyWorkItemResult = Schema.Struct({ workItemId: WorkItemId });

@@ -3316,6 +3316,166 @@ it.effect("restores pending turn-start metadata across projection pipeline resta
   ),
 );
 
+it.effect("does not resurrect a rejected pending admission after repeated bootstrap", () =>
+  Effect.gen(function* () {
+    const { dbPath } = yield* ServerConfig;
+    const persistenceLayer = makeSqlitePersistenceLive(dbPath);
+    const projectionLayer = OrchestrationProjectionPipelineLive.pipe(
+      Layer.provideMerge(OrchestrationEventStoreLive),
+      Layer.provideMerge(persistenceLayer),
+    );
+
+    const threadId = ThreadId.make("thread-rejected-restart");
+    const messageId = MessageId.make("message-rejected-restart");
+    const createdAt = "2026-03-01T00:00:00.000Z";
+
+    yield* Effect.gen(function* () {
+      const eventStore = yield* OrchestrationEventStore;
+      const projectionPipeline = yield* OrchestrationProjectionPipeline;
+
+      yield* eventStore.append({
+        type: "thread.turn-start-requested",
+        eventId: EventId.make("evt-rejected-restart-start"),
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        occurredAt: createdAt,
+        commandId: CommandId.make("cmd-rejected-restart-start"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-rejected-restart-start"),
+        metadata: {},
+        payload: {
+          threadId,
+          messageId,
+          runtimeMode: "approval-required",
+          createdAt,
+        },
+      });
+      yield* eventStore.append({
+        type: "thread.activity-appended",
+        eventId: EventId.make("evt-rejected-restart-failed"),
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        occurredAt: "2026-03-01T00:00:01.000Z",
+        commandId: CommandId.make("cmd-rejected-restart-failed"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-rejected-restart-failed"),
+        metadata: {},
+        payload: {
+          threadId,
+          activity: {
+            id: EventId.make("evt-rejected-restart-failed-activity"),
+            tone: "error",
+            kind: "provider.turn.start.failed",
+            summary: "Provider turn start failed",
+            payload: { messageId, detail: "provider unavailable" },
+            turnId: null,
+            createdAt: "2026-03-01T00:00:01.000Z",
+          },
+        },
+      });
+
+      yield* projectionPipeline.bootstrap;
+
+      const sql = yield* SqlClient.SqlClient;
+      const pendingRows = yield* sql<{ readonly threadId: string }>`
+        SELECT thread_id AS "threadId"
+        FROM projection_turns
+        WHERE thread_id = ${threadId}
+          AND turn_id IS NULL
+          AND state = 'pending'
+      `;
+      assert.deepEqual(pendingRows, []);
+    }).pipe(Effect.provide(projectionLayer));
+
+    yield* Effect.gen(function* () {
+      const projectionPipeline = yield* OrchestrationProjectionPipeline;
+      yield* projectionPipeline.bootstrap;
+
+      const sql = yield* SqlClient.SqlClient;
+      const pendingRows = yield* sql<{ readonly threadId: string }>`
+        SELECT thread_id AS "threadId"
+        FROM projection_turns
+        WHERE thread_id = ${threadId}
+          AND turn_id IS NULL
+          AND state = 'pending'
+      `;
+      assert.deepEqual(pendingRows, []);
+    }).pipe(Effect.provide(projectionLayer));
+  }).pipe(
+    Effect.provide(
+      Layer.provideMerge(
+        ServerConfig.layerTest(process.cwd(), {
+          prefix: "neokod-projection-pipeline-rejected-replay-",
+        }),
+        NodeServices.layer,
+      ),
+    ),
+  ),
+);
+
+it.effect("clears only the pending admission named by the failure activity", () =>
+  Effect.gen(function* () {
+    const eventStore = yield* OrchestrationEventStore;
+    const projectionPipeline = yield* OrchestrationProjectionPipeline;
+    const sql = yield* SqlClient.SqlClient;
+    const threadId = ThreadId.make("thread-message-fence");
+    const olderMessageId = MessageId.make("message-older-admission");
+    const newerMessageId = MessageId.make("message-newer-admission");
+    const createdAt = "2026-03-02T00:00:00.000Z";
+
+    yield* sql`
+      INSERT INTO projection_turns (
+        thread_id, turn_id, pending_message_id, state, requested_at,
+        checkpoint_files_json
+      ) VALUES
+        (
+          ${threadId}, NULL, ${olderMessageId}, 'pending',
+          ${createdAt}, '[]'
+        ),
+        (
+          ${threadId}, NULL, ${newerMessageId}, 'pending',
+          ${createdAt}, '[]'
+        )
+    `;
+
+    yield* eventStore.append({
+      type: "thread.activity-appended",
+      eventId: EventId.make("evt-message-fence-failed"),
+      aggregateKind: "thread",
+      aggregateId: threadId,
+      occurredAt: createdAt,
+      commandId: CommandId.make("cmd-message-fence-failed"),
+      causationEventId: null,
+      correlationId: CorrelationId.make("cmd-message-fence-failed"),
+      metadata: {},
+      payload: {
+        threadId,
+        activity: {
+          id: EventId.make("activity-message-fence-failed"),
+          tone: "error",
+          kind: "provider.turn.start.failed",
+          summary: "Provider turn start failed",
+          payload: { messageId: olderMessageId, detail: "provider unavailable" },
+          turnId: null,
+          createdAt,
+        },
+      },
+    });
+
+    yield* projectionPipeline.bootstrap;
+
+    const pendingRows = yield* sql<{ readonly messageId: string }>`
+      SELECT pending_message_id AS "messageId"
+      FROM projection_turns
+      WHERE thread_id = ${threadId}
+        AND turn_id IS NULL
+        AND state = 'pending'
+      ORDER BY pending_message_id ASC
+    `;
+    assert.deepEqual(pendingRows, [{ messageId: newerMessageId }]);
+  }).pipe(Effect.provide(BaseTestLayer)),
+);
+
 const engineLayer = it.layer(
   OrchestrationEngineLive.pipe(
     Layer.provide(OrchestrationProjectionSnapshotQueryLive),

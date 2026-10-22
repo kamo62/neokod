@@ -126,6 +126,20 @@ export function buildThreadTurnInterruptInput(thread: Pick<Thread, "id" | "sessi
   };
 }
 
+/**
+ * Confirmation copy for a checkpoint revert. Revert resets files for the whole
+ * folder, not just this thread's chat, so the copy must say what is lost and
+ * what is preserved.
+ */
+export function buildRevertCheckpointConfirmMessage(turnCount: number): string {
+  return [
+    `Revert this thread to checkpoint ${turnCount}?`,
+    "Files: the folder this thread works in is reset to how it was after that turn. Edited files go back, and files created later are deleted unless git ignores them. Staged changes become unstaged. This covers every change made in that folder since then, including changes made by other threads or by you.",
+    "Chat: newer messages and turn diffs in this thread are discarded and cannot be restored.",
+    "Git history and branches are not changed. A snapshot of the current files is saved first under refs/neokod/recovery/ in the repository, so they can be recovered with git.",
+  ].join("\n");
+}
+
 export function reconcileMountedTerminalThreadIds(input: {
   currentThreadIds: ReadonlyArray<string>;
   openThreadIds: ReadonlyArray<string>;

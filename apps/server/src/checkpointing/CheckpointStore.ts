@@ -31,6 +31,11 @@ export interface RestoreCheckpointInput {
   readonly cwd: string;
   readonly checkpointRef: CheckpointRef;
   readonly fallbackToHead?: boolean;
+  /**
+   * Untracked paths ignored immediately before the restore. The clean step
+   * must not delete them even if restoring the tree changes the ignore rules.
+   */
+  readonly preserveIgnoredPaths?: ReadonlyArray<string>;
 }
 
 export interface DiffCheckpointsInput {

@@ -9,6 +9,8 @@ import {
   ProviderRuntimeEvent,
   ProviderSession,
   ProviderInstanceId,
+  TextGenerationError,
+  VcsProcessExitError,
 } from "@neokod/contracts";
 import {
   CommandId,
@@ -20,14 +22,17 @@ import {
   TurnId,
 } from "@neokod/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
+import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import * as CheckpointStore from "../../checkpointing/CheckpointStore.ts";
@@ -36,6 +41,7 @@ import * as VcsProcess from "../../vcs/VcsProcess.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
 import { CheckpointReactorLive } from "./CheckpointReactor.ts";
+import { ProviderCommandReactorLive } from "./ProviderCommandReactor.ts";
 import { WorktreeRemovalLeaseLive } from "../../git/WorktreeRemovalLease.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
@@ -44,18 +50,24 @@ import { RuntimeReceiptBusLive } from "./RuntimeReceiptBus.ts";
 import { OrchestrationEventStoreLive } from "../../persistence/Layers/OrchestrationEventStore.ts";
 import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Layers/OrchestrationCommandReceipts.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
+import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import {
   OrchestrationEngineService,
   type OrchestrationEngineShape,
 } from "../Services/OrchestrationEngine.ts";
 import { CheckpointReactor } from "../Services/CheckpointReactor.ts";
+import { ProviderCommandReactor } from "../Services/ProviderCommandReactor.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import {
   ProviderService,
   type ProviderServiceShape,
 } from "../../provider/Services/ProviderService.ts";
-import { checkpointRefForThreadTurn } from "../../checkpointing/Utils.ts";
+import { RECOVERY_REFS_PREFIX, checkpointRefForThreadTurn } from "../../checkpointing/Utils.ts";
 import { ServerConfig } from "../../config.ts";
+import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
+import { makeProviderRegistryLayer } from "../../provider/testUtils/providerRegistryMock.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
+import { TextGeneration } from "../../textGeneration/TextGeneration.ts";
 import * as WorkspaceEntries from "../../workspace/WorkspaceEntries.ts";
 import * as WorkspacePaths from "../../workspace/WorkspacePaths.ts";
 
@@ -80,6 +92,14 @@ function createProviderServiceHarness(
   hasSession = true,
   sessionCwd = cwd,
   providerName: ProviderSession["provider"] = ProviderDriverKind.make("codex"),
+  extraSessions: ReadonlyArray<ProviderSession> = [],
+  listSessionsFailure = false,
+  sessionActiveTurnId?: string,
+  overrides?: {
+    readonly startSession?: ProviderServiceShape["startSession"];
+    readonly sendTurn?: ProviderServiceShape["sendTurn"];
+    readonly listSessions?: ProviderServiceShape["listSessions"];
+  },
 ) {
   const now = "2026-01-01T00:00:00.000Z";
   const runtimeEventPubSub = Effect.runSync(PubSub.unbounded<ProviderRuntimeEvent>());
@@ -89,29 +109,35 @@ function createProviderServiceHarness(
 
   const unsupported = <A>() =>
     Effect.die(new Error("Unsupported provider call in test")) as Effect.Effect<A, never>;
+  const baseSessions: ReadonlyArray<ProviderSession> = hasSession
+    ? [
+        {
+          provider: providerName,
+          status: "ready",
+          runtimeMode: "full-access",
+          threadId: ThreadId.make("thread-1"),
+          cwd: sessionCwd,
+          ...(sessionActiveTurnId !== undefined
+            ? { activeTurnId: TurnId.make(sessionActiveTurnId) }
+            : {}),
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]
+    : [];
   const listSessions = () =>
-    hasSession
-      ? Effect.succeed([
-          {
-            provider: providerName,
-            status: "ready",
-            runtimeMode: "full-access",
-            threadId: ThreadId.make("thread-1"),
-            cwd: sessionCwd,
-            createdAt: now,
-            updatedAt: now,
-          },
-        ] satisfies ReadonlyArray<ProviderSession>)
-      : Effect.succeed([] as ReadonlyArray<ProviderSession>);
+    listSessionsFailure
+      ? Effect.die(new Error("provider session list unavailable"))
+      : Effect.succeed([...baseSessions, ...extraSessions]);
   const service: ProviderServiceShape = {
-    startSession: () => unsupported(),
-    sendTurn: () => unsupported(),
+    startSession: overrides?.startSession ?? (() => unsupported()),
+    sendTurn: overrides?.sendTurn ?? (() => unsupported()),
     interruptTurn: () => unsupported(),
     respondToRequest: () => unsupported(),
     respondToUserInput: () => unsupported(),
     stopSession: () => unsupported(),
     stopAllSessions: () => unsupported(),
-    listSessions,
+    listSessions: overrides?.listSessions ?? listSessions,
     getCapabilities: () => Effect.succeed({ sessionModelSwitch: "in-session" }),
     getInstanceInfo: (instanceId) =>
       Effect.succeed({
@@ -141,30 +167,50 @@ function createProviderServiceHarness(
   };
 }
 
-async function waitForThread(
+function providerSessionForStart(
+  threadId: ThreadId,
+  input: Parameters<ProviderServiceShape["startSession"]>[1],
+): ProviderSession {
+  return {
+    provider: input.provider ?? ProviderDriverKind.make("codex"),
+    ...(input.providerInstanceId !== undefined
+      ? { providerInstanceId: input.providerInstanceId }
+      : {}),
+    status: "ready" as const,
+    runtimeMode: input.runtimeMode,
+    ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+    ...(input.modelSelection?.model !== undefined ? { model: input.modelSelection.model } : {}),
+    threadId,
+    resumeCursor: { opaque: "resume-checkpoint-test" },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+type ThreadActivitySummary = {
+  readonly kind: string;
+  readonly turnId?: string | null;
+  readonly payload?: unknown;
+};
+
+type ThreadStateSummary = {
+  latestTurn: { turnId: string } | null;
+  checkpoints: ReadonlyArray<{ checkpointTurnCount: number }>;
+  activities: ReadonlyArray<ThreadActivitySummary>;
+};
+
+async function waitForThreadById(
   readModel: () => Promise<{
-    readonly threads: ReadonlyArray<{
-      readonly id: ThreadId;
-      readonly latestTurn: { readonly turnId: string } | null;
-      readonly checkpoints: ReadonlyArray<{ readonly checkpointTurnCount: number }>;
-      readonly activities: ReadonlyArray<{ readonly kind: string }>;
-    }>;
+    readonly threads: ReadonlyArray<ThreadStateSummary & { readonly id: ThreadId }>;
   }>,
-  predicate: (thread: {
-    latestTurn: { turnId: string } | null;
-    checkpoints: ReadonlyArray<{ checkpointTurnCount: number }>;
-    activities: ReadonlyArray<{ kind: string }>;
-  }) => boolean,
+  threadId: string,
+  predicate: (thread: ThreadStateSummary) => boolean,
   timeoutMs = 15_000,
 ) {
   const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
-  const poll = async (): Promise<{
-    latestTurn: { turnId: string } | null;
-    checkpoints: ReadonlyArray<{ checkpointTurnCount: number }>;
-    activities: ReadonlyArray<{ kind: string }>;
-  }> => {
+  const poll = async (): Promise<ThreadStateSummary> => {
     const snapshot = await readModel();
-    const thread = snapshot.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    const thread = snapshot.threads.find((entry) => entry.id === ThreadId.make(threadId));
     if (thread && predicate(thread)) {
       return thread;
     }
@@ -175,6 +221,16 @@ async function waitForThread(
     return poll();
   };
   return poll();
+}
+
+async function waitForThread(
+  readModel: () => Promise<{
+    readonly threads: ReadonlyArray<ThreadStateSummary & { readonly id: ThreadId }>;
+  }>,
+  predicate: (thread: ThreadStateSummary) => boolean,
+  timeoutMs = 15_000,
+) {
+  return waitForThreadById(readModel, "thread-1", predicate, timeoutMs);
 }
 
 async function waitForEvent(
@@ -197,6 +253,20 @@ async function waitForEvent(
     return poll();
   };
   return poll();
+}
+
+async function waitForRevertOutcome(engine: OrchestrationEngineShape) {
+  return waitForEvent(engine, (event) => {
+    if (event.type === "thread.reverted") {
+      return true;
+    }
+    if (event.type !== "thread.activity-appended") {
+      return false;
+    }
+    const activity = (event as unknown as { payload: { activity: { kind: string } } }).payload
+      .activity;
+    return activity.kind === "checkpoint.revert.failed";
+  });
 }
 
 function runGit(cwd: string, args: ReadonlyArray<string>) {
@@ -246,14 +316,90 @@ async function waitForGitRefExists(cwd: string, ref: string, timeoutMs = 15_000)
   return poll();
 }
 
+function listRecoveryRefs(cwd: string): string[] {
+  return runGit(cwd, ["for-each-ref", "--format=%(refname)", `${RECOVERY_REFS_PREFIX}/`])
+    .split("\n")
+    .filter((ref) => ref.length > 0);
+}
+
+const threadTurnStartCommand = (input: {
+  readonly threadId: string;
+  readonly commandId: string;
+  readonly messageId: string;
+}) =>
+  ({
+    type: "thread.turn.start" as const,
+    commandId: CommandId.make(input.commandId),
+    threadId: ThreadId.make(input.threadId),
+    message: {
+      messageId: MessageId.make(input.messageId),
+      role: "user" as const,
+      text: "start a turn",
+      attachments: [],
+    },
+    runtimeMode: "approval-required" as const,
+    interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  }) as const;
+
+async function revertToTurnOne(
+  harness: {
+    readonly engine: OrchestrationEngineShape;
+    readonly runPromise: <A, E>(effect: Effect.Effect<A, E>) => Promise<A>;
+  },
+  options?: { readonly beforeRevert?: () => Promise<unknown> },
+) {
+  const createdAt = "2026-01-01T00:00:00.000Z";
+
+  await harness.runPromise(
+    harness.engine.dispatch({
+      type: "thread.session.set",
+      commandId: CommandId.make("cmd-revert-helper-session-set"),
+      threadId: ThreadId.make("thread-1"),
+      session: {
+        threadId: ThreadId.make("thread-1"),
+        status: "ready",
+        providerName: "codex",
+        runtimeMode: "approval-required",
+        activeTurnId: null,
+        lastError: null,
+        updatedAt: createdAt,
+      },
+      createdAt,
+    }),
+  );
+
+  for (const turnCount of [1, 2]) {
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.diff.complete",
+        commandId: CommandId.make(`cmd-revert-helper-diff-${turnCount}`),
+        threadId: ThreadId.make("thread-1"),
+        turnId: asTurnId(`turn-${turnCount}`),
+        completedAt: createdAt,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), turnCount),
+        status: "ready",
+        files: [],
+        checkpointTurnCount: turnCount,
+        createdAt,
+      }),
+    );
+  }
+
+  await options?.beforeRevert?.();
+  await harness.runPromise(
+    harness.engine.dispatch({
+      type: "thread.checkpoint.revert",
+      commandId: CommandId.make("cmd-revert-helper-request"),
+      threadId: ThreadId.make("thread-1"),
+      turnCount: 1,
+      createdAt,
+    }),
+  );
+}
+
 describe("CheckpointReactor", () => {
-  let runtime: ManagedRuntime.ManagedRuntime<
-    | OrchestrationEngineService
-    | CheckpointReactor
-    | CheckpointStore.CheckpointStore
-    | ProjectionSnapshotQuery,
-    unknown
-  > | null = null;
+  let runtime: { readonly dispose: () => Promise<unknown> } | null = null;
   let scope: Scope.Closeable | null = null;
   const tempDirs: string[] = [];
 
@@ -285,18 +431,76 @@ describe("CheckpointReactor", () => {
     readonly providerSessionCwd?: string;
     readonly providerName?: ProviderDriverKind;
     readonly gitStatusRefreshCalls?: Array<string>;
+    readonly otherSessions?: ReadonlyArray<{
+      readonly threadId: string;
+      readonly status: ProviderSession["status"];
+      readonly activeTurnId?: string;
+      readonly cwd?: string;
+    }>;
+    readonly ownSessionActiveTurnId?: string;
+    readonly failRecoveryCapture?: boolean;
+    readonly listSessionsFailure?: boolean;
+    readonly prepareRepository?: (cwd: string) => void;
+    readonly providerSessionSubdirectory?: string;
+    readonly truncateIgnoredEnumeration?: boolean;
+    readonly fixedClock?: boolean;
+    readonly recoveryCaptureGate?: {
+      readonly markStarted: () => void;
+      readonly release: Promise<void>;
+    };
+    readonly repositoryCwd?: string;
+    readonly providerCommandReactor?: boolean;
+    readonly providerOverrides?: {
+      readonly startSession?: ProviderServiceShape["startSession"];
+      readonly sendTurn?: ProviderServiceShape["sendTurn"];
+      readonly listSessions?: ProviderServiceShape["listSessions"];
+    };
+    readonly threadDetailGate?: {
+      readonly threadId: string;
+      readonly markStarted: () => void;
+      readonly release: Promise<void>;
+    };
+    readonly onRestoreCheckpoint?: (input: {
+      readonly preserveIgnoredPaths?: ReadonlyArray<string>;
+    }) => void;
   }) {
-    const cwd = createGitRepository();
-    tempDirs.push(cwd);
+    const cwd = options?.repositoryCwd ?? createGitRepository();
+    if (options?.repositoryCwd === undefined) {
+      tempDirs.push(cwd);
+    }
+    options?.prepareRepository?.(cwd);
+    const sessionCwd =
+      options?.providerSessionSubdirectory !== undefined
+        ? NodePath.join(cwd, options.providerSessionSubdirectory)
+        : (options?.providerSessionCwd ?? cwd);
+    const sessionsNow = "2026-01-01T00:00:00.000Z";
+    const extraSessions: ReadonlyArray<ProviderSession> = (options?.otherSessions ?? []).map(
+      (session) => ({
+        provider: ProviderDriverKind.make("codex"),
+        status: session.status,
+        runtimeMode: "full-access",
+        threadId: ThreadId.make(session.threadId),
+        cwd: session.cwd ?? cwd,
+        ...(session.activeTurnId !== undefined
+          ? { activeTurnId: TurnId.make(session.activeTurnId) }
+          : {}),
+        createdAt: sessionsNow,
+        updatedAt: sessionsNow,
+      }),
+    );
     const provider = createProviderServiceHarness(
       cwd,
       options?.hasSession ?? true,
-      options?.providerSessionCwd ?? cwd,
+      sessionCwd,
       options?.providerName ?? ProviderDriverKind.make("codex"),
+      extraSessions,
+      options?.listSessionsFailure ?? false,
+      options?.ownSessionActiveTurnId,
+      options?.providerOverrides,
     );
     const orchestrationLayer = OrchestrationEngineLive.pipe(
       Layer.provide(OrchestrationProjectionSnapshotQueryLive),
-      Layer.provide(OrchestrationProjectionPipelineLive),
+      Layer.provideMerge(OrchestrationProjectionPipelineLive),
       Layer.provide(OrchestrationEventStoreLive),
       Layer.provide(OrchestrationCommandReceiptRepositoryLive),
       Layer.provide(RepositoryIdentityResolver.layer),
@@ -330,13 +534,151 @@ describe("CheckpointReactor", () => {
       streamStatus: () => Stream.empty,
     });
 
-    const layer = CheckpointReactorLive.pipe(
+    const checkpointStoreBaseLayer = CheckpointStore.layer.pipe(
+      Layer.provide(VcsDriverRegistry.layer),
+    );
+    const checkpointStoreLayer =
+      options?.failRecoveryCapture === true || options?.recoveryCaptureGate !== undefined
+        ? Layer.effect(
+            CheckpointStore.CheckpointStore,
+            Effect.map(CheckpointStore.CheckpointStore, (store) =>
+              CheckpointStore.CheckpointStore.of({
+                ...store,
+                captureCheckpoint: (input) => {
+                  if (!input.checkpointRef.startsWith(`${RECOVERY_REFS_PREFIX}/`)) {
+                    return store.captureCheckpoint(input);
+                  }
+                  if (options?.failRecoveryCapture === true) {
+                    return Effect.fail(
+                      new VcsProcessExitError({
+                        operation: "CheckpointReactor.test.captureRecovery",
+                        command: "git update-ref",
+                        cwd: input.cwd,
+                        exitCode: 1,
+                        detail: "simulated recovery capture failure",
+                      }),
+                    );
+                  }
+                  const gate = options?.recoveryCaptureGate;
+                  if (gate !== undefined) {
+                    return Effect.promise(async () => {
+                      gate.markStarted();
+                      await gate.release;
+                    }).pipe(Effect.andThen(store.captureCheckpoint(input)));
+                  }
+                  return store.captureCheckpoint(input);
+                },
+              }),
+            ),
+          ).pipe(Layer.provide(checkpointStoreBaseLayer))
+        : checkpointStoreBaseLayer;
+    const checkpointStoreWithRestoreSink =
+      options?.onRestoreCheckpoint === undefined
+        ? checkpointStoreLayer
+        : Layer.effect(
+            CheckpointStore.CheckpointStore,
+            Effect.map(CheckpointStore.CheckpointStore, (store) =>
+              CheckpointStore.CheckpointStore.of({
+                ...store,
+                restoreCheckpoint: (input) => {
+                  options.onRestoreCheckpoint?.(input);
+                  return store.restoreCheckpoint(input);
+                },
+              }),
+            ),
+          ).pipe(Layer.provide(checkpointStoreLayer));
+
+    const vcsProcessBaseLayer = VcsProcess.layer;
+    const vcsProcessLayer = options?.truncateIgnoredEnumeration
+      ? Layer.effect(
+          VcsProcess.VcsProcess,
+          Effect.map(VcsProcess.VcsProcess, (base) =>
+            VcsProcess.VcsProcess.of({
+              run: (input) => {
+                const isIgnoredEnumeration =
+                  input.command === "git" &&
+                  input.args.includes("ls-files") &&
+                  input.args.includes("--ignored");
+                return base
+                  .run(input)
+                  .pipe(
+                    Effect.map((output) =>
+                      isIgnoredEnumeration
+                        ? { ...output, stdout: "", stdoutTruncated: true }
+                        : output,
+                    ),
+                  );
+              },
+            }),
+          ),
+        ).pipe(Layer.provide(vcsProcessBaseLayer))
+      : vcsProcessBaseLayer;
+
+    const gatedProjectionSnapshotLayer =
+      options?.threadDetailGate === undefined
+        ? projectionSnapshotLayer
+        : Layer.effect(
+            ProjectionSnapshotQuery,
+            Effect.map(ProjectionSnapshotQuery, (base) =>
+              ProjectionSnapshotQuery.of({
+                ...base,
+                getThreadDetailById: (threadId) => {
+                  const gate = options.threadDetailGate;
+                  if (gate !== undefined && threadId === ThreadId.make(gate.threadId)) {
+                    return Effect.promise(async () => {
+                      gate.markStarted();
+                      await gate.release;
+                    }).pipe(Effect.andThen(base.getThreadDetailById(threadId)));
+                  }
+                  return base.getThreadDetailById(threadId);
+                },
+              }),
+            ),
+          ).pipe(Layer.provide(projectionSnapshotLayer));
+
+    const providerRegistryLayer = makeProviderRegistryLayer([
+      { instanceId: ProviderInstanceId.make("codex") } as never,
+    ]);
+    const gitWorkflowLayer = Layer.mock(GitWorkflowService)({
+      renameBranch: (input) =>
+        Effect.succeed({
+          branch:
+            typeof input === "object" &&
+            input !== null &&
+            "newBranch" in input &&
+            typeof input.newBranch === "string"
+              ? input.newBranch
+              : "renamed-branch",
+        }),
+    } satisfies Partial<GitWorkflowService["Service"]>);
+    const textGenerationLayer = Layer.mock(TextGeneration, {
+      generateBranchName: () =>
+        Effect.fail(
+          new TextGenerationError({
+            operation: "generateBranchName",
+            detail: "disabled in checkpoint reactor test harness",
+          }),
+        ),
+      generateThreadTitle: () =>
+        Effect.fail(
+          new TextGenerationError({
+            operation: "generateThreadTitle",
+            detail: "disabled in checkpoint reactor test harness",
+          }),
+        ),
+    });
+
+    const providerCore = ProviderCommandReactorLive.pipe(
+      Layer.provideMerge(gatedProjectionSnapshotLayer),
+    );
+    const reactorsLayer = Layer.merge(CheckpointReactorLive, providerCore);
+    const liveLayer = reactorsLayer.pipe(
       Layer.provideMerge(orchestrationLayer),
       Layer.provideMerge(projectionSnapshotLayer),
       Layer.provideMerge(RuntimeReceiptBusLive),
       Layer.provideMerge(Layer.succeed(ProviderService, provider.service)),
       Layer.provideMerge(vcsStatusBroadcasterLayer),
-      Layer.provideMerge(CheckpointStore.layer.pipe(Layer.provide(VcsDriverRegistry.layer))),
+      Layer.provideMerge(checkpointStoreWithRestoreSink),
       Layer.provideMerge(
         WorkspaceEntries.layer.pipe(
           Layer.provide(WorkspacePaths.layer),
@@ -344,22 +686,56 @@ describe("CheckpointReactor", () => {
         ),
       ),
       Layer.provideMerge(WorkspacePaths.layer),
-      Layer.provideMerge(VcsProcess.layer),
+      Layer.provideMerge(vcsProcessLayer),
       Layer.provideMerge(ServerConfigLayer),
       Layer.provideMerge(WorktreeRemovalLeaseLive),
+      Layer.provideMerge(providerRegistryLayer),
+      Layer.provideMerge(gitWorkflowLayer),
+      Layer.provideMerge(textGenerationLayer),
+      Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(NodeServices.layer),
     );
+    const layer = options?.fixedClock
+      ? liveLayer.pipe(Layer.provideMerge(TestClock.layer()))
+      : liveLayer;
 
-    runtime = ManagedRuntime.make(layer);
-    const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
-    const snapshotQuery = await runtime.runPromise(Effect.service(ProjectionSnapshotQuery));
-    const reactor = await runtime.runPromise(Effect.service(CheckpointReactor));
-    const checkpointStore = await runtime.runPromise(
+    const managedRuntime = ManagedRuntime.make(layer);
+    runtime = managedRuntime;
+    const engine = await managedRuntime.runPromise(Effect.service(OrchestrationEngineService));
+    const snapshotQuery = await managedRuntime.runPromise(Effect.service(ProjectionSnapshotQuery));
+    const reactor = await managedRuntime.runPromise(Effect.service(CheckpointReactor));
+    const providerReactor =
+      options?.providerCommandReactor === true
+        ? await managedRuntime.runPromise(Effect.service(ProviderCommandReactor))
+        : null;
+    const checkpointStore = await managedRuntime.runPromise(
       Effect.service(CheckpointStore.CheckpointStore),
     );
-    scope = await Effect.runPromise(Scope.make("sequential"));
-    await Effect.runPromise(reactor.start().pipe(Scope.provide(scope)));
+    const projectionTurnRepository = await managedRuntime.runPromise(
+      Effect.service(ProjectionTurnRepository),
+    );
+    const harnessScope = await Effect.runPromise(Scope.make("sequential"));
+    scope = harnessScope;
+    await Effect.runPromise(reactor.start().pipe(Scope.provide(harnessScope)));
+    if (providerReactor !== null) {
+      await managedRuntime.runPromise(providerReactor.start().pipe(Scope.provide(harnessScope)));
+    }
     const drain = () => Effect.runPromise(reactor.drain);
+    let disposed = false;
+    const dispose = async () => {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      await managedRuntime.runPromise(Scope.close(harnessScope, Exit.void)).catch(() => undefined);
+      await managedRuntime.dispose();
+      if (scope === harnessScope) {
+        scope = null;
+      }
+      if (runtime === managedRuntime) {
+        runtime = null;
+      }
+    };
 
     const createdAt = "2026-01-01T00:00:00.000Z";
     await Effect.runPromise(
@@ -419,21 +795,21 @@ describe("CheckpointReactor", () => {
     );
 
     if (options?.seedFilesystemCheckpoints ?? true) {
-      await runtime.runPromise(
+      await managedRuntime.runPromise(
         checkpointStore.captureCheckpoint({
           cwd,
           checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 0),
         }),
       );
       NodeFS.writeFileSync(NodePath.join(cwd, "README.md"), "v2\n", "utf8");
-      await runtime.runPromise(
+      await managedRuntime.runPromise(
         checkpointStore.captureCheckpoint({
           cwd,
           checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
         }),
       );
       NodeFS.writeFileSync(NodePath.join(cwd, "README.md"), "v3\n", "utf8");
-      await runtime.runPromise(
+      await managedRuntime.runPromise(
         checkpointStore.captureCheckpoint({
           cwd,
           checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2),
@@ -444,9 +820,14 @@ describe("CheckpointReactor", () => {
     return {
       engine,
       readModel: () => Effect.runPromise(snapshotQuery.getSnapshot()),
+      runPromise: <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
+        managedRuntime.runPromise(effect),
       provider,
+      checkpointStore,
+      projectionTurnRepository,
       cwd,
       drain,
+      dispose,
     };
   }
 
@@ -1253,5 +1634,1645 @@ describe("CheckpointReactor", () => {
       true,
     );
     expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+  });
+
+  it("saves the current files to a recovery ref before reverting", async () => {
+    const harness = await createHarness();
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "v4-unsaved\n", "utf8");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "scratch.txt"), "mine\n", "utf8");
+
+    await revertToTurnOne(harness);
+    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.recovery-saved"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v2\n");
+    expect(NodeFS.existsSync(NodePath.join(harness.cwd, "scratch.txt"))).toBe(false);
+
+    const recoveryRefs = listRecoveryRefs(harness.cwd);
+    expect(recoveryRefs).toHaveLength(1);
+    const recoveryRef = recoveryRefs[0]!;
+    expect(recoveryRef.startsWith(`${RECOVERY_REFS_PREFIX}/`)).toBe(true);
+    expect(gitShowFileAtRef(harness.cwd, recoveryRef, "README.md")).toBe("v4-unsaved\n");
+    expect(gitShowFileAtRef(harness.cwd, recoveryRef, "scratch.txt")).toBe("mine\n");
+
+    const recoveryActivity = thread.activities.find(
+      (activity) => activity.kind === "checkpoint.revert.recovery-saved",
+    );
+    expect(recoveryActivity?.turnId).toBeNull();
+    expect(recoveryActivity?.payload).toEqual({
+      turnCount: 1,
+      recoveryRef,
+      cwd: harness.cwd,
+    });
+
+    // Stale checkpoint cleanup removes the newer turn ref but keeps the recovery ref.
+    expect(
+      gitRefExists(harness.cwd, checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2)),
+    ).toBe(false);
+    expect(gitRefExists(harness.cwd, recoveryRef)).toBe(true);
+  });
+
+  for (const status of ["running", "connecting"] as const) {
+    it(`refuses to revert while another thread is ${status} in the same folder`, async () => {
+      const harness = await createHarness({
+        secondThreadSharingWorktree: true,
+        otherSessions: [{ threadId: "thread-2", status }],
+      });
+
+      await revertToTurnOne(harness);
+      const thread = await waitForThread(harness.readModel, (entry) =>
+        entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+      );
+
+      expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+      expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+      expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+      expect(thread.checkpoints).toHaveLength(2);
+      expect(
+        gitRefExists(harness.cwd, checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2)),
+      ).toBe(true);
+
+      const failure = thread.activities.find(
+        (activity) => activity.kind === "checkpoint.revert.failed",
+      );
+      const payload = failure?.payload as { readonly detail?: string } | undefined;
+      expect(payload?.detail).toContain("thread-2");
+      expect(payload?.detail).toContain("Nothing was changed");
+    });
+  }
+
+  it("refuses when a ready session has an active turn in the same folder", async () => {
+    const harness = await createHarness({
+      otherSessions: [{ threadId: "thread-2", status: "ready", activeTurnId: "turn-busy" }],
+    });
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+  });
+
+  it("refuses when the reverting thread's own session has an active turn", async () => {
+    const harness = await createHarness({ ownSessionActiveTurnId: "turn-own-busy" });
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+  });
+
+  it("refuses when the read model records an active turn the session list omits", async () => {
+    const harness = await createHarness();
+    const createdAt = "2026-01-01T00:00:00.000Z";
+
+    await revertToTurnOne(harness, {
+      beforeRevert: () =>
+        harness.runPromise(
+          harness.engine.dispatch({
+            type: "thread.session.set",
+            commandId: CommandId.make("cmd-read-model-busy-session"),
+            threadId: ThreadId.make("thread-1"),
+            session: {
+              threadId: ThreadId.make("thread-1"),
+              status: "running",
+              providerName: "codex",
+              runtimeMode: "approval-required",
+              activeTurnId: asTurnId("turn-read-model-busy"),
+              lastError: null,
+              updatedAt: createdAt,
+            },
+            createdAt,
+          }),
+        ),
+    });
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+  });
+
+  it("refuses a revert when another shared-folder turn was admitted first", async () => {
+    const harness = await createHarness({ secondThreadSharingWorktree: true });
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-turn-start-admitted-first",
+          messageId: "message-turn-start-admitted-first",
+        }),
+      ),
+    );
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+
+    const events = await harness.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((chunk) => Array.from(chunk)),
+      ),
+    );
+    expect(
+      events.some(
+        (event) =>
+          event.type === "thread.turn-start-requested" &&
+          event.payload.threadId === ThreadId.make("thread-2"),
+      ),
+    ).toBe(true);
+  });
+
+  it("refuses a subfolder revert when a turn is admitted in its parent workspace", async () => {
+    const harness = await createHarness({
+      providerSessionSubdirectory: "sub",
+      prepareRepository: (repository) => {
+        NodeFS.mkdirSync(NodePath.join(repository, "sub"), { recursive: true });
+      },
+      secondThreadSharingWorktree: true,
+    });
+    const sub = NodePath.join(harness.cwd, "sub");
+    NodeFS.writeFileSync(NodePath.join(sub, "keep.txt"), "keep parent overlap\n", "utf8");
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-turn-start-parent-admitted-first",
+          messageId: "message-turn-start-parent-admitted-first",
+        }),
+      ),
+    );
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(sub, "keep.txt"), "utf8")).toBe(
+      "keep parent overlap\n",
+    );
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+  });
+
+  it("blocks a new overlapping turn while a revert reservation is held", async () => {
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const harness = await createHarness({
+      secondThreadSharingWorktree: true,
+      recoveryCaptureGate: {
+        markStarted: () => started.resolve(),
+        release: release.promise,
+      },
+    });
+
+    await revertToTurnOne(harness);
+    await started.promise;
+    try {
+      const outcome = await harness.runPromise(
+        Effect.exit(
+          harness.engine.dispatch(
+            threadTurnStartCommand({
+              threadId: "thread-2",
+              commandId: "cmd-turn-start-blocked-by-reservation",
+              messageId: "message-turn-start-blocked-by-reservation",
+            }),
+          ),
+        ),
+      );
+      expect(Exit.isFailure(outcome)).toBe(true);
+    } finally {
+      release.resolve();
+    }
+
+    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+    const events = await harness.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((chunk) => Array.from(chunk)),
+      ),
+    );
+    expect(
+      events.some(
+        (event) =>
+          event.type === "thread.turn-start-requested" &&
+          event.payload.threadId === ThreadId.make("thread-2"),
+      ),
+    ).toBe(false);
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v2\n");
+    expect(listRecoveryRefs(harness.cwd)).toHaveLength(1);
+  });
+
+  it("refuses a revert when an admitted turn starts in the shared folder during the busy check", async () => {
+    const admissionCwd = createGitRepository();
+    const movedCwd = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "neokod-handover-move-"));
+    tempDirs.push(admissionCwd, movedCwd);
+    const listingStarted = Promise.withResolvers<void>();
+    const listingRelease = Promise.withResolvers<void>();
+    let sessionListCount = 0;
+    const revertingSession: ProviderSession = {
+      provider: ProviderDriverKind.make("codex"),
+      status: "ready",
+      runtimeMode: "full-access",
+      threadId: ThreadId.make("thread-1"),
+      cwd: admissionCwd,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const listSessions: ProviderServiceShape["listSessions"] = () => {
+      sessionListCount += 1;
+      const sessions = [revertingSession];
+      if (sessionListCount === 2) {
+        return Effect.promise(async () => {
+          listingStarted.resolve();
+          await listingRelease.promise;
+          return sessions;
+        });
+      }
+      return Effect.succeed(sessions);
+    };
+
+    const harness = await createHarness({
+      repositoryCwd: admissionCwd,
+      secondThreadSharingWorktree: true,
+      providerOverrides: { listSessions },
+    });
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-handover-admission",
+          messageId: "message-handover-admission",
+        }),
+      ),
+    );
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-handover-move"),
+        threadId: ThreadId.make("thread-2"),
+        worktreePath: movedCwd,
+      }),
+    );
+
+    await revertToTurnOne(harness);
+    await listingStarted.promise;
+
+    const turnId = asTurnId("turn-handover-running");
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-handover-running-session"),
+        threadId: ThreadId.make("thread-2"),
+        session: {
+          threadId: ThreadId.make("thread-2"),
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: turnId,
+          lastError: null,
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+
+    const turns = await harness.runPromise(
+      harness.projectionTurnRepository.listByThreadId({ threadId: ThreadId.make("thread-2") }),
+    );
+    const runningTurn = turns.find((turn) => turn.turnId === turnId && turn.state === "running");
+    expect(runningTurn?.admittedWorkspacePath).toBe(admissionCwd);
+    expect(turns.some((turn) => turn.turnId === null && turn.state === "pending")).toBe(false);
+
+    listingRelease.resolve();
+    const outcomeEvents = await waitForRevertOutcome(harness.engine);
+    expect(outcomeEvents.some((event) => event.type === "thread.reverted")).toBe(false);
+
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+    expect(NodeFS.readFileSync(NodePath.join(admissionCwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(admissionCwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+  });
+
+  it("refuses a revert when an unsettled turn has no admitted workspace", async () => {
+    const harness = await createHarness({ secondThreadSharingWorktree: true });
+    const moveTarget = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-unknown-admission-"),
+    );
+    tempDirs.push(moveTarget);
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-unknown-admission-start",
+          messageId: "message-unknown-admission-start",
+        }),
+      ),
+    );
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-unknown-admission-move"),
+        threadId: ThreadId.make("thread-2"),
+        worktreePath: moveTarget,
+      }),
+    );
+    const turnId = asTurnId("turn-unknown-admission");
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-unknown-admission-running"),
+        threadId: ThreadId.make("thread-2"),
+        session: {
+          threadId: ThreadId.make("thread-2"),
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: turnId,
+          lastError: null,
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+
+    const turns = await harness.runPromise(
+      harness.projectionTurnRepository.listByThreadId({ threadId: ThreadId.make("thread-2") }),
+    );
+    const runningTurn = turns.find((turn) => turn.turnId === turnId);
+    expect(runningTurn).toBeDefined();
+    if (runningTurn === undefined || runningTurn.turnId === null) {
+      return;
+    }
+    await harness.runPromise(
+      harness.projectionTurnRepository.upsertByTurnId({
+        ...runningTurn,
+        turnId: runningTurn.turnId,
+        admittedWorkspacePath: null,
+      }),
+    );
+
+    await revertToTurnOne(harness);
+    const outcomeEvents = await waitForRevertOutcome(harness.engine);
+    expect(outcomeEvents.some((event) => event.type === "thread.reverted")).toBe(false);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+  });
+
+  it("refuses a revert when a pending thread moved out of the shared folder", async () => {
+    const harness = await createHarness({ secondThreadSharingWorktree: true });
+    const moveTarget = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-pending-thread-move-"),
+    );
+    tempDirs.push(moveTarget);
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-turn-start-before-workspace-move",
+          messageId: "message-turn-start-before-workspace-move",
+        }),
+      ),
+    );
+
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-move-pending-thread-2"),
+        threadId: ThreadId.make("thread-2"),
+        worktreePath: moveTarget,
+      }),
+    );
+    const movedReadModel = await harness.readModel();
+    expect(
+      movedReadModel.threads.find((entry) => entry.id === ThreadId.make("thread-2"))?.worktreePath,
+    ).toBe(moveTarget);
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+  });
+
+  it("refuses a revert when a project root moved away from a pending admission", async () => {
+    const harness = await createHarness({ secondThreadSharingWorktree: true });
+    const projectRootTarget = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-pending-project-root-"),
+    );
+    tempDirs.push(projectRootTarget);
+
+    // Make thread-2 inherit the project workspace root instead of its own worktree.
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-thread-2-inherit-project-root"),
+        threadId: ThreadId.make("thread-2"),
+        worktreePath: null,
+      }),
+    );
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-turn-start-before-project-root-move",
+          messageId: "message-turn-start-before-project-root-move",
+        }),
+      ),
+    );
+
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "project.meta.update",
+        commandId: CommandId.make("cmd-move-pending-project-root"),
+        projectId: asProjectId("project-1"),
+        workspaceRoot: projectRootTarget,
+      }),
+    );
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+  });
+
+  it("starts an admitted turn in its recorded folder while another folder reverts", async () => {
+    const admissionCwd = createGitRepository();
+    const revertCwd = createGitRepository();
+    tempDirs.push(admissionCwd, revertCwd);
+
+    const providerStart = Promise.withResolvers<void>();
+    const providerStartRelease = Promise.withResolvers<void>();
+    const providerWrite = Promise.withResolvers<string>();
+    const recoveryStarted = Promise.withResolvers<void>();
+    const recoveryRelease = Promise.withResolvers<void>();
+    const sessionCwds = new Map<string, string>();
+    const sessions: ProviderSession[] = [];
+    const revertingSession: ProviderSession = {
+      provider: ProviderDriverKind.make("codex"),
+      status: "ready",
+      runtimeMode: "full-access",
+      threadId: ThreadId.make("thread-1"),
+      cwd: revertCwd,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    const startSession: ProviderServiceShape["startSession"] = (threadId, input) =>
+      Effect.sync(() => {
+        if (input.cwd !== undefined) {
+          sessionCwds.set(String(threadId), input.cwd);
+        }
+        const session = providerSessionForStart(threadId, input);
+        sessions.splice(0, sessions.length, session);
+        return session;
+      });
+    const listSessions: ProviderServiceShape["listSessions"] = () =>
+      Effect.succeed([revertingSession, ...sessions]);
+    const sendTurn: ProviderServiceShape["sendTurn"] = (input) =>
+      Effect.sync(() => {
+        const cwd = sessionCwds.get(String(input.threadId));
+        if (cwd !== undefined) {
+          NodeFS.writeFileSync(NodePath.join(cwd, "provider-write.txt"), "written\n", "utf8");
+          providerWrite.resolve(cwd);
+        }
+        return {
+          threadId: input.threadId,
+          turnId: asTurnId("turn-provider-write"),
+        };
+      });
+
+    const harness = await createHarness({
+      repositoryCwd: admissionCwd,
+      seedFilesystemCheckpoints: false,
+      secondThreadSharingWorktree: true,
+      providerSessionCwd: revertCwd,
+      providerCommandReactor: true,
+      providerOverrides: { startSession, sendTurn, listSessions },
+      threadDetailGate: {
+        threadId: "thread-2",
+        markStarted: () => providerStart.resolve(),
+        release: providerStartRelease.promise,
+      },
+      recoveryCaptureGate: {
+        markStarted: () => recoveryStarted.resolve(),
+        release: recoveryRelease.promise,
+      },
+    });
+
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: revertCwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 0),
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(revertCwd, "README.md"), "v2\n", "utf8");
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: revertCwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(revertCwd, "README.md"), "v3\n", "utf8");
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: revertCwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2),
+      }),
+    );
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-turn-start-before-destination-revert",
+          messageId: "message-turn-start-before-destination-revert",
+        }),
+      ),
+    );
+    await providerStart.promise;
+
+    // The admission recorded the folder the start was accepted in. Move the
+    // thread to the revert destination before the provider resolves its cwd.
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-move-admitted-thread-to-revert-folder"),
+        threadId: ThreadId.make("thread-2"),
+        worktreePath: revertCwd,
+      }),
+    );
+
+    await revertToTurnOne(harness);
+    await recoveryStarted.promise;
+
+    // Release provider startup after the revert passed its busy check.
+    providerStartRelease.resolve();
+    const writtenCwd = await providerWrite.promise;
+    recoveryRelease.resolve();
+
+    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+
+    expect(writtenCwd).toBe(admissionCwd);
+    expect(NodeFS.readFileSync(NodePath.join(admissionCwd, "provider-write.txt"), "utf8")).toBe(
+      "written\n",
+    );
+    expect(NodeFS.existsSync(NodePath.join(revertCwd, "provider-write.txt"))).toBe(false);
+    expect(NodeFS.readFileSync(NodePath.join(revertCwd, "README.md"), "utf8")).toBe("v2\n");
+    expect(listRecoveryRefs(revertCwd)).toHaveLength(1);
+  });
+
+  it("keeps a runtime-mode replacement in the admitted folder while a deferred send is pending", async () => {
+    const admissionCwd = createGitRepository();
+    const revertCwd = createGitRepository();
+    tempDirs.push(admissionCwd, revertCwd);
+
+    const sendStarted = Promise.withResolvers<void>();
+    const sendRelease = Promise.withResolvers<void>();
+    const sendWrote = Promise.withResolvers<string>();
+    const recoveryStarted = Promise.withResolvers<void>();
+    const recoveryRelease = Promise.withResolvers<void>();
+    const runtimeModeStart = Promise.withResolvers<string>();
+    const sessions: ProviderSession[] = [];
+    const startCwds: string[] = [];
+    const revertingSession: ProviderSession = {
+      provider: ProviderDriverKind.make("codex"),
+      status: "ready",
+      runtimeMode: "full-access",
+      threadId: ThreadId.make("thread-1"),
+      cwd: revertCwd,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    const startSession: ProviderServiceShape["startSession"] = (threadId, input) =>
+      Effect.sync(() => {
+        if (input.cwd !== undefined) {
+          startCwds.push(input.cwd);
+        }
+        const session = providerSessionForStart(threadId, input);
+        sessions.splice(0, sessions.length, session);
+        if (startCwds.length === 2) {
+          runtimeModeStart.resolve(input.cwd ?? "");
+        }
+        return session;
+      });
+    const listSessions: ProviderServiceShape["listSessions"] = () =>
+      Effect.succeed([revertingSession, ...sessions]);
+    const sendTurn: ProviderServiceShape["sendTurn"] = (input) =>
+      Effect.gen(function* () {
+        sendStarted.resolve();
+        yield* Effect.promise(() => sendRelease.promise);
+        const session = sessions.find((entry) => entry.threadId === input.threadId);
+        const cwd = session?.cwd;
+        if (cwd !== undefined) {
+          NodeFS.writeFileSync(NodePath.join(cwd, "provider-write.txt"), "written\n", "utf8");
+          sendWrote.resolve(cwd);
+        }
+        return {
+          threadId: input.threadId,
+          turnId: asTurnId("turn-runtime-mode-pin"),
+        };
+      });
+
+    const harness = await createHarness({
+      repositoryCwd: admissionCwd,
+      seedFilesystemCheckpoints: false,
+      secondThreadSharingWorktree: true,
+      providerSessionCwd: revertCwd,
+      providerCommandReactor: true,
+      providerOverrides: { startSession, sendTurn, listSessions },
+      recoveryCaptureGate: {
+        markStarted: () => recoveryStarted.resolve(),
+        release: recoveryRelease.promise,
+      },
+    });
+
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: revertCwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 0),
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(revertCwd, "README.md"), "v2\n", "utf8");
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: revertCwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(revertCwd, "README.md"), "v3\n", "utf8");
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: revertCwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2),
+      }),
+    );
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-runtime-mode-pin-start",
+          messageId: "message-runtime-mode-pin-start",
+        }),
+      ),
+    );
+    await sendStarted.promise;
+
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-runtime-mode-pin-move"),
+        threadId: ThreadId.make("thread-2"),
+        worktreePath: revertCwd,
+      }),
+    );
+
+    await revertToTurnOne(harness);
+    await recoveryStarted.promise;
+
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.runtime-mode.set",
+        commandId: CommandId.make("cmd-runtime-mode-pin-change"),
+        threadId: ThreadId.make("thread-2"),
+        runtimeMode: "full-access",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    const replacementCwd = await runtimeModeStart.promise;
+    expect(replacementCwd).toBe(admissionCwd);
+
+    sendRelease.resolve();
+    const wroteCwd = await sendWrote.promise;
+    recoveryRelease.resolve();
+
+    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+
+    expect(wroteCwd).toBe(admissionCwd);
+    expect(NodeFS.readFileSync(NodePath.join(admissionCwd, "provider-write.txt"), "utf8")).toBe(
+      "written\n",
+    );
+    expect(NodeFS.existsSync(NodePath.join(revertCwd, "provider-write.txt"))).toBe(false);
+    expect(NodeFS.readFileSync(NodePath.join(revertCwd, "README.md"), "utf8")).toBe("v2\n");
+    expect(listRecoveryRefs(revertCwd)).toHaveLength(1);
+  });
+
+  it("refuses a second turn start while the first admission is unresolved", async () => {
+    const providerStart = Promise.withResolvers<void>();
+    const providerRelease = Promise.withResolvers<void>();
+    const providerResumed = Promise.withResolvers<void>();
+    const startCwds: string[] = [];
+    const startSession: ProviderServiceShape["startSession"] = (threadId, input) =>
+      Effect.gen(function* () {
+        if (input.cwd !== undefined) {
+          startCwds.push(input.cwd);
+        }
+        providerStart.resolve();
+        yield* Effect.promise(() => providerRelease.promise);
+        providerResumed.resolve();
+        return providerSessionForStart(threadId, input);
+      });
+    const sendTurn: ProviderServiceShape["sendTurn"] = (input) =>
+      Effect.succeed({
+        threadId: input.threadId,
+        turnId: asTurnId("turn-second-admission"),
+      });
+    const harness = await createHarness({
+      secondThreadSharingWorktree: true,
+      providerCommandReactor: true,
+      providerOverrides: { startSession, sendTurn },
+    });
+    const moveTarget = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-second-admission-"),
+    );
+    tempDirs.push(moveTarget);
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-first-unresolved-admission",
+          messageId: "message-first-unresolved-admission",
+        }),
+      ),
+    );
+    await providerStart.promise;
+
+    // The first start has read its recorded workspace and is paused before its
+    // provider session exists. Move the thread without settling that start.
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-move-during-unresolved-admission"),
+        threadId: ThreadId.make("thread-2"),
+        worktreePath: moveTarget,
+      }),
+    );
+
+    const secondOutcome = await harness.runPromise(
+      Effect.exit(
+        harness.engine.dispatch(
+          threadTurnStartCommand({
+            threadId: "thread-2",
+            commandId: "cmd-second-unresolved-admission",
+            messageId: "message-second-unresolved-admission",
+          }),
+        ),
+      ),
+    );
+    expect(Exit.isFailure(secondOutcome)).toBe(true);
+    if (Exit.isFailure(secondOutcome)) {
+      const failure = Cause.findErrorOption(secondOutcome.cause);
+      expect(Option.isSome(failure)).toBe(true);
+      if (Option.isSome(failure)) {
+        expect(failure.value).toMatchObject({
+          _tag: "OrchestrationCommandInvariantError",
+        });
+        expect((failure.value as { readonly detail?: string }).detail ?? "").toContain(
+          "unresolved turn start",
+        );
+      }
+    }
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+
+    providerRelease.resolve();
+    await providerResumed.promise;
+    expect(startCwds).toEqual([harness.cwd]);
+
+    const events = await harness.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((chunk) => Array.from(chunk)),
+      ),
+    );
+    expect(
+      events.some(
+        (event) =>
+          event.type === "thread.turn-start-requested" &&
+          event.payload.messageId === MessageId.make("message-second-unresolved-admission"),
+      ),
+    ).toBe(false);
+  });
+
+  it("refuses a legacy pending admission without using the current folder", async () => {
+    const providerStart = Promise.withResolvers<void>();
+    const providerStartRelease = Promise.withResolvers<void>();
+    const startSession = vi.fn<ProviderServiceShape["startSession"]>((threadId, input) =>
+      Effect.succeed({
+        provider: input.provider ?? ProviderDriverKind.make("codex"),
+        ...(input.providerInstanceId !== undefined
+          ? { providerInstanceId: input.providerInstanceId }
+          : {}),
+        status: "ready" as const,
+        runtimeMode: input.runtimeMode,
+        ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+        threadId,
+        resumeCursor: { opaque: "resume-legacy-admission" },
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    const harness = await createHarness({
+      secondThreadSharingWorktree: true,
+      providerCommandReactor: true,
+      providerOverrides: { startSession },
+      threadDetailGate: {
+        threadId: "thread-2",
+        markStarted: () => providerStart.resolve(),
+        release: providerStartRelease.promise,
+      },
+    });
+    const threadId = ThreadId.make("thread-2");
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-turn-start-legacy-admission",
+          messageId: "message-turn-start-legacy-admission",
+        }),
+      ),
+    );
+    await providerStart.promise;
+
+    const pending = await harness.runPromise(
+      harness.projectionTurnRepository.getPendingTurnStartByThreadId({ threadId }),
+    );
+    expect(Option.isSome(pending)).toBe(true);
+    if (Option.isNone(pending)) {
+      return;
+    }
+    await harness.runPromise(
+      harness.projectionTurnRepository.replacePendingTurnStart({
+        ...pending.value,
+        admittedWorkspacePath: null,
+      }),
+    );
+
+    providerStartRelease.resolve();
+
+    const thread = await waitForThreadById(harness.readModel, "thread-2", (entry) =>
+      entry.activities.some((activity) => activity.kind === "provider.turn.start.failed"),
+    );
+    const failure = thread.activities.find(
+      (activity) => activity.kind === "provider.turn.start.failed",
+    );
+    expect((failure?.payload as { readonly detail?: string } | undefined)?.detail ?? "").toContain(
+      "legacy admission",
+    );
+    expect(startSession).not.toHaveBeenCalled();
+
+    const pendingAfter = await harness.runPromise(
+      harness.projectionTurnRepository.getPendingTurnStartByThreadId({ threadId }),
+    );
+    expect(Option.isNone(pendingAfter)).toBe(true);
+  });
+
+  it("refuses a revert when an archived thread has an admitted turn", async () => {
+    const harness = await createHarness({ secondThreadSharingWorktree: true });
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-turn-start-archived",
+          messageId: "message-turn-start-archived",
+        }),
+      ),
+    );
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.archive",
+        commandId: CommandId.make("cmd-archive-thread-2-busy"),
+        threadId: ThreadId.make("thread-2"),
+      }),
+    );
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+  });
+
+  it("allows a revert after a rejected provider start settles its pending turn", async () => {
+    const harness = await createHarness({ secondThreadSharingWorktree: true });
+    const messageId = "message-turn-start-rejected";
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-turn-start-rejected",
+          messageId,
+        }),
+      ),
+    );
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.activity.append",
+        commandId: CommandId.make("cmd-provider-turn-start-failed"),
+        threadId: ThreadId.make("thread-2"),
+        activity: {
+          id: EventId.make("activity-provider-turn-start-failed"),
+          tone: "error",
+          kind: "provider.turn.start.failed",
+          summary: "Provider turn start failed",
+          payload: { messageId, detail: "provider unavailable" },
+          turnId: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+
+    await revertToTurnOne(harness);
+    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v2\n");
+    expect(harness.provider.rollbackConversation).toHaveBeenCalledTimes(1);
+    expect(listRecoveryRefs(harness.cwd)).toHaveLength(1);
+  });
+
+  it("refuses when an in-workspace core.excludesFile would drop ignored files", async () => {
+    const excludesName = ".repo-excludes";
+    const harness = await createHarness({
+      prepareRepository: (repository) => {
+        const excludesPath = NodePath.join(repository, excludesName);
+        NodeFS.writeFileSync(excludesPath, "", "utf8");
+        runGit(repository, ["add", excludesName]);
+        runGit(repository, ["commit", "-m", "Add in-workspace excludes"]);
+        runGit(repository, ["config", "core.excludesFile", excludesPath]);
+      },
+    });
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, excludesName), "secret.txt\n", "utf8");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "secret.txt"), "keep ignored\n", "utf8");
+
+    await revertToTurnOne(harness);
+    const outcomeEvents = await waitForRevertOutcome(harness.engine);
+    expect(outcomeEvents.some((event) => event.type === "thread.reverted")).toBe(false);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "secret.txt"), "utf8")).toBe(
+      "keep ignored\n",
+    );
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, excludesName), "utf8")).toBe(
+      "secret.txt\n",
+    );
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+  });
+
+  it("preserves files ignored by Git's default XDG ignore file across restore", async () => {
+    const repository = createGitRepository();
+    tempDirs.push(repository);
+    const xdgConfigHome = NodePath.join(repository, ".config");
+    const xdgIgnorePath = NodePath.join(xdgConfigHome, "git", "ignore");
+    NodeFS.mkdirSync(NodePath.dirname(xdgIgnorePath), { recursive: true });
+    NodeFS.writeFileSync(xdgIgnorePath, "", "utf8");
+    runGit(repository, ["add", ".config/git/ignore"]);
+    runGit(repository, ["commit", "-m", "Add default ignore"]);
+    const previousXdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = xdgConfigHome;
+    let preservedIgnoredPaths: ReadonlyArray<string> = [];
+
+    try {
+      const harness = await createHarness({
+        repositoryCwd: repository,
+        onRestoreCheckpoint: (input) => {
+          preservedIgnoredPaths = input.preserveIgnoredPaths ?? [];
+        },
+      });
+      NodeFS.writeFileSync(xdgIgnorePath, "secret.txt\nnode_modules/\n", "utf8");
+      NodeFS.writeFileSync(NodePath.join(repository, "secret.txt"), "keep xdg\n", "utf8");
+      NodeFS.mkdirSync(NodePath.join(repository, "node_modules", "pkg"), { recursive: true });
+      NodeFS.writeFileSync(
+        NodePath.join(repository, "node_modules", "pkg", "index.js"),
+        "keep module\n",
+        "utf8",
+      );
+
+      await revertToTurnOne(harness);
+      await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+
+      expect(NodeFS.readFileSync(NodePath.join(repository, "secret.txt"), "utf8")).toBe(
+        "keep xdg\n",
+      );
+      expect(
+        NodeFS.readFileSync(NodePath.join(repository, "node_modules", "pkg", "index.js"), "utf8"),
+      ).toBe("keep module\n");
+      expect(NodeFS.readFileSync(NodePath.join(repository, "README.md"), "utf8")).toBe("v2\n");
+      expect(harness.provider.rollbackConversation).toHaveBeenCalledTimes(1);
+      expect(listRecoveryRefs(repository)).toHaveLength(1);
+      expect(preservedIgnoredPaths).toContain("secret.txt");
+      expect(preservedIgnoredPaths).toContain("node_modules");
+      expect(preservedIgnoredPaths).not.toContain("node_modules/pkg/index.js");
+    } finally {
+      if (previousXdg === undefined) {
+        delete process.env.XDG_CONFIG_HOME;
+      } else {
+        process.env.XDG_CONFIG_HOME = previousXdg;
+      }
+    }
+  });
+
+  it("preserves files ignored by .git/info/exclude across restore", async () => {
+    const harness = await createHarness();
+    const infoExcludePath = NodePath.join(harness.cwd, ".git", "info", "exclude");
+    NodeFS.writeFileSync(infoExcludePath, "secret.txt\n", "utf8");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "secret.txt"), "keep info exclude\n", "utf8");
+
+    await revertToTurnOne(harness);
+    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "secret.txt"), "utf8")).toBe(
+      "keep info exclude\n",
+    );
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v2\n");
+    expect(harness.provider.rollbackConversation).toHaveBeenCalledTimes(1);
+    expect(listRecoveryRefs(harness.cwd)).toHaveLength(1);
+  });
+
+  it("refuses when a currently ignored file would be lost by the checkpoint's ignore rules", async () => {
+    const harness = await createHarness();
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, ".gitignore"), "", "utf8");
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, ".gitignore"), "scratch.dat\n", "utf8");
+    NodeFS.writeFileSync(
+      NodePath.join(harness.cwd, "scratch.dat"),
+      "keep this ignored file\n",
+      "utf8",
+    );
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "scratch.dat"), "utf8")).toBe(
+      "keep this ignored file\n",
+    );
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+
+    const failure = thread.activities.find(
+      (activity) => activity.kind === "checkpoint.revert.failed",
+    );
+    const payload = failure?.payload as { readonly detail?: string } | undefined;
+    expect(payload?.detail).toContain("scratch.dat");
+    expect(payload?.detail?.toLowerCase()).toContain("ignored");
+    expect(payload?.detail).toContain("Nothing was changed");
+  });
+
+  it("allows a revert when the checkpoint keeps the ignored file ignored", async () => {
+    const harness = await createHarness();
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, ".gitignore"), "scratch.dat\n", "utf8");
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "scratch.dat"), "keep me\n", "utf8");
+
+    await revertToTurnOne(harness);
+    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "scratch.dat"), "utf8")).toBe(
+      "keep me\n",
+    );
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, ".gitignore"), "utf8")).toBe(
+      "scratch.dat\n",
+    );
+    expect(listRecoveryRefs(harness.cwd)).toHaveLength(1);
+    expect(harness.provider.rollbackConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a subfolder revert when only the restored sub/.gitignore changes", async () => {
+    const harness = await createHarness({
+      providerSessionSubdirectory: "sub",
+      prepareRepository: (repository) => {
+        NodeFS.mkdirSync(NodePath.join(repository, "sub"), { recursive: true });
+      },
+    });
+    const sub = NodePath.join(harness.cwd, "sub");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, ".gitignore"), "/sub/scratch.dat\n", "utf8");
+    NodeFS.writeFileSync(NodePath.join(sub, ".gitignore"), "", "utf8");
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, ".gitignore"), "", "utf8");
+    NodeFS.writeFileSync(NodePath.join(sub, ".gitignore"), "scratch.dat\n", "utf8");
+    NodeFS.writeFileSync(NodePath.join(sub, "scratch.dat"), "keep sub file\n", "utf8");
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(sub, "scratch.dat"), "utf8")).toBe("keep sub file\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(thread.checkpoints).toHaveLength(2);
+
+    const failure = thread.activities.find(
+      (activity) => activity.kind === "checkpoint.revert.failed",
+    );
+    const payload = failure?.payload as { readonly detail?: string } | undefined;
+    expect(payload?.detail).toContain("scratch.dat");
+  });
+
+  it("allows a subfolder revert when only an ancestor ignore rule changed", async () => {
+    const harness = await createHarness({
+      providerSessionSubdirectory: "sub",
+      prepareRepository: (repository) => {
+        NodeFS.mkdirSync(NodePath.join(repository, "sub"), { recursive: true });
+      },
+    });
+    const sub = NodePath.join(harness.cwd, "sub");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, ".gitignore"), "", "utf8");
+    NodeFS.writeFileSync(NodePath.join(sub, ".gitignore"), "", "utf8");
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, ".gitignore"), "/sub/scratch.dat\n", "utf8");
+    NodeFS.writeFileSync(NodePath.join(sub, "scratch.dat"), "keep sub file\n", "utf8");
+
+    await revertToTurnOne(harness);
+    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+
+    expect(NodeFS.readFileSync(NodePath.join(sub, "scratch.dat"), "utf8")).toBe("keep sub file\n");
+    expect(harness.provider.rollbackConversation).toHaveBeenCalledTimes(1);
+    expect(listRecoveryRefs(harness.cwd)).toHaveLength(1);
+  });
+
+  it("refuses when ignored-file enumeration output is truncated", async () => {
+    const harness = await createHarness({ truncateIgnoredEnumeration: true });
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, ".gitignore"), "", "utf8");
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, ".gitignore"), "scratch.dat\n", "utf8");
+    NodeFS.writeFileSync(
+      NodePath.join(harness.cwd, "scratch.dat"),
+      "keep truncated file\n",
+      "utf8",
+    );
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "scratch.dat"), "utf8")).toBe(
+      "keep truncated file\n",
+    );
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(thread.checkpoints).toHaveLength(2);
+
+    const failure = thread.activities.find(
+      (activity) => activity.kind === "checkpoint.revert.failed",
+    );
+    const payload = failure?.payload as { readonly detail?: string } | undefined;
+    expect(payload?.detail).toContain("truncated");
+  });
+
+  it("refuses when a tracked checkpoint entry collides with an ignored file", async () => {
+    const harness = await createHarness();
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, ".gitignore"), "config.local\n", "utf8");
+    NodeFS.writeFileSync(
+      NodePath.join(harness.cwd, "config.local"),
+      "checkpoint content\n",
+      "utf8",
+    );
+    runGit(harness.cwd, ["add", "-f", "config.local"]);
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+    runGit(harness.cwd, ["rm", "--cached", "config.local"]);
+    NodeFS.writeFileSync(
+      NodePath.join(harness.cwd, "config.local"),
+      "current ignored content\n",
+      "utf8",
+    );
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "config.local"), "utf8")).toBe(
+      "current ignored content\n",
+    );
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(thread.checkpoints).toHaveLength(2);
+
+    const failure = thread.activities.find(
+      (activity) => activity.kind === "checkpoint.revert.failed",
+    );
+    const payload = failure?.payload as { readonly detail?: string } | undefined;
+    expect(payload?.detail).toContain("config.local");
+    expect(payload?.detail).toContain("tracked");
+  });
+
+  it("refuses when an ignored path differs only by case from a tracked checkpoint entry", async () => {
+    const harness = await createHarness();
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, ".gitignore"), "config.local\n", "utf8");
+    NodeFS.writeFileSync(
+      NodePath.join(harness.cwd, "Config.local"),
+      "checkpoint content\n",
+      "utf8",
+    );
+    runGit(harness.cwd, ["add", "-f", "Config.local"]);
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+    runGit(harness.cwd, ["rm", "--cached", "Config.local"]);
+    const original = NodePath.join(harness.cwd, "Config.local");
+    const intermediate = NodePath.join(harness.cwd, ".config-local-case-rename");
+    const current = NodePath.join(harness.cwd, "config.local");
+    NodeFS.renameSync(original, intermediate);
+    NodeFS.renameSync(intermediate, current);
+    NodeFS.writeFileSync(current, "current ignored content\n", "utf8");
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(current, "utf8")).toBe("current ignored content\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(thread.checkpoints).toHaveLength(2);
+
+    const failure = thread.activities.find(
+      (activity) => activity.kind === "checkpoint.revert.failed",
+    );
+    const payload = failure?.payload as { readonly detail?: string } | undefined;
+    expect(payload?.detail).toContain("config.local");
+  });
+
+  it("refuses a subfolder revert when the folder name starts with a space", async () => {
+    const harness = await createHarness({
+      providerSessionSubdirectory: " sub",
+      prepareRepository: (repository) => {
+        NodeFS.mkdirSync(NodePath.join(repository, " sub"), { recursive: true });
+      },
+    });
+    const sub = NodePath.join(harness.cwd, " sub");
+    NodeFS.writeFileSync(NodePath.join(sub, ".gitignore"), "", "utf8");
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(sub, ".gitignore"), "scratch.dat\n", "utf8");
+    NodeFS.writeFileSync(NodePath.join(sub, "scratch.dat"), "keep spaced sub file\n", "utf8");
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(sub, "scratch.dat"), "utf8")).toBe(
+      "keep spaced sub file\n",
+    );
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(thread.checkpoints).toHaveLength(2);
+
+    const failure = thread.activities.find(
+      (activity) => activity.kind === "checkpoint.revert.failed",
+    );
+    const payload = failure?.payload as { readonly detail?: string } | undefined;
+    expect(payload?.detail).toContain("scratch.dat");
+  });
+
+  it("refuses a subfolder revert when the folder name looks like pathspec magic", async () => {
+    // oxlint-disable-next-line neokod/no-global-process-runtime -- This path name is not valid on Windows.
+    if (process.platform === "win32") {
+      return;
+    }
+    const harness = await createHarness({
+      providerSessionSubdirectory: ":(literal)sub",
+      prepareRepository: (repository) => {
+        NodeFS.mkdirSync(NodePath.join(repository, ":(literal)sub"), { recursive: true });
+      },
+    });
+    const sub = NodePath.join(harness.cwd, ":(literal)sub");
+    NodeFS.writeFileSync(NodePath.join(sub, ".gitignore"), "", "utf8");
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(sub, ".gitignore"), "scratch.dat\n", "utf8");
+    NodeFS.writeFileSync(NodePath.join(sub, "scratch.dat"), "keep magic sub file\n", "utf8");
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(sub, "scratch.dat"), "utf8")).toBe(
+      "keep magic sub file\n",
+    );
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+  });
+
+  it("refuses when only a mixed-case .GitIgnore rule changes", async () => {
+    const harness = await createHarness();
+    // info/exclude guarantees an ignored entry on case-sensitive hosts; the
+    // mixed-case rule file is still the changed rule under test.
+    NodeFS.writeFileSync(
+      NodePath.join(harness.cwd, ".git", "info", "exclude"),
+      "scratch.dat\n",
+      "utf8",
+    );
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, ".GitIgnore"), "", "utf8");
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, ".GitIgnore"), "scratch.dat\n", "utf8");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "scratch.dat"), "keep mixed case\n", "utf8");
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "scratch.dat"), "utf8")).toBe(
+      "keep mixed case\n",
+    );
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+
+    const failure = thread.activities.find(
+      (activity) => activity.kind === "checkpoint.revert.failed",
+    );
+    const payload = failure?.payload as { readonly detail?: string } | undefined;
+    expect(payload?.detail).toContain("scratch.dat");
+  });
+
+  it("refuses when the checkpoint's .gitignore is a symlink", async () => {
+    const harness = await createHarness();
+    NodeFS.symlinkSync("scratch.dat", NodePath.join(harness.cwd, ".gitignore"));
+    await harness.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+    NodeFS.unlinkSync(NodePath.join(harness.cwd, ".gitignore"));
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, ".gitignore"), "scratch.dat\n", "utf8");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "scratch.dat"), "keep symlink file\n", "utf8");
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "scratch.dat"), "utf8")).toBe(
+      "keep symlink file\n",
+    );
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(thread.checkpoints).toHaveLength(2);
+
+    const failure = thread.activities.find(
+      (activity) => activity.kind === "checkpoint.revert.failed",
+    );
+    const payload = failure?.payload as { readonly detail?: string } | undefined;
+    expect(payload?.detail).toContain("ignore rules");
+  });
+
+  it("does not refuse for a ready session or a running session in another folder", async () => {
+    const harness = await createHarness({
+      otherSessions: [
+        { threadId: "thread-2", status: "ready" },
+        { threadId: "thread-3", status: "running", cwd: "/somewhere/else" },
+      ],
+    });
+
+    await revertToTurnOne(harness);
+    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v2\n");
+    expect(listRecoveryRefs(harness.cwd)).toHaveLength(1);
+  });
+
+  it("refuses without restoring when the recovery capture fails", async () => {
+    const harness = await createHarness({ failRecoveryCapture: true });
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "v4-unsaved\n", "utf8");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "scratch.txt"), "mine\n", "utf8");
+
+    await revertToTurnOne(harness);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe(
+      "v4-unsaved\n",
+    );
+    expect(NodeFS.existsSync(NodePath.join(harness.cwd, "scratch.txt"))).toBe(true);
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+    expect(
+      gitRefExists(harness.cwd, checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2)),
+    ).toBe(true);
+
+    const failure = thread.activities.find(
+      (activity) => activity.kind === "checkpoint.revert.failed",
+    );
+    const payload = failure?.payload as { readonly detail?: string } | undefined;
+    expect(payload?.detail).toContain("could not be saved");
+    expect(payload?.detail).toContain("nothing was changed");
+
+    await harness.drain();
+    const events = await harness.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((chunk) => Array.from(chunk)),
+      ),
+    );
+    expect(events.some((event) => event.type === "thread.reverted")).toBe(false);
+  });
+
+  it("refuses when the provider session list cannot be read", async () => {
+    const harness = await createHarness({ listSessionsFailure: true });
+
+    await revertToTurnOne(harness);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+
+    const failure = thread.activities.find(
+      (activity) => activity.kind === "checkpoint.revert.failed",
+    );
+    const payload = failure?.payload as { readonly detail?: string } | undefined;
+    expect(payload?.detail).toContain("could not be read");
+  });
+
+  it("keeps a distinct recovery ref for each serial revert when the clock does not advance", async () => {
+    const harness = await createHarness({ fixedClock: true });
+
+    await revertToTurnOne(harness);
+    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+    await waitForThread(harness.readModel, (entry) => entry.checkpoints.length === 1);
+
+    await harness.runPromise(
+      harness.engine.dispatch({
+        type: "thread.checkpoint.revert",
+        commandId: CommandId.make("cmd-revert-helper-request-second"),
+        threadId: ThreadId.make("thread-1"),
+        turnCount: 0,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    await waitForThread(harness.readModel, (entry) => entry.checkpoints.length === 0);
+
+    const recoveryRefs = listRecoveryRefs(harness.cwd);
+    expect(recoveryRefs).toHaveLength(2);
+    expect(new Set(recoveryRefs).size).toBe(2);
+    const suffixes = recoveryRefs
+      .map((ref) => Number((ref.split("/").at(-1) ?? "").split("-")[0]))
+      .toSorted((left, right) => left - right);
+    expect(suffixes[1]).toBe((suffixes[0] ?? 0) + 1);
+    expect(
+      recoveryRefs.map((ref) => gitShowFileAtRef(harness.cwd, ref, "README.md")).toSorted(),
+    ).toEqual(["v2\n", "v3\n"]);
+  });
+
+  it("keeps recovery refs unique across reactor restarts", async () => {
+    const first = await createHarness({ fixedClock: true });
+    await revertToTurnOne(first);
+    await waitForEvent(first.engine, (event) => event.type === "thread.reverted");
+    const firstRecoveryRefs = listRecoveryRefs(first.cwd);
+    expect(firstRecoveryRefs).toHaveLength(1);
+    expect(gitShowFileAtRef(first.cwd, firstRecoveryRefs[0]!, "README.md")).toBe("v3\n");
+    await first.dispose();
+
+    const second = await createHarness({ fixedClock: true, repositoryCwd: first.cwd });
+    NodeFS.writeFileSync(NodePath.join(second.cwd, "README.md"), "v4-second\n", "utf8");
+    await revertToTurnOne(second);
+    await waitForEvent(second.engine, (event) => event.type === "thread.reverted");
+
+    const recoveryRefs = listRecoveryRefs(second.cwd);
+    expect(recoveryRefs).toHaveLength(2);
+    expect(new Set(recoveryRefs).size).toBe(2);
+    expect(
+      recoveryRefs.map((ref) => gitShowFileAtRef(second.cwd, ref, "README.md")).toSorted(),
+    ).toEqual(["v3\n", "v4-second\n"]);
   });
 });

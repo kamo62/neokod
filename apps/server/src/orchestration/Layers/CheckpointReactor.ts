@@ -8,9 +8,11 @@ import {
   TurnId,
   type OrchestrationEvent,
   type ProviderRuntimeEvent,
+  type ProviderSession,
   type VcsStatusLocalResult,
 } from "@neokod/contracts";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -18,16 +20,26 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import type * as PlatformError from "effect/PlatformError";
+import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@neokod/shared/DrainableWorker";
-import { isTemporaryWorktreeBranch } from "@neokod/shared/git";
+import { isTemporaryWorktreeBranch, validateGitArgumentValue } from "@neokod/shared/git";
+import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 
 import { parseTurnDiffFilesFromUnifiedDiff } from "../../checkpointing/Diffs.ts";
 import {
   checkpointRefForThreadTurn,
+  providerSessionHasActiveTurn,
+  recoveryRefForThreadRevert,
   resolveThreadWorkspaceCwd,
 } from "../../checkpointing/Utils.ts";
 import * as CheckpointStore from "../../checkpointing/CheckpointStore.ts";
+import {
+  WorktreeRemovalLease,
+  WorktreeRemovalLeaseConflictError,
+} from "../../git/WorktreeRemovalLease.ts";
+import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { CheckpointReactor, type CheckpointReactorShape } from "../Services/CheckpointReactor.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
@@ -35,8 +47,13 @@ import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts"
 import { RuntimeReceiptBus } from "../Services/RuntimeReceiptBus.ts";
 import type { CheckpointStoreError } from "../../checkpointing/Errors.ts";
 import type { OrchestrationDispatchError } from "../Errors.ts";
-import { isGitRepository } from "../../git/Utils.ts";
+import {
+  isWorkspaceSameOrInside,
+  readWorkspaceIdentityEvidence,
+  type WorkspaceIdentityEvidence,
+} from "../../vcs/WorkspaceIdentity.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
+import * as VcsProcess from "../../vcs/VcsProcess.ts";
 import * as WorkspaceEntries from "../../workspace/WorkspaceEntries.ts";
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -49,6 +66,22 @@ type ReactorInput =
   | {
       readonly source: "domain";
       readonly event: OrchestrationEvent;
+    };
+
+type RestoredTreeEntry = {
+  readonly mode: string;
+  readonly type: string;
+  readonly oid: string;
+  readonly path: string;
+};
+
+type IgnoredRevertCheck =
+  | { readonly state: "safe" }
+  | {
+      readonly state: "refused";
+      readonly reason: "rules" | "collision" | "both" | "evidence";
+      readonly paths: ReadonlyArray<string>;
+      readonly detail?: string;
     };
 
 function toTurnId(value: string | undefined): TurnId | null {
@@ -86,6 +119,11 @@ const make = Effect.gen(function* () {
   const providerService = yield* ProviderService;
   const checkpointStore = yield* CheckpointStore.CheckpointStore;
   const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const vcsProcess = yield* VcsProcess.VcsProcess;
+  const projectionTurnRepository = yield* ProjectionTurnRepository;
+  const worktreeRemovalLease = yield* WorktreeRemovalLease;
+  const hostPlatform = yield* HostProcessPlatform;
   const receiptBus = yield* RuntimeReceiptBus;
   const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
   const vcsStatusBroadcaster = yield* VcsStatusBroadcaster;
@@ -113,6 +151,40 @@ const make = Effect.gen(function* () {
             payload: {
               turnCount: input.turnCount,
               detail: input.detail,
+            },
+            turnId: null,
+            createdAt: input.createdAt,
+          },
+          createdAt: input.createdAt,
+        }),
+      ),
+    );
+
+  const appendRevertRecoveryActivity = (input: {
+    readonly threadId: ThreadId;
+    readonly turnCount: number;
+    readonly recoveryRef: CheckpointRef;
+    readonly cwd: string;
+    readonly createdAt: string;
+  }) =>
+    Effect.all({
+      commandId: serverCommandId("checkpoint-revert-recovery"),
+      activityId: serverEventId,
+    }).pipe(
+      Effect.flatMap(({ commandId, activityId }) =>
+        orchestrationEngine.dispatch({
+          type: "thread.activity.append",
+          commandId,
+          threadId: input.threadId,
+          activity: {
+            id: activityId,
+            tone: "info",
+            kind: "checkpoint.revert.recovery-saved",
+            summary: "Files saved before revert",
+            payload: {
+              turnCount: input.turnCount,
+              recoveryRef: input.recoveryRef,
+              cwd: input.cwd,
             },
             turnId: null,
             createdAt: input.createdAt,
@@ -153,14 +225,63 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  const resolveSessionRuntimeForThread = Effect.fn("resolveSessionRuntimeForThread")(function* (
+  const sessionRuntimeFromSessions = (
     threadId: ThreadId,
-  ): Effect.fn.Return<Option.Option<{ readonly threadId: ThreadId; readonly cwd: string }>> {
-    const sessions = yield* providerService.listSessions();
+    sessions: ReadonlyArray<ProviderSession>,
+  ): Option.Option<{ readonly threadId: ThreadId; readonly cwd: string }> => {
     const session = sessions.find((entry) => entry.threadId === threadId);
     return session?.cwd
       ? Option.some({ threadId: session.threadId, cwd: session.cwd })
       : Option.none();
+  };
+
+  const resolveSessionRuntimeForThread = Effect.fn("resolveSessionRuntimeForThread")(function* (
+    threadId: ThreadId,
+  ): Effect.fn.Return<Option.Option<{ readonly threadId: ThreadId; readonly cwd: string }>> {
+    const sessions = yield* providerService.listSessions();
+    return sessionRuntimeFromSessions(threadId, sessions);
+  });
+
+  // A failed session listing is unknown, not an empty list. Revert must refuse
+  // rather than assume no other thread is active in the folder.
+  const readSessionsForRevert = Effect.fn("readSessionsForRevert")(function* (): Effect.fn.Return<
+    Option.Option<ReadonlyArray<ProviderSession>>
+  > {
+    return yield* providerService.listSessions().pipe(
+      Effect.map((sessions) => Option.some(sessions)),
+      Effect.catchCause((cause) =>
+        Cause.hasInterruptsOnly(cause) ? Effect.failCause(cause) : Effect.succeed(Option.none()),
+      ),
+    );
+  });
+
+  // Recovery refs are created by the serial reactor worker. The monotonic
+  // timestamp keeps same-process allocations distinct; the random suffix and
+  // persisted-ref check keep them distinct across reactor restarts and refuse
+  // to overwrite a retained snapshot.
+  const lastRecoveryRefMillis = yield* Ref.make(0);
+  const nextRecoveryRefMillis = Effect.gen(function* () {
+    const nowMillis = yield* Clock.currentTimeMillis;
+    return yield* Ref.modify(lastRecoveryRefMillis, (last) => {
+      const millis = Math.max(nowMillis, last + 1);
+      return [millis, millis];
+    });
+  });
+
+  const allocateRecoveryRef = Effect.fn("CheckpointReactor.allocateRecoveryRef")(function* (
+    cwd: string,
+    threadId: ThreadId,
+  ) {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const epochMillis = yield* nextRecoveryRefMillis;
+      const uniqueSuffix = yield* randomUUID;
+      const checkpointRef = recoveryRefForThreadRevert(threadId, epochMillis, uniqueSuffix);
+      const exists = yield* checkpointStore.hasCheckpointRef({ cwd, checkpointRef });
+      if (!exists) {
+        return checkpointRef;
+      }
+    }
+    return null;
   });
 
   const resolveThreadDetail = Effect.fn("resolveThreadDetail")(function* (threadId: ThreadId) {
@@ -178,7 +299,522 @@ const make = Effect.gen(function* () {
     return project ? [project] : [];
   });
 
-  const isGitWorkspace = (cwd: string) => isGitRepository(cwd);
+  const isGitWorkspace = (cwd: string) => checkpointStore.isGitRepository(cwd);
+
+  const readWorkspaceIdentity = (workspacePath: string) =>
+    readWorkspaceIdentityEvidence(workspacePath).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+    );
+
+  const isWorkspaceSameOrInsideWithServices = (
+    target: WorkspaceIdentityEvidence,
+    candidatePath: string,
+  ) =>
+    isWorkspaceSameOrInside({ target, candidatePath }).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+      Effect.provideService(HostProcessPlatform, hostPlatform),
+    );
+
+  // Physical overlap in either direction. A revert in a subfolder also has to
+  // block turns admitted in its parent, not only paths inside the subfolder.
+  const workspacePathsOverlap = Effect.fn("CheckpointReactor.workspacePathsOverlap")(function* (
+    left: WorkspaceIdentityEvidence,
+    rightPath: string,
+  ) {
+    const right = yield* readWorkspaceIdentity(rightPath);
+    if (yield* isWorkspaceSameOrInsideWithServices(left, right.physicalPath)) {
+      return true;
+    }
+    return yield* isWorkspaceSameOrInsideWithServices(right, left.physicalPath);
+  });
+
+  const runGit = Effect.fn("CheckpointReactor.runGit")(function* (input: {
+    readonly operation: string;
+    readonly cwd: string;
+    readonly args: ReadonlyArray<string>;
+    readonly stdin?: string;
+    readonly allowNonZeroExit?: boolean;
+  }) {
+    return yield* vcsProcess.run({
+      operation: input.operation,
+      command: "git",
+      cwd: input.cwd,
+      args: input.args,
+      ...(input.stdin !== undefined ? { stdin: input.stdin } : {}),
+      ...(input.allowNonZeroExit !== undefined ? { allowNonZeroExit: input.allowNonZeroExit } : {}),
+    });
+  });
+
+  const runGitEvidence = (input: {
+    readonly operation: string;
+    readonly cwd: string;
+    readonly args: ReadonlyArray<string>;
+  }): Effect.Effect<
+    | { readonly ok: true; readonly result: VcsProcess.VcsProcessOutput }
+    | { readonly ok: false; readonly detail: string }
+  > =>
+    runGit({ ...input, allowNonZeroExit: true }).pipe(
+      Effect.map((result) =>
+        result.stdoutTruncated
+          ? { ok: false as const, detail: `${input.operation}: output was truncated` }
+          : { ok: true as const, result },
+      ),
+      Effect.catch((error) => Effect.succeed({ ok: false as const, detail: error.message })),
+    );
+
+  const listIgnoredPathsForRestore = Effect.fn("CheckpointReactor.listIgnoredPathsForRestore")(
+    function* (
+      cwd: string,
+    ): Effect.fn.Return<
+      | { readonly ok: true; readonly paths: ReadonlyArray<string> }
+      | { readonly ok: false; readonly detail: string }
+    > {
+      const ignored = yield* runGitEvidence({
+        operation: "CheckpointReactor.listIgnoredPathsForRestore",
+        cwd,
+        args: [
+          "ls-files",
+          "--others",
+          "--ignored",
+          "--exclude-standard",
+          // Collapse ignored trees such as node_modules into one entry.
+          "--directory",
+          "-z",
+        ],
+      });
+      if (!ignored.ok) {
+        return { ok: false, detail: ignored.detail };
+      }
+      if (ignored.result.exitCode !== 0) {
+        return {
+          ok: false,
+          detail: `git ls-files --ignored exited with ${ignored.result.exitCode}`,
+        };
+      }
+      const paths = [
+        ...new Set(
+          ignored.result.stdout
+            .split("\0")
+            .filter((entry) => entry.length > 0)
+            .map(trimTrailingSlash)
+            .filter((entry) => entry.length > 0),
+        ),
+      ];
+      return { ok: true, paths };
+    },
+  );
+
+  const resolveRestoreCommit = Effect.fn("CheckpointReactor.resolveRestoreCommit")(
+    function* (input: {
+      readonly cwd: string;
+      readonly checkpointRef: CheckpointRef;
+      readonly fallbackToHead: boolean;
+    }): Effect.fn.Return<
+      | { readonly state: "ok"; readonly commit: string }
+      | { readonly state: "refused"; readonly detail: string }
+    > {
+      const target = yield* runGitEvidence({
+        operation: "CheckpointReactor.resolveRestoreCommit",
+        cwd: input.cwd,
+        args: ["rev-parse", "--verify", "--quiet", `${input.checkpointRef}^{commit}`],
+      });
+      if (!target.ok) {
+        return { state: "refused", detail: target.detail };
+      }
+      if (target.result.exitCode === 0) {
+        const commit = target.result.stdout.trim();
+        if (commit.length > 0) {
+          return { state: "ok", commit };
+        }
+      } else if (target.result.exitCode !== 1) {
+        return {
+          state: "refused",
+          detail: `git rev-parse exited with ${target.result.exitCode}`,
+        };
+      }
+      if (!input.fallbackToHead) {
+        return { state: "refused", detail: "the checkpoint commit is not available" };
+      }
+      const head = yield* runGitEvidence({
+        operation: "CheckpointReactor.resolveRestoreCommit",
+        cwd: input.cwd,
+        args: ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
+      });
+      if (!head.ok) {
+        return { state: "refused", detail: head.detail };
+      }
+      if (head.result.exitCode !== 0) {
+        return {
+          state: "refused",
+          detail: `git rev-parse HEAD exited with ${head.result.exitCode}`,
+        };
+      }
+      const commit = head.result.stdout.trim();
+      return commit.length > 0
+        ? { state: "ok", commit }
+        : { state: "refused", detail: "HEAD has no commit" };
+    },
+  );
+
+  const trimTrailingSlash = (value: string): string => value.replace(/\/+$/, "");
+
+  // Git path output is newline-terminated. Strip only that terminator so
+  // leading or trailing whitespace in a real path is preserved.
+  const stripTrailingNewline = (value: string): string =>
+    value.endsWith("\r\n") ? value.slice(0, -2) : value.endsWith("\n") ? value.slice(0, -1) : value;
+
+  const conservativePathKey = (value: string): string => value.normalize("NFC").toLowerCase();
+
+  const isGitIgnorePath = (entry: string): boolean => {
+    const key = conservativePathKey(entry);
+    return key === ".gitignore" || key.endsWith("/.gitignore");
+  };
+
+  const parseRestoredTreeEntries = (stdout: string): ReadonlyArray<RestoredTreeEntry> | null => {
+    const entries: Array<RestoredTreeEntry> = [];
+    for (const record of stdout.split("\0")) {
+      if (record.length === 0) {
+        continue;
+      }
+      const tabIndex = record.indexOf("\t");
+      if (tabIndex < 0) {
+        return null;
+      }
+      const header = record.slice(0, tabIndex).split(" ");
+      if (header.length < 3) {
+        return null;
+      }
+      const [mode, type, oid] = header;
+      if (!mode || !type || !oid) {
+        return null;
+      }
+      entries.push({ mode, type, oid, path: record.slice(tabIndex + 1) });
+    }
+    return entries;
+  };
+
+  // Restore only rewrites the subtree under cwd. Ancestor ignore rules outside
+  // cwd are not restored, so they are not part of this comparison. Refuse
+  // conservatively when ignored content exists and either a .gitignore under
+  // cwd differs from the checkpoint, or a tracked checkpoint entry overlaps an
+  // ignored path. Any incomplete evidence also refuses.
+  const inspectIgnoredRevertRisk = Effect.fn("CheckpointReactor.inspectIgnoredRevertRisk")(
+    function* (input: {
+      readonly cwd: string;
+      readonly checkpointRef: CheckpointRef;
+      readonly fallbackToHead: boolean;
+    }): Effect.fn.Return<IgnoredRevertCheck> {
+      const refusedEvidence = (detail: string): IgnoredRevertCheck => ({
+        state: "refused",
+        reason: "evidence",
+        paths: [],
+        detail,
+      });
+
+      const toplevel = yield* runGitEvidence({
+        operation: "CheckpointReactor.inspectIgnoredRevertRisk.toplevel",
+        cwd: input.cwd,
+        args: ["rev-parse", "--show-toplevel"],
+      });
+      if (!toplevel.ok) {
+        return refusedEvidence(toplevel.detail);
+      }
+      if (toplevel.result.exitCode !== 0) {
+        return refusedEvidence(
+          `git rev-parse --show-toplevel exited with ${toplevel.result.exitCode}`,
+        );
+      }
+      const repoRoot = stripTrailingNewline(toplevel.result.stdout);
+      if (repoRoot.length === 0) {
+        return refusedEvidence("the repository root is empty");
+      }
+
+      const prefix = yield* runGitEvidence({
+        operation: "CheckpointReactor.inspectIgnoredRevertRisk.prefix",
+        cwd: input.cwd,
+        args: ["rev-parse", "--show-prefix"],
+      });
+      if (!prefix.ok) {
+        return refusedEvidence(prefix.detail);
+      }
+      if (prefix.result.exitCode !== 0) {
+        return refusedEvidence(`git rev-parse --show-prefix exited with ${prefix.result.exitCode}`);
+      }
+      const cwdPrefix = stripTrailingNewline(prefix.result.stdout);
+      if (cwdPrefix.length > 0) {
+        const pathProblem = validateGitArgumentValue(cwdPrefix, "Subfolder path");
+        if (pathProblem !== null) {
+          return refusedEvidence(pathProblem);
+        }
+      }
+      const pathArgs = cwdPrefix.length > 0 ? ["--", cwdPrefix] : [];
+
+      const cwdIdentity = yield* readWorkspaceIdentity(input.cwd).pipe(Effect.option);
+      if (Option.isNone(cwdIdentity)) {
+        return refusedEvidence("the workspace identity could not be read");
+      }
+      const excludesConfig = yield* runGitEvidence({
+        operation: "CheckpointReactor.inspectIgnoredRevertRisk.excludesFile",
+        cwd: repoRoot,
+        args: ["config", "--path", "--get", "core.excludesFile"],
+      });
+      if (!excludesConfig.ok) {
+        return refusedEvidence(excludesConfig.detail);
+      }
+      if (excludesConfig.result.exitCode !== 0 && excludesConfig.result.exitCode !== 1) {
+        return refusedEvidence(
+          `git config core.excludesFile exited with ${excludesConfig.result.exitCode}`,
+        );
+      }
+      const configuredExcludesValue =
+        excludesConfig.result.exitCode === 0
+          ? stripTrailingNewline(excludesConfig.result.stdout)
+          : "";
+      const configuredExcludesPath =
+        configuredExcludesValue.length === 0
+          ? null
+          : path.isAbsolute(configuredExcludesValue)
+            ? configuredExcludesValue
+            : path.resolve(repoRoot, configuredExcludesValue);
+
+      const ignored = yield* runGitEvidence({
+        operation: "CheckpointReactor.inspectIgnoredRevertRisk.ignored",
+        cwd: repoRoot,
+        args: [
+          // Filesystem-derived paths are always literal pathspecs; `--` only
+          // ends option parsing, it does not disable pathspec magic.
+          "--literal-pathspecs",
+          // Directory-level enumeration is enough: Git cannot re-include a
+          // descendant of an excluded directory.
+          "ls-files",
+          "--others",
+          "--ignored",
+          "--exclude-standard",
+          "--directory",
+          "--full-name",
+          "-z",
+          ...pathArgs,
+        ],
+      });
+      if (!ignored.ok) {
+        return refusedEvidence(ignored.detail);
+      }
+      if (ignored.result.exitCode !== 0) {
+        return refusedEvidence(`git ls-files --ignored exited with ${ignored.result.exitCode}`);
+      }
+      const currentIgnored = ignored.result.stdout.split("\0").filter((entry) => entry.length > 0);
+      if (currentIgnored.length === 0) {
+        return { state: "safe" };
+      }
+
+      const commitResult = yield* resolveRestoreCommit(input);
+      if (commitResult.state === "refused") {
+        return refusedEvidence(commitResult.detail);
+      }
+
+      const tree = yield* runGitEvidence({
+        operation: "CheckpointReactor.inspectIgnoredRevertRisk.tree",
+        cwd: repoRoot,
+        args: ["--literal-pathspecs", "ls-tree", "-r", "-z", commitResult.commit, ...pathArgs],
+      });
+      if (!tree.ok) {
+        return refusedEvidence(tree.detail);
+      }
+      if (tree.result.exitCode !== 0) {
+        return refusedEvidence(`git ls-tree exited with ${tree.result.exitCode}`);
+      }
+      const targetEntries = parseRestoredTreeEntries(tree.result.stdout);
+      if (targetEntries === null) {
+        return refusedEvidence("the checkpoint tree listing could not be parsed");
+      }
+
+      const currentFiles = yield* runGitEvidence({
+        operation: "CheckpointReactor.inspectIgnoredRevertRisk.currentFiles",
+        cwd: repoRoot,
+        args: [
+          "--literal-pathspecs",
+          "ls-files",
+          "--cached",
+          "--others",
+          "--exclude-standard",
+          "-z",
+          ...pathArgs,
+        ],
+      });
+      if (!currentFiles.ok) {
+        return refusedEvidence(currentFiles.detail);
+      }
+      if (currentFiles.result.exitCode !== 0) {
+        return refusedEvidence(`git ls-files exited with ${currentFiles.result.exitCode}`);
+      }
+
+      const specialIgnorePaths = new Set<string>();
+      if (configuredExcludesPath !== null) {
+        const physicallyInside = yield* isWorkspaceSameOrInsideWithServices(
+          cwdIdentity.value,
+          configuredExcludesPath,
+        ).pipe(Effect.option);
+        if (Option.isNone(physicallyInside)) {
+          return refusedEvidence("the configured core.excludesFile identity could not be read");
+        }
+        const relativeToCwd = path.relative(input.cwd, configuredExcludesPath);
+        const lexicallyInside =
+          relativeToCwd === "" ||
+          (!relativeToCwd.startsWith("..") && !path.isAbsolute(relativeToCwd));
+        if (physicallyInside.value || lexicallyInside) {
+          const relativeToRepo = path.relative(repoRoot, configuredExcludesPath);
+          if (
+            relativeToRepo.length === 0 ||
+            relativeToRepo === ".." ||
+            relativeToRepo.startsWith(`..${path.sep}`) ||
+            path.isAbsolute(relativeToRepo)
+          ) {
+            return refusedEvidence(
+              "the configured core.excludesFile could not be mapped into the restored workspace",
+            );
+          }
+          const excludesRelativePath = relativeToRepo.split(path.sep).join("/");
+          const currentListed = [...currentFiles.result.stdout.split("\0"), ...currentIgnored]
+            .map(trimTrailingSlash)
+            .includes(trimTrailingSlash(excludesRelativePath));
+          const absoluteExcludesPath = path.join(repoRoot, excludesRelativePath);
+          const currentInfo = yield* fileSystem.stat(absoluteExcludesPath).pipe(Effect.option);
+          const currentLink = yield* fileSystem.readLink(absoluteExcludesPath).pipe(Effect.option);
+          const targetListed = targetEntries.some((entry) => entry.path === excludesRelativePath);
+          if (
+            currentListed ||
+            Option.isSome(currentInfo) ||
+            Option.isSome(currentLink) ||
+            targetListed
+          ) {
+            specialIgnorePaths.add(excludesRelativePath);
+          }
+        }
+      }
+      const isRelevantIgnorePath = (entry: string): boolean =>
+        isGitIgnorePath(entry) || specialIgnorePaths.has(trimTrailingSlash(entry));
+
+      const currentIgnorePaths = new Set(
+        [...currentFiles.result.stdout.split("\0"), ...currentIgnored]
+          .filter((entry) => entry.length > 0 && isRelevantIgnorePath(entry))
+          .map(trimTrailingSlash),
+      );
+      for (const specialIgnorePath of specialIgnorePaths) {
+        currentIgnorePaths.add(specialIgnorePath);
+      }
+
+      const targetIgnoreByPath = new Map(
+        targetEntries
+          .filter((entry) => isRelevantIgnorePath(entry.path))
+          .map((entry) => [entry.path, entry] as const),
+      );
+
+      let rulesChanged = false;
+      const allIgnorePaths = new Set([...currentIgnorePaths, ...targetIgnoreByPath.keys()]);
+      for (const ignorePath of allIgnorePaths) {
+        const target = targetIgnoreByPath.get(ignorePath);
+        if (target === undefined) {
+          rulesChanged = true;
+          break;
+        }
+        if (target.type !== "blob" || (target.mode !== "100644" && target.mode !== "100755")) {
+          // A symlink, submodule, or other non-regular .gitignore is a change.
+          rulesChanged = true;
+          break;
+        }
+        if (!currentIgnorePaths.has(ignorePath)) {
+          rulesChanged = true;
+          break;
+        }
+        const absolute = path.join(repoRoot, ignorePath);
+        const link = yield* fileSystem.readLink(absolute).pipe(Effect.option);
+        if (Option.isSome(link)) {
+          rulesChanged = true;
+          break;
+        }
+        const info = yield* fileSystem.stat(absolute).pipe(Effect.option);
+        if (Option.isNone(info)) {
+          rulesChanged = true;
+          break;
+        }
+        const currentExecutable = (info.value.mode & 0o111) !== 0;
+        if (currentExecutable !== (target.mode === "100755")) {
+          rulesChanged = true;
+          break;
+        }
+        const ignorePathProblem = validateGitArgumentValue(ignorePath, "Ignore file path");
+        if (ignorePathProblem !== null) {
+          rulesChanged = true;
+          break;
+        }
+        const hashed = yield* runGitEvidence({
+          operation: "CheckpointReactor.inspectIgnoredRevertRisk.hashObject",
+          cwd: repoRoot,
+          args: ["--literal-pathspecs", "hash-object", "--no-filters", "--", ignorePath],
+        });
+        if (!hashed.ok || hashed.result.exitCode !== 0) {
+          rulesChanged = true;
+          break;
+        }
+        if (hashed.result.stdout.trim() !== target.oid) {
+          rulesChanged = true;
+          break;
+        }
+      }
+
+      const targetPathKeys = new Set(targetEntries.map((entry) => conservativePathKey(entry.path)));
+      const targetDirectoryPrefixKeys = new Set<string>();
+      for (const entry of targetEntries) {
+        const segments = entry.path.split("/");
+        for (let index = 1; index < segments.length; index += 1) {
+          targetDirectoryPrefixKeys.add(conservativePathKey(segments.slice(0, index).join("/")));
+        }
+      }
+
+      const collidingIgnored = [
+        ...new Set(
+          currentIgnored.map(trimTrailingSlash).filter((ignoredPath) => {
+            const ignoredKey = conservativePathKey(ignoredPath);
+            if (targetPathKeys.has(ignoredKey) || targetDirectoryPrefixKeys.has(ignoredKey)) {
+              return true;
+            }
+            const segments = ignoredPath.split("/");
+            for (let index = 1; index < segments.length; index += 1) {
+              if (targetPathKeys.has(conservativePathKey(segments.slice(0, index).join("/")))) {
+                return true;
+              }
+            }
+            return false;
+          }),
+        ),
+      ];
+
+      if (!rulesChanged && collidingIgnored.length === 0) {
+        return { state: "safe" };
+      }
+
+      const display = (entry: string): string =>
+        cwdPrefix.length > 0 && entry.startsWith(cwdPrefix) ? entry.slice(cwdPrefix.length) : entry;
+      const atRiskPaths = [
+        ...new Set([
+          ...(rulesChanged ? currentIgnored.map(trimTrailingSlash).map(display) : []),
+          ...collidingIgnored.map(display),
+        ]),
+      ];
+      return {
+        state: "refused",
+        reason:
+          rulesChanged && collidingIgnored.length > 0
+            ? "both"
+            : rulesChanged
+              ? "rules"
+              : "collision",
+        paths: atRiskPaths,
+      };
+    },
+  );
 
   // Resolves the workspace CWD for checkpoint operations, preferring the
   // active provider session CWD and falling back to the thread/project config.
@@ -189,7 +825,7 @@ const make = Effect.gen(function* () {
     readonly thread: { readonly projectId: ProjectId; readonly worktreePath: string | null };
     readonly projects: ReadonlyArray<{ readonly id: ProjectId; readonly workspaceRoot: string }>;
     readonly preferSessionRuntime: boolean;
-  }): Effect.fn.Return<string | undefined> {
+  }): Effect.fn.Return<string | undefined, CheckpointStoreError> {
     const fromSession = yield* resolveSessionRuntimeForThread(input.threadId);
     const fromThread = resolveThreadWorkspaceCwd({
       thread: input.thread,
@@ -210,7 +846,7 @@ const make = Effect.gen(function* () {
     if (!cwd) {
       return undefined;
     }
-    if (!isGitWorkspace(cwd)) {
+    if (!(yield* isGitWorkspace(cwd))) {
       return undefined;
     }
     return cwd;
@@ -716,129 +1352,308 @@ const make = Effect.gen(function* () {
     event: Extract<OrchestrationEvent, { type: "thread.checkpoint-revert-requested" }>,
   ) {
     const now = DateTime.formatIso(yield* DateTime.now);
+    const threadId = event.payload.threadId;
+    const turnCount = event.payload.turnCount;
 
-    const thread = yield* resolveThreadDetail(event.payload.threadId);
-    if (!thread) {
+    const initialSessions = yield* readSessionsForRevert();
+    if (Option.isNone(initialSessions)) {
       yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
-        detail: "Thread was not found in read model.",
+        threadId,
+        turnCount,
+        detail:
+          "Revert refused: the active provider session list could not be read, so Neokod cannot confirm that no other thread is running in this folder. Nothing was changed.",
         createdAt: now,
       }).pipe(Effect.catch(() => Effect.void));
       return;
     }
 
-    const sessionRuntime = yield* resolveSessionRuntimeForThread(event.payload.threadId);
-    if (Option.isNone(sessionRuntime)) {
+    const initialSessionRuntime = sessionRuntimeFromSessions(threadId, initialSessions.value);
+    if (Option.isNone(initialSessionRuntime)) {
       yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
+        threadId,
+        turnCount,
         detail: "No active provider session with workspace cwd is bound to this thread.",
         createdAt: now,
       }).pipe(Effect.catch(() => Effect.void));
       return;
     }
-    if (!isGitWorkspace(sessionRuntime.value.cwd)) {
+
+    const cwd = initialSessionRuntime.value.cwd;
+    if (!(yield* isGitWorkspace(cwd))) {
       yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
+        threadId,
+        turnCount,
         detail: "Checkpoints are unavailable because this project is not a git repository.",
         createdAt: now,
       }).pipe(Effect.catch(() => Effect.void));
       return;
     }
 
-    const currentTurnCount = thread.checkpoints.reduce(
-      (maxTurnCount, checkpoint) => Math.max(maxTurnCount, checkpoint.checkpointTurnCount),
-      0,
-    );
+    const failRevert = (detail: string) =>
+      appendRevertFailureActivity({ threadId, turnCount, detail, createdAt: now }).pipe(
+        Effect.catch(() => Effect.void),
+      );
 
-    if (event.payload.turnCount > currentTurnCount) {
-      yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
-        detail: `Checkpoint turn count ${event.payload.turnCount} exceeds current turn count ${currentTurnCount}.`,
-        createdAt: now,
-      }).pipe(Effect.catch(() => Effect.void));
-      return;
-    }
+    // Hold the worktree removal reservation across fresh busy-evidence reads,
+    // capture, restore, rollback and completion. New turn admissions that
+    // overlap cwd are blocked while it is held. The lease takes its admission
+    // semaphore only to add and remove the reservation, not while this effect,
+    // including reactor dispatches, runs.
+    yield* worktreeRemovalLease
+      .withRemovalReservationForPath(
+        cwd,
+        Effect.gen(function* () {
+          const sessions = yield* readSessionsForRevert();
+          if (Option.isNone(sessions)) {
+            yield* failRevert(
+              "Revert refused: the active provider session list could not be read, so Neokod cannot confirm that no other thread is running in this folder. Nothing was changed.",
+            );
+            return;
+          }
 
-    const targetCheckpointRef =
-      event.payload.turnCount === 0
-        ? checkpointRefForThreadTurn(event.payload.threadId, 0)
-        : thread.checkpoints.find(
-            (checkpoint) => checkpoint.checkpointTurnCount === event.payload.turnCount,
-          )?.checkpointRef;
+          const freshSessionRuntime = sessionRuntimeFromSessions(threadId, sessions.value);
+          if (Option.isNone(freshSessionRuntime)) {
+            yield* failRevert(
+              "No active provider session with workspace cwd is bound to this thread.",
+            );
+            return;
+          }
+          if (freshSessionRuntime.value.cwd !== cwd) {
+            yield* failRevert(
+              "Revert refused: the provider session workspace changed while the revert was starting. Nothing was changed.",
+            );
+            return;
+          }
 
-    if (!targetCheckpointRef) {
-      yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
-        detail: `Checkpoint ref for turn ${event.payload.turnCount} is unavailable in read model.`,
-        createdAt: now,
-      }).pipe(Effect.catch(() => Effect.void));
-      return;
-    }
+          const thread = yield* resolveThreadDetail(threadId);
+          if (!thread) {
+            yield* failRevert("Thread was not found in read model.");
+            return;
+          }
 
-    const restored = yield* checkpointStore.restoreCheckpoint({
-      cwd: sessionRuntime.value.cwd,
-      checkpointRef: targetCheckpointRef,
-      fallbackToHead: event.payload.turnCount === 0,
-    });
-    if (!restored) {
-      yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
-        detail: `Filesystem checkpoint is unavailable for turn ${event.payload.turnCount}.`,
-        createdAt: now,
-      }).pipe(Effect.catch(() => Effect.void));
-      return;
-    }
+          const currentTurnCount = thread.checkpoints.reduce(
+            (maxTurnCount, checkpoint) => Math.max(maxTurnCount, checkpoint.checkpointTurnCount),
+            0,
+          );
+          if (turnCount > currentTurnCount) {
+            yield* failRevert(
+              `Checkpoint turn count ${turnCount} exceeds current turn count ${currentTurnCount}.`,
+            );
+            return;
+          }
 
-    // Refresh the workspace entry index so the @-mention file picker
-    // reflects the reverted filesystem state.
-    yield* workspaceEntries.refresh(sessionRuntime.value.cwd);
+          const targetCheckpointRef =
+            turnCount === 0
+              ? checkpointRefForThreadTurn(threadId, 0)
+              : thread.checkpoints.find(
+                  (checkpoint) => checkpoint.checkpointTurnCount === turnCount,
+                )?.checkpointRef;
+          if (!targetCheckpointRef) {
+            yield* failRevert(`Checkpoint ref for turn ${turnCount} is unavailable in read model.`);
+            return;
+          }
 
-    const rolledBackTurns = Math.max(0, currentTurnCount - event.payload.turnCount);
-    if (rolledBackTurns > 0) {
-      yield* providerService.rollbackConversation({
-        threadId: sessionRuntime.value.threadId,
-        numTurns: rolledBackTurns,
-      });
-    }
+          // Fresh evidence after the reservation. A turn admitted before the
+          // reservation is already projected as pending/running, so it is
+          // refused here before capture.
+          // Read unresolved admissions independently of the active-sidebar
+          // shell filter. Archived or deleted threads can still own an
+          // admitted turn whose provider session is not visible yet, so the
+          // full command read model is the authoritative thread list here.
+          const commandReadModel = yield* projectionSnapshotQuery.getCommandReadModel();
+          const cwdIdentity = yield* readWorkspaceIdentity(cwd);
+          const busyThreads = new Set<ThreadId>();
 
-    const staleCheckpointRefs: Array<CheckpointRef> = [];
-    for (const checkpoint of thread.checkpoints) {
-      if (checkpoint.checkpointTurnCount > event.payload.turnCount) {
-        staleCheckpointRefs.push(checkpoint.checkpointRef);
-      }
-    }
+          for (const session of sessions.value) {
+            if (!providerSessionHasActiveTurn(session) || session.cwd === undefined) {
+              continue;
+            }
+            if (yield* workspacePathsOverlap(cwdIdentity, session.cwd)) {
+              busyThreads.add(session.threadId);
+            }
+          }
 
-    if (staleCheckpointRefs.length > 0) {
-      yield* checkpointStore.deleteCheckpointRefs({
-        cwd: sessionRuntime.value.cwd,
-        checkpointRefs: staleCheckpointRefs,
-      });
-    }
+          const ownActiveTurnId = thread.session?.activeTurnId ?? null;
+          if (ownActiveTurnId !== null) {
+            busyThreads.add(thread.id);
+          }
 
-    yield* orchestrationEngine
-      .dispatch({
-        type: "thread.revert.complete",
-        commandId: yield* serverCommandId("checkpoint-revert-complete"),
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
-        createdAt: now,
-      })
-      .pipe(
-        Effect.catch((error) =>
-          appendRevertFailureActivity({
-            threadId: event.payload.threadId,
-            turnCount: event.payload.turnCount,
-            detail: error.message,
+          for (const shellThread of commandReadModel.threads) {
+            const currentWorkspacePath = resolveThreadWorkspaceCwd({
+              thread: shellThread,
+              projects: commandReadModel.projects,
+            });
+            const currentOverlaps =
+              currentWorkspacePath === undefined
+                ? true
+                : yield* workspacePathsOverlap(cwdIdentity, currentWorkspacePath);
+
+            const turns = yield* projectionTurnRepository.listByThreadId({
+              threadId: shellThread.id,
+            });
+            const unsettledTurns = turns.filter(
+              (projectedTurn) =>
+                projectedTurn.turnId === null ||
+                projectedTurn.state === "pending" ||
+                projectedTurn.state === "running",
+            );
+            if (unsettledTurns.length > 0) {
+              // The admitted workspace is independent of the thread's current
+              // or inherited folder. A legacy unsettled row has no recorded
+              // workspace, so it fails closed rather than guessing.
+              const admittedOverlaps = yield* Effect.forEach(unsettledTurns, (projectedTurn) => {
+                if (projectedTurn.admittedWorkspacePath === null) {
+                  return Effect.succeed(true);
+                }
+                return workspacePathsOverlap(cwdIdentity, projectedTurn.admittedWorkspacePath);
+              }).pipe(Effect.map((results) => results.some(Boolean)));
+              if (admittedOverlaps) {
+                busyThreads.add(shellThread.id);
+              }
+            }
+
+            if (currentOverlaps) {
+              const activeTurnId = shellThread.session?.activeTurnId ?? null;
+              if (activeTurnId !== null || shellThread.latestTurn?.state === "running") {
+                busyThreads.add(shellThread.id);
+              }
+              if (turns.some((projectedTurn) => projectedTurn.state === "running")) {
+                busyThreads.add(shellThread.id);
+              }
+            }
+          }
+
+          if (busyThreads.size > 0) {
+            const busyList = [...busyThreads].join(", ");
+            yield* failRevert(
+              `Revert refused: ${busyList} ${busyThreads.size === 1 ? "has" : "have"} an active or admitted turn in the same or an overlapping folder (${cwd}). Wait for it to finish or interrupt it, then try again. Nothing was changed.`,
+            );
+            return;
+          }
+
+          const ignoredCheck = yield* inspectIgnoredRevertRisk({
+            cwd,
+            checkpointRef: targetCheckpointRef,
+            fallbackToHead: turnCount === 0,
+          });
+          if (ignoredCheck.state === "refused") {
+            let detail: string;
+            if (ignoredCheck.reason === "evidence") {
+              detail = `Revert refused: Neokod could not verify the ignored files in this folder before reverting (${ignoredCheck.detail ?? "unknown error"}). Nothing was changed.`;
+            } else {
+              const count = ignoredCheck.paths.length;
+              const shown = ignoredCheck.paths.slice(0, 5).join(", ");
+              const more = count > 5 ? ` and ${count - 5} more` : "";
+              const cause =
+                ignoredCheck.reason === "rules"
+                  ? `the ignore rules under this folder changed since checkpoint ${turnCount}`
+                  : ignoredCheck.reason === "collision"
+                    ? `tracked paths under this folder changed since checkpoint ${turnCount} and overlap ignored paths`
+                    : `the ignore rules and tracked paths under this folder changed since checkpoint ${turnCount}`;
+              detail = `Revert refused: ${count} ignored path${count === 1 ? "" : "s"} would be lost because ${cause}. At risk: ${shown}${more}. Nothing was changed.`;
+            }
+            yield* failRevert(detail);
+            return;
+          }
+
+          const preservedIgnored = yield* listIgnoredPathsForRestore(cwd);
+          if (!preservedIgnored.ok) {
+            yield* failRevert(
+              `Revert refused: Neokod could not list the ignored paths in this folder before reverting (${preservedIgnored.detail}). Nothing was changed.`,
+            );
+            return;
+          }
+
+          const recoveryRef = yield* allocateRecoveryRef(cwd, threadId);
+          if (recoveryRef === null) {
+            yield* failRevert(
+              "Revert refused: a unique recovery ref could not be allocated, so nothing was changed.",
+            );
+            return;
+          }
+          const saved = yield* checkpointStore
+            .captureCheckpoint({ cwd, checkpointRef: recoveryRef })
+            .pipe(
+              Effect.as(true),
+              Effect.catch((error) =>
+                failRevert(
+                  `Revert refused: the current files could not be saved to a recovery ref, so nothing was changed. ${error.message}`,
+                ).pipe(Effect.as(false)),
+              ),
+            );
+          if (!saved) {
+            return;
+          }
+
+          yield* appendRevertRecoveryActivity({
+            threadId,
+            turnCount,
+            recoveryRef,
+            cwd,
             createdAt: now,
-          }),
+          }).pipe(Effect.catch(() => Effect.void));
+
+          const restored = yield* checkpointStore.restoreCheckpoint({
+            cwd,
+            checkpointRef: targetCheckpointRef,
+            fallbackToHead: turnCount === 0,
+            preserveIgnoredPaths: preservedIgnored.paths,
+          });
+          if (!restored) {
+            yield* failRevert(`Filesystem checkpoint is unavailable for turn ${turnCount}.`);
+            return;
+          }
+
+          yield* workspaceEntries.refresh(cwd);
+
+          const rolledBackTurns = Math.max(0, currentTurnCount - turnCount);
+          if (rolledBackTurns > 0) {
+            yield* providerService.rollbackConversation({
+              threadId: freshSessionRuntime.value.threadId,
+              numTurns: rolledBackTurns,
+            });
+          }
+
+          const staleCheckpointRefs: Array<CheckpointRef> = [];
+          for (const checkpoint of thread.checkpoints) {
+            if (checkpoint.checkpointTurnCount > turnCount) {
+              staleCheckpointRefs.push(checkpoint.checkpointRef);
+            }
+          }
+          if (staleCheckpointRefs.length > 0) {
+            yield* checkpointStore.deleteCheckpointRefs({
+              cwd,
+              checkpointRefs: staleCheckpointRefs,
+            });
+          }
+
+          yield* orchestrationEngine
+            .dispatch({
+              type: "thread.revert.complete",
+              commandId: yield* serverCommandId("checkpoint-revert-complete"),
+              threadId,
+              turnCount,
+              createdAt: now,
+            })
+            .pipe(
+              Effect.catch((error) =>
+                appendRevertFailureActivity({
+                  threadId,
+                  turnCount,
+                  detail: error.message,
+                  createdAt: now,
+                }),
+              ),
+              Effect.asVoid,
+            );
+        }),
+      )
+      .pipe(
+        Effect.catchIf(
+          (error): error is WorktreeRemovalLeaseConflictError =>
+            error instanceof WorktreeRemovalLeaseConflictError,
+          (error) => failRevert(`Revert refused: ${error.message} Nothing was changed.`),
         ),
-        Effect.asVoid,
       );
   });
 
