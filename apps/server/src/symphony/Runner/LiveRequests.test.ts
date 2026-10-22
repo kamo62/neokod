@@ -2,8 +2,13 @@ import { describe, expect, it } from "@effect/vitest";
 import { RunAttemptId, WorkItemId } from "@neokod/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 
-import { LiveRequestNotFoundError, makeLiveRequests } from "./LiveRequests.ts";
+import {
+  LiveRequestNotFoundError,
+  makeLiveRequests,
+  makeLiveRequestsWithHooks,
+} from "./LiveRequests.ts";
 
 const workItemId = WorkItemId.make("wi-1");
 const runAttemptId = RunAttemptId.make("run-1");
@@ -122,6 +127,173 @@ describe("LiveRequests", () => {
       yield* service.settleRun(runAttemptId, "cancelled");
       const pending = yield* service.listPending(runAttemptId);
       expect(pending).toHaveLength(0);
+    }),
+  );
+
+  it.effect("refuses an answer when the request was already settled elsewhere", () =>
+    Effect.gen(function* () {
+      const service = yield* makeLiveRequests;
+      const deferred = yield* service.registerApproval({
+        requestId: "req-race",
+        workItemId,
+        runAttemptId,
+        action: "command_execution",
+        prompt: "A",
+      });
+      // Another path answered the Deferred without removing the registry entry
+      // yet (the timeout settlement sits between Deferred completion and key
+      // removal). A late click must not report success.
+      yield* Deferred.succeed(deferred, "approved");
+      const failure = yield* Effect.flip(
+        service.respondToApproval(runAttemptId, "req-race", "rejected"),
+      );
+      expect(failure).toBeInstanceOf(LiveRequestNotFoundError);
+      expect(yield* service.listPending(runAttemptId)).toHaveLength(0);
+    }),
+  );
+
+  it.effect("an answer that wins the claim makes a later timeout a no-op", () =>
+    Effect.gen(function* () {
+      const service = yield* makeLiveRequests;
+      yield* service.registerApproval({
+        requestId: "req-cas-answer",
+        workItemId,
+        runAttemptId,
+        action: "command_execution",
+        prompt: "A",
+      });
+      const answered = yield* Effect.result(
+        service.respondToApproval(runAttemptId, "req-cas-answer", "approved"),
+      );
+      expect(answered._tag).toBe("Success");
+      // The timeout arrives late: it must lose the claim, not settle the request
+      // or authorise a second outcome.
+      expect(yield* service.settleRequest(runAttemptId, "req-cas-answer", "timed out")).toBe(false);
+      expect(yield* service.listPending(runAttemptId)).toHaveLength(0);
+    }),
+  );
+
+  it.effect("a timeout that wins the claim makes a later answer a no-op", () =>
+    Effect.gen(function* () {
+      const service = yield* makeLiveRequests;
+      const deferred = yield* service.registerApproval({
+        requestId: "req-cas-timeout",
+        workItemId,
+        runAttemptId,
+        action: "command_execution",
+        prompt: "A",
+      });
+      expect(yield* service.settleRequest(runAttemptId, "req-cas-timeout", "timed out")).toBe(true);
+      const answered = yield* Effect.result(
+        service.respondToApproval(runAttemptId, "req-cas-timeout", "approved"),
+      );
+      expect(answered._tag).toBe("Failure");
+      expect(yield* Deferred.isDone(deferred)).toBe(true);
+    }),
+  );
+
+  it.effect("racing a timeout against an answer yields exactly one winner", () =>
+    Effect.gen(function* () {
+      const service = yield* makeLiveRequests;
+      const deferred = yield* service.registerApproval({
+        requestId: "req-race-timeout",
+        workItemId,
+        runAttemptId,
+        action: "command_execution",
+        prompt: "A",
+      });
+      const [settled, answered] = yield* Effect.all(
+        [
+          service.settleRequest(runAttemptId, "req-race-timeout", "request wait timed out"),
+          Effect.result(service.respondToApproval(runAttemptId, "req-race-timeout", "approved")),
+        ],
+        { concurrency: "unbounded" },
+      );
+
+      // Exactly one of the two claimed the request.
+      expect(settled).toBe(answered._tag === "Failure");
+      // And the agent observed that same outcome.
+      const observed = yield* Effect.result(Deferred.await(deferred));
+      expect(observed._tag).toBe(answered._tag === "Success" ? "Success" : "Failure");
+    }),
+  );
+
+  it.effect("an interrupt at the claim boundary still completes the request", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      // The hook runs between removing the entry and completing its Deferred —
+      // the exact boundary an interruption used to strand.
+      const service = yield* makeLiveRequestsWithHooks({
+        afterClaim: Deferred.succeed(started, undefined).pipe(
+          Effect.andThen(Deferred.await(release)),
+        ),
+      });
+      const deferred = yield* service.registerApproval({
+        requestId: "req-boundary-1",
+        workItemId,
+        runAttemptId,
+        action: "command_execution",
+        prompt: "A",
+      });
+
+      const answer = yield* Effect.forkChild(
+        service.respondToApproval(runAttemptId, "req-boundary-1", "approved"),
+      );
+      yield* Deferred.await(started);
+      const interrupting = yield* Effect.forkChild(Fiber.interrupt(answer));
+      yield* Effect.yieldNow;
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(interrupting);
+
+      // The claim and its Deferred completion are one uninterruptible step: the
+      // resolver was interrupted, yet nothing was removed without an outcome.
+      expect(yield* service.listPending(runAttemptId)).toHaveLength(0);
+      expect(yield* Deferred.isDone(deferred)).toBe(true);
+      expect(yield* Deferred.await(deferred)).toBe("approved");
+      // Nothing is left for a later settlement to find.
+      expect(yield* service.settleRequest(runAttemptId, "req-boundary-1", "late")).toBe(false);
+    }),
+  );
+
+  it.effect("an interrupt at the claim boundary still fails every claimed request", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const service = yield* makeLiveRequestsWithHooks({
+        afterClaim: Deferred.succeed(started, undefined).pipe(
+          Effect.andThen(Deferred.await(release)),
+        ),
+      });
+      const approval = yield* service.registerApproval({
+        requestId: "req-boundary-2a",
+        workItemId,
+        runAttemptId,
+        action: "command_execution",
+        prompt: "A",
+      });
+      const question = yield* service.registerUserInput({
+        requestId: "req-boundary-2b",
+        workItemId,
+        runAttemptId,
+        prompt: "Which branch?",
+      });
+
+      const settling = yield* Effect.forkChild(service.settleRun(runAttemptId, "cancelled"));
+      yield* Deferred.await(started);
+      const interrupting = yield* Effect.forkChild(Fiber.interrupt(settling));
+      yield* Effect.yieldNow;
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(interrupting);
+
+      expect(yield* service.listPending(runAttemptId)).toHaveLength(0);
+      expect(yield* Deferred.isDone(approval)).toBe(true);
+      expect(yield* Deferred.isDone(question)).toBe(true);
+      // The removed requests are settled, so a late answer is refused.
+      const late = yield* Effect.result(
+        service.respondToApproval(runAttemptId, "req-boundary-2a", "approved"),
+      );
+      expect(late._tag).toBe("Failure");
     }),
   );
 

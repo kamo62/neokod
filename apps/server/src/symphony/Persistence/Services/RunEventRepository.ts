@@ -17,6 +17,18 @@ export interface RunEventRepositoryShape {
     eventType: string,
     payload?: Readonly<Record<string, unknown>>,
   ) => Effect.Effect<RunEvent, SymphonyPersistenceError>;
+  /**
+   * Append an observation at most once per attempt/type/payload. Reconciliation
+   * facts (a PR merged or closed, a stale claim released) can be produced by a
+   * scheduled sweep and a manual refresh at the same time; the insert checks
+   * for an existing identical event in the same statement, so only the writer
+   * that actually observed the change adds history. Returns true when appended.
+   */
+  readonly appendOnce: (
+    runAttemptId: RunAttemptId,
+    eventType: string,
+    payload?: Readonly<Record<string, unknown>>,
+  ) => Effect.Effect<boolean, SymphonyPersistenceError>;
   readonly listForAttempt: (
     runAttemptId: RunAttemptId,
   ) => Effect.Effect<RunEvent[], SymphonyPersistenceError>;

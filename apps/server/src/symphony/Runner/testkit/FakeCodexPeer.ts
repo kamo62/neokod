@@ -28,6 +28,7 @@ import {
   type AgentRuntimeService,
 } from "../AgentRuntime.ts";
 import { ApprovalService } from "../ApprovalService.ts";
+import { approvalServiceRequestCallbacks } from "../AgentRequestCallbacks.ts";
 import type { LiveRequestsService } from "../LiveRequests.ts";
 import { LiveRequests } from "../LiveRequests.ts";
 import { AgentRuntimeFactory } from "../Dispatcher.ts";
@@ -321,6 +322,7 @@ export const makeFakeCodexRuntime = (input: {
   readonly peer: FakeCodexPeer;
   readonly liveRequests: LiveRequestsService;
   readonly recordRequest?: AgentRuntimeDeps["recordRequest"];
+  readonly requestTimedOut?: AgentRuntimeDeps["requestTimedOut"];
   readonly secretEnvironmentNames?: ReadonlyArray<string>;
 }): Effect.Effect<AgentRuntimeService, never, Scope.Scope> =>
   makeCodexAgentRuntime({
@@ -329,6 +331,7 @@ export const makeFakeCodexRuntime = (input: {
     env: {},
     liveRequests: input.liveRequests,
     ...(input.recordRequest !== undefined ? { recordRequest: input.recordRequest } : {}),
+    ...(input.requestTimedOut !== undefined ? { requestTimedOut: input.requestTimedOut } : {}),
     ...(input.secretEnvironmentNames !== undefined
       ? { secretEnvironmentNames: input.secretEnvironmentNames }
       : {}),
@@ -351,21 +354,7 @@ export const fakeCodexRuntimeFactory = (
           makeFakeCodexRuntime({
             peer: nextPeer(),
             liveRequests,
-            recordRequest: (recordInput) =>
-              approvalService
-                .recordPending({
-                  id: recordInput.requestId,
-                  requestId: recordInput.requestId,
-                  workItemId: recordInput.workItemId,
-                  runAttemptId: recordInput.runAttemptId,
-                  action: recordInput.action,
-                  scope: "once",
-                  ...(recordInput.command !== undefined ? { command: recordInput.command } : {}),
-                })
-                .pipe(
-                  Effect.asVoid,
-                  Effect.catch(() => Effect.void),
-                ),
+            ...approvalServiceRequestCallbacks(approvalService),
           }),
       };
     }),

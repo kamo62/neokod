@@ -124,6 +124,7 @@ const fakeApprovalsLayer = Layer.succeed(ApprovalService, {
   listForRun: () => Effect.succeed([]),
   expire: () => Effect.void,
   interrupt: () => Effect.void,
+  expireRequest: () => Effect.succeed(false),
 } as (typeof ApprovalService)["Service"]);
 
 it.layer(fakeOrchestratorLayer.pipe(Layer.provideMerge(fakeApprovalsLayer)))(
