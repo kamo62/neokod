@@ -259,10 +259,10 @@ export const makeOrchestrationIntegrationHarness = (
 
     const persistenceLayer = makeSqlitePersistenceLive(dbPath);
     const orchestrationLayer = OrchestrationEngineLive.pipe(
-      Layer.provide(OrchestrationProjectionPipelineLive),
+      Layer.provideMerge(OrchestrationProjectionPipelineLive),
       Layer.provide(OrchestrationEventStoreLive),
       Layer.provide(OrchestrationCommandReceiptRepositoryLive),
-      Layer.provide(WorktreeRemovalLeaseLive),
+      Layer.provideMerge(WorktreeRemovalLeaseLive),
     );
     const providerSessionDirectoryLayer = ProviderSessionDirectoryLive.pipe(
       Layer.provide(ProviderSessionRuntimeRepositoryLive),

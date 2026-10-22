@@ -25,15 +25,21 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@neokod/shared/DrainableWorker";
 import { isTemporaryWorktreeBranch } from "@neokod/shared/git";
+import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 
 import { parseTurnDiffFilesFromUnifiedDiff } from "../../checkpointing/Diffs.ts";
 import {
   checkpointRefForThreadTurn,
-  findActiveSessionsSharingCwd,
+  providerSessionHasActiveTurn,
   recoveryRefForThreadRevert,
   resolveThreadWorkspaceCwd,
 } from "../../checkpointing/Utils.ts";
 import * as CheckpointStore from "../../checkpointing/CheckpointStore.ts";
+import {
+  WorktreeRemovalLease,
+  WorktreeRemovalLeaseConflictError,
+} from "../../git/WorktreeRemovalLease.ts";
+import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { CheckpointReactor, type CheckpointReactorShape } from "../Services/CheckpointReactor.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
@@ -41,6 +47,11 @@ import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts"
 import { RuntimeReceiptBus } from "../Services/RuntimeReceiptBus.ts";
 import type { CheckpointStoreError } from "../../checkpointing/Errors.ts";
 import type { OrchestrationDispatchError } from "../Errors.ts";
+import {
+  isWorkspaceSameOrInside,
+  readWorkspaceIdentityEvidence,
+  type WorkspaceIdentityEvidence,
+} from "../../vcs/WorkspaceIdentity.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import * as VcsProcess from "../../vcs/VcsProcess.ts";
 import * as WorkspaceEntries from "../../workspace/WorkspaceEntries.ts";
@@ -110,6 +121,9 @@ const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const vcsProcess = yield* VcsProcess.VcsProcess;
+  const projectionTurnRepository = yield* ProjectionTurnRepository;
+  const worktreeRemovalLease = yield* WorktreeRemovalLease;
+  const hostPlatform = yield* HostProcessPlatform;
   const receiptBus = yield* RuntimeReceiptBus;
   const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
   const vcsStatusBroadcaster = yield* VcsStatusBroadcaster;
@@ -269,6 +283,35 @@ const make = Effect.gen(function* () {
   });
 
   const isGitWorkspace = (cwd: string) => checkpointStore.isGitRepository(cwd);
+
+  const readWorkspaceIdentity = (workspacePath: string) =>
+    readWorkspaceIdentityEvidence(workspacePath).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+    );
+
+  const isWorkspaceSameOrInsideWithServices = (
+    target: WorkspaceIdentityEvidence,
+    candidatePath: string,
+  ) =>
+    isWorkspaceSameOrInside({ target, candidatePath }).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+      Effect.provideService(HostProcessPlatform, hostPlatform),
+    );
+
+  // Physical overlap in either direction. A revert in a subfolder also has to
+  // block turns admitted in its parent, not only paths inside the subfolder.
+  const workspacePathsOverlap = Effect.fn("CheckpointReactor.workspacePathsOverlap")(function* (
+    left: WorkspaceIdentityEvidence,
+    rightPath: string,
+  ) {
+    const right = yield* readWorkspaceIdentity(rightPath);
+    if (yield* isWorkspaceSameOrInsideWithServices(left, right.physicalPath)) {
+      return true;
+    }
+    return yield* isWorkspaceSameOrInsideWithServices(right, left.physicalPath);
+  });
 
   const runGit = Effect.fn("CheckpointReactor.runGit")(function* (input: {
     readonly operation: string;
@@ -1150,23 +1193,14 @@ const make = Effect.gen(function* () {
     event: Extract<OrchestrationEvent, { type: "thread.checkpoint-revert-requested" }>,
   ) {
     const now = DateTime.formatIso(yield* DateTime.now);
+    const threadId = event.payload.threadId;
+    const turnCount = event.payload.turnCount;
 
-    const thread = yield* resolveThreadDetail(event.payload.threadId);
-    if (!thread) {
+    const initialSessions = yield* readSessionsForRevert();
+    if (Option.isNone(initialSessions)) {
       yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
-        detail: "Thread was not found in read model.",
-        createdAt: now,
-      }).pipe(Effect.catch(() => Effect.void));
-      return;
-    }
-
-    const sessions = yield* readSessionsForRevert();
-    if (Option.isNone(sessions)) {
-      yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
+        threadId,
+        turnCount,
         detail:
           "Revert refused: the active provider session list could not be read, so Neokod cannot confirm that no other thread is running in this folder. Nothing was changed.",
         createdAt: now,
@@ -1174,216 +1208,262 @@ const make = Effect.gen(function* () {
       return;
     }
 
-    const sessionRuntime = sessionRuntimeFromSessions(event.payload.threadId, sessions.value);
-    if (Option.isNone(sessionRuntime)) {
+    const initialSessionRuntime = sessionRuntimeFromSessions(threadId, initialSessions.value);
+    if (Option.isNone(initialSessionRuntime)) {
       yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
+        threadId,
+        turnCount,
         detail: "No active provider session with workspace cwd is bound to this thread.",
         createdAt: now,
       }).pipe(Effect.catch(() => Effect.void));
       return;
     }
-    if (!(yield* isGitWorkspace(sessionRuntime.value.cwd))) {
+
+    const cwd = initialSessionRuntime.value.cwd;
+    if (!(yield* isGitWorkspace(cwd))) {
       yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
+        threadId,
+        turnCount,
         detail: "Checkpoints are unavailable because this project is not a git repository.",
         createdAt: now,
       }).pipe(Effect.catch(() => Effect.void));
       return;
     }
 
-    const currentTurnCount = thread.checkpoints.reduce(
-      (maxTurnCount, checkpoint) => Math.max(maxTurnCount, checkpoint.checkpointTurnCount),
-      0,
-    );
-
-    if (event.payload.turnCount > currentTurnCount) {
-      yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
-        detail: `Checkpoint turn count ${event.payload.turnCount} exceeds current turn count ${currentTurnCount}.`,
-        createdAt: now,
-      }).pipe(Effect.catch(() => Effect.void));
-      return;
-    }
-
-    const targetCheckpointRef =
-      event.payload.turnCount === 0
-        ? checkpointRefForThreadTurn(event.payload.threadId, 0)
-        : thread.checkpoints.find(
-            (checkpoint) => checkpoint.checkpointTurnCount === event.payload.turnCount,
-          )?.checkpointRef;
-
-    if (!targetCheckpointRef) {
-      yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
-        detail: `Checkpoint ref for turn ${event.payload.turnCount} is unavailable in read model.`,
-        createdAt: now,
-      }).pipe(Effect.catch(() => Effect.void));
-      return;
-    }
-
-    const cwd = sessionRuntime.value.cwd;
-
-    // Refuse while this thread or another thread has an active turn in the same
-    // folder or an overlapping parent/child folder. Restore rewrites every
-    // tracked file and deletes every untracked, non-ignored file under cwd,
-    // including another thread's work.
-    const busyThreads = [
-      ...findActiveSessionsSharingCwd({
-        cwd,
-        sessions: sessions.value,
-      }),
-    ];
-    // The provider session list is not the only evidence of an active turn.
-    // The read model also records the thread's own active turn; treat either
-    // as busy. This covers adapters that keep the session at "ready".
-    const readModelActiveTurnId = thread.session?.activeTurnId ?? null;
-    if (
-      readModelActiveTurnId !== null &&
-      !busyThreads.some((threadId) => threadId === event.payload.threadId)
-    ) {
-      busyThreads.push(event.payload.threadId);
-    }
-    if (busyThreads.length > 0) {
-      yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
-        detail: `Revert refused: ${busyThreads.join(", ")} ${busyThreads.length === 1 ? "has" : "have"} an active turn in the same folder (${cwd}). Wait for it to finish or interrupt it, then try again. Nothing was changed.`,
-        createdAt: now,
-      }).pipe(Effect.catch(() => Effect.void));
-      return;
-    }
-
-    // The recovery snapshot never captures ignored files. Refuse before any
-    // mutation when ignore rules under this folder differ from the checkpoint,
-    // or a tracked checkpoint entry overlaps an ignored path, or the evidence
-    // could not be read completely.
-    const ignoredCheck = yield* inspectIgnoredRevertRisk({
-      cwd,
-      checkpointRef: targetCheckpointRef,
-      fallbackToHead: event.payload.turnCount === 0,
-    });
-    if (ignoredCheck.state === "refused") {
-      let detail: string;
-      if (ignoredCheck.reason === "evidence") {
-        detail = `Revert refused: Neokod could not verify the ignored files in this folder before reverting (${ignoredCheck.detail ?? "unknown error"}). Nothing was changed.`;
-      } else {
-        const count = ignoredCheck.paths.length;
-        const shown = ignoredCheck.paths.slice(0, 5).join(", ");
-        const more = count > 5 ? ` and ${count - 5} more` : "";
-        const cause =
-          ignoredCheck.reason === "rules"
-            ? `the .gitignore rules under this folder changed since checkpoint ${event.payload.turnCount}`
-            : ignoredCheck.reason === "collision"
-              ? `tracked paths under this folder changed since checkpoint ${event.payload.turnCount} and overlap ignored paths`
-              : `the .gitignore rules and tracked paths under this folder changed since checkpoint ${event.payload.turnCount}`;
-        detail = `Revert refused: ${count} ignored path${count === 1 ? "" : "s"} would be lost because ${cause}. At risk: ${shown}${more}. Nothing was changed.`;
-      }
-      yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
-        detail,
-        createdAt: now,
-      }).pipe(Effect.catch(() => Effect.void));
-      return;
-    }
-
-    // Save the current files to a hidden ref first. If that fails, change
-    // nothing: no restore, no conversation rollback and no checkpoint cleanup.
-    const recoveryRef = recoveryRefForThreadRevert(
-      event.payload.threadId,
-      yield* nextRecoveryRefMillis,
-    );
-    const saved = yield* checkpointStore
-      .captureCheckpoint({ cwd, checkpointRef: recoveryRef })
-      .pipe(
-        Effect.as(true),
-        Effect.catch((error) =>
-          appendRevertFailureActivity({
-            threadId: event.payload.threadId,
-            turnCount: event.payload.turnCount,
-            detail: `Revert refused: the current files could not be saved to a recovery ref, so nothing was changed. ${error.message}`,
-            createdAt: now,
-          }).pipe(
-            Effect.catch(() => Effect.void),
-            Effect.as(false),
-          ),
-        ),
+    const failRevert = (detail: string) =>
+      appendRevertFailureActivity({ threadId, turnCount, detail, createdAt: now }).pipe(
+        Effect.catch(() => Effect.void),
       );
-    if (!saved) {
-      return;
-    }
-    yield* appendRevertRecoveryActivity({
-      threadId: event.payload.threadId,
-      turnCount: event.payload.turnCount,
-      recoveryRef,
-      cwd,
-      createdAt: now,
-    }).pipe(Effect.catch(() => Effect.void));
 
-    const restored = yield* checkpointStore.restoreCheckpoint({
-      cwd,
-      checkpointRef: targetCheckpointRef,
-      fallbackToHead: event.payload.turnCount === 0,
-    });
-    if (!restored) {
-      yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
-        detail: `Filesystem checkpoint is unavailable for turn ${event.payload.turnCount}.`,
-        createdAt: now,
-      }).pipe(Effect.catch(() => Effect.void));
-      return;
-    }
-
-    // Refresh the workspace entry index so the @-mention file picker
-    // reflects the reverted filesystem state.
-    yield* workspaceEntries.refresh(cwd);
-
-    const rolledBackTurns = Math.max(0, currentTurnCount - event.payload.turnCount);
-    if (rolledBackTurns > 0) {
-      yield* providerService.rollbackConversation({
-        threadId: sessionRuntime.value.threadId,
-        numTurns: rolledBackTurns,
-      });
-    }
-
-    const staleCheckpointRefs: Array<CheckpointRef> = [];
-    for (const checkpoint of thread.checkpoints) {
-      if (checkpoint.checkpointTurnCount > event.payload.turnCount) {
-        staleCheckpointRefs.push(checkpoint.checkpointRef);
-      }
-    }
-
-    if (staleCheckpointRefs.length > 0) {
-      yield* checkpointStore.deleteCheckpointRefs({
+    // Hold the worktree removal reservation across fresh busy-evidence reads,
+    // capture, restore, rollback and completion. New turn admissions that
+    // overlap cwd are blocked while it is held. The lease takes its admission
+    // semaphore only to add and remove the reservation, not while this effect,
+    // including reactor dispatches, runs.
+    yield* worktreeRemovalLease
+      .withRemovalReservationForPath(
         cwd,
-        checkpointRefs: staleCheckpointRefs,
-      });
-    }
+        Effect.gen(function* () {
+          const sessions = yield* readSessionsForRevert();
+          if (Option.isNone(sessions)) {
+            yield* failRevert(
+              "Revert refused: the active provider session list could not be read, so Neokod cannot confirm that no other thread is running in this folder. Nothing was changed.",
+            );
+            return;
+          }
 
-    yield* orchestrationEngine
-      .dispatch({
-        type: "thread.revert.complete",
-        commandId: yield* serverCommandId("checkpoint-revert-complete"),
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
-        createdAt: now,
-      })
-      .pipe(
-        Effect.catch((error) =>
-          appendRevertFailureActivity({
-            threadId: event.payload.threadId,
-            turnCount: event.payload.turnCount,
-            detail: error.message,
+          const freshSessionRuntime = sessionRuntimeFromSessions(threadId, sessions.value);
+          if (Option.isNone(freshSessionRuntime)) {
+            yield* failRevert(
+              "No active provider session with workspace cwd is bound to this thread.",
+            );
+            return;
+          }
+          if (freshSessionRuntime.value.cwd !== cwd) {
+            yield* failRevert(
+              "Revert refused: the provider session workspace changed while the revert was starting. Nothing was changed.",
+            );
+            return;
+          }
+
+          const thread = yield* resolveThreadDetail(threadId);
+          if (!thread) {
+            yield* failRevert("Thread was not found in read model.");
+            return;
+          }
+
+          const currentTurnCount = thread.checkpoints.reduce(
+            (maxTurnCount, checkpoint) => Math.max(maxTurnCount, checkpoint.checkpointTurnCount),
+            0,
+          );
+          if (turnCount > currentTurnCount) {
+            yield* failRevert(
+              `Checkpoint turn count ${turnCount} exceeds current turn count ${currentTurnCount}.`,
+            );
+            return;
+          }
+
+          const targetCheckpointRef =
+            turnCount === 0
+              ? checkpointRefForThreadTurn(threadId, 0)
+              : thread.checkpoints.find(
+                  (checkpoint) => checkpoint.checkpointTurnCount === turnCount,
+                )?.checkpointRef;
+          if (!targetCheckpointRef) {
+            yield* failRevert(`Checkpoint ref for turn ${turnCount} is unavailable in read model.`);
+            return;
+          }
+
+          // Fresh evidence after the reservation. A turn admitted before the
+          // reservation is already projected as pending/running, so it is
+          // refused here before capture.
+          const shell = yield* projectionSnapshotQuery.getShellSnapshot();
+          const cwdIdentity = yield* readWorkspaceIdentity(cwd);
+          const busyThreads = new Set<ThreadId>();
+
+          for (const session of sessions.value) {
+            if (!providerSessionHasActiveTurn(session) || session.cwd === undefined) {
+              continue;
+            }
+            if (yield* workspacePathsOverlap(cwdIdentity, session.cwd)) {
+              busyThreads.add(session.threadId);
+            }
+          }
+
+          const ownActiveTurnId = thread.session?.activeTurnId ?? null;
+          if (ownActiveTurnId !== null) {
+            busyThreads.add(thread.id);
+          }
+
+          for (const shellThread of shell.threads) {
+            const workspacePath = resolveThreadWorkspaceCwd({
+              thread: shellThread,
+              projects: shell.projects,
+            });
+            const overlaps =
+              workspacePath === undefined
+                ? true
+                : yield* workspacePathsOverlap(cwdIdentity, workspacePath);
+            if (!overlaps) {
+              continue;
+            }
+
+            const activeTurnId = shellThread.session?.activeTurnId ?? null;
+            if (activeTurnId !== null || shellThread.latestTurn?.state === "running") {
+              busyThreads.add(shellThread.id);
+            }
+
+            const turns = yield* projectionTurnRepository.listByThreadId({
+              threadId: shellThread.id,
+            });
+            if (
+              turns.some(
+                (projectedTurn) =>
+                  projectedTurn.turnId === null ||
+                  projectedTurn.state === "pending" ||
+                  projectedTurn.state === "running",
+              )
+            ) {
+              busyThreads.add(shellThread.id);
+            }
+          }
+
+          if (busyThreads.size > 0) {
+            const busyList = [...busyThreads].join(", ");
+            yield* failRevert(
+              `Revert refused: ${busyList} ${busyThreads.size === 1 ? "has" : "have"} an active or admitted turn in the same or an overlapping folder (${cwd}). Wait for it to finish or interrupt it, then try again. Nothing was changed.`,
+            );
+            return;
+          }
+
+          const ignoredCheck = yield* inspectIgnoredRevertRisk({
+            cwd,
+            checkpointRef: targetCheckpointRef,
+            fallbackToHead: turnCount === 0,
+          });
+          if (ignoredCheck.state === "refused") {
+            let detail: string;
+            if (ignoredCheck.reason === "evidence") {
+              detail = `Revert refused: Neokod could not verify the ignored files in this folder before reverting (${ignoredCheck.detail ?? "unknown error"}). Nothing was changed.`;
+            } else {
+              const count = ignoredCheck.paths.length;
+              const shown = ignoredCheck.paths.slice(0, 5).join(", ");
+              const more = count > 5 ? ` and ${count - 5} more` : "";
+              const cause =
+                ignoredCheck.reason === "rules"
+                  ? `the .gitignore rules under this folder changed since checkpoint ${turnCount}`
+                  : ignoredCheck.reason === "collision"
+                    ? `tracked paths under this folder changed since checkpoint ${turnCount} and overlap ignored paths`
+                    : `the .gitignore rules and tracked paths under this folder changed since checkpoint ${turnCount}`;
+              detail = `Revert refused: ${count} ignored path${count === 1 ? "" : "s"} would be lost because ${cause}. At risk: ${shown}${more}. Nothing was changed.`;
+            }
+            yield* failRevert(detail);
+            return;
+          }
+
+          const recoveryRef = recoveryRefForThreadRevert(threadId, yield* nextRecoveryRefMillis);
+          const saved = yield* checkpointStore
+            .captureCheckpoint({ cwd, checkpointRef: recoveryRef })
+            .pipe(
+              Effect.as(true),
+              Effect.catch((error) =>
+                failRevert(
+                  `Revert refused: the current files could not be saved to a recovery ref, so nothing was changed. ${error.message}`,
+                ).pipe(Effect.as(false)),
+              ),
+            );
+          if (!saved) {
+            return;
+          }
+
+          yield* appendRevertRecoveryActivity({
+            threadId,
+            turnCount,
+            recoveryRef,
+            cwd,
             createdAt: now,
-          }),
+          }).pipe(Effect.catch(() => Effect.void));
+
+          const restored = yield* checkpointStore.restoreCheckpoint({
+            cwd,
+            checkpointRef: targetCheckpointRef,
+            fallbackToHead: turnCount === 0,
+          });
+          if (!restored) {
+            yield* failRevert(`Filesystem checkpoint is unavailable for turn ${turnCount}.`);
+            return;
+          }
+
+          yield* workspaceEntries.refresh(cwd);
+
+          const rolledBackTurns = Math.max(0, currentTurnCount - turnCount);
+          if (rolledBackTurns > 0) {
+            yield* providerService.rollbackConversation({
+              threadId: freshSessionRuntime.value.threadId,
+              numTurns: rolledBackTurns,
+            });
+          }
+
+          const staleCheckpointRefs: Array<CheckpointRef> = [];
+          for (const checkpoint of thread.checkpoints) {
+            if (checkpoint.checkpointTurnCount > turnCount) {
+              staleCheckpointRefs.push(checkpoint.checkpointRef);
+            }
+          }
+          if (staleCheckpointRefs.length > 0) {
+            yield* checkpointStore.deleteCheckpointRefs({
+              cwd,
+              checkpointRefs: staleCheckpointRefs,
+            });
+          }
+
+          yield* orchestrationEngine
+            .dispatch({
+              type: "thread.revert.complete",
+              commandId: yield* serverCommandId("checkpoint-revert-complete"),
+              threadId,
+              turnCount,
+              createdAt: now,
+            })
+            .pipe(
+              Effect.catch((error) =>
+                appendRevertFailureActivity({
+                  threadId,
+                  turnCount,
+                  detail: error.message,
+                  createdAt: now,
+                }),
+              ),
+              Effect.asVoid,
+            );
+        }),
+      )
+      .pipe(
+        Effect.catchIf(
+          (error): error is WorktreeRemovalLeaseConflictError =>
+            error instanceof WorktreeRemovalLeaseConflictError,
+          (error) => failRevert(`Revert refused: ${error.message} Nothing was changed.`),
         ),
-        Effect.asVoid,
       );
   });
 

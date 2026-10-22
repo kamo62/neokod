@@ -1415,6 +1415,9 @@ describe("OrchestrationEngine", () => {
     const { engine, lease, fileSystem, path } = system;
     const createdAt = now();
     const root = await system.run(fileSystem.makeTempDirectory({ prefix: "neokod-engine-lease-" }));
+    const unrelatedRoot = await system.run(
+      fileSystem.makeTempDirectory({ prefix: "neokod-engine-lease-unrelated-" }),
+    );
     const target = path.join(root, "worktree");
     const nested = path.join(target, "packages", "app");
     await system.run(fileSystem.makeDirectory(nested, { recursive: true }));
@@ -1513,7 +1516,7 @@ describe("OrchestrationEngine", () => {
             runtimeMode: "full-access",
             interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
             branch: null,
-            worktreePath: root,
+            worktreePath: unrelatedRoot,
             createdAt,
           });
           expect(unrelated.sequence).toBeGreaterThan(0);
@@ -1552,6 +1555,7 @@ describe("OrchestrationEngine", () => {
     );
 
     await system.run(fileSystem.remove(root, { recursive: true, force: true }));
+    await system.run(fileSystem.remove(unrelatedRoot, { recursive: true, force: true }));
     await system.dispose();
   });
 

@@ -25,13 +25,17 @@ export function recoveryRefForThreadRevert(threadId: ThreadId, epochMillis: numb
 
 const trimTrailingSeparators = (value: string): string => value.replace(/[\\/]+$/, "");
 
-const sessionHasActiveTurn = (session: {
+/** True when the provider session is starting or running, or reports an active turn. */
+export function providerSessionHasActiveTurn(session: {
   readonly status: string;
   readonly activeTurnId?: string | null | undefined;
-}): boolean =>
-  session.status === "running" ||
-  session.status === "connecting" ||
-  (session.activeTurnId !== undefined && session.activeTurnId !== null);
+}): boolean {
+  return (
+    session.status === "running" ||
+    session.status === "connecting" ||
+    (session.activeTurnId !== undefined && session.activeTurnId !== null)
+  );
+}
 
 const foldersOverlap = (left: string, right: string): boolean => {
   const normalizedLeft = trimTrailingSeparators(left);
@@ -72,7 +76,7 @@ export function findActiveSessionsSharingCwd(input: {
   return input.sessions
     .filter(
       (session) =>
-        sessionHasActiveTurn(session) &&
+        providerSessionHasActiveTurn(session) &&
         session.cwd !== undefined &&
         foldersOverlap(session.cwd, input.cwd),
     )

@@ -67,6 +67,38 @@ layer("WorktreeRemovalLease", (it) => {
     }),
   );
 
+  it.effect("blocks admission in a parent of the reserved target", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-lease-" });
+      const target = path.join(root, "worktree");
+      const sibling = path.join(root, "other");
+      yield* fs.makeDirectory(target, { recursive: true });
+      yield* fs.makeDirectory(sibling, { recursive: true });
+
+      const lease = yield* WorktreeRemovalLease;
+      const identity = yield* readWorkspaceIdentityEvidence(target);
+
+      yield* lease.withRemovalReservation(
+        identity,
+        Effect.gen(function* () {
+          const parent = yield* lease
+            .withAdmission("thread.turn.start", admission([root]), Effect.succeed("admitted"))
+            .pipe(Effect.flip);
+          expect(parent).toBeInstanceOf(WorktreeAdmissionBlockedError);
+
+          const allowed = yield* lease.withAdmission(
+            "thread.turn.start",
+            admission([sibling]),
+            Effect.succeed("admitted"),
+          );
+          expect(allowed).toBe("admitted");
+        }),
+      );
+    }),
+  );
+
   it.effect("refuses overlapping reservations and releases on completion", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

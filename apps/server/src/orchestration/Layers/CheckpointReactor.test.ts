@@ -276,6 +276,26 @@ function listRecoveryRefs(cwd: string): string[] {
     .filter((ref) => ref.length > 0);
 }
 
+const threadTurnStartCommand = (input: {
+  readonly threadId: string;
+  readonly commandId: string;
+  readonly messageId: string;
+}) =>
+  ({
+    type: "thread.turn.start" as const,
+    commandId: CommandId.make(input.commandId),
+    threadId: ThreadId.make(input.threadId),
+    message: {
+      messageId: MessageId.make(input.messageId),
+      role: "user" as const,
+      text: "start a turn",
+      attachments: [],
+    },
+    runtimeMode: "approval-required" as const,
+    interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  }) as const;
+
 async function revertToTurnOne(
   harness: {
     readonly engine: OrchestrationEngineShape;
@@ -384,6 +404,10 @@ describe("CheckpointReactor", () => {
     readonly providerSessionSubdirectory?: string;
     readonly truncateIgnoredEnumeration?: boolean;
     readonly fixedClock?: boolean;
+    readonly recoveryCaptureGate?: {
+      readonly markStarted: () => void;
+      readonly release: Promise<void>;
+    };
   }) {
     const cwd = createGitRepository();
     tempDirs.push(cwd);
@@ -418,7 +442,7 @@ describe("CheckpointReactor", () => {
     );
     const orchestrationLayer = OrchestrationEngineLive.pipe(
       Layer.provide(OrchestrationProjectionSnapshotQueryLive),
-      Layer.provide(OrchestrationProjectionPipelineLive),
+      Layer.provideMerge(OrchestrationProjectionPipelineLive),
       Layer.provide(OrchestrationEventStoreLive),
       Layer.provide(OrchestrationCommandReceiptRepositoryLive),
       Layer.provide(RepositoryIdentityResolver.layer),
@@ -455,15 +479,19 @@ describe("CheckpointReactor", () => {
     const checkpointStoreBaseLayer = CheckpointStore.layer.pipe(
       Layer.provide(VcsDriverRegistry.layer),
     );
-    const checkpointStoreLayer = options?.failRecoveryCapture
-      ? Layer.effect(
-          CheckpointStore.CheckpointStore,
-          Effect.map(CheckpointStore.CheckpointStore, (store) =>
-            CheckpointStore.CheckpointStore.of({
-              ...store,
-              captureCheckpoint: (input) =>
-                input.checkpointRef.startsWith(`${RECOVERY_REFS_PREFIX}/`)
-                  ? Effect.fail(
+    const checkpointStoreLayer =
+      options?.failRecoveryCapture === true || options?.recoveryCaptureGate !== undefined
+        ? Layer.effect(
+            CheckpointStore.CheckpointStore,
+            Effect.map(CheckpointStore.CheckpointStore, (store) =>
+              CheckpointStore.CheckpointStore.of({
+                ...store,
+                captureCheckpoint: (input) => {
+                  if (!input.checkpointRef.startsWith(`${RECOVERY_REFS_PREFIX}/`)) {
+                    return store.captureCheckpoint(input);
+                  }
+                  if (options?.failRecoveryCapture === true) {
+                    return Effect.fail(
                       new VcsProcessExitError({
                         operation: "CheckpointReactor.test.captureRecovery",
                         command: "git update-ref",
@@ -471,12 +499,21 @@ describe("CheckpointReactor", () => {
                         exitCode: 1,
                         detail: "simulated recovery capture failure",
                       }),
-                    )
-                  : store.captureCheckpoint(input),
-            }),
-          ),
-        ).pipe(Layer.provide(checkpointStoreBaseLayer))
-      : checkpointStoreBaseLayer;
+                    );
+                  }
+                  const gate = options?.recoveryCaptureGate;
+                  if (gate !== undefined) {
+                    return Effect.promise(async () => {
+                      gate.markStarted();
+                      await gate.release;
+                    }).pipe(Effect.andThen(store.captureCheckpoint(input)));
+                  }
+                  return store.captureCheckpoint(input);
+                },
+              }),
+            ),
+          ).pipe(Layer.provide(checkpointStoreBaseLayer))
+        : checkpointStoreBaseLayer;
 
     const vcsProcessBaseLayer = VcsProcess.layer;
     const vcsProcessLayer = options?.truncateIgnoredEnumeration
@@ -1568,6 +1605,126 @@ describe("CheckpointReactor", () => {
     expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
     expect(listRecoveryRefs(harness.cwd)).toEqual([]);
     expect(thread.checkpoints).toHaveLength(2);
+  });
+
+  it("refuses a revert when another shared-folder turn was admitted first", async () => {
+    const harness = await createHarness({ secondThreadSharingWorktree: true });
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-turn-start-admitted-first",
+          messageId: "message-turn-start-admitted-first",
+        }),
+      ),
+    );
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+
+    const events = await harness.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((chunk) => Array.from(chunk)),
+      ),
+    );
+    expect(
+      events.some(
+        (event) =>
+          event.type === "thread.turn-start-requested" &&
+          event.payload.threadId === ThreadId.make("thread-2"),
+      ),
+    ).toBe(true);
+  });
+
+  it("refuses a subfolder revert when a turn is admitted in its parent workspace", async () => {
+    const harness = await createHarness({
+      providerSessionSubdirectory: "sub",
+      prepareRepository: (repository) => {
+        NodeFS.mkdirSync(NodePath.join(repository, "sub"), { recursive: true });
+      },
+      secondThreadSharingWorktree: true,
+    });
+    const sub = NodePath.join(harness.cwd, "sub");
+    NodeFS.writeFileSync(NodePath.join(sub, "keep.txt"), "keep parent overlap\n", "utf8");
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-turn-start-parent-admitted-first",
+          messageId: "message-turn-start-parent-admitted-first",
+        }),
+      ),
+    );
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    expect(NodeFS.readFileSync(NodePath.join(sub, "keep.txt"), "utf8")).toBe(
+      "keep parent overlap\n",
+    );
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+  });
+
+  it("blocks a new overlapping turn while a revert reservation is held", async () => {
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const harness = await createHarness({
+      secondThreadSharingWorktree: true,
+      recoveryCaptureGate: {
+        markStarted: () => started.resolve(),
+        release: release.promise,
+      },
+    });
+
+    await revertToTurnOne(harness);
+    await started.promise;
+    try {
+      const outcome = await harness.runPromise(
+        Effect.exit(
+          harness.engine.dispatch(
+            threadTurnStartCommand({
+              threadId: "thread-2",
+              commandId: "cmd-turn-start-blocked-by-reservation",
+              messageId: "message-turn-start-blocked-by-reservation",
+            }),
+          ),
+        ),
+      );
+      expect(Exit.isFailure(outcome)).toBe(true);
+    } finally {
+      release.resolve();
+    }
+
+    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+    const events = await harness.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((chunk) => Array.from(chunk)),
+      ),
+    );
+    expect(
+      events.some(
+        (event) =>
+          event.type === "thread.turn-start-requested" &&
+          event.payload.threadId === ThreadId.make("thread-2"),
+      ),
+    ).toBe(false);
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v2\n");
+    expect(listRecoveryRefs(harness.cwd)).toHaveLength(1);
   });
 
   it("refuses when a currently ignored file would be lost by the checkpoint's ignore rules", async () => {
