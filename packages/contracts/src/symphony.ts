@@ -983,6 +983,7 @@ export const SymphonyBoardCardSchema = Schema.Struct({
   priority: Schema.optional(Schema.Int),
   issueUrl: Schema.optional(Schema.String),
   eligibilityReasons: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  latestRunAttemptId: Schema.optional(RunAttemptId),
   updatedAt: IsoDateTime,
 });
 export type SymphonyBoardCard = typeof SymphonyBoardCardSchema.Type;

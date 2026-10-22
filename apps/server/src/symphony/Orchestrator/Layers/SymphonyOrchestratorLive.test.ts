@@ -673,6 +673,89 @@ layer("SymphonyOrchestrator Observe", (it) => {
     }),
   );
 
+  it.effect("getProjectBoard cards link to the latest run attempt", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const runAttempts = yield* RunAttemptRepository;
+      const sql = yield* SqlClient.SqlClient;
+      const projectId = SymphonyProjectId.make("project-board-run-link");
+      yield* orchestrator.createProject({
+        id: projectId,
+        codeProjectId: ProjectId.make("code-project-board-run-link"),
+        title: "Board run link",
+        repositoryPath: "/repo/project-board-run-link",
+        configuration: makeProjectConfiguration(),
+        now: "2026-08-10T00:00:00.000Z",
+      });
+      const workItemId = WorkItemId.make("board-run-link-row");
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId,
+        objective: "Board run link row",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-10T00:00:00.000Z",
+        updatedAt: "2026-08-10T00:00:00.000Z",
+      });
+      const firstAttemptId = RunAttemptId.make("board-run-link-attempt-1");
+      const secondAttemptId = RunAttemptId.make("board-run-link-attempt-2");
+      yield* runAttempts.create({
+        id: firstAttemptId,
+        workItemId,
+        attemptNumber: 1,
+        workspacePath: "/ws/run-link-1",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "succeeded",
+        startedAt: "2026-08-10T00:00:00.000Z",
+        finishedAt: "2026-08-10T00:05:00.000Z",
+        error: null,
+      });
+      yield* runAttempts.create({
+        id: secondAttemptId,
+        workItemId,
+        attemptNumber: 2,
+        workspacePath: "/ws/run-link-2",
+        provider: {
+          instanceId: ProviderInstanceId.make("codex_default"),
+          driver: ProviderDriverKind.make("codex"),
+        },
+        status: "streaming_turn",
+        startedAt: "2026-08-11T00:00:00.000Z",
+        finishedAt: null,
+        error: null,
+      });
+
+      const board = yield* orchestrator.getProjectBoard(projectId).pipe(
+        Effect.ensuring(
+          Effect.gen(function* () {
+            yield* sql`DELETE FROM symphony_run_attempts WHERE work_item_id = ${workItemId}`.pipe(
+              Effect.ignore,
+            );
+            yield* sql`DELETE FROM symphony_work_items WHERE project_id = ${projectId}`.pipe(
+              Effect.ignore,
+            );
+            yield* sql`DELETE FROM symphony_workflows WHERE id = ${projectId}`.pipe(Effect.ignore);
+            yield* sql`DELETE FROM symphony_projects WHERE id = ${projectId}`.pipe(Effect.ignore);
+          }),
+        ),
+      );
+
+      const card = board?.columns
+        .flatMap((column) => column.cards)
+        .find((candidate) => candidate.workItemId === workItemId);
+      expect(card?.latestRunAttemptId).toBe(secondAttemptId);
+    }),
+  );
+
   it.effect("getProjectBoard fails with a typed decode error that names the corrupt row", () =>
     Effect.gen(function* () {
       const orchestrator = yield* SymphonyOrchestrator;

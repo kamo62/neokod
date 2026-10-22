@@ -1485,12 +1485,16 @@ const makeOrchestrator = Effect.gen(function* () {
         activeLimit: BOARD_ACTIVE_LIMIT,
         terminalLimit: BOARD_TERMINAL_LIMIT,
       });
+      const latestRunAttempts = yield* runAttempts.latestIdsForProject(projectId);
       const sourceControl = yield* resolveProjectSourceControl(project.repositoryPath);
       return projectBoardFromWorkItems({
         project,
         sourceControl,
         workItems: result.items,
         lifecycleTotals: result.totalsByLifecycle,
+        latestRunAttemptIds: new Map(
+          latestRunAttempts.map((entry) => [String(entry.workItemId), entry.runAttemptId]),
+        ),
         generatedAt: yield* nowIso,
       });
     });

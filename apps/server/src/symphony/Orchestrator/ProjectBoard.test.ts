@@ -4,6 +4,7 @@ import {
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
+  RunAttemptId,
   SymphonyProjectBoardSchema,
   SymphonyProjectId,
   WorkItemId,
@@ -133,6 +134,24 @@ describe("projectBoardFromWorkItems", () => {
       "failed",
       "completed",
     ]);
+  });
+
+  it("links a card to its latest run attempt only when the item has one", () => {
+    const board = projectBoardFromWorkItems({
+      project,
+      sourceControl: { state: "none" },
+      workItems: [workItem("with-run", "queued", 1), workItem("without-run", "queued", 2)],
+      latestRunAttemptIds: new Map([["with-run", RunAttemptId.make("run-latest")]]),
+      generatedAt: "2026-08-10T00:01:00.000Z",
+    });
+
+    const cards = board.columns[0]?.cards ?? [];
+    expect(
+      cards.find((card) => card.workItemId === WorkItemId.make("with-run"))?.latestRunAttemptId,
+    ).toBe(RunAttemptId.make("run-latest"));
+    expect(
+      cards.find((card) => card.workItemId === WorkItemId.make("without-run"))?.latestRunAttemptId,
+    ).toBeUndefined();
   });
 
   it("shows ineligible cards in Not Started with their eligibility reasons", () => {
