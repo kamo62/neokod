@@ -6,6 +6,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Random from "effect/Random";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 
 import { nowIso } from "../../Domain/Time.ts";
@@ -261,6 +262,169 @@ layer("WorkItemRepository claim authority", (it) => {
       expect(afterUpsert.lifecycle).toBe("preparing");
       expect(afterUpsert.workflowId).toBe(WorkflowId.make("wf-47"));
       expect(afterUpsert.objective).toBe("Updated tracker title");
+    }),
+  );
+
+  it.effect("listForBoard isolates the project and bounds active and terminal slices", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const projectId = SymphonyProjectId.make("symphony-project-board-coverage");
+      const otherProjectId = SymphonyProjectId.make("symphony-project-board-other");
+      const seedAt = (
+        id: string,
+        lifecycle: WorkLifecycle,
+        createdAt: string,
+        updatedAt: string,
+        itemProjectId: SymphonyProjectId = projectId,
+      ) =>
+        Effect.gen(function* () {
+          const item = yield* makeWorkItem(id, id, lifecycle, itemProjectId);
+          yield* repo.upsert({ ...item, createdAt, updatedAt });
+        });
+
+      yield* seedAt(
+        "board-active-d",
+        "queued",
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-01T00:00:00.000Z",
+      );
+      yield* seedAt(
+        "board-active-c",
+        "queued",
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-01T00:00:00.000Z",
+      );
+      yield* seedAt(
+        "board-active-b",
+        "queued",
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-01T00:00:00.000Z",
+      );
+      yield* seedAt(
+        "board-active-a",
+        "queued",
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-01T00:00:00.000Z",
+      );
+      yield* seedAt(
+        "board-running",
+        "running",
+        "2026-01-02T00:00:00.000Z",
+        "2026-01-02T00:00:00.000Z",
+      );
+      yield* seedAt(
+        "board-completed-new-a",
+        "completed",
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-04T00:00:00.000Z",
+      );
+      yield* seedAt(
+        "board-completed-new-b",
+        "completed",
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-04T00:00:00.000Z",
+      );
+      yield* seedAt(
+        "board-completed-old",
+        "completed",
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-02T00:00:00.000Z",
+      );
+      yield* seedAt(
+        "board-completed-oldest",
+        "completed",
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-01T00:00:00.000Z",
+      );
+      yield* seedAt(
+        "board-other-project",
+        "queued",
+        "2026-01-01T00:00:00.000Z",
+        "2025-12-01T00:00:00.000Z",
+        otherProjectId,
+      );
+
+      const board = yield* repo.listForBoard(projectId, {
+        activeLimit: 2,
+        terminalLimit: 2,
+      });
+
+      expect(board.items.map((item) => item.id)).toEqual([
+        WorkItemId.make("board-active-a"),
+        WorkItemId.make("board-active-b"),
+        WorkItemId.make("board-completed-new-b"),
+        WorkItemId.make("board-completed-new-a"),
+      ]);
+      expect(board.totalsByLifecycle).toEqual({
+        completed: 4,
+        queued: 4,
+        running: 1,
+      });
+    }),
+  );
+
+  it.effect("board and scheduler reads fail with a typed error naming a corrupt row", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const sql = yield* SqlClient.SqlClient;
+      const projectId = SymphonyProjectId.make("symphony-project-board-corrupt");
+      const item = yield* makeWorkItem("board-corrupt-row", "corrupt-row", "queued", projectId);
+      yield* repo.upsert(item);
+      const id = item.id;
+      yield* sql`UPDATE symphony_work_items SET acceptance_criteria_json = 'not json' WHERE id = ${id}`;
+
+      const results = yield* Effect.gen(function* () {
+        const board = yield* Effect.result(
+          repo.listForBoard(projectId, { activeLimit: 10, terminalLimit: 10 }),
+        );
+        const listed = yield* Effect.result(repo.listByLifecycle(["queued"], { projectId }));
+        return { board, listed };
+      }).pipe(
+        Effect.ensuring(
+          sql`UPDATE symphony_work_items SET acceptance_criteria_json = '[]' WHERE id = ${id}`.pipe(
+            Effect.ignore,
+          ),
+        ),
+      );
+
+      expect(results.board._tag).toBe("Failure");
+      if (results.board._tag === "Failure") {
+        expect(results.board.failure._tag).toBe("SymphonyPersistenceDecodeError");
+        expect(results.board.failure.message).toContain(id);
+      }
+      expect(results.listed._tag).toBe("Failure");
+      if (results.listed._tag === "Failure") {
+        expect(results.listed.failure._tag).toBe("SymphonyPersistenceDecodeError");
+        expect(results.listed.failure.message).toContain(id);
+      }
+    }),
+  );
+
+  it.effect("a syntactically valid null source payload fails as a named-row decode error", () =>
+    Effect.gen(function* () {
+      const repo = yield* WorkItemRepository;
+      const sql = yield* SqlClient.SqlClient;
+      const projectId = SymphonyProjectId.make("symphony-project-board-null-source");
+      const item = yield* makeWorkItem("board-null-source", "null-source", "queued", projectId);
+      yield* repo.upsert(item);
+      const id = item.id;
+      yield* sql`UPDATE symphony_work_items SET source_json = 'null' WHERE id = ${id}`;
+
+      const result = yield* Effect.result(
+        repo.listForBoard(projectId, { activeLimit: 10, terminalLimit: 10 }),
+      ).pipe(
+        Effect.ensuring(
+          sql`UPDATE symphony_work_items SET source_json = '{"kind":"manual"}' WHERE id = ${id}`.pipe(
+            Effect.ignore,
+          ),
+        ),
+      );
+
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure._tag).toBe("SymphonyPersistenceDecodeError");
+        expect(result.failure.message).toContain(id);
+      }
     }),
   );
 });

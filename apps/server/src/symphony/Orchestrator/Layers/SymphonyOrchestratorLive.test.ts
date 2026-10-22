@@ -1954,6 +1954,75 @@ layer("SymphonyOrchestrator Observe", (it) => {
     }),
   );
 
+  it.effect("refuses dispatch when active-work occupancy cannot be decoded", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      const workItems = yield* WorkItemRepository;
+      const sql = yield* SqlClient.SqlClient;
+      const workflowId = WorkflowId.make("wf-occupancy-corrupt");
+      yield* seedWorkflow("wf-occupancy-corrupt", "/repo/occupancy-corrupt", {
+        autonomy: "execute",
+        concurrencyGlobal: 1,
+        trackerRequiredLabels: [],
+      });
+
+      const projectId = SymphonyProjectId.make("occupancy-corrupt-project");
+      const corruptId = WorkItemId.make("occupancy-corrupt-active");
+      const targetId = WorkItemId.make("occupancy-corrupt-target");
+      yield* workItems.upsert({
+        id: corruptId,
+        mode: "symphony",
+        projectId,
+        objective: "Corrupt active",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        workflowId,
+        lifecycle: "running",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      yield* workItems.upsert({
+        id: targetId,
+        mode: "symphony",
+        projectId: SymphonyProjectId.make("occupancy-corrupt-target-project"),
+        objective: "Occupancy target",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        workflowId,
+        lifecycle: "queued",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:01.000Z",
+        updatedAt: "2026-08-05T00:00:01.000Z",
+      });
+      yield* sql`UPDATE symphony_work_items SET acceptance_criteria_json = 'not json' WHERE id = ${corruptId}`;
+
+      yield* Effect.gen(function* () {
+        dispatchedIds.length = 0;
+        yield* orchestrator.dispatchWorkItem(targetId, { explicit: true });
+        yield* settle;
+        expect(dispatchedIds).not.toContain("occupancy-corrupt-target");
+        expect((yield* workItems.getById(targetId))?.lifecycle).toBe("queued");
+      }).pipe(
+        Effect.ensuring(
+          Effect.all(
+            [
+              sql`DELETE FROM symphony_work_items WHERE workflow_id = ${workflowId}`.pipe(
+                Effect.ignore,
+              ),
+              sql`DELETE FROM symphony_workflows WHERE id = ${workflowId}`.pipe(Effect.ignore),
+            ],
+            { concurrency: 1 },
+          ).pipe(Effect.asVoid),
+        ),
+      );
+    }),
+  );
+
   it.effect("refuses a queued item whose required label was removed", () =>
     Effect.gen(function* () {
       const orchestrator = yield* SymphonyOrchestrator;

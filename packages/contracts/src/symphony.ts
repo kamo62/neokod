@@ -981,6 +981,7 @@ export const SymphonyBoardColumnSchema = Schema.Struct({
   id: SymphonyBoardColumnIdSchema,
   title: TrimmedNonEmptyString,
   cards: Schema.Array(SymphonyBoardCardSchema),
+  totalCount: Schema.optional(NonNegativeInt),
 });
 export type SymphonyBoardColumn = typeof SymphonyBoardColumnSchema.Type;
 
@@ -1005,6 +1006,7 @@ export const SymphonyProjectBoardSchema = Schema.Struct({
   sourceControl: SymphonyProjectSourceControlSchema,
   columns: Schema.Array(SymphonyBoardColumnSchema),
   generatedAt: IsoDateTime,
+  truncated: Schema.optional(Schema.Boolean),
 });
 export type SymphonyProjectBoard = typeof SymphonyProjectBoardSchema.Type;
 
