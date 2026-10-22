@@ -38,6 +38,7 @@ import {
   FilesystemBrowseError,
   AssetWorkspaceContextNotFoundError,
   AssetWorkspaceContextResolutionError,
+  GitCommandError,
   ThreadId,
   type TerminalAttachStreamEvent,
   type TerminalError,
@@ -133,6 +134,16 @@ import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
+import {
+  findThreadsUsingWorktree,
+  worktreeGitStatesMatch,
+  worktreeHasLoss,
+  worktreeRequiresForce,
+} from "./git/worktreeLinks.ts";
+import {
+  WorktreeRemovalLease,
+  WorktreeRemovalLeaseConflictError,
+} from "./git/WorktreeRemovalLease.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
@@ -150,6 +161,10 @@ import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
 import * as VcsProjectConfig from "./vcs/VcsProjectConfig.ts";
 import * as VcsProcess from "./vcs/VcsProcess.ts";
+import {
+  readWorkspaceIdentityEvidence,
+  workspaceIdentitiesMatch,
+} from "./vcs/WorkspaceIdentity.ts";
 import * as WslBearerAuth from "./transport/WslBearerAuth.ts";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
 const isSymphonyError = Schema.is(SymphonyError);
@@ -1291,6 +1306,7 @@ const makeWsRpcLayer = (
         yield* SourceControlRepositoryService.SourceControlRepositoryService;
       const processDiagnostics = yield* ProcessDiagnostics.ProcessDiagnostics;
       const processResourceMonitor = yield* ProcessResourceMonitor.ProcessResourceMonitor;
+      const worktreeRemovalLease = yield* WorktreeRemovalLease;
       const observeRpcEffect = <A, E, R>(
         method: string,
         effect: Effect.Effect<A, E, R>,
@@ -2357,7 +2373,195 @@ const makeWsRpcLayer = (
         [WS_METHODS.vcsRemoveWorktree]: (input) =>
           observeRpcEffect(
             WS_METHODS.vcsRemoveWorktree,
-            gitWorkflow.removeWorktree(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+            Effect.gen(function* () {
+              const expected = input.expectedState;
+              if (expected === undefined) {
+                return yield* new GitCommandError({
+                  operation: "ws.vcsRemoveWorktree",
+                  command: "git worktree remove",
+                  cwd: input.cwd,
+                  detail: "Inspect the worktree before removing it.",
+                });
+              }
+              const expectedIdentity = expected.identity;
+              if (
+                expectedIdentity === undefined ||
+                (expected.exists &&
+                  (expectedIdentity.device === null || expectedIdentity.inode === null))
+              ) {
+                return yield* new GitCommandError({
+                  operation: "ws.vcsRemoveWorktree",
+                  command: "git worktree remove",
+                  cwd: input.cwd,
+                  detail:
+                    "The inspection did not capture a stable filesystem identity. Inspect the worktree again.",
+                });
+              }
+              const expectedTargetIdentity = {
+                physicalPath: expectedIdentity.physicalPath,
+                exists: expected.exists,
+                device: expectedIdentity.device,
+                inode: expectedIdentity.inode,
+              } as const;
+              const submittedIdentity = yield* readWorkspaceIdentityEvidence(input.path).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new GitCommandError({
+                      operation: "ws.vcsRemoveWorktree",
+                      command: "resolve worktree identity",
+                      cwd: input.cwd,
+                      detail: "Unable to resolve the worktree path.",
+                      cause,
+                    }),
+                ),
+              );
+              if (workspaceIdentitiesMatch(expectedTargetIdentity, submittedIdentity) !== "same") {
+                return yield* new GitCommandError({
+                  operation: "ws.vcsRemoveWorktree",
+                  command: "git worktree remove",
+                  cwd: input.cwd,
+                  detail:
+                    "The worktree path now identifies a different filesystem object than the one inspected. Inspect it again and confirm.",
+                });
+              }
+              // Reserve and find survivors using the server-derived identity;
+              // the client-supplied physical path is only compared, never
+              // trusted for containment.
+              const targetIdentity = submittedIdentity;
+              return yield* worktreeRemovalLease
+                .withRemovalReservation(
+                  targetIdentity,
+                  Effect.gen(function* () {
+                    const actual = yield* gitWorkflow.inspectWorktree({
+                      cwd: input.cwd,
+                      path: input.path,
+                    });
+                    const actualIdentity = actual.identity;
+                    if (
+                      actualIdentity === undefined ||
+                      workspaceIdentitiesMatch(targetIdentity, {
+                        physicalPath: actualIdentity.physicalPath,
+                        exists: actual.exists,
+                        device: actualIdentity.device,
+                        inode: actualIdentity.inode,
+                      }) !== "same"
+                    ) {
+                      return yield* new GitCommandError({
+                        operation: "ws.vcsRemoveWorktree",
+                        command: "git worktree remove",
+                        cwd: input.cwd,
+                        detail:
+                          "The worktree changed since it was inspected. Inspect it again and confirm.",
+                      });
+                    }
+                    if (!worktreeGitStatesMatch(expected, actual)) {
+                      return yield* new GitCommandError({
+                        operation: "ws.vcsRemoveWorktree",
+                        command: "git worktree remove",
+                        cwd: input.cwd,
+                        detail:
+                          "The worktree changed since it was inspected. Inspect it again and confirm.",
+                      });
+                    }
+                    const hasLoss = worktreeHasLoss(actual);
+                    const lossConfirmed = input.confirmLoss === true || input.force === true;
+                    if (hasLoss && !lossConfirmed) {
+                      return yield* new GitCommandError({
+                        operation: "ws.vcsRemoveWorktree",
+                        command: "git worktree remove",
+                        cwd: input.cwd,
+                        detail:
+                          "The worktree has uncommitted or ignored files or unreachable commits. Confirm the discard before removing it.",
+                      });
+                    }
+                    const readModel = yield* projectionSnapshotQuery.getCommandReadModel().pipe(
+                      Effect.mapError(
+                        (cause) =>
+                          new GitCommandError({
+                            operation: "ws.vcsRemoveWorktree",
+                            command: "read model",
+                            cwd: input.cwd,
+                            detail: "Unable to list the threads that use this worktree.",
+                            cause,
+                          }),
+                      ),
+                    );
+                    const linkedThreads = yield* findThreadsUsingWorktree({
+                      readModel,
+                      targetIdentity,
+                      operation: "ws.vcsRemoveWorktree",
+                      cwd: input.cwd,
+                    });
+                    if (linkedThreads.length > 0) {
+                      return yield* new GitCommandError({
+                        operation: "ws.vcsRemoveWorktree",
+                        command: "git worktree remove",
+                        cwd: input.cwd,
+                        detail: `The worktree is still used by ${linkedThreads.length} thread${linkedThreads.length === 1 ? "" : "s"}. Remove those links first.`,
+                      });
+                    }
+                    return yield* gitWorkflow.removeWorktree({
+                      ...input,
+                      force: worktreeRequiresForce(actual),
+                      confirmLoss: lossConfirmed,
+                      expectedState: actual,
+                    });
+                  }),
+                )
+                .pipe(
+                  Effect.mapError((cause) =>
+                    cause instanceof WorktreeRemovalLeaseConflictError
+                      ? new GitCommandError({
+                          operation: "ws.vcsRemoveWorktree",
+                          command: "git worktree remove",
+                          cwd: input.cwd,
+                          detail: cause.message,
+                          cause,
+                        })
+                      : cause,
+                  ),
+                );
+            }).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+            { "rpc.aggregate": "vcs" },
+          ),
+        [WS_METHODS.vcsInspectWorktree]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.vcsInspectWorktree,
+            Effect.gen(function* () {
+              const state = yield* gitWorkflow.inspectWorktree(input);
+              const readModel = yield* projectionSnapshotQuery.getCommandReadModel().pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new GitCommandError({
+                      operation: "ws.vcsInspectWorktree",
+                      command: "read model",
+                      cwd: input.cwd,
+                      detail: "Unable to list the threads that use this worktree.",
+                      cause,
+                    }),
+                ),
+              );
+              const targetIdentity = yield* readWorkspaceIdentityEvidence(input.path).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new GitCommandError({
+                      operation: "ws.vcsInspectWorktree",
+                      command: "resolve worktree identity",
+                      cwd: input.cwd,
+                      detail: "Unable to resolve the worktree path.",
+                      cause,
+                    }),
+                ),
+              );
+              const linkedThreads = yield* findThreadsUsingWorktree({
+                readModel,
+                targetIdentity,
+                excludeThreadIds: new Set(input.excludeThreadIds ?? []),
+                operation: "ws.vcsInspectWorktree",
+                cwd: input.cwd,
+              });
+              return { ...state, linkedThreads };
+            }),
             { "rpc.aggregate": "vcs" },
           ),
         [WS_METHODS.vcsCreateRef]: (input) =>

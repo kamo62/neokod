@@ -343,6 +343,40 @@ describe("WorkspaceManager", () => {
     }),
   );
 
+  it.effect("runs removal under the shared reservation when configured", () =>
+    Effect.gen(function* () {
+      let reservedPath: string | null = null;
+      let removedInsideReservation = false;
+      const manager = makeWorkspaceManager(
+        makeDeps({
+          removeUnderReservation: (input) => {
+            reservedPath = input.workspacePath;
+            return Effect.flatMap(input.remove(), () =>
+              Effect.sync(() => {
+                removedInsideReservation = true;
+              }),
+            );
+          },
+          git: makeFakeGit({
+            removeWorktree: () =>
+              Effect.sync(() => {
+                expect(removedInsideReservation).toBe(false);
+              }),
+          }),
+        }),
+      );
+      const ws = yield* manager.ensureWorkspace({
+        issue: makeIssue({ identifier: "issue-1" }),
+        config: makeConfig(),
+      });
+
+      yield* manager.removeWorkspace({ workspace: ws, config: makeConfig() });
+
+      expect(reservedPath).toBe(ws.path);
+      expect(removedInsideReservation).toBe(true);
+    }),
+  );
+
   it.effect("continues cleanup even if before_remove fails", () =>
     Effect.gen(function* () {
       const git = makeFakeGit();

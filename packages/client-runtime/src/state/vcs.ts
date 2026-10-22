@@ -58,6 +58,12 @@ export function createVcsEnvironmentAtoms<R, E>(
       scheduler: vcsCommandScheduler,
       concurrency: vcsCommandConcurrency,
     }),
+    inspectWorktree: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:vcs:inspect-worktree",
+      tag: WS_METHODS.vcsInspectWorktree,
+      scheduler: vcsCommandScheduler,
+      concurrency: vcsCommandConcurrency,
+    }),
     createRef: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:vcs:create-ref",
       tag: WS_METHODS.vcsCreateRef,

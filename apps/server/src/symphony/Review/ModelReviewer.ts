@@ -194,12 +194,12 @@ export const makeSymphonyModelReviewer = (
           deps.git.execute({
             operation: "SymphonyModelReviewer.resolveBaseSha",
             cwd: input.workspacePath,
-            args: ["rev-parse", "--verify", `${input.baseRef}^{commit}`],
+            args: ["rev-parse", "--verify", "--end-of-options", `${input.baseRef}^{commit}`],
           }),
           deps.git.execute({
             operation: "SymphonyModelReviewer.resolveHeadSha",
             cwd: input.workspacePath,
-            args: ["rev-parse", "--verify", `${input.headRef}^{commit}`],
+            args: ["rev-parse", "--verify", "--end-of-options", `${input.headRef}^{commit}`],
           }),
         ]).pipe(
           Effect.map(([base, head]) => ({

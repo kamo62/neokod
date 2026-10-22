@@ -22,6 +22,7 @@ import { cli } from "./bin.ts";
 import * as ServerConfig from "./config.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
+import { WorktreeRemovalLeaseLive } from "./git/WorktreeRemovalLease.ts";
 import { orchestrationHttpApiLayer } from "./orchestration/http.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
@@ -80,6 +81,7 @@ const makeProjectPersistenceLayer = (config: ServerConfig.ServerConfig["Service"
     OrchestrationLayerLive.pipe(
       Layer.provideMerge(RepositoryIdentityResolver.layer),
       Layer.provideMerge(SqlitePersistenceLayerLive),
+      Layer.provideMerge(WorktreeRemovalLeaseLive),
     ),
     WorkspacePaths.layer,
   ).pipe(Layer.provideMerge(NodeServices.layer), Layer.provide(ServerConfig.layer(config)));

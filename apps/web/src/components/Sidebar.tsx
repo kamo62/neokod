@@ -123,7 +123,7 @@ import { useHandleNewThread, useNewThreadHandler } from "../hooks/useHandleNewTh
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
 import { useDesktopUpdateState } from "../state/desktopUpdate";
 
-import { useThreadActions } from "../hooks/useThreadActions";
+import { useThreadActions, type WorktreeCleanupCandidate } from "../hooks/useThreadActions";
 import { projectEnvironment } from "../state/projects";
 import { useEnvironmentQuery } from "../state/query";
 import { threadEnvironment, useEnvironmentThread } from "../state/threads";
@@ -1153,6 +1153,8 @@ interface SidebarProjectItemProps {
   handleNewThread: ReturnType<typeof useNewThreadHandler>;
   archiveThread: ReturnType<typeof useThreadActions>["archiveThread"];
   deleteThread: ReturnType<typeof useThreadActions>["deleteThread"];
+  readWorktreeCleanupCandidate: ReturnType<typeof useThreadActions>["readWorktreeCleanupCandidate"];
+  cleanupWorktrees: ReturnType<typeof useThreadActions>["cleanupWorktrees"];
   threadJumpLabelByKey: ReadonlyMap<string, string>;
   expandThreadListForProject: (projectKey: string) => void;
   collapseThreadListForProject: (projectKey: string) => void;
@@ -1174,6 +1176,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     handleNewThread,
     archiveThread,
     deleteThread,
+    readWorktreeCleanupCandidate,
+    cleanupWorktrees,
     threadJumpLabelByKey,
     expandThreadListForProject,
     collapseThreadListForProject,
@@ -1890,13 +1894,17 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       }
 
       const deletedThreadKeys = new Set(threadKeys);
+      const worktreeCandidates: WorktreeCleanupCandidate[] = [];
       const summary = await runBulkThreadDeletes(threadKeys, async (threadKey) => {
         const thread = sidebarThreadByKeyRef.current.get(threadKey);
         if (!thread) {
           return { ok: false, reason: "Thread is no longer available." };
         }
-        const result = await deleteThread(scopeThreadRef(thread.environmentId, thread.id), {
+        const threadRef = scopeThreadRef(thread.environmentId, thread.id);
+        const candidate = readWorktreeCleanupCandidate(threadRef);
+        const result = await deleteThread(threadRef, {
           deletedThreadKeys,
+          deferWorktreeCleanup: true,
         });
         if (result._tag === "Failure") {
           const error = squashAtomCommandFailure(result);
@@ -1909,10 +1917,16 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                 : "An error occurred.",
           };
         }
+        if (candidate) {
+          worktreeCandidates.push(candidate);
+        }
         useUiStateStore.getState().removePinnedThreads([threadKey]);
         useUiStateStore.getState().removeMyWorkDismissed([threadKey]);
         return { ok: true };
       });
+      if (worktreeCandidates.length > 0) {
+        await cleanupWorktrees(worktreeCandidates);
+      }
       removeFromSelection(threadKeys);
       if (summary.failures.length > 0) {
         toastManager.add(
@@ -1936,9 +1950,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     },
     [
       appSettingsConfirmThreadDelete,
+      cleanupWorktrees,
       clearSelection,
       deleteThread,
       markThreadUnread,
+      readWorktreeCleanupCandidate,
       removeFromSelection,
     ],
   );
@@ -3123,6 +3139,8 @@ interface SidebarProjectsContentProps {
   handleNewThread: ReturnType<typeof useNewThreadHandler>;
   archiveThread: ReturnType<typeof useThreadActions>["archiveThread"];
   deleteThread: ReturnType<typeof useThreadActions>["deleteThread"];
+  readWorktreeCleanupCandidate: ReturnType<typeof useThreadActions>["readWorktreeCleanupCandidate"];
+  cleanupWorktrees: ReturnType<typeof useThreadActions>["cleanupWorktrees"];
   sortedProjects: readonly SidebarProjectSnapshot[];
   expandedThreadListsByProject: ReadonlySet<string>;
   activeRouteProjectKey: string | null;
@@ -3165,6 +3183,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     handleNewThread,
     archiveThread,
     deleteThread,
+    readWorktreeCleanupCandidate,
+    cleanupWorktrees,
     sortedProjects,
     expandedThreadListsByProject,
     activeRouteProjectKey,
@@ -3293,6 +3313,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                         handleNewThread={handleNewThread}
                         archiveThread={archiveThread}
                         deleteThread={deleteThread}
+                        readWorktreeCleanupCandidate={readWorktreeCleanupCandidate}
+                        cleanupWorktrees={cleanupWorktrees}
                         threadJumpLabelByKey={threadJumpLabelByKey}
                         expandThreadListForProject={expandThreadListForProject}
                         collapseThreadListForProject={collapseThreadListForProject}
@@ -3324,6 +3346,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                 handleNewThread={handleNewThread}
                 archiveThread={archiveThread}
                 deleteThread={deleteThread}
+                readWorktreeCleanupCandidate={readWorktreeCleanupCandidate}
+                cleanupWorktrees={cleanupWorktrees}
                 threadJumpLabelByKey={threadJumpLabelByKey}
                 expandThreadListForProject={expandThreadListForProject}
                 collapseThreadListForProject={collapseThreadListForProject}
@@ -3413,6 +3437,8 @@ function SidebarThreadsContent({
   handleNewThread,
   archiveThread,
   deleteThread,
+  readWorktreeCleanupCandidate,
+  cleanupWorktrees,
 }: {
   panelId: string;
   tabId: string;
@@ -3425,6 +3451,8 @@ function SidebarThreadsContent({
   handleNewThread: ReturnType<typeof useNewThreadHandler>;
   archiveThread: ReturnType<typeof useThreadActions>["archiveThread"];
   deleteThread: ReturnType<typeof useThreadActions>["deleteThread"];
+  readWorktreeCleanupCandidate: ReturnType<typeof useThreadActions>["readWorktreeCleanupCandidate"];
+  cleanupWorktrees: ReturnType<typeof useThreadActions>["cleanupWorktrees"];
 }) {
   if (!project) {
     return (
@@ -3439,6 +3467,8 @@ function SidebarThreadsContent({
     handleNewThread,
     archiveThread,
     deleteThread,
+    readWorktreeCleanupCandidate,
+    cleanupWorktrees,
     threadJumpLabelByKey,
     expandThreadListForProject: () => {},
     collapseThreadListForProject: () => {},
@@ -3486,7 +3516,13 @@ export default function Sidebar() {
   const updateSettings = useUpdateClientSettings();
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
-  const { archiveThread, deleteThread, reopenLastArchivedThread } = useThreadActions();
+  const {
+    archiveThread,
+    deleteThread,
+    reopenLastArchivedThread,
+    readWorktreeCleanupCandidate,
+    cleanupWorktrees,
+  } = useThreadActions();
   const { isMobile, setOpenMobile } = useSidebar();
   const routeThreadRef = useParams({
     strict: false,
@@ -4132,6 +4168,8 @@ export default function Sidebar() {
               handleNewThread={handleNewThread}
               archiveThread={archiveThread}
               deleteThread={deleteThread}
+              readWorktreeCleanupCandidate={readWorktreeCleanupCandidate}
+              cleanupWorktrees={cleanupWorktrees}
             />
           ) : (
             <SidebarProjectsContent
@@ -4157,6 +4195,8 @@ export default function Sidebar() {
               handleNewThread={handleNewThread}
               archiveThread={archiveThread}
               deleteThread={deleteThread}
+              readWorktreeCleanupCandidate={readWorktreeCleanupCandidate}
+              cleanupWorktrees={cleanupWorktrees}
               sortedProjects={sortedProjects}
               expandedThreadListsByProject={expandedThreadListsByProject}
               activeRouteProjectKey={activeRouteProjectKey}

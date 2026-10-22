@@ -31,6 +31,11 @@ import * as ServerConfig from "../config.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as GitManager from "./GitManager.ts";
+import {
+  WorktreeAdmissionBlockedError,
+  WorktreeRemovalLease,
+  WorktreeRemovalLeaseLive,
+} from "./WorktreeRemovalLease.ts";
 
 interface FakeGhScenario {
   prListSequence?: string[];
@@ -697,12 +702,17 @@ function makeManager(input?: {
     ),
     vcsDriverLayer,
     serverSettingsLayer,
-  ).pipe(Layer.provideMerge(sourceControlRegistryLayer), Layer.provideMerge(NodeServices.layer));
-
-  return GitManager.make.pipe(
-    Effect.provide(managerLayer),
-    Effect.map((manager) => ({ manager, ghCalls })),
+  ).pipe(
+    Layer.provideMerge(sourceControlRegistryLayer),
+    Layer.provideMerge(WorktreeRemovalLeaseLive),
+    Layer.provideMerge(NodeServices.layer),
   );
+
+  return Effect.gen(function* () {
+    const manager = yield* GitManager.make;
+    const lease = yield* WorktreeRemovalLease;
+    return { manager, ghCalls, lease };
+  }).pipe(Effect.provide(managerLayer));
 }
 
 const asThreadId = (threadId: string) => threadId as ThreadId;
@@ -1786,6 +1796,155 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         Effect.map((r) => r.stdout.trim()),
       );
       expect(mergeBase).toBe(mainSha);
+    }),
+  );
+
+  it.effect("pushCurrentBranch refuses unmerged paths without touching the remote", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
+      yield* initRepo(repoDir);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["checkout", "-b", "side"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "side\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "side change"]);
+      yield* runGit(repoDir, ["checkout", "main"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "main\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "main change"]);
+      yield* runGit(repoDir, ["merge", "side"], true);
+
+      const driver = yield* GitVcsDriver.GitVcsDriver;
+      const error = yield* driver
+        .pushCurrentBranch(repoDir, null, { remoteName: "origin" })
+        .pipe(Effect.flip);
+
+      expect(error._tag).toBe("GitUnmergedPathsError");
+      const remoteRefs = yield* runGit(remoteDir, ["show-ref"], true);
+      expect(remoteRefs.stdout.trim()).toBe("");
+    }),
+  );
+
+  it.effect("refuses commit while the merge has unmerged paths", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
+      yield* initRepo(repoDir);
+      yield* runGit(repoDir, ["checkout", "-b", "side"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "side\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "side change"]);
+      yield* runGit(repoDir, ["checkout", "main"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "main\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "main change"]);
+      yield* runGit(repoDir, ["merge", "side"], true);
+
+      const { manager } = yield* makeManager();
+      const error = yield* runStackedAction(manager, {
+        cwd: repoDir,
+        action: "commit",
+      }).pipe(Effect.flip);
+
+      expect(error).toMatchObject({
+        _tag: "GitUnmergedPathsError",
+        unmergedPaths: ["README.md"],
+      });
+      expect((yield* runGit(repoDir, ["log", "-1", "--pretty=%s"])).stdout.trim()).toBe(
+        "main change",
+      );
+      expect((yield* runGit(repoDir, ["status", "--porcelain=v2"])).stdout).toContain("u ");
+    }),
+  );
+
+  it.effect("refuses commit_push before push while the merge has unmerged paths", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
+      yield* initRepo(repoDir);
+      yield* runGit(repoDir, ["checkout", "-b", "side"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "side\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "side change"]);
+      yield* runGit(repoDir, ["checkout", "main"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "main\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "main change"]);
+      yield* runGit(repoDir, ["merge", "side"], true);
+
+      const { manager } = yield* makeManager();
+      const error = yield* runStackedAction(manager, {
+        cwd: repoDir,
+        action: "commit_push",
+      }).pipe(Effect.flip);
+
+      expect(error).toMatchObject({
+        _tag: "GitUnmergedPathsError",
+        unmergedPaths: ["README.md"],
+      });
+      expect((yield* runGit(repoDir, ["log", "-1", "--pretty=%s"])).stdout.trim()).toBe(
+        "main change",
+      );
+    }),
+  );
+
+  it.effect("allows concluding a merge after the conflict is resolved", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
+      yield* initRepo(repoDir);
+      yield* runGit(repoDir, ["checkout", "-b", "side"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "side\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "side change"]);
+      yield* runGit(repoDir, ["checkout", "main"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "main\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "main change"]);
+      yield* runGit(repoDir, ["merge", "side"], true);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "resolved\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+
+      const { manager } = yield* makeManager();
+      const result = yield* runStackedAction(manager, {
+        cwd: repoDir,
+        action: "commit",
+        commitMessage: "Merge side",
+      });
+
+      expect(result.commit.status).toBe("created");
+      expect((yield* runGit(repoDir, ["log", "-1", "--pretty=%s"])).stdout.trim()).toBe(
+        "Merge side",
+      );
+    }),
+  );
+
+  it.effect("concludes a resolved merge when the tree matches the current branch", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
+      yield* initRepo(repoDir);
+      yield* runGit(repoDir, ["checkout", "-b", "side"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "side\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "side change"]);
+      yield* runGit(repoDir, ["checkout", "main"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "main\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+      yield* runGit(repoDir, ["commit", "-m", "main change"]);
+      yield* runGit(repoDir, ["merge", "side"], true);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "main\n");
+      yield* runGit(repoDir, ["add", "README.md"]);
+
+      const { manager } = yield* makeManager();
+      const result = yield* runStackedAction(manager, {
+        cwd: repoDir,
+        action: "commit",
+        commitMessage: "Conclude merge",
+      });
+
+      expect(result.commit.status).toBe("created");
+      const parents = (yield* runGit(repoDir, ["rev-list", "--parents", "-n", "1", "HEAD"])).stdout
+        .trim()
+        .split(" ");
+      expect(parents).toHaveLength(3);
     }),
   );
 
@@ -3096,6 +3255,67 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         "--show-current",
       ])).stdout.trim();
       expect(worktreeBranch).toBe("feature/pr-worktree");
+    }),
+  );
+
+  it.effect("records a prepared PR worktree so a delayed attachment is rejected", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
+      yield* initRepo(repoDir);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "main"]);
+      yield* runGit(repoDir, ["checkout", "-b", "feature/pr-prepared"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "prepared.txt"), "prepared\n");
+      yield* runGit(repoDir, ["add", "prepared.txt"]);
+      yield* runGit(repoDir, ["commit", "-m", "PR prepared branch"]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "feature/pr-prepared"]);
+      yield* runGit(repoDir, ["push", "origin", "HEAD:refs/pull/78/head"]);
+      yield* runGit(repoDir, ["checkout", "main"]);
+
+      const { manager, lease } = yield* makeManager({
+        ghScenario: {
+          pullRequest: {
+            number: 78,
+            title: "Prepared worktree PR",
+            url: "https://github.com/pingdotgg/codething-mvp/pull/78",
+            baseRefName: "main",
+            headRefName: "feature/pr-prepared",
+            state: "open",
+          },
+        },
+      });
+      const result = yield* preparePullRequestThread(manager, {
+        cwd: repoDir,
+        reference: "78",
+        mode: "worktree",
+      });
+      const worktreePath = result.worktreePath;
+      expect(worktreePath).not.toBeNull();
+      if (worktreePath === null) {
+        return;
+      }
+
+      NodeFS.rmSync(worktreePath, { recursive: true, force: true });
+      const missing = yield* lease
+        .withAdmission(
+          "thread.create",
+          { workspacePaths: [worktreePath], preparedWorktreePaths: [worktreePath] },
+          Effect.succeed("admitted"),
+        )
+        .pipe(Effect.flip);
+      expect(missing).toBeInstanceOf(WorktreeAdmissionBlockedError);
+
+      NodeFS.mkdirSync(worktreePath, { recursive: true });
+      const replaced = yield* lease
+        .withAdmission(
+          "thread.create",
+          { workspacePaths: [worktreePath], preparedWorktreePaths: [worktreePath] },
+          Effect.succeed("admitted"),
+        )
+        .pipe(Effect.flip);
+      expect(replaced).toBeInstanceOf(WorktreeAdmissionBlockedError);
+      NodeFS.rmSync(worktreePath, { recursive: true, force: true });
     }),
   );
 

@@ -42,7 +42,11 @@ import {
   type ChangeRequestTerminology,
 } from "@neokod/shared/sourceControl";
 
-import { GitManagerError, GitPullRequestMaterializationError } from "@neokod/contracts";
+import {
+  GitManagerError,
+  GitPullRequestMaterializationError,
+  GitUnmergedPathsError,
+} from "@neokod/contracts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import { extractBranchNameFromRemoteRef } from "./remoteRefs.ts";
@@ -50,6 +54,7 @@ import * as ServerSettings from "../serverSettings.ts";
 import type { GitManagerServiceError } from "@neokod/contracts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
+import { WorktreeRemovalLease } from "./WorktreeRemovalLease.ts";
 import type { ChangeRequest } from "@neokod/contracts";
 
 export interface GitActionProgressReporter {
@@ -567,6 +572,10 @@ export const make = Effect.gen(function* () {
   const textGeneration = yield* TextGeneration.TextGeneration;
   const projectSetupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
   const crypto = yield* Crypto.Crypto;
+  const worktreeRemovalLease = yield* WorktreeRemovalLease;
+
+  const recordPreparedWorktree = (workspacePath: string) =>
+    worktreeRemovalLease.recordPreparedWorktree(workspacePath);
 
   const sourceControlProvider = (cwd: string) => sourceControlProviders.resolve({ cwd });
   const serverSettingsService = yield* ServerSettings.ServerSettingsService;
@@ -770,7 +779,7 @@ export const make = Effect.gen(function* () {
   const canonicalizeExistingPath = (value: string) =>
     fileSystem.realPath(value).pipe(Effect.orElseSucceed(() => value));
   const normalizeStatusCacheKey = canonicalizeExistingPath;
-  const nonRepositoryStatusDetails = {
+  const nonRepositoryStatusDetails: GitVcsDriver.GitStatusDetails = {
     isRepo: false,
     hasOriginRemote: false,
     isDefaultBranch: false,
@@ -782,7 +791,7 @@ export const make = Effect.gen(function* () {
     aheadCount: 0,
     behindCount: 0,
     aheadOfDefaultCount: 0,
-  } satisfies GitVcsDriver.GitStatusDetails;
+  };
   const readLocalStatus = Effect.fn("readLocalStatus")(function* (cwd: string) {
     const details = yield* gitCore
       .statusDetailsLocal(cwd)
@@ -801,6 +810,10 @@ export const make = Effect.gen(function* () {
       refName: details.branch,
       hasWorkingTreeChanges: details.hasWorkingTreeChanges,
       workingTree: details.workingTree,
+      ...(details.operationInProgress ? { operationInProgress: details.operationInProgress } : {}),
+      ...(details.unmergedPaths && details.unmergedPaths.length > 0
+        ? { unmergedPaths: details.unmergedPaths }
+        : {}),
     } satisfies VcsStatusLocalResult;
   });
   const localStatusResultCache = yield* Cache.makeWith(readLocalStatus, {
@@ -1349,6 +1362,10 @@ export const make = Effect.gen(function* () {
         };
       }
 
+      if (context.stagedSummary.length === 0) {
+        return { subject: "Conclude merge", body: "", commitMessage: "Conclude merge" };
+      }
+
       const generated = yield* textGeneration
         .generateCommitMessage({
           cwd: input.cwd,
@@ -1758,6 +1775,7 @@ export const make = Effect.gen(function* () {
         existingBranchBeforeFetchPath !== rootWorktreePath
       ) {
         yield* ensureExistingWorktreeUpstream(existingBranchBeforeFetch.worktreePath);
+        yield* recordPreparedWorktree(existingBranchBeforeFetch.worktreePath);
         return {
           pullRequest,
           branch: localPullRequestBranch,
@@ -1788,6 +1806,7 @@ export const make = Effect.gen(function* () {
         existingBranchAfterFetchPath !== rootWorktreePath
       ) {
         yield* ensureExistingWorktreeUpstream(existingBranchAfterFetch.worktreePath);
+        yield* recordPreparedWorktree(existingBranchAfterFetch.worktreePath);
         return {
           pullRequest,
           branch: localPullRequestBranch,
@@ -1809,6 +1828,7 @@ export const make = Effect.gen(function* () {
         path: null,
       });
       yield* ensureExistingWorktreeUpstream(worktree.worktree.path);
+      yield* recordPreparedWorktree(worktree.worktree.path);
       yield* maybeRunSetupScript(worktree.worktree.path);
 
       return {
@@ -1866,6 +1886,17 @@ export const make = Effect.gen(function* () {
         GitManagerServiceError
       > {
         const initialStatus = yield* gitCore.statusDetails(input.cwd);
+        const wantsCommitOrPush =
+          isCommitAction(input.action) || input.action === "push" || input.action === "create_pr";
+        if (wantsCommitOrPush && (initialStatus.unmergedPaths?.length ?? 0) > 0) {
+          return yield* new GitUnmergedPathsError({
+            cwd: input.cwd,
+            ...(initialStatus.operationInProgress
+              ? { operationInProgress: initialStatus.operationInProgress }
+              : {}),
+            unmergedPaths: [...(initialStatus.unmergedPaths ?? [])],
+          });
+        }
         const wantsCommit = isCommitAction(input.action);
         const wantsPush =
           input.action === "push" ||

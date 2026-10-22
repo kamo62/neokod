@@ -11,6 +11,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 
 import {
   GitCommandError,
+  type GitUnmergedPathsError,
   VcsProcessExitError,
   type VcsSwitchRefInput,
   type VcsSwitchRefResult,
@@ -25,6 +26,9 @@ import {
   type VcsListRefsResult,
   type VcsPullResult,
   type VcsRemoveWorktreeInput,
+  type VcsInspectWorktreeInput,
+  type VcsWorktreeGitState,
+  type VcsOperationInProgress,
   type VcsStatusInput,
   type VcsStatusResult,
 } from "@neokod/contracts";
@@ -66,6 +70,8 @@ export interface GitStatusDetails {
   aheadCount: number;
   behindCount: number;
   aheadOfDefaultCount: number;
+  operationInProgress?: VcsOperationInProgress | undefined;
+  unmergedPaths?: readonly string[] | undefined;
 }
 
 export interface GitRemoteStatusDetails {
@@ -195,6 +201,9 @@ export class GitVcsDriver extends Context.Service<
     readonly status: (input: VcsStatusInput) => Effect.Effect<VcsStatusResult, GitCommandError>;
     readonly statusDetails: (cwd: string) => Effect.Effect<GitStatusDetails, GitCommandError>;
     readonly statusDetailsLocal: (cwd: string) => Effect.Effect<GitStatusDetails, GitCommandError>;
+    readonly assertNoUnmergedPaths: (
+      cwd: string,
+    ) => Effect.Effect<void, GitCommandError | GitUnmergedPathsError>;
     readonly statusDetailsRemote: (
       cwd: string,
       options?: GitRemoteStatusOptions,
@@ -202,7 +211,7 @@ export class GitVcsDriver extends Context.Service<
     readonly prepareCommitContext: (
       cwd: string,
       filePaths?: readonly string[],
-    ) => Effect.Effect<GitPreparedCommitContext | null, GitCommandError>;
+    ) => Effect.Effect<GitPreparedCommitContext | null, GitCommandError | GitUnmergedPathsError>;
     readonly commit: (
       cwd: string,
       subject: string,
@@ -213,7 +222,7 @@ export class GitVcsDriver extends Context.Service<
       cwd: string,
       fallbackBranch: string | null,
       options?: { readonly remoteName?: string | null },
-    ) => Effect.Effect<GitPushResult, GitCommandError>;
+    ) => Effect.Effect<GitPushResult, GitCommandError | GitUnmergedPathsError>;
     readonly readRangeContext: (
       cwd: string,
       baseRef: string,
@@ -253,6 +262,9 @@ export class GitVcsDriver extends Context.Service<
     readonly removeWorktree: (
       input: VcsRemoveWorktreeInput,
     ) => Effect.Effect<void, GitCommandError>;
+    readonly inspectWorktree: (
+      input: VcsInspectWorktreeInput,
+    ) => Effect.Effect<VcsWorktreeGitState, GitCommandError>;
     readonly renameBranch: (
       input: GitRenameBranchInput,
     ) => Effect.Effect<GitRenameBranchResult, GitCommandError>;

@@ -153,7 +153,7 @@ export const makeEvidenceService = (deps: EvidenceServiceDeps): EvidenceService[
       .execute({
         operation: "EvidenceService.loadCommits",
         cwd: workspacePath,
-        args: ["log", "--pretty=format:%H|%aI|%s", `${baseBranch}..HEAD`],
+        args: ["log", "--pretty=format:%H|%aI|%s", "--end-of-options", `${baseBranch}..HEAD`],
       })
       .pipe(
         Effect.map((result) =>
