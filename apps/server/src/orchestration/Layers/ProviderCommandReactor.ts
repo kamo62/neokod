@@ -40,6 +40,7 @@ import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { ProviderRegistry } from "../../provider/Services/ProviderRegistry.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
+import { completeStreamingAssistantMessages } from "../StreamingAssistantClosure.ts";
 import {
   ProviderCommandReactor,
   type ProviderCommandReactorShape,
@@ -285,6 +286,7 @@ const make = Effect.gen(function* () {
   const setThreadSession = (input: {
     readonly threadId: ThreadId;
     readonly session: OrchestrationSession;
+    readonly interruptedTurnId?: TurnId | undefined;
     readonly createdAt: string;
   }) =>
     serverCommandId("provider-session-set").pipe(
@@ -294,10 +296,29 @@ const make = Effect.gen(function* () {
           commandId,
           threadId: input.threadId,
           session: input.session,
+          ...(input.interruptedTurnId !== undefined
+            ? { interruptedTurnId: input.interruptedTurnId }
+            : {}),
           createdAt: input.createdAt,
         }),
       ),
     );
+
+  const settleStreamingMessagesForEndedTurn = (input: {
+    readonly threadId: ThreadId;
+    readonly endedTurnId: TurnId | null | undefined;
+    readonly observedAt: string;
+  }) =>
+    input.endedTurnId === null || input.endedTurnId === undefined
+      ? Effect.void
+      : completeStreamingAssistantMessages({
+          orchestrationEngine,
+          projectionSnapshotQuery,
+          threadId: input.threadId,
+          endedTurnIds: new Set([input.endedTurnId]),
+          observedNoLaterThan: input.observedAt,
+          occurredAt: input.observedAt,
+        });
 
   const setThreadSessionErrorOnTurnStartFailure = Effect.fnUntraced(function* (input: {
     readonly threadId: ThreadId;
@@ -310,6 +331,7 @@ const make = Effect.gen(function* () {
       return;
     }
     const updatedAt = DateTime.formatIso(yield* DateTime.now);
+    const endedTurnId = session.activeTurnId ?? thread.latestTurn?.turnId ?? null;
     yield* setThreadSession({
       threadId: input.threadId,
       session: {
@@ -320,7 +342,13 @@ const make = Effect.gen(function* () {
         lastError: input.detail,
         updatedAt,
       },
+      ...(endedTurnId !== null ? { interruptedTurnId: endedTurnId } : {}),
       createdAt: input.createdAt,
+    });
+    yield* settleStreamingMessagesForEndedTurn({
+      threadId: input.threadId,
+      endedTurnId,
+      observedAt: updatedAt,
     });
   });
 
@@ -330,11 +358,14 @@ const make = Effect.gen(function* () {
     readonly createdAt: string;
   }) =>
     Effect.gen(function* () {
-      const session = (yield* resolveThread(input.threadId))?.session;
+      const thread = yield* resolveThread(input.threadId);
+      const session = thread?.session;
       if (!session || (session.status !== "running" && session.status !== "starting")) return;
       yield* Effect.logInfo("provider.session.unrecoverable-settled", {
         threadId: input.threadId,
       });
+      const updatedAt = DateTime.formatIso(yield* DateTime.now);
+      const endedTurnId = session.activeTurnId ?? thread.latestTurn?.turnId ?? null;
       yield* setThreadSession({
         threadId: input.threadId,
         session: {
@@ -342,9 +373,15 @@ const make = Effect.gen(function* () {
           status: "interrupted",
           activeTurnId: null,
           lastError: input.message,
-          updatedAt: DateTime.formatIso(yield* DateTime.now),
+          updatedAt,
         },
+        ...(endedTurnId !== null ? { interruptedTurnId: endedTurnId } : {}),
         createdAt: input.createdAt,
+      });
+      yield* settleStreamingMessagesForEndedTurn({
+        threadId: input.threadId,
+        endedTurnId,
+        observedAt: updatedAt,
       });
     });
 
@@ -562,11 +599,16 @@ const make = Effect.gen(function* () {
             detail: `Provider session '${session.threadId}' started without a provider instance id.`,
           });
         }
+        const status = mapProviderSessionStatusToOrchestrationStatus(session.status);
+        const endedTurnId =
+          status === "stopped" || status === "error"
+            ? (thread.session?.activeTurnId ?? thread.latestTurn?.turnId ?? null)
+            : null;
         yield* setThreadSession({
           threadId,
           session: {
             threadId,
-            status: mapProviderSessionStatusToOrchestrationStatus(session.status),
+            status,
             providerName: session.provider,
             providerInstanceId: session.providerInstanceId,
             runtimeMode: desiredRuntimeMode,
@@ -575,8 +617,16 @@ const make = Effect.gen(function* () {
             lastError: session.lastError ?? null,
             updatedAt: session.updatedAt,
           },
+          ...(endedTurnId !== null ? { interruptedTurnId: endedTurnId } : {}),
           createdAt,
         });
+        if (endedTurnId !== null) {
+          yield* settleStreamingMessagesForEndedTurn({
+            threadId,
+            endedTurnId,
+            observedAt: session.updatedAt,
+          });
+        }
       });
 
     const existingSessionThreadId =
@@ -1160,6 +1210,7 @@ const make = Effect.gen(function* () {
       yield* providerService.stopSession({ threadId: thread.id });
     }
 
+    const endedTurnId = thread.session?.activeTurnId ?? thread.latestTurn?.turnId ?? null;
     yield* setThreadSession({
       threadId: thread.id,
       session: {
@@ -1174,7 +1225,13 @@ const make = Effect.gen(function* () {
         lastError: thread.session?.lastError ?? null,
         updatedAt: now,
       },
+      ...(endedTurnId !== null ? { interruptedTurnId: endedTurnId } : {}),
       createdAt: now,
+    });
+    yield* settleStreamingMessagesForEndedTurn({
+      threadId: thread.id,
+      endedTurnId,
+      observedAt: now,
     });
   });
 

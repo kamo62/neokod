@@ -1966,6 +1966,42 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
           WHERE thread_id = ${threadId}
         `;
         assert.deepEqual(threadRows, [{ updatedAt: recoveredAt }]);
+
+        // Synthetic message closure must not turn explicit unknown completion
+        // into a known timestamp in durable state.
+        const messageAt = "2026-01-02T08:05:00.000Z";
+        yield* eventStore.append({
+          type: "thread.message-sent",
+          eventId: EventId.make("evt-unknown-recovered-message"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: messageAt,
+          commandId: CommandId.make("cmd-unknown-recovered-message"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-unknown-recovered-message"),
+          metadata: {},
+          payload: {
+            threadId,
+            messageId: MessageId.make("message-unknown-recovered"),
+            role: "assistant",
+            text: "",
+            turnId,
+            streaming: false,
+            createdAt: messageAt,
+            updatedAt: messageAt,
+          },
+        });
+        yield* projectionPipeline.bootstrap;
+
+        const afterMessage = yield* sql<{
+          readonly state: string;
+          readonly completedAt: string | null;
+        }>`
+          SELECT state, completed_at AS "completedAt"
+          FROM projection_turns
+          WHERE thread_id = ${threadId} AND turn_id = ${turnId}
+        `;
+        assert.deepEqual(afterMessage, [{ state: "interrupted", completedAt: null }]);
       }),
   );
 

@@ -1832,6 +1832,16 @@ describe("ProviderCommandReactor", () => {
         });
 
         yield* harness.engine.dispatch({
+          type: "thread.message.assistant.delta",
+          commandId: CommandId.make("cmd-unrecoverable-streaming-message"),
+          threadId: ThreadId.make("thread-1"),
+          messageId: MessageId.make("msg-unrecoverable-streaming"),
+          delta: "partial answer",
+          turnId: asTurnId("turn-1"),
+          createdAt: now,
+        });
+
+        yield* harness.engine.dispatch({
           type: "thread.turn.interrupt",
           commandId: CommandId.make("cmd-turn-interrupt-unrecoverable"),
           threadId: ThreadId.make("thread-1"),
@@ -1858,6 +1868,11 @@ describe("ProviderCommandReactor", () => {
         expect(
           thread?.activities.some((activity) => activity.kind === "provider.turn.interrupt.failed"),
         ).toBe(false);
+        expect(
+          thread?.messages.find(
+            (message) => message.id === MessageId.make("msg-unrecoverable-streaming"),
+          ),
+        ).toMatchObject({ text: "partial answer", streaming: false });
       }),
   );
 
@@ -1936,10 +1951,20 @@ describe("ProviderCommandReactor", () => {
             status: "running",
             providerName: "codex",
             runtimeMode: "approval-required",
-            activeTurnId: null,
+            activeTurnId: asTurnId("turn-1"),
             lastError: null,
             updatedAt: now,
           },
+          createdAt: now,
+        });
+
+        yield* harness.engine.dispatch({
+          type: "thread.message.assistant.delta",
+          commandId: CommandId.make("cmd-approval-unrecoverable-streaming-message"),
+          threadId: ThreadId.make("thread-1"),
+          messageId: MessageId.make("msg-approval-unrecoverable-streaming"),
+          delta: "partial answer",
+          turnId: asTurnId("turn-1"),
           createdAt: now,
         });
 
@@ -1991,6 +2016,11 @@ describe("ProviderCommandReactor", () => {
           detail: expect.stringContaining("Stale pending approval request: approval-request-1"),
         });
         expect(thread?.session?.status).toBe("interrupted");
+        expect(
+          thread?.messages.find(
+            (message) => message.id === MessageId.make("msg-approval-unrecoverable-streaming"),
+          ),
+        ).toMatchObject({ text: "partial answer", streaming: false });
       }),
   );
 

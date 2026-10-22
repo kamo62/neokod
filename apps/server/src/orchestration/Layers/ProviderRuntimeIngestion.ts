@@ -44,6 +44,7 @@ import {
 } from "../Services/ProviderRuntimeIngestion.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { planRuntimeItemClosures } from "../RuntimeItemProjection.ts";
+import { completeStreamingAssistantMessages } from "../StreamingAssistantClosure.ts";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
 
@@ -1504,102 +1505,38 @@ const make = Effect.gen(function* () {
       yield* clearTurnStateForSession(input.threadId);
     });
 
-  // Recovery runs in a fresh process, so the in-memory assistant buffers and
-  // turn-message caches are empty. Close persisted streaming messages from the
-  // durable projection instead. The completion event is ordered at recovery
-  // time while each message keeps its own last observation.
-  const completeStreamingAssistantMessages = (input: {
-    readonly threadId: ThreadId;
-    readonly occurredAt: string;
-    readonly messages: ReadonlyArray<OrchestrationMessage>;
-  }) =>
-    Effect.forEach(
-      input.messages,
-      (message) =>
-        orchestrationEngine.dispatch({
-          type: "thread.message.assistant.complete",
-          commandId: CommandId.make(
-            `reconcile:assistant-complete:${input.threadId}:${message.id}:${message.updatedAt}`,
-          ),
-          threadId: input.threadId,
-          messageId: message.id,
-          ...(message.turnId !== null ? { turnId: message.turnId } : {}),
-          lastObservedAt: message.updatedAt,
-          createdAt: input.occurredAt,
-        }),
-      { concurrency: 1 },
-    ).pipe(Effect.asVoid);
-
-  const settleStreamingAssistantMessagesForTurn = (input: {
-    readonly threadId: ThreadId;
-    readonly turnId: TurnId;
-    readonly observedNoLaterThan: string;
-    readonly occurredAt: string;
-  }) =>
-    Effect.gen(function* () {
-      const detailedThread = yield* resolveThreadDetail(input.threadId);
-      const messages = (detailedThread?.messages ?? []).filter(
-        (message) =>
-          message.role === "assistant" &&
-          message.streaming &&
-          message.turnId === input.turnId &&
-          message.updatedAt <= input.observedNoLaterThan,
-      );
-      yield* completeStreamingAssistantMessages({
-        threadId: input.threadId,
-        occurredAt: input.occurredAt,
-        messages,
-      });
-    });
-
   const settleStreamingAssistantMessagesAtStartup = (
     threads: Iterable<{
       readonly id: ThreadId;
       readonly updatedAt: string;
-      readonly session: { readonly status: string } | null;
-      readonly latestTurn: { readonly state: string } | null;
+      readonly session: { readonly updatedAt: string } | null;
     }>,
   ) =>
     Effect.forEach(
       threads,
       (thread) =>
         Effect.gen(function* () {
-          // Only terminal sessions or turns can own a stale streaming message.
-          // A running turn keeps its stream open for the live path.
-          const terminalSession =
-            thread.session?.status === "interrupted" ||
-            thread.session?.status === "stopped" ||
-            thread.session?.status === "error";
-          const terminalTurn =
-            thread.latestTurn?.state === "interrupted" ||
-            thread.latestTurn?.state === "error" ||
-            thread.latestTurn?.state === "completed";
-          if (!terminalSession && !terminalTurn) {
-            return;
-          }
-          const detailedThread = yield* resolveThreadDetail(thread.id);
-          const streamingMessages = (detailedThread?.messages ?? []).filter(
-            (message) =>
-              message.role === "assistant" && message.streaming && message.turnId !== null,
-          );
-          if (streamingMessages.length === 0) {
-            return;
-          }
+          // Match messages to their owning durable turn, not to the thread's
+          // latest turn. Older interrupted turns must close even while newer
+          // work is running.
           const turns = yield* projectionTurnRepository.listByThreadId({
             threadId: thread.id,
           });
-          const terminalTurnIds = new Set(
+          const endedTurnIds = new Set(
             turns
               .filter((turn) => turn.turnId !== null && turn.state !== "running")
               .map((turn) => turn.turnId!),
           );
-          const messages = streamingMessages.filter(
-            (message) => message.turnId !== null && terminalTurnIds.has(message.turnId),
-          );
+          if (endedTurnIds.size === 0) {
+            return;
+          }
           yield* completeStreamingAssistantMessages({
+            orchestrationEngine,
+            projectionSnapshotQuery,
             threadId: thread.id,
-            occurredAt: detailedThread?.session?.updatedAt ?? thread.updatedAt,
-            messages,
+            endedTurnIds,
+            observedNoLaterThan: thread.updatedAt,
+            occurredAt: thread.session?.updatedAt ?? thread.updatedAt,
           });
         }),
       { concurrency: 1 },
@@ -1813,6 +1750,9 @@ const make = Effect.gen(function* () {
                 ? null
                 : (thread.session?.lastError ?? null);
 
+        const endsTurn = status === "interrupted" || status === "stopped" || status === "error";
+        const endedTurnId = endsTurn ? (eventTurnId ?? activeTurnId ?? undefined) : undefined;
+
         if (shouldApplyThreadLifecycle) {
           if (event.type === "turn.started" && acceptedTurnStartedSourcePlan !== null) {
             yield* markSourceProposedPlanImplemented(
@@ -1850,6 +1790,7 @@ const make = Effect.gen(function* () {
               lastError,
               updatedAt: now,
             },
+            ...(endedTurnId !== undefined ? { interruptedTurnId: endedTurnId } : {}),
             createdAt: now,
           });
         }
@@ -2132,6 +2073,7 @@ const make = Effect.gen(function* () {
           : activeTurnId === null || eventTurnId === undefined || sameId(activeTurnId, eventTurnId);
 
         if (shouldApplyRuntimeError) {
+          const endedTurnId = eventTurnId ?? activeTurnId ?? undefined;
           yield* orchestrationEngine.dispatch({
             type: "thread.session.set",
             commandId: yield* providerCommandId(event, "runtime-error-session-set"),
@@ -2148,6 +2090,7 @@ const make = Effect.gen(function* () {
               lastError: runtimeErrorMessage,
               updatedAt: now,
             },
+            ...(endedTurnId !== undefined ? { interruptedTurnId: endedTurnId } : {}),
             createdAt: now,
           });
         }
@@ -2215,29 +2158,38 @@ const make = Effect.gen(function* () {
       ).pipe(Effect.asVoid);
     });
 
-  const processDomainEvent = (event: TurnStartRequestedDomainEvent | SessionSetDomainEvent) =>
-    event.type === "thread.session-set" && event.payload.session.status === "interrupted"
-      ? Effect.gen(function* () {
-          yield* closeItemsOfSettledSession({
-            threadId: event.payload.threadId,
-            status: "interrupted",
-            updatedAt: event.payload.session.updatedAt,
-            observedNoLaterThan: event.payload.session.updatedAt,
-          });
-          // Recovery pins the settled turn. Settle only that turn's streaming
-          // messages up to the interruption cutoff; a delayed interruption must
-          // not close messages that belong to newer work. Live interruption
-          // omits the turn id and keeps using its runtime buffer path.
-          if (event.payload.interruptedTurnId !== undefined) {
-            yield* settleStreamingAssistantMessagesForTurn({
-              threadId: event.payload.threadId,
-              turnId: event.payload.interruptedTurnId,
-              observedNoLaterThan: event.payload.session.updatedAt,
-              occurredAt: event.payload.session.updatedAt,
-            });
-          }
-        })
-      : Effect.void;
+  const processDomainEvent = (event: TurnStartRequestedDomainEvent | SessionSetDomainEvent) => {
+    if (event.type !== "thread.session-set") {
+      return Effect.void;
+    }
+    const status = event.payload.session.status;
+    if (status !== "interrupted" && status !== "stopped" && status !== "error") {
+      return Effect.void;
+    }
+    return Effect.gen(function* () {
+      if (status === "interrupted") {
+        yield* closeItemsOfSettledSession({
+          threadId: event.payload.threadId,
+          status,
+          updatedAt: event.payload.session.updatedAt,
+          observedNoLaterThan: event.payload.session.updatedAt,
+        });
+      }
+      // Every turn-ending session path uses the same durable closure step.
+      // The pinned turn and cutoff keep a delayed settlement away from newer
+      // work.
+      if (event.payload.interruptedTurnId !== undefined) {
+        yield* completeStreamingAssistantMessages({
+          orchestrationEngine,
+          projectionSnapshotQuery,
+          threadId: event.payload.threadId,
+          endedTurnIds: new Set([event.payload.interruptedTurnId]),
+          observedNoLaterThan: event.payload.session.updatedAt,
+          occurredAt: event.payload.session.updatedAt,
+        });
+      }
+    });
+  };
 
   const processInput = (input: RuntimeIngestionInput) =>
     input.source === "runtime" ? processRuntimeEvent(input.event) : processDomainEvent(input.event);

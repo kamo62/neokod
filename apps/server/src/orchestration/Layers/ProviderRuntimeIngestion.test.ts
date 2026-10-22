@@ -1214,6 +1214,107 @@ describe("ProviderRuntimeIngestion", () => {
     });
   });
 
+  it("settles an older interrupted turn at startup while newer work is running", async () => {
+    const harness = await createHarness({ startIngestion: false });
+    const threadId = asThreadId("thread-1");
+    const olderTurnId = asTurnId("turn-startup-older");
+    const newerTurnId = asTurnId("turn-startup-newer");
+    const olderMessageId = asMessageId("startup-older-message");
+    const newerMessageId = asMessageId("startup-newer-message");
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("startup-older-running"),
+        threadId,
+        session: {
+          threadId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: olderTurnId,
+          updatedAt: "2026-01-01T00:03:00.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:03:00.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("startup-older-delta"),
+        threadId,
+        messageId: olderMessageId,
+        delta: "older partial",
+        turnId: olderTurnId,
+        createdAt: "2026-01-01T00:03:01.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("startup-older-interrupted"),
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: "2026-01-01T00:04:00.000Z",
+          lastError: null,
+        },
+        interruptedTurnId: olderTurnId,
+        latestTurnCompletedAt: null,
+        createdAt: "2026-01-01T00:04:00.000Z",
+      }),
+    );
+    // Newer work starts before the older message closure can run.
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("startup-newer-running"),
+        threadId,
+        session: {
+          threadId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: newerTurnId,
+          updatedAt: "2026-01-01T00:04:30.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:04:30.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("startup-newer-delta"),
+        threadId,
+        messageId: newerMessageId,
+        delta: "newer partial",
+        turnId: newerTurnId,
+        createdAt: "2026-01-01T00:05:00.000Z",
+      }),
+    );
+
+    await harness.start();
+    await harness.drain();
+
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.messages.find((message) => message.id === olderMessageId)).toMatchObject({
+      text: "older partial",
+      streaming: false,
+      updatedAt: "2026-01-01T00:03:01.000Z",
+    });
+    expect(thread?.messages.find((message) => message.id === newerMessageId)).toMatchObject({
+      text: "newer partial",
+      streaming: true,
+      updatedAt: "2026-01-01T00:05:00.000Z",
+    });
+  });
+
   it("orphans startup items at their own observation when a terminal turn has unknown completion", async () => {
     const harness = await createHarness({ startIngestion: false });
     const threadId = asThreadId("thread-1");
