@@ -1,7 +1,15 @@
 import { assert, describe, it } from "@effect/vitest";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { ThreadId, TurnId } from "@neokod/contracts";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
+import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
+import { OrchestrationProjectionSnapshotQueryLive } from "../orchestration/Layers/ProjectionSnapshotQuery.ts";
+import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { findMigrationIdentityProblems, runMigrations } from "./Migrations.ts";
 import { migrationEntries } from "./Migrations.ts";
 import * as NodeSqliteClient from "./NodeSqliteClient.ts";
@@ -148,6 +156,237 @@ it.effect("accepts a database that was migrated in two steps and a repeated run"
       assert.deepStrictEqual(second, expected);
       const third = yield* runMigrations();
       assert.deepStrictEqual(third, []);
+    }),
+  ),
+);
+
+it.effect("repairs legacy interrupt-request completions during the settlement upgrade", () =>
+  withMemoryDb(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 41 });
+
+      const insertThread = (threadId: string, turnId: string) =>
+        sql`
+          INSERT INTO projection_threads (
+            thread_id,
+            project_id,
+            title,
+            model_selection_json,
+            runtime_mode,
+            branch,
+            worktree_path,
+            latest_turn_id,
+            created_at,
+            updated_at,
+            deleted_at
+          )
+          VALUES (
+            ${threadId},
+            'project-legacy',
+            'Legacy thread',
+            '{"instanceId":"codex","model":"gpt-5.4"}',
+            'full-access',
+            NULL,
+            NULL,
+            ${turnId},
+            '2026-01-01T00:00:00.000Z',
+            '2026-01-01T00:00:30.000Z',
+            NULL
+          )
+        `;
+      const insertTurn = (threadId: string, turnId: string, completedAt: string) =>
+        sql`
+          INSERT INTO projection_turns (
+            thread_id,
+            turn_id,
+            pending_message_id,
+            source_proposed_plan_thread_id,
+            source_proposed_plan_id,
+            assistant_message_id,
+            state,
+            requested_at,
+            started_at,
+            completed_at,
+            checkpoint_turn_count,
+            checkpoint_ref,
+            checkpoint_status,
+            checkpoint_files_json
+          )
+          VALUES (
+            ${threadId},
+            ${turnId},
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            'interrupted',
+            '2026-01-01T00:00:00.000Z',
+            '2026-01-01T00:00:00.000Z',
+            ${completedAt},
+            NULL,
+            NULL,
+            NULL,
+            '[]'
+          )
+        `;
+      const insertEvent = (input: {
+        readonly sequence: number;
+        readonly threadId: string;
+        readonly version: number;
+        readonly type: string;
+        readonly payload: unknown;
+      }) =>
+        sql`
+          INSERT INTO orchestration_events (
+            sequence,
+            event_id,
+            aggregate_kind,
+            stream_id,
+            stream_version,
+            event_type,
+            occurred_at,
+            command_id,
+            causation_event_id,
+            correlation_id,
+            actor_kind,
+            payload_json,
+            metadata_json
+          )
+          VALUES (
+            ${input.sequence},
+            ${`event-${input.sequence}`},
+            'thread',
+            ${input.threadId},
+            ${input.version},
+            ${input.type},
+            '2026-01-01T00:00:00.000Z',
+            NULL,
+            NULL,
+            NULL,
+            'server',
+            ${JSON.stringify(input.payload)},
+            '{}'
+          )
+        `;
+
+      // Base-version legacy state: the interrupt request at :10 was written as
+      // the turn completion even though the session observed the stop at :30.
+      yield* insertThread("thread-recovered", "turn-recovered");
+      yield* insertTurn("thread-recovered", "turn-recovered", "2026-01-01T00:00:10.000Z");
+      yield* insertEvent({
+        sequence: 1,
+        threadId: "thread-recovered",
+        version: 1,
+        type: "thread.session-set",
+        payload: {
+          threadId: "thread-recovered",
+          session: {
+            status: "running",
+            activeTurnId: "turn-recovered",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          },
+        },
+      });
+      yield* insertEvent({
+        sequence: 2,
+        threadId: "thread-recovered",
+        version: 2,
+        type: "thread.turn-interrupt-requested",
+        payload: {
+          threadId: "thread-recovered",
+          turnId: "turn-recovered",
+          createdAt: "2026-01-01T00:00:10.000Z",
+        },
+      });
+      yield* insertEvent({
+        sequence: 3,
+        threadId: "thread-recovered",
+        version: 3,
+        type: "thread.session-set",
+        payload: {
+          threadId: "thread-recovered",
+          session: {
+            status: "interrupted",
+            activeTurnId: null,
+            updatedAt: "2026-01-01T00:00:30.000Z",
+          },
+        },
+      });
+
+      // No later closure evidence exists: the request time must not survive.
+      yield* insertThread("thread-unknown", "turn-unknown");
+      yield* insertTurn("thread-unknown", "turn-unknown", "2026-01-01T00:00:15.000Z");
+      yield* insertEvent({
+        sequence: 4,
+        threadId: "thread-unknown",
+        version: 1,
+        type: "thread.session-set",
+        payload: {
+          threadId: "thread-unknown",
+          session: {
+            status: "running",
+            activeTurnId: "turn-unknown",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          },
+        },
+      });
+      yield* insertEvent({
+        sequence: 5,
+        threadId: "thread-unknown",
+        version: 2,
+        type: "thread.turn-interrupt-requested",
+        payload: {
+          threadId: "thread-unknown",
+          turnId: "turn-unknown",
+          createdAt: "2026-01-01T00:00:15.000Z",
+        },
+      });
+
+      // A genuine completion with no interrupt request is untouched.
+      yield* insertThread("thread-legit", "turn-legit");
+      yield* insertTurn("thread-legit", "turn-legit", "2026-01-01T00:00:05.000Z");
+
+      yield* runMigrations();
+
+      const settlements = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const context = yield* Layer.build(
+            OrchestrationProjectionSnapshotQueryLive.pipe(
+              Layer.provide(RepositoryIdentityResolver.layer),
+              Layer.provide(NodeServices.layer),
+            ),
+          );
+          const query = Context.get(context, ProjectionSnapshotQuery);
+          const read = (threadId: string) =>
+            query
+              .getThreadDetailSnapshot(ThreadId.make(threadId))
+              .pipe(
+                Effect.map((snapshot) =>
+                  Option.isSome(snapshot)
+                    ? snapshot.value.thread.settledTurnCompletions
+                    : undefined,
+                ),
+              );
+          return {
+            recovered: yield* read("thread-recovered"),
+            unknown: yield* read("thread-unknown"),
+            untouched: yield* read("thread-legit"),
+          };
+        }),
+      );
+
+      // The durable row is rebuilt from the server-observed closure, never the
+      // request timestamp.
+      assert.deepStrictEqual(settlements.recovered, {
+        [TurnId.make("turn-recovered")]: "2026-01-01T00:00:30.000Z",
+      });
+      assert.deepStrictEqual(settlements.unknown, {
+        [TurnId.make("turn-unknown")]: null,
+      });
+      assert.deepStrictEqual(settlements.untouched, {
+        [TurnId.make("turn-legit")]: "2026-01-01T00:00:05.000Z",
+      });
     }),
   ),
 );
