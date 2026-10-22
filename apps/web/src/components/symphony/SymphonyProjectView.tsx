@@ -34,7 +34,7 @@ import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
 import { SymphonyAttentionList } from "./SymphonyAttentionList";
 import { SymphonyEmptyState } from "./SymphonyEmptyState";
-import { canRunNow, formatEligibilityReason } from "./boardCard.logic";
+import { canRunNow, formatEligibilityReason, runActionLabel } from "./boardCard.logic";
 import { dispatchRefusalMessage } from "./dispatchRefusal.logic";
 import {
   availableSymphonyImplementationProviders,
@@ -189,7 +189,9 @@ function BoardTab({
                           {dispatching === card.workItemId ? (
                             <Spinner className="size-3.5" />
                           ) : null}
-                          {refusals[card.workItemId] === undefined ? "Run now" : "Try again"}
+                          {refusals[card.workItemId] === undefined
+                            ? runActionLabel(card.lifecycle)
+                            : "Try again"}
                         </Button>
                         {refusals[card.workItemId] === undefined ? null : (
                           <p role="status" className="mt-2 text-xs text-destructive-foreground">

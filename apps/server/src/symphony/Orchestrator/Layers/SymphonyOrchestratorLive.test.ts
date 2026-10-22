@@ -2281,6 +2281,78 @@ layer("SymphonyOrchestrator Observe", (it) => {
     }),
   );
 
+  it.effect("a refused dispatch leaves a changes_requested item where it was", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-run-again-1", "/repo/run-again-1", { autonomy: "execute" });
+      const workItems = yield* WorkItemRepository;
+      const workItemId = WorkItemId.make("run-again-1");
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId: SymphonyProjectId.make("run-again-project-1"),
+        objective: "Run again",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "1",
+        workflowId: WorkflowId.make("wf-run-again-1"),
+        lifecycle: "changes_requested",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+      yield* orchestrator.setWorkflowPaused("wf-run-again-1", true);
+
+      const refused = yield* orchestrator.dispatchWorkItem("run-again-1");
+      expect(refused).toEqual({ status: "refused", reason: "paused", detail: "workflow" });
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("changes_requested");
+
+      yield* orchestrator.setWorkflowPaused("wf-run-again-1", false);
+      dispatchedIds.length = 0;
+      const started = yield* orchestrator.dispatchWorkItem("run-again-1");
+      expect(started).toEqual({ status: "started" });
+      yield* TestClock.adjust("100 millis");
+      yield* Effect.yieldNow;
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("preparing");
+      expect(dispatchedIds).toContain("run-again-1");
+    }),
+  );
+
+  it.effect("dispatch requeues and claims a validation_failed item", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* SymphonyOrchestrator;
+      yield* seedWorkflow("wf-run-again-2", "/repo/run-again-2", { autonomy: "execute" });
+      const workItems = yield* WorkItemRepository;
+      const workItemId = WorkItemId.make("run-again-2");
+      yield* workItems.upsert({
+        id: workItemId,
+        mode: "symphony",
+        projectId: SymphonyProjectId.make("run-again-project-2"),
+        objective: "Validation failed rerun",
+        acceptanceCriteria: [],
+        source: { kind: "manual" },
+        trackerIssueId: "1",
+        workflowId: WorkflowId.make("wf-run-again-2"),
+        lifecycle: "validation_failed",
+        priority: 1,
+        eligibilityReasons: [],
+        evidence: null,
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      });
+
+      dispatchedIds.length = 0;
+      const started = yield* orchestrator.dispatchWorkItem("run-again-2");
+      expect(started).toEqual({ status: "started" });
+      yield* TestClock.adjust("100 millis");
+      yield* Effect.yieldNow;
+      expect((yield* workItems.getById(workItemId))?.lifecycle).toBe("preparing");
+      expect(dispatchedIds).toContain("run-again-2");
+    }),
+  );
+
   it.effect("per-scope pause gates dispatch for the paused workflow", () =>
     Effect.gen(function* () {
       const orchestrator = yield* SymphonyOrchestrator;

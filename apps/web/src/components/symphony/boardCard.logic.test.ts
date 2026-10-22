@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { canRunNow, formatEligibilityReason } from "./boardCard.logic";
+import { canRunNow, formatEligibilityReason, runActionLabel } from "./boardCard.logic";
 
 describe("canRunNow", () => {
-  it("allows queued and retry_scheduled cards without eligibility reasons", () => {
+  it("allows queued, retry_scheduled, changes_requested, and validation_failed cards", () => {
     expect(canRunNow({ lifecycle: "queued", eligibilityReasons: [] })).toBe(true);
     expect(canRunNow({ lifecycle: "retry_scheduled", eligibilityReasons: [] })).toBe(true);
+    expect(canRunNow({ lifecycle: "changes_requested", eligibilityReasons: [] })).toBe(true);
+    expect(canRunNow({ lifecycle: "validation_failed", eligibilityReasons: [] })).toBe(true);
     expect(canRunNow({ lifecycle: "queued" })).toBe(true);
   });
 
@@ -15,6 +17,14 @@ describe("canRunNow", () => {
     expect(
       canRunNow({ lifecycle: "queued", eligibilityReasons: ["missing_label:agent-ready"] }),
     ).toBe(false);
+  });
+});
+
+describe("runActionLabel", () => {
+  it("asks for a fresh run on review and validation follow-ups", () => {
+    expect(runActionLabel("changes_requested")).toBe("Run again");
+    expect(runActionLabel("validation_failed")).toBe("Run again");
+    expect(runActionLabel("queued")).toBe("Run now");
   });
 });
 

@@ -289,6 +289,14 @@ const DISPATCHABLE_LIFECYCLES: ReadonlySet<WorkLifecycle> = new Set([
   "queued",
   "retry_scheduled",
   "changes_requested",
+  "validation_failed",
+]);
+
+// A second run of a review or validation follow-up is only queued after every
+// dispatch gate has passed, so a refused request leaves the item where it was.
+const REQUEUE_BEFORE_DISPATCH: ReadonlySet<WorkLifecycle> = new Set([
+  "changes_requested",
+  "validation_failed",
 ]);
 
 const refused = (reason: DispatchRefused["reason"], detail?: string): DispatchRefused => ({
@@ -1636,14 +1644,6 @@ const makeOrchestrator = Effect.gen(function* () {
     if (!DISPATCHABLE_LIFECYCLES.has(item.lifecycle) && !explicitTerminalRetry) {
       return refused("not_dispatchable", item.lifecycle);
     }
-    if (item.lifecycle === "changes_requested") {
-      const requeued = yield* workItems
-        .transition(item.id, "queued", { from: ["changes_requested"] })
-        .pipe(Effect.catch(() => Effect.succeed(false)));
-      if (!requeued) {
-        return refused("not_dispatchable", "state changed");
-      }
-    }
     if (explicitTerminalRetry) {
       // A user chose to run this item again. Leaving a terminal lifecycle needs an explicit `from`.
       const requeued = yield* workItems
@@ -1762,6 +1762,14 @@ const makeOrchestrator = Effect.gen(function* () {
     }
     const reviewFeedback = yield* buildReviewFeedback(item, config);
     const workflowInstructions = workflow.definition.promptTemplate.trim();
+    if (REQUEUE_BEFORE_DISPATCH.has(item.lifecycle)) {
+      const requeued = yield* workItems
+        .transition(item.id, "queued", { from: [item.lifecycle] })
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+      if (!requeued) {
+        return refused("not_dispatchable", "state changed");
+      }
+    }
     return {
       item,
       issue,

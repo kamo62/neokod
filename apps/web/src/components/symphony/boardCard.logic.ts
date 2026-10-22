@@ -3,7 +3,12 @@ import type { SymphonyBoardCard, WorkLifecycle } from "@neokod/contracts";
 export const RUNNABLE_LIFECYCLES: ReadonlySet<WorkLifecycle> = new Set([
   "queued",
   "retry_scheduled",
+  "changes_requested",
+  "validation_failed",
 ]);
+
+export const runActionLabel = (lifecycle: WorkLifecycle): string =>
+  lifecycle === "changes_requested" || lifecycle === "validation_failed" ? "Run again" : "Run now";
 
 export const canRunNow = (
   card: Pick<SymphonyBoardCard, "lifecycle" | "eligibilityReasons">,
