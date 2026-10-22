@@ -1,0 +1,21 @@
+{
+  "sessionId": "6843fe7d-bb0e-4d37-934d-590da669c598",
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "inputTokens": 46,
+      "outputTokens": 16512,
+      "cacheReadInputTokens": 1082085,
+      "cacheCreationInputTokens": 76817,
+      "webSearchRequests": 0,
+      "costUSD": 1.1613769999999999,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 9726,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "isError": false,
+  "scope": "read-only pinned source review; no shell; baseline from prior receipts; main independently verified clean git state and exact diff"
+}

@@ -32,8 +32,27 @@
       "model": "github-copilot/gpt-6.1-sol",
       "displayName": "github-copilot/GPT-6.1 Sol",
       "state": "source-review-completed-no-P0-P2"
+    },
+    {
+      "task": "lane-checkpoint-recovery",
+      "sessionId": "ses_e9e3948e4ffeyuDB3gMkJE2pbh",
+      "agent": {
+        "name": "OpenCode",
+        "version": "2.0.32"
+      },
+      "model": "deepseek/deepseek-flash",
+      "displayName": "deepseek/DeepSeek V4.1 Flash 1017",
+      "state": "running-not-accepted"
     }
   ],
   "noBuilds": true,
-  "scope": "core correction continuation; main retains integration"
+  "scope": "core correction continuation; main retains integration",
+  "composerIntegration": {
+    "devCommit": "89fa90688",
+    "tests": 150,
+    "vpCheck": "passed; 0 errors, 35 warnings",
+    "rootTypecheck": "10 tasks passed",
+    "opusSession": "6843fe7d-bb0e-4d37-934d-590da669c598",
+    "opusResult": "no P0-P2; pinned source without shell baseline diff"
+  }
 }
