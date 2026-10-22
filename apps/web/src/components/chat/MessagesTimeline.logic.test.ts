@@ -22,6 +22,21 @@ import {
   summarizeWorkGroupActivity,
 } from "./MessagesTimeline.logic";
 
+/**
+ * Completion evidence as ChatView supplies it: the client settlement record
+ * first, then the latest turn's own completion when the record omits it.
+ */
+function turnCompletionMap(thread: OrchestrationThread): Map<TurnId, string | null> {
+  const map = new Map<TurnId, string | null>();
+  for (const turnId of Object.keys(thread.settledTurnCompletions ?? {}) as TurnId[]) {
+    map.set(turnId, thread.settledTurnCompletions?.[turnId] ?? null);
+  }
+  if (thread.latestTurn !== null && !map.has(thread.latestTurn.turnId)) {
+    map.set(thread.latestTurn.turnId, thread.latestTurn.completedAt);
+  }
+  return map;
+}
+
 describe("summarizeWorkGroupActivity", () => {
   it("uses the activity kinds instead of a generic tool-call count", () => {
     expect(
@@ -1036,17 +1051,6 @@ describe("deriveMessagesTimelineRows", () => {
       correlationId: null,
       metadata: {},
     } as const;
-    const completionMap = (thread: OrchestrationThread) => {
-      const map = new Map<TurnId, string | null>();
-      for (const turnId of Object.keys(thread.settledTurnCompletions ?? {}) as TurnId[]) {
-        map.set(turnId, thread.settledTurnCompletions?.[turnId] ?? null);
-      }
-      const latest = thread.latestTurn;
-      if (latest !== null && !map.has(latest.turnId)) {
-        map.set(latest.turnId, latest.completedAt);
-      }
-      return map;
-    };
 
     for (const scenario of [
       { completedAt: "2026-01-01T00:01:00.000Z", expected: "Worked for 1m" },
@@ -1135,7 +1139,7 @@ describe("deriveMessagesTimelineRows", () => {
           },
         ],
         latestTurn: next.thread.latestTurn,
-        turnCompletionByTurnId: completionMap(next.thread),
+        turnCompletionByTurnId: turnCompletionMap(next.thread),
         runningTurnId: turnB,
         isWorking: true,
         activeTurnStartedAt: "2026-01-01T00:03:00.000Z",
@@ -1208,16 +1212,6 @@ describe("deriveMessagesTimelineRows", () => {
       correlationId: null,
       metadata: {},
     } as const;
-    const completionMap = (thread: OrchestrationThread) => {
-      const map = new Map<TurnId, string | null>();
-      for (const turnId of Object.keys(thread.settledTurnCompletions ?? {}) as TurnId[]) {
-        map.set(turnId, thread.settledTurnCompletions?.[turnId] ?? null);
-      }
-      if (thread.latestTurn !== null && !map.has(thread.latestTurn.turnId)) {
-        map.set(thread.latestTurn.turnId, thread.latestTurn.completedAt);
-      }
-      return map;
-    };
     const timelineEntries = [
       {
         id: "user-entry-snapshot",
@@ -1250,7 +1244,7 @@ describe("deriveMessagesTimelineRows", () => {
       const rows = deriveMessagesTimelineRows({
         timelineEntries,
         latestTurn: thread.latestTurn,
-        turnCompletionByTurnId: completionMap(thread),
+        turnCompletionByTurnId: turnCompletionMap(thread),
         runningTurnId,
         isWorking: runningTurnId !== null,
         activeTurnStartedAt: runningTurnId === null ? null : (thread.latestTurn?.startedAt ?? null),
@@ -1387,13 +1381,6 @@ describe("deriveMessagesTimelineRows", () => {
       metadata: {},
     } as const;
     const foldLabel = (thread: OrchestrationThread) => {
-      const completions = new Map<TurnId, string | null>();
-      for (const id of Object.keys(thread.settledTurnCompletions ?? {}) as TurnId[]) {
-        completions.set(id, thread.settledTurnCompletions?.[id] ?? null);
-      }
-      if (thread.latestTurn !== null && !completions.has(thread.latestTurn.turnId)) {
-        completions.set(thread.latestTurn.turnId, thread.latestTurn.completedAt);
-      }
       const rows = deriveMessagesTimelineRows({
         timelineEntries: [
           {
@@ -1424,7 +1411,7 @@ describe("deriveMessagesTimelineRows", () => {
           },
         ],
         latestTurn: thread.latestTurn,
-        turnCompletionByTurnId: completions,
+        turnCompletionByTurnId: turnCompletionMap(thread),
         runningTurnId: thread.latestTurn?.state === "running" ? thread.latestTurn.turnId : null,
         isWorking: thread.latestTurn?.state === "running",
         activeTurnStartedAt:
@@ -1497,6 +1484,155 @@ describe("deriveMessagesTimelineRows", () => {
 
     // The requested interrupt boundary must not shorten the turn.
     expect(foldLabel(settled.thread)).toBe("Worked for 30s");
+  });
+
+  it("uses the supersession boundary when a provisionally interrupted turn is superseded", () => {
+    const turnId = TurnId.make("turn-superseded");
+    const nextTurnId = TurnId.make("turn-next");
+    const startedAt = "2026-01-01T00:00:00.000Z";
+    const requestedAt = "2026-01-01T00:00:10.000Z";
+    const supersededAt = "2026-01-01T00:00:30.000Z";
+    const running: OrchestrationThread = {
+      id: ThreadId.make("thread-superseded"),
+      projectId: ProjectId.make("project-superseded"),
+      title: "Superseded thread",
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      latestTurn: {
+        turnId,
+        state: "running",
+        requestedAt: startedAt,
+        startedAt,
+        completedAt: null,
+        assistantMessageId: null,
+      },
+      createdAt: startedAt,
+      updatedAt: startedAt,
+      archivedAt: null,
+      deletedAt: null,
+      messages: [],
+      proposedPlans: [],
+      activities: [],
+      checkpoints: [],
+      session: {
+        threadId: ThreadId.make("thread-superseded"),
+        status: "running",
+        providerName: "codex",
+        runtimeMode: "full-access",
+        activeTurnId: turnId,
+        lastError: null,
+        updatedAt: startedAt,
+      },
+    };
+    const baseEventFields = {
+      eventId: EventId.make("event-superseded"),
+      commandId: null,
+      causationEventId: null,
+      correlationId: null,
+      metadata: {},
+    } as const;
+    const foldLabel = (thread: OrchestrationThread) => {
+      const rows = deriveMessagesTimelineRows({
+        timelineEntries: [
+          {
+            id: "user-entry-superseded",
+            kind: "message",
+            createdAt: startedAt,
+            message: {
+              id: "user-superseded" as never,
+              role: "user",
+              text: "go",
+              turnId: null,
+              createdAt: startedAt,
+              updatedAt: startedAt,
+              streaming: false,
+            },
+          },
+          {
+            id: "work-entry-superseded",
+            kind: "work",
+            createdAt: "2026-01-01T00:00:05.000Z",
+            entry: {
+              id: "work-superseded",
+              createdAt: "2026-01-01T00:00:05.000Z",
+              turnId,
+              label: "Read file",
+              tone: "tool" as const,
+            },
+          },
+        ],
+        latestTurn: thread.latestTurn,
+        turnCompletionByTurnId: turnCompletionMap(thread),
+        runningTurnId: thread.latestTurn?.state === "running" ? thread.latestTurn.turnId : null,
+        isWorking: thread.latestTurn?.state === "running",
+        activeTurnStartedAt:
+          thread.latestTurn?.state === "running" ? thread.latestTurn.startedAt : null,
+        turnDiffSummaryByAssistantMessageId: new Map(),
+        revertTurnCountByUserMessageId: new Map(),
+      });
+      return rows.find(
+        (row): row is Extract<(typeof rows)[number], { kind: "turn-fold" }> =>
+          row.kind === "turn-fold",
+      )?.label;
+    };
+
+    const interrupted = applyThreadDetailEvent(running, {
+      ...baseEventFields,
+      sequence: 1,
+      occurredAt: requestedAt,
+      aggregateKind: "thread",
+      aggregateId: running.id,
+      type: "thread.turn-interrupt-requested",
+      payload: { threadId: running.id, turnId, createdAt: requestedAt },
+    });
+    expect(interrupted.kind).toBe("updated");
+    if (interrupted.kind !== "updated") return;
+
+    // An accepted steer starts the next turn at the server-observed boundary.
+    const next = applyThreadDetailEvent(interrupted.thread, {
+      ...baseEventFields,
+      sequence: 2,
+      occurredAt: supersededAt,
+      aggregateKind: "thread",
+      aggregateId: running.id,
+      type: "thread.session-set",
+      payload: {
+        threadId: running.id,
+        session: {
+          threadId: running.id,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: nextTurnId,
+          lastError: null,
+          updatedAt: supersededAt,
+        },
+      },
+    });
+    expect(next.kind).toBe("updated");
+    if (next.kind !== "updated") return;
+    expect(next.thread.settledTurnCompletions).toEqual({ [turnId]: supersededAt });
+    expect(foldLabel(next.thread)).toBe("Worked for 30s");
+
+    // A snapshot naming only the next turn must keep the supersession boundary.
+    const refreshed = withSnapshotSettlementEvidence(
+      {
+        ...next.thread,
+        latestTurn: {
+          turnId: nextTurnId,
+          state: "running",
+          requestedAt: supersededAt,
+          startedAt: supersededAt,
+          completedAt: null,
+          assistantMessageId: null,
+        },
+      },
+      next.thread,
+    );
+    expect(foldLabel(refreshed)).toBe("Worked for 30s");
   });
 
   it("keeps the previous turn folded while a newly sent message awaits its turn", () => {

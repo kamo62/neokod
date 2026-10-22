@@ -696,13 +696,14 @@ describe("applyThreadDetailEvent", () => {
       });
     });
 
-    it("does not promote a provisional interrupt boundary when the next turn starts", () => {
+    it("records the supersession boundary when a provisionally interrupted turn is superseded", () => {
       const interrupted = interruptRequested(runningTurnThread(), "2026-04-01T07:00:10.000Z");
       expect(interrupted.kind).toBe("updated");
       if (interrupted.kind !== "updated") return;
 
-      // The session still runs the turn, so the new turn supersedes it without
-      // freezing the interrupt request as the turn's completion.
+      // An accepted steer starts the next turn, which the server treats as the
+      // end of the still-running turn. The supersession boundary is the
+      // settlement, never the interrupt request timestamp.
       const next = applyThreadDetailEvent(interrupted.thread, {
         ...baseEventFields,
         sequence: 32,
@@ -726,7 +727,65 @@ describe("applyThreadDetailEvent", () => {
       expect(next.kind).toBe("updated");
       if (next.kind !== "updated") return;
       expect(next.thread.latestTurn?.turnId).toBe(TurnId.make("turn-2"));
-      expect(next.thread.settledTurnCompletions).toBeUndefined();
+      expect(next.thread.settledTurnCompletions).toEqual({
+        [TurnId.make("turn-1")]: "2026-04-01T07:00:15.000Z",
+      });
+    });
+
+    it("keeps a stop request from making an interrupt authoritative", () => {
+      const requestedAt = "2026-04-01T07:00:10.000Z";
+      const stoppedAt = "2026-04-01T07:00:30.000Z";
+
+      const interrupted = interruptRequested(runningTurnThread(), requestedAt);
+      expect(interrupted.kind).toBe("updated");
+      if (interrupted.kind !== "updated") return;
+
+      // A stop request is also intent: it must not clear the running session
+      // binding that identifies the interrupt boundary as provisional.
+      const stopRequested = applyThreadDetailEvent(interrupted.thread, {
+        ...baseEventFields,
+        sequence: 31,
+        occurredAt: "2026-04-01T07:00:12.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.session-stop-requested",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          createdAt: "2026-04-01T07:00:12.000Z",
+        },
+      });
+      expect(stopRequested.kind).toBe("unchanged");
+
+      // Neither cache nor server hydration may freeze the request timestamp.
+      const reloaded = withSnapshotSettlementEvidence(interrupted.thread, null);
+      expect(reloaded.settledTurnCompletions).toBeUndefined();
+
+      const settled = applyThreadDetailEvent(reloaded, {
+        ...baseEventFields,
+        sequence: 32,
+        occurredAt: stoppedAt,
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.session-set",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "interrupted",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: stoppedAt,
+          },
+        },
+      });
+      expect(settled.kind).toBe("updated");
+      if (settled.kind !== "updated") return;
+      expect(settled.thread.settledTurnCompletions).toEqual({
+        [TurnId.make("turn-1")]: stoppedAt,
+      });
+      expect(settled.thread.latestTurn?.completedAt).toBe(stoppedAt);
     });
 
     it("keeps a pending interrupt provisional across a snapshot reload", () => {
@@ -1330,7 +1389,7 @@ describe("applyThreadDetailEvent", () => {
   });
 
   describe("thread.session-stop-requested", () => {
-    it("marks session as stopped", () => {
+    it("leaves the session unchanged until the server confirms the stop", () => {
       const threadWithSession: OrchestrationThread = {
         ...baseThread,
         session: {
@@ -1357,11 +1416,9 @@ describe("applyThreadDetailEvent", () => {
         },
       });
 
-      expect(result.kind).toBe("updated");
-      if (result.kind === "updated") {
-        expect(result.thread.session?.status).toBe("stopped");
-        expect(result.thread.session?.activeTurnId).toBeNull();
-      }
+      // A stop request is intent. The running session binding must survive so
+      // settlement evidence stays distinguishable from the request.
+      expect(result.kind).toBe("unchanged");
     });
 
     it("returns unchanged when no session exists", () => {

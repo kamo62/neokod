@@ -337,32 +337,31 @@ export function applyThreadDetailEvent(
               }
             : thread.latestTurn;
 
-      // Starting a turn supersedes whatever turn the client was showing. A
-      // superseded running turn settles at the new session's observation; a
-      // terminal turn contributes its own authoritative settlement. A
-      // provisional interrupt boundary contributes nothing.
+      // Starting a turn supersedes whatever turn the client was showing. An
+      // authoritative new turn is the end of the previous one: a turn that
+      // already settled contributes its own completion, while a running or
+      // provisionally interrupted turn ends at this session's observation.
       const isRunningSession =
         event.payload.session.status === "running" && event.payload.session.activeTurnId !== null;
+      const previousSettlement = authoritativeSettlement(thread.latestTurn, thread.session);
       const supersededTurn =
         isRunningSession &&
         thread.latestTurn !== null &&
-        thread.latestTurn.turnId !== event.payload.session.activeTurnId &&
-        (thread.latestTurn.state === "running" ||
-          authoritativeSettlement(thread.latestTurn, thread.session) !== null)
+        thread.latestTurn.turnId !== event.payload.session.activeTurnId
           ? thread.latestTurn
           : null;
       const supersededSettlement: TurnSettlement | null =
         supersededTurn === null
           ? null
-          : supersededTurn.state === "running"
-            ? {
+          : previousSettlement !== null && previousSettlement.turnId === supersededTurn.turnId
+            ? previousSettlement
+            : {
                 turnId: supersededTurn.turnId,
                 completedAt:
                   event.payload.latestTurnCompletedAt === undefined
                     ? event.payload.session.updatedAt
                     : event.payload.latestTurnCompletedAt,
-              }
-            : authoritativeSettlement(supersededTurn, thread.session);
+              };
       // The event itself is closure evidence for the turn the session was
       // running, unless the thread already holds that turn's settlement.
       const closedTurnId =
@@ -378,7 +377,7 @@ export function applyThreadDetailEvent(
         closedTurnId !== null &&
         thread.latestTurn !== null &&
         thread.latestTurn.turnId === closedTurnId
-          ? authoritativeSettlement(thread.latestTurn, thread.session)
+          ? previousSettlement
           : null;
       const closedSettlement: TurnSettlement | null =
         closedTurnId === null
@@ -411,22 +410,12 @@ export function applyThreadDetailEvent(
       };
     }
 
+    // A stop request is intent, not evidence. Mutating the session here would
+    // erase the running binding that distinguishes a provisional interrupt
+    // boundary from an observed settlement, so the session and turn state stay
+    // untouched until the server confirms the stop.
     case "thread.session-stop-requested":
-      return thread.session === null
-        ? { kind: "unchanged" }
-        : {
-            kind: "updated",
-            thread: {
-              ...thread,
-              session: {
-                ...thread.session,
-                status: "stopped",
-                activeTurnId: null,
-                updatedAt: event.payload.createdAt,
-              },
-              updatedAt: event.occurredAt,
-            },
-          };
+      return { kind: "unchanged" };
 
     // ── Proposed plans ──────────────────────────────────────────────
     case "thread.proposed-plan-upserted": {
