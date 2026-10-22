@@ -13,10 +13,15 @@ import {
   XIcon,
 } from "lucide-react";
 import {
+  type EnvironmentId,
   type ResolvedKeybindingsConfig,
   type ScopedThreadRef,
   type ThreadId,
 } from "@neokod/contracts";
+import {
+  createTerminalInputQueue,
+  type TerminalInputQueue,
+} from "@neokod/client-runtime/state/terminal";
 import { getTerminalLabel } from "@neokod/shared/terminalLabels";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import {
@@ -81,8 +86,23 @@ function clampDrawerHeight(height: number): number {
   return Math.min(Math.max(Math.round(safeHeight), MIN_DRAWER_HEIGHT), maxHeight);
 }
 
+const TERMINAL_SYSTEM_MESSAGE_MAX_LENGTH = 240;
+// eslint-disable-next-line no-control-regex
+const TERMINAL_CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]+/g;
+
+/** System messages are written into the terminal, so cap their length and drop control characters. */
+export function formatTerminalSystemMessage(message: string): string {
+  const head = message
+    .slice(0, TERMINAL_SYSTEM_MESSAGE_MAX_LENGTH)
+    .replace(/[\ud800-\udbff]$/, "")
+    .replace(TERMINAL_CONTROL_CHARACTER_PATTERN, " ");
+  return message.length > TERMINAL_SYSTEM_MESSAGE_MAX_LENGTH
+    ? `${head}... (message shortened, ${message.length} characters)`
+    : head;
+}
+
 function writeSystemMessage(terminal: Terminal, message: string): void {
-  terminal.write(`\r\n[terminal] ${message}\r\n`);
+  terminal.write(`\r\n[terminal] ${formatTerminalSystemMessage(message)}\r\n`);
 }
 
 function writeTerminalBuffer(terminal: Terminal, buffer: string): void {
@@ -310,6 +330,12 @@ export function TerminalViewport({
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const terminalWriteTargetRef = useRef<{
+    readonly queue: TerminalInputQueue;
+    readonly environmentId: EnvironmentId;
+    readonly threadId: ThreadId;
+    readonly terminalId: string;
+  } | null>(null);
   const environmentId = threadRef.environmentId;
   const serverConfig = useAtomValue(serverEnvironment.configValueAtom(environmentId));
   const openInPreferredEditor = useOpenInPreferredEditor(
@@ -351,12 +377,16 @@ export function TerminalViewport({
       ...(runtimeEnv ? { env: runtimeEnv } : {}),
     },
   });
-  const writeTerminal = useEffectEvent((data: string) =>
-    runTerminalWrite({
-      environmentId,
-      input: { threadId, terminalId, data },
-    }),
-  );
+  const writeTerminal = useEffectEvent((data: string) => {
+    const target = terminalWriteTargetRef.current;
+    if (!target) return Promise.resolve(undefined);
+    return target.queue.write(data, (chunk) =>
+      runTerminalWrite({
+        environmentId: target.environmentId,
+        input: { threadId: target.threadId, terminalId: target.terminalId, data: chunk },
+      }),
+    );
+  });
   const resizeTerminal = useEffectEvent((cols: number, rows: number) =>
     runTerminalResize({
       environmentId,
@@ -383,6 +413,17 @@ export function TerminalViewport({
     if (!mount) return;
 
     const localApi = readLocalApi();
+
+    // Bind this mounted terminal's whole-write queue to the target it was opened
+    // for. A later prop change disposes this queue before a replacement terminal
+    // exists, so queued chunks can never spill into the next thread or session.
+    const inputQueue = createTerminalInputQueue();
+    terminalWriteTargetRef.current = {
+      queue: inputQueue,
+      environmentId,
+      threadId,
+      terminalId,
+    };
 
     const fitAddon = new FitAddon();
     const terminal = new Terminal({
@@ -490,10 +531,11 @@ export function TerminalViewport({
       const activeTerminal = terminalRef.current;
       if (!activeTerminal) return;
       const result = await writeTerminal(data);
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        writeSystemMessage(activeTerminal, error instanceof Error ? error.message : fallbackError);
+      if (result === undefined || result._tag === "Success" || isAtomCommandInterrupted(result)) {
+        return;
       }
+      const error = squashAtomCommandFailure(result);
+      writeSystemMessage(activeTerminal, error instanceof Error ? error.message : fallbackError);
     };
 
     terminal.attachCustomKeyEventHandler((event) => {
@@ -620,7 +662,7 @@ export function TerminalViewport({
     const inputDisposable = terminal.onData((data) => {
       void (async () => {
         const result = await writeTerminal(data);
-        if (result._tag === "Success" || isAtomCommandInterrupted(result)) {
+        if (result === undefined || result._tag === "Success" || isAtomCommandInterrupted(result)) {
           return;
         }
         const error = squashAtomCommandFailure(result);
@@ -689,6 +731,10 @@ export function TerminalViewport({
 
     return () => {
       window.clearTimeout(fitTimer);
+      inputQueue.dispose();
+      if (terminalWriteTargetRef.current?.queue === inputQueue) {
+        terminalWriteTargetRef.current = null;
+      }
       inputDisposable.dispose();
       selectionDisposable.dispose();
       terminalLinksDisposable.dispose();

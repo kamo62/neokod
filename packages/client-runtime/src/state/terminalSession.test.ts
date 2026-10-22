@@ -1,13 +1,21 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { EnvironmentId, TerminalSessionSnapshot, ThreadId } from "@neokod/contracts";
+import {
+  EnvironmentId,
+  TerminalSessionSnapshot,
+  ThreadId,
+  TERMINAL_WRITE_MAX_LENGTH,
+} from "@neokod/contracts";
 
 import {
   applyTerminalAttachStreamEvent,
   applyTerminalMetadataStreamEvent,
   combineTerminalSessionState,
+  createTerminalInputQueue,
   EMPTY_TERMINAL_BUFFER_STATE,
   selectRunningSubprocessTerminalIds,
+  splitTerminalInput,
+  TERMINAL_WRITE_CHUNK_LENGTH,
 } from "./terminalSession.ts";
 
 const TARGET = {
@@ -183,5 +191,187 @@ describe("terminal session reducers", () => {
     );
 
     expect(state.buffer).toBe("🙂");
+  });
+});
+
+type WriteResult =
+  | { readonly _tag: "Success" }
+  | { readonly _tag: "Failure"; readonly reason: string };
+
+const SUCCESS: WriteResult = { _tag: "Success" };
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+async function waitForSent(sent: ReadonlyArray<unknown>, length: number): Promise<void> {
+  for (let attempt = 0; attempt < 100 && sent.length < length; attempt += 1) {
+    await Promise.resolve();
+  }
+  expect(sent).toHaveLength(length);
+}
+
+describe("terminal input splitting", () => {
+  it("keeps the chunk size below the server limit", () => {
+    expect(TERMINAL_WRITE_CHUNK_LENGTH).toBeLessThanOrEqual(TERMINAL_WRITE_MAX_LENGTH);
+  });
+
+  it("returns short input unchanged", () => {
+    expect(splitTerminalInput("echo hi\n")).toEqual(["echo hi\n"]);
+  });
+
+  it("keeps every chunk within the limit, the full content and the order", () => {
+    const data = Array.from({ length: 100_001 }, (_, i) => String.fromCharCode(97 + (i % 26))).join(
+      "",
+    );
+    const chunks = splitTerminalInput(data);
+
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(TERMINAL_WRITE_CHUNK_LENGTH);
+    }
+    expect(chunks.join("")).toBe(data);
+    expect(chunks).toHaveLength(4);
+    expect(chunks.map((chunk) => chunk.length)).toEqual([32_768, 32_768, 32_768, 1_697]);
+  });
+
+  it("does not cut a surrogate pair", () => {
+    expect(splitTerminalInput("ab😀cd", 2)).toEqual(["ab", "😀", "cd"]);
+
+    const boundary = "a".repeat(TERMINAL_WRITE_CHUNK_LENGTH - 1) + "😀" + "b".repeat(10);
+    const chunks = splitTerminalInput(boundary);
+
+    expect(chunks.join("")).toBe(boundary);
+    expect(chunks[0]).toHaveLength(TERMINAL_WRITE_CHUNK_LENGTH - 1);
+    expect(chunks[1]?.startsWith("😀")).toBe(true);
+    for (const chunk of chunks) {
+      const first = chunk.charCodeAt(0);
+      const last = chunk.charCodeAt(chunk.length - 1);
+      expect(first >= 0xdc00 && first <= 0xdfff).toBe(false);
+      expect(last >= 0xd800 && last <= 0xdbff).toBe(false);
+    }
+  });
+
+  it("keeps bracketed paste markers and bytes across chunk boundaries", () => {
+    const paste = "\u001b[200~" + "z".repeat(TERMINAL_WRITE_CHUNK_LENGTH + 10) + "\u001b[201~";
+    const chunks = splitTerminalInput(paste);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.join("")).toBe(paste);
+    expect(chunks[0]?.startsWith("\u001b[200~")).toBe(true);
+    expect(chunks.at(-1)?.endsWith("\u001b[201~")).toBe(true);
+  });
+});
+
+describe("terminal input queue", () => {
+  it("sends chunks of one write in order and waits for every acknowledgement", async () => {
+    const queue = createTerminalInputQueue();
+    const sent: Array<string> = [];
+    const acknowledgements: Array<ReturnType<typeof deferred<WriteResult>>> = [];
+    const send = (chunk: string) => {
+      sent.push(chunk);
+      const acknowledgement = deferred<WriteResult>();
+      acknowledgements.push(acknowledgement);
+      return acknowledgement.promise;
+    };
+    const data = "x".repeat(70_000);
+
+    const done = queue.write(data, send);
+
+    await waitForSent(sent, 1);
+    expect(sent).toHaveLength(1);
+    acknowledgements[0]?.resolve(SUCCESS);
+
+    await waitForSent(sent, 2);
+    expect(sent).toHaveLength(2);
+    acknowledgements[1]?.resolve(SUCCESS);
+
+    await waitForSent(sent, 3);
+    expect(sent).toHaveLength(3);
+    acknowledgements[2]?.resolve(SUCCESS);
+
+    expect((await done)?._tag).toBe("Success");
+    expect(sent.map((chunk) => chunk.length)).toEqual([32_768, 32_768, 4_464]);
+    expect(sent.join("")).toBe(data);
+  });
+
+  it("keeps a whole write contiguous when a keystroke arrives during a paste", async () => {
+    const queue = createTerminalInputQueue();
+    const sent: Array<string> = [];
+    const acknowledgements: Array<ReturnType<typeof deferred<WriteResult>>> = [];
+    const send = (chunk: string) => {
+      sent.push(chunk);
+      const acknowledgement = deferred<WriteResult>();
+      acknowledgements.push(acknowledgement);
+      return acknowledgement.promise;
+    };
+
+    const paste = queue.write("A".repeat(40_000), send);
+    const keystroke = queue.write("k", send);
+
+    await waitForSent(sent, 1);
+    expect(sent).toEqual(["A".repeat(32_768)]);
+
+    acknowledgements[0]?.resolve(SUCCESS);
+    await waitForSent(sent, 2);
+    expect(sent[1]).toBe("A".repeat(7_232));
+
+    acknowledgements[1]?.resolve(SUCCESS);
+    await waitForSent(sent, 3);
+    expect(sent[2]).toBe("k");
+
+    acknowledgements[2]?.resolve(SUCCESS);
+    expect((await paste)?._tag).toBe("Success");
+    expect((await keystroke)?._tag).toBe("Success");
+  });
+
+  it("stops at the first failed chunk and lets a later write proceed", async () => {
+    const queue = createTerminalInputQueue();
+    const sent: Array<string> = [];
+    const failure: WriteResult = { _tag: "Failure", reason: "write failed" };
+    let calls = 0;
+    const send = async (chunk: string): Promise<WriteResult> => {
+      sent.push(chunk);
+      calls += 1;
+      return calls === 2 ? failure : SUCCESS;
+    };
+
+    const result = await queue.write("x".repeat(70_000), send);
+
+    expect(result).toBe(failure);
+    expect(sent).toHaveLength(2);
+    expect(sent[0]).toHaveLength(32_768);
+
+    const later = await queue.write("ok", send);
+    expect(later?._tag).toBe("Success");
+    expect(sent.at(-1)).toBe("ok");
+  });
+
+  it("abandons queued chunks when its target is disposed", async () => {
+    const queue = createTerminalInputQueue();
+    const sent: Array<string> = [];
+    const acknowledgements: Array<ReturnType<typeof deferred<WriteResult>>> = [];
+    const send = (chunk: string) => {
+      sent.push(chunk);
+      const acknowledgement = deferred<WriteResult>();
+      acknowledgements.push(acknowledgement);
+      return acknowledgement.promise;
+    };
+
+    const done = queue.write("x".repeat(70_000), send);
+    await waitForSent(sent, 1);
+
+    queue.dispose();
+    acknowledgements[0]?.resolve(SUCCESS);
+
+    expect(await done).toBeUndefined();
+    expect(sent).toHaveLength(1);
+
+    const later = await queue.write("ok", send);
+    expect(later).toBeUndefined();
+    expect(sent).toHaveLength(1);
   });
 });

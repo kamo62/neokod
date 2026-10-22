@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  formatTerminalSystemMessage,
   resolveTerminalSelectionActionPosition,
   shouldHandleTerminalSelectionMouseUp,
   terminalSelectionActionDelayForClickCount,
@@ -71,5 +72,42 @@ describe("resolveTerminalSelectionActionPosition", () => {
     expect(shouldHandleTerminalSelectionMouseUp(true, 0)).toBe(true);
     expect(shouldHandleTerminalSelectionMouseUp(false, 0)).toBe(false);
     expect(shouldHandleTerminalSelectionMouseUp(true, 1)).toBe(false);
+  });
+});
+
+describe("formatTerminalSystemMessage", () => {
+  it("leaves short messages alone", () => {
+    expect(formatTerminalSystemMessage("Terminal closed")).toBe("Terminal closed");
+  });
+
+  it("shortens a message that echoes a large paste", () => {
+    const message = `Expected a value with a length of at most 65536, got "${"p".repeat(1_000_000)}"`;
+
+    const result = formatTerminalSystemMessage(message);
+
+    expect(result.length).toBeLessThan(400);
+    expect(result).toContain("message shortened");
+    expect(result.split("p").length - 1).toBeLessThan(300);
+  });
+
+  it("does not end the shortened head on a lone surrogate", () => {
+    const message = "a".repeat(239) + "😀tail";
+
+    const result = formatTerminalSystemMessage(message);
+
+    expect(result.startsWith("a".repeat(239))).toBe(true);
+    expect(result).not.toContain("\ud83d");
+    expect(result).toContain("message shortened");
+  });
+
+  it("removes control characters", () => {
+    const result = formatTerminalSystemMessage("\u001b[2Jboom\r\nline\u0007");
+
+    expect(result).not.toContain("\u001b");
+    expect(result).not.toContain("\r");
+    expect(result).not.toContain("\n");
+    expect(result).not.toContain("\u0007");
+    expect(result).toContain("boom");
+    expect(result).toContain("line");
   });
 });
