@@ -1747,6 +1747,50 @@ describe("CheckpointReactor", () => {
     expect(listRecoveryRefs(harness.cwd)).toHaveLength(1);
   });
 
+  it("refuses to move a pending thread workspace before a shared-folder revert", async () => {
+    const harness = await createHarness({ secondThreadSharingWorktree: true });
+    const moveTarget = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-pending-thread-move-"),
+    );
+    tempDirs.push(moveTarget);
+
+    await harness.runPromise(
+      harness.engine.dispatch(
+        threadTurnStartCommand({
+          threadId: "thread-2",
+          commandId: "cmd-turn-start-before-workspace-move",
+          messageId: "message-turn-start-before-workspace-move",
+        }),
+      ),
+    );
+
+    const moveOutcome = await harness.runPromise(
+      Effect.exit(
+        harness.engine.dispatch({
+          type: "thread.meta.update",
+          commandId: CommandId.make("cmd-move-pending-thread-2"),
+          threadId: ThreadId.make("thread-2"),
+          worktreePath: moveTarget,
+        }),
+      ),
+    );
+    expect(Exit.isFailure(moveOutcome)).toBe(true);
+
+    await revertToTurnOne(harness);
+    await waitForRevertOutcome(harness.engine);
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+    );
+
+    const readModel = await harness.readModel();
+    const movedThread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-2"));
+    expect(movedThread?.worktreePath).toBe(harness.cwd);
+    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v3\n");
+    expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+    expect(listRecoveryRefs(harness.cwd)).toEqual([]);
+    expect(thread.checkpoints).toHaveLength(2);
+  });
+
   it("refuses a revert when an archived thread has an admitted turn", async () => {
     const harness = await createHarness({ secondThreadSharingWorktree: true });
 

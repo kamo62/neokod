@@ -35,6 +35,7 @@ import {
 } from "../../persistence/Services/OrchestrationEventStore.ts";
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
 import { WorktreeRemovalLease, WorktreeRemovalLeaseLive } from "../../git/WorktreeRemovalLease.ts";
+import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQuery.ts";
@@ -341,6 +342,7 @@ describe("OrchestrationEngine", () => {
       Layer.provide(OrchestrationCommandReceiptRepositoryLive),
       Layer.provide(SqlitePersistenceMemory),
       Layer.provideMerge(WorktreeRemovalLeaseLive),
+      Layer.provideMerge(ProjectionTurnRepositoryLive.pipe(Layer.provide(SqlitePersistenceMemory))),
       Layer.provideMerge(NodeServices.layer),
     );
 
@@ -1039,6 +1041,9 @@ describe("OrchestrationEngine", () => {
         Layer.provide(RepositoryIdentityResolver.layer),
         Layer.provide(SqlitePersistenceMemory),
         Layer.provideMerge(WorktreeRemovalLeaseLive),
+        Layer.provideMerge(
+          ProjectionTurnRepositoryLive.pipe(Layer.provide(SqlitePersistenceMemory)),
+        ),
         Layer.provide(NodeServices.layer),
       ),
     );
@@ -1183,6 +1188,9 @@ describe("OrchestrationEngine", () => {
         Layer.provide(RepositoryIdentityResolver.layer),
         Layer.provide(SqlitePersistenceMemory),
         Layer.provideMerge(WorktreeRemovalLeaseLive),
+        Layer.provideMerge(
+          ProjectionTurnRepositoryLive.pipe(Layer.provide(SqlitePersistenceMemory)),
+        ),
         Layer.provide(NodeServices.layer),
       ),
     );
