@@ -381,10 +381,13 @@ export function TerminalViewport({
   const writeTerminal = useEffectEvent((data: string) => {
     const binding = terminalInputRef.current;
     if (binding === null) return Promise.resolve(undefined);
-    // Before the attach stream reports a status, the session provably exists
-    // (the drawer opened it), so keep typing responsive. Once evidence says the
-    // session is not running, drop input instead of writing into a dead pty.
-    if (hasSessionEvidence && terminalStatus !== "running") {
+    // Prefer the shared metadata projection. Before it or the attach stream
+    // reports a status, the drawer has just opened the session, so keep typing
+    // responsive. Once the shared projection says the session is not running,
+    // drop input instead of writing into a dead pty.
+    const projectionStatus = terminalSession.summary?.status ?? null;
+    const writableStatus = projectionStatus ?? (hasSessionEvidence ? terminalStatus : null);
+    if (writableStatus !== null && writableStatus !== "running") {
       return Promise.resolve(undefined);
     }
     const lease = ensureLiveInputLease();
@@ -461,17 +464,6 @@ export function TerminalViewport({
       lease: acquireTerminalInputQueue({ environmentId, threadId, terminalId }),
     };
     terminalInputRef.current = binding;
-    if (
-      (terminalSession.summary !== null && terminalSession.summary.status !== "running") ||
-      (terminalVersion > 0 && terminalStatus !== "running")
-    ) {
-      // Remounting a target whose last known session is already dead must not
-      // reuse a retained queue. The metadata observer normally disposes it; this
-      // covers the gap between mount and the first status effect.
-      disposeTerminalInputQueue(binding.target);
-      binding.lease.release();
-      binding.lease = acquireTerminalInputQueue(binding.target);
-    }
 
     const fitAddon = new FitAddon();
     const terminal = new Terminal({

@@ -302,6 +302,11 @@ interface TerminalInputQueueEntry {
   queue: TerminalInputQueue;
   mounts: number;
   pendingWrites: number;
+  /**
+   * Process identity observed for this queue's session. A different pid on the
+   * same target is a replacement generation and invalidates the queue.
+   */
+  sessionPid: number | null;
 }
 
 /**
@@ -332,6 +337,7 @@ function createTerminalInputQueueEntry(
     queue: rawQueue,
     mounts: 0,
     pendingWrites: 0,
+    sessionPid: null,
   };
   entry.queue = {
     write: (data, send) => {
@@ -396,42 +402,91 @@ function metadataTargetKey(target: {
   return `${target.threadId}\u0000${target.terminalId}`;
 }
 
+function terminalInputEntryForMetadataTarget(
+  environmentId: EnvironmentId,
+  terminal: { readonly threadId: string; readonly terminalId: string },
+): TerminalInputQueueEntry | undefined {
+  return terminalInputQueues.get(
+    terminalInputTargetKey({
+      environmentId,
+      threadId: ThreadId.make(terminal.threadId),
+      terminalId: terminal.terminalId,
+    }),
+  );
+}
+
 function disposeTerminalInputForMetadataTarget(
   environmentId: EnvironmentId,
   target: { readonly threadId: string; readonly terminalId: string },
 ): void {
-  disposeTerminalInputQueue({
-    environmentId,
-    threadId: ThreadId.make(target.threadId),
-    terminalId: target.terminalId,
-  });
+  terminalInputEntryForMetadataTarget(environmentId, target)?.queue.dispose();
 }
 
 /**
  * Invalidate retained input queues from authoritative terminal metadata, so a
  * close, exit or archive disposes a target's queue even when its viewport is
- * not mounted. Every non-running entry is invalidated, and so is every target
- * that disappeared since the previous metadata projection.
+ * not mounted. A queue is kept when a re-subscribe reports the same running
+ * session generation; a different pid, a non-running status or an explicit
+ * removal ends it.
  */
 export function createTerminalMetadataInputInvalidator(
   environmentId: EnvironmentId,
-): (terminals: ReadonlyArray<TerminalSummary>) => void {
-  let knownTargets: ReadonlyArray<{ threadId: string; terminalId: string }> | null = null;
-  return (terminals) => {
-    for (const terminal of terminals) {
-      if (terminal.status !== "running") {
-        disposeTerminalInputForMetadataTarget(environmentId, terminal);
+): (event: TerminalMetadataStreamEvent) => void {
+  const lastPidByTarget = new Map<string, number>();
+
+  const reconcile = (terminal: TerminalSummary): void => {
+    const key = metadataTargetKey(terminal);
+    const entry = terminalInputEntryForMetadataTarget(environmentId, terminal);
+    if (terminal.status !== "running") {
+      entry?.queue.dispose();
+      lastPidByTarget.delete(key);
+      return;
+    }
+    const knownPid = entry?.sessionPid ?? lastPidByTarget.get(key) ?? null;
+    if (knownPid !== null && terminal.pid !== null && knownPid !== terminal.pid) {
+      // The target now identifies a replacement process: the previous
+      // generation's queued input must never reach it.
+      entry?.queue.dispose();
+      lastPidByTarget.set(key, terminal.pid);
+      return;
+    }
+    if (entry !== undefined && entry.sessionPid === null && terminal.pid !== null) {
+      entry.sessionPid = terminal.pid;
+    }
+    if (terminal.pid !== null) {
+      lastPidByTarget.set(key, terminal.pid);
+    } else if (knownPid !== null) {
+      lastPidByTarget.set(key, knownPid);
+    }
+  };
+
+  return (event) => {
+    if (event.type === "remove") {
+      disposeTerminalInputForMetadataTarget(environmentId, event);
+      lastPidByTarget.delete(metadataTargetKey(event));
+      return;
+    }
+    if (event.type === "upsert") {
+      reconcile(event.terminal);
+      return;
+    }
+    // A snapshot is a full projection for this environment. Absent targets are
+    // ended; present targets are checked against their session generation.
+    const present = new Set(event.terminals.map(metadataTargetKey));
+    for (const entry of terminalInputQueues.values()) {
+      if (
+        entry.target.environmentId === environmentId &&
+        !present.has(metadataTargetKey(entry.target))
+      ) {
+        entry.queue.dispose();
       }
     }
-    if (knownTargets !== null) {
-      const nextKeys = new Set(terminals.map(metadataTargetKey));
-      for (const target of knownTargets) {
-        if (!nextKeys.has(metadataTargetKey(target))) {
-          disposeTerminalInputForMetadataTarget(environmentId, target);
-        }
-      }
+    for (const key of lastPidByTarget.keys()) {
+      if (!present.has(key)) lastPidByTarget.delete(key);
     }
-    knownTargets = terminals.map(({ threadId, terminalId }) => ({ threadId, terminalId }));
+    for (const terminal of event.terminals) {
+      reconcile(terminal);
+    }
   };
 }
 

@@ -577,14 +577,18 @@ describe("terminal input invalidation at command boundaries", () => {
   });
 });
 
-function terminalSummary(terminalId: string, status: TerminalSummary["status"]): TerminalSummary {
+function terminalSummary(
+  terminalId: string,
+  status: TerminalSummary["status"],
+  pid: number | null = status === "running" ? 123 : null,
+): TerminalSummary {
   return {
     threadId: TARGET_A.threadId,
     terminalId,
     cwd: "/repo",
     worktreePath: null,
     status,
-    pid: status === "running" ? 123 : null,
+    pid,
     exitCode: status === "exited" ? 0 : null,
     exitSignal: null,
     hasRunningSubprocess: false,
@@ -593,10 +597,18 @@ function terminalSummary(terminalId: string, status: TerminalSummary["status"]):
   };
 }
 
+function metadataSnapshot(...terminals: TerminalSummary[]) {
+  return { type: "snapshot" as const, terminals };
+}
+
+function metadataUpsert(terminal: TerminalSummary) {
+  return { type: "upsert" as const, terminal };
+}
+
 describe("terminal metadata input invalidation", () => {
   it("abandons an offscreen paste when archive removes its terminal", async () => {
     const invalidate = createTerminalMetadataInputInvalidator(TARGET_A.environmentId);
-    invalidate([terminalSummary(TARGET_A.terminalId, "running")]);
+    invalidate(metadataSnapshot(terminalSummary(TARGET_A.terminalId, "running")));
 
     const recorder = recordingSend();
     const lease = acquireTerminalInputQueue(TARGET_A);
@@ -605,7 +617,11 @@ describe("terminal metadata input invalidation", () => {
 
     // The viewport is unmounted, so only server-observed metadata can invalidate.
     lease.release();
-    invalidate([]);
+    invalidate({
+      type: "remove",
+      threadId: TARGET_A.threadId,
+      terminalId: TARGET_A.terminalId,
+    });
 
     recorder.acknowledgements[0]?.resolve(SUCCESS);
     expect(await pendingWrite).toBeUndefined();
@@ -614,7 +630,7 @@ describe("terminal metadata input invalidation", () => {
 
   it("abandons an offscreen paste on exit and remounts on a fresh queue", async () => {
     const invalidate = createTerminalMetadataInputInvalidator(TARGET_A.environmentId);
-    invalidate([terminalSummary(TARGET_A.terminalId, "running")]);
+    invalidate(metadataSnapshot(terminalSummary(TARGET_A.terminalId, "running")));
 
     const recorder = recordingSend();
     const lease = acquireTerminalInputQueue(TARGET_A);
@@ -622,7 +638,7 @@ describe("terminal metadata input invalidation", () => {
     await waitForSent(recorder.sent, 1);
 
     lease.release();
-    invalidate([terminalSummary(TARGET_A.terminalId, "exited")]);
+    invalidate(metadataUpsert(terminalSummary(TARGET_A.terminalId, "exited")));
 
     recorder.acknowledgements[0]?.resolve(SUCCESS);
     expect(await pendingWrite).toBeUndefined();
@@ -638,14 +654,16 @@ describe("terminal metadata input invalidation", () => {
 
   it("disposes an exited target and a target missing from the next snapshot", () => {
     const invalidate = createTerminalMetadataInputInvalidator(TARGET_A.environmentId);
-    invalidate([
-      terminalSummary(TARGET_A.terminalId, "running"),
-      terminalSummary(TARGET_B.terminalId, "running"),
-    ]);
+    invalidate(
+      metadataSnapshot(
+        terminalSummary(TARGET_A.terminalId, "running"),
+        terminalSummary(TARGET_B.terminalId, "running"),
+      ),
+    );
 
     const firstLease = acquireTerminalInputQueue(TARGET_A);
     const secondLease = acquireTerminalInputQueue(TARGET_B);
-    invalidate([terminalSummary(TARGET_B.terminalId, "exited")]);
+    invalidate(metadataSnapshot(terminalSummary(TARGET_B.terminalId, "exited")));
 
     expect(firstLease.isDisposed()).toBe(true);
     expect(secondLease.isDisposed()).toBe(true);
@@ -654,14 +672,20 @@ describe("terminal metadata input invalidation", () => {
     secondLease.release();
   });
 
-  it("keeps a running terminal's queue", () => {
+  it("keeps a resubscribed running session and replaces a new generation", () => {
     const invalidate = createTerminalMetadataInputInvalidator(TARGET_A.environmentId);
-    invalidate([terminalSummary(TARGET_A.terminalId, "running")]);
+    invalidate(metadataSnapshot(terminalSummary(TARGET_A.terminalId, "running", 123)));
 
     const lease = acquireTerminalInputQueue(TARGET_A);
-    invalidate([terminalSummary(TARGET_A.terminalId, "running")]);
-
+    invalidate(metadataSnapshot(terminalSummary(TARGET_A.terminalId, "running", 123)));
     expect(lease.isDisposed()).toBe(false);
-    lease.release();
+
+    invalidate(metadataSnapshot(terminalSummary(TARGET_A.terminalId, "running", 456)));
+    expect(lease.isDisposed()).toBe(true);
+
+    const remounted = acquireTerminalInputQueue(TARGET_A);
+    invalidate(metadataSnapshot(terminalSummary(TARGET_A.terminalId, "running", 456)));
+    expect(remounted.isDisposed()).toBe(false);
+    remounted.release();
   });
 });

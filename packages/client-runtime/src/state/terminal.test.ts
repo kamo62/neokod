@@ -1,11 +1,16 @@
-import { EnvironmentId, ThreadId, type TerminalSummary } from "@neokod/contracts";
+import {
+  EnvironmentId,
+  ThreadId,
+  type TerminalMetadataStreamEvent,
+  type TerminalSummary,
+} from "@neokod/contracts";
 import { it as effectIt } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
-import { createTerminalEnvironmentAtoms, invalidateTerminalInputOnMetadata } from "./terminal.ts";
+import { createTerminalEnvironmentAtoms, projectTerminalMetadata } from "./terminal.ts";
 import { acquireTerminalInputQueue, type TerminalInputTarget } from "./terminalSession.ts";
 
 type WriteResult = { readonly _tag: "Success" } | { readonly _tag: "Failure" };
@@ -105,6 +110,7 @@ describe("terminal command input invalidation", () => {
 function terminalSummary(
   summaryTarget: TerminalInputTarget,
   status: TerminalSummary["status"],
+  pid: number | null = status === "running" ? 123 : null,
 ): TerminalSummary {
   return {
     threadId: summaryTarget.threadId,
@@ -112,7 +118,7 @@ function terminalSummary(
     cwd: "/repo",
     worktreePath: null,
     status,
-    pid: status === "running" ? 123 : null,
+    pid,
     exitCode: status === "exited" ? 0 : null,
     exitSignal: null,
     hasRunningSubprocess: false,
@@ -121,14 +127,33 @@ function terminalSummary(
   };
 }
 
+function snapshotEvent(...terminals: TerminalSummary[]): TerminalMetadataStreamEvent {
+  return { type: "snapshot", terminals };
+}
+
+function upsertEvent(terminal: TerminalSummary): TerminalMetadataStreamEvent {
+  return { type: "upsert", terminal };
+}
+
+function removeEvent(eventTarget: TerminalInputTarget): TerminalMetadataStreamEvent {
+  return {
+    type: "remove",
+    threadId: eventTarget.threadId,
+    terminalId: eventTarget.terminalId,
+  };
+}
+
 describe("terminal metadata stream invalidation", () => {
-  effectIt.effect("disposes a retained queue when the metadata projection removes its target", () =>
+  effectIt.effect("disposes a retained queue when metadata removes its target", () =>
     Effect.gen(function* () {
       const leaseTarget = target("term-metadata-archive");
       const lease = acquireTerminalInputQueue(leaseTarget);
-      const stream = invalidateTerminalInputOnMetadata(
+      const stream = projectTerminalMetadata(
         leaseTarget.environmentId,
-        Stream.make([terminalSummary(leaseTarget, "running")], []),
+        Stream.make(
+          snapshotEvent(terminalSummary(leaseTarget, "running")),
+          removeEvent(leaseTarget),
+        ),
       );
 
       yield* Stream.runDrain(stream);
@@ -138,15 +163,15 @@ describe("terminal metadata stream invalidation", () => {
     }),
   );
 
-  effectIt.effect("disposes a retained queue when the metadata projection reports exit", () =>
+  effectIt.effect("disposes a retained queue when metadata reports exit", () =>
     Effect.gen(function* () {
       const leaseTarget = target("term-metadata-exit");
       const lease = acquireTerminalInputQueue(leaseTarget);
-      const stream = invalidateTerminalInputOnMetadata(
+      const stream = projectTerminalMetadata(
         leaseTarget.environmentId,
         Stream.make(
-          [terminalSummary(leaseTarget, "running")],
-          [terminalSummary(leaseTarget, "exited")],
+          snapshotEvent(terminalSummary(leaseTarget, "running")),
+          upsertEvent(terminalSummary(leaseTarget, "exited")),
         ),
       );
 
@@ -154,6 +179,75 @@ describe("terminal metadata stream invalidation", () => {
 
       expect(lease.isDisposed()).toBe(true);
       lease.release();
+    }),
+  );
+
+  effectIt.effect("keeps every chunk when a resubscribe reports the same live session", () =>
+    Effect.gen(function* () {
+      const leaseTarget = target("term-metadata-resubscribe");
+      const lease = acquireTerminalInputQueue(leaseTarget);
+      const recorder = recordingSend();
+      const paste = "x".repeat(70_000);
+      const pending = lease.queue.write(paste, recorder.send);
+      yield* Effect.promise(() => waitForSent(recorder.sent, 1));
+
+      // A reconnect re-sends the full snapshot for the same running session.
+      yield* Stream.runDrain(
+        projectTerminalMetadata(
+          leaseTarget.environmentId,
+          Stream.make(
+            snapshotEvent(terminalSummary(leaseTarget, "running", 123)),
+            snapshotEvent(terminalSummary(leaseTarget, "running", 123)),
+          ),
+        ),
+      );
+
+      expect(lease.isDisposed()).toBe(false);
+      recorder.acknowledgements[0]?.resolve(SUCCESS);
+      yield* Effect.promise(() => waitForSent(recorder.sent, 2));
+      recorder.acknowledgements[1]?.resolve(SUCCESS);
+      yield* Effect.promise(() => waitForSent(recorder.sent, 3));
+      recorder.acknowledgements[2]?.resolve(SUCCESS);
+
+      const result = yield* Effect.promise(() => pending);
+      expect(result?._tag).toBe("Success");
+      expect(recorder.sent.join("")).toBe(paste);
+      lease.release();
+    }),
+  );
+
+  effectIt.effect("keeps a remounted queue on the newer session generation", () =>
+    Effect.gen(function* () {
+      const leaseTarget = target("term-metadata-generation");
+      const lease = acquireTerminalInputQueue(leaseTarget);
+      const firstProjection = yield* Stream.runCollect(
+        projectTerminalMetadata(
+          leaseTarget.environmentId,
+          Stream.make(
+            snapshotEvent(terminalSummary(leaseTarget, "running", 123)),
+            snapshotEvent(terminalSummary(leaseTarget, "running", 456)),
+          ),
+        ),
+      );
+      expect(firstProjection.at(-1)?.[0]?.pid).toBe(456);
+      expect(lease.isDisposed()).toBe(true);
+
+      const remounted = acquireTerminalInputQueue(leaseTarget);
+      const secondProjection = yield* Stream.runCollect(
+        projectTerminalMetadata(
+          leaseTarget.environmentId,
+          Stream.make(
+            snapshotEvent(terminalSummary(leaseTarget, "running", 456)),
+            snapshotEvent(terminalSummary(leaseTarget, "running", 456)),
+          ),
+        ),
+      );
+      expect(secondProjection.at(-1)?.[0]?.pid).toBe(456);
+      expect(remounted.isDisposed()).toBe(false);
+
+      const result = yield* Effect.promise(() => remounted.queue.write("ok", async () => SUCCESS));
+      expect(result?._tag).toBe("Success");
+      remounted.release();
     }),
   );
 });
