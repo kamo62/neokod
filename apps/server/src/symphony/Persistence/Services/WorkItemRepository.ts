@@ -38,6 +38,22 @@ export interface WorkItemRepositoryShape {
     },
   ) => Effect.Effect<WorkItem[], SymphonyPersistenceError>;
 
+  /**
+   * Read a project board's work in two bounded slices, plus exact counts for
+   * every lifecycle present in the same snapshot. Active items are ordered
+   * oldest first for scheduling continuity; terminal items are ordered newest
+   * first so a bounded read keeps the most recently finished work. Limits must
+   * be positive integers; the counts always describe the whole project, not
+   * the returned slices.
+   */
+  readonly listForBoard: (
+    projectId: SymphonyProjectId,
+    options: { readonly activeLimit: number; readonly terminalLimit: number },
+  ) => Effect.Effect<
+    { readonly items: WorkItem[]; readonly totalsByLifecycle: Readonly<Record<string, number>> },
+    SymphonyPersistenceError
+  >;
+
   /** Claim: conditional update to `preparing`, or {@link SymphonyClaimLost}. */
   readonly claim: (
     id: WorkItemId,
