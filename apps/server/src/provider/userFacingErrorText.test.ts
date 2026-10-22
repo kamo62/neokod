@@ -53,6 +53,15 @@ describe("scrubErrorText", () => {
     );
   });
 
+  it("redacts GNU-style backtick-open single-quote-close absolute paths", () => {
+    expect(scrubErrorText("make: *** No rule to make target `/Users/alice/proj/x'.  Stop.")).toBe(
+      "make: *** No rule to make target `[path]/x'.  Stop.",
+    );
+    expect(scrubErrorText("ruby: `/home/alice/app/main.rb' failed")).toBe(
+      "ruby: `[path]/main.rb' failed",
+    );
+  });
+
   it("leaves URLs, ids and punctuation-bearing relative paths alone", () => {
     const text =
       "GET https://api.example.com/v1/models?path=/Users/me/x&q=src/(generated)/deep/file.ts failed for anthropic/claude-3 in src/(generated)/deep/file.ts";
@@ -61,6 +70,13 @@ describe("scrubErrorText", () => {
 
   it("preserves valid apostrophes inside URL queries", () => {
     const url = "https://api.example.com/v1?name=O'Reilly&redirect=/docs/api";
+    expect(scrubErrorText(`GET ${url} failed`)).toBe(`GET ${url} failed`);
+    expect(scrubErrorText(`'${url}'`)).toBe(`'${url}'`);
+    expect(scrubErrorText(`"${url}"`)).toBe(`"${url}"`);
+  });
+
+  it("preserves consecutive apostrophes and later path-like URL segments", () => {
+    const url = "https://api.example.com/v1?name=O''Reilly&redirect=/docs/api";
     expect(scrubErrorText(`GET ${url} failed`)).toBe(`GET ${url} failed`);
     expect(scrubErrorText(`'${url}'`)).toBe(`'${url}'`);
     expect(scrubErrorText(`"${url}"`)).toBe(`"${url}"`);

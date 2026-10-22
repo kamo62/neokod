@@ -1861,6 +1861,114 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
       }),
   );
 
+  it.effect(
+    "keeps an explicitly unknown recovered completion null instead of using recovery time",
+    () =>
+      Effect.gen(function* () {
+        const projectionPipeline = yield* OrchestrationProjectionPipeline;
+        const eventStore = yield* OrchestrationEventStore;
+        const sql = yield* SqlClient.SqlClient;
+        const startedAt = "2026-01-01T00:00:00.000Z";
+        const recoveredAt = "2026-01-02T08:00:00.000Z";
+        const threadId = ThreadId.make("thread-unknown-recovered-completion");
+        const turnId = TurnId.make("turn-unknown-recovered-completion");
+
+        yield* eventStore.append({
+          type: "thread.created",
+          eventId: EventId.make("evt-unknown-recovered-created"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: startedAt,
+          commandId: CommandId.make("cmd-unknown-recovered-created"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-unknown-recovered-created"),
+          metadata: {},
+          payload: {
+            threadId,
+            projectId: ProjectId.make("project-unknown-recovered"),
+            title: "Unknown recovered turn",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("codex"),
+              model: "gpt-5-codex",
+            },
+            runtimeMode: "full-access",
+            branch: null,
+            worktreePath: null,
+            createdAt: startedAt,
+            updatedAt: startedAt,
+          },
+        });
+
+        yield* eventStore.append({
+          type: "thread.session-set",
+          eventId: EventId.make("evt-unknown-recovered-running"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: startedAt,
+          commandId: CommandId.make("cmd-unknown-recovered-running"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-unknown-recovered-running"),
+          metadata: {},
+          payload: {
+            threadId,
+            session: {
+              threadId,
+              status: "running",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: turnId,
+              lastError: null,
+              updatedAt: startedAt,
+            },
+          },
+        });
+        yield* projectionPipeline.bootstrap;
+
+        yield* eventStore.append({
+          type: "thread.session-set",
+          eventId: EventId.make("evt-unknown-recovered-interrupted"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: recoveredAt,
+          commandId: CommandId.make("cmd-unknown-recovered-interrupted"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-unknown-recovered-interrupted"),
+          metadata: {},
+          payload: {
+            threadId,
+            session: {
+              threadId,
+              status: "interrupted",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: null,
+              lastError: "recovered after restart",
+              updatedAt: recoveredAt,
+            },
+            latestTurnCompletedAt: null,
+          },
+        });
+        yield* projectionPipeline.bootstrap;
+
+        const turnRows = yield* sql<{
+          readonly state: string;
+          readonly completedAt: string | null;
+        }>`
+          SELECT state, completed_at AS "completedAt"
+          FROM projection_turns
+          WHERE thread_id = ${threadId} AND turn_id = ${turnId}
+        `;
+        assert.deepEqual(turnRows, [{ state: "interrupted", completedAt: null }]);
+
+        const threadRows = yield* sql<{ readonly updatedAt: string }>`
+          SELECT updated_at AS "updatedAt"
+          FROM projection_threads
+          WHERE thread_id = ${threadId}
+        `;
+        assert.deepEqual(threadRows, [{ updatedAt: recoveredAt }]);
+      }),
+  );
+
   it.effect("settles a superseded running turn when a new turn becomes active", () =>
     Effect.gen(function* () {
       const projectionPipeline = yield* OrchestrationProjectionPipeline;

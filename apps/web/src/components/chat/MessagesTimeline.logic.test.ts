@@ -789,6 +789,39 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
   });
 
+  it("does not derive a zero-duration fold when a stopped turn has unknown completion", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "work-entry-1",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:05Z",
+          entry: {
+            id: "work-1",
+            createdAt: "2026-01-01T00:00:05Z",
+            turnId: "turn-1" as never,
+            label: "Ran command",
+            tone: "tool" as const,
+          },
+        },
+      ],
+      latestTurn: {
+        turnId: "turn-1" as never,
+        state: "interrupted",
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: null,
+      },
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(
+      rows.some((row) => row.kind === "turn-fold" && row.label.includes("stopped after 0s")),
+    ).toBe(false);
+  });
+
   it("keeps the previous turn folded while a newly sent message awaits its turn", () => {
     // Right after send, isWorking is true but latestTurn still points at the
     // previous, settled turn — it must stay folded through that window.

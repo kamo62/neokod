@@ -101,6 +101,7 @@ const makeOrchestrationLayer = () =>
     readEvents: () => Stream.empty,
     dispatch: dieUnused,
     streamDomainEvents: Stream.empty,
+    subscribeDomainEvents: Effect.die("unused"),
     latestSequence: Effect.succeed(0),
   } satisfies OrchestrationEngineService["Service"]);
 

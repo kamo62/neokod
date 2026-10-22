@@ -23,7 +23,7 @@ const FILE_URL = /\bfile:\/\/[^\s'"<>]+/gi;
  * left outside the protected range.
  */
 const NON_FILE_URL =
-  /\b(?:https?|wss?|ftps?|ssh|git\+ssh|git|mailto|urn|data|blob):(?:[^\s<>"']|'(?=[^\s<>"']))+/gi;
+  /\b(?:https?|wss?|ftps?|ssh|git\+ssh|git|mailto|urn|data|blob):(?:[^\s<>"']|'(?=[^\s<>"]))+/gi;
 const URL_PLACEHOLDER = /\uE000url:(\d+)\uE001/g;
 
 const QUOTED_ABSOLUTE_PATH =
@@ -33,7 +33,10 @@ const WINDOWS_PATH =
 // A leading `/` at a token boundary. Excluded characters keep relative paths
 // such as `src/(generated)/deep/file.ts` and their punctuation intact.
 const FORWARD_SLASH_UNC = /(^|[\s'"([{=,;:])(\/\/[^/\s'"<>|]+\/[^\s'"`<>()[\]{}|]+)/g;
-const POSIX_PATH = /(^|[\s'"([{=,;:])(\/[^\s'"`<>()[\]{}|:]+)/g;
+// The start boundary includes a backtick so GNU-style `path' quoting is
+// redacted. A match still needs a `/` immediately after the boundary, so
+// relative paths such as `src/file.ts` are untouched.
+const POSIX_PATH = /(^|[\s'"`([{=,;:])(\/[^\s'"`<>()[\]{}|:]+)/g;
 
 const lastSegment = (path: string) => path.split(/[\\/]/).findLast(Boolean);
 const toPlaceholder = (path: string) => {

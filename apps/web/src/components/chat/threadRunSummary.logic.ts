@@ -77,14 +77,19 @@ export function deriveThreadRunSummary(input: ThreadRunSummaryInput): ThreadRunS
   const totalSteps = input.activePlan?.steps.length ?? 0;
   const completedSteps =
     input.activePlan?.steps.filter((step) => step.status === "completed").length ?? 0;
-  const endedAt = isTerminalThreadLifecycle(lifecycle) ? (latestTurn?.completedAt ?? null) : null;
+  const terminal = isTerminalThreadLifecycle(lifecycle);
+  const endedAt = terminal ? (latestTurn?.completedAt ?? null) : null;
+  // A terminal turn with no recorded completion is unknown, not live. It must
+  // not keep ticking against the current clock, nor collapse to zero.
+  const elapsed =
+    terminal && endedAt === null ? null : formatElapsed(startedAt, endedAt, input.nowMs);
 
   return {
     title: thread.goal ?? thread.title,
     status,
     statusLabel: statusLabel(status, input.activeToolLabel),
     startedAt,
-    elapsed: formatElapsed(startedAt, endedAt, input.nowMs),
+    elapsed,
     completedSteps,
     totalSteps,
     attention,

@@ -424,6 +424,51 @@ describe("applyThreadDetailEvent", () => {
       }
     });
 
+    it("keeps an explicitly unknown recovered completion null", () => {
+      const threadWithRunningTurn: OrchestrationThread = {
+        ...baseThread,
+        latestTurn: {
+          turnId: TurnId.make("turn-1"),
+          state: "running",
+          requestedAt: "2026-04-01T07:00:00.000Z",
+          startedAt: "2026-04-01T07:00:00.000Z",
+          completedAt: null,
+          assistantMessageId: MessageId.make("msg-3"),
+        },
+      };
+
+      const result = applyThreadDetailEvent(threadWithRunningTurn, {
+        ...baseEventFields,
+        sequence: 11,
+        occurredAt: "2026-04-02T08:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.session-set",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "interrupted",
+            providerName: "claude",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: "2026-04-02T08:00:00.000Z",
+          },
+          latestTurnCompletedAt: null,
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.latestTurn?.state).toBe("interrupted");
+        // Explicit null means no observation; the session update time is not
+        // allowed to stand in for completion.
+        expect(result.thread.latestTurn?.completedAt).toBeNull();
+        expect(result.thread.session?.updatedAt).toBe("2026-04-02T08:00:00.000Z");
+      }
+    });
+
     it("updates session and latestTurn for a running session", () => {
       const result = applyThreadDetailEvent(baseThread, {
         ...baseEventFields,

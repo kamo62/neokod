@@ -873,6 +873,107 @@ it.effect(
     }).pipe(Effect.provide(NodeServices.layer)),
 );
 
+it.effect("ProviderServiceLive refuses recovery while a failed stop still fences the thread", () =>
+  Effect.gen(function* () {
+    const tempDir = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "neokod-provider-stop-failed-recovery-"),
+    );
+    const dbPath = NodePath.join(tempDir, "orchestration.sqlite");
+    const persistenceLayer = makeSqlitePersistenceLive(dbPath);
+    const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+      Layer.provide(persistenceLayer),
+    );
+    const directoryLayer = ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer));
+    const codex = makeFakeCodexAdapter();
+    const registry = makeAdapterRegistryMock({
+      [CODEX_DRIVER]: codex.adapter,
+    });
+    const threadId = asThreadId("thread-stop-failed-recovery");
+    const stopEvidence = stopFailed("process_group_termination_failed", "group remained alive");
+
+    yield* Effect.gen(function* () {
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      yield* directory.upsert({
+        threadId,
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        status: "error",
+        runtimePayload: {
+          activeTurnId: null,
+          stopPhase: "settled",
+          stopRequestedAt: "2026-01-01T00:00:00.000Z",
+          stopOutcome: stopEvidence,
+        },
+      });
+    }).pipe(Effect.provide(directoryLayer));
+
+    const providerLayer = makeProviderServiceLive().pipe(
+      Layer.provide(Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, registry)),
+      Layer.provide(directoryLayer),
+      Layer.provide(defaultServerSettingsLayer),
+      Layer.provide(AnalyticsService.layerTest),
+      Layer.provide(
+        Layer.succeed(
+          ProviderEventLoggers.ProviderEventLoggers,
+          ProviderEventLoggers.NoOpProviderEventLoggers,
+        ),
+      ),
+      Layer.provideMerge(runtimeRepositoryLayer),
+    );
+
+    yield* Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+
+      // All three responders can resume a missing adapter session. The stop
+      // failure must keep the thread fenced instead of erasing its evidence.
+      const interruptFailure = yield* Effect.flip(provider.interruptTurn({ threadId }));
+      assert.equal(interruptFailure._tag, "ProviderStoppingError");
+
+      const approvalFailure = yield* Effect.flip(
+        provider.respondToRequest({
+          threadId,
+          requestId: asRequestId("req-stop-failed"),
+          decision: "accept",
+        }),
+      );
+      assert.equal(approvalFailure._tag, "ProviderStoppingError");
+
+      const inputFailure = yield* Effect.flip(
+        provider.respondToUserInput({
+          threadId,
+          requestId: asRequestId("req-stop-failed-input"),
+          answers: { sandbox_mode: "workspace-write" },
+        }),
+      );
+      assert.equal(inputFailure._tag, "ProviderStoppingError");
+
+      assert.equal(codex.startSession.mock.calls.length, 0);
+      assert.equal(codex.sendTurn.mock.calls.length, 0);
+
+      const repository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+      const binding = yield* repository.getByThreadId({ threadId });
+      assert.equal(Option.isSome(binding), true);
+      if (Option.isSome(binding)) {
+        assert.equal(binding.value.status, "error");
+        const payload = binding.value.runtimePayload;
+        assert.equal(
+          payload !== null && typeof payload === "object" && !Array.isArray(payload),
+          true,
+        );
+        if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+          assert.equal("stopPhase" in payload ? payload.stopPhase : undefined, "settled");
+          assert.deepEqual(
+            "stopOutcome" in payload ? payload.stopOutcome : undefined,
+            stopEvidence,
+          );
+        }
+      }
+    }).pipe(Effect.provide(providerLayer));
+
+    NodeFS.rmSync(tempDir, { recursive: true, force: true });
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
 it.effect(
   "ProviderServiceLive restores rollback routing after restart using persisted thread mapping",
   () =>

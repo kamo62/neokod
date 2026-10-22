@@ -1115,8 +1115,12 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
                       // A running turn's completedAt can only hold a mid-turn
                       // placeholder checkpoint timestamp. Recovery can freeze
                       // it at the last observation instead of the event time.
+                      // An explicit null means no observation exists; only an
+                      // omitted field keeps the legacy session-time default.
                       completedAt:
-                        event.payload.latestTurnCompletedAt ?? event.payload.session.updatedAt,
+                        event.payload.latestTurnCompletedAt === undefined
+                          ? event.payload.session.updatedAt
+                          : event.payload.latestTurnCompletedAt,
                     }),
               { concurrency: 1 },
             );

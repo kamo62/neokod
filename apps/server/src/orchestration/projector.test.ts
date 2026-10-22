@@ -7,6 +7,7 @@ import {
   type OrchestrationEvent,
 } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
+import { it as effectIt } from "@effect/vitest";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createEmptyReadModel, projectEvent } from "./projector.ts";
@@ -338,6 +339,93 @@ describe("orchestration projector", () => {
     expect(settledThread?.latestTurn?.state).toBe("completed");
     expect(settledThread?.latestTurn?.completedAt).toBe(settledAt);
   });
+
+  effectIt.effect("keeps an explicitly unknown recovered completion null", () =>
+    Effect.gen(function* () {
+      const startedAt = "2026-02-23T08:00:00.000Z";
+      const recoveredAt = "2026-02-24T08:00:00.000Z";
+      const model = createEmptyReadModel(startedAt);
+      const afterCreate = yield* projectEvent(
+        model,
+        makeEvent({
+          sequence: 1,
+          type: "thread.created",
+          aggregateKind: "thread",
+          aggregateId: "thread-1",
+          occurredAt: startedAt,
+          commandId: "cmd-create",
+          payload: {
+            threadId: "thread-1",
+            projectId: "project-1",
+            title: "demo",
+            modelSelection: {
+              provider: ProviderDriverKind.make("codex"),
+              model: "gpt-5.3-codex",
+            },
+            runtimeMode: "full-access",
+            branch: null,
+            worktreePath: null,
+            createdAt: startedAt,
+            updatedAt: startedAt,
+          },
+        }),
+      );
+      const afterRunning = yield* projectEvent(
+        afterCreate,
+        makeEvent({
+          sequence: 2,
+          type: "thread.session-set",
+          aggregateKind: "thread",
+          aggregateId: "thread-1",
+          occurredAt: startedAt,
+          commandId: "cmd-running",
+          payload: {
+            threadId: "thread-1",
+            session: {
+              threadId: "thread-1",
+              status: "running",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: "turn-1",
+              lastError: null,
+              updatedAt: startedAt,
+            },
+          },
+        }),
+      );
+      const recovered = yield* projectEvent(
+        afterRunning,
+        makeEvent({
+          sequence: 3,
+          type: "thread.session-set",
+          aggregateKind: "thread",
+          aggregateId: "thread-1",
+          occurredAt: recoveredAt,
+          commandId: "cmd-recovered",
+          payload: {
+            threadId: "thread-1",
+            session: {
+              threadId: "thread-1",
+              status: "interrupted",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: recoveredAt,
+            },
+            latestTurnCompletedAt: null,
+          },
+        }),
+      );
+
+      const thread = recovered.threads[0];
+      expect(thread?.session?.updatedAt).toBe(recoveredAt);
+      expect(thread?.updatedAt).toBe(recoveredAt);
+      expect(thread?.latestTurn?.state).toBe("interrupted");
+      // Explicit null means no observation; recovery time must not fill it in.
+      expect(thread?.latestTurn?.completedAt).toBeNull();
+    }),
+  );
 
   it("updates canonical thread runtime mode from thread.runtime-mode-set", async () => {
     const createdAt = "2026-02-23T08:00:00.000Z";

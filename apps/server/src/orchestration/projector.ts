@@ -498,7 +498,12 @@ export function projectEvent(
                       // A running turn's completedAt can only hold a mid-turn
                       // placeholder checkpoint timestamp. Recovery can freeze
                       // it at the last observation instead of the event time.
-                      completedAt: payload.latestTurnCompletedAt ?? session.updatedAt,
+                      // An explicit null means no observation exists; only an
+                      // omitted field keeps the legacy session-time default.
+                      completedAt:
+                        payload.latestTurnCompletedAt === undefined
+                          ? session.updatedAt
+                          : payload.latestTurnCompletedAt,
                     }
                   : thread.latestTurn,
             updatedAt: event.occurredAt,

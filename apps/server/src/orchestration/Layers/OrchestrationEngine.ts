@@ -344,6 +344,10 @@ const makeOrchestrationEngine = Effect.gen(function* () {
     get streamDomainEvents(): OrchestrationEngineShape["streamDomainEvents"] {
       return Stream.fromPubSub(eventPubSub);
     },
+    // Acquire in the caller's fiber so `start()` can prove readiness before
+    // running recovery dispatch. The subscription's lifetime follows the
+    // caller's scope.
+    subscribeDomainEvents: PubSub.subscribe(eventPubSub),
     // The command read model's snapshotSequence tracks the latest committed
     // event sequence (updated on the worker fiber). A plain property read is a
     // consistent, committed value; reassignment of `commandReadModel` is

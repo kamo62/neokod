@@ -845,8 +845,12 @@ const ThreadSessionSetCommand = Schema.Struct({
    * Completion time for the running turn this session update settles. Recovery
    * uses it to freeze a turn at its last observation while `session.updatedAt`
    * and event ordering stay on the server clock.
+   *
+   * Omitted means legacy behaviour: the session update time stands in for a
+   * completion. Explicit `null` means no current-turn observation exists, so
+   * completion is unknown and must not be replaced by recovery time.
    */
-  latestTurnCompletedAt: Schema.optional(IsoDateTime),
+  latestTurnCompletedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   createdAt: IsoDateTime,
 });
 
@@ -1127,7 +1131,8 @@ export const ThreadSessionStopRequestedPayload = Schema.Struct({
 export const ThreadSessionSetPayload = Schema.Struct({
   threadId: ThreadId,
   session: OrchestrationSession,
-  latestTurnCompletedAt: Schema.optional(IsoDateTime),
+  // Omitted keeps the legacy session-time default; explicit null is unknown.
+  latestTurnCompletedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
 });
 
 export const ThreadProposedPlanUpsertedPayload = Schema.Struct({

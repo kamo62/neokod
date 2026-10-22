@@ -2238,6 +2238,12 @@ const make = Effect.gen(function* () {
 
   const start: ProviderRuntimeIngestionShape["start"] = () =>
     Effect.gen(function* () {
+      // Acquire before the startup scan and before any recovery dispatch can
+      // run. Returning from this subscription is the readiness signal: the hot
+      // PubSub has no replay, so a forked `streamDomainEvents` consumer could
+      // otherwise miss the interrupted session event that closes startup items.
+      const domainEvents = yield* orchestrationEngine.subscribeDomainEvents;
+
       yield* reconcileRuntimeItemsAtStartup.pipe(
         Effect.catchCause((cause) =>
           Effect.logError("provider runtime-item startup reconciliation failed", {
@@ -2251,7 +2257,7 @@ const make = Effect.gen(function* () {
         ),
       );
       yield* Effect.forkScoped(
-        Stream.runForEach(orchestrationEngine.streamDomainEvents, (event) => {
+        Stream.runForEach(Stream.fromSubscription(domainEvents), (event) => {
           if (
             event.type !== "thread.turn-start-requested" &&
             !(event.type === "thread.session-set" && event.payload.session.status === "interrupted")

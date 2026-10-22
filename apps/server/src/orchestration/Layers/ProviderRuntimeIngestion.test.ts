@@ -831,6 +831,98 @@ describe("ProviderRuntimeIngestion", () => {
     });
   });
 
+  it("closes startup items when the interrupted session follows start immediately", async () => {
+    // Start with persisted running work. The startup scan leaves the running
+    // turn alone; boot recovery then publishes its interrupted session event
+    // immediately after start returns.
+    const harness = await createHarness({ startIngestion: false });
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-startup-recovery");
+    const observedAt = "2026-01-01T00:03:01.000Z";
+    const recoveredAt = "2026-01-01T00:04:00.000Z";
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.runtime-item.observe",
+        commandId: CommandId.make("startup-recovery-observe"),
+        threadId,
+        observation: {
+          runtimeItemId: RuntimeItemId.make("startup-recovery-approval"),
+          providerItemId: null,
+          sessionId: RuntimeSessionId.make("session-startup-recovery"),
+          kind: "approval",
+          scope: "turn",
+          turnId,
+          providerState: "active",
+          label: "Approve command",
+          providerEventId: EventId.make("startup-recovery-provider-event"),
+          observedAt,
+        },
+        createdAt: observedAt,
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("startup-recovery-running"),
+        threadId,
+        session: {
+          threadId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: turnId,
+          updatedAt: "2026-01-01T00:03:00.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:03:00.000Z",
+      }),
+    );
+
+    // The subscription is acquired inside start before the startup scan.
+    await harness.start();
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("startup-recovery-interrupted"),
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: recoveredAt,
+          lastError: null,
+        },
+        createdAt: recoveredAt,
+      }),
+    );
+    await harness.drain();
+
+    expect(await harness.runtimeItems()).toMatchObject([
+      {
+        runtimeItemId: "startup-recovery-approval",
+        effectiveState: "orphaned",
+        // The item's own observation ends the orphaned interval; the recovery
+        // session update is only when the server noticed.
+        completedAt: observedAt,
+      },
+    ]);
+
+    const firstPass = (await harness.readModel()).threads
+      .find((thread) => thread.id === threadId)
+      ?.activities.filter((activity) => activity.kind === "approval.resolved");
+    expect(firstPass).toHaveLength(1);
+
+    // A second drain must not duplicate the synthetic closure.
+    await harness.drain();
+    const secondPass = (await harness.readModel()).threads
+      .find((thread) => thread.id === threadId)
+      ?.activities.filter((activity) => activity.kind === "approval.resolved");
+    expect(secondPass).toHaveLength(1);
+  });
+
   it("does not close items observed after the interrupted session update", async () => {
     const harness = await createHarness();
     const threadId = asThreadId("thread-1");

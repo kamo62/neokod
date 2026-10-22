@@ -1,8 +1,9 @@
-import { CommandId } from "@neokod/contracts";
+import { CommandId, type OrchestrationReadModel } from "@neokod/contracts";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
@@ -22,15 +23,51 @@ const makeProviderSessionReconciler = Effect.gen(function* () {
   const providerService = yield* ProviderService;
   const directory = yield* ProviderSessionDirectory;
 
+  // The lightweight command read model omits message and activity bodies, so
+  // the reconciler normally has no turn-scoped completion evidence. Hydrate
+  // only threads whose running turn is eligible for settlement; these are the
+  // rows that can supply a current-turn observation. A failed detail read
+  // leaves the thread as-is, which settles with an explicitly unknown
+  // completion instead of blocking recovery or inventing a timestamp.
+  const withTurnEvidence = (
+    projected: OrchestrationReadModel,
+    liveThreadIds: ReadonlySet<string>,
+  ): Effect.Effect<OrchestrationReadModel> =>
+    Effect.forEach(
+      projected.threads,
+      (thread) => {
+        const turn = thread.latestTurn;
+        if (
+          turn?.state !== "running" ||
+          thread.session?.status !== "running" ||
+          liveThreadIds.has(thread.id)
+        ) {
+          return Effect.succeed(thread);
+        }
+        return projectionSnapshotQuery.getThreadDetailById(thread.id).pipe(
+          Effect.map((detail) => Option.getOrElse(detail, () => thread)),
+          Effect.catch((cause) =>
+            Effect.logWarning("provider.session.reconciliation-detail-failed", {
+              threadId: thread.id,
+              cause,
+            }).pipe(Effect.as(thread)),
+          ),
+        );
+      },
+      { concurrency: 4 },
+    ).pipe(Effect.map((threads) => ({ ...projected, threads })));
+
   const reconcile: ProviderSessionReconcilerShape["reconcile"] = Effect.gen(function* () {
-    // Boot reconciliation only needs thread, latest turn and session rows.
+    // Boot reconciliation only needs thread, latest turn and session rows; the
+    // running-turn candidates are then enriched with their turn-scoped rows.
     const [projected, liveSessions, bindings] = yield* Effect.all([
       projectionSnapshotQuery.getCommandReadModel(),
       providerService.listSessions(),
       directory.listBindings(),
     ]);
+    const liveThreadIds = new Set(liveSessions.map((session) => session.threadId));
     const actions = planProviderSessionReconciliation({
-      projected,
+      projected: yield* withTurnEvidence(projected, liveThreadIds),
       liveSessions,
       bindings,
     });

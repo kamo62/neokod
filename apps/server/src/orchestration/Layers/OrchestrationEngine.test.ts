@@ -11,11 +11,14 @@ import {
 } from "@neokod/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Metric from "effect/Metric";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
+import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { describe, expect, it } from "vite-plus/test";
@@ -593,6 +596,53 @@ describe("OrchestrationEngine", () => {
     );
 
     expect(eventTypes).toEqual(["thread.created", "thread.meta-updated"]);
+    await system.dispose();
+  });
+
+  it("delivers an event to a subscription acquired before dispatch", async () => {
+    const system = await createOrchestrationSystem();
+    const { engine } = system;
+    const createdAt = now();
+
+    const event = await system.run(
+      Effect.gen(function* () {
+        const subscription = yield* engine.subscribeDomainEvents;
+        // No sleep, fork or replay: acquisition itself must register the
+        // subscription before dispatch publishes.
+        yield* engine.dispatch({
+          type: "project.create",
+          commandId: CommandId.make("cmd-subscription-before-dispatch"),
+          projectId: asProjectId("project-subscription-before-dispatch"),
+          title: "Subscription Project",
+          workspaceRoot: "/tmp/project-subscription-before-dispatch",
+          defaultModelSelection: {
+            instanceId: ProviderInstanceId.make("codex"),
+            model: "gpt-5-codex",
+          },
+          createdAt,
+        });
+        return yield* Stream.runHead(Stream.fromSubscription(subscription));
+      }).pipe(Effect.scoped),
+    );
+
+    expect(Option.isSome(event) ? event.value.type : null).toBe("project.created");
+    await system.dispose();
+  });
+
+  it("releases a domain subscription when its scope closes", async () => {
+    const system = await createOrchestrationSystem();
+    const { engine } = system;
+
+    const remaining = await system.run(
+      Effect.gen(function* () {
+        const scope = yield* Scope.make();
+        const subscription = yield* engine.subscribeDomainEvents.pipe(Scope.provide(scope));
+        yield* Scope.close(scope, Exit.void);
+        return PubSub.remainingUnsafe(subscription);
+      }),
+    );
+
+    expect(Option.isNone(remaining)).toBe(true);
     await system.dispose();
   });
 

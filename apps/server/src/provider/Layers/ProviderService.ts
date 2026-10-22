@@ -684,6 +684,10 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       } as const;
     }
 
+    // Recovery creates a new provider session and clears stop evidence. That is
+    // only allowed once the thread is no longer fenced: a failed stop or a
+    // non-host-lost orphan outcome must keep its evidence for the next boot.
+    yield* assertNotStopping(input.operation, input.threadId);
     const recovered = yield* recoverSessionForThread({
       binding,
       operation: input.operation,
