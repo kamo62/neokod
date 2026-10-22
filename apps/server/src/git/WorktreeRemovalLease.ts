@@ -1,6 +1,7 @@
 import { HostProcessPlatform } from "@neokod/shared/hostProcess";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
@@ -136,12 +137,18 @@ export const WorktreeRemovalLeaseLive = Layer.effect(
               ),
           ),
         );
+        if (!current.exists) {
+          return yield* Effect.fail(
+            new WorktreeAdmissionBlockedError(
+              workspacePath,
+              commandType,
+              `The worktree ${workspacePath} does not exist. Prepare it before attaching a thread.`,
+            ),
+          );
+        }
         const prepared = yield* Ref.get(preparedWorktrees);
         const expected = prepared.get(workspacePath) ?? prepared.get(current.physicalPath);
-        if (expected === undefined) {
-          return;
-        }
-        if (!current.exists || workspaceIdentitiesMatch(expected, current) !== "same") {
+        if (expected !== undefined && workspaceIdentitiesMatch(expected, current) !== "same") {
           return yield* Effect.fail(
             new WorktreeAdmissionBlockedError(
               workspacePath,
@@ -150,6 +157,22 @@ export const WorktreeRemovalLeaseLive = Layer.effect(
             ),
           );
         }
+      });
+
+    const clearPreparedWorktrees = (target: WorkspaceIdentityEvidence) =>
+      Ref.update(preparedWorktrees, (current) => {
+        const next = new Map(current);
+        const prefix = `${target.physicalPath}${path.sep}`;
+        for (const [key, identity] of current) {
+          if (
+            key === target.physicalPath ||
+            key.startsWith(prefix) ||
+            workspaceIdentitiesMatch(target, identity) === "same"
+          ) {
+            next.delete(key);
+          }
+        }
+        return next;
       });
 
     const withAdmission: WorktreeRemovalLeaseShape["withAdmission"] = (
@@ -227,7 +250,11 @@ export const WorktreeRemovalLeaseLive = Layer.effect(
                 )
                 .pipe(Effect.orDie),
           );
-          return yield* effect;
+          return yield* effect.pipe(
+            Effect.onExit((exit) =>
+              Exit.isSuccess(exit) ? clearPreparedWorktrees(target) : Effect.void,
+            ),
+          );
         }),
       );
 

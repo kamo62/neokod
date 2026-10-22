@@ -5,6 +5,7 @@ import {
   buildMenuItems,
   canSubmitCommitSelection,
   isMergeCommitPending,
+  resolveCommitFilePaths,
   requiresDefaultBranchConfirmation,
   resolveAutoFeatureBranchName,
   resolveConflictBlockReason,
@@ -1261,6 +1262,18 @@ describe("resolved merge with no tree delta", () => {
     assert.equal(
       canSubmitCommitSelection({ fileCount: 2, selectedFileCount: 0, mergePending: false }),
       false,
+    );
+  });
+
+  it("omits filePaths when the working tree has no files", () => {
+    assert.equal(resolveCommitFilePaths({ allFilePaths: [], selectedFilePaths: [] }), undefined);
+    assert.equal(
+      resolveCommitFilePaths({ allFilePaths: ["a.txt"], selectedFilePaths: ["a.txt"] }),
+      undefined,
+    );
+    assert.deepEqual(
+      resolveCommitFilePaths({ allFilePaths: ["a.txt", "b.txt"], selectedFilePaths: ["a.txt"] }),
+      ["a.txt"],
     );
   });
 });

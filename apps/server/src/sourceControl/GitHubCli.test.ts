@@ -438,6 +438,10 @@ describe("GitHubCli.layer", () => {
         unresolvedComments: 1,
         latestCommit: "deadbeef0001",
       });
+      const viewCall = mockRun.mock.calls[0]?.[0];
+      assert.deepStrictEqual(viewCall?.args.slice(0, 3), ["pr", "view", "--json"]);
+      assert.equal(viewCall?.args.at(-2), "--");
+      assert.equal(viewCall?.args.at(-1), "#42");
     }).pipe(Effect.provide(layer)),
   );
 

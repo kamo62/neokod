@@ -610,8 +610,13 @@ describe("OrchestrationEngine", () => {
 
   it("does not regress a generated branch to a stale temporary worktree branch", async () => {
     const system = await createOrchestrationSystem();
-    const { engine } = system;
+    const { engine, fileSystem, path } = system;
     const createdAt = now();
+    const worktreeRoot = await system.run(
+      fileSystem.makeTempDirectory({ prefix: "neokod-branch-race-" }),
+    );
+    const worktreePath = path.join(worktreeRoot, "worktree");
+    await system.run(fileSystem.makeDirectory(worktreePath, { recursive: true }));
 
     await system.run(
       engine.dispatch({
@@ -641,7 +646,7 @@ describe("OrchestrationEngine", () => {
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         runtimeMode: "approval-required",
         branch: "neokod/generated-branch-name",
-        worktreePath: "/tmp/project-branch-race-worktree",
+        worktreePath,
         createdAt,
       }),
     );
@@ -658,13 +663,19 @@ describe("OrchestrationEngine", () => {
 
     const snapshot = await system.readModel();
     expect(snapshot.threads[0]?.branch).toBe("neokod/generated-branch-name");
+    await system.run(fileSystem.remove(worktreeRoot, { recursive: true, force: true }));
     await system.dispose();
   });
 
   it("allows authoritative worktree bootstrap to assign a temporary branch", async () => {
     const system = await createOrchestrationSystem();
-    const { engine } = system;
+    const { engine, fileSystem, path } = system;
     const createdAt = now();
+    const worktreeRoot = await system.run(
+      fileSystem.makeTempDirectory({ prefix: "neokod-worktree-bootstrap-" }),
+    );
+    const worktreePath = path.join(worktreeRoot, "worktree");
+    await system.run(fileSystem.makeDirectory(worktreePath, { recursive: true }));
 
     await system.run(
       engine.dispatch({
@@ -704,13 +715,14 @@ describe("OrchestrationEngine", () => {
         commandId: CommandId.make("cmd-authoritative-worktree-bootstrap"),
         threadId: ThreadId.make("thread-worktree-bootstrap"),
         branch: "neokod/1234abcd",
-        worktreePath: "/tmp/project-worktree-bootstrap-worktree",
+        worktreePath,
       }),
     );
 
     const snapshot = await system.readModel();
     expect(snapshot.threads[0]?.branch).toBe("neokod/1234abcd");
-    expect(snapshot.threads[0]?.worktreePath).toBe("/tmp/project-worktree-bootstrap-worktree");
+    expect(snapshot.threads[0]?.worktreePath).toBe(worktreePath);
+    await system.run(fileSystem.remove(worktreeRoot, { recursive: true, force: true }));
     await system.dispose();
   });
 

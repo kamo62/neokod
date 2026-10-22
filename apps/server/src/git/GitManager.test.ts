@@ -31,6 +31,11 @@ import * as ServerConfig from "../config.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as GitManager from "./GitManager.ts";
+import {
+  WorktreeAdmissionBlockedError,
+  WorktreeRemovalLease,
+  WorktreeRemovalLeaseLive,
+} from "./WorktreeRemovalLease.ts";
 
 interface FakeGhScenario {
   prListSequence?: string[];
@@ -697,12 +702,17 @@ function makeManager(input?: {
     ),
     vcsDriverLayer,
     serverSettingsLayer,
-  ).pipe(Layer.provideMerge(sourceControlRegistryLayer), Layer.provideMerge(NodeServices.layer));
-
-  return GitManager.make.pipe(
-    Effect.provide(managerLayer),
-    Effect.map((manager) => ({ manager, ghCalls })),
+  ).pipe(
+    Layer.provideMerge(sourceControlRegistryLayer),
+    Layer.provideMerge(WorktreeRemovalLeaseLive),
+    Layer.provideMerge(NodeServices.layer),
   );
+
+  return Effect.gen(function* () {
+    const manager = yield* GitManager.make;
+    const lease = yield* WorktreeRemovalLease;
+    return { manager, ghCalls, lease };
+  }).pipe(Effect.provide(managerLayer));
 }
 
 const asThreadId = (threadId: string) => threadId as ThreadId;
@@ -3245,6 +3255,67 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         "--show-current",
       ])).stdout.trim();
       expect(worktreeBranch).toBe("feature/pr-worktree");
+    }),
+  );
+
+  it.effect("records a prepared PR worktree so a delayed attachment is rejected", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("neokod-git-manager-");
+      yield* initRepo(repoDir);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "main"]);
+      yield* runGit(repoDir, ["checkout", "-b", "feature/pr-prepared"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "prepared.txt"), "prepared\n");
+      yield* runGit(repoDir, ["add", "prepared.txt"]);
+      yield* runGit(repoDir, ["commit", "-m", "PR prepared branch"]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "feature/pr-prepared"]);
+      yield* runGit(repoDir, ["push", "origin", "HEAD:refs/pull/78/head"]);
+      yield* runGit(repoDir, ["checkout", "main"]);
+
+      const { manager, lease } = yield* makeManager({
+        ghScenario: {
+          pullRequest: {
+            number: 78,
+            title: "Prepared worktree PR",
+            url: "https://github.com/pingdotgg/codething-mvp/pull/78",
+            baseRefName: "main",
+            headRefName: "feature/pr-prepared",
+            state: "open",
+          },
+        },
+      });
+      const result = yield* preparePullRequestThread(manager, {
+        cwd: repoDir,
+        reference: "78",
+        mode: "worktree",
+      });
+      const worktreePath = result.worktreePath;
+      expect(worktreePath).not.toBeNull();
+      if (worktreePath === null) {
+        return;
+      }
+
+      NodeFS.rmSync(worktreePath, { recursive: true, force: true });
+      const missing = yield* lease
+        .withAdmission(
+          "thread.create",
+          { workspacePaths: [worktreePath], preparedWorktreePaths: [worktreePath] },
+          Effect.succeed("admitted"),
+        )
+        .pipe(Effect.flip);
+      expect(missing).toBeInstanceOf(WorktreeAdmissionBlockedError);
+
+      NodeFS.mkdirSync(worktreePath, { recursive: true });
+      const replaced = yield* lease
+        .withAdmission(
+          "thread.create",
+          { workspacePaths: [worktreePath], preparedWorktreePaths: [worktreePath] },
+          Effect.succeed("admitted"),
+        )
+        .pipe(Effect.flip);
+      expect(replaced).toBeInstanceOf(WorktreeAdmissionBlockedError);
+      NodeFS.rmSync(worktreePath, { recursive: true, force: true });
     }),
   );
 

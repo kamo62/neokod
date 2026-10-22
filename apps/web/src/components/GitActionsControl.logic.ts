@@ -104,6 +104,18 @@ export function canSubmitCommitSelection(input: {
   return input.mergePending && input.fileCount === 0;
 }
 
+/** Omit `filePaths` for a full commit, including a zero-file merge conclusion. */
+export function resolveCommitFilePaths(input: {
+  readonly allFilePaths: readonly string[];
+  readonly selectedFilePaths: readonly string[];
+}): readonly string[] | undefined {
+  const allSelected = input.selectedFilePaths.length === input.allFilePaths.length;
+  if (allSelected || input.allFilePaths.length === 0) {
+    return undefined;
+  }
+  return input.selectedFilePaths;
+}
+
 export function buildGitActionProgressStages(input: {
   action: GitStackedAction;
   hasCustomCommitMessage: boolean;

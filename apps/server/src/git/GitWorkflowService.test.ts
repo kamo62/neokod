@@ -1,3 +1,4 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, expect, it, vi } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -6,6 +7,7 @@ import { VcsRepositoryDetectionError } from "@neokod/contracts";
 
 import * as GitManager from "./GitManager.ts";
 import * as GitWorkflowService from "./GitWorkflowService.ts";
+import { WorktreeRemovalLeaseLive } from "./WorktreeRemovalLease.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 
@@ -20,6 +22,8 @@ function makeLayer(input: {
     ),
     Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
     Layer.provide(Layer.mock(GitManager.GitManager)({})),
+    Layer.provide(WorktreeRemovalLeaseLive),
+    Layer.provideMerge(NodeServices.layer),
   );
 }
 
@@ -100,6 +104,8 @@ describe("GitWorkflowService", () => {
           status,
         }),
       ),
+      Layer.provide(WorktreeRemovalLeaseLive),
+      Layer.provideMerge(NodeServices.layer),
     );
 
     return Effect.gen(function* () {

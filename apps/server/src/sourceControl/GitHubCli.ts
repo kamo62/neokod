@@ -661,9 +661,10 @@ export const make = Effect.gen(function* () {
         args: [
           "pr",
           "view",
-          input.reference,
           "--json",
           "mergeable,statusCheckRollup,reviews,reviewDecision,latestCommit",
+          "--",
+          input.reference,
         ],
       }).pipe(
         Effect.map((result) => result.stdout.trim()),

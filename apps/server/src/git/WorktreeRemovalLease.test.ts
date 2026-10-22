@@ -116,6 +116,23 @@ layer("WorktreeRemovalLease", (it) => {
     }),
   );
 
+  it.effect("rejects a missing worktree even without a prepared record", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-lease-" });
+      const missing = path.join(root, "never-created");
+      const lease = yield* WorktreeRemovalLease;
+
+      const blocked = yield* lease
+        .withAdmission("thread.create", admission([missing], [missing]), Effect.succeed("admitted"))
+        .pipe(Effect.flip);
+
+      expect(blocked).toBeInstanceOf(WorktreeAdmissionBlockedError);
+      expect(blocked.message).toContain("does not exist");
+    }),
+  );
+
   it.effect("rejects a prepared worktree removed before attachment", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -132,7 +149,31 @@ layer("WorktreeRemovalLease", (it) => {
         .pipe(Effect.flip);
 
       expect(blocked).toBeInstanceOf(WorktreeAdmissionBlockedError);
-      expect(blocked.message).toContain("removed or replaced");
+      expect(blocked.message).toContain("does not exist");
+    }),
+  );
+
+  it.effect("clears a prepared record after a successful removal", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "neokod-lease-" });
+      const target = path.join(root, "worktree");
+      yield* fs.makeDirectory(target, { recursive: true });
+      const lease = yield* WorktreeRemovalLease;
+      yield* lease.recordPreparedWorktree(target);
+      const identity = yield* readWorkspaceIdentityEvidence(target);
+
+      yield* lease.withRemovalReservation(identity, Effect.void);
+      yield* fs.rename(target, path.join(root, "removed-original"));
+      yield* fs.makeDirectory(target, { recursive: true });
+
+      const admitted = yield* lease.withAdmission(
+        "thread.create",
+        admission([target], [target]),
+        Effect.succeed("admitted"),
+      );
+      expect(admitted).toBe("admitted");
     }),
   );
 

@@ -572,15 +572,10 @@ export const make = Effect.gen(function* () {
   const textGeneration = yield* TextGeneration.TextGeneration;
   const projectSetupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
   const crypto = yield* Crypto.Crypto;
+  const worktreeRemovalLease = yield* WorktreeRemovalLease;
 
   const recordPreparedWorktree = (workspacePath: string) =>
-    Effect.serviceOption(WorktreeRemovalLease).pipe(
-      Effect.flatMap((maybeLease) =>
-        Option.isSome(maybeLease)
-          ? maybeLease.value.recordPreparedWorktree(workspacePath)
-          : Effect.void,
-      ),
-    );
+    worktreeRemovalLease.recordPreparedWorktree(workspacePath);
 
   const sourceControlProvider = (cwd: string) => sourceControlProviders.resolve({ cwd });
   const serverSettingsService = yield* ServerSettings.ServerSettingsService;
