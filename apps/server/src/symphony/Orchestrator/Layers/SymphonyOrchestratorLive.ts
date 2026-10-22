@@ -43,6 +43,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { approvalRequestKind } from "../../Domain/Approvals.ts";
 import { nowIso } from "../../Domain/Time.ts";
 import { SymphonyPersistenceSqlError } from "../../Persistence/Errors.ts";
+import type { SymphonyPersistenceError } from "../../Persistence/Errors.ts";
 import { SymphonyProjectRepository } from "../../Persistence/Services/SymphonyProjectRepository.ts";
 import { WorkflowRepository } from "../../Persistence/Services/WorkflowRepository.ts";
 import { WorkItemRepository } from "../../Persistence/Services/WorkItemRepository.ts";
@@ -1615,16 +1616,14 @@ const makeOrchestrator = Effect.gen(function* () {
   const prepareDispatch = Effect.fn("symphonyOrchestrator.prepareDispatch")(function* (
     workItemId: string,
     options: { readonly explicit: boolean },
-  ): Effect.fn.Return<PreparedDispatch | DispatchRefused> {
+  ): Effect.fn.Return<PreparedDispatch | DispatchRefused, SymphonyPersistenceError> {
     // Defence in depth for an explicit dispatch RPC on a follower: the tick
     // gate above normally keeps followers out, but the RPC can arrive
     // between ticks.
     if (!(yield* Ref.get(holdsLockRef))) {
       return refused("not_leader");
     }
-    const item = yield* workItems
-      .getById(WorkItemId.make(workItemId))
-      .pipe(Effect.catch(() => Effect.succeed(null)));
+    const item = yield* workItems.getById(WorkItemId.make(workItemId));
     if (item === null) {
       return refused("not_found");
     }
@@ -1695,8 +1694,7 @@ const makeOrchestrator = Effect.gen(function* () {
 
     const workflow = yield* workflows
       .list()
-      .pipe(Effect.map((all) => all.find((record) => record.id === item.workflowId)))
-      .pipe(Effect.catch(() => Effect.succeed(undefined)));
+      .pipe(Effect.map((all) => all.find((record) => record.id === item.workflowId)));
     const config = workflow?.effectiveConfig;
     if (workflow === undefined || config === null || config === undefined) {
       return refused("no_workflow");
@@ -1705,22 +1703,11 @@ const makeOrchestrator = Effect.gen(function* () {
       return refused("observe_only");
     }
 
-    const inFlightItems = yield* workItems
-      .listByLifecycle(["preparing", "running", "waiting_for_approval"])
-      .pipe(
-        Effect.catch((cause) =>
-          Effect.gen(function* () {
-            yield* Effect.logWarning("symphony.dispatch.refused_occupancy_unavailable", {
-              workItemId: String(item.id),
-              error: cause.message,
-            });
-            return null;
-          }),
-        ),
-      );
-    if (inFlightItems === null) {
-      return refused("not_dispatchable", "active work could not be read");
-    }
+    const inFlightItems = yield* workItems.listByLifecycle([
+      "preparing",
+      "running",
+      "waiting_for_approval",
+    ]);
     const globalCap = config.concurrencyGlobal ?? WORKFLOW_DEFAULTS.concurrencyGlobal;
     if (globalCap > 0 && inFlightItems.length >= globalCap) {
       return refused("concurrency_cap", "global");
@@ -1791,8 +1778,18 @@ const makeOrchestrator = Effect.gen(function* () {
     workItemId: string,
     options: { readonly explicit: boolean },
   ) {
-    const prepared = yield* prepareDispatch(workItemId, options);
-    if (isRefused(prepared)) return false;
+    const prepared = yield* prepareDispatch(workItemId, options).pipe(
+      Effect.catch((cause) =>
+        Effect.gen(function* () {
+          yield* Effect.logWarning("symphony.dispatch.repository_unavailable", {
+            workItemId,
+            error: cause.message,
+          });
+          return null;
+        }),
+      ),
+    );
+    if (prepared === null || isRefused(prepared)) return false;
     yield* executePreparedDispatch(prepared).pipe(
       Effect.scoped,
       Effect.forkIn(dispatchScope),

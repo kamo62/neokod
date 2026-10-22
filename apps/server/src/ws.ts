@@ -443,6 +443,14 @@ const boardReadError = (cause: unknown): SymphonyError =>
         cause instanceof Error ? cause.message : String(cause),
       );
 
+const dispatchReadError = (cause: unknown): SymphonyError =>
+  isSymphonyError(cause)
+    ? cause
+    : projectError(
+        "symphony_dispatch_unavailable",
+        cause instanceof Error ? cause.message : String(cause),
+      );
+
 const requireProject = <A>(value: A | null, code: string, message: string) =>
   value === null ? Effect.fail(projectError(code, message)) : Effect.succeed(value);
 
@@ -1081,7 +1089,8 @@ export const makeSymphonyRpcHandlers = () => ({
     observeRpcEffect(
       SYMPHONY_WS_METHODS.dispatchWorkItem,
       withOrchestrator(
-        (orchestrator) => orchestrator.dispatchWorkItem(input.workItemId),
+        (orchestrator) =>
+          orchestrator.dispatchWorkItem(input.workItemId).pipe(Effect.mapError(dispatchReadError)),
         Effect.fail(orchestratorUnavailable()),
       ),
       { "rpc.aggregate": "symphony" },

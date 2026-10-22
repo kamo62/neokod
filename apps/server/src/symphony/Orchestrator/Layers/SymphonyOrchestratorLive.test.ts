@@ -2166,7 +2166,11 @@ layer("SymphonyOrchestrator Observe", (it) => {
 
       yield* Effect.gen(function* () {
         dispatchedIds.length = 0;
-        yield* orchestrator.dispatchWorkItem(targetId);
+        const outcome = yield* Effect.result(orchestrator.dispatchWorkItem(targetId));
+        expect(outcome._tag).toBe("Failure");
+        if (outcome._tag === "Failure") {
+          expect(outcome.failure._tag).toMatch(/^SymphonyPersistence/);
+        }
         yield* settle;
         expect(dispatchedIds).not.toContain("occupancy-corrupt-target");
         expect((yield* workItems.getById(targetId))?.lifecycle).toBe("queued");
@@ -2663,6 +2667,170 @@ layer("SymphonyOrchestrator Observe", (it) => {
         ),
       );
     }),
+  );
+
+  it.effect(
+    "dispatchWorkItem surfaces a work-item read failure instead of reporting the item missing",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* SymphonyOrchestrator;
+        const workItems = yield* WorkItemRepository;
+        const sql = yield* SqlClient.SqlClient;
+        const workItemId = WorkItemId.make("dispatch-read-failure-item");
+        yield* workItems.upsert({
+          id: workItemId,
+          mode: "symphony",
+          projectId: SymphonyProjectId.make("dispatch-read-failure-item-project"),
+          objective: "Read failure target",
+          acceptanceCriteria: [],
+          source: { kind: "manual" },
+          lifecycle: "queued",
+          priority: 1,
+          eligibilityReasons: [],
+          evidence: null,
+          createdAt: "2026-08-05T00:00:00.000Z",
+          updatedAt: "2026-08-05T00:00:00.000Z",
+        });
+        yield* sql`UPDATE symphony_work_items SET lifecycle = 'not-a-lifecycle' WHERE id = ${workItemId}`;
+
+        const result = yield* Effect.result(orchestrator.dispatchWorkItem(String(workItemId))).pipe(
+          Effect.ensuring(
+            sql`DELETE FROM symphony_work_items WHERE id = ${workItemId}`.pipe(Effect.ignore),
+          ),
+        );
+
+        expect(result._tag).toBe("Failure");
+        if (result._tag === "Failure") {
+          expect(result.failure._tag).toMatch(/^SymphonyPersistence/);
+        }
+      }),
+  );
+
+  it.effect(
+    "dispatchWorkItem surfaces a workflow read failure instead of reporting no workflow",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* SymphonyOrchestrator;
+        const workItems = yield* WorkItemRepository;
+        const sql = yield* SqlClient.SqlClient;
+        const workflowId = WorkflowId.make("wf-dispatch-read-failure");
+        const workItemId = WorkItemId.make("dispatch-read-failure-workflow");
+        yield* seedWorkflow("wf-dispatch-read-failure", "/repo/dispatch-read-failure", {
+          autonomy: "execute",
+          trackerRequiredLabels: [],
+          concurrencyGlobal: 10_000,
+        });
+        yield* workItems.upsert({
+          id: workItemId,
+          mode: "symphony",
+          projectId: SymphonyProjectId.make("dispatch-read-failure-workflow-project"),
+          objective: "Workflow read failure target",
+          acceptanceCriteria: [],
+          source: { kind: "manual" },
+          trackerIssueId: "1",
+          workflowId,
+          lifecycle: "queued",
+          priority: 1,
+          eligibilityReasons: [],
+          evidence: null,
+          createdAt: "2026-08-05T00:00:00.000Z",
+          updatedAt: "2026-08-05T00:00:00.000Z",
+        });
+        yield* sql`ALTER TABLE symphony_workflows RENAME TO symphony_workflows_read_failure`;
+
+        const result = yield* Effect.result(orchestrator.dispatchWorkItem(String(workItemId))).pipe(
+          Effect.ensuring(
+            Effect.gen(function* () {
+              yield* sql`ALTER TABLE symphony_workflows_read_failure RENAME TO symphony_workflows`.pipe(
+                Effect.ignore,
+              );
+              yield* sql`DELETE FROM symphony_work_items WHERE id = ${workItemId}`.pipe(
+                Effect.ignore,
+              );
+              yield* sql`DELETE FROM symphony_workflows WHERE id = ${workflowId}`.pipe(
+                Effect.ignore,
+              );
+            }),
+          ),
+        );
+
+        expect(result._tag).toBe("Failure");
+        if (result._tag === "Failure") {
+          expect(result.failure._tag).toMatch(/^SymphonyPersistence/);
+        }
+      }),
+  );
+
+  it.effect(
+    "dispatchWorkItem surfaces an occupancy read failure instead of refusing on unreadable state",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* SymphonyOrchestrator;
+        const workItems = yield* WorkItemRepository;
+        const sql = yield* SqlClient.SqlClient;
+        const workflowId = WorkflowId.make("wf-dispatch-read-failure-occupancy");
+        const workItemId = WorkItemId.make("dispatch-read-failure-occupancy-target");
+        const activeId = WorkItemId.make("dispatch-read-failure-occupancy-active");
+        yield* seedWorkflow(
+          "wf-dispatch-read-failure-occupancy",
+          "/repo/dispatch-read-failure-occupancy",
+          {
+            autonomy: "execute",
+            trackerRequiredLabels: [],
+            concurrencyGlobal: 10_000,
+          },
+        );
+        yield* workItems.upsert({
+          id: activeId,
+          mode: "symphony",
+          projectId: SymphonyProjectId.make("dispatch-read-failure-occupancy-active-project"),
+          objective: "Unreadable active item",
+          acceptanceCriteria: [],
+          source: { kind: "manual" },
+          workflowId,
+          lifecycle: "running",
+          priority: 1,
+          eligibilityReasons: [],
+          evidence: null,
+          createdAt: "2026-08-05T00:00:00.000Z",
+          updatedAt: "2026-08-05T00:00:00.000Z",
+        });
+        yield* workItems.upsert({
+          id: workItemId,
+          mode: "symphony",
+          projectId: SymphonyProjectId.make("dispatch-read-failure-occupancy-target-project"),
+          objective: "Occupancy read failure target",
+          acceptanceCriteria: [],
+          source: { kind: "manual" },
+          trackerIssueId: "1",
+          workflowId,
+          lifecycle: "queued",
+          priority: 1,
+          eligibilityReasons: [],
+          evidence: null,
+          createdAt: "2026-08-05T00:00:00.000Z",
+          updatedAt: "2026-08-05T00:00:00.000Z",
+        });
+        yield* sql`UPDATE symphony_work_items SET acceptance_criteria_json = 'not json' WHERE id = ${activeId}`;
+
+        const result = yield* Effect.result(orchestrator.dispatchWorkItem(String(workItemId))).pipe(
+          Effect.ensuring(
+            Effect.gen(function* () {
+              yield* sql`DELETE FROM symphony_work_items WHERE id IN (${workItemId}, ${activeId})`.pipe(
+                Effect.ignore,
+              );
+              yield* sql`DELETE FROM symphony_workflows WHERE id = ${workflowId}`.pipe(
+                Effect.ignore,
+              );
+            }),
+          ),
+        );
+
+        expect(result._tag).toBe("Failure");
+        if (result._tag === "Failure") {
+          expect(result.failure._tag).toMatch(/^SymphonyPersistence/);
+        }
+      }),
   );
 
   it.effect("requestChanges moves a review-ready item to changes_requested", () =>

@@ -195,6 +195,43 @@ it.layer(refusedDispatchOrchestratorLayer)("Symphony WS RPC handlers - refused d
   );
 });
 
+const failingDispatchOrchestratorLayer = Layer.succeed(SymphonyOrchestrator, {
+  dispatchWorkItem: () =>
+    Effect.fail(
+      new SymphonyPersistenceSqlError({
+        operation: "WorkItemRepository.getById",
+        detail: "disk I/O error",
+      }),
+    ),
+} as unknown as (typeof SymphonyOrchestrator)["Service"]);
+
+it.layer(failingDispatchOrchestratorLayer)(
+  "Symphony WS RPC handlers - dispatch read failure",
+  (it) => {
+    it.effect(
+      "dispatchWorkItem maps a repository read failure to symphony_dispatch_unavailable",
+      () =>
+        Effect.gen(function* () {
+          const handlers = makeSymphonyRpcHandlers();
+          const exit = yield* Effect.exit(
+            Effect.scoped(
+              handlers[SYMPHONY_WS_METHODS.dispatchWorkItem]({
+                workItemId: WorkItemIdValue.make("wi-1"),
+              }),
+            ),
+          );
+          expect(Exit.isFailure(exit)).toBe(true);
+          if (Exit.isFailure(exit)) {
+            expect(Cause.squash(exit.cause)).toMatchObject({
+              _tag: "SymphonyError",
+              code: "symphony_dispatch_unavailable",
+            });
+          }
+        }),
+    );
+  },
+);
+
 it.layer(Layer.empty)("Symphony WS RPC handlers - approval layer absent", (it) => {
   const expectApprovalUnavailable = (exit: Exit.Exit<unknown, unknown>) => {
     expect(Exit.isFailure(exit)).toBe(true);
