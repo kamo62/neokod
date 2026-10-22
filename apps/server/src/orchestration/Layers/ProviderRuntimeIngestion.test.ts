@@ -969,6 +969,84 @@ describe("ProviderRuntimeIngestion", () => {
     expect(secondPass).toHaveLength(1);
   });
 
+  it("closes a persisted streaming message on runtime.error without cache state", async () => {
+    const domainEvents = Effect.runSync(PubSub.unbounded<OrchestrationEvent>());
+    const harness = await createHarness({ domainEvents });
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-runtime-error-streaming");
+    const messageId = asMessageId("runtime-error-streaming-message");
+    const observedAt = "2026-01-01T00:03:01.000Z";
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("runtime-error-streaming-delta"),
+        threadId,
+        messageId,
+        delta: "partial answer",
+        turnId,
+        createdAt: observedAt,
+      }),
+    );
+
+    harness.emit({
+      type: "runtime.error",
+      eventId: asEventId("runtime-error-streaming-event"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId,
+      turnId,
+      createdAt: "2026-01-01T00:04:00.000Z",
+      payload: { message: "runtime exploded" },
+    });
+    await harness.drain();
+
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.messages.find((message) => message.id === messageId)).toMatchObject({
+      text: "partial answer",
+      streaming: false,
+      updatedAt: observedAt,
+    });
+  });
+
+  it("closes a persisted streaming message on completion without cache state", async () => {
+    const domainEvents = Effect.runSync(PubSub.unbounded<OrchestrationEvent>());
+    const harness = await createHarness({ domainEvents });
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-completion-streaming");
+    const messageId = asMessageId("completion-streaming-message");
+    const observedAt = "2026-01-01T00:03:01.000Z";
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("completion-streaming-delta"),
+        threadId,
+        messageId,
+        delta: "partial answer",
+        turnId,
+        createdAt: observedAt,
+      }),
+    );
+
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("completion-streaming-event"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId,
+      turnId,
+      createdAt: "2026-01-01T00:04:00.000Z",
+      status: "completed",
+    });
+    await harness.drain();
+
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.messages.find((message) => message.id === messageId)).toMatchObject({
+      text: "partial answer",
+      streaming: false,
+      updatedAt: observedAt,
+    });
+  });
+
   it("settles a persisted streaming assistant message when recovery interrupts the session", async () => {
     const harness = await createHarness();
     const threadId = asThreadId("thread-1");
@@ -1314,6 +1392,91 @@ describe("ProviderRuntimeIngestion", () => {
       text: "newer partial",
       streaming: true,
       updatedAt: "2026-01-01T00:05:00.000Z",
+    });
+  });
+
+  it("settles a streaming message on an archived interrupted thread at startup", async () => {
+    const harness = await createHarness({ startIngestion: false });
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-archived-streaming");
+    const messageId = asMessageId("archived-streaming-message");
+    const observedAt = "2026-01-01T00:03:01.000Z";
+    const recoveredAt = "2026-01-01T00:04:00.000Z";
+
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("archived-streaming-running"),
+        threadId,
+        session: {
+          threadId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: turnId,
+          updatedAt: "2026-01-01T00:03:00.000Z",
+          lastError: null,
+        },
+        createdAt: "2026-01-01T00:03:00.000Z",
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("archived-streaming-delta"),
+        threadId,
+        messageId,
+        delta: "partial answer",
+        turnId,
+        createdAt: observedAt,
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("archived-streaming-interrupted"),
+        threadId,
+        session: {
+          threadId,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          updatedAt: recoveredAt,
+          lastError: null,
+        },
+        interruptedTurnId: turnId,
+        latestTurnCompletedAt: null,
+        createdAt: recoveredAt,
+      }),
+    );
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.archive",
+        commandId: CommandId.make("archived-streaming-archive"),
+        threadId,
+      }),
+    );
+
+    await harness.start();
+    await harness.drain();
+
+    // Restoring the thread must not expose a message that startup recovery
+    // failed to close while the thread was archived.
+    await harness.run(
+      harness.engine.dispatch({
+        type: "thread.unarchive",
+        commandId: CommandId.make("archived-streaming-unarchive"),
+        threadId,
+      }),
+    );
+    await harness.drain();
+
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.messages.find((message) => message.id === messageId)).toMatchObject({
+      text: "partial answer",
+      streaming: false,
+      updatedAt: observedAt,
     });
   });
 

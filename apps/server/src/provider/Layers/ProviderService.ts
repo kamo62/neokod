@@ -346,6 +346,34 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     ),
   );
 
+  // A reconciler may settle a restored pending-stop binding into host-loss
+  // evidence without touching this process's barrier set. Re-read the durable
+  // binding before refusing work so a settled outcome releases the fence. A
+  // read failure or a genuinely unresolved outcome keeps the barrier.
+  const releaseSettledStopBarrier = (threadId: ThreadId) =>
+    Effect.gen(function* () {
+      if (!(yield* Ref.get(stoppingThreads)).has(threadId)) {
+        return;
+      }
+      const binding = yield* directory.getBinding(threadId).pipe(
+        Effect.catch((cause) =>
+          Effect.logWarning("provider stop barrier could not be refreshed", {
+            threadId,
+            error: cause instanceof Error ? cause.message : String(cause),
+          }).pipe(Effect.as(Option.none())),
+        ),
+      );
+      if (Option.isNone(binding) || hasUnresolvedStop(binding.value)) {
+        return;
+      }
+      yield* Ref.update(stoppingThreads, (threads) => {
+        if (!threads.has(threadId)) return threads;
+        const next = new Set(threads);
+        next.delete(threadId);
+        return next;
+      });
+    });
+
   const assertNotStopping = (operation: string, threadId: ThreadId) =>
     Effect.gen(function* () {
       if (yield* Ref.get(stopAllInProgress)) {
@@ -353,6 +381,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           new ProviderStoppingError({ operation, threadId, scope: "stop-all" }),
         );
       }
+      yield* releaseSettledStopBarrier(threadId);
       if ((yield* Ref.get(stoppingThreads)).has(threadId)) {
         return yield* Effect.fail(
           new ProviderStoppingError({ operation, threadId, scope: "thread" }),

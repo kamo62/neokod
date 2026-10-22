@@ -873,6 +873,93 @@ it.effect(
     }).pipe(Effect.provide(NodeServices.layer)),
 );
 
+it.effect(
+  "ProviderServiceLive releases a restored pending-stop fence after host-loss reconciliation",
+  () =>
+    Effect.gen(function* () {
+      const tempDir = NodeFS.mkdtempSync(
+        NodePath.join(NodeOS.tmpdir(), "neokod-provider-host-lost-fence-"),
+      );
+      const dbPath = NodePath.join(tempDir, "orchestration.sqlite");
+      const persistenceLayer = makeSqlitePersistenceLive(dbPath);
+      const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+        Layer.provide(persistenceLayer),
+      );
+      const directoryLayer = ProviderSessionDirectoryLive.pipe(
+        Layer.provide(runtimeRepositoryLayer),
+      );
+      const codex = makeFakeCodexAdapter();
+      const registry = makeAdapterRegistryMock({
+        [CODEX_DRIVER]: codex.adapter,
+      });
+      const threadId = asThreadId("thread-host-lost-restored-fence");
+
+      // The previous process died with a stop request recorded, so service
+      // construction restores the thread fence.
+      yield* Effect.gen(function* () {
+        const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+        yield* directory.upsert({
+          threadId,
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          status: "running",
+          runtimePayload: {
+            activeTurnId: null,
+            stopPhase: "stop_requested",
+            stopRequestedAt: "2026-01-01T00:00:00.000Z",
+          },
+        });
+      }).pipe(Effect.provide(directoryLayer));
+
+      const providerLayer = makeProviderServiceLive().pipe(
+        Layer.provide(Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, registry)),
+        Layer.provide(directoryLayer),
+        Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(AnalyticsService.layerTest),
+        Layer.provide(
+          Layer.succeed(
+            ProviderEventLoggers.ProviderEventLoggers,
+            ProviderEventLoggers.NoOpProviderEventLoggers,
+          ),
+        ),
+        Layer.provideMerge(runtimeRepositoryLayer),
+      );
+
+      yield* Effect.gen(function* () {
+        // Construct the service while the pending stop is still the durable
+        // state, so its restored barrier set contains this thread.
+        const provider = yield* ProviderService.ProviderService;
+        const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+
+        // The reconciler then settles the binding into host-loss evidence.
+        yield* directory.upsert({
+          threadId,
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          status: "error",
+          runtimePayload: {
+            activeTurnId: null,
+            stopPhase: "settled",
+            stopOutcome: orphanPossible({
+              stoppedAt: "2026-01-01T00:00:01.000Z",
+              reason: "host_lost",
+            }),
+          },
+        });
+
+        const started = yield* provider.startSession(threadId, {
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          threadId,
+          runtimeMode: "full-access",
+        });
+        assert.equal(started.threadId, threadId);
+      }).pipe(Effect.provide(Layer.merge(providerLayer, directoryLayer)));
+
+      NodeFS.rmSync(tempDir, { recursive: true, force: true });
+    }).pipe(Effect.provide(NodeServices.layer)),
+);
+
 it.effect("ProviderServiceLive refuses recovery while a failed stop still fences the thread", () =>
   Effect.gen(function* () {
     const tempDir = NodeFS.mkdtempSync(

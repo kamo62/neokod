@@ -1,6 +1,5 @@
 import { CommandId, type ThreadId, type TurnId } from "@neokod/contracts";
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
 
 import type { OrchestrationEngineShape } from "./Services/OrchestrationEngine.ts";
 import type { ProjectionSnapshotQueryShape } from "./Services/ProjectionSnapshotQuery.ts";
@@ -12,7 +11,7 @@ import type { ProjectionSnapshotQueryShape } from "./Services/ProjectionSnapshot
  */
 export const completeStreamingAssistantMessages = (input: {
   readonly orchestrationEngine: Pick<OrchestrationEngineShape, "dispatch">;
-  readonly projectionSnapshotQuery: Pick<ProjectionSnapshotQueryShape, "getThreadDetailById">;
+  readonly projectionSnapshotQuery: Pick<ProjectionSnapshotQueryShape, "getThreadMessagesById">;
   readonly threadId: ThreadId;
   readonly endedTurnIds: ReadonlySet<TurnId>;
   readonly observedNoLaterThan: string;
@@ -22,10 +21,9 @@ export const completeStreamingAssistantMessages = (input: {
     if (input.endedTurnIds.size === 0) {
       return;
     }
-    const detailedThread = yield* input.projectionSnapshotQuery
-      .getThreadDetailById(input.threadId)
-      .pipe(Effect.map(Option.getOrUndefined));
-    const messages = (detailedThread?.messages ?? []).filter(
+    const messages = (yield* input.projectionSnapshotQuery.getThreadMessagesById(
+      input.threadId,
+    )).filter(
       (message) =>
         message.role === "assistant" &&
         message.streaming &&

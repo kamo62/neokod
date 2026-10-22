@@ -1643,6 +1643,16 @@ const make = Effect.gen(function* () {
       const now = event.createdAt;
       const eventTurnId = toTurnId(event.turnId);
       const activeTurnId = thread.session?.activeTurnId ?? null;
+      const turnEndingEvent =
+        event.type === "turn.completed" ||
+        event.type === "session.exited" ||
+        (event.type === "session.state.changed" &&
+          (event.payload.state === "stopped" || event.payload.state === "error")) ||
+        (event.type === "session.stop.updated" &&
+          (event.payload.outcome?.status === "stopped_confirmed" ||
+            event.payload.outcome?.status === "orphan_possible")) ||
+        event.type === "runtime.error";
+      const endedTurnId = turnEndingEvent ? (eventTurnId ?? activeTurnId ?? undefined) : undefined;
 
       const conflictsWithActiveTurn =
         activeTurnId !== null && eventTurnId !== undefined && !sameId(activeTurnId, eventTurnId);
@@ -1749,9 +1759,6 @@ const make = Effect.gen(function* () {
               : status === "ready"
                 ? null
                 : (thread.session?.lastError ?? null);
-
-        const endsTurn = status === "interrupted" || status === "stopped" || status === "error";
-        const endedTurnId = endsTurn ? (eventTurnId ?? activeTurnId ?? undefined) : undefined;
 
         if (shouldApplyThreadLifecycle) {
           if (event.type === "turn.started" && acceptedTurnStartedSourcePlan !== null) {
@@ -2073,7 +2080,6 @@ const make = Effect.gen(function* () {
           : activeTurnId === null || eventTurnId === undefined || sameId(activeTurnId, eventTurnId);
 
         if (shouldApplyRuntimeError) {
-          const endedTurnId = eventTurnId ?? activeTurnId ?? undefined;
           yield* orchestrationEngine.dispatch({
             type: "thread.session.set",
             commandId: yield* providerCommandId(event, "runtime-error-session-set"),
@@ -2094,6 +2100,37 @@ const make = Effect.gen(function* () {
             createdAt: now,
           });
         }
+      }
+
+      if (event.type === "runtime.error" && endedTurnId !== undefined) {
+        const detailedThread = yield* getLoadedThreadDetail();
+        yield* finalizeActiveAssistantSegmentForTurn({
+          event,
+          threadId: thread.id,
+          turnId: endedTurnId,
+          createdAt: now,
+          commandTag: "assistant-complete-on-runtime-error",
+          finalDeltaCommandTag: "assistant-delta-finalize-on-runtime-error",
+          hasProjectedMessage:
+            detailedThread !== null &&
+            hasAssistantMessageForTurn(detailedThread.messages, endedTurnId, {
+              streamingOnly: true,
+            }),
+        });
+      }
+
+      // Buffer finalisation above handles in-memory text. This durable step
+      // closes persisted messages that were not in the cache, on every path
+      // that ended a turn.
+      if (endedTurnId !== undefined) {
+        yield* completeStreamingAssistantMessages({
+          orchestrationEngine,
+          projectionSnapshotQuery,
+          threadId: thread.id,
+          endedTurnIds: new Set([endedTurnId]),
+          observedNoLaterThan: now,
+          occurredAt: now,
+        });
       }
 
       if (event.type === "thread.metadata.updated" && event.payload.name) {

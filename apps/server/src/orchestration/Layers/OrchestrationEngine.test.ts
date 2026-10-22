@@ -331,6 +331,7 @@ describe("OrchestrationEngine", () => {
           getFullThreadDiffContext: () => Effect.succeed(Option.none()),
           getThreadShellById: () => Effect.succeed(Option.none()),
           getThreadDetailById: () => Effect.succeed(Option.none()),
+          getThreadMessagesById: () => Effect.succeed([]),
           getThreadDetailSnapshot: () => Effect.succeed(Option.none()),
         }),
       ),
